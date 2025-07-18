@@ -9,8 +9,8 @@ symbol = 'XRP/KRW'
 timeframe = '1m'  # 1분봉
 
 # ✅ 날짜 설정
-start_date = '2024-07-01 09:00:00'
-end_date   = '2024-07-01 15:00:00'
+start_date = '2025-01-01 09:00:00'
+end_date   = '2025-07-17 15:00:00'
 
 # datetime 객체로 변환
 start_dt = datetime.strptime(start_date, '%Y-%m-%d %H:%M:%S')
