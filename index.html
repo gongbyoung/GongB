@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AE Auto-Fit Typography</title>
+    <title>AE Auto-Timing Typography</title>
     <style>
         :root {
             --bg: #0c0c0e;
@@ -16,6 +16,7 @@
         textarea { flex: 1; background: #000; color: var(--accent); border: 1px solid #444; padding: 20px; font-size: 16px; border-radius: 10px; line-height: 1.6; outline: none; }
         .right-side { flex: 1; background: var(--panel); padding: 25px; border-left: 1px solid #333; display: flex; flex-direction: column; box-sizing: border-box; overflow-y: auto; }
         .item { margin-bottom: 15px; }
+        .time-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
         label { display: block; font-size: 12px; color: #888; margin-bottom: 5px; font-weight: bold; }
         input, select { width: 100%; padding: 10px; background: #0a0a0c; border: 1px solid #444; color: #fff; border-radius: 6px; }
         .motion-opt { display: inline-block; background: #2d2d3d; padding: 8px 12px; border-radius: 6px; margin: 4px; font-size: 12px; cursor: pointer; border: 1px solid transparent; }
@@ -30,16 +31,16 @@
 <body>
 
     <div class="left-side">
-        <label>가사 입력 (자동 크기 조절 적용됨)</label>
+        <label>가사 입력 (자동 타이밍 & 크기 조절)</label>
         <textarea id="lyricsArea">[사용방법]
 1. 이 내용을 지우고 가사를 입력하세요.
-2. 글자 길이에 상관없이 화면에 딱 맞춰집니다.
-3. [JSX 스크립트 생성] -> [파일 저장하기] 순서로 클릭!
-4. AE에서 실행하면 끝!</textarea>
+2. 오른쪽 [시간 설정]에 영상의 시작과 끝 시간을 적으세요.
+3. [JSX 스크립트 생성]을 누르면 가사 개수에 맞춰 시간이 자동 분배됩니다.
+4. AE에서 실행하면 가사 길이에 맞춰 화면에 꽉 차게 들어옵니다.</textarea>
     </div>
 
     <div class="right-side">
-        <h2>AE SMART FIT</h2>
+        <h2>TIME & MOTION SET</h2>
         
         <div class="item">
             <label>화면 사이즈</label>
@@ -47,6 +48,20 @@
                 <option value="1920,1080">Youtube (16:9)</option>
                 <option value="1080,1920">TikTok/Shorts (9:16)</option>
             </select>
+        </div>
+
+        <div class="item">
+            <label>영상 내 노출 시간 (초)</label>
+            <div class="time-grid">
+                <div>
+                    <label style="font-size:10px;">시작(Start)</label>
+                    <input type="number" id="startTime" value="0" step="0.1">
+                </div>
+                <div>
+                    <label style="font-size:10px;">종료(End)</label>
+                    <input type="number" id="endTime" value="10" step="0.1">
+                </div>
+            </div>
         </div>
 
         <div class="item">
@@ -70,7 +85,7 @@
         </div>
 
         <div class="button-area">
-            <div id="status">✅ 스크립트가 준비되었습니다!</div>
+            <div id="status">✅ 스크립트 생성 완료!</div>
             <button id="downloadBtn" onclick="saveFile()">.JSX 파일 저장하기 💾</button>
             <button id="generateBtn" onclick="doBuild()">JSX 스크립트 생성</button>
         </div>
@@ -94,41 +109,52 @@
             const [w, h] = document.getElementById('resPreset').value.split(',');
             const checks = Array.from(document.querySelectorAll('#effectPool input:checked')).map(el => el.value);
 
+            // 시간 관련 변수
+            const startT = parseFloat(document.getElementById('startTime').value);
+            const endT = parseFloat(document.getElementById('endTime').value);
+            const totalDuration = endT - startT;
+
             if (lines.length === 0 || checks.length === 0) { alert("가사와 효과를 확인해주세요."); return; }
+            if (totalDuration <= 0) { alert("종료 시간이 시작 시간보다 커야 합니다."); return; }
+
+            const perLineDuration = totalDuration / lines.length;
 
             codeBuffer = `(function() {
-    app.beginUndoGroup("Create Auto-Fit Motion");
-    var comp = app.project.activeItem || app.project.items.addComp("SmartTypo", ${w}, ${h}, 1, 30, 60);
+    app.beginUndoGroup("Auto-Timing Motion");
+    var comp = app.project.activeItem || app.project.items.addComp("FinalVideo", ${w}, ${h}, 1, 30, ${endT + 1});
     var lines = ${JSON.stringify(lines)};
-    var targetWidth = ${w} * 0.85; // 화면 너비의 85%를 목표로 설정
+    var targetWidth = ${w} * 0.85;
 
     for (var i = 0; i < lines.length; i++) {
         var layer = comp.layers.addText(lines[i]);
         var sourceText = layer.property("Source Text");
         var doc = sourceText.value;
-        doc.fontSize = 100; // 기준 폰트 사이즈
+        doc.fontSize = 100; 
         doc.font = "${font}";
         doc.fillColor = ${color};
         doc.justification = ParagraphJustification.CENTER_JUSTIFY;
         sourceText.setValue(doc);
 
-        // --- 핵심: 자동 크기 조절 로직 ---
         var rect = layer.sourceRectAtTime(0, false);
         var scaleFactor = (targetWidth / rect.width) * 100;
-        
-        // 너무 커지는 것 방지 (최대 300% 제한)
-        if (scaleFactor > 300) scaleFactor = 300;
+        if (scaleFactor > 350) scaleFactor = 350; // 최대 크기 제한
         
         layer.scale.setValue([scaleFactor, scaleFactor]);
         layer.position.setValue([${w}/2, ${h}/2]);
-        layer.startTime = i * 1.5;
-        layer.outPoint = (i + 1) * 1.5;
+        
+        // --- 시간 계산 적용 ---
+        var lineStart = ${startT} + (i * ${perLineDuration});
+        var lineEnd = lineStart + ${perLineDuration};
+        layer.startTime = lineStart;
+        layer.outPoint = lineEnd;
 
-        applyEffect(layer, "${checks[Math.floor(Math.random()*checks.length)]}", i * 1.5);
+        applyEffect(layer, "${checks[Math.floor(Math.random()*checks.length)]}", lineStart, ${perLineDuration});
     }
 
-    function applyEffect(l, type, start) {
+    function applyEffect(l, type, start, dur) {
         var currentScale = l.scale.value[0];
+        var animTime = dur * 0.3; // 전체 노출 시간의 30% 동안 등장 애니메이션 진행
+
         if(type === "pop") {
             l.scale.setValueAtTime(start, [0,0]);
             l.scale.expression = "f=3; a=40; d=5; t=time-inPoint; if(t<0)[0,0]; else { s=a*Math.sin(f*t*2*Math.PI)/Math.exp(d*t); ["+currentScale+"+s, "+currentScale+"+s]; }";
@@ -136,11 +162,11 @@
             l.position.setValueAtTime(start, [${w}+600, ${h}/2]);
             l.position.expression = "f=2; a=600; d=5; t=time-inPoint; if(t<0)value; else { x=a*Math.cos(f*t*2*Math.PI)/Math.exp(d*t); [value[0]+x, value[1]]; }";
         } else if(type === "stretch") {
-            l.scale.setValueAtTime(start, [currentScale*2, currentScale*0.2]);
-            l.scale.setValueAtTime(start + 0.3, [currentScale, currentScale]);
+            l.scale.setValueAtTime(start, [currentScale*2.5, currentScale*0.2]);
+            l.scale.setValueAtTime(start + animTime, [currentScale, currentScale]);
         } else if(type === "drop") {
             l.position.setValueAtTime(start, [${w}/2, -300]);
-            l.position.setValueAtTime(start + 0.4, [${w}/2, ${h}/2]);
+            l.position.setValueAtTime(start + animTime, [${w}/2, ${h}/2]);
         }
     }
     app.endUndoGroup();
@@ -155,7 +181,7 @@
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = "AE_Smart_Typo.jsx";
+            a.download = "AE_Timed_Typo.jsx";
             a.click();
         }
     </script>
