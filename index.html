@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+    <!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
@@ -158,6 +158,12 @@ Color Picker: 웹의 컬러 피커를 통해 색상을 고르면 AE에서 사용
                 <label class="motion-opt"><input type="checkbox" value="rotate3d"> 3D Rotation</label>
                 <label class="motion-opt"><input type="checkbox" value="blur"> Blur Ease</label>
                 <label class="motion-opt"><input type="checkbox" value="tracking"> Tracking Slide</label>
+                <label class="motion-opt"><input type="checkbox" value="swing"> Swing (흔들기)</label>
+                <label class="motion-opt"><input type="checkbox" value="flipX"> 3D Flip (회전)</label>
+                <label class="motion-opt"><input type="checkbox" value="cascade"> Cascade (폭포수)</label>
+                <label class="motion-opt"><input type="checkbox" value="rainbow"> Rainbow (무지개)</label>
+                <label class="motion-opt"><input type="checkbox" value="zoomBlur"> Zoom Blur (줌블러)</label>
+                <label class="motion-opt"><input type="checkbox" value="elastic_move"> Elastic Move (탄성 이동)</label>
             </div>
         </div>
 
@@ -269,6 +275,53 @@ Color Picker: 웹의 컬러 피커를 통해 색상을 고르면 AE에서 사용
                 layer.position.setValueAtTime(start, [layer.position.value[0], -200]);
                 layer.position.setValueAtTime(start + 0.5, [layer.position.value[0], layer.position.value[1]]);
                 break;
+                case "swing": // 1. 시계추처럼 흔들리는 효과
+                var rect = layer.sourceRectAtTime(0, false);
+                layer.anchorPoint.setValue([rect.width/2, 0]); // 기준점을 글자 상단으로
+                layer.position.setValue([comp.width/2, comp.height/2 - rect.height/2]);
+                layer.rotation.expression = "Math.sin(time * 4) * 20;";
+                break;
+
+            case "flipX": // 2. 앞으로 한바퀴 회전하며 등장
+                layer.threeDLayer = true;
+                layer.xRotation.setValueAtTime(start, -90);
+                layer.xRotation.setInterpolationTypeAtKey(1, KeyframeInterpolationType.BEZIER);
+                layer.xRotation.setValueAtTime(start + 0.6 * duration, 0);
+                break;
+
+            case "cascade": // 3. 글자가 위에서 아래로 한글자씩 떨어짐
+                var anim = layer.Text.Animators.addProperty("ADBE Text Animator");
+                var pos = anim.property("ADBE Text Animator Properties").addProperty("ADBE Text Position");
+                pos.setValue([0, -150]);
+                var op = anim.property("ADBE Text Animator Properties").addProperty("ADBE Text Opacity");
+                op.setValue(0);
+                var sel = anim.property("ADBE Text Selectors").addProperty("ADBE Text Selector");
+                sel.property("Start").setValueAtTime(start, 0);
+                sel.property("Start").setValueAtTime(start + 0.8 * duration, 100);
+                break;
+
+            case "rainbow": // 4. 글자 색상이 무지개처럼 계속 변함
+                var anim = layer.Text.Animators.addProperty("ADBE Text Animator");
+                var fill = anim.property("ADBE Text Animator Properties").addProperty("ADBE Text Fill Color");
+                fill.expression = "hslToRgb([(time*0.5)%1, 1, 0.5, 1])";
+                break;
+
+            case "zoomBlur": // 5. 카메라가 줌하듯 흐려지며 등장
+                var blur = layer.Effects.addProperty("ADBE CC Radial Blur");
+                blur.property("Amount").setValueAtTime(start, 50);
+                blur.property("Amount").setValueAtTime(start + 0.5 * duration, 0);
+                layer.scale.setValueAtTime(start, [150, 150]);
+                layer.scale.setValueAtTime(start + 0.5 * duration, [100, 100]);
+                layer.opacity.setValueAtTime(start, 0);
+                layer.opacity.setValueAtTime(start + 0.3 * duration, 100);
+                break;
+
+case "elastic_move": // 6. 옆에서 튕기듯이 튀어나옴
+    layer.position.setValueAtTime(start, [-500, comp.height/2]);
+    layer.position.expression = 
+        "var freq = 2; var amp = 300; var decay = 5; t = time - inPoint;" +
+        "if (t < 0) value; else { x = amp * Math.cos(freq * t * 2 * Math.PI) / Math.exp(decay * t); [value[0] + x, value[1]]; }";
+    break;
         }
     }
 
