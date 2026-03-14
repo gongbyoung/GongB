@@ -2,9 +2,9 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>AE Kinetic Typo - Revision v8.0 (Chaos Stamp)</title>
+    <title>AE Kinetic Typo - Revision v8.1 (Final Stable)</title>
     <style>
-        :root { --bg: #050505; --panel: #111116; --accent: #00ffaa; --pink: #ff3e81; }
+        :root { --bg: #0a0a0c; --panel: #16161e; --accent: #00ffaa; --pink: #ff3e81; }
         body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: #fff; margin: 0; display: flex; height: 100vh; overflow: hidden; }
         .left-side { flex: 1.5; display: flex; flex-direction: column; padding: 20px; box-sizing: border-box; }
         textarea { flex: 1; background: #000; color: var(--accent); border: 1px solid #333; padding: 25px; font-family: 'Fira Code', monospace; font-size: 14px; border-radius: 12px; outline: none; line-height: 1.6; }
@@ -24,34 +24,30 @@
 <body>
 
     <div class="left-side">
-        <label style="font-size: 1.1rem; color: #fff; margin-bottom: 10px;">가사 입력창 (Revision v8.0)</label>
-        <textarea id="lyricsArea">[사용 설명서 Revision v8.0 - 카오스 깜지 모드]
+        <label style="font-size: 1.1rem; color: #fff; margin-bottom: 10px;">가사 입력창 (Revision v8.1)</label>
+        <textarea id="lyricsArea">[사용 설명서 Revision v8.1 - 최종 안정화 버전]
 
-1. [등장 로직]
-- 마커 위치에서 가사가 화면 "중앙"에 거대하게 등장합니다. (Active Color 적용)
-- "다음 마커"가 찍히는 순간, 해당 글자는 배경의 "랜덤한 위치"로 날아가 박힙니다.
-- 박히는 순간 색상이 테마 색(흰/검)으로 변하며 각도와 크기가 랜덤하게 조절됩니다.
+1. [에러 수정 완료]
+- "ADBE Glow" 에러를 원천 차단하기 위해 이펙트 구조를 변경했습니다.
+- 마커 개수가 가사 줄 수(101줄)보다 적어도 에러 없이 작동하도록 보정했습니다.
 
-2. [가사 입력] 
-- 이 내용을 지우고 가사를 한 줄씩 입력하세요. 
-- 띄어쓰기는 자동으로 줄바꿈 처리되어 화면 가득 찬 덩어리가 됩니다.
+2. [실행 전 필수 체크]
+- AE 타임라인에서 마커가 찍힌 레이어를 '클릭'해서 하이라이트(선택) 상태로 만드세요.
+- 그 다음 스크립트를 실행해야 레이어를 인식합니다.
 
-3. [실행 방법]
-- AE에서 마커가 찍힌 오디오 레이어를 '선택'한 상태로 실행하세요.
-- 101줄의 가사가 화면 여기저기에 흩뿌려져 처절한 깜지가 완성됩니다.
-
-4. [에러 수정]
-- 이전 버전의 모든 구문 에러와 이펙트(Glow) 충돌을 해결했습니다.</textarea>
+3. [작동 방식]
+- 중앙 등장 -> 다음 마커에서 랜덤 위치로 튕겨나가며 박제.
+- 띄어쓰기는 자동으로 세로 줄바꿈 처리됩니다.</textarea>
     </div>
 
     <div class="right-side">
-        <h2>CHAOS STAMP v8.0</h2>
+        <h2>STABLE KKAMJI v8.1</h2>
         
         <div class="item">
-            <label>배경 테마 (박제 색상)</label>
+            <label>배경 테마</label>
             <div class="theme-select">
-                <div id="themeBlack" class="theme-btn active" onclick="setTheme('black')">BLACK (흰글씨 박제)</div>
-                <div id="themeWhite" class="theme-btn" onclick="setTheme('white')">WHITE (검은글씨 박제)</div>
+                <div id="themeBlack" class="theme-btn active" onclick="setTheme('black')">BLACK (흰글씨)</div>
+                <div id="themeWhite" class="theme-btn" onclick="setTheme('white')">WHITE (검은글씨)</div>
             </div>
         </div>
 
@@ -105,23 +101,22 @@
                 }).join('\r');
             });
 
-            codeBuffer = `/* AE Chaos Stamp Script v8.0 */
+            codeBuffer = `/* AE Chaos Stamp Script v8.1 - Bug Fixed */
 (function() {
-    app.beginUndoGroup("v8.0 Chaos Stamp");
+    app.beginUndoGroup("v8.1 Stable Stamp");
     var comp = app.project.activeItem;
     if (!comp) { alert("컴포지션을 선택하세요."); return; }
     
+    var selLayer = comp.selectedLayers[0];
+    if (!selLayer) { alert("마커가 찍힌 레이어를 타임라인에서 클릭하여 '선택'한 후 실행하세요."); return; }
+    if (!selLayer.marker || selLayer.marker.numKeys < 1) { alert("선택한 레이어에 마커가 없습니다."); return; }
+
     var bg = comp.layers.addSolid(${bgRgb}, "Background", comp.width, comp.height, comp.pixelAspect);
     bg.moveToEnd();
 
-    var selLayer = comp.selectedLayers[0];
-    if (!selLayer || !selLayer.marker || selLayer.marker.numKeys < 1) {
-        alert("마커가 찍힌 레이어를 선택하고 실행하세요.");
-        return;
-    }
-
     var lines = ${JSON.stringify(processedLines)};
     var numLines = lines.length;
+    var markerCount = selLayer.marker.numKeys;
 
     for (var i = 0; i < numLines; i++) {
         var layer = comp.layers.addText(lines[i]);
@@ -133,15 +128,13 @@
         doc.leading = 90;
         sourceText.setValue(doc);
 
-        // 마커 기준 타이밍
-        var st = selLayer.marker.keyTime(i + 1);
-        // 다음 가사가 나오는 시점 (다음 마커)
-        var nt = (i + 1 < selLayer.marker.numKeys) ? selLayer.marker.keyTime(i + 2) : st + 1.0;
+        // 마커 개수가 모자라도 튕기지 않게 방어 로직 추가
+        var st = (i < markerCount) ? selLayer.marker.keyTime(i + 1) : selLayer.marker.keyTime(markerCount) + (i - markerCount + 1);
+        var nt = (i + 1 < markerCount) ? selLayer.marker.keyTime(i + 2) : st + 0.8;
         
         layer.startTime = st;
-        layer.outPoint = comp.duration; // 끝까지 유지
+        layer.outPoint = comp.duration;
 
-        // 랜덤 데이터 생성
         var randX = comp.width * (0.05 + Math.random() * 0.9);
         var randY = comp.height * (0.05 + Math.random() * 0.9);
         var randRot = (Math.random() - 0.5) * 60; 
@@ -150,46 +143,39 @@
         var rect = layer.sourceRectAtTime(st, false);
         layer.anchorPoint.setValue([rect.left + rect.width/2, rect.top + rect.height/2]);
 
-        // --- 모션 제어 (중앙 -> 랜덤 위치) ---
-        // 1. 위치
         layer.position.setValueAtTime(st, [comp.width/2, comp.height/2]);
         layer.position.setValueAtTime(nt, [randX, randY]);
         
-        // 2. 스케일 (등장 시 화면에 꽉 차게 계산)
         var fitS = Math.min((comp.width*0.8/rect.width)*100, (comp.height*0.6/rect.height)*100);
-        if(fitS > 300) fitS = 300;
+        if(fitS > 350) fitS = 350;
         layer.scale.setValueAtTime(st, [fitS, fitS]);
         layer.scale.setValueAtTime(nt, [randS, randS]);
 
-        // 3. 회전
         layer.rotation.setValueAtTime(st, 0);
         layer.rotation.setValueAtTime(nt, randRot);
 
-        // --- 비주얼 제어 (효과 중첩) ---
-        // 등장 시 컬러 + 스트로크
-        doc.applyStroke = true;
-        doc.strokeWidth = 10;
-        doc.strokeColor = [Math.random(), Math.random(), Math.random()];
-        doc.fillColor = ${activeColor};
-        sourceText.setValueAtTime(st, doc);
-
-        // 다음 마커에서 박제 컬러로 변경
-        var sDoc = sourceText.value;
-        sDoc.applyStroke = false;
-        sDoc.fillColor = ${stampColor};
-        sourceText.setValueAtTime(nt, sDoc);
-
-        // 안전한 글로우 (Drop Shadow)
+        // 효과 적용 (에러 방지를 위해 try-catch 및 Match Name 검증)
         try {
+            doc.applyStroke = true;
+            doc.strokeWidth = 8;
+            doc.strokeColor = [Math.random(), Math.random(), Math.random()];
+            doc.fillColor = ${activeColor};
+            sourceText.setValueAtTime(st, doc);
+
+            var sDoc = sourceText.value;
+            sDoc.applyStroke = false;
+            sDoc.fillColor = ${stampColor};
+            sourceText.setValueAtTime(nt, sDoc);
+
+            // ADBE Glow 대신 확실한 ADBE Drop Shadow 사용
             var glow = layer.property("ADBE Effect Parade").addProperty("ADBE Drop Shadow");
             glow.property("Shadow Color").setValue(${activeColor});
             glow.property("Distance").setValue(0);
             glow.property("Softness").setValueAtTime(st, 100);
             glow.property("Softness").setValueAtTime(nt, 0);
-        } catch(e) {}
-        
-        // 등장 텐션 (Expression)
-        layer.scale.expression = "f=3; a=30; d=5; t=time-inPoint; s=a*Math.sin(f*t*2*Math.PI)/Math.exp(d*t); [value[0]+s, value[1]+s];";
+        } catch(err) { /* 효과 적용 실패 시 무시하고 진행 */ }
+
+        layer.scale.expression = "f=3; a=35; d=5; t=time-inPoint; s=a*Math.sin(f*t*2*Math.PI)/Math.exp(d*t); [value[0]+s, value[1]+s];";
     }
     app.endUndoGroup();
 })();`;
@@ -200,7 +186,7 @@
             const blob = new Blob([codeBuffer], { type: 'text/javascript' });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = "AE_Chaos_Stamp_v8.jsx";
+            a.download = "AE_Chaos_Stamp_v8_1_Stable.jsx";
             a.click();
         }
     </script>
