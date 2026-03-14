@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>AE Kinetic Typo - Revision v8.3 (Final Shield)</title>
+    <title>AE Kinetic Typo - Revision v8.4 (Final Solution)</title>
     <style>
         :root { --bg: #0a0a0c; --panel: #16161e; --accent: #00ffaa; --pink: #ff3e81; }
         body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: #fff; margin: 0; display: flex; height: 100vh; overflow: hidden; }
@@ -24,28 +24,27 @@
 <body>
 
     <div class="left-side">
-        <label style="font-size: 1.1rem; color: #fff; margin-bottom: 10px;">가사 입력창 (Revision v8.3 - 에러 해결 완료)</label>
-        <textarea id="lyricsArea">[사용 설명서 Revision v8.3 - 최종 안정화 패치]
+        <label style="font-size: 1.1rem; color: #fff; margin-bottom: 10px;">가사 입력창 (Revision v8.4 - 마커 위치 자동 감지)</label>
+        <textarea id="lyricsArea">[사용 설명서 Revision v8.4 - 최종 해결 버전]
 
-1. [에러 해결 안내]
-- 'ADBE Glow' 에러: 모든 AE 버전에서 에러를 유발하는 Glow 코드를 삭제했습니다.
-- '마커 없음' 에러: 마커를 찾는 내부 방식을 변경하여 강제로 인식하도록 수정했습니다.
+1. [에러 완전 해결]
+- 마커 감지 로직 강화: 컴포지션 상단 마커와 레이어 마커를 모두 감지합니다.
+- 'ADBE Glow' 에러 삭제: 모든 에러를 유발하는 Glow 코드를 안전한 Drop Shadow로 대체했습니다.
 
-2. [실행 필수 조건]
-- 마커가 찍힌 레이어 하나를 반드시 '클릭'하여 하이라이트(선택) 상태로 만드세요.
-- 그 상태에서 스크립트를 실행해야만 정상 작동합니다.
+2. [실행 전 체크]
+- 타임라인에서 마커가 찍힌 위치를 확인하세요.
+- 레이어를 하나 클릭해둔 상태에서 실행하면 가장 정확합니다.
 
-3. [연출 특징]
-- 띄어쓰기 기준 자동 세로 줄바꿈 (화면 꽉 차는 덩어리감).
-- 중앙 상단 등장 -> 다음 마커에서 랜덤 위치/각도로 튕겨나가 박제.
-- 상단 정렬 적용으로 하단 잘림 방지.</textarea>
+3. [연출]
+- 중앙 상단 등장 -> 다음 마커에서 랜덤 위치로 튕겨나가 박제.
+- 띄어쓰기 기준 자동 세로 줄바꿈 및 상단 정렬 적용.</textarea>
     </div>
 
     <div class="right-side">
-        <h2>STABLE KKAMJI v8.3</h2>
+        <h2>STABLE KKAMJI v8.4</h2>
         
         <div class="item">
-            <label>배경 테마 (박제 글씨 색상)</label>
+            <label>배경 테마 (박제 색상)</label>
             <div class="theme-select">
                 <div id="themeBlack" class="theme-btn active" onclick="setTheme('black')">BLACK (흰글씨)</div>
                 <div id="themeWhite" class="theme-btn" onclick="setTheme('white')">WHITE (검은글씨)</div>
@@ -53,7 +52,7 @@
         </div>
 
         <div class="item">
-            <label>등장 시 글자 색상 (Active)</label>
+            <label>등장 시 글자 색상</label>
             <input type="color" id="activeColor" value="#ff3e81">
         </div>
 
@@ -102,27 +101,30 @@
                 }).join('\r');
             });
 
-            codeBuffer = `/* AE Chaos Stamp Script v8.3 - Final Solution */
+            codeBuffer = `/* AE Chaos Stamp Script v8.4 - Comp Marker Support */
 (function() {
-    app.beginUndoGroup("v8.3 Final Stable");
+    app.beginUndoGroup("v8.4 Final Solution");
     var comp = app.project.activeItem;
     if (!comp) { alert("먼저 컴포지션을 선택해 주세요."); return; }
     
     var selLayer = comp.selectedLayers[0];
-    if (!selLayer) { 
-        alert("⚠️ 마커가 찍힌 레이어를 타임라인에서 클릭하여 선택(하이라이트)한 뒤 실행하세요!"); 
-        return; 
+    
+    // --- 마커 감지 엔진 (v8.4 강화) ---
+    var markerData = [];
+    
+    // 1. 레이어 마커 확인
+    if (selLayer && selLayer.marker && selLayer.marker.numKeys > 0) {
+        for (var m=1; m<=selLayer.marker.numKeys; m++) markerData.push(selLayer.marker.keyTime(m));
+    }
+    
+    // 2. 레이어 마커가 없으면 컴포지션 마커 확인 (사용자님 케이스)
+    if (markerData.length === 0 && comp.markerProperty && comp.markerProperty.numKeys > 0) {
+        for (var m=1; m<=comp.markerProperty.numKeys; m++) markerData.push(comp.markerProperty.keyTime(m));
     }
 
-    // 마커 데이터 강제 인식 시도 (속성 경로 강화)
-    var markerProp = selLayer.property("ADBE Marker");
-    if (!markerProp || markerProp.numKeys < 1) {
-        // 경로가 다를 경우를 대비한 2차 시도
-        markerProp = selLayer.marker;
-        if (!markerProp || markerProp.numKeys < 1) {
-            alert("⚠️ 선택한 레이어에 마커가 없습니다. 마커를 먼저 찍어주세요."); 
-            return; 
-        }
+    if (markerData.length === 0) {
+        alert("⚠️ 마커를 찾을 수 없습니다!\\n타임라인 상단 숫자 줄이나 레이어에 마커를 찍어주세요.");
+        return;
     }
 
     var bg = comp.layers.addSolid(${bgHex}, "Background", comp.width, comp.height, comp.pixelAspect);
@@ -130,7 +132,7 @@
 
     var lines = ${JSON.stringify(processedLines)};
     var numLines = lines.length;
-    var markerCount = markerProp.numKeys;
+    var mCount = markerData.length;
 
     for (var i = 0; i < numLines; i++) {
         var layer = comp.layers.addText(lines[i]);
@@ -142,23 +144,20 @@
         doc.leading = 90;
         sourceText.setValue(doc);
 
-        var st = (i < markerCount) ? markerProp.keyTime(i + 1) : markerProp.keyTime(markerCount) + (i - markerCount + 1);
-        var nt = (i + 1 < markerCount) ? markerProp.keyTime(i + 2) : st + 0.8;
+        var st = (i < mCount) ? markerData[i] : markerData[mCount-1] + (i - mCount + 1);
+        var nt = (i + 1 < mCount) ? markerData[i+1] : st + 0.8;
         
         layer.startTime = st;
         layer.outPoint = comp.duration;
 
         var rect = layer.sourceRectAtTime(st, false);
-        // --- 상단 정렬 기준점 설정 (잘림 방지) ---
         layer.anchorPoint.setValue([rect.left + rect.width/2, rect.top]);
 
-        // 랜덤 박제 데이터
         var randX = comp.width * (0.1 + Math.random() * 0.8);
         var randY = comp.height * (0.1 + Math.random() * 0.8);
         var randRot = (Math.random() - 0.5) * 60;
         var randS = 15 + Math.random() * 25;
 
-        // 중앙 상단 등장 -> 랜덤 박제
         layer.position.setValueAtTime(st, [comp.width/2, comp.height * 0.1]);
         layer.position.setValueAtTime(nt, [randX, randY]);
         
@@ -170,7 +169,6 @@
         layer.rotation.setValueAtTime(st, 0);
         layer.rotation.setValueAtTime(nt, randRot);
 
-        // --- 이펙트 충돌 방지 (Drop Shadow만 사용) ---
         try {
             doc.applyStroke = true;
             doc.strokeWidth = 8;
@@ -183,7 +181,6 @@
             sDoc.fillColor = ${stampColor};
             sourceText.setValueAtTime(nt, sDoc);
 
-            // Glow 대신 모든 버전에서 안전한 Drop Shadow 사용
             var glow = layer.property("ADBE Effect Parade").addProperty("ADBE Drop Shadow");
             glow.property("Shadow Color").setValue(${activeColor});
             glow.property("Distance").setValue(0);
@@ -191,12 +188,10 @@
             glow.property("Softness").setValueAtTime(nt, 0);
         } catch(err) {}
 
-        // 탄성 표현식
         layer.scale.expression = "f=3.5; a=35; d=5; t=time-inPoint; s=a*Math.sin(f*t*2*Math.PI)/Math.exp(d*t); [value[0]+s, value[1]+s];";
     }
     app.endUndoGroup();
 })();`;
-            codeBuffer = codeBuffer; 
             document.getElementById('downloadBtn').style.display = "block";
         }
 
@@ -204,7 +199,7 @@
             const blob = new Blob([codeBuffer], { type: 'text/javascript' });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = "AE_Final_Stable_v8_3.jsx";
+            a.download = "AE_Final_Fix_v8_4.jsx";
             a.click();
         }
     </script>
