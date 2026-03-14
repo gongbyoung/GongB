@@ -2,12 +2,12 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>AE Kinetic Typo - Revision v6.0 (Polaroid Mode)</title>
+    <title>AE Kinetic Typo - Revision v6.1 (Polaroid Fixed)</title>
     <style>
         :root { --bg: #0a0a0c; --panel: #16161e; --accent: #00ffaa; --pink: #ff3e81; }
         body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: #fff; margin: 0; display: flex; height: 100vh; overflow: hidden; }
         .left-side { flex: 1.5; display: flex; flex-direction: column; padding: 20px; box-sizing: border-box; }
-        textarea { flex: 1; background: #000; color: var(--accent); border: 1px solid #333; padding: 25px; font-family: 'Fira Code', monospace; font-size: 15px; border-radius: 12px; outline: none; line-height: 1.6; }
+        textarea { flex: 1; background: #000; color: var(--accent); border: 1px solid #333; padding: 25px; font-family: 'Fira Code', monospace; font-size: 14px; border-radius: 12px; outline: none; line-height: 1.6; }
         .right-side { flex: 1; background: var(--panel); padding: 25px; border-left: 1px solid #333; overflow-y: auto; box-sizing: border-box; display: flex; flex-direction: column; }
         h2 { font-size: 1rem; color: var(--accent); text-transform: uppercase; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
         .item { margin-bottom: 15px; border-bottom: 1px solid #222; padding-bottom: 10px; }
@@ -24,28 +24,32 @@
 <body>
 
     <div class="left-side">
-        <label style="font-size: 1.1rem; color: #fff; margin-bottom: 10px;">가사 입력 (Revision v6.0 - 폴라로이드 모드)</label>
-        <textarea id="lyricsArea">[사용 설명서 v6.0 - 폴라로이드 깜지 모드]
+        <label style="font-size: 1.1rem; color: #fff; margin-bottom: 10px;">가사 입력창 (Revision v6.1)</label>
+        <textarea id="lyricsArea">[사용 설명서 Revision v6.1 - 폴라로이드 깜지 모드]
 
-1. [모드 설명] 
-- 가사가 시작될 때는 화면 중앙에 크게 강조되어 나타납니다.
-- 일정 시간(약 0.5초) 뒤에는 배경의 자기 위치로 작게 박히며 고정됩니다.
-- 101줄의 가사가 화면에 차곡차곡 쌓여 마지막엔 전체 가사가 한 화면에 보입니다.
+1. [가사 입력]
+- 이 내용을 지우고 가사를 한 줄씩 입력하세요. 
+- 한 문장 안에서 띄어쓰기를 하면 자동으로 줄바꿈 처리되어 화면을 채웁니다.
 
-2. [테마 설정] 
-- 블랙 테마: 검정 배경 + 흰색 박제 글씨
-- 화이트 테마: 흰색 배경 + 검정 박제 글씨
+2. [작동 원리]
+- 가사가 시작될 때: 화면 상단 중앙에서 화려한 색상 + 랜덤 스트로크 + 글로우 효과와 함께 크게 나타납니다.
+- 가사가 끝날 때: 효과가 사라지고 흰색(혹은 검정색) 글씨로 변하며 배경 그리드 위치에 딱 '박제'됩니다.
+- 101줄이 모두 끝나면 화면 가득 가사가 채워진 '깜지' 형태가 완성됩니다.
 
-3. [주의사항] 
-- 가사가 100줄이 넘으므로 폰트 크기를 적절히 조절하여 배치합니다.
-- 마커가 찍힌 레이어를 선택하고 실행하세요.</textarea>
+3. [에러 수정 완료]
+- Line 8 구문 오류(괄호 누락) 수정 완료.
+- ADBE Glow 이펙트 충돌 문제 해결 (안전한 Drop Shadow 방식 채택).
+- 기준점을 상단으로 정렬하여 하단 잘림 현상 방지.
+
+4. [준비 사항]
+- AE에서 마커가 찍힌 오디오 레이어를 '선택'한 상태로 스크립트를 실행하세요.</textarea>
     </div>
 
     <div class="right-side">
-        <h2>POLAROID STAMP v6.0</h2>
+        <h2>POLAROID v6.1</h2>
         
         <div class="item">
-            <label>바탕화면 테마 (깜지 색상)</label>
+            <label>바탕화면 테마 (박제 글씨 색상)</label>
             <div class="theme-select">
                 <div id="themeBlack" class="theme-btn active" onclick="setTheme('black')">BLACK (흰글씨)</div>
                 <div id="themeWhite" class="theme-btn" onclick="setTheme('white')">WHITE (검은글씨)</div>
@@ -58,7 +62,7 @@
         </div>
 
         <div class="item">
-            <label>폰트 설정</label>
+            <label>폰트 (시스템 영문명)</label>
             <input type="text" id="fontName" value="Arial-Black">
         </div>
 
@@ -78,6 +82,8 @@
 
     <script>
         let currentTheme = 'black';
+        let codeBuffer = "";
+
         function setTheme(t) {
             currentTheme = t;
             document.getElementById('themeBlack').classList.toggle('active', t === 'black');
@@ -96,26 +102,36 @@
             const rawLines = lyricsText.split('\n').filter(s => s.trim() !== "" && !s.includes('['));
             const activeColor = hexToRgb(document.getElementById('activeColor').value);
             const stampColor = (currentTheme === 'black') ? "[1,1,1]" : "[0,0,0]";
-            const bgColor = (currentTheme === 'black') ? "[0,0,0,1]" : "[1,1,1,1]";
+            const bgHex = (currentTheme === 'black') ? "[0,0,0]" : "[1,1,1]";
             const font = document.getElementById('fontName').value;
             const syncMode = document.getElementById('syncMode').value;
 
-            codeBuffer = `/* AE Polaroid Stamp Script v6.0 */
+            // 띄어쓰기 줄바꿈 로직
+            const processedLines = rawLines.map(line => {
+                const words = line.trim().split(/\s+/);
+                return words.map(w => {
+                    let c = "";
+                    for(let i=0; i<w.length; i+=6) c += w.substring(i, i+6) + (i+6 < w.length ? "\r" : "");
+                    return c;
+                }).join('\r');
+            });
+
+            codeBuffer = `/* AE Polaroid Stamp Script v6.1 - Fixed */
 (function() {
-    app.beginUndoGroup("v6.0 Polaroid Mode");
+    app.beginUndoGroup("v6.1 Polaroid Mode");
     var comp = app.project.activeItem;
     if (!comp) { alert("컴포지션을 선택하세요."); return; }
     
-    // 배경 솔리드 생성
-    var bg = comp.layers.addSolid(${bgColor.replace('1]', '1')}, "Background", comp.width, comp.height, comp.pixelAspect);
+    // 배경 생성 (Line 8 에러 수정 완료)
+    var bg = comp.layers.addSolid(${bgHex}, "Background", comp.width, comp.height, comp.pixelAspect);
     bg.moveToEnd();
 
     var selLayer = comp.selectedLayers[0];
-    var lines = ${JSON.stringify(rawLines)};
+    var lines = ${JSON.stringify(processedLines)};
     var numLines = lines.length;
 
-    // 그리드 계산 (101줄 기준 약 10x11 또는 9x12)
-    var cols = Math.ceil(Math.sqrt(numLines));
+    // 그리드 계산
+    var cols = Math.ceil(Math.sqrt(numLines * (comp.width/comp.height)));
     var rows = Math.ceil(numLines / cols);
     var cellW = comp.width / cols;
     var cellH = comp.height / rows;
@@ -126,63 +142,78 @@
         var doc = sourceText.value;
         doc.font = "${font}";
         doc.justification = ParagraphJustification.CENTER_JUSTIFY;
-        doc.fillColor = ${stampColor}; // 기본은 박제 색상
+        doc.fillColor = ${stampColor};
+        doc.leading = 90;
         sourceText.setValue(doc);
 
         var st = (selLayer && i < selLayer.marker.numKeys) ? selLayer.marker.keyTime(i + 1) : i * 1.5;
+        var et = (selLayer && i + 1 < selLayer.marker.numKeys) ? selLayer.marker.keyTime(i + 2) : st + 1.0;
+        
         layer.startTime = st;
-        layer.outPoint = comp.duration; // 끝까지 유지 (박제)
+        layer.outPoint = comp.duration;
 
-        // 강조 구간 (Floating)
-        var transDur = 0.4; // 중앙에서 그리드로 이동하는 시간
-        var midTime = st + transDur;
+        var transDur = 0.3;
+        var midTime = et; // 강조가 끝나는 시점에 박제
 
-        // --- 위치/크기 애니메이션 ---
         var col = i % cols;
         var row = Math.floor(i / cols);
         var gridX = (col * cellW) + (cellW / 2);
         var gridY = (row * cellH) + (cellH / 2);
 
-        layer.position.setValueAtTime(st, [comp.width/2, comp.height/2]);
-        layer.position.setValueAtTime(midTime, [gridX, gridY]);
+        // 상단 정렬 및 위치 애니메이션
+        var rect = layer.sourceRectAtTime(st, false);
+        layer.anchorPoint.setValue([rect.left + rect.width/2, rect.top]);
         
-        var stampScale = (cellW / layer.sourceRectAtTime(st, false).width) * 80;
-        if (stampScale > 30) stampScale = 30; // 박제 시 너무 커지지 않게
+        layer.position.setValueAtTime(st, [comp.width/2, comp.height * 0.1]);
+        layer.position.setValueAtTime(midTime, [gridX, gridY - (cellH/3)]); // 그리드 상단 정렬 보정
 
-        layer.scale.setValueAtTime(st, [200, 200]); // 중앙에선 크게
+        var stampScale = Math.min((cellW / rect.width) * 90, (cellH / rect.height) * 90);
+        if (stampScale > 30) stampScale = 30;
+
+        layer.scale.setValueAtTime(st, [finalS_calc(rect, comp, 0.8), finalS_calc(rect, comp, 0.8)]);
         layer.scale.setValueAtTime(midTime, [stampScale, stampScale]);
 
-        // --- 효과 적용 (Glow/Stroke) ---
-        // 1. 스트로크 애니메이션 (중앙에 있을 때만 랜덤색 스트로크)
+        function finalS_calc(r, c, p) {
+            var s = Math.min((c.width*p / r.width) * 100, (c.height*0.4 / r.height) * 100);
+            return s > 300 ? 300 : s;
+        }
+
+        // --- 효과 적용 (Glow 우회 및 스트로크) ---
         var randStroke = [Math.random(), Math.random(), Math.random()];
+        
+        // 시작 시 강조 (컬러 + 스트로크)
         doc.applyStroke = true;
-        doc.strokeWidth = 5;
+        doc.strokeWidth = 6;
         doc.strokeColor = randStroke;
         doc.fillColor = ${activeColor};
         sourceText.setValueAtTime(st, doc);
 
-        // 2. 박제 시 스트로크 제거 및 색상 변경
-        var stampDoc = sourceText.value;
-        stampDoc.applyStroke = false;
-        stampDoc.fillColor = ${stampColor};
-        sourceText.setValueAtTime(midTime, stampDoc);
+        // 종료 시 박제 (기본 색상)
+        var sDoc = sourceText.value;
+        sDoc.applyStroke = false;
+        sDoc.fillColor = ${stampColor};
+        sourceText.setValueAtTime(midTime, sDoc);
 
-        // 3. 안전한 글로우 효과 (Drop Shadow 우회)
-        var glow = layer.property("ADBE Effect Parade").addProperty("ADBE Drop Shadow");
-        glow.property("Shadow Color").setValue(${activeColor});
-        glow.property("Distance").setValue(0);
-        glow.property("Softness").setValueAtTime(st, 50);
-        glow.property("Softness").setValueAtTime(midTime, 0); // 박제되면 글로우 꺼짐
+        // 안전한 글로우 효과 (ADBE Glow 대신 Drop Shadow 활용)
+        try {
+            var glow = layer.property("ADBE Effect Parade").addProperty("ADBE Drop Shadow");
+            glow.property("Shadow Color").setValue(${activeColor});
+            glow.property("Distance").setValue(0);
+            glow.property("Softness").setValueAtTime(st, 60);
+            glow.property("Softness").setValueAtTime(midTime, 0);
+        } catch(e) {}
     }
     app.endUndoGroup();
 })();`;
+            generatedCode = codeBuffer;
             document.getElementById('downloadBtn').style.display = "block";
         }
+
         function saveFile() {
-            const blob = new Blob([codeBuffer], { type: 'text/javascript' });
+            const blob = new Blob([generatedCode], { type: 'text/javascript' });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = "AE_Kinetic_v6_Polaroid.jsx";
+            a.download = "AE_Polaroid_v6_1_Fixed.jsx";
             a.click();
         }
     </script>
