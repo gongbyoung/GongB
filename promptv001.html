@@ -80,4 +80,148 @@
             </optgroup>
 
             <optgroup label="🎵 Audio & Music">
-                <option value="acestep">AceStep 1.5 (음악 / 댄스곡 트
+                <option value="acestep">AceStep 1.5 (음악 / 댄스곡 트랙)</option>
+            </optgroup>
+        </select>
+    </div>
+
+    <div class="category-label">프롬프트 구성 요소 (한글 입력 시 자동 번역)</div>
+    
+    <div class="form-group" style="margin-top: 10px;">
+        <label>🎯 주제 및 행동 (Subject & Action)</label>
+        <input type="text" id="subject" value="귀여운 초코송이 버섯 캐릭터가 즐겁게 뛰어가는 모습">
+    </div>
+    <div class="form-group">
+        <label>🌄 배경 및 환경 (Background & Environment)</label>
+        <input type="text" id="background" value="민들레 홀씨와 빗방울이 흩날리는 몽환적인 숲속">
+    </div>
+    <div class="form-group">
+        <label>🎨 렌더 스타일 및 카메라 (Style & Camera)</label>
+        <input type="text" id="style" value="언리얼 엔진 5, 후디니 파티클 시뮬레이션 느낌, 부드러운 카메라 트래킹">
+    </div>
+    <div class="form-group">
+        <label>✨ 상세 퀄리티 (Details & Quality)</label>
+        <input type="text" id="details" value="스튜디오 라이팅, 8k 해상도, 완벽한 텍스처 디테일">
+    </div>
+
+    <button id="generateBtn" onclick="generatePrompt()">영문 프롬프트 생성하기</button>
+    <div id="loading" class="loading-text">번역 및 모델별 최적화 조립 중입니다... ⏳</div>
+
+    <div class="result-box">
+        <div class="result-title positive-title">✅ 긍정 프롬프트 (Positive Prompt)</div>
+        <textarea id="posResult" readonly placeholder="이곳에 영문 프롬프트가 생성됩니다."></textarea>
+    </div>
+    <div class="result-box">
+        <div class="result-title negative-title">❌ 부정 프롬프트 (Negative Prompt)</div>
+        <textarea id="negResult" readonly placeholder="이곳에 부정 프롬프트가 생성됩니다."></textarea>
+    </div>
+</div>
+
+<script>
+    async function translateKoToEn(text) {
+        if (!text.trim()) return "";
+        try {
+            const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=ko&tl=en&dt=t&q=${encodeURIComponent(text)}`;
+            const response = await fetch(url);
+            const data = await response.json();
+            return data[0].map(item => item[0]).join("").trim();
+        } catch (error) {
+            console.error("번역 에러:", error);
+            return text; 
+        }
+    }
+
+    async function generatePrompt() {
+        const btn = document.getElementById('generateBtn');
+        const loading = document.getElementById('loading');
+        
+        btn.disabled = true;
+        loading.style.display = 'block';
+
+        const model = document.getElementById('targetModel').value;
+        const subjectKo = document.getElementById('subject').value;
+        const backgroundKo = document.getElementById('background').value;
+        const styleKo = document.getElementById('style').value;
+        const detailsKo = document.getElementById('details').value;
+
+        const subject = await translateKoToEn(subjectKo);
+        const background = await translateKoToEn(backgroundKo);
+        const style = await translateKoToEn(styleKo);
+        const details = await translateKoToEn(detailsKo);
+
+        let posPrompt = "";
+        let negPrompt = "";
+
+        // 모델별 프롬프트 최적화 아키텍처
+        switch (model) {
+            // --- Video Models ---
+            case "wan":
+                // Wan 2.2는 물리적 모션의 묘사가 중요함
+                posPrompt = `Dynamic video sequence: ${subject}. The camera captures precise motion in ${background}. Visual style: ${style}. High-fidelity rendering, ${details}, fluid physical movement, highly consistent frames.`;
+                negPrompt = "morphing, static, deformed physics, low framerate, blurry, jerky motion";
+                break;
+            case "ltx":
+                // LTX-2.3은 시네마틱한 룩과 일관성에 강점
+                posPrompt = `Cinematic shot, highly consistent motion: ${subject}. Environment: ${background}. Camera movement and style: ${style}. Additional details: ${details}. Masterpiece, 4k video resolution.`;
+                negPrompt = "inconsistent details, flickering, warping, text, watermark, bad anatomy";
+                break;
+            case "animatediff":
+                posPrompt = `(masterpiece:1.2), ${subject}, moving fluidly in ${background}, ${style}, ${details}, dynamic camera, smooth motion`;
+                negPrompt = "static, motionless, flickering, mutated, jittering, worst quality";
+                break;
+            case "svd":
+                posPrompt = `High quality video, ${subject}, ${background}, ${style}, ${details}, smooth panning, slow motion effect, perfect lighting`;
+                negPrompt = "fast motion, blurry frames, video artifacts, low bitrate";
+                break;
+
+            // --- Image Models ---
+            case "zimage":
+                // Z-Image-Turbo는 빠르고 직관적인 키워드에 잘 반응
+                posPrompt = `${subject}, ${background}, ${style}, ${details}, ultra-clear, sharp focus, masterpiece`;
+                negPrompt = "lowres, bad quality, blurry, worst quality, artifact";
+                break;
+            case "nanobanana":
+                // Nano Banana는 스튜디오/4K 화질을 강조할 때 결과가 극대화됨
+                posPrompt = `Studio quality 4K output, ${subject}. Set in ${background}. Aesthetic: ${style}. Exacting detail: ${details}, hyper-realistic lighting, crisp edges, award-winning photography/render.`;
+                negPrompt = "noisy, washed out, low contrast, poorly drawn, deformed, blurry background";
+                break;
+            case "grok":
+                // Grok은 디테일하고 서술적인 프롬프트 소화력이 뛰어남
+                posPrompt = `An incredibly detailed depiction of ${subject}. The surrounding environment is ${background}. Created in the style of ${style}. ${details}. Vivid colors, structural perfection.`;
+                negPrompt = "AI generated feel, abstract, messy, deformed structures, low quality";
+                break;
+            case "qwen":
+                // Qwen 편집 모델은 명확한 피사체와 스타일 구분이 필요
+                posPrompt = `Edit image to feature ${subject} over ${background}. Blend seamlessly with ${style}. Make sure to emphasize ${details}, photorealistic composite.`;
+                negPrompt = "bad masking, obvious edit, mismatched lighting, blurry edges";
+                break;
+            case "flux":
+                posPrompt = `Capture a breathtaking scene where ${subject}. The environment is ${background}. Ensure the aesthetic matches ${style}. Pay close attention to these elements: ${details}.`;
+                negPrompt = ""; 
+                break;
+            case "sdxl":
+                posPrompt = `A visually stunning high-resolution image of ${subject}, perfectly situated in ${background}. The overall artwork heavily features ${style}. Additional visual details: ${details}.`;
+                negPrompt = "deformed, ugly, poor lighting, low resolution, bad proportions";
+                break;
+            case "sd15":
+                posPrompt = `${subject}, ${background}, ${style}, ${details}, masterpiece, best quality`;
+                negPrompt = "worst quality, low quality, bad anatomy, missing fingers, blurry";
+                break;
+
+            // --- Audio ---
+            case "acestep":
+                posPrompt = `A high-quality audio track for a K-pop dance song about ${subject}. The mood should feel like ${background}. Genre and instruments: ${style}, ${details}, upbeat rhythm, catchy melody, clear sound`;
+                negPrompt = "noise, static, low bitrate, out of tune, messy arrangement";
+                break;
+        }
+
+        document.getElementById('posResult').value = posPrompt;
+        document.getElementById('negResult').value = negPrompt;
+
+        btn.disabled = false;
+        loading.style.display = 'none';
+    }
+</script>
+
+</body>
+</html>
