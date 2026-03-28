@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Element Guard: Chemical Defense</title>
+    <style>
+        :root { --primary: #00ff88; --bg: #0a0a0a; --panel: #1a1a1a; }
+        body { background: var(--bg); color: #e0e0e0; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; overflow: hidden; }
+        
+        /* 스크린 및 메뉴 */
+        .screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; text-align: center; }
+        .hidden { display: none !important; }
+        
+        .menu-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 20px; width: 450px; }
+        .btn-large { padding: 12px; background: #2a2a2a; border: 2px solid #444; color: white; cursor: pointer; border-radius: 8px; font-size: 0.9em; transition: 0.2s; }
+        .btn-large:hover:not(:disabled) { background: var(--primary); color: black; border-color: #fff; }
+        .btn-large:disabled { opacity: 0.2; cursor: not-allowed; }
+        .btn-survival { grid-column: span 3; background: #3d2b00; border-color: #ffaa00; }
+
+        /* 게임 인터페이스 */
+        #header { width: 920px; background: var(--panel); padding: 8px 15px; display: flex; justify-content: space-between; border-radius: 0 0 8px 8px; align-items: center; border-bottom: 2px solid #333; z-index: 10; }
+        #game-container { position: relative; margin: 10px; border: 2px solid #333; line-height: 0; }
+        canvas { background: #000; }
+        .ui-panel { width: 920px; background: var(--panel); padding: 12px; border-radius: 8px; display: flex; gap: 10px; box-sizing: border-box; }
+        
+        /* 모달 스타일 */
+        .modal { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 380px; background: #222; border: 2px solid var(--primary); padding: 25px; border-radius: 12px; z-index: 200; box-shadow: 0 0 30px rgba(0,0,0,0.8); }
+        .stats { font-weight: bold; color: var(--primary); }
+        .btn-ui { padding: 5px 10px; cursor: pointer; background: #333; color: white; border: 1px solid #555; border-radius: 4px; font-size: 12px; }
+        .btn-ui:hover { background: var(--primary); color: black; }
+        
+        .rank-list { background:#111; padding:10px; border-radius:5px; text-align:left; font-size:0.85em; width: 100%; max-height: 150px; overflow-y: auto; margin-top:10px; border: 1px solid #333; }
+        .rank-item { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #222; }
+    </style>
+</head>
+<body>
+
+<!-- 1. 메인 메뉴 화면 -->
+<div id="main-menu" class="screen">
+    <h1 style="color:var(--primary); font-size: 3.5em; margin-bottom: 10px;">ELEMENT GUARD</h1>
+    <p style="color:#888;">화학 원소로 도시를 방어하세요</p>
+    
+    <div class="menu-grid">
+        <button class="btn-large" onclick="initStage(1)">TUT 1</button>
+        <button class="btn-large" id="tut-2" onclick="initStage(2)" disabled>TUT 2</button>
+        <button class="btn-large" id="tut-3" onclick="initStage(3)" disabled>TUT 3</button>
+        <button class="btn-large" id="tut-4" onclick="initStage(4)" disabled>TUT 4</button>
+        <button class="btn-large" id="tut-5" onclick="initStage(5)" disabled>TUT 5</button>
+        <button class="btn-large btn-survival" id="survival-btn" onclick="openMapSelection()" disabled>SURVIVAL MODE (LOCKED)</button>
+    </div>
+    
+    <div style="margin-top: 30px; width: 400px; display: flex; flex-direction: column; align-items: center;">
+        <h4 style="margin:0;">🏆 명예의 전당</h4>
+        <div id="ranking-board" class="rank-list"></div>
+    </div>
+</div>
+
+<!-- 2. 서바이벌 맵 선택 화면 -->
+<div id="map-selection-screen" class="screen hidden">
+    <div style="width: 500px; padding: 20px; background: #1a1a1a; border: 2px solid var(--primary); border-radius: 15px;">
+        <h2 style="color:var(--primary);">전투 지역 선택</h2>
+        <div class="menu-grid" style="width:100%;" id="map-thumb-list"></div>
+        <button class="btn-large" style="margin-top: 20px; width: 100%;" onclick="closeMapSelection()">뒤로가기</button>
+    </div>
+</div>
+
+<!-- 3. 게임 UI -->
+<div id="header" class="hidden">
+    <div id="stage-title" class="stats">STAGE 1</div>
+    <div>💰 <span id="money-ui" class="stats">0</span></div>
+    <div>❤️ <span id="lives-ui" class="stats">20</span></div>
+    <div>WAVE: <span id="wave-ui" class="stats">0</span>/10</div>
+    <div style="display: flex; gap: 4px;">
+        <button class="btn-ui" onclick="openWarehouse()">📦 창고</button>
+        <button id="pause-btn" class="btn-ui" onclick="togglePause()">정지</button>
+        <button class="btn-ui" onclick="quitGame()">종료</button>
+    </div>
+</div>
+
+<div id="game-container" class="hidden">
+    <canvas id="gameCanvas"></canvas>
+    
+    <!-- 업그레이드 및 판매 모달 -->
+    <div id="upgrade-modal" class="modal hidden">
+        <h3 id="up-title" style="margin-top:0;">타워 관리</h3>
+        <p id="up-info">Lv.1</p>
+        <p>강화 비용: <span id="up-cost" class="stats">0</span></p>
+        <button class="btn-large" id="up-confirm-btn" style="width:100%;">업그레이드 (능력치 +5%)</button>
+        <button class="btn-large" id="sell-btn" style="width:100%; margin-top:10px; background:#441111; border-color:#882222;">타워 판매 (30% 디스카운트)</button>
+        <button class="btn-large" style="width:100%; margin-top:10px; background:#444;" onclick="closeUpgrade()">취소</button>
+    </div>
+
+    <!-- 결과창 -->
+    <div id="game-over-modal" class="modal hidden">
+        <h2 id="result-text">STAGE CLEAR!</h2>
+        <p>명예의 전당에 기록될 이름을 입력하세요</p>
+        <input type="text" id="player-name" placeholder="이름" style="padding:10px; width:200px; border-radius:5px; border:none; text-align:center;"><br>
+        <button class="btn-large" style="margin-top:15px; width:100%;" onclick="submitScore()">기록 저장 및 메뉴로</button>
+    </div>
+
+    <div id="warehouse-modal" class="modal hidden">
+        <h2 style="color:var(--primary);">📦 부산물 창고</h2>
+        <div id="warehouse-list" style="text-align:left; max-height:200px; overflow-y:auto;"></div>
+        <button class="btn-large" style="width:100%; margin-top:15px;" onclick="closeWarehouse()">닫기</button>
+    </div>
+</div>
+
+<div class="ui-panel hidden" id="tower-menu"></div>
+
+<script>
+/** 맵 데이터 **/
+const MAPS = [
+    { name: "기초 실험실", start: {r:5, c:0}, end: {r:5, c:19}, walls: [] },
+    { name: "지그재그 공장", start: {r:1, c:0}, end: {r:8, c:19}, walls: [{r:3,c:5,w:10,h:1}, {r:6,c:5,w:10,h:1}] },
+    { name: "복잡한 도시", start: {r:0, c:10}, end: {r:9, c:10}, walls: [{r:4,c:4,w:2,h:2}, {r:4,c:14,w:2,h:2}] },
+    { name: "분리된 구역", start: {r:2, c:0}, end: {r:7, c:19}, walls: [{r:0,c:10,w:1,h:4}, {r:6,c:10,w:1,h:4}] },
+    { name: "최후의 보루", start: {r:5, c:0}, end: {r:5, c:19}, walls: [{r:2,c:4,w:1,h:6}, {r:2,c:15,w:1,h:6}] }
+];
+
+const elementData = [
+    { id: "Na", symbol: "Na", name: "나트륨", cost: 50, range: 140, fireRate: 1000, color: "#e0e0e0", type: "Alkaline" },
+    { id: "Cl", symbol: "Cl", name: "염소", cost: 70, range: 180, fireRate: 800, color: "#ADFF2F", type: "Oxidation" }
+];
+
+const enemyData = [
+    { id: "HCl", formula: "HCl", hp: 100, speed: 0.7, type: "Acid", reward: 20, color: "#ff4444", byproduct: "NaCl", desc: "소금" },
+    { id: "CH4", formula: "CH4", hp: 150, speed: 1.1, type: "Flammable", reward: 30, color: "#ffaa00", byproduct: "CO2", desc: "이산화탄소" }
+];
+
+const TILE_SIZE = 40, COLS = 20, ROWS = 10;
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = COLS * TILE_SIZE; canvas.height = ROWS * TILE_SIZE;
+
+let grid, towers, enemies, projectiles, effects, money, lives, wave, isPaused, currentStage, warehouse, activeMap;
+let waveTimer = null, gameActive = false;
+let selectedTowerIdx = 0;
+
+window.onload = () => { updateMenuLock(); displayRankings(); };
+
+/** 1. 타워 클래스 (판매 로직 포함) **/
+class Tower {
+    constructor(r, c, data) {
+        this.r = r; this.c = c; this.x = c*TILE_SIZE+20; this.y = r*TILE_SIZE+20;
+        this.data = data; this.level = 1; this.lastShot = 0;
+        this.totalInvested = data.cost; // 판매가 계산용
+    }
+    get range() { return this.data.range * Math.pow(1.05, this.level-1); }
+    get damage() { return 25 * Math.pow(1.05, this.level-1); }
+    update() {
+        if(isPaused) return;
+        let now = Date.now();
+        if (now - this.lastShot > this.data.fireRate) {
+            let target = enemies.find(e => Math.hypot(e.x - this.x, e.y - this.y) < this.range);
+            if (target) { projectiles.push(new Projectile(this.x, this.y, target, this)); this.lastShot = now; }
+        }
+    }
+    draw() {
+        ctx.fillStyle = this.data.color;
+        ctx.beginPath(); ctx.roundRect(this.c*TILE_SIZE+4, this.r*TILE_SIZE+4, TILE_SIZE-8, TILE_SIZE-8, 5); ctx.fill();
+        ctx.fillStyle = "#000"; ctx.font = "bold 11px Arial"; ctx.textAlign = "center";
+        ctx.fillText(this.data.symbol, this.x, this.y+4);
+        ctx.fillStyle = "white"; ctx.font = "8px Arial"; ctx.fillText("Lv."+this.level, this.x, this.y+15);
+    }
+}
+
+class Projectile {
+    constructor(x, y, target, tower) {
+        this.x = x; this.y = y; this.target = target; this.tower = tower; this.speed = 10;
+    }
+    update() {
+        let dx = this.target.x-this.x, dy = this.target.y-this.y;
+        let dist = Math.hypot(dx, dy);
+        if (dist < 10) {
+            let dmg = this.tower.damage;
+            if (this.tower.data.type === "Alkaline" && this.target.data.type === "Acid") dmg *= 2.5;
+            this.target.hp -= dmg; return true;
+        }
+        this.x += (dx/dist)*this.speed; this.y += (dy/dist)*this.speed;
+        return false;
+    }
+    draw() { ctx.fillStyle = this.tower.data.color; ctx.beginPath(); ctx.arc(this.x, this.y, 4, 0, Math.PI*2); ctx.fill(); }
+}
+
+class Enemy {
+    constructor(data) {
+        this.data = data; this.hp = data.hp; this.maxHp = data.hp;
+        this.path = findPath(); this.pathIndex = 0;
+        this.x = this.path[0].c*TILE_SIZE+20; this.y = this.path[0].r*TILE_SIZE+20;
+    }
+    update() {
+        if (this.pathIndex < this.path.length - 1) {
+            let target = this.path[this.pathIndex+1];
+            let tx = target.c*TILE_SIZE+20, ty = target.r*TILE_SIZE+20;
+            let dist = Math.hypot(tx-this.x, ty-this.y);
+            this.x += ((tx-this.x)/dist)*this.data.speed;
+            this.y += ((ty-this.y)/dist)*this.data.speed;
+            if (dist < 2) this.pathIndex++;
+            return true;
+        } else { lives--; updateUI(); return false; }
+    }
+    die() {
+        money += this.data.reward;
+        if(!warehouse[this.data.byproduct]) warehouse[this.data.byproduct] = { count: 0, desc: this.data.desc };
+        warehouse[this.data.byproduct].count++;
+        effects.push(new VisualEffect(this.x, this.y, `+${this.data.reward}G`, "#ffd700"));
+        updateUI();
+    }
+    draw() {
+        ctx.fillStyle = this.data.color;
+        ctx.beginPath(); ctx.arc(this.x, this.y, 14, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = "white"; ctx.font = "bold 9px Arial"; ctx.textAlign="center"; ctx.fillText(this.data.formula, this.x, this.y+4);
+        ctx.fillStyle = "#444"; ctx.fillRect(this.x-15, this.y-25, 30, 4);
+        ctx.fillStyle = "#00ff88"; ctx.fillRect(this.x-15, this.y-25, 30*(this.hp/this.maxHp), 4);
+    }
+}
+
+class VisualEffect {
+    constructor(x, y, text, color) { this.x = x; this.y = y; this.text = text; this.color = color; this.life = 1.0; }
+    update() { this.y -= 0.5; this.life -= 0.02; return this.life > 0; }
+    draw() { ctx.globalAlpha = this.life; ctx.fillStyle = this.color; ctx.font = "11px Arial"; ctx.fillText(this.text, this.x, this.y); ctx.globalAlpha = 1; }
+}
+
+/** 2. 스테이지 관리 **/
+function initStage(stageNum) {
+    currentStage = stageNum;
+    activeMap = MAPS[(stageNum-1) % 5];
+    startStage();
+}
+
+function startStage() {
+    document.getElementById('main-menu').classList.add('hidden');
+    document.getElementById('map-selection-screen').classList.add('hidden');
+    document.getElementById('header').classList.remove('hidden');
+    document.getElementById('game-container').classList.remove('hidden');
+    document.getElementById('tower-menu').classList.remove('hidden');
+    document.getElementById('game-over-modal').classList.add('hidden');
+
+    money = 400; lives = 20; wave = 0;
+    grid = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+    towers = []; enemies = []; projectiles = []; effects = []; warehouse = {};
+    isPaused = false; gameActive = true;
+
+    activeMap.walls.forEach(w => {
+        for(let r=w.r; r<w.r+w.h; r++) for(let c=w.c; c<w.c+w.w; c++) grid[r][c] = 2;
+    });
+
+    document.getElementById('stage-title').innerText = typeof currentStage === 'string' ? "SURVIVAL" : "STAGE " + currentStage;
+    updateUI();
+    initTowerMenu();
+    
+    clearInterval(waveTimer);
+    spawnWave();
+    requestAnimationFrame(gameLoop);
+}
+
+/** 3. 핵심 시스템 **/
+function findPath() {
+    let queue = [activeMap.start], visited = Array.from({length:ROWS}, ()=>Array(COLS).fill(false)), parent = Array.from({length:ROWS}, ()=>Array(COLS).fill(null));
+    visited[activeMap.start.r][activeMap.start.c] = true;
+    while(queue.length > 0) {
+        let curr = queue.shift();
+        if(curr.r===activeMap.end.r && curr.c===activeMap.end.c) {
+            let res = []; while(curr) { res.push(curr); curr = parent[curr.r][curr.c]; }
+            return res.reverse();
+        }
+        for(let d of [{r:1,c:0},{r:-1,c:0},{r:0,c:1},{r:0,c:-1}]) {
+            let nr=curr.r+d.r, nc=curr.c+d.c;
+            if(nr>=0 && nr<ROWS && nc>=0 && nc<COLS && !visited[nr][nc] && grid[nr][nc]===0) {
+                visited[nr][nc]=true; parent[nr][nc]=curr; queue.push({r:nr, c:nc});
+            }
+        }
+    }
+    return [{r:activeMap.start.r, c:activeMap.start.c}];
+}
+
+function gameLoop() {
+    if (!gameActive) return;
+    if (lives <= 0) { showGameOver(false); return; }
+    if (!isPaused) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        for(let r=0; r<ROWS; r++) {
+            for(let c=0; c<COLS; c++) {
+                ctx.strokeStyle = "#1a1a1a";
+                ctx.strokeRect(c*TILE_SIZE, r*TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                if(grid[r][c] === 2) { ctx.fillStyle = "#333"; ctx.fillRect(c*TILE_SIZE+2, r*TILE_SIZE+2, TILE_SIZE-4, TILE_SIZE-4); }
+            }
+        }
+        ctx.fillStyle = "#00ff8822"; ctx.fillRect(activeMap.start.c*TILE_SIZE, activeMap.start.r*TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        ctx.fillStyle = "#ff444422"; ctx.fillRect(activeMap.end.c*TILE_SIZE, activeMap.end.r*TILE_SIZE, TILE_SIZE, TILE_SIZE);
+
+        towers.forEach(t => { t.update(); t.draw(); });
+        projectiles = projectiles.filter(p => !p.update());
+        projectiles.forEach(p => p.draw());
+        enemies = enemies.filter(e => {
+            if (e.hp <= 0) { e.die(); return false; }
+            if (!e.update()) return false;
+            e.draw(); return true;
+        });
+        effects = effects.filter(ef => { ef.draw(); return ef.update(); });
+    }
+    requestAnimationFrame(gameLoop);
+}
+
+function spawnWave() {
+    if (!gameActive) return;
+    if (typeof currentStage === 'number' && wave >= 10) { showGameOver(true); return; }
+    wave++; updateUI();
+    let count = 0, spawnCount = 3 + Math.floor(wave/2);
+    waveTimer = setInterval(() => {
+        if (isPaused) return;
+        let data = enemyData[Math.floor(Math.random()*enemyData.length)];
+        enemies.push(new Enemy({...data, hp: data.hp * (1+(wave-1)*0.25), speed: data.speed + (wave*0.03)}));
+        if (++count >= spawnCount) { clearInterval(waveTimer); setTimeout(spawnWave, 8000); }
+    }, 1500);
+}
+
+canvas.onclick = (ev) => {
+    let rect = canvas.getBoundingClientRect();
+    let c = Math.floor((ev.clientX - rect.left)/TILE_SIZE);
+    let r = Math.floor((ev.clientY - rect.top)/TILE_SIZE);
+    const existing = towers.find(t => t.r === r && t.c === c);
+    if (existing) { openUpgrade(existing); return; }
+    if (grid[r][c] !== 0) return;
+
+    let tData = elementData[selectedTowerIdx];
+    if (money >= tData.cost) {
+        grid[r][c] = 1;
+        if (findPath().length > 1) {
+            towers.push(new Tower(r, c, tData));
+            money -= tData.cost; updateUI();
+            enemies.forEach(e => e.path = findPath());
+        } else { grid[r][c] = 0; }
+    }
+};
+
+/** 4. 업그레이드 및 판매 **/
+function openUpgrade(t) {
+    isPaused = true;
+    const modal = document.getElementById('upgrade-modal');
+    const upCost = Math.floor(t.data.cost * 0.8 * t.level);
+    const sellPrice = Math.floor(t.totalInvested * 0.7);
+
+    document.getElementById('up-title').innerText = `${t.data.name} (Lv.${t.level})`;
+    document.getElementById('up-info').innerText = `능력치: 데미지 ${Math.floor(t.damage)}, 사거리 ${Math.floor(t.range)}`;
+    document.getElementById('up-cost').innerText = upCost;
+    
+    document.getElementById('up-confirm-btn').onclick = () => {
+        if(money >= upCost) {
+            money -= upCost; t.level++; t.totalInvested += upCost;
+            updateUI(); closeUpgrade();
+        } else alert("잔액 부족!");
+    };
+
+    document.getElementById('sell-btn').innerText = `타워 판매 (+${sellPrice}G)`;
+    document.getElementById('sell-btn').onclick = () => {
+        money += sellPrice;
+        grid[t.r][t.c] = 0;
+        towers = towers.filter(tower => tower !== t);
+        enemies.forEach(e => e.path = findPath());
+        updateUI(); closeUpgrade();
+    };
+
+    modal.classList.remove('hidden');
+}
+
+/** 5. 유틸리티 **/
+function showGameOver(isClear) {
+    isPaused = true; gameActive = false; clearInterval(waveTimer);
+    document.getElementById('game-over-modal').classList.remove('hidden');
+    document.getElementById('result-text').innerText = isClear ? "STAGE CLEAR!" : "GAME OVER";
+    
+    // 튜토리얼 해금 로직
+    if(isClear && typeof currentStage === 'number') {
+        let prog = parseInt(localStorage.getItem('chem_progress') || "1");
+        if(currentStage === prog) localStorage.setItem('chem_progress', prog + 1);
+    }
+}
+
+function submitScore() {
+    const name = document.getElementById('player-name').value;
+    if(!name) { alert("이름을 입력하세요."); return; }
+    let ranks = JSON.parse(localStorage.getItem('chem_ranks') || "[]");
+    ranks.push({ name, wave, stage: currentStage, date: new Date().toLocaleDateString() });
+    ranks.sort((a,b) => b.wave - a.wave);
+    localStorage.setItem('chem_ranks', JSON.stringify(ranks.slice(0, 10)));
+    location.reload();
+}
+
+function displayRankings() {
+    let ranks = JSON.parse(localStorage.getItem('chem_ranks') || "[]");
+    const board = document.getElementById('ranking-board');
+    board.innerHTML = ranks.length ? "" : "<div style='text-align:center;'>기록이 없습니다.</div>";
+    ranks.forEach((r, i) => {
+        board.innerHTML += `<div class="rank-item"><span>${i+1}. ${r.name}</span><span>Wave ${r.wave} (${r.stage})</span></div>`;
+    });
+}
+
+function updateMenuLock() {
+    let prog = parseInt(localStorage.getItem('chem_progress') || "1");
+    for(let i=2; i<=5; i++) if(prog >= i) document.getElementById(`tut-${i}`).disabled = false;
+    if(prog > 5) {
+        let b = document.getElementById('survival-btn');
+        b.disabled = false; b.innerText = "SURVIVAL MODE (OPEN)";
+    }
+}
+
+function openMapSelection() {
+    document.getElementById('main-menu').classList.add('hidden');
+    document.getElementById('map-selection-screen').classList.remove('hidden');
+    const list = document.getElementById('map-thumb-list');
+    list.innerHTML = MAPS.map((m, i) => `<button class="btn-large" onclick="currentStage='survival';activeMap=MAPS[${i}];startStage();">${m.name}</button>`).join("");
+}
+
+function updateUI() {
+    document.getElementById('money-ui').innerText = money;
+    document.getElementById('lives-ui').innerText = lives;
+    document.getElementById('wave-ui').innerText = wave;
+}
+
+function initTowerMenu() {
+    const menu = document.getElementById('tower-menu');
+    menu.innerHTML = elementData.map((t,i) => `<div class="tower-btn ${i===selectedTowerIdx?'selected':''}" style="padding:10px; border:1px solid #555; cursor:pointer;" onclick="selectedTowerIdx=${i};initTowerMenu()"><b>${t.symbol}</b><br>${t.cost}</div>`).join("");
+}
+
+/** 기타 공통 **/
+function closeUpgrade() { isPaused = false; document.getElementById('upgrade-modal').classList.add('hidden'); }
+function togglePause() { isPaused = !isPaused; document.getElementById('pause-btn').innerText = isPaused ? "계속" : "정지"; }
+function quitGame() { location.reload(); }
+function openWarehouse() { isPaused = true; document.getElementById('warehouse-list').innerHTML = Object.keys(warehouse).map(k=>`<div style="background:#333;padding:5px;margin:2px;"><b>${k}</b>: ${warehouse[k].count}개<br><small>${warehouse[k].desc}</small></div>`).join(""); document.getElementById('warehouse-modal').classList.remove('hidden'); }
+function closeWarehouse() { isPaused = false; document.getElementById('warehouse-modal').classList.add('hidden'); }
+function closeMapSelection() { document.getElementById('map-selection-screen').classList.add('hidden'); document.getElementById('main-menu').classList.remove('hidden'); }
+</script>
+</body>
+</html>
