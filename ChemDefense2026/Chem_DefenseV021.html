@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Element Guard v0.21</title>
+    <style>
+        :root { --primary: #00ff88; --bg: #0a0a0a; --panel: #1a1a1a; }
+        body { background: var(--bg); color: #e0e0e0; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; overflow: hidden; }
+        .screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; text-align: center; }
+        .hidden { display: none !important; }
+        .menu-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 20px; width: 450px; }
+        .btn-large { padding: 12px; background: #2a2a2a; border: 2px solid #444; color: white; cursor: pointer; border-radius: 8px; font-size: 0.9em; transition: 0.2s; }
+        .btn-large:hover { background: var(--primary); color: black; }
+        #header { width: 920px; background: var(--panel); padding: 8px 15px; display: flex; justify-content: space-between; border-radius: 0 0 8px 8px; align-items: center; border-bottom: 2px solid #333; z-index: 10; box-sizing: border-box; }
+        #game-container { position: relative; margin: 10px; border: 2px solid #333; line-height: 0; background: #000; }
+        canvas { background: #000; cursor: crosshair; }
+        .ui-panel { width: 920px; background: var(--panel); padding: 12px; border-radius: 8px; display: flex; gap: 10px; box-sizing: border-box; }
+        .tower-btn { width: 85px; padding: 10px; background: #333; border: 2px solid #555; color: white; cursor: pointer; border-radius: 5px; text-align: center; font-size: 0.8em; }
+        .tower-btn.selected { border-color: var(--primary); background: #224433; box-shadow: 0 0 10px var(--primary); }
+        .stats { font-weight: bold; color: var(--primary); }
+        #pause-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); display: flex; justify-content: center; align-items: center; pointer-events: none; color: var(--primary); font-size: 2em; font-weight: bold; opacity: 0; transition: 0.2s; z-index: 50; }
+        #pause-overlay.visible { opacity: 1; }
+    </style>
+</head>
+<body>
+
+<div id="main-menu" class="screen">
+    <h1 style="color:var(--primary); font-size: 3.5em; margin:0;">ELEMENT GUARD</h1>
+    <p id="load-msg" style="color:#ff00ff; font-weight:bold;">Loading...</p>
+    <div class="menu-grid">
+        <button class="btn-large" onclick="initStage(1)">TUTORIAL 1</button>
+        <button class="btn-large" id="tut-2" onclick="initStage(2)" disabled>TUTORIAL 2</button>
+        <button class="btn-large" id="tut-3" onclick="initStage(3)" disabled>TUTORIAL 3</button>
+        <button class="btn-large" id="tut-4" onclick="initStage(4)" disabled>TUTORIAL 4</button>
+        <button class="btn-large" id="tut-5" onclick="initStage(5)" disabled>TUTORIAL 5</button>
+        <button class="btn-large" id="survival-btn" style="grid-column: span 3; color:#ffaa00;" disabled>SURVIVAL MODE</button>
+    </div>
+</div>
+
+<div id="header" class="hidden">
+    <div id="stage-title" class="stats">STAGE 1</div>
+    <div id="version-tag" onclick="eggClick()" style="cursor:pointer; font-size:10px; color:#555;">v0.21</div>
+    <div>💰 <span id="money-ui" class="stats">0</span></div>
+    <div>❤️ <span id="lives-ui" class="stats">20</span></div>
+    <div>WAVE: <span id="wave-ui" class="stats">0</span> / 10</div>
+    <div style="display: flex; gap: 4px;">
+        <button id="skip-btn" class="btn-large" style="padding:4px 8px; font-size:11px; background:#224422;" onclick="skipToNextWave()" disabled>NEXT WAVE ⏩</button>
+        <button class="btn-large" style="padding:4px 8px; font-size:11px;" onclick="location.reload()">종료</button>
+    </div>
+</div>
+
+<div id="game-container" class="hidden">
+    <canvas id="gameCanvas"></canvas>
+    <div id="pause-overlay">PAUSED</div>
+</div>
+
+<div class="ui-panel hidden" id="tower-menu"></div>
+
+<script>
+let elementData = [], enemyData = [], reactionData = [], stagesData = [];
+const TILE_SIZE = 40, COLS = 20, ROWS = 10;
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = COLS * TILE_SIZE; canvas.height = ROWS * TILE_SIZE;
+
+let grid, towers, enemies, projectiles, money, lives, wave, activeMap;
+let gameActive = false, isPaused = false, isWaveSpawning = false;
+let selectedTowerIdx = 0, waveTimer = null, nextWaveTimer = null;
+
+async function loadAllData() {
+    const msg = document.getElementById('load-msg');
+    try {
+        const [re, rc, rr, rs] = await Promise.all([
+            fetch('elements.json?v='+Date.now()), fetch('compounds.json?v='+Date.now()), 
+            fetch('reactions.json?v='+Date.now()), fetch('stages.json?v='+Date.now())
+        ]);
+        const getArr = (o) => Array.isArray(o) ? o : Object.values(o).find(v => Array.isArray(v)) || [];
+        elementData = getArr(await re.json()); enemyData = getArr(await rc.json());
+        reactionData = getArr(await rr.json()); stagesData = getArr(await rs.json());
+        msg.innerText = "v0.21 Ready"; updateMenuLock();
+    } catch (e) {
+        msg.innerText = "Fallback Data Active";
+        elementData = [{id:"Na", symbol:"Na", cost:50, range:150, fireRate:1000, color:"#e0e0e0", type:"Alkaline"}];
+        enemyData = [{id:"HCl", formula:"HCl", hp:100, speed:0.7, type:"Acid", reward:20, color:"#ff4444", byproduct:"NaCl"}];
+        stagesData = [{name:"Lab", start:{r:5,c:0}, end:{r:5,c:19}, walls:[]}];
+    }
+}
+
+function getPath(sr, sc, er, ec) {
+    let q = [{r: sr, c: sc, p: [{r: sr, c: sc}]}];
+    let v = Array.from({length:ROWS},()=>Array(COLS).fill(false));
+    v[sr][sc] = true;
+    while(q.length > 0) {
+        let curr = q.shift();
+        if(curr.r === er && curr.c === ec) return curr.p;
+        for(let d of [{r:1,c:0},{r:-1,c:0},{r:0,c:1},{r:0,c:-1}]) {
+            let nr=curr.r+d.r, nc=curr.c+d.c;
+            if(nr>=0 && nr<ROWS && nc>=0 && nc<COLS && !v[nr][nc] && grid[nr][nc] === 0) {
+                v[nr][nc]=true; q.push({r:nr, c:nc, p: [...curr.p, {r:nr, c:nc}]});
+            }
+        }
+    }
+    return null;
+}
+
+class Enemy {
+    constructor(data) {
+        this.data = data; this.hp = data.hp; this.maxHp = data.hp;
+        this.x = activeMap.start.c * 40 + 20; this.y = activeMap.start.r * 40 + 20;
+        this.path = getPath(activeMap.start.r, activeMap.start.c, activeMap.end.r, activeMap.end.c);
+        this.pathIdx = 0;
+    }
+    update() {
+        if (!this.path || this.pathIdx >= this.path.length - 1) { lives--; return false; }
+        let target = this.path[this.pathIdx + 1];
+        let tx = target.c * 40 + 20, ty = target.r * 40 + 20;
+        let dist = Math.hypot(tx - this.x, ty - this.y);
+        if (dist < 2) { this.pathIdx++; return true; }
+        this.x += ((tx - this.x) / dist) * (this.data.speed || 1);
+        this.y += ((ty - this.y) / dist) * (this.data.speed || 1);
+        return true;
+    }
+    recalculate() {
+        let cr = Math.floor(this.y / 40), cc = Math.floor(this.x / 40);
+        let newP = getPath(cr, cc, activeMap.end.r, activeMap.end.c);
+        if (newP) { this.path = newP; this.pathIdx = 0; }
+    }
+    draw() {
+        ctx.fillStyle = this.data.color || "#f00"; ctx.beginPath(); ctx.arc(this.x, this.y, 14, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = "white"; ctx.font = "bold 9px Arial"; ctx.textAlign="center"; ctx.fillText(this.data.formula || "", this.x, this.y+4);
+        ctx.fillStyle = "#444"; ctx.fillRect(this.x-15, this.y-22, 30, 3);
+        ctx.fillStyle = "#0f8"; ctx.fillRect(this.x-15, this.y-22, 30*(this.hp/this.maxHp), 3);
+    }
+}
+
+class Tower {
+    constructor(r,c,d) { this.r=r;this.c=c;this.x=c*40+20;this.y=r*40+20;this.data=d;this.lastShot=0;this.level=1; }
+    update() {
+        if(isPaused) return; let now = Date.now();
+        if(now - this.lastShot > (this.data.fireRate || 1000)) {
+            let range = this.data.range * Math.pow(1.05, this.level-1);
+            let target = enemies.find(e => Math.hypot(e.x-this.x, e.y-this.y) < range);
+            if(target) { projectiles.push(new Projectile(this.x, this.y, target, this.data, 25*Math.pow(1.05, this.level-1))); this.lastShot = now; }
+        }
+    }
+    draw() { ctx.fillStyle = this.data.color || "#555"; ctx.beginPath(); ctx.roundRect(this.c*40+4, this.r*40+4, 32, 32, 5); ctx.fill(); ctx.fillStyle="#000"; ctx.font="bold 11px Arial"; ctx.textAlign="center"; ctx.fillText(this.data.symbol, this.x, this.y+4); }
+}
+
+class Projectile {
+    constructor(x,y,t,d,dmg) { this.x=x;this.y=y;this.target=t;this.data=d;this.dmg=dmg;this.speed=12; }
+    update() {
+        let dx = this.target.x-this.x, dy = this.target.y-this.y, dist = Math.hypot(dx, dy);
+        if(dist < 10) { 
+            let fDmg = this.dmg;
+            let r = reactionData.find(re => re.attacker_type === this.data.type && re.target_type === this.target.data.type);
+            if(r) fDmg *= r.multiplier; this.target.hp -= fDmg; return true; 
+        }
+        this.x += (dx/dist)*this.speed; this.y += (dy/dist)*this.speed; return false;
+    }
+    draw() { ctx.fillStyle = this.data.color; ctx.beginPath(); ctx.arc(this.x, this.y, 4, 0, Math.PI*2); ctx.fill(); }
+}
+
+function spawnWave() {
+    if(!gameActive || wave >= 10) return;
+    wave++; updateUI();
+    isWaveSpawning = true;
+    document.getElementById('skip-btn').disabled = true;
+
+    let count = 0, spawnCount = 3 + Math.floor(wave/2);
+    waveTimer = setInterval(() => {
+        if(isPaused) return;
+        let d = enemyData[Math.floor(Math.random()*enemyData.length)];
+        enemies.push(new Enemy({...d, hp: d.hp*(1+(wave-1)*0.25), speed: (d.speed||0.7)+(wave*0.02)}));
+        if(++count >= spawnCount) {
+            clearInterval(waveTimer);
+            isWaveSpawning = false; // 스폰 완료
+        }
+    }, 1200);
+}
+
+function skipToNextWave() {
+    if (nextWaveTimer) {
+        clearTimeout(nextWaveTimer);
+        nextWaveTimer = null;
+        spawnWave();
+    }
+}
+
+function gameLoop() {
+    if (!gameActive) return;
+    if (!isPaused) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        renderMap();
+        towers.forEach(t => t.update());
+        projectiles = projectiles.filter(p => !p.update());
+        enemies = enemies.filter(e => e.hp > 0 && e.update());
+
+        // [중요] 웨이브 종료 체크 및 자동 전환
+        if (!isWaveSpawning && enemies.length === 0 && !nextWaveTimer) {
+            if (wave < 10) {
+                document.getElementById('skip-btn').disabled = false;
+                nextWaveTimer = setTimeout(() => {
+                    nextWaveTimer = null;
+                    spawnWave();
+                }, 8000);
+            } else {
+                alert("STAGE CLEAR!"); location.reload();
+            }
+        }
+
+        if (lives <= 0) { alert("GAME OVER"); location.reload(); return; }
+    }
+    renderEntities();
+    requestAnimationFrame(gameLoop);
+}
+
+function renderMap() {
+    for(let r=0; r<ROWS; r++) for(let c=0; c<COLS; c++) {
+        ctx.strokeStyle = "#151515"; ctx.strokeRect(c*40, r*40, 40, 40);
+        if(grid[r][c]===2) { ctx.fillStyle = "#333"; ctx.fillRect(c*40+2, r*40+2, 36, 36); }
+    }
+    ctx.fillStyle = "rgba(0,255,136,0.1)"; ctx.fillRect(activeMap.start.c*40, activeMap.start.r*40, 40, 40);
+    ctx.fillStyle = "rgba(255,68,68,0.1)"; ctx.fillRect(activeMap.end.c*40, activeMap.end.r*40, 40, 40);
+}
+
+function renderEntities() { towers.forEach(t => t.draw()); enemies.forEach(e => e.draw()); projectiles.forEach(p => p.draw()); }
+
+canvas.onclick = (ev) => {
+    let rect = canvas.getBoundingClientRect();
+    let c = Math.floor((ev.clientX - rect.left)/40), r = Math.floor((ev.clientY - rect.top)/40);
+    if(r<0 || r>=ROWS || c<0 || c>=COLS) return;
+
+    const existing = towers.find(t => t.r === r && t.c === c);
+    if (existing) { isPaused = true; document.getElementById('pause-overlay').classList.add('visible'); return; }
+
+    if (grid[r][c] === 0) {
+        let tData = elementData[selectedTowerIdx];
+        if (money >= tData.cost) {
+            grid[r][c] = 1;
+            if (getPath(activeMap.start.r, activeMap.start.c, activeMap.end.r, activeMap.end.c)) {
+                towers.push(new Tower(r, c, tData));
+                money -= tData.cost; updateUI();
+                enemies.forEach(e => e.recalculate());
+            } else grid[r][c] = 0;
+        }
+    }
+};
+
+function initStage(num) {
+    activeMap = stagesData[(num-1)%stagesData.length];
+    document.getElementById('main-menu').classList.add('hidden');
+    document.getElementById('header').classList.remove('hidden');
+    document.getElementById('game-container').classList.remove('hidden');
+    document.getElementById('tower-menu').classList.remove('hidden');
+    grid = Array.from({length:ROWS}, () => Array(COLS).fill(0));
+    if(activeMap.walls) activeMap.walls.forEach(w => { for(let r=w.r;r<w.r+w.h;r++)for(let c=w.c;c<w.c+w.w;c++)grid[r][c]=2; });
+    towers=[]; enemies=[]; projectiles=[]; money=500; lives=20; wave=0; gameActive=true;
+    updateUI(); initTowerMenu(); spawnWave(); requestAnimationFrame(gameLoop);
+}
+
+function updateUI() { document.getElementById('money-ui').innerText = money; document.getElementById('lives-ui').innerText = lives; document.getElementById('wave-ui').innerText = wave; }
+function initTowerMenu() { document.getElementById('tower-menu').innerHTML = elementData.map((t,i) => `<div class="tower-btn ${i===selectedTowerIdx?'selected':''}" style="background:${t.color}; color:#000;" onclick="selectedTowerIdx=${i};initTowerMenu()"><b>${t.symbol}</b><br>${t.cost}</div>`).join(""); }
+function updateMenuLock() { let prog = parseInt(localStorage.getItem('chem_progress') || "1"); for(let i=2; i<=5; i++) if(prog >= i) document.getElementById(`tut-${i}`).disabled = false; }
+let eggCount = 0; function eggClick() { if(++eggCount >= 5) alert("Editor logic stays in code v0.21"); }
+
+loadAllData();
+</script>
+</body>
+</html>
