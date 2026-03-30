@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Element Guard v0.30 (Atomic Visuals)</title>
+    <style>
+        :root { --primary: #00ff88; --bg: #0a0a0a; --panel: #1a1a1a; }
+        body { background: var(--bg); color: #e0e0e0; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; overflow: hidden; }
+        .screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; text-align: center; }
+        .hidden { display: none !important; }
+        
+        /* 메뉴 버튼 레이아웃 */
+        .menu-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: 20px; width: 500px; }
+        .menu-btn { padding: 15px; background: #222; border: 2px solid #444; color: white; cursor: pointer; border-radius: 8px; font-size: 1em; transition: 0.3s; }
+        .menu-btn:hover:not(:disabled) { background: var(--primary); color: black; border-color: #fff; }
+        .menu-btn:disabled { opacity: 0.1; color: #444; }
+
+        /* 헤더 및 게임판 */
+        #header { width: 1000px; background: var(--panel); padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #333; box-sizing: border-box; }
+        #game-container { position: relative; border: 2px solid #333; background: #000; line-height: 0; margin-top: 10px; }
+        canvas { background: #000; cursor: crosshair; }
+
+        /* 하단 타워 패널 (해금된 타워만 표시) */
+        .ui-panel { width: 1000px; background: var(--panel); padding: 15px; border-radius: 8px; display: flex; gap: 10px; box-sizing: border-box; margin-top: 10px; min-height: 80px; }
+        .tower-card { padding: 10px; background: #333; border: 2px solid #555; cursor: pointer; border-radius: 6px; text-align: center; min-width: 80px; transition: 0.2s; }
+        .tower-card.selected { border-color: var(--primary); background: #224433; box-shadow: 0 0 10px var(--primary); }
+        .locked-card { border: 1px dashed #444; color: #555; display: flex; align-items: center; justify-content: center; min-width: 80px; font-size: 10px; }
+
+        .modal { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 420px; background: #111; border: 2px solid var(--primary); padding: 30px; border-radius: 20px; z-index: 200; box-shadow: 0 0 50px #000; }
+        .stats { font-weight: bold; color: var(--primary); }
+        #pause-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); display: flex; justify-content: center; align-items: center; color: var(--primary); font-size: 3em; opacity: 0; pointer-events: none; transition: 0.2s; z-index: 50; }
+        #pause-overlay.visible { opacity: 1; }
+        
+        .effect-selector { display: flex; gap: 5px; margin-top: 10px; }
+        .effect-btn { flex:1; padding: 5px; font-size: 11px; background: #222; color: #eee; border: 1px solid #444; cursor: pointer; }
+        .effect-btn.active { background: var(--primary); color: black; }
+    </style>
+</head>
+<body>
+
+<div id="main-menu" class="screen">
+    <h1 style="color:var(--primary); font-size: 4em; margin-bottom: 5px; text-shadow: 0 0 15px var(--primary);">ELEMENT GUARD</h1>
+    <p id="load-status" style="color:#ff00ff; font-weight:bold;">시스템 초기화 중...</p>
+    <div class="menu-grid">
+        <button class="menu-btn" onclick="initStage(1)">TUTORIAL 1</button>
+        <button class="menu-btn" id="tut-2" onclick="initStage(2)" disabled>TUTORIAL 2</button>
+        <button class="menu-btn" id="tut-3" onclick="initStage(3)" disabled>TUTORIAL 3</button>
+        <button class="menu-btn" id="tut-4" onclick="initStage(4)" disabled>TUTORIAL 4</button>
+        <button class="menu-btn" id="tut-5" onclick="initStage(5)" disabled>TUTORIAL 5</button>
+        <button class="menu-btn" id="survival-btn" style="grid-column: span 3; color:#ffaa00;" disabled>SURVIVAL MODE (LOCKED)</button>
+    </div>
+    <p style="color:#444; font-size: 11px; margin-top: 30px;">v0.30 | ATOMIC VISUAL UPDATE</p>
+</div>
+
+<div id="header" class="hidden">
+    <div id="stage-title" class="stats">STAGE 1</div>
+    <div style="font-size:10px; color:var(--primary);">ATOMIC v0.30</div>
+    <div>💰 <span id="money-ui" class="stats">0</span></div>
+    <div>❤️ <span id="lives-ui" class="stats">20</span></div>
+    <div>WAVE: <span id="wave-ui" class="stats">0</span> / 10</div>
+    <button style="padding:5px 10px; background:#444; color:white; border:none; border-radius:4px; cursor:pointer;" onclick="location.reload()">EXIT</button>
+</div>
+
+<div id="game-layout" class="hidden" style="display:flex; flex-direction:column; align-items:center;">
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <div id="pause-overlay">PAUSED</div>
+        
+        <!-- 타워 관리 및 효과 선택 모달 -->
+        <div id="upgrade-modal" class="modal hidden">
+            <h3 id="up-title" style="margin:0; color:var(--primary);">TOWER CORE</h3>
+            <p id="up-info" style="font-size:13px;"></p>
+            
+            <div style="text-align:left; margin-bottom:15px;">
+                <label style="font-size:11px; color:#888;">공격 비주얼 테마 선택:</label>
+                <div class="effect-selector">
+                    <button class="effect-btn" id="eff-orbit" onclick="setEffect('orbit')">Electron</button>
+                    <button class="effect-btn" id="eff-pulse" onclick="setEffect('pulse')">Pulse</button>
+                    <button class="effect-btn" id="eff-laser" onclick="setEffect('laser')">Beam</button>
+                </div>
+            </div>
+
+            <button class="menu-btn" id="up-confirm-btn" style="width:100%; margin-bottom:8px;">UPGRADE CORE</button>
+            <button class="menu-btn" id="sell-btn" style="width:100%; background:#411; margin-bottom:10px;">SELL TOWER</button>
+            <button class="menu-btn" style="width:100%; background:#333;" onclick="closeUpgrade()">RESUME</button>
+        </div>
+    </div>
+    <div class="ui-panel" id="tower-menu"></div>
+</div>
+
+<script>
+let elementData = [], enemyData = [], reactionData = [], stagesData = [];
+const TILE_SIZE = 40, COLS = 25, ROWS = 12;
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = COLS * TILE_SIZE; canvas.height = ROWS * TILE_SIZE;
+
+let grid, towers, enemies, projectiles, money, lives, wave, activeMap;
+let gameActive = false, isPaused = false, selectedTowerIdx = 0;
+let isWaveSpawning = false, nextWaveTimer = null, warehouse = {}, currentEditingTower = null;
+
+/** [1] 데이터 로드 및 해금 설정 **/
+async function loadAllData() {
+    const status = document.getElementById('load-status');
+    const cb = `?v=${Date.now()}`;
+    try {
+        const [re, rc, rr, rs] = await Promise.all([
+            fetch('elements.json'+cb).then(r=>r.json()), fetch('compounds.json'+cb).then(r=>r.json()),
+            fetch('reactions.json'+cb).then(r=>r.json()), fetch('stages.json'+cb).then(r=>r.json())
+        ]);
+        const ext = (d) => Array.isArray(d) ? d : Object.values(d).find(v=>Array.isArray(v)) || [];
+        elementData = ext(re); enemyData = ext(rc); reactionData = ext(rr); stagesData = ext(rs);
+        
+        // elements.json에 unlock_stage가 없다면 기본적으로 1스테이지 해금으로 설정
+        elementData.forEach(e => { if(!e.unlock_stage) e.unlock_stage = 1; });
+
+        status.innerText = "데이터 로드 성공!"; status.style.color = "#0f8";
+        updateMenuLock();
+    } catch (e) {
+        status.innerText = "JSON 연결 실패"; status.style.color = "#f44";
+    }
+}
+
+/** [2] 타워 클래스 (전자 궤도 애니메이션 추가) **/
+class Tower {
+    constructor(r,c,d) {
+        this.r=r; this.c=c; this.x=c*40+20; this.y=r*40+20;
+        this.data=d; this.lastShot=0; this.level=1; this.invested=d.cost;
+        this.rotation = 0; // 전자 회전 각도
+        this.visualTheme = 'orbit'; // 기본 효과
+    }
+    get range() { return this.data.range * Math.pow(1.05, this.level-1); }
+    update() {
+        if(isPaused) return;
+        this.rotation += 0.05; // 전자 회전 속도
+        if(Date.now() - this.lastShot > (this.data.fire_rate * 1000 || 1000)) {
+            let target = enemies.find(e => Math.hypot(e.x-this.x, e.y-this.y) < this.range);
+            if(target) { 
+                projectiles.push(new Projectile(this.x, this.y, target, this.data, 25*Math.pow(1.05, this.level-1), this.visualTheme)); 
+                this.lastShot = Date.now(); 
+            }
+        }
+    }
+    draw() {
+        // 타워 몸체 (원자핵 느낌)
+        ctx.fillStyle = this.data.color || "#555";
+        ctx.beginPath(); ctx.arc(this.x, this.y, 12, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = "#000"; ctx.font = "bold 10px Arial"; ctx.textAlign="center";
+        ctx.fillText(this.data.symbol, this.x, this.y+4);
+
+        // 전자 궤도 그리기
+        ctx.strokeStyle = "rgba(255,255,255,0.15)";
+        ctx.beginPath(); ctx.arc(this.x, this.y, 18, 0, Math.PI*2); ctx.stroke();
+
+        // 빙글빙글 도는 전자
+        let ex = this.x + Math.cos(this.rotation) * 18;
+        let ey = this.y + Math.sin(this.rotation) * 18;
+        ctx.fillStyle = this.data.color;
+        ctx.beginPath(); ctx.arc(ex, ey, 3, 0, Math.PI*2); ctx.fill();
+        
+        // 반대편 전자
+        let ex2 = this.x + Math.cos(this.rotation + Math.PI) * 18;
+        let ey2 = this.y + Math.sin(this.rotation + Math.PI) * 18;
+        ctx.beginPath(); ctx.arc(ex2, ey2, 3, 0, Math.PI*2); ctx.fill();
+    }
+}
+
+/** [3] 투사체 클래스 (스타일별 시각화) **/
+class Projectile {
+    constructor(x,y,t,d,dmg,theme) { 
+        this.x=x; this.y=y; this.target=t; this.data=d; this.dmg=dmg; 
+        this.speed=15; this.theme=theme;
+    }
+    update() {
+        let dx = this.target.x-this.x, dy = this.target.y-this.y, dist = Math.hypot(dx, dy);
+        if(dist < 10) { 
+            let fDmg = this.dmg;
+            let r = reactionData.find(re => re.attacker_type === (this.data.damage_type || this.data.type) && re.target_type === this.target.data.type);
+            if(r) fDmg *= r.multiplier || 1; 
+            this.target.hp -= fDmg; return true; 
+        }
+        this.x += (dx/dist)*this.speed; this.y += (dy/dist)*this.speed; return false;
+    }
+    draw() {
+        ctx.fillStyle = this.data.color;
+        if(this.theme === 'laser') {
+            ctx.strokeStyle = this.data.color; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(this.x, this.y); ctx.lineTo(this.target.x, this.target.y); ctx.stroke();
+        } else if(this.theme === 'pulse') {
+            ctx.beginPath(); ctx.arc(this.x, this.y, 6, 0, Math.PI*2); ctx.fill();
+            ctx.globalAlpha = 0.3; ctx.beginPath(); ctx.arc(this.x, this.y, 10, 0, Math.PI*2); ctx.fill(); ctx.globalAlpha = 1;
+        } else { // orbit (electron)
+            ctx.beginPath(); ctx.arc(this.x, this.y, 4, 0, Math.PI*2); ctx.fill();
+        }
+    }
+}
+
+/** [4] 해금 기반 타워 메뉴 생성 **/
+function initTowerMenu() {
+    const menu = document.getElementById('tower-menu');
+    const prog = parseInt(localStorage.getItem('chem_progress') || "1");
+    
+    menu.innerHTML = elementData.map((t, i) => {
+        if(t.unlock_stage <= prog) {
+            return `<div class="tower-card ${i===selectedTowerIdx?'selected':''}" style="border-bottom:4px solid ${t.color};" onclick="selectedTowerIdx=${i};initTowerMenu()"><b>${t.symbol}</b><br>${t.cost}G</div>`;
+        } else {
+            return `<div class="locked-card">STAGE ${t.unlock_stage}<br>해금 필요</div>`;
+        }
+    }).join("");
+}
+
+/** [5] 효과 선택 및 타워 관리 **/
+function setEffect(type) {
+    if(!currentEditingTower) return;
+    currentEditingTower.visualTheme = type;
+    document.querySelectorAll('.effect-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('eff-' + type).classList.add('active');
+}
+
+function openUpgrade(t) {
+    currentEditingTower = t;
+    isPaused = true; 
+    document.getElementById('pause-overlay').classList.add('visible');
+    const m = document.getElementById('upgrade-modal');
+    const cost = Math.floor(t.data.cost * 0.8 * t.level);
+    document.getElementById('up-info').innerHTML = `레벨: ${t.level} (업그레이드: ${cost}G)<br>현재 데미지: ${Math.floor(25 * Math.pow(1.05, t.level-1))}`;
+    
+    // 현재 테마 버튼 활성화
+    document.querySelectorAll('.effect-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('eff-' + t.visualTheme).classList.add('active');
+
+    document.getElementById('up-confirm-btn').onclick = () => { if(money>=cost){ money-=cost; t.level++; t.invested+=cost; updateUI(); closeUpgrade(); } };
+    document.getElementById('sell-btn').onclick = () => { money+=Math.floor(t.invested*0.7); grid[t.r][t.c]=0; towers=towers.filter(tw=>tw!==t); updateUI(); closeUpgrade(); };
+    m.classList.remove('hidden');
+}
+
+/** [기존 게임 로직 유지...] **/
+class Enemy {
+    constructor(data) {
+        this.data = data; this.hp = data.hp; this.maxHp = data.hp;
+        this.x = activeMap.start.c*40+20; this.y = activeMap.start.r*40+20;
+        this.path = findPath(activeMap.start.r, activeMap.start.c, activeMap.end.r, activeMap.end.c);
+        this.pathIdx = 0;
+        this.reward = Number(data.atomic_sum) || 20;
+    }
+    update() {
+        if (!this.path || this.pathIdx >= this.path.length-1) { lives--; return false; }
+        let target = this.path[this.pathIdx+1];
+        let tx = target.c*40+20, ty = target.r*40+20;
+        let dist = Math.hypot(tx-this.x, ty-this.y);
+        if (dist < 2) { this.pathIdx++; return true; }
+        this.x += ((tx-this.x)/dist)*(this.data.speed || 1);
+        this.y += ((ty-this.y)/dist)*(this.data.speed || 1);
+        return true;
+    }
+    draw() {
+        ctx.fillStyle = this.data.color || "#f44"; ctx.beginPath(); ctx.arc(this.x, this.y, 14, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = "white"; ctx.font = "bold 9px Arial"; ctx.textAlign="center"; ctx.fillText(this.data.formula || "", this.x, this.y+4);
+        ctx.fillStyle = "#00ff88"; ctx.fillRect(this.x-15, this.y-22, 30*(this.hp/this.maxHp), 3);
+    }
+}
+
+function gameLoop() {
+    if (!gameActive) return;
+    if (!isPaused) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        renderMap();
+        towers.forEach(t => t.update());
+        projectiles = projectiles.filter(p => !p.update());
+        enemies = enemies.filter(e => {
+            if (e.hp <= 0) { money += e.reward; updateUI(); return false; }
+            return e.update();
+        });
+        if (!isWaveSpawning && enemies.length === 0 && wave >= 10) {
+            gameActive = false; alert("STAGE CLEAR!"); location.reload();
+        }
+        if (lives <= 0) { alert("GAME OVER"); location.reload(); return; }
+    }
+    towers.forEach(t => t.draw()); enemies.forEach(e => e.draw()); projectiles.forEach(p => p.draw());
+    requestAnimationFrame(gameLoop);
+}
+
+function renderMap() {
+    for(let r=0; r<ROWS; r++) for(let c=0; c<COLS; c++) {
+        ctx.strokeStyle = "#151515"; ctx.strokeRect(c*40, r*40, 40, 40);
+        if(grid[r][c]===2) { ctx.fillStyle = "#333"; ctx.fillRect(c*40+2, r*40+2, 36, 36); }
+    }
+    ctx.fillStyle = "rgba(0,255,136,0.1)"; ctx.fillRect(activeMap.start.c*40, activeMap.start.r*40, 40, 40);
+    ctx.fillStyle = "rgba(255,68,68,0.1)"; ctx.fillRect(activeMap.end.c*40, activeMap.end.r*40, 40, 40);
+}
+
+canvas.onclick = (ev) => {
+    let rect = canvas.getBoundingClientRect();
+    let c = Math.floor((ev.clientX - rect.left)/40), r = Math.floor((ev.clientY - rect.top)/40);
+    const existing = towers.find(t => t.r === r && t.c === c);
+    if (existing) { openUpgrade(existing); return; }
+    if (grid[r][c] !== 0) return;
+    let d = elementData[selectedTowerIdx];
+    if (money >= d.cost) {
+        grid[r][c] = 1;
+        if (findPath(activeMap.start.r, activeMap.start.c, activeMap.end.r, activeMap.end.c)) {
+            towers.push(new Tower(r, c, d)); money -= d.cost; updateUI();
+        } else grid[r][c] = 0;
+    }
+};
+
+function findPath(sr, sc, er, ec) {
+    let q = [{r: sr, c: sc, p: [{r: sr, c: sc}]}];
+    let v = Array.from({length:ROWS},()=>Array(COLS).fill(false));
+    if(sr<0 || sr>=ROWS || sc<0 || sc>=COLS) return null;
+    v[sr][sc] = true;
+    while(q.length > 0) {
+        let curr = q.shift();
+        if(curr.r === er && curr.c === ec) return curr.p;
+        for(let d of [{r:1,c:0},{r:-1,c:0},{r:0,c:1},{r:0,c:-1}]) {
+            let nr=curr.r+d.r, nc=curr.c+d.c;
+            if(nr>=0 && nr<ROWS && nc>=0 && nc<COLS && !v[nr][nc] && grid[nr][nc] === 0) {
+                v[nr][nc]=true; q.push({r:nr, c:nc, p: [...curr.p, {r:nr, c:nc}]});
+            }
+        }
+    }
+    return null;
+}
+
+function initStage(num) {
+    activeMap = stagesData[(num-1)%stagesData.length];
+    document.getElementById('main-menu').classList.add('hidden');
+    document.getElementById('header').classList.remove('hidden');
+    document.getElementById('game-layout').classList.remove('hidden');
+    grid = Array.from({length:ROWS}, () => Array(COLS).fill(0));
+    if(activeMap.walls) activeMap.walls.forEach(w => { for(let r=w.r;r<w.r+w.h;r++)for(let c=w.c;c<w.c+w.w;c++)if(grid[r])grid[r][c]=2; });
+    towers=[]; enemies=[]; projectiles=[]; money=500; lives=20; wave=0; gameActive=true;
+    updateUI(); initTowerMenu(); spawnWave(); requestAnimationFrame(gameLoop);
+}
+
+function spawnWave() {
+    if(!gameActive || wave >= 10) return;
+    wave++; updateUI(); isWaveSpawning = true;
+    let count = 0, spawnCount = 3 + Math.floor(wave/2);
+    let timer = setInterval(() => {
+        if(isPaused) return;
+        let d = enemyData[Math.floor(Math.random()*enemyData.length)];
+        enemies.push(new Enemy({...d, hp: d.hp*(1+(wave-1)*0.25), speed: (d.speed||0.7)+(wave*0.02)}));
+        if(++count >= spawnCount) { clearInterval(timer); isWaveSpawning = false; }
+    }, 1200);
+}
+
+function updateUI() { document.getElementById('money-ui').innerText = money; document.getElementById('lives-ui').innerText = lives; document.getElementById('wave-ui').innerText = wave; }
+function updateMenuLock() { let prog = parseInt(localStorage.getItem('chem_progress') || "1"); for(let i=2; i<=5; i++) if(prog >= i) { let btn = document.getElementById(`tut-${i}`); if(btn) btn.disabled = false; } }
+function closeUpgrade() { document.getElementById('upgrade-modal').classList.add('hidden'); isPaused = false; document.getElementById('pause-overlay').classList.remove('visible'); }
+
+loadAllData();
+</script>
+</body>
+</html>
