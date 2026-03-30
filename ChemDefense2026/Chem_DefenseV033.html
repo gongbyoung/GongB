@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Element Guard v0.33 (Selective Attack)</title>
+    <style>
+        :root { --primary: #00ff88; --bg: #0a0a0a; --panel: #1a1a1a; }
+        body { background: var(--bg); color: #e0e0e0; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; overflow: hidden; }
+        .screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; text-align: center; }
+        .hidden { display: none !important; }
+        
+        /* 메뉴 버튼 레이아웃 */
+        .menu-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: 20px; width: 500px; }
+        .menu-btn { padding: 15px; background: #222; border: 2px solid #444; color: white; cursor: pointer; border-radius: 8px; font-size: 1em; transition: 0.3s; }
+        .menu-btn:hover:not(:disabled) { background: var(--primary); color: black; border-color: #fff; }
+        .menu-btn:disabled { opacity: 0.1; color: #444; }
+
+        #header { width: 1000px; background: var(--panel); padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #333; box-sizing: border-box; }
+        #game-container { position: relative; border: 2px solid #333; background: #000; line-height: 0; margin-top: 10px; }
+        canvas { background: #000; cursor: crosshair; }
+
+        .ui-panel { width: 1000px; background: var(--panel); padding: 15px; border-radius: 8px; display: flex; gap: 10px; box-sizing: border-box; margin-top: 10px; min-height: 100px; justify-content: center; }
+        .tower-card { padding: 10px; background: #333; border: 2px solid #555; cursor: pointer; border-radius: 6px; text-align: center; min-width: 90px; transition: 0.2s; }
+        .tower-card.selected { border-color: var(--primary); background: #224433; box-shadow: 0 0 10px var(--primary); }
+        
+        .stats { font-weight: bold; color: var(--primary); }
+        #pause-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); display: flex; justify-content: center; align-items: center; color: var(--primary); font-size: 3em; opacity: 0; pointer-events: none; transition: 0.2s; z-index: 50; }
+        #pause-overlay.visible { opacity: 1; }
+        
+        .mission-box { color: #aaa; font-size: 14px; margin-bottom: 5px; }
+    </style>
+</head>
+<body>
+
+<div id="main-menu" class="screen">
+    <h1 style="color:var(--primary); font-size: 4em; margin:0;">ELEMENT GUARD</h1>
+    <p id="load-status" style="color:#ff00ff; font-weight:bold;">데이터 분석 중...</p>
+    <div class="menu-grid">
+        <button class="menu-btn" onclick="initStage(1)">TUTORIAL 1</button>
+        <button class="menu-btn" id="tut-2" onclick="initStage(2)" disabled>TUTORIAL 2</button>
+        <button class="menu-btn" id="tut-3" onclick="initStage(3)" disabled>TUTORIAL 3</button>
+        <button class="menu-btn" id="tut-4" onclick="initStage(4)" disabled>TUTORIAL 4</button>
+        <button class="menu-btn" id="tut-5" onclick="initStage(5)" disabled>TUTORIAL 5</button>
+        <button class="menu-btn" id="survival-btn" style="grid-column: span 3; color:#ffaa00;" onclick="initStage('survival')" disabled>SURVIVAL MODE (LOCKED)</button>
+    </div>
+    <p style="color:#555; font-size: 11px; margin-top: 30px;">v0.33 | Chemical Reaction Focus Update</p>
+</div>
+
+<div id="header" class="hidden">
+    <div id="stage-title" class="stats">STAGE 1</div>
+    <div id="mission-info" class="mission-box">적군: <span id="target-name" style="color:white;">-</span></div>
+    <div>💰 <span id="money-ui" class="stats">0</span></div>
+    <div>❤️ <span id="lives-ui" class="stats">20</span></div>
+    <div>WAVE: <span id="wave-ui" class="stats">0</span> / 10</div>
+    <button style="padding:5px 10px; background:#444; color:white; border:none; border-radius:4px; cursor:pointer;" onclick="location.reload()">EXIT</button>
+</div>
+
+<div id="game-layout" class="hidden" style="display:flex; flex-direction:column; align-items:center;">
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <div id="pause-overlay">PAUSED</div>
+    </div>
+    <div class="ui-panel" id="tower-menu"></div>
+</div>
+
+<script>
+/** [1] 글로벌 데이터 **/
+let elementData = [], enemyData = [], reactionData = [], stagesData = [];
+let grid, towers, enemies, projectiles, money, lives, wave, activeMap;
+let gameActive = false, isPaused = false, currentStage = 1, selectedTowerIdx = 0;
+let isWaveSpawning = false;
+
+const TILE_SIZE = 40, COLS = 25, ROWS = 12;
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = COLS * TILE_SIZE; canvas.height = ROWS * TILE_SIZE;
+
+/** [2] 데이터 로드 및 튜토리얼 규칙 강제 설정 **/
+async function loadAllData() {
+    const status = document.getElementById('load-status');
+    const cb = `?v=${Date.now()}`;
+    try {
+        const [re, rc, rr, rs] = await Promise.all([
+            fetch('elements.json'+cb).then(r=>r.json()), fetch('compounds.json'+cb).then(r=>r.json()),
+            fetch('reactions.json'+cb).then(r=>r.json()), fetch('stages.json'+cb).then(r=>r.json())
+        ]);
+        const ext = (d) => Array.isArray(d) ? d : Object.values(d).find(v=>Array.isArray(v)) || [];
+        elementData = ext(re); enemyData = ext(rc); reactionData = ext(rr); stagesData = ext(rs);
+
+        // 튜토리얼별 허용 타워 및 적군 강제 매칭 (매커니즘의 핵심)
+        const tutorialRules = [
+            { target: ["HCl"], allowed: ["Na"] },         // TUT 1: 염산 -> 나트륨
+            { target: ["CH4"], allowed: ["Cl", "O"] },    // TUT 2: 메탄 -> 염소/산소
+            { target: ["H2SO4"], allowed: ["Mg", "Na"] }, // TUT 3: 황산 -> 마그네슘/나트륨
+            { target: ["comp_Battery"], allowed: ["Fe", "Al"] }, // TUT 4: 배터리 -> 철/알루미늄
+            { target: ["comp_Pesticide"], allowed: ["C", "Ar"] }  // TUT 5: 살충제 -> 탄소/아르곤
+        ];
+
+        stagesData.forEach((s, idx) => {
+            if (idx < tutorialRules.length) {
+                s.target_enemies = tutorialRules[idx].target;
+                s.allowed_towers = tutorialRules[idx].allowed;
+            }
+        });
+
+        status.innerText = "System Synced!"; status.style.color = "#0f8";
+        updateMenuLock();
+    } catch (e) {
+        status.innerText = "Check JSON Data!";
+    }
+}
+
+/** [3] 타워 클래스 (선택적 공격 로직 추가) **/
+class Tower {
+    constructor(r,c,d) {
+        this.r=r; this.c=c; this.x=c*40+20; this.y=r*40+20;
+        this.data=d; this.lastShot=0; this.level=1;
+    }
+    update() {
+        if(isPaused) return;
+        if(Date.now() - this.lastShot > (this.data.fire_rate * 1000 || 1000)) {
+            // 사거리 내 적 찾기
+            let targets = enemies.filter(e => Math.hypot(e.x-this.x, e.y-this.y) < (this.data.range || 150));
+            
+            // [매커니즘 핵심] 실제 화학 반응이 있는 적에게만 발사
+            let validTarget = targets.find(e => {
+                let myType = this.data.damage_type || this.data.type;
+                return reactionData.some(r => r.attacker_type === myType && r.target_type === e.data.type);
+            });
+
+            if(validTarget) { 
+                projectiles.push(new Projectile(this.x, this.y, validTarget, this.data)); 
+                this.lastShot = Date.now(); 
+            }
+        }
+    }
+    draw() {
+        ctx.fillStyle = this.data.color || "#555";
+        ctx.beginPath(); ctx.roundRect(this.c*40+4, this.r*40+4, 32, 32, 5); ctx.fill();
+        ctx.fillStyle = "#000"; ctx.font = "bold 12px Arial"; ctx.textAlign="center";
+        ctx.fillText(this.data.symbol, this.x, this.y+5);
+    }
+}
+
+/** [4] 튜토리얼용 타워 메뉴 필터링 **/
+function initTowerMenu() {
+    const menu = document.getElementById('tower-menu');
+    const allowedSymbols = activeMap.allowed_towers || [];
+    
+    // 서바이벌 모드면 전부 다, 튜토리얼이면 허용된 것만
+    const displayTowers = elementData.filter(t => {
+        if(currentStage === 'survival') return true;
+        return allowedSymbols.includes(t.symbol) || allowedSymbols.includes(t.id);
+    });
+
+    if(displayTowers.length === 0) {
+        menu.innerHTML = "<b style='color:#f44;'>이 스테이지에는 사용 가능한 원소가 없습니다.</b>";
+        return;
+    }
+
+    menu.innerHTML = displayTowers.map((t, i) => {
+        return `<div class="tower-card ${i===selectedTowerIdx?'selected':''}" style="border-bottom:4px solid ${t.color};" onclick="selectedTowerIdx=${i};initTowerMenu()">
+            <b>${t.symbol}</b><br><small>${t.name}</small><br>${t.cost}G
+        </div>`;
+    }).join("");
+}
+
+/** [5] 스테이지 초기화 및 적군 스폰 **/
+function initStage(num) {
+    currentStage = num;
+    activeMap = (num === 'survival') ? stagesData[Math.floor(Math.random()*stagesData.length)] : stagesData[(num-1)%stagesData.length];
+    
+    document.getElementById('main-menu').classList.add('hidden');
+    document.getElementById('header').classList.remove('hidden');
+    document.getElementById('game-layout').classList.remove('hidden');
+    document.getElementById('target-name').innerText = activeMap.target_enemies.join(", ");
+    document.getElementById('stage-title').innerText = num === 'survival' ? "SURVIVAL" : "STAGE " + num;
+
+    grid = Array.from({length:ROWS}, () => Array(COLS).fill(0));
+    if(activeMap.walls) activeMap.walls.forEach(w => { for(let r=w.r;r<w.r+w.h;r++)for(let c=w.c;c<w.c+w.w;c++)if(grid[r])grid[r][c]=2; });
+    
+    towers=[]; enemies=[]; projectiles=[]; money=500; lives=20; wave=0; gameActive=true; selectedTowerIdx=0;
+    updateUI(); initTowerMenu(); spawnWave(); requestAnimationFrame(gameLoop);
+}
+
+function spawnWave() {
+    if(!gameActive || (currentStage !== 'survival' && wave >= 10)) return;
+    wave++; updateUI();
+    isWaveSpawning = true;
+    
+    let allowedEnemies = enemyData.filter(e => activeMap.target_enemies.includes(e.id) || activeMap.target_enemies.includes(e.formula));
+    if(allowedEnemies.length === 0) allowedEnemies = enemyData;
+
+    let count = 0, spawnCount = 3 + Math.floor(wave/2);
+    let timer = setInterval(() => {
+        if(isPaused) return;
+        let d = allowedEnemies[Math.floor(Math.random()*allowedEnemies.length)];
+        enemies.push(new Enemy({...d, hp: d.hp*(1+(wave-1)*0.3), speed: (d.speed||0.7)+(wave*0.03)}));
+        if(++count >= spawnCount) { clearInterval(timer); isWaveSpawning = false; }
+    }, 1200);
+}
+
+/** [기존 물리 엔진 핵심 로직] **/
+class Projectile {
+    constructor(x,y,t,d) { this.x=x;this.y=y;this.target=t;this.data=d;this.speed=15; }
+    update() {
+        let dx = this.target.x-this.x, dy = this.target.y-this.y, dist = Math.hypot(dx, dy);
+        if(dist < 10) { 
+            let dmg = 30;
+            let myType = this.data.damage_type || this.data.type;
+            let r = reactionData.find(re => re.attacker_type === myType && re.target_type === this.target.data.type);
+            if(r) dmg *= r.multiplier || 1;
+            this.target.hp -= dmg; return true; 
+        }
+        this.x += (dx/dist)*this.speed; this.y += (dy/dist)*this.speed; return false;
+    }
+    draw() { ctx.fillStyle = this.data.color; ctx.beginPath(); ctx.arc(this.x, this.y, 4, 0, Math.PI*2); ctx.fill(); }
+}
+
+class Enemy {
+    constructor(data) {
+        this.data = data; this.hp = data.hp; this.maxHp = data.hp;
+        this.x = activeMap.start.c*40+20; this.y = activeMap.start.r*40+20;
+        this.path = findPath(activeMap.start.r, activeMap.start.c, activeMap.end.r, activeMap.end.c);
+        this.pathIdx = 0;
+        this.reward = Number(data.atomic_sum) || 20;
+    }
+    update() {
+        if (!this.path || this.pathIdx >= this.path.length-1) { lives--; return false; }
+        let target = this.path[this.pathIdx+1];
+        let tx = target.c*40+20, ty = target.r*40+20;
+        let dist = Math.hypot(tx-this.x, ty-this.y);
+        if (dist < 2) { this.pathIdx++; return true; }
+        this.x += ((tx-this.x)/dist)*(this.data.speed || 1);
+        this.y += ((ty-this.y)/dist)*(this.data.speed || 1);
+        return true;
+    }
+    draw() {
+        ctx.fillStyle = this.data.color || "#f44"; ctx.beginPath(); ctx.arc(this.x, this.y, 14, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = "white"; ctx.font = "bold 9px Arial"; ctx.textAlign="center"; ctx.fillText(this.data.formula || "", this.x, this.y+4);
+        ctx.fillStyle = "#00ff88"; ctx.fillRect(this.x-15, this.y-22, 30*(this.hp/this.maxHp), 3);
+    }
+}
+
+function gameLoop() {
+    if (!gameActive) return;
+    if (!isPaused) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        renderMap();
+        towers.forEach(t => t.update());
+        projectiles = projectiles.filter(p => !p.update());
+        enemies = enemies.filter(e => {
+            if (e.hp <= 0) { money += e.reward; updateUI(); return false; }
+            return e.update();
+        });
+        if (lives <= 0) { alert("Mission Failed!"); location.reload(); return; }
+        if (currentStage !== 'survival' && wave >= 10 && enemies.length === 0) { alert("Stage Clear!"); let p = parseInt(localStorage.getItem('chem_progress') || "1"); if(currentStage == p) localStorage.setItem('chem_progress', p+1); location.reload(); }
+        // 자동 웨이브 진행
+        if (!isWaveSpawning && enemies.length === 0 && wave < 10) spawnWave();
+    }
+    towers.forEach(t => t.draw()); enemies.forEach(e => e.draw()); projectiles.forEach(p => p.draw());
+    requestAnimationFrame(gameLoop);
+}
+
+function renderMap() {
+    for(let r=0; r<ROWS; r++) for(let c=0; c<COLS; c++) {
+        ctx.strokeStyle = "#151515"; ctx.strokeRect(c*40, r*40, 40, 40);
+        if(grid[r][c]===2) { ctx.fillStyle = "#333"; ctx.fillRect(c*40+2, r*40+2, 36, 36); }
+    }
+    ctx.fillStyle = "rgba(0,255,136,0.1)"; ctx.fillRect(activeMap.start.c*40, activeMap.start.r*40, 40, 40);
+    ctx.fillStyle = "rgba(255,68,68,0.1)"; ctx.fillRect(activeMap.end.c*40, activeMap.end.r*40, 40, 40);
+}
+
+function findPath(sr, sc, er, ec) {
+    let q = [{r: sr, c: sc, p: [{r: sr, c: sc}]}];
+    let v = Array.from({length:ROWS},()=>Array(COLS).fill(false));
+    if(sr<0 || sr>=ROWS || sc<0 || sc>=COLS) return null;
+    v[sr][sc] = true;
+    while(q.length > 0) {
+        let curr = q.shift();
+        if(curr.r === er && curr.c === ec) return curr.p;
+        for(let d of [{r:1,c:0},{r:-1,c:0},{r:0,c:1},{r:0,c:-1}]) {
+            let nr=curr.r+d.r, nc=curr.c+d.c;
+            if(nr>=0 && nr<ROWS && nc>=0 && nc<COLS && !v[nr][nc] && grid[nr][nc] === 0) {
+                v[nr][nc]=true; q.push({r:nr, c:nc, p: [...curr.p, {r:nr, c:nc}]});
+            }
+        }
+    }
+    return null;
+}
+
+canvas.onclick = (ev) => {
+    let rect = canvas.getBoundingClientRect();
+    let c = Math.floor((ev.clientX - rect.left)/40), r = Math.floor((ev.clientY - rect.top)/40);
+    if(grid[r][c] !== 0) return;
+    
+    // 현재 필터링된 타워 데이터에서 선택된 타워 가져오기
+    const allowedSymbols = activeMap.allowed_towers || [];
+    const availableTowers = elementData.filter(t => currentStage === 'survival' || allowedSymbols.includes(t.symbol) || allowedSymbols.includes(t.id));
+    let d = availableTowers[selectedTowerIdx];
+    
+    if (d && money >= d.cost) {
+        grid[r][c] = 1;
+        if (findPath(activeMap.start.r, activeMap.start.c, activeMap.end.r, activeMap.end.c)) {
+            towers.push(new Tower(r, c, d)); money -= d.cost; updateUI();
+        } else grid[r][c] = 0;
+    }
+};
+
+function updateUI() { document.getElementById('money-ui').innerText = money; document.getElementById('lives-ui').innerText = lives; document.getElementById('wave-ui').innerText = wave; }
+function updateMenuLock() { let prog = parseInt(localStorage.getItem('chem_progress') || "1"); for(let i=2; i<=5; i++) { let b = document.getElementById(`tut-${i}`); if(b) b.disabled = (prog < i); } let sBtn = document.getElementById('survival-btn'); if(sBtn) sBtn.disabled = (prog <= 5); }
+
+loadAllData();
+</script>
+</body>
+</html>
