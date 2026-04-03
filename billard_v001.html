@@ -2,113 +2,169 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Realistic 3-Ball Billiards</title>
+    <title>Realistic Billiards with Spin</title>
     <style>
-        body { background: #222; display: flex; flex-direction: column; align-items: center; color: white; font-family: sans-serif; }
-        canvas { background: #076324; border: 12px solid #3d2b1f; border-radius: 5px; box-shadow: 0 0 50px rgba(0,0,0,0.5); cursor: crosshair; }
-        .ui { margin: 20px; text-align: center; }
+        body { background: #222; display: flex; flex-direction: column; align-items: center; color: white; font-family: sans-serif; overflow: hidden; }
+        canvas { background: #076324; border: 15px solid #3d2b1f; border-radius: 8px; box-shadow: 0 0 50px rgba(0,0,0,0.7); cursor: crosshair; }
+        .ui { margin: 15px; text-align: center; user-select: none; }
         kbd { background: #444; padding: 2px 5px; border-radius: 3px; border: 1px solid #777; }
+        #debug { font-size: 12px; color: #aaa; margin-top: 5px; }
     </style>
 </head>
 <body>
     <div class="ui">
-        <h2>3구 당구 물리 시뮬레이터</h2>
-        <p>흰 공을 드래그하여 타격하세요. <kbd>R</kbd> 키로 리셋</p>
+        <h2>3구 당구 (스핀 & 쿠션 물리)</h2>
+        <p>흰 공 드래그 타격 | <kbd>R</kbd> 리셋</p>
+        <div id="debug">수구 상태: 멈춤</div>
     </div>
-    <canvas id="table" width="800" height="400"></canvas>
+    <canvas id="table" width="1000" height="500"></canvas>
 
 <script>
 const canvas = document.getElementById('table');
 const ctx = canvas.getContext('2d');
+const debugEl = document.getElementById('debug');
 
-const friction = 0.992; // 구름 마찰력
-const wallElasticity = 0.8; // 벽 반발력
-const ballElasticity = 0.95; // 공끼리 충돌 반발력
+// --- 물리 상수 설정 ---
+const Phys = {
+    friction: 0.994,           // 바닥 구름 마찰 (1에 가까울수록 오래 구름)
+    stopThreshold: 0.1,        // 멈춤 판단 속도
+    wallRestitution: 0.6,      // 쿠션 반발계수 (힘 감소, 0~1)
+    wallFriction: 0.2          // 쿠션 마찰계수 (스핀 <-> 속도 변환 비율)
+};
 
 class Ball {
     constructor(x, y, color, isCue = false) {
         this.x = x; this.y = y;
         this.color = color;
         this.isCue = isCue;
-        this.radius = 12;
-        this.vx = 0; this.vy = 0;
-        this.mass = 1;
+        this.radius = 15;
+        this.vx = 0; this.vy = 0; // 선속도
+        this.spin = 0;            // 각속도 (회전, +, - 값)
     }
 
     draw() {
+        // 공 본체
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
         ctx.fillStyle = this.color;
         ctx.fill();
-        // 광택 효과
+        
+        // 회전 시각화 패턴 (줄무늬 하나 그리기)
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        // 간단한 시각화를 위해 vy와 spin을 조합해 회전 각도 흉내
+        this.rotation = (this.rotation || 0) + (this.spin * 0.05) + (this.vx * 0.01);
+        ctx.rotate(this.rotation); 
         ctx.beginPath();
-        ctx.arc(this.x - 3, this.y - 3, 3, 0, Math.PI * 2);
+        ctx.moveTo(-this.radius, 0);
+        ctx.lineTo(this.radius, 0);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = this.isCue ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.5)';
+        ctx.stroke();
+        ctx.restore();
+
+        // 광택
+        ctx.beginPath();
+        ctx.arc(this.x - 4, this.y - 4, 4, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(255,255,255,0.3)';
         ctx.fill();
-        ctx.closePath();
     }
 
     update() {
+        // 1. 위치 업데이트
         this.x += this.vx;
         this.y += this.vy;
-        this.vx *= friction;
-        this.vy *= friction;
 
-        if (Math.hypot(this.vx, this.vy) < 0.1) { this.vx = 0; this.vy = 0; }
+        // 2. 바닥 마찰에 의한 속도 및 스핀 감소
+        this.vx *= Phys.friction;
+        this.vy *= Phys.friction;
+        this.spin *= 0.98; // 스핀도 바닥 마찰로 서서히 감소
 
-        // 벽 충돌
-        if (this.x < this.radius) { this.x = this.radius; this.vx *= -wallElasticity; }
-        if (this.x > canvas.width - this.radius) { this.x = canvas.width - this.radius; this.vx *= -wallElasticity; }
-        if (this.y < this.radius) { this.y = this.radius; this.vy *= -wallElasticity; }
-        if (this.y > canvas.height - this.radius) { this.y = canvas.height - this.radius; this.vy *= -wallElasticity; }
+        // 3. 멈춤 처리
+        if (Math.hypot(this.vx, this.vy) < Phys.stopThreshold) { this.vx = 0; this.vy = 0; }
+        if (Math.abs(this.spin) < 0.01) this.spin = 0;
+
+        // 4. 쿠션 충돌 핸들링 (스핀 물리 적용)
+        this.handleWallCollisions();
+    }
+
+    handleWallCollisions() {
+        let hitWall = false;
+
+        // 수직 벽 (좌/우)
+        if (this.x < this.radius) {
+            this.x = this.radius;
+            this.vx *= -Phys.wallRestitution; // 반발 (힘 감소)
+            // 쿠션 마찰: 수직 속도(vy)가 스핀에 의해 변함
+            // 오른쪽 spin(+) -> vy 증가, 왼쪽 spin(-) -> vy 감소
+            this.vy += this.spin * Phys.wallFriction; 
+            this.spin *= (1 - Phys.wallFriction); // 스핀 감소
+            hitWall = true;
+        } else if (this.x > canvas.width - this.radius) {
+            this.x = canvas.width - this.radius;
+            this.vx *= -Phys.wallRestitution;
+            // 오른쪽 spin(+) -> vy 감소, 왼쪽 spin(-) -> vy 증가
+            this.vy -= this.spin * Phys.wallFriction;
+            this.spin *= (1 - Phys.wallFriction);
+            hitWall = true;
+        }
+
+        // 수평 벽 (상/하)
+        if (this.y < this.radius) {
+            this.y = this.radius;
+            this.vy *= -Phys.wallRestitution;
+            // 상단 벽 마찰: 수평 속도(vx)가 스핀에 의해 변함
+            this.vx -= this.spin * Phys.wallFriction;
+            this.spin *= (1 - Phys.wallFriction);
+            hitWall = true;
+        } else if (this.y > canvas.height - this.radius) {
+            this.y = canvas.height - this.radius;
+            this.vy *= -Phys.wallRestitution;
+            this.vx += this.spin * Phys.wallFriction;
+            this.spin *= (1 - Phys.wallFriction);
+            hitWall = true;
+        }
     }
 }
 
+// --- 게임 국가 및 객체 ---
 let balls = [
-    new Ball(200, 200, 'white', true), // 수구
-    new Ball(600, 200, 'red'),        // 적구 1
-    new Ball(600, 100, 'yellow')      // 적구 2
+    new Ball(canvas.width * 0.25, canvas.height * 0.5, 'white', true),
+    new Ball(canvas.width * 0.75, canvas.height * 0.5, 'red'),
+    new Ball(canvas.width * 0.75, canvas.height * 0.3, 'yellow')
 ];
 
-// 공끼리 충돌 처리 (완전 탄성 충돌 물리 공식)
-function resolveCollision(b1, b2) {
+// 공끼리 충돌 (이전 코드와 동일, 탄성 충돌)
+function resolveBallCollision(b1, b2) {
     const dx = b2.x - b1.x;
     const dy = b2.y - b1.y;
-    const distance = Math.hypot(dx, dy);
-
-    if (distance < b1.radius + b2.radius) {
-        // 겹침 해결 (공이 붙어버리는 현상 방지)
-        const overlap = (b1.radius + b2.radius - distance) / 2;
-        const nx = dx / distance; // 법선 벡터 x
-        const ny = dy / distance; // 법선 벡터 y
+    const dist = Math.hypot(dx, dy);
+    if (dist < b1.radius + b2.radius) {
+        const overlap = (b1.radius + b2.radius - dist) / 2;
+        const nx = dx / dist; const ny = dy / dist;
         b1.x -= nx * overlap; b1.y -= ny * overlap;
         b2.x += nx * overlap; b2.y += ny * overlap;
-
-        // 충돌 반응 (Relative Velocity)
         const v1n = b1.vx * nx + b1.vy * ny;
         const v2n = b2.vx * nx + b2.vy * ny;
-
-        // 반발 계수 적용하여 속도 교환
-        const m1 = b1.mass; const m2 = b2.mass;
-        const newV1n = (v1n * (m1 - m2) + 2 * m2 * v2n) / (m1 + m2) * ballElasticity;
-        const newV2n = (v2n * (m2 - m1) + 2 * m1 * v1n) / (m1 + m2) * ballElasticity;
-
-        b1.vx += (newV1n - v1n) * nx;
-        b1.vy += (newV1n - v1n) * ny;
-        b2.vx += (newV2n - v2n) * nx;
-        b2.vy += (newV2n - v2n) * ny;
+        const ballElasticity = 0.98;
+        const newV1n = v2n * ballElasticity; // 질량 같으므로 속도 교환
+        const newV2n = v1n * ballElasticity;
+        b1.vx += (newV1n - v1n) * nx; b1.vy += (newV1n - v1n) * ny;
+        b2.vx += (newV2n - v2n) * nx; b2.vy += (newV2n - v2n) * ny;
+        // 공끼리 충돌 시 스핀은 전달되지 않는다고 가정 (단순화)
     }
 }
 
-// 입력 처리
+// --- 입력 및 가이드라인 UI ---
 let dragStart = null;
 let mousePos = null;
 
 canvas.onmousedown = (e) => {
+    if (balls.some(b => b.vx !== 0 || b.vy !== 0)) return; // 공이 움직일 땐 타격 불가
     const rect = canvas.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
-    if (Math.hypot(mx - balls[0].x, my - balls[0].y) < 30 && balls[0].vx === 0) {
+    if (Math.hypot(mx - balls[0].x, my - balls[0].y) < balls[0].radius * 2) {
         dragStart = { x: mx, y: my };
     }
 };
@@ -122,38 +178,60 @@ window.onmouseup = () => {
     if (dragStart && mousePos) {
         const dx = dragStart.x - mousePos.x;
         const dy = dragStart.y - mousePos.y;
-        balls[0].vx = dx * 0.12;
-        balls[0].vy = dy * 0.12;
+        
+        // 타격 (속도 부여)
+        balls[0].vx = dx * 0.15;
+        balls[0].vy = dy * 0.15;
+        
+        // **[핵심] 스핀 부여**
+        // 마우스 드래그의 '비틀어짐' 정도를 이용해 임시로 스핀 구현
+        // 실제 당구처럼 당점을 정하는 UI가 없으므로, 비스듬히 치면 스핀이 걸리도록 함
+        const angle = Math.atan2(dy, dx);
+        const dragDist = Math.hypot(dx, dy);
+        // 힘이 강할수록, 그리고 큐 방향과 드래그 방향의 각도 차이가 클수록 스핀 발생
+        this.spin = (dx * Math.sin(angle) - dy * Math.cos(angle)) * 0.1; 
+        balls[0].spin = dragDist * 0.1; // 임시로 드래그 길이에 비례한 양수 스핀
+
     }
     dragStart = null;
 };
 
 window.onkeydown = (e) => { if (e.key.toLowerCase() === 'r') location.reload(); };
 
+// --- 메인 루프 ---
 function loop() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    // 가이드라인
+    // 가이드라인 & 조준 UI
     if (dragStart && mousePos) {
         ctx.beginPath();
         ctx.moveTo(balls[0].x, balls[0].y);
         ctx.lineTo(balls[0].x + (dragStart.x - mousePos.x), balls[0].y + (dragStart.y - mousePos.y));
-        ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+        ctx.lineWidth = 3;
         ctx.setLineDash([5, 5]);
         ctx.stroke();
         ctx.setLineDash([]);
     }
 
-    // 물리 업데이트
+    // 물리 및 그리기
     for (let i = 0; i < balls.length; i++) {
         for (let j = i + 1; j < balls.length; j++) {
-            resolveCollision(balls[i], balls[j]);
+            resolveBallCollision(balls[i], balls[j]);
         }
         balls[i].update();
         balls[i].draw();
     }
+
+    // 디버그 정보
+    const cue = balls[0];
+    const speed = Math.hypot(cue.vx, cue.vy).toFixed(1);
+    const spin = cue.spin.toFixed(1);
+    debugEl.innerText = `수구 상태: ${speed > 0 ? '이동 중' : '멈춤'} (속도: ${speed}, 스핀: ${spin})`;
+
     requestAnimationFrame(loop);
 }
+
 loop();
 </script>
 </body>
