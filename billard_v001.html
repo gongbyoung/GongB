@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Realistic 3-Ball Billiards</title>
+    <style>
+        body { background: #222; display: flex; flex-direction: column; align-items: center; color: white; font-family: sans-serif; }
+        canvas { background: #076324; border: 12px solid #3d2b1f; border-radius: 5px; box-shadow: 0 0 50px rgba(0,0,0,0.5); cursor: crosshair; }
+        .ui { margin: 20px; text-align: center; }
+        kbd { background: #444; padding: 2px 5px; border-radius: 3px; border: 1px solid #777; }
+    </style>
+</head>
+<body>
+    <div class="ui">
+        <h2>3구 당구 물리 시뮬레이터</h2>
+        <p>흰 공을 드래그하여 타격하세요. <kbd>R</kbd> 키로 리셋</p>
+    </div>
+    <canvas id="table" width="800" height="400"></canvas>
+
+<script>
+const canvas = document.getElementById('table');
+const ctx = canvas.getContext('2d');
+
+const friction = 0.992; // 구름 마찰력
+const wallElasticity = 0.8; // 벽 반발력
+const ballElasticity = 0.95; // 공끼리 충돌 반발력
+
+class Ball {
+    constructor(x, y, color, isCue = false) {
+        this.x = x; this.y = y;
+        this.color = color;
+        this.isCue = isCue;
+        this.radius = 12;
+        this.vx = 0; this.vy = 0;
+        this.mass = 1;
+    }
+
+    draw() {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fillStyle = this.color;
+        ctx.fill();
+        // 광택 효과
+        ctx.beginPath();
+        ctx.arc(this.x - 3, this.y - 3, 3, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        ctx.fill();
+        ctx.closePath();
+    }
+
+    update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.vx *= friction;
+        this.vy *= friction;
+
+        if (Math.hypot(this.vx, this.vy) < 0.1) { this.vx = 0; this.vy = 0; }
+
+        // 벽 충돌
+        if (this.x < this.radius) { this.x = this.radius; this.vx *= -wallElasticity; }
+        if (this.x > canvas.width - this.radius) { this.x = canvas.width - this.radius; this.vx *= -wallElasticity; }
+        if (this.y < this.radius) { this.y = this.radius; this.vy *= -wallElasticity; }
+        if (this.y > canvas.height - this.radius) { this.y = canvas.height - this.radius; this.vy *= -wallElasticity; }
+    }
+}
+
+let balls = [
+    new Ball(200, 200, 'white', true), // 수구
+    new Ball(600, 200, 'red'),        // 적구 1
+    new Ball(600, 100, 'yellow')      // 적구 2
+];
+
+// 공끼리 충돌 처리 (완전 탄성 충돌 물리 공식)
+function resolveCollision(b1, b2) {
+    const dx = b2.x - b1.x;
+    const dy = b2.y - b1.y;
+    const distance = Math.hypot(dx, dy);
+
+    if (distance < b1.radius + b2.radius) {
+        // 겹침 해결 (공이 붙어버리는 현상 방지)
+        const overlap = (b1.radius + b2.radius - distance) / 2;
+        const nx = dx / distance; // 법선 벡터 x
+        const ny = dy / distance; // 법선 벡터 y
+        b1.x -= nx * overlap; b1.y -= ny * overlap;
+        b2.x += nx * overlap; b2.y += ny * overlap;
+
+        // 충돌 반응 (Relative Velocity)
+        const v1n = b1.vx * nx + b1.vy * ny;
+        const v2n = b2.vx * nx + b2.vy * ny;
+
+        // 반발 계수 적용하여 속도 교환
+        const m1 = b1.mass; const m2 = b2.mass;
+        const newV1n = (v1n * (m1 - m2) + 2 * m2 * v2n) / (m1 + m2) * ballElasticity;
+        const newV2n = (v2n * (m2 - m1) + 2 * m1 * v1n) / (m1 + m2) * ballElasticity;
+
+        b1.vx += (newV1n - v1n) * nx;
+        b1.vy += (newV1n - v1n) * ny;
+        b2.vx += (newV2n - v2n) * nx;
+        b2.vy += (newV2n - v2n) * ny;
+    }
+}
+
+// 입력 처리
+let dragStart = null;
+let mousePos = null;
+
+canvas.onmousedown = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    if (Math.hypot(mx - balls[0].x, my - balls[0].y) < 30 && balls[0].vx === 0) {
+        dragStart = { x: mx, y: my };
+    }
+};
+
+canvas.onmousemove = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    mousePos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+};
+
+window.onmouseup = () => {
+    if (dragStart && mousePos) {
+        const dx = dragStart.x - mousePos.x;
+        const dy = dragStart.y - mousePos.y;
+        balls[0].vx = dx * 0.12;
+        balls[0].vy = dy * 0.12;
+    }
+    dragStart = null;
+};
+
+window.onkeydown = (e) => { if (e.key.toLowerCase() === 'r') location.reload(); };
+
+function loop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // 가이드라인
+    if (dragStart && mousePos) {
+        ctx.beginPath();
+        ctx.moveTo(balls[0].x, balls[0].y);
+        ctx.lineTo(balls[0].x + (dragStart.x - mousePos.x), balls[0].y + (dragStart.y - mousePos.y));
+        ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+        ctx.setLineDash([5, 5]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+
+    // 물리 업데이트
+    for (let i = 0; i < balls.length; i++) {
+        for (let j = i + 1; j < balls.length; j++) {
+            resolveCollision(balls[i], balls[j]);
+        }
+        balls[i].update();
+        balls[i].draw();
+    }
+    requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>
