@@ -5,381 +5,247 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Xenotactic v1.0.2</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script type="importmap">
-      {
-        "imports": {
-          "react": "https://esm.sh/react@18.2.0",
-          "react-dom": "https://esm.sh/react-dom@18.2.0",
-          "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-          "lucide-react": "https://esm.sh/lucide-react@0.284.0?external=react",
-          "framer-motion": "https://esm.sh/framer-motion@10.16.4?external=react",
-          "@google/genai": "https://esm.sh/@google/genai@0.1.0"
-        }
-      }
-    </script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #050505; color: white; margin: 0; overflow-x: hidden; }
+        body { font-family: 'Inter', sans-serif; background-color: #050505; color: white; margin: 0; overflow: hidden; }
         .font-mono { font-family: 'JetBrains Mono', monospace; }
         .scrollbar-hide::-webkit-scrollbar { display: none; }
-        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-        canvas { image-rendering: pixelated; background: #111; border-radius: 12px; }
+        canvas { image-rendering: pixelated; background: #111; border-radius: 12px; cursor: crosshair; }
+        .tower-card:hover { transform: translateY(-2px); border-color: rgba(255,255,255,0.2); }
     </style>
 </head>
 <body>
     <div id="root">
-        <div style="display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; font-family: sans-serif; color: #444; background: #050505;">
-            <div style="font-size: 24px; font-weight: bold; color: #fff; margin-bottom: 10px; letter-spacing: 2px;">XENOTACTIC</div>
-            <div style="font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 4px;">Initializing Defense Protocol...</div>
+        <div id="loading-screen" style="display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; background: #050505; color: white;">
+            <div style="font-size: 24px; font-weight: bold; margin-bottom: 10px; letter-spacing: 2px;">XENOTACTIC</div>
+            <div id="status-text" style="font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 4px;">Loading Defense Systems...</div>
+            <div id="error-log" style="margin-top: 20px; color: #ff4444; font-size: 10px; font-family: monospace; max-width: 80%; text-align: center;"></div>
         </div>
     </div>
 
-    <script type="module">
-        // 브라우저 환경에서 process.env 에러 방지
-        window.process = { env: {} };
+    <!-- 라이브러리 로드 (가장 안정적인 방식) -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
 
-        import React, { useEffect, useRef, useState, useCallback } from 'react';
-        import { createRoot } from 'react-dom/client';
-        import * as Lucide from 'lucide-react';
-        import { motion, AnimatePresence } from 'framer-motion';
+    <script>
+        // 에러 캡처 시스템
+        window.onerror = function(msg, url, line, col, error) {
+            const log = document.getElementById('error-log');
+            if (log) log.innerHTML = `ERROR: ${msg}<br>Line: ${line}`;
+            return false;
+        };
 
-        // --- A* Pathfinding ---
-        class AStarNode {
-          constructor(x, y) {
-            this.x = x; this.y = y; this.f = 0; this.g = 0; this.h = 0; this.parent = null;
-          }
+        const { useState, useEffect, useRef, useCallback } = React;
+
+        // --- A* 알고리즘 ---
+        function aStar(start, end, grid, w, h) {
+            const open = [{x: start.x, y: start.y, g:0, f:0, p:null}];
+            const closed = new Set();
+            const isInside = (x, y) => x >= 0 && x < w && y >= 0 && y < h;
+            while(open.length > 0) {
+                open.sort((a,b) => a.f - b.f);
+                const curr = open.shift();
+                if(curr.x === end.x && curr.y === end.y) {
+                    const path = []; let temp = curr;
+                    while(temp.p) { path.push({x: temp.x, y: temp.y}); temp = temp.p; }
+                    return path.reverse();
+                }
+                closed.add(`${curr.x},${curr.y}`);
+                [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}].forEach(n => {
+                    const nx = curr.x + n.x, ny = curr.y + n.y;
+                    if(!isInside(nx, ny) || grid[ny][nx] || closed.has(`${nx},${ny}`)) return;
+                    const g = curr.g + 1;
+                    const h = Math.abs(nx - end.x) + Math.abs(ny - end.y);
+                    const existing = open.find(o => o.x === nx && o.y === ny);
+                    if(!existing) open.push({x:nx, y:ny, g, f:g+h, p:curr});
+                    else if(g < existing.g) { existing.g = g; existing.f = g+h; existing.p = curr; }
+                });
+            }
+            return null;
         }
 
-        function aStar(start, end, grid, gridWidth, gridHeight) {
-          const openList = [];
-          const closedList = Array.from({ length: gridHeight }, () => Array(gridWidth).fill(false));
-          const isInside = (x, y) => x >= 0 && x < gridWidth && y >= 0 && y < gridHeight;
-          const startNode = new AStarNode(start.x, start.y);
-          const endNode = new AStarNode(end.x, end.y);
-          openList.push(startNode);
-          while (openList.length > 0) {
-            let lowIdx = 0;
-            for (let i = 0; i < openList.length; i++) { if (openList[i].f < openList[lowIdx].f) lowIdx = i; }
-            const currentNode = openList[lowIdx];
-            if (currentNode.x === endNode.x && currentNode.y === endNode.y) {
-              let curr = currentNode; const path = [];
-              while (curr.parent) { path.push({ x: curr.x, y: curr.y }); curr = curr.parent; }
-              return path.reverse();
-            }
-            openList.splice(lowIdx, 1);
-            closedList[currentNode.y][currentNode.x] = true;
-            const neighbors = [{ x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }];
-            for (const neighbor of neighbors) {
-              const nx = currentNode.x + neighbor.x; const ny = currentNode.y + neighbor.y;
-              if (!isInside(nx, ny) || grid[ny][nx] || closedList[ny][nx]) continue;
-              const gScore = currentNode.g + 1;
-              let gScoreIsBest = false;
-              let neighborNode = openList.find((n) => n.x === nx && n.y === ny);
-              if (!neighborNode) {
-                gScoreIsBest = true; neighborNode = new AStarNode(nx, ny);
-                neighborNode.h = Math.abs(nx - endNode.x) + Math.abs(ny - endNode.y);
-                openList.push(neighborNode);
-              } else if (gScore < neighborNode.g) { gScoreIsBest = true; }
-              if (gScoreIsBest) { neighborNode.parent = currentNode; neighborNode.g = gScore; neighborNode.f = neighborNode.g + neighborNode.h; }
-            }
-          }
-          return null;
-        }
-
-        // --- Constants ---
-        const APP_VERSION = '1.0.2';
+        // --- 데이터 ---
         const MAPS = {
-          CLASSIC: { id: 'CLASSIC', name: 'Classic 20x20', width: 20, height: 20, cellSize: 30, start: { x: 0, y: 9 }, end: { x: 19, y: 9 } },
-          FIELDRUNNER: { id: 'FIELDRUNNER', name: 'Fieldrunner 24x16', width: 24, height: 16, cellSize: 28, start: { x: 0, y: 7 }, end: { x: 23, y: 7 } },
-          ELITE: { id: 'ELITE', name: 'Xenotactic 32x32', width: 32, height: 32, cellSize: 20, start: { x: 0, y: 15 }, end: { x: 31, y: 15 } }
+            CLASSIC: { id: 'CLASSIC', name: 'Classic 20x20', width: 20, height: 20, cellSize: 30, start: { x: 0, y: 9 }, end: { x: 19, y: 9 } },
+            ELITE: { id: 'ELITE', name: 'Xenotactic 32x32', width: 32, height: 32, cellSize: 20, start: { x: 0, y: 15 }, end: { x: 31, y: 15 } }
         };
 
         const TOWER_DATA = {
-          BASIC: { cost: 10, range: 3, damage: 10, fireRate: 1000, color: '#4ade80', label: 'Basic', targets: ['GROUND'], icon: 'Crosshair' },
-          SNIPER: { cost: 25, range: 7, damage: 40, fireRate: 2500, color: '#60a5fa', label: 'Sniper', targets: ['GROUND', 'AIR'], icon: 'Target' },
-          SPLASH: { cost: 40, range: 2.5, damage: 15, fireRate: 1500, color: '#f472b6', label: 'Splash', targets: ['GROUND'], icon: 'Zap' },
-          MACHINE_GUN: { cost: 20, range: 3.5, damage: 4, fireRate: 150, color: '#fbbf24', label: 'Machine Gun', targets: ['GROUND', 'AIR'], icon: 'LayoutGrid' },
-          LASER: { cost: 60, range: 4, damage: 2, fireRate: 50, color: '#ef4444', label: 'Laser', targets: ['GROUND', 'AIR'], icon: 'Target' },
-          POISON: { cost: 35, range: 3, damage: 5, fireRate: 1200, color: '#a855f7', label: 'Poison', targets: ['GROUND'], icon: 'Skull' },
-          ELECTRIC: { cost: 50, range: 3.5, damage: 12, fireRate: 1000, color: '#06b6d4', label: 'Electric', targets: ['GROUND', 'AIR'], icon: 'Zap' },
-          ROCKET: { cost: 75, range: 6, damage: 50, fireRate: 3000, color: '#f97316', label: 'Rocket', targets: ['GROUND', 'AIR'], icon: 'ChevronRight' },
-          ANTI_AIR: { cost: 30, range: 5, damage: 25, fireRate: 1200, color: '#818cf8', label: 'Anti-Air', targets: ['AIR'], icon: 'Shield' },
+            BASIC: { cost: 10, range: 3, damage: 10, fireRate: 1000, color: '#4ade80', label: 'Basic', icon: 'crosshair' },
+            SNIPER: { cost: 25, range: 7, damage: 40, fireRate: 2500, color: '#60a5fa', label: 'Sniper', icon: 'target' },
+            MACHINE: { cost: 20, range: 3.5, damage: 4, fireRate: 150, color: '#fbbf24', label: 'M-Gun', icon: 'layout-grid' },
+            LASER: { cost: 60, range: 4, damage: 2, fireRate: 50, color: '#ef4444', label: 'Laser', icon: 'zap' },
+            POISON: { cost: 35, range: 3, damage: 5, fireRate: 1200, color: '#a855f7', label: 'Poison', icon: 'skull' }
         };
 
-        const ENEMY_TYPES = [
-          { name: 'SCOUT', healthMult: 0.8, speed: 1.2, reward: 4, color: '#ef4444', isAir: false },
-          { name: 'TANK', healthMult: 2.5, speed: 0.6, reward: 8, color: '#991b1b', isAir: false },
-          { name: 'SWIFT', healthMult: 0.6, speed: 1.8, reward: 5, color: '#f87171', isAir: false },
-          { name: 'PLANE', healthMult: 1.0, speed: 1.0, reward: 10, color: '#60a5fa', isAir: true },
-        ];
-
-        class Particle {
-          constructor(x, y, color, speed, angle, life, size) {
-            this.x = x; this.y = y; this.color = color;
-            this.vx = Math.cos(angle) * speed; this.vy = Math.sin(angle) * speed;
-            this.life = life; this.maxLife = life; this.size = size;
-          }
-          update() { this.x += this.vx; this.y += this.vy; this.life--; this.vx *= 0.95; this.vy *= 0.95; }
-          draw(ctx) {
-            const alpha = this.life / this.maxLife;
-            ctx.globalAlpha = alpha; ctx.fillStyle = this.color; ctx.beginPath();
-            ctx.arc(this.x, this.y, this.size * alpha, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
-          }
-        }
-
         function App() {
-          const [currentMap, setCurrentMap] = useState(MAPS.CLASSIC);
-          const [grid, setGrid] = useState([]);
-          const [towers, setTowers] = useState([]);
-          const [enemies, setEnemies] = useState([]);
-          const [projectiles, setProjectiles] = useState([]);
-          const [money, setMoney] = useState(100);
-          const [lives, setLives] = useState(20);
-          const [wave, setWave] = useState(0);
-          const [isPaused, setIsPaused] = useState(true);
-          const [selectedTowerType, setSelectedTowerType] = useState('BASIC');
-          const [currentPath, setCurrentPath] = useState([]);
-          const [gameOver, setGameOver] = useState(false);
-          const [combatHistory, setCombatHistory] = useState([]);
-          const [saveSlots, setSaveSlots] = useState([{ id: 1, data: null, date: null }, { id: 2, data: null, date: null }, { id: 3, data: null, date: null }]);
-          const [autoWaveCountdown, setAutoWaveCountdown] = useState(null);
-          const [selectedTowerIndex, setSelectedTowerIndex] = useState(null);
+            const [money, setMoney] = useState(100);
+            const [lives, setLives] = useState(20);
+            const [wave, setWave] = useState(0);
+            const [towers, setTowers] = useState([]);
+            const [enemies, setEnemies] = useState([]);
+            const [selectedType, setSelectedType] = useState('BASIC');
+            const [currentMap, setCurrentMap] = useState(MAPS.CLASSIC);
+            const [grid, setGrid] = useState([]);
+            const [path, setPath] = useState([]);
+            const [isPaused, setIsPaused] = useState(true);
 
-          const canvasRef = useRef(null);
-          const requestRef = useRef(null);
-          const lastTimeRef = useRef(0);
-          const enemyIdCounter = useRef(0);
-          const particlesRef = useRef([]);
+            const canvasRef = useRef(null);
+            const lastTime = useRef(0);
 
-          const createExplosion = useCallback((x, y, color, count = 10, size = 3) => {
-            for (let i = 0; i < count; i++) {
-              particlesRef.current.push(new Particle(x, y, color, Math.random() * 3 + 1, Math.random() * Math.PI * 2, 30 + Math.random() * 20, Math.random() * size + 1));
-            }
-          }, []);
+            useEffect(() => {
+                const newGrid = Array.from({ length: currentMap.height }, () => Array(currentMap.width).fill(false));
+                setGrid(newGrid);
+                setTowers([]);
+                setEnemies([]);
+                setPath(aStar(currentMap.start, currentMap.end, newGrid, currentMap.width, currentMap.height) || []);
+                setMoney(100); setLives(20); setWave(0); setIsPaused(true);
+            }, [currentMap]);
 
-          const updateSaveSlotsMetadata = useCallback(() => {
-            const newSlots = [1, 2, 3].map(id => {
-              const saved = localStorage.getItem(`xenotactic_save_${id}`);
-              if (saved) {
-                const parsed = JSON.parse(saved);
-                return { id, data: parsed, date: parsed.saveDate || 'Unknown' };
-              }
-              return { id, data: null, date: null };
-            });
-            setSaveSlots(newSlots);
-            const history = localStorage.getItem('xenotactic_history');
-            if (history) setCombatHistory(JSON.parse(history));
-          }, []);
+            const placeTower = (x, y) => {
+                if(grid[y][x] || (x === currentMap.start.x && y === currentMap.start.y)) return;
+                const cost = TOWER_DATA[selectedType].cost;
+                if(money < cost) return;
+                const newGrid = grid.map(r => [...r]); newGrid[y][x] = true;
+                const newPath = aStar(currentMap.start, currentMap.end, newGrid, currentMap.width, currentMap.height);
+                if(!newPath) return;
+                setGrid(newGrid); setPath(newPath); setMoney(m => m - cost);
+                setTowers(t => [...t, {x, y, type: selectedType, angle: 0, lastShot: 0}]);
+            };
 
-          useEffect(() => { updateSaveSlotsMetadata(); }, [updateSaveSlotsMetadata]);
-
-          const saveGame = (slotId) => {
-            const gameState = { money, lives, wave, towers, grid, currentMapId: currentMap.id, saveDate: new Date().toLocaleString() };
-            localStorage.setItem(`xenotactic_save_${slotId}`, JSON.stringify(gameState));
-            updateSaveSlotsMetadata();
-          };
-
-          const loadGame = (slotId) => {
-            const saved = localStorage.getItem(`xenotactic_save_${slotId}`);
-            if (!saved) return;
-            const state = JSON.parse(saved);
-            setMoney(state.money); setLives(state.lives); setWave(state.wave); setTowers(state.towers); setGrid(state.grid);
-            const map = MAPS[state.currentMapId] || MAPS.CLASSIC;
-            setCurrentMap(map);
-            const path = aStar(map.start, map.end, state.grid, map.width, map.height);
-            if (path) setCurrentPath(path);
-            setEnemies([]); setProjectiles([]); setIsPaused(true); setGameOver(false);
-          };
-
-          const initMap = useCallback((map) => {
-            const newGrid = Array.from({ length: map.height }, () => Array(map.width).fill(false));
-            setGrid(newGrid); setTowers([]); setEnemies([]); setProjectiles([]); particlesRef.current = [];
-            setMoney(100); setLives(20); setWave(0); setIsPaused(true); setGameOver(false); enemyIdCounter.current = 0;
-            const path = aStar(map.start, map.end, newGrid, map.width, map.height);
-            if (path) setCurrentPath(path);
-          }, []);
-
-          useEffect(() => { initMap(currentMap); }, [currentMap, initMap]);
-
-          const placeTower = (x, y) => {
-            if (gameOver || isPaused) return;
-            if (x === currentMap.start.x && y === currentMap.start.y) return;
-            if (x === currentMap.end.x && y === currentMap.end.y) return;
-            if (grid[y] && grid[y][x]) return;
-            const cost = TOWER_DATA[selectedTowerType].cost;
-            if (money < cost) return;
-            const newGrid = grid.map(row => [...row]);
-            newGrid[y][x] = true;
-            const path = aStar(currentMap.start, currentMap.end, newGrid, currentMap.width, currentMap.height);
-            if (!path) return;
-            setGrid(newGrid);
-            setTowers(prev => [...prev, { x, y, type: selectedTowerType, level: 1, cooldown: 0, lastShot: 0, angle: 0 }]);
-            setMoney(prev => prev - cost);
-            setCurrentPath(path);
-            createExplosion((x + 0.5) * currentMap.cellSize, (y + 0.5) * currentMap.cellSize, '#fff', 15, 2);
-          };
-
-          const sellTower = (index) => {
-            const tower = towers[index]; if (!tower) return;
-            const data = TOWER_DATA[tower.type];
-            const totalInvestment = data.cost + (tower.level - 1) * (data.cost * 0.8);
-            setMoney(prev => prev + Math.floor(totalInvestment * 0.7));
-            setTowers(prev => prev.filter((_, i) => i !== index));
-            const newGrid = grid.map(row => [...row]);
-            newGrid[tower.y][tower.x] = false;
-            setGrid(newGrid);
-            const path = aStar(currentMap.start, currentMap.end, newGrid, currentMap.width, currentMap.height);
-            if (path) setCurrentPath(path);
-            setSelectedTowerIndex(null);
-          };
-
-          const startWave = () => {
-            if (gameOver) return;
-            setWave(prev => prev + 1); setIsPaused(false); setAutoWaveCountdown(null);
-            const enemyCount = 5 + wave * 2;
-            const baseHealth = 20 + wave * 15;
-            const baseSpeed = 0.02 + Math.min(wave * 0.005, 0.05);
-            for (let i = 0; i < enemyCount; i++) {
-              setTimeout(() => {
-                const type = ENEMY_TYPES[Math.floor(Math.random() * ENEMY_TYPES.length)];
-                const health = baseHealth * type.healthMult;
-                setEnemies(prev => [...prev, {
-                  id: enemyIdCounter.current++, x: currentMap.start.x - 1, y: currentMap.start.y,
-                  health, maxHealth: health, speed: baseSpeed * type.speed, pathIndex: 0,
-                  path: type.isAir ? [] : currentPath, reward: Math.floor(type.reward * (1 + wave * 0.1)),
-                  type: type.name, isAir: type.isAir, color: type.color
-                }]);
-              }, i * 800);
-            }
-          };
-
-          const gameLoop = (time) => {
-            if (isPaused || gameOver) { lastTimeRef.current = time; requestRef.current = requestAnimationFrame(gameLoop); return; }
-            lastTimeRef.current = time;
-            particlesRef.current = particlesRef.current.filter(p => { p.update(); return p.life > 0; });
-            setEnemies(prev => prev.map(enemy => {
-              if (enemy.x < 0) return { ...enemy, x: enemy.x + enemy.speed };
-              if (enemy.pathIndex >= enemy.path.length) return { ...enemy, x: enemy.x + enemy.speed };
-              const target = enemy.path[enemy.pathIndex];
-              const dx = target.x - enemy.x; const dy = target.y - enemy.y;
-              const dist = Math.sqrt(dx * dx + dy * dy);
-              if (dist < enemy.speed) return { ...enemy, x: target.x, y: target.y, pathIndex: enemy.pathIndex + 1 };
-              return { ...enemy, x: enemy.x + (dx/dist)*enemy.speed, y: enemy.y + (dy/dist)*enemy.speed };
-            }).filter(enemy => {
-              if (enemy.x >= currentMap.width) { setLives(l => { if (l <= 1) setGameOver(true); return Math.max(0, l - 1); }); return false; }
-              return enemy.health > 0;
-            }));
-            setTowers(prev => {
-              prev.forEach(tower => {
-                const data = TOWER_DATA[tower.type];
-                const range = data.range * (1 + (tower.level - 1) * 0.1);
-                if (time - tower.lastShot > data.fireRate) {
-                  const target = enemies.find(e => Math.sqrt(Math.pow(e.x - tower.x, 2) + Math.pow(e.y - tower.y, 2)) <= range);
-                  if (target) {
-                    tower.lastShot = time; tower.angle = Math.atan2(target.y - tower.y, target.x - tower.x);
-                    setProjectiles(p => [...p, { x: tower.x + 0.5, y: tower.y + 0.5, targetId: target.id, speed: 0.3, damage: data.damage, type: tower.type }]);
-                  }
+            const startWave = () => {
+                setWave(w => w + 1); setIsPaused(false);
+                for(let i=0; i<10; i++) {
+                    setTimeout(() => {
+                        setEnemies(prev => [...prev, {
+                            id: Math.random(), x: currentMap.start.x, y: currentMap.start.y,
+                            hp: 20 + wave*10, maxHp: 20 + wave*10, speed: 0.03, pathIdx: 0
+                        }]);
+                    }, i * 800);
                 }
-              });
-              return [...prev];
-            });
-            setProjectiles(prev => prev.map(p => {
-              const target = enemies.find(e => e.id === p.targetId);
-              if (!target) return null;
-              const dx = target.x + 0.5 - p.x; const dy = target.y + 0.5 - p.y;
-              const dist = Math.sqrt(dx * dx + dy * dy);
-              if (dist < p.speed) { target.health -= p.damage; if (target.health <= 0) setMoney(m => m + target.reward); return null; }
-              return { ...p, x: p.x + (dx/dist)*p.speed, y: p.y + (dy/dist)*p.speed };
-            }).filter(Boolean));
-            requestRef.current = requestAnimationFrame(gameLoop);
-          };
+            };
 
-          useEffect(() => { requestRef.current = requestAnimationFrame(gameLoop); return () => cancelAnimationFrame(requestRef.current); }, [isPaused, gameOver, enemies]);
+            useEffect(() => {
+                const loop = (t) => {
+                    if(!isPaused) {
+                        setEnemies(prev => prev.map(e => {
+                            const target = path[e.pathIdx];
+                            if(!target) return {...e, x: e.x + e.speed};
+                            const dx = target.x - e.x, dy = target.y - e.y;
+                            const dist = Math.sqrt(dx*dx + dy*dy);
+                            if(dist < e.speed) return {...e, x: target.x, y: target.y, pathIdx: e.pathIdx + 1};
+                            return {...e, x: e.x + (dx/dist)*e.speed, y: e.y + (dy/dist)*e.speed};
+                        }).filter(e => {
+                            if(e.x >= currentMap.width) { setLives(l => l - 1); return false; }
+                            return e.hp > 0;
+                        }));
+                    }
+                    
+                    const ctx = canvasRef.current?.getContext('2d');
+                    if(ctx) {
+                        const cs = currentMap.cellSize;
+                        ctx.clearRect(0,0,2000,2000);
+                        // Grid
+                        ctx.strokeStyle = '#222'; ctx.lineWidth = 1;
+                        for(let i=0; i<=currentMap.width; i++) { ctx.beginPath(); ctx.moveTo(i*cs, 0); ctx.lineTo(i*cs, currentMap.height*cs); ctx.stroke(); }
+                        for(let i=0; i<=currentMap.height; i++) { ctx.beginPath(); ctx.moveTo(0, i*cs); ctx.lineTo(currentMap.width*cs, i*cs); ctx.stroke(); }
+                        // Path
+                        ctx.strokeStyle = 'rgba(0,255,0,0.1)'; ctx.lineWidth = 4; ctx.beginPath();
+                        ctx.moveTo(currentMap.start.x*cs+cs/2, currentMap.start.y*cs+cs/2);
+                        path.forEach(p => ctx.lineTo(p.x*cs+cs/2, p.y*cs+cs/2)); ctx.stroke();
+                        // Towers
+                        towers.forEach(tw => {
+                            ctx.fillStyle = TOWER_DATA[tw.type].color;
+                            ctx.fillRect(tw.x*cs+4, tw.y*cs+4, cs-8, cs-8);
+                        });
+                        // Enemies
+                        enemies.forEach(e => {
+                            ctx.fillStyle = '#ff4444'; ctx.beginPath(); ctx.arc((e.x+0.5)*cs, (e.y+0.5)*cs, cs/3, 0, Math.PI*2); ctx.fill();
+                        });
+                    }
+                    requestAnimationFrame(loop);
+                };
+                const anim = requestAnimationFrame(loop);
+                return () => cancelAnimationFrame(anim);
+            }, [isPaused, enemies, towers, path, currentMap]);
 
-          useEffect(() => {
-            const canvas = canvasRef.current; if (!canvas) return;
-            const ctx = canvas.getContext('2d'); if (!ctx) return;
-            const cs = currentMap.cellSize;
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.strokeStyle = '#2d2d2d'; ctx.lineWidth = 0.5;
-            for (let i = 0; i <= currentMap.width; i++) { ctx.beginPath(); ctx.moveTo(i * cs, 0); ctx.lineTo(i * cs, currentMap.height * cs); ctx.stroke(); }
-            for (let i = 0; i <= currentMap.height; i++) { ctx.beginPath(); ctx.moveTo(0, i * cs); ctx.lineTo(currentMap.width * cs, i * cs); ctx.stroke(); }
-            ctx.fillStyle = '#4ade80'; ctx.fillRect(currentMap.start.x * cs + 2, currentMap.start.y * cs + 2, cs - 4, cs - 4);
-            ctx.fillStyle = '#f87171'; ctx.fillRect(currentMap.end.x * cs + 2, currentMap.end.y * cs + 2, cs - 4, cs - 4);
-            towers.forEach(t => {
-              ctx.save(); ctx.translate(t.x * cs + cs / 2, t.y * cs + cs / 2); ctx.rotate(t.angle);
-              ctx.fillStyle = TOWER_DATA[t.type].color; ctx.beginPath(); ctx.roundRect(-cs/2+4, -cs/2+4, cs-8, cs-8, 4); ctx.fill();
-              ctx.fillStyle = '#333'; ctx.fillRect(0, -2, cs/2, 4); ctx.restore();
-            });
-            enemies.forEach(e => {
-              ctx.fillStyle = e.color; ctx.beginPath(); ctx.arc((e.x+0.5)*cs, (e.y+0.5)*cs, cs/3, 0, Math.PI*2); ctx.fill();
-              ctx.fillStyle = '#4ade80'; ctx.fillRect(e.x*cs, e.y*cs-5, cs*(e.health/e.maxHealth), 2);
-            });
-            projectiles.forEach(p => { ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(p.x*cs, p.y*cs, 3, 0, Math.PI*2); ctx.fill(); });
-            particlesRef.current.forEach(p => p.draw(ctx));
-          }, [enemies, towers, projectiles, currentMap]);
+            // 아이콘 렌더링 헬퍼
+            useEffect(() => { lucide.createIcons(); }, [money, selectedType]);
 
-          const Icon = ({ name, ...props }) => {
-            const LucideIcon = Lucide[name];
-            return LucideIcon ? React.createElement(LucideIcon, props) : null;
-          };
-
-          return (
-            <div className="min-h-screen bg-[#050505] text-white">
-              <header className="border-b border-white/5 bg-black/50 backdrop-blur-xl p-4">
-                <div className="max-w-7xl mx-auto flex justify-between items-center">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center"><Icon name="Shield" className="text-black" /></div>
-                    <div><h1 className="text-lg font-bold uppercase italic">Xenotactic v{APP_VERSION}</h1></div>
-                  </div>
-                  <div className="flex items-center gap-6">
-                    <div className="text-right"><p className="text-[10px] text-white/40">CREDITS</p><p className="text-xl font-mono text-yellow-500">${money}</p></div>
-                    <div className="text-right"><p className="text-[10px] text-white/40">LIVES</p><p className="text-xl font-mono text-red-500">{lives}</p></div>
-                    <button onClick={() => setIsPaused(!isPaused)} className="p-3 bg-white/5 rounded-xl border border-white/5">
-                      {isPaused ? <Icon name="Play" /> : <Icon name="Pause" />}
-                    </button>
-                  </div>
-                </div>
-              </header>
-
-              <main className="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-8">
-                <div className="flex flex-col items-center gap-6">
-                  <canvas ref={canvasRef} width={currentMap.width * currentMap.cellSize} height={currentMap.height * currentMap.cellSize} onClick={(e) => {
-                    const rect = canvasRef.current.getBoundingClientRect();
-                    placeTower(Math.floor((e.clientX - rect.left) / currentMap.cellSize), Math.floor((e.clientY - rect.top) / currentMap.cellSize));
-                  }} />
-                  
-                  <div className="w-full flex items-center justify-between bg-white/5 p-4 rounded-2xl border border-white/10 gap-4">
-                    <div className="flex-1 flex gap-2 overflow-x-auto scrollbar-hide">
-                      {Object.entries(TOWER_DATA).map(([type, data]) => (
-                        <button key={type} onClick={() => setSelectedTowerType(type)} className={`flex flex-col items-center p-2 rounded-xl border min-w-[70px] ${selectedTowerType === type ? 'bg-white/15 border-white/30' : 'bg-white/5 border-white/5'}`}>
-                          <Icon name={data.icon} style={{ color: data.color }} size={20} />
-                          <p className="text-[9px] font-bold mt-1">{data.label}</p>
-                          <p className="text-[9px] text-yellow-500">${data.cost}</p>
-                        </button>
-                      ))}
-                    </div>
-                    <button onClick={startWave} disabled={enemies.length > 0} className="px-6 py-3 bg-green-500 text-black font-bold rounded-xl disabled:opacity-50">NEXT WAVE</button>
-                  </div>
-                </div>
-
-                <aside className="space-y-6">
-                  <div className="bg-white/5 p-6 rounded-2xl border border-white/10">
-                    <h3 className="text-xs font-bold text-white/40 mb-4">MAP SELECTION</h3>
-                    <div className="grid gap-2">
-                      {Object.values(MAPS).map(m => (
-                        <button key={m.id} onClick={() => setCurrentMap(m)} className={`p-3 rounded-xl border text-xs ${currentMap.id === m.id ? 'bg-white/10 border-white/30' : 'border-white/5'}`}>{m.name}</button>
-                      ))}
-                    </div>
-                  </div>
-                </aside>
-              </main>
-            </div>
-          );
+            return React.createElement('div', { className: 'flex flex-col h-screen' },
+                // Header
+                React.createElement('header', { className: 'p-4 border-b border-white/10 flex justify-between items-center bg-black' },
+                    React.createElement('div', { className: 'flex items-center gap-3' },
+                        React.createElement('i', { 'data-lucide': 'shield', className: 'w-6 h-6 text-white' }),
+                        React.createElement('h1', { className: 'font-bold italic' }, `XENOTACTIC v${APP_VERSION}`)
+                    ),
+                    React.createElement('div', { className: 'flex gap-6 font-mono text-sm' },
+                        React.createElement('div', null, React.createElement('span', { className: 'text-white/40 mr-2' }, 'CREDITS'), React.createElement('span', { className: 'text-yellow-500' }, `$${money}`)),
+                        React.createElement('div', null, React.createElement('span', { className: 'text-white/40 mr-2' }, 'LIVES'), React.createElement('span', { className: 'text-red-500' }, lives))
+                    )
+                ),
+                // Main
+                React.createElement('main', { className: 'flex-1 flex p-6 gap-8 overflow-hidden' },
+                    React.createElement('div', { className: 'flex-1 flex flex-col items-center gap-6' },
+                        React.createElement('canvas', {
+                            ref: canvasRef,
+                            width: currentMap.width * currentMap.cellSize,
+                            height: currentMap.height * currentMap.cellSize,
+                            onClick: (e) => {
+                                const rect = canvasRef.current.getBoundingClientRect();
+                                const x = Math.floor((e.clientX - rect.left) / currentMap.cellSize);
+                                const y = Math.floor((e.clientY - rect.top) / currentMap.cellSize);
+                                placeTower(x, y);
+                            }
+                        }),
+                        // Bottom Bar
+                        React.createElement('div', { className: 'w-full bg-white/5 border border-white/10 p-4 rounded-2xl flex items-center justify-between gap-4' },
+                            React.createElement('div', { className: 'flex gap-2 overflow-x-auto scrollbar-hide' },
+                                Object.entries(TOWER_DATA).map(([type, data]) => 
+                                    React.createElement('button', {
+                                        key: type,
+                                        onClick: () => setSelectedType(type),
+                                        className: `flex flex-col items-center p-2 rounded-xl border transition-all min-w-[70px] tower-card ${selectedType === type ? 'bg-white/20 border-white/40' : 'bg-white/5 border-white/5'}`
+                                    },
+                                        React.createElement('i', { 'data-lucide': data.icon, style: { color: data.color }, className: 'w-5 h-5 mb-1' }),
+                                        React.createElement('span', { className: 'text-[9px] font-bold' }, data.label),
+                                        React.createElement('span', { className: 'text-[9px] text-yellow-500' }, `$${data.cost}`)
+                                    )
+                                )
+                            ),
+                            React.createElement('button', {
+                                onClick: startWave,
+                                disabled: enemies.length > 0,
+                                className: 'px-6 py-3 bg-green-500 text-black font-bold rounded-xl hover:bg-green-400 disabled:opacity-50 transition-all'
+                            }, 'NEXT WAVE')
+                        )
+                    ),
+                    // Sidebar
+                    React.createElement('aside', { className: 'w-64 space-y-6' },
+                        React.createElement('div', { className: 'bg-white/5 p-4 rounded-xl border border-white/10' },
+                            React.createElement('h3', { className: 'text-[10px] text-white/40 mb-3 tracking-widest' }, 'SECTOR SELECTION'),
+                            React.createElement('div', { className: 'grid gap-2' },
+                                Object.values(MAPS).map(m => 
+                                    React.createElement('button', {
+                                        key: m.id,
+                                        onClick: () => setCurrentMap(m),
+                                        className: `p-3 rounded-lg border text-xs transition-all ${currentMap.id === m.id ? 'bg-white/10 border-white/30' : 'border-white/5 hover:border-white/20'}`
+                                    }, m.name)
+                                )
+                            )
+                        )
+                    )
+                )
+            );
         }
 
-        const root = createRoot(document.getElementById('root'));
-        root.render(React.createElement(App));
+        // 초기화 및 렌더링
+        setTimeout(() => {
+            const root = ReactDOM.createRoot(document.getElementById('root'));
+            root.render(React.createElement(App));
+            document.getElementById('loading-screen').style.display = 'none';
+        }, 500);
     </script>
 </body>
 </html>
