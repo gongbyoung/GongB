@@ -9,74 +9,83 @@
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
         body { font-family: 'Inter', sans-serif; background-color: #050505; color: white; margin: 0; overflow: hidden; }
         .font-mono { font-family: 'JetBrains Mono', monospace; }
+        canvas { image-rendering: pixelated; background: #111; border-radius: 12px; cursor: crosshair; box-shadow: 0 0 40px rgba(0,0,0,0.5); }
+        .tower-card { transition: all 0.2s ease; }
+        .tower-card:hover:not(:disabled) { transform: translateY(-4px); background: rgba(255,255,255,0.15); border-color: rgba(255,255,255,0.3); }
         .scrollbar-hide::-webkit-scrollbar { display: none; }
-        canvas { image-rendering: pixelated; background: #111; border-radius: 12px; cursor: crosshair; }
-        .tower-card:hover { transform: translateY(-2px); border-color: rgba(255,255,255,0.2); }
     </style>
 </head>
 <body>
-    <div id="root">
-        <div id="loading-screen" style="display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; background: #050505; color: white;">
-            <div style="font-size: 24px; font-weight: bold; margin-bottom: 10px; letter-spacing: 2px;">XENOTACTIC</div>
-            <div id="status-text" style="font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 4px;">Loading Defense Systems...</div>
-            <div id="error-log" style="margin-top: 20px; color: #ff4444; font-size: 10px; font-family: monospace; max-width: 80%; text-align: center;"></div>
-        </div>
+    <div id="root"></div>
+
+    <!-- 로딩 화면 (React가 로드될 때까지 표시) -->
+    <div id="loading-overlay" style="position: fixed; inset: 0; background: #050505; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 9999;">
+        <div style="font-size: 24px; font-weight: 900; letter-spacing: 4px; color: #fff; margin-bottom: 10px; font-style: italic;">XENOTACTIC</div>
+        <div style="font-size: 10px; color: #444; text-transform: uppercase; letter-spacing: 3px;">Establishing Secure Connection...</div>
     </div>
 
-    <!-- 라이브러리 로드 (가장 안정적인 방식) -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
 
     <script>
-        // 에러 캡처 시스템
-        window.onerror = function(msg, url, line, col, error) {
-            const log = document.getElementById('error-log');
-            if (log) log.innerHTML = `ERROR: ${msg}<br>Line: ${line}`;
-            return false;
+        const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+        // --- 아이콘 데이터 (SVG) ---
+        const ICONS = {
+            Shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+            Zap: '<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>',
+            Target: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
+            Crosshair: '<circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/>',
+            Skull: '<path d="M9 10L9.01 10"/><path d="M15 10L15.01 10"/><path d="M12 2a8 8 0 0 0-8 8v2a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-1a1 1 0 0 1 1-1 2 2 0 0 0 2-2v-2a8 8 0 0 0-8-8z"/><path d="M10 18l4 0"/>',
+            Play: '<polygon points="5 3 19 12 5 21 5 3"/>',
+            Pause: '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>'
         };
 
-        const { useState, useEffect, useRef, useCallback } = React;
+        const Icon = ({ name, color = "currentColor", size = 20, className = "" }) => {
+            return React.createElement('svg', {
+                width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: color,
+                strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", className,
+                dangerouslySetInnerHTML: { __html: ICONS[name] || '' }
+            });
+        };
 
-        // --- A* 알고리즘 ---
+        // --- A* Pathfinding ---
         function aStar(start, end, grid, w, h) {
             const open = [{x: start.x, y: start.y, g:0, f:0, p:null}];
             const closed = new Set();
-            const isInside = (x, y) => x >= 0 && x < w && y >= 0 && y < h;
             while(open.length > 0) {
                 open.sort((a,b) => a.f - b.f);
                 const curr = open.shift();
                 if(curr.x === end.x && curr.y === end.y) {
-                    const path = []; let temp = curr;
-                    while(temp.p) { path.push({x: temp.x, y: temp.y}); temp = temp.p; }
+                    const path = []; let t = curr;
+                    while(t.p) { path.push({x: t.x, y: t.y}); t = t.p; }
                     return path.reverse();
                 }
                 closed.add(`${curr.x},${curr.y}`);
                 [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}].forEach(n => {
                     const nx = curr.x + n.x, ny = curr.y + n.y;
-                    if(!isInside(nx, ny) || grid[ny][nx] || closed.has(`${nx},${ny}`)) return;
-                    const g = curr.g + 1;
-                    const h = Math.abs(nx - end.x) + Math.abs(ny - end.y);
-                    const existing = open.find(o => o.x === nx && o.y === ny);
-                    if(!existing) open.push({x:nx, y:ny, g, f:g+h, p:curr});
-                    else if(g < existing.g) { existing.g = g; existing.f = g+h; existing.p = curr; }
+                    if(nx<0||nx>=w||ny<0||ny>=h||grid[ny][nx]||closed.has(`${nx},${ny}`)) return;
+                    const g = curr.g + 1, hVal = Math.abs(nx-end.x)+Math.abs(ny-end.y);
+                    const exist = open.find(o => o.x === nx && o.y === ny);
+                    if(!exist) open.push({x:nx, y:ny, g, f:g+hVal, p:curr});
+                    else if(g < exist.g) { exist.g = g; exist.f = g+hVal; exist.p = curr; }
                 });
             }
             return null;
         }
 
-        // --- 데이터 ---
+        // --- Constants ---
         const MAPS = {
             CLASSIC: { id: 'CLASSIC', name: 'Classic 20x20', width: 20, height: 20, cellSize: 30, start: { x: 0, y: 9 }, end: { x: 19, y: 9 } },
-            ELITE: { id: 'ELITE', name: 'Xenotactic 32x32', width: 32, height: 32, cellSize: 20, start: { x: 0, y: 15 }, end: { x: 31, y: 15 } }
+            ELITE: { id: 'ELITE', name: 'Elite 32x32', width: 32, height: 32, cellSize: 20, start: { x: 0, y: 15 }, end: { x: 31, y: 15 } }
         };
 
         const TOWER_DATA = {
-            BASIC: { cost: 10, range: 3, damage: 10, fireRate: 1000, color: '#4ade80', label: 'Basic', icon: 'crosshair' },
-            SNIPER: { cost: 25, range: 7, damage: 40, fireRate: 2500, color: '#60a5fa', label: 'Sniper', icon: 'target' },
-            MACHINE: { cost: 20, range: 3.5, damage: 4, fireRate: 150, color: '#fbbf24', label: 'M-Gun', icon: 'layout-grid' },
-            LASER: { cost: 60, range: 4, damage: 2, fireRate: 50, color: '#ef4444', label: 'Laser', icon: 'zap' },
-            POISON: { cost: 35, range: 3, damage: 5, fireRate: 1200, color: '#a855f7', label: 'Poison', icon: 'skull' }
+            BASIC: { cost: 10, range: 3, damage: 10, fireRate: 1000, color: '#4ade80', label: 'Basic', icon: 'Crosshair' },
+            SNIPER: { cost: 25, range: 7, damage: 40, fireRate: 2500, color: '#60a5fa', label: 'Sniper', icon: 'Target' },
+            MACHINE: { cost: 20, range: 3.5, damage: 4, fireRate: 150, color: '#fbbf24', label: 'M-Gun', icon: 'Zap' },
+            LASER: { cost: 60, range: 4, damage: 2, fireRate: 50, color: '#ef4444', label: 'Laser', icon: 'Target' },
+            POISON: { cost: 35, range: 3, damage: 5, fireRate: 1200, color: '#a855f7', label: 'Poison', icon: 'Skull' }
         };
 
         function App() {
@@ -87,29 +96,35 @@
             const [enemies, setEnemies] = useState([]);
             const [selectedType, setSelectedType] = useState('BASIC');
             const [currentMap, setCurrentMap] = useState(MAPS.CLASSIC);
-            const [grid, setGrid] = useState([]);
+            
+            // 안전한 초기화
+            const [grid, setGrid] = useState(() => Array.from({ length: 20 }, () => Array(20).fill(false)));
             const [path, setPath] = useState([]);
             const [isPaused, setIsPaused] = useState(true);
 
             const canvasRef = useRef(null);
-            const lastTime = useRef(0);
 
+            // 맵 변경 시 초기화
             useEffect(() => {
-                const newGrid = Array.from({ length: currentMap.height }, () => Array(currentMap.width).fill(false));
-                setGrid(newGrid);
+                const g = Array.from({ length: currentMap.height }, () => Array(currentMap.width).fill(false));
+                setGrid(g);
                 setTowers([]);
                 setEnemies([]);
-                setPath(aStar(currentMap.start, currentMap.end, newGrid, currentMap.width, currentMap.height) || []);
+                setPath(aStar(currentMap.start, currentMap.end, g, currentMap.width, currentMap.height) || []);
                 setMoney(100); setLives(20); setWave(0); setIsPaused(true);
+                // 로딩 화면 제거
+                const loader = document.getElementById('loading-overlay');
+                if(loader) loader.style.display = 'none';
             }, [currentMap]);
 
             const placeTower = (x, y) => {
+                if(x<0 || x>=currentMap.width || y<0 || y>=currentMap.height) return;
                 if(grid[y][x] || (x === currentMap.start.x && y === currentMap.start.y)) return;
                 const cost = TOWER_DATA[selectedType].cost;
                 if(money < cost) return;
                 const newGrid = grid.map(r => [...r]); newGrid[y][x] = true;
                 const newPath = aStar(currentMap.start, currentMap.end, newGrid, currentMap.width, currentMap.height);
-                if(!newPath) return;
+                if(!newPath) return; // 길 막힘
                 setGrid(newGrid); setPath(newPath); setMoney(m => m - cost);
                 setTowers(t => [...t, {x, y, type: selectedType, angle: 0, lastShot: 0}]);
             };
@@ -120,14 +135,15 @@
                     setTimeout(() => {
                         setEnemies(prev => [...prev, {
                             id: Math.random(), x: currentMap.start.x, y: currentMap.start.y,
-                            hp: 20 + wave*10, maxHp: 20 + wave*10, speed: 0.03, pathIdx: 0
+                            hp: 20 + wave*15, maxHp: 20 + wave*15, speed: 0.03, pathIdx: 0
                         }]);
                     }, i * 800);
                 }
             };
 
+            // 게임 루프
             useEffect(() => {
-                const loop = (t) => {
+                const loop = () => {
                     if(!isPaused) {
                         setEnemies(prev => prev.map(e => {
                             const target = path[e.pathIdx];
@@ -137,7 +153,7 @@
                             if(dist < e.speed) return {...e, x: target.x, y: target.y, pathIdx: e.pathIdx + 1};
                             return {...e, x: e.x + (dx/dist)*e.speed, y: e.y + (dy/dist)*e.speed};
                         }).filter(e => {
-                            if(e.x >= currentMap.width) { setLives(l => l - 1); return false; }
+                            if(e.x >= currentMap.width) { setLives(l => Math.max(0, l - 1)); return false; }
                             return e.hp > 0;
                         }));
                     }
@@ -150,44 +166,58 @@
                         ctx.strokeStyle = '#222'; ctx.lineWidth = 1;
                         for(let i=0; i<=currentMap.width; i++) { ctx.beginPath(); ctx.moveTo(i*cs, 0); ctx.lineTo(i*cs, currentMap.height*cs); ctx.stroke(); }
                         for(let i=0; i<=currentMap.height; i++) { ctx.beginPath(); ctx.moveTo(0, i*cs); ctx.lineTo(currentMap.width*cs, i*cs); ctx.stroke(); }
+                        // Start/End
+                        ctx.fillStyle = '#4ade8033'; ctx.fillRect(currentMap.start.x*cs, currentMap.start.y*cs, cs, cs);
+                        ctx.fillStyle = '#f8717133'; ctx.fillRect(currentMap.end.x*cs, currentMap.end.y*cs, cs, cs);
                         // Path
-                        ctx.strokeStyle = 'rgba(0,255,0,0.1)'; ctx.lineWidth = 4; ctx.beginPath();
+                        ctx.strokeStyle = 'rgba(74, 222, 128, 0.15)'; ctx.lineWidth = 4; ctx.beginPath();
                         ctx.moveTo(currentMap.start.x*cs+cs/2, currentMap.start.y*cs+cs/2);
                         path.forEach(p => ctx.lineTo(p.x*cs+cs/2, p.y*cs+cs/2)); ctx.stroke();
                         // Towers
                         towers.forEach(tw => {
                             ctx.fillStyle = TOWER_DATA[tw.type].color;
-                            ctx.fillRect(tw.x*cs+4, tw.y*cs+4, cs-8, cs-8);
+                            ctx.beginPath(); ctx.roundRect(tw.x*cs+4, tw.y*cs+4, cs-8, cs-8, 4); ctx.fill();
                         });
                         // Enemies
                         enemies.forEach(e => {
                             ctx.fillStyle = '#ff4444'; ctx.beginPath(); ctx.arc((e.x+0.5)*cs, (e.y+0.5)*cs, cs/3, 0, Math.PI*2); ctx.fill();
+                            ctx.fillStyle = '#000'; ctx.fillRect(e.x*cs+4, e.y*cs-4, cs-8, 2);
+                            ctx.fillStyle = '#4ade80'; ctx.fillRect(e.x*cs+4, e.y*cs-4, (cs-8)*(e.hp/e.maxHp), 2);
                         });
                     }
-                    requestAnimationFrame(loop);
+                    requestRef.current = requestAnimationFrame(loop);
                 };
-                const anim = requestAnimationFrame(loop);
-                return () => cancelAnimationFrame(anim);
+                requestRef.current = requestAnimationFrame(loop);
+                return () => cancelAnimationFrame(requestRef.current);
             }, [isPaused, enemies, towers, path, currentMap]);
 
-            // 아이콘 렌더링 헬퍼
-            useEffect(() => { lucide.createIcons(); }, [money, selectedType]);
+            const requestRef = useRef();
 
-            return React.createElement('div', { className: 'flex flex-col h-screen' },
+            return React.createElement('div', { className: 'flex flex-col h-screen bg-[#050505]' },
                 // Header
-                React.createElement('header', { className: 'p-4 border-b border-white/10 flex justify-between items-center bg-black' },
+                React.createElement('header', { className: 'p-4 border-b border-white/5 bg-black/50 backdrop-blur-xl flex justify-between items-center' },
                     React.createElement('div', { className: 'flex items-center gap-3' },
-                        React.createElement('i', { 'data-lucide': 'shield', className: 'w-6 h-6 text-white' }),
-                        React.createElement('h1', { className: 'font-bold italic' }, `XENOTACTIC v${APP_VERSION}`)
+                        React.createElement(Icon, { name: 'Shield', className: 'text-white' }),
+                        React.createElement('h1', { className: 'font-black italic tracking-tighter text-lg' }, `XENOTACTIC v1.0.2`)
                     ),
-                    React.createElement('div', { className: 'flex gap-6 font-mono text-sm' },
-                        React.createElement('div', null, React.createElement('span', { className: 'text-white/40 mr-2' }, 'CREDITS'), React.createElement('span', { className: 'text-yellow-500' }, `$${money}`)),
-                        React.createElement('div', null, React.createElement('span', { className: 'text-white/40 mr-2' }, 'LIVES'), React.createElement('span', { className: 'text-red-500' }, lives))
+                    React.createElement('div', { className: 'flex gap-8 font-mono' },
+                        React.createElement('div', { className: 'text-right' }, 
+                            React.createElement('p', { className: 'text-[9px] text-white/30 tracking-widest' }, 'CREDITS'),
+                            React.createElement('p', { className: 'text-yellow-500 font-bold' }, `$${money}`)
+                        ),
+                        React.createElement('div', { className: 'text-right' }, 
+                            React.createElement('p', { className: 'text-[9px] text-white/30 tracking-widest' }, 'LIVES'),
+                            React.createElement('p', { className: 'text-red-500 font-bold' }, lives)
+                        ),
+                        React.createElement('button', { 
+                            onClick: () => setIsPaused(!isPaused),
+                            className: 'p-2 bg-white/5 rounded-lg border border-white/10 hover:bg-white/10'
+                        }, React.createElement(Icon, { name: isPaused ? 'Play' : 'Pause' }))
                     )
                 ),
                 // Main
-                React.createElement('main', { className: 'flex-1 flex p-6 gap-8 overflow-hidden' },
-                    React.createElement('div', { className: 'flex-1 flex flex-col items-center gap-6' },
+                React.createElement('main', { className: 'flex-1 flex p-6 gap-8 overflow-hidden justify-center' },
+                    React.createElement('div', { className: 'flex flex-col items-center gap-6' },
                         React.createElement('canvas', {
                             ref: canvasRef,
                             width: currentMap.width * currentMap.cellSize,
@@ -200,37 +230,42 @@
                             }
                         }),
                         // Bottom Bar
-                        React.createElement('div', { className: 'w-full bg-white/5 border border-white/10 p-4 rounded-2xl flex items-center justify-between gap-4' },
-                            React.createElement('div', { className: 'flex gap-2 overflow-x-auto scrollbar-hide' },
+                        React.createElement('div', { className: 'w-full max-w-4xl bg-white/5 border border-white/10 p-4 rounded-2xl flex items-center justify-between gap-6' },
+                            React.createElement('div', { className: 'flex items-center gap-3 min-w-[140px]' },
+                                React.createElement('div', { className: 'p-2 bg-white/10 rounded-lg' }, React.createElement(Icon, { name: 'Shield', size: 16, color: '#60a5fa' })),
+                                React.createElement('div', null, React.createElement('p', { className: 'text-[10px] font-bold uppercase' }, 'Mazing Strategy'), React.createElement('p', { className: 'text-[9px] text-white/40' }, 'Block the path.'))
+                            ),
+                            React.createElement('div', { className: 'flex-1 flex gap-2 overflow-x-auto scrollbar-hide px-4 border-x border-white/5' },
                                 Object.entries(TOWER_DATA).map(([type, data]) => 
                                     React.createElement('button', {
                                         key: type,
                                         onClick: () => setSelectedType(type),
-                                        className: `flex flex-col items-center p-2 rounded-xl border transition-all min-w-[70px] tower-card ${selectedType === type ? 'bg-white/20 border-white/40' : 'bg-white/5 border-white/5'}`
+                                        disabled: money < data.cost,
+                                        className: `flex flex-col items-center p-2 rounded-xl border transition-all min-w-[75px] tower-card ${selectedType === type ? 'bg-white/20 border-white/40 shadow-lg' : 'bg-white/5 border-white/5'} ${money < data.cost ? 'opacity-30' : ''}`
                                     },
-                                        React.createElement('i', { 'data-lucide': data.icon, style: { color: data.color }, className: 'w-5 h-5 mb-1' }),
+                                        React.createElement(Icon, { name: data.icon, color: data.color, size: 18, className: 'mb-1' }),
                                         React.createElement('span', { className: 'text-[9px] font-bold' }, data.label),
-                                        React.createElement('span', { className: 'text-[9px] text-yellow-500' }, `$${data.cost}`)
+                                        React.createElement('span', { className: 'text-[9px] text-yellow-500 font-mono' }, `$${data.cost}`)
                                     )
                                 )
                             ),
                             React.createElement('button', {
                                 onClick: startWave,
                                 disabled: enemies.length > 0,
-                                className: 'px-6 py-3 bg-green-500 text-black font-bold rounded-xl hover:bg-green-400 disabled:opacity-50 transition-all'
+                                className: 'px-6 py-3 bg-green-500 text-black font-bold rounded-xl hover:bg-green-400 disabled:opacity-30 transition-all text-sm shadow-[0_0_20px_rgba(34,197,94,0.2)]'
                             }, 'NEXT WAVE')
                         )
                     ),
                     // Sidebar
                     React.createElement('aside', { className: 'w-64 space-y-6' },
-                        React.createElement('div', { className: 'bg-white/5 p-4 rounded-xl border border-white/10' },
-                            React.createElement('h3', { className: 'text-[10px] text-white/40 mb-3 tracking-widest' }, 'SECTOR SELECTION'),
+                        React.createElement('div', { className: 'bg-white/5 p-5 rounded-2xl border border-white/10' },
+                            React.createElement('h3', { className: 'text-[10px] font-bold text-white/30 mb-4 tracking-[0.2em]' }, 'SECTOR SELECTION'),
                             React.createElement('div', { className: 'grid gap-2' },
                                 Object.values(MAPS).map(m => 
                                     React.createElement('button', {
                                         key: m.id,
                                         onClick: () => setCurrentMap(m),
-                                        className: `p-3 rounded-lg border text-xs transition-all ${currentMap.id === m.id ? 'bg-white/10 border-white/30' : 'border-white/5 hover:border-white/20'}`
+                                        className: `p-3 rounded-xl border text-xs font-bold transition-all ${currentMap.id === m.id ? 'bg-white/10 border-white/40 text-white' : 'border-white/5 text-white/40 hover:border-white/20'}`
                                     }, m.name)
                                 )
                             )
@@ -240,12 +275,9 @@
             );
         }
 
-        // 초기화 및 렌더링
-        setTimeout(() => {
-            const root = ReactDOM.createRoot(document.getElementById('root'));
-            root.render(React.createElement(App));
-            document.getElementById('loading-screen').style.display = 'none';
-        }, 500);
+        // 렌더링 시작
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(React.createElement(App));
     </script>
 </body>
 </html>
