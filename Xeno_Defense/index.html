@@ -17,11 +17,9 @@
 </head>
 <body>
     <div id="root"></div>
-
-    <!-- 로딩 화면 (React가 로드될 때까지 표시) -->
     <div id="loading-overlay" style="position: fixed; inset: 0; background: #050505; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 9999;">
         <div style="font-size: 24px; font-weight: 900; letter-spacing: 4px; color: #fff; margin-bottom: 10px; font-style: italic;">XENOTACTIC</div>
-        <div style="font-size: 10px; color: #444; text-transform: uppercase; letter-spacing: 3px;">Establishing Secure Connection...</div>
+        <div style="font-size: 10px; color: #444; text-transform: uppercase; letter-spacing: 3px;">Loading Combat Systems...</div>
     </div>
 
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -38,7 +36,10 @@
             Crosshair: '<circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/>',
             Skull: '<path d="M9 10L9.01 10"/><path d="M15 10L15.01 10"/><path d="M12 2a8 8 0 0 0-8 8v2a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-1a1 1 0 0 1 1-1 2 2 0 0 0 2-2v-2a8 8 0 0 0-8-8z"/><path d="M10 18l4 0"/>',
             Play: '<polygon points="5 3 19 12 5 21 5 3"/>',
-            Pause: '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>'
+            Pause: '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>',
+            Info: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>',
+            X: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+            History: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>'
         };
 
         const Icon = ({ name, color = "currentColor", size = 20, className = "" }) => {
@@ -94,39 +95,58 @@
             const [wave, setWave] = useState(0);
             const [towers, setTowers] = useState([]);
             const [enemies, setEnemies] = useState([]);
+            const [projectiles, setProjectiles] = useState([]);
             const [selectedType, setSelectedType] = useState('BASIC');
+            const [selectedIdx, setSelectedIdx] = useState(null);
             const [currentMap, setCurrentMap] = useState(MAPS.CLASSIC);
-            
-            // 안전한 초기화
             const [grid, setGrid] = useState(() => Array.from({ length: 20 }, () => Array(20).fill(false)));
             const [path, setPath] = useState([]);
             const [isPaused, setIsPaused] = useState(true);
+            const [saveSlots, setSaveSlots] = useState([
+                { id: 1, date: localStorage.getItem('save_1_date') },
+                { id: 2, date: localStorage.getItem('save_2_date') },
+                { id: 3, date: localStorage.getItem('save_3_date') }
+            ]);
 
             const canvasRef = useRef(null);
+            const requestRef = useRef();
 
-            // 맵 변경 시 초기화
+            // 초기화
             useEffect(() => {
                 const g = Array.from({ length: currentMap.height }, () => Array(currentMap.width).fill(false));
-                setGrid(g);
-                setTowers([]);
-                setEnemies([]);
+                setGrid(g); setTowers([]); setEnemies([]); setProjectiles([]);
                 setPath(aStar(currentMap.start, currentMap.end, g, currentMap.width, currentMap.height) || []);
                 setMoney(100); setLives(20); setWave(0); setIsPaused(true);
-                // 로딩 화면 제거
-                const loader = document.getElementById('loading-overlay');
-                if(loader) loader.style.display = 'none';
+                document.getElementById('loading-overlay').style.display = 'none';
             }, [currentMap]);
 
             const placeTower = (x, y) => {
                 if(x<0 || x>=currentMap.width || y<0 || y>=currentMap.height) return;
+                const existing = towers.findIndex(t => t.x === x && t.y === y);
+                if(existing !== -1) { setSelectedIdx(existing); return; }
+                
                 if(grid[y][x] || (x === currentMap.start.x && y === currentMap.start.y)) return;
                 const cost = TOWER_DATA[selectedType].cost;
                 if(money < cost) return;
+                
                 const newGrid = grid.map(r => [...r]); newGrid[y][x] = true;
                 const newPath = aStar(currentMap.start, currentMap.end, newGrid, currentMap.width, currentMap.height);
-                if(!newPath) return; // 길 막힘
+                if(!newPath) return;
+                
                 setGrid(newGrid); setPath(newPath); setMoney(m => m - cost);
-                setTowers(t => [...t, {x, y, type: selectedType, angle: 0, lastShot: 0}]);
+                setTowers(t => [...t, {x, y, type: selectedType, level: 1, lastShot: 0}]);
+                setSelectedIdx(towers.length);
+            };
+
+            const sellTower = (idx) => {
+                const t = towers[idx];
+                const refund = Math.floor(TOWER_DATA[t.type].cost * 0.7);
+                setMoney(m => m + refund);
+                setTowers(prev => prev.filter((_, i) => i !== idx));
+                const newGrid = grid.map(r => [...r]); newGrid[t.y][t.x] = false;
+                setGrid(newGrid);
+                setPath(aStar(currentMap.start, currentMap.end, newGrid, currentMap.width, currentMap.height));
+                setSelectedIdx(null);
             };
 
             const startWave = () => {
@@ -141,10 +161,26 @@
                 }
             };
 
-            // 게임 루프
+            const saveGame = (id) => {
+                const date = new Date().toLocaleString();
+                localStorage.setItem(`save_${id}`, JSON.stringify({ money, lives, wave, towers, grid, currentMapId: currentMap.id }));
+                localStorage.setItem(`save_${id}_date`, date);
+                setSaveSlots(prev => prev.map(s => s.id === id ? { ...s, date } : s));
+            };
+
+            const loadGame = (id) => {
+                const data = JSON.parse(localStorage.getItem(`save_${id}`));
+                if(!data) return;
+                setMoney(data.money); setLives(data.lives); setWave(data.wave); setTowers(data.towers); setGrid(data.grid);
+                setCurrentMap(MAPS[data.currentMapId] || MAPS.CLASSIC);
+                setIsPaused(true); setEnemies([]); setProjectiles([]);
+            };
+
+            // 게임 루프 (공격 로직 포함)
             useEffect(() => {
-                const loop = () => {
+                const loop = (time) => {
                     if(!isPaused) {
+                        // 적 이동
                         setEnemies(prev => prev.map(e => {
                             const target = path[e.pathIdx];
                             if(!target) return {...e, x: e.x + e.speed};
@@ -156,8 +192,35 @@
                             if(e.x >= currentMap.width) { setLives(l => Math.max(0, l - 1)); return false; }
                             return e.hp > 0;
                         }));
+
+                        // 타워 공격
+                        towers.forEach((tw, idx) => {
+                            const data = TOWER_DATA[tw.type];
+                            if(time - tw.lastShot > data.fireRate) {
+                                const target = enemies.find(e => Math.sqrt(Math.pow(e.x - tw.x, 2) + Math.pow(e.y - tw.y, 2)) <= data.range);
+                                if(target) {
+                                    tw.lastShot = time;
+                                    setProjectiles(p => [...p, { x: tw.x+0.5, y: tw.y+0.5, targetId: target.id, damage: data.damage, speed: 0.2, color: data.color }]);
+                                }
+                            }
+                        });
+
+                        // 투사체 이동 및 충돌
+                        setProjectiles(prev => prev.map(p => {
+                            const target = enemies.find(e => e.id === p.targetId);
+                            if(!target) return null;
+                            const dx = target.x+0.5 - p.x, dy = target.y+0.5 - p.y;
+                            const dist = Math.sqrt(dx*dx + dy*dy);
+                            if(dist < p.speed) {
+                                target.hp -= p.damage;
+                                if(target.hp <= 0) setMoney(m => m + 5);
+                                return null;
+                            }
+                            return { ...p, x: p.x + (dx/dist)*p.speed, y: p.y + (dy/dist)*p.speed };
+                        }).filter(Boolean));
                     }
                     
+                    // 그리기
                     const ctx = canvasRef.current?.getContext('2d');
                     if(ctx) {
                         const cs = currentMap.cellSize;
@@ -166,32 +229,36 @@
                         ctx.strokeStyle = '#222'; ctx.lineWidth = 1;
                         for(let i=0; i<=currentMap.width; i++) { ctx.beginPath(); ctx.moveTo(i*cs, 0); ctx.lineTo(i*cs, currentMap.height*cs); ctx.stroke(); }
                         for(let i=0; i<=currentMap.height; i++) { ctx.beginPath(); ctx.moveTo(0, i*cs); ctx.lineTo(currentMap.width*cs, i*cs); ctx.stroke(); }
-                        // Start/End
-                        ctx.fillStyle = '#4ade8033'; ctx.fillRect(currentMap.start.x*cs, currentMap.start.y*cs, cs, cs);
-                        ctx.fillStyle = '#f8717133'; ctx.fillRect(currentMap.end.x*cs, currentMap.end.y*cs, cs, cs);
                         // Path
-                        ctx.strokeStyle = 'rgba(74, 222, 128, 0.15)'; ctx.lineWidth = 4; ctx.beginPath();
+                        ctx.strokeStyle = 'rgba(74, 222, 128, 0.1)'; ctx.lineWidth = 4; ctx.beginPath();
                         ctx.moveTo(currentMap.start.x*cs+cs/2, currentMap.start.y*cs+cs/2);
                         path.forEach(p => ctx.lineTo(p.x*cs+cs/2, p.y*cs+cs/2)); ctx.stroke();
                         // Towers
-                        towers.forEach(tw => {
+                        towers.forEach((tw, i) => {
                             ctx.fillStyle = TOWER_DATA[tw.type].color;
-                            ctx.beginPath(); ctx.roundRect(tw.x*cs+4, tw.y*cs+4, cs-8, cs-8, 4); ctx.fill();
+                            ctx.beginPath(); ctx.roundRect(tw.x*cs+4, tw.y*cs+4, cs-8, cs-8, 6); ctx.fill();
+                            if(selectedIdx === i) {
+                                ctx.strokeStyle = 'white'; ctx.lineWidth = 2; ctx.stroke();
+                                ctx.beginPath(); ctx.arc(tw.x*cs+cs/2, tw.y*cs+cs/2, TOWER_DATA[tw.type].range*cs, 0, Math.PI*2);
+                                ctx.fillStyle = 'rgba(255,255,255,0.05)'; ctx.fill(); ctx.stroke();
+                            }
                         });
                         // Enemies
                         enemies.forEach(e => {
                             ctx.fillStyle = '#ff4444'; ctx.beginPath(); ctx.arc((e.x+0.5)*cs, (e.y+0.5)*cs, cs/3, 0, Math.PI*2); ctx.fill();
-                            ctx.fillStyle = '#000'; ctx.fillRect(e.x*cs+4, e.y*cs-4, cs-8, 2);
-                            ctx.fillStyle = '#4ade80'; ctx.fillRect(e.x*cs+4, e.y*cs-4, (cs-8)*(e.hp/e.maxHp), 2);
+                            ctx.fillStyle = '#000'; ctx.fillRect(e.x*cs+4, e.y*cs-6, cs-8, 3);
+                            ctx.fillStyle = '#4ade80'; ctx.fillRect(e.x*cs+4, e.y*cs-6, (cs-8)*(e.hp/e.maxHp), 3);
+                        });
+                        // Projectiles
+                        projectiles.forEach(p => {
+                            ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x*cs, p.y*cs, 3, 0, Math.PI*2); ctx.fill();
                         });
                     }
                     requestRef.current = requestAnimationFrame(loop);
                 };
                 requestRef.current = requestAnimationFrame(loop);
                 return () => cancelAnimationFrame(requestRef.current);
-            }, [isPaused, enemies, towers, path, currentMap]);
-
-            const requestRef = useRef();
+            }, [isPaused, enemies, towers, path, currentMap, selectedIdx, projectiles]);
 
             return React.createElement('div', { className: 'flex flex-col h-screen bg-[#050505]' },
                 // Header
@@ -218,21 +285,37 @@
                 // Main
                 React.createElement('main', { className: 'flex-1 flex p-6 gap-8 overflow-hidden justify-center' },
                     React.createElement('div', { className: 'flex flex-col items-center gap-6' },
-                        React.createElement('canvas', {
-                            ref: canvasRef,
-                            width: currentMap.width * currentMap.cellSize,
-                            height: currentMap.height * currentMap.cellSize,
-                            onClick: (e) => {
-                                const rect = canvasRef.current.getBoundingClientRect();
-                                const x = Math.floor((e.clientX - rect.left) / currentMap.cellSize);
-                                const y = Math.floor((e.clientY - rect.top) / currentMap.cellSize);
-                                placeTower(x, y);
-                            }
-                        }),
+                        React.createElement('div', { className: 'relative' },
+                            React.createElement('canvas', {
+                                ref: canvasRef,
+                                width: currentMap.width * currentMap.cellSize,
+                                height: currentMap.height * currentMap.cellSize,
+                                onClick: (e) => {
+                                    const rect = canvasRef.current.getBoundingClientRect();
+                                    placeTower(Math.floor((e.clientX - rect.left) / currentMap.cellSize), Math.floor((e.clientY - rect.top) / currentMap.cellSize));
+                                }
+                            }),
+                            // Upgrade Panel
+                            selectedIdx !== null && React.createElement('div', { className: 'absolute bottom-4 left-4 right-4 bg-black/90 border border-white/20 p-4 rounded-xl flex items-center justify-between backdrop-blur-md' },
+                                React.createElement('div', { className: 'flex items-center gap-4' },
+                                    React.createElement('div', { className: 'w-10 h-10 rounded-lg flex items-center justify-center', style: { background: TOWER_DATA[towers[selectedIdx].type].color + '22' } },
+                                        React.createElement(Icon, { name: TOWER_DATA[towers[selectedIdx].type].icon, color: TOWER_DATA[towers[selectedIdx].type].color })
+                                    ),
+                                    React.createElement('div', null,
+                                        React.createElement('p', { className: 'font-bold text-sm' }, TOWER_DATA[towers[selectedIdx].type].label),
+                                        React.createElement('p', { className: 'text-[10px] text-white/40' }, `LVL ${towers[selectedIdx].level}`)
+                                    )
+                                ),
+                                React.createElement('div', { className: 'flex gap-2' },
+                                    React.createElement('button', { onClick: () => sellTower(selectedIdx), className: 'px-4 py-2 bg-red-500/20 text-red-500 border border-red-500/30 rounded-lg text-xs font-bold' }, 'SELL'),
+                                    React.createElement('button', { onClick: () => setSelectedIdx(null), className: 'p-2 hover:bg-white/10 rounded-lg' }, React.createElement(Icon, { name: 'X', size: 16 }))
+                                )
+                            )
+                        ),
                         // Bottom Bar
                         React.createElement('div', { className: 'w-full max-w-4xl bg-white/5 border border-white/10 p-4 rounded-2xl flex items-center justify-between gap-6' },
                             React.createElement('div', { className: 'flex items-center gap-3 min-w-[140px]' },
-                                React.createElement('div', { className: 'p-2 bg-white/10 rounded-lg' }, React.createElement(Icon, { name: 'Shield', size: 16, color: '#60a5fa' })),
+                                React.createElement('div', { className: 'p-2 bg-white/10 rounded-lg' }, React.createElement(Icon, { name: 'Info', size: 16, color: '#60a5fa' })),
                                 React.createElement('div', null, React.createElement('p', { className: 'text-[10px] font-bold uppercase' }, 'Mazing Strategy'), React.createElement('p', { className: 'text-[9px] text-white/40' }, 'Block the path.'))
                             ),
                             React.createElement('div', { className: 'flex-1 flex gap-2 overflow-x-auto scrollbar-hide px-4 border-x border-white/5' },
@@ -258,6 +341,25 @@
                     ),
                     // Sidebar
                     React.createElement('aside', { className: 'w-64 space-y-6' },
+                        // Save/Load Section
+                        React.createElement('div', { className: 'bg-white/5 p-5 rounded-2xl border border-yellow-500/20 shadow-[0_0_20px_rgba(234,179,8,0.05)]' },
+                            React.createElement('h3', { className: 'text-[10px] font-bold text-yellow-500 mb-4 tracking-[0.2em] flex items-center gap-2' }, 
+                                React.createElement(Icon, { name: 'Shield', size: 12 }), 'DATA ARCHIVE'
+                            ),
+                            React.createElement('div', { className: 'space-y-3' },
+                                saveSlots.map(s => React.createElement('div', { key: s.id, className: 'p-3 rounded-xl bg-black/40 border border-white/5 flex flex-col gap-2' },
+                                    React.createElement('div', null, 
+                                        React.createElement('p', { className: 'text-[9px] text-white/40' }, `SLOT ${s.id}`),
+                                        React.createElement('p', { className: 'text-[10px] truncate' }, s.date || 'Empty Slot')
+                                    ),
+                                    React.createElement('div', { className: 'flex gap-1' },
+                                        React.createElement('button', { onClick: () => saveGame(s.id), className: 'flex-1 py-1 bg-yellow-500/10 text-yellow-500 text-[9px] font-bold rounded border border-yellow-500/20 hover:bg-yellow-500/20' }, 'SAVE'),
+                                        React.createElement('button', { onClick: () => loadGame(s.id), disabled: !s.date, className: 'flex-1 py-1 bg-white/5 text-white/60 text-[9px] font-bold rounded border border-white/5 disabled:opacity-20' }, 'LOAD')
+                                    )
+                                ))
+                            )
+                        ),
+                        // Sector Selection
                         React.createElement('div', { className: 'bg-white/5 p-5 rounded-2xl border border-white/10' },
                             React.createElement('h3', { className: 'text-[10px] font-bold text-white/30 mb-4 tracking-[0.2em]' }, 'SECTOR SELECTION'),
                             React.createElement('div', { className: 'grid gap-2' },
@@ -275,7 +377,6 @@
             );
         }
 
-        // 렌더링 시작
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(React.createElement(App));
     </script>
