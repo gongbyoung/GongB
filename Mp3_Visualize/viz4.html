@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPECTRUM ART LAB v5.0 — Sequential Painter</title>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --bg:#020204;
+  --panel:#0a0a0f;
+  --accent:#00ff88;
+  --border:rgba(255,255,255,0.05);
+  --text:#ffffff;
+}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:'Pretendard', sans-serif;
+  height:100vh; overflow:hidden; display: flex; flex-direction: column;
+}
+
+/* UI STRUCTURE */
+.topbar{
+  padding:10px 20px; background:var(--panel); border-bottom:1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between;
+}
+.logo{letter-spacing:4px; color:var(--accent); font-weight:800; font-size:12px;}
+
+.container { display: grid; grid-template-columns: 240px 1fr 320px; flex: 1; min-height: 0; }
+
+.side-panel {
+  background: var(--panel); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; padding: 15px; overflow-y: auto;
+}
+.side-panel.right { border-right:none; border-left: 1px solid var(--border); }
+
+h3 { font-size: 10px; letter-spacing: 1.5px; color: #555; margin-bottom: 12px; text-transform: uppercase; border-bottom: 1px solid var(--border); padding-bottom: 5px;}
+
+/* FILE LOADERS */
+.file-box { border: 1px dashed #333; padding: 10px; text-align: center; margin-bottom: 10px; cursor: pointer; border-radius: 4px; transition: 0.2s;}
+.file-box:hover { border-color: var(--accent); background: rgba(0,255,136,0.05); }
+.file-box span { font-size: 10px; color: #666; }
+
+/* CANVAS AREA */
+.viz-area { position: relative; background: #000; display: flex; flex-direction: column;}
+#artCanvas { flex: 1; width: 100%; height: 100%; }
+#currentLyric { 
+    position: absolute; bottom: 80px; left: 0; width: 100%; 
+    text-align: center; font-size: 18px; color: var(--accent); 
+    text-shadow: 0 0 10px rgba(0,255,136,0.5); pointer-events: none;
+}
+
+.bottom-ctrl {
+  padding: 12px 20px; background: #000; border-top: 1px solid var(--border);
+  display: flex; align-items: center; gap: 12px;
+}
+.btn { background: transparent; border: 1px solid var(--border); color: #fff; padding: 8px 14px; cursor: pointer; font-size: 10px; }
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn.primary { background: var(--accent); color: #000; border: none; font-weight: bold; }
+
+#timeCode { font-size: 12px; color: var(--accent); font-family: monospace; }
+
+/* CONTROLS */
+.control-group { margin-bottom: 15px; }
+.control-group label { display: block; font-size: 9px; color: #777; margin-bottom: 5px; }
+input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; height: 3px;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">SPECTRUM ART LAB v5.0 [SEQUENTIAL PAINTER]</div>
+  <div id="timeCode">00:00.00</div>
+</div>
+
+<div class="container">
+  <div class="side-panel">
+    <h3>1. Music</h3>
+    <div class="file-box" onclick="document.getElementById('musicInput').click()">
+      <span>MP3 Load</span>
+      <input type="file" id="musicInput" accept="audio/*" style="display:none" onchange="handleMusic(this.files)">
+    </div>
+    <h3>2. SRT</h3>
+    <div class="file-box" onclick="document.getElementById('srtInput').click()">
+      <span>SRT Load</span>
+      <input type="file" id="srtInput" accept=".srt" style="display:none" onchange="handleSRT(this.files)">
+    </div>
+  </div>
+
+  <div class="viz-area">
+    <canvas id="artCanvas"></canvas>
+    <div id="currentLyric"></div>
+    <div class="bottom-ctrl">
+      <button class="btn" onclick="clearCanvas()">RESET</button>
+      <button class="btn primary" id="playBtn" onclick="togglePlay()">RUN ART PERFORMANCE</button>
+      <button class="btn" onclick="saveImage()">SAVE PNG</button>
+    </div>
+  </div>
+
+  <div class="side-panel right">
+    <h3>Art Config</h3>
+    <div class="control-group">
+      <label>BRUSH SIZE (글자 크기)</label>
+      <input type="range" id="pSize" min="10" max="250" value="60">
+    </div>
+    <div class="control-group">
+      <label>SENSITIVITY (반응도)</label>
+      <input type="range" id="pSens" min="1" max="10" value="8">
+    </div>
+    <div class="control-group">
+      <label>SCATTER (퍼짐 정도)</label>
+      <input type="range" id="pScatter" min="0" max="500" value="100">
+    </div>
+
+    <h3>Color Range</h3>
+    <div class="control-group"><label>R</label><input type="range" id="rMin" min="0" max="255" value="0"><input type="range" id="rMax" min="0" max="255" value="255"></div>
+    <div class="control-group"><label>G</label><input type="range" id="gMin" min="0" max="255" value="100"><input type="range" id="gMax" min="0" max="255" value="255"></div>
+    <div class="control-group"><label>B</label><input type="range" id="bMin" min="0" max="255" value="150"><input type="range" id="bMax" min="0" max="255" value="255"></div>
+  </div>
+</div>
+
+<script>
+// --- Core Logic ---
+let srtData = [];
+let audioCtx, analyser, source, audioBuffer, isPlaying = false, startTime = 0, pauseOffset = 0;
+const canvas = document.getElementById('artCanvas'), ctx = canvas.getContext('2d');
+
+// 한글 분리가 아닌 '한 글자' 단위로 유지
+function tokenizeSequential(str) {
+  return str.split('').filter(c => c.trim() !== "");
+}
+
+function handleSRT(files) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    srtData = parseSRT(e.target.result);
+    alert("SRT 자막 동기화 완료");
+  };
+  reader.readAsText(files[0]);
+}
+
+function parseSRT(data) {
+  const regex = /(\d+)\n(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\n([\s\S]*?)(?=\n{2,}|\n*$)/g;
+  let matches, result = [];
+  while ((matches = regex.exec(data)) !== null) {
+    const text = matches[4].replace(/\n/g, ' ');
+    result.push({
+      start: timeToSeconds(matches[2]),
+      end: timeToSeconds(matches[3]),
+      text: text,
+      chars: text.split('') // 한 글자씩 분리
+    });
+  }
+  return result;
+}
+
+function timeToSeconds(time) {
+  const [h, m, s] = time.split(':');
+  const [sec, ms] = s.split(',');
+  return parseInt(h) * 3600 + parseInt(m) * 60 + parseInt(sec) + parseInt(ms) / 1000;
+}
+
+function handleMusic(files) {
+  if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    audioCtx.decodeAudioData(e.target.result, (buf) => { audioBuffer = buf; alert("음악 로드 완료"); });
+  };
+  reader.readAsArrayBuffer(files[0]);
+}
+
+function togglePlay() {
+  if(isPlaying) {
+    pauseOffset = audioCtx.currentTime - startTime;
+    source.stop(); isPlaying = false;
+    document.getElementById('playBtn').textContent = "RESUME PERFORMANCE";
+  } else if(audioBuffer) {
+    source = audioCtx.createBufferSource();
+    source.buffer = audioBuffer;
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 512;
+    source.connect(analyser);
+    analyser.connect(audioCtx.destination);
+    source.start(0, pauseOffset);
+    startTime = audioCtx.currentTime - pauseOffset;
+    isPlaying = true;
+    document.getElementById('playBtn').textContent = "STOP PERFORMANCE";
+    draw();
+  }
+}
+
+function clearCanvas() { ctx.fillStyle = '#000'; ctx.fillRect(0,0,canvas.width,canvas.height); }
+function saveImage() { const link = document.createElement('a'); link.download=`music-painting.png`; link.href=canvas.toDataURL(); link.click(); }
+
+function resize() {
+  const temp = ctx.getImageData(0,0,canvas.width,canvas.height);
+  canvas.width = canvas.clientWidth; canvas.height = canvas.clientHeight;
+  ctx.putImageData(temp, 0, 0);
+  if(!temp.data.some(x=>x!==0)) clearCanvas();
+}
+window.onresize = resize; resize();
+
+// --- Performance 엔진 ---
+let lastLineIndex = -1;
+let charPointer = 0;
+
+function draw() {
+  if(!isPlaying) return;
+  requestAnimationFrame(draw);
+
+  const currentTime = audioCtx.currentTime - startTime;
+  
+  // 타임코드 업데이트
+  const m = Math.floor(currentTime / 60);
+  const s = (currentTime % 60).toFixed(2);
+  document.getElementById('timeCode').textContent = `${m.toString().padStart(2,'0')}:${s.toString().padStart(5,'0')}`;
+
+  const lineIdx = srtData.findIndex(line => currentTime >= line.start && currentTime <= line.end);
+  
+  if (lineIdx !== -1) {
+    const currentLine = srtData[lineIdx];
+    document.getElementById('currentLyric').textContent = currentLine.text;
+
+    // 새로운 줄이 시작되면 포인터 초기화
+    if (lineIdx !== lastLineIndex) {
+      charPointer = 0;
+      lastLineIndex = lineIdx;
+    }
+
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteFrequencyData(data);
+    const amp = data[Math.floor(Math.random()*data.length)] / 255;
+    const sens = parseInt(document.getElementById('pSens').value);
+
+    // 음악의 비트가 감지되고, 아직 뿌릴 글자가 남았을 때 한 글자씩 찍기
+    if (amp > (1.1 - sens/10) && charPointer < currentLine.chars.length) {
+      const char = currentLine.chars[charPointer];
+      if (char.trim() !== "") {
+        paintChar(char, amp);
+      }
+      charPointer++; // 다음 비트에는 다음 글자를 찍도록 이동
+    }
+  } else {
+    document.getElementById('currentLyric').textContent = "";
+  }
+}
+
+function paintChar(char, amp) {
+  const scatter = parseInt(document.getElementById('pScatter').value);
+  const x = (canvas.width / 2) + (Math.random() - 0.5) * scatter * 2;
+  const y = (canvas.height / 2) + (Math.random() - 0.5) * scatter * 2;
+  const size = parseInt(document.getElementById('pSize').value) * (0.6 + amp);
+  
+  ctx.save();
+  const r = Math.random() * (parseInt(document.getElementById('rMax').value) - parseInt(document.getElementById('rMin').value)) + parseInt(document.getElementById('rMin').value);
+  const g = Math.random() * (parseInt(document.getElementById('gMax').value) - parseInt(document.getElementById('gMin').value)) + parseInt(document.getElementById('gMin').value);
+  const b = Math.random() * (parseInt(document.getElementById('bMax').value) - parseInt(document.getElementById('bMin').value)) + parseInt(document.getElementById('bMin').value);
+  
+  ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${0.4 + amp * 0.6})`;
+  ctx.font = `900 ${size}px 'Pretendard'`;
+  ctx.shadowBlur = amp * 25;
+  ctx.shadowColor = ctx.fillStyle;
+  
+  ctx.translate(x, y);
+  ctx.rotate((Math.random() - 0.5) * 0.5);
+  ctx.fillText(char, 0, 0);
+  ctx.restore();
+}
+</script>
+</body>
+</html>
