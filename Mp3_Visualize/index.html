@@ -1,167 +1,1031 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <title>Audio Visualizer for Video Production</title>
-    <style>
-        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Pretendard', sans-serif; }
-        canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-        
-        /* 상단 타이틀바 스타일 UI */
-        #header-ui { 
-            position: absolute; top: 0; left: 0; width: 100%; height: 50px;
-            background: rgba(20, 20, 20, 0.9); display: flex; align-items: center;
-            padding: 0 20px; box-sizing: border-box; z-index: 100;
-            border-bottom: 1px solid #333;
-        }
-        .controls { display: flex; gap: 10px; align-items: center; }
-        button { 
-            background: #444; color: white; border: 1px solid #666; padding: 5px 15px; 
-            border-radius: 4px; cursor: pointer; font-size: 13px; transition: 0.2s;
-        }
-        button:hover { background: #666; border-color: #fff; }
-        button.active { background: #3498db; border-color: #3498db; }
-        input[type="file"] { color: #ccc; font-size: 12px; }
-        #song-title { margin-left: auto; color: #888; font-size: 12px; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPECTRUM — Music Player</title>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --bg:#07070f;
+  --panel:#0d0d1e;
+  --panel2:#111128;
+  --border:rgba(80,80,180,0.2);
+  --border2:rgba(100,100,220,0.4);
+  --accent:#5555ff;
+  --accent2:#8888ff;
+  --text:#c8c8ff;
+  --muted:#44447a;
+  --muted2:#6666aa;
+  --active-bg:rgba(85,85,255,0.15);
+  --hover-bg:rgba(80,80,180,0.1);
+  --red:#ff4466;
+  --green:#44ffaa;
+}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:'Courier New',monospace;
+  min-height:100vh;
+  display:grid;
+  grid-template-rows:auto 1fr auto;
+  grid-template-columns:1fr;
+  overflow:hidden;
+  height:100vh;
+}
+
+/* ── TOPBAR ── */
+.topbar{
+  display:flex;align-items:center;gap:16px;
+  padding:14px 20px;
+  border-bottom:1px solid var(--border);
+  background:var(--panel);
+  flex-shrink:0;
+}
+.logo{font-size:16px;letter-spacing:6px;color:var(--accent2);font-weight:300;}
+.topbar-right{margin-left:auto;display:flex;gap:8px;align-items:center;}
+
+/* ── MAIN LAYOUT ── */
+.main{
+  display:grid;
+  grid-template-columns:320px 1fr;
+  overflow:hidden;
+  min-height:0;
+}
+
+/* ── LEFT PANEL ── */
+.left-panel{
+  display:flex;flex-direction:column;
+  border-right:1px solid var(--border);
+  overflow:hidden;
+  background:var(--panel);
+}
+
+/* playlist header */
+.panel-head{
+  padding:14px 16px 10px;
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:10px;
+  flex-shrink:0;
+}
+.panel-title{font-size:10px;letter-spacing:4px;color:var(--muted2);text-transform:uppercase;flex:1;}
+
+/* drop zone */
+.drop-zone{
+  margin:12px;
+  border:1px dashed var(--muted);
+  border-radius:10px;
+  padding:14px 12px;
+  text-align:center;
+  cursor:pointer;
+  transition:all .25s;
+  flex-shrink:0;
+}
+.drop-zone:hover,.drop-zone.drag-over{border-color:var(--accent);background:rgba(85,85,255,.08);}
+.drop-zone .dz-icon{font-size:18px;margin-bottom:4px;}
+.drop-zone .dz-text{font-size:11px;color:var(--muted2);letter-spacing:1px;}
+#fileInput{display:none;}
+
+/* playlist controls */
+.playlist-controls{
+  display:flex;align-items:center;gap:6px;
+  padding:8px 12px;
+  border-bottom:1px solid var(--border);
+  flex-shrink:0;
+}
+.pill-btn{
+  background:transparent;
+  border:1px solid var(--border);
+  border-radius:20px;
+  color:var(--muted2);
+  padding:4px 12px;
+  font-family:'Courier New',monospace;
+  font-size:10px;letter-spacing:1px;
+  cursor:pointer;transition:all .2s;
+  white-space:nowrap;
+}
+.pill-btn:hover{border-color:var(--accent2);color:var(--text);}
+.pill-btn.active{border-color:var(--accent);color:var(--accent2);background:var(--active-bg);}
+.count-badge{
+  margin-left:auto;font-size:10px;color:var(--muted);letter-spacing:1px;
+}
+
+/* playlist */
+.playlist{
+  flex:1;overflow-y:auto;
+  padding:4px 0;
+}
+.playlist::-webkit-scrollbar{width:4px;}
+.playlist::-webkit-scrollbar-track{background:transparent;}
+.playlist::-webkit-scrollbar-thumb{background:var(--muted);border-radius:2px;}
+
+.pl-item{
+  display:flex;align-items:center;gap:10px;
+  padding:8px 12px;
+  cursor:pointer;
+  transition:background .15s;
+  border-radius:0;
+  position:relative;
+}
+.pl-item:hover{background:var(--hover-bg);}
+.pl-item.active{background:var(--active-bg);}
+.pl-item.active .pl-title{color:#e0e0ff;}
+
+.pl-num{
+  font-size:10px;color:var(--muted);
+  min-width:20px;text-align:right;flex-shrink:0;
+}
+.pl-item.active .pl-num{display:none;}
+.pl-playing-icon{
+  display:none;width:20px;flex-shrink:0;text-align:right;
+  font-size:10px;color:var(--accent2);
+}
+.pl-item.active .pl-playing-icon{display:block;}
+
+.pl-info{flex:1;min-width:0;}
+.pl-title{
+  font-size:12px;color:var(--text);letter-spacing:.5px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.pl-dur{font-size:10px;color:var(--muted);margin-top:2px;}
+
+.pl-remove{
+  opacity:0;background:none;border:none;color:var(--muted2);
+  cursor:pointer;font-size:14px;padding:2px 4px;
+  transition:opacity .15s,color .15s;flex-shrink:0;
+}
+.pl-item:hover .pl-remove{opacity:1;}
+.pl-remove:hover{color:var(--red);}
+
+/* ── RIGHT PANEL ── */
+.right-panel{
+  display:flex;flex-direction:column;
+  overflow:hidden;
+  background:var(--bg);
+}
+
+/* now playing */
+.now-playing{
+  padding:16px 20px 12px;
+  border-bottom:1px solid var(--border);
+  flex-shrink:0;
+}
+.np-label{font-size:9px;letter-spacing:5px;color:var(--muted);text-transform:uppercase;margin-bottom:6px;}
+.np-title{font-size:18px;font-weight:300;letter-spacing:2px;color:#e0e0ff;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px;}
+.np-sub{font-size:11px;color:var(--muted2);}
+
+/* progress */
+.progress-wrap{
+  height:4px;background:var(--panel);cursor:pointer;flex-shrink:0;
+  position:relative;
+}
+.progress-fill{
+  height:100%;
+  background:linear-gradient(90deg,var(--accent),var(--accent2));
+  width:0%;transition:width .1s;
+  position:relative;
+}
+.progress-fill::after{
+  content:'';position:absolute;right:-4px;top:-4px;
+  width:10px;height:10px;border-radius:50%;
+  background:var(--accent2);opacity:0;transition:opacity .2s;
+}
+.progress-wrap:hover .progress-fill::after{opacity:1;}
+
+/* main controls */
+.controls{
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  padding:14px 20px;
+  border-bottom:1px solid var(--border);
+  flex-shrink:0;
+}
+.ctrl-btn{
+  background:transparent;border:1px solid var(--border);
+  border-radius:8px;color:var(--muted2);
+  padding:8px 14px;
+  font-family:'Courier New',monospace;font-size:11px;letter-spacing:1px;
+  cursor:pointer;transition:all .2s;white-space:nowrap;
+}
+.ctrl-btn:hover{border-color:var(--accent2);color:var(--text);}
+.ctrl-btn.active{border-color:var(--accent);color:var(--accent2);background:var(--active-bg);}
+.ctrl-btn.primary{
+  background:var(--accent);border-color:var(--accent);color:#fff;
+  padding:10px 28px;font-size:13px;
+}
+.ctrl-btn.primary:hover{background:var(--accent2);border-color:var(--accent2);}
+
+.time-display{
+  font-size:11px;color:var(--muted);letter-spacing:1px;
+  padding:0 8px;white-space:nowrap;
+}
+
+/* vol row */
+.vol-row{
+  display:flex;align-items:center;gap:10px;
+  padding:8px 20px;
+  border-bottom:1px solid var(--border);
+  flex-shrink:0;
+}
+.vol-label{font-size:10px;color:var(--muted);letter-spacing:3px;}
+input[type=range]{flex:1;accent-color:var(--accent);cursor:pointer;height:3px;}
+.vol-val{font-size:10px;color:var(--muted);min-width:32px;text-align:right;}
+
+/* viz section */
+.viz-section{
+  flex:1;overflow:hidden;display:flex;flex-direction:column;
+  min-height:0;
+}
+.viz-section-head{
+  padding:12px 16px 8px;
+  font-size:9px;letter-spacing:5px;color:var(--muted);text-transform:uppercase;
+  border-bottom:1px solid var(--border);flex-shrink:0;
+  display:flex;align-items:center;gap:12px;
+}
+.viz-grid{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:8px;
+  padding:10px;
+  overflow-y:auto;
+}
+.viz-grid::-webkit-scrollbar{width:3px;}
+.viz-grid::-webkit-scrollbar-thumb{background:var(--muted);}
+
+.viz-card{
+  border:1px solid var(--border);
+  border-radius:8px;overflow:hidden;
+  cursor:pointer;transition:all .2s;
+  position:relative;
+}
+.viz-card:hover{border-color:var(--border2);transform:translateY(-1px);}
+.viz-card.selected{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);}
+.viz-card canvas{display:block;width:100%;aspect-ratio:16/9;}
+.viz-card-label{
+  padding:4px 6px;
+  font-size:9px;letter-spacing:2px;color:var(--muted2);
+  background:var(--panel);
+  border-top:1px solid var(--border);
+}
+.viz-card.selected .viz-card-label{color:var(--accent2);}
+.viz-sel-badge{
+  display:none;position:absolute;top:4px;right:4px;
+  background:var(--accent);color:#fff;
+  font-size:8px;letter-spacing:1px;padding:2px 6px;border-radius:3px;
+}
+.viz-card.selected .viz-sel-badge{display:block;}
+
+.launch-viz-btn{
+  margin-left:auto;
+  background:transparent;border:1px solid var(--border);
+  border-radius:6px;color:var(--muted2);
+  padding:4px 12px;font-family:'Courier New',monospace;
+  font-size:10px;letter-spacing:1px;cursor:pointer;transition:all .2s;
+}
+.launch-viz-btn:hover{border-color:var(--accent2);color:var(--text);}
+.launch-viz-btn:disabled{opacity:.3;cursor:default;}
+
+/* ── BOTTOM BAR ── */
+.bottombar{
+  padding:10px 20px;
+  border-top:1px solid var(--border);
+  background:var(--panel);
+  display:flex;align-items:center;gap:16px;
+  flex-shrink:0;font-size:10px;color:var(--muted);letter-spacing:1px;
+}
+.status-dot{
+  width:6px;height:6px;border-radius:50%;background:var(--muted);
+  flex-shrink:0;transition:background .3s;
+}
+.status-dot.playing{background:var(--green);animation:pulse 1.5s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
+
+/* ── FULLSCREEN VIZ OVERLAY ── */
+#vizOverlay{
+  display:none;position:fixed;inset:0;z-index:999;
+  flex-direction:column;background:#000;
+}
+#vizOverlay.active{display:flex;}
+#vizCanvas{flex:1;display:block;width:100%;min-height:0;}
+
+#vizOverlayBar{
+  display:flex;align-items:center;gap:10px;
+  padding:10px 16px;
+  background:rgba(7,7,15,.95);
+  border-top:1px solid var(--border);
+  flex-shrink:0;
+  backdrop-filter:blur(8px);
+}
+.ov-progress{
+  flex:1;height:3px;background:rgba(255,255,255,.1);
+  border-radius:2px;cursor:pointer;position:relative;
+}
+.ov-progress-fill{
+  height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));
+  border-radius:2px;width:0%;transition:width .1s;
+}
+.ov-title{font-size:10px;color:var(--muted2);letter-spacing:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;}
+.ov-time{font-size:10px;color:var(--muted);white-space:nowrap;}
+.ov-btn{
+  background:rgba(30,30,80,.8);border:1px solid var(--border);
+  border-radius:5px;color:var(--muted2);
+  padding:5px 12px;font-family:'Courier New',monospace;
+  font-size:10px;letter-spacing:1px;cursor:pointer;transition:all .2s;
+  white-space:nowrap;
+}
+.ov-btn:hover{border-color:var(--accent2);color:var(--text);}
+.ov-mode-badge{
+  font-size:9px;letter-spacing:2px;color:var(--muted);
+  padding:4px 8px;border:1px solid var(--border);border-radius:4px;
+  white-space:nowrap;
+}
+</style>
 </head>
 <body>
-    <div id="header-ui">
-        <div class="controls">
-            <input type="file" id="audio-file" accept="audio/*">
-            <button id="btn-play">PLAY</button>
-            <button id="btn-pause">PAUSE</button>
-            <span style="color:#555; margin: 0 10px;">|</span>
-            <button class="mode-btn active" data-mode="bar">BAR</button>
-            <button class="mode-btn" data-mode="circle">CIRCLE</button>
-            <button class="mode-btn" data-mode="wave">WAVE</button>
-        </div>
-        <div id="song-title">준비됨</div>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="logo">SPECTRUM</div>
+  <div class="topbar-right">
+    <span style="font-size:10px;color:var(--muted);letter-spacing:2px;">MUSIC PLAYER + VISUALIZER</span>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- LEFT: PLAYLIST -->
+  <div class="left-panel">
+    <div class="panel-head">
+      <span class="panel-title">Playlist</span>
     </div>
-    <canvas id="canvas"></canvas>
 
-    <script>
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
-        const audioFile = document.getElementById('audio-file');
-        const songTitle = document.getElementById('song-title');
-        
-        let audioCtx, analyser, source, dataArray, bufferLength;
-        let isPlaying = false;
-        let currentMode = 'bar';
+    <div class="drop-zone" id="dz">
+      <div class="dz-icon">♫</div>
+      <div class="dz-text">MP3 파일 여러 개 드래그 또는 클릭</div>
+    </div>
+    <input type="file" id="fileInput" accept="audio/*" multiple>
 
-        function resize() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        }
-        window.addEventListener('resize', resize);
-        resize();
+    <div class="playlist-controls">
+      <button class="pill-btn active" id="btnSeq" onclick="setPlayMode('seq')">순차</button>
+      <button class="pill-btn" id="btnRand" onclick="setPlayMode('rand')">랜덤</button>
+      <button class="pill-btn" id="btnRepeat" onclick="toggleRepeat()">반복</button>
+      <span class="count-badge" id="countBadge">0 곡</span>
+    </div>
 
-        // 모드 변경 이벤트
-        document.querySelectorAll('.mode-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-                e.target.classList.add('active');
-                currentMode = e.target.dataset.mode;
-            });
-        });
+    <div class="playlist" id="playlist">
+      <div style="padding:24px 16px;text-align:center;color:var(--muted);font-size:11px;letter-spacing:1px;">
+        곡을 추가해 주세요
+      </div>
+    </div>
+  </div>
 
-        audioFile.addEventListener('change', function() {
-            if (!audioCtx) {
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                analyser = audioCtx.createAnalyser();
-                analyser.fftSize = 512;
-                bufferLength = analyser.frequencyBinCount;
-                dataArray = new Uint8Array(bufferLength);
-            }
+  <!-- RIGHT -->
+  <div class="right-panel">
 
-            const file = this.files[0];
-            songTitle.textContent = file.name;
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                audioCtx.decodeAudioData(e.target.result, function(buffer) {
-                    if (source) source.stop();
-                    source = audioCtx.createBufferSource();
-                    source.buffer = buffer;
-                    source.connect(analyser);
-                    analyser.connect(audioCtx.destination);
-                    source.start(0);
-                    isPlaying = true;
-                    draw();
-                });
-            };
-            reader.readAsArrayBuffer(file);
-        });
+    <!-- NOW PLAYING -->
+    <div class="now-playing">
+      <div class="np-label">Now Playing</div>
+      <div class="np-title" id="npTitle">—</div>
+      <div class="np-sub" id="npSub">파일을 추가하고 재생을 시작하세요</div>
+    </div>
 
-        document.getElementById('btn-play').onclick = () => audioCtx?.resume();
-        document.getElementById('btn-pause').onclick = () => audioCtx?.suspend();
+    <!-- PROGRESS -->
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
 
-        function draw() {
-            if (!isPlaying) return;
-            requestAnimationFrame(draw);
-            analyser.getByteFrequencyData(dataArray);
+    <!-- CONTROLS -->
+    <div class="controls">
+      <button class="ctrl-btn" id="btnPrev" onclick="prevTrack()">⏮ PREV</button>
+      <button class="ctrl-btn primary" id="btnPlay" onclick="togglePlay()">▶ PLAY</button>
+      <button class="ctrl-btn" id="btnNext" onclick="nextTrack()">NEXT ⏭</button>
+      <span class="time-display" id="timeDisplay">0:00 / 0:00</span>
+    </div>
 
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.15)'; // 잔상 효과
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+    <!-- VOL -->
+    <div class="vol-row">
+      <span class="vol-label">VOL</span>
+      <input type="range" id="volSlider" min="0" max="1" step="0.01" value="0.8">
+      <span class="vol-val" id="volVal">80%</span>
+    </div>
 
-            if (currentMode === 'bar') drawBar();
-            else if (currentMode === 'circle') drawCircle();
-            else if (currentMode === 'wave') drawWave();
-        }
+    <!-- VIZ SECTION -->
+    <div class="viz-section">
+      <div class="viz-section-head">
+        <span>Visualizer</span>
+        <button class="launch-viz-btn" id="launchVizBtn" onclick="openVizOverlay()" disabled>전체화면 ↗</button>
+      </div>
+      <div class="viz-grid" id="vizGrid"></div>
+    </div>
 
-        // 1. BAR MODE (개선된 버전)
-        function drawBar() {
-            const barWidth = (canvas.width / bufferLength) * 2;
-            let x = 0;
-            for (let i = 0; i < bufferLength; i++) {
-                const barHeight = dataArray[i] * 2;
-                ctx.fillStyle = `hsl(${i * 2 + 180}, 80%, 50%)`;
-                ctx.fillRect(x, canvas.height - barHeight, barWidth - 1, barHeight);
-                x += barWidth;
-            }
-        }
+  </div>
+</div>
 
-        // 2. CIRCLE MODE (뮤직비디오용 추천)
-        function drawCircle() {
-            const centerX = canvas.width / 2;
-            const centerY = canvas.height / 2;
-            const radius = 150;
+<!-- BOTTOM STATUS BAR -->
+<div class="bottombar">
+  <div class="status-dot" id="statusDot"></div>
+  <span id="statusText">대기 중</span>
+  <span style="margin-left:auto;" id="modeStatus">순차 재생</span>
+</div>
 
-            for (let i = 0; i < bufferLength; i++) {
-                const barHeight = dataArray[i] * 1.2;
-                const angle = (i / bufferLength) * Math.PI * 2;
-                const x1 = centerX + Math.cos(angle) * radius;
-                const y1 = centerY + Math.sin(angle) * radius;
-                const x2 = centerX + Math.cos(angle) * (radius + barHeight);
-                const y2 = centerY + Math.sin(angle) * (radius + barHeight);
+<!-- FULLSCREEN VIZ OVERLAY -->
+<div id="vizOverlay">
+  <canvas id="vizCanvas"></canvas>
+  <div id="vizOverlayBar">
+    <div class="ov-title" id="ovTitle">—</div>
+    <div class="ov-progress" id="ovProgress">
+      <div class="ov-progress-fill" id="ovProgressFill"></div>
+    </div>
+    <div class="ov-time" id="ovTime">0:00 / 0:00</div>
+    <div class="ov-mode-badge" id="ovModeBadge">순차</div>
+    <button class="ov-btn" id="ovPrevBtn" onclick="prevTrack()">⏮</button>
+    <button class="ov-btn" id="ovPlayBtn" onclick="togglePlay()">⏸</button>
+    <button class="ov-btn" id="ovNextBtn" onclick="nextTrack()">⏭</button>
+    <button class="ov-btn" onclick="closeVizOverlay()">✕ 닫기</button>
+  </div>
+</div>
 
-                ctx.strokeStyle = `hsl(${i + 200}, 100%, 60%)`;
-                ctx.lineWidth = 4;
-                ctx.beginPath();
-                ctx.moveTo(x1, y1);
-                ctx.lineTo(x2, y2);
-                ctx.stroke();
-            }
-        }
+<script>
+// ═══════════════════════════════════════════════
+//  VISUALIZER DEFINITIONS
+// ═══════════════════════════════════════════════
+const VIZS = [
+  { id:'dna',    num:'01', name:'DNA Helix',      bg:'#030308', draw:drawDNA    },
+  { id:'nebula', num:'02', name:'Galaxy Nebula',  bg:'#020206', draw:drawNebula },
+  { id:'mandala',num:'03', name:'Mandala',        bg:'#040206', draw:drawMandala},
+  { id:'web',    num:'04', name:'Electric Web',   bg:'#010108', draw:drawWeb    },
+  { id:'vortex', num:'05', name:'Vortex Tunnel',  bg:'#020104', draw:drawVortex },
+  { id:'aurora', num:'06', name:'Aurora Rings',   bg:'#010306', draw:drawAurora },
+];
 
-        // 3. WAVE MODE (환각적인 느낌)
-        function drawWave() {
-            ctx.beginPath();
-            ctx.lineWidth = 3;
-            ctx.strokeStyle = '#fff';
-            const sliceWidth = canvas.width / bufferLength;
-            let x = 0;
+// ═══════════════════════════════════════════════
+//  AUDIO ENGINE
+// ═══════════════════════════════════════════════
+let audioCtx, analyser, gainNode, source;
+let audioBuffer = null, isPlaying = false;
+let startTime = 0, pauseOffset = 0, duration = 0;
 
-            for (let i = 0; i < bufferLength; i++) {
-                const v = dataArray[i] / 128.0;
-                const y = v * canvas.height / 2;
-                if (i === 0) ctx.moveTo(x, y);
-                else ctx.lineTo(x, y);
-                x += sliceWidth;
-            }
-            ctx.lineTo(canvas.width, canvas.height / 2);
-            ctx.stroke();
-        }
-    </script>
+function initAudio() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 2048;
+  gainNode = audioCtx.createGain();
+  gainNode.gain.value = 0.8;
+  analyser.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
+}
+
+function loadAndPlay(idx) {
+  const track = playlist[idx];
+  if (!track) return;
+  currentIdx = idx;
+  initAudio();
+  if (source) { try { source.stop(); source.disconnect(); } catch(e){} }
+  isPlaying = false;
+  pauseOffset = 0;
+
+  // decode
+  const reader = new FileReader();
+  reader.onload = e => {
+    audioCtx.decodeAudioData(e.target.result, buf => {
+      audioBuffer = buf;
+      duration = buf.duration;
+      pauseOffset = 0;
+      track.duration = buf.duration;
+      updatePlaylistUI();
+      updateNowPlaying();
+      playAudio();
+    });
+  };
+  reader.readAsArrayBuffer(track.file);
+}
+
+function playAudio() {
+  if (!audioBuffer) return;
+  if (source) { try { source.stop(); source.disconnect(); } catch(e){} }
+  source = audioCtx.createBufferSource();
+  source.buffer = audioBuffer;
+  source.connect(analyser);
+  source.start(0, pauseOffset);
+  startTime = audioCtx.currentTime - pauseOffset;
+  isPlaying = true;
+  updatePlayBtns();
+  setStatusPlaying(true);
+  source.onended = () => {
+    if (!isPlaying) return;
+    isPlaying = false;
+    onTrackEnded();
+  };
+}
+
+function togglePlay() {
+  if (!audioCtx && playlist.length === 0) return;
+  if (!audioBuffer && playlist.length > 0) { loadAndPlay(currentIdx >= 0 ? currentIdx : 0); return; }
+  if (!audioCtx) return;
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  if (isPlaying) {
+    pauseOffset = audioCtx.currentTime - startTime;
+    source.stop(); isPlaying = false;
+    setStatusPlaying(false);
+  } else {
+    playAudio();
+  }
+  updatePlayBtns();
+}
+
+function onTrackEnded() {
+  setStatusPlaying(false);
+  if (repeatMode) {
+    pauseOffset = 0;
+    loadAndPlay(currentIdx);
+  } else {
+    nextTrack(true);
+  }
+}
+
+function getFreqData() {
+  const d = new Uint8Array(analyser ? analyser.frequencyBinCount : 512);
+  if (analyser) analyser.getByteFrequencyData(d);
+  return d;
+}
+function getTimeData() {
+  const d = new Uint8Array(analyser ? analyser.frequencyBinCount : 512);
+  if (analyser) analyser.getByteTimeDomainData(d);
+  return d;
+}
+
+// ═══════════════════════════════════════════════
+//  PLAYLIST
+// ═══════════════════════════════════════════════
+let playlist = [];
+let currentIdx = -1;
+let playMode = 'seq'; // 'seq' | 'rand'
+let repeatMode = false;
+let shuffleOrder = [];
+
+function addFiles(files) {
+  const arr = Array.from(files).filter(f => f.type.startsWith('audio/') || /\.(mp3|wav|ogg|flac|aac|m4a)$/i.test(f.name));
+  if (!arr.length) return;
+  arr.forEach(f => {
+    playlist.push({ file: f, name: f.name.replace(/\.[^.]+$/, ''), duration: null });
+  });
+  buildShuffleOrder();
+  updatePlaylistUI();
+  document.getElementById('launchVizBtn').disabled = false;
+  if (currentIdx < 0) { currentIdx = 0; }
+}
+
+function buildShuffleOrder() {
+  shuffleOrder = Array.from({length: playlist.length}, (_, i) => i);
+  for (let i = shuffleOrder.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffleOrder[i], shuffleOrder[j]] = [shuffleOrder[j], shuffleOrder[i]];
+  }
+}
+
+function setPlayMode(m) {
+  playMode = m;
+  document.getElementById('btnSeq').classList.toggle('active', m === 'seq');
+  document.getElementById('btnRand').classList.toggle('active', m === 'rand');
+  if (m === 'rand') buildShuffleOrder();
+  updateModeStatus();
+}
+function toggleRepeat() {
+  repeatMode = !repeatMode;
+  document.getElementById('btnRepeat').classList.toggle('active', repeatMode);
+  updateModeStatus();
+}
+function updateModeStatus() {
+  const mode = playMode === 'rand' ? '랜덤 재생' : '순차 재생';
+  const rep = repeatMode ? ' · 반복' : '';
+  document.getElementById('modeStatus').textContent = mode + rep;
+  document.getElementById('ovModeBadge').textContent = mode + rep;
+}
+
+function getNextIdx(dir = 1) {
+  if (playlist.length === 0) return -1;
+  if (playlist.length === 1) return 0;
+  if (playMode === 'rand') {
+    // pick a random idx that isn't current
+    let r;
+    do { r = Math.floor(Math.random() * playlist.length); } while (r === currentIdx && playlist.length > 1);
+    return r;
+  }
+  let next = currentIdx + dir;
+  if (next >= playlist.length) next = 0;
+  if (next < 0) next = playlist.length - 1;
+  return next;
+}
+
+function nextTrack(auto = false) {
+  if (playlist.length === 0) return;
+  const next = getNextIdx(1);
+  if (next < 0) return;
+  loadAndPlay(next);
+}
+function prevTrack() {
+  if (playlist.length === 0) return;
+  // if more than 3s played, restart; else go prev
+  const elapsed = isPlaying ? audioCtx.currentTime - startTime : pauseOffset;
+  if (elapsed > 3) { pauseOffset = 0; playAudio(); return; }
+  const prev = getNextIdx(-1);
+  if (prev < 0) return;
+  loadAndPlay(prev);
+}
+
+function removeTrack(idx) {
+  playlist.splice(idx, 1);
+  if (playlist.length === 0) {
+    currentIdx = -1; audioBuffer = null; isPlaying = false;
+    if (source) { try { source.stop(); } catch(e){} }
+    updateNowPlaying(); setStatusPlaying(false);
+    document.getElementById('launchVizBtn').disabled = true;
+  } else {
+    if (idx < currentIdx) currentIdx--;
+    else if (idx === currentIdx) {
+      if (currentIdx >= playlist.length) currentIdx = playlist.length - 1;
+      loadAndPlay(currentIdx);
+    }
+  }
+  buildShuffleOrder();
+  updatePlaylistUI();
+}
+
+function formatTime(s) {
+  if (!s || isNaN(s)) return '—';
+  const m = Math.floor(s / 60), sec = Math.floor(s % 60);
+  return m + ':' + (sec < 10 ? '0' : '') + sec;
+}
+
+function updatePlaylistUI() {
+  const el = document.getElementById('playlist');
+  document.getElementById('countBadge').textContent = playlist.length + ' 곡';
+  if (playlist.length === 0) {
+    el.innerHTML = '<div style="padding:24px 16px;text-align:center;color:var(--muted);font-size:11px;letter-spacing:1px;">곡을 추가해 주세요</div>';
+    return;
+  }
+  el.innerHTML = playlist.map((t, i) => `
+    <div class="pl-item${i === currentIdx ? ' active' : ''}" onclick="loadAndPlay(${i})">
+      <span class="pl-num">${i + 1}</span>
+      <span class="pl-playing-icon">▶</span>
+      <div class="pl-info">
+        <div class="pl-title">${escHtml(t.name)}</div>
+        <div class="pl-dur">${t.duration ? formatTime(t.duration) : '...'}</div>
+      </div>
+      <button class="pl-remove" onclick="event.stopPropagation();removeTrack(${i})" title="삭제">✕</button>
+    </div>
+  `).join('');
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function updateNowPlaying() {
+  const track = playlist[currentIdx];
+  if (!track) {
+    document.getElementById('npTitle').textContent = '—';
+    document.getElementById('npSub').textContent = '파일을 추가하고 재생을 시작하세요';
+    document.getElementById('ovTitle').textContent = '—';
+    return;
+  }
+  document.getElementById('npTitle').textContent = track.name;
+  document.getElementById('npSub').textContent = (currentIdx + 1) + ' / ' + playlist.length + '  ·  ' + (track.duration ? formatTime(track.duration) : '...');
+  document.getElementById('ovTitle').textContent = track.name;
+}
+
+function updatePlayBtns() {
+  const label = isPlaying ? '⏸ PAUSE' : '▶ PLAY';
+  document.getElementById('btnPlay').textContent = label;
+  document.getElementById('ovPlayBtn').textContent = isPlaying ? '⏸' : '▶';
+}
+
+function setStatusPlaying(p) {
+  document.getElementById('statusDot').classList.toggle('playing', p);
+  const track = playlist[currentIdx];
+  document.getElementById('statusText').textContent = p && track
+    ? '재생 중: ' + track.name
+    : (track ? '일시정지' : '대기 중');
+}
+
+// Progress
+function updateProgress() {
+  if (!isPlaying || !audioBuffer) return;
+  const elapsed = Math.min(audioCtx.currentTime - startTime, duration);
+  const pct = (elapsed / duration * 100).toFixed(1);
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('ovProgressFill').style.width = pct + '%';
+  const t = formatTime(elapsed) + ' / ' + formatTime(duration);
+  document.getElementById('timeDisplay').textContent = t;
+  document.getElementById('ovTime').textContent = t;
+}
+
+document.getElementById('progressWrap').addEventListener('click', e => {
+  if (!audioBuffer) return;
+  const r = e.currentTarget.getBoundingClientRect();
+  pauseOffset = ((e.clientX - r.left) / r.width) * duration;
+  if (isPlaying) playAudio();
+  else document.getElementById('progressFill').style.width = (pauseOffset / duration * 100) + '%';
+});
+document.getElementById('ovProgress').addEventListener('click', e => {
+  if (!audioBuffer) return;
+  const r = e.currentTarget.getBoundingClientRect();
+  pauseOffset = ((e.clientX - r.left) / r.width) * duration;
+  if (isPlaying) playAudio();
+});
+
+document.getElementById('volSlider').addEventListener('input', e => {
+  if (gainNode) gainNode.gain.value = e.target.value;
+  document.getElementById('volVal').textContent = Math.round(e.target.value * 100) + '%';
+});
+
+// File input
+document.getElementById('dz').addEventListener('click', () => document.getElementById('fileInput').click());
+document.getElementById('dz').addEventListener('dragover', e => { e.preventDefault(); document.getElementById('dz').classList.add('drag-over'); });
+document.getElementById('dz').addEventListener('dragleave', () => document.getElementById('dz').classList.remove('drag-over'));
+document.getElementById('dz').addEventListener('drop', e => {
+  e.preventDefault(); document.getElementById('dz').classList.remove('drag-over');
+  addFiles(e.dataTransfer.files);
+});
+document.getElementById('fileInput').addEventListener('change', e => { addFiles(e.target.files); e.target.value = ''; });
+
+// keyboard shortcuts
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+  if (e.code === 'ArrowRight') nextTrack();
+  if (e.code === 'ArrowLeft') prevTrack();
+  if (e.code === 'Escape') closeVizOverlay();
+});
+
+// ═══════════════════════════════════════════════
+//  VIZ CARDS (preview)
+// ═══════════════════════════════════════════════
+let selectedViz = VIZS[0];
+
+const vizGrid = document.getElementById('vizGrid');
+VIZS.forEach(viz => {
+  const card = document.createElement('div');
+  card.className = 'viz-card' + (viz === selectedViz ? ' selected' : '');
+  card.id = 'vc-' + viz.id;
+  card.innerHTML = `
+    <canvas id="vp-${viz.id}" width="200" height="112"></canvas>
+    <div class="viz-card-label">${viz.num} ${viz.name}</div>
+    <div class="viz-sel-badge">ON</div>
+  `;
+  card.addEventListener('click', () => selectViz(viz));
+  vizGrid.appendChild(card);
+  startPreview(viz, document.getElementById('vp-' + viz.id));
+});
+
+function selectViz(viz) {
+  document.querySelectorAll('.viz-card').forEach(c => c.classList.remove('selected'));
+  document.getElementById('vc-' + viz.id).classList.add('selected');
+  selectedViz = viz;
+  // if overlay is open, switch live
+  if (document.getElementById('vizOverlay').classList.contains('active')) {
+    overlayViz = viz;
+    document.getElementById('vizCanvas').style.background = viz.bg;
+  }
+}
+
+function startPreview(viz, canvas) {
+  const ctx = canvas.getContext('2d');
+  let t = Math.random() * 100;
+  function tick() {
+    requestAnimationFrame(tick);
+    t += 0.025;
+    const fakeFreq = new Uint8Array(256);
+    for (let i = 0; i < 256; i++) {
+      fakeFreq[i] = Math.max(0, Math.min(255,
+        128 + Math.sin(t * 1.4 + i * 0.18) * 65
+            + Math.sin(t * 3.3 + i * 0.06) * 38
+            + (Math.random() - 0.5) * 15
+      ));
+    }
+    const W = canvas.width, H = canvas.height;
+    try {
+      ctx.fillStyle = viz.bg + 'ee';
+      ctx.fillRect(0, 0, W, H);
+      viz.draw(ctx, W, H, t, fakeFreq, null);
+    } catch(err) { /* isolate per-card errors */ }
+  }
+  tick();
+}
+
+// ═══════════════════════════════════════════════
+//  FULLSCREEN VIZ OVERLAY
+// ═══════════════════════════════════════════════
+const vizOverlay = document.getElementById('vizOverlay');
+const vizCanvas = document.getElementById('vizCanvas');
+const vizCtx = vizCanvas.getContext('2d');
+let overlayAnimId = null;
+let overlayT = 0;
+let overlayViz = selectedViz;
+
+function openVizOverlay() {
+  overlayViz = selectedViz;
+  vizOverlay.classList.add('active');
+  vizCanvas.style.background = overlayViz.bg;
+  resizeVizCanvas();
+  window.addEventListener('resize', resizeVizCanvas);
+  if (overlayAnimId) cancelAnimationFrame(overlayAnimId);
+  overlayT = 0;
+  function tick() {
+    overlayAnimId = requestAnimationFrame(tick);
+    overlayT += 0.012;
+    const W = vizCanvas.width, H = vizCanvas.height;
+    const freq = getFreqData();
+    const time_ = getTimeData();
+    vizCtx.fillStyle = overlayViz.bg + '40';
+    vizCtx.fillRect(0, 0, W, H);
+    overlayViz.draw(vizCtx, W, H, overlayT, freq, time_);
+    updateProgress();
+    updateNowPlaying();
+    updatePlaylistUI();
+  }
+  tick();
+}
+
+function resizeVizCanvas() {
+  const bar = document.getElementById('vizOverlayBar');
+  vizCanvas.width = window.innerWidth;
+  vizCanvas.height = window.innerHeight - bar.offsetHeight;
+}
+
+function closeVizOverlay() {
+  vizOverlay.classList.remove('active');
+  if (overlayAnimId) { cancelAnimationFrame(overlayAnimId); overlayAnimId = null; }
+  window.removeEventListener('resize', resizeVizCanvas);
+}
+
+// Main RAF loop for progress
+(function loop() { requestAnimationFrame(loop); updateProgress(); })();
+
+// ═══════════════════════════════════════════════
+//  DRAW FUNCTIONS
+// ═══════════════════════════════════════════════
+function drawDNA(ctx,W,H,t,freq){try{
+  const cx=W/2,cy=H/2,radius=Math.min(W,H)*0.3,strands=2,points=64;
+  for(let s=0;s<strands;s++){
+    const po=(s/strands)*Math.PI;
+    for(let i=0;i<points;i++){
+      const angle=(i/points)*Math.PI*2+t+po;
+      const fi=Math.floor((i/points)*freq.length/2);
+      const amp=(freq[fi]||0)/255;
+      const r=radius*(0.5+amp*0.7);
+      const x=cx+Math.cos(angle)*r,y=cy+Math.sin(angle)*r*0.4+Math.sin(angle*3+t)*radius*0.15;
+      const hue=220+s*40+amp*60,sz=2+amp*6;
+      ctx.beginPath();ctx.arc(x,y,sz,0,Math.PI*2);
+      ctx.fillStyle=`hsla(${hue},80%,65%,${0.6+amp*0.4})`;ctx.fill();
+      if(i>0){
+        const pa=((i-1)/points)*Math.PI*2+t+po,pfi=Math.floor(((i-1)/points)*freq.length/2);
+        const pa_amp=(freq[pfi]||0)/255,pr=radius*(0.5+pa_amp*0.7);
+        const px=cx+Math.cos(pa)*pr,py=cy+Math.sin(pa)*pr*0.4+Math.sin(pa*3+t)*radius*0.15;
+        ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(x,y);
+        ctx.strokeStyle=`hsla(${hue},70%,55%,${0.3+amp*0.4})`;ctx.lineWidth=1;ctx.stroke();
+      }
+    }
+    for(let i=0;i<points;i+=4){
+      const a1=(i/points)*Math.PI*2+t,a2=a1+Math.PI;
+      const fi=Math.floor((i/points)*freq.length/2),amp=(freq[fi]||0)/255;
+      const r1=radius*(0.5+amp*0.7);
+      const x1=cx+Math.cos(a1)*r1,y1=cy+Math.sin(a1)*r1*0.4+Math.sin(a1*3+t)*radius*0.15;
+      const x2=cx+Math.cos(a2)*r1,y2=cy+Math.sin(a2)*r1*0.4+Math.sin(a2*3+t)*radius*0.15;
+      ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);
+      ctx.strokeStyle=`rgba(180,180,255,${amp*0.3})`;ctx.lineWidth=0.5;ctx.stroke();
+    }
+  }
+}catch(e){}}
+
+const _nebP=Array.from({length:300},()=>({angle:Math.random()*Math.PI*2,radius:20+Math.random()*60,speed:(Math.random()-0.5)*0.02,size:Math.random()*2.5+0.5,hue:Math.random()*60+200}));
+function drawNebula(ctx,W,H,t,freq){
+  try{
+    const cx=W/2,cy=H/2,flen=freq.length;
+    let bass=0,mid=0;
+    for(let i=0;i<Math.floor(flen/3);i++)bass+=freq[i]||0;
+    bass=bass/Math.max(1,Math.floor(flen/3))/255;
+    for(let i=Math.floor(flen/3);i<Math.floor(flen*2/3);i++)mid+=freq[i]||0;
+    mid=mid/Math.max(1,Math.floor(flen/3))/255;
+    const baseR=Math.min(W,H)*0.28;
+    const outerR=Math.max(1,baseR*(0.5+bass*0.8));
+    const grd=ctx.createRadialGradient(cx,cy,0,cx,cy,outerR);
+    grd.addColorStop(0,`rgba(100,80,255,${0.2+bass*0.4})`);
+    grd.addColorStop(0.5,`rgba(40,20,180,${0.05+mid*0.1})`);
+    grd.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.beginPath();ctx.arc(cx,cy,outerR,0,Math.PI*2);ctx.fillStyle=grd;ctx.fill();
+    for(let i=0;i<128;i++){
+      const angle=(i/128)*Math.PI*2-Math.PI/2;
+      const fi=Math.min(Math.floor((i/128)*freq.length),freq.length-1);
+      const amp=(freq[fi]||0)/255;
+      const r2=baseR+amp*baseR*0.8,hue=200+i*1.2+t*30;
+      ctx.beginPath();ctx.moveTo(cx+Math.cos(angle)*baseR,cy+Math.sin(angle)*baseR);
+      ctx.lineTo(cx+Math.cos(angle)*r2,cy+Math.sin(angle)*r2);
+      ctx.strokeStyle=`hsla(${hue},85%,65%,${0.5+amp*0.5})`;ctx.lineWidth=2.5;ctx.stroke();
+    }
+    _nebP.forEach(p=>{
+      // keep angle in [0, 2π] to avoid fi going out of range
+      p.angle=(p.angle+p.speed*(1+0.01))%(Math.PI*2);
+      if(p.angle<0)p.angle+=Math.PI*2;
+      const fi=Math.min(Math.floor((p.angle/(Math.PI*2))*freq.length),freq.length-1);
+      const amp=(freq[fi]||0)/255;
+      const baseOffset=baseR*(0.2+p.radius/80);
+      const wave=amp*baseR*1.2*Math.sin(p.angle*3+t);
+      const r=Math.max(1,baseOffset+wave);
+      ctx.beginPath();ctx.arc(cx+Math.cos(p.angle)*r,cy+Math.sin(p.angle)*r,Math.max(0.5,p.size*(1+amp*2)),0,Math.PI*2);
+      ctx.fillStyle=`hsla(${p.hue+amp*40},90%,70%,${0.3+amp*0.7})`;ctx.fill();
+    });
+    const innerR=Math.max(1,baseR*0.15+bass*20);
+    ctx.beginPath();ctx.arc(cx,cy,innerR,0,Math.PI*2);
+    ctx.strokeStyle=`rgba(200,180,255,${0.4+bass*0.6})`;ctx.lineWidth=1.5;ctx.stroke();
+  }catch(e){}
+}
+
+function drawMandala(ctx,W,H,t,freq){try{
+  const cx=W/2,cy=H/2;let bass=0;
+  for(let i=0;i<10;i++)bass+=(freq[i]||0);bass=bass/10/255;
+  const baseR=Math.min(W,H)*0.38;
+  [{r:baseR*0.2,p:6,hS:300,hE:360,sp:0.4},{r:baseR*0.38,p:8,hS:270,hE:340,sp:-0.25},{r:baseR*0.55,p:12,hS:320,hE:380,sp:0.15},{r:baseR*0.72,p:16,hS:290,hE:360,sp:-0.1},{r:baseR*0.9,p:24,hS:260,hE:330,sp:0.07}]
+  .forEach((ring,idx)=>{
+    for(let i=0;i<ring.p;i++){
+      const angle=(i/ring.p)*Math.PI*2+t*ring.sp;
+      const fi=Math.floor((i/ring.p)*freq.length*0.5)+idx*20,amp=(freq[Math.min(fi,freq.length-1)]||0)/255;
+      const r=ring.r*(0.7+amp*0.6),x=cx+Math.cos(angle)*r,y=cy+Math.sin(angle)*r,sz=ring.r*0.15*(0.5+amp*1.2);
+      const hue=ring.hS+(ring.hE-ring.hS)*(i/ring.p)+amp*30;
+      ctx.save();ctx.translate(x,y);ctx.rotate(angle+Math.PI/2);
+      ctx.beginPath();ctx.ellipse(0,0,sz*0.4,sz,0,0,Math.PI*2);
+      ctx.fillStyle=`hsla(${hue},80%,55%,${0.15+amp*0.35})`;ctx.fill();
+      ctx.strokeStyle=`hsla(${hue},90%,70%,${0.4+amp*0.4})`;ctx.lineWidth=0.8;ctx.stroke();ctx.restore();
+      if(i>0){
+        const pa=((i-1)/ring.p)*Math.PI*2+t*ring.sp,pfi=Math.floor(((i-1)/ring.p)*freq.length*0.5)+idx*20;
+        const pa_amp=(freq[Math.min(pfi,freq.length-1)]||0)/255,pr=ring.r*(0.7+pa_amp*0.6);
+        ctx.beginPath();ctx.moveTo(cx+Math.cos(pa)*pr,cy+Math.sin(pa)*pr);ctx.lineTo(x,y);
+        ctx.strokeStyle=`hsla(${hue},70%,60%,${0.2+amp*0.3})`;ctx.lineWidth=0.5;ctx.stroke();
+      }
+    }
+  });
+  const gemR=baseR*0.08+bass*20;
+  for(let i=0;i<8;i++){const a=(i/8)*Math.PI*2+t;ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx+Math.cos(a)*gemR,cy+Math.sin(a)*gemR);ctx.lineTo(cx+Math.cos(a+Math.PI/8)*gemR*0.5,cy+Math.sin(a+Math.PI/8)*gemR*0.5);ctx.closePath();ctx.fillStyle=`hsla(${310+i*10},90%,70%,${0.5+bass*0.4})`;ctx.fill();}
+}catch(e){}}
+
+const _wN=Array.from({length:16},(_,i)=>({angle:(i/16)*Math.PI*2,baseAngle:(i/16)*Math.PI*2,speed:(Math.random()-0.5)*0.01,amp:0,x:0,y:0}));
+function _ls(ctx,x1,y1,x2,y2,d,amp){if(d===0){ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);return;}const mx=(x1+x2)/2+(Math.random()-0.5)*30*amp,my=(y1+y2)/2+(Math.random()-0.5)*30*amp;_ls(ctx,x1,y1,mx,my,d-1,amp*0.6);_ls(ctx,mx,my,x2,y2,d-1,amp*0.6);}
+function drawWeb(ctx,W,H,t,freq){try{
+  const cx=W/2,cy=H/2;let bass=0;for(let i=0;i<8;i++)bass+=(freq[i]||0);bass=bass/8/255;
+  const baseR=Math.min(W,H)*0.35;
+  _wN.forEach((n,i)=>{const fi=Math.floor((i/16)*freq.length*0.6),amp=(freq[fi]||0)/255;n.angle=n.baseAngle+Math.sin(t*0.5+i)*0.3*(1+amp);n.amp=amp;n.x=cx+Math.cos(n.angle)*baseR*(0.7+amp*0.5);n.y=cy+Math.sin(n.angle)*baseR*(0.7+amp*0.5);});
+  for(let i=0;i<16;i++){
+    for(let j=i+1;j<16;j++){const dist=Math.hypot(_wN[i].x-_wN[j].x,_wN[i].y-_wN[j].y),maxD=baseR*1.4;if(dist<maxD){const prox=1-dist/maxD,en=(_wN[i].amp+_wN[j].amp)*0.5;if(en>0.1||prox>0.6){ctx.save();ctx.strokeStyle=`rgba(0,220,255,${prox*en*0.8})`;ctx.lineWidth=0.5+en*1.5;_ls(ctx,_wN[i].x,_wN[i].y,_wN[j].x,_wN[j].y,en>0.5?2:1,en);ctx.stroke();ctx.restore();}}}
+    ctx.save();ctx.strokeStyle=`rgba(0,180,255,${_wN[i].amp*0.5})`;ctx.lineWidth=0.5;_ls(ctx,cx,cy,_wN[i].x,_wN[i].y,1,_wN[i].amp);ctx.stroke();ctx.restore();
+  }
+  _wN.forEach(n=>{const grd=ctx.createRadialGradient(n.x,n.y,0,n.x,n.y,Math.max(1,12+n.amp*20));grd.addColorStop(0,`rgba(100,255,255,${0.8+n.amp*0.2})`);grd.addColorStop(0.5,`rgba(0,150,255,${0.3+n.amp*0.5})`);grd.addColorStop(1,'rgba(0,0,0,0)');ctx.beginPath();ctx.arc(n.x,n.y,Math.max(1,12+n.amp*20),0,Math.PI*2);ctx.fillStyle=grd;ctx.fill();ctx.beginPath();ctx.arc(n.x,n.y,3+n.amp*4,0,Math.PI*2);ctx.fillStyle='rgba(200,255,255,0.9)';ctx.fill();});
+  const coreR=Math.max(1,15+bass*40),cg=ctx.createRadialGradient(cx,cy,0,cx,cy,coreR*3);cg.addColorStop(0,`rgba(100,255,255,${0.6+bass*0.4})`);cg.addColorStop(0.4,'rgba(0,100,255,0.3)');cg.addColorStop(1,'rgba(0,0,0,0)');ctx.beginPath();ctx.arc(cx,cy,coreR*3,0,Math.PI*2);ctx.fillStyle=cg;ctx.fill();ctx.beginPath();ctx.arc(cx,cy,coreR,0,Math.PI*2);ctx.fillStyle='rgba(200,255,255,0.9)';ctx.fill();
+}catch(e){}}
+
+function drawVortex(ctx,W,H,t,freq){try{
+  const cx=W/2,cy=H/2;let bass=0,mid=0;for(let i=0;i<16;i++)bass+=(freq[i]||0);bass=bass/16/255;for(let i=16;i<80;i++)mid+=(freq[i]||0);mid=mid/64/255;
+  const maxR=Math.min(W,H)*0.48,RINGS=28,SPOKES=64;
+  for(let ring=RINGS;ring>=0;ring--){
+    const depthT=ring/RINGS,baseR=maxR*depthT,twist=t*(1.5+bass*2)*(1-depthT*0.5)+depthT*Math.PI;
+    for(let s=0;s<SPOKES;s++){
+      const angle=(s/SPOKES)*Math.PI*2+twist,fi=Math.floor((s/SPOKES)*freq.length*0.5)+Math.floor(depthT*20);
+      const amp=(freq[Math.min(fi,freq.length-1)]||0)/255,r=baseR*(1+amp*0.25*depthT);
+      const na=((s+1)/SPOKES)*Math.PI*2+twist,nx=cx+Math.cos(na)*r,ny=cy+Math.sin(na)*r;
+      const x=cx+Math.cos(angle)*r,y=cy+Math.sin(angle)*r,hue=260+depthT*80+s*2+t*20,alpha=(0.4+amp*0.5)*(0.3+depthT*0.7);
+      ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(nx,ny);ctx.strokeStyle=`hsla(${hue},90%,60%,${alpha})`;ctx.lineWidth=0.8+amp*1.5*depthT;ctx.stroke();
+      if(ring<RINGS&&s%4===0){const iR=maxR*((ring-1)/RINGS),iT=t*(1.5+bass*2)*(1-((ring-1)/RINGS)*0.5)+((ring-1)/RINGS)*Math.PI,iA=(s/SPOKES)*Math.PI*2+iT;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(cx+Math.cos(iA)*iR,cy+Math.sin(iA)*iR);ctx.strokeStyle=`hsla(${hue+30},70%,50%,${alpha*0.4})`;ctx.lineWidth=0.4;ctx.stroke();}
+    }
+  }
+  const eyeR=Math.max(1,5+bass*25+mid*15),eg=ctx.createRadialGradient(cx,cy,0,cx,cy,eyeR*4);
+  eg.addColorStop(0,`rgba(255,200,255,${0.8+bass*0.2})`);eg.addColorStop(0.3,'rgba(180,50,255,0.6)');eg.addColorStop(0.7,'rgba(80,0,150,0.2)');eg.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.beginPath();ctx.arc(cx,cy,eyeR*4,0,Math.PI*2);ctx.fillStyle=eg;ctx.fill();ctx.beginPath();ctx.arc(cx,cy,eyeR,0,Math.PI*2);ctx.fillStyle='rgba(255,220,255,1)';ctx.fill();
+}catch(e){}}
+
+const _aR=Array.from({length:6},(_,i)=>({offset:(i/6)*Math.PI*2,phaseSpeed:0.003+i*0.0015,colorShift:i*40,thickness:8+i*4,ringScale:0.5+i*0.09}));
+function drawAurora(ctx,W,H,t,freq){try{
+  const cx=W/2,cy=H/2;let bass=0;for(let i=0;i<12;i++)bass+=(freq[i]||0);bass=bass/12/255;
+  const maxR=Math.min(W,H)*0.46;
+  _aR.forEach(ribbon=>{
+    let avgAmp=0;for(let i=0;i<Math.min(80,freq.length);i++)avgAmp+=freq[i];avgAmp=avgAmp/80/255;
+    const r=maxR*ribbon.ringScale;ctx.beginPath();let started=false;
+    for(let i=0;i<=180;i++){
+      const angle=(i/180)*Math.PI*2+ribbon.offset+t*ribbon.phaseSpeed*60;
+      const fi=Math.min(Math.floor((i/180)*freq.length*0.7),freq.length-1),amp=(freq[fi]||0)/255;
+      const pr=Math.max(1,r+Math.sin(angle*3+t*2)*amp*r*0.25+Math.sin(angle*5-t*1.5+ribbon.offset)*amp*r*0.12);
+      const x=cx+Math.cos(angle)*pr,y=cy+Math.sin(angle)*pr*0.55;
+      if(!started){ctx.moveTo(x,y);started=true;}else ctx.lineTo(x,y);
+    }
+    ctx.closePath();const hue=140+ribbon.colorShift+avgAmp*60+Math.sin(t*0.5)*30;
+    ctx.strokeStyle=`hsla(${hue},90%,65%,${0.15+avgAmp*0.5})`;ctx.lineWidth=ribbon.thickness*(0.5+avgAmp*1.5);ctx.stroke();
+    ctx.strokeStyle=`hsla(${hue+20},100%,85%,${0.3+avgAmp*0.5})`;ctx.lineWidth=1.5;ctx.stroke();
+  });
+  const hg=ctx.createRadialGradient(cx,cy,maxR*0.4,cx,cy,maxR*1.1);hg.addColorStop(0,'rgba(0,0,0,0)');hg.addColorStop(0.7,`rgba(0,80,40,${0.05+bass*0.15})`);hg.addColorStop(1,`rgba(0,150,80,${0.1+bass*0.2})`);
+  ctx.beginPath();ctx.arc(cx,cy,maxR*1.1,0,Math.PI*2);ctx.fillStyle=hg;ctx.fill();
+  const coreR=Math.max(1,40+bass*60),cg=ctx.createRadialGradient(cx,cy,0,cx,cy,coreR);cg.addColorStop(0,`rgba(200,255,230,${0.7+bass*0.3})`);cg.addColorStop(0.4,'rgba(0,200,120,0.3)');cg.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.beginPath();ctx.arc(cx,cy,coreR,0,Math.PI*2);ctx.fillStyle=cg;ctx.fill();ctx.beginPath();ctx.arc(cx,cy,Math.max(1,6+bass*10),0,Math.PI*2);ctx.fillStyle='rgba(220,255,240,1)';ctx.fill();
+}catch(e){}}
+</script>
 </body>
 </html>
