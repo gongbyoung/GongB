@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPECTRUM ART LAB v4.0 — SRT Sync Painter</title>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --bg:#030305;
+  --panel:#0d0d12;
+  --border:rgba(255,255,255,0.05);
+  --accent:#00e5ff;
+  --text:#ffffff;
+}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:'Pretendard', sans-serif;
+  height:100vh; overflow:hidden; display: flex; flex-direction: column;
+}
+
+/* UI STRUCTURE */
+.topbar{
+  padding:10px 20px; background:var(--panel); border-bottom:1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between;
+}
+.logo{letter-spacing:4px; color:var(--accent); font-weight:800; font-size:12px;}
+
+.container { display: grid; grid-template-columns: 240px 1fr 320px; flex: 1; min-height: 0; }
+
+.side-panel {
+  background: var(--panel); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; padding: 15px; overflow-y: auto;
+}
+.side-panel.right { border-right:none; border-left: 1px solid var(--border); }
+
+h3 { font-size: 10px; letter-spacing: 1.5px; color: #555; margin-bottom: 15px; text-transform: uppercase; border-bottom: 1px solid var(--border); padding-bottom: 5px;}
+
+/* CONTROLS */
+.control-group { margin-bottom: 15px; }
+.control-group label { display: block; font-size: 9px; color: #777; margin-bottom: 5px; }
+input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; height: 3px;}
+select { width: 100%; background: #000; color: #fff; border: 1px solid var(--border); padding: 8px; font-size: 11px; }
+
+/* FILE LOADERS */
+.file-box { border: 1px dashed #333; padding: 10px; text-align: center; margin-bottom: 10px; cursor: pointer; border-radius: 4px; transition: 0.2s;}
+.file-box:hover { border-color: var(--accent); background: rgba(0,229,255,0.05); }
+.file-box span { font-size: 10px; color: #666; }
+
+/* LYRIC DISPLAY */
+#currentLyric { font-size: 14px; color: var(--accent); font-weight: bold; text-align: center; margin-top: 10px; min-height: 20px; }
+
+/* CANVAS */
+.viz-area { position: relative; background: #000; display: flex; flex-direction: column;}
+#artCanvas { flex: 1; width: 100%; height: 100%; }
+
+.bottom-ctrl {
+  padding: 12px 20px; background: #000; border-top: 1px solid var(--border);
+  display: flex; align-items: center; gap: 12px;
+}
+.btn { background: transparent; border: 1px solid var(--border); color: #fff; padding: 8px 14px; cursor: pointer; font-size: 10px; }
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn.primary { background: var(--accent); color: #000; border: none; font-weight: bold; }
+
+#timeCode { font-size: 12px; color: var(--accent); font-family: monospace; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">SPECTRUM ART LAB v4.0 [SRT TIME-SYNC]</div>
+  <div id="timeCode">00:00.00</div>
+</div>
+
+<div class="container">
+  <div class="side-panel">
+    <h3>1. Load Music</h3>
+    <div class="file-box" onclick="document.getElementById('musicInput').click()">
+      <span>MP3 파일 업로드</span>
+      <input type="file" id="musicInput" accept="audio/*" style="display:none" onchange="handleMusic(this.files)">
+    </div>
+    
+    <h3>2. Load SRT</h3>
+    <div class="file-box" onclick="document.getElementById('srtInput').click()">
+      <span>SRT 자막 파일 업로드</span>
+      <input type="file" id="srtInput" accept=".srt" style="display:none" onchange="handleSRT(this.files)">
+    </div>
+
+    <div id="playlist" style="margin-top:20px;"></div>
+  </div>
+
+  <div class="viz-area">
+    <canvas id="artCanvas"></canvas>
+    <div id="currentLyric">SRT 가사가 여기에 표시됩니다</div>
+    <div class="bottom-ctrl">
+      <button class="btn" onclick="clearCanvas()">RESET</button>
+      <button class="btn primary" id="playBtn" onclick="togglePlay()">PERFORMANCE START</button>
+      <button class="btn" onclick="saveImage()">SAVE ART</button>
+    </div>
+  </div>
+
+  <div class="side-panel right">
+    <h3>Brush Settings</h3>
+    <div class="control-group">
+      <label>FONT SIZE</label>
+      <input type="range" id="pSize" min="10" max="200" value="50">
+    </div>
+    <div class="control-group">
+      <label>SENSITIVITY (음악 반응도)</label>
+      <input type="range" id="pSens" min="1" max="10" value="7">
+    </div>
+    <div class="control-group">
+      <label>COLOR MODE</label>
+      <select id="colorMode">
+        <option value="random">RGB Random (설정 범위)</option>
+        <option value="rainbow">Rainbow Cycle</option>
+      </select>
+    </div>
+
+    <h3>RGB Range</h3>
+    <div class="control-group"><label>R</label><input type="range" id="rMin" min="0" max="255" value="0"><input type="range" id="rMax" min="0" max="255" value="255"></div>
+    <div class="control-group"><label>G</label><input type="range" id="gMin" min="0" max="255" value="150"><input type="range" id="gMax" min="0" max="255" value="255"></div>
+    <div class="control-group"><label>B</label><input type="range" id="bMin" min="0" max="255" value="200"><input type="range" id="bMax" min="0" max="255" value="255"></div>
+  </div>
+</div>
+
+<script>
+// --- SRT Parser ---
+let srtData = [];
+function handleSRT(files) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const text = e.target.result;
+    srtData = parseSRT(text);
+    alert("자막 로딩 완료: " + srtData.length + " 줄");
+  };
+  reader.readAsText(files[0]);
+}
+
+function parseSRT(data) {
+  const regex = /(\d+)\n(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\n([\s\S]*?)(?=\n{2,}|\n*$)/g;
+  let matches, result = [];
+  while ((matches = regex.exec(data)) !== null) {
+    result.push({
+      start: timeToSeconds(matches[2]),
+      end: timeToSeconds(matches[3]),
+      text: matches[4].replace(/\n/g, ' '),
+      tokens: decomposeHangeul(matches[4].replace(/\n/g, ' '))
+    });
+  }
+  return result;
+}
+
+function timeToSeconds(time) {
+  const [h, m, s] = time.split(':');
+  const [sec, ms] = s.split(',');
+  return parseInt(h) * 3600 + parseInt(m) * 60 + parseInt(sec) + parseInt(ms) / 1000;
+}
+
+function decomposeHangeul(str) {
+  const cho = ["ㄱ","ㄲ","ㄴ","ㄷ","ㄸ","ㄹ","ㅁ","ㅂ","ㅃ","ㅅ","ㅆ","ㅇ","ㅈ","ㅉ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
+  const jung = ["ㅏ","ㅐ","ㅑ","ㅒ","ㅓ","ㅔ","ㅕ","ㅖ","ㅗ","ㅘ","ㅙ","ㅚ","ㅛ","ㅜ","ㅝ","ㅞ","ㅟ","ㅠ","ㅡ","ㅢ","ㅣ"];
+  const jong = ["","ㄱ","ㄲ","ㄳ","ㄴ","ㄵ","ㄶ","ㄷ","ㄹ","ㄺ","ㄻ","ㄼ","ㄽ","ㄾ","ㄿ","ㅀ","ㅁ","ㅂ","ㅄ","ㅅ","ㅆ","ㅇ","ㅈ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
+  let res = [];
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i) - 44032;
+    if (code > -1 && code < 11172) {
+      res.push(cho[Math.floor(code / 588)]);
+      res.push(jung[Math.floor((code % 588) / 28)]);
+      const j = code % 28; if (j !== 0) res.push(jong[j]);
+    } else res.push(str.charAt(i));
+  }
+  return res.filter(c => c.trim() !== "");
+}
+
+// --- Audio & Canvas ---
+let audioCtx, analyser, source, audioBuffer, isPlaying = false, startTime = 0, pauseOffset = 0;
+const canvas = document.getElementById('artCanvas'), ctx = canvas.getContext('2d');
+
+function handleMusic(files) {
+  if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    audioCtx.decodeAudioData(e.target.result, (buf) => {
+      audioBuffer = buf;
+      document.getElementById('playBtn').disabled = false;
+      alert("음악 로딩 완료");
+    });
+  };
+  reader.readAsArrayBuffer(files[0]);
+}
+
+function togglePlay() {
+  if(isPlaying) {
+    pauseOffset = audioCtx.currentTime - startTime;
+    source.stop(); isPlaying = false;
+    document.getElementById('playBtn').textContent = "RESUME";
+  } else {
+    playAudio();
+  }
+}
+
+function playAudio() {
+  source = audioCtx.createBufferSource();
+  source.buffer = audioBuffer;
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 512;
+  source.connect(analyser);
+  analyser.connect(audioCtx.destination);
+  source.start(0, pauseOffset);
+  startTime = audioCtx.currentTime - pauseOffset;
+  isPlaying = true;
+  document.getElementById('playBtn').textContent = "STOP PERFORMANCE";
+  draw();
+}
+
+function clearCanvas() { ctx.fillStyle = '#000'; ctx.fillRect(0,0,canvas.width,canvas.height); }
+function saveImage() { const link = document.createElement('a'); link.download=`art.png`; link.href=canvas.toDataURL(); link.click(); }
+
+function resize() {
+  const temp = ctx.getImageData(0,0,canvas.width,canvas.height);
+  canvas.width = canvas.clientWidth; canvas.height = canvas.clientHeight;
+  ctx.putImageData(temp, 0, 0);
+  if(!temp.data.some(x=>x!==0)) clearCanvas();
+}
+window.onresize = resize; resize();
+
+// --- Performance Loop ---
+function draw() {
+  if(!isPlaying) return;
+  requestAnimationFrame(draw);
+
+  const currentTime = audioCtx.currentTime - startTime;
+  
+  // 시간 표시 업데이트
+  const m = Math.floor(currentTime / 60);
+  const s = (currentTime % 60).toFixed(2);
+  document.getElementById('timeCode').textContent = `${m.toString().padStart(2,'0')}:${s.toString().padStart(5,'0')}`;
+
+  // 현재 시간에 맞는 SRT 가사 찾기
+  const currentLine = srtData.find(line => currentTime >= line.start && currentTime <= line.end);
+  
+  if (currentLine) {
+    document.getElementById('currentLyric').textContent = currentLine.text;
+    
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteFrequencyData(data);
+    const amp = data[Math.floor(Math.random()*data.length)] / 255;
+    const sens = parseInt(document.getElementById('pSens').value);
+
+    // 음악 비트에 맞춰 글자 찍기
+    if (amp > (1.1 - sens/10)) {
+      const token = currentLine.tokens[Math.floor(Math.random() * currentLine.tokens.length)];
+      paintChar(token, amp);
+    }
+  } else {
+    document.getElementById('currentLyric').textContent = "";
+  }
+}
+
+function paintChar(char, amp) {
+  const x = Math.random() * canvas.width;
+  const y = Math.random() * canvas.height;
+  const size = parseInt(document.getElementById('pSize').value) * (0.5 + amp);
+  
+  ctx.save();
+  let r, g, b;
+  if(document.getElementById('colorMode').value === 'random') {
+    r = Math.random() * (parseInt(document.getElementById('rMax').value) - parseInt(document.getElementById('rMin').value)) + parseInt(document.getElementById('rMin').value);
+    g = Math.random() * (parseInt(document.getElementById('gMax').value) - parseInt(document.getElementById('gMin').value)) + parseInt(document.getElementById('gMin').value);
+    b = Math.random() * (parseInt(document.getElementById('bMax').value) - parseInt(document.getElementById('bMin').value)) + parseInt(document.getElementById('bMin').value);
+  } else {
+    const h = (audioCtx.currentTime * 50) % 360;
+    ctx.fillStyle = `hsla(${h}, 80%, 60%, ${0.3+amp*0.5})`;
+  }
+  
+  if(!ctx.fillStyle.startsWith('hsla')) ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${0.3+amp*0.5})`;
+  
+  ctx.font = `900 ${size}px 'Pretendard'`;
+  ctx.shadowBlur = amp * 20;
+  ctx.shadowColor = ctx.fillStyle;
+  ctx.translate(x, y);
+  ctx.rotate((Math.random()-0.5)*amp);
+  ctx.fillText(char, 0, 0);
+  ctx.restore();
+}
+</script>
+</body>
+</html>
