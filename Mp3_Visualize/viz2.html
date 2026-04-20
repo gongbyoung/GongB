@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPECTRUM LAB — Music Visualizer</title>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --bg:#050508;
+  --panel:#0d0d1e;
+  --border:rgba(80,80,180,0.2);
+  --accent:#55ffcc;
+  --text:#c8e8ff;
+  --muted:#44447a;
+}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:'Courier New',monospace;
+  height:100vh;
+  overflow:hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* TOPBAR */
+.topbar{
+  padding:15px 20px;
+  background:var(--panel);
+  border-bottom:1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between;
+}
+.logo{letter-spacing:5px; color:var(--accent); font-weight:bold;}
+
+/* MAIN LAYOUT */
+.container {
+  display: grid;
+  grid-template-columns: 300px 1fr 300px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* PANELS */
+.side-panel {
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  padding: 15px;
+  overflow-y: auto;
+}
+.side-panel.right { border-right:none; border-left: 1px solid var(--border); }
+
+h3 { font-size: 12px; letter-spacing: 2px; color: var(--muted); margin-bottom: 15px; text-transform: uppercase; }
+
+/* CONTROLS */
+.control-group { margin-bottom: 15px; }
+.control-group label { display: block; font-size: 10px; color: #888; margin-bottom: 5px; }
+input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+select { width: 100%; background: #1a1a2e; color: #fff; border: 1px solid var(--border); padding: 5px; font-family: inherit; }
+
+/* PLAYLIST */
+.pl-item { padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); cursor: pointer; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-item:hover { background: rgba(255,255,255,0.05); }
+.pl-item.active { color: var(--accent); border-left: 2px solid var(--accent); }
+
+/* VISUALIZER AREA */
+.viz-area { position: relative; background: #000; overflow: hidden; display: flex; flex-direction: column;}
+canvas { flex: 1; width: 100%; height: 100%; }
+
+.bottom-ctrl {
+  padding: 15px; background: rgba(0,0,0,0.8); border-top: 1px solid var(--border);
+  display: flex; align-items: center; gap: 15px;
+}
+.btn { background: transparent; border: 1px solid var(--border); color: #fff; padding: 8px 15px; cursor: pointer; font-size: 11px; }
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn.primary { background: var(--accent); color: #000; border: none; font-weight: bold; }
+
+/* FILE INPUT */
+#fileInput { display: none; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">SPECTRUM LAB</div>
+  <div style="font-size:10px;">PRO DRONE VISUALIZER</div>
+</div>
+
+<div class="container">
+  <div class="side-panel">
+    <h3>Playlist</h3>
+    <button class="btn" onclick="document.getElementById('fileInput').click()" style="margin-bottom:15px;">+ MP3 파일 추가</button>
+    <input type="file" id="fileInput" accept="audio/*" multiple onchange="handleFiles(this.files)">
+    <div id="playlist"></div>
+  </div>
+
+  <div class="viz-area">
+    <canvas id="mainCanvas"></canvas>
+    <div class="bottom-ctrl">
+      <button class="btn" onclick="prevTrack()">⏮</button>
+      <button class="btn primary" id="playBtn" onclick="togglePlay()">PLAY</button>
+      <button class="btn" onclick="nextTrack()">⏭</button>
+      <div id="trackInfo" style="font-size: 11px; color: var(--accent);">음악을 선택해주세요</div>
+    </div>
+  </div>
+
+  <div class="side-panel right">
+    <h3>Visual Option</h3>
+    
+    <div class="control-group">
+      <label>PARTICLE COUNT (입자 개수)</label>
+      <input type="range" id="pCount" min="10" max="500" value="150">
+    </div>
+
+    <div class="control-group">
+      <label>TRAIL STRENGTH (잔상 강도)</label>
+      <input type="range" id="pTrail" min="0.01" max="0.5" step="0.01" value="0.05">
+    </div>
+
+    <div class="control-group">
+      <label>COLOR HUE (색상 범위)</label>
+      <input type="range" id="pHue" min="0" max="360" value="160">
+    </div>
+
+    <div class="control-group">
+      <label>BRUSH SHAPE (칠하는 모양)</label>
+      <select id="pShape">
+        <option value="spirit">Spirit (정령 입자)</option>
+        <option value="line">Laser (광선)</option>
+        <option value="flower">Flower (꽃잎)</option>
+        <option value="drone">Drone (드론 시점)</option>
+      </select>
+    </div>
+
+    <div class="control-group">
+      <label>PAINT RANGE (칠 범위)</label>
+      <input type="range" id="pRange" min="0.5" max="3" step="0.1" value="1.2">
+    </div>
+
+    <div style="margin-top: auto; font-size: 9px; color: var(--muted); line-height: 1.5;">
+      * 잔상 강도가 낮을수록 그림이 오래 남습니다.<br>
+      * 드론 조종사 모드: 구름과 숲 사이를 누비는 궤적을 그립니다.
+    </div>
+  </div>
+</div>
+
+<script>
+// --- AUDIO ENGINE ---
+let audioCtx, analyser, source, gainNode;
+let playlist = [];
+let currentIdx = -1;
+let isPlaying = false;
+let audioBuffer = null;
+let startTime = 0;
+let pauseOffset = 0;
+
+function initAudio() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 1024;
+  gainNode = audioCtx.createGain();
+  analyser.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
+}
+
+function handleFiles(files) {
+  for(let f of files) {
+    playlist.push({ file: f, name: f.name.replace(/\.[^.]+$/, '') });
+  }
+  renderPlaylist();
+  if(currentIdx === -1) loadTrack(0);
+}
+
+function renderPlaylist() {
+  const container = document.getElementById('playlist');
+  container.innerHTML = playlist.map((t, i) => `
+    <div class="pl-item ${i===currentIdx?'active':''}" onclick="loadTrack(${i})">
+      ${i+1}. ${t.name}
+    </div>
+  `).join('');
+}
+
+function loadTrack(idx) {
+  if(idx < 0 || idx >= playlist.length) return;
+  currentIdx = idx;
+  initAudio();
+  if(source) source.stop();
+  
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    audioCtx.decodeAudioData(e.target.result, (buf) => {
+      audioBuffer = buf;
+      pauseOffset = 0;
+      playAudio();
+      renderPlaylist();
+      document.getElementById('trackInfo').textContent = playlist[idx].name;
+    });
+  };
+  reader.readAsArrayBuffer(playlist[idx].file);
+}
+
+function playAudio() {
+  source = audioCtx.createBufferSource();
+  source.buffer = audioBuffer;
+  source.connect(analyser);
+  source.start(0, pauseOffset);
+  startTime = audioCtx.currentTime - pauseOffset;
+  isPlaying = true;
+  document.getElementById('playBtn').textContent = "PAUSE";
+  source.onended = () => { if(isPlaying) nextTrack(); };
+}
+
+function togglePlay() {
+  if(!audioBuffer) return;
+  if(isPlaying) {
+    pauseOffset = audioCtx.currentTime - startTime;
+    source.stop();
+    isPlaying = false;
+    document.getElementById('playBtn').textContent = "PLAY";
+  } else {
+    playAudio();
+  }
+}
+
+function nextTrack() { loadTrack((currentIdx + 1) % playlist.length); }
+function prevTrack() { loadTrack((currentIdx - 1 + playlist.length) % playlist.length); }
+
+// --- VISUALIZER ENGINE ---
+const canvas = document.getElementById('mainCanvas');
+const ctx = canvas.getContext('2d');
+let particles = [];
+
+function resize() {
+  canvas.width = canvas.clientWidth;
+  canvas.height = canvas.clientHeight;
+}
+window.onresize = resize;
+resize();
+
+// 입자 초기화
+function initParticles() {
+  const count = document.getElementById('pCount').value;
+  particles = [];
+  for(let i=0; i<count; i++) {
+    particles.push({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      vx: (Math.random() - 0.5) * 2,
+      vy: (Math.random() - 0.5) * 2,
+      acc: Math.random() * 0.05,
+      hue: Math.random() * 30
+    });
+  }
+}
+
+// 그리기 루프
+function draw() {
+  requestAnimationFrame(draw);
+  
+  const trail = document.getElementById('pTrail').value;
+  const mainHue = parseInt(document.getElementById('pHue').value);
+  const shape = document.getElementById('pShape').value;
+  const rangeMult = parseFloat(document.getElementById('pRange').value);
+  const targetCount = parseInt(document.getElementById('pCount').value);
+
+  // 입자 개수 실시간 조절
+  if(particles.length !== targetCount) initParticles();
+
+  // 핵심: 배경을 불투명하게 덧칠하여 잔상을 남김
+  ctx.fillStyle = `rgba(5, 5, 10, ${trail})`;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  if(!analyser) return;
+  const data = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteFrequencyData(data);
+
+  let bass = 0;
+  for(let i=0; i<10; i++) bass += data[i];
+  bass /= 2550;
+
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+
+  particles.forEach((p, i) => {
+    const fi = Math.floor((i / particles.length) * data.length * 0.5);
+    const amp = data[fi] / 255;
+    
+    // 음악 반응 속도 및 위치 계산
+    const speed = (0.5 + amp * 5) * rangeMult;
+    
+    if(shape === 'drone') {
+      // 드론 비행 시점: 소용돌이치며 나아가는 궤적
+      const dist = Math.hypot(p.x - cx, p.y - cy);
+      const angle = Math.atan2(p.y - cy, p.x - cx) + 0.02 + (amp * 0.05);
+      const newDist = dist > canvas.width ? 10 : dist + speed;
+      p.x = cx + Math.cos(angle) * newDist;
+      p.y = cy + Math.sin(angle) * newDist;
+    } else {
+      // 기본 자유 부유
+      p.x += p.vx * speed;
+      p.y += p.vy * speed;
+      if(p.x < 0 || p.x > canvas.width) p.vx *= -1;
+      if(p.y < 0 || p.y > canvas.height) p.vy *= -1;
+    }
+
+    // 그리기
+    ctx.beginPath();
+    const size = 1 + amp * 8;
+    const finalHue = mainHue + (amp * 50);
+    
+    ctx.fillStyle = `hsla(${finalHue}, 80%, 60%, ${0.3 + amp * 0.7})`;
+    ctx.shadowBlur = amp * 20;
+    ctx.shadowColor = `hsla(${finalHue}, 80%, 60%, 1)`;
+
+    if(shape === 'line') {
+      ctx.rect(p.x, p.y, 1, amp * 100);
+    } else if(shape === 'flower') {
+      for(let j=0; j<5; j++) {
+        const a = (j/5) * Math.PI * 2;
+        ctx.lineTo(p.x + Math.cos(a)*size*2, p.y + Math.sin(a)*size*2);
+      }
+    } else {
+      ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+    }
+    
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  });
+
+  // 중앙 빛무리 (이미지의 안개 효과)
+  const grd = ctx.createRadialGradient(cx, cy, 0, cx, cy, 300 * bass * rangeMult);
+  grd.addColorStop(0, `hsla(${mainHue}, 100%, 50%, ${0.1 * bass})`);
+  grd.addColorStop(1, 'transparent');
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+
+initParticles();
+draw();
+</script>
+</body>
+</html>
