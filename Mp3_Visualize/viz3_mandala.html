@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Visualizer 03 — Mandala</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #040206;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: 'Courier New', monospace;
+    overflow: hidden;
+  }
+  .label {
+    position: fixed;
+    top: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    letter-spacing: 6px;
+    color: #aa3080;
+    text-transform: uppercase;
+  }
+  canvas { display: block; }
+  .controls {
+    position: fixed;
+    bottom: 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+  }
+  .drop-zone {
+    border: 1px dashed #aa2060;
+    border-radius: 10px;
+    padding: 12px 32px;
+    cursor: pointer;
+    font-size: 12px;
+    color: #aa2060;
+    letter-spacing: 2px;
+    transition: all 0.3s;
+  }
+  .drop-zone:hover { border-color: #ff60a0; color: #ff80c0; }
+  input[type=file] { display: none; }
+  button {
+    background: rgba(60,10,40,0.7);
+    border: 1px solid #660030;
+    border-radius: 6px;
+    color: #cc60a0;
+    padding: 7px 16px;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  button:hover { border-color: #ff60a0; color: #ffb0d0; }
+</style>
+</head>
+<body>
+<div class="label">03 — MANDALA</div>
+<canvas id="c"></canvas>
+<div class="controls">
+  <div class="drop-zone" id="dz">♫ MP3 드래그 또는 클릭</div>
+  <button id="playBtn" style="display:none">▶ PLAY</button>
+</div>
+<input type="file" id="fi" accept="audio/*">
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H;
+function resize() { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+resize(); window.addEventListener('resize', resize);
+
+let audioCtx, analyser, source, gainNode, isPlaying = false, audioBuffer, startTime = 0, pauseOffset = 0;
+let t = 0;
+
+document.getElementById('dz').addEventListener('click', () => document.getElementById('fi').click());
+document.getElementById('dz').addEventListener('dragover', e => e.preventDefault());
+document.getElementById('dz').addEventListener('drop', e => { e.preventDefault(); load(e.dataTransfer.files[0]); });
+document.getElementById('fi').addEventListener('change', e => load(e.target.files[0]));
+
+function initAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 2048;
+    gainNode = audioCtx.createGain();
+    gainNode.connect(audioCtx.destination);
+    analyser.connect(gainNode);
+  }
+}
+function load(file) {
+  initAudio();
+  if (source) { try { source.stop(); source.disconnect(); } catch(e){} }
+  const reader = new FileReader();
+  reader.onload = e => {
+    audioCtx.decodeAudioData(e.target.result, buf => {
+      audioBuffer = buf; pauseOffset = 0;
+      document.getElementById('playBtn').style.display = ''; play();
+    });
+  };
+  reader.readAsArrayBuffer(file);
+}
+function play() {
+  if (!audioBuffer) return;
+  if (source) { try { source.stop(); source.disconnect(); } catch(e){} }
+  source = audioCtx.createBufferSource();
+  source.buffer = audioBuffer;
+  source.connect(analyser);
+  source.start(0, pauseOffset);
+  startTime = audioCtx.currentTime - pauseOffset;
+  isPlaying = true;
+  document.getElementById('playBtn').textContent = '⏸ PAUSE';
+  source.onended = () => { isPlaying = false; pauseOffset = 0; document.getElementById('playBtn').textContent = '▶ PLAY'; };
+}
+document.getElementById('playBtn').addEventListener('click', () => {
+  if (!audioCtx) return;
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  if (isPlaying) {
+    pauseOffset = audioCtx.currentTime - startTime;
+    source.stop(); isPlaying = false;
+    document.getElementById('playBtn').textContent = '▶ PLAY';
+  } else play();
+});
+
+function drawPetal(freqData, cx, cy, baseR, petals, rot, colorStart, colorEnd, ringIndex) {
+  for (let i = 0; i < petals; i++) {
+    const angle = (i / petals) * Math.PI * 2 + rot;
+    const fi = Math.floor((i / petals) * freqData.length * 0.5) + ringIndex * 20;
+    const amp = (freqData[Math.min(fi, freqData.length - 1)] || 0) / 255;
+    const r = baseR * (0.7 + amp * 0.6);
+    const x = cx + Math.cos(angle) * r;
+    const y = cy + Math.sin(angle) * r;
+    const size = (baseR * 0.15) * (0.5 + amp * 1.2);
+    const hue = colorStart + (colorEnd - colorStart) * (i / petals) + amp * 30;
+
+    // Petal shape
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle + Math.PI / 2);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, size * 0.4, size, 0, 0, Math.PI * 2);
+    ctx.fillStyle = `hsla(${hue}, 80%, 55%, ${0.15 + amp * 0.35})`;
+    ctx.fill();
+    ctx.strokeStyle = `hsla(${hue}, 90%, 70%, ${0.4 + amp * 0.4})`;
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+    ctx.restore();
+
+    // Connection lines
+    if (i > 0) {
+      const prevAngle = ((i - 1) / petals) * Math.PI * 2 + rot;
+      const pfi = Math.floor(((i - 1) / petals) * freqData.length * 0.5) + ringIndex * 20;
+      const pamp = (freqData[Math.min(pfi, freqData.length - 1)] || 0) / 255;
+      const pr = baseR * (0.7 + pamp * 0.6);
+      const px = cx + Math.cos(prevAngle) * pr;
+      const py = cy + Math.sin(prevAngle) * pr;
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.lineTo(x, y);
+      ctx.strokeStyle = `hsla(${hue}, 70%, 60%, ${0.2 + amp * 0.3})`;
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
+    }
+  }
+}
+
+function draw() {
+  requestAnimationFrame(draw);
+  t += 0.006;
+  ctx.fillStyle = 'rgba(4,2,6,0.2)';
+  ctx.fillRect(0, 0, W, H);
+
+  const cx = W / 2, cy = H / 2;
+  const freqData = new Uint8Array(analyser ? analyser.frequencyBinCount : 512);
+  if (analyser) analyser.getByteFrequencyData(freqData);
+
+  let bass = 0;
+  for (let i = 0; i < 10; i++) bass += (freqData[i] || 0);
+  bass = bass / 10 / 255;
+
+  const baseR = Math.min(W, H) * 0.38;
+
+  // Multiple rings of petals
+  const rings = [
+    { r: baseR * 0.2, petals: 6, hStart: 300, hEnd: 360, speed: 0.4 },
+    { r: baseR * 0.38, petals: 8, hStart: 270, hEnd: 340, speed: -0.25 },
+    { r: baseR * 0.55, petals: 12, hStart: 320, hEnd: 380, speed: 0.15 },
+    { r: baseR * 0.72, petals: 16, hStart: 290, hEnd: 360, speed: -0.1 },
+    { r: baseR * 0.9, petals: 24, hStart: 260, hEnd: 330, speed: 0.07 },
+  ];
+
+  rings.forEach((ring, idx) => {
+    drawPetal(freqData, cx, cy, ring.r, ring.petals, t * ring.speed, ring.hStart, ring.hEnd, idx);
+  });
+
+  // Center gem
+  const gemR = baseR * 0.08 + bass * 20;
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2 + t;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(a) * gemR, cy + Math.sin(a) * gemR);
+    ctx.lineTo(cx + Math.cos(a + Math.PI / 8) * gemR * 0.5, cy + Math.sin(a + Math.PI / 8) * gemR * 0.5);
+    ctx.closePath();
+    ctx.fillStyle = `hsla(${310 + i * 10}, 90%, 70%, ${0.5 + bass * 0.4})`;
+    ctx.fill();
+  }
+
+  // Outer glow ring
+  ctx.beginPath();
+  ctx.arc(cx, cy, baseR * 0.95, 0, Math.PI * 2);
+  ctx.strokeStyle = `rgba(255, 100, 180, ${0.05 + bass * 0.1})`;
+  ctx.lineWidth = 20;
+  ctx.stroke();
+}
+draw();
+</script>
+</body>
+</html>
