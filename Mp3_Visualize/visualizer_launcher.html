@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Audio Visualizer — Select & Launch</title>
+<style>
+  *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+  :root {
+    --bg: #06060f;
+    --card-bg: #0d0d1e;
+    --border: rgba(80,80,180,0.25);
+    --border-hover: rgba(120,120,255,0.6);
+    --accent: #6060ff;
+    --text: #c0c0ff;
+    --muted: #444488;
+    --panel: #0a0a1a;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Courier New', monospace;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  /* ── HEADER ── */
+  header {
+    width: 100%;
+    padding: 36px 24px 24px;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+  }
+  header .eyebrow {
+    font-size: 10px;
+    letter-spacing: 8px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  header h1 {
+    font-size: clamp(22px, 4vw, 36px);
+    font-weight: 300;
+    letter-spacing: 4px;
+    color: #e0e0ff;
+  }
+
+  /* ── UPLOAD ZONE ── */
+  .upload-wrap {
+    width: 100%;
+    max-width: 860px;
+    padding: 24px 24px 0;
+  }
+  .drop-zone {
+    border: 1px dashed rgba(80,80,200,0.5);
+    border-radius: 12px;
+    padding: 20px 32px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    cursor: pointer;
+    transition: all 0.3s;
+    background: rgba(20,20,60,0.2);
+  }
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(40,40,120,0.3);
+  }
+  .drop-zone .icon { font-size: 28px; flex-shrink: 0; }
+  .drop-zone .texts { flex: 1; }
+  .drop-zone .texts .main { font-size: 13px; color: #8080dd; letter-spacing: 1px; }
+  .drop-zone .texts .sub  { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  #fileInput { display: none; }
+
+  .track-bar {
+    display: none;
+    align-items: center;
+    gap: 12px;
+    margin-top: 12px;
+    padding: 10px 16px;
+    background: rgba(20,20,60,0.5);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+  }
+  .track-bar.visible { display: flex; }
+  .track-name { flex: 1; font-size: 12px; color: #9090dd; letter-spacing: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .track-time { font-size: 11px; color: var(--muted); white-space: nowrap; }
+
+  .progress-wrap {
+    display: none;
+    height: 3px;
+    background: #111130;
+    border-radius: 2px;
+    margin-top: 8px;
+    cursor: pointer;
+  }
+  .progress-wrap.visible { display: block; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, #4040cc, #8888ff); border-radius: 2px; width: 0%; transition: width 0.1s; }
+
+  .vol-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+  }
+  .vol-label { font-size: 10px; color: var(--muted); letter-spacing: 3px; }
+  input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
+  .vol-val { font-size: 10px; color: var(--muted); min-width: 34px; text-align: right; }
+
+  /* ── GRID ── */
+  .section-label {
+    width: 100%;
+    max-width: 860px;
+    padding: 28px 24px 12px;
+    font-size: 10px;
+    letter-spacing: 6px;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  .grid {
+    width: 100%;
+    max-width: 860px;
+    padding: 0 24px 40px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 14px;
+  }
+
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color 0.25s, transform 0.2s, box-shadow 0.25s;
+    position: relative;
+  }
+  .card:hover {
+    border-color: var(--border-hover);
+    transform: translateY(-2px);
+  }
+  .card.selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent), 0 8px 32px rgba(60,60,255,0.25);
+  }
+
+  .card-preview {
+    width: 100%;
+    aspect-ratio: 16/9;
+    position: relative;
+    overflow: hidden;
+  }
+  .card-preview canvas {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+  }
+  .card-preview .play-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.1);
+    opacity: 0;
+    transition: opacity 0.2s;
+    font-size: 32px;
+    color: rgba(255,255,255,0.8);
+  }
+  .card:hover .play-overlay { opacity: 1; }
+  .card.selected .play-overlay { opacity: 0; }
+
+  .card-body {
+    padding: 12px 14px 14px;
+  }
+  .card-num {
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 3px;
+    margin-bottom: 3px;
+  }
+  .card-name {
+    font-size: 14px;
+    color: #d0d0ff;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+  }
+  .card-desc {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+  .card-badge {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 9px;
+    letter-spacing: 2px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    display: none;
+  }
+  .card.selected .card-badge { display: block; }
+
+  /* ── LAUNCH BAR ── */
+  .launch-bar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    padding: 14px 24px;
+    background: rgba(6,6,15,0.95);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    backdrop-filter: blur(10px);
+    transform: translateY(100%);
+    transition: transform 0.3s ease;
+  }
+  .launch-bar.visible { transform: translateY(0); }
+  .launch-info { flex: 1; font-size: 12px; color: #8080cc; letter-spacing: 1px; }
+  .launch-info span { color: #e0e0ff; }
+
+  .btn-launch {
+    background: var(--accent);
+    border: none;
+    border-radius: 8px;
+    color: #fff;
+    padding: 10px 26px;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    letter-spacing: 2px;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .btn-launch:hover { background: #8080ff; transform: scale(1.03); }
+
+  .btn-play {
+    background: rgba(40,40,100,0.8);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: #a0a0ff;
+    padding: 10px 20px;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: none;
+  }
+  .btn-play:hover { border-color: var(--accent); color: #e0e0ff; }
+  .btn-play.visible { display: block; }
+
+  /* ── FULLSCREEN OVERLAY ── */
+  #overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: #000;
+    z-index: 1000;
+    flex-direction: column;
+  }
+  #overlay.active { display: flex; }
+  #overlayCanvas { flex: 1; display: block; width: 100%; }
+  #overlayBar {
+    background: rgba(6,6,15,0.95);
+    border-top: 1px solid var(--border);
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+  #overlayTitle { flex: 1; font-size: 11px; color: #6060aa; letter-spacing: 3px; }
+  #overlayTime { font-size: 11px; color: var(--muted); }
+  .ov-btn {
+    background: rgba(30,30,80,0.8);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: #9090cc;
+    padding: 6px 14px;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .ov-btn:hover { border-color: var(--accent); color: #e0e0ff; }
+  #overlayProgress {
+    height: 2px;
+    background: #111130;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  #overlayProgressFill {
+    height: 100%;
+    background: linear-gradient(90deg, #4040cc, #8888ff);
+    width: 0%;
+    transition: width 0.1s;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="eyebrow">audio visualizer collection</div>
+  <h1>SPECTRUM</h1>
+</header>
+
+<div class="upload-wrap">
+  <div class="drop-zone" id="dz">
+    <div class="icon">♫</div>
+    <div class="texts">
+      <div class="main">MP3 파일을 여기에 드래그하거나 클릭해서 선택</div>
+      <div class="sub">mp3 · wav · ogg · flac 지원</div>
+    </div>
+  </div>
+  <input type="file" id="fileInput" accept="audio/*">
+
+  <div class="track-bar" id="trackBar">
+    <span class="track-name" id="trackName">—</span>
+    <span class="track-time" id="trackTime">0:00 / 0:00</span>
+  </div>
+  <div class="progress-wrap" id="progressWrap">
+    <div class="progress-fill" id="progressFill"></div>
+  </div>
+  <div class="vol-row">
+    <span class="vol-label">VOL</span>
+    <input type="range" id="volSlider" min="0" max="1" step="0.01" value="0.8">
+    <span class="vol-val" id="volVal">80%</span>
+  </div>
+</div>
+
+<div class="section-label">비주얼라이저 선택</div>
+
+<div class="grid" id="grid"></div>
+
+<!-- launch bar -->
+<div class="launch-bar" id="launchBar">
+  <div class="launch-info">선택됨: <span id="launchName">—</span></div>
+  <button class="btn-play" id="playBtn">▶ PLAY</button>
+  <button class="btn-launch" id="launchBtn">전체화면으로 열기 ↗</button>
+</div>
+
+<!-- fullscreen overlay -->
+<div id="overlay">
+  <div id="overlayProgress"><div id="overlayProgressFill"></div></div>
+  <canvas id="overlayCanvas"></canvas>
+  <div id="overlayBar">
+    <span id="overlayTitle">—</span>
+    <span id="overlayTime">0:00 / 0:00</span>
+    <button class="ov-btn" id="ovPlayBtn">⏸ PAUSE</button>
+    <button class="ov-btn" id="ovCloseBtn">✕ 닫기</button>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────
+// VISUALIZER DEFINITIONS
+// ─────────────────────────────────────────
+const VIZS = [
+  {
+    id: 'dna',
+    num: '01',
+    name: 'DNA HELIX',
+    desc: '이중나선 가닥이 주파수에 맞춰 회전하며 점과 선으로 반응',
+    bg: '#030308',
+    palette: ['#4060ff','#8090ff'],
+    draw: drawDNA
+  },
+  {
+    id: 'nebula',
+    num: '02',
+    name: 'GALAXY NEBULA',
+    desc: '300개의 파티클이 소용돌이치며 외부 스펙트럼 링 형성',
+    bg: '#020206',
+    palette: ['#5050dd','#aa80ff'],
+    draw: drawNebula
+  },
+  {
+    id: 'mandala',
+    num: '03',
+    name: 'MANDALA',
+    desc: '5겹 꽃잎 링이 각기 다른 속도로 회전하는 신성한 기하학',
+    bg: '#040206',
+    palette: ['#dd2080','#ff80c0'],
+    draw: drawMandala
+  },
+  {
+    id: 'web',
+    num: '04',
+    name: 'ELECTRIC WEB',
+    desc: '16개 노드 사이를 번개가 관통하며 음량에 따라 방전',
+    bg: '#010108',
+    palette: ['#00aacc','#80ffff'],
+    draw: drawWeb
+  },
+  {
+    id: 'vortex',
+    num: '05',
+    name: 'VORTEX TUNNEL',
+    desc: '나선형 터널이 빨려들어가는 착시와 함께 퍼플 스펙트럼',
+    bg: '#020104',
+    palette: ['#6600bb','#cc80ff'],
+    draw: drawVortex
+  },
+  {
+    id: 'aurora',
+    num: '06',
+    name: 'AURORA RINGS',
+    desc: '6겹 타원 리본이 오로라처럼 물결치는 북극광 효과',
+    bg: '#010306',
+    palette: ['#006633','#80ffcc'],
+    draw: drawAurora
+  }
+];
+
+// ─────────────────────────────────────────
+// AUDIO ENGINE
+// ─────────────────────────────────────────
+let audioCtx, analyser, gainNode, source;
+let audioBuffer = null, isPlaying = false;
+let startTime = 0, pauseOffset = 0, duration = 0;
+
+function initAudio() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 2048;
+  gainNode = audioCtx.createGain();
+  gainNode.gain.value = 0.8;
+  analyser.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
+}
+
+function loadFile(file) {
+  initAudio();
+  if (source) { try { source.stop(); source.disconnect(); } catch(e){} }
+  document.getElementById('trackName').textContent = file.name.replace(/\.[^.]+$/, '');
+  document.getElementById('trackBar').classList.add('visible');
+  document.getElementById('progressWrap').classList.add('visible');
+  const reader = new FileReader();
+  reader.onload = e => {
+    audioCtx.decodeAudioData(e.target.result, buf => {
+      audioBuffer = buf;
+      duration = buf.duration;
+      pauseOffset = 0;
+      document.getElementById('playBtn').classList.add('visible');
+      playAudio();
+    });
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function playAudio() {
+  if (!audioBuffer) return;
+  if (source) { try { source.stop(); source.disconnect(); } catch(e){} }
+  source = audioCtx.createBufferSource();
+  source.buffer = audioBuffer;
+  source.connect(analyser);
+  source.start(0, pauseOffset);
+  startTime = audioCtx.currentTime - pauseOffset;
+  isPlaying = true;
+  updatePlayBtns();
+  source.onended = () => { if(isPlaying){ isPlaying=false; pauseOffset=0; updatePlayBtns(); } };
+}
+
+function togglePlay() {
+  if (!audioCtx) return;
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  if (isPlaying) {
+    pauseOffset = audioCtx.currentTime - startTime;
+    source.stop(); isPlaying = false;
+  } else { playAudio(); }
+  updatePlayBtns();
+}
+
+function updatePlayBtns() {
+  const label = isPlaying ? '⏸ PAUSE' : '▶ PLAY';
+  document.getElementById('playBtn').textContent = label;
+  document.getElementById('ovPlayBtn').textContent = label;
+}
+
+function getFreqData() {
+  const d = new Uint8Array(analyser ? analyser.frequencyBinCount : 512);
+  if (analyser) analyser.getByteFrequencyData(d);
+  return d;
+}
+function getTimeData() {
+  const d = new Uint8Array(analyser ? analyser.frequencyBinCount : 512);
+  if (analyser) analyser.getByteTimeDomainData(d);
+  return d;
+}
+
+function formatTime(s) {
+  const m = Math.floor(s/60), sec = Math.floor(s%60);
+  return m + ':' + (sec<10?'0':'') + sec;
+}
+
+function updateProgress() {
+  if (!isPlaying || !audioBuffer) return;
+  const elapsed = audioCtx.currentTime - startTime;
+  const pct = Math.min(elapsed/duration,1)*100;
+  document.getElementById('progressFill').style.width = pct+'%';
+  document.getElementById('overlayProgressFill').style.width = pct+'%';
+  const label = formatTime(elapsed)+' / '+formatTime(duration);
+  document.getElementById('trackTime').textContent = label;
+  document.getElementById('overlayTime').textContent = label;
+}
+
+// ─────────────────────────────────────────
+// CARD PREVIEWS (small canvas per card)
+// ─────────────────────────────────────────
+const previewTimers = {};
+const previewTs = {};
+
+function startPreview(viz, canvas) {
+  const ctx = canvas.getContext('2d');
+  let t = Math.random() * 100;
+  const fakeFreq = new Uint8Array(256);
+
+  function tick() {
+    previewTimers[viz.id] = requestAnimationFrame(tick);
+    t += 0.02;
+    // Fake animated frequency data
+    for (let i = 0; i < fakeFreq.length; i++) {
+      fakeFreq[i] = Math.max(0, Math.min(255,
+        128 + Math.sin(t * 1.5 + i * 0.2) * 60
+            + Math.sin(t * 3.1 + i * 0.07) * 40
+            + (Math.random() - 0.5) * 20
+      ));
+    }
+    const W = canvas.width, H = canvas.height;
+    ctx.fillStyle = viz.bg + 'cc';
+    ctx.fillRect(0,0,W,H);
+    viz.draw(ctx, W, H, t, fakeFreq, null);
+  }
+  tick();
+}
+
+// ─────────────────────────────────────────
+// BUILD GRID
+// ─────────────────────────────────────────
+let selectedViz = null;
+
+const grid = document.getElementById('grid');
+VIZS.forEach(viz => {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.id = 'card-'+viz.id;
+  card.innerHTML = `
+    <div class="card-preview">
+      <canvas id="prev-${viz.id}" width="320" height="180"></canvas>
+      <div class="play-overlay">▶</div>
+    </div>
+    <div class="card-body">
+      <div class="card-num">${viz.num}</div>
+      <div class="card-name">${viz.name}</div>
+      <div class="card-desc">${viz.desc}</div>
+    </div>
+    <div class="card-badge">SELECTED</div>
+  `;
+  card.addEventListener('click', () => selectViz(viz));
+  grid.appendChild(card);
+
+  const canvas = document.getElementById('prev-'+viz.id);
+  startPreview(viz, canvas);
+});
+
+function selectViz(viz) {
+  document.querySelectorAll('.card').forEach(c => c.classList.remove('selected'));
+  document.getElementById('card-'+viz.id).classList.add('selected');
+  selectedViz = viz;
+  document.getElementById('launchName').textContent = viz.num + ' — ' + viz.name;
+  document.getElementById('launchBar').classList.add('visible');
+}
+
+// ─────────────────────────────────────────
+// FILE UPLOAD
+// ─────────────────────────────────────────
+document.getElementById('dz').addEventListener('click', () => document.getElementById('fileInput').click());
+document.getElementById('dz').addEventListener('dragover', e => { e.preventDefault(); document.getElementById('dz').classList.add('drag-over'); });
+document.getElementById('dz').addEventListener('dragleave', () => document.getElementById('dz').classList.remove('drag-over'));
+document.getElementById('dz').addEventListener('drop', e => {
+  e.preventDefault();
+  document.getElementById('dz').classList.remove('drag-over');
+  if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+});
+document.getElementById('fileInput').addEventListener('change', e => { if(e.target.files[0]) loadFile(e.target.files[0]); });
+document.getElementById('playBtn').addEventListener('click', togglePlay);
+document.getElementById('progressWrap').addEventListener('click', e => {
+  if (!audioBuffer) return;
+  const r = e.currentTarget.getBoundingClientRect();
+  pauseOffset = ((e.clientX - r.left) / r.width) * duration;
+  if (isPlaying) playAudio(); else document.getElementById('progressFill').style.width = (pauseOffset/duration*100)+'%';
+});
+const volSlider = document.getElementById('volSlider');
+volSlider.addEventListener('input', () => {
+  if (gainNode) gainNode.gain.value = volSlider.value;
+  document.getElementById('volVal').textContent = Math.round(volSlider.value*100)+'%';
+});
+
+// ─────────────────────────────────────────
+// FULLSCREEN OVERLAY
+// ─────────────────────────────────────────
+const overlay = document.getElementById('overlay');
+const overlayCanvas = document.getElementById('overlayCanvas');
+const overlayCtx = overlayCanvas.getContext('2d');
+let overlayAnimId = null;
+let overlayT = 0;
+
+document.getElementById('launchBtn').addEventListener('click', () => {
+  if (!selectedViz) return;
+  openOverlay(selectedViz);
+});
+
+document.getElementById('ovPlayBtn').addEventListener('click', togglePlay);
+document.getElementById('ovCloseBtn').addEventListener('click', closeOverlay);
+document.getElementById('overlayProgress').addEventListener('click', e => {
+  if (!audioBuffer) return;
+  const r = e.currentTarget.getBoundingClientRect();
+  pauseOffset = ((e.clientX - r.left) / r.width) * duration;
+  if (isPlaying) playAudio();
+});
+
+function openOverlay(viz) {
+  overlay.classList.add('active');
+  document.getElementById('overlayTitle').textContent = viz.num + ' — ' + viz.name;
+  overlayCanvas.style.background = viz.bg;
+  function resizeOverlay() {
+    overlayCanvas.width = window.innerWidth;
+    overlayCanvas.height = window.innerHeight - document.getElementById('overlayBar').offsetHeight - document.getElementById('overlayProgress').offsetHeight;
+  }
+  resizeOverlay();
+  window.addEventListener('resize', resizeOverlay);
+  if (overlayAnimId) cancelAnimationFrame(overlayAnimId);
+  overlayT = 0;
+
+  function tick() {
+    overlayAnimId = requestAnimationFrame(tick);
+    overlayT += 0.012;
+    const W = overlayCanvas.width, H = overlayCanvas.height;
+    const freq = getFreqData();
+    const time_ = getTimeData();
+    overlayCtx.fillStyle = viz.bg + '40';
+    overlayCtx.fillRect(0,0,W,H);
+    viz.draw(overlayCtx, W, H, overlayT, freq, time_);
+    updateProgress();
+  }
+  tick();
+
+  overlay._resizeFn = resizeOverlay;
+}
+
+function closeOverlay() {
+  overlay.classList.remove('active');
+  if (overlayAnimId) { cancelAnimationFrame(overlayAnimId); overlayAnimId = null; }
+  if (overlay._resizeFn) window.removeEventListener('resize', overlay._resizeFn);
+}
+
+// Global RAF for progress update on main page
+(function loop() { requestAnimationFrame(loop); updateProgress(); })();
+
+// ─────────────────────────────────────────
+// DRAW FUNCTIONS
+// ─────────────────────────────────────────
+
+function drawDNA(ctx, W, H, t, freq, time_) {
+  const cx=W/2, cy=H/2;
+  const radius=Math.min(W,H)*0.3;
+  const strands=2, points=64;
+  for(let s=0;s<strands;s++){
+    const po=(s/strands)*Math.PI;
+    for(let i=0;i<points;i++){
+      const angle=(i/points)*Math.PI*2+t+po;
+      const fi=Math.floor((i/points)*freq.length/2);
+      const amp=(freq[fi]||0)/255;
+      const r=radius*(0.5+amp*0.7);
+      const x=cx+Math.cos(angle)*r;
+      const y=cy+Math.sin(angle)*r*0.4+Math.sin(angle*3+t)*radius*0.15;
+      const hue=220+s*40+amp*60;
+      const sz=2+amp*6;
+      ctx.beginPath(); ctx.arc(x,y,sz,0,Math.PI*2);
+      ctx.fillStyle=`hsla(${hue},80%,65%,${0.6+amp*0.4})`; ctx.fill();
+      if(i>0){
+        const pa=((i-1)/points)*Math.PI*2+t+po;
+        const pfi=Math.floor(((i-1)/points)*freq.length/2);
+        const pa_amp=(freq[pfi]||0)/255;
+        const pr=radius*(0.5+pa_amp*0.7);
+        const px=cx+Math.cos(pa)*pr, py=cy+Math.sin(pa)*pr*0.4+Math.sin(pa*3+t)*radius*0.15;
+        ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(x,y);
+        ctx.strokeStyle=`hsla(${hue},70%,55%,${0.3+amp*0.4})`; ctx.lineWidth=1; ctx.stroke();
+      }
+    }
+    for(let i=0;i<points;i+=4){
+      const a1=(i/points)*Math.PI*2+t, a2=a1+Math.PI;
+      const fi=Math.floor((i/points)*freq.length/2);
+      const amp=(freq[fi]||0)/255;
+      const r1=radius*(0.5+amp*0.7);
+      const x1=cx+Math.cos(a1)*r1,y1=cy+Math.sin(a1)*r1*0.4+Math.sin(a1*3+t)*radius*0.15;
+      const x2=cx+Math.cos(a2)*r1,y2=cy+Math.sin(a2)*r1*0.4+Math.sin(a2*3+t)*radius*0.15;
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
+      ctx.strokeStyle=`rgba(180,180,255,${amp*0.3})`; ctx.lineWidth=0.5; ctx.stroke();
+    }
+  }
+}
+
+const _nebParticles = Array.from({length:300},()=>({
+  angle:Math.random()*Math.PI*2,
+  radius:20+Math.random()*60,
+  speed:(Math.random()-0.5)*0.02,
+  size:Math.random()*2.5+0.5,
+  hue:Math.random()*60+200
+}));
+
+function drawNebula(ctx, W, H, t, freq) {
+  const cx=W/2, cy=H/2;
+  const flen=freq.length;
+  let bass=0,mid=0;
+  for(let i=0;i<flen/3;i++) bass+=freq[i];
+  bass=bass/(flen/3)/255;
+  for(let i=flen/3;i<flen*2/3;i++) mid+=freq[i];
+  mid=mid/(flen/3)/255;
+  const baseR=Math.min(W,H)*0.28;
+  const grd=ctx.createRadialGradient(cx,cy,0,cx,cy,baseR*(0.5+bass*0.8));
+  grd.addColorStop(0,`rgba(100,80,255,${0.2+bass*0.4})`);
+  grd.addColorStop(0.5,`rgba(40,20,180,${0.05+mid*0.1})`);
+  grd.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.beginPath(); ctx.arc(cx,cy,baseR*(0.5+bass*0.8),0,Math.PI*2); ctx.fillStyle=grd; ctx.fill();
+  const bars=128;
+  for(let i=0;i<bars;i++){
+    const angle=(i/bars)*Math.PI*2-Math.PI/2;
+    const fi=Math.floor((i/bars)*freq.length);
+    const amp=(freq[fi]||0)/255;
+    const r1=baseR, r2=baseR+amp*baseR*0.8;
+    const hue=200+i*1.2+t*30;
+    ctx.beginPath();
+    ctx.moveTo(cx+Math.cos(angle)*r1,cy+Math.sin(angle)*r1);
+    ctx.lineTo(cx+Math.cos(angle)*r2,cy+Math.sin(angle)*r2);
+    ctx.strokeStyle=`hsla(${hue},85%,65%,${0.5+amp*0.5})`; ctx.lineWidth=2.5; ctx.stroke();
+  }
+  _nebParticles.forEach(p=>{
+    const fi=Math.floor((p.angle/(Math.PI*2))*freq.length);
+    const amp=(freq[Math.min(fi,freq.length-1)]||0)/255;
+    p.angle+=p.speed*(1+amp*3);
+    const r=baseR*(0.2+p.radius/80)+amp*baseR*1.5*Math.sin(p.angle*3+t);
+    const x=cx+Math.cos(p.angle)*r, y=cy+Math.sin(p.angle)*r;
+    ctx.beginPath(); ctx.arc(x,y,p.size*(1+amp*2),0,Math.PI*2);
+    ctx.fillStyle=`hsla(${p.hue+amp*40},90%,70%,${0.3+amp*0.7})`; ctx.fill();
+  });
+  ctx.beginPath(); ctx.arc(cx,cy,baseR*0.15+bass*20,0,Math.PI*2);
+  ctx.strokeStyle=`rgba(200,180,255,${0.4+bass*0.6})`; ctx.lineWidth=1.5; ctx.stroke();
+}
+
+function drawMandala(ctx, W, H, t, freq) {
+  const cx=W/2, cy=H/2;
+  let bass=0;
+  for(let i=0;i<10;i++) bass+=(freq[i]||0);
+  bass=bass/10/255;
+  const baseR=Math.min(W,H)*0.38;
+  const rings=[
+    {r:baseR*0.2,p:6,hS:300,hE:360,sp:0.4},
+    {r:baseR*0.38,p:8,hS:270,hE:340,sp:-0.25},
+    {r:baseR*0.55,p:12,hS:320,hE:380,sp:0.15},
+    {r:baseR*0.72,p:16,hS:290,hE:360,sp:-0.1},
+    {r:baseR*0.9,p:24,hS:260,hE:330,sp:0.07},
+  ];
+  rings.forEach((ring,idx)=>{
+    for(let i=0;i<ring.p;i++){
+      const angle=(i/ring.p)*Math.PI*2+t*ring.sp;
+      const fi=Math.floor((i/ring.p)*freq.length*0.5)+idx*20;
+      const amp=(freq[Math.min(fi,freq.length-1)]||0)/255;
+      const r=ring.r*(0.7+amp*0.6);
+      const x=cx+Math.cos(angle)*r, y=cy+Math.sin(angle)*r;
+      const sz=ring.r*0.15*(0.5+amp*1.2);
+      const hue=ring.hS+(ring.hE-ring.hS)*(i/ring.p)+amp*30;
+      ctx.save(); ctx.translate(x,y); ctx.rotate(angle+Math.PI/2);
+      ctx.beginPath(); ctx.ellipse(0,0,sz*0.4,sz,0,0,Math.PI*2);
+      ctx.fillStyle=`hsla(${hue},80%,55%,${0.15+amp*0.35})`; ctx.fill();
+      ctx.strokeStyle=`hsla(${hue},90%,70%,${0.4+amp*0.4})`; ctx.lineWidth=0.8; ctx.stroke();
+      ctx.restore();
+      if(i>0){
+        const pa=((i-1)/ring.p)*Math.PI*2+t*ring.sp;
+        const pfi=Math.floor(((i-1)/ring.p)*freq.length*0.5)+idx*20;
+        const pa_amp=(freq[Math.min(pfi,freq.length-1)]||0)/255;
+        const pr=ring.r*(0.7+pa_amp*0.6);
+        const px=cx+Math.cos(pa)*pr, py=cy+Math.sin(pa)*pr;
+        ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(x,y);
+        ctx.strokeStyle=`hsla(${hue},70%,60%,${0.2+amp*0.3})`; ctx.lineWidth=0.5; ctx.stroke();
+      }
+    }
+  });
+  const gemR=baseR*0.08+bass*20;
+  for(let i=0;i<8;i++){
+    const a=(i/8)*Math.PI*2+t;
+    ctx.beginPath(); ctx.moveTo(cx,cy);
+    ctx.lineTo(cx+Math.cos(a)*gemR,cy+Math.sin(a)*gemR);
+    ctx.lineTo(cx+Math.cos(a+Math.PI/8)*gemR*0.5,cy+Math.sin(a+Math.PI/8)*gemR*0.5);
+    ctx.closePath();
+    ctx.fillStyle=`hsla(${310+i*10},90%,70%,${0.5+bass*0.4})`; ctx.fill();
+  }
+}
+
+const _webNodes = Array.from({length:16},(_, i)=>({
+  angle:(i/16)*Math.PI*2, baseAngle:(i/16)*Math.PI*2,
+  speed:(Math.random()-0.5)*0.01, amp:0, x:0, y:0, r:0
+}));
+function _lightningSegment(ctx, x1,y1,x2,y2,depth,amp){
+  if(depth===0){ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);return;}
+  const mx=(x1+x2)/2+(Math.random()-0.5)*30*amp;
+  const my=(y1+y2)/2+(Math.random()-0.5)*30*amp;
+  _lightningSegment(ctx,x1,y1,mx,my,depth-1,amp*0.6);
+  _lightningSegment(ctx,mx,my,x2,y2,depth-1,amp*0.6);
+}
+function drawWeb(ctx, W, H, t, freq) {
+  const cx=W/2, cy=H/2;
+  let bass=0;
+  for(let i=0;i<8;i++) bass+=(freq[i]||0);
+  bass=bass/8/255;
+  const baseR=Math.min(W,H)*0.35;
+  _webNodes.forEach((n,i)=>{
+    const fi=Math.floor((i/16)*freq.length*0.6);
+    const amp=(freq[fi]||0)/255;
+    n.angle=n.baseAngle+Math.sin(t*0.5+i)*0.3*(1+amp);
+    n.amp=amp; n.r=baseR*(0.7+amp*0.5);
+    n.x=cx+Math.cos(n.angle)*n.r; n.y=cy+Math.sin(n.angle)*n.r;
+  });
+  for(let i=0;i<16;i++){
+    for(let j=i+1;j<16;j++){
+      const dist=Math.hypot(_webNodes[i].x-_webNodes[j].x,_webNodes[i].y-_webNodes[j].y);
+      const maxD=baseR*1.4;
+      if(dist<maxD){
+        const prox=1-dist/maxD;
+        const en=(_webNodes[i].amp+_webNodes[j].amp)*0.5;
+        if(en>0.1||prox>0.6){
+          ctx.save();
+          ctx.strokeStyle=`rgba(0,220,255,${prox*en*0.8})`; ctx.lineWidth=0.5+en*1.5;
+          _lightningSegment(ctx,_webNodes[i].x,_webNodes[i].y,_webNodes[j].x,_webNodes[j].y,en>0.5?2:1,en);
+          ctx.stroke(); ctx.restore();
+        }
+      }
+    }
+    ctx.save(); ctx.strokeStyle=`rgba(0,180,255,${_webNodes[i].amp*0.5})`; ctx.lineWidth=0.5;
+    _lightningSegment(ctx,cx,cy,_webNodes[i].x,_webNodes[i].y,1,_webNodes[i].amp);
+    ctx.stroke(); ctx.restore();
+  }
+  _webNodes.forEach(n=>{
+    const grd=ctx.createRadialGradient(n.x,n.y,0,n.x,n.y,12+n.amp*20);
+    grd.addColorStop(0,`rgba(100,255,255,${0.8+n.amp*0.2})`);
+    grd.addColorStop(0.5,`rgba(0,150,255,${0.3+n.amp*0.5})`);
+    grd.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.beginPath(); ctx.arc(n.x,n.y,12+n.amp*20,0,Math.PI*2); ctx.fillStyle=grd; ctx.fill();
+    ctx.beginPath(); ctx.arc(n.x,n.y,3+n.amp*4,0,Math.PI*2);
+    ctx.fillStyle='rgba(200,255,255,0.9)'; ctx.fill();
+  });
+  const coreR=15+bass*40;
+  const coreGrd=ctx.createRadialGradient(cx,cy,0,cx,cy,coreR*3);
+  coreGrd.addColorStop(0,`rgba(100,255,255,${0.6+bass*0.4})`);
+  coreGrd.addColorStop(0.4,'rgba(0,100,255,0.3)');
+  coreGrd.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.beginPath(); ctx.arc(cx,cy,coreR*3,0,Math.PI*2); ctx.fillStyle=coreGrd; ctx.fill();
+  ctx.beginPath(); ctx.arc(cx,cy,coreR,0,Math.PI*2); ctx.fillStyle='rgba(200,255,255,0.9)'; ctx.fill();
+}
+
+function drawVortex(ctx, W, H, t, freq) {
+  const cx=W/2, cy=H/2;
+  let bass=0,mid=0;
+  for(let i=0;i<16;i++) bass+=(freq[i]||0); bass=bass/16/255;
+  for(let i=16;i<80;i++) mid+=(freq[i]||0); mid=mid/64/255;
+  const maxR=Math.min(W,H)*0.48;
+  const RINGS=28, SPOKES=64;
+  for(let ring=RINGS;ring>=0;ring--){
+    const depthT=ring/RINGS;
+    const baseR=maxR*depthT;
+    const twist=t*(1.5+bass*2)*(1-depthT*0.5)+depthT*Math.PI;
+    for(let s=0;s<SPOKES;s++){
+      const angle=(s/SPOKES)*Math.PI*2+twist;
+      const fi=Math.floor((s/SPOKES)*freq.length*0.5)+Math.floor(depthT*20);
+      const amp=(freq[Math.min(fi,freq.length-1)]||0)/255;
+      const r=baseR*(1+amp*0.25*depthT);
+      const na=((s+1)/SPOKES)*Math.PI*2+twist;
+      const nx=cx+Math.cos(na)*r, ny=cy+Math.sin(na)*r;
+      const x=cx+Math.cos(angle)*r, y=cy+Math.sin(angle)*r;
+      const hue=260+depthT*80+s*2+t*20;
+      const alpha=(0.4+amp*0.5)*(0.3+depthT*0.7);
+      ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(nx,ny);
+      ctx.strokeStyle=`hsla(${hue},90%,60%,${alpha})`; ctx.lineWidth=0.8+amp*1.5*depthT; ctx.stroke();
+      if(ring<RINGS&&s%4===0){
+        const iR=maxR*((ring-1)/RINGS);
+        const iT=t*(1.5+bass*2)*(1-((ring-1)/RINGS)*0.5)+((ring-1)/RINGS)*Math.PI;
+        const iA=(s/SPOKES)*Math.PI*2+iT;
+        const ix=cx+Math.cos(iA)*iR, iy=cy+Math.sin(iA)*iR;
+        ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(ix,iy);
+        ctx.strokeStyle=`hsla(${hue+30},70%,50%,${alpha*0.4})`; ctx.lineWidth=0.4; ctx.stroke();
+      }
+    }
+  }
+  const eyeR=5+bass*25+mid*15;
+  const eg=ctx.createRadialGradient(cx,cy,0,cx,cy,eyeR*4);
+  eg.addColorStop(0,`rgba(255,200,255,${0.8+bass*0.2})`);
+  eg.addColorStop(0.3,'rgba(180,50,255,0.6)');
+  eg.addColorStop(0.7,'rgba(80,0,150,0.2)');
+  eg.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.beginPath(); ctx.arc(cx,cy,eyeR*4,0,Math.PI*2); ctx.fillStyle=eg; ctx.fill();
+  ctx.beginPath(); ctx.arc(cx,cy,eyeR,0,Math.PI*2); ctx.fillStyle='rgba(255,220,255,1)'; ctx.fill();
+}
+
+const _auroraRibbons = Array.from({length:6},(_, i)=>({
+  offset:(i/6)*Math.PI*2,
+  phaseSpeed:0.003+i*0.0015,
+  colorShift:i*40,
+  thickness:8+i*4,
+  ringScale:0.5+i*0.09
+}));
+function drawAurora(ctx, W, H, t, freq) {
+  const cx=W/2, cy=H/2;
+  let bass=0;
+  for(let i=0;i<12;i++) bass+=(freq[i]||0); bass=bass/12/255;
+  const maxR=Math.min(W,H)*0.46;
+  _auroraRibbons.forEach(ribbon=>{
+    const POINTS=180, r=maxR*ribbon.ringScale;
+    let avgAmp=0;
+    for(let i=0;i<Math.min(80,freq.length);i++) avgAmp+=freq[i];
+    avgAmp=avgAmp/80/255;
+    ctx.beginPath();
+    let started=false;
+    for(let i=0;i<=POINTS;i++){
+      const angle=(i/POINTS)*Math.PI*2+ribbon.offset+t*ribbon.phaseSpeed*60;
+      const fi=Math.floor((i/POINTS)*freq.length*0.7);
+      const amp=(freq[Math.min(fi,freq.length-1)]||0)/255;
+      const wave1=Math.sin(angle*3+t*2)*amp*r*0.25;
+      const wave2=Math.sin(angle*5-t*1.5+ribbon.offset)*amp*r*0.12;
+      const pr=r+wave1+wave2;
+      const x=cx+Math.cos(angle)*pr, y=cy+Math.sin(angle)*pr*0.55;
+      if(!started){ctx.moveTo(x,y);started=true;}else ctx.lineTo(x,y);
+    }
+    ctx.closePath();
+    const hue=140+ribbon.colorShift+avgAmp*60+Math.sin(t*0.5)*30;
+    ctx.strokeStyle=`hsla(${hue},90%,65%,${0.15+avgAmp*0.5})`;
+    ctx.lineWidth=ribbon.thickness*(0.5+avgAmp*1.5); ctx.stroke();
+    ctx.strokeStyle=`hsla(${hue+20},100%,85%,${0.3+avgAmp*0.5})`; ctx.lineWidth=1.5; ctx.stroke();
+  });
+  const haloGrd=ctx.createRadialGradient(cx,cy,maxR*0.4,cx,cy,maxR*1.1);
+  haloGrd.addColorStop(0,'rgba(0,0,0,0)');
+  haloGrd.addColorStop(0.7,`rgba(0,80,40,${0.05+bass*0.15})`);
+  haloGrd.addColorStop(1,`rgba(0,150,80,${0.1+bass*0.2})`);
+  ctx.beginPath(); ctx.arc(cx,cy,maxR*1.1,0,Math.PI*2); ctx.fillStyle=haloGrd; ctx.fill();
+  const coreGrd=ctx.createRadialGradient(cx,cy,0,cx,cy,40+bass*60);
+  coreGrd.addColorStop(0,`rgba(200,255,230,${0.7+bass*0.3})`);
+  coreGrd.addColorStop(0.4,'rgba(0,200,120,0.3)');
+  coreGrd.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.beginPath(); ctx.arc(cx,cy,40+bass*60,0,Math.PI*2); ctx.fillStyle=coreGrd; ctx.fill();
+  ctx.beginPath(); ctx.arc(cx,cy,6+bass*10,0,Math.PI*2); ctx.fillStyle='rgba(220,255,240,1)'; ctx.fill();
+}
+</script>
+</body>
+</html>
