@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SPECTRUM ART LAB v5.7 — Teleport Painter</title>
+<title>SPECTRUM ART LAB v5.9 — Ephemera Painter</title>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
 :root{
-  --bg:#020205;
-  --panel:#0d0d15;
+  --bg:#020204;
+  --panel:#0d0d12;
   --accent:#00ffcc;
   --border:rgba(255,255,255,0.06);
   --text:#ffffff;
@@ -60,23 +60,24 @@ h3 { font-size: 10px; letter-spacing: 1.5px; color: #555; margin-bottom: 12px; t
 .control-group { margin-bottom: 15px; }
 .control-group label { display: block; font-size: 9px; color: #777; margin-bottom: 5px; }
 input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; height: 3px;}
+select { width: 100%; background: #000; color: #fff; border: 1px solid var(--border); padding: 5px; font-size: 11px; }
 </style>
 </head>
 <body>
 
 <div class="topbar">
-  <div class="logo">SPECTRUM ART LAB v5.7 [TELEPORT PAINTER]</div>
+  <div class="logo">SPECTRUM ART LAB v5.9 [EPHEMERA]</div>
   <div id="timeCode">00:00.00</div>
 </div>
 
 <div class="container">
   <div class="side-panel">
-    <h3>1. Music Source</h3>
+    <h3>1. Music</h3>
     <div class="file-box" onclick="document.getElementById('musicInput').click()">
       <span>MP3 Upload</span>
       <input type="file" id="musicInput" accept="audio/*" style="display:none" onchange="handleMusic(this.files)">
     </div>
-    <h3>2. Subtitle Source</h3>
+    <h3>2. SRT</h3>
     <div class="file-box" onclick="document.getElementById('srtInput').click()">
       <span>SRT Upload</span>
       <input type="file" id="srtInput" accept=".srt" style="display:none" onchange="handleSRT(this.files)">
@@ -87,28 +88,39 @@ input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; h
     <canvas id="artCanvas"></canvas>
     <div id="currentLyric"></div>
     <div class="bottom-ctrl">
-      <button class="btn" onclick="clearCanvas()">RESET</button>
+      <button class="btn" onclick="resetPerformance()">RESET</button>
       <button class="btn primary" id="playBtn" onclick="togglePlay()">RUN PERFORMANCE</button>
       <button class="btn" onclick="saveImage()">SAVE PNG</button>
     </div>
   </div>
 
   <div class="side-panel right">
-    <h3>Art Option</h3>
+    <h3>Ephemera Option (풍화)</h3>
     <div class="control-group">
-      <label>BRUSH SIZE (글자 크기)</label>
+      <label>SURVIVAL LIMIT (자막 유지 횟수)</label>
+      <input type="range" id="lifeLimit" min="1" max="10" value="2">
+      <span style="font-size:9px; color:#555;">* 설정한 횟수만큼 자막이 지나면 흐릿해집니다.</span>
+    </div>
+    <div class="control-group">
+        <label>FADE STYLE (사라지는 방식)</label>
+        <select id="fadeStyle">
+          <option value="noise">Glow & Noise (입자화)</option>
+          <option value="blur">Soft Blur (번짐)</option>
+          <option value="simple">Simple Fade (투명도)</option>
+        </select>
+    </div>
+
+    <h3>Brush Option</h3>
+    <div class="control-group">
+      <label>BRUSH SIZE</label>
       <input type="range" id="pSize" min="10" max="250" value="70">
     </div>
     <div class="control-group">
-      <label>SENSITIVITY (반응도)</label>
+      <label>SENSITIVITY</label>
       <input type="range" id="pSens" min="1" max="10" value="8">
     </div>
-    <div class="control-group">
-      <label>CENTER OPACITY (중앙 글자 투명도)</label>
-      <input type="range" id="cAlpha" min="1" max="10" value="2">
-    </div>
 
-    <h3>RGB Custom Range</h3>
+    <h3>RGB Custom</h3>
     <div class="control-group"><label>R</label><input type="range" id="rMin" min="0" max="255" value="0"><input type="range" id="rMax" min="0" max="255" value="255"></div>
     <div class="control-group"><label>G</label><input type="range" id="gMin" min="0" max="255" value="100"><input type="range" id="gMax" min="0" max="255" value="255"></div>
     <div class="control-group"><label>B</label><input type="range" id="bMin" min="0" max="255" value="150"><input type="range" id="bMax" min="0" max="255" value="255"></div>
@@ -120,6 +132,55 @@ let srtData = [];
 let audioCtx, analyser, source, audioBuffer, isPlaying = false, startTime = 0, pauseOffset = 0;
 const canvas = document.getElementById('artCanvas'), ctx = canvas.getContext('2d');
 
+// --- 객체 지향형 입자 시스템 ---
+let artObjects = []; // 캔버스에 박힌 모든 글자 객체들
+
+class ArtChar {
+  constructor(char, x, y, size, color, lineIdx) {
+    this.char = char;
+    this.x = x;
+    this.y = y;
+    this.size = size;
+    this.color = color; // {r, g, b}
+    this.bornLineIdx = lineIdx; // 태어난 자막 줄 번호
+    this.alpha = 1.0;
+    this.blur = 0;
+    this.isDead = false;
+  }
+
+  update(currentLineIdx, limit) {
+    const age = currentLineIdx - this.bornLineIdx;
+    if (age >= limit) {
+        const style = document.getElementById('fadeStyle').value;
+        if (style === 'noise') {
+            this.alpha -= 0.01;
+            this.size += 0.2;
+            this.x += (Math.random()-0.5) * 2;
+            this.y += (Math.random()-0.5) * 2;
+        } else if (style === 'blur') {
+            this.alpha -= 0.005;
+            this.blur += 0.5;
+        } else {
+            this.alpha -= 0.01;
+        }
+    }
+    if (this.alpha <= 0) this.isDead = true;
+  }
+
+  draw() {
+    ctx.save();
+    if (this.blur > 0) ctx.filter = `blur(${this.blur}px)`;
+    ctx.globalAlpha = this.alpha;
+    ctx.font = `900 ${this.size}px 'Pretendard'`;
+    ctx.fillStyle = `rgb(${this.color.r}, ${this.color.g}, ${this.color.b})`;
+    ctx.shadowBlur = this.alpha * 15;
+    ctx.shadowColor = ctx.fillStyle;
+    ctx.fillText(this.char, this.x, this.y);
+    ctx.restore();
+  }
+}
+
+// --- Logic ---
 function handleSRT(files) {
   const reader = new FileReader();
   reader.onload = (e) => { srtData = parseSRT(e.target.result); alert("SRT Sync Success"); };
@@ -131,6 +192,7 @@ function parseSRT(data) {
   let matches, result = [];
   while ((matches = regex.exec(data)) !== null) {
     result.push({
+      idx: parseInt(matches[1]),
       start: timeToSeconds(matches[2]),
       end: timeToSeconds(matches[3]),
       text: matches[4].replace(/\n/g, ' '),
@@ -169,43 +231,52 @@ function togglePlay() {
     startTime = audioCtx.currentTime - pauseOffset;
     isPlaying = true;
     document.getElementById('playBtn').textContent = "STOP";
-    draw();
+    animate();
   }
 }
 
-function clearCanvas() { ctx.fillStyle = '#000'; ctx.fillRect(0,0,canvas.width,canvas.height); }
+function resetPerformance() {
+    artObjects = [];
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+}
+
 function saveImage() { const link = document.createElement('a'); link.download=`music_art.png`; link.href=canvas.toDataURL(); link.click(); }
 
 function resize() {
-  const temp = ctx.getImageData(0,0,canvas.width,canvas.height);
   canvas.width = canvas.clientWidth; canvas.height = canvas.clientHeight;
-  ctx.putImageData(temp, 0, 0);
-  if(!temp.data.some(x=>x!==0)) clearCanvas();
 }
 window.onresize = resize; resize();
 
-// --- Performance Engine ---
+// --- Main Engine ---
 let lastLineIdx = -1;
-let charIdx = 0;
+let globalLineCounter = 0; // 자막이 몇 번째 줄인지 추적
+let charPtr = 0;
 
-function draw() {
+function animate() {
   if(!isPlaying) return;
-  requestAnimationFrame(draw);
+  requestAnimationFrame(animate);
+
+  // 1. 캔버스 지우기 (매 프레임 객체들을 다시 그려야 함)
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   const currentTime = audioCtx.currentTime - startTime;
   const m = Math.floor(currentTime / 60);
   const s = (currentTime % 60).toFixed(2);
   document.getElementById('timeCode').textContent = `${m.toString().padStart(2,'0')}:${s.toString().padStart(5,'0')}`;
 
-  const lineIdx = srtData.findIndex(line => currentTime >= line.start && currentTime <= line.end);
-  
-  if (lineIdx !== -1) {
-    const currentLine = srtData[lineIdx];
+  const currentIdx = srtData.findIndex(line => currentTime >= line.start && currentTime <= line.end);
+  const limit = parseInt(document.getElementById('lifeLimit').value);
+
+  if (currentIdx !== -1) {
+    const currentLine = srtData[currentIdx];
     document.getElementById('currentLyric').textContent = currentLine.text;
 
-    if (lineIdx !== lastLineIdx) {
-      charIdx = 0;
-      lastLineIdx = lineIdx;
+    if (currentIdx !== lastLineIdx) {
+      charPtr = 0;
+      lastLineIdx = currentIdx;
+      globalLineCounter++; // 새로운 자막 줄 시작
     }
 
     const data = new Uint8Array(analyser.frequencyBinCount);
@@ -213,47 +284,34 @@ function draw() {
     const amp = data[Math.floor(Math.random()*data.length)] / 255;
     const sens = parseInt(document.getElementById('pSens').value);
 
-    // 음악 주파수 반응 시 이중 각인 실행
+    // 음악 반응 시 새로운 글자 객체 생성
     if (amp > (1.1 - sens/10)) {
-      const char = currentLine.chars[charIdx % currentLine.chars.length];
-      teleportPaint(char, amp);
-      charIdx++;
+      const char = currentLine.chars[charPtr % currentLine.chars.length];
+      
+      const r = Math.random() * (parseInt(document.getElementById('rMax').value) - parseInt(document.getElementById('rMin').value)) + parseInt(document.getElementById('rMin').value);
+      const g = Math.random() * (parseInt(document.getElementById('gMax').value) - parseInt(document.getElementById('gMin').value)) + parseInt(document.getElementById('gMax').value);
+      const b = Math.random() * (parseInt(document.getElementById('bMax').value) - parseInt(document.getElementById('bMin').value)) + parseInt(document.getElementById('bMin').value);
+      
+      const size = parseInt(document.getElementById('pSize').value) * (0.6 + amp);
+      const x = Math.random() * canvas.width;
+      const y = Math.random() * canvas.height;
+
+      // 중앙에 한 번 찍고
+      artObjects.push(new ArtChar(char, canvas.width/2, canvas.height/2, size, {r,g,b}, globalLineCounter));
+      // 랜덤 위치에 한 번 찍고
+      artObjects.push(new ArtChar(char, x, y, size, {r,g,b}, globalLineCounter));
+      
+      charPtr++;
     }
-  } else {
-    document.getElementById('currentLyric').textContent = "";
   }
-}
 
-function teleportPaint(char, amp) {
-  const centerX = canvas.width / 2;
-  const centerY = canvas.height / 2;
-  const targetX = Math.random() * canvas.width;
-  const targetY = Math.random() * canvas.height;
-  
-  const baseSize = parseInt(document.getElementById('pSize').value) * (0.6 + amp);
-  const centerAlpha = parseInt(document.getElementById('cAlpha').value) / 10;
-
-  const r = Math.random() * (parseInt(document.getElementById('rMax').value) - parseInt(document.getElementById('rMin').value)) + parseInt(document.getElementById('rMin').value);
-  const g = Math.random() * (parseInt(document.getElementById('gMax').value) - parseInt(document.getElementById('gMin').value)) + parseInt(document.getElementById('gMin').value);
-  const b = Math.random() * (parseInt(document.getElementById('bMax').value) - parseInt(document.getElementById('bMin').value)) + parseInt(document.getElementById('bMin').value);
-
-  ctx.save();
-  ctx.font = `900 ${baseSize}px 'Pretendard'`;
-  ctx.shadowBlur = amp * 20;
-  
-  // 1. 정가운데 찍기 (발생 지점)
-  ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${centerAlpha * amp})`;
-  ctx.shadowColor = ctx.fillStyle;
-  ctx.fillText(char, centerX - (ctx.measureText(char).width / 2), centerY);
-
-  // 2. 최종 랜덤 위치에 바로 찍기 (박히는 지점)
-  ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${0.3 + amp * 0.7})`;
-  ctx.shadowColor = ctx.fillStyle;
-  ctx.translate(targetX, targetY);
-  ctx.rotate((Math.random() - 0.5) * 0.4);
-  ctx.fillText(char, 0, 0);
-  
-  ctx.restore();
+  // 2. 모든 객체 업데이트 및 그리기
+  for (let i = artObjects.length - 1; i >= 0; i--) {
+    const obj = artObjects[i];
+    obj.update(globalLineCounter, limit);
+    obj.draw();
+    if (obj.isDead) artObjects.splice(i, 1);
+  }
 }
 </script>
 </body>
