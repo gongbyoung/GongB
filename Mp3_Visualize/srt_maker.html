@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SRT GENERATOR LAB — Sync Maker</title>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --bg:#0a0a0c;
+  --panel:#121218;
+  --accent:#00ffcc;
+  --border:rgba(255,255,255,0.1);
+  --text:#e0e0e0;
+}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:'Pretendard', sans-serif;
+  height:100vh; display: flex; flex-direction: column;
+}
+
+/* UI STRUCTURE */
+.topbar{
+  padding:15px 20px; background:var(--panel); border-bottom:1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between;
+}
+.logo{letter-spacing:3px; color:var(--accent); font-weight:bold; font-size:14px;}
+
+.container { display: grid; grid-template-columns: 1fr 1fr; flex: 1; min-height: 0; gap: 2px; background: var(--border); }
+
+.side-panel {
+  background: var(--panel);
+  display: flex; flex-direction: column; padding: 20px; overflow-y: auto;
+}
+
+h3 { font-size: 11px; letter-spacing: 2px; color: #666; margin-bottom: 15px; text-transform: uppercase; }
+
+/* INPUTS */
+textarea { 
+  flex: 1; background: #000; color: var(--text); border: 1px solid var(--border); 
+  padding: 15px; font-family: inherit; font-size: 13px; line-height: 1.8; resize: none; outline: none;
+}
+#srtOutput { background: #050505; color: var(--accent); font-family: monospace; }
+
+/* CONTROLS */
+.player-box {
+  padding: 20px; background: #000; border-top: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 15px;
+}
+.progress-bar { width: 100%; height: 6px; background: #222; cursor: pointer; position: relative; }
+.progress-fill { height: 100%; background: var(--accent); width: 0%; }
+
+.btns { display: flex; gap: 10px; align-items: center; }
+.btn { 
+  background: transparent; border: 1px solid var(--border); color: #fff; 
+  padding: 12px 20px; cursor: pointer; font-size: 12px; font-weight: bold; flex: 1;
+}
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn.sync { background: var(--accent); color: #000; border: none; font-size: 14px; }
+.btn.sync:active { transform: scale(0.98); opacity: 0.8; }
+
+#timeDisplay { font-family: monospace; color: var(--accent); font-size: 18px; width: 120px; text-align: center; }
+
+.instruction { font-size: 11px; color: #666; line-height: 1.6; margin-top: 10px; }
+mark { background: var(--accent); color: #000; padding: 0 4px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">SRT SYNC GENERATOR</div>
+  <div style="font-size:10px; opacity: 0.5;">MAKE YOUR LYRIC TIMELINE</div>
+</div>
+
+<div class="container">
+  <div class="side-panel">
+    <h3>1. 가사 입력 (한 줄에 한 문장)</h3>
+    <textarea id="lyricInput" placeholder="노래 가사를 여기에 복사해서 붙여넣으세요.&#10;엔터로 줄바꿈된 한 줄이 하나의 자막 단위가 됩니다."></textarea>
+    <div class="instruction">
+      * <mark>SPACE</mark> 또는 <mark>SYNC 버튼</mark>을 누를 때마다 현재 가사의 시작 시간이 기록됩니다.
+    </div>
+  </div>
+
+  <div class="side-panel">
+    <h3>2. 생성된 SRT 결과</h3>
+    <textarea id="srtOutput" readonly placeholder="싱크 작업이 시작되면 여기에 SRT 코드가 나타납니다."></textarea>
+    <button class="btn" style="margin-top:10px;" onclick="downloadSRT()">SRT 파일로 저장</button>
+  </div>
+</div>
+
+<div class="player-box">
+  <div class="progress-bar" onclick="seek(event)">
+    <div class="progress-fill" id="progFill"></div>
+  </div>
+  
+  <div class="btns">
+    <button class="btn" id="loadBtn" onclick="document.getElementById('audioFile').click()">파일 불러오기</button>
+    <input type="file" id="audioFile" accept="audio/*" style="display:none" onchange="loadAudio(this.files)">
+    
+    <div id="timeDisplay">00:00:00</div>
+    
+    <button class="btn" onclick="togglePlay()" id="playBtn">PLAY</button>
+    <button class="btn sync" id="syncBtn" onclick="markSync()">SYNC (SPACE)</button>
+  </div>
+</div>
+
+<script>
+let audio = new Audio();
+let lyrics = [];
+let srtResults = [];
+let currentLineIdx = 0;
+
+function loadAudio(files) {
+  const url = URL.createObjectURL(files[0]);
+  audio.src = url;
+  document.getElementById('loadBtn').textContent = files[0].name;
+}
+
+function togglePlay() {
+  if (audio.paused) {
+    audio.play();
+    document.getElementById('playBtn').textContent = "PAUSE";
+    // 싱크 작업 시작을 위해 가사 배열 준비
+    if (srtResults.length === 0) {
+      lyrics = document.getElementById('lyricInput').value.split('\n').filter(l => l.trim() !== "");
+      currentLineIdx = 0;
+    }
+  } else {
+    audio.pause();
+    document.getElementById('playBtn').textContent = "PLAY";
+  }
+}
+
+function formatTime(seconds) {
+  const date = new Date(seconds * 1000);
+  const hh = String(Math.floor(seconds / 3600)).padStart(2, '0');
+  const mm = String(date.getUTCMinutes()).padStart(2, '0');
+  const ss = String(date.getUTCSeconds()).padStart(2, '0');
+  const ms = String(date.getUTCMilliseconds()).padStart(3, '0');
+  return `${hh}:${mm}:${ss},${ms}`;
+}
+
+function markSync() {
+  if (audio.paused || currentLineIdx >= lyrics.length) return;
+
+  const currentTime = audio.currentTime;
+  
+  // 이전 라인의 종료 시간을 현재 라인의 시작 시간으로 설정
+  if (currentLineIdx > 0) {
+    srtResults[currentLineIdx - 1].end = formatTime(currentTime - 0.001);
+  }
+
+  srtResults.push({
+    index: currentLineIdx + 1,
+    start: formatTime(currentTime),
+    end: formatTime(currentTime + 2), // 임시 종료 시간 (다음 클릭 시 수정됨)
+    text: lyrics[currentLineIdx]
+  });
+
+  currentLineIdx++;
+  updateSRTDisplay();
+  
+  // 가사 입력창에서 현재 진행중인 줄 강조(심플하게 구현)
+  console.log("Synced:", lyrics[currentLineIdx-1]);
+}
+
+function updateSRTDisplay() {
+  let srtText = "";
+  srtResults.forEach(item => {
+    srtText += `${item.index}\n${item.start} --> ${item.end}\n${item.text}\n\n`;
+  });
+  document.getElementById('srtOutput').value = srtText;
+  document.getElementById('srtOutput').scrollTop = document.getElementById('srtOutput').scrollHeight;
+}
+
+function downloadSRT() {
+  const content = document.getElementById('srtOutput').value;
+  if (!content) return;
+  const blob = new Blob([content], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = "subtitle.srt";
+  a.click();
+}
+
+// 오디오 업데이트
+audio.ontimeupdate = () => {
+  const p = (audio.currentTime / audio.duration) * 100;
+  document.getElementById('progFill').style.width = p + "%";
+  document.getElementById('timeDisplay').textContent = formatTime(audio.currentTime).split(',')[0];
+};
+
+function seek(e) {
+  const rect = e.target.getBoundingClientRect();
+  const p = (e.clientX - rect.left) / rect.width;
+  audio.currentTime = p * audio.duration;
+}
+
+// 단축키 (스페이스바)
+window.addEventListener('keydown', (e) => {
+  if (e.code === "Space") {
+    if (document.activeElement.tagName !== "TEXTAREA") {
+      e.preventDefault();
+      markSync();
+    }
+  }
+});
+
+function clearWork() {
+  srtResults = [];
+  currentLineIdx = 0;
+  document.getElementById('srtOutput').value = "";
+}
+</script>
+</body>
+</html>
