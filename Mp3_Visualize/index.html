@@ -2,125 +2,165 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>가족 노래 오디오 비주얼라이저</title>
+    <title>Audio Visualizer for Video Production</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000; color: #fff; font-family: sans-serif; }
-        #canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-        #ui { position: absolute; bottom: 20px; left: 20px; z-index: 10; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 10px; pointer-events: auto; }
-        input[type="file"] { margin-bottom: 10px; display: block; }
-        button { background: #3498db; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-size: 16px; margin-right: 10px;}
-        button:hover { background: #2980b9; }
-        #song-info { margin-top: 10px; font-size: 14px; opacity: 0.8; }
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Pretendard', sans-serif; }
+        canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        
+        /* 상단 타이틀바 스타일 UI */
+        #header-ui { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 50px;
+            background: rgba(20, 20, 20, 0.9); display: flex; align-items: center;
+            padding: 0 20px; box-sizing: border-box; z-index: 100;
+            border-bottom: 1px solid #333;
+        }
+        .controls { display: flex; gap: 10px; align-items: center; }
+        button { 
+            background: #444; color: white; border: 1px solid #666; padding: 5px 15px; 
+            border-radius: 4px; cursor: pointer; font-size: 13px; transition: 0.2s;
+        }
+        button:hover { background: #666; border-color: #fff; }
+        button.active { background: #3498db; border-color: #3498db; }
+        input[type="file"] { color: #ccc; font-size: 12px; }
+        #song-title { margin-left: auto; color: #888; font-size: 12px; }
     </style>
 </head>
 <body>
-    <canvas id="canvas"></canvas>
-    <div id="ui">
-        <input type="file" id="audio-file" accept="audio/*">
-        <button id="play-btn">재생</button>
-        <button id="pause-btn">일시정지</button>
-        <div id="song-info">노래를 선택해 주세요 (ACE 1.5, Suno 등)</div>
+    <div id="header-ui">
+        <div class="controls">
+            <input type="file" id="audio-file" accept="audio/*">
+            <button id="btn-play">PLAY</button>
+            <button id="btn-pause">PAUSE</button>
+            <span style="color:#555; margin: 0 10px;">|</span>
+            <button class="mode-btn active" data-mode="bar">BAR</button>
+            <button class="mode-btn" data-mode="circle">CIRCLE</button>
+            <button class="mode-btn" data-mode="wave">WAVE</button>
+        </div>
+        <div id="song-title">준비됨</div>
     </div>
+    <canvas id="canvas"></canvas>
 
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const audioFile = document.getElementById('audio-file');
-        const playBtn = document.getElementById('play-btn');
-        const pauseBtn = document.getElementById('pause-btn');
-        const songInfo = document.getElementById('song-info');
-
+        const songTitle = document.getElementById('song-title');
+        
         let audioCtx, analyser, source, dataArray, bufferLength;
         let isPlaying = false;
+        let currentMode = 'bar';
 
-        // 캔버스 크기 설정
-        function resizeCanvas() {
+        function resize() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
         }
-        window.addEventListener('resize', resizeCanvas);
-        resizeCanvas();
+        window.addEventListener('resize', resize);
+        resize();
 
-        // 오디오 컨텍스트 초기화
-        function initAudio() {
+        // 모드 변경 이벤트
+        document.querySelectorAll('.mode-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                currentMode = e.target.dataset.mode;
+            });
+        });
+
+        audioFile.addEventListener('change', function() {
             if (!audioCtx) {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 analyser = audioCtx.createAnalyser();
-                analyser.fftSize = 256; // 비주얼라이저 해상도 (2의 거듭제곱)
+                analyser.fftSize = 512;
                 bufferLength = analyser.frequencyBinCount;
                 dataArray = new Uint8Array(bufferLength);
             }
-        }
 
-        // 파일 로드 시 오디오 소스 연결
-        audioFile.addEventListener('change', function() {
-            initAudio();
-            const files = this.files;
-            if (files.length === 0) return;
-            
-            const file = files[0];
-            songInfo.textContent = `재생 중: ${file.name}`;
-
-            if (source) source.disconnect();
-
+            const file = this.files[0];
+            songTitle.textContent = file.name;
             const reader = new FileReader();
             reader.onload = function(e) {
                 audioCtx.decodeAudioData(e.target.result, function(buffer) {
+                    if (source) source.stop();
                     source = audioCtx.createBufferSource();
                     source.buffer = buffer;
                     source.connect(analyser);
                     analyser.connect(audioCtx.destination);
                     source.start(0);
                     isPlaying = true;
-                    animate();
+                    draw();
                 });
             };
             reader.readAsArrayBuffer(file);
         });
 
-        // 재생/일시정지 컨트롤
-        playBtn.addEventListener('click', () => {
-            if (audioCtx && audioCtx.state === 'suspended') {
-                audioCtx.resume();
-                isPlaying = true;
-            }
-        });
+        document.getElementById('btn-play').onclick = () => audioCtx?.resume();
+        document.getElementById('btn-pause').onclick = () => audioCtx?.suspend();
 
-        pauseBtn.addEventListener('click', () => {
-            if (audioCtx && audioCtx.state === 'running') {
-                audioCtx.suspend();
-                isPlaying = false;
-            }
-        });
-
-        // 비주얼라이제이션 애니메이션 (막대 그래프 형태)
-        function animate() {
+        function draw() {
             if (!isPlaying) return;
-            requestAnimationFrame(animate);
-
+            requestAnimationFrame(draw);
             analyser.getByteFrequencyData(dataArray);
 
-            // 캔버스 초기화 (약간의 잔상 효과)
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.15)'; // 잔상 효과
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            const barWidth = (canvas.width / bufferLength) * 2.5;
+            if (currentMode === 'bar') drawBar();
+            else if (currentMode === 'circle') drawCircle();
+            else if (currentMode === 'wave') drawWave();
+        }
+
+        // 1. BAR MODE (개선된 버전)
+        function drawBar() {
+            const barWidth = (canvas.width / bufferLength) * 2;
+            let x = 0;
+            for (let i = 0; i < bufferLength; i++) {
+                const barHeight = dataArray[i] * 2;
+                ctx.fillStyle = `hsl(${i * 2 + 180}, 80%, 50%)`;
+                ctx.fillRect(x, canvas.height - barHeight, barWidth - 1, barHeight);
+                x += barWidth;
+            }
+        }
+
+        // 2. CIRCLE MODE (뮤직비디오용 추천)
+        function drawCircle() {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = 150;
+
+            for (let i = 0; i < bufferLength; i++) {
+                const barHeight = dataArray[i] * 1.2;
+                const angle = (i / bufferLength) * Math.PI * 2;
+                const x1 = centerX + Math.cos(angle) * radius;
+                const y1 = centerY + Math.sin(angle) * radius;
+                const x2 = centerX + Math.cos(angle) * (radius + barHeight);
+                const y2 = centerY + Math.sin(angle) * (radius + barHeight);
+
+                ctx.strokeStyle = `hsl(${i + 200}, 100%, 60%)`;
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.stroke();
+            }
+        }
+
+        // 3. WAVE MODE (환각적인 느낌)
+        function drawWave() {
+            ctx.beginPath();
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = '#fff';
+            const sliceWidth = canvas.width / bufferLength;
             let x = 0;
 
             for (let i = 0; i < bufferLength; i++) {
-                const barHeight = dataArray[i] * 1.5; // 높이 가중치
-                
-                // 주파수에 따른 색상 변화 (Hone-Sat-Lightness)
-                const hue = i * 3; 
-                ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
-
-                // 막대 그리기 (중앙 기준 대칭)
-                const y = canvas.height - barHeight;
-                ctx.fillRect(x, y, barWidth, barHeight);
-
-                x += barWidth + 1;
+                const v = dataArray[i] / 128.0;
+                const y = v * canvas.height / 2;
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+                x += sliceWidth;
             }
+            ctx.lineTo(canvas.width, canvas.height / 2);
+            ctx.stroke();
         }
     </script>
 </body>
