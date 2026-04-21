@@ -3,262 +3,836 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SPECTRUM ART LAB v8.0 — Debugged Master</title>
+<title>KEYBOARD LYRIC VISUALIZER</title>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
-:root{ --bg:#000; --panel:#0f0f15; --accent:#00ffcc; --border:rgba(255,255,255,0.08); }
-body{ background:var(--bg); color:#fff; font-family:'Pretendard', sans-serif; height:100vh; overflow:hidden; display: flex; flex-direction: column; }
+:root{
+  --bg:#0a0e0d;
+  --panel:#0d1412;
+  --panel2:#111a18;
+  --border:rgba(0,255,180,0.15);
+  --accent:#00ffb4;
+  --accent2:#00cc90;
+  --text:#b0ffe0;
+  --muted:#336655;
+  --muted2:#558866;
+  --red:#ff4455;
+}
+body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;min-height:100vh;display:flex;flex-direction:column;}
 
-.topbar{ padding:10px 20px; background:var(--panel); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
-.logo{letter-spacing:4px; color:var(--accent); font-weight:800; font-size:12px;}
+/* ── TOP BAR ── */
+.topbar{display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--border);flex-shrink:0;}
+.logo{font-size:13px;letter-spacing:5px;color:var(--accent);font-weight:700;}
+.version{font-size:9px;letter-spacing:3px;color:var(--muted2);}
 
-.container { display: grid; grid-template-columns: 300px 1fr; flex: 1; min-height: 0; }
-.side-panel { background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 20px; overflow-y: auto; z-index: 50; }
+/* ── MAIN LAYOUT ── */
+.main{display:flex;flex:1;overflow:hidden;min-height:0;}
 
-.viz-area { position: relative; background-color: #000; background-size: contain; background-position: center bottom; background-repeat: no-repeat; overflow: hidden; flex: 1; }
-#artCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; background: transparent; pointer-events: none; }
+/* ── SIDEBAR ── */
+.sidebar{width:270px;flex-shrink:0;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;gap:0;overflow-y:auto;padding-bottom:20px;}
+.sidebar::-webkit-scrollbar{width:3px;}.sidebar::-webkit-scrollbar-thumb{background:var(--muted);}
 
-.file-box { border: 1px dashed #444; padding: 12px; text-align: center; margin-bottom: 8px; cursor: pointer; border-radius: 4px; font-size: 11px; color: #888; transition: 0.2s; position: relative;}
-.file-box.loaded { border-color: var(--accent); color: var(--accent); background: rgba(0,255,204,0.05); }
-.file-box.loaded::after { content: '✅'; position: absolute; right: 10px; top: 10px; }
+.sb-section{padding:14px 16px 10px;border-bottom:1px solid var(--border);}
+.sb-label{font-size:9px;letter-spacing:4px;color:var(--muted2);text-transform:uppercase;margin-bottom:10px;}
 
-.bottom-ctrl { padding: 15px 30px; background: #000; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 20px; z-index: 50; }
-.btn { background: transparent; border: 1px solid var(--border); color: #fff; padding: 8px 16px; cursor: pointer; font-size: 10px; border-radius: 4px; transition: 0.2s; }
-.btn:disabled { opacity: 0.3; cursor: not-allowed; }
-.btn.primary { background: var(--accent); color: #000; border: none; font-weight: bold; }
+/* aspect/theme grid */
+.btn-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;}
+.toggle-btn{background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--muted2);padding:8px 4px;font-family:'Courier New',monospace;font-size:11px;letter-spacing:1px;cursor:pointer;transition:all .2s;text-align:center;}
+.toggle-btn:hover{border-color:var(--accent);color:var(--text);}
+.toggle-btn.active{border-color:var(--accent);color:var(--accent);background:rgba(0,255,180,.08);}
 
-#currentLyric { position: absolute; top: 15%; left: 0; width: 100%; text-align: center; font-size: 36px; color: var(--accent); font-weight: 900; pointer-events: none; text-shadow: 0 0 30px rgba(0,255,204,0.8); z-index: 30; }
-#countdownOverlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.8); z-index: 100; font-size: 150px; color: var(--accent); font-weight: 900; }
-#status { font-size: 10px; color: #666; flex: 1; text-align: right; }
+/* file load buttons */
+.file-btn{display:flex;align-items:center;justify-content:space-between;border:1px solid var(--border);border-radius:6px;padding:10px 12px;cursor:pointer;transition:all .2s;margin-bottom:6px;background:transparent;}
+.file-btn:hover{border-color:var(--accent2);}
+.file-btn.loaded{border-color:var(--accent);background:rgba(0,255,180,.06);}
+.file-btn span{font-size:11px;letter-spacing:1px;color:var(--muted2);}
+.file-btn.loaded span{color:var(--accent);}
+.file-btn .check{font-size:14px;color:var(--accent);}
+input[type=file]{display:none;}
+
+/* keyboard image load */
+.kbd-img-slot{border:1px dashed var(--border);border-radius:6px;padding:8px 12px;cursor:pointer;transition:all .2s;margin-bottom:6px;text-align:center;font-size:10px;color:var(--muted2);letter-spacing:1px;}
+.kbd-img-slot:hover{border-color:var(--accent2);color:var(--text);}
+.kbd-img-slot.loaded{border-color:var(--accent);color:var(--accent);}
+.kbd-preview{width:100%;height:60px;object-fit:cover;border-radius:4px;margin-top:6px;display:none;}
+
+/* sensitivity */
+.sens-row{display:flex;align-items:center;gap:8px;margin-top:4px;}
+.sens-label{font-size:9px;letter-spacing:2px;color:var(--muted);white-space:nowrap;}
+input[type=range]{flex:1;accent-color:var(--accent);cursor:pointer;}
+
+/* ── OUTPUT AREA ── */
+.output-area{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:20px;background:var(--bg);overflow:auto;gap:12px;}
+
+/* action row */
+.action-row{display:flex;align-items:center;gap:10px;width:100%;}
+.act-btn{background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--muted2);padding:8px 18px;font-family:'Courier New',monospace;font-size:11px;letter-spacing:2px;cursor:pointer;transition:all .2s;}
+.act-btn:hover{border-color:var(--accent);color:var(--text);}
+.act-btn.primary{background:var(--accent);border-color:var(--accent);color:#000;font-weight:700;}
+.act-btn.primary:hover{background:var(--accent2);}
+.act-btn.danger{border-color:var(--red);color:var(--red);}
+.status-msg{margin-left:auto;font-size:11px;color:var(--muted2);letter-spacing:1px;}
+
+/* ── STAGE (the canvas wrapper) ── */
+.stage-wrap{position:relative;background:#000;border:1px solid var(--border);border-radius:8px;overflow:hidden;flex-shrink:0;}
+.stage-wrap canvas{display:block;}
+
+/* ── SUBTITLE LIST ── */
+.srt-list{width:100%;max-height:160px;overflow-y:auto;background:var(--panel);border:1px solid var(--border);border-radius:6px;}
+.srt-list::-webkit-scrollbar{width:3px;}.srt-list::-webkit-scrollbar-thumb{background:var(--muted);}
+.srt-item{display:flex;align-items:baseline;gap:10px;padding:5px 12px;border-bottom:1px solid rgba(0,255,180,.05);font-size:11px;transition:background .2s;}
+.srt-item.active{background:rgba(0,255,180,.08);}
+.srt-time{color:var(--muted2);white-space:nowrap;min-width:90px;}
+.srt-text{color:var(--text);}
 </style>
 </head>
 <body>
 
-<div id="countdownOverlay">3</div>
-
+<!-- TOP BAR -->
 <div class="topbar">
-  <div class="logo">SPECTRUM ART LAB v8.0</div>
-  <div id="timeCode" style="font-family:monospace; color:var(--accent); font-size: 14px;">00:00.00</div>
+  <span class="logo">SPECTRUM ART LAB</span>
+  <span class="version">v9.0</span>
 </div>
 
-<div class="container">
-  <div class="side-panel">
-    <h3 style="font-size:10px; color:#555; margin-bottom:10px;">ASPECT & THEME</h3>
-    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-bottom:10px;">
-        <button class="btn" onclick="setAspect('16:9')">16:9 가로</button>
-        <button class="btn" onclick="setAspect('9:16')">9:16 세로</button>
-    </div>
-    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-bottom:20px;">
-        <button class="btn" onclick="changeBG('keyboard1.png')">Type 1</button>
-        <button class="btn" onclick="changeBG('keyboard2.png')">Type 2</button>
-    </div>
-    
-    <h3 style="font-size:10px; color:#555; margin-bottom:10px;">LOADING ASSETS</h3>
-    <div class="file-box" id="musicBox" onclick="document.getElementById('mIn').click()">
-      <span id="musicText">1. MP3 로드</span>
-      <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleMusic(this.files)">
-    </div>
-    <div class="file-box" id="srtBox" onclick="document.getElementById('sIn').click()">
-      <span id="srtText">2. SRT 로드</span>
-      <input type="file" id="sIn" accept=".srt" style="display:none" onchange="handleSRT(this.files)">
+<!-- MAIN -->
+<div class="main">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+
+    <!-- ASPECT & THEME -->
+    <div class="sb-section">
+      <div class="sb-label">Aspect &amp; Theme</div>
+      <div class="btn-grid">
+        <button class="toggle-btn active" id="btn169" onclick="setAspect('16:9')">16:9 가로</button>
+        <button class="toggle-btn" id="btn916" onclick="setAspect('9:16')">9:16 세로</button>
+      </div>
+      <div class="btn-grid">
+        <button class="toggle-btn active" id="btnT1" onclick="setTheme('typewriter')">타자기</button>
+        <button class="toggle-btn" id="btnT2" onclick="setTheme('keyboard')">키보드</button>
+      </div>
     </div>
 
-    <h3 style="font-size:10px; color:#555; margin-top:20px; margin-bottom:10px;">SENSITIVITY</h3>
-    <input type="range" id="pSens" min="1" max="10" value="9" style="width:100%; accent-color:var(--accent);">
-    <div style="display:flex; justify-content:space-between; font-size:9px; color:#444; margin-top:5px;"><span>Low</span><span>High</span></div>
+    <!-- LOADING ASSETS -->
+    <div class="sb-section">
+      <div class="sb-label">Loading Assets</div>
+
+      <div class="file-btn" id="musicBtn" onclick="document.getElementById('musicInput').click()">
+        <span id="musicLabel">Load Music (MP3)</span>
+        <span class="check" id="musicCheck" style="display:none">✓</span>
+      </div>
+      <input type="file" id="musicInput" accept="audio/*">
+
+      <div class="file-btn" id="srtBtn" onclick="document.getElementById('srtInput').click()">
+        <span id="srtLabel">Load Subtitle (SRT)</span>
+        <span class="check" id="srtCheck" style="display:none">✓</span>
+      </div>
+      <input type="file" id="srtInput" accept=".srt,.txt">
+
+      <div class="sb-label" style="margin-top:12px;">Keyboard Image</div>
+      <div class="kbd-img-slot" id="kbdSlot1" onclick="document.getElementById('kbdInput1').click()">
+        타자기 이미지 (Type 1)
+        <img id="kbdPreview1" class="kbd-preview">
+      </div>
+      <input type="file" id="kbdInput1" accept="image/*">
+
+      <div class="kbd-img-slot" id="kbdSlot2" onclick="document.getElementById('kbdInput2').click()">
+        키보드 이미지 (Type 2)
+        <img id="kbdPreview2" class="kbd-preview">
+      </div>
+      <input type="file" id="kbdInput2" accept="image/*">
+    </div>
+
+    <!-- SENSITIVITY -->
+    <div class="sb-section">
+      <div class="sb-label">Sensitivity</div>
+      <div class="sens-row">
+        <span class="sens-label">Low</span>
+        <input type="range" id="sensitivitySlider" min="0.1" max="3" step="0.1" value="1">
+        <span class="sens-label">High</span>
+      </div>
+    </div>
+
+    <!-- SUBTITLE LIST -->
+    <div class="sb-section">
+      <div class="sb-label">Subtitle Preview</div>
+      <div class="srt-list" id="srtList"></div>
+    </div>
+
   </div>
 
-  <div class="viz-area" id="bgLayer" style="background-image: url('keyboard1.png');">
-    <canvas id="artCanvas"></canvas>
-    <div id="currentLyric"></div>
-    <div class="bottom-ctrl">
-      <button class="btn" onclick="resetArt()">RESET</button>
-      <button class="btn primary" id="playBtn" onclick="startWithCountdown()">START PERFORMANCE</button>
-      <div id="status">Waiting for files...</div>
+  <!-- OUTPUT AREA -->
+  <div class="output-area" id="outputArea">
+    <div class="action-row">
+      <button class="act-btn danger" onclick="resetAll()">RESET</button>
+      <button class="act-btn primary" id="resumeBtn" onclick="togglePlay()">RESUME</button>
+      <span class="status-msg" id="statusMsg">Ready to start performance!</span>
+    </div>
+
+    <!-- STAGE CANVAS -->
+    <div class="stage-wrap" id="stageWrap">
+      <canvas id="stage"></canvas>
     </div>
   </div>
-</div>
+
+</div><!-- /main -->
 
 <script>
-const keyMap = {
-  'ㅂ':{x:0.12,y:0.56},'ㅈ':{x:0.17,y:0.56},'ㄷ':{x:0.23,y:0.56},'ㄱ':{x:0.29,y:0.56},'ㅅ':{x:0.35,y:0.56},'ㅛ':{x:0.41,y:0.56},'ㅕ':{x:0.47,y:0.56},'ㅑ':{x:0.53,y:0.56},'ㅐ':{x:0.59,y:0.56},'ㅔ':{x:0.65,y:0.56},
-  'ㅁ':{x:0.14,y:0.66},'ㄴ':{x:0.20,y:0.66},'ㅇ':{x:0.26,y:0.66},'ㄹ':{x:0.32,y:0.66},'ㅎ':{x:0.38,y:0.66},'ㅗ':{x:0.44,y:0.66},'ㅓ':{x:0.50,y:0.66},'ㅏ':{x:0.56,y:0.66},'ㅣ':{x:0.62,y:0.66},
-  'ㅋ':{x:0.16,y:0.76},'ㅌ':{x:0.22,y:0.76},'ㅊ':{x:0.28,y:0.76},'ㅍ':{x:0.34,y:0.76},'ㅠ':{x:0.40,y:0.76},'ㅜ':{x:0.46,y:0.76},'ㅡ':{x:0.52,y:0.76},
-  'default': {x: 0.38, y: 0.88}
-};
+// ═══════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════
+let aspect = '16:9';
+let theme = 'typewriter';
+let audioCtx, analyser, gainNode, audioSource;
+let audioBuffer = null, isPlaying = false;
+let startTime = 0, pauseOffset = 0, duration = 0;
+let srtCues = [];
+let activeCueIdx = -1;
+let sensitivity = 1;
+let kbdImage1 = null, kbdImage2 = null;
+let flyingChars = [];
+let pressedKeys = {};   // key → { alpha, t }
+let animId = null;
+let vizT = 0;
 
-function decomposeHangeul(str) {
-  const cho = ["ㄱ","ㄲ","ㄴ","ㄷ","ㄸ","ㄹ","ㅁ","ㅂ","ㅃ","ㅅ","ㅆ","ㅇ","ㅈ","ㅉ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
-  const jung = ["ㅏ","ㅐ","ㅑ","ㅒ","ㅓ","ㅔ","ㅕ","ㅖ","ㅗ","ㅘ","ㅙ","ㅚ","ㅛ","ㅜ","ㅝ","ㅞ","ㅟ","ㅠ","ㅡ","ㅢ","ㅣ"];
-  const jong = ["","ㄱ","ㄲ","ㄳ","ㄴ","ㄵ","ㄶ","ㄷ","ㄹ","ㄺ","ㄻ","ㄼ","ㄽ","ㄾ","ㄿ","ㅀ","ㅁ","ㅂ","ㅄ","ㅅ","ㅆ","ㅇ","ㅈ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
-  let res = [];
-  for (let i = 0; i < str.length; i++) {
-    const code = str.charCodeAt(i) - 44032;
-    if (code > -1 && code < 11172) {
-      res.push(cho[Math.floor(code / 588)]);
-      res.push(jung[Math.floor((code % 588) / 28)]);
-      const j = code % 28; if (j !== 0) res.push(jong[j]);
-    } else res.push(str.charAt(i));
+// Canvas / stage
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+
+// ── KEYBOARD LAYOUT ─────────────────────────────────────
+// Each key: { label, row, col } — we map QWERTY
+const ROWS = [
+  ['Q','W','E','R','T','Y','U','I','O','P'],
+  ['A','S','D','F','G','H','J','K','L'],
+  ['Z','X','C','V','B','N','M'],
+];
+// All chars → key label map (simple direct mapping)
+function charToKey(ch) {
+  const c = ch.toUpperCase();
+  for (const row of ROWS) {
+    for (const k of row) { if (k === c) return c; }
   }
-  return res.filter(c => c.trim() !== "");
+  // digits → top row
+  if (/[0-9]/.test(c)) return c;
+  if (c === ' ') return 'SPACE';
+  return null;
 }
 
-class ArtChar {
-  constructor(char, x, y, size, color, lineCounter) {
-    this.char = char; this.x = x; this.y = y; this.size = size;
-    this.color = color; this.bornAt = lineCounter;
-    this.alpha = 1.0; this.isDead = false;
-  }
-  update(currentCounter) {
-    if (currentCounter - this.bornAt >= 2) this.alpha -= 0.02;
-    if (this.alpha <= 0) this.isDead = true;
-  }
-  draw(ctx) {
-    ctx.save(); ctx.globalAlpha = this.alpha;
-    ctx.font = `900 ${this.size}px Pretendard`; ctx.fillStyle = this.color;
-    ctx.shadowBlur = this.alpha * 15; ctx.shadowColor = this.color;
-    ctx.fillText(this.char, this.x, this.y); ctx.restore();
+// ── STAGE SIZING ────────────────────────────────────────
+function getStageSize() {
+  const area = document.getElementById('outputArea');
+  const aw = area.clientWidth - 64;
+  const ah = area.clientHeight - 120;
+  if (aspect === '16:9') {
+    const w = Math.min(aw, Math.floor(ah * 16/9));
+    return { w, h: Math.round(w * 9/16) };
+  } else {
+    const h = Math.min(ah, Math.floor(aw * 16/9));
+    return { w: Math.round(h * 9/16), h };
   }
 }
 
-let srtData = [], audioCtx, analyser, source, audioBuffer, isPlaying = false, startTime = 0, pauseOffset = 0;
-const canvas = document.getElementById('artCanvas'), ctx = canvas.getContext('2d');
-let artObjects = [], flares = [], globalLineCounter = 0, lastLineIdx = -1, charPtr = 0;
-
-function setAspect(ratio) {
-    const layer = document.getElementById('bgLayer');
-    if(ratio === '16:9') { layer.style.maxWidth = '100%'; layer.style.aspectRatio = '16/9'; }
-    else { layer.style.maxWidth = '56.25vh'; layer.style.aspectRatio = '9/16'; }
-    setTimeout(resize, 100);
+function resizeStage() {
+  const { w, h } = getStageSize();
+  canvas.width = w;
+  canvas.height = h;
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
 }
-function changeBG(name) { document.getElementById('bgLayer').style.backgroundImage = `url('${name}')`; }
+resizeStage();
+window.addEventListener('resize', resizeStage);
 
-function handleSRT(files) {
+// ── ASPECT / THEME ───────────────────────────────────────
+function setAspect(a) {
+  aspect = a;
+  document.getElementById('btn169').classList.toggle('active', a === '16:9');
+  document.getElementById('btn916').classList.toggle('active', a === '9:16');
+  resizeStage();
+}
+function setTheme(t) {
+  theme = t;
+  document.getElementById('btnT1').classList.toggle('active', t === 'typewriter');
+  document.getElementById('btnT2').classList.toggle('active', t === 'keyboard');
+}
+
+// ── AUDIO ─────────────────────────────────────────────────
+function initAudio() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 1024;
+  gainNode = audioCtx.createGain();
+  analyser.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
+}
+
+document.getElementById('musicInput').addEventListener('change', e => {
+  const f = e.target.files[0]; if (!f) return;
+  initAudio();
   const reader = new FileReader();
-  reader.onload = (e) => {
-    // 더 유연한 SRT 파싱 (줄바꿈 및 공백 대응)
-    const text = e.target.result.replace(/\r\n/g, '\n');
-    const blocks = text.split(/\n\s*\n/);
-    srtData = [];
-    blocks.forEach(block => {
-      const lines = block.split('\n');
-      if(lines.length >= 3) {
-        const timeMatch = lines[1].match(/(\d+:\d+:\d+,\d+) --> (\d+:\d+:\d+,\d+)/);
-        if(timeMatch) {
-          const content = lines.slice(2).join(' ');
-          srtData.push({ start: timeToSec(timeMatch[1]), end: timeToSec(timeMatch[2]), text: content, chars: decomposeHangeul(content) });
-        }
-      }
-    });
-    if(srtData.length > 0) {
-        document.getElementById('srtBox').classList.add('loaded');
-        document.getElementById('srtText').textContent = "SRT Loaded (" + srtData.length + ")";
-        updateStatus();
-    }
-  };
-  reader.readAsText(files[0]);
-}
-
-function timeToSec(t) { const [h, m, s] = t.split(':'); const [sec, ms] = s.split(','); return parseInt(h)*3600 + parseInt(m)*60 + parseInt(sec) + parseInt(ms)/1000; }
-
-function handleMusic(files) {
-  if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  document.getElementById('musicText').textContent = "Decoding...";
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    audioCtx.decodeAudioData(e.target.result, (buf) => { 
-        audioBuffer = buf; 
-        document.getElementById('musicBox').classList.add('loaded');
-        document.getElementById('musicText').textContent = "Music Loaded";
-        updateStatus();
+  reader.onload = ev => {
+    audioCtx.decodeAudioData(ev.target.result, buf => {
+      audioBuffer = buf;
+      duration = buf.duration;
+      document.getElementById('musicBtn').classList.add('loaded');
+      document.getElementById('musicLabel').textContent = '✓ ' + f.name.replace(/\.[^.]+$/, '');
+      document.getElementById('musicCheck').style.display = 'block';
+      setStatus('Music loaded — ' + f.name);
     });
   };
-  reader.readAsArrayBuffer(files[0]);
+  reader.readAsArrayBuffer(f);
+});
+
+function playAudio() {
+  if (!audioBuffer || !audioCtx) return;
+  if (audioSource) { try { audioSource.stop(); audioSource.disconnect(); } catch(e){} }
+  audioSource = audioCtx.createBufferSource();
+  audioSource.buffer = audioBuffer;
+  audioSource.connect(analyser);
+  audioSource.start(0, pauseOffset);
+  startTime = audioCtx.currentTime - pauseOffset;
+  isPlaying = true;
+  audioSource.onended = () => { if (isPlaying) { isPlaying = false; pauseOffset = 0; updatePlayBtn(); }};
+  updatePlayBtn();
 }
 
-function updateStatus() {
-    if(audioBuffer && srtData.length > 0) {
-        document.getElementById('status').textContent = "Ready to start performance!";
-    }
-}
-
-async function startWithCountdown() {
-    if(!audioBuffer) { alert("음악(MP3) 파일 로딩을 기다려주세요."); return; }
-    if(srtData.length === 0) { alert("자막(SRT) 파일을 먼저 로드해주세요."); return; }
-    
-    const overlay = document.getElementById('countdownOverlay');
-    overlay.style.display = 'flex';
-    let count = 3;
-    overlay.textContent = count;
-    const timer = setInterval(() => {
-        count--;
-        if(count > 0) { overlay.textContent = count; }
-        else { clearInterval(timer); overlay.style.display = 'none'; togglePlay(); }
-    }, 1000);
-}
-
-async function togglePlay() {
-  if(audioCtx.state === 'suspended') await audioCtx.resume();
-  if(isPlaying) { pauseOffset = audioCtx.currentTime - startTime; source.stop(); isPlaying = false; document.getElementById('playBtn').textContent = "RESUME"; }
-  else {
-    source = audioCtx.createBufferSource(); source.buffer = audioBuffer;
-    analyser = audioCtx.createAnalyser(); source.connect(analyser); analyser.connect(audioCtx.destination);
-    source.start(0, pauseOffset); startTime = audioCtx.currentTime - pauseOffset;
-    isPlaying = true; document.getElementById('playBtn').textContent = "STOP";
-    animate();
+function togglePlay() {
+  initAudio();
+  if (!audioBuffer) { setStatus('먼저 MP3를 로드해주세요'); return; }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  if (isPlaying) {
+    pauseOffset = audioCtx.currentTime - startTime;
+    if (audioSource) { try { audioSource.stop(); } catch(e){} }
+    isPlaying = false;
+  } else {
+    playAudio();
   }
+  updatePlayBtn();
 }
 
-function resetArt() { artObjects = []; flares = []; ctx.clearRect(0,0,canvas.width,canvas.height); document.getElementById('currentLyric').textContent = ""; }
-function resize() { canvas.width = canvas.clientWidth; canvas.height = canvas.clientHeight; }
-window.onresize = resize; resize();
+function updatePlayBtn() {
+  document.getElementById('resumeBtn').textContent = isPlaying ? 'PAUSE' : 'RESUME';
+}
 
-function animate() {
-  if(!isPlaying) return;
-  requestAnimationFrame(animate);
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  const now = audioCtx.currentTime - startTime;
-  document.getElementById('timeCode').textContent = `${Math.floor(now/60).toString().padStart(2,'0')}:${(now%60).toFixed(2).padStart(5,'0')}`;
+function getElapsed() {
+  if (!audioCtx) return 0;
+  return isPlaying ? (audioCtx.currentTime - startTime) : pauseOffset;
+}
 
-  const lineIdx = srtData.findIndex(l => now >= l.start && now <= l.end);
+// ── SRT PARSER ────────────────────────────────────────────
+document.getElementById('srtInput').addEventListener('change', e => {
+  const f = e.target.files[0]; if (!f) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    srtCues = parseSRT(ev.target.result);
+    document.getElementById('srtBtn').classList.add('loaded');
+    document.getElementById('srtLabel').textContent = `✓ SRT Loaded (${srtCues.length})`;
+    document.getElementById('srtCheck').style.display = 'block';
+    renderSRTList();
+    setStatus(`SRT loaded — ${srtCues.length} cues`);
+  };
+  reader.readAsText(f);
+});
 
-  if (lineIdx !== -1) {
-    const line = srtData[lineIdx];
-    document.getElementById('currentLyric').textContent = line.text;
-    if (lineIdx !== lastLineIdx) { charPtr = 0; lastLineIdx = lineIdx; globalLineCounter++; }
+function parseSRT(text) {
+  const cues = [];
+  const blocks = text.trim().split(/\n\s*\n/);
+  for (const block of blocks) {
+    const lines = block.trim().split('\n');
+    if (lines.length < 2) continue;
+    const timeLine = lines.find(l => l.includes('-->'));
+    if (!timeLine) continue;
+    const [startStr, endStr] = timeLine.split('-->');
+    const start = srtTimeToSec(startStr.trim());
+    const end = srtTimeToSec(endStr.trim());
+    const textLines = lines.filter(l => !l.includes('-->') && !/^\d+$/.test(l.trim()));
+    const text = textLines.join(' ').trim();
+    if (text) cues.push({ start, end, text });
+  }
+  return cues;
+}
 
-    const data = new Uint8Array(analyser.frequencyBinCount);
-    analyser.getByteFrequencyData(data);
-    const amp = data[20] / 255;
-    const sens = parseInt(document.getElementById('pSens').value) / 10;
+function srtTimeToSec(s) {
+  const m = s.match(/(\d+):(\d+):(\d+)[,.](\d+)/);
+  if (!m) return 0;
+  return +m[1]*3600 + +m[2]*60 + +m[3] + +m[4]/1000;
+}
 
-    // 비트 반응 또는 확률적 각인
-    if (amp > (1.1 - sens) || Math.random() < 0.1) {
-      const char = line.chars[charPtr % line.chars.length];
-      const pos = keyMap[char] || keyMap['default'];
-      const color = `rgba(0, 255, 204, 1)`;
-      const size = 30 + amp * 80;
+function renderSRTList() {
+  const list = document.getElementById('srtList');
+  list.innerHTML = srtCues.map((c,i) => `
+    <div class="srt-item" id="srt-${i}">
+      <span class="srt-time">${secToStr(c.start)}</span>
+      <span class="srt-text">${escHtml(c.text)}</span>
+    </div>`).join('');
+}
 
-      artObjects.push(new ArtChar(char, canvas.width/2, canvas.height/2, size, color, globalLineCounter));
-      artObjects.push(new ArtChar(char, Math.random()*canvas.width, Math.random()*canvas.height, size, color, globalLineCounter));
-      flares.push({ x: pos.x * canvas.width, y: pos.y * canvas.height, life: 1.0 });
-      charPtr++;
-    }
-  } else { document.getElementById('currentLyric').textContent = ""; }
+function secToStr(s) {
+  const m = Math.floor(s/60), sec = Math.floor(s%60);
+  return m+':'+(sec<10?'0':'')+sec;
+}
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
 
-  flares.forEach((f, i) => {
-    f.life -= 0.08;
-    const grd = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, 100);
-    grd.addColorStop(0, `rgba(0, 255, 204, ${f.life})`); grd.addColorStop(1, 'transparent');
-    ctx.fillStyle = grd; ctx.beginPath(); ctx.arc(f.x, f.y, 120, 0, Math.PI*2); ctx.fill();
-    if(f.life <= 0) flares.splice(i, 1);
+// ── KEYBOARD IMAGE ────────────────────────────────────────
+function loadKbdImage(slot, previewId, slotId, input) {
+  input.addEventListener('change', e => {
+    const f = e.target.files[0]; if (!f) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const img = new Image();
+      img.onload = () => {
+        if (slot === 1) kbdImage1 = img; else kbdImage2 = img;
+        const prev = document.getElementById(previewId);
+        prev.src = ev.target.result;
+        prev.style.display = 'block';
+        document.getElementById(slotId).classList.add('loaded');
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(f);
+  });
+}
+loadKbdImage(1, 'kbdPreview1', 'kbdSlot1', document.getElementById('kbdInput1'));
+loadKbdImage(2, 'kbdPreview2', 'kbdSlot2', document.getElementById('kbdInput2'));
+
+document.getElementById('sensitivitySlider').addEventListener('input', e => {
+  sensitivity = parseFloat(e.target.value);
+});
+
+// ── RESET ─────────────────────────────────────────────────
+function resetAll() {
+  if (audioSource) { try { audioSource.stop(); } catch(e){} }
+  isPlaying = false; pauseOffset = 0; activeCueIdx = -1;
+  flyingChars = []; pressedKeys = {}; vizT = 0;
+  updatePlayBtn(); setStatus('Reset — Ready!');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+}
+
+function setStatus(msg) { document.getElementById('statusMsg').textContent = msg; }
+
+// ═══════════════════════════════════════════════════════
+//  KEY LAYOUT CALCULATION
+// ═══════════════════════════════════════════════════════
+// Returns { keys: [{label, x, y, w, h}], kbdRect }
+// kbdRect = the area the keyboard image occupies
+function computeKeyLayout(W, H) {
+  // In both orientations:
+  //   top portion = subtitle / lyrics display area
+  //   bottom portion = keyboard image
+  const isPortrait = aspect === '9:16';
+  const kbdHeightRatio = isPortrait ? 0.45 : 0.5;  // keyboard takes bottom X%
+  const kbdY = H * (1 - kbdHeightRatio);
+  const kbdH = H * kbdHeightRatio;
+  const kbdW = W;
+
+  // Key grid layout within keyboard image
+  // We assume the keys are in bottom 70% of keyboard image area
+  // with small margins
+  const margin = kbdW * 0.05;
+  const keyAreaX = margin;
+  const keyAreaY = kbdY + kbdH * 0.35;   // skip top part of kbd image (platen, etc)
+  const keyAreaW = kbdW - margin * 2;
+  const keyAreaH = kbdH * 0.58;
+
+  const rowCount = ROWS.length;
+  const keyH = keyAreaH / (rowCount + 0.5);
+  const keyGap = keyH * 0.12;
+
+  const keys = [];
+
+  ROWS.forEach((row, ri) => {
+    const n = row.length;
+    const rowW = keyAreaW * (ri === 0 ? 1 : ri === 1 ? 0.92 : 0.76);
+    const rowX = keyAreaX + (keyAreaW - rowW) / 2;
+    const kw = (rowW - keyGap * (n - 1)) / n;
+    const ky = keyAreaY + ri * (keyH + keyGap * 0.5);
+
+    row.forEach((label, ci) => {
+      const kx = rowX + ci * (kw + keyGap);
+      keys.push({ label, x: kx + kw/2, y: ky + keyH/2, w: kw, h: keyH });
+    });
   });
 
-  for (let i = artObjects.length - 1; i >= 0; i--) {
-    artObjects[i].update(globalLineCounter); artObjects[i].draw(ctx);
-    if (artObjects[i].isDead) artObjects.splice(i, 1);
+  // Space bar
+  const spaceW = keyAreaW * 0.4;
+  const spaceX = keyAreaX + (keyAreaW - spaceW) / 2;
+  const spaceY = keyAreaY + rowCount * (keyH + keyGap * 0.5);
+  keys.push({ label: 'SPACE', x: spaceX + spaceW/2, y: spaceY + keyH*0.4, w: spaceW, h: keyH * 0.8 });
+
+  return { keys, kbdRect: { x: 0, y: kbdY, w: kbdW, h: kbdH } };
+}
+
+// ═══════════════════════════════════════════════════════
+//  FLYING CHAR SPAWNER
+// ═══════════════════════════════════════════════════════
+function spawnChar(ch, keyX, keyY, color) {
+  flyingChars.push({
+    ch,
+    x: keyX,
+    y: keyY,
+    vx: (Math.random() - 0.5) * 2.5,
+    vy: -(4 + Math.random() * 5),
+    ax: 0,
+    ay: 0.18,
+    alpha: 1,
+    scale: 0.4 + Math.random() * 0.4,
+    rot: (Math.random() - 0.5) * 0.8,
+    rotV: (Math.random() - 0.5) * 0.08,
+    color,
+    life: 1,
+    targetX: null,
+    targetY: null,
+    phase: 'fly',   // 'fly' → 'land'
+    landIdx: -1,
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+//  MAIN RENDER LOOP
+// ═══════════════════════════════════════════════════════
+// Lyrics build state
+let builtText = '';
+let currentCueText = '';
+let lastCueIdx = -1;
+let charSpawnQueue = [];
+let lastCharSpawnTime = 0;
+
+function getFreqData() {
+  if (!analyser) return new Uint8Array(512);
+  const d = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteFrequencyData(d);
+  return d;
+}
+
+function getColors() {
+  return theme === 'typewriter'
+    ? { key: '#e8e0cc', keyPress: '#00ffb4', fly: '#00ffb4', text: '#e8e0cc', bg: '#1a1510', overlay: 'rgba(26,21,16,0.18)' }
+    : { key: '#334455', keyPress: '#4488ff', fly: '#4488ff', text: '#aaccff', bg: '#080c14', overlay: 'rgba(8,12,20,0.22)' };
+}
+
+function render() {
+  animId = requestAnimationFrame(render);
+  vizT += 0.012;
+
+  const W = canvas.width, H = canvas.height;
+  const freq = getFreqData();
+  const elapsed = getElapsed();
+  const col = getColors();
+
+  // ── background ──
+  ctx.fillStyle = col.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // ── layout ──
+  const { keys, kbdRect } = computeKeyLayout(W, H);
+
+  // ── subtitle area (above keyboard) ──
+  const isPortrait = aspect === '9:16';
+  const subAreaH = kbdRect.y;
+  const subAreaY = 0;
+
+  // ── update cue ──
+  let cue = null;
+  for (let i = 0; i < srtCues.length; i++) {
+    const c = srtCues[i];
+    if (elapsed >= c.start && elapsed < c.end) {
+      cue = c; activeCueIdx = i; break;
+    }
+  }
+  if (!cue) activeCueIdx = -1;
+
+  // Highlight active SRT row
+  if (activeCueIdx !== lastCueIdx) {
+    document.querySelectorAll('.srt-item').forEach((el, i) => {
+      el.classList.toggle('active', i === activeCueIdx);
+    });
+    if (activeCueIdx >= 0) {
+      const el = document.getElementById('srt-' + activeCueIdx);
+      if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+    // New cue → schedule char spawning
+    if (cue && activeCueIdx !== lastCueIdx) {
+      currentCueText = cue.text;
+      charSpawnQueue = cue.text.split('');
+      lastCharSpawnTime = elapsed;
+      if (activeCueIdx !== lastCueIdx) builtText = '';
+    }
+    lastCueIdx = activeCueIdx;
+  }
+
+  // ── spawn chars from queue ──
+  if (charSpawnQueue.length > 0 && isPlaying) {
+    const delay = 0.06 / Math.max(0.1, sensitivity);  // seconds between chars
+    if (elapsed - lastCharSpawnTime > delay) {
+      const ch = charSpawnQueue.shift();
+      lastCharSpawnTime = elapsed;
+      // find key
+      const keyLabel = charToKey(ch);
+      let kx = W/2, ky = kbdRect.y + kbdRect.h * 0.6;
+      if (keyLabel) {
+        const k = keys.find(k => k.label === keyLabel);
+        if (k) { kx = k.x; ky = k.y; }
+        // press key
+        pressedKeys[keyLabel] = { alpha: 1, t: 0 };
+      }
+      if (ch.trim()) {
+        spawnChar(ch, kx, ky, col.fly);
+        builtText += ch;
+      } else {
+        builtText += ch;
+      }
+    }
+  }
+
+  // ── draw keyboard image ──
+  const kbdImg = theme === 'typewriter' ? kbdImage1 : kbdImage2;
+  if (kbdImg) {
+    ctx.drawImage(kbdImg, kbdRect.x, kbdRect.y, kbdRect.w, kbdRect.h);
+    // subtle dark overlay so keys are visible over image
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.fillRect(kbdRect.x, kbdRect.y, kbdRect.w, kbdRect.h);
+  } else {
+    // ── draw fallback keyboard ──
+    drawFallbackKeyboard(ctx, W, H, keys, kbdRect, col);
+  }
+
+  // ── draw pressed key highlights ──
+  for (const [label, state] of Object.entries(pressedKeys)) {
+    const k = keys.find(k => k.label === label);
+    if (!k) continue;
+    ctx.save();
+    ctx.globalAlpha = state.alpha;
+    ctx.fillStyle = col.keyPress;
+    ctx.shadowColor = col.keyPress;
+    ctx.shadowBlur = 18;
+    const r = Math.min(k.w, k.h) * 0.45;
+    ctx.beginPath();
+    roundRect(ctx, k.x - k.w*0.45, k.y - k.h*0.45, k.w*0.9, k.h*0.9, r);
+    ctx.fill();
+    ctx.restore();
+    state.alpha -= 0.045;
+    state.t++;
+    if (state.alpha <= 0) delete pressedKeys[label];
+  }
+
+  // ── draw key labels (fallback only drawn above) ──
+  // On image mode, draw subtle letter overlays
+  if (kbdImg) {
+    ctx.save();
+    ctx.globalAlpha = 0.0; // hidden — rely on image
+    ctx.restore();
+  }
+
+  // ── update & draw flying chars ──
+  flyingChars.forEach(fc => {
+    if (fc.phase === 'fly') {
+      fc.x += fc.vx;
+      fc.y += fc.vy;
+      fc.vy += fc.ay;
+      fc.vx *= 0.98;
+      fc.rot += fc.rotV;
+      fc.alpha -= 0.008;
+      fc.scale = Math.min(fc.scale + 0.015, 1.2);
+    }
+    if (fc.alpha <= 0) return;
+
+    const fontSize = Math.max(14, W * 0.028 * fc.scale);
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, fc.alpha);
+    ctx.translate(fc.x, fc.y);
+    ctx.rotate(fc.rot);
+    ctx.font = `bold ${fontSize}px 'Courier New', monospace`;
+    ctx.fillStyle = fc.color;
+    ctx.shadowColor = fc.color;
+    ctx.shadowBlur = 12;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(fc.ch, 0, 0);
+    ctx.restore();
+  });
+  flyingChars = flyingChars.filter(fc => fc.alpha > 0);
+
+  // ── draw subtitle area ──
+  drawSubtitleArea(ctx, W, subAreaY, subAreaH, builtText, currentCueText, cue, elapsed, col);
+
+  // ── audio reactive border glow on subtitle area ──
+  let bass = 0;
+  for (let i = 0; i < 8; i++) bass += (freq[i] || 0);
+  bass = bass / 8 / 255 * sensitivity;
+  if (bass > 0.1) {
+    ctx.save();
+    ctx.strokeStyle = col.fly;
+    ctx.globalAlpha = bass * 0.4;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(1, 1, W-2, subAreaH-2);
+    ctx.restore();
   }
 }
+
+// ─────────────────────────────────────────────────────────
+//  SUBTITLE DISPLAY AREA
+// ─────────────────────────────────────────────────────────
+function drawSubtitleArea(ctx, W, aY, aH, builtText, cueText, cue, elapsed, col) {
+  // dark panel
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(0, aY, W, aH);
+
+  if (!cue && !builtText) {
+    ctx.save();
+    ctx.fillStyle = col.muted || 'rgba(100,180,150,0.3)';
+    ctx.font = `${W*0.022}px 'Courier New', monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('♪', W/2, aY + aH/2);
+    ctx.restore();
+    return;
+  }
+
+  const fontSize = Math.max(16, Math.min(W * 0.045, aH * 0.18));
+  const lineH = fontSize * 1.5;
+  const padX = W * 0.06;
+  const maxW = W - padX * 2;
+
+  // wrap builtText
+  ctx.font = `bold ${fontSize}px 'Courier New', monospace`;
+  const lines = wrapText(ctx, builtText, maxW);
+  const totalH = lines.length * lineH;
+  const startY = aH * 0.5 - totalH / 2 + aY;
+
+  lines.forEach((line, li) => {
+    const y = startY + li * lineH;
+    // shadow / glow
+    ctx.save();
+    ctx.font = `bold ${fontSize}px 'Courier New', monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.shadowColor = col.fly;
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = col.text;
+    ctx.fillText(line, W/2, y);
+    ctx.restore();
+  });
+
+  // Blinking cursor at end
+  if (cue && (Math.floor(elapsed * 3) % 2 === 0)) {
+    const lastLine = lines[lines.length - 1] || '';
+    const lw = ctx.measureText(lastLine).width;
+    const cx = W/2 + lw/2 + 4;
+    const cy = startY + (lines.length - 1) * lineH - fontSize * 0.1;
+    ctx.save();
+    ctx.fillStyle = col.fly;
+    ctx.globalAlpha = 0.8;
+    ctx.fillRect(cx, cy - fontSize * 0.85, 2, fontSize);
+    ctx.restore();
+  }
+}
+
+function wrapText(ctx, text, maxW) {
+  const words = text.split('');
+  let line = '';
+  const lines = [];
+  for (const ch of words) {
+    const test = line + ch;
+    if (ctx.measureText(test).width > maxW && line.length > 0) {
+      lines.push(line);
+      line = ch;
+    } else {
+      line = test;
+    }
+    if (ch === '\n') { lines.push(line.replace('\n','')); line = ''; }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+// ─────────────────────────────────────────────────────────
+//  FALLBACK KEYBOARD DRAWING
+// ─────────────────────────────────────────────────────────
+function drawFallbackKeyboard(ctx, W, H, keys, kbdRect, col) {
+  // Body
+  ctx.fillStyle = theme === 'typewriter' ? '#2a2520' : '#181c22';
+  roundRect(ctx, kbdRect.x + 4, kbdRect.y + 4, kbdRect.w - 8, kbdRect.h - 8, 14);
+  ctx.fill();
+
+  // Platen / top decoration for typewriter
+  if (theme === 'typewriter') {
+    ctx.fillStyle = '#1a1510';
+    ctx.fillRect(kbdRect.x + 20, kbdRect.y + 8, kbdRect.w - 40, kbdRect.h * 0.28);
+    ctx.fillStyle = '#888';
+    ctx.fillRect(kbdRect.x + 30, kbdRect.y + 14, kbdRect.w - 60, 6);
+    // paper
+    ctx.fillStyle = '#f0ece0';
+    ctx.fillRect(W * 0.25, kbdRect.y - H * 0.12, W * 0.5, kbdRect.h * 0.3);
+    ctx.fillStyle = '#ddd';
+    ctx.fillRect(W * 0.25, kbdRect.y - H * 0.12, W * 0.5, 2);
+  } else {
+    // cable
+    ctx.strokeStyle = '#111';
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(W/2, kbdRect.y + 8);
+    ctx.lineTo(W/2, kbdRect.y - 20);
+    ctx.stroke();
+    // RGB strip
+    const rainbow = ctx.createLinearGradient(kbdRect.x + 20, 0, kbdRect.x + kbdRect.w - 20, 0);
+    rainbow.addColorStop(0,'#ff00ff');rainbow.addColorStop(0.33,'#00ffff');rainbow.addColorStop(0.66,'#ffff00');rainbow.addColorStop(1,'#ff00ff');
+    ctx.fillStyle = rainbow;
+    ctx.globalAlpha = 0.4 + Math.sin(vizT * 2) * 0.2;
+    ctx.fillRect(kbdRect.x + 20, kbdRect.y + 16, kbdRect.w - 40, 3);
+    ctx.globalAlpha = 1;
+  }
+
+  // Draw each key
+  keys.forEach(k => {
+    const r = Math.min(k.w, k.h) * 0.2;
+    const pressed = pressedKeys[k.label];
+
+    // Key cap
+    ctx.save();
+    if (pressed) {
+      ctx.fillStyle = col.keyPress;
+      ctx.shadowColor = col.keyPress;
+      ctx.shadowBlur = 14;
+      ctx.globalAlpha = 0.85;
+    } else {
+      ctx.fillStyle = col.key;
+      ctx.globalAlpha = theme === 'typewriter' ? 0.9 : 0.75;
+    }
+    roundRect(ctx, k.x - k.w*0.45, k.y - k.h*0.45, k.w*0.9, k.h*0.9, r);
+    ctx.fill();
+    ctx.restore();
+
+    // Key label
+    ctx.save();
+    const fsize = Math.min(k.w * 0.42, k.h * 0.42, 13);
+    ctx.font = `bold ${fsize}px 'Courier New', monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = pressed ? '#000' : (theme === 'typewriter' ? '#333' : '#88aacc');
+    ctx.globalAlpha = pressed ? 1 : 0.9;
+    ctx.fillText(k.label === 'SPACE' ? '___' : k.label, k.x, k.y);
+    ctx.restore();
+  });
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+// Start render loop
+render();
 </script>
 </body>
 </html>
