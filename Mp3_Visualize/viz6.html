@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SPECTRUM ART LAB v7.9 — Performance Final</title>
+<title>SPECTRUM ART LAB v8.0 — Debugged Master</title>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
 :root{ --bg:#000; --panel:#0f0f15; --accent:#00ffcc; --border:rgba(255,255,255,0.08); }
@@ -12,23 +12,24 @@ body{ background:var(--bg); color:#fff; font-family:'Pretendard', sans-serif; he
 .topbar{ padding:10px 20px; background:var(--panel); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
 .logo{letter-spacing:4px; color:var(--accent); font-weight:800; font-size:12px;}
 
-.container { display: grid; grid-template-columns: 280px 1fr; flex: 1; min-height: 0; }
+.container { display: grid; grid-template-columns: 300px 1fr; flex: 1; min-height: 0; }
 .side-panel { background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 20px; overflow-y: auto; z-index: 50; }
 
-/* 시각화 영역 */
 .viz-area { position: relative; background-color: #000; background-size: contain; background-position: center bottom; background-repeat: no-repeat; overflow: hidden; flex: 1; }
 #artCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; background: transparent; pointer-events: none; }
 
-.file-box { border: 1px dashed #444; padding: 12px; text-align: center; margin-bottom: 12px; cursor: pointer; border-radius: 4px; font-size: 11px; color: #888; transition: 0.2s;}
-.file-box:hover { border-color: var(--accent); color: #fff; background: rgba(0,255,204,0.05); }
+.file-box { border: 1px dashed #444; padding: 12px; text-align: center; margin-bottom: 8px; cursor: pointer; border-radius: 4px; font-size: 11px; color: #888; transition: 0.2s; position: relative;}
+.file-box.loaded { border-color: var(--accent); color: var(--accent); background: rgba(0,255,204,0.05); }
+.file-box.loaded::after { content: '✅'; position: absolute; right: 10px; top: 10px; }
 
 .bottom-ctrl { padding: 15px 30px; background: #000; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 20px; z-index: 50; }
-.btn { background: transparent; border: 1px solid var(--border); color: #fff; padding: 8px 16px; cursor: pointer; font-size: 10px; border-radius: 4px; }
+.btn { background: transparent; border: 1px solid var(--border); color: #fff; padding: 8px 16px; cursor: pointer; font-size: 10px; border-radius: 4px; transition: 0.2s; }
+.btn:disabled { opacity: 0.3; cursor: not-allowed; }
 .btn.primary { background: var(--accent); color: #000; border: none; font-weight: bold; }
 
 #currentLyric { position: absolute; top: 15%; left: 0; width: 100%; text-align: center; font-size: 36px; color: var(--accent); font-weight: 900; pointer-events: none; text-shadow: 0 0 30px rgba(0,255,204,0.8); z-index: 30; }
-#countdownOverlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.7); z-index: 100; font-size: 120px; color: var(--accent); font-weight: 900; }
-#status { font-size: 10px; color: #444; flex: 1; text-align: right; }
+#countdownOverlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.8); z-index: 100; font-size: 150px; color: var(--accent); font-weight: 900; }
+#status { font-size: 10px; color: #666; flex: 1; text-align: right; }
 </style>
 </head>
 <body>
@@ -36,13 +37,13 @@ body{ background:var(--bg); color:#fff; font-family:'Pretendard', sans-serif; he
 <div id="countdownOverlay">3</div>
 
 <div class="topbar">
-  <div class="logo">SPECTRUM ART LAB v7.9</div>
+  <div class="logo">SPECTRUM ART LAB v8.0</div>
   <div id="timeCode" style="font-family:monospace; color:var(--accent); font-size: 14px;">00:00.00</div>
 </div>
 
 <div class="container">
   <div class="side-panel">
-    <h3>1. Aspect & Theme</h3>
+    <h3 style="font-size:10px; color:#555; margin-bottom:10px;">ASPECT & THEME</h3>
     <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-bottom:10px;">
         <button class="btn" onclick="setAspect('16:9')">16:9 가로</button>
         <button class="btn" onclick="setAspect('9:16')">9:16 세로</button>
@@ -52,34 +53,33 @@ body{ background:var(--bg); color:#fff; font-family:'Pretendard', sans-serif; he
         <button class="btn" onclick="changeBG('keyboard2.png')">Type 2</button>
     </div>
     
-    <h3>2. Music & SRT</h3>
-    <div class="file-box" onclick="document.getElementById('mIn').click()">1. MP3 로드<input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleMusic(this.files)"></div>
-    <div class="file-box" onclick="document.getElementById('sIn').click()">2. SRT 로드<input type="file" id="sIn" accept=".srt" style="display:none" onchange="handleSRT(this.files)"></div>
+    <h3 style="font-size:10px; color:#555; margin-bottom:10px;">LOADING ASSETS</h3>
+    <div class="file-box" id="musicBox" onclick="document.getElementById('mIn').click()">
+      <span id="musicText">1. MP3 로드</span>
+      <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleMusic(this.files)">
+    </div>
+    <div class="file-box" id="srtBox" onclick="document.getElementById('sIn').click()">
+      <span id="srtText">2. SRT 로드</span>
+      <input type="file" id="sIn" accept=".srt" style="display:none" onchange="handleSRT(this.files)">
+    </div>
 
-    <h3>3. Settings</h3>
-    <div style="margin-bottom:15px;">
-        <label style="font-size:9px; color:#777;">SENSITIVITY (반응도)</label>
-        <input type="range" id="pSens" min="1" max="10" value="9" style="width:100%; accent-color:var(--accent);">
-    </div>
-    <div>
-        <label style="font-size:9px; color:#777;">LIFE LIMIT (자막 유지)</label>
-        <input type="range" id="lifeLimit" min="1" max="5" value="2" style="width:100%; accent-color:var(--accent);">
-    </div>
+    <h3 style="font-size:10px; color:#555; margin-top:20px; margin-bottom:10px;">SENSITIVITY</h3>
+    <input type="range" id="pSens" min="1" max="10" value="9" style="width:100%; accent-color:var(--accent);">
+    <div style="display:flex; justify-content:space-between; font-size:9px; color:#444; margin-top:5px;"><span>Low</span><span>High</span></div>
   </div>
 
-  <div class="viz-area" id="bgLayer">
+  <div class="viz-area" id="bgLayer" style="background-image: url('keyboard1.png');">
     <canvas id="artCanvas"></canvas>
     <div id="currentLyric"></div>
     <div class="bottom-ctrl">
       <button class="btn" onclick="resetArt()">RESET</button>
       <button class="btn primary" id="playBtn" onclick="startWithCountdown()">START PERFORMANCE</button>
-      <div id="status">Ready.</div>
+      <div id="status">Waiting for files...</div>
     </div>
   </div>
 </div>
 
 <script>
-// --- 정밀 키보드 맵핑 ---
 const keyMap = {
   'ㅂ':{x:0.12,y:0.56},'ㅈ':{x:0.17,y:0.56},'ㄷ':{x:0.23,y:0.56},'ㄱ':{x:0.29,y:0.56},'ㅅ':{x:0.35,y:0.56},'ㅛ':{x:0.41,y:0.56},'ㅕ':{x:0.47,y:0.56},'ㅑ':{x:0.53,y:0.56},'ㅐ':{x:0.59,y:0.56},'ㅔ':{x:0.65,y:0.56},
   'ㅁ':{x:0.14,y:0.66},'ㄴ':{x:0.20,y:0.66},'ㅇ':{x:0.26,y:0.66},'ㄹ':{x:0.32,y:0.66},'ㅎ':{x:0.38,y:0.66},'ㅗ':{x:0.44,y:0.66},'ㅓ':{x:0.50,y:0.66},'ㅏ':{x:0.56,y:0.66},'ㅣ':{x:0.62,y:0.66},
@@ -107,19 +107,17 @@ class ArtChar {
   constructor(char, x, y, size, color, lineCounter) {
     this.char = char; this.x = x; this.y = y; this.size = size;
     this.color = color; this.bornAt = lineCounter;
-    this.alpha = 1.0; this.noise = 0; this.isDead = false;
+    this.alpha = 1.0; this.isDead = false;
   }
-  update(currentCounter, limit) {
-    if (currentCounter - this.bornAt >= limit) {
-      this.alpha -= 0.02; this.noise += 0.5; this.x += (Math.random()-0.5)*2;
-    }
+  update(currentCounter) {
+    if (currentCounter - this.bornAt >= 2) this.alpha -= 0.02;
     if (this.alpha <= 0) this.isDead = true;
   }
   draw(ctx) {
     ctx.save(); ctx.globalAlpha = this.alpha;
     ctx.font = `900 ${this.size}px Pretendard`; ctx.fillStyle = this.color;
     ctx.shadowBlur = this.alpha * 15; ctx.shadowColor = this.color;
-    ctx.fillText(this.char, this.x + this.noise, this.y); ctx.restore();
+    ctx.fillText(this.char, this.x, this.y); ctx.restore();
   }
 }
 
@@ -138,12 +136,25 @@ function changeBG(name) { document.getElementById('bgLayer').style.backgroundIma
 function handleSRT(files) {
   const reader = new FileReader();
   reader.onload = (e) => {
-    const regex = /(\d+)\n(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\n([\s\S]*?)(?=\n{2,}|\n*$)/g;
-    let m; srtData = [];
-    while ((m = regex.exec(e.target.result)) !== null) {
-      srtData.push({ start: timeToSec(m[2]), end: timeToSec(m[3]), text: m[4].replace(/\n/g, ' '), chars: decomposeHangeul(m[4]) });
+    // 더 유연한 SRT 파싱 (줄바꿈 및 공백 대응)
+    const text = e.target.result.replace(/\r\n/g, '\n');
+    const blocks = text.split(/\n\s*\n/);
+    srtData = [];
+    blocks.forEach(block => {
+      const lines = block.split('\n');
+      if(lines.length >= 3) {
+        const timeMatch = lines[1].match(/(\d+:\d+:\d+,\d+) --> (\d+:\d+:\d+,\d+)/);
+        if(timeMatch) {
+          const content = lines.slice(2).join(' ');
+          srtData.push({ start: timeToSec(timeMatch[1]), end: timeToSec(timeMatch[2]), text: content, chars: decomposeHangeul(content) });
+        }
+      }
+    });
+    if(srtData.length > 0) {
+        document.getElementById('srtBox').classList.add('loaded');
+        document.getElementById('srtText').textContent = "SRT Loaded (" + srtData.length + ")";
+        updateStatus();
     }
-    document.getElementById('status').textContent = "SRT Ready.";
   };
   reader.readAsText(files[0]);
 }
@@ -152,15 +163,29 @@ function timeToSec(t) { const [h, m, s] = t.split(':'); const [sec, ms] = s.spli
 
 function handleMusic(files) {
   if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  document.getElementById('musicText').textContent = "Decoding...";
   const reader = new FileReader();
   reader.onload = (e) => {
-    audioCtx.decodeAudioData(e.target.result, (buf) => { audioBuffer = buf; document.getElementById('status').textContent = "Audio Ready."; });
+    audioCtx.decodeAudioData(e.target.result, (buf) => { 
+        audioBuffer = buf; 
+        document.getElementById('musicBox').classList.add('loaded');
+        document.getElementById('musicText').textContent = "Music Loaded";
+        updateStatus();
+    });
   };
   reader.readAsArrayBuffer(files[0]);
 }
 
+function updateStatus() {
+    if(audioBuffer && srtData.length > 0) {
+        document.getElementById('status').textContent = "Ready to start performance!";
+    }
+}
+
 async function startWithCountdown() {
-    if(!audioBuffer || srtData.length === 0) { alert("MP3와 SRT 파일을 먼저 로드해주세요."); return; }
+    if(!audioBuffer) { alert("음악(MP3) 파일 로딩을 기다려주세요."); return; }
+    if(srtData.length === 0) { alert("자막(SRT) 파일을 먼저 로드해주세요."); return; }
+    
     const overlay = document.getElementById('countdownOverlay');
     overlay.style.display = 'flex';
     let count = 3;
@@ -196,7 +221,6 @@ function animate() {
   document.getElementById('timeCode').textContent = `${Math.floor(now/60).toString().padStart(2,'0')}:${(now%60).toFixed(2).padStart(5,'0')}`;
 
   const lineIdx = srtData.findIndex(l => now >= l.start && now <= l.end);
-  const limit = parseInt(document.getElementById('lifeLimit').value);
 
   if (lineIdx !== -1) {
     const line = srtData[lineIdx];
@@ -208,12 +232,12 @@ function animate() {
     const amp = data[20] / 255;
     const sens = parseInt(document.getElementById('pSens').value) / 10;
 
-    // 강제 각인 로직: 비트가 약해도 가사가 나오는 동안 최소한 한 글자씩은 찍히도록 함
-    if (amp > (1.05 - sens) || Math.random() < 0.05) {
+    // 비트 반응 또는 확률적 각인
+    if (amp > (1.1 - sens) || Math.random() < 0.1) {
       const char = line.chars[charPtr % line.chars.length];
       const pos = keyMap[char] || keyMap['default'];
       const color = `rgba(0, 255, 204, 1)`;
-      const size = 30 + amp * 70;
+      const size = 30 + amp * 80;
 
       artObjects.push(new ArtChar(char, canvas.width/2, canvas.height/2, size, color, globalLineCounter));
       artObjects.push(new ArtChar(char, Math.random()*canvas.width, Math.random()*canvas.height, size, color, globalLineCounter));
@@ -231,7 +255,7 @@ function animate() {
   });
 
   for (let i = artObjects.length - 1; i >= 0; i--) {
-    artObjects[i].update(globalLineCounter, limit); artObjects[i].draw(ctx);
+    artObjects[i].update(globalLineCounter); artObjects[i].draw(ctx);
     if (artObjects[i].isDead) artObjects.splice(i, 1);
   }
 }
