@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PURE LED LYRIC VISUALIZER v10.0</title>
+<title>LED VISUALIZER v10.5 — Export MP4</title>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
 :root{
   --bg:#050505; --panel:#0d0d12; --accent:#00ffcc; --accent-glow:rgba(0,255,204,0.3);
-  --border:rgba(255,255,255,0.05); --text:#e0fff8; --muted:#334440;
+  --border:rgba(255,255,255,0.05); --text:#e0fff8; --muted:#334440; --red:#ff3366;
 }
 body{background:var(--bg);color:var(--text);font-family:'Pretendard',sans-serif;height:100vh;overflow:hidden;display:flex;flex-direction:column;}
 
@@ -28,8 +28,11 @@ h3{font-size:10px;color:var(--muted);letter-spacing:2px;margin-bottom:12px;text-
 .btn:hover{border-color:var(--accent);color:#fff;}
 .btn.active{border-color:var(--accent);color:var(--accent);background:rgba(0,255,204,0.05);}
 .btn.primary{background:var(--accent);color:#000;border:none;font-weight:bold;margin-top:10px;}
+.btn.record{border-color:var(--red);color:var(--red);margin-top:5px;}
+.btn.recording{background:var(--red);color:#fff;border:none;animation:blink 1s infinite;}
 
-/* FILE BOX */
+@keyframes blink{ 50%{opacity: 0.5;} }
+
 .file-box{border:1px dashed #333;padding:15px;text-align:center;margin-bottom:10px;cursor:pointer;border-radius:4px;font-size:11px;color:#666;}
 .file-box.loaded{border-color:var(--accent);color:var(--accent);background:rgba(0,255,204,0.03);}
 input[type=file]{display:none;}
@@ -37,6 +40,7 @@ input[type=file]{display:none;}
 /* OUTPUT */
 .output-area{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;position:relative;}
 #timeCode{position:absolute;top:20px;right:30px;font-family:monospace;color:var(--accent);font-size:12px;}
+#recStatus{position:absolute;top:20px;left:30px;font-size:10px;color:var(--red);font-weight:bold;display:none;}
 
 .stage-wrap{width:100%;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;}
 canvas{background:#000;box-shadow:0 0 50px rgba(0,0,0,0.5);border-radius:8px;}
@@ -45,30 +49,29 @@ canvas{background:#000;box-shadow:0 0 50px rgba(0,0,0,0.5);border-radius:8px;}
 <body>
 
 <div class="topbar">
-  <span class="logo">SPECTRUM ART LAB v10.0</span>
-  <span style="margin-left:auto; font-size:9px; color:var(--muted);">PURE LED PERFORMANCE</span>
+  <span class="logo">SPECTRUM ART LAB v10.5</span>
+  <span style="margin-left:auto; font-size:9px; color:var(--muted);">MP4 VIDEO EXPORT READY</span>
 </div>
 
 <div class="main">
   <div class="sidebar">
     <h3>Layout Ratio</h3>
     <div class="btn-grid">
-      <button class="btn active" id="b169" onclick="setAspect('16:9')">16:9 Horizontal</button>
-      <button class="btn" id="b916" onclick="setAspect('9:16')">9:16 Vertical</button>
+      <button class="btn active" id="b169" onclick="setAspect('16:9')">16:9</button>
+      <button class="btn" id="b916" onclick="setAspect('9:16')">9:16</button>
     </div>
 
-    <h3>Audio & Lyrics</h3>
+    <h3>Files</h3>
     <div class="file-box" id="mBox" onclick="document.getElementById('mIn').click()">1. Load MP3<input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleMusic(this.files)"></div>
     <div class="file-box" id="sBox" onclick="document.getElementById('sIn').click()">2. Load SRT<input type="file" id="sIn" accept=".srt" style="display:none" onchange="handleSRT(this.files)"></div>
 
-    <h3 style="margin-top:20px;">Sensitivity</h3>
-    <input type="range" id="sens" min="0.5" max="3" step="0.1" value="1.0" style="width:100%; accent-color:var(--accent);">
-    
     <button class="btn primary" id="startBtn" onclick="togglePlay()">START PERFORMANCE</button>
-    <button class="btn" style="margin-top:5px;" onclick="resetAll()">RESET</button>
+    <button class="btn record" id="recBtn" onclick="toggleRecord()">RECORD & START</button>
+    <button class="btn" style="margin-top:20px;" onclick="resetAll()">RESET ALL</button>
   </div>
 
   <div class="output-area">
+    <div id="recStatus">● RECORDING...</div>
     <div id="timeCode">00:00.00</div>
     <div class="stage-wrap">
       <canvas id="stage"></canvas>
@@ -82,14 +85,14 @@ let aspect = '16:9';
 let audioCtx, analyser, source, audioBuffer, isPlaying = false, startTime = 0, pauseOffset = 0;
 let srtCues = [], activeCueIdx = -1, lineHistory = [], flyingChars = [], pressedKeys = {};
 let charSpawnQueue = [], lastCharSpawnTime = 0, currentTargetDelay = 0.1;
+
+// Recording State
+let mediaRecorder, recordedChunks = [];
+let isRecording = false;
+
 const canvas = document.getElementById('stage'), ctx = canvas.getContext('2d');
 
-// --- HANGEUL MAP ---
-const ROWS = [
-  ['ㅂ','ㅈ','ㄷ','ㄱ','ㅅ','ㅛ','ㅕ','ㅑ','ㅐ','ㅔ'],
-  ['ㅁ','ㄴ','ㅇ','ㄹ','ㅎ','ㅗ','ㅓ','ㅏ','ㅣ'],
-  ['ㅋ','ㅌ','ㅊ','ㅍ','ㅠ','ㅜ','ㅡ']
-];
+const ROWS = [['ㅂ','ㅈ','ㄷ','ㄱ','ㅅ','ㅛ','ㅕ','ㅑ','ㅐ','ㅔ'],['ㅁ','ㄴ','ㅇ','ㄹ','ㅎ','ㅗ','ㅓ','ㅏ','ㅣ'],['ㅋ','ㅌ','ㅊ','ㅍ','ㅠ','ㅜ','ㅡ']];
 const KOR_MAP = {'ㅃ':'ㅂ','ㅉ':'ㅈ','ㄸ':'ㄷ','ㄲ':'ㄱ','ㅆ':'ㅅ','ㅒ':'ㅐ','ㅖ':'ㅔ','ㅘ':'ㅗ','ㅙ':'ㅗ','ㅚ':'ㅗ','ㅝ':'ㅜ','ㅞ':'ㅜ','ㅟ':'ㅜ','ㅢ':'ㅡ'};
 
 function charToKey(ch) {
@@ -113,7 +116,6 @@ function decompose(str) {
     return res;
 }
 
-// --- CORE ---
 function setAspect(a) {
   aspect = a;
   document.getElementById('b169').classList.toggle('active', a === '16:9');
@@ -159,11 +161,78 @@ function handleSRT(files) {
 }
 function toSec(s){ const m = s.match(/(\d+):(\d+):(\d+),(\d+)/); return +m[1]*3600 + +m[2]*60 + +m[3] + +m[4]/1000; }
 
+// --- RECORDING ENGINE ---
+function toggleRecord() {
+    if(!audioBuffer || srtCues.length === 0) return alert("파일을 먼저 로드하세요.");
+    if(isRecording) {
+        stopRecording();
+    } else {
+        startRecording();
+    }
+}
+
+async function startRecording() {
+    isRecording = true;
+    recordedChunks = [];
+    
+    // 1. 퍼포먼스 시작 (재생 중이라면 리셋 후 시작)
+    if(isPlaying) resetAll();
+    await togglePlay(); 
+
+    // 2. 스트림 결합 (Canvas + Audio)
+    const canvasStream = canvas.captureStream(30); // 30fps
+    const audioStreamDest = audioCtx.createMediaStreamDestination();
+    source.connect(audioStreamDest); // 재생 소리를 녹음용 스트림으로 연결
+    
+    const combinedStream = new MediaStream([
+        ...canvasStream.getVideoTracks(),
+        ...audioStreamDest.stream.getAudioTracks()
+    ]);
+
+    // 3. MediaRecorder 설정 (Chrome/Edge는 WebM 형식이 기본이며 mp4로 확장자 변경 가능)
+    mediaRecorder = new MediaRecorder(combinedStream, {
+        mimeType: 'video/webm;codecs=vp9,opus' 
+    });
+
+    mediaRecorder.ondataavailable = (e) => {
+        if(e.data.size > 0) recordedChunks.push(e.data);
+    };
+
+    mediaRecorder.onstop = () => {
+        const blob = new Blob(recordedChunks, { type: 'video/mp4' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Performance_${new Date().getTime()}.mp4`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+    };
+
+    mediaRecorder.start();
+    document.getElementById('recBtn').textContent = "STOP & SAVE";
+    document.getElementById('recBtn').classList.add('recording');
+    document.getElementById('recStatus').style.display = 'block';
+}
+
+function stopRecording() {
+    isRecording = false;
+    if(mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+    }
+    if(isPlaying) togglePlay(); 
+    document.getElementById('recBtn').textContent = "RECORD & START";
+    document.getElementById('recBtn').classList.remove('recording');
+    document.getElementById('recStatus').style.display = 'none';
+}
+
 async function togglePlay() {
-  if(!audioBuffer || srtCues.length === 0) return alert("MP3와 SRT를 먼저 로드하세요.");
+  if(!audioBuffer || srtCues.length === 0) return alert("파일을 먼저 로드하세요.");
   if(audioCtx.state === 'suspended') await audioCtx.resume();
-  if(isPlaying) { pauseOffset = audioCtx.currentTime - startTime; source.stop(); isPlaying = false; }
-  else {
+  if(isPlaying) {
+    pauseOffset = audioCtx.currentTime - startTime;
+    source.stop(); isPlaying = false;
+    if(isRecording) stopRecording(); // 재생 중지 시 녹화도 자동 중지
+  } else {
     source = audioCtx.createBufferSource(); source.buffer = audioBuffer;
     analyser = audioCtx.createAnalyser(); source.connect(analyser); analyser.connect(audioCtx.destination);
     source.start(0, pauseOffset); startTime = audioCtx.currentTime - pauseOffset; isPlaying = true;
@@ -172,13 +241,12 @@ async function togglePlay() {
   document.getElementById('startBtn').textContent = isPlaying ? "STOP" : "RESUME";
 }
 
-// --- RENDER ---
+// --- RENDER LOGIC ---
 function computeLayout(W, H) {
   const kbdH = H * (aspect === '9:16' ? 0.4 : 0.45);
   const kbdY = H - kbdH;
   const keyAreaW = W * 0.9, keyAreaH = kbdH * 0.6, rowX = (W - keyAreaW)/2;
   const keyH = keyAreaH / 3.5, gap = keyH * 0.2, keys = [];
-  
   ROWS.forEach((row, ri) => {
     const rW = keyAreaW * (ri===0?1 : ri===1?0.92 : 0.8);
     const rX = (W - rW)/2, kw = (rW - gap*(row.length-1))/row.length;
@@ -195,19 +263,13 @@ function animate() {
   requestAnimationFrame(animate);
   const W = canvas.width, H = canvas.height, now = audioCtx.currentTime - startTime;
   ctx.fillStyle = '#050505'; ctx.fillRect(0,0,W,H);
-
   const { keys, kbdRect } = computeLayout(W, H);
-  
-  // 1. LED Keyboard Grid
-  ctx.strokeStyle = '#1a2220'; ctx.lineWidth = 2;
-  ctx.strokeRect(kbdRect.x+10, kbdRect.y+10, kbdRect.w-20, kbdRect.h-20);
-  
+
+  // LED Keys
   keys.forEach(k => {
     const pressed = pressedKeys[k.label];
-    ctx.save();
-    ctx.beginPath(); 
-    const r = 4;
-    ctx.roundRect(k.x-k.w/2, k.y-k.h/2, k.w, k.h, r);
+    ctx.save(); ctx.beginPath(); 
+    ctx.roundRect(k.x-k.w/2, k.y-k.h/2, k.w, k.h, 4);
     ctx.strokeStyle = pressed ? `rgba(0,255,204,${pressed.alpha})` : '#1a2522';
     ctx.stroke();
     if(pressed) {
@@ -222,7 +284,7 @@ function animate() {
     if(pressed) { pressed.alpha -= 0.05; if(pressed.alpha <= 0) delete pressedKeys[k.label]; }
   });
 
-  // 2. SRT & Typing
+  // Lyrics Logic
   let cueIdx = srtCues.findIndex(c => now >= c.start && now <= c.end);
   if(cueIdx !== -1 && cueIdx !== activeCueIdx) {
     if(activeCueIdx !== -1) { lineHistory.push(srtCues[activeCueIdx].text); if(lineHistory.length > 2) lineHistory.shift(); }
@@ -232,8 +294,7 @@ function animate() {
     charSpawnQueue = c.decomposed.split(''); lastCharSpawnTime = now;
   }
 
-  const sens = parseFloat(document.getElementById('sens').value);
-  if(charSpawnQueue.length > 0 && (now - lastCharSpawnTime > currentTargetDelay/sens)) {
+  if(charSpawnQueue.length > 0 && (now - lastCharSpawnTime > currentTargetDelay)) {
     const ch = charSpawnQueue.shift(); lastCharSpawnTime = now;
     const kLabel = charToKey(ch);
     if(kLabel) {
@@ -245,33 +306,31 @@ function animate() {
     }
   }
 
-  // 3. Flying Chars
   flyingChars.forEach((fc, i) => {
     fc.x += fc.vx; fc.y += fc.vy; fc.vy += fc.ay; fc.alpha -= 0.02;
     ctx.save(); ctx.globalAlpha = fc.alpha;
     ctx.font = `bold ${W*0.05}px monospace`; ctx.fillStyle = '#00ffcc';
-    ctx.shadowBlur = 15; ctx.shadowColor = '#00ffcc';
     ctx.fillText(fc.ch, fc.x, fc.y); ctx.restore();
     if(fc.alpha <= 0) flyingChars.splice(i, 1);
   });
 
-  // 4. 3-Line Subtitles
   const fs = Math.max(20, Math.min(W*0.06, kbdRect.y*0.15)), lh = fs * 1.7;
   const currentText = srtCues[activeCueIdx] ? srtCues[activeCueIdx].text : "";
   const progress = srtCues[activeCueIdx] ? 1 - (charSpawnQueue.length / srtCues[activeCueIdx].decomposed.length) : 0;
   const typed = currentText.substring(0, Math.floor(currentText.length * progress));
-
   const all = [...lineHistory]; if(activeCueIdx !== -1) all.push(typed);
   const startY = (kbdRect.y/2) - ((all.length*lh)/2) + fs;
 
   all.forEach((line, i) => {
     ctx.save(); ctx.font = `900 ${fs}px Pretendard`; ctx.textAlign = 'center';
     ctx.fillStyle = (i === all.length-1 && activeCueIdx !== -1) ? '#00ffcc' : '#334440';
-    if(i === all.length-1) { ctx.shadowBlur = 15; ctx.shadowColor = '#00ffcc'; }
     ctx.fillText(line, W/2, startY + i*lh); ctx.restore();
   });
 
   document.getElementById('timeCode').textContent = new Date(now*1000).toISOString().substr(14, 8);
+  
+  // 노래가 완전히 끝나면 자동 녹화 중지
+  if(now >= duration && isRecording) stopRecording();
 }
 
 function resetAll() {
@@ -281,7 +340,7 @@ function resetAll() {
     ctx.clearRect(0,0,canvas.width,canvas.height);
 }
 
-// polyfill for roundRect
+// polyfill
 if (!CanvasRenderingContext2D.prototype.roundRect) {
   CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
     if (w < 2 * r) r = w / 2; if (h < 2 * r) r = h / 2;
