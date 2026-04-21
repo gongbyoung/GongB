@@ -3,271 +3,312 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SPECTRUM ART LAB v7.5 — Multi-Aspect Master</title>
-<script src="https://cdn.tailwindcss.com"></script>
+<title>SPECTRUM ART LAB v7.8 — GitHub Master</title>
 <style>
-    @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
-    :root { --accent: #00ffcc; --bg: #050505; }
-    body { background-color: var(--bg); font-family: 'Pretendard', sans-serif; overflow: hidden; height: 100vh; }
-    
-    /* 비주얼 영역: 가로/세로 비율 고정 */
-    .viz-container {
-        position: relative;
-        width: 100%;
-        height: 100%;
-        background-color: #000;
-        background-size: contain;
-        background-position: center center;
-        background-repeat: no-repeat;
-    }
-    
-    canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
-    
-    /* 오버레이 UI */
-    .ui-layer { position: absolute; inset: 0; z-index: 20; display: flex; flex-direction: column; pointer-events: none; }
-    .interactive { pointer-events: auto; }
-    
-    .lyric-text {
-        position: absolute;
-        top: 20%;
-        width: 100%;
-        text-align: center;
-        font-size: clamp(1.5rem, 5vw, 3rem);
-        font-weight: 900;
-        color: var(--accent);
-        text-shadow: 0 0 20px rgba(0, 255, 204, 0.6);
-    }
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --bg:#000;
+  --panel:#0a0a0f;
+  --accent:#00ffcc;
+  --border:rgba(255,255,255,0.08);
+}
+body{
+  background:var(--bg); color:#fff;
+  font-family:'Pretendard', sans-serif;
+  height:100vh; overflow:hidden; display: flex; flex-direction: column;
+}
+
+/* UI STRUCTURE */
+.topbar{
+  padding:12px 20px; background:var(--panel); border-bottom:1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between;
+}
+.logo{letter-spacing:4px; color:var(--accent); font-weight:800; font-size:12px;}
+
+.container { display: grid; grid-template-columns: 260px 1fr; flex: 1; min-height: 0; }
+
+.side-panel {
+  background: var(--panel); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; padding: 18px; overflow-y: auto; z-index: 50;
+}
+
+/* 캔버스 및 배경 레이어 */
+.viz-area { 
+    position: relative; 
+    background-color: #000; 
+    background-size: contain; 
+    background-position: center bottom; 
+    background-repeat: no-repeat;
+    overflow: hidden; 
+    flex: 1;
+    transition: background-image 0.5s ease-in-out;
+}
+#artCanvas { 
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+    z-index: 10; background: transparent; pointer-events: none;
+}
+
+.file-box { border: 1px dashed #444; padding: 12px; text-align: center; margin-bottom: 12px; cursor: pointer; border-radius: 4px; font-size: 11px; color: #888; transition: 0.2s;}
+.file-box:hover { border-color: var(--accent); color: #fff; background: rgba(0,255,204,0.05); }
+
+.bottom-ctrl {
+  padding: 15px 30px; background: #000; border-top: 1px solid var(--border);
+  display: flex; align-items: center; gap: 20px; z-index: 50;
+}
+.btn { background: transparent; border: 1px solid var(--border); color: #fff; padding: 8px 16px; cursor: pointer; font-size: 10px; border-radius: 4px; }
+.btn:active { transform: scale(0.95); }
+.btn.primary { background: var(--accent); color: #000; border: none; font-weight: bold; }
+
+#currentLyric { 
+  position: absolute; top: 15%; left: 0; width: 100%; text-align: center; 
+  font-size: 32px; color: var(--accent); font-weight: 900; pointer-events: none;
+  text-shadow: 0 0 30px rgba(0,255,204,0.8); z-index: 30;
+}
+#status { font-size: 10px; color: #444; flex: 1; text-align: right; }
+
+.control-group { margin-bottom: 15px; }
+.control-group label { display: block; font-size: 9px; color: #777; margin-bottom: 5px; }
+input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; height: 3px;}
 </style>
 </head>
 <body>
 
-<div class="ui-layer">
-    <div class="flex justify-between items-center p-4 bg-black/60 backdrop-blur-md border-b border-white/10 interactive">
-        <h1 class="text-xs font-black tracking-widest text-[#00ffcc]">SPECTRUM ART LAB v7.5</h1>
-        <div id="timeDisplay" class="text-xs font-mono text-[#00ffcc]">00:00.00</div>
-    </div>
-
-    <div class="absolute left-4 top-20 w-56 space-y-4 interactive">
-        <div class="p-4 bg-black/80 rounded-lg border border-white/10">
-            <h3 class="text-[10px] text-gray-500 uppercase mb-3 tracking-tighter">1. Aspect & Background</h3>
-            <div class="grid grid-cols-2 gap-2 mb-4">
-                <button onclick="setAspect('16:9')" class="text-[9px] border border-white/20 py-1 hover:border-[#00ffcc] active:scale-95 transition">16:9 가로</button>
-                <button onclick="setAspect('9:16')" class="text-[9px] border border-white/20 py-1 hover:border-[#00ffcc] active:scale-95 transition">9:16 세로</button>
-            </div>
-            <div class="space-y-2">
-                <button onclick="changeBG('keyboard1.png')" class="w-full text-[9px] border border-white/20 py-1 text-left px-2">타자기 (Type A)</button>
-                <button onclick="changeBG('keyboard2.png')" class="w-full text-[9px] border border-white/20 py-1 text-left px-2">키보드 (Type B)</button>
-            </div>
-        </div>
-
-        <div class="p-4 bg-black/80 rounded-lg border border-white/10">
-            <h3 class="text-[10px] text-gray-500 uppercase mb-3">2. Audio & Lyrics</h3>
-            <label class="block border border-dashed border-gray-600 p-2 text-center text-[10px] text-gray-400 cursor-pointer hover:bg-white/5 mb-2">
-                MP3 로드 <input type="file" id="audioIn" accept="audio/*" class="hidden" onchange="loadMusic(this.files)">
-            </label>
-            <label class="block border border-dashed border-gray-600 p-2 text-center text-[10px] text-gray-400 cursor-pointer hover:bg-white/5">
-                SRT 로드 <input type="file" id="srtIn" accept=".srt" class="hidden" onchange="loadSRT(this.files)">
-            </label>
-        </div>
-    </div>
-
-    <div id="lyricDisplay" class="lyric-text"></div>
-
-    <div class="mt-auto p-6 bg-gradient-to-t from-black to-transparent flex items-center gap-4 interactive">
-        <button onclick="resetPerformance()" class="text-xs text-gray-400 px-4 py-2 hover:text-white">RESET</button>
-        <button id="mainBtn" onclick="togglePerformance()" class="bg-[#00ffcc] text-black text-xs font-black px-8 py-3 rounded-full shadow-[0_0_20px_rgba(0,255,204,0.4)]">START PERFORMANCE</button>
-        <div id="statusText" class="text-[10px] text-gray-600 flex-1 text-right">Waiting for assets...</div>
-    </div>
+<div class="topbar">
+  <div class="logo">SPECTRUM ART LAB v7.8 [GITHUB FINAL]</div>
+  <div id="timeCode" style="font-family:monospace; color:var(--accent); font-size: 14px;">00:00.00</div>
 </div>
 
-<div id="vizFrame" class="viz-container" style="background-image: url('keyboard1.png');">
-    <canvas id="mainCanvas"></canvas>
+<div class="container">
+  <div class="side-panel">
+    <h3>1. Aspect & Theme</h3>
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-bottom:10px;">
+        <button class="btn" onclick="setAspect('16:9')">16:9 가로</button>
+        <button class="btn" onclick="setAspect('9:16')">9:16 세로</button>
+    </div>
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-bottom:20px;">
+        <button class="btn" onclick="changeBG('keyboard1.png')">Type 1</button>
+        <button class="btn" onclick="changeBG('keyboard2.png')">Type 2</button>
+    </div>
+    
+    <h3>2. Music & SRT</h3>
+    <div class="file-box" onclick="document.getElementById('mIn').click()">1. MP3 로드<input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleMusic(this.files)"></div>
+    <div class="file-box" onclick="document.getElementById('sIn').click()">2. SRT 로드<input type="file" id="sIn" accept=".srt" style="display:none" onchange="handleSRT(this.files)"></div>
+
+    <h3>3. Ephemera (풍화)</h3>
+    <div class="control-group">
+      <label>SURVIVAL LIMIT (자막 유지 횟수)</label>
+      <input type="range" id="lifeLimit" min="1" max="5" value="2">
+    </div>
+  </div>
+
+  <div class="viz-area" id="bgLayer" style="background-image: url('keyboard1.png');">
+    <canvas id="artCanvas"></canvas>
+    <div id="currentLyric"></div>
+    <div class="bottom-ctrl">
+      <button class="btn" onclick="resetArt()">RESET</button>
+      <button class="btn primary" id="playBtn" onclick="togglePlay()">START PERFORMANCE</button>
+      <div id="status">GitHub Assets Waiting...</div>
+    </div>
+  </div>
 </div>
 
 <script>
-    // --- 키 매핑 (가로/세로 비율 보정 포함) ---
-    const keyMap = {
-        'ㅂ':{x:0.12, y:0.56}, 'ㅈ':{x:0.17, y:0.56}, 'ㄷ':{x:0.23, y:0.56}, 'ㄱ':{x:0.29, y:0.56}, 'ㅅ':{x:0.35, y:0.56},
-        'ㅁ':{x:0.14, y:0.66}, 'ㄴ':{x:0.20, y:0.66}, 'ㅇ':{x:0.26, y:0.66}, 'ㄹ':{x:0.32, y:0.66}, 'ㅎ':{x:0.38, y:0.66},
-        'ㅋ':{x:0.16, y:0.76}, 'ㅌ':{x:0.22, y:0.76}, 'ㅊ':{x:0.28, y:0.76}, 'ㅍ':{x:0.34, y:0.76},
-        'default': {x: 0.5, y: 0.85}
-    };
+// --- 정밀 키보드 맵핑 ---
+const keyMap = {
+  'ㅂ':{x:0.12,y:0.56},'ㅈ':{x:0.17,y:0.56},'ㄷ':{x:0.23,y:0.56},'ㄱ':{x:0.29,y:0.56},'ㅅ':{x:0.35,y:0.56},'ㅛ':{x:0.41,y:0.56},'ㅕ':{x:0.47,y:0.56},'ㅑ':{x:0.53,y:0.56},'ㅐ':{x:0.59,y:0.56},'ㅔ':{x:0.65,y:0.56},
+  'ㅁ':{x:0.14,y:0.66},'ㄴ':{x:0.20,y:0.66},'ㅇ':{x:0.26,y:0.66},'ㄹ':{x:0.32,y:0.66},'ㅎ':{x:0.38,y:0.66},'ㅗ':{x:0.44,y:0.66},'ㅓ':{x:0.50,y:0.66},'ㅏ':{x:0.56,y:0.66},'ㅣ':{x:0.62,y:0.66},
+  'ㅋ':{x:0.16,y:0.76},'ㅌ':{x:0.22,y:0.76},'ㅊ':{x:0.28,y:0.76},'ㅍ':{x:0.34,y:0.76},'ㅠ':{x:0.40,y:0.76},'ㅜ':{x:0.46,y:0.76},'ㅡ':{x:0.52,y:0.76},
+  'default': {x: 0.38, y: 0.88}
+};
 
-    let audioCtx, analyser, source, audioBuffer, srtData = [];
-    let isPlaying = false, startTime = 0, pauseOffset = 0;
-    const canvas = document.getElementById('mainCanvas');
-    const ctx = canvas.getContext('2d');
-    let particles = [], flares = [];
+function decomposeHangeul(str) {
+  const cho = ["ㄱ","ㄲ","ㄴ","ㄷ","ㄸ","ㄹ","ㅁ","ㅂ","ㅃ","ㅅ","ㅆ","ㅇ","ㅈ","ㅉ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
+  const jung = ["ㅏ","ㅐ","ㅑ","ㅒ","ㅓ","ㅔ","ㅕ","ㅖ","ㅗ","ㅘ","ㅙ","ㅚ","ㅛ","ㅜ","ㅝ","ㅞ","ㅟ","ㅠ","ㅡ","ㅢ","ㅣ"];
+  const jong = ["","ㄱ","ㄲ","ㄳ","ㄴ","ㄵ","ㄶ","ㄷ","ㄹ","ㄺ","ㄻ","ㄼ","ㄽ","ㄾ","ㄿ","ㅀ","ㅁ","ㅂ","ㅄ","ㅅ","ㅆ","ㅇ","ㅈ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
+  let res = [];
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i) - 44032;
+    if (code > -1 && code < 11172) {
+      res.push(cho[Math.floor(code / 588)]);
+      res.push(jung[Math.floor((code % 588) / 28)]);
+      const j = code % 28; if (j !== 0) res.push(jong[j]);
+    } else res.push(str.charAt(i));
+  }
+  return res.filter(c => c.trim() !== "");
+}
 
-    // --- 유틸리티: 한글 분해 ---
-    function decompose(str) {
-        const cho = ["ㄱ","ㄲ","ㄴ","ㄷ","ㄸ","ㄹ","ㅁ","ㅂ","ㅃ","ㅅ","ㅆ","ㅇ","ㅈ","ㅉ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
-        const jung = ["ㅏ","ㅐ","ㅑ","ㅒ","ㅓ","ㅔ","ㅕ","ㅖ","ㅗ","ㅘ","ㅙ","ㅚ","ㅛ","ㅜ","ㅝ","ㅞ","ㅟ","ㅠ","ㅡ","ㅢ","ㅣ"];
-        const jong = ["","ㄱ","ㄲ","ㄳ","ㄴ","ㄵ","ㄶ","ㄷ","ㄹ","ㄺ","ㄻ","ㄼ","ㄽ","ㄾ","ㄿ","ㅀ","ㅁ","ㅂ","ㅄ","ㅅ","ㅆ","ㅇ","ㅈ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
-        let res = [];
-        for (let i = 0; i < str.length; i++) {
-            const code = str.charCodeAt(i) - 44032;
-            if (code >= 0 && code <= 11172) {
-                res.push(cho[Math.floor(code / 588)]);
-                res.push(jung[Math.floor((code % 588) / 28)]);
-                const j = code % 28; if (j !== 0) res.push(jong[j]);
-            } else res.push(str[i]);
-        }
-        return res.filter(c => c.trim() !== "");
+// --- 객체 지향 입자 시스템 ---
+class ArtChar {
+  constructor(char, x, y, size, color, lineCounter) {
+    this.char = char; this.x = x; this.y = y; this.size = size;
+    this.color = color; this.bornAt = lineCounter;
+    this.alpha = 1.0; this.noise = 0; this.isDead = false;
+  }
+  update(currentCounter, limit) {
+    const age = currentCounter - this.bornAt;
+    if (age >= limit) {
+      this.alpha -= 0.015;
+      this.noise += 0.5;
+      this.x += (Math.random()-0.5) * 2;
+    }
+    if (this.alpha <= 0) this.isDead = true;
+  }
+  draw(ctx) {
+    ctx.save();
+    ctx.globalAlpha = this.alpha;
+    ctx.font = `900 ${this.size}px Pretendard`;
+    ctx.fillStyle = this.color;
+    ctx.shadowBlur = this.alpha * 15;
+    ctx.shadowColor = this.color;
+    ctx.fillText(this.char, this.x + this.noise, this.y);
+    ctx.restore();
+  }
+}
+
+let srtData = [], audioCtx, analyser, source, audioBuffer, isPlaying = false, startTime = 0, pauseOffset = 0;
+const canvas = document.getElementById('artCanvas'), ctx = canvas.getContext('2d');
+let artObjects = [], flares = [];
+let globalLineCounter = 0, lastLineIdx = -1, charPtr = 0;
+
+function setAspect(ratio) {
+    const layer = document.getElementById('bgLayer');
+    if(ratio === '16:9') {
+        layer.style.maxWidth = '100%'; layer.style.aspectRatio = '16/9';
+    } else {
+        layer.style.maxWidth = '56.25vh'; layer.style.aspectRatio = '9/16';
+    }
+    setTimeout(resize, 100);
+}
+
+function changeBG(name) {
+    document.getElementById('bgLayer').style.backgroundImage = `url('${name}')`;
+}
+
+function handleSRT(files) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const regex = /(\d+)\n(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\n([\s\S]*?)(?=\n{2,}|\n*$)/g;
+    let m; srtData = [];
+    while ((m = regex.exec(e.target.result)) !== null) {
+      srtData.push({
+        start: timeToSec(m[2]), end: timeToSec(m[3]),
+        text: m[4].replace(/\n/g, ' '),
+        chars: decomposeHangeul(m[4])
+      });
+    }
+    document.getElementById('status').textContent = "SRT Ready.";
+  };
+  reader.readAsText(files[0]);
+}
+
+function timeToSec(t) {
+  const [h, m, s] = t.split(':'); const [sec, ms] = s.split(',');
+  return parseInt(h) * 3600 + parseInt(m) * 60 + parseInt(sec) + parseInt(ms) / 1000;
+}
+
+function handleMusic(files) {
+  if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    audioCtx.decodeAudioData(e.target.result, (buf) => { 
+        audioBuffer = buf; 
+        document.getElementById('status').textContent = "Audio Ready.";
+    });
+  };
+  reader.readAsArrayBuffer(files[0]);
+}
+
+async function togglePlay() {
+  if(!audioBuffer) { alert("MP3 파일을 로드해주세요."); return; }
+  if(audioCtx.state === 'suspended') await audioCtx.resume();
+
+  if(isPlaying) {
+    pauseOffset = audioCtx.currentTime - startTime;
+    source.stop(); isPlaying = false;
+    document.getElementById('playBtn').textContent = "RESUME";
+  } else {
+    source = audioCtx.createBufferSource();
+    source.buffer = audioBuffer;
+    analyser = audioCtx.createAnalyser();
+    source.connect(analyser); analyser.connect(audioCtx.destination);
+    source.start(0, pauseOffset);
+    startTime = audioCtx.currentTime - pauseOffset;
+    isPlaying = true;
+    document.getElementById('playBtn').textContent = "STOP PERFORMANCE";
+    animate();
+  }
+}
+
+function resetArt() {
+    artObjects = []; flares = [];
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+}
+
+function resize() {
+  canvas.width = canvas.clientWidth; canvas.height = canvas.clientHeight;
+}
+window.onresize = resize; resize();
+
+function animate() {
+  if(!isPlaying) return;
+  requestAnimationFrame(animate);
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const now = audioCtx.currentTime - startTime;
+  const m = Math.floor(now / 60);
+  const s = (now % 60).toFixed(2);
+  document.getElementById('timeCode').textContent = `${m.toString().padStart(2,'0')}:${s.toString().padStart(5,'0')}`;
+
+  const lineIdx = srtData.findIndex(l => now >= l.start && now <= l.end);
+  const limit = parseInt(document.getElementById('lifeLimit').value);
+
+  if (lineIdx !== -1) {
+    const line = srtData[lineIdx];
+    document.getElementById('currentLyric').textContent = line.text;
+
+    if (lineIdx !== lastLineIdx) {
+      charPtr = 0; lastLineIdx = lineIdx; globalLineCounter++;
     }
 
-    // --- 화면 설정 ---
-    function setAspect(ratio) {
-        const frame = document.getElementById('vizFrame');
-        if (ratio === '16:9') {
-            frame.style.width = '100vw'; frame.style.height = '56.25vw';
-            frame.style.maxWidth = '100%'; frame.style.maxHeight = '100%';
-        } else {
-            frame.style.width = '56.25vh'; frame.style.height = '100vh';
-            frame.style.maxWidth = '100%'; frame.style.maxHeight = '100%';
-        }
-        resize();
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteFrequencyData(data);
+    const amp = data[20] / 255;
+
+    if (amp > 0.65) {
+      const char = line.chars[charPtr % line.chars.length];
+      const pos = keyMap[char] || keyMap['default'];
+      const color = `rgba(0, 255, 204, 1)`;
+      const size = 40 + amp * 60;
+
+      // 중앙 각인
+      artObjects.push(new ArtChar(char, canvas.width/2, canvas.height/2, size, color, globalLineCounter));
+      // 랜덤 각인
+      artObjects.push(new ArtChar(char, Math.random()*canvas.width, Math.random()*canvas.height, size, color, globalLineCounter));
+      
+      flares.push({ x: pos.x * canvas.width, y: pos.y * canvas.height, life: 1.0 });
+      charPtr++;
     }
+  }
 
-    function changeBG(name) {
-        document.getElementById('vizFrame').style.backgroundImage = `url('${name}')`;
-    }
+  // 자판 LED 효과
+  flares.forEach((f, i) => {
+    f.life -= 0.08;
+    const grd = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, 100);
+    grd.addColorStop(0, `rgba(0, 255, 204, ${f.life})`);
+    grd.addColorStop(1, 'transparent');
+    ctx.fillStyle = grd;
+    ctx.beginPath(); ctx.arc(f.x, f.y, 120, 0, Math.PI*2); ctx.fill();
+    if(f.life <= 0) flares.splice(i, 1);
+  });
 
-    // --- 파일 로드 ---
-    function loadMusic(files) {
-        if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            audioCtx.decodeAudioData(e.target.result, (buf) => {
-                audioBuffer = buf;
-                document.getElementById('statusText').textContent = "Audio Ready.";
-            });
-        };
-        reader.readAsArrayBuffer(files[0]);
-    }
-
-    function loadSRT(files) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const regex = /(\d+)\n(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\n([\s\S]*?)(?=\n{2,}|\n*$)/g;
-            let m; srtData = [];
-            while ((m = regex.exec(e.target.result)) !== null) {
-                srtData.push({
-                    start: toSec(m[2]), end: toSec(m[3]),
-                    text: m[4].replace(/\n/g, ' '),
-                    tokens: decompose(m[4])
-                });
-            }
-            document.getElementById('statusText').textContent = "Lyrics Synced.";
-        };
-        reader.readAsText(files[0]);
-    }
-
-    function toSec(t) {
-        const [h, m, s] = t.split(':'); const [sec, ms] = s.split(',');
-        return parseInt(h) * 3600 + parseInt(m) * 60 + parseInt(sec) + parseInt(ms) / 1000;
-    }
-
-    // --- 퍼포먼스 제어 ---
-    async function togglePerformance() {
-        if (!audioBuffer) return alert("음악 파일을 먼저 로드하세요.");
-        if (audioCtx.state === 'suspended') await audioCtx.resume();
-
-        if (isPlaying) {
-            pauseOffset = audioCtx.currentTime - startTime;
-            source.stop(); isPlaying = false;
-            document.getElementById('mainBtn').textContent = "RESUME PERFORMANCE";
-        } else {
-            source = audioCtx.createBufferSource();
-            source.buffer = audioBuffer;
-            analyser = audioCtx.createAnalyser();
-            analyser.fftSize = 256;
-            source.connect(analyser); analyser.connect(audioCtx.destination);
-            source.start(0, pauseOffset);
-            startTime = audioCtx.currentTime - pauseOffset;
-            isPlaying = true;
-            document.getElementById('mainBtn').textContent = "STOP PERFORMANCE";
-            animate();
-        }
-    }
-
-    function resetPerformance() {
-        particles = []; flares = [];
-        ctx.clearRect(0,0,canvas.width,canvas.height);
-        document.getElementById('lyricDisplay').textContent = "";
-    }
-
-    function resize() {
-        canvas.width = canvas.clientWidth;
-        canvas.height = canvas.clientHeight;
-    }
-    window.onresize = resize; resize();
-
-    // --- 메인 애니메이션 ---
-    let lastIdx = -1, tokenIdx = 0;
-
-    function animate() {
-        if (!isPlaying) return;
-        requestAnimationFrame(animate);
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        const now = audioCtx.currentTime - startTime;
-        const lineIdx = srtData.findIndex(l => now >= l.start && now <= l.end);
-
-        // 시간 코드
-        const timeStr = new Date(now * 1000).toISOString().substr(14, 8);
-        document.getElementById('timeDisplay').textContent = timeStr;
-
-        if (lineIdx !== -1) {
-            const line = srtData[lineIdx];
-            document.getElementById('lyricDisplay').textContent = line.text;
-            if (lineIdx !== lastIdx) { tokenIdx = 0; lastIdx = lineIdx; }
-
-            const freq = new Uint8Array(analyser.frequencyBinCount);
-            analyser.getByteFrequencyData(freq);
-            const amp = freq[10] / 255;
-
-            if (amp > 0.6 && tokenIdx < line.tokens.length) {
-                const token = line.tokens[tokenIdx];
-                const pos = keyMap[token] || keyMap['default'];
-                const kX = pos.x * canvas.width;
-                const kY = pos.y * canvas.height;
-
-                flares.push({ x: kX, y: kY, life: 1.0 });
-                particles.push({
-                    t: token, x: kX, y: kY,
-                    tx: canvas.width / 2 + (Math.random()-0.5)*200,
-                    ty: canvas.height * 0.2,
-                    p: 0, s: 24 + amp*40, a: amp
-                });
-                tokenIdx++;
-            }
-        }
-
-        // 효과 그리기
-        flares.forEach((f, i) => {
-            f.life -= 0.05;
-            const grd = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, 80);
-            grd.addColorStop(0, `rgba(0, 255, 204, ${f.life})`);
-            grd.addColorStop(1, 'transparent');
-            ctx.fillStyle = grd;
-            ctx.beginPath(); ctx.arc(f.x, f.y, 100, 0, Math.PI*2); ctx.fill();
-            if(f.life <= 0) flares.splice(i, 1);
-        });
-
-        particles.forEach((p, i) => {
-            p.p += 0.03;
-            const cx = p.x + (p.tx - p.x) * p.p;
-            const cy = p.y + (p.ty - p.y) * p.p - Math.sin(p.p * Math.PI) * 150;
-            ctx.save();
-            ctx.font = `900 ${p.s}px Pretendard`;
-            ctx.fillStyle = `rgba(0, 255, 204, ${1 - p.p})`;
-            ctx.shadowBlur = p.a * 30; ctx.shadowColor = "#00ffcc";
-            ctx.fillText(p.t, cx, cy);
-            ctx.restore();
-            if(p.p >= 1) particles.splice(i, 1);
-        });
-    }
+  // 풍화 시스템 적용된 글자들 그리기
+  for (let i = artObjects.length - 1; i >= 0; i--) {
+    artObjects[i].update(globalLineCounter, limit);
+    artObjects[i].draw(ctx);
+    if (artObjects[i].isDead) artObjects.splice(i, 1);
+  }
+}
 </script>
 </body>
 </html>
