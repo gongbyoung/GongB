@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SPECTRUM v15.0.04 — Full Reconstruction</title>
+<title>SPECTRUM v15.0.04 — Video Recording Edition</title>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
 :root{ --bg:#050505; --panel:#0d0d12; --accent:#00ffcc; --border:rgba(255,255,255,0.06); --text:#ffffff; }
@@ -123,6 +123,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; h
 let aspect = '16:9', writeMode = 'H';
 let srtData = [], audioCtx, analyser, source, audioBuffer, isPlaying = false, startTime = 0, pauseOffset = 0;
 let lastPaintTime = 0, maskFinalFontSize = 0, maskDataCache = null;
+let mediaRecorder, recordedChunks = [];
 
 const canvas = document.getElementById('artCanvas'), ctx = canvas.getContext('2d');
 const maskCanvas = document.createElement('canvas');
@@ -207,7 +208,8 @@ function getPointInMask() {
         const x = Math.floor(Math.random() * W);
         const y = Math.floor(Math.random() * H);
         const index = (y * W + x) * 4;
-        if (maskDataCache[index] < 128) return { x, y }; 
+        // 마스크 영역(흰색 글씨 부분) 판정: 128보다 크면 흰색 영역임
+        if (maskDataCache[index] > 128) return { x, y }; 
     }
     return null;
 }
@@ -267,6 +269,7 @@ async function togglePlay() {
     if(source) { source.onended = null; source.stop(); }
     isPlaying = false;
     document.getElementById('playBtn').textContent = "RESUME PERFORMANCE";
+    if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
   } else {
     source = audioCtx.createBufferSource();
     source.buffer = audioBuffer;
@@ -274,14 +277,38 @@ async function togglePlay() {
     analyser.fftSize = 512;
     source.connect(analyser);
     analyser.connect(audioCtx.destination);
+    
+    source.onended = () => { if(isPlaying) togglePlay(); };
     source.start(0, pauseOffset);
     startTime = audioCtx.currentTime - pauseOffset;
     isPlaying = true;
+    
     ctx.fillStyle = "black"; ctx.fillRect(0,0,canvas.width,canvas.height);
-    document.getElementById('playBtn').textContent = "STOP PERFORMANCE";
-    document.getElementById('logAudio').innerText = "PLAYING";
+    document.getElementById('playBtn').textContent = "STOP & SAVE MP4";
+    document.getElementById('logAudio').innerText = "PLAYING & RECORDING";
+    
+    startRecording();
     animate();
   }
+}
+
+function startRecording() {
+    recordedChunks = [];
+    const stream = canvas.captureStream(30); 
+    // 브라우저 호환성을 위해 webm 형식을 기본으로 사용 (대부분의 환경에서 mp4로 인식 가능)
+    mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
+    mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
+    mediaRecorder.onstop = exportVideo;
+    mediaRecorder.start();
+}
+
+function exportVideo() {
+    const blob = new Blob(recordedChunks, { type: 'video/mp4' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Spectrum_Art_${Date.now()}.mp4`;
+    a.click();
 }
 
 let charPtr = 0, lastLineIdx = -1;
@@ -300,7 +327,7 @@ function animate() {
 
     const data = new Uint8Array(analyser.frequencyBinCount);
     analyser.getByteFrequencyData(data);
-    let sum = 0; for(let i=0; i<100; i++) sum += data[i]; // 넓은 범위 감지
+    let sum = 0; for(let i=0; i<100; i++) sum += data[i];
     const amp = sum / 100 / 255;
     
     const sensThreshold = 1.1 - (Number(document.getElementById('sens').value) / 10);
