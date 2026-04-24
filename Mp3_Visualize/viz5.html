@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SPECTRUM ART LAB v15.0.10 — Full Master Control</title>
+<title>SPECTRUM ART LAB v15.0.11 — Preset System Edition</title>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
 :root{ --bg:#050505; --panel:#0d0d12; --accent:#00ffcc; --border:rgba(255,255,255,0.06); --text:#ffffff; }
@@ -41,7 +41,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; h
 <body>
 
 <div class="topbar">
-  <div class="logo">SPECTRUM ART LAB v15.0.10</div>
+  <div class="logo">SPECTRUM ART LAB v15.0.11</div>
   <div id="timeCode" style="font-family: monospace; font-size: 14px; color: var(--accent);">00:00.00</div>
 </div>
 
@@ -76,8 +76,13 @@ input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; h
       <input type="range" id="sens" min="1" max="10" value="9" oninput="document.getElementById('sensVal').innerText=this.value">
     </div>
 
-    <h3>5. Debug & Save Log</h3>
-    <div class="log-panel" id="logBox">
+    <h3>5. Preset System</h3>
+    <button class="btn" style="border-color: #ffcc00; color: #ffcc00;" onclick="savePreset()">SAVE PRESET (JSON)</button>
+    <button class="btn" style="border-color: #00ccff; color: #00ccff;" onclick="document.getElementById('pLoad').click()">LOAD PRESET</button>
+    <input type="file" id="pLoad" accept=".json" style="display:none" onchange="loadPreset(this.files)">
+
+    <h3>6. Debug & Save Log</h3>
+    <div class="log-panel">
       <div>AUDIO: <b id="logAudio">IDLE</b></div>
       <div>AMP: <b id="logAmp">0.00</b></div>
       <div>STATUS: <b id="logStatus">READY</b></div>
@@ -91,7 +96,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; h
   </div>
 
   <div class="side-panel right">
-    <h3>6. Mask FX</h3>
+    <h3>7. Mask FX</h3>
     <div class="control-group">
       <label>MASK NOISE <span class="val-label" id="mNoiseVal">0</span></label>
       <input type="range" id="maskNoise" min="0" max="50" value="0" oninput="updateMask()">
@@ -101,7 +106,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; h
       <input type="range" id="maskGhost" min="0" max="0.5" step="0.01" value="0.1">
     </div>
 
-    <h3>7. Mask Transform</h3>
+    <h3>8. Mask Transform</h3>
     <div class="control-group">
       <label>SIZE / X / Y</label>
       <input type="range" id="maskSize" min="0.2" max="3.0" step="0.1" value="1.0" oninput="updateMask()">
@@ -109,7 +114,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; h
       <input type="range" id="maskY" min="-400" max="400" value="0" oninput="updateMask()" style="margin-top:5px;">
     </div>
 
-    <h3>8. Paint & Glow</h3>
+    <h3>9. Paint & Glow</h3>
     <div class="control-group">
       <label>GLOW <span class="val-label" id="glowVal">20</span></label>
       <input type="range" id="glowPower" min="0" max="50" value="20" oninput="document.getElementById('glowVal').innerText=this.value">
@@ -123,7 +128,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; h
       <input type="range" id="invasion" min="0" max="100" value="0" oninput="document.getElementById('invadeVal').innerText=this.value">
     </div>
 
-    <h3>9. Mode Switch</h3>
+    <h3>10. Mode Switch</h3>
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom:5px;">
         <button class="btn active" id="pInside" onclick="setPaintMode('inside')">안쪽</button>
         <button class="btn" id="pOutside" onclick="setPaintMode('outside')">바깥쪽</button>
@@ -133,7 +138,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; h
         <button class="btn" id="rFixed" onclick="setRotMode('fixed')">정면</button>
     </div>
 
-    <h3>10. Color Range</h3>
+    <h3>11. Color Range</h3>
     <div class="control-group"><label>R <span class="val-label">MIN/MAX</span></label>
       <input type="range" id="rMin" min="0" max="255" value="100">
       <input type="range" id="rMax" min="0" max="255" value="255"></div>
@@ -151,6 +156,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; h
 </div>
 
 <script>
+// --- 전역 설정 및 상태 변수 ---
 let aspect = '16:9', writeMode = 'H', paintMode = 'inside', rotMode = 'random';
 let srtData = [], audioCtx, analyser, source, audioBuffer, isPlaying = false, startTime = 0, pauseOffset = 0;
 let lastPaintTime = 0, maskFinalFontSize = 0, maskDataCache = null;
@@ -161,6 +167,7 @@ const canvas = document.getElementById('artCanvas'), ctx = canvas.getContext('2d
 const maskCanvas = document.createElement('canvas');
 const maskCtx = maskCanvas.getContext('2d');
 
+// --- UI 모드 설정 함수 ---
 function setWriteMode(mode) {
     writeMode = mode;
     document.getElementById('modeH').classList.toggle('active', mode === 'H');
@@ -180,12 +187,14 @@ function setRotMode(mode) {
     document.getElementById('rFixed').classList.toggle('active', mode === 'fixed');
 }
 
+// --- 마스크 생성 및 왜곡 로직 ---
 function updateMask() {
     const text = document.getElementById('maskTextInput').value;
     const sizeScale = parseFloat(document.getElementById('maskSize').value);
     const noiseLevel = parseInt(document.getElementById('maskNoise').value);
     const mX = parseInt(document.getElementById('maskX').value);
     const mY = parseInt(document.getElementById('maskY').value);
+    document.getElementById('sizeVal').innerText = sizeScale.toFixed(1);
 
     maskCanvas.width = canvas.width;
     maskCanvas.height = canvas.height;
@@ -233,7 +242,6 @@ function updateMask() {
         }
         maskCtx.putImageData(imgData, 0, 0);
     }
-
     maskDataCache = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height).data;
     if (!isPlaying) drawPreviewOutline();
 }
@@ -253,6 +261,60 @@ function renderGhostMask(opacityOverride) {
     ctx.restore();
 }
 
+// --- 💾 프리셋 시스템 (JSON) ---
+function savePreset() {
+    const preset = {
+        maskText: document.getElementById('maskTextInput').value,
+        writeMode, paintMode, rotMode, aspect,
+        density: document.getElementById('density').value,
+        sens: document.getElementById('sens').value,
+        maskNoise: document.getElementById('maskNoise').value,
+        maskGhost: document.getElementById('maskGhost').value,
+        maskSize: document.getElementById('maskSize').value,
+        maskX: document.getElementById('maskX').value,
+        maskY: document.getElementById('maskY').value,
+        glowPower: document.getElementById('glowPower').value,
+        paintScale: document.getElementById('paintScale').value,
+        invasion: document.getElementById('invasion').value,
+        rMin: document.getElementById('rMin').value, rMax: document.getElementById('rMax').value,
+        gMin: document.getElementById('gMin').value, gMax: document.getElementById('gMax').value,
+        bMin: document.getElementById('bMin').value, bMax: document.getElementById('bMax').value
+    };
+    const blob = new Blob([JSON.stringify(preset, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `Spectrum_Preset_${Date.now()}.json`;
+    a.click();
+}
+
+function loadPreset(files) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const p = JSON.parse(e.target.result);
+            document.getElementById('maskTextInput').value = p.maskText;
+            setWriteMode(p.writeMode);
+            setPaintMode(p.paintMode);
+            setRotMode(p.rotMode);
+            setAspect(p.aspect);
+            
+            const ids = ['density', 'sens', 'maskNoise', 'maskGhost', 'maskSize', 'maskX', 'maskY', 'glowPower', 'paintScale', 'invasion', 'rMin', 'rMax', 'gMin', 'gMax', 'bMin', 'bMax'];
+            ids.forEach(id => {
+                if(p[id] !== undefined) {
+                    document.getElementById(id).value = p[id];
+                    // 라벨 업데이트 (수동)
+                    const valLabel = document.getElementById(id + 'Val') || document.getElementById(id.replace('Scale','Size') + 'Val');
+                    if(valLabel) valLabel.innerText = p[id];
+                }
+            });
+            updateMask();
+            alert("프리셋 로드 완료!");
+        } catch(err) { alert("잘못된 프리셋 파일입니다."); }
+    };
+    reader.readAsText(files[0]);
+}
+
+// --- 오디오 및 애니메이션 핵심 엔진 ---
 function getPointInMask() {
     if (!maskDataCache) return null;
     const W = canvas.width, H = canvas.height;
@@ -350,21 +412,17 @@ function startRecording() {
     mediaRecorder.onstop = exportVideo;
     mediaRecorder.start();
     document.getElementById('logSave').innerText = "RECORDING...";
-    document.getElementById('logSave').style.color = "#ff3300";
 }
 
 function exportVideo() {
-    document.getElementById('logSave').innerText = "EXPORTING...";
     const blob = new Blob(recordedChunks, { type: 'video/mp4' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `Spectrum_Art_${Date.now()}.mp4`;
     a.click();
-    
-    document.getElementById('logSave').innerText = "SAVED! (CHECK DOWNLOADS)";
-    document.getElementById('logSave').style.color = "#00ffcc";
-    alert("MP4 저장이 완료되었습니다! 브라우저 '다운로드' 폴더를 확인하세요.");
+    document.getElementById('logSave').innerText = "SAVED!";
+    alert("MP4 저장이 완료되었습니다!");
 }
 
 function animate() {
