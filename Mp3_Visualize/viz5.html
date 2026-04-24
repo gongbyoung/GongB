@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SPECTRUM v14.6 — Inverted Master</title>
+<title>SPECTRUM v14.7 — Log & Ratio Fixed</title>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
 :root{ --bg:#050505; --panel:#0d0d12; --accent:#00ffcc; --border:rgba(255,255,255,0.06); --text:#ffffff; }
@@ -34,81 +34,80 @@ input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; h
 .viz-area { position: relative; background: #000; overflow: hidden; flex: 1; display: flex; justify-content: center; align-items: center; }
 #artCanvas { background: #000; box-shadow: 0 0 50px rgba(0,0,0,1); }
 
-#currentLyric { position: absolute; bottom: 40px; width: 100%; text-align: center; font-size: 14px; color: var(--accent); pointer-events: none; opacity: 0.8; font-weight: bold; text-shadow: 0 0 10px #000, 0 0 5px #000; }
-.debug-panel { position:absolute; top:10px; left:10px; font-size:9px; color:#444; background:rgba(0,0,0,0.5); padding:5px; border-radius:3px; }
+/* 로그 패널 디자인 */
+.log-panel { background: #000; border: 1px solid #222; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 10px; color: #888; line-height: 1.6; }
+.log-panel b { color: var(--accent); }
+
+#currentLyric { position: absolute; bottom: 40px; width: 100%; text-align: center; font-size: 14px; color: var(--accent); pointer-events: none; opacity: 0.8; font-weight: bold; text-shadow: 0 0 10px #000; }
 </style>
 </head>
 <body>
 
 <div class="topbar">
-  <div class="logo">SPECTRUM ART LAB v14.6 [NEGATIVE SPACE FIXED]</div>
+  <div class="logo">SPECTRUM ART LAB v14.7</div>
   <div id="timeCode" style="font-family: monospace; font-size: 14px; color: var(--accent);">00:00.00</div>
 </div>
 
 <div class="container">
   <div class="side-panel">
-    <h3>1. Target Mask Shape</h3>
+    <h3>1. Mask Shape</h3>
     <div class="input-group">
-      <label>TEXT SHAPE (검은색으로 남길 글자)</label>
-      <input type="text" id="maskTextInput" class="input-text" value="VOID" oninput="updateMask()">
+      <label>TEXT SHAPE (반전 틀)</label>
+      <input type="text" id="maskTextInput" class="input-text" value="LOVE" oninput="updateMask()">
+    </div>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom:15px;">
+        <button class="btn active" id="modeH" onclick="setWriteMode('H')">가로</button>
+        <button class="btn" id="modeV" onclick="setWriteMode('V')">세로</button>
     </div>
 
-    <div class="input-group">
-      <label>WRITING MODE</label>
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
-        <button class="btn active" id="modeH" onclick="setWriteMode('H')">가로 쓰기</button>
-        <button class="btn" id="modeV" onclick="setWriteMode('V')">세로 쓰기</button>
-      </div>
-    </div>
-    
-    <div class="control-group">
-      <label>MASK SIZE <span class="val-label" id="sizeVal">1.0</span></label>
-      <input type="range" id="maskSize" min="0.2" max="3.0" step="0.1" value="1.0" oninput="updateMask()">
+    <h3>2. Screen Ratio</h3>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom:15px;">
+        <button class="btn" id="b169" onclick="setAspect('16:9')">16:9 가로</button>
+        <button class="btn" id="b916" onclick="setAspect('9:16')">9:16 세로</button>
     </div>
 
-    <div class="control-group">
-      <label>X POSITION <span class="val-label" id="xVal">0</span></label>
-      <input type="range" id="maskX" min="-500" max="500" value="0" oninput="updateMask()">
-    </div>
-
-    <div class="control-group">
-      <label>Y POSITION <span class="val-label" id="yVal">0</span></label>
-      <input type="range" id="maskY" min="-500" max="500" value="0" oninput="updateMask()">
-    </div>
-
-    <h3>2. Assets</h3>
+    <h3>3. Assets</h3>
     <button class="btn" onclick="document.getElementById('musicInput').click()">LOAD MP3</button>
     <input type="file" id="musicInput" accept="audio/*" style="display:none" onchange="handleMusic(this.files)">
     <button class="btn" onclick="document.getElementById('srtInput').click()">LOAD SRT</button>
     <input type="file" id="srtInput" accept=".srt" style="display:none" onchange="handleSRT(this.files)">
+
+    <h3>4. System Log</h3>
+    <div class="log-panel" id="logBox">
+      <div>AUDIO: <b id="logAudio">WAITING</b></div>
+      <div>AMP: <b id="logAmp">0.00</b> / <b id="logThr">0.00</b></div>
+      <div>PAINT: <b id="logStatus">IDLE</b></div>
+      <div>LYRIC: <b id="logLyric">EMPTY</b></div>
+    </div>
   </div>
 
   <div class="viz-area">
-    <div class="debug-panel">AMP: <span id="ampLog">0.00</span> / STATE: <span id="stateLog">IDLE</span></div>
     <canvas id="artCanvas"></canvas>
-    <div id="currentLyric"></div>
+    <div id="currentLyric">가사를 로드해주세요</div>
   </div>
 
   <div class="side-panel right">
-    <h3>3. Paint Config</h3>
+    <h3>5. Transform</h3>
     <div class="control-group">
-      <label>DENSITY (밀도)</label>
-      <input type="range" id="density" min="1" max="60" value="30">
+      <label>MASK SIZE <span class="val-label" id="sizeVal">1.0</span></label>
+      <input type="range" id="maskSize" min="0.2" max="3.0" step="0.1" value="1.0" oninput="updateMask()">
     </div>
     <div class="control-group">
-      <label>SENSITIVITY (반응도)</label>
-      <input type="range" id="sens" min="1" max="10" value="9">
+      <label>X / Y POSITION</label>
+      <input type="range" id="maskX" min="-400" max="400" value="0" oninput="updateMask()">
+      <input type="range" id="maskY" min="-400" max="400" value="0" oninput="updateMask()" style="margin-top:5px;">
+    </div>
+
+    <h3>6. Brush Config</h3>
+    <div class="control-group">
+      <label>DENSITY <span class="val-label" id="densityVal">30</span></label>
+      <input type="range" id="density" min="1" max="60" value="30" oninput="document.getElementById('densityVal').innerText=this.value">
     </div>
     <div class="control-group">
-      <label>BRUSH DISTORTION (왜곡)</label>
-      <input type="range" id="distort" min="1" max="100" value="20">
+      <label>SENSITIVITY <span class="val-label" id="sensVal">9</span></label>
+      <input type="range" id="sens" min="1" max="10" value="9" oninput="document.getElementById('sensVal').innerText=this.value">
     </div>
     
-    <h3>4. Color Range</h3>
-    <div class="control-group"><label>R Range</label><input type="range" id="rMin" min="0" max="255" value="100"><input type="range" id="rMax" min="0" max="255" value="255"></div>
-    <div class="control-group"><label>G Range</label><input type="range" id="gMin" min="0" max="255" value="0"><input type="range" id="gMax" min="0" max="255" value="200"></div>
-    <div class="control-group"><label>B Range</label><input type="range" id="bMin" min="0" max="255" value="150"><input type="range" id="bMax" min="0" max="255" value="255"></div>
-
     <button class="btn primary" id="playBtn" onclick="togglePlay()">START PERFORMANCE</button>
     <button class="btn" onclick="clearCanvas()">CLEAR CANVAS</button>
     <button class="btn" onclick="saveArt()">SAVE AS PNG</button>
@@ -136,14 +135,10 @@ function updateMask() {
     const sizeScale = parseFloat(document.getElementById('maskSize').value);
     const offsetX = parseInt(document.getElementById('maskX').value);
     const offsetY = parseInt(document.getElementById('maskY').value);
-
     document.getElementById('sizeVal').innerText = sizeScale.toFixed(1);
-    document.getElementById('xVal').innerText = offsetX;
-    document.getElementById('yVal').innerText = offsetY;
 
     maskCanvas.width = canvas.width;
     maskCanvas.height = canvas.height;
-    
     maskCtx.fillStyle = "black";
     maskCtx.fillRect(0, 0, maskCanvas.width, maskCanvas.height);
     maskCtx.fillStyle = "white";
@@ -174,23 +169,20 @@ function updateMask() {
 function drawPreviewOutline() {
     ctx.fillStyle = "#050505";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
-    // 네거티브 공간 시각화 (페인팅 될 영역을 살짝 보여줌)
-    ctx.fillStyle = "rgba(0, 255, 204, 0.05)";
+    ctx.fillStyle = "rgba(0, 255, 204, 0.08)";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     const text = document.getElementById('maskTextInput').value;
     const offsetX = parseInt(document.getElementById('maskX').value);
     const offsetY = parseInt(document.getElementById('maskY').value);
-    
-    ctx.fillStyle = "black"; // 글자 부분은 구멍
+    ctx.fillStyle = "black";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
+    ctx.font = `900 ${maskFinalFontSize}px Pretendard`;
 
     const centerX = canvas.width / 2 + offsetX;
     const centerY = canvas.height / 2 + offsetY;
 
-    ctx.font = `900 ${maskFinalFontSize}px Pretendard`;
     if (writeMode === 'H') {
         ctx.fillText(text, centerX, centerY);
     } else {
@@ -203,18 +195,22 @@ function drawPreviewOutline() {
 }
 
 function getPointInMask() {
-    // 100번 시도하여 마스크 바깥(검은 영역)의 좌표를 찾음
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 60; i++) {
         const x = Math.floor(Math.random() * canvas.width);
         const y = Math.floor(Math.random() * canvas.height);
         const pixel = maskCtx.getImageData(x, y, 1, 1).data;
-        // pixel[0]이 128보다 작으면 검은색(글자 바깥) 영역임
-        if (pixel[0] < 128) return { x, y };
+        if (pixel[0] < 128) return { x, y }; // 검은색 영역(글자 바깥)일 때 반환
     }
     return null;
 }
 
-function setAspect(r) { aspect = r; resize(); }
+function setAspect(r) {
+    aspect = r;
+    document.getElementById('b169').classList.toggle('active', r === '16:9');
+    document.getElementById('b916').classList.toggle('active', r === '9:16');
+    resize();
+}
+
 function resize() {
     const parent = canvas.parentElement;
     const pw = parent.clientWidth - 40, ph = parent.clientHeight - 40;
@@ -237,7 +233,7 @@ function handleSRT(files) {
       const content = lines.slice(2).join(' ').trim();
       return { start: toSec(t[1]), end: toSec(t[2]), text: content, chars: content.split('').filter(c => c !== " ") };
     }).filter(x => x);
-    document.getElementById('stateLog').innerText = "SRT READY";
+    document.getElementById('logLyric').innerText = srtData.length + " LINES";
   };
   reader.readAsText(files[0]);
 }
@@ -249,14 +245,14 @@ function handleMusic(files) {
   reader.onload = (e) => { 
     audioCtx.decodeAudioData(e.target.result, (buf) => { 
       audioBuffer = buf; 
-      document.getElementById('stateLog').innerText = "MUSIC READY";
+      document.getElementById('logAudio').innerText = "READY";
     }); 
   };
   reader.readAsArrayBuffer(files[0]);
 }
 
 async function togglePlay() {
-  if(!audioBuffer || srtData.length === 0) return alert("LOAD FILES FIRST");
+  if(!audioBuffer || srtData.length === 0) return alert("파일을 로드해주세요.");
   if(audioCtx.state === 'suspended') await audioCtx.resume();
   
   if(isPlaying) {
@@ -265,7 +261,6 @@ async function togglePlay() {
     isPlaying = false;
     document.getElementById('playBtn').textContent = "RESUME PERFORMANCE";
   } else {
-    // ⚡ 중요: Analyser 노드를 재생 시마다 확실하게 다시 연결
     source = audioCtx.createBufferSource();
     source.buffer = audioBuffer;
     analyser = audioCtx.createAnalyser();
@@ -300,15 +295,18 @@ function animate() {
 
     const data = new Uint8Array(analyser.frequencyBinCount);
     analyser.getByteFrequencyData(data);
-    
     let sum = 0; for(let i=0; i<15; i++) sum += data[i];
     const amp = sum / 15 / 255;
-    document.getElementById('ampLog').innerText = amp.toFixed(2);
     
+    // 로그 업데이트
     const sensThreshold = 1.1 - (Number(document.getElementById('sens').value) / 10);
-    const densityLimit = 1000 / Number(document.getElementById('density').value);
+    document.getElementById('logAmp').innerText = amp.toFixed(2);
+    document.getElementById('logThr').innerText = sensThreshold.toFixed(2);
+    document.getElementById('logStatus').innerText = amp > sensThreshold ? "PAINTING" : "LOW SIGNAL";
 
     const now = Date.now();
+    const densityLimit = 1000 / Number(document.getElementById('density').value);
+
     if (amp > sensThreshold && (now - lastPaintTime > densityLimit)) {
       const char = currentLine.chars[charPtr % currentLine.chars.length];
       const pos = getPointInMask();
@@ -318,24 +316,19 @@ function animate() {
       }
       lastPaintTime = now;
     }
+  } else {
+    document.getElementById('logStatus').innerText = "NO CUE";
   }
 }
 
 function paintStroke(char, amp, x, y) {
   const distort = Number(document.getElementById('distort').value);
-  const r = Math.random()*(Number(document.getElementById('rMax').value)-Number(document.getElementById('rMin').value))+Number(document.getElementById('rMin').value);
-  const g = Math.random()*(Number(document.getElementById('gMax').value)-Number(document.getElementById('gMin').value))+Number(document.getElementById('gMin').value);
-  const b = Math.random()*(Number(document.getElementById('bMax').value)-Number(document.getElementById('bMin').value))+Number(document.getElementById('bMin').value);
-
+  const r = Math.random()*155 + 100, g = Math.random()*155 + 100, b = Math.random()*155 + 100;
   ctx.save();
   ctx.translate(x, y);
-  ctx.rotate(Math.random()*Math.PI*0.3 - 0.15);
-  
-  const fontSize = (maskFinalFontSize * 0.15) + (amp * maskFinalFontSize * 0.25);
-  const scaleX = 1 + (Math.random() * distort / 30 * amp);
-  const scaleY = 1 + (Math.random() * distort / 60 * amp);
-  ctx.scale(scaleX, scaleY);
-
+  ctx.rotate(Math.random()*Math.PI*0.4 - 0.2);
+  const fontSize = (maskFinalFontSize * 0.15) + (amp * maskFinalFontSize * 0.2);
+  ctx.scale(1 + (Math.random()*distort/30*amp), 1 + (Math.random()*distort/60*amp));
   const col = `rgba(${Math.floor(r)}, ${Math.floor(g)}, ${Math.floor(b)}, 0.85)`;
   ctx.fillStyle = col; 
   ctx.shadowBlur = amp * 10; ctx.shadowColor = col;
@@ -345,7 +338,7 @@ function paintStroke(char, amp, x, y) {
 }
 
 function clearCanvas() { ctx.fillStyle = 'black'; ctx.fillRect(0,0,canvas.width,canvas.height); if(!isPlaying) drawPreviewOutline(); }
-function saveArt() { const link = document.createElement('a'); link.download=`negative_art.png`; link.href=canvas.toDataURL(); link.click(); }
+function saveArt() { const link = document.createElement('a'); link.download=`spectrum_art.png`; link.href=canvas.toDataURL(); link.click(); }
 </script>
 </body>
 </html>
