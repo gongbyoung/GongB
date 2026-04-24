@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SPECTRUM ART LAB v15.0.07 — Boundary Invasion Edition</title>
+<title>SPECTRUM ART LAB v15.0.08 — Noisy Glow Edition</title>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
 :root{ --bg:#050505; --panel:#0d0d12; --accent:#00ffcc; --border:rgba(255,255,255,0.06); --text:#ffffff; }
@@ -41,7 +41,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; h
 <body>
 
 <div class="topbar">
-  <div class="logo">SPECTRUM ART LAB v15.0.07</div>
+  <div class="logo">SPECTRUM ART LAB v15.0.08</div>
   <div id="timeCode" style="font-family: monospace; font-size: 14px; color: var(--accent);">00:00.00</div>
 </div>
 
@@ -81,23 +81,31 @@ input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; h
   </div>
 
   <div class="side-panel right">
-    <h3>5. Mask Settings</h3>
+    <h3>5. Mask Distortion</h3>
+    <div class="control-group">
+      <label>MASK NOISE (모양 왜곡) <span class="val-label" id="mNoiseVal">0</span></label>
+      <input type="range" id="maskNoise" min="0" max="50" value="0" oninput="updateMask()">
+    </div>
     <div class="control-group">
       <label>MASK SIZE <span class="val-label" id="sizeVal">1.0</span></label>
       <input type="range" id="maskSize" min="0.2" max="3.0" step="0.1" value="1.0" oninput="updateMask()">
     </div>
     <div class="control-group">
-      <label>MASK GHOST (실루엣 보존) <span class="val-label" id="ghostVal">0.1</span></label>
+      <label>MASK GHOST (실루엣) <span class="val-label" id="ghostVal">0.1</span></label>
       <input type="range" id="maskGhost" min="0" max="0.5" step="0.01" value="0.1">
     </div>
 
-    <h3>6. Paint Control</h3>
+    <h3>6. Paint & Glow</h3>
     <div class="control-group">
-      <label>PAINT SIZE (페인트 크기) <span class="val-label" id="pSizeVal">1.0</span></label>
+      <label>GLOW INTENSITY (발광) <span class="val-label" id="glowVal">20</span></label>
+      <input type="range" id="glowPower" min="0" max="50" value="20" oninput="document.getElementById('glowVal').innerText=this.value">
+    </div>
+    <div class="control-group">
+      <label>PAINT SIZE <span class="val-label" id="pSizeVal">1.0</span></label>
       <input type="range" id="paintScale" min="0.1" max="3.0" step="0.1" value="1.0" oninput="document.getElementById('pSizeVal').innerText=this.value">
     </div>
     <div class="control-group">
-      <label>INVASION (경계 침범 %) <span class="val-label" id="invadeVal">0</span></label>
+      <label>INVASION (침범) <span class="val-label" id="invadeVal">0</span></label>
       <input type="range" id="invasion" min="0" max="100" value="0" oninput="document.getElementById('invadeVal').innerText=this.value">
     </div>
 
@@ -111,16 +119,6 @@ input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; h
         <button class="btn" id="rFixed" onclick="setRotMode('fixed')">정면 고정</button>
     </div>
 
-    <h3>8. Colors & Flow</h3>
-    <div class="control-group">
-      <label>DENSITY <span class="val-label" id="densityVal">30</span></label>
-      <input type="range" id="density" min="1" max="100" value="30" oninput="document.getElementById('densityVal').innerText=this.value">
-    </div>
-    <div class="control-group">
-      <label>SENSITIVITY <span class="val-label" id="sensVal">9</span></label>
-      <input type="range" id="sens" min="1" max="10" value="9" oninput="document.getElementById('sensVal').innerText=this.value">
-    </div>
-
     <button class="btn primary" id="playBtn" onclick="togglePlay()">START PERFORMANCE</button>
     <button class="btn" onclick="clearCanvas()">CLEAR CANVAS</button>
     <button class="btn" onclick="saveArt()">SAVE AS PNG</button>
@@ -132,6 +130,7 @@ let aspect = '16:9', writeMode = 'H', paintMode = 'inside', rotMode = 'random';
 let srtData = [], audioCtx, analyser, source, audioBuffer, isPlaying = false, startTime = 0, pauseOffset = 0;
 let lastPaintTime = 0, maskFinalFontSize = 0, maskDataCache = null;
 let mediaRecorder, recordedChunks = [];
+let charPtr = 0, lastLineIdx = -1;
 
 const canvas = document.getElementById('artCanvas'), ctx = canvas.getContext('2d');
 const maskCanvas = document.createElement('canvas');
@@ -159,6 +158,9 @@ function setRotMode(mode) {
 function updateMask() {
     const text = document.getElementById('maskTextInput').value;
     const sizeScale = parseFloat(document.getElementById('maskSize').value);
+    const noiseLevel = parseInt(document.getElementById('maskNoise').value);
+    document.getElementById('mNoiseVal').innerText = noiseLevel;
+
     maskCanvas.width = canvas.width;
     maskCanvas.height = canvas.height;
     maskCtx.fillStyle = "black";
@@ -170,6 +172,7 @@ function updateMask() {
     const centerX = maskCanvas.width / 2;
     const centerY = maskCanvas.height / 2;
 
+    // 1. 기본 텍스트 그리기
     if (writeMode === 'H') {
         const baseFontSize = Math.min(maskCanvas.width / (text.length * 0.8), maskCanvas.height * 0.6);
         maskFinalFontSize = baseFontSize * sizeScale;
@@ -185,6 +188,28 @@ function updateMask() {
             maskCtx.fillText(text[i], centerX, startY + (i * maskFinalFontSize * 1.05));
         }
     }
+
+    // 2. 마스크 노이즈(Noise) 처리
+    if (noiseLevel > 0) {
+        const imgData = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
+        const data = imgData.data;
+        const copy = new Uint8ClampedArray(data);
+        for (let y = 0; y < maskCanvas.height; y++) {
+            for (let x = 0; x < maskCanvas.width; x++) {
+                const idx = (y * maskCanvas.width + x) * 4;
+                if (copy[idx] > 128) {
+                    const nx = x + (Math.random() - 0.5) * noiseLevel;
+                    const ny = y + (Math.random() - 0.5) * noiseLevel;
+                    if (nx >= 0 && nx < maskCanvas.width && ny >= 0 && ny < maskCanvas.height) {
+                        const nIdx = (Math.floor(ny) * maskCanvas.width + Math.floor(nx)) * 4;
+                        data[nIdx] = 255; data[nIdx+1] = 255; data[nIdx+2] = 255;
+                    }
+                }
+            }
+        }
+        maskCtx.putImageData(imgData, 0, 0);
+    }
+
     maskDataCache = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height).data;
     if (!isPlaying) drawPreviewOutline();
 }
@@ -192,7 +217,7 @@ function updateMask() {
 function drawPreviewOutline() {
     ctx.fillStyle = "#050505";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    renderGhostMask(0.1); 
+    renderGhostMask(0.15); 
 }
 
 function renderGhostMask(opacityOverride) {
@@ -201,20 +226,8 @@ function renderGhostMask(opacityOverride) {
     
     ctx.save();
     ctx.globalAlpha = ghostAlpha;
-    ctx.fillStyle = "white";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.font = `900 ${maskFinalFontSize}px Pretendard`;
-    const text = document.getElementById('maskTextInput').value;
-    if (writeMode === 'H') {
-        ctx.fillText(text, canvas.width / 2, canvas.height / 2);
-    } else {
-        const totalHeight = text.length * maskFinalFontSize * 1.05;
-        const startY = (canvas.height / 2) - (totalHeight / 2) + (maskFinalFontSize / 2);
-        for (let i = 0; i < text.length; i++) {
-            ctx.fillText(text[i], canvas.width / 2, startY + (i * maskFinalFontSize * 1.05));
-        }
-    }
+    // 노이즈가 적용된 마스크를 그대로 실루엣으로 보여줌
+    ctx.drawImage(maskCanvas, 0, 0);
     ctx.restore();
 }
 
@@ -226,10 +239,7 @@ function getPointInMask() {
     for (let i = 0; i < 150; i++) {
         const x = Math.floor(Math.random() * W);
         const y = Math.floor(Math.random() * H);
-        
-        // 침범 확률(Invasion) 체크: 랜덤값이 확률보다 낮으면 영역 검사 없이 즉시 반환
         if (Math.random() * 100 < invasionProb) return { x, y };
-
         const index = (y * W + x) * 4;
         const isMask = maskDataCache[index] > 128;
         if (paintMode === 'inside' ? isMask : !isMask) return { x, y }; 
@@ -333,21 +343,23 @@ function exportVideo() {
     a.click();
 }
 
-let charPtr = 0, lastLineIdx = -1;
-
 function animate() {
   if(!isPlaying) return;
   requestAnimationFrame(animate);
   const nowTime = audioCtx.currentTime - startTime;
   document.getElementById('timeCode').textContent = new Date(nowTime * 1000).toISOString().substr(14, 5);
   
-  // 가이드 잔상 실시간 렌더링
   renderGhostMask();
 
   const currentLine = srtData.find(line => nowTime >= line.start && nowTime <= line.end);
   if (currentLine) {
     document.getElementById('currentLyric').textContent = currentLine.text;
-    if (currentLine.id !== lastLineIdx) { charPtr = 0; lastLineIdx = currentLine.id; }
+    
+    // 라인 인덱스가 바뀌면 (다음 자막으로 넘어가면) 포인터 리셋
+    if (currentLine.id !== lastLineIdx) { 
+        charPtr = 0; 
+        lastLineIdx = currentLine.id; 
+    }
 
     const data = new Uint8Array(analyser.frequencyBinCount);
     analyser.getByteFrequencyData(data);
@@ -375,13 +387,23 @@ function animate() {
 
 function paintStroke(char, amp, x, y) {
   const pScale = parseFloat(document.getElementById('paintScale').value);
+  const glowPower = parseInt(document.getElementById('glowPower').value);
+  
   ctx.save();
   ctx.translate(x, y);
   if (rotMode === 'random') ctx.rotate(Math.random()*Math.PI*0.3 - 0.15);
   else ctx.rotate(0);
 
   const fontSize = ((maskFinalFontSize * 0.1) + (amp * maskFinalFontSize * 0.25)) * pScale;
-  ctx.fillStyle = `hsla(${Math.random()*360}, 70%, 70%, 0.8)`;
+  const color = `hsla(${Math.random()*360}, 70%, 70%, 0.8)`;
+  
+  // Glow 설정 (현재 찍히는 글자에만 적용됨)
+  if(glowPower > 0) {
+      ctx.shadowBlur = glowPower;
+      ctx.shadowColor = color;
+  }
+
+  ctx.fillStyle = color;
   ctx.font = `900 ${fontSize}px 'Pretendard'`;
   ctx.fillText(char, 0, 0);
   ctx.restore();
