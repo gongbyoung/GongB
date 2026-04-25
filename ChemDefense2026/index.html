@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Chemical Guardians - Stage 1</title>
+    <style>
+        body { background: #222; color: white; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; }
+        canvas { background: #333; border: 2px solid #555; cursor: crosshair; }
+        .ui { margin: 10px; padding: 10px; background: #444; border-radius: 5px; width: 800px; display: flex; justify-content: space-between; }
+        .info { font-size: 14px; color: #aaa; margin-bottom: 5px; }
+        b { color: #00ff00; }
+    </style>
+</head>
+<body>
+    <h2>Chemical Guardians: 구미 불산 사고 시뮬레이션</h2>
+    <div class="info">클릭하여 칼슘(Ca) 타워를 배치하세요. 적의 길을 유도하여 최대한 오래 노출시키세요!</div>
+    <div class="ui">
+        <div>환경 안전도: <span id="hp">100</span>%</div>
+        <div>보유 자원: <span id="money">100</span>$</div>
+        <div>반응식: <b id="reactionText">2HF + Ca(OH)₂ → CaF₂ + 2H₂O</b></div>
+    </div>
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+
+<script>
+/**
+ * 버전: 0.005 (UI & Canvas & Maze Logic)
+ */
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const gridSize = 40;
+const cols = canvas.width / gridSize;
+const rows = canvas.height / gridSize;
+
+let hp = 100;
+let money = 100;
+let enemies = [];
+let towers = [];
+let grid = Array(cols).fill().map(() => Array(rows).fill(0)); // 0: 빈공간, 1: 타워
+
+// 적(HF) 생성 클래스
+class Enemy {
+    constructor() {
+        this.x = 0;
+        this.y = gridSize * 4.5; // 시작점 (왼쪽)
+        this.hp = 100;
+        this.speed = 1.2;
+        this.r = 12;
+    }
+    update() {
+        this.x += this.speed; // 단순 직선 이동 (추후 A* 알고리즘으로 확장 가능)
+    }
+    draw() {
+        ctx.fillStyle = "#adff2f"; // 불산 가스색 (연두)
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+        ctx.fill();
+        // 체력바
+        ctx.fillStyle = "red";
+        ctx.fillRect(this.x - 10, this.y - 20, 20, 4);
+        ctx.fillStyle = "green";
+        ctx.fillRect(this.x - 10, this.y - 20, (this.hp / 100) * 20, 4);
+    }
+}
+
+// 타워(Ca) 생성 클래스
+class Tower {
+    constructor(gx, gy) {
+        this.gx = gx;
+        this.gy = gy;
+        this.x = gx * gridSize + gridSize/2;
+        this.y = gy * gridSize + gridSize/2;
+        this.range = 100;
+        this.damage = 0.5;
+    }
+    draw() {
+        // 사거리 표시
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.range, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        // 타워 몸체 (칼슘 원자 모형)
+        ctx.fillStyle = "#ddd"; 
+        ctx.fillRect(this.gx * gridSize + 5, this.gy * gridSize + 5, gridSize - 10, gridSize - 10);
+        ctx.fillStyle = "#000";
+        ctx.fillText("Ca", this.x - 7, this.y + 5);
+    }
+    attack(enemy) {
+        let dist = Math.hypot(this.x - enemy.x, this.y - enemy.y);
+        if (dist < this.range) {
+            enemy.hp -= this.damage;
+            // 중화 이펙트(선)
+            ctx.strokeStyle = "white";
+            ctx.beginPath();
+            ctx.moveTo(this.x, this.y);
+            ctx.lineTo(enemy.x, enemy.y);
+            ctx.stroke();
+        }
+    }
+}
+
+// 마우스 클릭 시 타워 배치
+canvas.addEventListener('mousedown', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const gx = Math.floor((e.clientX - rect.left) / gridSize);
+    const gy = Math.floor((e.clientY - rect.top) / gridSize);
+
+    if (money >= 20 && grid[gx][gy] === 0) {
+        towers.push(new Tower(gx, gy));
+        grid[gx][gy] = 1;
+        money -= 20;
+        document.getElementById('money').innerText = money;
+    }
+});
+
+function spawn() {
+    if (Math.random() < 0.02) enemies.push(new Enemy());
+}
+
+function gameLoop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // 배경 그리드 그리기
+    ctx.strokeStyle = "#444";
+    for(let i=0; i<cols; i++) {
+        for(let j=0; j<rows; j++) {
+            ctx.strokeRect(i*gridSize, j*gridSize, gridSize, gridSize);
+        }
+    }
+
+    spawn();
+
+    // 적 업데이트 및 그리기
+    enemies.forEach((enemy, eIdx) => {
+        enemy.update();
+        enemy.draw();
+
+        // 타워 공격 체크
+        towers.forEach(tower => tower.attack(enemy));
+
+        // 사망 처리
+        if (enemy.hp <= 0) {
+            enemies.splice(eIdx, 1);
+            money += 5;
+            document.getElementById('money').innerText = money;
+        }
+        // 기지 도달
+        if (enemy.x > canvas.width) {
+            enemies.splice(eIdx, 1);
+            hp -= 10;
+            document.getElementById('hp').innerText = hp;
+        }
+    });
+
+    // 타워 그리기
+    towers.forEach(tower => tower.draw());
+
+    if (hp <= 0) {
+        ctx.fillStyle = "white";
+        ctx.font = "40px Arial";
+        ctx.fillText("GAME OVER - 환경 오염", 200, 200);
+        return;
+    }
+
+    requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+</body>
+</html>
