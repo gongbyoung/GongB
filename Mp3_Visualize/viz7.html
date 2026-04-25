@@ -3,9 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SPECTRUM ART LAB v16.0</title>
+<title>SPECTRUM ART LAB v16.1</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Noto+Sans+KR:wght@400;700;900&display=swap');
+
 
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
 
@@ -335,13 +336,40 @@ input[type=range].p3::-webkit-slider-thumb{ background:var(--accent3); }
 ::-webkit-scrollbar{ width:3px; height:3px; }
 ::-webkit-scrollbar-track{ background:transparent; }
 ::-webkit-scrollbar-thumb{ background:#222; border-radius:2px; }
+
+/* ─── CONVERTING MODAL ─── */
+#convertModal{
+  display:none;
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,0.85);
+  z-index:999;
+  justify-content:center;
+  align-items:center;
+  flex-direction:column;
+  gap:18px;
+}
+#convertModal.show{ display:flex; }
+.modal-box{
+  background:#0a0a14;
+  border:1px solid var(--accent);
+  border-radius:8px;
+  padding:36px 48px;
+  text-align:center;
+  max-width:400px;
+}
+.modal-box h2{ font-size:13px; letter-spacing:4px; color:var(--accent); margin-bottom:16px; }
+.modal-box p{ font-size:11px; color:#666; line-height:1.7; }
+.progress-wrap{ width:100%; height:4px; background:#111; border-radius:2px; margin-top:18px; overflow:hidden; }
+.progress-bar{ height:100%; width:0%; background:var(--accent); border-radius:2px; transition:width 0.3s; }
+#convertLog{ font-size:10px; color:#444; margin-top:10px; font-family:'Space Mono',monospace; min-height:16px; }
 </style>
 </head>
 <body>
 
 <!-- TOPBAR -->
 <div class="topbar">
-  <div class="logo">SPECTRUM ART LAB v16</div>
+  <div class="logo">SPECTRUM ART LAB v16.1</div>
   <div class="topbar-center">
     <div id="statusDot"></div>
     <div id="timeCode">00:00</div>
@@ -366,7 +394,7 @@ input[type=range].p3::-webkit-slider-thumb{ background:var(--accent3); }
     <h3>Assets</h3>
     <button class="btn" onclick="document.getElementById('mIn').click()">▶ LOAD MP3 / WAV</button>
     <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleMusic(this.files)">
-    <button class="btn" onclick="document.getElementById('sIn').click()">≡ LOAD SRT 가사</button>
+    <button class="btn" onclick="document.getElementById('sIn').click()">≡ LOAD SRT 가사 <span style="color:#333">(선택)</span></button>
     <input type="file" id="sIn" accept=".srt,.txt" style="display:none" onchange="handleSRT(this.files)">
     <button class="btn" style="border-color:#ff00aa44;color:#ff00aa;" onclick="document.getElementById('iIn').click()">◈ LOAD IMAGE (COLOR SRC)</button>
     <input type="file" id="iIn" accept="image/*" style="display:none" onchange="handleImage(this.files)">
@@ -414,7 +442,7 @@ input[type=range].p3::-webkit-slider-thumb{ background:var(--accent3); }
   <div class="viz-area">
     <canvas id="artCanvas"></canvas>
     <canvas id="freqCanvas"></canvas>
-    <div id="currentLyric">♩ 음악을 로드하고 START를 누르세요</div>
+    <div id="currentLyric">♩ 음악을 로드하고 START를 누르세요 · SRT 없이도 사용 가능</div>
     <div class="canvas-overlay-info" id="canvasInfo">SPECTRUM ART LAB</div>
   </div>
 
@@ -807,11 +835,18 @@ function animate(){
     ctx.restore();
   }
 
-  const currentLine = srtData.find(l => nowTime>=l.start && nowTime<=l.end);
-  g('currentLyric').style.opacity = currentLine ? '1' : '0.3';
+  const currentLine = srtData.length > 0
+    ? srtData.find(l => nowTime>=l.start && nowTime<=l.end)
+    : null;
+
   if(currentLine){
+    g('currentLyric').style.opacity = '1';
     g('currentLyric').textContent = currentLine.text;
     if(currentLine.id !== lastLineIdx){ charPtr=0; lastLineIdx=currentLine.id; }
+  } else if(srtData.length > 0){
+    g('currentLyric').style.opacity = '0.2';
+  } else {
+    g('currentLyric').style.opacity = '0';
   }
 
   const sens = 1.1 - (gv('sens')/10);
@@ -820,7 +855,12 @@ function animate(){
 
   if(amp > sens && (now - lastPaintTime > densityLimit)){
     const burst = parseInt(g('burst').value);
-    const char = currentLine ? currentLine.chars[charPtr % Math.max(1,currentLine.chars.length)] : '♪';
+    // SRT 없을 때는 음표/랜덤 문자 사용
+    const fallbackChars = ['♪','♩','♫','♬','●','◆','▲','★'];
+    const char = currentLine
+      ? currentLine.chars[charPtr % Math.max(1, currentLine.chars.length)]
+      : fallbackChars[Math.floor(Date.now()/500) % fallbackChars.length];
+
     for(let b=0;b<burst;b++){
       const pos = getPointInMask();
       if(pos) paintStroke(char, amp, pos.x, pos.y);
@@ -927,25 +967,129 @@ async function togglePlay(){
 }
 
 // ═══════════════════════════════════════
-//   RECORDING
+//   RECORDING — WebM 녹화 → FFmpeg.wasm → H.264 MP4
 // ═══════════════════════════════════════
+let ffmpegLoaded = false;
+let ffmpegModule = null;
+let audioFileData = null; // 원본 오디오 ArrayBuffer 보관
+
+// FFmpeg.wasm 로드 (처음 한 번만)
+async function loadFFmpeg(){
+  if(ffmpegLoaded) return ffmpegModule;
+  g('convertLog').textContent = 'FFmpeg 로딩 중...';
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/ffmpeg.wasm/0.11.0/ffmpeg.min.js';
+    s.onload = async () => {
+      try {
+        const { createFFmpeg, fetchFile } = FFmpeg;
+        ffmpegModule = { createFFmpeg, fetchFile };
+        ffmpegLoaded = true;
+        resolve(ffmpegModule);
+      } catch(e){ reject(e); }
+    };
+    s.onerror = () => reject(new Error('FFmpeg CDN 로드 실패'));
+    document.head.appendChild(s);
+  });
+}
+
 function startRecording(){
-  recordedChunks=[];
-  const stream = canvas.captureStream(30);
-  const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
-    ? 'video/webm;codecs=vp9' : 'video/webm';
-  mediaRecorder = new MediaRecorder(stream, {mimeType});
-  mediaRecorder.ondataavailable = e => { if(e.data.size>0) recordedChunks.push(e.data); };
-  mediaRecorder.onstop = () => {
-    const blob = new Blob(recordedChunks, {type:'video/webm'});
+  recordedChunks = [];
+  // canvas + audio 합성 스트림
+  const canvasStream = canvas.captureStream(30);
+  let finalStream = canvasStream;
+
+  // 오디오 스트림 합성 (지원 시)
+  try {
+    if(audioCtx && analyser){
+      const dest = audioCtx.createMediaStreamDestination();
+      analyser.connect(dest);
+      const audioTrack = dest.stream.getAudioTracks()[0];
+      if(audioTrack) finalStream = new MediaStream([...canvasStream.getVideoTracks(), audioTrack]);
+    }
+  } catch(e){ /* 오디오 트랙 없이 진행 */ }
+
+  const mimeType = ['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm']
+    .find(m => MediaRecorder.isTypeSupported(m)) || 'video/webm';
+
+  mediaRecorder = new MediaRecorder(finalStream, { mimeType, videoBitsPerSecond: 8000000 });
+  mediaRecorder.ondataavailable = e => { if(e.data && e.data.size > 0) recordedChunks.push(e.data); };
+  mediaRecorder.onstop = () => convertToMP4();
+  mediaRecorder.start(200);
+}
+
+async function convertToMP4(){
+  const webmBlob = new Blob(recordedChunks, { type: 'video/webm' });
+
+  // FFmpeg.wasm 시도
+  try {
+    g('convertModal').classList.add('show');
+    g('progressBar').style.width = '5%';
+    g('convertLog').textContent = 'FFmpeg.wasm 로딩 중...';
+
+    const { createFFmpeg, fetchFile } = await loadFFmpeg();
+    const ffmpeg = createFFmpeg({
+      log: false,
+      progress: ({ ratio }) => {
+        g('progressBar').style.width = Math.round(ratio * 90 + 5) + '%';
+        g('convertLog').textContent = `인코딩: ${Math.round(ratio*100)}%`;
+      }
+    });
+
+    await ffmpeg.load();
+    g('convertLog').textContent = 'WebM 데이터 준비 중...';
+    g('progressBar').style.width = '15%';
+
+    ffmpeg.FS('writeFile', 'input.webm', await fetchFile(webmBlob));
+
+    g('convertLog').textContent = 'H.264 인코딩 중...';
+    await ffmpeg.run(
+      '-i', 'input.webm',
+      '-c:v', 'libx264',
+      '-preset', 'fast',
+      '-crf', '23',
+      '-c:a', 'aac',
+      '-b:a', '192k',
+      '-movflags', '+faststart',
+      '-pix_fmt', 'yuv420p',
+      'output.mp4'
+    );
+
+    const mp4Data = ffmpeg.FS('readFile', 'output.mp4');
+    const mp4Blob = new Blob([mp4Data.buffer], { type: 'video/mp4' });
+
+    g('progressBar').style.width = '100%';
+    g('convertLog').textContent = '완료! 저장 중...';
+
+    setTimeout(() => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(mp4Blob);
+      a.download = `SPECTRUM_${Date.now()}.mp4`;
+      a.click();
+      g('convertModal').classList.remove('show');
+      g('recIndicator').textContent = '◉ MP4 SAVED';
+    }, 600);
+
+  } catch(err) {
+    // FFmpeg 실패 시 → WebM을 .mp4 확장자로 직접 저장 (fallback)
+    console.warn('FFmpeg 변환 실패, WebM fallback:', err);
+    g('convertModal').classList.remove('show');
+    g('recIndicator').textContent = '◉ SAVED (WebM)';
+
+    // 사용자에게 알림
+    const note = document.createElement('div');
+    note.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1a1a2a;border:1px solid #ffcc00;color:#ffcc00;padding:12px 20px;border-radius:6px;font-size:11px;z-index:9999;font-family:Space Mono,monospace;letter-spacing:1px;';
+    note.textContent = '⚠ FFmpeg 변환 실패 — WebM으로 저장됩니다 (로컬 서버 환경 필요)';
+    document.body.appendChild(note);
+    setTimeout(() => note.remove(), 5000);
+
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
+    a.href = URL.createObjectURL(webmBlob);
     a.download = `SPECTRUM_${Date.now()}.webm`;
     a.click();
-    g('recIndicator').textContent = '◉ SAVED';
-  };
-  mediaRecorder.start(100);
+  }
 }
+
 
 // ═══════════════════════════════════════
 //   UTILITIES
@@ -1026,5 +1170,15 @@ document.addEventListener('keydown', e => {
 resize();
 renderPresets();
 </script>
+<!-- CONVERT MODAL -->
+<div id="convertModal">
+  <div class="modal-box">
+    <h2>⚙ MP4 변환 중</h2>
+    <p>FFmpeg으로 H.264 MP4 인코딩 중입니다.<br>영상 길이에 따라 수 분이 걸릴 수 있습니다.</p>
+    <div class="progress-wrap"><div class="progress-bar" id="progressBar"></div></div>
+    <div id="convertLog">초기화 중...</div>
+  </div>
+</div>
+
 </body>
 </html>
