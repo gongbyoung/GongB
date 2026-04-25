@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SPECTRUM ART LAB v15.0.16 — Image Painter Pro</title>
+<title>SPECTRUM ART LAB v15.0.17 — Image Painter Advanced</title>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
 :root{ --bg:#050505; --panel:#0d0d12; --accent:#00ffcc; --border:rgba(255,255,255,0.06); --text:#ffffff; }
@@ -38,7 +38,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; h
 <body>
 
 <div class="topbar">
-  <div class="logo">SPECTRUM ART LAB v15.0.16</div>
+  <div class="logo">SPECTRUM ART LAB v15.0.17</div>
   <div id="statusTag" style="font-size: 10px; color: #555;">ENGINE READY</div>
 </div>
 
@@ -60,7 +60,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; h
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin-bottom:10px;">
         <button class="btn active" id="bPoint" onclick="setBrush('point')">점묘</button>
         <button class="btn" id="bStroke" onclick="setBrush('stroke')">인상</button>
-        <button class="btn" id="bCustom" onclick="setBrush('custom')">PNG</button>
+        <button class="btn" id="bCustom" onclick="setBrush('custom')">PNG (TINT)</button>
         <button class="btn" id="bText" onclick="setBrush('text')">가사</button>
     </div>
 
@@ -133,6 +133,8 @@ let charPtr = 0, lastLineIdx = -1;
 
 const canvas = document.getElementById('artCanvas'), ctx = canvas.getContext('2d');
 const imgCanvas = document.createElement('canvas'), imgCtx = imgCanvas.getContext('2d');
+// 틴팅용 전역 임시 캔버스 추가
+const tintCanvas = document.createElement('canvas'), tintCtx = tintCanvas.getContext('2d');
 
 function setBrush(m) {
     brushMode = m;
@@ -143,7 +145,14 @@ function setBrush(m) {
 
 function handleBrushPNG(files) {
     const img = new Image();
-    img.onload = () => { customBrushImg = img; document.getElementById('logBrush').innerText = "PNG LOADED"; setBrush('custom'); };
+    img.onload = () => { 
+        customBrushImg = img; 
+        document.getElementById('logBrush').innerText = "PNG LOADED"; 
+        setBrush('custom'); 
+        // 틴팅 캔버스 크기 미리 설정
+        tintCanvas.width = img.width;
+        tintCanvas.height = img.height;
+    };
     img.src = URL.createObjectURL(files[0]);
 }
 
@@ -153,7 +162,7 @@ function handleImage(files) {
         imgCanvas.width = canvas.width; imgCanvas.height = canvas.height;
         imgCtx.drawImage(img, 0, 0, canvas.width, canvas.height);
         sourceImageData = imgCtx.getImageData(0, 0, canvas.width, canvas.height).data;
-        clearCanvas();
+        drawPreviewOutline(); // 이미지 로드 후 배경 갱신
     };
     img.src = URL.createObjectURL(files[0]);
 }
@@ -208,11 +217,18 @@ function paintStroke(char, amp, x, y) {
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(Math.random() * Math.PI * 2);
-    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.8)`;
+    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.8)`; // 현재 색상 설정
 
     if (brushMode === 'custom' && customBrushImg) {
         const size = (10 + amp * 100) * pScale;
-        ctx.drawImage(customBrushImg, -size/2, -size/2, size, size);
+        // 틴팅 로직 추가
+        tintCtx.globalCompositeOperation = 'source-over'; // 기본 그리기
+        tintCtx.drawImage(customBrushImg, 0, 0); // 브러시 이미지 그리기
+        tintCtx.fillStyle = `rgba(${r}, ${g}, ${b}, 1)`; // 현재 입자 색상으로 채우기 색상 설정
+        tintCtx.globalCompositeOperation = 'source-in'; // 겹치는 부분만 채우기
+        tintCtx.fillRect(0, 0, tintCanvas.width, tintCanvas.height); // 색상 채우기
+        
+        ctx.drawImage(tintCanvas, -size/2, -size/2, size, size); // 틴팅된 브러시 메인 캔버스에 그리기
     } else if (brushMode === 'point') {
         const rad = (3 + amp * 30) * pScale;
         ctx.beginPath(); ctx.arc(0, 0, rad, 0, Math.PI*2); ctx.fill();
@@ -240,6 +256,12 @@ async function togglePlay() {
         source.connect(analyser); analyser.connect(audioCtx.destination);
         source.start(0, pauseOffset); startTime = audioCtx.currentTime - pauseOffset;
         isPlaying = true; document.getElementById('playBtn').textContent = "STOP & SAVE";
+        // 검은색으로 지우는 대신 소스 이미지 배경으로 그리기
+        if (sourceImageData) {
+            ctx.drawImage(imgCanvas, 0, 0, canvas.width, canvas.height);
+        } else {
+            ctx.fillStyle = "black"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
         animate(); startRecording();
     }
 }
@@ -279,8 +301,19 @@ function resize() {
     const p = canvas.parentElement; 
     canvas.width = aspect === '16:9' ? p.clientWidth-40 : (p.clientHeight-40)*0.56; 
     canvas.height = aspect === '16:9' ? canvas.width/1.77 : p.clientHeight-40; 
+    drawPreviewOutline(); // 크기 조정 후 배경 갱신
 }
 window.onresize = resize; resize();
+
+// drawPreviewOutline 함수 수정 부분
+function drawPreviewOutline() {
+    ctx.fillStyle = "#050505"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // 소스 이미지가 있으면 배경으로 그리기
+    if (sourceImageData) {
+        ctx.drawImage(imgCanvas, 0, 0, canvas.width, canvas.height);
+    }
+}
+
 function clearCanvas() { ctx.fillStyle='black'; ctx.fillRect(0,0,canvas.width,canvas.height); }
 function saveArt() { const a = document.createElement('a'); a.download=`Still.png`; a.href=canvas.toDataURL(); a.click(); }
 </script>
