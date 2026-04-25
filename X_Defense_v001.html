@@ -3,360 +3,333 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Xenotactic Grid Defense - Standalone</title>
+    <title>Chemi-Defense Standalone</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script type="importmap">
-      {
-        "imports": {
-          "@google/genai": "https://esm.run/@google/genai"
-        }
-      }
-    </script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; background-color: #0a0a0a; color: white; overflow-x: hidden; }
-        .font-mono { font-family: 'JetBrains Mono', monospace; }
-        canvas { image-rendering: pixelated; width: 100%; height: auto; max-width: 100%; }
-        .glass { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); }
-        .neon-green { box-shadow: 0 0 15px rgba(74, 222, 128, 0.4); }
-        @keyframes pulse-red { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-        .animate-pulse-red { animation: pulse-red 2s infinite; }
+        body { font-family: 'Inter', sans-serif; background-color: #141414; color: #E4E3E0; margin: 0; overflow: hidden; }
+        canvas { display: block; background: #000; }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(228, 227, 224, 0.05); }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(228, 227, 224, 0.2); }
+        .custom-scrollbar { scrollbar-width: thin; scrollbar-color: rgba(228, 227, 224, 0.2) transparent; }
     </style>
 </head>
-<body class="min-h-screen flex flex-col">
+<body>
+    <div id="root"></div>
 
-    <!-- Header -->
-    <header class="border-b border-white/10 bg-black/50 backdrop-blur-md sticky top-0 z-50">
-        <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center shadow-[0_0_20px_rgba(34,197,94,0.3)]">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg>
-                </div>
-                <div>
-                    <h1 class="text-lg font-bold tracking-tight uppercase italic">Xenotactic</h1>
-                    <p class="text-[10px] text-white/40 uppercase tracking-[0.2em] -mt-1">Standalone Protocol</p>
-                </div>
-            </div>
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback } = React;
 
-            <div class="flex items-center gap-8">
-                <div class="flex items-center gap-2">
-                    <svg class="w-4 h-4 text-yellow-400" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18.06"/><path d="M7 6h1v4"/><path d="m16.71 13.88.7.71-2.82 2.82"/></svg>
-                    <span id="money-display" class="font-mono text-xl font-bold tracking-tighter">100</span>
-                </div>
-                <div class="flex items-center gap-2">
-                    <svg class="w-4 h-4 text-red-500" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><path d="M8 20a6 6 0 0 1 8 0"/><path d="m15 18-.7.7"/><path d="M6 15h12"/><path d="M13 12v.01"/><path d="M11 12v.01"/></svg>
-                    <span id="lives-display" class="font-mono text-xl font-bold tracking-tighter">20</span>
-                </div>
-                <div class="flex items-center gap-2">
-                    <svg class="w-4 h-4 text-blue-400" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m13 2-2 2.5h3L12 7"/><path d="M11 14h6"/><path d="M11 18h6"/><path d="M15 6h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h1"/></svg>
-                    <span id="wave-display" class="font-mono text-xl font-bold tracking-tighter">WAVE 0</span>
-                </div>
-            </div>
-
-            <div class="flex items-center gap-3">
-                <button id="pause-btn" class="p-2 hover:bg-white/10 rounded-full transition-colors">
-                    <svg id="play-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                </button>
-                <button id="reset-btn" class="p-2 hover:bg-white/10 rounded-full transition-colors">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-                </button>
-            </div>
-        </div>
-    </header>
-
-    <main class="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-8 flex-grow">
-        <!-- Game Area -->
-        <div class="relative flex flex-col items-center">
-            <div class="relative group w-full">
-                <canvas id="game-canvas" class="bg-[#111] rounded-xl border border-white/10 shadow-2xl cursor-crosshair mx-auto"></canvas>
-                
-                <!-- Game Over Overlay -->
-                <div id="game-over-overlay" class="hidden absolute inset-0 bg-black/80 backdrop-blur-sm rounded-xl flex flex-col items-center justify-center z-40">
-                    <h2 class="text-4xl font-black uppercase italic tracking-tighter mb-2 text-red-500">System Failure</h2>
-                    <p id="final-wave-text" class="text-white/60 mb-4">Wave 0 reached.</p>
-                    <button id="restart-btn" class="px-8 py-3 bg-white text-black font-bold rounded-full hover:scale-105 transition-transform flex items-center gap-2">
-                        REBOOT SYSTEM
-                    </button>
-                </div>
-            </div>
-
-            <div class="mt-8 w-full flex items-center justify-between bg-white/5 p-4 rounded-2xl border border-white/10">
-                <div class="flex items-center gap-4">
-                    <div class="p-3 bg-white/10 rounded-xl">
-                        <svg class="w-5 h-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-                    </div>
-                    <div>
-                        <p class="text-sm font-medium">Build Phase Active</p>
-                        <p class="text-xs text-white/40">타워를 배치하고 'NEXT WAVE'를 눌러 시작하세요.</p>
-                    </div>
-                </div>
-                <div class="flex items-center gap-2">
-                    <button id="next-wave-btn" class="px-8 py-4 bg-green-500 text-black font-black rounded-xl hover:bg-green-400 transition-all flex items-center gap-3 shadow-[0_0_30px_rgba(34,197,94,0.3)] animate-pulse">
-                        <span id="next-wave-text font-mono">NEXT WAVE</span>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Sidebar -->
-        <aside class="space-y-6">
-            <!-- Tower Arsenal -->
-            <div class="bg-white/5 rounded-2xl border border-white/10 p-6">
-                <h3 class="text-xs font-bold uppercase tracking-widest text-white/40 mb-6 flex items-center gap-2">
-                    <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg>
-                    Tower Arsenal
-                </h3>
-                <div id="tower-selector" class="space-y-3">
-                    <button data-type="BASIC" class="tower-btn w-full p-4 rounded-xl border transition-all text-left bg-white/10 border-white/30 shadow-lg">
-                        <div class="flex items-center justify-between">
-                            <div class="flex items-center gap-3">
-                                <div class="w-8 h-8 rounded-lg flex items-center justify-center bg-green-500/20 text-green-400">T</div>
-                                <div><p class="font-bold text-sm">Basic</p><p class="text-[10px] text-white/40 uppercase">Cost: 10</p></div>
-                            </div>
-                        </div>
-                    </button>
-                    <!-- Other towers removed for brevity but the logic supports them -->
-                </div>
-            </div>
-        </aside>
-    </main>
-
-    <script>
-        const MAPS = {
-            CLASSIC: { id: 'CLASSIC', name: 'Classic 20x20', width: 20, height: 20, cellSize: 40, start: { x: 0, y: 9 }, end: { x: 19, y: 9 } }
+        // --- DATA ---
+        const ELEMENTS = {
+            "H": { name: "H", elementName: "Hydrogen", atomicNumber: 1, baseDmg: 10, range: 400, fireRate: 1.0 },
+            "O": { name: "O", elementName: "Oxygen", atomicNumber: 8, baseDmg: 5, range: 500, fireRate: 0.5 },
+            "Cl": { name: "Cl", elementName: "Chlorine", atomicNumber: 17, baseDmg: 25, range: 450, fireRate: 1.2 },
+            "Na": { name: "Na", elementName: "Sodium", atomicNumber: 11, baseDmg: 100, range: 250, fireRate: 2.5 },
+            "S": { name: "S", elementName: "Sulfur", atomicNumber: 16, baseDmg: 20, range: 480, fireRate: 0.9 }
         };
 
-        const TOWER_DATA = {
-            BASIC: { cost: 10, range: 3, damage: 10, fireRate: 800, color: '#4ade80', targets: ['GROUND'], label: 'Basic' }
+        const COMPOUNDS = {
+            "H2": { id: "H2", name: "H2", displayName: "Hydrogen Gas" },
+            "Cl2": { id: "Cl2", name: "Cl2", displayName: "Chlorine Gas" },
+            "HCl": { id: "HCl", name: "HCl", displayName: "Hydrochloric Acid" }
         };
 
-        const ENEMY_TYPES = {
-            NORMAL: { healthMult: 1, speed: 0.03, reward: 5, color: '#ef4444', isAir: false }
-        };
+        const TUTORIAL_STAGES = [
+            { id: "TUT-01", title: "Hydrogen Leak", enemyId: "H2", givenTowers: ["H"], quote: "Hydrogen is colorless and odorless." },
+            { id: "TUT-02", title: "Chlorine Gas Leak", enemyId: "Cl2", givenTowers: ["H", "Cl"], quote: "Chlorine is heavier than air." }
+        ];
 
-        let currentMap = MAPS.CLASSIC;
-        let grid = [];
-        let towers = [];
-        let enemies = [];
-        let projectiles = [];
-        let money = 150;
-        let lives = 20;
-        let wave = 0;
-        let isPaused = false;
-        let waveActive = false;
-        let selectedTowerType = 'BASIC';
-        let currentPath = [];
-        let gameOver = false;
-        let enemyIdCounter = 0;
-        let lastTime = 0;
-
-        const canvas = document.getElementById('game-canvas');
-        const ctx = canvas.getContext('2d');
-
-        // --- A* Algorithm ---
-        class Node { constructor(x, y) { this.x = x; this.y = y; this.f = 0; this.g = 0; this.h = 0; this.parent = null; } }
-        function aStar(start, end, grid, w, h) {
-            const openList = []; const closedList = Array.from({ length: h }, () => Array(w).fill(false));
-            openList.push(new Node(start.x, start.y));
-            while (openList.length > 0) {
-                let lowIdx = 0; for (let i = 0; i < openList.length; i++) if (openList[i].f < openList[lowIdx].f) lowIdx = i;
-                const current = openList[lowIdx];
-                if (current.x === end.x && current.y === end.y) {
-                    let curr = current; const path = []; while (curr.parent) { path.push({ x: curr.x, y: curr.y }); curr = curr.parent; }
-                    return path.reverse();
-                }
-                openList.splice(lowIdx, 1); closedList[current.y][current.x] = true;
-                const neighbors = [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}];
-                for (const n of neighbors) {
-                    const nx = current.x + n.x, ny = current.y + n.y;
-                    if (nx < 0 || nx >= w || ny < 0 || ny >= h || grid[ny][nx] || closedList[ny][nx]) continue;
-                    const gScore = current.g + 1; let best = false;
-                    let nNode = openList.find(node => node.x === nx && node.y === ny);
-                    if (!nNode) { best = true; nNode = new Node(nx, ny); nNode.h = Math.abs(nx - end.x) + Math.abs(ny - end.y); openList.push(nNode); }
-                    else if (gScore < nNode.g) best = true;
-                    if (best) { nNode.parent = current; nNode.g = gScore; nNode.f = nNode.g + nNode.h; }
-                }
-            }
-            return null;
-        }
-
-        function initMap(map) {
-            currentMap = map;
-            grid = Array.from({ length: map.height }, () => Array(map.width).fill(false));
-            towers = []; enemies = []; projectiles = []; money = 150; lives = 20; wave = 0; gameOver = false; waveActive = false;
-            canvas.width = map.width * map.cellSize; canvas.height = map.height * map.cellSize;
-            updatePath(); updateUI();
-            document.getElementById('next-wave-btn').classList.remove('opacity-50', 'pointer-events-none');
-            render();
-        }
-
-        function updatePath() {
-            const path = aStar(currentMap.start, currentMap.end, grid, currentMap.width, currentMap.height);
-            if (path) currentPath = path; return path;
-        }
-
-        function updateUI() {
-            document.getElementById('money-display').innerText = money;
-            document.getElementById('lives-display').innerText = lives;
-            document.getElementById('wave-display').innerText = `WAVE ${wave}`;
+        // --- APP COMPONENT ---
+        function App() {
+            const [mode, setMode] = useState('menu');
+            const [money, setMoney] = useState(500);
+            const [health, setHealth] = useState(20);
+            const [wave, setWave] = useState(1);
+            const [selectedElement, setSelectedElement] = useState(null);
             
-            const btn = document.getElementById('next-wave-btn');
-            if (enemies.length > 0 || waveActive) {
-                btn.classList.add('opacity-50', 'pointer-events-none');
-                btn.classList.remove('animate-pulse');
-            } else {
-                btn.classList.remove('opacity-50', 'pointer-events-none');
-                btn.classList.add('animate-pulse');
-            }
-        }
+            const canvasRef = useRef(null);
+            const towersRef = useRef([]);
+            const enemiesRef = useRef([]);
+            const projectilesRef = useRef([]);
+            const gridRef = useRef(Array(8).fill(null).map(() => Array(12).fill(false)));
+            const requestRef = useRef(0);
 
-        // --- 정확한 클릭 좌표 계산 함수 ---
-        function getCanvasCoords(clientX, clientY) {
-            const rect = canvas.getBoundingClientRect();
-            // 캔버스 크기 대비 실제 캔버스 내부 해상도 비율 계산
-            const scaleX = canvas.width / rect.width;
-            const scaleY = canvas.height / rect.height;
-            return {
-                x: (clientX - rect.left) * scaleX,
-                y: (clientY - rect.top) * scaleY
+            const findPath = useCallback((start, end) => {
+                const startX = Math.floor(start.x / 100);
+                const startY = Math.floor(start.y / 100);
+                const endX = Math.floor(end.x / 100);
+                const endY = Math.floor(end.y / 100);
+
+                const openSet = [{ x: startX, y: startY, g: 0, h: Math.abs(startX - endX) + Math.abs(startY - endY), parent: null }];
+                const closedSet = new Set();
+
+                while (openSet.length > 0) {
+                    openSet.sort((a, b) => (a.g + a.h) - (b.g + b.h));
+                    const current = openSet.shift();
+
+                    if (current.x === endX && current.y === endY) {
+                        const path = [];
+                        let curr = current;
+                        while (curr) {
+                            path.push({ x: curr.x * 100 + 50, y: curr.y * 100 + 50 });
+                            curr = curr.parent;
+                        }
+                        return path.reverse();
+                    }
+
+                    closedSet.add(`${current.x},${current.y}`);
+
+                    const neighbors = [{x: current.x+1, y: current.y}, {x: current.x-1, y: current.y}, {x: current.x, y: current.y+1}, {x: current.x, y: current.y-1}];
+                    for (const n of neighbors) {
+                        if (n.x < 0 || n.x >= 12 || n.y < 0 || n.y >= 8) continue;
+                        if (gridRef.current[n.y][n.x]) continue;
+                        if (closedSet.has(`${n.x},${n.y}`)) continue;
+
+                        const g = current.g + 1;
+                        const h = Math.abs(n.x - endX) + Math.abs(n.y - endY);
+                        const existing = openSet.find(o => o.x === n.x && o.y === n.y);
+                        if (!existing || g < existing.g) {
+                            if (existing) { existing.g = g; existing.parent = current; }
+                            else { openSet.push({ ...n, g, h, parent: current }); }
+                        }
+                    }
+                }
+                return null;
+            }, []);
+
+            const startGame = (m) => {
+                setMode(m);
+                setMoney(500);
+                setHealth(20);
+                setWave(1);
+                towersRef.current = [];
+                enemiesRef.current = [];
+                projectilesRef.current = [];
+                gridRef.current = Array(8).fill(null).map(() => Array(12).fill(false));
             };
-        }
 
-        function placeTower(x, y) {
-            if (gameOver || waveActive && enemies.length > 0) {
-               // 웨이브 진행 중에는 타워 배치에 패널티를 주거나 막을 수 있습니다 (현재는 허용)
-            }
-            
-            const gridX = Math.floor(x / currentMap.cellSize);
-            const gridY = Math.floor(y / currentMap.cellSize);
-            
-            if (gridX < 0 || gridX >= currentMap.width || gridY < 0 || gridY >= currentMap.height) return;
-            if (grid[gridY][gridX]) return;
-            if ((gridX === currentMap.start.x && gridY === currentMap.start.y) || (gridX === currentMap.end.x && gridY === currentMap.end.y)) return;
+            const spawnEnemy = useCallback(() => {
+                const id = Math.random().toString(36).substr(2, 9);
+                const startY = 400; // Center spawn for simplicity in standalone
+                const path = findPath({ x: 0, y: startY }, { x: 1100, y: startY });
+                if (!path) return;
 
-            const cost = TOWER_DATA[selectedTowerType].cost;
-            if (money < cost) return;
+                enemiesRef.current.push({
+                    id, x: -50, y: startY, health: 100 + (wave * 20), maxHealth: 100 + (wave * 20),
+                    bondEnergy: 50, maxBondEnergy: 50,
+                    speed: 1.5, compound: COMPOUNDS["H2"], radius: 30,
+                    path, pathIndex: 0
+                });
+            }, [wave, findPath]);
 
-            grid[gridY][gridX] = true;
-            if (!updatePath()) { grid[gridY][gridX] = false; return; }
+            const spawnEnemyAt = (compoundId, x, y) => {
+                const id = Math.random().toString(36).substr(2, 9);
+                const path = findPath({ x, y }, { x: 1100, y });
+                enemiesRef.current.push({
+                    id, x, y, health: 150, maxHealth: 150, bondEnergy: 0, maxBondEnergy: 0,
+                    speed: 1.0, compound: COMPOUNDS[compoundId] || COMPOUNDS["H2"], radius: 40,
+                    path: path || [{x, y}, {x: 1250, y}], pathIndex: 0
+                });
+            };
 
-            towers.push({ x: gridX, y: gridY, type: selectedTowerType, lastShot: 0, level: 1, angle: 0 });
-            money -= cost;
-            updateUI();
-        }
+            const update = () => {
+                if (mode === 'menu') return;
 
-        function startWave() {
-            if (gameOver || waveActive || enemies.length > 0) return;
-            
-            wave++;
-            waveActive = true;
-            updateUI();
-
-            const count = 5 + wave * 2;
-            const baseHealth = 20 + wave * 15;
-
-            for (let i = 0; i < count; i++) {
-                setTimeout(() => {
-                    if (gameOver) return;
-                    const enemy = {
-                        id: enemyIdCounter++,
-                        x: currentMap.start.x, y: currentMap.start.y,
-                        health: baseHealth, maxHealth: baseHealth,
-                        speed: 0.03 + (wave * 0.002), reward: 5, color: '#ef4444',
-                        pathIndex: 0, path: currentPath
-                    };
-                    enemies.push(enemy);
-                    if (i === count - 1) {
-                         // 마지막 적 스폰 완료
+                // Move Enemies
+                enemiesRef.current.forEach((e, i) => {
+                    const target = e.path[e.pathIndex + 1];
+                    if (!target) {
+                        e.x += e.speed;
+                        if (e.x > 1200) {
+                            setHealth(h => h - 1);
+                            enemiesRef.current.splice(i, 1);
+                        }
+                        return;
                     }
-                }, i * 600);
-            }
-        }
 
-        function gameLoop(time) {
-            if (!isPaused && !gameOver) {
-                enemies = enemies.filter(e => {
-                    if (e.pathIndex >= e.path.length) {
-                        lives--; if (lives <= 0) { gameOver = true; document.getElementById('game-over-overlay').classList.remove('hidden'); }
-                        updateUI(); return false;
-                    }
-                    const target = e.path[e.pathIndex];
-                    const dx = target.x - e.x, dy = target.y - e.y;
+                    const dx = target.x - e.x;
+                    const dy = target.y - e.y;
                     const dist = Math.sqrt(dx*dx + dy*dy);
-                    if (dist < e.speed) { e.x = target.x; e.y = target.y; e.pathIndex++; }
-                    else { e.x += (dx/dist)*e.speed; e.y += (dy/dist)*e.speed; }
-                    
-                    if (e.health <= 0) { money += e.reward; updateUI(); return false; }
-                    return true;
+                    if (dist < 5) {
+                        e.pathIndex++;
+                    } else {
+                        e.x += (dx/dist) * e.speed;
+                        e.y += (dy/dist) * e.speed;
+                    }
                 });
 
-                if (enemies.length === 0 && waveActive) {
-                    waveActive = false;
-                    updateUI();
+                // Tower Firing
+                towersRef.current.forEach(t => {
+                    const now = Date.now();
+                    if (!t.lastFired || now - t.lastFired > 1000 / t.element.fireRate) {
+                        const target = enemiesRef.current.find(e => {
+                            const dist = Math.sqrt((e.x - t.x)**2 + (e.y - t.y)**2);
+                            return dist < t.element.range;
+                        });
+                        if (target) {
+                            if (t.element.name === 'O' && target.compound.id === 'H2') {
+                                setMoney(m => m + 50);
+                                enemiesRef.current.splice(enemiesRef.current.indexOf(target), 1);
+                                t.lastFired = now;
+                                return;
+                            }
+                            projectilesRef.current.push({ x: t.x, y: t.y, targetId: target.id, speed: 7, damage: t.element.baseDmg, element: t.element.name });
+                            t.lastFired = now;
+                        }
+                    }
+                });
+
+                // Projectiles
+                projectilesRef.current.forEach((p, i) => {
+                    const target = enemiesRef.current.find(e => e.id === p.targetId);
+                    if (!target) { projectilesRef.current.splice(i, 1); return; }
+                    const dx = target.x - p.x;
+                    const dy = target.y - p.y;
+                    const dist = Math.sqrt(dx*dx + dy*dy);
+                    if (dist < 10) {
+                        if (p.element === 'H' && target.compound.id === 'H2') {
+                            target.bondEnergy -= p.damage;
+                            if (target.bondEnergy <= 0) {
+                                const x = target.x, y = target.y;
+                                enemiesRef.current.splice(enemiesRef.current.indexOf(target), 1);
+                                spawnEnemyAt('H', x-10, y);
+                                spawnEnemyAt('H', x+10, y);
+                                projectilesRef.current.splice(i, 1);
+                                return;
+                            }
+                        } else {
+                            target.health -= p.damage;
+                        }
+                        projectilesRef.current.splice(i, 1);
+                        if (target.health <= 0) {
+                            const idx = enemiesRef.current.findIndex(e => e.id === target.id);
+                            if (idx > -1) { enemiesRef.current.splice(idx, 1); setMoney(m => m + 20); }
+                        }
+                    } else {
+                        p.x += (dx/dist) * p.speed;
+                        p.y += (dy/dist) * p.speed;
+                    }
+                });
+
+                if (enemiesRef.current.length === 0) spawnEnemy();
+                if (health <= 0) setMode('menu');
+
+                draw();
+                requestRef.current = requestAnimationFrame(update);
+            };
+
+            const draw = () => {
+                const ctx = canvasRef.current?.getContext('2d');
+                if (!ctx) return;
+                ctx.clearRect(0, 0, 1200, 800);
+                
+                // Background
+                ctx.fillStyle = '#0a0a0a';
+                ctx.fillRect(0, 0, 1200, 800);
+
+                // Source & Exit
+                ctx.fillStyle = '#333'; ctx.fillRect(0, 340, 80, 120);
+                ctx.fillStyle = '#1a1a1a'; ctx.beginPath(); ctx.arc(1150, 400, 60, 0, Math.PI*2); ctx.fill();
+                ctx.strokeStyle = '#00FF00'; ctx.stroke();
+
+                // Grid & Blocked
+                ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+                for(let r=0; r<8; r++) {
+                    for(let c=0; c<12; c++) {
+                        if (gridRef.current[r][c]) { ctx.fillStyle = 'rgba(255,255,255,0.02)'; ctx.fillRect(c*100, r*100, 100, 100); }
+                        ctx.strokeRect(c*100, r*100, 100, 100);
+                    }
                 }
 
-                towers.forEach(t => {
-                    const data = TOWER_DATA[t.type];
-                    const target = enemies.find(e => Math.sqrt(Math.pow(e.x-t.x,2)+Math.pow(e.y-t.y,2)) <= data.range);
-                    if (target && time - t.lastShot > data.fireRate) {
-                        t.lastShot = time;
-                        target.health -= data.damage;
-                        projectiles.push({ x: t.x+0.5, y: t.y+0.5, targetId: target.id, speed: 0.2 });
-                    }
+                towersRef.current.forEach(t => {
+                    ctx.fillStyle = '#00FF00'; ctx.beginPath(); ctx.arc(t.x, t.y, 20, 0, Math.PI*2); ctx.fill();
+                    ctx.fillStyle = '#000'; ctx.font = 'bold 12px Inter'; ctx.textAlign = 'center'; ctx.fillText(t.element.name, t.x, t.y+5);
                 });
 
-                projectiles = projectiles.filter(p => {
-                    const target = enemies.find(e => e.id === p.targetId);
-                    if (!target) return false;
-                    const dx = target.x+0.5 - p.x, dy = target.y+0.5 - p.y;
-                    const dist = Math.sqrt(dx*dx + dy*dy);
-                    if (dist < p.speed) return false;
-                    p.x += (dx/dist)*p.speed; p.y += (dy/dist)*p.speed;
-                    return true;
+                enemiesRef.current.forEach(e => {
+                    ctx.fillStyle = '#E4E3E0'; ctx.beginPath(); ctx.arc(e.x, e.y, e.radius, 0, Math.PI*2); ctx.fill();
+                    ctx.fillStyle = '#00FF00'; ctx.fillRect(e.x-20, e.y-40, 40 * (e.health/e.maxHealth), 4);
+                    if (e.bondEnergy > 0) { ctx.fillStyle = '#3498db'; ctx.fillRect(e.x-20, e.y-46, 40 * (e.bondEnergy/e.maxBondEnergy), 4); }
                 });
-            }
-            render();
-            requestAnimationFrame(gameLoop);
+
+                projectilesRef.current.forEach(p => {
+                    ctx.fillStyle = '#00FF00'; ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI*2); ctx.fill();
+                });
+            };
+
+            useEffect(() => {
+                if (mode !== 'menu') requestRef.current = requestAnimationFrame(update);
+                return () => cancelAnimationFrame(requestRef.current);
+            }, [mode]);
+
+            const handleClick = (e) => {
+                if (!selectedElement) return;
+                const rect = canvasRef.current.getBoundingClientRect();
+                const x = ((e.clientX - rect.left) / rect.width) * 1200;
+                const y = ((e.clientY - rect.top) / rect.height) * 800;
+                const gridX = Math.floor(x / 100);
+                const gridY = Math.floor(y / 100);
+
+                if (gridRef.current[gridY][gridX]) return;
+                gridRef.current[gridY][gridX] = true;
+                const testPath = findPath({x: 0, y: 400}, {x: 1100, y: 400});
+                if (!testPath) { gridRef.current[gridY][gridX] = false; return; }
+
+                if (money >= 100) {
+                    towersRef.current.push({ x: gridX*100+50, y: gridY*100+50, element: selectedElement });
+                    setMoney(m => m - 100);
+                    enemiesRef.current.forEach(en => {
+                        const newPath = findPath({x: en.x, y: en.y}, {x: 1100, y: en.y});
+                        if (newPath) { en.path = newPath; en.pathIndex = 0; }
+                    });
+                } else {
+                    gridRef.current[gridY][gridX] = false;
+                }
+            };
+
+            return (
+                <div className="h-screen flex flex-col">
+                    <header className="p-4 border-b border-white/10 flex justify-between items-center bg-black">
+                        <h1 className="font-black italic text-xl">CHEMI-DEFENSE <span className="text-[#00FF00]">STANDALONE</span></h1>
+                        {mode !== 'menu' && (
+                            <div className="flex gap-6 text-xs font-mono">
+                                <span>HP: {health}</span>
+                                <span>ENERGY: {money}</span>
+                            </div>
+                        )}
+                    </header>
+
+                    <div className="flex-1 relative flex items-center justify-center bg-zinc-900">
+                        {mode === 'menu' ? (
+                            <div className="text-center space-y-8">
+                                <h2 className="text-5xl font-black italic">READY FOR DEPLOYMENT?</h2>
+                                <button onClick={() => startGame('survival')} className="px-12 py-4 bg-[#00FF00] text-black font-black uppercase tracking-widest hover:scale-105 transition-transform">START SURVIVAL</button>
+                            </div>
+                        ) : (
+                            <div className="flex w-full h-full p-4 gap-4">
+                                <div className="w-48 space-y-4">
+                                    <div className="text-[10px] uppercase opacity-50">Elements</div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {Object.values(ELEMENTS).map(el => (
+                                            <button key={el.name} onClick={() => setSelectedElement(el)} className={`p-4 border ${selectedElement?.name === el.name ? 'border-[#00FF00] bg-[#00FF00]/10' : 'border-white/10'}`}>{el.name}</button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <canvas ref={canvasRef} width="1200" height="800" onClick={handleClick} className="flex-1 border border-white/20 cursor-crosshair h-full w-full object-contain bg-black" />
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
         }
 
-        function render() {
-            const cs = currentMap.cellSize;
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.strokeStyle = '#222'; for(let i=0;i<=currentMap.width;i++){ctx.beginPath();ctx.moveTo(i*cs,0);ctx.lineTo(i*cs,canvas.height);ctx.stroke();}
-            for(let i=0;i<=currentMap.height;i++){ctx.beginPath();ctx.moveTo(0,i*cs);ctx.lineTo(canvas.width,i*cs);ctx.stroke();}
-            
-            ctx.fillStyle = '#4ade8022'; currentPath.forEach(p => ctx.fillRect(p.x*cs,p.y*cs,cs,cs));
-            ctx.fillStyle = '#4ade80'; ctx.fillRect(currentMap.start.x*cs,currentMap.start.y*cs,cs,cs);
-            ctx.fillStyle = '#f87171'; ctx.fillRect(currentMap.end.x*cs,currentMap.end.y*cs,cs,cs);
-
-            towers.forEach(t => {
-                ctx.fillStyle = TOWER_DATA[t.type].color;
-                ctx.beginPath(); ctx.roundRect(t.x*cs+4, t.y*cs+4, cs-8, cs-8, 8); ctx.fill();
-            });
-
-            enemies.forEach(e => {
-                ctx.fillStyle = e.color; ctx.beginPath(); ctx.arc(e.x*cs+cs/2, e.y*cs+cs/2, cs/4, 0, Math.PI*2); ctx.fill();
-                const barW = (e.health/e.maxHealth)*cs*0.6; ctx.fillStyle='#000'; ctx.fillRect(e.x*cs+cs*0.2,e.y*cs+5,cs*0.6,4);
-                ctx.fillStyle='#4ade80'; ctx.fillRect(e.x*cs+cs*0.2,e.y*cs+5,barW,4);
-            });
-
-            projectiles.forEach(p => {
-                ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(p.x*cs, p.y*cs, 3, 0, Math.PI*2); ctx.fill();
-            });
-        }
-
-        canvas.addEventListener('mousedown', (e) => {
-            const coords = getCanvasCoords(e.clientX, e.clientY);
-            placeTower(coords.x, coords.y);
-        });
-
-        document.getElementById('next-wave-btn').addEventListener('click', startWave);
-        document.getElementById('reset-btn').addEventListener('click', () => initMap(MAPS.CLASSIC));
-        document.getElementById('restart-btn').addEventListener('click', () => initMap(MAPS.CLASSIC));
-        
-        initMap(MAPS.CLASSIC);
-        requestAnimationFrame(gameLoop);
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
     </script>
 </body>
 </html>
