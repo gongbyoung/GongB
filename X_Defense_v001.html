@@ -3,221 +3,305 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chemi-Defense Standalone</title>
+    <title>Chemical Defense: Standalone Protocol V002</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/framer-motion@10.16.4/dist/framer-motion.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; background-color: #141414; color: #E4E3E0; margin: 0; overflow: hidden; }
-        canvas { display: block; background: #000; }
+        body { font-family: 'Inter', sans-serif; background-color: #0a0a0a; color: #E4E3E0; margin: 0; overflow: hidden; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        canvas { display: block; background: #000; image-rendering: pixelated; }
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: rgba(228, 227, 224, 0.05); }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(228, 227, 224, 0.2); }
         .custom-scrollbar { scrollbar-width: thin; scrollbar-color: rgba(228, 227, 224, 0.2) transparent; }
+        @keyframes scanline {
+            0% { transform: translateY(-100%); }
+            100% { transform: translateY(100%); }
+        }
+        .scanline {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(to bottom, transparent, rgba(0, 255, 0, 0.05), transparent);
+            animation: scanline 8s linear infinite;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useRef, useCallback } = React;
+        const { useState, useEffect, useRef, useCallback, useMemo } = React;
+        const { motion, AnimatePresence } = window.Motion;
 
-        // --- DATA ---
+        // --- CONSTANTS & DATA ---
+        const CANVAS_WIDTH = 1400; // Increased to allow entrance/exit outside
+        const CANVAS_HEIGHT = 900; 
+        const GRID_SIZE = 100;
+        const GRID_COLS = 12;
+        const GRID_ROWS = 7;
+        const OFFSET_X = 100; // Grid starts at 100px
+        const OFFSET_Y = 100; // Grid starts at 100px
+
         const ELEMENTS = {
-            "H": { name: "H", elementName: "Hydrogen", atomicNumber: 1, baseDmg: 10, range: 400, fireRate: 1.0 },
-            "O": { name: "O", elementName: "Oxygen", atomicNumber: 8, baseDmg: 5, range: 500, fireRate: 0.5 },
-            "Cl": { name: "Cl", elementName: "Chlorine", atomicNumber: 17, baseDmg: 25, range: 450, fireRate: 1.2 },
-            "Na": { name: "Na", elementName: "Sodium", atomicNumber: 11, baseDmg: 100, range: 250, fireRate: 2.5 },
-            "S": { name: "S", elementName: "Sulfur", atomicNumber: 16, baseDmg: 20, range: 480, fireRate: 0.9 }
+            "H": { name: "H", elementName: "Hydrogen", cost: 10, range: 350, fireRate: 1.2, type: "tower", reactionType: "BondBreaker", color: "#00FF00", valenceElectrons: 1 },
+            "O": { name: "O", elementName: "Oxygen", cost: 25, range: 450, fireRate: 0.8, type: "tower", reactionType: "Neutralizer", color: "#60a5fa", valenceElectrons: 6 },
+            "Cl": { name: "Cl", elementName: "Chlorine", cost: 20, range: 400, fireRate: 1.0, type: "tower", reactionType: "BondBreaker", color: "#a855f7", valenceElectrons: 7 },
+            "Na": { name: "Na", elementName: "Sodium", cost: 40, range: 300, fireRate: 2.0, type: "tower", reactionType: "Neutralizer", color: "#fbbf24", valenceElectrons: 1 },
+            "Ca": { name: "Ca", elementName: "Calcium", cost: 60, range: 400, fireRate: 0.5, type: "tower", reactionType: "Neutralizer", color: "#ffffff", valenceElectrons: 2 },
+            "S": { name: "S", elementName: "Sulfur", cost: 30, range: 420, fireRate: 0.9, type: "tower", reactionType: "BondBreaker", color: "#eab308", valenceElectrons: 6 },
+            "C": { name: "C", elementName: "Carbon", cost: 50, range: 380, fireRate: 1.1, type: "tower", reactionType: "StructureBreaker", color: "#444444", valenceElectrons: 4 },
+            "GLASS_WALL": { name: "Wall", elementName: "Glass Beaker", cost: 5, range: 0, fireRate: 0, type: "obstacle", color: "#3498db" }
         };
 
         const COMPOUNDS = {
-            "H2": { id: "H2", name: "H2", displayName: "Hydrogen Gas" },
-            "Cl2": { id: "Cl2", name: "Cl2", displayName: "Chlorine Gas" },
-            "HCl": { id: "HCl", name: "HCl", displayName: "Hydrochloric Acid" }
+            "H2": { id: "H2", name: "H2", displayName: "Hydrogen Gas", hazard: "Flammable", description: "Colorless and odorless. Highly explosive.", health: 100, speed: 1.5 },
+            "Cl2": { id: "Cl2", name: "Cl2", displayName: "Chlorine Gas", hazard: "Toxic", description: "Heavy green-yellow gas. Deadly at low concentrations.", health: 200, speed: 1.0, effects: ["paralysis"] },
+            "HCl": { id: "HCl", name: "HCl", displayName: "Hydrochloric Acid", hazard: "Corrosive", description: "Powerful acid. Penetrates surfaces quickly.", health: 150, speed: 1.2, residueId: "Cl-" },
+            "NH3": { id: "NH3", name: "NH3", displayName: "Ammonia", hazard: "Toxic / Irritant", description: "Pungent smell. Lighter than air.", health: 120, speed: 1.8 },
+            "HF": { id: "HF", name: "HF", displayName: "Hydrofluoric Acid", hazard: "Extreme Corrosive", description: "Penetrates skin and melts bone.", health: 300, speed: 1.0, effects: ["corrosion"] },
+            "H2S": { id: "H2S", name: "H2S", displayName: "Hydrogen Sulfide", hazard: "Highly Toxic", description: "Rotten egg smell. Paralyzes smell receptors.", health: 250, speed: 1.2, effects: ["paralysis"] },
+            "H2SO4_D": { id: "H2SO4_D", name: "H2SO4(dil)", displayName: "Dilute Sulfuric Acid", hazard: "Corrosive", health: 400, speed: 0.8, residueId: "HSO4-" },
+            "HSO4-": { id: "HSO4-", name: "HSO4-", displayName: "Bisulfate Ion", hazard: "Acidic", health: 200, speed: 1.0, residueId: "SO42-" },
+            "SO42-": { id: "SO42-", name: "SO4-", displayName: "Sulfate Ion", hazard: "Neutralizable", health: 150, speed: 1.0 },
+            "COCl2": { id: "COCl2", name: "COCl2", displayName: "Phosgene", hazard: "Lethal Gas", health: 500, speed: 0.7, effects: ["corrosion"] }
         };
 
         const TUTORIAL_STAGES = [
-            { id: "TUT-01", title: "Hydrogen Leak", enemyId: "H2", givenTowers: ["H"], quote: "Hydrogen is colorless and odorless." },
-            { id: "TUT-02", title: "Chlorine Gas Leak", enemyId: "Cl2", givenTowers: ["H", "Cl"], quote: "Chlorine is heavier than air." }
+            { id: "TUT-01", title: "수소 누출 (H₂)", enemyId: "H2", givenTowers: ["H"], quote: "수소는 보이지 않는 게 더 위험하다." },
+            { id: "TUT-02", title: "염소 가스 (Cl₂)", enemyId: "Cl2", givenTowers: ["H", "Cl"], quote: "염소는 공기보다 무거워 바닥을 기어온다." },
+            { id: "TUT-03", title: "염산 누출 (HCl)", enemyId: "HCl", givenTowers: ["H", "Cl", "Na"], quote: "이온화될수록 더 빨리 움직인다." },
+            { id: "TUT-04", title: "암모니아 (NH₃)", enemyId: "NH3", givenTowers: ["H", "O", "C"], quote: "암모니아는 공기보다 가볍다. 위쪽을 조심해라." },
+            { id: "TUT-05", title: "불산 사고 (HF) ⚠️", enemyId: "HF", givenTowers: ["H", "Ca"], quote: "HF는 피부를 뚫고 뼈를 녹인다." },
+            { id: "TUT-06", title: "황화수소 (H₂S)", enemyId: "H2S", givenTowers: ["H", "S", "O"], quote: "달걀 썩는 냄새가 나면 이미 늦었다." },
+            { id: "TUT-07", title: "희석 황산 (H₂SO₄)", enemyId: "H2SO4_D", givenTowers: ["H", "S", "O", "Na"], quote: "단계적으로 분해해야 한다." },
+            { id: "TUT-08", title: "포스겐 (COCl₂)", enemyId: "COCl2", givenTowers: ["C", "O", "Cl"], quote: "무색무취. 풀냄새라고 생각했다면 끝이다." },
+            { id: "TUT-09", title: "다중 누출 복합 사고", enemyId: "HCl", givenTowers: ["H", "Na", "O", "Cl", "S"], quote: "공단 화재 시 복합적으로 몰려온다." },
+            { id: "TUT-10", title: "황산 탱크 대형 누출", enemyId: "H2SO4_D", givenTowers: ["H", "O", "S", "Na", "Ca", "C", "Cl"], quote: "지금까지 배운 모든 것을 동원해라." }
         ];
 
-        // --- APP COMPONENT ---
+        // --- COMPONENTS ---
+
         function App() {
             const [mode, setMode] = useState('menu');
             const [money, setMoney] = useState(500);
             const [health, setHealth] = useState(20);
             const [wave, setWave] = useState(1);
-            const [selectedElement, setSelectedElement] = useState(null);
+            const [currentStageIndex, setCurrentStageIndex] = useState(0);
+            const [selectedElement, setSelectedElement] = useState(ELEMENTS['H']);
+            const [isWaveActive, setIsWaveActive] = useState(false);
+            const [logs, setLogs] = useState([]);
             
             const canvasRef = useRef(null);
+            const gridRef = useRef(Array(GRID_ROWS).fill(null).map(() => Array(GRID_COLS).fill(false)));
             const towersRef = useRef([]);
             const enemiesRef = useRef([]);
             const projectilesRef = useRef([]);
-            const gridRef = useRef(Array(8).fill(null).map(() => Array(12).fill(false)));
+            const particlesRef = useRef([]);
             const requestRef = useRef(0);
+            const enemiesToSpawn = useRef(0);
+            const lastSpawnTime = useRef(0);
+
+            const addLog = (msg) => {
+                setLogs(prev => [msg, ...prev].slice(0, 5));
+            };
 
             const findPath = useCallback((start, end) => {
-                const startX = Math.floor(start.x / 100);
-                const startY = Math.floor(start.y / 100);
-                const endX = Math.floor(end.x / 100);
-                const endY = Math.floor(end.y / 100);
+                const startX = Math.floor((start.x - OFFSET_X) / GRID_SIZE);
+                const startY = Math.floor((start.y - OFFSET_Y) / GRID_SIZE);
+                const endX = Math.floor((end.x - OFFSET_X) / GRID_SIZE);
+                const endY = Math.floor((end.y - OFFSET_Y) / GRID_SIZE);
 
+                // Entrance/Exit are outside grid, so we need to bridge them
                 const openSet = [{ x: startX, y: startY, g: 0, h: Math.abs(startX - endX) + Math.abs(startY - endY), parent: null }];
                 const closedSet = new Set();
 
                 while (openSet.length > 0) {
                     openSet.sort((a, b) => (a.g + a.h) - (b.g + b.h));
                     const current = openSet.shift();
+                    const key = `${current.x},${current.y}`;
 
                     if (current.x === endX && current.y === endY) {
                         const path = [];
                         let curr = current;
                         while (curr) {
-                            path.push({ x: curr.x * 100 + 50, y: curr.y * 100 + 50 });
+                            path.push({ x: curr.x * GRID_SIZE + GRID_SIZE/2 + OFFSET_X, y: curr.y * GRID_SIZE + GRID_SIZE/2 + OFFSET_Y });
                             curr = curr.parent;
                         }
                         return path.reverse();
                     }
 
-                    closedSet.add(`${current.x},${current.y}`);
+                    closedSet.add(key);
 
-                    const neighbors = [{x: current.x+1, y: current.y}, {x: current.x-1, y: current.y}, {x: current.x, y: current.y+1}, {x: current.x, y: current.y-1}];
+                    const neighbors = [{x:1,y:0}, {x:-1,y:0}, {x:0,y:1}, {x:0,y:-1}];
                     for (const n of neighbors) {
-                        if (n.x < 0 || n.x >= 12 || n.y < 0 || n.y >= 8) continue;
-                        if (gridRef.current[n.y][n.x]) continue;
-                        if (closedSet.has(`${n.x},${n.y}`)) continue;
+                        const nx = current.x + n.x;
+                        const ny = current.y + n.y;
+                        
+                        // Allow pathing to entrance/exit cells even if outside GRID_COLS/ROWS
+                        const isEntrance = nx === -1 && ny === Math.floor(GRID_ROWS/2);
+                        const isExit = nx === GRID_COLS && ny === Math.floor(GRID_ROWS/2);
+                        
+                        if (!isEntrance && !isExit) {
+                            if (nx < 0 || nx >= GRID_COLS || ny < 0 || ny >= GRID_ROWS) continue;
+                            if (gridRef.current[ny][nx]) continue;
+                        }
+                        
+                        if (closedSet.has(`${nx},${ny}`)) continue;
 
                         const g = current.g + 1;
-                        const h = Math.abs(n.x - endX) + Math.abs(n.y - endY);
-                        const existing = openSet.find(o => o.x === n.x && o.y === n.y);
+                        const h = Math.abs(nx - endX) + Math.abs(ny - endY);
+                        const existing = openSet.find(o => o.x === nx && o.y === ny);
                         if (!existing || g < existing.g) {
-                            if (existing) { existing.g = g; existing.parent = current; }
-                            else { openSet.push({ ...n, g, h, parent: current }); }
+                            if (existing) {
+                                existing.g = g;
+                                existing.parent = current;
+                            } else {
+                                openSet.push({ x: nx, y: ny, g, h, parent: current });
+                            }
                         }
                     }
                 }
                 return null;
             }, []);
 
-            const startGame = (m) => {
-                setMode(m);
-                setMoney(500);
+            const startGame = (gameMode, stageIdx = 0) => {
+                setMode(gameMode);
+                setCurrentStageIndex(stageIdx);
+                setMoney(gameMode === 'tutorial' ? 1000 : 500);
                 setHealth(20);
                 setWave(1);
+                setIsWaveActive(false);
                 towersRef.current = [];
                 enemiesRef.current = [];
                 projectilesRef.current = [];
-                gridRef.current = Array(8).fill(null).map(() => Array(12).fill(false));
+                gridRef.current = Array(GRID_ROWS).fill(null).map(() => Array(GRID_COLS).fill(false));
+                addLog(gameMode === 'tutorial' ? `TUTORIAL: ${TUTORIAL_STAGES[stageIdx].title}` : "SURVIVAL MODE INITIATED");
             };
 
-            const spawnEnemy = useCallback(() => {
+            const spawnEnemy = (compoundId, y = CANVAS_HEIGHT/2) => {
+                const compound = COMPOUNDS[compoundId] || COMPOUNDS['H2'];
                 const id = Math.random().toString(36).substr(2, 9);
-                const startY = 400; // Center spawn for simplicity in standalone
-                const path = findPath({ x: 0, y: startY }, { x: 1100, y: startY });
+                
+                // Spawn/Exit points
+                const spawnPos = { x: 50, y: OFFSET_Y + Math.floor(GRID_ROWS/2) * GRID_SIZE + GRID_SIZE/2 };
+                const exitPos = { x: CANVAS_WIDTH - 50, y: OFFSET_Y + Math.floor(GRID_ROWS/2) * GRID_SIZE + GRID_SIZE/2 };
+
+                const path = findPath(spawnPos, exitPos);
                 if (!path) return;
 
-                enemiesRef.current.push({
-                    id, x: -50, y: startY, health: 100 + (wave * 20), maxHealth: 100 + (wave * 20),
-                    bondEnergy: 50, maxBondEnergy: 50,
-                    speed: 1.5, compound: COMPOUNDS["H2"], radius: 30,
-                    path, pathIndex: 0
-                });
-            }, [wave, findPath]);
-
-            const spawnEnemyAt = (compoundId, x, y) => {
-                const id = Math.random().toString(36).substr(2, 9);
-                const path = findPath({ x, y }, { x: 1100, y });
-                enemiesRef.current.push({
-                    id, x, y, health: 150, maxHealth: 150, bondEnergy: 0, maxBondEnergy: 0,
-                    speed: 1.0, compound: COMPOUNDS[compoundId] || COMPOUNDS["H2"], radius: 40,
-                    path: path || [{x, y}, {x: 1250, y}], pathIndex: 0
-                });
+                const enemy = {
+                    id, x: -50, y: spawnPos.y,
+                    health: compound.health + (wave * 20),
+                    maxHealth: compound.health + (wave * 20),
+                    speed: compound.speed,
+                    compound,
+                    path, pathIndex: 0,
+                    radius: 35 + (compound.displayName.length * 2),
+                    debuffs: []
+                };
+                enemiesRef.current.push(enemy);
             };
 
-            const update = () => {
-                if (mode === 'menu') return;
+            const update = (time) => {
+                if (mode === 'menu' || mode === 'gameover' || mode === 'clear') return;
 
-                // Move Enemies
+                // 1. Spawning
+                if (isWaveActive && enemiesToSpawn.current > 0) {
+                    if (time - lastSpawnTime.current > 1500) {
+                        const compoundId = mode === 'tutorial' ? TUTORIAL_STAGES[currentStageIndex].enemyId : 'H2';
+                        spawnEnemy(compoundId);
+                        enemiesToSpawn.current--;
+                        lastSpawnTime.current = time;
+                    }
+                }
+
+                // 2. Enemies
                 enemiesRef.current.forEach((e, i) => {
+                    // Effects
+                    if (e.compound.effects) {
+                        towersRef.current.forEach(t => {
+                            const dist = Math.sqrt((e.x-t.x)**2 + (e.y-t.y)**2);
+                            if (dist < 150) {
+                                if (e.compound.effects.includes('corrosion')) t.durability -= 0.05;
+                                if (e.compound.effects.includes('paralysis')) t.effectTimer = 60;
+                            }
+                        });
+                    }
+
                     const target = e.path[e.pathIndex + 1];
                     if (!target) {
                         e.x += e.speed;
-                        if (e.x > 1200) {
+                        if (e.x > CANVAS_WIDTH + 50) {
                             setHealth(h => h - 1);
                             enemiesRef.current.splice(i, 1);
                         }
-                        return;
+                    } else {
+                        const dx = target.x - e.x, dy = target.y - e.y;
+                        const dist = Math.sqrt(dx*dx + dy*dy);
+                        if (dist < 5) e.pathIndex++;
+                        else {
+                            e.x += (dx/dist) * e.speed;
+                            e.y += (dy/dist) * e.speed;
+                        }
                     }
 
-                    const dx = target.x - e.x;
-                    const dy = target.y - e.y;
-                    const dist = Math.sqrt(dx*dx + dy*dy);
-                    if (dist < 5) {
-                        e.pathIndex++;
-                    } else {
-                        e.x += (dx/dist) * e.speed;
-                        e.y += (dy/dist) * e.speed;
+                    if (e.health <= 0) {
+                        if (e.compound.residueId) spawnEnemy(e.compound.residueId, e.y);
+                        setMoney(m => m + 50);
+                        enemiesRef.current.splice(i, 1);
                     }
                 });
 
-                // Tower Firing
+                // 3. Towers
                 towersRef.current.forEach(t => {
+                    if (t.durability <= 0) return;
+                    if (t.effectTimer > 0) { t.effectTimer--; return; }
+
                     const now = Date.now();
                     if (!t.lastFired || now - t.lastFired > 1000 / t.element.fireRate) {
-                        const target = enemiesRef.current.find(e => {
-                            const dist = Math.sqrt((e.x - t.x)**2 + (e.y - t.y)**2);
-                            return dist < t.element.range;
-                        });
+                        const target = enemiesRef.current.find(e => Math.sqrt((e.x-t.x)**2+(e.y-t.y)**2) < t.element.range);
                         if (target) {
-                            if (t.element.name === 'O' && target.compound.id === 'H2') {
-                                setMoney(m => m + 50);
-                                enemiesRef.current.splice(enemiesRef.current.indexOf(target), 1);
-                                t.lastFired = now;
-                                return;
-                            }
-                            projectilesRef.current.push({ x: t.x, y: t.y, targetId: target.id, speed: 7, damage: t.element.baseDmg, element: t.element.name });
+                            projectilesRef.current.push({ x: t.x, y: t.y, targetId: target.id, speed: 7, damage: 20 });
                             t.lastFired = now;
                         }
                     }
                 });
 
-                // Projectiles
+                // 4. Projectiles
                 projectilesRef.current.forEach((p, i) => {
                     const target = enemiesRef.current.find(e => e.id === p.targetId);
                     if (!target) { projectilesRef.current.splice(i, 1); return; }
-                    const dx = target.x - p.x;
-                    const dy = target.y - p.y;
+                    const dx = target.x - p.x, dy = target.y - p.y;
                     const dist = Math.sqrt(dx*dx + dy*dy);
-                    if (dist < 10) {
-                        if (p.element === 'H' && target.compound.id === 'H2') {
-                            target.bondEnergy -= p.damage;
-                            if (target.bondEnergy <= 0) {
-                                const x = target.x, y = target.y;
-                                enemiesRef.current.splice(enemiesRef.current.indexOf(target), 1);
-                                spawnEnemyAt('H', x-10, y);
-                                spawnEnemyAt('H', x+10, y);
-                                projectilesRef.current.splice(i, 1);
-                                return;
-                            }
-                        } else {
-                            target.health -= p.damage;
-                        }
+                    if (dist < 15) {
+                        target.health -= p.damage;
                         projectilesRef.current.splice(i, 1);
-                        if (target.health <= 0) {
-                            const idx = enemiesRef.current.findIndex(e => e.id === target.id);
-                            if (idx > -1) { enemiesRef.current.splice(idx, 1); setMoney(m => m + 20); }
-                        }
                     } else {
                         p.x += (dx/dist) * p.speed;
                         p.y += (dy/dist) * p.speed;
                     }
                 });
 
-                if (enemiesRef.current.length === 0) spawnEnemy();
-                if (health <= 0) setMode('menu');
+                // Wave Control
+                if (isWaveActive && enemiesRef.current.length === 0 && enemiesToSpawn.current === 0) {
+                    setIsWaveActive(false);
+                    if (mode === 'tutorial') {
+                        if (currentStageIndex < TUTORIAL_STAGES.length - 1) {
+                            addLog("STAGE CLEAR!");
+                            setMode('mode-menu');
+                        } else {
+                            setMode('clear');
+                        }
+                    } else {
+                        setWave(w => w + 1);
+                    }
+                }
+
+                if (health <= 0) setMode('gameover');
 
                 draw();
                 requestRef.current = requestAnimationFrame(update);
@@ -226,107 +310,278 @@
             const draw = () => {
                 const ctx = canvasRef.current?.getContext('2d');
                 if (!ctx) return;
-                ctx.clearRect(0, 0, 1200, 800);
-                
-                // Background
-                ctx.fillStyle = '#0a0a0a';
-                ctx.fillRect(0, 0, 1200, 800);
+                ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-                // Source & Exit
-                ctx.fillStyle = '#333'; ctx.fillRect(0, 340, 80, 120);
-                ctx.fillStyle = '#1a1a1a'; ctx.beginPath(); ctx.arc(1150, 400, 60, 0, Math.PI*2); ctx.fill();
-                ctx.strokeStyle = '#00FF00'; ctx.stroke();
-
-                // Grid & Blocked
-                ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-                for(let r=0; r<8; r++) {
-                    for(let c=0; c<12; c++) {
-                        if (gridRef.current[r][c]) { ctx.fillStyle = 'rgba(255,255,255,0.02)'; ctx.fillRect(c*100, r*100, 100, 100); }
-                        ctx.strokeRect(c*100, r*100, 100, 100);
-                    }
+                // Draw Path Visualization
+                const spawnPos = { x: 50, y: OFFSET_Y + Math.floor(GRID_ROWS/2) * GRID_SIZE + GRID_SIZE/2 };
+                const exitPos = { x: CANVAS_WIDTH - 50, y: OFFSET_Y + Math.floor(GRID_ROWS/2) * GRID_SIZE + GRID_SIZE/2 };
+                const path = findPath(spawnPos, exitPos);
+                if (path) {
+                    ctx.setLineDash([10, 10]);
+                    ctx.strokeStyle = "rgba(100, 100, 100, 0.4)";
+                    ctx.lineWidth = 4;
+                    ctx.beginPath();
+                    ctx.moveTo(spawnPos.x, spawnPos.y);
+                    path.forEach(p => ctx.lineTo(p.x, p.y));
+                    ctx.lineTo(exitPos.x, exitPos.y);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
                 }
 
+                // Grid
+                ctx.strokeStyle = "rgba(0, 255, 0, 0.1)";
+                ctx.lineWidth = 1;
+                for(let x=0; x<=GRID_COLS; x++) { 
+                    ctx.beginPath(); 
+                    ctx.moveTo(OFFSET_X + x * GRID_SIZE, OFFSET_Y); 
+                    ctx.lineTo(OFFSET_X + x * GRID_SIZE, OFFSET_Y + GRID_ROWS * GRID_SIZE); 
+                    ctx.stroke(); 
+                }
+                for(let y=0; y<=GRID_ROWS; y++) { 
+                    ctx.beginPath(); 
+                    ctx.moveTo(OFFSET_X, OFFSET_Y + y * GRID_SIZE); 
+                    ctx.lineTo(OFFSET_X + GRID_COLS * GRID_SIZE, OFFSET_Y + y * GRID_SIZE); 
+                    ctx.stroke(); 
+                }
+
+                // Entrance / Exit
+                ctx.fillStyle = "rgba(0, 255, 0, 0.2)";
+                ctx.beginPath(); ctx.arc(spawnPos.x, spawnPos.y, 40, 0, Math.PI*2); ctx.fill();
+                ctx.strokeStyle = "#00FF00"; ctx.stroke();
+                
+                ctx.fillStyle = "rgba(255, 0, 0, 0.1)";
+                ctx.beginPath(); ctx.arc(exitPos.x, exitPos.y, 60, 0, Math.PI*2); ctx.fill();
+                ctx.strokeStyle = "#FF0000"; ctx.stroke();
+
+                // Towers
                 towersRef.current.forEach(t => {
-                    ctx.fillStyle = '#00FF00'; ctx.beginPath(); ctx.arc(t.x, t.y, 20, 0, Math.PI*2); ctx.fill();
-                    ctx.fillStyle = '#000'; ctx.font = 'bold 12px Inter'; ctx.textAlign = 'center'; ctx.fillText(t.element.name, t.x, t.y+5);
+                    const radius = t.element.type === 'tower' ? 45 : 40;
+                    ctx.fillStyle = t.durability <= 0 ? "#333" : t.element.color;
+                    ctx.beginPath();
+                    if (t.element.type === 'tower') ctx.arc(t.x, t.y, radius, 0, Math.PI*2);
+                    else ctx.roundRect(t.x-40, t.y-40, 80, 80, 10);
+                    ctx.fill();
+                    
+                    ctx.fillStyle = "#fff"; ctx.font = "bold 16px Inter"; ctx.textAlign = "center";
+                    ctx.fillText(t.element.name, t.x, t.y + 6);
+
+                    if (t.durability < 100) {
+                        ctx.fillStyle = "#111"; ctx.fillRect(t.x-30, t.y+35, 60, 5);
+                        ctx.fillStyle = "#FF0000"; ctx.fillRect(t.x-30, t.y+35, 60 * (t.durability/100), 5);
+                    }
                 });
 
+                // Enemies
                 enemiesRef.current.forEach(e => {
-                    ctx.fillStyle = '#E4E3E0'; ctx.beginPath(); ctx.arc(e.x, e.y, e.radius, 0, Math.PI*2); ctx.fill();
-                    ctx.fillStyle = '#00FF00'; ctx.fillRect(e.x-20, e.y-40, 40 * (e.health/e.maxHealth), 4);
-                    if (e.bondEnergy > 0) { ctx.fillStyle = '#3498db'; ctx.fillRect(e.x-20, e.y-46, 40 * (e.bondEnergy/e.maxBondEnergy), 4); }
+                    ctx.fillStyle = "rgba(255, 255, 255, 0.1)";
+                    ctx.beginPath(); ctx.arc(e.x, e.y, e.radius, 0, Math.PI*2); ctx.fill();
+                    ctx.strokeStyle = "#fff"; ctx.lineWidth = 1; ctx.stroke();
+                    
+                    ctx.fillStyle = "#00FF00"; ctx.fillRect(e.x-30, e.y-e.radius-10, 60 * (e.health/e.maxHealth), 4);
+                    
+                    ctx.fillStyle = "#fff"; ctx.font = "bold 10px font-mono"; ctx.textAlign = "center";
+                    ctx.fillText(e.compound.name, e.x, e.y+4);
+                    ctx.fillText(e.compound.displayName, e.x, e.y+15);
                 });
 
+                // Projectiles
                 projectilesRef.current.forEach(p => {
-                    ctx.fillStyle = '#00FF00'; ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI*2); ctx.fill();
+                    ctx.fillStyle = "#00FF00"; ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI*2); ctx.fill();
                 });
+            };
+
+            const handleCanvasClick = (e) => {
+                if (isWaveActive || mode === 'menu') return;
+                const rect = canvasRef.current.getBoundingClientRect();
+                const x = ((e.clientX - rect.left) / rect.width) * CANVAS_WIDTH;
+                const y = ((e.clientY - rect.top) / rect.height) * CANVAS_HEIGHT;
+                
+                const gx = Math.floor((x - OFFSET_X) / GRID_SIZE);
+                const gy = Math.floor((y - OFFSET_Y) / GRID_SIZE);
+
+                if (gx < 0 || gx >= GRID_COLS || gy < 0 || gy >= GRID_ROWS) return;
+                if (gridRef.current[gy][gx]) return;
+                if (money < selectedElement.cost) return;
+
+                gridRef.current[gy][gx] = true;
+                
+                const spawnPos = { x: 50, y: OFFSET_Y + Math.floor(GRID_ROWS/2) * GRID_SIZE + GRID_SIZE/2 };
+                const exitPos = { x: CANVAS_WIDTH - 50, y: OFFSET_Y + Math.floor(GRID_ROWS/2) * GRID_SIZE + GRID_SIZE/2 };
+
+                const path = findPath(spawnPos, exitPos);
+                if (!path) { 
+                    addLog("PROTOCOL REJECTED: Path must remain open.");
+                    gridRef.current[gy][gx] = false; 
+                    return; 
+                }
+
+                towersRef.current.push({
+                    x: gx*GRID_SIZE+GRID_SIZE/2 + OFFSET_X, y: gy*GRID_SIZE+GRID_SIZE/2 + OFFSET_Y,
+                    element: selectedElement, lastFired: 0, durability: 100, maxDurability: 100, effectTimer: 0
+                });
+                setMoney(m => m - selectedElement.cost);
             };
 
             useEffect(() => {
-                if (mode !== 'menu') requestRef.current = requestAnimationFrame(update);
+                requestRef.current = requestAnimationFrame(update);
                 return () => cancelAnimationFrame(requestRef.current);
-            }, [mode]);
-
-            const handleClick = (e) => {
-                if (!selectedElement) return;
-                const rect = canvasRef.current.getBoundingClientRect();
-                const x = ((e.clientX - rect.left) / rect.width) * 1200;
-                const y = ((e.clientY - rect.top) / rect.height) * 800;
-                const gridX = Math.floor(x / 100);
-                const gridY = Math.floor(y / 100);
-
-                if (gridRef.current[gridY][gridX]) return;
-                gridRef.current[gridY][gridX] = true;
-                const testPath = findPath({x: 0, y: 400}, {x: 1100, y: 400});
-                if (!testPath) { gridRef.current[gridY][gridX] = false; return; }
-
-                if (money >= 100) {
-                    towersRef.current.push({ x: gridX*100+50, y: gridY*100+50, element: selectedElement });
-                    setMoney(m => m - 100);
-                    enemiesRef.current.forEach(en => {
-                        const newPath = findPath({x: en.x, y: en.y}, {x: 1100, y: en.y});
-                        if (newPath) { en.path = newPath; en.pathIndex = 0; }
-                    });
-                } else {
-                    gridRef.current[gridY][gridX] = false;
-                }
-            };
+            }, [mode, health, money, isWaveActive]);
 
             return (
-                <div className="h-screen flex flex-col">
-                    <header className="p-4 border-b border-white/10 flex justify-between items-center bg-black">
-                        <h1 className="font-black italic text-xl">CHEMI-DEFENSE <span className="text-[#00FF00]">STANDALONE</span></h1>
+                <div className="h-screen flex flex-col relative overflow-hidden bg-black text-[#E4E3E0]">
+                    <div className="scanline" />
+
+                    {/* Header */}
+                    <header className="p-4 border-b border-[#E4E3E0]/10 flex justify-between items-center z-50 bg-black/80 backdrop-blur-md">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-[#00FF00] rounded-lg flex items-center justify-center text-black">
+                                <Shield className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <h1 className="font-black italic text-xl tracking-tighter">CHEMI-DEFENSE</h1>
+                                <p className="text-[10px] uppercase tracking-[0.3em] opacity-50 -mt-1 font-mono">Terminal Protocol 0.0.9</p>
+                            </div>
+                        </div>
+
                         {mode !== 'menu' && (
-                            <div className="flex gap-6 text-xs font-mono">
-                                <span>HP: {health}</span>
-                                <span>ENERGY: {money}</span>
+                            <div className="flex items-center gap-8 font-mono text-xs">
+                                <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />HEALTH: {health}</div>
+                                <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-[#00FF00]" />CURRENCY: {money}G</div>
+                                <div className="flex items-center gap-2 font-black text-[#00FF00]">WAVE: {wave}</div>
                             </div>
                         )}
+                        <button onClick={() => setMode('menu')} className="text-[10px] uppercase opacity-30 hover:opacity-100 transition-opacity">Abort System</button>
                     </header>
 
-                    <div className="flex-1 relative flex items-center justify-center bg-zinc-900">
-                        {mode === 'menu' ? (
-                            <div className="text-center space-y-8">
-                                <h2 className="text-5xl font-black italic">READY FOR DEPLOYMENT?</h2>
-                                <button onClick={() => startGame('survival')} className="px-12 py-4 bg-[#00FF00] text-black font-black uppercase tracking-widest hover:scale-105 transition-transform">START SURVIVAL</button>
-                            </div>
-                        ) : (
-                            <div className="flex w-full h-full p-4 gap-4">
-                                <div className="w-48 space-y-4">
-                                    <div className="text-[10px] uppercase opacity-50">Elements</div>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        {Object.values(ELEMENTS).map(el => (
-                                            <button key={el.name} onClick={() => setSelectedElement(el)} className={`p-4 border ${selectedElement?.name === el.name ? 'border-[#00FF00] bg-[#00FF00]/10' : 'border-white/10'}`}>{el.name}</button>
+                    <main className="flex-1 relative flex items-center justify-center bg-zinc-900/40 overflow-hidden">
+                        {mode === 'menu' && (
+                            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center space-y-12 max-w-4xl px-8">
+                                <div className="space-y-4">
+                                    <h2 className="text-7xl font-black italic tracking-tighter leading-none">CHEMICAL<br/><span className="text-[#00FF00]">DEFENSE</span></h2>
+                                    <p className="text-sm opacity-50 tracking-widest font-mono uppercase">Hazard Containment Simulation</p>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <MenuButton title="안전 교육" sub="TUTORIAL" onClick={() => setMode('mode-menu')} color="#00FF00" />
+                                    <MenuButton title="현장 출동" sub="OPERATIONS" onClick={() => startGame('survival')} color="#60a5fa" />
+                                    <MenuButton title="극한 실험" sub="CHALLENGE" onClick={() => addLog("Coming Soon")} color="#a855f7" />
+                                </div>
+                            </motion.div>
+                        )}
+
+                        {mode === 'mode-menu' && (
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-6xl w-full p-8 grid grid-cols-1 lg:grid-cols-4 gap-8">
+                                <div className="lg:col-span-3 space-y-6">
+                                    <h2 className="text-4xl font-black uppercase italic italic tracking-tighter">안전 교육 <span className="text-[#00FF00] text-sm not-italic font-mono">(TUTORIAL)</span></h2>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto pr-4 custom-scrollbar">
+                                        {TUTORIAL_STAGES.map((s, idx) => (
+                                            <button key={s.id} onClick={() => startGame('tutorial', idx)} className="p-6 border border-[#E4E3E0]/10 text-left hover:border-[#00FF00] hover:bg-[#00FF00]/5 transition-all group">
+                                                <div className="text-[10px] font-mono opacity-40 mb-1">{s.id}</div>
+                                                <div className="font-bold text-lg">{s.title}</div>
+                                            </button>
                                         ))}
                                     </div>
                                 </div>
-                                <canvas ref={canvasRef} width="1200" height="800" onClick={handleClick} className="flex-1 border border-white/20 cursor-crosshair h-full w-full object-contain bg-black" />
+                                <div className="space-y-6">
+                                    <div className="border border-[#E4E3E0]/10 p-6 space-y-4">
+                                        <Trophy className="w-10 h-10 opacity-20" />
+                                        <h3 className="font-black italic uppercase">연구소 실적</h3>
+                                        <div className="text-xs opacity-50 font-mono italic">No data records found.</div>
+                                    </div>
+                                    <div className="border border-[#E4E3E0]/10 p-6 space-y-4">
+                                        <Shield className="w-10 h-10 opacity-20" />
+                                        <h3 className="font-black italic uppercase">화학 도감</h3>
+                                        <div className="text-xs opacity-50 font-mono italic">Elements: 0/118</div>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        )}
+
+                        {(mode === 'tutorial' || mode === 'survival') && (
+                            <div className="flex w-full h-full p-4 gap-4">
+                                <div className="w-64 flex flex-col gap-4">
+                                    <div className="bg-black/40 border border-[#E4E3E0]/10 p-4 space-y-2">
+                                        <h3 className="text-[10px] font-black uppercase tracking-widest opacity-50">Active Protocol</h3>
+                                        <div className="text-sm font-bold truncate">
+                                            {mode === 'tutorial' ? TUTORIAL_STAGES[currentStageIndex].title : "Survival Protocol"}
+                                        </div>
+                                    </div>
+
+                                    <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-2">
+                                        {Object.values(ELEMENTS).map(el => (
+                                            <button 
+                                                key={el.name} 
+                                                onClick={() => setSelectedElement(el)}
+                                                className={`w-full p-4 border text-left transition-all ${selectedElement?.name === el.name ? 'border-[#00FF00] bg-[#00FF00]/10' : 'border-[#E4E3E0]/5 hover:border-[#E4E3E0]/20'}`}
+                                            >
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <div className="w-8 h-8 rounded-full flex items-center justify-center font-black" style={{ backgroundColor: el.color, color: '#111' }}>{el.name}</div>
+                                                    <span className="font-mono text-[10px] opacity-70">{el.cost}G</span>
+                                                </div>
+                                                <div className="text-xs font-bold leading-none">{el.elementName}</div>
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    <div className="h-32 border border-[#E4E3E0]/10 p-4 font-mono text-[10px] space-y-1 overflow-hidden">
+                                        {logs.map((l, i) => <div key={i} className={i === 0 ? "text-[#00FF00]" : "opacity-30"}>&gt; {l}</div>)}
+                                    </div>
+                                </div>
+
+                                <div className="flex-1 relative bg-black shadow-2xl border border-[#E4E3E0]/10 overflow-hidden flex items-center justify-center">
+                                    <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} onClick={handleCanvasClick} className="max-w-full max-h-full object-contain cursor-crosshair" />
+                                    
+                                    {mode === 'gameover' && (
+                                        <div className="absolute inset-0 bg-red-900/40 backdrop-blur-md flex flex-col items-center justify-center space-y-6 z-[100]">
+                                            <h2 className="text-7xl font-black italic text-red-500 tracking-tighter">CONTAINMENT FAILURE</h2>
+                                            <button onClick={() => setMode('menu')} className="px-12 py-4 bg-white text-black font-black uppercase tracking-widest hover:scale-105 transition-transform">Return to Terminal</button>
+                                        </div>
+                                    )}
+
+                                    {!isWaveActive && enemiesRef.current.length === 0 && mode !== 'gameover' && mode !== 'clear' && (
+                                        <div className="absolute bottom-12 right-12 flex flex-col items-end gap-6 z-[90]">
+                                            <div className="text-right space-y-1 bg-black/80 p-4 border-r-4 border-[#00FF00]">
+                                                <h2 className="text-2xl font-black italic tracking-tighter uppercase">Protocol Standby</h2>
+                                                <p className="text-[10px] opacity-50 font-mono uppercase tracking-widest">Awaiting Command Initiation</p>
+                                            </div>
+                                            <button 
+                                                onClick={() => {
+                                                    setIsWaveActive(true);
+                                                    enemiesToSpawn.current = mode === 'tutorial' ? (currentStageIndex + 1) * 5 : 10 + wave;
+                                                    lastSpawnTime.current = 0;
+                                                    addLog(`WAVE ${wave} INITIATED`);
+                                                }}
+                                                className="px-16 py-6 bg-[#00FF00] text-black font-black uppercase tracking-[0.3em] shadow-[0_0_50px_rgba(0,255,0,0.3)] hover:scale-105 transition-all text-xl flex items-center gap-4"
+                                            >
+                                                <Play className="w-8 h-8 fill-current" />
+                                                START WAVE
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         )}
-                    </div>
+                    </main>
                 </div>
             );
         }
+
+        function MenuButton({ title, sub, onClick, color }) {
+            return (
+                <button 
+                    onClick={onClick}
+                    className="p-8 border border-[#E4E3E0]/10 hover:border-opacity-100 transition-all text-left bg-[#111] group relative overflow-hidden"
+                    style={{ borderColor: color + '33' }}
+                >
+                    <div className="absolute top-0 left-0 w-1 h-0 group-hover:h-full transition-all" style={{ backgroundColor: color }} />
+                    <div className="text-3xl font-black italic tracking-tighter mb-1">{title}</div>
+                    <div className="text-[10px] font-mono tracking-[0.5em] opacity-40 uppercase" style={{ color: color }}>{sub}</div>
+                </button>
+            );
+        }
+
+        const Shield = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>;
+        const Trophy = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>;
+        const Play = ({ className }) => <svg className={className} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M5 3l14 9-14 9V3z"/></svg>;
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
