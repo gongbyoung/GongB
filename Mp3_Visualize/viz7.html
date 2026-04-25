@@ -3,16 +3,24 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SPECTRUM ART LAB v15.0.14 — Dynamic Painter</title>
+<title>SPECTRUM ART LAB v15.0.15 — Pro Studio</title>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
 :root{ --bg:#050505; --panel:#0d0d12; --accent:#00ffcc; --border:rgba(255,255,255,0.06); --text:#ffffff; }
 body{ background:var(--bg); color:var(--text); font-family:'Pretendard', sans-serif; height:100vh; overflow:hidden; display: flex; flex-direction: column; }
+
+/* LAYOUT */
 .topbar{ padding:10px 20px; background:var(--panel); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
 .logo{letter-spacing:4px; color:var(--accent); font-weight:800; font-size:12px;}
 .container { display: grid; grid-template-columns: 280px 1fr 300px; flex: 1; min-height: 0; }
 .side-panel { background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 20px; overflow-y: auto; }
 .side-panel.right { border-right:none; border-left: 1px solid var(--border); }
+
+/* BOTTOM PLAYBAR */
+.playbar { height: 60px; background: var(--panel); border-top: 1px solid var(--border); display: flex; align-items: center; padding: 0 20px; gap: 15px; flex-shrink: 0; }
+.progress-container { flex: 1; display: flex; align-items: center; gap: 10px; font-family: monospace; font-size: 12px; color: var(--accent); }
+#progBar { flex: 1; accent-color: var(--accent); height: 4px; cursor: pointer; }
+
 h3 { font-size: 10px; color: #555; margin-bottom: 12px; text-transform: uppercase; border-bottom: 1px solid var(--border); padding-bottom: 5px; margin-top: 15px;}
 .control-group { margin-bottom: 12px; }
 .control-group label { display: block; font-size: 9px; color: #777; margin-bottom: 6px; }
@@ -21,113 +29,120 @@ input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; h
 .btn { background: transparent; border: 1px solid var(--border); color: #fff; padding: 10px; cursor: pointer; font-size: 10px; border-radius: 4px; width: 100%; margin-bottom: 5px; transition: 0.2s;}
 .btn.primary { background: var(--accent); color: #000; border: none; font-weight: bold; font-size: 12px; padding: 15px; margin-top: 10px;}
 .btn.active { border-color: var(--accent); color: var(--accent); background: rgba(0,255,204,0.05); }
+
 .viz-area { position: relative; background: #000; overflow: hidden; flex: 1; display: flex; justify-content: center; align-items: center; }
 #artCanvas { background: #000; }
-.log-panel { background: #000; border: 1px solid #222; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 10px; color: #888; line-height: 1.6; margin-top: 10px; }
-#currentLyric { position: absolute; bottom: 40px; width: 100%; text-align: center; font-size: 14px; color: var(--accent); pointer-events: none; opacity: 0.8; font-weight: bold; }
+.log-panel { background: #000; border: 1px solid #222; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 10px; color: #888; line-height: 1.6; }
 </style>
 </head>
 <body>
 
 <div class="topbar">
-  <div class="logo">SPECTRUM ART LAB v15.0.14</div>
-  <div id="timeCode" style="font-family: monospace; font-size: 14px; color: var(--accent);">00:00.00</div>
+  <div class="logo">SPECTRUM ART LAB v15.0.15</div>
+  <div id="statusTag" style="font-size: 10px; color: #555;">IDLE MODE</div>
 </div>
 
 <div class="container">
   <div class="side-panel">
-    <h3>1. Assets Loading</h3>
+    <h3>1. Music & Image</h3>
     <button class="btn" onclick="document.getElementById('mIn').click()">LOAD MP3</button>
     <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleMusic(this.files)">
     <button class="btn" onclick="document.getElementById('iIn').click()">LOAD SOURCE IMAGE</button>
     <input type="file" id="iIn" accept="image/*" style="display:none" onchange="handleImage(this.files)">
-    <button class="btn" onclick="document.getElementById('sIn').click()">LOAD SRT (OPTIONAL)</button>
-    <input type="file" id="sIn" accept=".srt" style="display:none" onchange="handleSRT(this.files)">
+    
+    <h3>2. Custom Brush PNG</h3>
+    <button class="btn" style="border-color: #ffcc00; color: #ffcc00;" onclick="document.getElementById('bIn').click()">LOAD BRUSH PNG</button>
+    <input type="file" id="bIn" accept="image/png" style="display:none" onchange="handleBrushPNG(this.files)">
 
-    <h3>2. Brush & Simulation</h3>
-    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 3px; margin-bottom:10px;">
+    <h3>3. Brush Mode</h3>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin-bottom:5px;">
         <button class="btn active" id="bPoint" onclick="setBrush('point')">점묘</button>
         <button class="btn" id="bStroke" onclick="setBrush('stroke')">인상</button>
+    </div>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin-bottom:10px;">
+        <button class="btn" id="bCustom" onclick="setBrush('custom')">PNG 브러시</button>
         <button class="btn" id="bText" onclick="setBrush('text')">가사</button>
     </div>
+
+    <h3>4. Simulation</h3>
     <div class="control-group">
       <label>BRUSH SCALE <span class="val-label" id="pScaleVal">1.0</span></label>
       <input type="range" id="paintScale" min="0.1" max="5.0" step="0.1" value="1.0" oninput="document.getElementById('pScaleVal').innerText=this.value">
     </div>
-
-    <h3>3. Flow Control</h3>
     <div class="control-group">
       <label>DENSITY <span class="val-label" id="densityVal">50</span></label>
-      <input type="range" id="density" min="1" max="300" value="50" oninput="document.getElementById('densityVal').innerText=this.value">
-    </div>
-    <div class="control-group">
-      <label>SENSITIVITY <span class="val-label" id="sensVal">8</span></label>
-      <input type="range" id="sens" min="1" max="10" value="8" oninput="document.getElementById('sensVal').innerText=this.value">
+      <input type="range" id="density" min="1" max="500" value="50" oninput="document.getElementById('densityVal').innerText=this.value">
     </div>
 
-    <h3>4. Debug Status</h3>
-    <div class="log-panel">
-      <div>IMAGE: <b id="logImg">NONE</b></div>
-      <div>AUDIO: <b id="logAudio">IDLE</b></div>
+    <div class="log-panel" style="margin-top: 10px;">
+      <div>BRUSH: <b id="logBrush">DEFAULT</b></div>
       <div>AMP: <b id="logAmp">0.00</b></div>
-      <div>SAVE: <b id="logSave">IDLE</b></div>
     </div>
   </div>
 
   <div class="viz-area">
     <canvas id="artCanvas"></canvas>
-    <div id="currentLyric"></div>
   </div>
 
   <div class="side-panel right">
-    <h3>5. Visual Options</h3>
+    <h3>5. Visual FX</h3>
     <div class="control-group">
       <label>BRIGHTNESS <span class="val-label" id="brightVal">1.0</span></label>
       <input type="range" id="brightness" min="0.1" max="3.0" step="0.1" value="1.0" oninput="document.getElementById('brightVal').innerText=this.value">
     </div>
     <div class="control-group">
-      <label>TRAIL (잔상 유지력) <span class="val-label" id="trailVal">0.05</span></label>
+      <label>TRAIL POWER <span class="val-label" id="trailVal">0.05</span></label>
       <input type="range" id="trailPower" min="0" max="0.3" step="0.01" value="0.05" oninput="document.getElementById('trailVal').innerText=this.value">
     </div>
 
-    <h3>6. Transform</h3>
+    <h3>6. Settings</h3>
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom:15px;">
         <button class="btn active" id="b169" onclick="setAspect('16:9')">16:9</button>
         <button class="btn" id="b916" onclick="setAspect('9:16')">9:16</button>
-    </div>
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom:15px;">
-        <button class="btn active" id="rRandom" onclick="setRotMode('random')">랜덤회전</button>
-        <button class="btn" id="rFixed" onclick="setRotMode('fixed')">정면고정</button>
     </div>
 
     <button class="btn primary" id="playBtn" onclick="togglePlay()">START & RECORD</button>
     <button class="btn" onclick="clearCanvas()">CLEAR CANVAS</button>
     <button class="btn" onclick="saveArt()">SAVE PNG</button>
-    <button class="btn" style="border-color: #ffcc00; color: #ffcc00;" onclick="savePreset()">SAVE PRESET</button>
+    
+    <div class="log-panel" style="margin-top: 20px; border-color: var(--accent);">
+        <div style="color: var(--accent); font-weight: bold;">REC STATUS</div>
+        <div id="logSave">READY to RECORD</div>
+    </div>
   </div>
+</div>
+
+<div class="playbar">
+    <div class="progress-container">
+        <span id="currTime">00:00</span>
+        <input type="range" id="progBar" value="0" min="0" max="100" step="0.1">
+        <span id="totalTime">00:00</span>
+    </div>
 </div>
 
 <script>
 let aspect = '16:9', brushMode = 'point', rotMode = 'random';
 let srtData = [], audioCtx, analyser, source, audioBuffer, isPlaying = false, startTime = 0, pauseOffset = 0;
-let lastPaintTime = 0;
+let lastPaintTime = 0, sourceImageData = null, customBrushImg = null;
 let mediaRecorder, recordedChunks = [];
-let sourceImageData = null;
-let charPtr = 0, lastLineIdx = -1;
 
 const canvas = document.getElementById('artCanvas'), ctx = canvas.getContext('2d');
 const imgCanvas = document.createElement('canvas'), imgCtx = imgCanvas.getContext('2d');
 
 function setBrush(m) {
     brushMode = m;
-    ['bPoint', 'bStroke', 'bText'].forEach(id => document.getElementById(id).classList.remove('active'));
+    ['bPoint', 'bStroke', 'bText', 'bCustom'].forEach(id => document.getElementById(id).classList.remove('active'));
     document.getElementById('b' + m.charAt(0).toUpperCase() + m.slice(1)).classList.add('active');
 }
 
-function setRotMode(m) {
-    rotMode = m;
-    document.getElementById('rRandom').classList.toggle('active', m === 'random');
-    document.getElementById('rFixed').classList.toggle('active', m === 'fixed');
+function handleBrushPNG(files) {
+    const img = new Image();
+    img.onload = () => {
+        customBrushImg = img;
+        document.getElementById('logBrush').innerText = "PNG LOADED";
+        setBrush('custom');
+    };
+    img.src = URL.createObjectURL(files[0]);
 }
 
 function handleImage(files) {
@@ -136,7 +151,6 @@ function handleImage(files) {
         imgCanvas.width = canvas.width; imgCanvas.height = canvas.height;
         imgCtx.drawImage(img, 0, 0, canvas.width, canvas.height);
         sourceImageData = imgCtx.getImageData(0, 0, canvas.width, canvas.height).data;
-        document.getElementById('logImg').innerText = "READY";
         clearCanvas();
     };
     img.src = URL.createObjectURL(files[0]);
@@ -146,84 +160,80 @@ function animate() {
     if(!isPlaying) return;
     requestAnimationFrame(animate);
 
-    // Persistence Effect (Trail)
+    const nowTime = audioCtx.currentTime - startTime;
+    // 하단 플레이바 업데이트
+    if (audioBuffer) {
+        const progress = (nowTime / audioBuffer.duration) * 100;
+        document.getElementById('progBar').value = progress;
+        document.getElementById('currTime').textContent = formatTime(nowTime);
+        document.getElementById('totalTime').textContent = formatTime(audioBuffer.duration);
+    }
+
+    // 잔상 효과
     const trail = parseFloat(document.getElementById('trailPower').value);
     if(trail > 0) {
         ctx.fillStyle = `rgba(0, 0, 0, ${trail})`;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 
-    const nowTime = audioCtx.currentTime - startTime;
-    document.getElementById('timeCode').textContent = new Date(nowTime * 1000).toISOString().substr(14, 5);
-    
     // 오디오 분석
     const data = new Uint8Array(analyser.frequencyBinCount);
     analyser.getByteFrequencyData(data);
     const amp = (data.reduce((a, b) => a + b, 0) / data.length) / 255;
     document.getElementById('logAmp').innerText = amp.toFixed(2);
 
-    const currentLine = srtData.find(line => nowTime >= line.start && nowTime <= line.end);
-    if (currentLine) {
-        document.getElementById('currentLyric').textContent = currentLine.text;
-        if (currentLine.id !== lastLineIdx) { charPtr = 0; lastLineIdx = currentLine.id; }
-    }
-
     const now = Date.now();
     const densityLimit = 1000 / Number(document.getElementById('density').value);
     const sens = 1.1 - (Number(document.getElementById('sens').value)/10);
 
     if (amp > sens && (now - lastPaintTime > densityLimit)) {
-        const x = Math.random() * canvas.width;
-        const y = Math.random() * canvas.height;
-        const char = currentLine ? currentLine.chars[charPtr % currentLine.chars.length] : "•";
-        paintStroke(char, amp, x, y);
-        charPtr++;
+        for(let i=0; i<Math.floor(amp*5)+1; i++) { // 소리가 크면 더 많이 찍힘
+            const x = Math.random() * canvas.width;
+            const y = Math.random() * canvas.height;
+            paintStroke(amp, x, y);
+        }
         lastPaintTime = now;
     }
 }
 
-function paintStroke(char, amp, x, y) {
-    let r=150, g=150, b=150;
+function paintStroke(amp, x, y) {
+    let r=180, g=180, b=180;
     if (sourceImageData) {
         const idx = (Math.floor(y) * canvas.width + Math.floor(x)) * 4;
         r = sourceImageData[idx]; g = sourceImageData[idx+1]; b = sourceImageData[idx+2];
     }
-    
     const bright = parseFloat(document.getElementById('brightness').value);
     r = Math.min(255, r * bright); g = Math.min(255, g * bright); b = Math.min(255, b * bright);
 
     const pScale = parseFloat(document.getElementById('paintScale').value);
     ctx.save();
     ctx.translate(x, y);
-    if (rotMode === 'random') ctx.rotate(Math.random() * Math.PI * 2);
-    
+    ctx.rotate(Math.random() * Math.PI * 2);
     ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.8)`;
-    
-    if (brushMode === 'point') {
-        const rad = (3 + amp * 25) * pScale;
+
+    if (brushMode === 'custom' && customBrushImg) {
+        const size = (10 + amp * 100) * pScale;
+        ctx.drawImage(customBrushImg, -size/2, -size/2, size, size);
+    } else if (brushMode === 'point') {
+        const rad = (3 + amp * 30) * pScale;
         ctx.beginPath(); ctx.arc(0, 0, rad, 0, Math.PI*2); ctx.fill();
     } else if (brushMode === 'stroke') {
-        const len = (10 + amp * 80) * pScale;
-        const thick = (1 + amp * 15) * pScale;
-        ctx.rotate(Math.random() * Math.PI);
+        const len = (10 + amp * 120) * pScale;
+        const thick = (1 + amp * 20) * pScale;
         ctx.fillRect(-len/2, -thick/2, len, thick);
-    } else if (brushMode === 'text') {
-        const fontSize = (10 + amp * 60) * pScale;
-        ctx.font = `900 ${fontSize}px Pretendard`;
-        ctx.fillText(char, 0, 0);
     }
     ctx.restore();
 }
 
-// --- 오디오 제어 및 레코딩 (MP4 H.264 지향) ---
 async function togglePlay() {
-    if(!audioBuffer) return alert("음악을 먼저 로드하세요.");
+    if(!audioBuffer) return alert("음악을 로드하세요.");
     if(audioCtx.state === 'suspended') await audioCtx.resume();
 
     if(isPlaying) {
         isPlaying = false; source.stop();
         if(mediaRecorder) mediaRecorder.stop();
         document.getElementById('playBtn').textContent = "START & RECORD";
+        document.getElementById('statusTag').textContent = "PAUSED";
     } else {
         source = audioCtx.createBufferSource();
         source.buffer = audioBuffer;
@@ -235,6 +245,7 @@ async function togglePlay() {
         startTime = audioCtx.currentTime - pauseOffset;
         isPlaying = true;
         document.getElementById('playBtn').textContent = "STOP & SAVE";
+        document.getElementById('statusTag').textContent = "PERFORMING...";
         animate();
         startRecording();
     }
@@ -243,55 +254,55 @@ async function togglePlay() {
 function startRecording() {
     recordedChunks = [];
     const stream = canvas.captureStream(30);
-    // 최대한 MP4/H.264에 가까운 코덱 설정 시도
-    const options = { mimeType: 'video/webm; codecs=h264' };
-    if (!MediaRecorder.isTypeSupported(options.mimeType)) options.mimeType = 'video/webm';
-    
-    mediaRecorder = new MediaRecorder(stream, options);
+    mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
     mediaRecorder.ondataavailable = (e) => recordedChunks.push(e.data);
     mediaRecorder.onstop = () => {
         const blob = new Blob(recordedChunks, { type: 'video/mp4' });
-        const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-        a.download = `Performance_${Date.now()}.mp4`; a.click();
-        document.getElementById('logSave').innerText = "DONE";
+        // 날짜 기반 파일명 생성
+        const now = new Date();
+        const dateStr = now.getFullYear() + 
+                       String(now.getMonth() + 1).padStart(2, '0') + 
+                       String(now.getDate()).padStart(2, '0') + "_" +
+                       String(now.getHours()).padStart(2, '0') + 
+                       String(now.getMinutes()).padStart(2, '0') + 
+                       String(now.getSeconds()).padStart(2, '0');
+        
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `Spectrum_Art_${dateStr}.mp4`;
+        a.click();
+        document.getElementById('logSave').innerText = "SAVED SUCCESSFULLY";
     };
     mediaRecorder.start();
-    document.getElementById('logSave').innerText = "RECORDING";
+    document.getElementById('logSave').innerText = "RECORDING MP4...";
 }
 
-// --- 유틸리티 ---
+function formatTime(s) {
+    const mins = Math.floor(s / 60);
+    const secs = Math.floor(s % 60);
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
 function handleMusic(f) { 
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const r = new FileReader(); 
     r.onload = (e) => audioCtx.decodeAudioData(e.target.result, (b) => { 
-        audioBuffer = b; document.getElementById('logAudio').innerText = "READY";
+        audioBuffer = b;
+        document.getElementById('totalTime').textContent = formatTime(b.duration);
     }); 
     r.readAsArrayBuffer(f[0]); 
 }
-function handleSRT(f) { 
-    const r = new FileReader(); 
-    r.onload = (e) => { 
-        const blocks = e.target.result.trim().split(/\n\s*\n/);
-        srtData = blocks.map((b, idx) => {
-            const lines = b.split('\n');
-            const tm = lines[1]?.match(/(\d+:\d+:\d+,\d+) --> (\d+:\d+:\d+,\d+)/);
-            if(!tm) return null;
-            return { start: toSec(tm[1]), end: toSec(tm[2]), text: lines.slice(2).join(' '), chars: lines.slice(2).join('').split(''), id: idx };
-        }).filter(x => x);
-    }; 
-    r.readAsText(f[0]); 
-}
-function toSec(t) { const [h, m, s] = t.split(':'); const [sec, ms] = s.split(','); return parseInt(h)*3600 + parseInt(m)*60 + parseInt(sec) + parseInt(ms)/1000; }
+
 function setAspect(r) { aspect = r; resize(); }
 function resize() { 
     const p = canvas.parentElement; 
     canvas.width = aspect === '16:9' ? p.clientWidth-40 : (p.clientHeight-40)*0.56; 
     canvas.height = aspect === '16:9' ? canvas.width/1.77 : p.clientHeight-40; 
+    updateMask(); 
 }
 window.onresize = resize; resize();
 function clearCanvas() { ctx.fillStyle='black'; ctx.fillRect(0,0,canvas.width,canvas.height); }
-function saveArt() { const a = document.createElement('a'); a.download=`art.png`; a.href=canvas.toDataURL(); a.click(); }
-function savePreset() { alert("프리셋 저장은 v15.0.11 로직과 동일하게 작동합니다."); }
+function saveArt() { const a = document.createElement('a'); a.download=`Art_Still.png`; a.href=canvas.toDataURL(); a.click(); }
 </script>
 </body>
 </html>
