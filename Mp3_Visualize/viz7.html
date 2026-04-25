@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SPECTRUM ART LAB v15.0.15 — Pro Studio</title>
+<title>SPECTRUM ART LAB v15.0.16 — Image Painter Pro</title>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
 :root{ --bg:#050505; --panel:#0d0d12; --accent:#00ffcc; --border:rgba(255,255,255,0.06); --text:#ffffff; }
@@ -38,33 +38,33 @@ input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; h
 <body>
 
 <div class="topbar">
-  <div class="logo">SPECTRUM ART LAB v15.0.15</div>
-  <div id="statusTag" style="font-size: 10px; color: #555;">IDLE MODE</div>
+  <div class="logo">SPECTRUM ART LAB v15.0.16</div>
+  <div id="statusTag" style="font-size: 10px; color: #555;">ENGINE READY</div>
 </div>
 
 <div class="container">
   <div class="side-panel">
-    <h3>1. Music & Image</h3>
+    <h3>1. Assets Loading</h3>
     <button class="btn" onclick="document.getElementById('mIn').click()">LOAD MP3</button>
     <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleMusic(this.files)">
     <button class="btn" onclick="document.getElementById('iIn').click()">LOAD SOURCE IMAGE</button>
     <input type="file" id="iIn" accept="image/*" style="display:none" onchange="handleImage(this.files)">
+    <button class="btn" onclick="document.getElementById('sIn').click()">LOAD SRT (OPTIONAL)</button>
+    <input type="file" id="sIn" accept=".srt" style="display:none" onchange="handleSRT(this.files)">
     
     <h3>2. Custom Brush PNG</h3>
     <button class="btn" style="border-color: #ffcc00; color: #ffcc00;" onclick="document.getElementById('bIn').click()">LOAD BRUSH PNG</button>
     <input type="file" id="bIn" accept="image/png" style="display:none" onchange="handleBrushPNG(this.files)">
 
     <h3>3. Brush Mode</h3>
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin-bottom:5px;">
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin-bottom:10px;">
         <button class="btn active" id="bPoint" onclick="setBrush('point')">점묘</button>
         <button class="btn" id="bStroke" onclick="setBrush('stroke')">인상</button>
-    </div>
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin-bottom:10px;">
-        <button class="btn" id="bCustom" onclick="setBrush('custom')">PNG 브러시</button>
+        <button class="btn" id="bCustom" onclick="setBrush('custom')">PNG</button>
         <button class="btn" id="bText" onclick="setBrush('text')">가사</button>
     </div>
 
-    <h3>4. Simulation</h3>
+    <h3>4. Flow & Density</h3>
     <div class="control-group">
       <label>BRUSH SCALE <span class="val-label" id="pScaleVal">1.0</span></label>
       <input type="range" id="paintScale" min="0.1" max="5.0" step="0.1" value="1.0" oninput="document.getElementById('pScaleVal').innerText=this.value">
@@ -85,7 +85,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; h
   </div>
 
   <div class="side-panel right">
-    <h3>5. Visual FX</h3>
+    <h3>5. Rendering FX</h3>
     <div class="control-group">
       <label>BRIGHTNESS <span class="val-label" id="brightVal">1.0</span></label>
       <input type="range" id="brightness" min="0.1" max="3.0" step="0.1" value="1.0" oninput="document.getElementById('brightVal').innerText=this.value">
@@ -94,6 +94,10 @@ input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; h
       <label>TRAIL POWER <span class="val-label" id="trailVal">0.05</span></label>
       <input type="range" id="trailPower" min="0" max="0.3" step="0.01" value="0.05" oninput="document.getElementById('trailVal').innerText=this.value">
     </div>
+    <div class="control-group">
+      <label>SENSITIVITY <span class="val-label" id="sensVal">8</span></label>
+      <input type="range" id="sens" min="1" max="10" value="8" oninput="document.getElementById('sensVal').innerText=this.value">
+    </div>
 
     <h3>6. Settings</h3>
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom:15px;">
@@ -101,13 +105,13 @@ input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; h
         <button class="btn" id="b916" onclick="setAspect('9:16')">9:16</button>
     </div>
 
-    <button class="btn primary" id="playBtn" onclick="togglePlay()">START & RECORD</button>
+    <button class="btn primary" id="playBtn" onclick="togglePlay()">START PERFORMANCE</button>
     <button class="btn" onclick="clearCanvas()">CLEAR CANVAS</button>
     <button class="btn" onclick="saveArt()">SAVE PNG</button>
     
     <div class="log-panel" style="margin-top: 20px; border-color: var(--accent);">
         <div style="color: var(--accent); font-weight: bold;">REC STATUS</div>
-        <div id="logSave">READY to RECORD</div>
+        <div id="logSave">READY</div>
     </div>
   </div>
 </div>
@@ -121,10 +125,11 @@ input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; h
 </div>
 
 <script>
-let aspect = '16:9', brushMode = 'point', rotMode = 'random';
+let aspect = '16:9', brushMode = 'point';
 let srtData = [], audioCtx, analyser, source, audioBuffer, isPlaying = false, startTime = 0, pauseOffset = 0;
 let lastPaintTime = 0, sourceImageData = null, customBrushImg = null;
 let mediaRecorder, recordedChunks = [];
+let charPtr = 0, lastLineIdx = -1;
 
 const canvas = document.getElementById('artCanvas'), ctx = canvas.getContext('2d');
 const imgCanvas = document.createElement('canvas'), imgCtx = imgCanvas.getContext('2d');
@@ -132,16 +137,13 @@ const imgCanvas = document.createElement('canvas'), imgCtx = imgCanvas.getContex
 function setBrush(m) {
     brushMode = m;
     ['bPoint', 'bStroke', 'bText', 'bCustom'].forEach(id => document.getElementById(id).classList.remove('active'));
-    document.getElementById('b' + m.charAt(0).toUpperCase() + m.slice(1)).classList.add('active');
+    const target = document.getElementById('b' + m.charAt(0).toUpperCase() + m.slice(1));
+    if(target) target.classList.add('active');
 }
 
 function handleBrushPNG(files) {
     const img = new Image();
-    img.onload = () => {
-        customBrushImg = img;
-        document.getElementById('logBrush').innerText = "PNG LOADED";
-        setBrush('custom');
-    };
+    img.onload = () => { customBrushImg = img; document.getElementById('logBrush').innerText = "PNG LOADED"; setBrush('custom'); };
     img.src = URL.createObjectURL(files[0]);
 }
 
@@ -161,7 +163,6 @@ function animate() {
     requestAnimationFrame(animate);
 
     const nowTime = audioCtx.currentTime - startTime;
-    // 하단 플레이바 업데이트
     if (audioBuffer) {
         const progress = (nowTime / audioBuffer.duration) * 100;
         document.getElementById('progBar').value = progress;
@@ -169,35 +170,33 @@ function animate() {
         document.getElementById('totalTime').textContent = formatTime(audioBuffer.duration);
     }
 
-    // 잔상 효과
     const trail = parseFloat(document.getElementById('trailPower').value);
-    if(trail > 0) {
-        ctx.fillStyle = `rgba(0, 0, 0, ${trail})`;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-    }
+    if(trail > 0) { ctx.fillStyle = `rgba(0, 0, 0, ${trail})`; ctx.fillRect(0, 0, canvas.width, canvas.height); }
 
-    // 오디오 분석
     const data = new Uint8Array(analyser.frequencyBinCount);
     analyser.getByteFrequencyData(data);
     const amp = (data.reduce((a, b) => a + b, 0) / data.length) / 255;
     document.getElementById('logAmp').innerText = amp.toFixed(2);
 
-    const now = Date.now();
-    const densityLimit = 1000 / Number(document.getElementById('density').value);
+    const currentLine = srtData.find(line => nowTime >= line.start && nowTime <= line.end);
+    if (currentLine && currentLine.id !== lastLineIdx) { charPtr = 0; lastLineIdx = currentLine.id; }
+
+    const now = Date.now(), densityLimit = 1000 / Number(document.getElementById('density').value);
     const sens = 1.1 - (Number(document.getElementById('sens').value)/10);
 
     if (amp > sens && (now - lastPaintTime > densityLimit)) {
-        for(let i=0; i<Math.floor(amp*5)+1; i++) { // 소리가 크면 더 많이 찍힘
-            const x = Math.random() * canvas.width;
-            const y = Math.random() * canvas.height;
-            paintStroke(amp, x, y);
+        for(let i=0; i<Math.floor(amp*5)+1; i++) {
+            const x = Math.random() * canvas.width, y = Math.random() * canvas.height;
+            const char = currentLine ? currentLine.chars[charPtr % currentLine.chars.length] : "•";
+            paintStroke(char, amp, x, y);
+            charPtr++;
         }
         lastPaintTime = now;
     }
 }
 
-function paintStroke(amp, x, y) {
-    let r=180, g=180, b=180;
+function paintStroke(char, amp, x, y) {
+    let r=Math.random()*255, g=Math.random()*255, b=Math.random()*255;
     if (sourceImageData) {
         const idx = (Math.floor(y) * canvas.width + Math.floor(x)) * 4;
         r = sourceImageData[idx]; g = sourceImageData[idx+1]; b = sourceImageData[idx+2];
@@ -221,6 +220,10 @@ function paintStroke(amp, x, y) {
         const len = (10 + amp * 120) * pScale;
         const thick = (1 + amp * 20) * pScale;
         ctx.fillRect(-len/2, -thick/2, len, thick);
+    } else if (brushMode === 'text') {
+        const fSize = (10 + amp * 60) * pScale;
+        ctx.font = `900 ${fSize}px Pretendard`;
+        ctx.fillText(char, 0, 0);
     }
     ctx.restore();
 }
@@ -228,26 +231,16 @@ function paintStroke(amp, x, y) {
 async function togglePlay() {
     if(!audioBuffer) return alert("음악을 로드하세요.");
     if(audioCtx.state === 'suspended') await audioCtx.resume();
-
     if(isPlaying) {
-        isPlaying = false; source.stop();
-        if(mediaRecorder) mediaRecorder.stop();
-        document.getElementById('playBtn').textContent = "START & RECORD";
-        document.getElementById('statusTag').textContent = "PAUSED";
+        isPlaying = false; source.stop(); if(mediaRecorder) mediaRecorder.stop();
+        document.getElementById('playBtn').textContent = "START PERFORMANCE";
     } else {
-        source = audioCtx.createBufferSource();
-        source.buffer = audioBuffer;
-        analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 512;
-        source.connect(analyser);
-        analyser.connect(audioCtx.destination);
-        source.start(0, pauseOffset);
-        startTime = audioCtx.currentTime - pauseOffset;
-        isPlaying = true;
-        document.getElementById('playBtn').textContent = "STOP & SAVE";
-        document.getElementById('statusTag').textContent = "PERFORMING...";
-        animate();
-        startRecording();
+        source = audioCtx.createBufferSource(); source.buffer = audioBuffer;
+        analyser = audioCtx.createAnalyser(); analyser.fftSize = 512;
+        source.connect(analyser); analyser.connect(audioCtx.destination);
+        source.start(0, pauseOffset); startTime = audioCtx.currentTime - pauseOffset;
+        isPlaying = true; document.getElementById('playBtn').textContent = "STOP & SAVE";
+        animate(); startRecording();
     }
 }
 
@@ -258,51 +251,38 @@ function startRecording() {
     mediaRecorder.ondataavailable = (e) => recordedChunks.push(e.data);
     mediaRecorder.onstop = () => {
         const blob = new Blob(recordedChunks, { type: 'video/mp4' });
-        // 날짜 기반 파일명 생성
         const now = new Date();
-        const dateStr = now.getFullYear() + 
-                       String(now.getMonth() + 1).padStart(2, '0') + 
-                       String(now.getDate()).padStart(2, '0') + "_" +
-                       String(now.getHours()).padStart(2, '0') + 
-                       String(now.getMinutes()).padStart(2, '0') + 
-                       String(now.getSeconds()).padStart(2, '0');
-        
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = `Spectrum_Art_${dateStr}.mp4`;
-        a.click();
-        document.getElementById('logSave').innerText = "SAVED SUCCESSFULLY";
+        const dateStr = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0') + "_" + String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0') + String(now.getSeconds()).padStart(2, '0');
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `Spectrum_${dateStr}.mp4`; a.click();
+        document.getElementById('logSave').innerText = "DONE";
     };
-    mediaRecorder.start();
-    document.getElementById('logSave').innerText = "RECORDING MP4...";
+    mediaRecorder.start(); document.getElementById('logSave').innerText = "REC ON";
 }
 
-function formatTime(s) {
-    const mins = Math.floor(s / 60);
-    const secs = Math.floor(s % 60);
-    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-}
-
+function formatTime(s) { const mins = Math.floor(s / 60); const secs = Math.floor(s % 60); return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`; }
 function handleMusic(f) { 
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const r = new FileReader(); 
-    r.onload = (e) => audioCtx.decodeAudioData(e.target.result, (b) => { 
-        audioBuffer = b;
-        document.getElementById('totalTime').textContent = formatTime(b.duration);
-    }); 
-    r.readAsArrayBuffer(f[0]); 
+    const r = new FileReader(); r.onload = (e) => audioCtx.decodeAudioData(e.target.result, (b) => { audioBuffer = b; document.getElementById('totalTime').textContent = formatTime(b.duration); }); r.readAsArrayBuffer(f[0]); 
 }
-
+function handleSRT(f) { 
+    const r = new FileReader(); r.onload = (e) => { 
+        const blocks = e.target.result.trim().split(/\n\s*\n/);
+        srtData = blocks.map((b, idx) => {
+            const lines = b.split('\n'); const tm = lines[1]?.match(/(\d+:\d+:\d+,\d+) --> (\d+:\d+:\d+,\d+)/); if(!tm) return null;
+            return { start: toSec(tm[1]), end: toSec(tm[2]), text: lines.slice(2).join(' '), chars: lines.slice(2).join('').split(''), id: idx };
+        }).filter(x => x);
+    }; r.readAsText(f[0]); 
+}
+function toSec(t) { const [h, m, s] = t.split(':'); const [sec, ms] = s.split(','); return parseInt(h)*3600 + parseInt(m)*60 + parseInt(sec) + parseInt(ms)/1000; }
 function setAspect(r) { aspect = r; resize(); }
 function resize() { 
     const p = canvas.parentElement; 
     canvas.width = aspect === '16:9' ? p.clientWidth-40 : (p.clientHeight-40)*0.56; 
     canvas.height = aspect === '16:9' ? canvas.width/1.77 : p.clientHeight-40; 
-    updateMask(); 
 }
 window.onresize = resize; resize();
 function clearCanvas() { ctx.fillStyle='black'; ctx.fillRect(0,0,canvas.width,canvas.height); }
-function saveArt() { const a = document.createElement('a'); a.download=`Art_Still.png`; a.href=canvas.toDataURL(); a.click(); }
+function saveArt() { const a = document.createElement('a'); a.download=`Still.png`; a.href=canvas.toDataURL(); a.click(); }
 </script>
 </body>
 </html>
