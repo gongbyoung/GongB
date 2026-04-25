@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SPECTRUM ART LAB v15.0.20 — Boundary Master</title>
+<title>SPECTRUM ART LAB v15.0.21 — Fine Art Studio</title>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
 :root{ --bg:#050505; --panel:#0d0d12; --accent:#00ffcc; --border:rgba(255,255,255,0.06); --text:#ffffff; }
@@ -26,7 +26,7 @@ h3 { font-size: 10px; color: #555; margin-bottom: 12px; text-transform: uppercas
 .control-group label { display: block; font-size: 9px; color: #777; margin-bottom: 6px; }
 .val-label { float: right; color: var(--accent); font-weight: bold; }
 input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; height: 3px;}
-input[type=color] { width: 100%; border:none; background:none; cursor:pointer; height: 25px;}
+select { width: 100%; background: #000; border: 1px solid #333; color: var(--accent); padding: 8px; border-radius: 4px; font-size: 12px; outline: none; margin-bottom: 10px;}
 
 .btn { background: transparent; border: 1px solid var(--border); color: #fff; padding: 10px; cursor: pointer; font-size: 10px; border-radius: 4px; width: 100%; margin-bottom: 5px; transition: 0.2s;}
 .btn.primary { background: var(--accent); color: #000; border: none; font-weight: bold; font-size: 12px; padding: 15px; margin-top: 10px;}
@@ -40,8 +40,8 @@ input[type=color] { width: 100%; border:none; background:none; cursor:pointer; h
 <body>
 
 <div class="topbar">
-  <div class="logo">SPECTRUM ART LAB v15.0.20</div>
-  <div id="statusTag" style="font-size: 10px; color: #555;">BOUNDARY CHECK READY</div>
+  <div class="logo">SPECTRUM ART LAB v15.0.21</div>
+  <div id="statusTag" style="font-size: 10px; color: #555;">FINE ART ENGINE READY</div>
 </div>
 
 <div class="container">
@@ -52,27 +52,34 @@ input[type=color] { width: 100%; border:none; background:none; cursor:pointer; h
     <button class="btn" style="border-color: var(--accent); color: var(--accent);" onclick="document.getElementById('iIn').click()">LOAD SOURCE IMAGE</button>
     <input type="file" id="iIn" accept="image/*" style="display:none" onchange="handleImage(this.files)">
     
-    <h3>2. Brush & Simulation</h3>
-    <button class="btn" style="border-color: #ffcc00; color: #ffcc00;" onclick="document.getElementById('bIn').click()">LOAD BRUSH PNG</button>
+    <h3>2. Art Style (Brush)</h3>
+    <select id="artStyle" onchange="document.getElementById('logStyle').innerText=this.value.toUpperCase()">
+        <option value="point">점묘 (Pointillism)</option>
+        <option value="impression">인상 (Impressionism)</option>
+        <option value="grayscale">흑백 (Grayscale)</option>
+        <option value="watercolor">수채화 (Watercolor)</option>
+        <option value="oil">유채화 (Oil Painting)</option>
+        <option value="pencil">연필 (Pencil Sketch)</option>
+        <option value="pastel">파스텔 (Pastel Texture)</option>
+    </select>
+    
+    <button class="btn" style="border-color: #ffcc00; color: #ffcc00;" onclick="document.getElementById('bIn').click()">LOAD CUSTOM PNG ALPHA</button>
     <input type="file" id="bIn" accept="image/png" style="display:none" onchange="handleBrushPNG(this.files)">
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin-top:5px;">
-        <button class="btn active" id="bPoint" onclick="setBrush('point')">점묘</button>
-        <button class="btn" id="bStroke" onclick="setBrush('stroke')">인상</button>
-        <button class="btn" id="bCustom" onclick="setBrush('custom')">PNG 브러시</button>
-        <button class="btn" id="bText" onclick="setBrush('text')">가사</button>
-    </div>
-    <div class="control-group" style="margin-top:10px;">
-      <label>DENSITY <span class="val-label" id="densityVal">100</span></label>
-      <input type="range" id="density" min="1" max="500" value="100" oninput="document.getElementById('densityVal').innerText=this.value">
+
+    <h3>3. Image Transform</h3>
+    <div class="control-group">
+      <label>IMAGE OFFSET X / Y</label>
+      <input type="range" id="imgX" min="-500" max="500" value="0" oninput="updateSamplingBuffer(); clearCanvas();">
+      <input type="range" id="imgY" min="-500" max="500" value="0" oninput="updateSamplingBuffer(); clearCanvas();" style="margin-top:5px;">
     </div>
     <div class="control-group">
-      <label>BRUSH SCALE <span class="val-label" id="pScaleVal">1.0</span></label>
-      <input type="range" id="paintScale" min="0.1" max="5.0" step="0.1" value="1.0" oninput="document.getElementById('pScaleVal').innerText=this.value">
+      <label>IMAGE SCALE <span class="val-label" id="imgScaleVal">1.0</span></label>
+      <input type="range" id="imgScale" min="0.5" max="3.0" step="0.1" value="1.0" oninput="document.getElementById('imgScaleVal').innerText=this.value; updateSamplingBuffer(); clearCanvas();">
     </div>
 
     <div class="log-panel" style="margin-top: 10px;">
+      <div>STYLE: <b id="logStyle">POINT</b></div>
       <div>AMP: <b id="logAmp">0.00</b></div>
-      <div>REC: <b id="logSave">READY</b></div>
     </div>
   </div>
 
@@ -81,36 +88,37 @@ input[type=color] { width: 100%; border:none; background:none; cursor:pointer; h
   </div>
 
   <div class="side-panel right">
-    <h3>3. Canvas Setup</h3>
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom:10px;">
-        <button class="btn active" id="b169" onclick="setAspect('16:9')">16:9 (가로)</button>
-        <button class="btn" id="b916" onclick="setAspect('9:16')">9:16 (세로)</button>
-    </div>
-    <div class="control-group">
-      <label>CANVAS COLOR (배경)</label>
-      <input type="color" id="canvasBg" value="#000000" oninput="clearCanvas()">
-    </div>
-    <div class="control-group">
-      <label>BOUNDARY LINE (경계선)</label>
-      <input type="color" id="boundaryColor" value="#00ffcc" oninput="clearCanvas()">
-    </div>
-
     <h3>4. Rendering FX</h3>
+    <div class="control-group">
+      <label>DENSITY <span class="val-label" id="densityVal">100</span></label>
+      <input type="range" id="density" min="1" max="800" value="100" oninput="document.getElementById('densityVal').innerText=this.value">
+    </div>
+    <div class="control-group">
+      <label>BRUSH SCALE <span class="val-label" id="pScaleVal">1.0</span></label>
+      <input type="range" id="paintScale" min="0.1" max="5.0" step="0.1" value="1.0" oninput="document.getElementById('pScaleVal').innerText=this.value">
+    </div>
     <div class="control-group">
       <label>BRIGHTNESS <span class="val-label" id="brightVal">1.0</span></label>
       <input type="range" id="brightness" min="0.1" max="3.0" step="0.1" value="1.0" oninput="document.getElementById('brightVal').innerText=this.value">
     </div>
     <div class="control-group">
-      <label>TRAIL (잔상 - 0은 무한축적) <span class="val-label" id="trailVal">0.00</span></label>
+      <label>TRAIL (0=Cumulative) <span class="val-label" id="trailVal">0.00</span></label>
       <input type="range" id="trailPower" min="0" max="0.2" step="0.005" value="0.00" oninput="document.getElementById('trailVal').innerText=this.value">
     </div>
+
+    <h3>5. Canvas Settings</h3>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom:15px;">
+        <button class="btn active" id="b169" onclick="setAspect('16:9')">16:9</button>
+        <button class="btn" id="b916" onclick="setAspect('9:16')">9:16</button>
+    </div>
     <div class="control-group">
-      <label>REF VISIBILITY (밑그림) <span class="val-label" id="refVal">0.1</span></label>
-      <input type="range" id="refAlpha" min="0" max="1.0" step="0.05" value="0.1" oninput="document.getElementById('refVal').innerText=this.value">
+      <label>CANVAS BG / BOUNDARY</label>
+      <input type="color" id="canvasBg" value="#000000" oninput="clearCanvas()">
+      <input type="color" id="boundaryColor" value="#00ffcc" oninput="clearCanvas()" style="margin-top:5px;">
     </div>
 
-    <button class="btn primary" id="playBtn" onclick="togglePlay()">START & RECORD</button>
-    <button class="btn" onclick="clearCanvas()">CLEAR CANVAS</button>
+    <button class="btn primary" id="playBtn" onclick="togglePlay()">START ART PERFORMANCE</button>
+    <button class="btn" onclick="clearCanvas()">CHECK REF & CLEAR</button>
     <button class="btn" onclick="saveArt()">SAVE STILL PNG</button>
   </div>
 </div>
@@ -124,8 +132,7 @@ input[type=color] { width: 100%; border:none; background:none; cursor:pointer; h
 </div>
 
 <script>
-let aspect = '16:9', brushMode = 'point';
-let srtData = [], audioCtx, analyser, source, audioBuffer, isPlaying = false, startTime = 0, pauseOffset = 0;
+let aspect = '16:9', audioCtx, analyser, source, audioBuffer, isPlaying = false, startTime = 0, pauseOffset = 0;
 let lastPaintTime = 0, sourceImgObj = null, customBrushImg = null;
 let mediaRecorder, recordedChunks = [];
 
@@ -133,16 +140,9 @@ const canvas = document.getElementById('artCanvas'), ctx = canvas.getContext('2d
 const samplingCanvas = document.createElement('canvas'), sCtx = samplingCanvas.getContext('2d');
 const tintCanvas = document.createElement('canvas'), tCtx = tintCanvas.getContext('2d');
 
-function setBrush(m) {
-    brushMode = m;
-    ['bPoint', 'bStroke', 'bText', 'bCustom'].forEach(id => document.getElementById(id).classList.remove('active'));
-    const target = document.getElementById('b' + m.charAt(0).toUpperCase() + m.slice(1));
-    if(target) target.classList.add('active');
-}
-
 function handleBrushPNG(files) {
     const img = new Image();
-    img.onload = () => { customBrushImg = img; tintCanvas.width = img.width; tintCanvas.height = img.height; setBrush('custom'); };
+    img.onload = () => { customBrushImg = img; tintCanvas.width = img.width; tintCanvas.height = img.height; document.getElementById('logBrush').innerText = "CUSTOM ALPHA"; };
     img.src = URL.createObjectURL(files[0]);
 }
 
@@ -160,28 +160,39 @@ function updateSamplingBuffer() {
     if(!sourceImgObj) return;
     samplingCanvas.width = canvas.width;
     samplingCanvas.height = canvas.height;
-    sCtx.drawImage(sourceImgObj, 0, 0, canvas.width, canvas.height);
+    
+    const imgScale = parseFloat(document.getElementById('imgScale').value);
+    const mX = parseInt(document.getElementById('imgX').value);
+    const mY = parseInt(document.getElementById('imgY').value);
+    
+    sCtx.fillStyle = "black";
+    sCtx.fillRect(0, 0, samplingCanvas.width, samplingCanvas.height);
+    
+    // 비율 유지 계산 (Fit to Width/Height)
+    const ratio = Math.min(canvas.width / sourceImgObj.width, canvas.height / sourceImgObj.height) * imgScale;
+    const nw = sourceImgObj.width * ratio;
+    const nh = sourceImgObj.height * ratio;
+    const nx = (canvas.width - nw) / 2 + mX;
+    const ny = (canvas.height - nh) / 2 + mY;
+    
+    sCtx.drawImage(sourceImgObj, nx, ny, nw, nh);
 }
 
 function clearCanvas() {
-    // 배경색 채우기
     ctx.fillStyle = document.getElementById('canvasBg').value;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    // 밑그림(Ref) 그리기
-    const refA = parseFloat(document.getElementById('refAlpha').value);
-    if(sourceImgObj && refA > 0) {
-        ctx.save(); ctx.globalAlpha = refA;
-        ctx.drawImage(sourceImgObj, 0, 0, canvas.width, canvas.height);
+    // 밑그림 확인 모드 (시작 전이나 체크 버튼 시에만)
+    if(sourceImgObj && !isPlaying) {
+        ctx.save(); ctx.globalAlpha = 0.2;
+        ctx.drawImage(samplingCanvas, 0, 0);
         ctx.restore();
     }
-
-    // 경계선(Boundary Line) 그리기
-    ctx.save();
+    
+    // 경계선 가이드
     ctx.strokeStyle = document.getElementById('boundaryColor').value;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1;
     ctx.strokeRect(1, 1, canvas.width-2, canvas.height-2);
-    ctx.restore();
 }
 
 function animate() {
@@ -208,31 +219,86 @@ function animate() {
 
     if (amp > 0.05) { 
         const density = parseInt(document.getElementById('density').value);
-        for(let i=0; i < Math.floor(amp * (density/10)); i++) {
+        for(let i=0; i < Math.floor(amp * (density/5)); i++) {
             const x = Math.random() * canvas.width;
             const y = Math.random() * canvas.height;
-            paintStroke(amp, x, y);
+            paintArt(amp, x, y);
         }
     }
 }
 
-function paintStroke(amp, x, y) {
-    let r=255, g=255, b=255;
-    if (sourceImgObj) {
-        const p = sCtx.getImageData(x, y, 1, 1).data;
-        r = p[0]; g = p[1]; b = p[2];
-    }
+function paintArt(amp, x, y) {
+    const style = document.getElementById('artStyle').value;
+    const imgData = sCtx.getImageData(x, y, 1, 1).data;
+    let r = imgData[0], g = imgData[1], b = imgData[2], a = imgData[3] / 255;
     
+    if(a < 0.1 && sourceImgObj) return; // 이미지 없는 영역은 스킵
+
     const bright = parseFloat(document.getElementById('brightness').value);
+    const pScale = parseFloat(document.getElementById('paintScale').value);
+    
     r = Math.min(255, r * bright); g = Math.min(255, g * bright); b = Math.min(255, b * bright);
 
-    const pScale = parseFloat(document.getElementById('paintScale').value);
     ctx.save();
     ctx.translate(x, y);
-    ctx.rotate(Math.random() * Math.PI * 2);
-
-    if (brushMode === 'custom' && customBrushImg) {
-        const size = (5 + amp * 50) * pScale;
+    
+    switch(style) {
+        case 'point':
+            ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.8)`;
+            const rad = (1 + amp * 20) * pScale;
+            ctx.beginPath(); ctx.arc(0, 0, rad, 0, Math.PI*2); ctx.fill();
+            break;
+            
+        case 'impression':
+            ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.7)`;
+            ctx.rotate(Math.random() * Math.PI);
+            ctx.fillRect(-(10*pScale), -(2*pScale), (10 + amp*80)*pScale, (2 + amp*15)*pScale);
+            break;
+            
+        case 'grayscale':
+            const gray = 0.299*r + 0.587*g + 0.114*b;
+            ctx.fillStyle = `rgba(${gray}, ${gray}, ${gray}, 0.8)`;
+            ctx.beginPath(); ctx.arc(0, 0, (2+amp*15)*pScale, 0, Math.PI*2); ctx.fill();
+            break;
+            
+        case 'watercolor':
+            ctx.globalAlpha = 0.15;
+            ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+            for(let j=0; j<2; j++) {
+                ctx.beginPath();
+                ctx.arc((Math.random()-0.5)*10, (Math.random()-0.5)*10, (10 + amp*60)*pScale, 0, Math.PI*2);
+                ctx.fill();
+            }
+            break;
+            
+        case 'oil':
+            ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.9)`;
+            ctx.lineWidth = (5 + amp * 25) * pScale;
+            ctx.lineCap = 'round';
+            ctx.rotate(Math.random() * 0.5);
+            ctx.beginPath(); ctx.moveTo(-10, 0); ctx.lineTo(10 + amp*40, 0); ctx.stroke();
+            break;
+            
+        case 'pencil':
+            ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.3)`;
+            ctx.lineWidth = 0.5 * pScale;
+            for(let k=0; k<3; k++) {
+                ctx.rotate(Math.random()*0.2);
+                ctx.beginPath(); ctx.moveTo(-20, -20); ctx.lineTo(20, 20); ctx.stroke();
+            }
+            break;
+            
+        case 'pastel':
+            ctx.shadowBlur = (5 + amp * 20) * pScale;
+            ctx.shadowColor = `rgb(${r}, ${g}, ${b})`;
+            ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.5)`;
+            ctx.beginPath(); ctx.arc(0, 0, (3 + amp*10)*pScale, 0, Math.PI*2); ctx.fill();
+            break;
+    }
+    
+    // 만약 커스텀 PNG가 로드되어 있다면 틴팅해서 덧씌움
+    if(customBrushImg && style === 'point') {
+        const size = (10 + amp * 100) * pScale;
         tCtx.globalCompositeOperation = 'source-over';
         tCtx.clearRect(0,0,tintCanvas.width, tintCanvas.height);
         tCtx.drawImage(customBrushImg, 0, 0);
@@ -240,16 +306,8 @@ function paintStroke(amp, x, y) {
         tCtx.fillStyle = `rgb(${r},${g},${b})`;
         tCtx.fillRect(0,0,tintCanvas.width, tintCanvas.height);
         ctx.drawImage(tintCanvas, -size/2, -size/2, size, size);
-    } else if (brushMode === 'point') {
-        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.7)`;
-        const rad = (2 + amp * 20) * pScale;
-        ctx.beginPath(); ctx.arc(0, 0, rad, 0, Math.PI*2); ctx.fill();
-    } else if (brushMode === 'stroke') {
-        ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.6)`;
-        ctx.lineWidth = (1 + amp * 10) * pScale;
-        const len = (5 + amp * 60) * pScale;
-        ctx.beginPath(); ctx.moveTo(-len/2, 0); ctx.lineTo(len/2, 0); ctx.stroke();
     }
+
     ctx.restore();
 }
 
@@ -259,14 +317,16 @@ async function togglePlay() {
 
     if(isPlaying) {
         isPlaying = false; source.stop(); if(mediaRecorder) mediaRecorder.stop();
-        document.getElementById('playBtn').textContent = "RESUME PERFORMANCE";
+        document.getElementById('playBtn').textContent = "START PERFORMANCE";
     } else {
         source = audioCtx.createBufferSource(); source.buffer = audioBuffer;
         analyser = audioCtx.createAnalyser(); analyser.fftSize = 512;
         source.connect(analyser); analyser.connect(audioCtx.destination);
         source.start(0, pauseOffset); startTime = audioCtx.currentTime - pauseOffset;
-        isPlaying = true; document.getElementById('playBtn').textContent = "STOP & SAVE";
-        if(sourceImgObj) updateSamplingBuffer();
+        isPlaying = true; document.getElementById('playBtn').textContent = "STOP & SAVE MP4";
+        updateSamplingBuffer();
+        ctx.fillStyle = document.getElementById('canvasBg').value;
+        ctx.fillRect(0,0,canvas.width,canvas.height); // 시작 시 밑그림 지우고 깨끗하게 시작
         animate(); startRecording();
     }
 }
@@ -281,9 +341,8 @@ function startRecording() {
         const now = new Date();
         const dateStr = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0') + "_" + String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0') + String(now.getSeconds()).padStart(2, '0');
         const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `Spectrum_${dateStr}.mp4`; a.click();
-        document.getElementById('logSave').innerText = "SAVED";
     };
-    mediaRecorder.start(); document.getElementById('logSave').innerText = "REC ON";
+    mediaRecorder.start();
 }
 
 function formatTime(s) { const mins = Math.floor(s / 60); const secs = Math.floor(s % 60); return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`; }
@@ -302,11 +361,11 @@ function resize() {
     const pw = p.clientWidth - 40, ph = p.clientHeight - 40;
     if (aspect === '16:9') { canvas.width = Math.min(pw, ph * 1.77); canvas.height = canvas.width / 1.77; }
     else { canvas.height = Math.min(ph, pw * 0.56); canvas.width = canvas.height * 0.56; }
-    if(sourceImgObj) updateSamplingBuffer();
+    updateSamplingBuffer();
     clearCanvas();
 }
 window.onresize = resize; resize();
-function saveArt() { const a = document.createElement('a'); a.download=`Art_Still.png`; a.href=canvas.toDataURL(); a.click(); }
+function saveArt() { const a = document.createElement('a'); a.download=`FineArt_Still.png`; a.href=canvas.toDataURL(); a.click(); }
 </script>
 </body>
 </html>
