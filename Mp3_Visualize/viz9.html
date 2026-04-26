@@ -409,6 +409,10 @@ const freqC = g('freqCvs'), freqX = freqC.getContext('2d');
 const prevCvs = g('previewCvs'), prevCtx = prevCvs.getContext('2d');
 const offCvs = document.createElement('canvas'), offCtx = offCvs.getContext('2d');
 
+// 브러쉬 색상 입히기(틴팅)를 위한 임시 캔버스
+let tintedBrushCvs = document.createElement('canvas');
+let tintedBrushCtx = tintedBrushCvs.getContext('2d');
+
 let aspectRatio = '16:9';
 
 function setRatio(r){
@@ -499,11 +503,15 @@ function handleImage(files){
 
 function handleBrush(files){
   const f=files[0]; if(!f)return;
+  const url = URL.createObjectURL(f);
   brushImg=new Image();
   brushImg.onload=()=>{
     g('brushInfo').textContent=f.name; g('brushBtn').classList.add('loaded');
+    // 로드된 브러쉬 이미지 크기로 임시 캔버스 크기 조정
+    tintedBrushCvs.width = brushImg.width;
+    tintedBrushCvs.height = brushImg.height;
   };
-  brushImg.src=URL.createObjectURL(f);
+  brushImg.src=url;
 }
 
 function getImgDrawParams(){
@@ -550,18 +558,36 @@ function getColor(x,y){
 function paintAt(x, y, amp, fill){
   const size = gv('bsize'), op = gv('bop')/100, style = g('brushStyle').value;
   const {r,g:g2,b} = getColor(x,y);
+  
   ctx.save();
   ctx.globalAlpha = op * fill;
+  
   if(brushImg && style !== 'mosaic'){
     const sw=size*(0.5+amp*1.5);
+    
+    // ── 브러쉬 색상 입히기 (Tinting) ──
+    // 1. 임시 캔버스 초기화
+    tintedBrushCtx.clearRect(0, 0, tintedBrushCvs.width, tintedBrushCvs.height);
+    // 2. 임시 캔버스에 브러쉬 원본 PNG 그리기 (형태 유지)
+    tintedBrushCtx.drawImage(brushImg, 0, 0);
+    // 3. 합성 모드를 source-in으로 설정 (새로 그리는 것이 기존 이미지 영역 내에만 표시됨)
+    tintedBrushCtx.globalCompositeOperation = 'source-in';
+    // 4. 배경 이미지에서 가져온 색상으로 가득 채우기
+    tintedBrushCtx.fillStyle = `rgb(${r},${g2},${b})`;
+    tintedBrushCtx.fillRect(0, 0, tintedBrushCvs.width, tintedBrushCvs.height);
+    // 5. 합성 모드 원상 복구 (drawImage를 위해)
+    tintedBrushCtx.globalCompositeOperation = 'source-over';
+    
+    // 이제 색상이 입혀진 tintedBrushCvs를 메인 캔버스에 그립니다.
     if(style==='scatter'){
         const spread=gv('spread'); const cnt=Math.ceil(fill*8)+1;
         for(let i=0;i<cnt;i++){
             const sx=x+(Math.random()-.5)*size*spread*2, sy=y+(Math.random()-.5)*size*spread*2;
-            ctx.drawImage(brushImg, sx-sw/2, sy-sw/2, sw, sw);
+            ctx.drawImage(tintedBrushCvs, sx-sw/2, sy-sw/2, sw, sw);
         }
-    } else { ctx.drawImage(brushImg, x-sw/2, y-sw/2, sw, sw); }
+    } else { ctx.drawImage(tintedBrushCvs, x-sw/2, y-sw/2, sw, sw); }
   } else {
+    // 빌트인 브러쉬 로직 (수정 없음)
     const sw=size*(0.4+amp*1.2); ctx.fillStyle=`rgb(${r},${g2},${b})`;
     if(style==='point'){ ctx.beginPath();ctx.arc(x,y,sw/2,0,Math.PI*2);ctx.fill(); }
     else if(style==='air'){
