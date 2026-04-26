@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPECTRUM — Organic Visualization Studio v15.0.26</title>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+:root{ --bg:#050508; --panel:#0d0d15; --accent:#00ffcc; --border:rgba(0,255,204,0.15); --text:#e0f0ff; --muted:#44445a; }
+body{ background:var(--bg); color:var(--text); font-family:'Courier New',monospace; height:100vh; overflow:hidden; display: flex; flex-direction: column; }
+
+/* LAYOUT */
+.topbar{ padding:15px 25px; background:var(--panel); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+.logo{letter-spacing:6px; color:var(--accent); font-weight:bold; font-size:14px;}
+
+.main{ display:grid; grid-template-columns:350px 1fr; flex:1; min-height:0; }
+.left-panel{ background:var(--panel); border-right:1px solid var(--border); display:flex; flex-direction:column; padding:20px; overflow-y:auto; }
+
+/* CONTROLS */
+h3 { font-size:10px; color:var(--accent); letter-spacing:3px; text-transform:uppercase; margin-bottom:15px; border-bottom:1px solid var(--border); padding-bottom:5px; margin-top:10px;}
+.control-group { margin-bottom:15px; }
+.control-group label { display:block; font-size:9px; color:var(--muted); margin-bottom:6px; letter-spacing:1px; }
+.val-label { float:right; color:var(--accent); font-weight:bold; }
+input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; height:3px; }
+
+.btn { background:transparent; border:1px solid var(--border); border-radius:4px; color:#fff; padding:12px; cursor:pointer; font-family:monospace; font-size:11px; width:100%; margin-bottom:8px; transition:0.2s; }
+.btn:hover { background:rgba(0,255,204,0.1); border-color:var(--accent); }
+.btn.active { background:var(--accent); color:#000; }
+.btn.primary { background:#ff3366; border-color:#ff3366; color:#fff; font-weight:bold; font-size:13px; padding:18px; margin-top:15px; }
+.btn.primary.recording { background:#fff; color:#ff3366; animation: pulse 1s infinite; }
+
+@keyframes pulse { 0%{opacity:1;} 50%{opacity:0.6;} 100%{opacity:1;} }
+
+.viz-area { background:#000; position:relative; display:flex; justify-content:center; align-items:center; overflow:hidden; }
+#artCanvas { background:#000; max-width:95%; max-height:95%; border:1px solid #222; }
+
+.playbar { height:50px; background:var(--panel); border-top:1px solid var(--border); display:flex; align-items:center; padding:0 25px; gap:15px; }
+.progress { flex:1; height:2px; background:#222; border-radius:2px; position:relative; }
+#progFill { position:absolute; left:0; top:0; height:100%; background:var(--accent); width:0%; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">SPECTRUM ART LAB v15.0.26</div>
+  <div id="timeCode" style="font-family:monospace; font-size:14px; color:var(--accent);">00:00 / 00:00</div>
+</div>
+
+<div class="main">
+  <div class="left-panel">
+    <h3>1. Music Input</h3>
+    <button class="btn" onclick="document.getElementById('mIn').click()">LOAD MP3 (1 TRACK)</button>
+    <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleMusic(this.files)">
+    <div id="trackName" style="font-size:10px; color:var(--muted); margin-top:5px; text-align:center;">No File Loaded</div>
+
+    <h3>2. Resolution & Sync</h3>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
+        <button class="btn active" id="res169" onclick="setRes('16:9')">16:9 (Landscape)</button>
+        <button class="btn" id="res916" onclick="setRes('9:16')">9:16 (Vertical)</button>
+    </div>
+    <button class="btn primary" id="recBtn" onclick="startSync()">▶ START & RECORD SYNC</button>
+
+    <h3>3. Organic Morpher</h3>
+    <div class="control-group">
+      <label>RAIN MODE (낙하 강도) <span class="val-label" id="vRain">50</span></label>
+      <input type="range" id="rain" min="0" max="100" value="50">
+    </div>
+    <div class="control-group">
+      <label>BLOOM MODE (꽃 피어남) <span class="val-label" id="vBloom">50</span></label>
+      <input type="range" id="bloom" min="0" max="100" value="50">
+    </div>
+    <div class="control-group">
+      <label>RIPPLE (물결 확산) <span class="val-label" id="vRipple">30</span></label>
+      <input type="range" id="ripple" min="0" max="100" value="30">
+    </div>
+
+    <h3>4. Visual Physics</h3>
+    <div class="control-group">
+      <label>AUDIO SENSE <span class="val-label" id="vSense">8</span></label>
+      <input type="range" id="sense" min="1" max="15" value="8">
+    </div>
+    <div class="control-group">
+      <label>PARTICLE SIZE <span class="val-label" id="vSize">1.5</span></label>
+      <input type="range" id="size" min="0.5" max="5.0" step="0.1" value="1.5">
+    </div>
+    <div class="control-group">
+      <label>COLOR HUE <span class="val-label" id="vHue">180</span></label>
+      <input type="range" id="hue" min="0" max="360" value="180">
+    </div>
+    <div class="control-group">
+      <label>GLOW (BLOOM) <span class="val-label" id="vGlow">20</span></label>
+      <input type="range" id="glow" min="0" max="100" value="20">
+    </div>
+    <div class="control-group">
+      <label>TRAIL (잔상) <span class="val-label" id="vTrail">0.15</span></label>
+      <input type="range" id="trail" min="0.01" max="0.5" step="0.01" value="0.15">
+    </div>
+  </div>
+
+  <div class="viz-area">
+    <canvas id="artCanvas"></canvas>
+  </div>
+</div>
+
+<div class="playbar">
+  <div class="progress"><div id="progFill"></div></div>
+</div>
+
+<script>
+// --- CORE ENGINE ---
+let aspect = '16:9', isRecording = false, isPlaying = false;
+let audioCtx, analyser, source, audioBuffer, startTime = 0;
+let mediaRecorder, recordedChunks = [];
+const canvas = document.getElementById('artCanvas'), ctx = canvas.getContext('2d');
+
+// --- PARTICLES ---
+let drops = [], ripples = [], flowers = [];
+for(let i=0; i<150; i++) drops.push({x:Math.random(), y:Math.random(), speed:Math.random()*0.02+0.01});
+
+// --- AUDIO LOAD ---
+function handleMusic(files) {
+    if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const reader = new FileReader();
+    reader.onload = e => {
+        audioCtx.decodeAudioData(e.target.result, buf => {
+            audioBuffer = buf;
+            document.getElementById('trackName').innerText = files[0].name;
+            document.getElementById('trackName').style.color = 'var(--accent)';
+        });
+    };
+    reader.readAsArrayBuffer(files[0]);
+}
+
+// --- SYNC ENGINE ---
+async function startSync() {
+    if(!audioBuffer) return alert("LOAD MP3 FIRST!");
+    if(isPlaying) { stopAll(); return; }
+
+    if(audioCtx.state === 'suspended') await audioCtx.resume();
+    
+    // Setup Analyser
+    source = audioCtx.createBufferSource();
+    source.buffer = audioBuffer;
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 1024;
+    source.connect(analyser);
+    analyser.connect(audioCtx.destination);
+
+    // Setup Recording
+    recordedChunks = [];
+    const stream = canvas.captureStream(60);
+    const audioStreamDest = audioCtx.createMediaStreamDestination();
+    source.connect(audioStreamDest);
+    
+    const combined = new MediaStream([
+        ...stream.getVideoTracks(),
+        ...audioStreamDest.stream.getAudioTracks()
+    ]);
+
+    mediaRecorder = new MediaRecorder(combined, { mimeType: 'video/webm; codecs=vp9,opus' });
+    mediaRecorder.ondataavailable = e => recordedChunks.push(e.data);
+    mediaRecorder.onstop = saveVideo;
+
+    // Fire simultaneously
+    source.start(0);
+    mediaRecorder.start();
+    startTime = audioCtx.currentTime;
+    isPlaying = true;
+    isRecording = true;
+
+    document.getElementById('recBtn').innerText = "■ STOP & SAVE VIDEO";
+    document.getElementById('recBtn').classList.add('recording');
+
+    source.onended = stopAll;
+    animate();
+}
+
+function stopAll() {
+    if(source) source.stop();
+    if(mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+    isPlaying = false;
+    isRecording = false;
+    document.getElementById('recBtn').innerText = "▶ START & RECORD SYNC";
+    document.getElementById('recBtn').classList.remove('recording');
+}
+
+function saveVideo() {
+    const blob = new Blob(recordedChunks, { type: 'video/mp4' });
+    const url = URL.createObjectURL(blob);
+    const now = new Date();
+    const fileName = `Spectrum_${now.getFullYear()}${now.getMonth()+1}${now.getDate()}_${now.getHours()}${now.getMinutes()}${now.getSeconds()}.mp4`;
+    const a = document.createElement('a');
+    a.href = url; a.download = fileName; a.click();
+}
+
+// --- VIZ LOGIC ---
+function animate() {
+    if(!isPlaying) return;
+    requestAnimationFrame(animate);
+
+    const W = canvas.width, H = canvas.height;
+    const trail = parseFloat(document.getElementById('trail').value);
+    ctx.fillStyle = `rgba(5, 5, 8, ${trail})`;
+    ctx.fillRect(0,0,W,H);
+
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteFrequencyData(data);
+    
+    // Audio Features
+    let bass = 0; for(let i=0; i<10; i++) bass += data[i]; bass = (bass/10/255);
+    let energy = (data.reduce((a,b)=>a+b, 0)/data.length/255);
+    const sense = parseFloat(document.getElementById('sense').value);
+    const amp = energy * sense;
+
+    const hue = parseInt(document.getElementById('hue').value);
+    const pSize = parseFloat(document.getElementById('size').value);
+    const glow = parseInt(document.getElementById('glow').value);
+
+    ctx.shadowBlur = glow * amp;
+    ctx.shadowColor = `hsla(${hue}, 100%, 50%, 0.8)`;
+
+    // 1. RAIN DRAW
+    const rainInt = parseInt(document.getElementById('rain').value);
+    if(rainInt > 0) {
+        drops.forEach(d => {
+            d.y += d.speed * (1 + amp * 2);
+            if(d.y > 1) { d.y = 0; d.x = Math.random(); }
+            ctx.fillStyle = `hsla(${hue}, 80%, 70%, ${amp * (rainInt/100)})`;
+            ctx.fillRect(d.x * W, d.y * H, pSize, pSize * 15 * amp);
+        });
+    }
+
+    // 2. RIPPLE DRAW
+    const rippleInt = parseInt(document.getElementById('ripple').value);
+    if(rippleInt > 0 && bass > 0.6) {
+        ripples.push({x:Math.random()*W, y:Math.random()*H, r:0, a:1});
+    }
+    ripples.forEach((r, i) => {
+        r.r += 2 + amp * 5; r.a -= 0.02;
+        ctx.strokeStyle = `hsla(${hue + 30}, 100%, 70%, ${r.a * (rippleInt/100)})`;
+        ctx.lineWidth = 1 + amp * 3;
+        ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, Math.PI*2); ctx.stroke();
+        if(r.a <= 0) ripples.splice(i, 1);
+    });
+
+    // 3. BLOOM (FLOWER) DRAW
+    const bloomInt = parseInt(document.getElementById('bloom').value);
+    if(bloomInt > 0) {
+        ctx.save();
+        ctx.translate(W/2, H/2);
+        const petals = 5 + Math.floor(bass * 10);
+        ctx.beginPath();
+        for(let a=0; a<Math.PI*2; a+=0.05) {
+            let r = (H*0.25 * (bloomInt/100)) * (1 + 0.3 * Math.sin(a * petals + audioCtx.currentTime));
+            r *= (0.8 + amp);
+            let x = Math.cos(a) * r, y = Math.sin(a) * r;
+            a === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+        }
+        ctx.closePath();
+        ctx.fillStyle = `hsla(${hue - 40}, 90%, 60%, 0.1)`;
+        ctx.fill();
+        ctx.strokeStyle = `hsla(${hue}, 100%, 80%, ${0.3 + amp})`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    // UI Updates
+    const elapsed = audioCtx.currentTime - startTime;
+    document.getElementById('timeCode').innerText = `${formatTime(elapsed)} / ${formatTime(audioBuffer.duration)}`;
+    document.getElementById('progFill').style.width = (elapsed / audioBuffer.duration * 100) + '%';
+    document.getElementById('logAmp').innerText = energy.toFixed(2);
+}
+
+// --- UTILS ---
+function setRes(r) {
+    aspect = r;
+    document.getElementById('res169').classList.toggle('active', r === '16:9');
+    document.getElementById('res916').classList.toggle('active', r === '9:16');
+    if(r === '16:9') { canvas.width = 1280; canvas.height = 720; }
+    else { canvas.width = 720; canvas.height = 1280; }
+}
+setRes('16:9');
+
+function formatTime(s) {
+    const m = Math.floor(s/60), sec = Math.floor(s%60);
+    return `${m}:${sec < 10 ? '0' : ''}${sec}`;
+}
+
+// Slider Labels
+const sliders = ['rain','bloom','ripple','sense','size','hue','glow','trail'];
+sliders.forEach(s => {
+    document.getElementById(s).oninput = function() {
+        document.getElementById('v' + s.charAt(0).toUpperCase() + s.slice(1)).innerText = this.value;
+    }
+});
+</script>
+</body>
+</html>
