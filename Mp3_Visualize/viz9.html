@@ -1,0 +1,1049 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BRUSH PAINTER — Music Reactive</title>
+
+<!-- COI Service Worker for GitHub Pages (SharedArrayBuffer / FFmpeg.wasm) -->
+<script>
+(function(){
+  if(typeof window==='undefined'||window.crossOriginIsolated)return;
+  const SW=`
+self.addEventListener('install',()=>self.skipWaiting());
+self.addEventListener('activate',e=>e.waitUntil(self.clients.claim()));
+self.addEventListener('fetch',function(e){
+  if(e.request.cache==='only-if-cached'&&e.request.mode!=='same-origin')return;
+  e.respondWith(fetch(e.request).then(function(r){
+    if(!r||r.status===0||r.type==='opaque')return r;
+    const h=new Headers(r.headers);
+    h.set('Cross-Origin-Opener-Policy','same-origin');
+    h.set('Cross-Origin-Embedder-Policy','require-corp');
+    return new Response(r.body,{status:r.status,statusText:r.statusText,headers:h});
+  }).catch(()=>fetch(e.request)));
+});`;
+  const blob=new Blob([SW],{type:'text/javascript'});
+  navigator.serviceWorker.register(URL.createObjectURL(blob),{scope:'/'})
+    .then(()=>{ if(!navigator.serviceWorker.controller) window.addEventListener('load',()=>{ if(!window.crossOriginIsolated) location.reload(); }); })
+    .catch(()=>{});
+})();
+</script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;600;800&display=swap');
+
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+
+:root{
+  --ink:#0a0a0f;
+  --paper:#f0ede8;
+  --panel:#13131a;
+  --panel2:#1c1c26;
+  --line:rgba(255,255,255,0.06);
+  --gold:#c8a96e;
+  --gold2:#e8c98e;
+  --red:#e05555;
+  --dim:#44445a;
+  --text:#d8d4cc;
+}
+
+html,body{height:100%;overflow:hidden;}
+body{
+  background:var(--ink);
+  color:var(--text);
+  font-family:'DM Mono',monospace;
+  display:flex;flex-direction:column;
+  height:100vh;
+}
+
+/* ── TOPBAR ── */
+.bar{
+  height:44px;background:var(--panel);
+  border-bottom:1px solid var(--line);
+  display:flex;align-items:center;
+  padding:0 18px;gap:20px;flex-shrink:0;
+}
+.logo{
+  font-family:'Syne',sans-serif;font-weight:800;
+  font-size:13px;letter-spacing:3px;color:var(--gold);white-space:nowrap;
+}
+.bar-mid{display:flex;align-items:center;gap:14px;flex:1;justify-content:center;}
+#timecode{font-size:17px;color:var(--gold);letter-spacing:3px;min-width:60px;text-align:center;}
+.vu{width:120px;height:4px;background:#111;border-radius:2px;overflow:hidden;}
+#vubar{height:100%;width:0%;background:linear-gradient(90deg,var(--gold),var(--red));border-radius:2px;transition:width 60ms;}
+#recdot{width:7px;height:7px;border-radius:50%;background:#333;transition:.3s;}
+#recdot.on{background:var(--red);box-shadow:0 0 8px var(--red);animation:blk .6s infinite;}
+@keyframes blk{0%,100%{opacity:1}50%{opacity:.2}}
+#recstatus{font-size:9px;color:var(--dim);letter-spacing:2px;}
+
+/* ── LAYOUT ── */
+.app{display:grid;grid-template-columns:240px 1fr 256px;flex:1;min-height:0;}
+
+/* ── PANELS ── */
+.pnl{
+  background:var(--panel);
+  border-right:1px solid var(--line);
+  display:flex;flex-direction:column;
+  padding:14px 12px;overflow-y:auto;gap:0;
+}
+.pnl.right{border-right:none;border-left:1px solid var(--line);}
+.pnl::-webkit-scrollbar{width:2px;}
+.pnl::-webkit-scrollbar-thumb{background:var(--gold);}
+
+.sec{font-size:8px;color:var(--dim);letter-spacing:3px;text-transform:uppercase;
+  padding:10px 0 5px;border-bottom:1px solid var(--line);margin-bottom:8px;font-family:'Syne',sans-serif;}
+.sec:first-child{padding-top:0;}
+
+/* LOAD BUTTONS */
+.load-btn{
+  display:flex;align-items:center;gap:8px;
+  background:var(--panel2);border:1px solid var(--line);
+  color:var(--dim);padding:8px 10px;border-radius:3px;
+  cursor:pointer;font-size:9px;font-family:'DM Mono',monospace;
+  letter-spacing:1px;text-transform:uppercase;margin-bottom:5px;
+  transition:.15s;width:100%;
+}
+.load-btn:hover{border-color:var(--gold);color:var(--gold);}
+.load-btn.loaded{border-color:var(--gold);color:var(--gold);background:rgba(200,169,110,.07);}
+.load-btn .icon{font-size:14px;flex-shrink:0;}
+.load-btn .info{font-size:8px;color:var(--dim);margin-top:1px;}
+
+/* SLIDERS */
+.ctrl{margin-bottom:11px;}
+.ctrl>label{
+  display:flex;justify-content:space-between;align-items:center;
+  font-size:8px;color:var(--dim);letter-spacing:1px;text-transform:uppercase;
+  margin-bottom:5px;
+}
+.ctrl>label span{color:var(--gold);font-weight:500;}
+input[type=range]{
+  width:100%;-webkit-appearance:none;height:2px;
+  background:#222;border-radius:1px;cursor:pointer;outline:none;
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:13px;height:13px;border-radius:50%;
+  background:var(--gold);cursor:pointer;border:2px solid var(--ink);transition:.1s;
+}
+input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.3);}
+
+/* SELECT */
+select{
+  width:100%;background:var(--panel2);border:1px solid var(--line);
+  color:var(--text);padding:7px 9px;font-size:9px;
+  font-family:'DM Mono',monospace;border-radius:3px;outline:none;
+  cursor:pointer;margin-bottom:8px;letter-spacing:1px;
+}
+select:focus{border-color:var(--gold);}
+
+/* FILL CURVE PREVIEW */
+.curve-wrap{
+  display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:10px;
+}
+.curve-opt{
+  background:var(--panel2);border:1px solid var(--line);
+  border-radius:3px;padding:6px;cursor:pointer;transition:.15s;
+  display:flex;flex-direction:column;align-items:center;gap:4px;
+}
+.curve-opt:hover{border-color:var(--gold);}
+.curve-opt.on{border-color:var(--gold);background:rgba(200,169,110,.08);}
+.curve-opt canvas{display:block;}
+.curve-opt span{font-size:7px;color:var(--dim);letter-spacing:1px;text-transform:uppercase;}
+
+/* IMAGE POSITION */
+.pos-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+
+/* START BUTTON */
+.start-btn{
+  width:100%;padding:15px;margin-top:8px;
+  background:var(--gold);color:var(--ink);
+  border:none;border-radius:4px;cursor:pointer;
+  font-family:'Syne',sans-serif;font-weight:800;
+  font-size:13px;letter-spacing:3px;text-transform:uppercase;
+  transition:.2s;
+}
+.start-btn:hover{background:var(--gold2);}
+.start-btn.running{background:var(--red);color:#fff;animation:blk .6s infinite;}
+.clear-btn{
+  width:100%;padding:9px;margin-top:4px;
+  background:transparent;border:1px solid var(--line);
+  color:var(--dim);border-radius:3px;cursor:pointer;
+  font-family:'DM Mono',monospace;font-size:9px;letter-spacing:2px;
+  text-transform:uppercase;transition:.15s;
+}
+.clear-btn:hover{border-color:var(--dim);color:var(--text);}
+
+/* LOG */
+.logbox{
+  background:#080810;border:1px solid #111;border-radius:3px;
+  padding:8px 10px;font-size:8px;color:#333;line-height:2;margin-top:8px;
+}
+.logbox b{color:var(--gold);}
+
+/* ── CANVAS AREA ── */
+.stage{
+  position:relative;background:#000;
+  overflow:hidden;flex:1;
+  display:flex;justify-content:center;align-items:center;
+}
+#cvs{display:block;cursor:crosshair;}
+/* 미리보기 오버레이 캔버스 */
+#previewCvs{
+  position:absolute;
+  top:50%;left:50%;
+  transform:translate(-50%,-50%);
+  pointer-events:none;
+}
+#freqCvs{
+  position:absolute;bottom:0;left:0;width:100%;height:48px;
+  pointer-events:none;opacity:.5;
+}
+.stage-info{
+  position:absolute;top:10px;left:12px;
+  font-size:8px;color:rgba(255,255,255,.15);
+  letter-spacing:2px;pointer-events:none;
+}
+/* 비율 버튼 */
+.ratio-btns{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:10px;}
+.ratio-btn{
+  background:var(--panel2);border:1px solid var(--line);
+  color:var(--dim);padding:8px 4px;border-radius:3px;cursor:pointer;
+  font-size:10px;font-family:'Syne',sans-serif;font-weight:600;
+  letter-spacing:2px;text-align:center;transition:.15s;
+}
+.ratio-btn:hover{border-color:var(--gold);color:var(--gold);}
+.ratio-btn.on{border-color:var(--gold);color:var(--gold);background:rgba(200,169,110,.1);}
+/* 미리보기 중 안내 뱃지 */
+#previewBadge{
+  position:absolute;bottom:58px;left:50%;transform:translateX(-50%);
+  background:rgba(10,10,15,.75);border:1px solid rgba(200,169,110,.35);
+  color:var(--gold);font-size:8px;letter-spacing:2px;padding:4px 14px;
+  border-radius:20px;pointer-events:none;font-family:'DM Mono',monospace;
+  white-space:nowrap;
+}
+
+/* ── MODAL ── */
+#modal{
+  display:none;position:fixed;inset:0;
+  background:rgba(0,0,0,.9);z-index:9999;
+  justify-content:center;align-items:center;
+}
+#modal.show{display:flex;}
+.mbox{
+  background:var(--panel);border:1px solid var(--gold);
+  border-radius:6px;padding:32px 40px;text-align:center;width:340px;
+}
+.mbox h2{font-family:'Syne',sans-serif;font-size:12px;letter-spacing:4px;color:var(--gold);margin-bottom:10px;}
+.mbox p{font-size:9px;color:var(--dim);line-height:1.8;}
+.pw{width:100%;height:3px;background:#111;border-radius:2px;margin-top:14px;overflow:hidden;}
+.pb{height:100%;width:0%;background:var(--gold);transition:width .3s;}
+#mlog{font-size:8px;color:var(--dim);margin-top:8px;}
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="bar">
+  <div class="logo">BRUSH PAINTER</div>
+  <div class="bar-mid">
+    <div id="recdot"></div>
+    <div id="timecode">00:00</div>
+    <div class="vu"><div id="vubar"></div></div>
+    <div id="trackLabel" style="font-size:9px;color:var(--dim);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">NO TRACK</div>
+  </div>
+  <div id="recstatus">◉ READY</div>
+</div>
+
+<div class="app">
+
+  <!-- LEFT PANEL -->
+  <div class="pnl">
+
+    <div class="sec">Assets</div>
+
+    <label class="load-btn" id="mp3Btn">
+      <span class="icon">♪</span>
+      <div><div>LOAD MP3 / WAV</div><div class="info" id="mp3Info">파일 없음</div></div>
+      <input type="file" id="mp3In" accept="audio/*" style="display:none">
+    </label>
+
+    <label class="load-btn" id="imgBtn">
+      <span class="icon">◈</span>
+      <div><div>LOAD IMAGE (COLOR)</div><div class="info" id="imgInfo">파일 없음</div></div>
+      <input type="file" id="imgIn" accept="image/*" style="display:none">
+    </label>
+
+    <label class="load-btn" id="brushBtn">
+      <span class="icon">◉</span>
+      <div><div>LOAD BRUSH PNG</div><div class="info" id="brushInfo">파일 없음 (기본 브러쉬 사용)</div></div>
+      <input type="file" id="brushIn" accept="image/png" style="display:none">
+    </label>
+
+    <div class="sec">Brush Style</div>
+    <select id="brushStyle">
+      <option value="point">● 점 (Point)</option>
+      <option value="air">◎ 에어브러쉬 (Airbrush)</option>
+      <option value="mosaic">▦ 모자이크 (Mosaic)</option>
+      <option value="scatter">✦ 스캐터 (Scatter)</option>
+    </select>
+
+    <div class="ctrl">
+      <label>BRUSH SIZE <span id="bsizeV">40</span>px</label>
+      <input type="range" id="bsize" min="4" max="200" value="40"
+             oninput="g('bsizeV').textContent=this.value">
+    </div>
+
+    <div class="ctrl">
+      <label>OPACITY <span id="bopV">80</span>%</label>
+      <input type="range" id="bop" min="5" max="100" value="80"
+             oninput="g('bopV').textContent=this.value">
+    </div>
+
+    <div class="ctrl">
+      <label>SCATTER SPREAD <span id="spreadV">1.0</span></label>
+      <input type="range" id="spread" min="0.1" max="5" step="0.1" value="1"
+             oninput="g('spreadV').textContent=parseFloat(this.value).toFixed(1)">
+    </div>
+
+    <div class="sec">Debug</div>
+    <div class="logbox">
+      <div>MP3: <b id="logMp3">—</b></div>
+      <div>IMG: <b id="logImg">—</b></div>
+      <div>BRUSH: <b id="logBrush">default</b></div>
+      <div>AMP: <b id="logAmp">0.000</b></div>
+      <div>FILL: <b id="logFill">0.000</b></div>
+    </div>
+
+  </div>
+
+  <!-- CANVAS -->
+  <div class="stage">
+    <canvas id="cvs"></canvas>
+    <canvas id="previewCvs"></canvas>
+    <canvas id="freqCvs"></canvas>
+    <div class="stage-info" id="stageInfo">BRUSH PAINTER</div>
+    <div id="previewBadge">◈ PREVIEW MODE — 이미지 위치/크기 조정 중</div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div class="pnl right">
+
+    <div class="sec">Fill Curve (0→1)</div>
+    <div style="font-size:8px;color:var(--dim);margin-bottom:8px;line-height:1.7;letter-spacing:.3px;">
+      주파수 amp(0~1)를 그리기 밀도로 변환하는 커브
+    </div>
+    <div class="curve-wrap" id="curveWrap">
+      <!-- 4 curve options rendered by JS -->
+    </div>
+
+    <div class="ctrl">
+      <label>DENSITY <span id="densV">60</span></label>
+      <input type="range" id="dens" min="1" max="300" value="60"
+             oninput="g('densV').textContent=this.value">
+    </div>
+    <div class="ctrl">
+      <label>SENSITIVITY <span id="sensV">7</span></label>
+      <input type="range" id="sens" min="1" max="10" value="7"
+             oninput="g('sensV').textContent=this.value">
+    </div>
+
+    <div class="sec">Image Position</div>
+    <div class="ctrl">
+      <label>SCALE <span id="imgScaleV">1.00</span></label>
+      <input type="range" id="imgScale" min="0.1" max="3" step="0.01" value="1"
+             oninput="g('imgScaleV').textContent=parseFloat(this.value).toFixed(2);drawPreview()">
+    </div>
+    <div class="pos-grid">
+      <div class="ctrl">
+        <label>OFFSET X <span id="imgXV">0</span></label>
+        <input type="range" id="imgX" min="-500" max="500" value="0"
+               oninput="g('imgXV').textContent=this.value;drawPreview()">
+      </div>
+      <div class="ctrl">
+        <label>OFFSET Y <span id="imgYV">0</span></label>
+        <input type="range" id="imgY" min="-500" max="500" value="0"
+               oninput="g('imgYV').textContent=this.value;drawPreview()">
+      </div>
+    </div>
+    <div class="ctrl">
+      <label>BG OPACITY <span id="bgOpV">0.08</span></label>
+      <input type="range" id="bgOp" min="0" max="0.3" step="0.005" value="0.08"
+             oninput="g('bgOpV').textContent=parseFloat(this.value).toFixed(3)">
+    </div>
+
+    <div class="sec">Canvas Ratio</div>
+    <div class="ratio-btns">
+      <div class="ratio-btn on" id="r169" onclick="setRatio('16:9')">16 : 9</div>
+      <div class="ratio-btn"    id="r916" onclick="setRatio('9:16')">9 : 16</div>
+    </div>
+
+    <div class="sec">Trail</div>
+    <div class="ctrl">
+      <label>TRAIL FADE <span id="fadeV">0.00</span></label>
+      <input type="range" id="fade" min="0" max="0.25" step="0.002" value="0"
+             oninput="g('fadeV').textContent=parseFloat(this.value).toFixed(3)">
+    </div>
+    <div style="font-size:8px;color:#222;line-height:1.6;margin-bottom:10px;letter-spacing:.3px;">
+      0 = 완전 누적 · 높을수록 빠르게 희미해짐
+    </div>
+
+    <button class="start-btn" id="startBtn" onclick="togglePlay()">▶ START</button>
+    <button class="clear-btn" onclick="clearCvs()">⌫ CLEAR CANVAS</button>
+    <button class="clear-btn" style="margin-top:3px;" onclick="savePng()">⤓ SAVE PNG</button>
+
+  </div>
+</div>
+
+<!-- MODAL -->
+<div id="modal">
+  <div class="mbox">
+    <h2>⚙ MP4 변환 중</h2>
+    <p>FFmpeg H.264 인코딩 중입니다.<br>길이에 따라 수 분이 걸릴 수 있습니다.</p>
+    <div class="pw"><div class="pb" id="pb"></div></div>
+    <div id="mlog">초기화 중...</div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════
+//  GLOBALS
+// ═══════════════════════════════════════════
+const g = id => document.getElementById(id);
+const gv = id => parseFloat(g(id).value);
+
+let audioCtx, analyser, source, audioBuffer;
+let isPlaying = false, startTime = 0, pauseOffset = 0, lastPaintTime = 0;
+let animId = null, strokeCount = 0;
+let mediaRecorder, recordedChunks = [];
+let ffmpegLoaded = false, ffmpegInst = null;
+
+// Assets
+let sourceImg = null;   // HTMLImageElement for color source
+let brushImg  = null;   // HTMLImageElement for brush PNG
+let srcImgData = null;  // pixel data
+let srcW = 1, srcH = 1;
+
+// State
+let curveMode = 'log-up'; // log-up | log-down | u | inv-u
+
+const cvs    = g('cvs');
+const ctx    = cvs.getContext('2d');
+const freqC  = g('freqCvs');
+const freqX  = freqC.getContext('2d');
+const prevCvs = g('previewCvs');
+const prevCtx = prevCvs.getContext('2d');
+
+// Offscreen for color sampling
+const offCvs = document.createElement('canvas');
+const offCtx = offCvs.getContext('2d');
+
+let aspectRatio = '16:9'; // '16:9' | '9:16'
+
+// ═══════════════════════════════════════════
+//  ASPECT RATIO
+// ═══════════════════════════════════════════
+function setRatio(r){
+  aspectRatio=r;
+  g('r169').classList.toggle('on', r==='16:9');
+  g('r916').classList.toggle('on', r==='9:16');
+  resize();
+}
+
+// ═══════════════════════════════════════════
+//  RESIZE
+// ═══════════════════════════════════════════
+function resize(){
+  const p = cvs.parentElement;
+  const pw = p.clientWidth - 2, ph = p.clientHeight - 2;
+  const targetRatio = aspectRatio === '16:9' ? 16/9 : 9/16;
+
+  if(pw/ph > targetRatio){
+    cvs.height = ph; cvs.width = Math.floor(ph * targetRatio);
+  } else {
+    cvs.width = pw; cvs.height = Math.floor(pw / targetRatio);
+  }
+
+  // previewCvs는 항상 cvs와 동일 크기
+  prevCvs.width  = cvs.width;
+  prevCvs.height = cvs.height;
+
+  freqC.width = p.clientWidth; freqC.height = 48;
+  ctx.fillStyle = '#000'; ctx.fillRect(0,0,cvs.width,cvs.height);
+  drawPreview();
+}
+window.addEventListener('resize', resize);
+
+// ═══════════════════════════════════════════
+//  FILL CURVE CANVASES
+// ═══════════════════════════════════════════
+const CURVES = [
+  { id:'log-up',   label:'LOG ↑',   fn: x => Math.pow(x, 0.35) },
+  { id:'log-down', label:'LOG ↓',   fn: x => 1 - Math.pow(1-x, 0.35) },
+  { id:'u',        label:'U 자',    fn: x => Math.pow(2*Math.abs(x-0.5), 1.4) },
+  { id:'inv-u',    label:'∩ 역U',   fn: x => 1 - Math.pow(2*Math.abs(x-0.5), 1.4) },
+];
+
+function drawCurveCanvas(canvas2d, fn, on){
+  const W=canvas2d.width, H=canvas2d.height;
+  const c2=canvas2d.getContext('2d');
+  c2.clearRect(0,0,W,H);
+  c2.fillStyle = on ? 'rgba(200,169,110,0.1)' : 'rgba(255,255,255,0.02)';
+  c2.fillRect(0,0,W,H);
+  c2.strokeStyle = on ? '#c8a96e' : '#333';
+  c2.lineWidth = on ? 1.5 : 1;
+  c2.beginPath();
+  for(let i=0;i<=W;i++){
+    const x=i/W, y=fn(x);
+    const px=i, py=H-(y*H);
+    i===0?c2.moveTo(px,py):c2.lineTo(px,py);
+  }
+  c2.stroke();
+}
+
+function buildCurveUI(){
+  const wrap = g('curveWrap');
+  wrap.innerHTML='';
+  CURVES.forEach(cv=>{
+    const div=document.createElement('div');
+    div.className='curve-opt'+(cv.id===curveMode?' on':'');
+    div.dataset.id=cv.id;
+    const cc=document.createElement('canvas');
+    cc.width=88; cc.height=44;
+    drawCurveCanvas(cc, cv.fn, cv.id===curveMode);
+    const sp=document.createElement('span');
+    sp.textContent=cv.label;
+    div.appendChild(cc); div.appendChild(sp);
+    div.onclick=()=>{ curveMode=cv.id; buildCurveUI(); };
+    wrap.appendChild(div);
+  });
+}
+
+function applyFillCurve(amp){
+  const curve = CURVES.find(c=>c.id===curveMode);
+  return curve ? Math.max(0,Math.min(1,curve.fn(amp))) : amp;
+}
+
+// ═══════════════════════════════════════════
+//  ASSET LOADERS
+// ═══════════════════════════════════════════
+g('mp3In').addEventListener('change', e=>handleMusic(e.target.files));
+g('imgIn').addEventListener('change', e=>handleImage(e.target.files));
+g('brushIn').addEventListener('change', e=>handleBrush(e.target.files));
+
+function handleMusic(files){
+  const f=files[0]; if(!f)return;
+  g('trackLabel').textContent=f.name;
+  g('mp3Info').textContent=f.name;
+  g('mp3Btn').classList.add('loaded');
+  g('logMp3').textContent=f.name;
+  if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+  const r=new FileReader();
+  r.onload=e=>audioCtx.decodeAudioData(e.target.result,buf=>{ audioBuffer=buf; });
+  r.readAsArrayBuffer(f);
+}
+
+function handleImage(files){
+  const f=files[0]; if(!f)return;
+  const url=URL.createObjectURL(f);
+  sourceImg=new Image();
+  sourceImg.onload=()=>{
+    srcW=sourceImg.width; srcH=sourceImg.height;
+    offCvs.width=srcW; offCvs.height=srcH;
+    offCtx.drawImage(sourceImg,0,0);
+    srcImgData=offCtx.getImageData(0,0,srcW,srcH).data;
+    g('imgInfo').textContent=`${f.name} (${srcW}×${srcH})`;
+    g('imgBtn').classList.add('loaded');
+    g('logImg').textContent=`${srcW}×${srcH}`;
+    drawPreview(); // 로드 즉시 미리보기 표시
+  };
+  sourceImg.src=url;
+}
+
+function handleBrush(files){
+  const f=files[0]; if(!f)return;
+  const url=URL.createObjectURL(f);
+  brushImg=new Image();
+  brushImg.onload=()=>{
+    g('brushInfo').textContent=f.name;
+    g('brushBtn').classList.add('loaded');
+    g('logBrush').textContent=f.name;
+  };
+  brushImg.src=url;
+}
+
+// ═══════════════════════════════════════════
+//  PREVIEW OVERLAY — 정지 시 이미지 위치/크기 표시
+//  previewCvs 위에 그림 → cvs(아트 캔버스)는 건드리지 않음
+// ═══════════════════════════════════════════
+function getImgDrawParams(){
+  if(!sourceImg) return null;
+  const scale = gv('imgScale');
+  const ox = parseInt(g('imgX').value), oy = parseInt(g('imgY').value);
+  const iw = sourceImg.width * scale, ih = sourceImg.height * scale;
+  const dx = cvs.width/2 - iw/2 + ox;
+  const dy = cvs.height/2 - ih/2 + oy;
+  return {iw, ih, dx, dy};
+}
+
+function drawPreview(){
+  prevCtx.clearRect(0,0,prevCvs.width,prevCvs.height);
+  if(!sourceImg || isPlaying) return;
+
+  const p = getImgDrawParams();
+  if(!p) return;
+
+  // 이미지 전체 표시 (반투명)
+  prevCtx.save();
+  prevCtx.globalAlpha = 0.75;
+  prevCtx.drawImage(sourceImg, p.dx, p.dy, p.iw, p.ih);
+  prevCtx.restore();
+
+  // 테두리 + 중심 크로스헤어
+  prevCtx.save();
+  prevCtx.strokeStyle = '#c8a96e';
+  prevCtx.lineWidth = 1.5;
+  prevCtx.setLineDash([6,4]);
+  prevCtx.strokeRect(p.dx, p.dy, p.iw, p.ih);
+  prevCtx.setLineDash([]);
+
+  // 코너 핸들
+  const hSize = 10;
+  const corners = [
+    [p.dx, p.dy], [p.dx+p.iw, p.dy],
+    [p.dx, p.dy+p.ih], [p.dx+p.iw, p.dy+p.ih]
+  ];
+  prevCtx.strokeStyle = '#e8c98e';
+  prevCtx.lineWidth = 2;
+  corners.forEach(([cx,cy])=>{
+    const sx = cx === p.dx ? 1 : -1;
+    const sy = cy === p.dy ? 1 : -1;
+    prevCtx.beginPath();
+    prevCtx.moveTo(cx + sx*hSize, cy);
+    prevCtx.lineTo(cx, cy);
+    prevCtx.lineTo(cx, cy + sy*hSize);
+    prevCtx.stroke();
+  });
+
+  // 중심 십자
+  const cx = p.dx + p.iw/2, cy = p.dy + p.ih/2;
+  prevCtx.strokeStyle = 'rgba(200,169,110,0.6)';
+  prevCtx.lineWidth = 1;
+  prevCtx.beginPath();
+  prevCtx.moveTo(cx-12,cy); prevCtx.lineTo(cx+12,cy);
+  prevCtx.moveTo(cx,cy-12); prevCtx.lineTo(cx,cy+12);
+  prevCtx.stroke();
+
+  // 치수 텍스트
+  prevCtx.fillStyle = '#c8a96e';
+  prevCtx.font = '10px DM Mono,monospace';
+  prevCtx.textAlign = 'left';
+  prevCtx.fillText(
+    `${Math.round(p.iw)}×${Math.round(p.ih)}px  scale:${parseFloat(g('imgScale').value).toFixed(2)}`,
+    p.dx + 4, p.dy - 5 < 12 ? p.dy + 14 : p.dy - 5
+  );
+
+  prevCtx.restore();
+}
+
+function renderBgOverlay(){
+  // 재생 중: cvs에 반투명 이미지 오버레이 (bgOp 슬라이더 적용)
+  if(!sourceImg) return;
+  const op = gv('bgOp');
+  if(op <= 0) return;
+  const p = getImgDrawParams();
+  if(!p) return;
+  ctx.save();
+  ctx.globalAlpha = op;
+  ctx.drawImage(sourceImg, p.dx, p.dy, p.iw, p.ih);
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════
+//  COLOR SAMPLING
+// ═══════════════════════════════════════════
+function getColor(x,y){
+  if(!srcImgData) return {r:200,g:180,b:140};
+  const p = getImgDrawParams();
+  if(!p) return {r:20,g:20,b:20};
+  const scale = gv('imgScale');
+  const sx = Math.floor((x - p.dx) / scale);
+  const sy = Math.floor((y - p.dy) / scale);
+  if(sx<0||sy<0||sx>=srcW||sy>=srcH) return {r:20,g:20,b:20};
+  const idx=(sy*srcW+sx)*4;
+  return {r:srcImgData[idx],g:srcImgData[idx+1],b:srcImgData[idx+2]};
+}
+
+// ═══════════════════════════════════════════
+//  PAINT STROKE
+// ═══════════════════════════════════════════
+function paintAt(x, y, amp, fill){
+  const size = gv('bsize');
+  const op   = gv('bop')/100;
+  const style = g('brushStyle').value;
+  const {r,g:g2,b} = getColor(x,y);
+
+  ctx.save();
+  ctx.globalAlpha = op * fill;
+
+  if(brushImg && style !== 'mosaic'){
+    // PNG 브러쉬 사용
+    paintWithPng(x,y,amp,fill,size,style,r,g2,b);
+  } else {
+    paintBuiltin(x,y,amp,fill,size,style,r,g2,b);
+  }
+  ctx.restore();
+  strokeCount++;
+  g('logFill').textContent=fill.toFixed(3);
+}
+
+function paintWithPng(x,y,amp,fill,size,style,r,g2,b){
+  // 브러쉬 PNG를 색상 틴팅해서 그리기
+  const sw=size*(0.5+amp*1.5), sh=sw;
+
+  if(style==='scatter'){
+    const spread=gv('spread');
+    const cnt=Math.ceil(fill*8)+1;
+    for(let i=0;i<cnt;i++){
+      const sx=x+(Math.random()-.5)*size*spread*2;
+      const sy=y+(Math.random()-.5)*size*spread*2;
+      const sr=sw*(0.4+Math.random()*.6);
+      ctx.save();
+      ctx.translate(sx,sy);
+      ctx.rotate(Math.random()*Math.PI*2);
+      // tint compositing trick
+      ctx.globalCompositeOperation='source-over';
+      ctx.drawImage(brushImg,-sr/2,-sr/2,sr,sr);
+      ctx.globalCompositeOperation='multiply';
+      ctx.fillStyle=`rgb(${r},${g2},${b})`;
+      ctx.fillRect(-sr/2,-sr/2,sr,sr);
+      ctx.globalCompositeOperation='destination-in';
+      ctx.drawImage(brushImg,-sr/2,-sr/2,sr,sr);
+      ctx.restore();
+    }
+  } else {
+    ctx.save();
+    ctx.translate(x,y);
+    if(style==='air'){
+      // airbrush: multiple passes with blur
+      for(let i=0;i<3;i++){
+        const r2=sw*(0.3+i*0.35);
+        ctx.globalAlpha=op*(1-i*0.3)*fill;
+        ctx.drawImage(brushImg,-r2/2,-r2/2,r2,r2);
+      }
+    } else {
+      ctx.drawImage(brushImg,-sw/2,-sw/2,sw,sw);
+    }
+    ctx.restore();
+  }
+}
+
+function paintBuiltin(x,y,amp,fill,size,style,r,g2,b){
+  const sw=size*(0.4+amp*1.2);
+  ctx.fillStyle=`rgb(${r},${g2},${b})`;
+  ctx.strokeStyle=`rgb(${r},${g2},${b})`;
+
+  switch(style){
+    case 'point':{
+      ctx.beginPath();ctx.arc(x,y,sw/2,0,Math.PI*2);ctx.fill();
+      break;
+    }
+    case 'air':{
+      // radial gradient dot
+      const grd=ctx.createRadialGradient(x,y,0,x,y,sw);
+      grd.addColorStop(0,`rgba(${r},${g2},${b},${fill})`);
+      grd.addColorStop(1,`rgba(${r},${g2},${b},0)`);
+      ctx.globalAlpha=1;
+      ctx.fillStyle=grd;
+      ctx.beginPath();ctx.arc(x,y,sw,0,Math.PI*2);ctx.fill();
+      break;
+    }
+    case 'mosaic':{
+      const cell=Math.max(4,sw*0.7);
+      const cx=Math.floor(x/cell)*cell;
+      const cy=Math.floor(y/cell)*cell;
+      ctx.fillRect(cx,cy,cell,cell);
+      break;
+    }
+    case 'scatter':{
+      const spread=gv('spread');
+      const cnt=Math.ceil(fill*10)+2;
+      for(let i=0;i<cnt;i++){
+        const sx=x+(Math.random()-.5)*sw*spread*2;
+        const sy=y+(Math.random()-.5)*sw*spread*2;
+        const sr=(Math.random()*.6+.2)*sw*.5;
+        ctx.beginPath();ctx.arc(sx,sy,sr,0,Math.PI*2);ctx.fill();
+      }
+      break;
+    }
+  }
+}
+
+// ═══════════════════════════════════════════
+//  FREQ BAR
+// ═══════════════════════════════════════════
+function drawFreq(data){
+  freqX.clearRect(0,0,freqC.width,freqC.height);
+  const bars=Math.floor(data.length/2), bw=freqC.width/bars;
+  for(let i=0;i<bars;i++){
+    const v=data[i]/255, h=v*freqC.height;
+    const hue=(i/bars)*60+20; // gold range
+    freqX.fillStyle=`hsla(${hue},70%,55%,.8)`;
+    freqX.fillRect(i*bw,freqC.height-h,Math.max(1,bw-1),h);
+  }
+}
+
+// ═══════════════════════════════════════════
+//  ANIMATE
+// ═══════════════════════════════════════════
+function animate(){
+  if(!isPlaying) return;
+  animId=requestAnimationFrame(animate);
+
+  const nowTime=audioCtx.currentTime-startTime;
+  const mm=String(Math.floor(nowTime/60)).padStart(2,'0');
+  const ss=String(Math.floor(nowTime%60)).padStart(2,'0');
+  g('timecode').textContent=`${mm}:${ss}`;
+
+  const fd=new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteFrequencyData(fd);
+  drawFreq(fd);
+
+  // Raw amplitude
+  const amp=fd.reduce((a,b)=>a+b,0)/fd.length/255;
+  g('vubar').style.width=(amp*100)+'%';
+  g('logAmp').textContent=amp.toFixed(3);
+
+  // Trail fade
+  const fade=gv('fade');
+  if(fade>0){
+    ctx.save();ctx.globalAlpha=fade;
+    ctx.fillStyle='#000';ctx.fillRect(0,0,cvs.width,cvs.height);
+    ctx.restore();
+  }
+
+  // BG ghost
+  renderBgOverlay();
+
+  // Sensitivity threshold
+  const sens=1.1-(gv('sens')/10);
+  if(amp<sens){ g('stageInfo').textContent=`${cvs.width}×${cvs.height} · ${mm}:${ss} · ${strokeCount} strokes`; return; }
+
+  // Fill curve
+  const fill=applyFillCurve(amp);
+
+  // Paint
+  const dlimit=1000/gv('dens');
+  const now=Date.now();
+  if(now-lastPaintTime>dlimit){
+    const x=Math.random()*cvs.width;
+    const y=Math.random()*cvs.height;
+    paintAt(x,y,amp,fill);
+    lastPaintTime=now;
+  }
+
+  g('stageInfo').textContent=`${cvs.width}×${cvs.height} · ${mm}:${ss} · ${strokeCount} strokes · fill:${fill.toFixed(2)}`;
+}
+
+// ═══════════════════════════════════════════
+//  PLAY / STOP
+// ═══════════════════════════════════════════
+async function togglePlay(){
+  if(!audioBuffer){ alert('MP3/WAV 파일을 먼저 로드하세요!'); return; }
+  if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+  if(audioCtx.state==='suspended') await audioCtx.resume();
+
+  if(isPlaying){
+    // STOP
+    isPlaying=false;
+    if(animId){cancelAnimationFrame(animId);animId=null;}
+    source.stop();
+    pauseOffset=audioCtx.currentTime-startTime;
+    g('startBtn').textContent='▶ START';
+    g('startBtn').classList.remove('running');
+    g('recdot').classList.remove('on');
+    g('recstatus').textContent='◉ SAVING...';
+    if(mediaRecorder&&mediaRecorder.state==='recording') mediaRecorder.stop();
+    // 정지 시 미리보기 다시 표시
+    g('previewBadge').style.display='block';
+    drawPreview();
+  } else {
+    // START
+    strokeCount=0;
+    // 시작 시 미리보기 숨김
+    prevCtx.clearRect(0,0,prevCvs.width,prevCvs.height);
+    g('previewBadge').style.display='none';
+    source=audioCtx.createBufferSource();
+    source.buffer=audioBuffer;
+    analyser=audioCtx.createAnalyser();
+    analyser.fftSize=2048;
+    source.connect(analyser);
+    analyser.connect(audioCtx.destination);
+    source.start(0,pauseOffset);
+    startTime=audioCtx.currentTime-pauseOffset;
+    isPlaying=true;
+    animate();
+    startRecording();
+    g('startBtn').textContent='■ STOP & SAVE';
+    g('startBtn').classList.add('running');
+    g('recdot').classList.add('on');
+    g('recstatus').textContent='◉ REC';
+    source.onended=()=>{
+      if(isPlaying){
+        isPlaying=false; pauseOffset=0;
+        g('startBtn').textContent='▶ START';
+        g('startBtn').classList.remove('running');
+        g('recdot').classList.remove('on');
+        g('recstatus').textContent='◉ DONE';
+        if(mediaRecorder&&mediaRecorder.state==='recording') mediaRecorder.stop();
+        g('previewBadge').style.display='block';
+        drawPreview();
+      }
+    };
+  }
+}
+
+// ═══════════════════════════════════════════
+//  RECORDING → H.264 MP4
+// ═══════════════════════════════════════════
+function nowFilename(){
+  const d=new Date();
+  const pad=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}_${pad(d.getMonth()+1)}_${pad(d.getDate())}_${pad(d.getHours())}_${pad(d.getMinutes())}_${pad(d.getSeconds())}`;
+}
+
+function startRecording(){
+  recordedChunks=[];
+  const cs=cvs.captureStream(30);
+  let fs=cs;
+  try{
+    const dest=audioCtx.createMediaStreamDestination();
+    analyser.connect(dest);
+    const at=dest.stream.getAudioTracks()[0];
+    if(at) fs=new MediaStream([...cs.getVideoTracks(),at]);
+  }catch(e){}
+
+  const mime=['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm']
+    .find(m=>MediaRecorder.isTypeSupported(m))||'video/webm';
+
+  mediaRecorder=new MediaRecorder(fs,{mimeType:mime,videoBitsPerSecond:10_000_000});
+  mediaRecorder.ondataavailable=e=>{if(e.data&&e.data.size>0)recordedChunks.push(e.data);};
+  mediaRecorder.onstop=()=>convertToMP4();
+  mediaRecorder.start(200);
+}
+
+async function convertToMP4(){
+  const fname=nowFilename();
+  const webmBlob=new Blob(recordedChunks,{type:'video/webm'});
+
+  g('modal').classList.add('show');
+  g('pb').style.width='3%';
+  g('mlog').textContent='FFmpeg.wasm 로딩 중...';
+
+  try{
+    if(!ffmpegLoaded){
+      await new Promise((res,rej)=>{
+        const s=document.createElement('script');
+        s.src='https://cdnjs.cloudflare.com/ajax/libs/ffmpeg.wasm/0.11.0/ffmpeg.min.js';
+        s.onload=res; s.onerror=rej;
+        document.head.appendChild(s);
+      });
+      ffmpegLoaded=true;
+    }
+
+    if(!ffmpegInst){
+      const {createFFmpeg}=FFmpeg;
+      ffmpegInst=createFFmpeg({
+        log:false,
+        progress:({ratio})=>{
+          g('pb').style.width=Math.round(ratio*82+12)+'%';
+          g('mlog').textContent=`H.264 인코딩: ${Math.round(ratio*100)}%`;
+        }
+      });
+      g('mlog').textContent='FFmpeg 초기화 중...';
+      await ffmpegInst.load();
+    }
+
+    g('mlog').textContent='파일 준비 중...';
+    g('pb').style.width='10%';
+    ffmpegInst.FS('writeFile','in.webm',await FFmpeg.fetchFile(webmBlob));
+
+    await ffmpegInst.run(
+      '-i','in.webm',
+      '-c:v','libx264','-preset','fast','-crf','20',
+      '-c:a','aac','-b:a','192k',
+      '-movflags','+faststart','-pix_fmt','yuv420p',
+      'out.mp4'
+    );
+
+    const mp4=ffmpegInst.FS('readFile','out.mp4');
+    const mp4Blob=new Blob([mp4.buffer],{type:'video/mp4'});
+    g('pb').style.width='100%';
+    g('mlog').textContent='저장 중...';
+
+    setTimeout(()=>{
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(mp4Blob);
+      a.download=`${fname}.mp4`;
+      a.click();
+      g('modal').classList.remove('show');
+      g('recstatus').textContent='◉ MP4 SAVED';
+    },500);
+
+  }catch(err){
+    console.warn('FFmpeg 실패:', err);
+    g('modal').classList.remove('show');
+    // Fallback: WebM
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(webmBlob);
+    a.download=`${fname}.webm`;
+    a.click();
+    g('recstatus').textContent='◉ SAVED (WebM)';
+
+    showToast('⚠ FFmpeg 변환 실패 → WebM 저장됨\nGitHub Pages: 첫 로드 후 자동 재로드 → 재시도시 MP4 저장');
+  }
+}
+
+function showToast(msg){
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#13131a;border:1px solid #c8a96e;color:#c8a96e;padding:10px 16px;border-radius:4px;font-size:9px;z-index:9999;font-family:DM Mono,monospace;letter-spacing:.5px;white-space:pre-line;text-align:center;line-height:1.7;';
+  t.textContent=msg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),7000);
+}
+
+// ═══════════════════════════════════════════
+//  UTILITIES
+// ═══════════════════════════════════════════
+function clearCvs(){
+  ctx.fillStyle='#000';ctx.fillRect(0,0,cvs.width,cvs.height);
+  strokeCount=0;g('logFill').textContent='0.000';g('logAmp').textContent='0.000';
+}
+function savePng(){
+  const a=document.createElement('a');
+  a.download=`${nowFilename()}.png`;
+  a.href=cvs.toDataURL('image/png');a.click();
+}
+
+// ═══════════════════════════════════════════
+//  KEYBOARD
+// ═══════════════════════════════════════════
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT') return;
+  if(e.code==='Space'){e.preventDefault();togglePlay();}
+  if(e.code==='KeyC') clearCvs();
+  if(e.code==='KeyS') savePng();
+  if(e.code==='Digit1') g('brushStyle').value='point';
+  if(e.code==='Digit2') g('brushStyle').value='air';
+  if(e.code==='Digit3') g('brushStyle').value='mosaic';
+  if(e.code==='Digit4') g('brushStyle').value='scatter';
+});
+
+// ═══════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════
+resize();
+buildCurveUI();
+// 시작 시 badge 표시 (이미지 로드 전이라도 위치 조정 안내)
+g('previewBadge').style.display = 'block';
+</script>
+</body>
+</html>
