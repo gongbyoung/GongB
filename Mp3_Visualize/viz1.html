@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SPECTRUM LAB v15.0.32 — PNG Flower Engine</title>
+<title>SPECTRUM LAB v15.0.33 — PNG-only Sway Engine</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -48,7 +48,7 @@ select { width:100%; background:#000; border:1px solid var(--border); color:var(
 <body>
 
 <div class="topbar">
-  <div class="logo">SPECTRUM LAB v15.0.32</div>
+  <div class="logo">SPECTRUM LAB v15.0.33</div>
   <div id="timeCode" style="font-family:monospace; font-size:13px; color:var(--accent);">00:00 / 00:00</div>
 </div>
 
@@ -183,46 +183,46 @@ function draw() {
     updateUI();
 }
 
-// --- 메인 꽃 그리기 (PNG 지원) ---
+// --- 메인 꽃 그리기 (PNG-only Sway) ---
 function drawCentralFlower(bass) {
     const W = width, H = height;
     let sz = parseFloat(document.getElementById('mainSz').value);
     let swaySense = parseInt(document.getElementById('sway').value);
 
     push();
-    translate(W/2, H);
+    // 화면 하단 중앙으로 이동. 줄기 로직 제거로 인해translate(W/2, H - stemLen)이 아님
+    translate(W/2, H); 
     
     let time = millis() * 0.001;
     let baseSway = sin(time * 1.5) * 0.04;
     let audioSway = sin(time * 8) * bass * swaySense * 0.02;
     mainFlowerSway = lerp(mainFlowerSway, baseSway + audioSway, 0.1);
+    
+    // 원점(화면 하단 중앙)을 기준으로 회전 Matrix 적용
     rotate(mainFlowerSway);
 
-    // 줄기 그리기
-    let stemLen = H * 0.6;
-    stroke(80, 120, 60, 200);
-    strokeWeight(12 * sz);
-    noFill();
-    beginShape();
-    vertex(0, 0);
-    bezierVertex(0, -stemLen*0.3, 0, -stemLen*0.6, 0, -stemLen);
-    endShape();
+    // [삭제하는 것 없이] 줄기 그리기 로직 삭제. 
 
-    translate(0, -stemLen);
-    
     // 꽃머리 렌더링
     if (mainFlowerImg) {
         // PNG 이미지가 로드된 경우
         let imgW = mainFlowerImg.width;
         let imgH = mainFlowerImg.height;
-        let scaleFactor = (H * 0.4 / imgH) * sz * (0.9 + bass * 0.3);
+        // 이전의 stemLen 기반 스케일링 제거. 고정 비율 사용.
+        let scaleFactor = (H * 0.35 / imgH) * sz * (0.9 + bass * 0.3);
         
         push();
-        rotate(sin(time * 2) * 0.1); // 미세한 자체 회전
+        // 이미지 그리기 원점 이동 제거. 줄기가 없으므로 원점(0,0)에 그립니다.
+        // translate(0, -stemLen); // 삭제
+
+        rotate(sin(time * 2) * 0.1); // 미세한 자체 회전 Matrix
+        // 이미지 자체를 흔들기 위해 원점(0,0)에서 그립니다.
         image(mainFlowerImg, 0, 0, imgW * scaleFactor, imgH * scaleFactor);
         pop();
     } else {
         // 이미지가 없을 때 기본 꽃 그리기
+        // translate(0, -stemLen); // 삭제. 줄기가 없으므로 원점에 그립니다.
+
         noStroke();
         fill(255, 100, 150, 230);
         let pSize = H * 0.15 * sz * (0.9 + bass * 0.3);
@@ -336,7 +336,7 @@ function stopRecording() {
 function saveVideo() {
     const blob = new Blob(recordedChunks, { type: 'video/mp4' });
     const ts = `${new Date().getHours()}${new Date().getMinutes()}${new Date().getSeconds()}`;
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `PNG_Flower_${ts}.mp4`; a.click();
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `PNG_Sway_${ts}.mp4`; a.click();
 }
 
 function setRes(r) { aspect = r; setup(); }
@@ -348,6 +348,7 @@ function updateUI() {
     }
 }
 
+// Slider Labels Sync
 ['mainSz','sway','emitRate','trail'].forEach(id => {
     let el = document.getElementById(id);
     if(el) el.oninput = function() { document.getElementById('v' + id.charAt(0).toUpperCase() + id.slice(1)).innerText = this.value; }
