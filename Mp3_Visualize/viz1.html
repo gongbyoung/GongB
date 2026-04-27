@@ -3,8 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SPECTRUM ART LAB v15.0.28 — Scattering Petals</title>
+<title>PETAL STUDIO v15.0.29 — Advanced Geometry</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
 :root{ --bg:#050508; --panel:#0d0d15; --accent:#ff88aa; --border:rgba(255,136,170,0.2); --text:#fff0f5; --muted:#665566; }
@@ -13,99 +14,119 @@ body{ background:var(--bg); color:var(--text); font-family:'Courier New',monospa
 .topbar{ padding:12px 25px; background:var(--panel); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
 .logo{letter-spacing:6px; color:var(--accent); font-weight:bold; font-size:14px;}
 
-.main{ display:grid; grid-template-columns:350px 1fr; flex:1; min-height:0; }
+.main{ display:grid; grid-template-columns:360px 1fr; flex:1; min-height:0; }
 .left-panel{ background:var(--panel); border-right:1px solid var(--border); display:flex; flex-direction:column; padding:15px; overflow-y:auto; }
 
 .ctrl-box { background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:15px; }
-.label-small { font-size:9px; color:var(--accent); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px; display:block; }
+.label-small { font-size:9px; color:var(--accent); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px; display:block; border-bottom:1px solid rgba(255,136,170,0.1); padding-bottom:3px;}
 
 .control-group { margin-bottom:12px; }
 .control-group label { display:block; font-size:9px; color:var(--muted); margin-bottom:4px; }
 .val-label { float:right; color:var(--accent); font-weight:bold; font-size:10px; }
 input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; height:3px; }
+select { width:100%; background:#000; border:1px solid var(--border); color:var(--text); padding:8px; border-radius:4px; font-size:11px; outline:none; margin-bottom:10px;}
 
 .btn { background:transparent; border:1px solid var(--border); border-radius:4px; color:#fff; padding:10px; cursor:pointer; font-size:10px; width:100%; margin-bottom:5px; transition:0.2s; }
 .btn.active { background:var(--accent); color:#000; }
-.btn.primary { background:#ff4488; border-color:#ff4488; color:#fff; font-weight:bold; font-size:12px; padding:15px; margin-top:5px; }
+.btn.primary { background:#ff4488; border-color:#ff4488; color:#fff; font-weight:bold; font-size:11px; padding:15px; margin-top:5px; }
+.btn.primary:disabled { opacity:0.3; cursor:not-allowed; }
 .btn.primary.recording { background:#fff; color:#ff4488; animation: pulse 1s infinite; }
 
 @keyframes pulse { 0%{opacity:1;} 50%{opacity:0.6;} 100%{opacity:1;} }
 
 .viz-area { position:relative; display:flex; justify-content:center; align-items:center; flex:1; background:#000; }
-#defaultCanvas0 { box-shadow: 0 0 50px rgba(255,136,170,0.15); border:1px solid #222; }
+#p5-container canvas { box-shadow: 0 0 50px rgba(0,0,0,0.5); border:1px solid #222; }
 
 .playbar { height:4px; background:#111; position:relative; }
 #progFill { position:absolute; left:0; top:0; height:100%; background:var(--accent); width:0%; transition: width 0.1s; }
+
+.status-log { font-size:10px; color:var(--muted); margin-top:5px; text-align:center; }
 </style>
 </head>
 <body>
 
 <div class="topbar">
-  <div class="logo">PETAL FLOW v15.0.28</div>
+  <div class="logo">PETAL LAB v15.0.29</div>
   <div id="timeCode" style="font-family:monospace; font-size:13px; color:var(--accent);">00:00 / 00:00</div>
 </div>
 
 <div class="main">
   <div class="left-panel">
     <div class="ctrl-box">
-      <span class="label-small">A. Music & Canvas</span>
-      <button class="btn" onclick="document.getElementById('mIn').click()">LOAD MP3</button>
+      <span class="label-small">A. Audio & Canvas</span>
+      <button class="btn" id="loadBtn" onclick="document.getElementById('mIn').click()">1. LOAD MP3 FILE</button>
       <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleFile(this.files)">
+      <div id="statusLog" class="status-log">No file loaded</div>
       
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:5px; margin-top:5px;">
         <button class="btn active" id="res169" onclick="setRes('16:9')">16:9</button>
         <button class="btn" id="res916" onclick="setRes('9:16')">9:16</button>
       </div>
-      <button class="btn primary" id="recBtn" onclick="toggleSync()">▶ START SYNC RECORD</button>
+      <button class="btn primary" id="recBtn" onclick="toggleSync()" disabled>▶ START SYNC RECORD</button>
     </div>
 
     <div class="ctrl-box">
-      <span class="label-small">B. Petal Dynamics</span>
+      <span class="label-small">B. Petal Geometry</span>
+      <label style="font-size:9px; color:var(--muted);">SHAPE STYLE</label>
+      <select id="pStyle">
+          <option value="round">Round (부드러운)</option>
+          <option value="sharp">Sharp (뾰족한)</option>
+          <option value="sakura" selected>Sakura (벚꽃잎)</option>
+          <option value="heart">Heart (하트)</option>
+          <option value="leaf">Leaf (나뭇잎)</option>
+      </select>
       <div class="control-group">
-        <label>EMISSION (생성량) <span class="val-label" id="vEmit">20</span></label>
-        <input type="range" id="emitRate" min="0" max="100" value="20">
+        <label>SHAPE DETAIL (정점) <span class="val-label" id="vDetail">12</span></label>
+        <input type="range" id="pDetail" min="3" max="30" value="12">
       </div>
       <div class="control-group">
-        <label>WIND POWER (바람) <span class="val-label" id="vWind">5</span></label>
+        <label>PETAL SCALE <span class="val-label" id="vSize">1.0</span></label>
+        <input type="range" id="pSize" min="0.2" max="4.0" step="0.1" value="1.0">
+      </div>
+    </div>
+
+    <div class="ctrl-box">
+      <span class="label-small">C. Dynamics & Physics</span>
+      <div class="control-group">
+        <label>EMISSION RATE <span class="val-label" id="vEmit">30</span></label>
+        <input type="range" id="emitRate" min="0" max="100" value="30">
+      </div>
+      <div class="control-group">
+        <label>WIND & DRIFT <span class="val-label" id="vWind">5</span></label>
         <input type="range" id="wind" min="0" max="20" value="5">
       </div>
       <div class="control-group">
-        <label>GRAVITY (무게감) <span class="val-label" id="vGrav">2</span></label>
+        <label>FALL SPEED <span class="val-label" id="vGrav">2</span></label>
         <input type="range" id="grav" min="1" max="10" value="2">
       </div>
     </div>
 
     <div class="ctrl-box">
-      <span class="label-small">C. Visual Style</span>
+      <span class="label-small">D. Color & Mood</span>
       <div class="control-group">
-        <label>PETAL SIZE <span class="val-label" id="vSize">1.0</span></label>
-        <input type="range" id="pSize" min="0.2" max="3.0" step="0.1" value="1.0">
-      </div>
-      <div class="control-group">
-        <label>HUE (꽃 색상) <span class="val-label" id="vHue">340</span></label>
+        <label>HUE OFFSET <span class="val-label" id="vHue">340</span></label>
         <input type="range" id="hue" min="0" max="360" value="340">
       </div>
       <div class="control-group">
-        <label>TRAIL (잔상) <span class="val-label" id="vTrail">30</span></label>
-        <input type="range" id="trail" min="0" max="255" value="30">
+        <label>TRAIL (잔상) <span class="val-label" id="vTrail">40</span></label>
+        <input type="range" id="trail" min="0" max="255" value="40">
       </div>
     </div>
   </div>
 
-  <div class="viz-area" id="p5-container">
-    </div>
+  <div class="viz-area" id="p5-container"></div>
 </div>
 
 <div class="playbar"><div id="progFill"></div></div>
 
 <script>
 let aspect = '16:9', isRecording = false, isPlaying = false;
-let audio, fft, amp;
+let audio, fft, ampObj;
 let petals = [];
 let mediaRecorder, recordedChunks = [];
 let canvasRef;
 
-// --- p5.js 시뮬레이션 엔진 ---
+// --- p5.js 엔진 ---
 function setup() {
     let container = document.getElementById('p5-container');
     let w = aspect === '16:9' ? 1280 : 720;
@@ -116,9 +137,9 @@ function setup() {
     
     colorMode(HSB, 360, 100, 100, 255);
     fft = new p5.FFT();
-    amp = new p5.Amplitude();
+    ampObj = new p5.Amplitude();
     
-    // 반응형 캔버스 크기 조절 (화면 표시용)
+    // 표시용 크기 최적화
     cnv.style('max-width', '100%');
     cnv.style('max-height', '100%');
     cnv.style('height', 'auto');
@@ -126,65 +147,66 @@ function setup() {
 }
 
 function draw() {
-    let trail = parseInt(document.getElementById('trail').value);
-    background(0, 0, 5, trail); // 잔상 효과
+    let trVal = parseInt(document.getElementById('trail').value);
+    background(0, 0, 5, trVal);
 
-    if (!isPlaying || !audio) return;
+    if (!isPlaying || !audio || !audio.isPlaying()) return;
 
     let spectrum = fft.analyze();
-    let volume = amp.getLevel(); // 0.0 ~ 1.0
-    let bass = fft.getEnergy("bass"); // 0 ~ 255
+    let vol = ampObj.getLevel();
     
-    // UI 값 읽기
     let emitRate = parseInt(document.getElementById('emitRate').value);
     let windPower = parseInt(document.getElementById('wind').value);
-    let gravPower = parseInt(document.getElementById('grav').value) * 0.05;
+    let gravPower = parseInt(document.getElementById('grav').value) * 0.04;
     let baseHue = parseInt(document.getElementById('hue').value);
     let pScale = parseFloat(document.getElementById('pSize').value);
+    let pStyle = document.getElementById('pStyle').value;
+    let pDetail = parseInt(document.getElementById('pDetail').value);
 
-    // 꽃잎 생성 (음악 비트에 반응)
-    if (volume > 0.05) {
-        let spawnCount = map(volume, 0, 0.5, 0, emitRate / 5);
-        for(let i=0; i<spawnCount; i++) {
-            petals.push(new Petal(baseHue));
+    // 꽃잎 생성
+    if (vol > 0.02) {
+        let sc = map(vol, 0, 0.6, 0, emitRate/3);
+        for(let i=0; i<sc; i++) {
+            petals.push(new Petal(baseHue, pStyle, pDetail));
         }
     }
 
-    // 꽃잎 업데이트 및 그리기
+    // 객체 업데이트
     for (let i = petals.length - 1; i >= 0; i--) {
         let p = petals[i];
-        p.applyForce(volume * windPower, gravPower);
+        p.applyForce(vol * windPower, gravPower);
         p.update();
-        p.display(pScale, volume);
+        p.display(pScale, vol);
         if (p.isOffScreen()) petals.splice(i, 1);
     }
 
-    // 재생 시간 업데이트
     updateUI();
 }
 
-// --- 꽃잎 객체 클래스 (Houdini POP 컨셉) ---
+// --- 꽃잎 기하학 클래스 ---
 class Petal {
-    constructor(baseHue) {
-        this.pos = createVector(random(width), -20);
-        this.vel = createVector(random(-1, 1), random(1, 3));
+    constructor(baseHue, style, detail) {
+        this.pos = createVector(random(width), -30);
+        this.vel = createVector(random(-0.5, 0.5), random(1, 2));
         this.acc = createVector(0, 0);
         this.angle = random(TWO_PI);
-        this.rotSpeed = random(-0.1, 0.1);
-        this.size = random(8, 15);
-        this.hue = (baseHue + random(-20, 20)) % 360;
+        this.rotSpeed = random(-0.05, 0.05);
+        this.size = random(10, 18);
+        this.hue = (baseHue + random(-15, 15)) % 360;
         this.noiseOff = random(1000);
+        this.style = style;
+        this.detail = detail;
     }
 
     applyForce(wind, grav) {
         let w = map(noise(this.noiseOff, frameCount * 0.01), 0, 1, -wind, wind);
-        this.acc.add(w * 0.1, grav);
+        this.acc.add(w * 0.05, grav);
         this.noiseOff += 0.01;
     }
 
     update() {
         this.vel.add(this.acc);
-        this.vel.limit(5);
+        this.vel.limit(4);
         this.pos.add(this.vel);
         this.acc.mult(0);
         this.angle += this.rotSpeed;
@@ -194,50 +216,79 @@ class Petal {
         push();
         translate(this.pos.x, this.pos.y);
         rotate(this.angle);
-        // 볼륨에 따라 살짝 커짐
-        let s = this.size * pScale * (1 + vol);
+        let s = this.size * pScale * (0.8 + vol);
         
         noStroke();
-        fill(this.hue, 60, 95, 200);
+        fill(this.hue, 55, 95, 210);
         
-        // 꽃잎 모양 그리기 (B-Spline 컨셉)
         beginShape();
-        curveVertex(0, -s);
-        curveVertex(-s/2, 0);
-        curveVertex(0, s);
-        curveVertex(s/2, 0);
-        curveVertex(0, -s);
+        if (this.style === 'round') {
+            for(let a=0; a<TWO_PI; a+=TWO_PI/this.detail) {
+                let r = s * (1 + 0.3 * sin(a*1));
+                vertex(cos(a)*r*0.6, sin(a)*r);
+            }
+        } else if (this.style === 'sharp') {
+            for(let a=0; a<TWO_PI; a+=TWO_PI/this.detail) {
+                let r = (a % (TWO_PI/2) < 0.1) ? s*1.2 : s*0.7;
+                vertex(cos(a)*r*0.5, sin(a)*r);
+            }
+        } else if (this.style === 'sakura') {
+            for(let a=0; a<TWO_PI; a+=0.1) {
+                let r = s * (abs(sin(a*1)) + 0.2 * abs(sin(a*3)));
+                // 끝이 갈라진 형태
+                let drift = (a > PI*0.4 && a < PI*0.6) ? s*0.2 : 0;
+                vertex(cos(a)*r*0.7, (sin(a)*r) - drift);
+            }
+        } else if (this.style === 'heart') {
+            for(let a=0; a<TWO_PI; a+=0.1) {
+                let x = 16 * pow(sin(a), 3);
+                let y = -(13 * cos(a) - 5 * cos(2*a) - 2 * cos(3*a) - cos(4*a));
+                vertex(x * (s/15), y * (s/15));
+            }
+        } else if (this.style === 'leaf') {
+            for(let a=0; a<TWO_PI; a+=0.1) {
+                let r = s * (1 + 0.8 * sin(a)) * (1 + 0.2 * cos(a*2));
+                vertex(cos(a)*r*0.3, sin(a)*r);
+            }
+        }
         endShape(CLOSE);
         
-        // 중심선
-        stroke(this.hue, 80, 50, 100);
-        line(0, -s, 0, s);
+        // 디테일 선
+        stroke(this.hue, 70, 40, 60);
+        line(0, -s*0.5, 0, s*0.5);
         pop();
     }
 
-    isOffScreen() {
-        return (this.pos.y > height + 50 || this.pos.x < -50 || this.pos.x > width + 50);
-    }
+    isOffScreen() { return (this.pos.y > height + 50 || this.pos.x < -50 || this.pos.x > width + 50); }
 }
 
-// --- 오디오 및 시스템 로직 ---
+// --- 오디오 로딩 및 시스템 ---
 function handleFile(files) {
+    const log = document.getElementById('statusLog');
+    const recBtn = document.getElementById('recBtn');
+    log.innerText = "LOADING AUDIO...";
+    log.style.color = "#ffcc00";
+
     if (audio) audio.stop();
+
     let url = URL.createObjectURL(files[0]);
-    audio = loadSound(url, () => {
-        console.log("Audio Loaded");
-        isPlaying = false;
-        document.getElementById('timeCode').innerText = `READY: ${files[0].name}`;
-    });
+    audio = loadSound(url, 
+        () => { // Success
+            log.innerText = "READY: " + files[0].name;
+            log.style.color = "var(--accent)";
+            recBtn.disabled = false;
+        },
+        (err) => { // Error
+            log.innerText = "ERROR LOADING FILE";
+            log.style.color = "#ff4466";
+            console.error(err);
+        }
+    );
 }
 
 function toggleSync() {
-    if (!audio) return alert("MP3 파일을 로딩해주세요!");
-    if (isPlaying) {
-        stopRecording();
-    } else {
-        startRecording();
-    }
+    if (!audio || !audio.isLoaded()) return alert("음악 로딩 중입니다. 잠시만 기다려주세요.");
+    if (isPlaying) stopRecording(); else startRecording();
 }
 
 async function startRecording() {
@@ -245,71 +296,58 @@ async function startRecording() {
     
     recordedChunks = [];
     const stream = canvasRef.captureStream(60);
-    
-    // 오디오 스트림 캡처 (p5.sound 출력 연결)
     const dest = getAudioContext().createMediaStreamDestination();
     p5.soundOut.output.connect(dest);
     
-    const combined = new MediaStream([
-        ...stream.getVideoTracks(),
-        ...dest.stream.getAudioTracks()
-    ]);
-
+    const combined = new MediaStream([...stream.getVideoTracks(), ...dest.stream.getAudioTracks()]);
     mediaRecorder = new MediaRecorder(combined, { mimeType: 'video/webm; codecs=vp9,opus' });
-    mediaRecorder.ondataavailable = e => recordedChunks.push(e.data);
+    mediaRecorder.ondataavailable = e => { if(e.data.size > 0) recordedChunks.push(e.data); };
     mediaRecorder.onstop = saveVideo;
 
     audio.play();
     mediaRecorder.start();
     isPlaying = true;
     
-    let btn = document.getElementById('recBtn');
-    btn.innerText = "■ STOP & SAVE MP4";
-    btn.classList.add('recording');
+    document.getElementById('recBtn').innerText = "■ STOP & SAVE MP4";
+    document.getElementById('recBtn').classList.add('recording');
 }
 
 function stopRecording() {
     audio.stop();
-    if(mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+    if(mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
     isPlaying = false;
-    
-    let btn = document.getElementById('recBtn');
-    btn.innerText = "▶ START SYNC RECORD";
-    btn.classList.remove('recording');
+    document.getElementById('recBtn').innerText = "▶ START SYNC RECORD";
+    document.getElementById('recBtn').classList.remove('recording');
 }
 
 function saveVideo() {
     const blob = new Blob(recordedChunks, { type: 'video/mp4' });
     const url = URL.createObjectURL(blob);
     const now = new Date();
-    const ts = `${now.getHours()}${now.getMinutes()}${now.getSeconds()}`;
-    const a = document.createElement('a');
-    a.href = url; a.download = `Scattered_Petals_${ts}.mp4`; a.click();
+    const ts = `${now.getMonth()+1}${now.getDate()}_${now.getHours()}${now.getMinutes()}`;
+    const a = document.createElement('a'); a.href = url; a.download = `Petal_Art_${ts}.mp4`; a.click();
 }
 
 function setRes(r) {
     aspect = r;
     document.getElementById('res169').classList.toggle('active', r === '16:9');
     document.getElementById('res916').classList.toggle('active', r === '9:16');
-    setup(); // 캔버스 재설정
+    setup(); 
 }
 
 function updateUI() {
     if (audio && audio.isPlaying()) {
-        let curr = audio.currentTime();
-        let dur = audio.duration();
+        let curr = audio.currentTime(), dur = audio.duration();
         document.getElementById('timeCode').innerText = `${nf(floor(curr/60),2)}:${nf(floor(curr%60),2)} / ${nf(floor(dur/60),2)}:${nf(floor(dur%60),2)}`;
         document.getElementById('progFill').style.width = (curr/dur * 100) + '%';
     }
 }
 
-// 슬라이더 레이블 실시간 업데이트
-const sIds = ['emitRate','wind','grav','pSize','hue','trail'];
+// Slider Labels
+const sIds = ['pDetail','pSize','emitRate','wind','grav','hue','trail'];
 sIds.forEach(id => {
     let el = document.getElementById(id);
-    if(el) el.oninput = function() {
-        document.getElementById('v' + id.charAt(0).toUpperCase() + id.slice(1)).innerText = this.value;
-    }
+    if(el) el.oninput = function() { document.getElementById('v' + id.charAt(0).toUpperCase() + id.slice(1)).innerText = this.value; }
 });
 </script>
 </body>
