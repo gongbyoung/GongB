@@ -3,296 +3,312 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SPECTRUM ART LAB v15.0.27 — Botanical Simulation</title>
+<title>SPECTRUM ART LAB v15.0.28 — Scattering Petals</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
-:root{ --bg:#050508; --panel:#0d0d15; --accent:#00ffcc; --border:rgba(0,255,204,0.15); --text:#e0f0ff; --muted:#44445a; --group-bg:rgba(255,255,255,0.02); }
+:root{ --bg:#050508; --panel:#0d0d15; --accent:#ff88aa; --border:rgba(255,136,170,0.2); --text:#fff0f5; --muted:#665566; }
 body{ background:var(--bg); color:var(--text); font-family:'Courier New',monospace; height:100vh; overflow:hidden; display: flex; flex-direction: column; }
 
-/* LAYOUT */
-.topbar{ padding:12px 25px; background:var(--panel); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+.topbar{ padding:12px 25px; background:var(--panel); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
 .logo{letter-spacing:6px; color:var(--accent); font-weight:bold; font-size:14px;}
 
-.main{ display:grid; grid-template-columns:380px 1fr; flex:1; min-height:0; }
+.main{ display:grid; grid-template-columns:350px 1fr; flex:1; min-height:0; }
 .left-panel{ background:var(--panel); border-right:1px solid var(--border); display:flex; flex-direction:column; padding:15px; overflow-y:auto; }
 
-/* GROUPING UI */
-.ctrl-group-box { background:var(--group-bg); border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:15px; }
-.group-label { font-size:9px; color:var(--accent); letter-spacing:3px; text-transform:uppercase; margin-bottom:10px; display:block; border-bottom:1px solid rgba(0,255,204,0.1); padding-bottom:4px;}
+.ctrl-box { background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:15px; }
+.label-small { font-size:9px; color:var(--accent); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px; display:block; }
 
-.control-group { margin-bottom:10px; }
+.control-group { margin-bottom:12px; }
 .control-group label { display:block; font-size:9px; color:var(--muted); margin-bottom:4px; }
 .val-label { float:right; color:var(--accent); font-weight:bold; font-size:10px; }
 input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; height:3px; }
 
-.btn { background:transparent; border:1px solid var(--border); border-radius:4px; color:#fff; padding:10px; cursor:pointer; font-family:monospace; font-size:10px; width:100%; margin-bottom:5px; transition:0.2s; }
+.btn { background:transparent; border:1px solid var(--border); border-radius:4px; color:#fff; padding:10px; cursor:pointer; font-size:10px; width:100%; margin-bottom:5px; transition:0.2s; }
 .btn.active { background:var(--accent); color:#000; }
-.btn.primary { background:#ff3366; border-color:#ff3366; color:#fff; font-weight:bold; font-size:12px; padding:15px; margin-top:5px; }
-.btn.primary.recording { background:#fff; color:#ff3366; animation: pulse 1s infinite; }
+.btn.primary { background:#ff4488; border-color:#ff4488; color:#fff; font-weight:bold; font-size:12px; padding:15px; margin-top:5px; }
+.btn.primary.recording { background:#fff; color:#ff4488; animation: pulse 1s infinite; }
 
 @keyframes pulse { 0%{opacity:1;} 50%{opacity:0.6;} 100%{opacity:1;} }
 
-.viz-area { background:#000; position:relative; display:flex; justify-content:center; align-items:center; overflow:hidden; flex:1; }
-#artCanvas { background:#000; box-shadow: 0 0 40px rgba(0,0,0,0.8); }
+.viz-area { position:relative; display:flex; justify-content:center; align-items:center; flex:1; background:#000; }
+#defaultCanvas0 { box-shadow: 0 0 50px rgba(255,136,170,0.15); border:1px solid #222; }
 
-.playbar { height:4px; background:#111; position:relative; flex-shrink:0; }
-#progFill { position:absolute; left:0; top:0; height:100%; background:var(--accent); width:0%; }
+.playbar { height:4px; background:#111; position:relative; }
+#progFill { position:absolute; left:0; top:0; height:100%; background:var(--accent); width:0%; transition: width 0.1s; }
 </style>
 </head>
 <body>
 
 <div class="topbar">
-  <div class="logo">SPECTRUM ART LAB v15.0.27</div>
+  <div class="logo">PETAL FLOW v15.0.28</div>
   <div id="timeCode" style="font-family:monospace; font-size:13px; color:var(--accent);">00:00 / 00:00</div>
 </div>
 
 <div class="main">
   <div class="left-panel">
-    
-    <div class="ctrl-group-box">
-      <span class="group-label">A. System & Record</span>
+    <div class="ctrl-box">
+      <span class="label-small">A. Music & Canvas</span>
       <button class="btn" onclick="document.getElementById('mIn').click()">LOAD MP3</button>
-      <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleMusic(this.files)">
+      <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleFile(this.files)">
       
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:5px; margin:5px 0;">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:5px; margin-top:5px;">
         <button class="btn active" id="res169" onclick="setRes('16:9')">16:9</button>
         <button class="btn" id="res916" onclick="setRes('9:16')">9:16</button>
       </div>
-      <button class="btn primary" id="recBtn" onclick="startSync()">▶ START SYNC RECORD</button>
+      <button class="btn primary" id="recBtn" onclick="toggleSync()">▶ START SYNC RECORD</button>
     </div>
 
-    <div class="ctrl-group-box">
-      <span class="group-label">B. Environment (Rain/Water)</span>
+    <div class="ctrl-box">
+      <span class="label-small">B. Petal Dynamics</span>
       <div class="control-group">
-        <label>RAIN (낙하) <span class="val-label" id="vRain">30</span></label>
-        <input type="range" id="rain" min="0" max="100" value="30">
+        <label>EMISSION (생성량) <span class="val-label" id="vEmit">20</span></label>
+        <input type="range" id="emitRate" min="0" max="100" value="20">
       </div>
       <div class="control-group">
-        <label>RIPPLE (물결) <span class="val-label" id="vRipple">20</span></label>
-        <input type="range" id="ripple" min="0" max="100" value="20">
-      </div>
-    </div>
-
-    <div class="ctrl-group-box">
-      <span class="group-label">C. Botanical Morpher</span>
-      <div class="control-group">
-        <label>CLASSIC BLOOM (개화) <span class="val-label" id="vBloom">40</span></label>
-        <input type="range" id="bloom" min="0" max="100" value="40">
+        <label>WIND POWER (바람) <span class="val-label" id="vWind">5</span></label>
+        <input type="range" id="wind" min="0" max="20" value="5">
       </div>
       <div class="control-group">
-        <label>PHYLLOTAXIS (씨앗 나선) <span class="val-label" id="vPhy">0</span></label>
-        <input type="range" id="phy" min="0" max="100" value="0">
-      </div>
-      <div class="control-group">
-        <label>MANDALA (기하학 꽃) <span class="val-label" id="vMan">0</span></label>
-        <input type="range" id="man" min="0" max="100" value="0">
-      </div>
-      <div class="control-group">
-        <label>VINES (덩굴 줄기) <span class="val-label" id="vVine">0</span></label>
-        <input type="range" id="vine" min="0" max="100" value="0">
-      </div>
-      <div class="control-group">
-        <label>POLLEN DRIFT (꽃가루) <span class="val-label" id="vPol">20</span></label>
-        <input type="range" id="pol" min="0" max="100" value="20">
+        <label>GRAVITY (무게감) <span class="val-label" id="vGrav">2</span></label>
+        <input type="range" id="grav" min="1" max="10" value="2">
       </div>
     </div>
 
-    <div class="ctrl-group-box">
-      <span class="group-label">D. Physics & Style</span>
+    <div class="ctrl-box">
+      <span class="label-small">C. Visual Style</span>
       <div class="control-group">
-        <label>SENSITIVITY <span class="val-label" id="vSense">8</span></label>
-        <input type="range" id="sense" min="1" max="15" value="8">
+        <label>PETAL SIZE <span class="val-label" id="vSize">1.0</span></label>
+        <input type="range" id="pSize" min="0.2" max="3.0" step="0.1" value="1.0">
       </div>
       <div class="control-group">
-        <label>COLOR HUE <span class="val-label" id="vHue">280</span></label>
-        <input type="range" id="hue" min="0" max="360" value="280">
+        <label>HUE (꽃 색상) <span class="val-label" id="vHue">340</span></label>
+        <input type="range" id="hue" min="0" max="360" value="340">
       </div>
       <div class="control-group">
-        <label>TRAIL POWER <span class="val-label" id="vTrail">0.15</span></label>
-        <input type="range" id="trail" min="0.01" max="0.5" step="0.01" value="0.15">
+        <label>TRAIL (잔상) <span class="val-label" id="vTrail">30</span></label>
+        <input type="range" id="trail" min="0" max="255" value="30">
       </div>
     </div>
-
   </div>
 
-  <div class="viz-area">
-    <canvas id="artCanvas"></canvas>
-  </div>
+  <div class="viz-area" id="p5-container">
+    </div>
 </div>
 
 <div class="playbar"><div id="progFill"></div></div>
 
 <script>
 let aspect = '16:9', isRecording = false, isPlaying = false;
-let audioCtx, analyser, source, audioBuffer, startTime = 0;
+let audio, fft, amp;
+let petals = [];
 let mediaRecorder, recordedChunks = [];
-const canvas = document.getElementById('artCanvas'), ctx = canvas.getContext('2d');
+let canvasRef;
 
-// Particle Pools
-let drops = []; for(let i=0; i<150; i++) drops.push({x:Math.random(), y:Math.random(), speed:Math.random()*0.02+0.01});
-let ripples = [], pollens = []; for(let i=0; i<100; i++) pollens.push({x:Math.random(), y:Math.random(), vx:Math.random()*0.002-0.001, vy:Math.random()*0.002-0.001});
-
-function handleMusic(files) {
-    if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const reader = new FileReader();
-    reader.onload = e => {
-        audioCtx.decodeAudioData(e.target.result, buf => { audioBuffer = buf; });
-    };
-    reader.readAsArrayBuffer(files[0]);
+// --- p5.js 시뮬레이션 엔진 ---
+function setup() {
+    let container = document.getElementById('p5-container');
+    let w = aspect === '16:9' ? 1280 : 720;
+    let h = aspect === '16:9' ? 720 : 1280;
+    let cnv = createCanvas(w, h);
+    cnv.parent(container);
+    canvasRef = cnv.elt;
+    
+    colorMode(HSB, 360, 100, 100, 255);
+    fft = new p5.FFT();
+    amp = new p5.Amplitude();
+    
+    // 반응형 캔버스 크기 조절 (화면 표시용)
+    cnv.style('max-width', '100%');
+    cnv.style('max-height', '100%');
+    cnv.style('height', 'auto');
+    cnv.style('width', 'auto');
 }
 
-async function startSync() {
-    if(!audioBuffer) return alert("MP3를 먼저 로딩하세요!");
-    if(isPlaying) { stopAll(); return; }
-    if(audioCtx.state === 'suspended') await audioCtx.resume();
-    
-    source = audioCtx.createBufferSource(); source.buffer = audioBuffer;
-    analyser = audioCtx.createAnalyser(); analyser.fftSize = 1024;
-    source.connect(analyser); analyser.connect(audioCtx.destination);
+function draw() {
+    let trail = parseInt(document.getElementById('trail').value);
+    background(0, 0, 5, trail); // 잔상 효과
 
+    if (!isPlaying || !audio) return;
+
+    let spectrum = fft.analyze();
+    let volume = amp.getLevel(); // 0.0 ~ 1.0
+    let bass = fft.getEnergy("bass"); // 0 ~ 255
+    
+    // UI 값 읽기
+    let emitRate = parseInt(document.getElementById('emitRate').value);
+    let windPower = parseInt(document.getElementById('wind').value);
+    let gravPower = parseInt(document.getElementById('grav').value) * 0.05;
+    let baseHue = parseInt(document.getElementById('hue').value);
+    let pScale = parseFloat(document.getElementById('pSize').value);
+
+    // 꽃잎 생성 (음악 비트에 반응)
+    if (volume > 0.05) {
+        let spawnCount = map(volume, 0, 0.5, 0, emitRate / 5);
+        for(let i=0; i<spawnCount; i++) {
+            petals.push(new Petal(baseHue));
+        }
+    }
+
+    // 꽃잎 업데이트 및 그리기
+    for (let i = petals.length - 1; i >= 0; i--) {
+        let p = petals[i];
+        p.applyForce(volume * windPower, gravPower);
+        p.update();
+        p.display(pScale, volume);
+        if (p.isOffScreen()) petals.splice(i, 1);
+    }
+
+    // 재생 시간 업데이트
+    updateUI();
+}
+
+// --- 꽃잎 객체 클래스 (Houdini POP 컨셉) ---
+class Petal {
+    constructor(baseHue) {
+        this.pos = createVector(random(width), -20);
+        this.vel = createVector(random(-1, 1), random(1, 3));
+        this.acc = createVector(0, 0);
+        this.angle = random(TWO_PI);
+        this.rotSpeed = random(-0.1, 0.1);
+        this.size = random(8, 15);
+        this.hue = (baseHue + random(-20, 20)) % 360;
+        this.noiseOff = random(1000);
+    }
+
+    applyForce(wind, grav) {
+        let w = map(noise(this.noiseOff, frameCount * 0.01), 0, 1, -wind, wind);
+        this.acc.add(w * 0.1, grav);
+        this.noiseOff += 0.01;
+    }
+
+    update() {
+        this.vel.add(this.acc);
+        this.vel.limit(5);
+        this.pos.add(this.vel);
+        this.acc.mult(0);
+        this.angle += this.rotSpeed;
+    }
+
+    display(pScale, vol) {
+        push();
+        translate(this.pos.x, this.pos.y);
+        rotate(this.angle);
+        // 볼륨에 따라 살짝 커짐
+        let s = this.size * pScale * (1 + vol);
+        
+        noStroke();
+        fill(this.hue, 60, 95, 200);
+        
+        // 꽃잎 모양 그리기 (B-Spline 컨셉)
+        beginShape();
+        curveVertex(0, -s);
+        curveVertex(-s/2, 0);
+        curveVertex(0, s);
+        curveVertex(s/2, 0);
+        curveVertex(0, -s);
+        endShape(CLOSE);
+        
+        // 중심선
+        stroke(this.hue, 80, 50, 100);
+        line(0, -s, 0, s);
+        pop();
+    }
+
+    isOffScreen() {
+        return (this.pos.y > height + 50 || this.pos.x < -50 || this.pos.x > width + 50);
+    }
+}
+
+// --- 오디오 및 시스템 로직 ---
+function handleFile(files) {
+    if (audio) audio.stop();
+    let url = URL.createObjectURL(files[0]);
+    audio = loadSound(url, () => {
+        console.log("Audio Loaded");
+        isPlaying = false;
+        document.getElementById('timeCode').innerText = `READY: ${files[0].name}`;
+    });
+}
+
+function toggleSync() {
+    if (!audio) return alert("MP3 파일을 로딩해주세요!");
+    if (isPlaying) {
+        stopRecording();
+    } else {
+        startRecording();
+    }
+}
+
+async function startRecording() {
+    if (getAudioContext().state === 'suspended') await userStartAudio();
+    
     recordedChunks = [];
-    const stream = canvas.captureStream(60);
-    const audioStreamDest = audioCtx.createMediaStreamDestination();
-    source.connect(audioStreamDest);
-    const combined = new MediaStream([...stream.getVideoTracks(), ...audioStreamDest.stream.getAudioTracks()]);
+    const stream = canvasRef.captureStream(60);
+    
+    // 오디오 스트림 캡처 (p5.sound 출력 연결)
+    const dest = getAudioContext().createMediaStreamDestination();
+    p5.soundOut.output.connect(dest);
+    
+    const combined = new MediaStream([
+        ...stream.getVideoTracks(),
+        ...dest.stream.getAudioTracks()
+    ]);
 
     mediaRecorder = new MediaRecorder(combined, { mimeType: 'video/webm; codecs=vp9,opus' });
     mediaRecorder.ondataavailable = e => recordedChunks.push(e.data);
     mediaRecorder.onstop = saveVideo;
 
-    source.start(0); mediaRecorder.start();
-    startTime = audioCtx.currentTime; isPlaying = true; isRecording = true;
-    document.getElementById('recBtn').innerText = "■ STOP & SAVE";
-    document.getElementById('recBtn').classList.add('recording');
-    source.onended = stopAll;
-    animate();
+    audio.play();
+    mediaRecorder.start();
+    isPlaying = true;
+    
+    let btn = document.getElementById('recBtn');
+    btn.innerText = "■ STOP & SAVE MP4";
+    btn.classList.add('recording');
 }
 
-function stopAll() {
-    if(source) source.stop();
-    if(mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
-    isPlaying = false; isRecording = false;
-    document.getElementById('recBtn').innerText = "▶ START SYNC RECORD";
-    document.getElementById('recBtn').classList.remove('recording');
+function stopRecording() {
+    audio.stop();
+    if(mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+    isPlaying = false;
+    
+    let btn = document.getElementById('recBtn');
+    btn.innerText = "▶ START SYNC RECORD";
+    btn.classList.remove('recording');
 }
 
 function saveVideo() {
     const blob = new Blob(recordedChunks, { type: 'video/mp4' });
     const url = URL.createObjectURL(blob);
     const now = new Date();
-    const ts = `${now.getFullYear()}${now.getMonth()+1}${now.getDate()}_${now.getHours()}${now.getMinutes()}${now.getSeconds()}`;
-    const a = document.createElement('a'); a.href = url; a.download = `Botanical_Art_${ts}.mp4`; a.click();
-}
-
-function animate() {
-    if(!isPlaying) return;
-    requestAnimationFrame(animate);
-
-    const W = canvas.width, H = canvas.height;
-    const trail = parseFloat(document.getElementById('trail').value);
-    ctx.fillStyle = `rgba(5, 5, 8, ${trail})`; ctx.fillRect(0,0,W,H);
-
-    const data = new Uint8Array(analyser.frequencyBinCount);
-    analyser.getByteFrequencyData(data);
-    let bass = data[0]/255, energy = (data.reduce((a,b)=>a+b,0)/data.length/255);
-    const amp = energy * parseFloat(document.getElementById('sense').value);
-    const hue = parseInt(document.getElementById('hue').value);
-
-    // 1. RAIN & RIPPLE (Environment)
-    const rInt = parseInt(document.getElementById('rain').value);
-    if(rInt > 0) drops.forEach(d => {
-        d.y += d.speed*(1+amp); if(d.y>1){d.y=0; d.x=Math.random();}
-        ctx.fillStyle = `hsla(${hue}, 70%, 70%, ${amp*(rInt/100)})`;
-        ctx.fillRect(d.x*W, d.y*H, 2, 10*amp);
-    });
-    const ripInt = parseInt(document.getElementById('ripple').value);
-    if(ripInt>0 && bass>0.7) ripples.push({x:Math.random()*W, y:Math.random()*H, r:0, a:1});
-    ripples.forEach((r,i)=>{
-        r.r += 2+amp*4; r.a -= 0.02;
-        ctx.strokeStyle = `hsla(${hue+40}, 100%, 70%, ${r.a*(ripInt/100)})`;
-        ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, Math.PI*2); ctx.stroke();
-        if(r.a<=0) ripples.splice(i,1);
-    });
-
-    // 2. BOTANICAL FORMS
-    // Classic Bloom
-    const blInt = parseInt(document.getElementById('bloom').value);
-    if(blInt>0){
-        ctx.save(); ctx.translate(W/2, H/2);
-        ctx.beginPath();
-        for(let a=0; a<Math.PI*2; a+=0.1){
-            let r = (H*0.2*(blInt/100))*(1+0.4*Math.sin(a*6+audioCtx.currentTime*2))*amp;
-            ctx.lineTo(Math.cos(a)*r, Math.sin(a)*r);
-        }
-        ctx.fillStyle=`hsla(${hue}, 80%, 50%, 0.1)`; ctx.fill();
-        ctx.strokeStyle=`hsla(${hue}, 100%, 80%, 0.5)`; ctx.stroke(); ctx.restore();
-    }
-
-    // Phyllotaxis (Sunflower)
-    const phyInt = parseInt(document.getElementById('phy').value);
-    if(phyInt > 0){
-        ctx.save(); ctx.translate(W/2, H/2);
-        for(let n=0; n<200; n++){
-            let a = n * 137.5 * (Math.PI/180);
-            let r = 4 * Math.sqrt(n) * (phyInt/50) * (0.5+amp);
-            ctx.fillStyle = `hsla(${hue+n*0.5}, 100%, 70%, ${0.5*amp})`;
-            ctx.beginPath(); ctx.arc(Math.cos(a)*r, Math.sin(a)*r, 2*amp, 0, Math.PI*2); ctx.fill();
-        }
-        ctx.restore();
-    }
-
-    // Mandala
-    const manInt = parseInt(document.getElementById('man').value);
-    if(manInt > 0){
-        ctx.save(); ctx.translate(W/2, H/2);
-        for(let i=0; i<8; i++){
-            ctx.rotate(Math.PI/4);
-            ctx.strokeStyle=`hsla(${hue-60}, 100%, 80%, ${0.3*amp*(manInt/100)})`;
-            ctx.strokeRect(-50*amp, -50*amp, 100*amp, 100*amp);
-        }
-        ctx.restore();
-    }
-
-    // Vines
-    const vinInt = parseInt(document.getElementById('vine').value);
-    if(vinInt > 0 && bass > 0.6){
-        ctx.save(); ctx.translate(W/2, H/2);
-        ctx.beginPath(); ctx.moveTo(0,0);
-        for(let i=0; i<10; i++){
-            ctx.quadraticCurveTo(Math.sin(audioCtx.currentTime+i)*100*amp, i*20, Math.cos(audioCtx.currentTime)*50, i*40);
-        }
-        ctx.strokeStyle=`hsla(120, 100%, 60%, ${0.4*amp*(vinInt/100)})`; ctx.stroke(); ctx.restore();
-    }
-
-    // Pollen
-    const polInt = parseInt(document.getElementById('pol').value);
-    if(polInt > 0) pollens.forEach(p => {
-        p.x += p.vx*(1+amp*10); p.y += p.vy*(1+amp*10);
-        if(p.x<0||p.x>1) p.vx*=-1; if(p.y<0||p.y>1) p.vy*=-1;
-        ctx.fillStyle = `hsla(${hue+120}, 100%, 90%, ${0.3*amp*(polInt/100)})`;
-        ctx.beginPath(); ctx.arc(p.x*W, p.y*H, 1, 0, Math.PI*2); ctx.fill();
-    });
-
-    const elapsed = audioCtx.currentTime - startTime;
-    document.getElementById('timeCode').innerText = `${formatTime(elapsed)} / ${formatTime(audioBuffer.duration)}`;
-    document.getElementById('progFill').style.width = (elapsed/audioBuffer.duration*100)+'%';
+    const ts = `${now.getHours()}${now.getMinutes()}${now.getSeconds()}`;
+    const a = document.createElement('a');
+    a.href = url; a.download = `Scattered_Petals_${ts}.mp4`; a.click();
 }
 
 function setRes(r) {
     aspect = r;
     document.getElementById('res169').classList.toggle('active', r === '16:9');
     document.getElementById('res916').classList.toggle('active', r === '9:16');
-    canvas.width = (r==='16:9')?1280:720; canvas.height = (r==='16:9')?720:1280;
+    setup(); // 캔버스 재설정
 }
-setRes('16:9');
-function formatTime(s) { const m=Math.floor(s/60), sec=Math.floor(s%60); return `${m}:${sec<10?'0':''}${sec}`; }
 
-// UI Slider Sync
-['rain','ripple','bloom','phy','man','vine','pol','sense','hue','trail'].forEach(id => {
-    const el = document.getElementById(id);
+function updateUI() {
+    if (audio && audio.isPlaying()) {
+        let curr = audio.currentTime();
+        let dur = audio.duration();
+        document.getElementById('timeCode').innerText = `${nf(floor(curr/60),2)}:${nf(floor(curr%60),2)} / ${nf(floor(dur/60),2)}:${nf(floor(dur%60),2)}`;
+        document.getElementById('progFill').style.width = (curr/dur * 100) + '%';
+    }
+}
+
+// 슬라이더 레이블 실시간 업데이트
+const sIds = ['emitRate','wind','grav','pSize','hue','trail'];
+sIds.forEach(id => {
+    let el = document.getElementById(id);
     if(el) el.oninput = function() {
-        const label = document.getElementById('v' + id.charAt(0).toUpperCase() + id.slice(1));
-        if(label) label.innerText = this.value;
+        document.getElementById('v' + id.charAt(0).toUpperCase() + id.slice(1)).innerText = this.value;
     }
 });
 </script>
