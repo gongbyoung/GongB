@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SPECTRUM LAB v15.0.46 — Final Stability</title>
+<title>SPECTRUM LAB v15.0.47 — Precision Optimization</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -38,12 +38,14 @@ select { width:100%; background:#000; border:1px solid var(--border); color:var(
 
 .playbar { height:2px; background:#111; position:relative; }
 #progFill { position:absolute; left:0; top:0; height:100%; background:var(--accent); width:0%; transition: width 0.1s; }
+
+.rgb-label-group { display: flex; justify-content: space-between; font-size: 8px; color: var(--muted); }
 </style>
 </head>
 <body>
 
 <div class="topbar">
-  <div class="logo">SPECTRUM LAB v15.0.46</div>
+  <div class="logo">SPECTRUM LAB v15.0.47</div>
   <div id="timeCode" style="font-family:monospace; font-size:12px; color:var(--accent);">00:00 / 00:00</div>
 </div>
 
@@ -69,7 +71,7 @@ select { width:100%; background:#000; border:1px solid var(--border); color:var(
           <option value="oceanDrive">4. OCEAN SURGE (파도 주행)</option>
       </select>
       <div class="control-group">
-        <label>GLOBAL SPEED/FORCE <span class="val-label" id="vSpeed">2.0</span></label>
+        <label>GLOBAL SPEED/FORCE <span class="val-label" id="vSimSpeed">2.0</span></label>
         <input type="range" id="simSpeed" min="0.1" max="10.0" step="0.1" value="2.0">
       </div>
     </div>
@@ -77,23 +79,39 @@ select { width:100%; background:#000; border:1px solid var(--border); color:var(
     <div class="ctrl-box">
       <span class="label-small">C. Particle Advanced</span>
       <div class="control-group">
-        <label>SHAPE MORPHING (고음 반응) <span class="val-label" id="vMorph">0.0</span></label>
+        <label>SHAPE MORPHING (고음) <span class="val-label" id="vMorph">0.0</span></label>
         <input type="range" id="morph" min="0.0" max="1.0" step="0.01" value="0.0">
+      </div>
+      <div class="control-group">
+        <label>TRAIL (잔상 옵션) <span class="val-label" id="vTrail">40</span></label>
+        <input type="range" id="trail" min="0" max="255" value="40">
       </div>
     </div>
 
     <div class="ctrl-box">
-      <span class="label-small">D. Particle Style & Color</span>
+      <span class="label-small">D. Particle Style & RGB Range</span>
       <button class="btn" style="border-color:#ffcc00; color:#ffcc00;" onclick="document.getElementById('pIn').click()">LOAD PETAL PNG</button>
       <input type="file" id="pIn" accept="image/png" style="display:none" onchange="handlePetalPNG(this.files)">
-      <div class="control-group" style="margin-top:10px;">
-        <label>TRAIL (잔상 옵션) <span class="val-label" id="vTrail">40</span></label>
-        <input type="range" id="trail" min="0" max="255" value="40">
+      
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-top:5px;">
+          <div class="control-group">
+            <div class="rgb-label-group"><label>R Min</label><span class="val-label" id="vRMin">180</span></div>
+            <input type="range" id="rMin" min="0" max="255" value="180">
+            <div class="rgb-label-group"><label>R Max</label><span class="val-label" id="vRMax">255</span></div>
+            <input type="range" id="rMax" min="0" max="255" value="255">
+          </div>
+          <div class="control-group">
+            <div class="rgb-label-group"><label>G Min</label><span class="val-label" id="vGMin">100</span></div>
+            <input type="range" id="gMin" min="0" max="255" value="100">
+            <div class="rgb-label-group"><label>G Max</label><span class="val-label" id="vGMax">200</span></div>
+            <input type="range" id="gMax" min="0" max="255" value="200">
+          </div>
       </div>
-      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px;">
-          <div class="control-group"><label>R Range</label><input type="range" id="rMin" min="0" max="255" value="180"><input type="range" id="rMax" min="0" max="255" value="255"></div>
-          <div class="control-group"><label>G Range</label><input type="range" id="gMin" min="0" max="255" value="100"><input type="range" id="gMax" min="0" max="255" value="200"></div>
-          <div class="control-group"><label>B Range</label><input type="range" id="bMin" min="0" max="255" value="150"><input type="range" id="bMax" min="0" max="255" value="255"></div>
+      <div class="control-group">
+          <div class="rgb-label-group"><label>B Min</label><span class="val-label" id="vBMin">150</span></div>
+          <input type="range" id="bMin" min="0" max="255" value="150">
+          <div class="rgb-label-group"><label>B Max</label><span class="val-label" id="vBMax">255</span></div>
+          <input type="range" id="bMax" min="0" max="255" value="255">
       </div>
     </div>
 
@@ -101,10 +119,17 @@ select { width:100%; background:#000; border:1px solid var(--border); color:var(
       <span class="label-small">E. Hero & Camera</span>
       <button class="btn" style="border-color:#00ffcc; color:#00ffcc;" onclick="document.getElementById('fIn').click()">LOAD HERO PNG</button>
       <input type="file" id="fIn" accept="image/png" style="display:none" onchange="handleFlowerPNG(this.files)">
-      <select id="camMode" style="margin-top:5px;">
-          <option value="auto">Auto Cam (음악 반응)</option>
-          <option value="manual">Manual (방향키)</option>
-      </select>
+      <div class="control-group" style="margin-top:5px;">
+        <label>CAMERA MODE</label>
+        <select id="camMode">
+            <option value="auto">Auto Cam (음악 반응)</option>
+            <option value="manual">Manual (방향키)</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label>CAM INTENSITY (감도) <span class="val-label" id="vCamInten">1.0</span></label>
+        <input type="range" id="camInten" min="0.1" max="3.0" step="0.1" value="1.0">
+      </div>
     </div>
   </div>
 
@@ -145,7 +170,6 @@ function initParticles() {
 }
 
 function draw() {
-    // [핵심] 잔상 옵션 반영 (vTrail)
     let trVal = parseInt(document.getElementById('trail').value);
     background(2, 2, 8, trVal);
 
@@ -157,7 +181,7 @@ function draw() {
     } else {
         push();
         fill(255, 150); textAlign(CENTER); textSize(width * 0.02);
-        text("READY (OPTIMIZED 64 GRID) - LOAD MP3", width/2, height/2 + 100);
+        text("READY (ZERO-ERROR MODE) - LOAD MP3", width/2, height/2 + 100);
         pop();
     }
 
@@ -184,15 +208,16 @@ function draw() {
 
 function handleCamera(vol) {
     let mode = document.getElementById('camMode').value;
+    let intensity = parseFloat(document.getElementById('camInten').value);
     if (mode === 'auto') {
-        camX = lerp(camX, (noise(millis()*0.0004)-0.5)*width*0.1, 0.05);
-        camY = lerp(camY, (noise(millis()*0.0004+100)-0.5)*height*0.1, 0.05);
-        camScale = lerp(camScale, 1.0 + vol*0.2, 0.05);
+        camX = lerp(camX, (noise(millis()*0.0004)-0.5)*width*0.1 * intensity, 0.05);
+        camY = lerp(camY, (noise(millis()*0.0004+100)-0.5)*height*0.1 * intensity, 0.05);
+        camScale = lerp(camScale, 1.0 + vol*0.2 * intensity, 0.05);
     } else {
-        if (keyIsDown(UP_ARROW)) camY += 10;
-        if (keyIsDown(DOWN_ARROW)) camY -= 10;
-        if (keyIsDown(LEFT_ARROW)) camX += 10;
-        if (keyIsDown(RIGHT_ARROW)) camX -= 10;
+        if (keyIsDown(UP_ARROW)) camY += 15;
+        if (keyIsDown(DOWN_ARROW)) camY -= 15;
+        if (keyIsDown(LEFT_ARROW)) camX += 15;
+        if (keyIsDown(RIGHT_ARROW)) camX -= 15;
     }
 }
 
@@ -215,7 +240,7 @@ class UniversalParticle {
             this.origin = this.pos.copy();
         }
         this.angle = random(TWO_PI);
-        this.size = random(50, 100);
+        this.size = random(60, 120);
         this.r = random(parseInt(rMin.value), parseInt(rMax.value));
         this.g = random(parseInt(gMin.value), parseInt(gMax.value));
         this.b = random(parseInt(bMin.value), parseInt(bMax.value));
@@ -223,18 +248,18 @@ class UniversalParticle {
     update(mode, freq, vol, bass) {
         let speed = parseFloat(document.getElementById('simSpeed').value);
         if (mode === 'spectralGrid') {
-            this.pos.y = this.origin.y - freq * 250 * speed;
-            this.angle += 0.02 + freq * 0.2 * speed;
+            this.pos.y = this.origin.y - freq * 300 * speed;
+            this.angle += 0.02 + freq * 0.25 * speed;
         } else if (mode === 'cosmic') {
             this.pos.z -= speed * 12 * (1 + bass * 2);
             if (this.pos.z < 1) this.pos.z = width;
         } else if (mode === 'flowerField') {
-            this.pos.y += speed * 15 * (1 + vol * 2);
+            this.pos.y += speed * 20 * (1 + vol * 2);
             if (this.pos.y > height) this.pos.y = -50;
         } else if (mode === 'oceanDrive') {
-            this.pos.x -= speed * 18 * (1 + bass * 2);
-            this.pos.y = this.origin.y + sin(this.pos.x * 0.015) * 80 * vol;
-            if (this.pos.x < -100) this.pos.x = width + 100;
+            this.pos.x -= speed * 25 * (1 + bass * 2);
+            this.pos.y = this.origin.y + sin(this.pos.x * 0.015) * 100 * vol;
+            if (this.pos.x < -200) this.pos.x = width + 200;
         }
     }
     display(freq, vol, morphVal, treble) {
@@ -244,17 +269,16 @@ class UniversalParticle {
         if (mode === 'cosmic') {
             sx = map(this.pos.x / this.pos.z, 0, 1, 0, width) + width/2;
             sy = map(this.pos.y / this.pos.z, 0, 1, 0, height) + height/2;
-            sz = map(this.pos.z, 0, width, 120, 1);
+            sz = map(this.pos.z, 0, width, 150, 1);
         }
         translate(sx, sy);
         rotate(this.angle);
         tint(this.r, this.g, this.b, 200);
-        let finalSz = sz * (0.8 + freq * 2.5);
+        let finalSz = sz * (0.8 + freq * 3.0);
         if (petalImg) image(petalImg, 0, 0, petalImg.width*(finalSz/200), petalImg.height*(finalSz/200));
         else { 
-            // [에러 수정] mid() 대신 lerp()와 map() 사용
             noStroke(); fill(this.r, this.g, this.b, 150);
-            let mFactor = lerp(0.6, 1.4, treble * morphVal);
+            let mFactor = lerp(0.5, 1.5, treble * morphVal);
             ellipse(0, 0, finalSz * mFactor, finalSz);
         }
         pop();
@@ -264,7 +288,7 @@ class UniversalParticle {
 function drawHero(bass) {
     push();
     translate(width/2, height/2);
-    let sc = (height * 0.5 / flowerImg.height) * (1.0 + bass * 0.2);
+    let sc = (height * 0.5 / flowerImg.height) * (1.0 + bass * 0.25);
     image(flowerImg, 0, 0, flowerImg.width * sc, flowerImg.height * sc);
     pop();
 }
@@ -308,7 +332,7 @@ async function toggleSync() {
 function saveVideo() {
     const blob = new Blob(recordedChunks, { type: 'video/mp4' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-    a.download = `Final_v46_${new Date().getTime()}.mp4`; a.click();
+    a.download = `Spectrum_v47_${new Date().getTime()}.mp4`; a.click();
 }
 function updateUI() {
     if (audio && audio.isPlaying()) {
@@ -318,10 +342,15 @@ function updateUI() {
     }
 }
 
-// Slider Labels
-['simSpeed','morph','trail','rMin','rMax','gMin','gMax','bMin','bMax'].forEach(id => {
+// Robust Label Update
+const sIds = ['simSpeed','morph','trail','rMin','rMax','gMin','gMax','bMin','bMax','camInten'];
+sIds.forEach(id => {
     let el = document.getElementById(id);
-    if(el) el.oninput = function() { document.getElementById('v' + id.charAt(0).toUpperCase() + id.slice(1)).innerText = this.value; }
+    if(el) el.oninput = function() { 
+        let lId = 'v' + id.charAt(0).toUpperCase() + id.slice(1);
+        let label = document.getElementById(lId);
+        if(label) label.innerText = this.value;
+    }
 });
 </script>
 </body>
