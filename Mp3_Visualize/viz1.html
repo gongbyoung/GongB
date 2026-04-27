@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SPECTRUM LAB v15.0.43 — Cinematic 24fps & Trail</title>
+<title>SPECTRUM LAB v15.0.44 — Stability Patch</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -43,7 +43,7 @@ select { width:100%; background:#000; border:1px solid var(--border); color:var(
 <body>
 
 <div class="topbar">
-  <div class="logo">SPECTRUM LAB v15.0.43</div>
+  <div class="logo">SPECTRUM LAB v15.0.44</div>
   <div id="timeCode" style="font-family:monospace; font-size:12px; color:var(--accent);">00:00 / 00:00</div>
 </div>
 
@@ -81,7 +81,7 @@ select { width:100%; background:#000; border:1px solid var(--border); color:var(
           <option value="manual">Manual Cam (방향키 조작)</option>
       </select>
       <div class="control-group" style="margin-top:8px;">
-        <label>SENSITIVITY (반응 감도) <span class="val-label" id="vSense">2.5</span></label>
+        <label>SENSITIVITY <span class="val-label" id="vSense">2.5</span></label>
         <input type="range" id="sense" min="0.5" max="10.0" step="0.1" value="2.5">
       </div>
     </div>
@@ -90,12 +90,10 @@ select { width:100%; background:#000; border:1px solid var(--border); color:var(
       <span class="label-small">D. Particle Style & Color</span>
       <button class="btn" style="border-color:#ffcc00; color:#ffcc00;" onclick="document.getElementById('pIn').click()">LOAD PETAL PNG</button>
       <input type="file" id="pIn" accept="image/png" style="display:none" onchange="handlePetalPNG(this.files)">
-      
       <div class="control-group" style="margin-top:10px;">
         <label>TRAIL (잔상 옵션) <span class="val-label" id="vTrail">40</span></label>
         <input type="range" id="trail" min="0" max="255" value="40">
       </div>
-
       <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px;">
           <div class="control-group"><label>R Range</label><input type="range" id="rMin" min="0" max="255" value="180"><input type="range" id="rMax" min="0" max="255" value="255"></div>
           <div class="control-group"><label>G Range</label><input type="range" id="gMin" min="0" max="255" value="100"><input type="range" id="gMax" min="0" max="255" value="200"></div>
@@ -128,8 +126,6 @@ let audio, fft, ampObj;
 let particles = [];
 let mediaRecorder, recordedChunks = [];
 let canvasRef, flowerImg = null, petalImg = null;
-
-// Cam & Global Physics
 let camX = 0, camY = 0, camScale = 1.0;
 let smoothBass = 0;
 
@@ -140,7 +136,6 @@ function setup() {
     let cnv = createCanvas(w, h);
     cnv.parent(container);
     canvasRef = cnv.elt;
-    
     colorMode(RGB, 255, 255, 255, 255);
     fft = new p5.FFT(0.85, 1024);
     ampObj = new p5.Amplitude();
@@ -156,41 +151,38 @@ function initParticles() {
 }
 
 function draw() {
-    // 잔상 옵션(vTrail) 적용
     let trVal = parseInt(document.getElementById('trail').value);
     background(2, 2, 8, trVal);
 
-    if (!audio || !audio.isLoaded()) {
-        handleCamera(0);
-        renderScene(0, 0, 0, "none");
-        return;
+    let vol = 0, spectrum = [];
+    if (audio && audio.isLoaded() && audio.isPlaying()) {
+        spectrum = fft.analyze();
+        smoothBass = lerp(smoothBass, fft.getEnergy("bass")/255, 0.15);
+        vol = ampObj.getLevel();
+    } else {
+        // 오디오 로딩 전 안내 텍스트
+        push();
+        fill(255, 150); textAlign(CENTER); textSize(width * 0.02);
+        text("PLEASE LOAD MP3 FILE TO START", width/2, height/2 + 100);
+        pop();
     }
 
-    fft.analyze();
-    smoothBass = lerp(smoothBass, fft.getEnergy("bass")/255, 0.15);
-    let vol = ampObj.getLevel();
-    let spectrum = fft.analyze();
+    handleCamera(vol);
     let mode = document.getElementById('simMode').value;
 
-    handleCamera(vol);
-
     push();
-    translate(camX, camY);
+    translate(camX + width/2, camY + height/2);
     scale(camScale);
-    
-    // 글로벌 시네마틱 플로팅 (75% 구역 느낌용)
-    let globalFloatX = (noise(millis()*0.0003) - 0.5) * 100;
-    let globalFloatY = (noise(millis()*0.0003 + 500) - 0.5) * 80;
-    translate(globalFloatX, globalFloatY);
+    translate(-width/2, -height/2);
 
     for (let p of particles) {
-        let freq = spectrum[p.id % 1024] / 255;
+        let freq = (spectrum.length > 0) ? spectrum[p.id % 1024] / 255 : 0;
         p.update(mode, freq, vol, smoothBass);
         p.display(freq, vol);
     }
     pop();
 
-    drawHero(smoothBass);
+    if (flowerImg) drawHero(smoothBass);
     updateUI();
 }
 
@@ -202,11 +194,10 @@ function handleCamera(vol) {
         camY = lerp(camY, (noise(millis()*0.0004+100)-0.5)*height*0.15*(1+vol*sense), 0.05);
         camScale = lerp(camScale, 1.0 + vol*0.3, 0.05);
     } else {
-        let speed = 15;
-        if (keyIsDown(UP_ARROW)) camY += speed;
-        if (keyIsDown(DOWN_ARROW)) camY -= speed;
-        if (keyIsDown(LEFT_ARROW)) camX += speed;
-        if (keyIsDown(RIGHT_ARROW)) camX -= speed;
+        if (keyIsDown(UP_ARROW)) camY += 10;
+        if (keyIsDown(DOWN_ARROW)) camY -= 10;
+        if (keyIsDown(LEFT_ARROW)) camX += 10;
+        if (keyIsDown(RIGHT_ARROW)) camX -= 10;
     }
 }
 
@@ -215,7 +206,6 @@ class UniversalParticle {
         this.id = id;
         this.reset(mode);
     }
-
     reset(mode) {
         if (mode === 'spectralGrid') {
             let cols = 32;
@@ -235,7 +225,6 @@ class UniversalParticle {
         this.g = random(parseInt(gMin.value), parseInt(gMax.value));
         this.b = random(parseInt(bMin.value), parseInt(bMax.value));
     }
-
     update(mode, freq, vol, bass) {
         let speed = parseFloat(document.getElementById('simSpeed').value);
         if (mode === 'spectralGrid') {
@@ -253,7 +242,6 @@ class UniversalParticle {
             if (this.pos.x < -100) this.pos.x = width + 100;
         }
     }
-
     display(freq, vol) {
         push();
         let sx = this.pos.x, sy = this.pos.y, sz = this.size;
@@ -274,7 +262,6 @@ class UniversalParticle {
 }
 
 function drawHero(bass) {
-    if (!flowerImg) return;
     push();
     translate(width/2 + parseInt(fX.value), height/2 + parseInt(fY.value));
     let sc = (height * 0.45 / flowerImg.height) * parseFloat(fS.value) * (1.0 + bass * 0.2);
@@ -282,11 +269,11 @@ function drawHero(bass) {
     pop();
 }
 
-// --- SYSTEM HANDLERS ---
 function handleFile(files) {
     if (audio) audio.stop();
     audio = loadSound(URL.createObjectURL(files[0]), () => {
         document.getElementById('recBtn').disabled = false;
+        isPlaying = false;
     });
 }
 function handleFlowerPNG(files) { loadImage(URL.createObjectURL(files[0]), (img) => { flowerImg = img; }); }
@@ -303,8 +290,7 @@ async function toggleSync() {
     } else {
         if (getAudioContext().state === 'suspended') await userStartAudio();
         recordedChunks = [];
-        // 핵심: captureStream(24)로 프레임레이트 고정
-        const stream = canvasRef.captureStream(24); 
+        const stream = canvasRef.captureStream(24);
         const dest = getAudioContext().createMediaStreamDestination();
         p5.soundOut.output.connect(dest);
         const combined = new MediaStream([...stream.getVideoTracks(), ...dest.stream.getAudioTracks()]);
@@ -322,7 +308,7 @@ async function toggleSync() {
 function saveVideo() {
     const blob = new Blob(recordedChunks, { type: 'video/mp4' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-    a.download = `Spectrum24_${new Date().getTime()}.mp4`; a.click();
+    a.download = `Spectrum_v44_${new Date().getTime()}.mp4`; a.click();
 }
 function updateUI() {
     if (audio && audio.isPlaying()) {
