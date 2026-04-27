@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SPECTRUM LAB v15.0.33 — PNG-only Sway Engine</title>
+<title>SPECTRUM LAB v15.0.34 — Tri-Band Flower</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -48,7 +48,7 @@ select { width:100%; background:#000; border:1px solid var(--border); color:var(
 <body>
 
 <div class="topbar">
-  <div class="logo">SPECTRUM LAB v15.0.33</div>
+  <div class="logo">SPECTRUM LAB v15.0.34</div>
   <div id="timeCode" style="font-family:monospace; font-size:13px; color:var(--accent);">00:00 / 00:00</div>
 </div>
 
@@ -67,16 +67,22 @@ select { width:100%; background:#000; border:1px solid var(--border); color:var(
     </div>
 
     <div class="ctrl-box">
-      <span class="label-small">E. Central Main Flower (PNG)</span>
-      <button class="btn" style="border-color: #00ffcc; color: #00ffcc;" onclick="document.getElementById('fIn').click()">LOAD MAIN FLOWER PNG</button>
-      <input type="file" id="fIn" accept="image/png, image/jpeg" style="display:none" onchange="handleFlowerPNG(this.files)">
+      <span class="label-small">E. Tri-Band PNG Assets</span>
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:5px;">
+          <button class="btn" style="color:#00ffcc;" onclick="document.getElementById('stemIn').click()">STEM</button>
+          <button class="btn" style="color:#ffcc00;" onclick="document.getElementById('leafIn').click()">LEAF</button>
+          <button class="btn" style="color:#ff77aa;" onclick="document.getElementById('flowerIn').click()">FLOWER</button>
+      </div>
+      <input type="file" id="stemIn" accept="image/png" style="display:none" onchange="loadAsset('stem', this.files)">
+      <input type="file" id="leafIn" accept="image/png" style="display:none" onchange="loadAsset('leaf', this.files)">
+      <input type="file" id="flowerIn" accept="image/png" style="display:none" onchange="loadAsset('flower', this.files)">
       
       <div class="control-group" style="margin-top:10px;">
-        <label>SIZE (크기) <span class="val-label" id="vMainSz">1.0</span></label>
-        <input type="range" id="mainSz" min="0.5" max="3.0" step="0.1" value="1.0">
+        <label>GLOBAL SCALE <span class="val-label" id="vMainSz">1.0</span></label>
+        <input type="range" id="mainSz" min="0.3" max="2.5" step="0.1" value="1.0">
       </div>
       <div class="control-group">
-        <label>SWAY (유연성) <span class="val-label" id="vSway">5</span></label>
+        <label>REACTION SENSE <span class="val-label" id="vSway">5</span></label>
         <input type="range" id="sway" min="1" max="15" value="5">
       </div>
     </div>
@@ -90,7 +96,7 @@ select { width:100%; background:#000; border:1px solid var(--border); color:var(
           <option value="leaf">Leaf (나뭇잎)</option>
       </select>
       <div class="control-group" style="margin-top:10px;">
-        <label>EMISSION (생성량) <span class="val-label" id="vEmit">30</span></label>
+        <label>EMISSION RATE <span class="val-label" id="vEmit">30</span></label>
         <input type="range" id="emitRate" min="0" max="100" value="30">
       </div>
     </div>
@@ -106,8 +112,8 @@ select { width:100%; background:#000; border:1px solid var(--border); color:var(
           <div class="control-group"><label>B-Max</label><input type="range" id="bMax" min="0" max="255" value="255"></div>
       </div>
       <div class="control-group" style="margin-top:10px;">
-        <label>TRAIL (잔상) <span class="val-label" id="vTrail">30</span></label>
-        <input type="range" id="trail" min="0" max="150" value="30">
+        <label>TRAIL (잔상) <span class="val-label" id="vTrail">40</span></label>
+        <input type="range" id="trail" min="0" max="150" value="40">
       </div>
     </div>
   </div>
@@ -123,10 +129,12 @@ let audio, fft, ampObj;
 let petals = [];
 let mediaRecorder, recordedChunks = [];
 let canvasRef;
-let mainFlowerSway = 0;
-let mainFlowerImg = null; // 메인 꽃 PNG 저장 변수
+let mainSway = 0;
 
-// --- p5.js 엔진 ---
+// Assets Storage
+let assets = { stem: null, leaf: null, flower: null };
+
+// --- p5.js ENGINE ---
 function setup() {
     let container = document.getElementById('p5-container');
     let w = aspect === '16:9' ? 1280 : 720;
@@ -143,7 +151,7 @@ function setup() {
     cnv.style('max-height', '100%');
     cnv.style('height', 'auto');
     cnv.style('width', 'auto');
-    imageMode(CENTER); // 이미지 중앙 정렬 모드
+    imageMode(CENTER);
 }
 
 function draw() {
@@ -151,19 +159,18 @@ function draw() {
     background(3, 3, 5, trVal);
 
     if (!isPlaying || !audio || !audio.isPlaying()) {
-        drawCentralFlower(0); 
+        drawTriBandFlower(0, 0, 0); 
         return;
     }
 
     fft.analyze();
-    let rawBass = fft.getEnergy("bass");
-    let rawMid = fft.getEnergy("mid");
-    
-    let bassLevel = isNaN(rawBass) ? 0 : rawBass / 255;
-    let midsLevel = isNaN(rawMid) ? 0 : rawMid / 255;
+    // 3개 대역 추출
+    let bass = fft.getEnergy("bass") / 255;
+    let mid = fft.getEnergy("mid") / 255;
+    let treble = fft.getEnergy("treble") / 255;
     let vol = ampObj.getLevel();
     
-    // 1. 입자 시뮬레이션
+    // 1. 입자 시뮬레이션 (Mid/Treble 반응)
     let emitRate = parseInt(document.getElementById('emitRate').value);
     if (vol > 0.02) {
         let spawn = map(vol, 0, 0.6, 0, emitRate/3);
@@ -171,80 +178,69 @@ function draw() {
     }
     for (let i = petals.length - 1; i >= 0; i--) {
         let p = petals[i];
-        p.applyForce(midsLevel * 5, 0.08);
+        p.applyForce(mid * 5, 0.08);
         p.update();
         p.display(vol);
         if (p.isOffScreen()) petals.splice(i, 1);
     }
 
-    // 2. 메인 꽃 (Bass 반응)
-    drawCentralFlower(bassLevel);
+    // 2. 메인 식물 (Tri-Band 반응)
+    drawTriBandFlower(bass, mid, treble);
 
     updateUI();
 }
 
-// --- 메인 꽃 그리기 (PNG-only Sway) ---
-function drawCentralFlower(bass) {
+// --- 핵심: 부위별 주파수 반응 로직 ---
+function drawTriBandFlower(bass, mid, treble) {
     const W = width, H = height;
     let sz = parseFloat(document.getElementById('mainSz').value);
-    let swaySense = parseInt(document.getElementById('sway').value);
+    let sense = parseInt(document.getElementById('sway').value);
+    let time = millis() * 0.001;
 
     push();
-    // 화면 하단 중앙으로 이동. 줄기 로직 제거로 인해translate(W/2, H - stemLen)이 아님
-    translate(W/2, H); 
-    
-    let time = millis() * 0.001;
-    let baseSway = sin(time * 1.5) * 0.04;
-    let audioSway = sin(time * 8) * bass * swaySense * 0.02;
-    mainFlowerSway = lerp(mainFlowerSway, baseSway + audioSway, 0.1);
-    
-    // 원점(화면 하단 중앙)을 기준으로 회전 Matrix 적용
-    rotate(mainFlowerSway);
+    translate(W/2, H); // 하단 중앙 원점
 
-    // [삭제하는 것 없이] 줄기 그리기 로직 삭제. 
+    // --- A. STEM (Bass 반응) ---
+    // 저음에 맞춰 줄기 전체의 휘어짐(Sway) 결정
+    let baseSway = sin(time * 1.2) * 0.03;
+    let audioSway = sin(time * 6) * bass * sense * 0.03;
+    mainSway = lerp(mainSway, baseSway + audioSway, 0.1);
+    rotate(mainSway);
 
-    // 꽃머리 렌더링
-    if (mainFlowerImg) {
-        // PNG 이미지가 로드된 경우
-        let imgW = mainFlowerImg.width;
-        let imgH = mainFlowerImg.height;
-        // 이전의 stemLen 기반 스케일링 제거. 고정 비율 사용.
-        let scaleFactor = (H * 0.35 / imgH) * sz * (0.9 + bass * 0.3);
-        
-        push();
-        // 이미지 그리기 원점 이동 제거. 줄기가 없으므로 원점(0,0)에 그립니다.
-        // translate(0, -stemLen); // 삭제
-
-        rotate(sin(time * 2) * 0.1); // 미세한 자체 회전 Matrix
-        // 이미지 자체를 흔들기 위해 원점(0,0)에서 그립니다.
-        image(mainFlowerImg, 0, 0, imgW * scaleFactor, imgH * scaleFactor);
-        pop();
-    } else {
-        // 이미지가 없을 때 기본 꽃 그리기
-        // translate(0, -stemLen); // 삭제. 줄기가 없으므로 원점에 그립니다.
-
-        noStroke();
-        fill(255, 100, 150, 230);
-        let pSize = H * 0.15 * sz * (0.9 + bass * 0.3);
-        for(let i=0; i<5; i++) {
-            push();
-            rotate(i * TWO_PI / 5 + time * 0.3);
-            beginShape();
-            for(let a=0; a<PI; a+=0.2) {
-                let r = pSize * (abs(sin(a)) + 0.2 * abs(sin(a*3)));
-                let drift = (a > PI*0.4 && a < PI*0.6) ? pSize*0.2 : 0;
-                vertex(cos(a-PI/2)*r*0.7, (sin(a-PI/2)*r) + drift);
-            }
-            endShape(CLOSE);
-            pop();
-        }
-        fill(255, 220, 100);
-        circle(0, 0, pSize * 0.3);
+    if (assets.stem) {
+        let sc = (H * 0.8 / assets.stem.height) * sz * (0.95 + bass * 0.1);
+        image(assets.stem, 0, -assets.stem.height * sc / 2, assets.stem.width * sc, assets.stem.height * sc);
     }
+
+    // --- B. LEAF (Mid 반응) ---
+    // 중음에 맞춰 잎사귀가 파르르 떨리거나 살짝 커짐
+    if (assets.leaf) {
+        push();
+        let sc = (H * 0.8 / assets.leaf.height) * sz * (0.95 + mid * 0.15);
+        rotate(sin(time * 15) * mid * 0.05); // 중음 반응 떨림
+        image(assets.leaf, 0, -assets.leaf.height * sc / 2, assets.leaf.width * sc, assets.leaf.height * sc);
+        pop();
+    }
+
+    // --- C. FLOWER (Treble 반응) ---
+    // 고음 비트에 맞춰 꽃 머리가 움찔거림 (Jitter/Pulse)
+    if (assets.flower) {
+        push();
+        // 줄기 끝 위치로 대략 이동 (이미지 전체 중심 기준)
+        let sc = (H * 0.8 / assets.flower.height) * sz * (1.0 + treble * 0.25);
+        rotate(sin(time * 25) * treble * 0.02); // 고음 반응 미세 진동
+        image(assets.flower, 0, -assets.flower.height * sc / 2, assets.flower.width * sc, assets.flower.height * sc);
+        pop();
+    } else if (!assets.stem && !assets.leaf) {
+        // 아무것도 로딩 안 했을 때의 기본 가이드 가시성
+        fill(255, 100, 150, 100); noStroke();
+        ellipse(0, -H*0.6, 100, 100);
+    }
+
     pop();
 }
 
-// --- 입자 클래스 (v15.0.31 유지) ---
+// --- 입자 클래스 (이전 버전 유지) ---
 class Petal {
     constructor() {
         this.pos = createVector(random(width), -30);
@@ -289,7 +285,7 @@ class Petal {
     isOffScreen() { return (this.pos.y > height + 50 || this.pos.x < -50 || this.pos.x > width + 50); }
 }
 
-// --- 오디오 및 파일 시스템 ---
+// --- 오디오 및 파일 핸들러 ---
 function handleFile(files) {
     const log = document.getElementById('statusLog');
     log.innerText = "LOADING AUDIO...";
@@ -300,13 +296,10 @@ function handleFile(files) {
     });
 }
 
-function handleFlowerPNG(files) {
-    const log = document.getElementById('statusLog');
-    log.innerText = "LOADING FLOWER PNG...";
+function loadAsset(type, files) {
     loadImage(URL.createObjectURL(files[0]), (img) => {
-        mainFlowerImg = img;
-        log.innerText = "FLOWER IMAGE LOADED";
-        log.style.color = "#00ffcc";
+        assets[type] = img;
+        document.getElementById('statusLog').innerText = type.toUpperCase() + " LOADED";
     });
 }
 
@@ -336,7 +329,7 @@ function stopRecording() {
 function saveVideo() {
     const blob = new Blob(recordedChunks, { type: 'video/mp4' });
     const ts = `${new Date().getHours()}${new Date().getMinutes()}${new Date().getSeconds()}`;
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `PNG_Sway_${ts}.mp4`; a.click();
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `TriBand_Flower_${ts}.mp4`; a.click();
 }
 
 function setRes(r) { aspect = r; setup(); }
@@ -347,12 +340,6 @@ function updateUI() {
         document.getElementById('progFill').style.width = (curr/dur * 100) + '%';
     }
 }
-
-// Slider Labels Sync
-['mainSz','sway','emitRate','trail'].forEach(id => {
-    let el = document.getElementById(id);
-    if(el) el.oninput = function() { document.getElementById('v' + id.charAt(0).toUpperCase() + id.slice(1)).innerText = this.value; }
-});
 </script>
 </body>
 </html>
