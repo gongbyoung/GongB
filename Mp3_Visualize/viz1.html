@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SPECTRUM LAB v15.0.37 — Spectral Particle Field</title>
+<title>SPECTRUM LAB v15.0.38 — Spectral Scoping</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -39,15 +39,14 @@ select { width:100%; background:#000; border:1px solid var(--border); color:var(
     width: auto !important; height: auto !important; 
     object-fit: contain; box-shadow: 0 0 50px rgba(0,0,0,0.8); border: 1px solid #1a1a1a;
 }
-.playbar { height:2px; background:#111; position:relative; }
+.playbar { height:4px; background:#111; position:relative; }
 #progFill { position:absolute; left:0; top:0; height:100%; background:var(--accent); width:0%; transition: width 0.1s; }
-.status-log { font-size:10px; color:var(--muted); margin-top:4px; text-align:center; }
 </style>
 </head>
 <body>
 
 <div class="topbar">
-  <div class="logo">SPECTRUM LAB v15.0.37</div>
+  <div class="logo">SPECTRUM LAB v15.0.38</div>
   <div id="timeCode" style="font-family:monospace; font-size:13px; color:var(--accent);">00:00 / 00:00</div>
 </div>
 
@@ -57,7 +56,6 @@ select { width:100%; background:#000; border:1px solid var(--border); color:var(
       <span class="label-small">A. System & Export</span>
       <button class="btn" onclick="document.getElementById('mIn').click()">LOAD MP3 FILE</button>
       <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleFile(this.files)">
-      <div id="statusLog" class="status-log">No file loaded</div>
       <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-top:8px;">
           <button class="btn active" id="resFHD" onclick="setExportRes('FHD')">FHD</button>
           <button class="btn" id="resUHD" onclick="setExportRes('UHD')">UHD (4K)</button>
@@ -70,19 +68,19 @@ select { width:100%; background:#000; border:1px solid var(--border); color:var(
     </div>
 
     <div class="ctrl-box">
-      <span class="label-small">B. Particle Field Logic</span>
-      <select id="bgStyle" onchange="initPetals()">
-          <option value="spectralField">1. SPECTRAL FIELD (주파수 대응)</option>
-          <option value="rain">2. PETAL RAIN (꽃비)</option>
-          <option value="waveField">3. WAVE FIELD (전면 물결)</option>
-      </select>
+      <span class="label-small">B. Spectral Scoping Engine</span>
       <div class="control-group">
-        <label>NOISE FORCE (노이즈 강도) <span class="val-label" id="vNoiseF">100</span></label>
-        <input type="range" id="noiseF" min="0" max="300" value="100">
+        <label>FREQ RANGE (Low-High) <span class="val-label" id="vFreqR">0 - 1024</span></label>
+        <input type="range" id="freqLow" min="0" max="512" value="0" oninput="updateRangeLabel()">
+        <input type="range" id="freqHigh" min="512" max="1024" value="1024" oninput="updateRangeLabel()" style="margin-top:5px;">
       </div>
       <div class="control-group">
-        <label>SCALE SENSE (크기 감도) <span class="val-label" id="vScaleS">2.0</span></label>
-        <input type="range" id="scaleS" min="0.5" max="5.0" step="0.1" value="2.0">
+        <label>SENSITIVITY (반응성) <span class="val-label" id="vSense">2.5</span></label>
+        <input type="range" id="sense" min="0.5" max="10.0" step="0.1" value="2.5">
+      </div>
+      <div class="control-group">
+        <label>THRESHOLD (임계값) <span class="val-label" id="vThresh">20</span></label>
+        <input type="range" id="thresh" min="0" max="100" value="20">
       </div>
       <div class="control-group">
         <label>TRAIL (잔상) <span class="val-label" id="vTrail">40</span></label>
@@ -91,7 +89,7 @@ select { width:100%; background:#000; border:1px solid var(--border); color:var(
     </div>
 
     <div class="ctrl-box">
-      <span class="label-small">C. Main Flower PNG</span>
+      <span class="label-small">C. Main Flower Transform</span>
       <button class="btn" style="border-color:#00ffcc; color:#00ffcc;" onclick="document.getElementById('fIn').click()">LOAD FLOWER PNG</button>
       <input type="file" id="fIn" accept="image/png" style="display:none" onchange="handleFlowerPNG(this.files)">
       <div class="control-group" style="margin-top:10px;">
@@ -103,7 +101,7 @@ select { width:100%; background:#000; border:1px solid var(--border); color:var(
     </div>
 
     <div class="ctrl-box">
-      <span class="label-small">D. Color Range</span>
+      <span class="label-small">D. Petal Color Range</span>
       <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px;">
           <div class="control-group"><label>R Min/Max</label><input type="range" id="rMin" min="0" max="255" value="150"><input type="range" id="rMax" min="0" max="255" value="255"></div>
           <div class="control-group"><label>G Min/Max</label><input type="range" id="gMin" min="0" max="255" value="50"><input type="range" id="gMax" min="0" max="255" value="150"></div>
@@ -124,7 +122,6 @@ let audio, fft, ampObj;
 let petals = [];
 let mediaRecorder, recordedChunks = [];
 let canvasRef, flowerImg = null;
-let smoothBass = 0;
 
 function setup() {
     let container = document.getElementById('p5-container');
@@ -137,7 +134,7 @@ function setup() {
     canvasRef = cnv.elt;
     
     colorMode(RGB, 255, 255, 255, 255);
-    fft = new p5.FFT(0.85, 1024); // 1024 bins
+    fft = new p5.FFT(0.8, 1024); // 1024 bins
     ampObj = new p5.Amplitude();
     imageMode(CENTER);
     initPetals();
@@ -145,11 +142,10 @@ function setup() {
 
 function initPetals() {
     petals = [];
-    let style = document.getElementById('bgStyle').value;
-    // Spectral Field 모드일 때만 1024개 고정 생성
-    let count = (style === 'spectralField') ? 1024 : 400; 
-    for(let i=0; i<count; i++) {
-        petals.push(new Petal(i, style));
+    // 1024개 입자를 그리드 형태로 배치
+    let cols = 32, rows = 32;
+    for(let i=0; i<1024; i++) {
+        petals.push(new Petal(i));
     }
 }
 
@@ -160,26 +156,56 @@ function draw() {
     if (!audio || !audio.isLoaded()) return;
 
     let spectrum = fft.analyze();
-    smoothBass = lerp(smoothBass, fft.getEnergy("bass")/255, 0.15);
     let vol = ampObj.getLevel();
-    let style = document.getElementById('bgStyle').value;
 
-    // --- 배경 파티클 렌더링 (Spectral Logic) ---
-    if (style === 'rain' && isPlaying && vol > 0.02) {
-        for(let i=0; i<3; i++) petals.push(new Petal(0, 'rain'));
+    // --- 주파수 범위 설정 읽기 ---
+    let low = parseInt(document.getElementById('freqLow').value);
+    let high = parseInt(document.getElementById('freqHigh').value);
+    let sense = parseFloat(document.getElementById('sense').value);
+    let threshold = parseInt(document.getElementById('thresh').value);
+
+    // --- 입자 필드 업데이트 ---
+    for (let i = 0; i < petals.length; i++) {
+        // 입자의 인덱스가 설정한 주파수 범위 내에 있을 때만 데이터 추출
+        let freqValue = 0;
+        if (i >= low && i <= high) {
+            freqValue = spectrum[i] || 0;
+        }
+
+        // 임계값 처리 (소리가 일정 수준 이상일 때만 반응)
+        let effectiveAmp = (freqValue > threshold) ? freqValue / 255 : 0;
+        
+        petals[i].update(effectiveAmp * sense, vol);
+        petals[i].display(effectiveAmp * sense, vol);
     }
 
-    for (let i = petals.length - 1; i >= 0; i--) {
-        // 각 입자에 해당 주파수(spectrum[i]) 전달
-        let freqAmp = (style === 'spectralField') ? (spectrum[i % spectrum.length] || 0) / 255 : vol;
-        petals[i].update(style, freqAmp, vol);
-        petals[i].display(freqAmp, vol);
-        if (style === 'rain' && petals[i].isOffScreen()) petals.splice(i, 1);
-    }
+    // --- 메인 꽃 (Bass 반응) ---
+    let bass = fft.getEnergy("bass") / 255;
+    drawMainFlower(bass);
 
-    // --- 메인 꽃 렌더링 ---
-    drawMainFlower(smoothBass);
+    // --- 주파수 모니터 UI (Canvas 위에 덧그림) ---
+    drawSpectrumMonitor(spectrum, low, high);
+
     updateUI();
+}
+
+function drawSpectrumMonitor(spec, low, high) {
+    push();
+    resetMatrix(); // 캔버스 좌표계 초기화
+    let mw = width * 0.3, mh = 60;
+    let mx = 20, my = height - 80;
+    
+    fill(0, 150); noStroke();
+    rect(mx, my, mw, mh);
+    
+    stroke(0, 255, 204, 100);
+    for (let i = 0; i < spec.length; i++) {
+        let x = map(i, 0, spec.length, mx, mx + mw);
+        let h = map(spec[i], 0, 255, 0, mh);
+        if (i >= low && i <= high) stroke(255, 51, 119); else stroke(0, 255, 204, 50);
+        line(x, my + mh, x, my + mh - h);
+    }
+    pop();
 }
 
 function drawMainFlower(bass) {
@@ -189,51 +215,43 @@ function drawMainFlower(bass) {
     let y = height/2 + parseInt(document.getElementById('fY').value);
     let s = parseFloat(document.getElementById('fS').value);
     translate(x, y);
-    rotate(sin(millis()*0.001 * 2) * bass * 0.1);
+    rotate(sin(millis()*0.002) * bass * 0.15);
     let sc = (height * 0.4 / flowerImg.height) * s * (1.0 + bass * 0.2);
     image(flowerImg, 0, 0, flowerImg.width * sc, flowerImg.height * sc);
     pop();
 }
 
 class Petal {
-    constructor(index, style) {
+    constructor(index) {
         this.index = index;
-        this.reset(style);
-    }
-
-    reset(style) {
-        this.pos = createVector(random(width), (style === 'rain') ? -50 : random(height));
-        this.origin = this.pos.copy();
-        this.noiseOff = random(1000);
+        // 초기 위치 그리드 배치
+        let col = index % 32;
+        let row = floor(index / 32);
+        this.origin = createVector(
+            map(col, 0, 31, width * 0.1, width * 0.9),
+            map(row, 0, 31, height * 0.1, height * 0.9)
+        );
+        this.pos = this.origin.copy();
         this.size = random(10, 25);
         this.angle = random(TWO_PI);
-        this.rotSpeed = random(-0.05, 0.05);
         this.color = color(
             random(parseInt(document.getElementById('rMin').value), parseInt(document.getElementById('rMax').value)),
             random(parseInt(document.getElementById('gMin').value), parseInt(document.getElementById('gMax').value)),
             random(parseInt(document.getElementById('bMin').value), parseInt(document.getElementById('bMax').value)),
-            180
+            200
         );
     }
 
-    update(style, freqAmp, vol) {
-        if (style === 'spectralField') {
-            // 주파수에 반응하는 노이즈 위치 변조 (Noise Displacement)
-            let nForce = parseInt(document.getElementById('noiseF').value);
-            let nx = map(noise(this.noiseOff, frameCount * 0.01), 0, 1, -nForce, nForce);
-            let ny = map(noise(this.noiseOff + 500, frameCount * 0.01), 0, 1, -nForce, nForce);
-            
-            // 에너지 강도에 따라 노이즈 힘 증폭
-            this.pos.x = lerp(this.pos.x, this.origin.x + nx * freqAmp, 0.1);
-            this.pos.y = lerp(this.pos.y, this.origin.y + ny * freqAmp, 0.1);
-        } else if (style === 'rain') {
-            this.pos.y += (2 + vol * 15);
-            if(this.pos.y > height) this.reset('rain');
-        } else if (style === 'waveField') {
-            this.pos.y = this.origin.y + sin(this.pos.x * 0.01 + frameCount * 0.05) * 50 * freqAmp;
+    update(freqAmp, vol) {
+        // 주파수 에너지가 있을 때 원점에서 튕겨나가는 효과 (Impulse)
+        if (freqAmp > 0) {
+            let offset = p5.Vector.random2D().mult(freqAmp * 100);
+            this.pos = p5.Vector.lerp(this.pos, p5.Vector.add(this.origin, offset), 0.5);
+        } else {
+            // 소리가 없으면 다시 제자리로 (Restoring Force)
+            this.pos = p5.Vector.lerp(this.pos, this.origin, 0.1);
         }
-        this.angle += this.rotSpeed + vol * 0.1;
-        this.noiseOff += 0.01;
+        this.angle += 0.02 + freqAmp * 0.2;
     }
 
     display(freqAmp, vol) {
@@ -242,27 +260,23 @@ class Petal {
         rotate(this.angle);
         noStroke();
         fill(this.color);
-        // 주파수 세기에 따른 크기 변화 (Size Scaling)
-        let sSense = parseFloat(document.getElementById('scaleS').value);
-        let s = this.size * (0.5 + freqAmp * sSense);
+        // 주파수 강도에 비례한 크기 확장
+        let s = this.size * (0.6 + freqAmp * 2.0);
         
         beginShape();
-        for(let a=0; a<TWO_PI; a+=1.0) {
+        for(let a=0; a<TWO_PI; a+=1.2) {
             let r = s * (1 + 0.5 * sin(a));
-            vertex(cos(a)*r*0.5, sin(a)*r);
+            vertex(cos(a)*r*0.4, sin(a)*r);
         }
         endShape(CLOSE);
         pop();
     }
-
-    isOffScreen() { return this.pos.y > height + 50; }
 }
 
 // --- SYSTEM HANDLERS ---
 function handleFile(files) {
     if (audio) audio.stop();
     audio = loadSound(URL.createObjectURL(files[0]), () => {
-        document.getElementById('statusLog').innerText = "READY: " + files[0].name;
         document.getElementById('recBtn').disabled = false;
     });
 }
@@ -271,12 +285,16 @@ function handleFlowerPNG(files) {
 }
 function setExportRes(res) { exportRes = res; setup(); }
 function setAspect(asp) { aspect = asp; setup(); }
+function updateRangeLabel() {
+    let l = document.getElementById('freqLow').value;
+    let h = document.getElementById('freqHigh').value;
+    document.getElementById('vFreqR').innerText = `${l} - ${h}`;
+}
 
 async function toggleSync() {
     if (!audio || !audio.isLoaded()) return;
     if (isPlaying) {
-        audio.stop();
-        if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+        audio.stop(); if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
         isPlaying = false;
         document.getElementById('recBtn').innerText = "▶ START SYNC RECORD";
         document.getElementById('recBtn').classList.remove('recording');
@@ -289,7 +307,7 @@ async function toggleSync() {
         const combined = new MediaStream([...stream.getVideoTracks(), ...dest.stream.getAudioTracks()]);
         mediaRecorder = new MediaRecorder(combined, { 
             mimeType: 'video/webm; codecs=vp9,opus',
-            videoBitsPerSecond: exportRes === 'UHD' ? 50000000 : 15000000 
+            videoBitsPerSecond: exportRes === 'UHD' ? 60000000 : 20000000 
         });
         mediaRecorder.ondataavailable = e => { if(e.data.size > 0) recordedChunks.push(e.data); };
         mediaRecorder.onstop = saveVideo;
@@ -301,7 +319,7 @@ async function toggleSync() {
 function saveVideo() {
     const blob = new Blob(recordedChunks, { type: 'video/mp4' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-    a.download = `Spectral_${exportRes}_${new Date().getTime()}.mp4`; a.click();
+    a.download = `Spectral_Scoping_${new Date().getTime()}.mp4`; a.click();
 }
 function updateUI() {
     if (audio && audio.isPlaying()) {
@@ -311,8 +329,8 @@ function updateUI() {
     }
 }
 
-// Slider Display
-['noiseF','scaleS','trail','fX','fY','fS'].forEach(id => {
+// Slider Display Sync
+['sense','thresh','trail','fX','fY','fS'].forEach(id => {
     let el = document.getElementById(id);
     if(el) el.oninput = function() { document.getElementById('v' + id.charAt(0).toUpperCase() + id.slice(1)).innerText = this.value; }
 });
