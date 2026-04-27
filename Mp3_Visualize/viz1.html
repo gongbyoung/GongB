@@ -3,25 +3,25 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SPECTRUM LAB v15.0.40 — Tinted Floating Field</title>
+<title>SPECTRUM LAB v15.0.41 — Cinematic POV Simulation</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
-:root{ --bg:#030305; --panel:#0a0a10; --accent:#00ffcc; --accent2:#ff3377; --border:rgba(0,255,204,0.15); --text:#fff0f5; --muted:#554455; }
+:root{ --bg:#020205; --panel:#08080f; --accent:#00ffcc; --accent2:#ff3377; --border:rgba(0,255,204,0.12); --text:#e0f0ff; --muted:#44445a; }
 body{ background:var(--bg); color:var(--text); font-family:'Pretendard', sans-serif; height:100vh; overflow:hidden; display: flex; flex-direction: column; }
 
 .topbar{ padding:10px 20px; background:var(--panel); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
-.logo{letter-spacing:5px; color:var(--accent); font-weight:bold; font-size:13px;}
+.logo{letter-spacing:5px; color:var(--accent); font-weight:bold; font-size:12px;}
 
 .main{ display:grid; grid-template-columns:380px 1fr; flex:1; min-height:0; }
 .left-panel{ background:var(--panel); border-right:1px solid var(--border); display:flex; flex-direction:column; padding:12px; overflow-y:auto; }
 
-.ctrl-box { background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:12px; }
+.ctrl-box { background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:10px; }
 .label-small { font-size:9px; color:var(--accent); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px; display:block; border-bottom:1px solid rgba(0,255,204,0.1); padding-bottom:3px;}
 
-.control-group { margin-bottom:10px; }
-.control-group label { display:block; font-size:8px; color:var(--muted); margin-bottom:3px; }
+.control-group { margin-bottom:8px; }
+.control-group label { display:block; font-size:8px; color:var(--muted); margin-bottom:2px; }
 .val-label { float:right; color:var(--accent); font-weight:bold; font-size:9px; }
 input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; height:2px; }
 select { width:100%; background:#000; border:1px solid var(--border); color:var(--text); padding:8px; border-radius:4px; font-size:11px; outline:none; margin-bottom:5px; }
@@ -33,77 +33,73 @@ select { width:100%; background:#000; border:1px solid var(--border); color:var(
 
 @keyframes pulse { 0%{opacity:1;} 50%{opacity:0.6;} 100%{opacity:1;} }
 
-.viz-area { position:relative; display:flex; justify-content:center; align-items:center; flex:1; background:#000; overflow:hidden; padding:0;}
-/* 캔버스는 이제 100% 꽉 차게 나옴 */
+.viz-area { position:relative; display:flex; justify-content:center; align-items:center; flex:1; background:#000; overflow:hidden; }
 #p5-container { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
-#p5-container canvas { 
-    max-width: 100% !important; max-height: 100% !important; 
-    width: auto !important; height: auto !important; 
-    object-fit: contain; box-shadow: 0 0 50px rgba(0,0,0,0.8);
-}
-.playbar { height:4px; background:#111; position:relative; }
+#p5-container canvas { max-width: 100% !important; max-height: 100% !important; object-fit: contain; box-shadow: 0 0 60px rgba(0,0,0,1); }
+
+.playbar { height:2px; background:#111; position:relative; }
 #progFill { position:absolute; left:0; top:0; height:100%; background:var(--accent); width:0%; transition: width 0.1s; }
 </style>
 </head>
 <body>
 
 <div class="topbar">
-  <div class="logo">SPECTRUM LAB v15.0.40</div>
-  <div id="timeCode" style="font-family:monospace; font-size:13px; color:var(--accent);">00:00 / 00:00</div>
+  <div class="logo">SPECTRUM LAB v15.0.41</div>
+  <div id="timeCode" style="font-family:monospace; font-size:12px; color:var(--accent);">00:00 / 00:00</div>
 </div>
 
 <div class="main">
   <div class="left-panel">
     <div class="ctrl-box">
       <span class="label-small">A. System & Export</span>
-      <button class="btn" onclick="document.getElementById('mIn').click()">LOAD MP3 FILE</button>
+      <button class="btn" onclick="document.getElementById('mIn').click()">LOAD MP3</button>
       <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleFile(this.files)">
-      <div id="statusLog" style="font-size:10px; color:var(--muted); text-align:center;">No file loaded</div>
-      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-top:8px;">
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-top:5px;">
           <button class="btn active" id="resFHD" onclick="setExportRes('FHD')">FHD</button>
-          <button class="btn" id="resUHD" onclick="setExportRes('UHD')">UHD (4K)</button>
-      </div>
-      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px;">
-          <button class="btn active" id="asp169" onclick="setAspect('16:9')">16:9</button>
-          <button class="btn" id="asp916" onclick="setAspect('9:16')">9:16</button>
+          <button class="btn" id="resUHD" onclick="setExportRes('UHD')">UHD</button>
       </div>
       <button class="btn primary" id="recBtn" onclick="toggleSync()" disabled>▶ START SYNC RECORD</button>
     </div>
 
     <div class="ctrl-box">
-      <span class="label-small">B. Petal & RGB Tinting</span>
-      <button class="btn" style="border-color:#ffcc00; color:#ffcc00;" onclick="document.getElementById('pIn').click()">LOAD PETAL PNG</button>
-      <input type="file" id="pIn" accept="image/png" style="display:none" onchange="handlePetalPNG(this.files)">
-
-      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-top:10px;">
-          <div class="control-group"><label>R Min/Max</label><input type="range" id="rMin" min="0" max="255" value="150"><input type="range" id="rMax" min="0" max="255" value="255"></div>
-          <div class="control-group"><label>G Min/Max</label><input type="range" id="gMin" min="0" max="255" value="100"><input type="range" id="gMax" min="0" max="255" value="200"></div>
-          <div class="control-group"><label>B Min/Max</label><input type="range" id="bMin" min="0" max="255" value="180"><input type="range" id="bMax" min="0" max="255" value="255"></div>
-      </div>
-
-      <div class="control-group" style="margin-top:10px;">
-        <label>NOISE FORCE <span class="val-label" id="vNoiseF">120</span></label>
-        <input type="range" id="noiseF" min="0" max="300" value="120">
+      <span class="label-small">B. Simulation World (POV)</span>
+      <select id="simMode" onchange="initParticles()">
+          <option value="cosmic">1. COSMIC GLIDE (우주 활공)</option>
+          <option value="flowerField">2. FLOWER FIELD RUN (꽃밭 주행)</option>
+          <option value="oceanDrive">3. OCEAN SURGE (파도 주행)</option>
+          <option value="skyFlight">4. SKY HIGH FLY (하늘 비행)</option>
+      </select>
+      <div class="control-group">
+        <label>SIM SPEED (주행 속도) <span class="val-label" id="vSpeed">2.0</span></label>
+        <input type="range" id="simSpeed" min="0.5" max="10.0" step="0.1" value="2.0">
       </div>
       <div class="control-group">
-        <label>SCALE SENSE <span class="val-label" id="vScaleS">2.0</span></label>
-        <input type="range" id="scaleS" min="0.5" max="5.0" step="0.1" value="2.0">
-      </div>
-      <div class="control-group">
-        <label>TRAIL (잔상) <span class="val-label" id="vTrail">40</span></label>
-        <input type="range" id="trail" min="0" max="150" value="40">
+        <label>REACTION FORCE (반응성) <span class="val-label" id="vForce">1.5</span></label>
+        <input type="range" id="reactForce" min="0.1" max="5.0" step="0.1" value="1.5">
       </div>
     </div>
 
     <div class="ctrl-box">
-      <span class="label-small">C. Main Flower Transform</span>
+      <span class="label-small">C. Particle (Petal) Style</span>
+      <button class="btn" style="border-color:#ffcc00; color:#ffcc00;" onclick="document.getElementById('pIn').click()">LOAD PETAL PNG</button>
+      <input type="file" id="pIn" accept="image/png" style="display:none" onchange="handlePetalPNG(this.files)">
+      
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-top:5px;">
+          <div class="control-group"><label>R Range</label><input type="range" id="rMin" min="0" max="255" value="180"><input type="range" id="rMax" min="0" max="255" value="255"></div>
+          <div class="control-group"><label>G Range</label><input type="range" id="gMin" min="0" max="255" value="100"><input type="range" id="gMax" min="0" max="255" value="200"></div>
+          <div class="control-group"><label>B Range</label><input type="range" id="bMin" min="0" max="255" value="150"><input type="range" id="bMax" min="0" max="255" value="255"></div>
+      </div>
+    </div>
+
+    <div class="ctrl-box">
+      <span class="label-small">D. Main Hero PNG</span>
       <button class="btn" style="border-color:#00ffcc; color:#00ffcc;" onclick="document.getElementById('fIn').click()">LOAD MAIN PNG</button>
       <input type="file" id="fIn" accept="image/png" style="display:none" onchange="handleFlowerPNG(this.files)">
-      <div class="control-group" style="margin-top:10px;">
-        <label>POS X / Y / SCALE</label>
+      <div class="control-group" style="margin-top:5px;">
+        <label>POS X/Y & SCALE</label>
         <input type="range" id="fX" min="-1000" max="1000" value="0">
-        <input type="range" id="fY" min="-1000" max="1000" value="0" style="margin-top:5px;">
-        <input type="range" id="fS" min="0.1" max="4.0" step="0.1" value="1.0" style="margin-top:5px;">
+        <input type="range" id="fY" min="-1000" max="1000" value="0" style="margin-top:2px;">
+        <input type="range" id="fS" min="0.1" max="4.0" step="0.1" value="1.0" style="margin-top:2px;">
       </div>
     </div>
   </div>
@@ -117,133 +113,156 @@ select { width:100%; background:#000; border:1px solid var(--border); color:var(
 let exportRes = 'FHD', aspect = '16:9';
 let isRecording = false, isPlaying = false;
 let audio, fft, ampObj;
-let petals = [];
+let particles = [];
 let mediaRecorder, recordedChunks = [];
 let canvasRef, flowerImg = null, petalImg = null;
-let smoothBass = 0;
+let smoothBass = 0, smoothMid = 0;
 
 function setup() {
     let container = document.getElementById('p5-container');
     let w = (exportRes === 'FHD') ? 1920 : 3840;
     let h = (exportRes === 'FHD') ? 1080 : 2160;
-    if (aspect === '9:16') { let t = w; w = h; h = t; }
-
     let cnv = createCanvas(w, h);
     cnv.parent(container);
     canvasRef = cnv.elt;
     
     colorMode(RGB, 255, 255, 255, 255);
-    fft = new p5.FFT(0.85, 1024);
+    fft = new p5.FFT(0.8, 512);
     ampObj = new p5.Amplitude();
     imageMode(CENTER);
-    initPetals();
+    initParticles();
 }
 
-function initPetals() {
-    petals = [];
-    for(let i=0; i<1024; i++) petals.push(new Petal(i));
+function initParticles() {
+    particles = [];
+    let mode = document.getElementById('simMode').value;
+    let count = (mode === 'cosmic') ? 800 : 400;
+    for(let i=0; i<count; i++) particles.push(new SimulationParticle(mode));
 }
 
 function draw() {
-    let trVal = parseInt(document.getElementById('trail').value);
-    background(3, 3, 5, trVal);
+    background(2, 2, 8, 40); // 고정 잔상
 
     if (!audio || !audio.isLoaded()) return;
 
-    let spectrum = fft.analyze();
+    fft.analyze();
     smoothBass = lerp(smoothBass, fft.getEnergy("bass")/255, 0.15);
+    smoothMid = lerp(smoothMid, fft.getEnergy("mid")/255, 0.1);
     let vol = ampObj.getLevel();
+    
+    let mode = document.getElementById('simMode').value;
+    let speedBase = parseFloat(document.getElementById('simSpeed').value);
+    let rForce = parseFloat(document.getElementById('reactForce').value);
 
-    // --- 글로벌 플로팅 오프셋 (판 전체가 움직이는 느낌) ---
-    let time = millis() * 0.001;
-    let globalOffX = (noise(time * 0.3) - 0.5) * 150;
-    let globalOffY = (noise(time * 0.3 + 100) - 0.5) * 100;
-
-    push();
-    translate(globalOffX, globalOffY);
-
-    // --- B. 배경 파티클 (PNG + RGB Tinting + 75% Field) ---
-    for (let i = 0; i < petals.length; i++) {
-        let freqAmp = (spectrum[i % spectrum.length] || 0) / 255;
-        petals[i].update(freqAmp, vol);
-        petals[i].display(freqAmp, vol);
+    // --- 시뮬레이션 월드 렌더링 ---
+    for (let p of particles) {
+        p.update(mode, speedBase, rForce, smoothBass, smoothMid, vol);
+        p.display(vol);
     }
-    pop();
 
-    // --- C. 메인 꽃 (고정 위치 기반) ---
-    drawMainFlower(smoothBass);
+    // --- 메인 히어로 꽃 렌더링 ---
+    drawMainHero(smoothBass);
     updateUI();
 }
 
-function drawMainFlower(bass) {
-    if (!flowerImg) return;
-    push();
-    let x = width/2 + parseInt(document.getElementById('fX').value);
-    let y = height/2 + parseInt(document.getElementById('fY').value);
-    let s = parseFloat(document.getElementById('fS').value);
-    translate(x, y);
-    rotate(sin(millis()*0.002) * bass * 0.1);
-    let sc = (height * 0.4 / flowerImg.height) * s * (1.0 + bass * 0.2);
-    image(flowerImg, 0, 0, flowerImg.width * sc, flowerImg.height * sc);
-    pop();
-}
-
-class Petal {
-    constructor(index) {
-        this.index = index;
-        this.reset();
+class SimulationParticle {
+    constructor(mode) {
+        this.reset(mode);
     }
 
-    reset() {
-        // 입자가 배치되는 영역을 캔버스의 75%로 제한 (0.125 ~ 0.875 범위)
-        this.origin = createVector(
-            random(width * 0.125, width * 0.875),
-            random(height * 0.125, height * 0.875)
-        );
-        this.pos = this.origin.copy();
-        this.noiseOff = random(1000);
-        this.size = random(15, 35);
-        this.angle = random(TWO_PI);
-        this.rotSpeed = random(-0.04, 0.04);
+    reset(mode) {
+        if (mode === 'cosmic') {
+            this.pos = createVector(random(-width, width), random(-height, height), random(width));
+            this.pz = this.pos.z;
+        } else if (mode === 'flowerField') {
+            this.pos = createVector(random(width), random(height), random(1, 5)); // z as fake depth
+            this.speed = random(2, 5);
+        } else if (mode === 'oceanDrive') {
+            this.pos = createVector(random(width), random(height));
+            this.originY = this.pos.y;
+        } else { // skyFlight
+            this.pos = createVector(random(width), random(height));
+            this.speed = random(5, 15);
+        }
         
-        // RGB 랜덤 색상 할당 (슬라이더 범위 기반)
+        this.size = random(10, 30);
+        this.angle = random(TWO_PI);
         this.r = random(parseInt(rMin.value), parseInt(rMax.value));
         this.g = random(parseInt(gMin.value), parseInt(gMax.value));
         this.b = random(parseInt(bMin.value), parseInt(bMax.value));
     }
 
-    update(freqAmp, vol) {
-        let nForce = parseInt(document.getElementById('noiseF').value);
-        let nx = map(noise(this.noiseOff, frameCount * 0.01), 0, 1, -nForce, nForce);
-        let ny = map(noise(this.noiseOff + 500, frameCount * 0.01), 0, 1, -nForce, nForce);
-        
-        this.pos.x = lerp(this.pos.x, this.origin.x + nx * freqAmp, 0.1);
-        this.pos.y = lerp(this.pos.y, this.origin.y + ny * freqAmp, 0.1);
-
-        this.angle += this.rotSpeed + vol * 0.1;
-        this.noiseOff += 0.01;
+    update(mode, speedBase, rForce, bass, mid, vol) {
+        if (mode === 'cosmic') {
+            let s = speedBase * 10 * (1 + bass * rForce);
+            this.pos.z -= s;
+            if (this.pos.z < 1) {
+                this.pos.z = width;
+                this.pos.x = random(-width, width);
+                this.pos.y = random(-height, height);
+                this.pz = this.pos.z;
+            }
+        } else if (mode === 'flowerField') {
+            let s = speedBase * 5 * (1 + mid * rForce);
+            this.pos.y += s;
+            if (this.pos.y > height) {
+                this.pos.y = -50;
+                this.pos.x = random(width);
+            }
+        } else if (mode === 'oceanDrive') {
+            this.pos.x -= speedBase * 8 * (1 + bass * rForce);
+            this.pos.y = this.originY + sin(this.pos.x * 0.01 + frameCount * 0.1) * (50 * mid * rForce);
+            if (this.pos.x < -100) this.pos.x = width + 100;
+        } else if (mode === 'skyFlight') {
+            this.pos.x -= speedBase * 15 * (1 + vol * rForce);
+            this.pos.y += sin(frameCount * 0.02 + this.pos.x * 0.005) * 2;
+            if (this.pos.x < -100) { this.pos.x = width + 100; this.pos.y = random(height); }
+        }
+        this.angle += 0.05 + vol * 0.1;
     }
 
-    display(freqAmp, vol) {
+    display(vol) {
         push();
-        translate(this.pos.x, this.pos.y);
-        rotate(this.angle);
-        
-        // RGB 틴팅 적용
-        tint(this.r, this.g, this.b, 200);
+        let mode = document.getElementById('simMode').value;
+        let sx, sy, sz;
 
-        let sSense = parseFloat(document.getElementById('scaleS').value);
-        let s = this.size * (0.6 + freqAmp * sSense);
-
-        if (petalImg) {
-            image(petalImg, 0, 0, petalImg.width * (s/100), petalImg.height * (s/100));
+        if (mode === 'cosmic') {
+            sx = map(this.pos.x / this.pos.z, 0, 1, 0, width) + width/2;
+            sy = map(this.pos.y / this.pos.z, 0, 1, 0, height) + height/2;
+            sz = map(this.pos.z, 0, width, 40, 1);
+        } else if (mode === 'flowerField') {
+            sx = this.pos.x; sy = this.pos.y;
+            sz = map(this.pos.y, 0, height, 5, 40); // Perspective scaling
         } else {
-            noStroke(); fill(this.r, this.g, this.b, 180);
-            ellipse(0, 0, s*0.6, s);
+            sx = this.pos.x; sy = this.pos.y; sz = this.size;
         }
-        noTint();
+
+        translate(sx, sy);
+        rotate(this.angle);
+        tint(this.r, this.g, this.b, 200);
+        let finalSz = sz * (0.8 + vol * 0.5);
+        
+        if (petalImg) {
+            image(petalImg, 0, 0, petalImg.width * (finalSz/150), petalImg.height * (finalSz/150));
+        } else {
+            noStroke(); fill(this.r, this.g, this.b, 150);
+            ellipse(0, 0, finalSz * 0.6, finalSz);
+        }
         pop();
     }
+}
+
+function drawMainHero(bass) {
+    if (!flowerImg) return;
+    push();
+    let x = width/2 + parseInt(fX.value);
+    let y = height/2 + parseInt(fY.value);
+    let s = parseFloat(fS.value);
+    translate(x, y);
+    let audioPulse = 1.0 + bass * 0.25;
+    let imgScale = (height * 0.45 / flowerImg.height) * s * audioPulse;
+    image(flowerImg, 0, 0, flowerImg.width * imgScale, flowerImg.height * imgScale);
+    pop();
 }
 
 // --- SYSTEM HANDLERS ---
@@ -255,10 +274,8 @@ function handleFile(files) {
     });
 }
 function handleFlowerPNG(files) { loadImage(URL.createObjectURL(files[0]), (img) => { flowerImg = img; }); }
-function handlePetalPNG(files) { loadImage(URL.createObjectURL(files[0]), (img) => { petalImg = img; initPetals(); }); }
-
+function handlePetalPNG(files) { loadImage(URL.createObjectURL(files[0]), (img) => { petalImg = img; initParticles(); }); }
 function setExportRes(res) { exportRes = res; setup(); }
-function setAspect(asp) { aspect = asp; setup(); }
 
 async function toggleSync() {
     if (!audio || !audio.isLoaded()) return;
@@ -276,7 +293,7 @@ async function toggleSync() {
         const combined = new MediaStream([...stream.getVideoTracks(), ...dest.stream.getAudioTracks()]);
         mediaRecorder = new MediaRecorder(combined, { 
             mimeType: 'video/webm; codecs=vp9,opus',
-            videoBitsPerSecond: exportRes === 'UHD' ? 50000000 : 15000000 
+            videoBitsPerSecond: exportRes === 'UHD' ? 60000000 : 20000000 
         });
         mediaRecorder.ondataavailable = e => { if(e.data.size > 0) recordedChunks.push(e.data); };
         mediaRecorder.onstop = saveVideo;
@@ -288,7 +305,7 @@ async function toggleSync() {
 function saveVideo() {
     const blob = new Blob(recordedChunks, { type: 'video/mp4' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-    a.download = `TintedFloating_${exportRes}_${new Date().getTime()}.mp4`; a.click();
+    a.download = `Sim_${document.getElementById('simMode').value}_${new Date().getTime()}.mp4`; a.click();
 }
 function updateUI() {
     if (audio && audio.isPlaying()) {
@@ -297,8 +314,8 @@ function updateUI() {
         document.getElementById('progFill').style.width = (curr/dur * 100) + '%';
     }
 }
-
-['noiseF','scaleS','trail','fX','fY','fS'].forEach(id => {
+// Slider label sync
+['simSpeed','reactForce','fX','fY','fS'].forEach(id => {
     let el = document.getElementById(id);
     if(el) el.oninput = function() { document.getElementById('v' + id.charAt(0).toUpperCase() + id.slice(1)).innerText = this.value; }
 });
