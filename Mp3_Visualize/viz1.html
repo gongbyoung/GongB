@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SPECTRUM LAB v15.0.41 — Cinematic POV Simulation</title>
+<title>SPECTRUM LAB v15.0.42 — Grid & Interactive Cam</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -22,7 +22,6 @@ body{ background:var(--bg); color:var(--text); font-family:'Pretendard', sans-se
 
 .control-group { margin-bottom:8px; }
 .control-group label { display:block; font-size:8px; color:var(--muted); margin-bottom:2px; }
-.val-label { float:right; color:var(--accent); font-weight:bold; font-size:9px; }
 input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; height:2px; }
 select { width:100%; background:#000; border:1px solid var(--border); color:var(--text); padding:8px; border-radius:4px; font-size:11px; outline:none; margin-bottom:5px; }
 
@@ -34,8 +33,7 @@ select { width:100%; background:#000; border:1px solid var(--border); color:var(
 @keyframes pulse { 0%{opacity:1;} 50%{opacity:0.6;} 100%{opacity:1;} }
 
 .viz-area { position:relative; display:flex; justify-content:center; align-items:center; flex:1; background:#000; overflow:hidden; }
-#p5-container { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
-#p5-container canvas { max-width: 100% !important; max-height: 100% !important; object-fit: contain; box-shadow: 0 0 60px rgba(0,0,0,1); }
+#p5-container canvas { max-width: 100% !important; max-height: 100% !important; object-fit: contain; }
 
 .playbar { height:2px; background:#111; position:relative; }
 #progFill { position:absolute; left:0; top:0; height:100%; background:var(--accent); width:0%; transition: width 0.1s; }
@@ -44,7 +42,7 @@ select { width:100%; background:#000; border:1px solid var(--border); color:var(
 <body>
 
 <div class="topbar">
-  <div class="logo">SPECTRUM LAB v15.0.41</div>
+  <div class="logo">SPECTRUM LAB v15.0.42</div>
   <div id="timeCode" style="font-family:monospace; font-size:12px; color:var(--accent);">00:00 / 00:00</div>
 </div>
 
@@ -56,51 +54,46 @@ select { width:100%; background:#000; border:1px solid var(--border); color:var(
       <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleFile(this.files)">
       <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-top:5px;">
           <button class="btn active" id="resFHD" onclick="setExportRes('FHD')">FHD</button>
-          <button class="btn" id="resUHD" onclick="setExportRes('UHD')">UHD</button>
+          <button class="btn" id="resUHD" onclick="setExportRes('UHD')">UHD (4K)</button>
       </div>
       <button class="btn primary" id="recBtn" onclick="toggleSync()" disabled>▶ START SYNC RECORD</button>
     </div>
 
     <div class="ctrl-box">
-      <span class="label-small">B. Simulation World (POV)</span>
-      <select id="simMode" onchange="initParticles()">
-          <option value="cosmic">1. COSMIC GLIDE (우주 활공)</option>
-          <option value="flowerField">2. FLOWER FIELD RUN (꽃밭 주행)</option>
-          <option value="oceanDrive">3. OCEAN SURGE (파도 주행)</option>
-          <option value="skyFlight">4. SKY HIGH FLY (하늘 비행)</option>
+      <span class="label-small">B. Interactive Camera</span>
+      <select id="camMode">
+          <option value="auto">Auto (음악 흐름 반응)</option>
+          <option value="manual">Manual (방향키 조작)</option>
       </select>
       <div class="control-group">
-        <label>SIM SPEED (주행 속도) <span class="val-label" id="vSpeed">2.0</span></label>
-        <input type="range" id="simSpeed" min="0.5" max="10.0" step="0.1" value="2.0">
+        <label>CAM SENSITIVITY <span id="vCamS" style="float:right; color:var(--accent);">5.0</span></label>
+        <input type="range" id="camSense" min="1.0" max="20.0" step="0.5" value="5.0" oninput="document.getElementById('vCamS').innerText=this.value">
+      </div>
+      <div style="font-size: 8px; color:var(--muted); line-height: 1.4;">
+        * Manual: Use Arrow Keys (Up, Down, Left, Right)<br>
+        * Auto: Cam speed scales with Audio energy.
+      </div>
+    </div>
+
+    <div class="ctrl-box">
+      <span class="label-small">C. 1024 Grid Dynamics</span>
+      <div class="control-group">
+        <label>JUMP FORCE (저음 반응) <span id="vJump" style="float:right; color:var(--accent);">50</span></label>
+        <input type="range" id="jumpF" min="0" max="200" value="50" oninput="document.getElementById('vJump').innerText=this.value">
       </div>
       <div class="control-group">
-        <label>REACTION FORCE (반응성) <span class="val-label" id="vForce">1.5</span></label>
-        <input type="range" id="reactForce" min="0.1" max="5.0" step="0.1" value="1.5">
+        <label>SPIN SPEED (고음 반응) <span id="vSpin" style="float:right; color:var(--accent);">2.0</span></label>
+        <input type="range" id="spinS" min="0" max="10.0" step="0.1" value="2.0" oninput="document.getElementById('vSpin').innerText=this.value">
       </div>
     </div>
 
     <div class="ctrl-box">
-      <span class="label-small">C. Particle (Petal) Style</span>
-      <button class="btn" style="border-color:#ffcc00; color:#ffcc00;" onclick="document.getElementById('pIn').click()">LOAD PETAL PNG</button>
+      <span class="label-small">D. Particle & Hero PNG</span>
+      <button class="btn" style="border-color:#ffcc00; color:#ffcc00;" onclick="document.getElementById('pIn').click()">LOAD PARTICLE PNG</button>
       <input type="file" id="pIn" accept="image/png" style="display:none" onchange="handlePetalPNG(this.files)">
       
-      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-top:5px;">
-          <div class="control-group"><label>R Range</label><input type="range" id="rMin" min="0" max="255" value="180"><input type="range" id="rMax" min="0" max="255" value="255"></div>
-          <div class="control-group"><label>G Range</label><input type="range" id="gMin" min="0" max="255" value="100"><input type="range" id="gMax" min="0" max="255" value="200"></div>
-          <div class="control-group"><label>B Range</label><input type="range" id="bMin" min="0" max="255" value="150"><input type="range" id="bMax" min="0" max="255" value="255"></div>
-      </div>
-    </div>
-
-    <div class="ctrl-box">
-      <span class="label-small">D. Main Hero PNG</span>
-      <button class="btn" style="border-color:#00ffcc; color:#00ffcc;" onclick="document.getElementById('fIn').click()">LOAD MAIN PNG</button>
+      <button class="btn" style="border-color:#00ffcc; color:#00ffcc; margin-top:5px;" onclick="document.getElementById('fIn').click()">LOAD MAIN HERO PNG</button>
       <input type="file" id="fIn" accept="image/png" style="display:none" onchange="handleFlowerPNG(this.files)">
-      <div class="control-group" style="margin-top:5px;">
-        <label>POS X/Y & SCALE</label>
-        <input type="range" id="fX" min="-1000" max="1000" value="0">
-        <input type="range" id="fY" min="-1000" max="1000" value="0" style="margin-top:2px;">
-        <input type="range" id="fS" min="0.1" max="4.0" step="0.1" value="1.0" style="margin-top:2px;">
-      </div>
     </div>
   </div>
 
@@ -113,10 +106,12 @@ select { width:100%; background:#000; border:1px solid var(--border); color:var(
 let exportRes = 'FHD', aspect = '16:9';
 let isRecording = false, isPlaying = false;
 let audio, fft, ampObj;
-let particles = [];
+let gridItems = [];
 let mediaRecorder, recordedChunks = [];
 let canvasRef, flowerImg = null, petalImg = null;
-let smoothBass = 0, smoothMid = 0;
+
+// Camera state
+let camX = 0, camY = 0, camScale = 1.0;
 
 function setup() {
     let container = document.getElementById('p5-container');
@@ -127,125 +122,119 @@ function setup() {
     canvasRef = cnv.elt;
     
     colorMode(RGB, 255, 255, 255, 255);
-    fft = new p5.FFT(0.8, 512);
+    fft = new p5.FFT(0.85, 1024); // 1024 bins
     ampObj = new p5.Amplitude();
     imageMode(CENTER);
-    initParticles();
+    initGrid();
 }
 
-function initParticles() {
-    particles = [];
-    let mode = document.getElementById('simMode').value;
-    let count = (mode === 'cosmic') ? 800 : 400;
-    for(let i=0; i<count; i++) particles.push(new SimulationParticle(mode));
+function initGrid() {
+    gridItems = [];
+    let cols = 32, rows = 32; // 32x32 = 1024
+    let spacingX = width / cols;
+    let spacingY = height / rows;
+    for (let i = 0; i < 1024; i++) {
+        let x = (i % cols) * spacingX + spacingX/2;
+        let y = floor(i / cols) * spacingY + spacingY/2;
+        gridItems.push(new GridObject(i, x, y));
+    }
 }
 
 function draw() {
-    background(2, 2, 8, 40); // 고정 잔상
+    background(2, 2, 8); // 고정 배경
 
-    if (!audio || !audio.isLoaded()) return;
-
-    fft.analyze();
-    smoothBass = lerp(smoothBass, fft.getEnergy("bass")/255, 0.15);
-    smoothMid = lerp(smoothMid, fft.getEnergy("mid")/255, 0.1);
-    let vol = ampObj.getLevel();
-    
-    let mode = document.getElementById('simMode').value;
-    let speedBase = parseFloat(document.getElementById('simSpeed').value);
-    let rForce = parseFloat(document.getElementById('reactForce').value);
-
-    // --- 시뮬레이션 월드 렌더링 ---
-    for (let p of particles) {
-        p.update(mode, speedBase, rForce, smoothBass, smoothMid, vol);
-        p.display(vol);
+    if (!audio || !audio.isLoaded()) {
+        // 프리뷰 상태에서도 카메라 조작 가능
+        handleCameraLogic(0);
+        push();
+        translate(camX, camY);
+        scale(camScale);
+        for(let item of gridItems) item.display(0, 0);
+        pop();
+        return;
     }
 
-    // --- 메인 히어로 꽃 렌더링 ---
-    drawMainHero(smoothBass);
+    fft.analyze();
+    let bass = fft.getEnergy("bass") / 255;
+    let treble = fft.getEnergy("treble") / 255;
+    let vol = ampObj.getLevel();
+    let spectrum = fft.analyze();
+
+    // 1. 카메라 로직 적용
+    handleCameraLogic(vol);
+
+    push();
+    translate(camX, camY);
+    scale(camScale);
+
+    // 2. 1024 그리드 렌더링
+    for (let i = 0; i < gridItems.length; i++) {
+        let freqVal = spectrum[i] / 255;
+        gridItems[i].update(freqVal, bass, treble);
+        gridItems[i].display(freqVal, vol);
+    }
+    pop();
+
+    // 3. 메인 히어로 (카메라 영향을 받지 않는 레이어 혹은 중앙 배치)
+    drawMainHero(bass);
+
     updateUI();
 }
 
-class SimulationParticle {
-    constructor(mode) {
-        this.reset(mode);
+function handleCameraLogic(vol) {
+    let mode = document.getElementById('camMode').value;
+    let sense = parseFloat(document.getElementById('camSense').value);
+
+    if (mode === 'auto') {
+        // 음악 흐름에 따른 자동 유영
+        let time = millis() * 0.001;
+        camX = lerp(camX, (noise(time * 0.3) - 0.5) * width * 0.2 * (1 + vol * sense), 0.05);
+        camY = lerp(camY, (noise(time * 0.3 + 100) - 0.5) * height * 0.2 * (1 + vol * sense), 0.05);
+        camScale = lerp(camScale, 1.0 + vol * 0.5, 0.05);
+    } else {
+        // 방향키 수동 조작
+        let moveStep = 10 * (sense/2);
+        if (keyIsDown(UP_ARROW)) camY += moveStep;
+        if (keyIsDown(DOWN_ARROW)) camY -= moveStep;
+        if (keyIsDown(LEFT_ARROW)) camX += moveStep;
+        if (keyIsDown(RIGHT_ARROW)) camX -= moveStep;
+    }
+}
+
+class GridObject {
+    constructor(id, x, y) {
+        this.id = id;
+        this.origin = createVector(x, y);
+        this.pos = this.origin.copy();
+        this.angle = 0;
+        this.size = random(20, 40);
+        this.color = color(random(100, 255), random(100, 200), 255, 180);
     }
 
-    reset(mode) {
-        if (mode === 'cosmic') {
-            this.pos = createVector(random(-width, width), random(-height, height), random(width));
-            this.pz = this.pos.z;
-        } else if (mode === 'flowerField') {
-            this.pos = createVector(random(width), random(height), random(1, 5)); // z as fake depth
-            this.speed = random(2, 5);
-        } else if (mode === 'oceanDrive') {
-            this.pos = createVector(random(width), random(height));
-            this.originY = this.pos.y;
-        } else { // skyFlight
-            this.pos = createVector(random(width), random(height));
-            this.speed = random(5, 15);
-        }
-        
-        this.size = random(10, 30);
-        this.angle = random(TWO_PI);
-        this.r = random(parseInt(rMin.value), parseInt(rMax.value));
-        this.g = random(parseInt(gMin.value), parseInt(gMax.value));
-        this.b = random(parseInt(bMin.value), parseInt(bMax.value));
+    update(freq, bass, treble) {
+        let jumpF = parseInt(document.getElementById('jumpF').value);
+        let spinS = parseFloat(document.getElementById('spinS').value);
+
+        // 점핑 (저음/개별 주파수 반응)
+        let jump = freq * jumpF;
+        this.pos.y = this.origin.y - jump;
+
+        // 회전 (고음/개별 주파수 반응)
+        this.angle += 0.02 + freq * spinS;
     }
 
-    update(mode, speedBase, rForce, bass, mid, vol) {
-        if (mode === 'cosmic') {
-            let s = speedBase * 10 * (1 + bass * rForce);
-            this.pos.z -= s;
-            if (this.pos.z < 1) {
-                this.pos.z = width;
-                this.pos.x = random(-width, width);
-                this.pos.y = random(-height, height);
-                this.pz = this.pos.z;
-            }
-        } else if (mode === 'flowerField') {
-            let s = speedBase * 5 * (1 + mid * rForce);
-            this.pos.y += s;
-            if (this.pos.y > height) {
-                this.pos.y = -50;
-                this.pos.x = random(width);
-            }
-        } else if (mode === 'oceanDrive') {
-            this.pos.x -= speedBase * 8 * (1 + bass * rForce);
-            this.pos.y = this.originY + sin(this.pos.x * 0.01 + frameCount * 0.1) * (50 * mid * rForce);
-            if (this.pos.x < -100) this.pos.x = width + 100;
-        } else if (mode === 'skyFlight') {
-            this.pos.x -= speedBase * 15 * (1 + vol * rForce);
-            this.pos.y += sin(frameCount * 0.02 + this.pos.x * 0.005) * 2;
-            if (this.pos.x < -100) { this.pos.x = width + 100; this.pos.y = random(height); }
-        }
-        this.angle += 0.05 + vol * 0.1;
-    }
-
-    display(vol) {
+    display(freq, vol) {
         push();
-        let mode = document.getElementById('simMode').value;
-        let sx, sy, sz;
-
-        if (mode === 'cosmic') {
-            sx = map(this.pos.x / this.pos.z, 0, 1, 0, width) + width/2;
-            sy = map(this.pos.y / this.pos.z, 0, 1, 0, height) + height/2;
-            sz = map(this.pos.z, 0, width, 40, 1);
-        } else if (mode === 'flowerField') {
-            sx = this.pos.x; sy = this.pos.y;
-            sz = map(this.pos.y, 0, height, 5, 40); // Perspective scaling
-        } else {
-            sx = this.pos.x; sy = this.pos.y; sz = this.size;
-        }
-
-        translate(sx, sy);
+        translate(this.pos.x, this.pos.y);
         rotate(this.angle);
-        tint(this.r, this.g, this.b, 200);
-        let finalSz = sz * (0.8 + vol * 0.5);
         
+        let finalSz = this.size * (0.8 + freq * 1.5);
         if (petalImg) {
-            image(petalImg, 0, 0, petalImg.width * (finalSz/150), petalImg.height * (finalSz/150));
+            tint(this.color);
+            image(petalImg, 0, 0, petalImg.width * (finalSz/200), petalImg.height * (finalSz/200));
+            noTint();
         } else {
-            noStroke(); fill(this.r, this.g, this.b, 150);
+            noStroke(); fill(this.color);
             ellipse(0, 0, finalSz * 0.6, finalSz);
         }
         pop();
@@ -255,12 +244,8 @@ class SimulationParticle {
 function drawMainHero(bass) {
     if (!flowerImg) return;
     push();
-    let x = width/2 + parseInt(fX.value);
-    let y = height/2 + parseInt(fY.value);
-    let s = parseFloat(fS.value);
-    translate(x, y);
-    let audioPulse = 1.0 + bass * 0.25;
-    let imgScale = (height * 0.45 / flowerImg.height) * s * audioPulse;
+    translate(width/2, height/2);
+    let imgScale = (height * 0.5 / flowerImg.height) * (1.0 + bass * 0.2);
     image(flowerImg, 0, 0, flowerImg.width * imgScale, flowerImg.height * imgScale);
     pop();
 }
@@ -269,12 +254,11 @@ function drawMainHero(bass) {
 function handleFile(files) {
     if (audio) audio.stop();
     audio = loadSound(URL.createObjectURL(files[0]), () => {
-        document.getElementById('statusLog').innerText = "READY: " + files[0].name;
         document.getElementById('recBtn').disabled = false;
     });
 }
 function handleFlowerPNG(files) { loadImage(URL.createObjectURL(files[0]), (img) => { flowerImg = img; }); }
-function handlePetalPNG(files) { loadImage(URL.createObjectURL(files[0]), (img) => { petalImg = img; initParticles(); }); }
+function handlePetalPNG(files) { loadImage(URL.createObjectURL(files[0]), (img) => { petalImg = img; initGrid(); }); }
 function setExportRes(res) { exportRes = res; setup(); }
 
 async function toggleSync() {
@@ -305,7 +289,7 @@ async function toggleSync() {
 function saveVideo() {
     const blob = new Blob(recordedChunks, { type: 'video/mp4' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-    a.download = `Sim_${document.getElementById('simMode').value}_${new Date().getTime()}.mp4`; a.click();
+    a.download = `GridCam_${new Date().getTime()}.mp4`; a.click();
 }
 function updateUI() {
     if (audio && audio.isPlaying()) {
@@ -314,11 +298,6 @@ function updateUI() {
         document.getElementById('progFill').style.width = (curr/dur * 100) + '%';
     }
 }
-// Slider label sync
-['simSpeed','reactForce','fX','fY','fS'].forEach(id => {
-    let el = document.getElementById(id);
-    if(el) el.oninput = function() { document.getElementById('v' + id.charAt(0).toUpperCase() + id.slice(1)).innerText = this.value; }
-});
 </script>
 </body>
 </html>
