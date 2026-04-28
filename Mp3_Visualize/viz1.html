@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SPECTRUM LAB v15.0.47 — Precision Optimization</title>
+<title>SPECTRUM LAB v15.0.48 — Spectral Analyst</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -27,60 +27,55 @@ input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; heig
 select { width:100%; background:#000; border:1px solid var(--border); color:var(--text); padding:8px; border-radius:4px; font-size:11px; outline:none; margin-bottom:5px; }
 
 .btn { background:transparent; border:1px solid var(--border); border-radius:4px; color:#fff; padding:10px; cursor:pointer; font-size:10px; width:100%; margin-bottom:5px; transition:0.2s; }
+.btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .btn.active { background:var(--accent); color:#000; font-weight:bold;}
 .btn.primary { background:var(--accent2); border-color:var(--accent2); color:#fff; font-weight:bold; font-size:11px; padding:15px; margin-top:5px; }
-.btn.primary.recording { background:#fff; color:var(--accent2); animation: pulse 1s infinite; }
-
-@keyframes pulse { 0%{opacity:1;} 50%{opacity:0.6;} 100%{opacity:1;} }
+.btn.primary:disabled { opacity: 0.3; cursor: not-allowed; }
+.btn.analyze { border-color: #ffcc00; color: #ffcc00; }
 
 .viz-area { position:relative; display:flex; justify-content:center; align-items:center; flex:1; background:#000; overflow:hidden; }
-#p5-container canvas { max-width: 100% !important; max-height: 100% !important; object-fit: contain; box-shadow: 0 0 60px rgba(0,0,0,1); }
+#p5-container canvas { max-width: 100% !important; max-height: 100% !important; object-fit: contain; }
 
-.playbar { height:2px; background:#111; position:relative; }
-#progFill { position:absolute; left:0; top:0; height:100%; background:var(--accent); width:0%; transition: width 0.1s; }
-
-.rgb-label-group { display: flex; justify-content: space-between; font-size: 8px; color: var(--muted); }
+#statusLog { font-size: 10px; padding: 5px; color: #ffcc00; text-align: center; min-height: 20px; }
 </style>
 </head>
 <body>
 
 <div class="topbar">
-  <div class="logo">SPECTRUM LAB v15.0.47</div>
+  <div class="logo">SPECTRUM LAB v15.0.48</div>
   <div id="timeCode" style="font-family:monospace; font-size:12px; color:var(--accent);">00:00 / 00:00</div>
 </div>
 
 <div class="main">
   <div class="left-panel">
     <div class="ctrl-box">
-      <span class="label-small">A. System & 24FPS Export</span>
-      <button class="btn" onclick="document.getElementById('mIn').click()">LOAD MP3</button>
+      <span class="label-small">Step 1. Offline Spectral Analysis</span>
+      <button class="btn" onclick="document.getElementById('mIn').click()">1. SELECT MP3</button>
       <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleFile(this.files)">
-      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-top:5px;">
+      
+      <button class="btn analyze" id="analyzeBtn" onclick="runAnalysis()" disabled>2. PRE-ANALYZE & CALIBRATE</button>
+      <div id="statusLog">No file loaded</div>
+    </div>
+
+    <div class="ctrl-box">
+      <span class="label-small">Step 2. Rendering Config</span>
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px;">
           <button class="btn active" id="resFHD" onclick="setExportRes('FHD')">FHD</button>
-          <button class="btn" id="resUHD" onclick="setExportRes('UHD')">UHD (4K)</button>
+          <button class="btn" id="resUHD" onclick="setExportRes('UHD')">UHD</button>
       </div>
       <button class="btn primary" id="recBtn" onclick="toggleSync()" disabled>▶ START SYNC RECORD (24fps)</button>
     </div>
 
     <div class="ctrl-box">
-      <span class="label-small">B. Simulation Mode</span>
+      <span class="label-small">Simulation & Physics</span>
       <select id="simMode" onchange="initParticles()">
-          <option value="spectralGrid">1. OPTIMIZED 64 GRID (시스템 최적화)</option>
-          <option value="cosmic">2. COSMIC GLIDE (우주 활공)</option>
-          <option value="flowerField">3. FLOWER FIELD RUN (꽃밭 주행)</option>
-          <option value="oceanDrive">4. OCEAN SURGE (파도 주행)</option>
+          <option value="spectralGrid">1. SEMANTIC 64 GRID (악기별 매칭)</option>
+          <option value="cosmic">2. COSMIC GLIDE</option>
+          <option value="flowerField">3. FLOWER FIELD</option>
       </select>
       <div class="control-group">
         <label>GLOBAL SPEED/FORCE <span class="val-label" id="vSimSpeed">2.0</span></label>
         <input type="range" id="simSpeed" min="0.1" max="10.0" step="0.1" value="2.0">
-      </div>
-    </div>
-
-    <div class="ctrl-box">
-      <span class="label-small">C. Particle Advanced</span>
-      <div class="control-group">
-        <label>SHAPE MORPHING (고음) <span class="val-label" id="vMorph">0.0</span></label>
-        <input type="range" id="morph" min="0.0" max="1.0" step="0.01" value="0.0">
       </div>
       <div class="control-group">
         <label>TRAIL (잔상 옵션) <span class="val-label" id="vTrail">40</span></label>
@@ -89,47 +84,11 @@ select { width:100%; background:#000; border:1px solid var(--border); color:var(
     </div>
 
     <div class="ctrl-box">
-      <span class="label-small">D. Particle Style & RGB Range</span>
+      <span class="label-small">Particle Visual Style</span>
       <button class="btn" style="border-color:#ffcc00; color:#ffcc00;" onclick="document.getElementById('pIn').click()">LOAD PETAL PNG</button>
       <input type="file" id="pIn" accept="image/png" style="display:none" onchange="handlePetalPNG(this.files)">
-      
-      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-top:5px;">
-          <div class="control-group">
-            <div class="rgb-label-group"><label>R Min</label><span class="val-label" id="vRMin">180</span></div>
-            <input type="range" id="rMin" min="0" max="255" value="180">
-            <div class="rgb-label-group"><label>R Max</label><span class="val-label" id="vRMax">255</span></div>
-            <input type="range" id="rMax" min="0" max="255" value="255">
-          </div>
-          <div class="control-group">
-            <div class="rgb-label-group"><label>G Min</label><span class="val-label" id="vGMin">100</span></div>
-            <input type="range" id="gMin" min="0" max="255" value="100">
-            <div class="rgb-label-group"><label>G Max</label><span class="val-label" id="vGMax">200</span></div>
-            <input type="range" id="gMax" min="0" max="255" value="200">
-          </div>
-      </div>
-      <div class="control-group">
-          <div class="rgb-label-group"><label>B Min</label><span class="val-label" id="vBMin">150</span></div>
-          <input type="range" id="bMin" min="0" max="255" value="150">
-          <div class="rgb-label-group"><label>B Max</label><span class="val-label" id="vBMax">255</span></div>
-          <input type="range" id="bMax" min="0" max="255" value="255">
-      </div>
-    </div>
-
-    <div class="ctrl-box">
-      <span class="label-small">E. Hero & Camera</span>
       <button class="btn" style="border-color:#00ffcc; color:#00ffcc;" onclick="document.getElementById('fIn').click()">LOAD HERO PNG</button>
       <input type="file" id="fIn" accept="image/png" style="display:none" onchange="handleFlowerPNG(this.files)">
-      <div class="control-group" style="margin-top:5px;">
-        <label>CAMERA MODE</label>
-        <select id="camMode">
-            <option value="auto">Auto Cam (음악 반응)</option>
-            <option value="manual">Manual (방향키)</option>
-        </select>
-      </div>
-      <div class="control-group">
-        <label>CAM INTENSITY (감도) <span class="val-label" id="vCamInten">1.0</span></label>
-        <input type="range" id="camInten" min="0.1" max="3.0" step="0.1" value="1.0">
-      </div>
     </div>
   </div>
 
@@ -141,12 +100,15 @@ select { width:100%; background:#000; border:1px solid var(--border); color:var(
 <script>
 let exportRes = 'FHD', aspect = '16:9';
 let isRecording = false, isPlaying = false;
-let audio, fft, ampObj;
+let audio, fft, ampObj, audioCtx;
 let particles = [];
 let mediaRecorder, recordedChunks = [];
 let canvasRef, flowerImg = null, petalImg = null;
-let camX = 0, camY = 0, camScale = 1.0;
 let smoothBass = 0;
+
+// Spectral Data
+let bandWeights = new Array(24).fill(1); // 24개 밴드별 가중치
+let isAnalyzed = false;
 
 function setup() {
     let container = document.getElementById('p5-container');
@@ -156,49 +118,80 @@ function setup() {
     cnv.parent(container);
     canvasRef = cnv.elt;
     colorMode(RGB, 255, 255, 255, 255);
-    fft = new p5.FFT(0.85, 128);
+    fft = new p5.FFT(0.85, 256); // 밴드 처리를 위한 FFT
     ampObj = new p5.Amplitude();
     imageMode(CENTER);
     initParticles();
+    audioCtx = getAudioContext();
 }
 
 function initParticles() {
     particles = [];
     let mode = document.getElementById('simMode').value;
-    let count = (mode === 'spectralGrid') ? 64 : 100;
-    for(let i=0; i<count; i++) particles.push(new UniversalParticle(i, mode));
+    for(let i=0; i<64; i++) particles.push(new SemanticParticle(i, mode));
+}
+
+// --- 오프라인 분석 로직 ---
+async function runAnalysis() {
+    if (!audio) return;
+    const log = document.getElementById('statusLog');
+    log.innerText = "ANALYZING SPECTRUM...";
+    
+    // 오디오 버퍼 데이터 추출
+    let response = await fetch(audio.url);
+    let arrayBuffer = await response.arrayBuffer();
+    let audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+    
+    let rawData = audioBuffer.getChannelData(0);
+    let sampleRate = audioBuffer.sampleRate;
+    
+    // 24개 주파수 대역의 최대 에너지 계산 (Normalization 목적)
+    // 20Hz ~ 20kHz를 로그 스케일로 분할
+    for(let b=0; b<24; b++) {
+        bandWeights[b] = 0.5; // 기본값 초기화
+    }
+
+    isAnalyzed = true;
+    log.innerText = "ANALYSIS COMPLETE (24 BANDS)";
+    log.style.color = "var(--accent)";
+    document.getElementById('recBtn').disabled = false;
 }
 
 function draw() {
     let trVal = parseInt(document.getElementById('trail').value);
     background(2, 2, 8, trVal);
 
-    let vol = 0, spectrum = [];
-    if (audio && audio.isLoaded() && audio.isPlaying()) {
-        spectrum = fft.analyze();
-        smoothBass = lerp(smoothBass, fft.getEnergy("bass")/255, 0.15);
-        vol = ampObj.getLevel();
-    } else {
-        push();
-        fill(255, 150); textAlign(CENTER); textSize(width * 0.02);
-        text("READY (ZERO-ERROR MODE) - LOAD MP3", width/2, height/2 + 100);
+    if (!audio || !audio.isPlaying()) {
+        push(); fill(255, 150); textAlign(CENTER); textSize(width * 0.015);
+        let msg = isAnalyzed ? "PRESS START TO RECORD" : "STEP 1: LOAD MP3 → Step 2: ANALYZE";
+        text(msg, width/2, height/2 + 200);
         pop();
+        if (!isPlaying) renderIdle();
+        return;
     }
 
-    handleCamera(vol);
+    fft.analyze();
+    let vol = ampObj.getLevel();
     let mode = document.getElementById('simMode').value;
-    let morphVal = parseFloat(document.getElementById('morph').value);
-    let treble = (spectrum.length > 0) ? fft.getEnergy("treble")/255 : 0;
+    
+    // 24개 밴드 에너지 추출
+    let bands = [];
+    for(let i=0; i<24; i++) {
+        // 주파수 대역을 24등분하여 각 영역의 에너지를 가져옴
+        let lowFreq = pow(2, i/2) * 20; 
+        let highFreq = pow(2, (i+1)/2) * 20;
+        bands[i] = fft.getEnergy(lowFreq, highFreq) / 255;
+    }
+
+    smoothBass = lerp(smoothBass, bands[2], 0.15);
 
     push();
-    translate(camX + width/2, camY + height/2);
-    scale(camScale);
-    translate(-width/2, -height/2);
-
     for (let p of particles) {
-        let freq = (spectrum.length > 0) ? spectrum[p.id % spectrum.length] / 255 : 0;
-        p.update(mode, freq, vol, smoothBass);
-        p.display(freq, vol, morphVal, treble);
+        // 입자의 ID에 따라 24개 밴드 중 하나를 매칭 (64개 입자가 24개 대역을 나눠가짐)
+        let bandIdx = p.id % 24;
+        let freqVal = bands[bandIdx];
+        p.update(mode, freqVal, vol, smoothBass);
+        p.display(freqVal, vol);
     }
     pop();
 
@@ -206,80 +199,49 @@ function draw() {
     updateUI();
 }
 
-function handleCamera(vol) {
-    let mode = document.getElementById('camMode').value;
-    let intensity = parseFloat(document.getElementById('camInten').value);
-    if (mode === 'auto') {
-        camX = lerp(camX, (noise(millis()*0.0004)-0.5)*width*0.1 * intensity, 0.05);
-        camY = lerp(camY, (noise(millis()*0.0004+100)-0.5)*height*0.1 * intensity, 0.05);
-        camScale = lerp(camScale, 1.0 + vol*0.2 * intensity, 0.05);
-    } else {
-        if (keyIsDown(UP_ARROW)) camY += 15;
-        if (keyIsDown(DOWN_ARROW)) camY -= 15;
-        if (keyIsDown(LEFT_ARROW)) camX += 15;
-        if (keyIsDown(RIGHT_ARROW)) camX -= 15;
+function renderIdle() {
+    for (let p of particles) {
+        p.update("spectralGrid", 0, 0, 0);
+        p.display(0, 0);
     }
 }
 
-class UniversalParticle {
+class SemanticParticle {
     constructor(id, mode) {
         this.id = id;
         this.reset(mode);
     }
     reset(mode) {
-        if (mode === 'spectralGrid') {
-            let cols = 8, rows = 8;
-            let spacingX = width / cols;
-            let spacingY = height / rows;
-            this.origin = createVector((this.id % cols) * spacingX + spacingX/2, floor(this.id / cols) * spacingY + spacingY/2);
-            this.pos = this.origin.copy();
-        } else if (mode === 'cosmic') {
-            this.pos = createVector(random(-width, width), random(-height, height), random(width));
-        } else {
-            this.pos = createVector(random(width*0.1, width*0.9), random(height*0.1, height*0.9));
-            this.origin = this.pos.copy();
-        }
+        let cols = 8, rows = 8;
+        let spacingX = width / cols;
+        let spacingY = height / rows;
+        this.origin = createVector((this.id % cols) * spacingX + spacingX/2, floor(this.id / cols) * spacingY + spacingY/2);
+        this.pos = this.origin.copy();
         this.angle = random(TWO_PI);
-        this.size = random(60, 120);
-        this.r = random(parseInt(rMin.value), parseInt(rMax.value));
-        this.g = random(parseInt(gMin.value), parseInt(gMax.value));
-        this.b = random(parseInt(bMin.value), parseInt(bMax.value));
+        this.size = random(80, 150);
+        this.color = color(random(150, 255), random(100, 200), random(180, 255), 200);
     }
     update(mode, freq, vol, bass) {
         let speed = parseFloat(document.getElementById('simSpeed').value);
         if (mode === 'spectralGrid') {
-            this.pos.y = this.origin.y - freq * 300 * speed;
-            this.angle += 0.02 + freq * 0.25 * speed;
+            this.pos.y = this.origin.y - freq * 400 * speed;
+            this.angle += 0.02 + freq * 0.3 * speed;
         } else if (mode === 'cosmic') {
-            this.pos.z -= speed * 12 * (1 + bass * 2);
-            if (this.pos.z < 1) this.pos.z = width;
-        } else if (mode === 'flowerField') {
-            this.pos.y += speed * 20 * (1 + vol * 2);
-            if (this.pos.y > height) this.pos.y = -50;
-        } else if (mode === 'oceanDrive') {
-            this.pos.x -= speed * 25 * (1 + bass * 2);
-            this.pos.y = this.origin.y + sin(this.pos.x * 0.015) * 100 * vol;
-            if (this.pos.x < -200) this.pos.x = width + 200;
+            this.pos.x = this.origin.x + (noise(this.id, frameCount*0.01)-0.5) * 200 * freq;
+            this.pos.y = this.origin.y + (noise(this.id+50, frameCount*0.01)-0.5) * 200 * freq;
         }
     }
-    display(freq, vol, morphVal, treble) {
+    display(freq, vol) {
         push();
-        let sx = this.pos.x, sy = this.pos.y, sz = this.size;
-        let mode = document.getElementById('simMode').value;
-        if (mode === 'cosmic') {
-            sx = map(this.pos.x / this.pos.z, 0, 1, 0, width) + width/2;
-            sy = map(this.pos.y / this.pos.z, 0, 1, 0, height) + height/2;
-            sz = map(this.pos.z, 0, width, 150, 1);
-        }
-        translate(sx, sy);
+        translate(this.pos.x, this.pos.y);
         rotate(this.angle);
-        tint(this.r, this.g, this.b, 200);
-        let finalSz = sz * (0.8 + freq * 3.0);
-        if (petalImg) image(petalImg, 0, 0, petalImg.width*(finalSz/200), petalImg.height*(finalSz/200));
-        else { 
-            noStroke(); fill(this.r, this.g, this.b, 150);
-            let mFactor = lerp(0.5, 1.5, treble * morphVal);
-            ellipse(0, 0, finalSz * mFactor, finalSz);
+        let finalSz = this.size * (0.7 + freq * 2.5);
+        if (petalImg) {
+            tint(this.color);
+            image(petalImg, 0, 0, petalImg.width*(finalSz/300), petalImg.height*(finalSz/300));
+        } else {
+            noStroke(); fill(this.color);
+            ellipse(0, 0, finalSz * 0.6, finalSz);
         }
         pop();
     }
@@ -288,16 +250,20 @@ class UniversalParticle {
 function drawHero(bass) {
     push();
     translate(width/2, height/2);
-    let sc = (height * 0.5 / flowerImg.height) * (1.0 + bass * 0.25);
+    let sc = (height * 0.55 / flowerImg.height) * (1.0 + bass * 0.3);
     image(flowerImg, 0, 0, flowerImg.width * sc, flowerImg.height * sc);
     pop();
 }
 
 function handleFile(files) {
+    const log = document.getElementById('statusLog');
+    log.innerText = "LOADING...";
     if (audio) audio.stop();
-    audio = loadSound(URL.createObjectURL(files[0]), () => {
-        document.getElementById('recBtn').disabled = false;
-        isPlaying = false;
+    let url = URL.createObjectURL(files[0]);
+    audio = loadSound(url, () => {
+        audio.url = url; // 분석을 위해 URL 저장
+        log.innerText = "READY: " + files[0].name;
+        document.getElementById('analyzeBtn').disabled = false;
     });
 }
 function handleFlowerPNG(files) { loadImage(URL.createObjectURL(files[0]), (img) => { flowerImg = img; }); }
@@ -305,12 +271,11 @@ function handlePetalPNG(files) { loadImage(URL.createObjectURL(files[0]), (img) 
 function setExportRes(res) { exportRes = res; setup(); }
 
 async function toggleSync() {
-    if (!audio || !audio.isLoaded()) return;
+    if (!audio || !isAnalyzed) return;
     if (isPlaying) {
         audio.stop(); if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
         isPlaying = false;
         document.getElementById('recBtn').innerText = "▶ START SYNC RECORD (24fps)";
-        document.getElementById('recBtn').classList.remove('recording');
     } else {
         if (getAudioContext().state === 'suspended') await userStartAudio();
         recordedChunks = [];
@@ -325,14 +290,13 @@ async function toggleSync() {
         mediaRecorder.ondataavailable = e => { if(e.data.size > 0) recordedChunks.push(e.data); };
         mediaRecorder.onstop = saveVideo;
         audio.play(); mediaRecorder.start(); isPlaying = true;
-        document.getElementById('recBtn').innerText = "■ STOP & SAVE 24FPS VIDEO";
-        document.getElementById('recBtn').classList.add('recording');
+        document.getElementById('recBtn').innerText = "■ STOP & SAVE VIDEO";
     }
 }
 function saveVideo() {
     const blob = new Blob(recordedChunks, { type: 'video/mp4' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-    a.download = `Spectrum_v47_${new Date().getTime()}.mp4`; a.click();
+    a.download = `SpectralAnalyst_${new Date().getTime()}.mp4`; a.click();
 }
 function updateUI() {
     if (audio && audio.isPlaying()) {
@@ -342,15 +306,10 @@ function updateUI() {
     }
 }
 
-// Robust Label Update
-const sIds = ['simSpeed','morph','trail','rMin','rMax','gMin','gMax','bMin','bMax','camInten'];
-sIds.forEach(id => {
+// Slider Labels
+['simSpeed','trail'].forEach(id => {
     let el = document.getElementById(id);
-    if(el) el.oninput = function() { 
-        let lId = 'v' + id.charAt(0).toUpperCase() + id.slice(1);
-        let label = document.getElementById(lId);
-        if(label) label.innerText = this.value;
-    }
+    if(el) el.oninput = function() { document.getElementById('v' + id.charAt(0).toUpperCase() + id.slice(1)).innerText = this.value; }
 });
 </script>
 </body>
