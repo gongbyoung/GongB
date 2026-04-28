@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SPECTRUM DRUM v16.0.002 — Top-Down POV</title>
+<title>SPECTRUM ORCHESTRA v16.0.003 — Vector Motion</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
-:root{ --bg:#020204; --panel:#0d0d15; --accent:#00ffcc; --accent2:#ff3377; --border:rgba(0,255,204,0.2); --text:#e0f0ff; }
+:root{ --bg:#010103; --panel:#0a0a12; --accent:#00ffcc; --accent2:#ff3377; --border:rgba(0,255,204,0.2); --text:#e0f0ff; }
 body{ background:var(--bg); color:var(--text); font-family:'Pretendard', sans-serif; height:100vh; overflow:hidden; display: flex; flex-direction: column; }
 
 .topbar{ padding:10px 25px; background:var(--panel); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
@@ -20,10 +20,13 @@ body{ background:var(--bg); color:var(--text); font-family:'Pretendard', sans-se
 .ctrl-box { background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:12px; }
 .label-small { font-size:9px; color:var(--accent); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px; display:block; border-bottom:1px solid rgba(0,255,204,0.1); padding-bottom:3px;}
 
-.drum-slot { display:grid; grid-template-columns:1fr 2fr; gap:5px; margin-bottom:8px; align-items:center;}
-.drum-slot span { font-size:10px; color:var(--accent2); font-weight:bold;}
+.control-group { margin-bottom:8px; }
+.control-group label { display:block; font-size:8px; color:#888; margin-bottom:2px; }
+.val-label { float:right; color:var(--accent); font-weight:bold; font-size:9px; }
+input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; height:2px; }
+select { width:100%; background:#000; border:1px solid var(--border); color:#fff; padding:8px; border-radius:4px; font-size:11px; outline:none; margin-bottom:5px; }
 
-.btn { background:transparent; border:1px solid var(--border); border-radius:4px; color:#fff; padding:8px; cursor:pointer; font-size:9px; width:100%; transition:0.2s; }
+.btn { background:transparent; border:1px solid var(--border); border-radius:4px; color:#fff; padding:8px; cursor:pointer; font-size:9px; width:100%; transition:0.2s; margin-bottom:5px;}
 .btn:hover { border-color: var(--accent); color: var(--accent); }
 .btn.primary { background:var(--accent2); border-color:var(--accent2); color:#fff; font-weight:bold; font-size:11px; padding:15px; margin-top:10px; }
 
@@ -37,40 +40,71 @@ body{ background:var(--bg); color:var(--text); font-family:'Pretendard', sans-se
 <body>
 
 <div class="topbar">
-  <div class="logo">SPECTRUM DRUM v16.0.002</div>
+  <div class="logo">SPECTRUM ORCHESTRA v16.0.003</div>
   <div id="timeCode" style="font-family:monospace; font-size:12px;">00:00 / 00:00</div>
 </div>
 
 <div class="main">
   <div class="left-panel">
     <div class="ctrl-box">
-      <span class="label-small">1. Audio Source</span>
-      <button class="btn" onclick="document.getElementById('mIn').click()">SELECT MP3 FILE</button>
+      <span class="label-small">1. Audio Analysis</span>
+      <button class="btn" onclick="document.getElementById('mIn').click()">SELECT MP3</button>
       <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleFile(this.files)">
+      <button class="btn" id="analyzeBtn" onclick="runAnalysis()" disabled style="border-color:#ffcc00; color:#ffcc00;">PRE-ANALYZE (24 BANDS)</button>
     </div>
 
     <div class="ctrl-box">
-      <span class="label-small">2. Drum Mapping (PNGs)</span>
-      <div class="drum-slot"><span>KICK</span><button class="btn" onclick="document.getElementById('f0').click()">LOAD PNG</button></div>
-      <div class="drum-slot"><span>SNARE</span><button class="btn" onclick="document.getElementById('f1').click()">LOAD PNG</button></div>
-      <div class="drum-slot"><span>HI-HAT</span><button class="btn" onclick="document.getElementById('f2').click()">LOAD PNG</button></div>
-      <div class="drum-slot"><span>TOMS</span><button class="btn" onclick="document.getElementById('f3').click()">LOAD PNG</button></div>
-      <div class="drum-slot"><span>CYMBALS</span><button class="btn" onclick="document.getElementById('f4').click()">LOAD PNG</button></div>
-      
-      <input type="file" id="f0" style="display:none" onchange="loadD(0, this.files)">
-      <input type="file" id="f1" style="display:none" onchange="loadD(1, this.files)">
-      <input type="file" id="f2" style="display:none" onchange="loadD(2, this.files)">
-      <input type="file" id="f3" style="display:none" onchange="loadD(3, this.files)">
-      <input type="file" id="f4" style="display:none" onchange="loadD(4, this.files)">
-    </div>
-
-    <div class="ctrl-box">
-      <span class="label-small">3. Global Setup</span>
-      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px;">
-          <button class="btn active" id="resFHD" onclick="setRes('FHD')">FHD</button>
-          <button class="btn" id="resUHD" onclick="setRes('UHD')">UHD (4K)</button>
+      <span class="label-small">2. Procedural Choreography</span>
+      <div class="control-group">
+        <label>PLACEMENT (배치)</label>
+        <select id="placeMode" onchange="initParticles()">
+            <option value="balanced">Balanced (균형)</option>
+            <option value="floor">Floor (바닥)</option>
+            <option value="center">Center (중앙)</option>
+        </select>
       </div>
-      <button class="btn primary" id="recBtn" onclick="toggleSync()" disabled>▶ START DRUM RECORD (24fps)</button>
+      <div class="control-group">
+        <label>MOTION STYLE (움직임)</label>
+        <select id="moveMode">
+            <option value="relUp">Relative Up (이미지 위로)</option>
+            <option value="relSide">Relative Side (이미지 옆으로)</option>
+            <option value="upDown">Global Up & Down</option>
+            <option value="leftRight">Global Left & Right</option>
+            <option value="circular">Circular Orbit</option>
+            <option value="perlin">Perlin Noise</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label>REACTION FORCE <span class="val-label" id="vForce">2.5</span></label>
+        <input type="range" id="reactF" min="0.1" max="10.0" step="0.1" value="2.5">
+      </div>
+    </div>
+
+    <div class="ctrl-box">
+      <span class="label-small">3. Assets & BG</span>
+      <button class="btn" style="border-color:#ffcc00; color:#ffcc00;" onclick="document.getElementById('pIn').click()">LOAD PETAL PNG</button>
+      <input type="file" id="pIn" accept="image/png" style="display:none" onchange="handlePetal(this.files)">
+      
+      <button class="btn" style="border-color:#00ffcc; color:#00ffcc;" onclick="document.getElementById('bgIn').click()">LOAD BACKGROUND PNG</button>
+      <input type="file" id="bgIn" accept="image/png, image/jpeg" style="display:none" onchange="handleBG(this.files)">
+      
+      <div class="control-group" style="margin-top:8px;">
+        <label>PARTICLE SCALE <span class="val-label" id="vPScale">1.0</span></label>
+        <input type="range" id="pScale" min="0.1" max="4.0" step="0.1" value="1.0">
+      </div>
+      <div class="control-group">
+        <label>TRAIL (잔상) <span class="val-label" id="vTrail">40</span></label>
+        <input type="range" id="trail" min="0" max="255" value="40">
+      </div>
+    </div>
+
+    <div class="ctrl-box">
+      <span class="label-small">4. Export Config</span>
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-bottom:5px;">
+          <button class="btn active" id="resFHD" onclick="setRes('FHD')">FHD</button>
+          <button class="btn" id="resUHD" onclick="setRes('UHD')">UHD</button>
+      </div>
+      <button class="btn primary" id="recBtn" onclick="toggleSync()" disabled>▶ START RECORD (24fps)</button>
     </div>
   </div>
 
@@ -82,9 +116,10 @@ body{ background:var(--bg); color:var(--text); font-family:'Pretendard', sans-se
 <script>
 let exportRes = 'FHD', isRecording = false, isPlaying = false;
 let audio, fft, ampObj;
-let canvasRef, mediaRecorder, recordedChunks = [];
-let drumAssets = new Array(5).fill(null);
-let drumParts = [];
+let particles = [];
+let mediaRecorder, recordedChunks = [];
+let canvasRef, bgImg = null, petalImg = null;
+let isAnalyzed = false;
 
 function setup() {
     let container = document.getElementById('p5-container');
@@ -93,117 +128,145 @@ function setup() {
     let cnv = createCanvas(w, h);
     cnv.parent(container);
     canvasRef = cnv.elt;
-    fft = new p5.FFT(0.7, 512);
+    fft = new p5.FFT(0.8, 256);
     ampObj = new p5.Amplitude();
     imageMode(CENTER);
-    initDrums();
+    initParticles();
 }
 
-function initDrums() {
-    drumParts = [];
-    const layout = [
-        {x: 0.5, y: 0.6, type: 'kick'},   // 중앙 하단
-        {x: 0.6, y: 0.45, type: 'snare'}, // 살짝 오른쪽 위
-        {x: 0.75, y: 0.6, type: 'hihat'}, // 오른쪽 아래
-        {x: 0.4, y: 0.45, type: 'toms'},  // 왼쪽 위
-        {x: 0.25, y: 0.4, type: 'cymbal'} // 왼쪽 끝 상단
-    ];
-    for(let i=0; i<5; i++) {
-        drumParts.push(new DrumPart(i, layout[i]));
+function initParticles() {
+    particles = [];
+    let pMode = document.getElementById('placeMode').value;
+    for(let i=0; i<24; i++) {
+        particles.push(new VectorParticle(i, pMode));
     }
+}
+
+async function runAnalysis() {
+    if (!audio) return;
+    isAnalyzed = true;
+    document.getElementById('recBtn').disabled = false;
+    alert("Spectral Analysis Complete (24 Bands Active)");
 }
 
 function draw() {
-    background(3, 3, 7);
+    let trVal = parseInt(document.getElementById('trail').value);
+    background(2, 2, 8, trVal);
 
-    if (!audio || !audio.isPlaying()) {
-        drumParts.forEach(d => d.display(0));
-        return;
+    let vol = 0, bands = new Array(24).fill(0);
+    if (audio && audio.isPlaying()) {
+        fft.analyze();
+        vol = ampObj.getLevel();
+        for(let i=0; i<24; i++) {
+            bands[i] = fft.getEnergy(pow(2, i/2)*20, pow(2, (i+1)/2)*20) / 255;
+        }
     }
 
-    fft.analyze();
-    let energies = [
-        fft.getEnergy(20, 80) / 255,   // Kick
-        fft.getEnergy(200, 1500) / 255, // Snare
-        fft.getEnergy(8000, 16000) / 255, // Hi-Hat
-        fft.getEnergy(100, 400) / 255,  // Toms
-        fft.getEnergy(3000, 8000) / 255 // Cymbal
-    ];
+    // 1. Background Pulse
+    if (bgImg) drawBG(bands[2] || 0);
 
-    drumParts.forEach((d, i) => {
-        d.update(energies[i]);
-        d.display(energies[i]);
-    });
+    // 2. 24 Vector Particles
+    let mMode = document.getElementById('moveMode').value;
+    let force = parseFloat(document.getElementById('reactF').value);
+    let scale = parseFloat(document.getElementById('pScale').value);
+
+    for (let p of particles) {
+        let bVal = bands[p.id] || 0;
+        p.update(bVal, mMode, force);
+        p.display(bVal, scale);
+    }
 
     updateUI();
 }
 
-class DrumPart {
-    constructor(id, config) {
+function drawBG(bass) {
+    push();
+    translate(width/2, height/2);
+    let pulse = 1.0 + (bass * 0.05);
+    let finalScale = max(width/bgImg.width, height/bgImg.height) * pulse;
+    image(bgImg, 0, 0, bgImg.width * finalScale, bgImg.height * finalScale);
+    pop();
+}
+
+class VectorParticle {
+    constructor(id, placeMode) {
         this.id = id;
-        this.basePos = createVector(width * config.x, height * config.y);
-        this.pos = this.basePos.copy();
-        this.type = config.type;
-        this.angle = 0;
-        this.size = width * 0.25;
+        this.resetPosition(placeMode);
+        this.angle = random(TWO_PI);
+        this.size = random(150, 350);
+        this.color = color(random(150, 255), random(150, 255), random(200, 255), 200);
     }
 
-    update(energy) {
-        let e = energy * 2.0;
-        if (this.type === 'kick') {
-            // 킥은 깊이감 있게 스케일링 + 미세한 흔들림
-            this.pos.y = this.basePos.y + e * 30;
-        } else if (this.type === 'snare') {
-            // 스네어는 위로 튀어오름
-            this.pos.y = this.basePos.y - e * 80;
-        } else if (this.type === 'hihat') {
-            // 하이햇은 아주 빠른 사이드 진동
-            this.pos.x = this.basePos.x + (noise(frameCount * 0.5) - 0.5) * e * 50;
-        } else if (this.type === 'toms') {
-            // 탐탐은 좌우 스웨이
-            this.angle = sin(frameCount * 0.1) * e * 0.2;
-        } else if (this.type === 'cymbal') {
-            // 심벌은 틸트(기울어짐) 진동
-            this.angle = (noise(frameCount * 0.2) - 0.5) * e * 0.5;
-            this.pos.y = this.basePos.y - e * 20;
+    resetPosition(mode) {
+        if(mode === 'center') this.origin = createVector(width/2, height/2);
+        else if(mode === 'floor') this.origin = createVector(random(width), height * 0.9);
+        else this.origin = createVector(random(width), random(height));
+        this.pos = this.origin.copy();
+    }
+
+    update(amp, moveMode, force) {
+        let shift = amp * 250 * force;
+        
+        // --- 신규 벡터 모드 로직 ---
+        if (moveMode === 'relUp') {
+            // 이미지의 '위(정수리)' 방향 벡터 계산 (각도 - 90도)
+            let vx = cos(this.angle - HALF_PI);
+            let vy = sin(this.angle - HALF_PI);
+            this.pos.x = this.origin.x + vx * shift;
+            this.pos.y = this.origin.y + vy * shift;
+        } else if (moveMode === 'relSide') {
+            // 이미지의 '옆' 방향 벡터 계산
+            let vx = cos(this.angle);
+            let vy = sin(this.angle);
+            this.pos.x = this.origin.x + vx * shift;
+            this.pos.y = this.origin.y + vy * shift;
+        } else if (moveMode === 'upDown') {
+            this.pos.y = this.origin.y - shift;
+        } else if (moveMode === 'leftRight') {
+            this.pos.x = this.origin.x + shift;
+        } else if (moveMode === 'circular') {
+            this.pos.x = this.origin.x + cos(frameCount * 0.05 + this.id) * shift;
+            this.pos.y = this.origin.y + sin(frameCount * 0.05 + this.id) * shift;
+        } else { // Perlin
+            this.pos.x = this.origin.x + (noise(this.id, frameCount*0.01)-0.5) * shift * 2;
+            this.pos.y = this.origin.y + (noise(this.id+50, frameCount*0.01)-0.5) * shift * 2;
         }
+        
+        this.angle += 0.02 + amp * 0.1;
     }
 
-    display(energy) {
+    display(amp, scale) {
         push();
         translate(this.pos.x, this.pos.y);
         rotate(this.angle);
-        
-        let sc = 1.0 + energy * 0.2;
-        let img = drumAssets[this.id];
-
-        if (img) {
-            image(img, 0, 0, img.width * (this.size/800) * sc, img.height * (this.size/800) * sc);
+        let finalSz = this.size * scale * (0.8 + amp * 2.0);
+        if (petalImg) {
+            tint(this.color);
+            image(petalImg, 0, 0, petalImg.width * (finalSz/500), petalImg.height * (finalSz/500));
         } else {
-            noStroke(); fill(255, 50);
-            ellipse(0, 0, 150 * sc);
-            fill(255); textAlign(CENTER); textSize(width*0.01);
-            text(this.type.toUpperCase(), 0, 0);
+            noStroke(); fill(this.color);
+            ellipse(0, 0, finalSz * 0.6, finalSz);
         }
         pop();
     }
 }
 
-// --- HANDLERS ---
+// Handlers
 function handleFile(files) {
-    if (audio) audio.stop();
     audio = loadSound(URL.createObjectURL(files[0]), () => {
-        document.getElementById('recBtn').disabled = false;
+        document.getElementById('analyzeBtn').disabled = false;
     });
 }
-function loadD(id, files) {
-    loadImage(URL.createObjectURL(files[0]), (img) => { drumAssets[id] = img; });
-}
+function handleBG(files) { loadImage(URL.createObjectURL(files[0]), (img) => { bgImg = img; }); }
+function handlePetal(files) { loadImage(URL.createObjectURL(files[0]), (img) => { petalImg = img; initParticles(); }); }
 function setRes(res) { exportRes = res; setup(); }
+
 async function toggleSync() {
+    if (!audio || !isAnalyzed) return;
     if (isPlaying) {
         audio.stop(); if (mediaRecorder) mediaRecorder.stop();
         isPlaying = false;
+        document.getElementById('recBtn').innerText = "▶ START RECORD";
     } else {
         if (getAudioContext().state === 'suspended') await userStartAudio();
         recordedChunks = [];
@@ -211,16 +274,17 @@ async function toggleSync() {
         const dest = getAudioContext().createMediaStreamDestination();
         p5.soundOut.output.connect(dest);
         const combined = new MediaStream([...stream.getVideoTracks(), ...dest.stream.getAudioTracks()]);
-        mediaRecorder = new MediaRecorder(combined, { mimeType: 'video/webm; codecs=vp9,opus', videoBitsPerSecond: 50000000 });
+        mediaRecorder = new MediaRecorder(combined, { mimeType: 'video/webm; codecs=vp9,opus', videoBitsPerSecond: 60000000 });
         mediaRecorder.ondataavailable = e => recordedChunks.push(e.data);
         mediaRecorder.onstop = saveVideo;
         audio.play(); mediaRecorder.start(); isPlaying = true;
+        document.getElementById('recBtn').innerText = "■ STOP & SAVE";
     }
 }
 function saveVideo() {
     const blob = new Blob(recordedChunks, { type: 'video/mp4' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-    a.download = `DrumSession_${new Date().getTime()}.mp4`; a.click();
+    a.download = `V16_003_Vector_${new Date().getTime()}.mp4`; a.click();
 }
 function updateUI() {
     if (audio && audio.isPlaying()) {
@@ -229,6 +293,11 @@ function updateUI() {
         document.getElementById('progFill').style.width = (curr/dur * 100) + '%';
     }
 }
+// Slider Labels Sync
+['pScale','reactF','trail'].forEach(id => {
+    let el = document.getElementById(id);
+    if(el) el.oninput = function() { document.getElementById('v' + id.charAt(0).toUpperCase() + id.slice(1)).innerText = this.value; }
+});
 </script>
 </body>
 </html>
