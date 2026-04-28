@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPECTRUM NATURAL v18.0.001</title>
+    <link rel="icon" href="data:,">
+    <script src="p5.min.js"></script>
+    <script src="p5.sound.min.js"></script>
+    <style>
+        *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+        :root{ --bg:#020205; --panel:#0d0d1a; --accent:#00ffcc; --accent2:#ff3377; --border:rgba(0,255,204,0.2); --text:#e0f0ff; }
+        body{ background:var(--bg); color:var(--text); font-family:'Pretendard', sans-serif; height:100vh; overflow:hidden; display: flex; flex-direction: column; }
+        .topbar{ padding:10px 25px; background:var(--panel); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
+        .logo{letter-spacing:4px; color:var(--accent); font-weight:bold; font-size:14px;}
+        .main-workspace { display: grid; grid-template-columns: 320px 1fr 320px; flex:1; min-height:0; }
+        .side-panel { background:var(--panel); padding:15px; overflow-y:auto; scrollbar-width: thin; border-left:1px solid var(--border); border-right:1px solid var(--border); }
+        .ctrl-box { background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:12px; }
+        .label-small { font-size:9px; color:var(--accent); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px; display:block; border-bottom:1px solid rgba(0,255,204,0.1); padding-bottom:3px;}
+        .control-group { margin-bottom:10px; }
+        .control-group label { display:block; font-size:8px; color:#888; margin-bottom:2px; }
+        .val-label { float:right; color:var(--accent); font-weight:bold; font-size:9px; }
+        input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; height:2px; }
+        .btn { background:transparent; border:1px solid var(--border); border-radius:4px; color:#fff; padding:6px; cursor:pointer; font-size:9px; width:100%; transition:0.2s; background-position: center; background-size: cover; height: 32px; display: flex; align-items: center; justify-content: center; }
+        .btn:hover { border-color: var(--accent); }
+        .btn.primary { background:var(--accent2); border-color:var(--accent2); color:#fff; font-weight:bold; font-size:11px; padding:12px; margin-top:10px; height: auto;}
+        .viz-area { position:relative; display:flex; justify-content:center; align-items:center; background:#000; overflow:hidden; }
+        #p5-container canvas { width: 100% !important; height: auto !important; max-height: 100% !important; object-fit: contain; }
+        .playbar { height:2px; background:#111; position:relative; }
+        #progFill { position:absolute; left:0; top:0; height:100%; background:var(--accent); width:0%; transition: width 0.1s; }
+    </style>
+</head>
+<body>
+
+<div class="topbar">
+    <div class="logo">SPECTRUM NATURAL v18.0.001</div>
+    <div id="timeCode">00:00 / 00:00</div>
+</div>
+
+<div class="main-workspace">
+    <div class="side-panel">
+        <div class="ctrl-box">
+            <span class="label-small">1. Audio Engine</span>
+            <button class="btn" onclick="document.getElementById('mIn').click()">SELECT MP3 FILE</button>
+            <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleFile(this.files)">
+            <button class="btn" id="analyzeBtn" onclick="runAnalysis()" disabled style="border-color:#ffcc00; color:#ffcc00; margin-top:5px; height:auto; padding:8px;">PRE-ANALYZE (24 BANDS)</button>
+        </div>
+
+        <div class="ctrl-box">
+            <span class="label-small">2. Elemental Master (Intensity)</span>
+            <div class="control-group"><label>LIGHTNING STRENGTH <span class="val-label" id="vBolt">1.0</span></label><input type="range" id="boltI" min="0" max="3" step="0.1" value="1.0"></div>
+            <div class="control-group"><label>SMOKE DENSITY <span class="val-label" id="vSmoke">1.0</span></label><input type="range" id="smokeI" min="0" max="3" step="0.1" value="1.0"></div>
+            <div class="control-group"><label>WAVE AMPLITUDE <span class="val-label" id="vWave">1.0</span></label><input type="range" id="waveI" min="0" max="3" step="0.1" value="1.0"></div>
+        </div>
+        
+        <div class="ctrl-box">
+            <span class="label-small">3. Global Shader FX</span>
+            <div class="control-group"><label>GLOW BLOOM <span class="val-label" id="vGlow">1.5</span></label><input type="range" id="glowI" min="0" max="5" step="0.1" value="1.5"></div>
+        </div>
+    </div>
+
+    <div class="viz-area" id="p5-container"></div>
+
+    <div class="side-panel">
+        <div class="ctrl-box">
+            <span class="label-small">4. Image Prioritized (Assets)</span>
+            <button class="btn" id="btnI0" onclick="document.getElementById('i0').click()">LOAD CORE IMG</button>
+            <input type="file" id="i0" style="display:none" onchange="loadAsset(0, this.files)">
+            <button class="btn" id="btnBg" style="border-color:#00ffcc; margin-top:5px;" onclick="document.getElementById('bgIn').click()">LOAD BG PNG</button>
+            <input type="file" id="bgIn" style="display:none" onchange="handleBG(this.files)">
+        </div>
+
+        <div class="ctrl-box">
+            <span class="label-small">5. Mix Options</span>
+            <div style="font-size:8px; line-height:1.4; color:#888;">
+                * 1-4: High Treble (Lightning)<br>
+                * 5-10: Mid Bass (Ocean/Smoke)<br>
+                * All: Sectional Piano Glow
+            </div>
+        </div>
+
+        <div class="ctrl-box">
+            <span class="label-small">6. Export Session</span>
+            <button class="btn primary" id="recBtn" onclick="toggleSync()" disabled>▶ START & SAVE MP4</button>
+            <div style="font-size:7px; color:var(--accent); text-align:center; margin-top:5px;">Name: MMDDHHmmss.mp4</div>
+        </div>
+    </div>
+</div>
+
+<div class="playbar"><div id="progFill"></div></div>
+
+<script>
+    let audio, fft, ampObj, canvasRef, mainCanvas, bgImg = null, coreImg = null;
+    let isPlaying = false, isAnalyzed = false, mediaRecorder, recordedChunks = [];
+    let clouds = [];
+
+    function setup() {
+        let cnv = createCanvas(1920, 1080);
+        cnv.parent('p5-container');
+        canvasRef = cnv.elt;
+        mainCanvas = createGraphics(1920, 1080);
+        fft = new p5.FFT(0.8, 512);
+        ampObj = new p5.Amplitude();
+        for(let i=0; i<5; i++) clouds.push({x: random(width), y: random(height), s: random(200,500)});
+    }
+
+    function draw() {
+        mainCanvas.background(2, 2, 8, 40);
+        if (!isAnalyzed) {
+            mainCanvas.fill(255, 50); mainCanvas.textAlign(CENTER);
+            mainCanvas.text("LOAD MUSIC & PRE-ANALYZE", width/2, height/2);
+        } else {
+            fft.analyze();
+            let vol = ampObj.getLevel();
+            let bands = fft.analyze();
+            
+            // 7. Piano Section Glow (하단 섹션)
+            drawPianoSections(bands);
+
+            // 5. Ocean Wave (파도)
+            drawWaves(bands);
+
+            // 2. Smoke/Cloud (연기 덩어리)
+            drawSmoke(vol);
+
+            // 1, 4. Lightning (번개)
+            if (fft.getEnergy("treble") > 150) drawLightning(vol);
+
+            // 3. Fireworks (불꽃)
+            if (fft.getEnergy("bass") > 220) drawExplosion(vol);
+
+            // 6. Pulse Ripples (퍼지는 파형)
+            drawRipples(vol);
+
+            // 이미지 우선 렌더링
+            if (bgImg) mainCanvas.image(bgImg, 0,0, 1920, 1080);
+            if (coreImg) {
+                mainCanvas.push();
+                mainCanvas.translate(width/2, height/2);
+                mainCanvas.imageMode(CENTER);
+                mainCanvas.image(coreImg, 0, 0, coreImg.width * (1 + vol), coreImg.height * (1 + vol));
+                mainCanvas.pop();
+            }
+        }
+
+        image(mainCanvas, 0, 0);
+        updateUI();
+    }
+
+    // --- 비주얼라이저 모듈 ---
+
+    function drawLightning(vol) {
+        let bI = parseFloat(document.getElementById('boltI').value);
+        mainCanvas.stroke(200, 255, 255, 200 * bI);
+        mainCanvas.strokeWeight(2 * bI);
+        let lx = random(width), ly = 0;
+        for(let i=0; i<10; i++){
+            let nx = lx + random(-50, 50);
+            let ny = ly + random(50, 150);
+            mainCanvas.line(lx, ly, nx, ny);
+            lx = nx; ly = ny;
+        }
+        // 4. 화면 전체 Glow
+        mainCanvas.fill(255, 255, 255, 30 * bI);
+        mainCanvas.rect(0,0,width,height);
+    }
+
+    function drawSmoke(vol) {
+        let sI = parseFloat(document.getElementById('smokeI').value);
+        mainCanvas.noStroke();
+        for(let c of clouds) {
+            mainCanvas.fill(100, 100, 150, 20 * sI * vol);
+            mainCanvas.ellipse(c.x + sin(frameCount*0.01)*50, c.y, c.s * (1+vol));
+        }
+    }
+
+    function drawWaves(bands) {
+        let wI = parseFloat(document.getElementById('waveI').value);
+        mainCanvas.noFill();
+        mainCanvas.stroke(0, 255, 200, 100);
+        mainCanvas.beginShape();
+        for(let i=0; i<width; i+=20) {
+            let idx = floor(map(i, 0, width, 0, 128));
+            let h = map(bands[idx], 0, 255, 0, 300 * wI);
+            mainCanvas.vertex(i, height/2 + sin(i*0.01 + frameCount*0.1) * h);
+        }
+        mainCanvas.endShape();
+    }
+
+    function drawPianoSections(bands) {
+        let count = 24;
+        let w = width / count;
+        mainCanvas.noStroke();
+        for(let i=0; i<count; i++) {
+            let amp = bands[i*10];
+            mainCanvas.fill(0, 255, 204, amp * 0.3);
+            mainCanvas.rect(i*w, height-100, w, 100);
+            if(amp > 200) { // Glow 효과
+                mainCanvas.fill(0, 255, 204, 50);
+                mainCanvas.rect(i*w, 0, w, height);
+            }
+        }
+    }
+
+    function drawExplosion(vol) {
+        mainCanvas.push();
+        mainCanvas.translate(random(width), random(height));
+        for(let i=0; i<12; i++) {
+            mainCanvas.rotate(TWO_PI/12);
+            mainCanvas.stroke(255, 100, 0);
+            mainCanvas.line(0, 0, 100 * vol, 0);
+        }
+        mainCanvas.pop();
+    }
+
+    function drawRipples(vol) {
+        mainCanvas.noFill();
+        mainCanvas.stroke(255, 255, 255, 150);
+        mainCanvas.circle(width/2, height/2, 100 + vol * 1000);
+    }
+
+    // --- 시스템 핸들러 ---
+    function handleFile(files) { audio = loadSound(URL.createObjectURL(files[0]), () => { document.getElementById('analyzeBtn').disabled = false; }); }
+    function loadAsset(id, files) { loadImage(URL.createObjectURL(files[0]), (img) => { coreImg = img; setBtnThumb('btnI0', files[0]); }); }
+    function handleBG(files) { loadImage(URL.createObjectURL(files[0]), (img) => { bgImg = img; setBtnThumb('btnBg', files[0]); }); }
+    function setBtnThumb(btnId, file) {
+        let reader = new FileReader();
+        reader.onload = e => { document.getElementById(btnId).style.backgroundImage = `url(${e.target.result})`; document.getElementById(btnId).innerText = ""; }
+        reader.readAsDataURL(file);
+    }
+    function runAnalysis() { isAnalyzed = true; document.getElementById('recBtn').disabled = false; }
+    function updateUI() { if(audio && audio.isPlaying()){ document.getElementById('progFill').style.width = (audio.currentTime()/audio.duration()*100)+'%'; } }
+
+    async function toggleSync() {
+        if (isPlaying) { audio.stop(); if (mediaRecorder) mediaRecorder.stop(); isPlaying = false; document.getElementById('recBtn').innerText = "▶ START RECORD"; }
+        else {
+            if (getAudioContext().state === 'suspended') await userStartAudio();
+            recordedChunks = []; const stream = canvasRef.captureStream(24);
+            const dest = getAudioContext().createMediaStreamDestination(); p5.soundOut.output.connect(dest);
+            const combined = new MediaStream([...stream.getVideoTracks(), ...dest.stream.getAudioTracks()]);
+            mediaRecorder = new MediaRecorder(combined, { mimeType: 'video/webm; codecs=vp9,opus', videoBitsPerSecond: 80000000 });
+            mediaRecorder.ondataavailable = e => recordedChunks.push(e.data);
+            mediaRecorder.onstop = () => { 
+                const n = new Date();
+                const ts = `${String(n.getMonth()+1).padStart(2,'0')}${String(n.getDate()).padStart(2,'0')}${String(n.getHours()).padStart(2,'0')}${String(n.getMinutes()).padStart(2,'0')}${String(n.getSeconds()).padStart(2,'0')}`;
+                let a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(recordedChunks, { type: 'video/mp4' })); a.download = `${ts}.mp4`; a.click(); 
+            };
+            audio.play(); mediaRecorder.start(); isPlaying = true; document.getElementById('recBtn').innerText = "■ STOP & SAVE";
+        }
+    }
+</script>
+</body>
+</html>
