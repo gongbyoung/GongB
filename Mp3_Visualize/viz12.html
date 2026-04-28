@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SPECTRUM EXTREME v17.0.008 — Visual Tracker</title>
+    <title>SPECTRUM MASTER v17.0.009 — Individual Master</title>
     <link rel="icon" href="data:,">
     <script src="p5.min.js"></script>
     <script src="p5.sound.min.js"></script>
@@ -17,27 +17,27 @@
         .side-panel { background:var(--panel); padding:15px; overflow-y:auto; scrollbar-width: thin; border-left:1px solid var(--border); border-right:1px solid var(--border); }
         .ctrl-box { background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:12px; }
         .label-small { font-size:9px; color:var(--accent); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px; display:block; border-bottom:1px solid rgba(0,255,204,0.1); padding-bottom:3px;}
-        .control-group { margin-bottom:8px; }
+        .control-group { margin-bottom:10px; }
         .control-group label { display:block; font-size:8px; color:#888; margin-bottom:2px; }
         .val-label { float:right; color:var(--accent); font-weight:bold; font-size:9px; }
         input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; height:2px; }
         select { width:100%; background:#000; border:1px solid var(--border); color:#fff; padding:5px; border-radius:4px; font-size:10px; outline:none; margin-bottom:4px;}
-        
-        /* 썸네일 버튼 스타일 */
         .btn { 
             background:transparent; border:1px solid var(--border); border-radius:4px; color:#fff; 
-            padding:6px; cursor:pointer; font-size:9px; width:100%; transition:0.2s; margin-bottom:4px; 
-            background-position: center; background-size: cover; height: 35px; /* 높이 고정 */
-            display: flex; align-items: center; justify-content: center;
-            overflow: hidden; text-shadow: 0px 0px 3px #000;
+            padding:6px; cursor:pointer; font-size:9px; width:100%; transition:0.2s; 
+            background-position: center; background-size: cover; height: 35px;
+            display: flex; align-items: center; justify-content: center; text-shadow: 0px 0px 3px #000;
         }
         .btn:hover { border-color: var(--accent); }
-        .btn.primary { background:var(--accent2); border-color:var(--accent2); font-weight:bold; font-size:11px; padding:12px; margin-top:10px; height: auto;}
-
+        .btn.primary { background:var(--accent2); border-color:var(--accent2); color:#fff; font-weight:bold; font-size:11px; padding:12px; margin-top:10px; height: auto;}
         .viz-area { position:relative; display:flex; justify-content:center; align-items:center; background:#000; overflow:hidden; }
         #p5-container canvas { width: 100% !important; height: auto !important; max-height: 100% !important; object-fit: contain; }
-        .inst-grid { display: grid; grid-template-columns: 45px 1fr 1fr; gap: 5px; align-items: center; margin-bottom: 5px; }
-        .inst-grid span { font-size: 8px; color: var(--accent2); font-weight: bold; }
+        
+        /* 악기별 정밀 그리드 */
+        .inst-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; border-bottom: 1px dashed rgba(255,255,255,0.05); padding-bottom: 8px;}
+        .inst-header { display: grid; grid-template-columns: 45px 1fr 1fr; gap: 5px; align-items: center; }
+        .inst-header span { font-size: 8px; color: var(--accent2); font-weight: bold; }
+        
         .playbar { height:2px; background:#111; position:relative; }
         #progFill { position:absolute; left:0; top:0; height:100%; background:var(--accent); width:0%; transition: width 0.1s; }
     </style>
@@ -45,7 +45,7 @@
 <body>
 
 <div class="topbar">
-    <div class="logo">SPECTRUM MASTER v17.0.008</div>
+    <div class="logo">SPECTRUM MASTER v17.0.009</div>
     <div id="timeCode">00:00 / 00:00</div>
 </div>
 
@@ -53,24 +53,23 @@
     <div class side-panel>
         <div class="ctrl-box">
             <span class="label-small">1. Audio Analysis</span>
-            <button class="btn" onclick="document.getElementById('mIn').click()">SELECT MP3</button>
+            <button class="btn" onclick="document.getElementById('mIn').click()">SELECT MP3 FILE</button>
             <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleFile(this.files)">
-            <button class="btn" id="analyzeBtn" onclick="runAnalysis()" disabled style="border-color:#ffcc00; color:#ffcc00;">PRE-ANALYZE & START</button>
+            <button class="btn" id="analyzeBtn" onclick="runAnalysis()" disabled style="border-color:#ffcc00; color:#ffcc00; height:auto; padding:10px;">PRE-ANALYZE & START</button>
         </div>
 
         <div class="ctrl-box">
-            <span class="label-small">2. GPU Post-Process</span>
+            <span class="label-small">2. GPU FX (Shader)</span>
             <div class="control-group"><label>BLOOM INTEN. <span class="val-label" id="vBloomInten">1.5</span></label><input type="range" id="bloomInten" min="0" max="5" step="0.1" value="1.5"></div>
             <div class="control-group"><label>BLOOM REACT. <span class="val-label" id="vBloomReact">1.0</span></label><input type="range" id="bloomReact" min="0" max="3" step="0.1" value="1.0"></div>
             <div class="control-group"><label>CHROMA ABERR. <span class="val-label" id="vChroma">0.5</span></label><input type="range" id="chroma" min="0" max="2" step="0.1" value="0.5"></div>
         </div>
 
         <div class="ctrl-box">
-            <span class="label-small">3. Color & VFX Style</span>
-            <select id="colorTheme" onchange="updateColors()"><option value="cyberpunk">Cyberpunk</option><option value="pastel">Pastel</option><option value="retro">Retro</option><option value="minimalist">Minimalist</option></select>
-            <label style="font-size:8px; color:#888; margin-top:5px; display:block;">VFX OVERLAY</label>
-            <select id="vfxStyle"><option value="none">Standard</option><option value="plexus">Molecules</option><option value="smoke">Fluid Smoke</option><option value="grain">Dust Grain</option></select>
-            <div class="control-group" style="margin-top:5px;"><label>VFX INTENSITY <span class="val-label" id="vVfxInten">1.0</span></label><input type="range" id="vfxInten" min="0.1" max="3" step="0.1" value="1.0"></div>
+            <span class="label-small">3. Color & VFX Master</span>
+            <select id="colorTheme" onchange="updateColors()" style="margin-bottom:8px;"><option value="cyberpunk">Cyberpunk</option><option value="pastel">Pastel</option><option value="retro">Retro</option><option value="minimalist">Minimalist</option></select>
+            <select id="vfxStyle"><option value="none">No Overlay</option><option value="plexus">Molecules</option><option value="smoke">Ink Smoke</option><option value="grain">Dust Grain</option></select>
+            <div class="control-group" style="margin-top:8px;"><label>VFX STRENGTH <span class="val-label" id="vVfxInten">1.0</span></label><input type="range" id="vfxInten" min="0.1" max="3" step="0.1" value="1.0"></div>
         </div>
     </div>
 
@@ -88,13 +87,28 @@
         </div>
 
         <div class="ctrl-box">
-            <span class="label-small">5. Instrument Motion</span>
-            <div class="inst-grid"><span>KICK</span><button class="btn" id="btnI0" onclick="openL('i0')">IMG</button><select id="m0"><option value="relUp">Rel Up</option><option value="perlin">Perlin</option><option value="circular">Circular</option></select></div>
-            <div class="inst-grid"><span>SNARE</span><button class="btn" id="btnI1" onclick="openL('i1')">IMG</button><select id="m1"><option value="perlin">Perlin</option><option value="relUp">Rel Up</option></select></div>
-            <div class="inst-grid"><span>HIHAT</span><button class="btn" id="btnI2" onclick="openL('i2')">IMG</button><select id="m2"><option value="circular">Circular</option><option value="relSide">Side</option></select></div>
-            <div class="inst-grid"><span>MELODY</span><button class="btn" id="btnI3" onclick="openL('i3')">IMG</button><select id="m3"><option value="relUp">Rel Up</option><option value="perlin">Perlin</option></select></div>
-            <div class="inst-grid"><span>PERC</span><button class="btn" id="btnI4" onclick="openL('i4')">IMG</button><select id="m4"><option value="perlin">Perlin</option><option value="relSide">Side</option></select></div>
-            
+            <span class="label-small">5. Instrument Individual Set</span>
+            <div class="inst-row">
+                <div class="inst-header"><span>KICK</span><button class="btn" id="btnI0" onclick="openL('i0')">LOAD</button><select id="m0"><option value="relUp">Rel Up</option><option value="relSide">Rel Side</option><option value="circular">Circular</option><option value="flow">Noise Flow</option><option value="shake">Noise Shake</option></select></div>
+                <input type="range" id="sc0" min="0.1" max="3.0" step="0.1" value="1.0" title="Kick Scale">
+            </div>
+            <div class="inst-row">
+                <div class="inst-header"><span>SNARE</span><button class="btn" id="btnI1" onclick="openL('i1')">LOAD</button><select id="m1"><option value="flow">Noise Flow</option><option value="relUp">Rel Up</option><option value="relSide">Rel Side</option><option value="circular">Circular</option><option value="shake">Noise Shake</option></select></div>
+                <input type="range" id="sc1" min="0.1" max="3.0" step="0.1" value="1.0" title="Snare Scale">
+            </div>
+            <div class="inst-row">
+                <div class="inst-header"><span>HIHAT</span><button class="btn" id="btnI2" onclick="openL('i2')">LOAD</button><select id="m2"><option value="circular">Circular</option><option value="relUp">Rel Up</option><option value="relSide">Rel Side</option><option value="flow">Noise Flow</option><option value="shake">Noise Shake</option></select></div>
+                <input type="range" id="sc2" min="0.1" max="3.0" step="0.1" value="1.0" title="Hihat Scale">
+            </div>
+            <div class="inst-row">
+                <div class="inst-header"><span>MELODY</span><button class="btn" id="btnI3" onclick="openL('i3')">LOAD</button><select id="m3"><option value="relSide">Rel Side</option><option value="relUp">Rel Up</option><option value="circular">Circular</option><option value="flow">Noise Flow</option><option value="shake">Noise Shake</option></select></div>
+                <input type="range" id="sc3" min="0.1" max="3.0" step="0.1" value="1.0" title="Melody Scale">
+            </div>
+            <div class="inst-row">
+                <div class="inst-header"><span>PERC</span><button class="btn" id="btnI4" onclick="openL('i4')">LOAD</button><select id="m4"><option value="shake">Noise Shake</option><option value="relUp">Rel Up</option><option value="relSide">Rel Side</option><option value="circular">Circular</option><option value="flow">Noise Flow</option></select></div>
+                <input type="range" id="sc4" min="0.1" max="3.0" step="0.1" value="1.0" title="Perc Scale">
+            </div>
+
             <input type="file" id="i0" style="display:none" onchange="loadAsset(0, this.files)"><input type="file" id="i1" style="display:none" onchange="loadAsset(1, this.files)"><input type="file" id="i2" style="display:none" onchange="loadAsset(2, this.files)"><input type="file" id="i3" style="display:none" onchange="loadAsset(3, this.files)"><input type="file" id="i4" style="display:none" onchange="loadAsset(4, this.files)">
         </div>
 
@@ -162,11 +176,13 @@
 
         let assets = [...instAssets];
         for (let i = 3; i >= 0; i--) if (assets[i] === null) assets[i] = assets[i+1];
-        const m = [document.getElementById('m0').value, document.getElementById('m1').value, document.getElementById('m2').value, document.getElementById('m3').value, document.getElementById('m4').value];
+        
+        const motions = [document.getElementById('m0').value, document.getElementById('m1').value, document.getElementById('m2').value, document.getElementById('m3').value, document.getElementById('m4').value];
+        const scales = [parseFloat(document.getElementById('sc0').value), parseFloat(document.getElementById('sc1').value), parseFloat(document.getElementById('sc2').value), parseFloat(document.getElementById('sc3').value), parseFloat(document.getElementById('sc4').value)];
 
         for (let p of particles) {
-            p.update(bands[p.id]||0, force, gravity, m[p.group], vfx, vfxI);
-            p.display(bands[p.id]||0, assets, vfx, vfxI);
+            p.update(bands[p.id]||0, force, gravity, motions[p.group], vfx, vfxI);
+            p.display(bands[p.id]||0, assets, vfx, vfxI, scales[p.group]);
         }
 
         shader(extremeShader);
@@ -188,6 +204,7 @@
             this.id = id; this.group = group; this.origin = createVector(random(1920), random(1080));
             this.pos = this.origin.copy(); this.vel = createVector(0,0); this.angle = random(TWO_PI);
             this.size = random(200, 400); this.updateColors();
+            this.noiseOff = random(1000);
         }
         updateColors() {
             const theme = document.getElementById('colorTheme').value;
@@ -197,22 +214,25 @@
             else this.c = [200,200,200];
         }
         update(amp, force, grav, move, vfx, vfxI) {
+            let push = amp * force * 12;
             if (vfx === 'smoke') {
                 let a = noise(this.pos.x*0.005, this.pos.y*0.005, frameCount*0.01)*TWO_PI*2;
                 this.pos.x += cos(a)*3*vfxI; this.pos.y += sin(a)*3*vfxI;
                 if(this.pos.x<0)this.pos.x=1920; if(this.pos.x>1920)this.pos.x=0;
             } else {
-                let push = amp * force * 12;
                 if(move==='relUp') { this.pos.x = this.origin.x + cos(this.angle-HALF_PI)*push*5; this.pos.y = this.origin.y + sin(this.angle-HALF_PI)*push*5; }
                 else if(move==='relSide') { this.pos.x = this.origin.x + cos(this.angle)*push*5; this.pos.y = this.origin.y + sin(this.angle)*push*5; }
                 else if(move==='circular') { this.pos.x = this.origin.x + cos(frameCount*0.05+this.id)*push*3; this.pos.y = this.origin.y + sin(frameCount*0.05+this.id)*push*3; }
+                else if(move==='flow') { this.pos.x = this.origin.x + (noise(this.noiseOff)-0.5)*push*15; this.pos.y = this.origin.y + (noise(this.noiseOff+50)-0.5)*push*15; }
+                else if(move==='shake') { this.pos.x = this.origin.x + random(-push*2, push*2); this.pos.y = this.origin.y + random(-push*2, push*2); }
                 else { this.vel.add(random(-push, push), random(-push, push)); this.vel.y += grav * 5; this.pos.add(this.vel); this.vel.mult(0.9); this.pos.add(p5.Vector.sub(this.origin,this.pos).mult(0.05)); }
             }
             this.angle += 0.01 + amp * 0.1;
+            this.noiseOff += 0.01;
         }
-        display(amp, assets, vfx, vfxI) {
+        display(amp, assets, vfx, vfxI, selfScale) {
             mainCanvas.push(); mainCanvas.translate(this.pos.x, this.pos.y); mainCanvas.rotate(this.angle); mainCanvas.tint(this.c[0], this.c[1], this.c[2], 200);
-            let sz = this.size * (0.8 + amp * 2.5);
+            let sz = this.size * selfScale * (0.8 + amp * 2.5);
             let img = assets[this.group];
             if(img) {
                 if(vfx==='box3d') { mainCanvas.noFill(); mainCanvas.stroke(this.c[0],this.c[1],this.c[2],100); mainCanvas.rect(-sz/2,-sz/2,sz,sz); }
@@ -223,37 +243,20 @@
         }
     }
 
-    // [New] 썸네일 처리 핸들러
     function setBtnThumb(id, file) {
         let btn = document.getElementById('btn' + id.charAt(0).toUpperCase() + id.slice(1));
         if(!btn) return;
         let reader = new FileReader();
-        reader.onload = function(e) {
-            btn.style.backgroundImage = `url(${e.target.result})`;
-            btn.innerText = ""; // 이미지 로드 시 텍스트 제거
-        }
+        reader.onload = e => { btn.style.backgroundImage = `url(${e.target.result})`; btn.innerText = ""; }
         reader.readAsDataURL(file);
     }
 
     function openL(id) { let el = document.getElementById(id); if(el) el.click(); }
     function handleFile(files) { audio = loadSound(URL.createObjectURL(files[0]), () => { document.getElementById('analyzeBtn').disabled = false; }); }
-    
-    function handleBG(files) { 
-        loadImage(URL.createObjectURL(files[0]), (img) => { bgImg = img; }); 
-        setBtnThumb('bg', files[0]); // 배경 버튼 썸네일
-    }
-    
-    function loadAsset(id, files) { 
-        loadImage(URL.createObjectURL(files[0]), (img) => { 
-            instAssets[id] = img; 
-            particles.forEach(p=>p.updateColors()); 
-        }); 
-        setBtnThumb('i' + id, files[0]); // 악기 버튼 썸네일
-    }
-
+    function handleBG(files) { loadImage(URL.createObjectURL(files[0]), (img) => { bgImg = img; }); setBtnThumb('bg', files[0]); }
+    function loadAsset(id, files) { loadImage(URL.createObjectURL(files[0]), (img) => { instAssets[id] = img; particles.forEach(p=>p.updateColors()); }); setBtnThumb('i' + id, files[0]); }
     function updateColors() { particles.forEach(p => p.updateColors()); }
     function runAnalysis() { isAnalyzed = true; document.getElementById('recBtn').disabled = false; }
-    function setRes(res) { setup(); }
 
     async function toggleSync() {
         if (isPlaying) { audio.stop(); if (mediaRecorder) mediaRecorder.stop(); isPlaying = false; document.getElementById('recBtn').innerText = "▶ START RECORD"; }
@@ -273,7 +276,8 @@
         }
     }
 
-    ['bloomInten','bloomReact','chroma','vfxInten','grav','reactF','bgScale'].forEach(id => {
+    const sL = ['bloomInten','bloomReact','chroma','vfxInten','grav','reactF','bgScale'];
+    sL.forEach(id => {
         let el = document.getElementById(id);
         if(el) el.oninput = function() { document.getElementById('v' + id.charAt(0).toUpperCase() + id.slice(1)).innerText = this.value; };
     });
