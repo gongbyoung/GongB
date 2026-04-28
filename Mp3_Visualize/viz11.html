@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPECTRUM MASTER v16.0.011 — GPU Bloom Test</title>
+<link rel="icon" href="data:,">
+<script src="p5.min.js"></script>
+<script src="p5.sound.min.js"></script>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+:root{ --bg:#010103; --panel:#0a0a12; --accent:#00ffcc; --accent2:#ff3377; --border:rgba(0,255,204,0.2); --text:#e0f0ff; --muted:#44445a; }
+body{ background:var(--bg); color:var(--text); font-family:'Pretendard', sans-serif; height:100vh; overflow:hidden; display: flex; flex-direction: column; }
+
+.topbar{ padding:10px 25px; background:var(--panel); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
+.logo{letter-spacing:4px; color:var(--accent); font-weight:bold; font-size:14px;}
+
+.main{ display:grid; grid-template-columns:380px 1fr; flex:1; min-height:0; }
+.left-panel{ background:var(--panel); border-right:1px solid var(--border); display:flex; flex-direction:column; padding:15px; overflow-y:auto; scrollbar-width: thin; }
+
+.ctrl-box { background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:12px; }
+.label-small { font-size:9px; color:var(--accent); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px; display:block; border-bottom:1px solid rgba(0,255,204,0.1); padding-bottom:3px;}
+
+.control-group { margin-bottom:8px; }
+.control-group label { display:block; font-size:8px; color:#888; margin-bottom:2px; }
+.val-label { float:right; color:var(--accent); font-weight:bold; font-size:9px; }
+input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; height:2px; }
+select { width:100%; background:#000; border:1px solid var(--border); color:#fff; padding:6px; border-radius:4px; font-size:11px; outline:none; margin-bottom:5px; }
+
+.btn { background:transparent; border:1px solid var(--border); border-radius:4px; color:#fff; padding:6px; cursor:pointer; font-size:9px; width:100%; transition:0.2s; margin-bottom:5px;}
+.btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.btn.primary { background:var(--accent2); border-color:var(--accent2); color:#fff; font-weight:bold; font-size:11px; padding:15px; margin-top:10px; }
+
+.viz-area { position:relative; display:flex; justify-content:center; align-items:center; flex:1; background:#000; overflow:hidden; }
+/* 캔버스 그림자 제거 (Glow 효과 집중) */
+#p5-container canvas { max-width: 100% !important; max-height: 100% !important; object-fit: contain; }
+
+.playbar { height:2px; background:#111; position:relative; }
+#progFill { position:absolute; left:0; top:0; height:100%; background:var(--accent); width:0%; transition: width 0.1s; }
+.inst-slot { display: grid; grid-template-columns: 1fr 2fr; gap: 5px; align-items: center; margin-bottom: 4px; }
+.inst-slot span { font-size: 8px; color: var(--accent2); font-weight: bold; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">SPECTRUM MASTER v16.0.11</div>
+  <div id="timeCode" style="font-family:monospace; font-size:12px;">00:00 / 00:00</div>
+</div>
+
+<div class="main">
+  <div class="left-panel">
+    <div class="ctrl-box">
+      <span class="label-small">1. Audio Analysis</span>
+      <button class="btn" onclick="document.getElementById('mIn').click()">SELECT MP3</button>
+      <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleFile(this.files)">
+      <button class="btn" id="analyzeBtn" onclick="runAnalysis()" disabled style="border-color:#ffcc00; color:#ffcc00;">PRE-ANALYZE & START</button>
+    </div>
+
+    <div class="ctrl-box">
+      <span class="label-small">2. GPU Bloom (Shader FX)</span>
+      <div class="control-group">
+        <label>BLOOM BASE INTENSITY <span class="val-label" id="vBloomInten">1.5</span></label>
+        <input type="range" id="bloomInten" min="0.0" max="5.0" step="0.1" value="1.5">
+      </div>
+      <div class="control-group">
+        <label>FREQUENCY REACTION <span class="val-label" id="vBloomReact">1.0</span></label>
+        <input type="range" id="bloomReact" min="0.0" max="3.0" step="0.1" value="1.0">
+      </div>
+    </div>
+
+    <div class="ctrl-box">
+      <span class="label-small">3. Color Palette</span>
+      <select id="colorTheme" onchange="updateColors()">
+          <option value="cyberpunk">Cyberpunk (네온)</option>
+          <option value="pastel">Pastel (몽환)</option>
+          <option value="retro">Retro (빈티지)</option>
+          <option value="minimalist">Minimalist (무채색)</option>
+          <option value="custom">Custom (직접 조정)</option>
+      </select>
+      <div id="customColorArea" style="display:none; margin-top:8px;">
+          <div class="rgb-label-group"><label>R Range</label><span id="vRMin">150</span> / <span id="vRMax">255</span></div>
+          <input type="range" id="rMin" min="0" max="255" value="150"><input type="range" id="rMax" min="0" max="255" value="255">
+          <div class="rgb-label-group" style="margin-top:5px;"><label>B Range</label><span id="vBMin">180</span> / <span id="vBMax">255</span></div>
+          <input type="range" id="bMin" min="0" max="255" value="180"><input type="range" id="bMax" min="0" max="255" value="255">
+      </div>
+    </div>
+
+    <div class="ctrl-box">
+      <span class="label-small">4. Instrument PNGs</span>
+      <div class="inst-slot"><span>KICK</span><button class="btn" onclick="document.getElementById('i0').click()">LOAD</button></div>
+      <div class="inst-slot"><span>SNARE</span><button class="btn" onclick="document.getElementById('i1').click()">LOAD</button></div>
+      <div class="inst-slot"><span>HIHAT</span><button class="btn" onclick="document.getElementById('i2').click()">LOAD</button></div>
+      <div class="inst-slot"><span>MELODY</span><button class="btn" onclick="document.getElementById('i3').click()">LOAD</button></div>
+      <div class="inst-slot"><span>PERC</span><button class="btn" onclick="document.getElementById('i4').click()">LOAD</button></div>
+      <input type="file" id="i0" style="display:none" onchange="loadAsset(0, this.files)">
+      <input type="file" id="i1" style="display:none" onchange="loadAsset(1, this.files)">
+      <input type="file" id="i2" style="display:none" onchange="loadAsset(2, this.files)">
+      <input type="file" id="i3" style="display:none" onchange="loadAsset(3, this.files)">
+      <input type="file" id="i4" style="display:none" onchange="loadAsset(4, this.files)">
+      
+      <button class="btn" style="border-color:#00ffcc; color:#00ffcc; margin-top:8px;" onclick="document.getElementById('bgIn').click()">LOAD BACKGROUND PNG</button>
+      <input type="file" id="bgIn" style="display:none" onchange="handleBG(this.files)">
+    </div>
+
+    <div class="ctrl-box">
+      <span class="label-small">5. Motion Choreography</span>
+      <div class="control-group">
+        <label>PLACEMENT</label>
+        <select id="placeMode" onchange="initParticles()">
+            <option value="balanced">Balanced (균형)</option>
+            <option value="floor">Floor (바닥)</option>
+            <option value="center">Center (중앙)</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label>REACTION FORCE <span class="val-label" id="vReactF">2.5</span></label>
+        <input type="range" id="reactF" min="0.1" max="10.0" step="0.1" value="2.5">
+      </div>
+    </div>
+
+    <div class="ctrl-box">
+      <span class="label-small">6. Global & Export</span>
+      <div class="control-group">
+        <label>PARTICLE SCALE <span class="val-label" id="vPScale">1.0</span></label>
+        <input type="range" id="pScale" min="0.1" max="4.0" step="0.1" value="1.0">
+        <label style="margin-top:5px;">TRAIL (잔상) <span class="val-label" id="vTrail">40</span></label>
+        <input type="range" id="trail" min="0" max="255" value="40">
+      </div>
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-bottom:5px;">
+          <button class="btn active" id="resFHD" onclick="setRes('FHD')">FHD</button>
+          <button class="btn" id="resUHD" onclick="setRes('UHD')">UHD</button>
+      </div>
+      <button class="btn primary" id="recBtn" onclick="toggleSync()" disabled>▶ START RECORD (24fps)</button>
+    </div>
+  </div>
+
+  <div class="viz-area" id="p5-container"></div>
+</div>
+
+<div class="playbar"><div id="progFill"></div></div>
+
+<script>
+// --- SHADER SOURCE (GLSL) ---
+// 정점 쉐이더: 화면 위치 정의
+const vertShader = `
+precision highp float;
+attribute vec3 aPosition;
+attribute vec2 aTexCoord;
+varying vec2 vTexCoord;
+void main() {
+    vTexCoord = aTexCoord;
+    vec4 positionVec4 = vec4(aPosition, 1.0);
+    positionVec4.xy = positionVec4.xy * 2.0 - 1.0;
+    gl_Position = positionVec4;
+}
+`;
+
+// 프래그먼트 쉐이더: 픽셀별 빛 번짐(Bloom) 연산 (Master Final Version)
+const fragShader = `
+precision highp float;
+varying vec2 vTexCoord;
+uniform sampler2D uTex0; // 원본 화면
+uniform vec2 uResolution;
+uniform float uBloomInten; // 베이스 밝기
+uniform float uBloomRadius; // 번짐 반경 (주파수 반응)
+
+void main() {
+    vec2 uv = vTexCoord;
+    uv.y = 1.0 - uv.y; // p5.js texture flip fix
+
+    vec4 tex = texture2D(uTex0, uv); // 원본
+    
+    // Separable Gaussian Blur (Master 샘플링)
+    vec4 sum = vec4(0.0);
+    vec2 blurVec = vec2(uBloomRadius) / uResolution; // 번짐 벡터
+
+    // 9-Tap 샘플링
+    sum += texture2D(uTex0, uv + blurVec * -4.0) * 0.05;
+    sum += texture2D(uTex0, uv + blurVec * -3.0) * 0.09;
+    sum += texture2D(uTex0, uv + blurVec * -2.0) * 0.12;
+    sum += texture2D(uTex0, uv + blurVec * -1.0) * 0.15;
+    sum += texture2D(uTex0, uv + blurVec * 0.0)  * 0.16;
+    sum += texture2D(uTex0, uv + blurVec * 1.0)  * 0.15;
+    sum += texture2D(uTex0, uv + blurVec * 2.0)  * 0.12;
+    sum += texture2D(uTex0, uv + blurVec * 3.0)  * 0.09;
+    sum += texture2D(uTex0, uv + blurVec * 4.0)  * 0.05;
+
+    // separators
+    vec4 blurH = sum;
+    sum = vec4(0.0);
+    blurVec = vec2(uBloomRadius, 0.0) / uResolution; // 가로
+
+    sum += texture2D(uTex0, uv + blurVec * -4.0) * 0.05;
+    sum += texture2D(uTex0, uv + blurVec * -3.0) * 0.09;
+    sum += texture2D(uTex0, uv + blurVec * -2.0) * 0.12;
+    sum += texture2D(uTex0, uv + blurVec * -1.0) * 0.15;
+    sum += texture2D(uTex0, uv + blurVec * 0.0)  * 0.16;
+    sum += texture2D(uTex0, uv + blurVec * 1.0)  * 0.15;
+    sum += texture2D(uTex0, uv + blurVec * 2.0)  * 0.12;
+    sum += texture2D(uTex0, uv + blurVec * 3.0)  * 0.09;
+    sum += texture2D(uTex0, uv + blurVec * 4.0)  * 0.05;
+    
+    vec4 blurV = sum;
+    
+    // 최종 Bloom = (가로블러+세로블러)*밝기
+    vec4 bloom = (blurH + blurV) * uBloomInten;
+    
+    // Additive Blending: 원본 + 블러
+    gl_FragColor = tex + bloom;
+}
+`;
+
+// --- P5.JS MAIN LOGIC ---
+let exportRes = 'FHD', isRecording = false, isPlaying = false;
+let audio, fft, ampObj;
+let particles = [];
+let mediaRecorder, recordedChunks = [];
+let canvasRef, bgImg = null;
+let instAssets = new Array(5).fill(null);
+let isAnalyzed = false;
+
+// GPU 관련 변수
+let mainCanvas; // 입자를 그릴 FBO (createGraphics)
+let bloomShader; // GPU 쉐이더
+
+function setup() {
+    let container = document.getElementById('p5-container');
+    let w = (exportRes === 'FHD') ? 1920 : 3840;
+    let h = (exportRes === 'FHD') ? 1080 : 2160;
+    
+    // 1. 메인 출력 캔버스는 WEBGL 모드로 생성 (쉐이더 작동용)
+    let cnv = createCanvas(w, h, WEBGL);
+    cnv.parent(container);
+    canvasRef = cnv.elt;
+    
+    // 2. 입자들을 그릴 오프스크린 FBO (기존 p2d 로직 유지)
+    mainCanvas = createGraphics(w, h);
+    mainCanvas.colorMode(RGB, 255, 255, 255, 255);
+    mainCanvas.imageMode(CENTER);
+    
+    // 3. 쉐이더 로드
+    bloomShader = createShader(vertShader, fragShader);
+    
+    fft = new p5.FFT(0.8, 256);
+    ampObj = new p5.Amplitude();
+    initParticles();
+}
+
+function initParticles() {
+    particles = [];
+    let pMode = document.getElementById('placeMode').value;
+    for(let i=0; i<24; i++) {
+        let group = (i<4)?0:(i<8)?1:(i<13)?2:(i<19)?3:4;
+        particles.push(new MasterParticle(i, pMode, group));
+    }
+}
+
+function updateColors() {
+    const theme = document.getElementById('colorTheme').value;
+    const customArea = document.getElementById('customColorArea');
+    if(customArea) customArea.style.display = (theme === 'custom') ? 'block' : 'none';
+    particles.forEach(p => p.updateColors(theme));
+}
+
+async function runAnalysis() {
+    if (!audio) return;
+    isAnalyzed = true;
+    document.getElementById('recBtn').disabled = false;
+}
+
+function draw() {
+    let trVal = parseInt(document.getElementById('trail').value);
+    
+    // [CPU 단계] mainCanvas FBO에 입자들을 그림 (기존 로직)
+    mainCanvas.background(2, 2, 8, trVal);
+
+    let bands = new Array(24).fill(0);
+    let vol = 0;
+    let high = 0;
+    
+    if (audio && audio.isPlaying()) {
+        fft.analyze();
+        vol = ampObj.getLevel();
+        high = fft.getEnergy(4000, 16000) / 255; // 고음 에너지 (Glow 반응용)
+        for(let i=0; i<24; i++) bands[i] = fft.getEnergy(pow(2, i/2)*20, pow(2, (i+1)/2)*20) / 255;
+    } else {
+        mainCanvas.push(); mainCanvas.fill(255, 150); mainCanvas.textAlign(CENTER); mainCanvas.textSize(mainCanvas.width*0.015);
+        mainCanvas.text("GPU BLOOM TEST (v16.0.11) - LOAD MUSIC", mainCanvas.width/2, mainCanvas.height/2 + 200);
+        mainCanvas.pop();
+    }
+
+    if (bgImg) drawBG(bands[2] || 0);
+
+    let finalAssets = [...instAssets];
+    for (let i = 3; i >= 0; i--) if (finalAssets[i] === null) finalAssets[i] = finalAssets[i+1];
+
+    let force = parseFloat(document.getElementById('reactF').value);
+    let scale = parseFloat(document.getElementById('pScale').value);
+
+    // CPU에서 입자 역학 계산 및 FBO에 그리기
+    for (let p of particles) {
+        let b = bands[p.id] || 0;
+        p.update(b, force);
+        p.display(b, scale, finalAssets);
+    }
+
+    // [GPU 단계] WEBGL 메인 캔버스에 쉐이더 적용
+    shader(bloomShader);
+    
+    // 쉐이더 유니폼 변수 전달
+    bloomShader.setUniform('uTex0', mainCanvas); // FBO 텍스처
+    bloomShader.setUniform('uResolution', [width, height]);
+    
+    // 팀장님 요청: 주파수(볼륨+고음)에 맞춰 늘어나는 번짐
+    let bInten = parseFloat(document.getElementById('bloomInten').value);
+    let bReact = parseFloat(document.getElementById('bloomReact').value);
+    
+    // 최종 밝기와 반경은 고음(Treble)과 전체 볼륨에 반응하여 다이내믹하게 변함
+    let finalInten = bInten * (1.0 + high * bReact * 2.0); // 고음 터질 때 더 밝게
+    let finalRadius = 3.0 + (vol + high) * bReact * 25.0; // 음악 터질 때 더 널리 번짐
+    
+    bloomShader.setUniform('uBloomInten', finalInten);
+    bloomShader.setUniform('uBloomRadius', finalRadius);
+    
+    // 쉐이더로 화면 전체를 덮는 사각형을 그림
+    rect(-width/2, -height/2, width, height);
+    
+    updateUI();
+}
+
+function drawBG(bass) {
+    mainCanvas.push(); mainCanvas.translate(mainCanvas.width/2, mainCanvas.height/2);
+    let sc = max(mainCanvas.width/bgImg.width, mainCanvas.height/bgImg.height) * (1.0 + bass*0.03);
+    mainCanvas.image(bgImg, 0, 0, bgImg.width * sc, bgImg.height * sc); mainCanvas.pop();
+}
+
+class MasterParticle {
+    constructor(id, pMode, group) {
+        this.id = id; this.group = group; this.angle = random(TWO_PI);
+        this.size = random(180, 400);
+        this.resetPos(pMode); this.updateColors(document.getElementById('colorTheme').value);
+    }
+    resetPos(mode) {
+        if(mode === 'center') this.origin = createVector(mainCanvas.width/2, mainCanvas.height/2);
+        else if(mode === 'floor') this.origin = createVector(random(mainCanvas.width), mainCanvas.height * 0.9);
+        else this.origin = createVector(random(mainCanvas.width), random(mainCanvas.height));
+        this.pos = this.origin.copy();
+    }
+    updateColors(theme) {
+        if (theme === 'cyberpunk') {
+            let c = random([[255,0,255],[0,255,255],[57,255,20]]);
+            this.r=c[0]; this.g=c[1]; this.b=c[2];
+        } else if (theme === 'pastel') {
+            this.r=random(200,255); this.g=random(200,255); this.b=random(200,255);
+        } else if (theme === 'retro') {
+            let c = random([[204,85,0],[225,173,1],[128,128,0]]);
+            this.r=c[0]; this.g=c[1]; this.b=c[2];
+        } else if (theme === 'minimalist') {
+            let gr=random(100,200); if(random()>0.9){this.r=255;this.g=0;this.b=0;}else{this.r=gr;this.g=gr;this.b=gr;}
+        } else {
+            this.r=random(parseInt(rMin.value), parseInt(rMax.value));
+            this.g=random(100,200);
+            this.b=random(parseInt(bMin.value), parseInt(bMax.value));
+        }
+    }
+    update(amp, force) {
+        let shift = amp * 280 * force;
+        let m = document.getElementById('moveMode').value;
+        if(m==='relUp'){ this.pos.x=this.origin.x+cos(this.angle-HALF_PI)*shift; this.pos.y=this.origin.y+sin(this.angle-HALF_PI)*shift; }
+        else if(m==='relSide'){ this.pos.x=this.origin.x+cos(this.angle)*shift; this.pos.y=this.origin.y+sin(this.angle)*shift; }
+        else if(m==='upDown'){ this.pos.y=this.origin.y-shift; }
+        else if(m==='circular'){ this.pos.x=this.origin.x+cos(frameCount*0.05+this.id)*shift; this.pos.y=this.origin.y+sin(frameCount*0.05+this.id)*shift; }
+        else { this.pos.x=this.origin.x+(noise(this.id,frameCount*0.01)-0.5)*shift; this.pos.y=this.origin.y+(noise(this.id+50,frameCount*0.01)-0.5)*shift; }
+        this.angle += 0.015 + amp*0.12;
+    }
+    display(amp, scale, assets) {
+        mainCanvas.push(); mainCanvas.translate(this.pos.x, this.pos.y); mainCanvas.rotate(this.angle); mainCanvas.tint(this.r, this.g, this.b, 200);
+        let sz = this.size * scale * (0.8 + amp*2.2);
+        let img = assets[this.group];
+        if(img) {
+            mainCanvas.image(img, 0, 0, img.width*(sz/800), img.height*(sz/800));
+        } else { mainCanvas.noStroke(); mainCanvas.fill(this.r,this.g,this.b,150); mainCanvas.ellipse(0,0,sz*0.6,sz); }
+        mainCanvas.pop();
+    }
+}
+
+// System Handlers
+function handleFile(files) { audio = loadSound(URL.createObjectURL(files[0]), () => { document.getElementById('analyzeBtn').disabled = false; }); }
+function handleBG(files) { loadImage(URL.createObjectURL(files[0]), (img) => { bgImg = img; }); }
+function loadAsset(id, files) { loadImage(URL.createObjectURL(files[0]), (img) => { instAssets[id] = img; updateColors(); }); }
+function setRes(res) { exportRes = res; setup(); }
+async function toggleSync() {
+    if (isPlaying) { audio.stop(); if (mediaRecorder) mediaRecorder.stop(); isPlaying = false; }
+    else {
+        if (getAudioContext().state === 'suspended') await userStartAudio();
+        recordedChunks = [];
+        // 녹화는 WEBGL 메인 캔버스(쉐이더가 적용된 결과)를 캡처
+        const stream = canvasRef.captureStream(24);
+        const dest = getAudioContext().createMediaStreamDestination(); p5.soundOut.output.connect(dest);
+        const combined = new MediaStream([...stream.getVideoTracks(), ...dest.stream.getAudioTracks()]);
+        mediaRecorder = new MediaRecorder(combined, { mimeType: 'video/webm; codecs=vp9,opus', videoBitsPerSecond: 60000000 });
+        mediaRecorder.ondataavailable = e => recordedChunks.push(e.data);
+        mediaRecorder.onstop = () => { 
+            const now = new Date();
+            const timeStr = `${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}`;
+            let a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(recordedChunks, { type: 'video/mp4' })); a.download = `ShaderGlow_${timeStr}.mp4`; a.click(); 
+        };
+        audio.play(); mediaRecorder.start(); isPlaying = true;
+    }
+}
+function updateUI() { if(audio && audio.isPlaying()){ document.getElementById('progFill').style.width = (audio.currentTime()/audio.duration()*100)+'%'; } }
+
+const sList = ['reactF','pScale','trail','rMin','rMax','bMin','bMax','bloomInten','bloomReact'];
+sList.forEach(id => {
+    let el = document.getElementById(id);
+    if(el) el.oninput = function() {
+        let l = document.getElementById('v' + id.charAt(0).toUpperCase() + id.slice(1));
+        if(l) l.innerText = this.value;
+        if(id.includes('Min') || id.includes('Max')) updateColors();
+    };
+});
+</script>
+</body>
+</html>
