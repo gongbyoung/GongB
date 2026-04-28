@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SPECTRUM ORCHESTRA v16.0.005 — Final Integrated</title>
+<title>SPECTRUM ORCHESTRA v16.0.007 — Orchestra Fallback</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -43,7 +43,7 @@ select { width:100%; background:#000; border:1px solid var(--border); color:#fff
 <body>
 
 <div class="topbar">
-  <div class="logo">SPECTRUM ORCHESTRA v16.0.005</div>
+  <div class="logo">SPECTRUM ORCHESTRA v16.0.007</div>
   <div id="timeCode" style="font-family:monospace; font-size:12px;">00:00 / 00:00</div>
 </div>
 
@@ -58,35 +58,37 @@ select { width:100%; background:#000; border:1px solid var(--border); color:#fff
     </div>
 
     <div class="ctrl-box">
-      <span class="label-small">2. Instrument PNG Slots</span>
+      <span class="label-small">2. Visual Color Theme</span>
+      <select id="colorTheme" onchange="updateAllParticleColors()">
+          <option value="cyberpunk">Cyberpunk (네온)</option>
+          <option value="pastel">Pastel (몽환)</option>
+          <option value="retro">Retro (빈티지)</option>
+          <option value="minimalist">Minimalist (무채색)</option>
+          <option value="custom">Custom (직접 조정)</option>
+      </select>
+      <div id="customColorArea" style="display:none; margin-top:10px;">
+          <div class="rgb-label-group"><label>R Range</label><span id="vRMin">150</span> / <span id="vRMax">255</span></div>
+          <input type="range" id="rMin" min="0" max="255" value="150"><input type="range" id="rMax" min="0" max="255" value="255">
+          <div class="rgb-label-group" style="margin-top:5px;"><label>B Range</label><span id="vBMin">180</span> / <span id="vBMax">255</span></div>
+          <input type="range" id="bMin" min="0" max="255" value="180"><input type="range" id="bMax" min="0" max="255" value="255">
+      </div>
+    </div>
+
+    <div class="ctrl-box">
+      <span class="label-small">3. Instrument PNG (Auto Fallback)</span>
+      <div style="font-size: 8px; color: var(--muted); margin-bottom: 5px;">* 비어있는 슬롯은 마지막 이미지가 채웁니다.</div>
       <div class="inst-slot"><span>KICK</span><button class="btn" onclick="document.getElementById('i0').click()">LOAD PNG</button></div>
       <div class="inst-slot"><span>SNARE</span><button class="btn" onclick="document.getElementById('i1').click()">LOAD PNG</button></div>
       <div class="inst-slot"><span>HIHAT</span><button class="btn" onclick="document.getElementById('i2').click()">LOAD PNG</button></div>
       <div class="inst-slot"><span>MELODY</span><button class="btn" onclick="document.getElementById('i3').click()">LOAD PNG</button></div>
-      <div class="inst-slot"><span>PERC</span><button class="btn" onclick="document.getElementById('i4').click()">LOAD PNG</button></div>
-      
-      <input type="file" id="i0" style="display:none" onchange="loadInst(0, this.files)">
-      <input type="file" id="i1" style="display:none" onchange="loadInst(1, this.files)">
-      <input type="file" id="i2" style="display:none" onchange="loadInst(2, this.files)">
-      <input type="file" id="i3" style="display:none" onchange="loadInst(3, this.files)">
-      <input type="file" id="i4" style="display:none" onchange="loadInst(4, this.files)">
-
-      <button class="btn" style="border-color:#00ffcc; color:#00ffcc; margin-top:8px;" onclick="document.getElementById('bgIn').click()">LOAD BACKGROUND PNG</button>
-      <input type="file" id="bgIn" accept="image/*" style="display:none" onchange="handleBG(this.files)">
+      <div class="inst-slot"><span>PERC (Last)</span><button class="btn" onclick="document.getElementById('i4').click()">LOAD PNG</button></div>
+      <input type="file" id="i0" style="display:none" onchange="loadInst(0, this.files)"><input type="file" id="i1" style="display:none" onchange="loadInst(1, this.files)"><input type="file" id="i2" style="display:none" onchange="loadInst(2, this.files)"><input type="file" id="i3" style="display:none" onchange="loadInst(3, this.files)"><input type="file" id="i4" style="display:none" onchange="loadInst(4, this.files)">
     </div>
 
     <div class="ctrl-box">
-      <span class="label-small">3. Procedural Motion</span>
+      <span class="label-small">4. Motion & Scale</span>
       <div class="control-group">
-        <label>PLACEMENT (배치)</label>
-        <select id="placeMode" onchange="initParticles()">
-            <option value="balanced">Balanced (균형)</option>
-            <option value="floor">Floor (바닥)</option>
-            <option value="center">Center (중앙)</option>
-        </select>
-      </div>
-      <div class="control-group">
-        <label>MOTION STYLE (움직임)</label>
+        <label>MOTION STYLE</label>
         <select id="moveMode">
             <option value="relUp">Relative Up (이미지 위로)</option>
             <option value="relSide">Relative Side (이미지 옆으로)</option>
@@ -99,38 +101,18 @@ select { width:100%; background:#000; border:1px solid var(--border); color:#fff
         <label>REACTION FORCE <span class="val-label" id="vReactF">2.5</span></label>
         <input type="range" id="reactF" min="0.1" max="10.0" step="0.1" value="2.5">
       </div>
-    </div>
-
-    <div class="ctrl-box">
-      <span class="label-small">4. Visual Tint & Scale</span>
-      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
-          <div class="control-group">
-            <div class="rgb-label-group"><label>R Min</label><span class="val-label" id="vRMin">150</span></div>
-            <input type="range" id="rMin" min="0" max="255" value="150">
-            <div class="rgb-label-group"><label>R Max</label><span class="val-label" id="vRMax">255</span></div>
-            <input type="range" id="rMax" min="0" max="255" value="255">
-          </div>
-          <div class="control-group">
-            <div class="rgb-label-group"><label>B Min</label><span class="val-label" id="vBMin">180</span></div>
-            <input type="range" id="bMin" min="0" max="255" value="180">
-            <div class="rgb-label-group"><label>B Max</label><span class="val-label" id="vBMax">255</span></div>
-            <input type="range" id="bMax" min="0" max="255" value="255">
-          </div>
-      </div>
-      <div class="control-group" style="margin-top:10px;">
+      <div class="control-group">
         <label>PARTICLE SCALE <span class="val-label" id="vPScale">1.0</span></label>
         <input type="range" id="pScale" min="0.1" max="4.0" step="0.1" value="1.0">
-        <label style="margin-top:5px;">TRAIL (잔상) <span class="val-label" id="vTrail">40</span></label>
+      </div>
+      <div class="control-group">
+        <label>TRAIL (잔상) <span class="val-label" id="vTrail">40</span></label>
         <input type="range" id="trail" min="0" max="255" value="40">
       </div>
     </div>
 
     <div class="ctrl-box">
-      <span class="label-small">5. High-Res Export</span>
-      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-bottom:5px;">
-          <button class="btn active" id="resFHD" onclick="setRes('FHD')">FHD</button>
-          <button class="btn" id="resUHD" onclick="setRes('UHD')">UHD</button>
-      </div>
+      <span class="label-small">5. Export</span>
       <button class="btn primary" id="recBtn" onclick="toggleSync()" disabled>▶ START RECORD (24fps)</button>
     </div>
   </div>
@@ -145,15 +127,13 @@ let exportRes = 'FHD', isRecording = false, isPlaying = false;
 let audio, fft, ampObj;
 let particles = [];
 let mediaRecorder, recordedChunks = [];
-let canvasRef, bgImg = null;
-let instAssets = new Array(5).fill(null); // 5개 악기 이미지 저장
+let canvasRef;
+let instAssets = new Array(5).fill(null);
 let isAnalyzed = false;
 
 function setup() {
     let container = document.getElementById('p5-container');
-    let w = (exportRes === 'FHD') ? 1920 : 3840;
-    let h = (exportRes === 'FHD') ? 1080 : 2160;
-    let cnv = createCanvas(w, h);
+    let cnv = createCanvas(1920, 1080);
     cnv.parent(container);
     canvasRef = cnv.elt;
     colorMode(RGB, 255, 255, 255, 255);
@@ -165,24 +145,24 @@ function setup() {
 
 function initParticles() {
     particles = [];
-    let pMode = document.getElementById('placeMode').value;
     for(let i=0; i<24; i++) {
-        // 각 입자별로 악기 그룹(0~4) 배정
         let group = 0;
-        if(i < 4) group = 0; // KICK
-        else if(i < 8) group = 1; // SNARE
-        else if(i < 13) group = 2; // HIHAT
-        else if(i < 19) group = 3; // MELODY
-        else group = 4; // PERC
-        particles.push(new OrchestraParticle(i, pMode, group));
+        if(i < 4) group = 0; else if(i < 8) group = 1; else if(i < 13) group = 2; else if(i < 19) group = 3; else group = 4;
+        particles.push(new OrchestraParticle(i, group));
     }
+}
+
+function updateAllParticleColors() {
+    const theme = document.getElementById('colorTheme').value;
+    document.getElementById('customColorArea').style.display = (theme === 'custom') ? 'block' : 'none';
+    particles.forEach(p => p.updateColors(theme));
 }
 
 async function runAnalysis() {
     if (!audio) return;
     isAnalyzed = true;
     document.getElementById('recBtn').disabled = false;
-    document.getElementById('statusLog').innerText = "ANALYSIS COMPLETE (v16.0.005)";
+    document.getElementById('statusLog').innerText = "ANALYSIS COMPLETE (v16.0.007)";
 }
 
 function draw() {
@@ -195,55 +175,60 @@ function draw() {
         for(let i=0; i<24; i++) {
             bands[i] = fft.getEnergy(pow(2, i/2)*20, pow(2, (i+1)/2)*20) / 255;
         }
-    } else {
-        push(); fill(255, 120); textAlign(CENTER); textSize(width*0.012);
-        text("SPECTRUM ORCHESTRA v16.0.005 - READY", width/2, height/2 + 250);
-        pop();
     }
-
-    if (bgImg) drawBG(bands[2] || 0);
 
     let mMode = document.getElementById('moveMode').value;
     let force = parseFloat(document.getElementById('reactF').value);
     let scale = parseFloat(document.getElementById('pScale').value);
 
+    // [핵심] 현재 로드된 어셋들의 폴백 상태 확인
+    let finalAssets = [...instAssets];
+    // 마지막(PERC)부터 거꾸로 스캔하며 비어있는 앞 슬롯을 채움
+    for (let i = 3; i >= 0; i--) {
+        if (finalAssets[i] === null) {
+            // 자신의 바로 뒤 슬롯 이미지를 가져옴
+            finalAssets[i] = finalAssets[i+1];
+        }
+    }
+
     for (let p of particles) {
         let bVal = bands[p.id] || 0;
         p.update(bVal, mMode, force);
-        p.display(bVal, scale);
+        // 폴백이 적용된 finalAssets 배열을 전달
+        p.display(bVal, scale, finalAssets);
     }
     updateUI();
 }
 
-function drawBG(bass) {
-    push();
-    translate(width/2, height/2);
-    let finalScale = max(width/bgImg.width, height/bgImg.height) * (1.0 + bass*0.03);
-    image(bgImg, 0, 0, bgImg.width * finalScale, bgImg.height * finalScale);
-    pop();
-}
-
 class OrchestraParticle {
-    constructor(id, placeMode, group) {
+    constructor(id, group) {
         this.id = id;
         this.group = group;
-        this.resetPosition(placeMode);
+        this.origin = createVector(random(width), random(height));
+        this.pos = this.origin.copy();
         this.angle = random(TWO_PI);
         this.size = random(180, 400);
-        this.updateColors();
+        this.updateColors(document.getElementById('colorTheme').value);
     }
 
-    updateColors() {
-        this.r = random(parseInt(rMin.value), parseInt(rMax.value));
-        this.g = random(100, 200); // G는 적절히 고정/랜덤
-        this.b = random(parseInt(bMin.value), parseInt(bMax.value));
-    }
-
-    resetPosition(mode) {
-        if(mode === 'center') this.origin = createVector(width/2, height/2);
-        else if(mode === 'floor') this.origin = createVector(random(width), height * 0.9);
-        else this.origin = createVector(random(width), random(height));
-        this.pos = this.origin.copy();
+    updateColors(theme) {
+        if (theme === 'cyberpunk') {
+            const colors = [[255, 0, 255], [0, 255, 255], [57, 255, 20]];
+            let c = random(colors); this.r = c[0]; this.g = c[1]; this.b = c[2];
+        } else if (theme === 'pastel') {
+            this.r = random(180, 255); this.g = random(180, 255); this.b = random(180, 255);
+        } else if (theme === 'retro') {
+            const colors = [[204, 85, 0], [225, 173, 1], [128, 128, 0], [245, 245, 220]];
+            let c = random(colors); this.r = c[0]; this.g = c[1]; this.b = c[2];
+        } else if (theme === 'minimalist') {
+            let gray = random(100, 200);
+            if (random() > 0.9) { this.r = 255; this.g = 0; this.b = 0; }
+            else { this.r = gray; this.g = gray; this.b = gray; }
+        } else { // Custom
+            this.r = random(parseInt(rMin.value), parseInt(rMax.value));
+            this.g = random(100, 200);
+            this.b = random(parseInt(bMin.value), parseInt(bMax.value));
+        }
     }
 
     update(amp, moveMode, force) {
@@ -254,31 +239,25 @@ class OrchestraParticle {
         } else if (moveMode === 'relSide') {
             this.pos.x = this.origin.x + cos(this.angle) * shift;
             this.pos.y = this.origin.y + sin(this.angle) * shift;
-        } else if (moveMode === 'upDown') {
-            this.pos.y = this.origin.y - shift;
-        } else if (moveMode === 'circular') {
-            this.pos.x = this.origin.x + cos(frameCount * 0.05 + this.id) * shift;
-            this.pos.y = this.origin.y + sin(frameCount * 0.05 + this.id) * shift;
-        } else {
+        } else { // Global Default
             this.pos.x = this.origin.x + (noise(this.id, frameCount*0.01)-0.5) * shift * 2;
             this.pos.y = this.origin.y + (noise(this.id+50, frameCount*0.01)-0.5) * shift * 2;
         }
         this.angle += 0.015 + amp * 0.12;
     }
 
-    display(amp, scale) {
+    display(amp, scale, assets) {
         push();
         translate(this.pos.x, this.pos.y);
         rotate(this.angle);
         tint(this.r, this.g, this.b, 200);
         let finalSz = this.size * scale * (0.8 + amp * 2.2);
-        let img = instAssets[this.group];
-        if (img) {
-            image(img, 0, 0, img.width * (finalSz/800), img.height * (finalSz/800));
-        } else {
-            noStroke(); fill(this.r, this.g, this.b, 150);
-            ellipse(0, 0, finalSz * 0.6, finalSz);
-        }
+        
+        // [핵심] 자신에게 배정된 폴백된 이미지를 가져옴
+        let img = assets[this.group];
+        
+        if (img) image(img, 0, 0, img.width * (finalSz/800), img.height * (finalSz/800));
+        else { noStroke(); fill(this.r, this.g, this.b, 150); ellipse(0, 0, finalSz * 0.6, finalSz); }
         pop();
     }
 }
@@ -290,22 +269,16 @@ function handleFile(files) {
         document.getElementById('statusLog').innerText = "MP3 LOADED";
     });
 }
-function handleBG(files) { loadImage(URL.createObjectURL(files[0]), (img) => { bgImg = img; }); }
 function loadInst(id, files) {
     loadImage(URL.createObjectURL(files[0]), (img) => {
         instAssets[id] = img;
-        particles.forEach(p => p.updateColors());
+        updateAllParticleColors(); // 컬러 업데이트 (Custom 범위 반영)
     });
 }
-function setRes(res) { exportRes = res; setup(); }
-
 async function toggleSync() {
     if (!audio || !isAnalyzed) return;
-    if (isPlaying) {
-        audio.stop(); if (mediaRecorder) mediaRecorder.stop();
-        isPlaying = false;
-        document.getElementById('recBtn').innerText = "▶ START RECORD";
-    } else {
+    if (isPlaying) { audio.stop(); if (mediaRecorder) mediaRecorder.stop(); isPlaying = false; }
+    else {
         if (getAudioContext().state === 'suspended') await userStartAudio();
         recordedChunks = [];
         const stream = canvasRef.captureStream(24);
@@ -316,32 +289,29 @@ async function toggleSync() {
         mediaRecorder.ondataavailable = e => recordedChunks.push(e.data);
         mediaRecorder.onstop = saveVideo;
         audio.play(); mediaRecorder.start(); isPlaying = true;
-        document.getElementById('recBtn').innerText = "■ STOP & SAVE";
     }
 }
 function saveVideo() {
     const blob = new Blob(recordedChunks, { type: 'video/mp4' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-    a.download = `GrandOrchestra_${new Date().getTime()}.mp4`; a.click();
+    a.download = `Fallback_${new Date().getTime()}.mp4`; a.click();
 }
 function updateUI() {
     if (audio && audio.isPlaying()) {
         let curr = audio.currentTime(), dur = audio.duration();
-        document.getElementById('timeCode').innerText = `${nf(floor(curr/60),2)}:${nf(floor(curr%60),2)} / ${nf(floor(dur/60),2)}:${nf(floor(dur%60),2)}`;
         document.getElementById('progFill').style.width = (curr/dur * 100) + '%';
     }
 }
 
-// Label Update Fix
+// Slider Labels Sync
 const list = ['pScale','reactF','trail','rMin','rMax','bMin','bMax'];
 list.forEach(id => {
     let el = document.getElementById(id);
     if(el) {
         el.oninput = function() { 
-            let labelId = 'v' + id.charAt(0).toUpperCase() + id.slice(1);
-            let label = document.getElementById(labelId);
+            let label = document.getElementById('v' + id.charAt(0).toUpperCase() + id.slice(1));
             if(label) label.innerText = this.value;
-            if(id.includes('Min') || id.includes('Max')) particles.forEach(p => p.updateColors());
+            if(id.includes('Min') || id.includes('Max')) updateAllParticleColors();
         }
     }
 });
