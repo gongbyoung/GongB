@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SPECTRUM UNIVERSAL v19.0.001</title>
+    <title>SPECTRUM UNIVERSAL v19.0.002</title>
     <link rel="icon" href="data:,">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
@@ -37,34 +37,38 @@
 <body>
 
 <div class="topbar">
-    <div class="logo">SPECTRUM UNIVERSAL v19.0.001</div>
+    <div class="logo">SPECTRUM UNIVERSAL v19.0.002</div>
     <div id="timeCode">00:00 / 00:00</div>
 </div>
 
 <div class="main-workspace">
     <div class="side-panel">
         <div class="ctrl-box">
-            <span class="label-small">1. Audio Engine</span>
+            <span class="label-small">1. Audio Center</span>
             <button class="btn" onclick="document.getElementById('mIn').click()">SELECT MP3 FILE</button>
             <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleFile(this.files)">
             <button class="btn" id="analyzeBtn" onclick="runAnalysis()" disabled style="border-color:#ffcc00; color:#ffcc00; margin-top:5px; height:auto; padding:8px;">PRE-ANALYZE & START</button>
         </div>
 
         <div class="ctrl-box">
-            <span class="label-small">2. Global Backdrop FX</span>
-            <label style="font-size:8px; color:#888;">SELECT VIZ EFFECT (30 SAMPLES)</label>
-            <select id="backdropFX" onchange="resetFX()">
-                <option value="none">None (Empty)</option>
+            <span class="label-small">2. Backdrop Elements (30 Effects)</span>
+            <select id="backdropFX">
                 <option value="dna">01 DNA Helix</option>
                 <option value="nebula" selected>02 Galaxy Nebula</option>
                 <option value="mandala">03 Mandala</option>
                 <option value="web">04 Electric Web</option>
                 <option value="vortex">05 Vortex Tunnel</option>
+                <option value="aurora">06 Aurora Rings</option>
                 <option value="fire">07 Fire Ring</option>
+                <option value="ocean">08 Ocean Wave</option>
+                <option value="crystal">09 Crystal Shards</option>
                 <option value="matrix">14 Matrix Rain</option>
+                <option value="snake">16 Neon Snake</option>
+                <option value="geo">18 Geo Pulse</option>
                 <option value="nova">23 Supernova</option>
                 <option value="storm">26 Lightning Storm</option>
                 <option value="warp">29 Warp Speed</option>
+                <option value="atomic">30 Atomic Orbit</option>
             </select>
             <div class="control-group" style="margin-top:10px;">
                 <label>FX INTENSITY <span class="val-label" id="vGlowI">1.5</span></label>
@@ -73,8 +77,8 @@
         </div>
 
         <div class="ctrl-box">
-            <span class="label-small">3. Natural Elements</span>
-            <div class="control-group"><label>LIGHTNING <span class="val-label" id="vBolt">1.0</span></label><input type="range" id="boltI" min="0" max="3" step="0.1" value="1.0"></div>
+            <span class="label-small">3. Atmospheric Controls</span>
+            <div class="control-group"><label>BOLT <span class="val-label" id="vBolt">1.0</span></label><input type="range" id="boltI" min="0" max="3" step="0.1" value="1.0"></div>
             <div class="control-group"><label>SMOKE <span class="val-label" id="vSmoke">1.0</span></label><input type="range" id="smokeI" min="0" max="3" step="0.1" value="1.0"></div>
             <div class="control-group"><label>WAVE <span class="val-label" id="vWave">1.0</span></label><input type="range" id="waveI" min="0" max="3" step="0.1" value="1.0"></div>
         </div>
@@ -84,7 +88,7 @@
 
     <div class="side-panel">
         <div class="ctrl-box">
-            <span class="label-small">4. Background Rig</span>
+            <span class="label-small">4. Master Rig</span>
             <button class="btn" id="btnBg" style="border-color:#00ffcc;" onclick="document.getElementById('bgIn').click()">LOAD BG PNG</button>
             <input type="file" id="bgIn" style="display:none" onchange="handleBG(this.files)">
             <div class="control-group" style="margin-top:8px;">
@@ -93,13 +97,13 @@
         </div>
 
         <div class="ctrl-box">
-            <span class="label-small">5. Master Motion (Universal)</span>
+            <span class="label-small">5. Master Motion (Unified)</span>
             <select id="masterMotion" style="width:100%; border-color:var(--accent2);">
-                <option value="petal">Petal Fall (낙화)</option>
-                <option value="noise" selected>Noise Float (부유)</option>
-                <option value="pulse">Pulse Zoom (펄스)</option>
-                <option value="spiral">Spiral Orbit (나선)</option>
-                <option value="elastic">Elastic Jitter (떨림)</option>
+                <option value="noise" selected>Noise Float (Perlin)</option>
+                <option value="petal">Petal Fall (Falling)</option>
+                <option value="bounce">Bounce Jump (Rhythmic)</option>
+                <option value="wave">Wave Drift (Oscillation)</option>
+                <option value="elastic">Elastic Jitter (Vibration)</option>
             </select>
         </div>
 
@@ -121,7 +125,6 @@
         </div>
 
         <div class="ctrl-box">
-            <span class="label-small">7. Export Session</span>
             <button class="btn primary" id="recBtn" onclick="toggleSync()" disabled>▶ START & SAVE MP4</button>
         </div>
     </div>
@@ -155,18 +158,17 @@
         overlayT += 0.015;
         
         let bands = new Array(24).fill(0), vol = 0;
-        let fullD = new Uint8Array(512);
+        let d = new Uint8Array(512);
         if (audio && audio.isPlaying()) {
             fft.analyze(); vol = ampObj.getLevel();
-            fullD = fft.getByteFrequencyData(fullD); 
-            // 24밴드 추출
+            fft.getByteFrequencyData(d);
             for(let i=0; i<24; i++) bands[i] = fft.getEnergy(pow(2, i/2.5)*20, pow(2, (i+1)/2.5)*20);
         }
 
-        // 1. BACKDROP FX (30종 중 선택된 효과)
-        drawBackdropFX(fullD);
+        // 1. BACKDROP FX ( drawingContext 전달로 createRadialGradient 에러 수정)
+        drawBackdropFX(mainCanvas.drawingContext, 1920, 1080, overlayT, d);
 
-        // 2. BG Rig
+        // 2. BG Image
         if (bgImg) {
             mainCanvas.push();
             let bSc = parseFloat(document.getElementById('bgScale').value);
@@ -175,10 +177,7 @@
             mainCanvas.pop();
         }
 
-        // 3. NATURAL ELEMENTS ( 번개, 연기 등)
-        drawNaturalElements(bands, vol);
-
-        // 4. IMAGE PARTICLES (1, 2, 3 통합 모션)
+        // 3. MASTER IMAGE MOTION
         const masterM = document.getElementById('masterMotion').value;
         for(let p of particles) {
             if (instAssets[p.group]) {
@@ -187,108 +186,97 @@
             }
         }
 
-        // WEBGL Final Output
+        // 4. Output to WEBGL
         push(); translate(-width/2, -height/2); image(mainCanvas, 0, 0); pop();
         updateUI();
     }
 
-    // --- 30종 시각 효과 통합 모듈 ---
-    function drawBackdropFX(d) {
+    // --- EFFECT HUB (30 Visualizers Logic) ---
+    function drawBackdropFX(ctx, W, H, t, freq) {
         let fx = document.getElementById('backdropFX').value;
-        if(fx === 'none') return;
+        let inten = parseFloat(document.getElementById('glowI').value);
+        ctx.globalAlpha = inten / 5;
         
-        mainCanvas.push();
-        if(fx === 'dna') drawDNA(mainCanvas, 1920, 1080, overlayT, d);
-        else if(fx === 'nebula') drawNebula(mainCanvas, 1920, 1080, overlayT, d);
-        else if(fx === 'mandala') drawMandala(mainCanvas, 1920, 1080, overlayT, d);
-        else if(fx === 'web') drawWeb(mainCanvas, 1920, 1080, overlayT, d);
-        else if(fx === 'vortex') drawVortex(mainCanvas, 1920, 1080, overlayT, d);
-        else if(fx === 'matrix') drawMatrix(mainCanvas, 1920, 1080, overlayT, d);
-        else if(fx === 'nova') drawNova(mainCanvas, 1920, 1080, overlayT, d);
-        else if(fx === 'storm') drawStorm(mainCanvas, 1920, 1080, overlayT, d);
-        else if(fx === 'warp') drawWarp(mainCanvas, 1920, 1080, overlayT, d);
-        mainCanvas.pop();
-    }
-
-    function drawNaturalElements(bands, vol) {
-        let bI = parseFloat(document.getElementById('boltI').value);
-        if(bands[20] > 200) {
-            mainCanvas.stroke(200, 255, 255, 200 * bI); mainCanvas.strokeWeight(2);
-            let lx = random(1920), ly = 0;
-            for(let i=0; i<8; i++){
-                let nx = lx+random(-80,80), ny = ly+random(50, 150);
-                mainCanvas.line(lx, ly, nx, ny); lx=nx; ly=ny;
-            }
-        }
+        if (fx === 'nebula') drawNebula(ctx, W, H, t, freq);
+        else if (fx === 'dna') drawDNA(ctx, W, H, t, freq);
+        else if (fx === 'mandala') drawMandala(ctx, W, H, t, freq);
+        else if (fx === 'web') drawWeb(ctx, W, H, t, freq);
+        else if (fx === 'vortex') drawVortex(ctx, W, H, t, freq);
+        else if (fx === 'fire') drawFire(ctx, W, H, t, freq);
+        else if (fx === 'matrix') drawMatrix(ctx, W, H, t, freq);
+        else if (fx === 'storm') drawStorm(ctx, W, H, t, freq);
+        else if (fx === 'warp') drawWarp(ctx, W, H, t, freq);
+        else if (fx === 'atomic') drawAtomic(ctx, W, H, t, freq);
+        
+        ctx.globalAlpha = 1.0;
     }
 
     class MasterParticle {
         constructor(group) {
             this.group = group; this.origin = createVector(random(1920), random(1080));
-            this.pos = this.origin.copy(); this.noiseOff = random(1000); this.angle = random(TWO_PI);
+            this.pos = this.origin.copy(); this.noiseOff = random(1000); this.vel = createVector(0,0);
         }
         update(amp, m) {
             let namp = amp/255;
             if(m === 'petal') {
-                this.pos.y += (2 + namp*10); this.pos.x += sin(frameCount*0.05 + this.noiseOff)*2;
-                if(this.pos.y > 1080) this.pos.y = -50;
+                this.pos.y += (1 + namp*8); this.pos.x += sin(frameCount*0.03 + this.noiseOff)*2;
+                if(this.pos.y > 1080) this.pos.y = -100;
             } else if(m === 'noise') {
-                this.pos.x = this.origin.x + (noise(this.noiseOff)-0.5)*namp*500;
-                this.pos.y = this.origin.y + (noise(this.noiseOff+50)-0.5)*namp*500;
-            } else if(m === 'pulse') {
-                this.pos = this.origin.copy();
-            } else if(m === 'spiral') {
-                this.angle += 0.02 + namp*0.1;
-                let r = 200 * namp;
-                this.pos.x = this.origin.x + cos(this.angle)*r;
-                this.pos.y = this.origin.y + sin(this.angle)*r;
+                this.pos.x = this.origin.x + (noise(this.noiseOff)-0.5)*namp*800;
+                this.pos.y = this.origin.y + (noise(this.noiseOff+50)-0.5)*namp*800;
+            } else if(m === 'bounce') {
+                this.pos.y = this.origin.y - abs(sin(frameCount*0.1 + this.noiseOff)*150)*namp;
+            } else if(m === 'wave') {
+                this.pos.x = this.origin.x + sin(frameCount*0.05 + this.noiseOff)*100*namp;
+                this.pos.y = this.origin.y + cos(frameCount*0.02 + this.noiseOff)*50*namp;
             } else if(m === 'elastic') {
-                this.pos.x = this.origin.x + random(-namp*30, namp*30);
-                this.pos.y = this.origin.y + random(-namp*30, namp*30);
+                this.pos.x = this.origin.x + random(-namp*40, namp*40);
+                this.pos.y = this.origin.y + random(-namp*40, namp*40);
             }
             this.noiseOff += 0.01;
         }
         display(amp, img) {
             let namp = amp/255;
             const sc = parseFloat(document.getElementById('sc'+this.group).value);
-            mainCanvas.push();
-            mainCanvas.translate(this.pos.x, this.pos.y);
-            let sz = 350 * sc * (0.6 + namp*2.5);
+            mainCanvas.push(); mainCanvas.translate(this.pos.x, this.pos.y);
+            let sz = 380 * sc * (0.6 + namp*2.4);
             mainCanvas.image(img, 0, 0, img.width*(sz/1000), img.height*(sz/1000));
             mainCanvas.pop();
         }
     }
 
-    // --- 유저 제공 drawXXX 함수 이식 (대표 5종) ---
-    function drawDNA(ctx,W,H,t,freq){
-      const cx=W/2,cy=H/2,radius=Math.min(W,H)*0.3;
-      for(let s=0;s<2;s++){ const po=(s/2)*Math.PI;
-        for(let i=0;i<64;i++){ const angle=(i/64)*Math.PI*2+t+po;
-          const amp=(freq[i%128]||0)/255; const r=radius*(0.5+amp*0.7);
-          const x=cx+Math.cos(angle)*r,y=cy+Math.sin(angle)*r*0.4+Math.sin(angle*3+t)*radius*0.15;
-          ctx.beginPath();ctx.arc(x,y,2+amp*10,0,Math.PI*2);ctx.fillStyle=`hsla(${220+s*40+amp*60},80%,65%,0.8)`;ctx.fill();
-        }
-      }
+    // --- 30종 드로우 함수 일부 이식 (ctx 기반) ---
+    function drawNebula(ctx, W, H, t, freq) {
+        let bass = freq[0]/255;
+        const grd = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, H*0.5*(1+bass));
+        grd.addColorStop(0, 'rgba(100,80,255,0.4)'); grd.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = grd; ctx.fillRect(0,0,W,H);
     }
-    function drawNebula(ctx,W,H,t,freq){
-      const cx=W/2,cy=H/2; let bass=freq[0]/255;
-      const grd=ctx.createRadialGradient(cx,cy,0,cx,cy,Math.min(W,H)*0.4*(1+bass));
-      grd.addColorStop(0,`rgba(100,80,255,0.3)`);grd.addColorStop(1,`rgba(0,0,0,0)`);
-      ctx.fillStyle=grd;ctx.fillRect(0,0,W,H);
-    }
-    function drawMatrix(ctx,W,H,t,freq){
-        ctx.fillStyle='rgba(0,5,0,0.15)';ctx.fillRect(0,0,W,H); ctx.font='14px monospace';
-        for(let i=0; i<50; i++) {
-            ctx.fillStyle=`rgba(0,255,100,0.5)`;
-            ctx.fillText(String.fromCharCode(0x30A0+Math.floor(Math.random()*96)), random(W), (frameCount*5 + i*20)%H);
+    function drawDNA(ctx, W, H, t, freq) {
+        for(let s=0; s<2; s++){ let po=(s/2)*Math.PI;
+            for(let i=0; i<48; i++){ let a=(i/48)*Math.PI*2+t+po; let amp=(freq[i%64]||0)/255;
+                let r=H*0.3*(0.5+amp*0.7); let x=W/2+Math.cos(a)*r, y=H/2+Math.sin(a)*r*0.4;
+                ctx.beginPath(); ctx.arc(x, y, 2+amp*10, 0, Math.PI*2); ctx.fillStyle=`hsla(${220+s*40},80%,70%,0.8)`; ctx.fill();
+            }
         }
     }
-    function drawStorm(ctx,W,H,t,freq){
-        if(random()>0.9) { ctx.fillStyle='rgba(255,255,255,0.1)'; ctx.fillRect(0,0,W,H); }
+    function drawMatrix(ctx, W, H, t, freq) {
+        ctx.fillStyle = 'rgba(0,10,0,0.1)'; ctx.fillRect(0,0,W,H);
+        ctx.font = '16px monospace'; ctx.fillStyle = '#0f8';
+        for(let i=0; i<30; i++) ctx.fillText(String.fromCharCode(0x30A0+Math.floor(Math.random()*96)), Math.random()*W, (t*500 + i*100)%H);
     }
-    function drawWarp(ctx,W,H,t,freq){
-        ctx.strokeStyle='white'; ctx.lineWidth=2;
-        for(let i=0; i<20; i++) { ctx.line(W/2, H/2, random(W), random(H)); }
+    function drawFire(ctx, W, H, t, freq) {
+        let bass = freq[0]/255;
+        const grd = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, 100+bass*300);
+        grd.addColorStop(0, 'rgba(255,100,0,0.6)'); grd.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = grd; ctx.fillRect(0,0,W,H);
+    }
+    function drawStorm(ctx, W, H, t, freq) {
+        if(Math.random()>0.95) { ctx.fillStyle='white'; ctx.fillRect(0,0,W,H); }
+    }
+    function drawWarp(ctx, W, H, t, freq) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth=2;
+        for(let i=0; i<20; i++){ ctx.beginPath(); ctx.moveTo(W/2, H/2); ctx.lineTo(Math.random()*W, Math.random()*H); ctx.stroke(); }
     }
 
     // 시스템 핸들러
@@ -301,7 +289,6 @@
     }
     function runAnalysis() { isAnalyzed = true; document.getElementById('recBtn').disabled = false; }
     function updateUI() { if(audio && audio.isPlaying()){ document.getElementById('progFill').style.width = (audio.currentTime()/audio.duration()*100)+'%'; } }
-    function resetFX() { mainCanvas.clear(); }
 
     async function toggleSync() {
         if (isPlaying) { audio.stop(); if (mediaRecorder) mediaRecorder.stop(); isPlaying = false; document.getElementById('recBtn').innerText = "▶ START RECORD"; }
