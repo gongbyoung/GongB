@@ -1,94 +1,97 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>Sunset Sea Animation</title>
+    <title>Sunset God Rays - Three.js</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #1a1a2e; }
-        canvas { display: block; }
+        body { margin: 0; background-color: #000; overflow: hidden; }
+        canvas { width: 100vw; height: 100vh; }
     </style>
 </head>
 <body>
-<canvas id="scene"></canvas>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
 
-<script>
-const canvas = document.getElementById('scene');
-const ctx = canvas.getContext('2d');
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-let width, height;
-let offset = 0; // 카메라 이동을 위한 변수
+        // 1. 기본 셋팅
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
 
-function resize() {
-    width = canvas.width = window.innerWidth;
-    height = canvas.height = window.innerHeight;
-}
-window.addEventListener('resize', resize);
-resize();
+        // 2. 배경 (노을빛 스카이박스 느낌)
+        scene.background = new THREE.Color(0xff5e00);
+        const fog = new THREE.FogExp2(0xff5e00, 0.002);
+        scene.fog = fog;
 
-// 구름 데이터 생성
-const clouds = Array.from({ length: 20 }, () => ({
-    x: Math.random() * width * 2,
-    y: Math.random() * (height * 0.4),
-    size: Math.random() * 100 + 50,
-    speed: Math.random() * 0.5 + 0.2
-}));
+        // 3. 바다 (반사되는 평면)
+        const waterGeo = new THREE.PlaneGeometry(1000, 1000);
+        const waterMat = new THREE.MeshStandardMaterial({ 
+            color: 0x112244, 
+            roughness: 0.1, 
+            metalness: 0.8 
+        });
+        const water = new THREE.Mesh(waterGeo, waterMat);
+        water.rotation.x = -Math.PI / 2;
+        scene.add(water);
 
-function draw() {
-    ctx.clearRect(0, 0, width, height);
-    offset += 1; // 카메라가 오른쪽으로 이동하는 느낌
+        // 4. 구름 생성 (입자형 구름)
+        const cloudParticles = [];
+        const loader = new THREE.TextureLoader();
+        // 구름 텍스처 (연기/안개 이미지 주소 필요)
+        loader.load('https://mrdoob.com/lab/javascript/threejs/clouds/cloud10.png', function(texture){
+            const cloudGeo = new THREE.PlaneGeometry(500, 500);
+            const cloudMat = new THREE.MeshLambertMaterial({
+                map: texture,
+                transparent: true,
+                opacity: 0.6
+            });
 
-    // 1. 하늘 배경 (노을빛)
-    const skyGrad = ctx.createLinearGradient(0, 0, 0, height);
-    skyGrad.addColorStop(0, '#ff7e5f');
-    skyGrad.addColorStop(0.5, '#feb47b');
-    skyGrad.addColorStop(1, '#ffac71');
-    ctx.fillStyle = skyGrad;
-    ctx.fillRect(0, 0, width, height);
+            for(let p=0; p<40; p++) {
+                const cloud = new THREE.Mesh(cloudGeo, cloudMat);
+                cloud.position.set(Math.random()*800 - 400, 200, Math.random()*500 - 500);
+                cloud.rotation.x = 1.16;
+                cloud.rotation.y = -0.12;
+                cloud.rotation.z = Math.random()*360;
+                cloud.material.opacity = 0.5;
+                cloudParticles.push(cloud);
+                scene.add(cloud);
+            }
+        });
 
-    // 2. 태양 (고정된 위치 혹은 느리게 이동)
-    const sunX = width * 0.5 - (offset * 0.2 % width);
-    const sunY = height * 0.3;
-    
-    // 빛 내리쬐는 효과 (God Rays)
-    ctx.save();
-    ctx.beginPath();
-    const rayGrad = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, height);
-    rayGrad.addColorStop(0, 'rgba(255, 255, 200, 0.5)');
-    rayGrad.addColorStop(1, 'rgba(255, 255, 200, 0)');
-    ctx.fillStyle = rayGrad;
-    ctx.arc(sunX, sunY, height, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
+        // 5. 햇살 (태양광 및 포인트 라이트)
+        const directLight = new THREE.DirectionalLight(0xffccaa, 2);
+        directLight.position.set(0, 100, -500);
+        scene.add(directLight);
 
-    // 3. 구름 그리기 (카메라 이동 반영)
-    ctx.filter = 'blur(40px)';
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-    clouds.forEach(cloud => {
-        let relX = (cloud.x - offset * cloud.speed) % (width * 2);
-        if (relX < -200) relX += width * 2;
+        // 6. 카메라 이동 애니메이션
+        camera.position.set(0, 50, 200);
         
-        ctx.beginPath();
-        ctx.arc(relX, cloud.y, cloud.size, 0, Math.PI * 2);
-        ctx.fill();
-    });
-    ctx.filter = 'none';
+        function animate() {
+            requestAnimationFrame(animate);
 
-    // 4. 바다 그리기
-    const seaY = height * 0.7;
-    const seaGrad = ctx.createLinearGradient(0, seaY, 0, height);
-    seaGrad.addColorStop(0, '#2c3e50');
-    seaGrad.addColorStop(1, '#000000');
-    ctx.fillStyle = seaGrad;
-    ctx.fillRect(0, seaY, width, height - seaY);
+            // 카메라가 옆으로 부드럽게 이동
+            camera.position.x += 0.2;
+            camera.lookAt(0, 100, -500);
 
-    // 바다 위 반사광
-    ctx.fillStyle = 'rgba(255, 215, 0, 0.2)';
-    ctx.fillRect(sunX - 50, seaY, 100, height - seaY);
+            // 구름이 흐르는 효과
+            cloudParticles.forEach(p => {
+                p.rotation.z -= 0.001;
+            });
 
-    requestAnimationFrame(draw);
-}
+            renderer.render(scene, camera);
+        }
 
-draw();
-</script>
+        animate();
+    </script>
 </body>
 </html>
