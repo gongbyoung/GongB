@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SPECTRUM NATURAL v18.0.002</title>
+    <title>SPECTRUM NATURAL v18.0.003 — Performance Fix</title>
     <link rel="icon" href="data:,">
     <script src="p5.min.js"></script>
     <script src="p5.sound.min.js"></script>
@@ -37,7 +37,7 @@
 <body>
 
 <div class="topbar">
-    <div class="logo">SPECTRUM NATURAL v18.0.002</div>
+    <div class="logo">SPECTRUM NATURAL v18.0.003</div>
     <div id="timeCode">00:00 / 00:00</div>
 </div>
 
@@ -47,21 +47,21 @@
             <span class="label-small">1. Audio Analysis</span>
             <button class="btn" onclick="document.getElementById('mIn').click()">SELECT MP3 FILE</button>
             <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleFile(this.files)">
-            <button class="btn" id="analyzeBtn" onclick="runAnalysis()" disabled style="border-color:#ffcc00; color:#ffcc00; margin-top:5px; height:auto; padding:10px;">PRE-ANALYZE & START</button>
+            <button class="btn" id="analyzeBtn" onclick="runAnalysis()" disabled style="border-color:#ffcc00; color:#ffcc00; margin-top:5px; height:auto; padding:8px;">PRE-ANALYZE & START</button>
         </div>
 
         <div class="ctrl-box">
-            <span class="label-small">2. Natural Elements (Intensity)</span>
+            <span class="label-small">2. Natural Elements</span>
             <div class="control-group"><label>LIGHTNING STRENGTH <span class="val-label" id="vBolt">1.0</span></label><input type="range" id="boltI" min="0" max="3" step="0.1" value="1.0"></div>
             <div class="control-group"><label>SMOKE DENSITY <span class="val-label" id="vSmoke">1.0</span></label><input type="range" id="smokeI" min="0" max="3" step="0.1" value="1.0"></div>
             <div class="control-group"><label>WAVE AMPLITUDE <span class="val-label" id="vWave">1.0</span></label><input type="range" id="waveI" min="0" max="3" step="0.1" value="1.0"></div>
         </div>
         
         <div class="ctrl-box">
-            <span class="label-small">3. Style & VFX Theme</span>
+            <span class="label-small">3. Global Style Intensity</span>
             <select id="colorTheme"><option value="cyberpunk">Cyberpunk</option><option value="pastel">Pastel</option></select>
             <div class="control-group" style="margin-top:10px;">
-                <label>STYLE INTENSITY (GLOW) <span class="val-label" id="vGlowI">1.5</span></label>
+                <label>GLOW BLOOM INTEN. <span class="val-label" id="vGlowI">1.5</span></label>
                 <input type="range" id="glowI" min="0" max="5" step="0.1" value="1.5">
             </div>
         </div>
@@ -81,13 +81,13 @@
         </div>
 
         <div class="ctrl-box">
-            <span class="label-small">5. Image Assets (Scatters)</span>
+            <span class="label-small">5. Instrument Scatters</span>
             <div class="inst-row">
                 <div class="inst-header"><span>KICK</span><button class="btn" id="btnI0" onclick="openL('i0')">LOAD</button><select id="m0"><option value="petal">Petal Fall</option><option value="noise">Noise Fly</option><option value="sunray">Sunray Glow</option><option value="scatter">Scatter Build</option><option value="invert">Freq Invert</option></select></div>
-                <div class="control-group"><input type="range" id="sc0" min="0.1" max="3.0" step="0.1" value="1.0" title="Scale"><input type="range" id="str0" min="0" max="3.0" step="0.1" value="1.0" title="Strength"></div>
+                <div class="control-group"><input type="range" id="sc0" min="0.1" max="3.0" step="0.1" value="1.0"><input type="range" id="str0" min="0" max="3.0" step="0.1" value="1.0"></div>
             </div>
             <div class="inst-row">
-                <div class="inst-header"><span>SNARE</span><button class="btn" id="btnI1" onclick="openL('i1')">LOAD</button><select id="m1"><option value="noise">Noise Fly</option><option value="petal">Petal Fall</option><option value="sunray">Sunray Glow</option><option value="ripple">Ripple Wave</option></select></div>
+                <div class="inst-header"><span>SNARE</span><button class="btn" id="btnI1" onclick="openL('i1')">LOAD</button><select id="m1"><option value="noise">Noise Fly</option><option value="petal">Petal Fall</option><option value="ripple">Ripple Wave</option></select></div>
                 <div class="control-group"><input type="range" id="sc1" min="0.1" max="3.0" step="0.1" value="1.0"><input type="range" id="str1" min="0" max="3.0" step="0.1" value="1.0"></div>
             </div>
             <div class="inst-row">
@@ -98,8 +98,7 @@
         </div>
 
         <div class="ctrl-box">
-            <span class="label-small">6. Dynamics & Record</span>
-            <div class="control-group"><label>GRAVITY <span class="val-label" id="vGrav">0.0</span></label><input type="range" id="grav" min="0" max="1" step="0.05" value="0"></div>
+            <span class="label-small">6. Recording Session</span>
             <button class="btn primary" id="recBtn" onclick="toggleSync()" disabled>▶ START & SAVE MP4</button>
         </div>
     </div>
@@ -112,12 +111,16 @@
     let particles = [];
 
     function setup() {
+        // RTX 5070 Ti 파워를 고려한 고해상도 캔버스 설정
         let cnv = createCanvas(1920, 1080, WEBGL);
         cnv.parent('p5-container');
         canvasRef = cnv.elt;
+        
+        // willReadFrequently 최적화를 위해 mainCanvas 속성 조정
         mainCanvas = createGraphics(1920, 1080);
         mainCanvas.colorMode(RGB, 255);
         mainCanvas.imageMode(CENTER);
+        
         fft = new p5.FFT(0.8, 256);
         ampObj = new p5.Amplitude();
         initParticles();
@@ -129,9 +132,8 @@
     }
 
     function draw() {
-        // WEBGL 모드 클리어
         background(0);
-        mainCanvas.background(2, 2, 8, 45);
+        mainCanvas.background(2, 2, 8, 50); // 트레일 효과 병목 완화
         
         let bands = new Array(24).fill(0), vol = 0;
         if (audio && audio.isPlaying()) {
@@ -139,52 +141,42 @@
             for(let i=0; i<24; i++) bands[i] = fft.getEnergy(pow(2, i/2)*20, pow(2, (i+1)/2)*20) / 255;
         }
 
-        // 1. 배경 렌더링
         if (bgImg) {
             mainCanvas.push(); mainCanvas.translate(width/2, height/2);
             let bSc = parseFloat(document.getElementById('bgScale').value);
-            mainCanvas.image(bgImg, 0, 0, width*bSc*(1+bands[2]*0.03), height*bSc*(1+bands[2]*0.03));
+            mainCanvas.image(bgImg, 0, 0, width*bSc*(1+bands[2]*0.02), height*bSc*(1+bands[2]*0.02));
             mainCanvas.pop();
         }
 
-        // 2. 자연 현상 효과 (v18 Base)
-        drawNaturalElements(bands, vol);
-
-        // 3. 입자/모션 렌더링
-        const grav = parseFloat(document.getElementById('grav').value);
+        // [핵심] 이미지가 로드된 슬롯만 연산 및 출력
         for(let p of particles) {
-            let midIdx = p.group;
-            p.update(bands[midIdx*4]||0, grav);
-            p.display(bands[midIdx*4]||0, instAssets[p.group]);
+            if (instAssets[p.group]) { // 이미지가 로드된 상태인지 체크
+                p.update(bands[p.group*4]||0);
+                p.display(bands[p.group*4]||0, instAssets[p.group]);
+            }
         }
 
-        // 4. 메인 캔버스를 WEBGL 화면으로 전송
-        push();
-        translate(-width/2, -height/2);
-        image(mainCanvas, 0, 0);
-        pop();
-        
+        // WEBGL 화면 출력
+        push(); translate(-width/2, -height/2); image(mainCanvas, 0, 0); pop();
         updateUI();
     }
 
     class MasterParticle {
         constructor(group) {
             this.group = group; this.origin = createVector(random(width), random(height));
-            this.pos = this.origin.copy(); this.vel = createVector(0,0);
-            this.angle = random(TWO_PI); this.noiseOff = random(1000);
+            this.pos = this.origin.copy(); this.noiseOff = random(1000);
         }
-        update(amp, grav) {
+        update(amp) {
             const m = document.getElementById('m'+this.group).value;
             const str = parseFloat(document.getElementById('str'+this.group).value);
-            let push = amp * str * 10;
-
             if(m === 'petal') {
-                this.pos.y += (1 + amp*5) * str; this.pos.x += sin(frameCount*0.05 + this.noiseOff)*2;
+                this.pos.y += (2 + amp*8) * str; this.pos.x += sin(frameCount*0.05 + this.noiseOff)*2;
                 if(this.pos.y > height) this.pos.y = -50;
             } else if(m === 'noise') {
-                this.pos.x += (noise(this.noiseOff)-0.5)*push*15; this.pos.y += (noise(this.noiseOff+50)-0.5)*push*15;
+                this.pos.x += (noise(this.noiseOff)-0.5)*amp*str*50;
+                this.pos.y += (noise(this.noiseOff+50)-0.5)*amp*str*50;
             } else if(m === 'scatter') {
-                let target = (amp > 0.8) ? this.origin : createVector(this.origin.x+random(-200,200), this.origin.y+random(-200,200));
+                let target = (amp > 0.7) ? this.origin : createVector(this.origin.x+random(-150,150), this.origin.y+random(-150,150));
                 this.pos.lerp(target, 0.1);
             }
             this.noiseOff += 0.01;
@@ -194,28 +186,11 @@
             const m = document.getElementById('m'+this.group).value;
             mainCanvas.push();
             mainCanvas.translate(this.pos.x, this.pos.y);
+            // Invert 필터는 무거우므로 조건부 실행
             if(m === 'invert' && amp > 0.8) mainCanvas.filter(INVERT);
-            if(img) {
-                let sz = 250 * sc * (0.8 + amp*2);
-                mainCanvas.image(img, 0, 0, img.width*(sz/900), img.height*(sz/900));
-            } else {
-                mainCanvas.fill(0, 255, 204, 150); mainCanvas.ellipse(0,0,30,30);
-            }
+            let sz = 280 * sc * (0.8 + amp*2);
+            mainCanvas.image(img, 0, 0, img.width*(sz/900), img.height*(sz/900));
             mainCanvas.pop();
-        }
-    }
-
-    function drawNaturalElements(bands, vol) {
-        let gI = parseFloat(document.getElementById('glowI').value);
-        // Lightning (Step 1,4)
-        if(bands[20] > 0.8) {
-            mainCanvas.stroke(255, 255, 255, 200 * gI);
-            mainCanvas.strokeWeight(2);
-            let lx = random(width), ly = 0;
-            for(let i=0; i<10; i++){
-                let nx = lx + random(-50,50), ny = ly + random(50, 150);
-                mainCanvas.line(lx, ly, nx, ny); lx = nx; ly = ny;
-            }
         }
     }
 
@@ -224,11 +199,13 @@
     function handleFile(files) { audio = loadSound(URL.createObjectURL(files[0]), () => { document.getElementById('analyzeBtn').disabled = false; }); }
     function handleBG(files) { loadImage(URL.createObjectURL(files[0]), (img) => { bgImg = img; setBtnThumb('btnBg', files[0]); }); }
     function loadAsset(id, files) { loadImage(URL.createObjectURL(files[0]), (img) => { instAssets[id] = img; setBtnThumb('btnI'+id, files[0]); }); }
+    
     function setBtnThumb(btnId, file) {
         let reader = new FileReader();
         reader.onload = e => { document.getElementById(btnId).style.backgroundImage = `url(${e.target.result})`; document.getElementById(btnId).innerText = ""; }
         reader.readAsDataURL(file);
     }
+    
     function runAnalysis() { isAnalyzed = true; document.getElementById('recBtn').disabled = false; }
     function updateUI() { if(audio && audio.isPlaying()){ document.getElementById('progFill').style.width = (audio.currentTime()/audio.duration()*100)+'%'; } }
 
@@ -237,9 +214,9 @@
         else {
             if (getAudioContext().state === 'suspended') await userStartAudio();
             recordedChunks = []; const stream = canvasRef.captureStream(24);
-            const dest = getAudioContext().createMediaStreamDestination(); p5.soundOut.output.connect(dest);
-            const combined = new MediaStream([...stream.getVideoTracks(), ...dest.stream.getAudioTracks()]);
-            mediaRecorder = new MediaRecorder(combined, { mimeType: 'video/webm; codecs=vp9,opus', videoBitsPerSecond: 80000000 });
+            const combined = new MediaStream([...stream.getVideoTracks(), ...p5.soundOut.output.connect(getAudioContext().createMediaStreamDestination()).stream.getAudioTracks()]);
+            // RTX 성능을 고려한 고화질 비트레이트 설정
+            mediaRecorder = new MediaRecorder(combined, { mimeType: 'video/webm; codecs=vp9,opus', videoBitsPerSecond: 40000000 });
             mediaRecorder.ondataavailable = e => recordedChunks.push(e.data);
             mediaRecorder.onstop = () => { 
                 const n = new Date();
@@ -250,7 +227,7 @@
         }
     }
 
-    const sL = ['boltI','smokeI','waveI','glowI','bgScale','sc0','str0','sc1','str1','sc2','str2','grav'];
+    const sL = ['boltI','smokeI','waveI','glowI','bgScale','sc0','str0','sc1','str1','sc2','str2'];
     sL.forEach(id => {
         let el = document.getElementById(id);
         if(el) el.oninput = function() { 
