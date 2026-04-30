@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>SPECTRUM STUDIO v21.1.5 — Final FX Fix</title>
+    <title>SPECTRUM STUDIO v21.1.6 — Ultra Customizer</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <script src="fx_library.js" onload="isLibraryReady = true;"></script>
@@ -23,12 +23,15 @@
         .log-panel { background:#000; border:1px solid #222; border-radius:4px; padding:10px; flex:1; overflow-y:auto; font-family: monospace; font-size:10px; color: #888; }
         .log-data { color: #f1c40f; }
         .btn { background:transparent; border:1px solid var(--border); border-radius:4px; color:#fff; padding:6px; cursor:pointer; font-size:9px; width:100%; height: 32px; margin-bottom:5px; transition: 0.2s; }
+        .btn:hover:not(:disabled) { border-color: var(--accent); background: rgba(0,255,204,0.05); }
+        select, input[type=text] { width:100%; background:#000; color:var(--accent); border:1px solid var(--border); padding:5px; font-size:10px; margin-bottom:5px; border-radius:4px; outline:none; }
+        input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; height:2px; margin: 10px 0; }
     </style>
 </head>
 <body>
 
 <div class="topbar">
-    <div style="letter-spacing:4px; color:var(--accent); font-weight:bold; font-size:14px;">SPECTRUM STUDIO v21.1.5</div>
+    <div style="letter-spacing:4px; color:var(--accent); font-weight:bold; font-size:14px;">SPECTRUM STUDIO v21.1.6</div>
     <div id="timeCode">00:00 / 00:00</div>
 </div>
 
@@ -42,6 +45,7 @@
         <div class="ctrl-box">
             <span style="font-size:9px; color:var(--accent);">2. SYSTEM ENGINE</span>
             <button class="btn" id="analyzeBtn" onclick="activateEngine()" disabled>⚡ PRE-ANALYZE AUDIO</button>
+            <div id="engineStatus" style="font-size:8px; text-align:center; margin-top:5px; color:#555;">IDLE</div>
         </div>
     </div>
 
@@ -49,12 +53,39 @@
 
     <div class="side-panel">
         <div class="ctrl-box">
-            <span style="font-size:9px; color:var(--accent);">3. LIVE PARAMETERS</span>
+            <span style="font-size:9px; color:var(--accent);">3. CUSTOM SETTINGS</span>
+            <label style="font-size:8px;">ART STYLE</label>
+            <select id="artStyle">
+                <option value="hue">Standard HUE</option>
+                <option value="shadow">Shadow & Glow</option>
+                <option value="pastel">Soft Pastel</option>
+                <option value="bw">Monochrome</option>
+                <option value="random">Chaotic Random</option>
+            </select>
+            
+            <label style="font-size:8px;">BACKGROUND COLOR</label>
+            <div style="display:flex; gap:5px; margin-bottom:10px;">
+                <button class="btn" onclick="setBG('black')" style="background:#000;">Black</button>
+                <button class="btn" onclick="setBG('white')" style="background:#fff; color:#000;">White</button>
+                <button class="btn" onclick="setBG('gray')" style="background:#333;">Gray</button>
+            </div>
+
+            <label style="font-size:8px;">FOCUS FREQUENCY (BASS~HIGH)</label>
+            <select id="focusFreq">
+                <option value="0">Bass Focus (B1)</option>
+                <option value="5">Mid Focus (B6)</option>
+                <option value="11">High Focus (B12)</option>
+            </select>
+        </div>
+
+        <div class="ctrl-box">
+            <span style="font-size:9px; color:var(--accent);">4. LIVE PARAMETERS</span>
             <label style="font-size:8px;">P1: DENSITY</label><input type="range" id="fxP1" min="1" max="100" value="25">
             <label style="font-size:8px;">P2: SCALE/SPEED</label><input type="range" id="fxP2" min="0.1" max="10.0" step="0.1" value="2.0">
             <label style="font-size:8px;">P3: ALPHA</label><input type="range" id="fxP3" min="1" max="255" value="180">
             <label style="font-size:8px;">HUE</label><input type="range" id="fxHue" min="0" max="360" value="200">
         </div>
+        
         <div class="ctrl-box">
             <button class="btn" onclick="saveThumbnail()">📷 SAVE PALETTE PNG</button>
             <button class="btn" onclick="document.getElementById('mIn').click()">1. LOAD MP3</button>
@@ -68,6 +99,7 @@
 <script>
     let audio, fft, canvasRef, bgCanvas, isPlaying = false, currentFXId = '';
     let isEngineActive = false, lastDataLogTime = 0;
+    let bgColor = [2, 2, 8]; // 초기 검정 배경
 
     function addLog(msg, type = 'info') {
         const p = document.getElementById('logPanel');
@@ -75,7 +107,14 @@
         e.className = `log-entry log-${type}`;
         e.innerText = `> ${msg}`;
         p.appendChild(e); p.scrollTop = p.scrollHeight;
-        if(p.childNodes.length > 50) p.removeChild(p.childNodes[0]);
+        if(p.childNodes.length > 30) p.removeChild(p.childNodes[0]);
+    }
+
+    function setBG(mode) {
+        if(mode === 'black') bgColor = [2, 2, 8];
+        else if(mode === 'white') bgColor = [0, 0, 100];
+        else if(mode === 'gray') bgColor = [0, 0, 20];
+        addLog(`Background changed: ${mode}`);
     }
 
     function setup() {
@@ -86,7 +125,7 @@
         
         let check = setInterval(() => {
             if(window.FX_ENGINES) {
-                addLog(`Engine Ready: 32 FX detected.`, "success");
+                addLog(`v21.1.6 Engine Booted. 32 FX ready.`, "success");
                 generateUI();
                 clearInterval(check);
             }
@@ -99,7 +138,7 @@
         keys.forEach(id => {
             let b = document.createElement('div'); b.className = 'fx-thumb'; b.id = 'fxBtn_' + id;
             b.setAttribute('data-name', id.toUpperCase());
-            b.onclick = () => { currentFXId = id; document.querySelectorAll('.fx-thumb').forEach(el => el.classList.remove('active')); b.classList.add('active'); addLog(`FX: [${id.toUpperCase()}]`); };
+            b.onclick = () => { currentFXId = id; document.querySelectorAll('.fx-thumb').forEach(el => el.classList.remove('active')); b.classList.add('active'); addLog(`FX Switch: ${id}`); };
             grid.appendChild(b);
         });
         if (keys.length > 0) { currentFXId = keys[0]; document.getElementById('fxBtn_' + currentFXId).classList.add('active'); syncThumbnails(); }
@@ -116,12 +155,14 @@
     }
 
     function activateEngine() {
-        userStartAudio().then(() => { isEngineActive = true; addLog("WEBGL Optimized Rendering Active.", "success"); document.getElementById('analyzeBtn').innerText = "✅ ANALYZE ACTIVE"; document.getElementById('recBtn').disabled = false; });
+        userStartAudio().then(() => { isEngineActive = true; addLog("WEBGL Core Active.", "success"); document.getElementById('analyzeBtn').innerText = "✅ ANALYZE ACTIVE"; document.getElementById('recBtn').disabled = false; });
     }
 
     function draw() {
-        background(2, 2, 8); bgCanvas.clear();
+        background(bgColor[0], bgColor[1], bgColor[2]); 
+        bgCanvas.clear();
         let bands = new Array(12).fill(0);
+        let fI = 1.0;
 
         if (isEngineActive && audio && audio.isPlaying()) {
             let spectrum = fft.analyze();
@@ -132,16 +173,25 @@
                     let bandSum = 0; for (let j = start; j < end; j++) bandSum += spectrum[j];
                     bands[i] = bandSum / (end - start || 1);
                 }
+                // [신규] 주파수 교체(Focus) 기능 로직
+                const fIdx = parseInt(document.getElementById('focusFreq').value);
+                fI = map(bands[fIdx], 0, 255, 0.5, 3.0); 
             }
         }
 
-        if (isEngineActive && audio && audio.isPlaying() && millis() - lastDataLogTime > 1500) {
-            addLog(`[AUDIO DATA] ${bands.map(v => floor(v)).join("|")}`, "data");
+        if (isEngineActive && audio && audio.isPlaying() && millis() - lastDataLogTime > 2000) {
+            addLog(`[STREAM] FocusFreq Value: ${floor(bands[parseInt(document.getElementById('focusFreq').value)])}`, "data");
             lastDataLogTime = millis();
         }
 
         if (window.FX_ENGINES && window.FX_ENGINES[currentFXId]) {
-            window.FX_ENGINES[currentFXId](bgCanvas, frameCount * 0.02, bands, 1.5, parseFloat(document.getElementById('fxHue').value), "hue", parseFloat(document.getElementById('fxP1').value), parseFloat(document.getElementById('fxP2').value), parseFloat(document.getElementById('fxP3').value));
+            // [복구] Art Style 파라미터 전달[cite: 1]
+            window.FX_ENGINES[currentFXId](bgCanvas, frameCount * 0.02, bands, fI, 
+                   parseFloat(document.getElementById('fxHue').value), 
+                   document.getElementById('artStyle').value, 
+                   parseFloat(document.getElementById('fxP1').value), 
+                   parseFloat(document.getElementById('fxP2').value), 
+                   parseFloat(document.getElementById('fxP3').value));
         }
 
         push(); translate(-width/2, -height/2); image(bgCanvas, 0, 0); pop();
@@ -152,7 +202,7 @@
         }
     }
 
-    function handleFile(files) { audio = loadSound(URL.createObjectURL(files[0]), () => { document.getElementById('analyzeBtn').disabled = false; addLog("MP3 Ready."); }); }
+    function handleFile(files) { audio = loadSound(URL.createObjectURL(files[0]), () => { document.getElementById('analyzeBtn').disabled = false; addLog("MP3 Loaded."); }); }
     function saveThumbnail() { saveCanvas(canvasRef, 'palette_'+currentFXId, 'png'); addLog("Thumb Saved."); }
     async function toggleSync() { if (isPlaying) { audio.stop(); isPlaying = false; } else { audio.play(); isPlaying = true; } }
 </script>
