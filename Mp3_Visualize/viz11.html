@@ -2,132 +2,153 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>MOTION TYPO STUDIO v21.4.0</title>
+    <title>TYPO EDITOR STUDIO v21.6.0</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <style>
-        :root{ --bg:#08080c; --accent:#00ffcc; --panel:#15151e; --text:#e0f0ff; --record:#ff3377; }
+        :root{ --bg:#050508; --accent:#00ffcc; --panel:#0e0e15; --text:#fff; --record:#ff3377; }
         body{ background:var(--bg); color:var(--text); margin:0; overflow:hidden; font-family:'Pretendard', sans-serif; display:flex; }
-        #ctrl-panel { width:340px; background:var(--panel); height:100vh; padding:20px; border-right:1px solid rgba(0,255,204,0.2); z-index:10; overflow-y:auto; }
+        
+        /* 왼쪽 에디터 패널 */
+        #editor-panel { width:450px; background:var(--panel); height:100vh; padding:15px; border-right:1px solid rgba(0,255,204,0.2); z-index:10; display:flex; flex-direction:column; }
+        #subtitle-list { flex:1; overflow-y:auto; margin-top:15px; padding-right:5px; scrollbar-width:thin; }
+        
+        /* 가사 줄별 설정 박스 */
+        .sub-item { background:rgba(255,255,255,0.03); border:1px solid #333; border-radius:6px; padding:12px; margin-bottom:10px; font-size:11px; }
+        .sub-item.active { border-color:var(--accent); background:rgba(0,255,204,0.05); }
+        .sub-text { color:var(--accent); font-weight:bold; margin-bottom:8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        
+        /* 컨트롤 요소 */
+        .grid-ctrl { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        label { font-size:9px; color:#888; display:block; margin-top:5px; }
+        select, input { width:100%; background:#000; color:#fff; border:1px solid #444; padding:4px; font-size:10px; border-radius:3px; outline:none; }
+        input[type=range] { accent-color:var(--accent); height:2px; }
+
         #canvas-container { flex:1; position:relative; display:flex; align-items:center; justify-content:center; background:#000; }
-        .box { background:rgba(255,255,255,0.03); padding:15px; border-radius:8px; margin-bottom:15px; border:1px solid rgba(255,255,255,0.1); }
-        h3 { font-size:11px; color:var(--accent); margin-bottom:10px; letter-spacing:2px; text-transform:uppercase; }
-        .btn { width:100%; padding:12px; background:transparent; border:1px solid var(--accent); color:var(--accent); cursor:pointer; margin-bottom:8px; font-size:11px; transition:0.3s; border-radius:4px; }
+        .top-btns { display:flex; gap:5px; }
+        .btn { flex:1; padding:10px; background:transparent; border:1px solid var(--accent); color:var(--accent); cursor:pointer; font-size:10px; border-radius:4px; }
         .btn:hover { background:rgba(0,255,204,0.1); }
-        .btn-rec { border-color:var(--record); color:var(--record); font-weight:bold; }
-        .btn-rec.active { background:var(--record); color:#fff; animation: blink 1s infinite; }
-        @keyframes blink { 50% { opacity: 0.6; } }
-        label { font-size:10px; color:#888; display:block; margin-bottom:5px; }
-        input[type=range] { width:100%; accent-color:var(--accent); margin-bottom:15px; cursor:pointer; }
-        #log { font-family:'Courier New', monospace; font-size:10px; color:#6a6a7a; height:120px; overflow-y:auto; background:#000; padding:10px; border-radius:4px; line-height:1.5; }
+        .btn-rec { border-color:var(--record); color:var(--record); }
     </style>
 </head>
 <body>
 
-<div id="ctrl-panel">
-    <div class="box">
-        <h3>1. SOURCE FILES</h3>
-        <button class="btn" onclick="document.getElementById('mIn').click()">🎵 LOAD MP3</button>
-        <button class="btn" onclick="document.getElementById('sIn').click()">📝 LOAD SRT (TAGS)</button>
-        <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleAudio(this.files)">
-        <input type="file" id="sIn" accept=".srt" style="display:none" onchange="handleSRT(this.files)">
+<div id="editor-panel">
+    <div class="top-btns">
+        <button class="btn" onclick="document.getElementById('mIn').click()">🎵 AUDIO</button>
+        <button class="btn" onclick="document.getElementById('sIn').click()">📝 SRT</button>
+        <button class="btn btn-rec" id="recBtn" onclick="toggleRecord()" disabled>🔴 REC</button>
     </div>
-
-    <div class="box">
-        <h3>2. GLOBAL STYLING</h3>
-        <label>BASE FONT SIZE</label><input type="range" id="baseSize" min="20" max="200" value="70">
-        <label>GLOW INTENSITY</label><input type="range" id="glowPwr" min="0" max="50" value="20">
-        <label>MOTION SMOOTHING</label><input type="range" id="smooth" min="1" max="20" value="10">
-    </div>
-
-    <div class="box">
-        <h3>3. EXPORT / RECORD</h3>
-        <button class="btn btn-rec" id="recBtn" onclick="toggleRecord()" disabled>🔴 START RECORDING</button>
-        <div id="log">> Awaiting Files...</div>
-    </div>
+    <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleAudio(this.files)">
+    <input type="file" id="sIn" accept=".srt" style="display:none" onchange="handleSRT(this.files)">
     
-    <button class="btn" id="playBtn" onclick="togglePlay()" disabled style="background:var(--accent); color:#000; font-weight:bold;">▶ START PRODUCTION</button>
+    <button class="btn" id="playBtn" onclick="togglePlay()" disabled style="background:var(--accent); color:#000; margin-top:10px; font-weight:bold;">▶ START PRODUCTION</button>
+
+    <div id="subtitle-list">
+        <div style="text-align:center; color:#555; margin-top:50px;">Load SRT to start editing...</div>
+    </div>
 </div>
 
 <div id="canvas-container"></div>
 
 <script>
     let audio, fft, subCanvas;
-    let subtitles = [];
+    let subtitles = []; // 시간 데이터 전용
+    let settings = [];  // UI 설정 데이터 전용
     let isPlaying = false, isRecording = false;
     let mediaRecorder, recordedChunks = [];
 
-    function addLog(m) { 
-        const l = document.getElementById('log');
-        l.innerHTML = `[${new Date().toLocaleTimeString()}] ${m}<br>` + l.innerHTML;
-    }
-
     function setup() {
-        let cnv = createCanvas(1280, 720, WEBGL); // 720p 영상 기준
+        let cnv = createCanvas(1280, 720, WEBGL);
         cnv.parent('canvas-container');
-        
-        // 가사 렌더링용 고해상도 2D 버퍼
-        subCanvas = createGraphics(1280, 720);
-        subCanvas.textAlign(CENTER, CENTER);
+        subCanvas = createGraphics(1280, 720, WEBGL);
         subCanvas.colorMode(HSB, 360, 100, 100, 100);
-        
         fft = new p5.FFT();
-        addLog("Engine v21.4.0 Initialized.");
     }
 
     function draw() {
-        background(5);
+        background(2);
         subCanvas.clear();
 
-        fft.analyze();
-        let bass = fft.getEnergy("bass");
-        let mid = fft.getEnergy("mid");
-        let high = fft.getEnergy("treble");
-
         if (audio && audio.isPlaying()) {
-            renderSubtitles(audio.currentTime(), bass, mid, high);
+            fft.analyze();
+            renderTypo(audio.currentTime());
         }
 
-        // 메인 캔버스에 결과물 투사
         push();
         translate(-width/2, -height/2);
         image(subCanvas, 0, 0);
         pop();
     }
 
-    // --- 1. SRT 파서 (줄 분석 및 태그 추출) ---
+    // --- 1. SRT 로드 및 UI 리스트 생성 ---
     function handleSRT(files) {
         const reader = new FileReader();
         reader.onload = (e) => {
-            const lines = e.target.result.replace(/\r/g, '').split('\n\n');
-            subtitles = lines.map(block => {
-                const parts = block.split('\n');
-                if(parts.length < 3) return null;
-                const timeMatch = parts[1].split(' --> ');
-                const textRaw = parts.slice(2).join(' ');
+            const blocks = e.target.result.replace(/\r/g, '').split('\n\n');
+            subtitles = [];
+            settings = [];
+            const listEl = document.getElementById('subtitle-list');
+            listEl.innerHTML = '';
+
+            blocks.forEach((block, i) => {
+                const lines = block.split('\n');
+                if (lines.length < 3) return;
+                const times = lines[1].split(' --> ');
+                const text = lines.slice(2).join(' ').trim();
+
+                // 1. 데이터 저장
+                subtitles.push({ start: timeToSec(times[0]), end: timeToSec(times[1]), text: text });
                 
-                return {
-                    start: timeToSec(timeMatch[0]),
-                    end: timeToSec(timeMatch[1]),
-                    text: textRaw.replace(/\[.*?\]/g, '').trim(),
-                    // 태그 분석[cite: 1]
-                    x: parseTag(textRaw, 'X', 0),
-                    y: parseTag(textRaw, 'Y', 0),
-                    size: parseTag(textRaw, 'S', 0),
-                    motion: parseTag(textRaw, 'M', 'Pulse'),
-                    font: parseTag(textRaw, 'F', 'sans-serif')
-                };
-            }).filter(s => s !== null);
-            addLog(`Analysis Complete: ${subtitles.length} Lyric Lines Loaded.`);
+                // 2. 초기 설정값
+                const config = { motion: 'Fade', size: 70, x: 0, y: 200, hue: 180, rot: 0 };
+                settings.push(config);
+
+                // 3. UI 요소 생성
+                const item = document.createElement('div');
+                item.className = 'sub-item';
+                item.id = `item-${i}`;
+                item.innerHTML = `
+                    <div class="sub-text">${i+1}. ${text}</div>
+                    <div class="grid-ctrl">
+                        <div>
+                            <label>MOTION</label>
+                            <select onchange="updateSet(${i}, 'motion', this.value)">
+                                <option value="Fade">Fade</option>
+                                <option value="Typing">Typing</option>
+                                <option value="Pulse">Pulse (Bass)</option>
+                                <option value="Float">Float</option>
+                                <option value="3D">3D Spin</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label>SIZE</label>
+                            <input type="range" min="20" max="250" value="70" oninput="updateSet(${i}, 'size', this.value)">
+                        </div>
+                        <div>
+                            <label>POS X / Y</label>
+                            <div style="display:flex; gap:2px;">
+                                <input type="number" value="0" oninput="updateSet(${i}, 'x', this.value)">
+                                <input type="number" value="200" oninput="updateSet(${i}, 'y', this.value)">
+                            </div>
+                        </div>
+                        <div>
+                            <label>HUE / ROTATION</label>
+                            <div style="display:flex; gap:2px;">
+                                <input type="range" min="0" max="360" value="180" oninput="updateSet(${i}, 'hue', this.value)">
+                                <input type="range" min="-180" max="180" value="0" oninput="updateSet(${i}, 'rot', this.value)">
+                            </div>
+                        </div>
+                    </div>
+                `;
+                listEl.appendChild(item);
+            });
         };
         reader.readAsText(files[0]);
     }
 
-    function parseTag(str, key, def) {
-        let match = str.match(new RegExp(`\\[${key}:(.*?)\\]`));
-        if (!match) return def;
-        let val = match[1];
-        return isNaN(val) ? val : parseFloat(val);
+    function updateSet(idx, key, val) {
+        settings[idx][key] = isNaN(val) ? val : parseFloat(val);
     }
 
     function timeToSec(t) {
@@ -135,81 +156,77 @@
         return parseInt(p[0]) * 3600 + parseInt(p[1]) * 60 + parseFloat(p[2].replace(',', '.'));
     }
 
-    // --- 2 & 3. 모션 그래픽 및 스타일 적용 ---
-    function renderSubtitles(curr, b, m, h) {
-        let active = subtitles.find(s => curr >= s.start && curr <= s.end);
-        
-        if (active) {
-            let baseSize = parseFloat(document.getElementById('baseSize').value);
-            let glow = parseFloat(document.getElementById('glowPwr').value);
+    // --- 2. 설정된 UI 기반 렌더링 ---
+    function renderTypo(curr) {
+        let idx = subtitles.findIndex(s => curr >= s.start && curr <= s.end);
+        if (idx === -1) return;
 
-            subCanvas.push();
-            subCanvas.translate(width/2 + active.x, height/2 + active.y);
-            
-            // 모션 로직 분기[cite: 1]
-            let mScale = 1.0;
-            if (active.motion === 'Pulse') mScale = 1.0 + (b / 255) * 0.2;
-            if (active.motion === 'Shake') subCanvas.translate(random(-2,2), random(-2,2));
-            if (active.motion === 'Float') subCanvas.translate(0, sin(frameCount * 0.1) * 20);
-            
-            subCanvas.scale(mScale);
-            
-            // 스타일 적용
-            subCanvas.textFont(active.font);
-            subCanvas.textSize(active.size || baseSize);
-            subCanvas.fill(255);
-            
-            // 텍스트 글로우 (네온 효과)
-            subCanvas.drawingContext.shadowBlur = glow + (b/10);
-            subCanvas.drawingContext.shadowColor = '#00ffcc';
-            
-            subCanvas.text(active.text, 0, 0);
-            subCanvas.pop();
+        let sub = subtitles[idx];
+        let set = settings[idx];
+        let progress = map(curr, sub.start, sub.end, 0, 1);
+        let bass = fft.getEnergy("bass");
+
+        // 현재 가사 리스트 하이라이트
+        document.querySelectorAll('.sub-item').forEach(el => el.classList.remove('active'));
+        document.getElementById(`item-${idx}`).classList.add('active');
+        // 스크롤 자동 이동
+        document.getElementById(`item-${idx}`).scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+        subCanvas.push();
+        subCanvas.translate(set.x, set.y, 0);
+        subCanvas.rotateZ(radians(set.rot));
+
+        // 모션 엔진 분기
+        let txt = sub.text;
+        let alpha = 255;
+
+        if (set.motion === 'Typing') {
+            let count = floor(map(progress, 0, 0.4, 0, txt.length, true));
+            txt = txt.substring(0, count);
+        } else if (set.motion === 'Pulse') {
+            subCanvas.scale(1.0 + (bass/500));
+        } else if (set.motion === 'Float') {
+            subCanvas.translate(0, sin(frameCount * 0.1) * 30, 0);
+        } else if (set.motion === '3D') {
+            subCanvas.rotateX(progress * TWO_PI);
+            subCanvas.translate(0, 0, sin(progress * PI) * 150);
+        } else {
+            alpha = progress < 0.2 ? map(progress, 0, 0.2, 0, 255) : (progress > 0.8 ? map(progress, 0.8, 1, 255, 0) : 255);
         }
+
+        subCanvas.textAlign(CENTER, CENTER);
+        subCanvas.textSize(set.size);
+        subCanvas.fill(set.hue, 80, 100, alpha/255 * 100);
+        
+        // 글로우 효과
+        subCanvas.drawingContext.shadowBlur = 20;
+        subCanvas.drawingContext.shadowColor = `hsla(${set.hue}, 100%, 50%, 0.8)`;
+        
+        subCanvas.text(txt, 0, 0);
+        subCanvas.pop();
     }
 
-    // --- 4. 영상 저장 기능 (MediaRecorder) ---
+    // --- 영상 녹화 ---
     function toggleRecord() {
         if (!isRecording) {
-            startRecording();
+            recordedChunks = [];
+            let stream = document.querySelector('canvas').captureStream(30);
+            mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
+            mediaRecorder.ondataavailable = (e) => recordedChunks.push(e.data);
+            mediaRecorder.onstop = () => {
+                let blob = new Blob(recordedChunks, { type: 'video/webm' });
+                let a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+                a.download = `typo_edit_${Date.now()}.webm`; a.click();
+            };
+            mediaRecorder.start();
+            isRecording = true; document.getElementById('recBtn').innerText = "⏹ STOP";
         } else {
-            stopRecording();
+            mediaRecorder.stop();
+            isRecording = false; document.getElementById('recBtn').innerText = "🔴 REC";
         }
     }
 
-    function startRecording() {
-        recordedChunks = [];
-        let stream = document.querySelector('canvas').captureStream(30); // 30fps
-        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
-        
-        mediaRecorder.ondataavailable = (e) => { if(e.data.size > 0) recordedChunks.push(e.data); };
-        mediaRecorder.onstop = exportVideo;
-        
-        mediaRecorder.start();
-        isRecording = true;
-        document.getElementById('recBtn').innerText = "⏹ STOP & SAVE VIDEO";
-        document.getElementById('recBtn').classList.add('active');
-        addLog("Recording Started...");
-    }
-
-    function stopRecording() {
-        mediaRecorder.stop();
-        isRecording = false;
-        document.getElementById('recBtn').innerText = "🔴 START RECORDING";
-        document.getElementById('recBtn').classList.remove('active');
-        addLog("Recording Stopped. Saving file...");
-    }
-
-    function exportVideo() {
-        let blob = new Blob(recordedChunks, { type: 'video/webm' });
-        let url = URL.createObjectURL(blob);
-        let a = document.createElement('a');
-        a.href = url;
-        a.download = `spectrum_motion_${Date.now()}.webm`;
-        a.click();
-    }
-
-    function handleAudio(f) { audio = loadSound(URL.createObjectURL(f[0]), () => { addLog("Audio Ready."); document.getElementById('playBtn').disabled = false; document.getElementById('recBtn').disabled = false; }); }
+    function handleAudio(f) { audio = loadSound(URL.createObjectURL(f[0]), () => { document.getElementById('playBtn').disabled = false; document.getElementById('recBtn').disabled = false; }); }
     function togglePlay() { if (isPlaying) { audio.pause(); isPlaying = false; } else { audio.play(); isPlaying = true; } }
 </script>
 </body>
