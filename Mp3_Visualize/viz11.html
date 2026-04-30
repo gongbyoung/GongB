@@ -2,280 +2,215 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>SPECTRUM STUDIO v21.2.0 — Motion Lyric Engine</title>
+    <title>MOTION TYPO STUDIO v21.4.0</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
-    <script src="fx_library.js" onload="isLibraryReady = true;"></script>
     <style>
-        *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
-        :root{ --bg:#05050a; --panel:#0d0d1a; --accent:#00ffcc; --accent2:#ff3377; --border:rgba(0,255,204,0.2); --text:#e0f0ff; }
-        body{ background:var(--bg); color:var(--text); font-family:'Pretendard', sans-serif; height:100vh; overflow:hidden; display: flex; flex-direction: column; }
-        .topbar{ padding:10px 25px; background:var(--panel); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
-        .main-workspace { display: grid; grid-template-columns: 360px 1fr 340px; flex:1; min-height:0; }
-        .side-panel { background:var(--panel); padding:15px; overflow-y:auto; scrollbar-width: thin; border-left:1px solid var(--border); border-right:1px solid var(--border); display: flex; flex-direction: column; }
-        .ctrl-box { background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:12px; }
-        .fx-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-        .fx-thumb { aspect-ratio: 1; border: 2px solid rgba(255,255,255,0.1); border-radius: 6px; cursor: pointer; background-color: #111; position: relative; background-size: cover; background-position: center; }
-        .fx-thumb.active { border-color: var(--accent2); box-shadow: 0 0 10px var(--accent2); }
-        .fx-thumb::after { content: attr(data-name); position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(0,0,0,0.8); font-size: 5px; text-align: center; color: #fff; padding: 2px 0; overflow: hidden; white-space: nowrap; }
-        .viz-area { position:relative; background:#000; display: flex; align-items: center; justify-content: center; flex:1; }
-        #p5-container canvas { width: 100% !important; height: auto !important; max-height: 100% !important; }
-        .log-panel { background:#000; border:1px solid #222; border-radius:4px; padding:10px; flex:1; overflow-y:auto; font-family: monospace; font-size:10px; color: #888; }
-        .log-data { color: #f1c40f; }
-        .btn { background:transparent; border:1px solid var(--border); border-radius:4px; color:#fff; padding:6px; cursor:pointer; font-size:9px; width:100%; height: 32px; margin-bottom:5px; transition: 0.2s; }
-        .btn:hover:not(:disabled) { border-color: var(--accent); background: rgba(0,255,204,0.05); }
-        select { width:100%; background:#000; color:var(--accent); border:1px solid var(--border); padding:5px; font-size:10px; margin-bottom:5px; border-radius:4px; outline:none; }
-        input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; height:2px; margin: 5px 0; }
+        :root{ --bg:#08080c; --accent:#00ffcc; --panel:#15151e; --text:#e0f0ff; --record:#ff3377; }
+        body{ background:var(--bg); color:var(--text); margin:0; overflow:hidden; font-family:'Pretendard', sans-serif; display:flex; }
+        #ctrl-panel { width:340px; background:var(--panel); height:100vh; padding:20px; border-right:1px solid rgba(0,255,204,0.2); z-index:10; overflow-y:auto; }
+        #canvas-container { flex:1; position:relative; display:flex; align-items:center; justify-content:center; background:#000; }
+        .box { background:rgba(255,255,255,0.03); padding:15px; border-radius:8px; margin-bottom:15px; border:1px solid rgba(255,255,255,0.1); }
+        h3 { font-size:11px; color:var(--accent); margin-bottom:10px; letter-spacing:2px; text-transform:uppercase; }
+        .btn { width:100%; padding:12px; background:transparent; border:1px solid var(--accent); color:var(--accent); cursor:pointer; margin-bottom:8px; font-size:11px; transition:0.3s; border-radius:4px; }
+        .btn:hover { background:rgba(0,255,204,0.1); }
+        .btn-rec { border-color:var(--record); color:var(--record); font-weight:bold; }
+        .btn-rec.active { background:var(--record); color:#fff; animation: blink 1s infinite; }
+        @keyframes blink { 50% { opacity: 0.6; } }
+        label { font-size:10px; color:#888; display:block; margin-bottom:5px; }
+        input[type=range] { width:100%; accent-color:var(--accent); margin-bottom:15px; cursor:pointer; }
+        #log { font-family:'Courier New', monospace; font-size:10px; color:#6a6a7a; height:120px; overflow-y:auto; background:#000; padding:10px; border-radius:4px; line-height:1.5; }
     </style>
 </head>
 <body>
 
-<div class="topbar">
-    <div style="letter-spacing:4px; color:var(--accent); font-weight:bold; font-size:14px;">SPECTRUM STUDIO v21.2.0</div>
-    <div id="timeCode">00:00 / 00:00</div>
-</div>
-
-<div class="main-workspace">
-    <div class="side-panel">
-        <div class="ctrl-box">
-            <span style="font-size:9px; color:var(--accent);">1. 35 FX PALETTE</span>
-            <div class="fx-grid" id="fxThumbGrid"></div>
-            <button class="btn" onclick="syncThumbnails(true)">☁️ FORCE SYNC THUMBS</button>
-        </div>
-        <div class="ctrl-box">
-            <span style="font-size:9px; color:var(--accent);">2. SYSTEM ENGINE</span>
-            <button class="btn" id="analyzeBtn" onclick="activateEngine()" disabled>⚡ PRE-ANALYZE AUDIO</button>
-            <!-- 자막 로드 버튼 추가 -->
-            <button class="btn" onclick="document.getElementById('sIn').click()" style="color:var(--accent);">📝 LOAD SRT LYRICS</button>
-            <input type="file" id="sIn" accept=".srt" style="display:none" onchange="handleSRT(this.files)">
-        </div>
+<div id="ctrl-panel">
+    <div class="box">
+        <h3>1. SOURCE FILES</h3>
+        <button class="btn" onclick="document.getElementById('mIn').click()">🎵 LOAD MP3</button>
+        <button class="btn" onclick="document.getElementById('sIn').click()">📝 LOAD SRT (TAGS)</button>
+        <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleAudio(this.files)">
+        <input type="file" id="sIn" accept=".srt" style="display:none" onchange="handleSRT(this.files)">
     </div>
 
-    <div class="viz-area" id="p5-container"></div>
-
-    <div class="side-panel">
-        <div class="ctrl-box">
-            <span style="font-size:9px; color:var(--accent);">3. CUSTOM SETTINGS</span>
-            <label style="font-size:8px;">ART STYLE / BG</label>
-            <select id="artStyle"><option value="hue">Standard HUE</option><option value="shadow">Shadow & Glow</option><option value="pastel">Soft Pastel</option><option value="bw">Monochrome</option><option value="random">Chaotic Random</option></select>
-            <div style="display:flex; gap:5px; margin-bottom:5px;"><button class="btn" onclick="setBG('black')">BLK</button><button class="btn" onclick="setBG('white')">WHT</button><button class="btn" onclick="setBG('gray')">GRY</button></div>
-            
-            <label style="font-size:8px;">FOCUS FREQUENCY</label>
-            <select id="focusFreq"><option value="0">Bass Focus (B1)</option><option value="5">Mid Focus (B6)</option><option value="11">High Focus (B12)</option></select>
-            
-            <hr style="border:0.5px solid var(--border); margin:10px 0;">
-            <span style="font-size:9px; color:var(--accent2);">GLOBAL ORIENTATION</span>
-            <div style="display:flex; justify-content:space-between; font-size:8px;"><span>ROT X/Y/Z</span></div>
-            <input type="range" id="rotX" min="-180" max="180" value="0">
-            <input type="range" id="rotY" min="-180" max="180" value="0">
-            <input type="range" id="rotZ" min="-180" max="180" value="0">
-        </div>
-        
-        <div class="ctrl-box">
-            <span style="font-size:9px; color:var(--accent);">4. LIVE PARAMETERS</span>
-            <label style="font-size:8px;">P1: DENSITY / P2: SPEED</label>
-            <input type="range" id="fxP1" min="1" max="100" value="25">
-            <input type="range" id="fxP2" min="0.1" max="10.0" step="0.1" value="2.0">
-            <label style="font-size:8px;">P3: ALPHA / HUE</label>
-            <input type="range" id="fxP3" min="1" max="255" value="180">
-            <input type="range" id="fxHue" min="0" max="360" value="200">
-        </div>
-        <div class="ctrl-box">
-            <button class="btn" onclick="saveThumbnail()">📷 SAVE PALETTE PNG</button>
-            <button class="btn" onclick="document.getElementById('mIn').click()">1. LOAD MP3</button>
-            <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleFile(this.files)">
-            <button class="btn" id="recBtn" onclick="toggleSync()" disabled style="background:var(--accent2); border:none;">2. START PRODUCTION</button>
-        </div>
-        <div class="log-panel" id="logPanel"></div>
+    <div class="box">
+        <h3>2. GLOBAL STYLING</h3>
+        <label>BASE FONT SIZE</label><input type="range" id="baseSize" min="20" max="200" value="70">
+        <label>GLOW INTENSITY</label><input type="range" id="glowPwr" min="0" max="50" value="20">
+        <label>MOTION SMOOTHING</label><input type="range" id="smooth" min="1" max="20" value="10">
     </div>
+
+    <div class="box">
+        <h3>3. EXPORT / RECORD</h3>
+        <button class="btn btn-rec" id="recBtn" onclick="toggleRecord()" disabled>🔴 START RECORDING</button>
+        <div id="log">> Awaiting Files...</div>
+    </div>
+    
+    <button class="btn" id="playBtn" onclick="togglePlay()" disabled style="background:var(--accent); color:#000; font-weight:bold;">▶ START PRODUCTION</button>
 </div>
+
+<div id="canvas-container"></div>
 
 <script>
-    let audio, fft, canvasRef, bgCanvas, subCanvas;
-    let isPlaying = false, currentFXId = '', isEngineActive = false;
-    let lastDataLogTime = 0, bgColor = [2, 2, 8];
-    
-    // 자막 관련 변수
+    let audio, fft, subCanvas;
     let subtitles = [];
-    let currentSubtitle = "";
-    let subFade = 0;
+    let isPlaying = false, isRecording = false;
+    let mediaRecorder, recordedChunks = [];
 
-    function addLog(msg, type = 'info') {
-        const p = document.getElementById('logPanel'); const e = document.createElement('div');
-        e.className = `log-entry log-${type}`; e.innerText = `> ${msg}`;
-        p.appendChild(e); p.scrollTop = p.scrollHeight; if(p.childNodes.length > 30) p.removeChild(p.childNodes[0]);
-    }
-
-    function setBG(mode) {
-        if(mode === 'black') bgColor = [2, 2, 8]; else if(mode === 'white') bgColor = [0, 0, 100]; else if(mode === 'gray') bgColor = [0, 0, 20];
-        addLog(`Background changed: ${mode}`);
+    function addLog(m) { 
+        const l = document.getElementById('log');
+        l.innerHTML = `[${new Date().toLocaleTimeString()}] ${m}<br>` + l.innerHTML;
     }
 
     function setup() {
-        let cnv = createCanvas(1920, 1080, WEBGL); cnv.parent('p5-container'); canvasRef = cnv.elt;
+        let cnv = createCanvas(1280, 720, WEBGL); // 720p 영상 기준
+        cnv.parent('canvas-container');
         
-        // 비주얼 버퍼 (3D)
-        bgCanvas = createGraphics(1920, 1080, WEBGL); 
-        bgCanvas.colorMode(HSB, 360, 100, 100, 100);
-        
-        // 자막 버퍼 (2D 레이어)
-        subCanvas = createGraphics(1920, 1080);
+        // 가사 렌더링용 고해상도 2D 버퍼
+        subCanvas = createGraphics(1280, 720);
         subCanvas.textAlign(CENTER, CENTER);
-        subCanvas.textFont('Pretendard, sans-serif');
-
-        fft = new p5.FFT(0.8, 512);
-        let check = setInterval(() => {
-            if(window.FX_ENGINES) { addLog(`Engine v21.2.0: 35 FX + Lyric Engine Ready.`, "success"); generateUI(); clearInterval(check); }
-        }, 300);
+        subCanvas.colorMode(HSB, 360, 100, 100, 100);
+        
+        fft = new p5.FFT();
+        addLog("Engine v21.4.0 Initialized.");
     }
 
-    function generateUI() {
-        const grid = document.getElementById('fxThumbGrid'); grid.innerHTML = '';
-        const keys = Object.keys(window.FX_ENGINES);
-        keys.forEach(id => {
-            let b = document.createElement('div'); b.className = 'fx-thumb'; b.id = 'fxBtn_' + id;
-            b.setAttribute('data-name', id.toUpperCase());
-            b.onclick = () => { currentFXId = id; document.querySelectorAll('.fx-thumb').forEach(el => el.classList.remove('active')); b.classList.add('active'); addLog(`FX: ${id}`); };
-            grid.appendChild(b);
-        });
-        if (keys.length > 0) { currentFXId = keys[0]; document.getElementById('fxBtn_' + currentFXId).classList.add('active'); syncThumbnails(); }
+    function draw() {
+        background(5);
+        subCanvas.clear();
+
+        fft.analyze();
+        let bass = fft.getEnergy("bass");
+        let mid = fft.getEnergy("mid");
+        let high = fft.getEnergy("treble");
+
+        if (audio && audio.isPlaying()) {
+            renderSubtitles(audio.currentTime(), bass, mid, high);
+        }
+
+        // 메인 캔버스에 결과물 투사
+        push();
+        translate(-width/2, -height/2);
+        image(subCanvas, 0, 0);
+        pop();
     }
 
-    // --- SRT 자막 파서 ---
+    // --- 1. SRT 파서 (줄 분석 및 태그 추출) ---
     function handleSRT(files) {
         const reader = new FileReader();
         reader.onload = (e) => {
-            const content = e.target.result;
-            subtitles = parseSRT(content);
-            addLog(`Lyrics Loaded: ${subtitles.length} lines.`, "success");
+            const lines = e.target.result.replace(/\r/g, '').split('\n\n');
+            subtitles = lines.map(block => {
+                const parts = block.split('\n');
+                if(parts.length < 3) return null;
+                const timeMatch = parts[1].split(' --> ');
+                const textRaw = parts.slice(2).join(' ');
+                
+                return {
+                    start: timeToSec(timeMatch[0]),
+                    end: timeToSec(timeMatch[1]),
+                    text: textRaw.replace(/\[.*?\]/g, '').trim(),
+                    // 태그 분석[cite: 1]
+                    x: parseTag(textRaw, 'X', 0),
+                    y: parseTag(textRaw, 'Y', 0),
+                    size: parseTag(textRaw, 'S', 0),
+                    motion: parseTag(textRaw, 'M', 'Pulse'),
+                    font: parseTag(textRaw, 'F', 'sans-serif')
+                };
+            }).filter(s => s !== null);
+            addLog(`Analysis Complete: ${subtitles.length} Lyric Lines Loaded.`);
         };
         reader.readAsText(files[0]);
     }
 
-    function parseSRT(data) {
-        const lines = data.replace(/\r/g, '').split('\n');
-        const subs = [];
-        let sub = {};
+    function parseTag(str, key, def) {
+        let match = str.match(new RegExp(`\\[${key}:(.*?)\\]`));
+        if (!match) return def;
+        let val = match[1];
+        return isNaN(val) ? val : parseFloat(val);
+    }
+
+    function timeToSec(t) {
+        let p = t.split(':');
+        return parseInt(p[0]) * 3600 + parseInt(p[1]) * 60 + parseFloat(p[2].replace(',', '.'));
+    }
+
+    // --- 2 & 3. 모션 그래픽 및 스타일 적용 ---
+    function renderSubtitles(curr, b, m, h) {
+        let active = subtitles.find(s => curr >= s.start && curr <= s.end);
         
-        lines.forEach(line => {
-            if (line.includes('-->')) {
-                const parts = line.split(' --> ');
-                sub.start = timeToSeconds(parts[0]);
-                sub.end = timeToSeconds(parts[1]);
-            } else if (line !== '' && !isNaN(line)) {
-                // index line, skip
-            } else if (line === '') {
-                if (sub.start !== undefined) subs.push(sub);
-                sub = {};
-            } else {
-                sub.text = line;
-            }
-        });
-        return subs;
-    }
+        if (active) {
+            let baseSize = parseFloat(document.getElementById('baseSize').value);
+            let glow = parseFloat(document.getElementById('glowPwr').value);
 
-    function timeToSeconds(timeStr) {
-        const p = timeStr.split(':');
-        const s = p[2].split(',');
-        return parseInt(p[0]) * 3600 + parseInt(p[1]) * 60 + parseInt(s[0]) + parseInt(s[1]) / 1000;
-    }
-
-    function syncThumbnails(force = false) {
-        if (!window.FX_ENGINES) return;
-        const keys = Object.keys(window.FX_ENGINES);
-        keys.forEach(id => {
-            const path = `thumbnails/palette_${id.trim()}.png${force ? '?v='+Date.now() : ''}`;
-            const img = new Image(); img.onload = () => { document.getElementById('fxBtn_'+id).style.backgroundImage = `url(${path})`; }; img.src = path;
-        });
-    }
-
-    function activateEngine() {
-        userStartAudio().then(() => { isEngineActive = true; addLog("All Systems Operational.", "success"); document.getElementById('analyzeBtn').innerText = "✅ ONLINE"; document.getElementById('recBtn').disabled = false; });
-    }
-
-    function draw() {
-        background(bgColor[0], bgColor[1], bgColor[2]); 
-        bgCanvas.clear();
-        subCanvas.clear();
-        
-        let bands = new Array(12).fill(0), fI = 1.0;
-        let currentTime = 0;
-
-        if (isEngineActive && audio && audio.isPlaying()) {
-            currentTime = audio.currentTime();
-            let spectrum = fft.analyze();
-            if (spectrum) {
-                for (let i = 0; i < 12; i++) {
-                    let start = floor(map(i, 0, 12, 0, spectrum.length * 0.4));
-                    let end = floor(map(i + 1, 0, 12, 0, spectrum.length * 0.4));
-                    let bandSum = 0; for (let j = start; j < end; j++) bandSum += spectrum[j];
-                    bands[i] = bandSum / (end - start || 1);
-                }
-                fI = map(bands[parseInt(document.getElementById('focusFreq').value)], 0, 255, 0.5, 3.5); 
-            }
-        }
-
-        // --- 1. 배경 비주얼 렌더링 ---
-        bgCanvas.push();
-        bgCanvas.rotateX(radians(parseFloat(document.getElementById('rotX').value)));
-        bgCanvas.rotateY(radians(parseFloat(document.getElementById('rotY').value)));
-        bgCanvas.rotateZ(radians(parseFloat(document.getElementById('rotZ').value)));
-        if (window.FX_ENGINES && window.FX_ENGINES[currentFXId]) {
-            window.FX_ENGINES[currentFXId](bgCanvas, frameCount * 0.02, bands, fI, parseFloat(document.getElementById('fxHue').value), document.getElementById('artStyle').value, parseFloat(document.getElementById('fxP1').value), parseFloat(document.getElementById('fxP2').value), parseFloat(document.getElementById('fxP3').value));
-        }
-        bgCanvas.pop();
-
-        // --- 2. 자막 동기화 & 모션 렌더링 ---
-        let activeSub = subtitles.find(s => currentTime >= s.start && currentTime <= s.end);
-        if (activeSub) {
-            if (currentSubtitle !== activeSub.text) {
-                currentSubtitle = activeSub.text;
-                subFade = 0; // 새로운 자막 시작 시 페이드 초기화
-            }
-            subFade = lerp(subFade, 255, 0.1);
-        } else {
-            subFade = lerp(subFade, 0, 0.1);
-        }
-
-        if (subFade > 1) {
             subCanvas.push();
-            // 가사 위치 (하단에서 20% 위)
-            subCanvas.translate(width/2, height * 0.8);
+            subCanvas.translate(width/2 + active.x, height/2 + active.y);
             
-            // 모션: 주파수 강도(fI)에 따라 텍스트가 울렁임
-            let subScale = 1.0 + (fI * 0.05);
-            subCanvas.scale(subScale);
+            // 모션 로직 분기[cite: 1]
+            let mScale = 1.0;
+            if (active.motion === 'Pulse') mScale = 1.0 + (b / 255) * 0.2;
+            if (active.motion === 'Shake') subCanvas.translate(random(-2,2), random(-2,2));
+            if (active.motion === 'Float') subCanvas.translate(0, sin(frameCount * 0.1) * 20);
             
-            // 텍스트 스타일
-            subCanvas.noStroke();
-            // 배경이 어두우면 흰색, 밝으면 검은색 자막 (배경색 기반 지능형 컬러)
-            let txtCol = (bgColor[2] < 50) ? 255 : 0;
-            subCanvas.fill(txtCol, subFade);
-            subCanvas.textSize(50 + fI * 5); // 비트에 맞춰 글자 크기 확장
+            subCanvas.scale(mScale);
             
-            // 텍스트 그림자(Glow) 효과
-            subCanvas.drawingContext.shadowBlur = 15;
-            subCanvas.drawingContext.shadowColor = `rgba(0, 255, 204, ${subFade/255})`;
+            // 스타일 적용
+            subCanvas.textFont(active.font);
+            subCanvas.textSize(active.size || baseSize);
+            subCanvas.fill(255);
             
-            subCanvas.text(currentSubtitle, 0, 0);
+            // 텍스트 글로우 (네온 효과)
+            subCanvas.drawingContext.shadowBlur = glow + (b/10);
+            subCanvas.drawingContext.shadowColor = '#00ffcc';
+            
+            subCanvas.text(active.text, 0, 0);
             subCanvas.pop();
         }
+    }
 
-        // 최종 합치기
-        push(); translate(-width/2, -height/2); 
-        image(bgCanvas, 0, 0); // 3D 비주얼
-        image(subCanvas, 0, 0); // 2D 자막 레이어 덮기
-        pop();
-        
-        if (audio && audio.isPlaying()) {
-            let cur = audio.currentTime(); let dur = audio.duration();
-            document.getElementById('timeCode').innerText = `${nf(floor(cur/60),2)}:${nf(floor(cur%60),2)} / ${nf(floor(dur/60),2)}:${nf(floor(dur%60),2)}`;
+    // --- 4. 영상 저장 기능 (MediaRecorder) ---
+    function toggleRecord() {
+        if (!isRecording) {
+            startRecording();
+        } else {
+            stopRecording();
         }
     }
 
-    function handleFile(files) { audio = loadSound(URL.createObjectURL(files[0]), () => { document.getElementById('analyzeBtn').disabled = false; addLog("Audio Loaded."); }); }
-    function saveThumbnail() { saveCanvas(canvasRef, 'palette_'+currentFXId, 'png'); addLog("Thumb Saved."); }
-    async function toggleSync() { if (isPlaying) { audio.stop(); isPlaying = false; } else { audio.play(); isPlaying = true; } }
+    function startRecording() {
+        recordedChunks = [];
+        let stream = document.querySelector('canvas').captureStream(30); // 30fps
+        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
+        
+        mediaRecorder.ondataavailable = (e) => { if(e.data.size > 0) recordedChunks.push(e.data); };
+        mediaRecorder.onstop = exportVideo;
+        
+        mediaRecorder.start();
+        isRecording = true;
+        document.getElementById('recBtn').innerText = "⏹ STOP & SAVE VIDEO";
+        document.getElementById('recBtn').classList.add('active');
+        addLog("Recording Started...");
+    }
+
+    function stopRecording() {
+        mediaRecorder.stop();
+        isRecording = false;
+        document.getElementById('recBtn').innerText = "🔴 START RECORDING";
+        document.getElementById('recBtn').classList.remove('active');
+        addLog("Recording Stopped. Saving file...");
+    }
+
+    function exportVideo() {
+        let blob = new Blob(recordedChunks, { type: 'video/webm' });
+        let url = URL.createObjectURL(blob);
+        let a = document.createElement('a');
+        a.href = url;
+        a.download = `spectrum_motion_${Date.now()}.webm`;
+        a.click();
+    }
+
+    function handleAudio(f) { audio = loadSound(URL.createObjectURL(f[0]), () => { addLog("Audio Ready."); document.getElementById('playBtn').disabled = false; document.getElementById('recBtn').disabled = false; }); }
+    function togglePlay() { if (isPlaying) { audio.pause(); isPlaying = false; } else { audio.play(); isPlaying = true; } }
 </script>
 </body>
 </html>
