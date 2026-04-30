@@ -314,7 +314,7 @@ window.FX_ENGINES = {
             pg.noFill(); pg.circle(200 * p2, 0, 50 + b[f % 12] * 0.5);
             pg.pop();
         }
-    }
+    },
 // 1. Bloom: 음악 강도에 따라 꽃이 피어나는 효과
     bloom: (pg, t, b, fI, h, s, p1, p2, p3) => {
         let count = floor(p1 / 5) + 3;
