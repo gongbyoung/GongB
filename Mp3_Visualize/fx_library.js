@@ -1,10 +1,9 @@
 /* 
-   SPECTRUM STUDIO FX LIBRARY v21.1.1
-   32 Unique Visual Engines for p5.js WEBGL
-   No Omissions Version
+   SPECTRUM STUDIO FX LIBRARY v21.1.2
+   32 Unique Visual Engines (No Omissions)
+  
 */
 
-// --- 유틸리티: 비주얼 컬러 스타일 적용 엔진 ---
 function applyColorStyle(pg, style, h, i, fI, alphaVal) {
     pg.drawingContext.shadowBlur = 0;
     let a = (alphaVal / 255) * 100;
@@ -26,7 +25,6 @@ function applyColorStyle(pg, style, h, i, fI, alphaVal) {
     if (style !== 'imp') pg.strokeWeight(2 * fI);
 }
 
-// [중요] window 전역 객체에 직접 등록하여 viz13:119 에러 방어
 window.FX_ENGINES = {
     waves: (pg, t, b, fI, h, s, p1, p2, p3) => {
         for (let j = 0; j < floor(p1 / 5) + 1; j++) {
@@ -46,7 +44,7 @@ window.FX_ENGINES = {
             applyColorStyle(pg, s, h, i, fI, p3);
             pg.fill(pg.drawingContext.strokeStyle);
             let idx = floor(noise(i, floor(t * p2)) * chars.length);
-            pg.text(chars[idx], -960 + (i * (1920 / p1)), (t * 50 + i * 200) % 1080 - 540 + b[i % 12]);
+            pg.text(chars[idx], -960 + (i * (1920 / p1)), (t * 500 + i * 200) % 1080 - 540 + b[i % 12]);
         }
     },
     ripBok: (pg, t, b, fI, h, s, p1, p2, p3) => {
@@ -209,7 +207,6 @@ window.FX_ENGINES = {
             pg.circle(0, 0, r + b[0]);
         }
     },
-    // v21.1.0 신규 8종
     bars: (pg, t, b, fI, h, s, p1, p2, p3) => {
         let count = floor(p1 / 4) + 4;
         let barW = 1920 / count;
@@ -322,4 +319,4 @@ window.FX_ENGINES = {
     }
 };
 
-console.log("FX_LIBRARY v21.1.1: 32 Engines Registered.");
+console.log("FX_LIBRARY v21.1.2 Fully Loaded.");
