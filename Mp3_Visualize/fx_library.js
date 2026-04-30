@@ -1,27 +1,25 @@
 /* 
-   SPECTRUM STUDIO FX LIBRARY v21.1.5
-   32 Unique Visual Engines (Final Bug Fix)
+   SPECTRUM STUDIO FX LIBRARY v21.1.6
+   - glitch 삭제 및 cosmos(우주유영) 추가
+   - Art Style 연동 로직 완전 복구
 */
 
 function applyColorStyle(pg, style, h, i, fI, alphaVal) {
     pg.drawingContext.shadowBlur = 0;
     let a = (alphaVal / 255) * 100;
-    if (style === 'hue') pg.stroke(h, 80, 100, a);
-    else if (style === 'random') pg.stroke(random(360), 80, 100, a);
-    else if (style === 'pastel') pg.stroke((h + i * 15) % 360, 40, 95, a);
-    else if (style === 'bw') pg.stroke(0, 0, map(i % 10, 0, 9, 100, 30), a);
+    
+    // 3D 환경에서의 Stroke/Fill 처리 최적화
+    if (style === 'hue') { pg.stroke(h, 80, 100, a); pg.fill(h, 80, 100, a * 0.3); }
+    else if (style === 'random') { pg.stroke(random(360), 80, 100, a); pg.fill(random(360), 80, 100, a * 0.3); }
+    else if (style === 'pastel') { pg.stroke((h + i * 15) % 360, 40, 95, a); pg.fill((h + i * 15) % 360, 40, 95, a * 0.3); }
+    else if (style === 'bw') { pg.stroke(0, 0, 100, a); pg.fill(0, 0, 50, a * 0.3); }
     else if (style === 'shadow') {
         pg.stroke(h, 90, 100, a);
+        pg.fill(h, 90, 100, a * 0.1);
         pg.drawingContext.shadowBlur = 20;
         pg.drawingContext.shadowColor = `hsla(${h}, 100%, 50%, 0.8)`;
-    } else if (style === 'imp') {
-        pg.stroke(h, 80, 100, a * 0.7);
-        pg.strokeWeight(fI * 4);
-        pg.translate(random(-2, 2), random(-2, 2));
-    } else if (style === 'point') {
-        pg.stroke(h, 80, 100, a);
     }
-    if (style !== 'imp') pg.strokeWeight(2 * fI);
+    pg.strokeWeight(1.5 * fI);
 }
 
 window.FX_ENGINES = {
@@ -41,7 +39,6 @@ window.FX_ENGINES = {
         let chars = ['ㄱ','ㄴ','ㄷ','ㄹ','ㅁ','ㅂ','ㅅ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
         for (let i = 0; i < p1; i++) {
             applyColorStyle(pg, s, h, i, fI, p3);
-            pg.fill(h, 80, 100, p3 / 255 * 100); // [Fix] fill 에러 방지
             let idx = floor(noise(i, floor(t * p2)) * chars.length);
             pg.text(chars[idx], -960 + (i * (1920 / p1)), (t * 500 + i * 200) % 1080 - 540 + b[i % 12]);
         }
@@ -50,63 +47,66 @@ window.FX_ENGINES = {
         for (let i = 0; i < floor(p1 / 2); i++) {
             applyColorStyle(pg, s, h, i, fI, p3);
             pg.circle(0, 0, (t * 100 * p2 + i * 150) % 1500 + b[i % 12]);
-            pg.fill(h, 80, 100, p3 / 255 * 50);
-            pg.circle(cos(t + i) * 400 * p2, sin(t + i) * 400 * p2, 50 + b[i % 12]);
         }
     },
     bokRip: (pg, t, b, fI, h, s, p1, p2, p3) => {
         for (let i = 0; i < p1; i++) {
             applyColorStyle(pg, s, h, i, fI, p3);
-            pg.fill(h, 80, 100, p3 / 255 * 80);
-            pg.circle(cos(i + t) * b[i % 12] * p2, sin(i + t) * b[i % 12] * p2, 50 + b[i % 12]);
+            pg.push();
+            pg.translate(cos(i + t) * b[i % 12] * p2, sin(i + t) * b[i % 12] * p2);
+            pg.sphere(10 + b[i % 12] * 0.1);
+            pg.pop();
         }
     },
     dna: (pg, t, b, fI, h, s, p1, p2, p3) => {
         for (let i = 0; i < p1; i++) {
             applyColorStyle(pg, s, h, i, fI, p3);
-            pg.circle(cos(i * p2 + t) * 400, sin(i * p2 + t) * 100, 10 + b[i % 12] / 4);
+            pg.push(); pg.translate(cos(i * p2 + t) * 400, sin(i * p2 + t) * 100, 0); pg.box(10 + b[i % 12] / 5); pg.pop();
             applyColorStyle(pg, s, (h + 180) % 360, i, fI, p3);
-            pg.circle(cos(i * p2 + t + PI) * 400, sin(i * p2 + t + PI) * 100, 10 + b[i % 12] / 4);
+            pg.push(); pg.translate(cos(i * p2 + t + PI) * 400, sin(i * p2 + t + PI) * 100, 0); pg.box(10 + b[i % 12] / 5); pg.pop();
         }
     },
     nebula: (pg, t, b, fI, h, s, p1, p2, p3) => {
         pg.noStroke();
         for (let i = 0; i < floor(p1 / 2); i++) {
-            pg.fill(h, 80, 100, p3 / 255 * 20);
-            pg.circle(noise(i, t) * 1920 - 960, noise(i + 7, t) * 1080 - 540, 300 * p2 + b[0]);
+            pg.fill(h, 80, 100, p3 / 255 * 10);
+            pg.push(); 
+            pg.translate(noise(i, t) * 1920 - 960, noise(i + 7, t) * 1080 - 540, -500);
+            pg.sphere(200 * p2 + b[0]);
+            pg.pop();
         }
     },
     mandala: (pg, t, b, fI, h, s, p1, p2, p3) => {
         for (let i = 0; i < floor(p1 / 2); i++) {
-            pg.rotate(TWO_PI / (p1 / 2));
+            pg.rotateZ(TWO_PI / (p1 / 2));
             applyColorStyle(pg, s, h, i, fI, p3);
-            pg.ellipse(100 * p2 + b[0], 0, 50 + b[1], 200 + b[2]);
+            pg.ellipse(150 * p2 + b[0], 0, 50 + b[1], 150 + b[2]);
         }
     },
     lightning: (pg, t, b, fI, h, s, p1, p2, p3) => {
-        if (b[10] > 100) { // [Fix] 임계값 하향 (180 -> 100)
-            applyColorStyle(pg, s, h, 0, fI, p3);
-            pg.strokeWeight(fI * (b[10]/50)); 
-            for (let i = 0; i < floor(p1 / 10) + 1; i++) {
+        // 민감도 대폭 상향 (b[10]이 낮아도 발생하게 조정)
+        if (b[10] > 60 || b[0] > 200) {
+            applyColorStyle(pg, s, h, 0, fI * 2, p3);
+            for (let i = 0; i < floor(p1 / 5) + 1; i++) {
                 pg.line(random(-960, 960), -540, random(-960, 960), 540);
             }
         }
     },
     web: (pg, t, b, fI, h, s, p1, p2, p3) => {
         let pts = [];
-        for (let i = 0; i < floor(p1 / 2); i++) pts.push({ x: noise(i, t) * 1920 - 960, y: noise(i + 9, t) * 1080 - 540 });
+        for (let i = 0; i < floor(p1 / 2); i++) pts.push({ x: noise(i, t) * 1600 - 800, y: noise(i + 9, t) * 1000 - 500 });
         applyColorStyle(pg, s, h, 0, fI, p3);
         for (let i = 0; i < pts.length; i++) {
             for (let j = i + 1; j < pts.length; j++) {
-                if (dist(pts[i].x, pts[i].y, pts[j].x, pts[j].y) < 200 * p2) pg.line(pts[i].x, pts[i].y, pts[j].x, pts[j].y);
+                if (dist(pts[i].x, pts[i].y, pts[j].x, pts[j].y) < 250 * p2) pg.line(pts[i].x, pts[i].y, pts[j].x, pts[j].y);
             }
         }
     },
     vortex: (pg, t, b, fI, h, s, p1, p2, p3) => {
         for (let i = 0; i < p1; i++) {
-            pg.rotate(t * 0.01 * p2);
+            pg.rotateZ(t * 0.01 * p2);
             applyColorStyle(pg, s, h, i, fI, p3);
-            pg.rect(-i * 10, -i * 10, i * 20 + b[0], i * 20);
+            pg.box(i * 10 + b[0], i * 10, 20);
         }
     },
     chladni: (pg, t, b, fI, h, s, p1, p2, p3) => {
@@ -114,35 +114,35 @@ window.FX_ENGINES = {
             applyColorStyle(pg, s, h, i, fI, p3);
             let x = sin(i * t * 0.01 * p2) * 500;
             let y = cos(i * t * 0.01 * p2) * 500;
-            pg.point(x, y);
+            pg.point(x, y, 0);
         }
     },
     starfield: (pg, t, b, fI, h, s, p1, p2, p3) => {
         for (let i = 0; i < p1 * 2; i++) {
-            applyColorStyle(pg, s, 255, i, fI, p3);
+            applyColorStyle(pg, s, h, i, fI, p3);
             let r = noise(i, t * 0.1) * 2000 - 1000;
-            pg.line(r, -540, r + b[0] * p2, 540);
+            pg.line(r, -540, 0, r + b[0] * p2, 540, 0);
         }
     },
     cyber: (pg, t, b, fI, h, s, p1, p2, p3) => {
         applyColorStyle(pg, s, h, 0, fI, p3);
         let step = 1080 / (p1 / 2);
         for (let i = 0; i < p1 / 2; i++) {
-            pg.line(-960, -540 + i * step + (t * 100 % step), 960, -540 + i * step + (t * 100 % step));
-            pg.line(-960 + i * step * 2, -540, -960 + i * step * 2 + b[0], 540);
+            let y = -540 + i * step + (t * 100 % step);
+            pg.line(-960, y, 0, 960, y, 0);
         }
     },
     radar: (pg, t, b, fI, h, s, p1, p2, p3) => {
         applyColorStyle(pg, s, h, 0, fI, p3);
-        pg.circle(0, 0, 400 * p2);
-        pg.fill(h, 80, 100, p3 / 255 * 50);
-        pg.arc(0, 0, 800 * p2, 800 * p2, t * p2 % TWO_PI, (t * p2 % TWO_PI) + PI / 4);
+        pg.rotateZ(t * p2);
+        pg.line(0, 0, 0, 0, -400 * p2, 0);
+        pg.noFill(); pg.circle(0, 0, 800 * p2);
     },
     hex: (pg, t, b, fI, h, s, p1, p2, p3) => {
-        for (let j = 1; j < floor(p1 / 8) + 1; j++) {
+        for (let j = 1; j < floor(p1 / 8) + 2; j++) {
             applyColorStyle(pg, s, h, j, fI, p3);
             pg.beginShape();
-            for (let i = 0; i < 6; i++) pg.vertex(cos(i * PI / 3) * j * 100 * p2, sin(i * PI / 3) * j * 100 * p2);
+            for (let i = 0; i < 6; i++) pg.vertex(cos(i * PI / 3) * j * 120 * p2, sin(i * PI / 3) * j * 120 * p2);
             pg.endShape(CLOSE);
         }
     },
@@ -155,8 +155,8 @@ window.FX_ENGINES = {
     orbit: (pg, t, b, fI, h, s, p1, p2, p3) => {
         for (let i = 0; i < floor(p1 / 5); i++) {
             applyColorStyle(pg, s, h, i, fI, p3);
+            pg.rotateY(t * 0.1);
             pg.ellipse(0, 0, 400 + i * 50, 200 + b[0] * p2);
-            pg.circle(cos(t + i) * 300, sin(t + i) * 100, 20);
         }
     },
     tree: (pg, t, b, fI, h, s, p1, p2, p3) => {
@@ -164,49 +164,52 @@ window.FX_ENGINES = {
         const _branch = (l, g) => {
             if (g <= 0) return;
             pg.line(0, 0, 0, -l); pg.translate(0, -l);
-            pg.push(); pg.rotate(0.4 + sin(t) * 0.1); _branch(l * 0.7, g - 1); pg.pop();
-            pg.push(); pg.rotate(-0.4 - sin(t) * 0.1); _branch(l * 0.7, g - 1); pg.pop();
+            pg.push(); pg.rotateZ(0.4 + sin(t) * 0.1); _branch(l * 0.7, g - 1); pg.pop();
+            pg.push(); pg.rotateZ(-0.4 - sin(t) * 0.1); _branch(l * 0.7, g - 1); pg.pop();
         };
         _branch(p2 * 100 + b[0], floor(map(p1, 1, 100, 2, 8))); pg.pop();
     },
     triangles: (pg, t, b, fI, h, s, p1, p2, p3) => {
         for (let i = 0; i < floor(p1 / 5); i++) {
-            pg.rotate(t * 0.1);
+            pg.rotateZ(t * 0.1);
             applyColorStyle(pg, s, h, i, fI, p3);
             pg.triangle(-50, -50, 50, -50, 0, 50 + b[0] * p2);
         }
     },
     spiral: (pg, t, b, fI, h, s, p1, p2, p3) => {
-        for (let i = 0; i < p1 * 10; i++) {
-            let r = i * 2 * p2 + b[0] * 0.1;
+        for (let i = 0; i < p1 * 5; i++) {
+            let r = i * 4 * p2 + b[0] * 0.1;
             applyColorStyle(pg, s, h, i, fI, p3);
-            pg.point(cos(i * 0.1 + t) * r, sin(i * 0.1 + t) * r);
+            pg.point(cos(i * 0.1 + t) * r, sin(i * 0.1 + t) * r, 0);
         }
     },
     particles: (pg, t, b, fI, h, s, p1, p2, p3) => {
         for (let i = 0; i < p1; i++) {
             applyColorStyle(pg, s, h, i, fI, p3);
-            pg.circle(noise(i, t) * 1920 - 960, noise(i + 5, t) * 1080 - 540, 5 + b[0] * 0.1 * p2);
+            pg.push();
+            pg.translate(noise(i, t) * 1920 - 960, noise(i + 5, t) * 1080 - 540, 0);
+            pg.sphere(3 + b[0] * 0.05 * p2);
+            pg.pop();
         }
     },
     tunnel: (pg, t, b, fI, h, s, p1, p2, p3) => {
         for (let i = 0; i < floor(p1 / 5); i++) {
             let r = (t * 200 * p2 + i * 300) % 2000;
             applyColorStyle(pg, s, h, i, fI, p3);
-            pg.rect(-r / 2, -r / 2, r, r);
+            pg.push(); pg.translate(0, 0, -r); pg.rect(-500, -500, 1000, 1000); pg.pop();
         }
     },
     warp: (pg, t, b, fI, h, s, p1, p2, p3) => {
         for (let i = 0; i < p1; i++) {
             applyColorStyle(pg, s, h, i, fI, p3);
-            pg.line(0, 0, cos(i + t * p2) * 1500, sin(i + t * p2) * 1500);
+            pg.line(0, 0, 0, cos(i + t * p2) * 1500, sin(i + t * p2) * 1500, -500);
         }
     },
     ripples: (pg, t, b, fI, h, s, p1, p2, p3) => {
         for (let i = 0; i < floor(p1 / 5); i++) {
             let r = (t * 300 * p2 + i * 400) % 2000;
             applyColorStyle(pg, s, h, i, fI, p3);
-            pg.circle(0, 0, r + b[0]);
+            pg.noFill(); pg.circle(0, 0, r + b[0]);
         }
     },
     bars: (pg, t, b, fI, h, s, p1, p2, p3) => {
@@ -216,8 +219,7 @@ window.FX_ENGINES = {
         for (let i = 0; i < count; i++) {
             let band = i % 12;
             let bHeight = b[band] * p2 * fI;
-            let hueShift = (h + band * 15) % 360;
-            pg.fill(hueShift, 80, 100, (p3 / 255) * 100);
+            pg.fill((h + band * 15) % 360, 80, 100, p3 / 255 * 100);
             pg.rect(-960 + i * barW, -bHeight / 2, barW - 2, bHeight);
         }
     },
@@ -233,24 +235,17 @@ window.FX_ENGINES = {
             pg.curveVertex(cos(angle) * r, sin(angle) * r);
         }
         pg.endShape(CLOSE);
-        for (let i = 0; i < spikes; i++) {
-            let band = i % 12;
-            if (b[band] < 30) continue;
-            applyColorStyle(pg, s, (h + i * 8) % 360, i, fI, p3);
-            let angle = (TWO_PI / spikes) * i + t * 0.3;
-            pg.line(cos(angle) * baseR * 0.6, sin(angle) * baseR * 0.6, cos(angle) * (baseR + b[band] * p2 * fI), sin(angle) * (baseR + b[band] * p2 * fI));
-        }
     },
     terrain: (pg, t, b, fI, h, s, p1, p2, p3) => {
         let cols = floor(p1 / 5) + 6;
         let cellW = 1920 / cols;
-        pg.push(); pg.translate(0, 100); pg.rotateX(PI / 4);
-        for (let row = 0; row < 7; row++) {
+        pg.push(); pg.rotateX(PI / 3);
+        for (let row = 0; row < 8; row++) {
             applyColorStyle(pg, s, (h + row * 20) % 360, row, fI, p3);
             pg.beginShape(TRIANGLE_STRIP);
             for (let col = 0; col <= cols; col++) {
-                pg.vertex(-960 + col * cellW, row * 40 - 150, -noise(col * 0.15, row * 0.15, t * 0.4) * b[row % 12] * p2 * fI);
-                pg.vertex(-960 + col * cellW, (row + 1) * 40 - 150, -noise(col * 0.15, (row + 1) * 0.15, t * 0.4) * b[(row + 1) % 12] * p2 * fI);
+                pg.vertex(-960 + col * cellW, row * 60 - 200, -noise(col * 0.1, t) * b[row % 12] * p2);
+                pg.vertex(-960 + col * cellW, (row + 1) * 60 - 200, -noise(col * 0.1, t + 0.1) * b[(row + 1) % 12] * p2);
             }
             pg.endShape();
         }
@@ -259,66 +254,67 @@ window.FX_ENGINES = {
     ribbons: (pg, t, b, fI, h, s, p1, p2, p3) => {
         let count = floor(p1 / 10) + 2;
         for (let r = 0; r < count; r++) {
-            pg.push(); pg.rotateY(r * (PI / count) + t * 0.1 * p2);
+            pg.push(); pg.rotateY(r * (PI / count) + t * 0.2 * p2);
             applyColorStyle(pg, s, (h + r * 40) % 360, r, fI, p3);
             pg.noFill(); pg.beginShape(TRIANGLE_STRIP);
-            for (let i = 0; i <= 60; i++) {
-                let x = map(i, 0, 60, -900, 900);
-                let phase = i * 0.08 + t * p2 + r * 1.2;
-                let amp = b[r % 12] * fI * 0.8;
-                let thick = 10 + b[(r + 2) % 12] * 0.1 * fI;
-                pg.vertex(x, sin(phase) * amp - thick);
-                pg.vertex(x, sin(phase + 0.3) * amp + thick);
+            for (let i = 0; i <= 40; i++) {
+                let x = map(i, 0, 40, -800, 800);
+                let phase = i * 0.1 + t * p2;
+                pg.vertex(x, sin(phase) * b[r % 12] * fI - 20);
+                pg.vertex(x, sin(phase + 0.2) * b[r % 12] * fI + 20);
             }
             pg.endShape(); pg.pop();
         }
     },
-    glitch: (pg, t, b, fI, h, s, p1, p2, p3) => {
-        let slices = floor(p1 / 3) + 5;
-        let sliceH = 1080 / slices;
-        let hiEnergy = (b[8] + b[9] + b[10] + b[11]) / 4;
-        pg.textSize(80 + b[0] * 0.3 * fI); pg.textAlign(CENTER, CENTER);
-        let chars = ['MUSIC','SOUND','WAVE','BEAT','FLUX','DATA','SYNC','GLITCH'];
-        for (let i = 0; i < slices; i++) {
-            let offsetX = (hiEnergy > 100) ? random(-p2 * 80, p2 * 80) : 0;
-            let y = -540 + i * sliceH + sliceH / 2;
-            // [Fix] pg.fill() 에러 수정: 색상 파라미터를 직접 전달
-            pg.fill((h + i * 20) % 360, 80, 100, p3 / 255 * 100); 
-            pg.text(chars[floor(noise(i + 5, t * 0.5) * chars.length)], offsetX, y);
+    cosmos: (pg, t, b, fI, h, s, p1, p2, p3) => {
+        // [신규] 우주 유영 효과: 중앙에서 사이드로 오브젝트 분출
+        let count = floor(p1 / 2) + 10;
+        for (let i = 0; i < count; i++) {
+            let phase = (t * 0.5 * p2 + i / count) % 1;
+            let dist = phase * 1500;
+            let angle = i * (TWO_PI / count) + t * 0.1;
+            
+            pg.push();
+            pg.translate(cos(angle) * dist, sin(angle) * dist, -dist);
+            pg.rotateX(t + i); pg.rotateY(t * 0.5);
+            applyColorStyle(pg, s, (h + i * 10) % 360, i, fI, p3 * (1 - phase));
+            
+            // 주파수 반응형 모양 (저음: 구, 고음: 박스/토러스)
+            if (b[0] > 150 && i % 3 === 0) pg.sphere(20 + b[0] * 0.2 * fI);
+            else if (i % 2 === 0) pg.box(30 + b[5] * 0.2 * fI);
+            else pg.torus(25 + b[10] * 0.2 * fI, 10);
+            pg.pop();
         }
     },
     fluid: (pg, t, b, fI, h, s, p1, p2, p3) => {
         for (let i = 0; i < floor(p1 * 1.5); i++) {
-            let seed = i * 0.07;
-            let px = noise(seed, t * 0.2 * p2) * 1920 - 960;
-            let py = noise(seed + 30, t * 0.2 * p2) * 1080 - 540;
-            let angle = noise(seed + 60, t * 0.1) * TWO_PI * 2 + b[0] * 0.005 * p2;
-            let nx = px + cos(angle) * (20 + b[i % 12] * 0.5) * fI * p2;
-            let ny = py + sin(angle) * (20 + b[i % 12] * 0.5) * fI * p2;
-            applyColorStyle(pg, s, (h + i * 3) % 360, i, fI, p3);
-            pg.line(px, py, nx, ny);
+            let px = noise(i * 0.1, t * 0.1) * 1920 - 960;
+            let py = noise(i * 0.1 + 50, t * 0.1) * 1080 - 540;
+            applyColorStyle(pg, s, (h + i * 2) % 360, i, fI, p3);
+            pg.line(px, py, px + b[i % 12] * 0.5 * p2, py + b[i % 12] * 0.5 * p2);
         }
     },
     smoke: (pg, t, b, fI, h, s, p1, p2, p3) => {
         pg.noStroke();
         for (let i = 0; i < floor(p1 * 1.2); i++) {
-            let phase = (t * p2 * 0.5 + i * 0.13) % 1;
-            pg.fill((h + i * 5) % 360, 30, 90, map(phase, 0, 1, p3 / 255 * 60, 0));
-            pg.circle(noise(i * 0.3, t * 0.15) * 600 - 300 + b[i % 12] * 0.5 * p2, map(phase, 0, 1, 400, -700), map(phase, 0, 1, 20, 250 + b[0] * 0.5 * p2) * fI);
+            let phase = (t * p2 * 0.4 + i * 0.1) % 1;
+            pg.fill((h + i * 5) % 360, 30, 90, map(phase, 0, 1, p3 / 255 * 80, 0));
+            pg.push();
+            pg.translate(noise(i, t) * 600 - 300, 400 - phase * 1000, -200);
+            pg.sphere(30 + b[0] * 0.5 * p2 * (1 + phase));
+            pg.pop();
         }
     },
     kaleid: (pg, t, b, fI, h, s, p1, p2, p3) => {
         let folds = floor(p1 / 10) + 3;
         let slice = TWO_PI / folds;
         for (let f = 0; f < folds; f++) {
-            pg.push(); pg.rotate(slice * f); if (f % 2 === 0) pg.scale(1, -1);
-            for (let k = 0; k < 6; k++) {
-                applyColorStyle(pg, s, (h + k * 30 + t * 20) % 360, k, fI, p3);
-                pg.noFill(); pg.circle((50 + k * 60) * p2, 0, 20 + b[k % 12] * 0.4 * fI);
-            }
+            pg.push(); pg.rotateZ(slice * f); if (f % 2 === 0) pg.scale(1, -1);
+            applyColorStyle(pg, s, h, f, fI, p3);
+            pg.noFill(); pg.circle(200 * p2, 0, 50 + b[f % 12] * 0.5);
             pg.pop();
         }
     }
 };
 
-console.log("FX_LIBRARY v21.1.5 Loaded.");
+console.log("FX_LIBRARY v21.1.6 Fully Updated.");
