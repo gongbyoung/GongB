@@ -2,10 +2,9 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>SPECTRUM STUDIO v21.0.46 — Final System</title>
+    <title>SPECTRUM STUDIO v21.1.0 — 32 FX Master</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
-    <!-- 라이브러리 로드 대기 -->
     <script src="fx_library.js" onload="isLibraryReady = true;"></script>
     <style>
         *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
@@ -18,7 +17,7 @@
         .fx-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
         .fx-thumb { aspect-ratio: 1; border: 2px solid rgba(255,255,255,0.1); border-radius: 6px; cursor: pointer; background-color: #111; position: relative; background-size: cover; background-position: center; }
         .fx-thumb.active { border-color: var(--accent2); box-shadow: 0 0 10px var(--accent2); }
-        .fx-thumb::after { content: attr(data-name); position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(0,0,0,0.8); font-size: 5px; text-align: center; color: #fff; padding: 2px 0; white-space: nowrap; overflow: hidden; }
+        .fx-thumb::after { content: attr(data-name); position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(0,0,0,0.8); font-size: 5px; text-align: center; color: #fff; padding: 2px 0; overflow: hidden; white-space: nowrap; }
         .viz-area { position:relative; background:#000; display: flex; align-items: center; justify-content: center; flex:1; }
         #p5-container canvas { width: 100% !important; height: auto !important; max-height: 100% !important; }
         .log-panel { background:#000; border:1px solid #222; border-radius:4px; padding:10px; flex:1; overflow-y:auto; font-family: monospace; font-size:10px; color: #888; }
@@ -26,26 +25,24 @@
         .log-error { color: var(--accent2); }
         .btn { background:transparent; border:1px solid var(--border); border-radius:4px; color:#fff; padding:6px; cursor:pointer; font-size:9px; width:100%; height: 32px; margin-bottom:5px; transition: 0.2s; }
         .btn:hover:not(:disabled) { border-color: var(--accent); background: rgba(0,255,204,0.05); }
-        .btn.active-engine { background: var(--accent2); border-color: var(--accent2); font-weight: bold; }
-        input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; height:2px; margin: 10px 0; }
     </style>
 </head>
 <body>
 
 <div class="topbar">
-    <div style="letter-spacing:4px; color:var(--accent); font-weight:bold; font-size:14px;">SPECTRUM STUDIO v21.0.46</div>
+    <div style="letter-spacing:4px; color:var(--accent); font-weight:bold; font-size:14px;">SPECTRUM STUDIO v21.1.0</div>
     <div id="timeCode" style="font-size:12px; font-family:monospace;">00:00 / 00:00</div>
 </div>
 
 <div class="main-workspace">
     <div class="side-panel">
         <div class="ctrl-box">
-            <span style="font-size:9px; color:var(--accent);">1. VISUAL PALETTE</span>
+            <span style="font-size:9px; color:var(--accent);">1. 32 FX PALETTE</span>
             <div class="fx-grid" id="fxThumbGrid"></div>
-            <button class="btn" onclick="fetchThumbnails(true)" style="margin-top:10px; color:var(--accent2); border-color:var(--accent2);">☁️ FORCE SYNC THUMBS</button>
+            <button class="btn" onclick="syncThumbnails(true)" style="margin-top:10px; color:var(--accent2); border-color:var(--accent2);">☁️ FORCE SYNC THUMBS</button>
         </div>
         <div class="ctrl-box">
-            <span style="font-size:9px; color:var(--accent);">2. ENGINE TRIGGER</span>
+            <span style="font-size:9px; color:var(--accent);">2. SYSTEM ENGINE</span>
             <button class="btn" id="analyzeBtn" onclick="activateEngine()" disabled>⚡ PRE-ANALYZE AUDIO</button>
         </div>
     </div>
@@ -54,17 +51,17 @@
 
     <div class="side-panel">
         <div class="ctrl-box">
-            <span style="font-size:9px; color:var(--accent);">3. LIVE PARAMETERS</span>
-            <label style="font-size:8px;">P1: DENSITY</label><input type="range" id="fxP1" min="1" max="100" value="25">
-            <label style="font-size:8px;">P2: SPEED</label><input type="range" id="fxP2" min="0.1" max="5.0" step="0.1" value="1.0">
-            <label style="font-size:8px;">P3: ALPHA</label><input type="range" id="fxP3" min="10" max="255" value="150">
-            <label style="font-size:8px;">HUE</label><input type="range" id="fxHue" min="0" max="360" value="200">
+            <span style="font-size:9px; color:var(--accent);">3. PARAMETERS</span>
+            <input type="range" id="fxP1" min="1" max="100" value="25" style="width:100%;">
+            <input type="range" id="fxP2" min="0.1" max="5.0" step="0.1" value="1.0" style="width:100%;">
+            <input type="range" id="fxP3" min="1" max="255" value="150" style="width:100%;">
+            <input type="range" id="fxHue" min="0" max="360" value="200" style="width:100%;">
         </div>
         <div class="ctrl-box">
-            <button class="btn" onclick="saveThumbnail()">📷 SAVE CURRENT PNG</button>
+            <button class="btn" onclick="saveThumbnail()">📷 SAVE PALETTE PNG</button>
             <button class="btn" onclick="document.getElementById('mIn').click()">1. LOAD MP3</button>
             <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleFile(this.files)">
-            <button class="btn" id="recBtn" onclick="toggleSync()" disabled style="background:var(--accent2); border:none; font-weight:bold;">2. START PRODUCTION</button>
+            <button class="btn" id="recBtn" onclick="toggleSync()" disabled style="background:var(--accent2); border:none;">2. START PRODUCTION</button>
         </div>
         <div class="log-panel" id="logPanel"></div>
     </div>
@@ -72,7 +69,7 @@
 
 <script>
     let audio, fft, canvasRef, bgCanvas, isPlaying = false, currentFXId = '';
-    let isLibraryReady = false, isEngineActive = false;
+    let isEngineActive = false;
 
     function addLog(msg, type = 'info') {
         const p = document.getElementById('logPanel');
@@ -89,61 +86,51 @@
         
         let check = setInterval(() => {
             if(window.FX_ENGINES) {
-                addLog(`FX Library Loaded: ${Object.keys(FX_ENGINES).length} engines ready.`, "success");
-                generateThumbnails();
+                addLog(`Engine: v21.1.0 Ready. ${Object.keys(window.FX_ENGINES).length} FX found.`, "success");
+                generateUI();
                 clearInterval(check);
             }
         }, 200);
     }
 
-    function generateThumbnails() {
+    function generateUI() {
         const grid = document.getElementById('fxThumbGrid');
         grid.innerHTML = '';
-        const keys = Object.keys(FX_ENGINES);
+        const keys = Object.keys(window.FX_ENGINES);
         keys.forEach(id => {
             let b = document.createElement('div'); b.className = 'fx-thumb'; b.id = 'fxBtn_' + id;
-            b.setAttribute('data-name', id.replace(/_/g,' ').toUpperCase());
+            b.setAttribute('data-name', id.toUpperCase());
             b.onclick = () => { 
                 currentFXId = id; 
                 document.querySelectorAll('.fx-thumb').forEach(el => el.classList.remove('active')); 
                 b.classList.add('active'); 
-                addLog(`FX Switch: ${id}`);
+                addLog(`FX: ${id} selected.`);
             };
             grid.appendChild(b);
         });
         if (keys.length > 0) {
             currentFXId = keys[0];
             document.getElementById('fxBtn_' + currentFXId).classList.add('active');
-            fetchThumbnails(); // 초기 상대 경로 로딩 시작
+            syncThumbnails(); 
         }
     }
 
-    // --- [팀장님 요청] 상대 경로 기반 썸네일 로더 ---
-    function fetchThumbnails(force = false) {
-        if (!window.FX_ENGINES) return;
-        const keys = Object.keys(FX_ENGINES);
-        addLog(`Syncing ${keys.length} thumbnails from /thumbnails/...`, "info");
-
+    function syncThumbnails(force = false) {
+        const keys = Object.keys(window.FX_ENGINES);
+        addLog(`Syncing ${keys.length} assets...`, "info");
         keys.forEach(id => {
-            const fileName = `palette_${id.trim()}.png`;
-            // 상대 경로 사용 (viz13 폴더 기준)
-            const targetUrl = `thumbnails/${fileName}${force ? '?v=' + Date.now() : ''}`;
-            
+            const path = `thumbnails/palette_${id.trim()}.png${force ? '?v='+Date.now() : ''}`;
             const img = new Image();
-            img.onload = () => {
-                const btn = document.getElementById('fxBtn_' + id);
-                if(btn) btn.style.backgroundImage = `url(${targetUrl})`;
-            };
-            img.onerror = () => { addLog(`Missing: thumbnails/${fileName}`, "error"); };
-            img.src = targetUrl;
+            img.onload = () => { document.getElementById('fxBtn_'+id).style.backgroundImage = `url(${path})`; };
+            img.onerror = () => { addLog(`Missing: ${id}`, "error"); };
+            img.src = path;
         });
     }
 
     function activateEngine() {
-        if (!audio) return;
         userStartAudio().then(() => {
             isEngineActive = true;
-            addLog("Audio Analysis Engine Active.", "success");
+            addLog("Audio Engine Active.", "success");
             document.getElementById('analyzeBtn').innerText = "✅ ANALYZE ACTIVE";
             document.getElementById('recBtn').disabled = false;
         });
@@ -152,49 +139,26 @@
     function draw() {
         background(2, 2, 8); bgCanvas.clear();
         let bands = new Array(12).fill(0);
-        
         if (isEngineActive && audio && audio.isPlaying()) {
             let spectrum = fft.analyze();
-            if (spectrum) {
-                for (let i = 0; i < 12; i++) {
-                    let start = floor(map(i, 0, 12, 0, spectrum.length * 0.4));
-                    let end = floor(map(i + 1, 0, 12, 0, spectrum.length * 0.4));
-                    let sum = 0; for (let j = start; j < end; j++) sum += spectrum[j];
-                    bands[i] = sum / (end - start || 1);
-                }
+            for (let i = 0; i < 12; i++) {
+                let start = floor(map(i, 0, 12, 0, spectrum.length * 0.4));
+                let end = floor(map(i + 1, 0, 12, 0, spectrum.length * 0.4));
+                let sum = 0; for (let j = start; j < end; j++) sum += spectrum[j];
+                bands[i] = sum / (end - start || 1);
             }
         }
-
         bgCanvas.push(); bgCanvas.translate(960, 540);
-        if (window.FX_ENGINES && FX_ENGINES[currentFXId]) {
-            FX_ENGINES[currentFXId](bgCanvas, frameCount * 0.02, bands, 1.5, 
-                   parseFloat(document.getElementById('fxHue').value), "hue", 
-                   parseFloat(document.getElementById('fxP1').value), 
-                   parseFloat(document.getElementById('fxP2').value), 
-                   parseFloat(document.getElementById('fxP3').value));
+        if (window.FX_ENGINES && window.FX_ENGINES[currentFXId]) {
+            window.FX_ENGINES[currentFXId](bgCanvas, frameCount * 0.02, bands, 1.5, parseFloat(document.getElementById('fxHue').value), "hue", parseFloat(document.getElementById('fxP1').value), parseFloat(document.getElementById('fxP2').value), parseFloat(document.getElementById('fxP3').value));
         }
         bgCanvas.pop();
         push(); translate(-width/2, -height/2); image(bgCanvas, 0, 0); pop();
-
-        if (audio && audio.isPlaying()) {
-            let cur = audio.currentTime(); let dur = audio.duration();
-            document.getElementById('timeCode').innerText = `${nf(floor(cur/60),2)}:${nf(floor(cur%60),2)} / ${nf(floor(dur/60),2)}:${nf(floor(dur%60),2)}`;
-        }
     }
 
-    function handleFile(files) { 
-        audio = loadSound(URL.createObjectURL(files[0]), () => { 
-            addLog("MP3 Ready. Please PRE-ANALYZE.");
-            document.getElementById('analyzeBtn').disabled = false; 
-        }); 
-    }
-
-    function saveThumbnail() { saveCanvas(canvasRef, 'palette_' + currentFXId, 'png'); addLog(`Thumbnail saved: palette_${currentFXId}.png`); }
-    
-    async function toggleSync() { 
-        if (isPlaying) { audio.stop(); isPlaying = false; addLog("Production Stopped."); } 
-        else { audio.play(); isPlaying = true; addLog("Production Running...", "success"); } 
-    }
+    function handleFile(files) { audio = loadSound(URL.createObjectURL(files[0]), () => { document.getElementById('analyzeBtn').disabled = false; addLog("MP3 Loaded."); }); }
+    function saveThumbnail() { saveCanvas(canvasRef, 'palette_'+currentFXId, 'png'); addLog("Thumbnail saved."); }
+    async function toggleSync() { if (isPlaying) { audio.stop(); isPlaying = false; } else { audio.play(); isPlaying = true; } }
 </script>
 </body>
 </html>
