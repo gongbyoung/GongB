@@ -2,13 +2,13 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>TYPO PRODUCTION v22.0.0 — Precision Guide</title>
+    <title>TYPO DESIGNER EDITION v22.1.0</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <style>
         :root{ --bg:#050508; --accent:#00ffcc; --panel:#0e0e15; --text:#fff; --record:#ff3377; }
         body{ background:var(--bg); color:var(--text); margin:0; overflow:hidden; font-family:'Pretendard', sans-serif; display:flex; }
-        #editor-panel { width:400px; background:var(--panel); height:100vh; padding:15px; border-right:1px solid rgba(0,255,204,0.2); z-index:10; display:flex; flex-direction:column; }
+        #editor-panel { width:420px; background:var(--panel); height:100vh; padding:15px; border-right:1px solid rgba(0,255,204,0.2); z-index:10; display:flex; flex-direction:column; }
         #status-bar { background:rgba(0,255,204,0.05); padding:10px; border-radius:4px; margin-bottom:10px; font-size:10px; color:var(--accent); border:1px solid var(--accent); text-align:center; font-weight:bold;}
         #subtitle-list { flex:1; overflow-y:auto; padding-right:5px; scrollbar-width:thin; }
         .sub-item { background:rgba(255,255,255,0.03); border:1px solid #333; border-radius:6px; padding:12px; margin-bottom:10px; font-size:11px; transition: 0.2s; cursor: pointer; }
@@ -17,8 +17,12 @@
         .grid-ctrl { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
         label { font-size:9px; color:#888; display:block; margin-top:5px; }
         select, input { width:100%; background:#000; color:#fff; border:1px solid #444; padding:4px; font-size:10px; border-radius:3px; outline:none; }
-        input[type=range] { accent-color:var(--accent); height:2px; }
+        input[type=range] { accent-color:var(--accent); height:2px; margin: 10px 0; }
+        
+        /* 2. 보색 테두리: 검은 배경에서도 캔버스가 잘 보이도록 설정 */
         #canvas-container { flex:1; position:relative; display:flex; align-items:center; justify-content:center; background:#000; overflow:hidden; }
+        canvas { border: 2px solid var(--accent) !important; box-shadow: 0 0 20px rgba(0,255,204,0.2); }
+        
         .btn { padding:6px 10px; background:transparent; border:1px solid var(--accent); color:var(--accent); cursor:pointer; font-size:9px; border-radius:4px; font-weight:bold; }
         .btn:hover { background:rgba(0,255,204,0.1); }
         .top-btns { display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-bottom:10px; }
@@ -38,7 +42,7 @@
             <option value="9:16">📱 9:16 Portrait</option>
         </select>
     </div>
-    <div id="status-bar">VER 22.0.0 - LAYOUT GUIDE MODE</div>
+    <div id="status-bar">DESIGNER MODE - READY</div>
     <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleAudio(this.files)">
     <input type="file" id="sIn" accept=".srt" style="display:none" onchange="handleSRT(this.files)">
     <input type="file" id="fIn" accept=".ttf,.otf" style="display:none" onchange="handleFont(this.files)">
@@ -52,7 +56,7 @@
     let subtitles = [], settings = [];
     let isPlaying = false, isStarted = false;
     let mediaRecorder, recordedChunks = [];
-    let editingIdx = 0; // 현재 편집 중인 자막 인덱스
+    let editingIdx = 0;
 
     function setup() {
         resizeStudio();
@@ -61,20 +65,29 @@
 
     function handleFont(files) {
         const url = URL.createObjectURL(files[0]);
-        loadFont(url, (f) => { myFont = f; document.getElementById('status-bar').innerText = `Font: ${files[0].name}`; checkReady(); });
+        loadFont(url, (f) => { myFont = f; document.getElementById('status-bar').innerText = `Font Active`; checkReady(); });
     }
 
     function checkReady() {
         if(myFont && audio && subtitles.length > 0) document.getElementById('playBtn').disabled = false;
     }
 
+    // 1. 종횡비에 따른 슬라이더 범위 자동 조정 로직
     function resizeStudio() {
         const ratio = document.getElementById('aspectRatio').value;
         let w = 1280, h = 720;
         if(ratio === "9:16") { w = 720; h = 1280; }
+        
         resizeCanvas(w, h);
         subCanvas = createGraphics(w, h, WEBGL);
         subCanvas.colorMode(HSB, 360, 100, 100, 100);
+        
+        // 슬라이더 범위 동적 갱신
+        const xLimit = w / 2;
+        const yLimit = h / 2;
+        document.querySelectorAll('.x-slider').forEach(s => { s.min = -xLimit; s.max = xLimit; });
+        document.querySelectorAll('.y-slider').forEach(s => { s.min = -yLimit; s.max = yLimit; });
+
         const scale = Math.min(document.getElementById('canvas-container').clientWidth/w, document.getElementById('canvas-container').clientHeight/h) * 0.9;
         document.querySelector('canvas').style.transform = `scale(${scale})`;
     }
@@ -84,8 +97,7 @@
         subCanvas.clear();
         if (myFont) {
             if (!isStarted) {
-                drawIntro();
-                drawVisualGuide(); // 편집 시 가이드 표시
+                drawVisualGuide();
             } else if (audio && audio.isPlaying()) {
                 fft.analyze();
                 renderTypo(audio.currentTime());
@@ -94,52 +106,18 @@
         push(); translate(-width/2, -height/2); image(subCanvas, 0, 0); pop();
     }
 
-    // [신규] 실시간 비주얼 가이드 로직
     function drawVisualGuide() {
         if (subtitles.length === 0) return;
         let set = settings[editingIdx];
         subCanvas.push();
-        
-        // 가이드 선 (중앙 십자선)
-        subCanvas.stroke(0, 255, 204, 50);
-        subCanvas.strokeWeight(1);
-        subCanvas.line(set.x, -height/2, set.x, height/2); // 세로선
-        subCanvas.line(-width/2, set.y, width/2, set.y);   // 가로선
-        
-        // 자막 영역 박스 (Size 기반)
-        subCanvas.noFill();
-        subCanvas.stroke(255, 50, 119, 80);
-        subCanvas.translate(set.x, set.y, 0);
-        subCanvas.rotateZ(radians(set.rot));
-        subCanvas.rect(-set.size*2, -set.size/2, set.size*4, set.size);
-        
-        // 현재 가이드 가사 텍스트 프리뷰
+        subCanvas.stroke(0, 255, 204, 60);
+        subCanvas.line(set.x, -height/2, set.x, height/2);
+        subCanvas.line(-width/2, set.y, width/2, set.y);
         subCanvas.textFont(myFont);
         subCanvas.textAlign(CENTER, CENTER);
-        subCanvas.fill(255, 50);
+        subCanvas.fill(255, 70);
         subCanvas.textSize(set.size);
-        subCanvas.text(subtitles[editingIdx].text, 0, 0);
-        
-        // 좌표 툴팁
-        subCanvas.resetMatrix();
-        subCanvas.translate(set.x + 10, set.y - 10, 0);
-        subCanvas.fill(0, 255, 204);
-        subCanvas.textSize(12);
-        subCanvas.text(`POS: ${set.x}, ${set.y} | SIZE: ${set.size}`, 60, 0);
-        subCanvas.pop();
-    }
-
-    function drawIntro() {
-        subCanvas.push();
-        subCanvas.textFont(myFont);
-        subCanvas.textAlign(CENTER, CENTER);
-        subCanvas.fill(0, 255, 204); subCanvas.textSize(40);
-        subCanvas.text("PRODUCTION READY", 0, -200);
-        subCanvas.fill(255); subCanvas.textSize(16);
-        let manual = "리스트 항목을 클릭하면 해당 줄의 위치 가이드가 표시됩니다.\n" +
-                     "화면의 분홍색 박스는 글자 크기를 나타내며, 십자선은 정렬 기준입니다.\n" +
-                     "START 버튼을 누르면 가이드는 자동으로 제거되고 녹화가 시작됩니다.";
-        subCanvas.text(manual, 0, -120);
+        subCanvas.text(subtitles[editingIdx].text, set.x, set.y);
         subCanvas.pop();
     }
 
@@ -156,19 +134,36 @@
             const listEl = document.getElementById('subtitle-list'); listEl.innerHTML = '';
             blocks.forEach((block, i) => {
                 const lines = block.split('\n'); if (lines.length < 3) return;
-                const times = lines[1].split(' --> '), text = lines.slice(2).join(' ').trim();
+                const times = lines[1].split(' --> ');
+                const text = lines.slice(2).join(' ').trim();
                 subtitles.push({ start: timeToSec(times[0]), end: timeToSec(times[1]), text: text });
                 settings.push({ motion: 'Char_Wave', size: 70, x: 0, y: 150, hue: 180, rot: 0 });
+                
+                const ratio = document.getElementById('aspectRatio').value;
+                const xMax = ratio === "16:9" ? 640 : 360;
+                const yMax = ratio === "16:9" ? 360 : 640;
+
                 const item = document.createElement('div');
                 item.className = 'sub-item'; item.id = `item-${i}`;
-                item.onclick = () => { editingIdx = i; document.querySelectorAll('.sub-item').forEach(el => el.classList.remove('active')); item.classList.add('active'); }; // 클릭 시 가이드 전환
+                item.onclick = () => { editingIdx = i; document.querySelectorAll('.sub-item').forEach(el => el.classList.remove('active')); item.classList.add('active'); };
                 item.innerHTML = `
                     <div class="sub-text">${i+1}. ${text}</div>
                     <div class="grid-ctrl">
-                        <div><label>MOTION</label><select onfocus="editingIdx=${i}" onchange="updateSet(${i}, 'motion', this.value)"><option value="Char_Wave">Char: Wave</option><option value="Word_Bounce">Word: Bounce</option><option value="Typing">Typing</option><option value="Pulse">Pulse</option><option value="3D_Flip">3D Flip</option></select></div>
-                        <div><label>SIZE</label><input type="range" min="20" max="300" value="70" onfocus="editingIdx=${i}" oninput="updateSet(${i}, 'size', this.value)"></div>
-                        <div><label>X / Y</label><div style="display:flex;gap:2px;"><input type="number" value="0" onfocus="editingIdx=${i}" oninput="updateSet(${i}, 'x', this.value)"><input type="number" value="150" onfocus="editingIdx=${i}" oninput="updateSet(${i}, 'y', this.value)"></div></div>
-                        <div><label>HUE/ROT</label><div style="display:flex;gap:2px;"><input type="range" min="0" max="360" value="180" onfocus="editingIdx=${i}" oninput="updateSet(${i}, 'hue', this.value)"><input type="range" min="-180" max="180" value="0" onfocus="editingIdx=${i}" oninput="updateSet(${i}, 'rot', this.value)"></div></div>
+                        <!-- 3. 강화된 모션 엔진 옵션 -->
+                        <div><label>ENGINE</label><select onchange="updateSet(${i}, 'motion', this.value)">
+                            <option value="Char_Wave">Char: Wave</option>
+                            <option value="Char_Zoom">Char: Zoom</option>
+                            <option value="Word_Bounce">Word: Bounce</option>
+                            <option value="Word_Slide">Word: Slide</option>
+                            <option value="Typing">Typing</option>
+                            <option value="Pulse">Pulse</option>
+                        </select></div>
+                        <div><label>SIZE</label><input type="range" min="10" max="300" value="70" oninput="updateSet(${i}, 'size', this.value)"></div>
+                        <!-- 1. X, Y 슬라이더화 -->
+                        <div><label>POS X</label><input type="range" class="x-slider" min="-${xMax}" max="${xMax}" value="0" oninput="updateSet(${i}, 'x', this.value)"></div>
+                        <div><label>POS Y</label><input type="range" class="y-slider" min="-${yMax}" max="${yMax}" value="150" oninput="updateSet(${i}, 'y', this.value)"></div>
+                        <div><label>HUE</label><input type="range" min="0" max="360" value="180" oninput="updateSet(${i}, 'hue', this.value)"></div>
+                        <div><label>ROT</label><input type="range" min="-180" max="180" value="0" oninput="updateSet(${i}, 'rot', this.value)"></div>
                     </div>
                 `;
                 listEl.appendChild(item);
@@ -182,16 +177,56 @@
         let idx = subtitles.findIndex(s => curr >= s.start && curr <= s.end);
         if (idx === -1) return;
         let sub = subtitles[idx], set = settings[idx], progress = map(curr, sub.start, sub.end, 0, 1), bass = fft.getEnergy("bass");
-        subCanvas.push(); subCanvas.textFont(myFont); subCanvas.translate(set.x, set.y, 0); subCanvas.rotateZ(radians(set.rot)); subCanvas.textAlign(CENTER, CENTER); subCanvas.textSize(set.size); subCanvas.fill(set.hue, 80, 100);
+
+        subCanvas.push(); 
+        subCanvas.textFont(myFont); 
+        subCanvas.textAlign(CENTER, CENTER);
+        subCanvas.textSize(set.size); 
+        subCanvas.fill(set.hue, 80, 100);
+
+        // 3. 한글자씩, 한단어씩 모션 로직 상세 구현
         if (set.motion === 'Char_Wave') {
             let chars = sub.text.split(''), totalW = subCanvas.textWidth(sub.text), curX = -totalW/2;
-            chars.forEach((c, i) => { let offY = sin(frameCount*0.1 + i*0.5)*(bass/10); subCanvas.text(c, curX + subCanvas.textWidth(c)/2, offY); curX += subCanvas.textWidth(c); });
-        } else if (set.motion === 'Word_Bounce') {
+            chars.forEach((c, i) => { 
+                let offY = sin(frameCount*0.1 + i*0.5)*(bass/10); 
+                subCanvas.text(c, set.x + curX + subCanvas.textWidth(c)/2, set.y + offY); 
+                curX += subCanvas.textWidth(c); 
+            });
+        } 
+        else if (set.motion === 'Char_Zoom') {
+            let chars = sub.text.split(''), totalW = subCanvas.textWidth(sub.text), curX = -totalW/2;
+            chars.forEach((c, i) => {
+                let sz = set.size * (1 + sin(frameCount*0.1 + i)*0.2 * (bass/255));
+                subCanvas.textSize(sz);
+                subCanvas.text(c, set.x + curX + subCanvas.textWidth(c)/2, set.y);
+                curX += subCanvas.textWidth(c);
+            });
+        }
+        else if (set.motion === 'Word_Bounce') {
             let words = sub.text.split(' '), totalW = subCanvas.textWidth(sub.text), curX = -totalW/2;
-            words.forEach((w, i) => { let bnc = abs(sin(frameCount*0.1+i))*(bass/5); subCanvas.text(w, curX + subCanvas.textWidth(w)/2, -bnc); curX += subCanvas.textWidth(w+' '); });
-        } else if (set.motion === 'Typing') { subCanvas.text(sub.text.substring(0, floor(map(progress, 0, 0.4, 0, sub.text.length, true))), 0, 0);
-        } else if (set.motion === '3D_Flip') { subCanvas.rotateX(progress * TWO_PI); subCanvas.text(sub.text, 0, 0);
-        } else if (set.motion === 'Pulse') { subCanvas.scale(1.0 + (bass/500)); subCanvas.text(sub.text, 0, 0); }
+            words.forEach((w, i) => { 
+                let bnc = abs(sin(frameCount*0.1+i))*(bass/5); 
+                subCanvas.text(w, set.x + curX + subCanvas.textWidth(w)/2, set.y - bnc); 
+                curX += subCanvas.textWidth(w+' '); 
+            });
+        }
+        else if (set.motion === 'Word_Slide') {
+            let words = sub.text.split(' '), totalW = subCanvas.textWidth(sub.text), curX = -totalW/2;
+            words.forEach((w, i) => {
+                let slideX = map(progress, 0, 0.2 + i*0.1, -100, 0, true);
+                let alpha = map(progress, 0, 0.2 + i*0.1, 0, 100, true);
+                subCanvas.fill(set.hue, 80, 100, alpha);
+                subCanvas.text(w, set.x + curX + subCanvas.textWidth(w)/2 + slideX, set.y);
+                curX += subCanvas.textWidth(w+' ');
+            });
+        }
+        else if (set.motion === 'Typing') { 
+            subCanvas.text(sub.text.substring(0, floor(map(progress, 0, 0.4, 0, sub.text.length, true))), set.x, set.y);
+        } else {
+            subCanvas.translate(set.x, set.y); subCanvas.rotateZ(radians(set.rot));
+            if(set.motion === 'Pulse') subCanvas.scale(1.0 + (bass/500));
+            subCanvas.text(sub.text, 0, 0);
+        }
         subCanvas.pop();
     }
 
@@ -200,7 +235,7 @@
         if (!MediaRecorder.isTypeSupported(options.mimeType)) options = { mimeType: 'video/webm; codecs=vp9' };
         mediaRecorder = new MediaRecorder(stream, options);
         mediaRecorder.ondataavailable = (e) => { if(e.data.size > 0) recordedChunks.push(e.data); };
-        mediaRecorder.onstop = () => { let blob = new Blob(recordedChunks, { type: options.mimeType }); let a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `typo_master_${Date.now()}.mp4`; a.click(); };
+        mediaRecorder.onstop = () => { let blob = new Blob(recordedChunks, { type: options.mimeType }); let a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `typo_design_${Date.now()}.mp4`; a.click(); };
         mediaRecorder.start();
     }
 
