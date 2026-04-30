@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>SPECTRUM STUDIO v21.0.38 — Engine Trigger</title>
+    <title>SPECTRUM STUDIO v21.0.39 — Ultra Stability</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <script src="fx_library.js"></script>
@@ -28,7 +28,7 @@
 </head>
 <body>
 
-<div class="topbar"><div class="logo">SPECTRUM STUDIO v21.0.38</div><div id="timeCode">00:00 / 00:00</div></div>
+<div class="topbar"><div class="logo">SPECTRUM STUDIO v21.0.39</div><div id="timeCode">00:00 / 00:00</div></div>
 
 <div class="main-workspace">
     <div class="side-panel">
@@ -39,7 +39,6 @@
         </div>
         <div class="ctrl-box">
             <span style="font-size:9px; color:var(--accent);">2. ENGINE STATUS</span>
-            <!-- [추가] 분석 버튼: 오디오 엔진을 명시적으로 깨움 -->
             <button class="btn" id="analyzeBtn" onclick="activateEngine()" disabled>⚡ PRE-ANALYZE AUDIO</button>
             <div id="engineStatus" style="font-size:10px; color:#555; text-align:center; margin-top:5px;">ENGINE IDLE</div>
         </div>
@@ -74,8 +73,8 @@
 </div>
 
 <script>
-    let audio, fft, ampObj, canvasRef, bgCanvas, isPlaying = false, currentFXId = 'waves';
-    let isEngineActive = false; // 분석 엔진 상태 플래그
+    let audio, fft, canvasRef, bgCanvas, isPlaying = false, currentFXId = 'waves';
+    let isEngineActive = false;
 
     function setup() {
         let cnv = createCanvas(1920, 1080, WEBGL); cnv.parent('p5-container'); canvasRef = cnv.elt;
@@ -84,11 +83,11 @@
         generateThumbnails();
     }
 
-    // [핵심] 오디오 엔진 활성화 함수
     function activateEngine() {
         if (!audio) return;
         userStartAudio().then(() => {
             isEngineActive = true;
+            fft.setInput(audio); // 명시적으로 입력 소스 고정
             document.getElementById('analyzeBtn').innerText = "✅ ANALYZE ACTIVE";
             document.getElementById('analyzeBtn').classList.add('active-engine');
             document.getElementById('engineStatus').innerText = "ENGINE RUNNING";
@@ -101,18 +100,24 @@
         background(2, 2, 8); bgCanvas.clear();
         let bands = new Array(12).fill(0);
         
-        // 엔진이 활성화되었고 오디오가 재생 중일 때만 분석 실행
+        // [초강력 수정] getEnergy를 사용하지 않고 직접 주파수 데이터를 계산합니다.
         if (isEngineActive && audio && audio.isPlaying()) {
-            fft.analyze();
-            for (let i = 0; i < 12; i++) {
-                bands[i] = fft.getEnergy(i * 100, (i + 1) * 100);
+            let spectrum = fft.analyze();
+            if (spectrum && spectrum.length > 0) {
+                for (let i = 0; i < 12; i++) {
+                    // 전체 스펙트럼에서 각 밴드별 평균값을 추출 (viz13:108 에러 원천 차단)
+                    let start = floor(map(i, 0, 12, 0, spectrum.length * 0.5)); // 저/중역대 집중
+                    let end = floor(map(i + 1, 0, 12, 0, spectrum.length * 0.5));
+                    let sum = 0;
+                    for (let j = start; j < end; j++) sum += spectrum[j];
+                    bands[i] = sum / (end - start || 1);
+                }
             }
         }
 
         bgCanvas.push();
         bgCanvas.translate(960, 540);
         
-        // 라이브러리(FX_ENGINES) 호출
         if (typeof FX_ENGINES !== 'undefined' && FX_ENGINES[currentFXId]) {
             FX_ENGINES[currentFXId](bgCanvas, frameCount * 0.02, bands, 1.5, 
                    parseFloat(document.getElementById('fxHue').value), 
@@ -124,6 +129,13 @@
         
         bgCanvas.pop();
         push(); translate(-width/2, -height/2); image(bgCanvas, 0, 0); pop();
+        
+        // 시간 표시 업데이트
+        if (audio && audio.isPlaying()) {
+            let cur = audio.currentTime();
+            let dur = audio.duration();
+            document.getElementById('timeCode').innerText = `${nf(floor(cur/60),2)}:${nf(floor(cur%60),2)} / ${nf(floor(dur/60),2)}:${nf(floor(dur%60),2)}`;
+        }
     }
 
     function handleFile(files) { 
