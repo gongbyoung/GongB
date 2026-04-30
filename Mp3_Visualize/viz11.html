@@ -2,33 +2,28 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>TYPO PRODUCTION v21.9.0 — The Master</title>
+    <title>TYPO PRODUCTION v22.0.0 — Precision Guide</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <style>
         :root{ --bg:#050508; --accent:#00ffcc; --panel:#0e0e15; --text:#fff; --record:#ff3377; }
         body{ background:var(--bg); color:var(--text); margin:0; overflow:hidden; font-family:'Pretendard', sans-serif; display:flex; }
-        
         #editor-panel { width:400px; background:var(--panel); height:100vh; padding:15px; border-right:1px solid rgba(0,255,204,0.2); z-index:10; display:flex; flex-direction:column; }
-        #status-bar { background:rgba(0,255,204,0.1); padding:10px; border-radius:4px; margin-bottom:10px; font-size:10px; color:var(--accent); border:1px solid var(--accent); text-align:center; font-weight:bold;}
-        
+        #status-bar { background:rgba(0,255,204,0.05); padding:10px; border-radius:4px; margin-bottom:10px; font-size:10px; color:var(--accent); border:1px solid var(--accent); text-align:center; font-weight:bold;}
         #subtitle-list { flex:1; overflow-y:auto; padding-right:5px; scrollbar-width:thin; }
-        .sub-item { background:rgba(255,255,255,0.03); border:1px solid #333; border-radius:6px; padding:12px; margin-bottom:10px; font-size:11px; }
-        .sub-item.active { border-color:var(--accent); background:rgba(0,255,204,0.05); }
+        .sub-item { background:rgba(255,255,255,0.03); border:1px solid #333; border-radius:6px; padding:12px; margin-bottom:10px; font-size:11px; transition: 0.2s; cursor: pointer; }
+        .sub-item.active { border-color:var(--accent); background:rgba(0,255,204,0.05); box-shadow: 0 0 10px rgba(0,255,204,0.1); }
         .sub-text { color:var(--accent); font-weight:bold; margin-bottom:8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-        
         .grid-ctrl { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
         label { font-size:9px; color:#888; display:block; margin-top:5px; }
         select, input { width:100%; background:#000; color:#fff; border:1px solid #444; padding:4px; font-size:10px; border-radius:3px; outline:none; }
         input[type=range] { accent-color:var(--accent); height:2px; }
-
         #canvas-container { flex:1; position:relative; display:flex; align-items:center; justify-content:center; background:#000; overflow:hidden; }
         .btn { padding:6px 10px; background:transparent; border:1px solid var(--accent); color:var(--accent); cursor:pointer; font-size:9px; border-radius:4px; font-weight:bold; }
         .btn:hover { background:rgba(0,255,204,0.1); }
         .top-btns { display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-bottom:10px; }
-        
-        #playBtn { background:var(--accent); color:#000; width:100%; height:30px; border:none; margin-top:10px; cursor:pointer; font-size:10px; font-weight:bold; border-radius:4px; transition: 0.3s; }
-        #playBtn:disabled { background:#333; color:#666; cursor:not-allowed; }
+        #playBtn { background:var(--accent); color:#000; width:100%; height:30px; border:none; margin-top:10px; cursor:pointer; font-size:10px; font-weight:bold; border-radius:4px; }
+        #playBtn:disabled { background:#333; color:#666; }
     </style>
 </head>
 <body>
@@ -43,18 +38,13 @@
             <option value="9:16">📱 9:16 Portrait</option>
         </select>
     </div>
-    
-    <div id="status-bar">VER 21.9.0 - WAITING FOR FONT</div>
-
+    <div id="status-bar">VER 22.0.0 - LAYOUT GUIDE MODE</div>
     <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleAudio(this.files)">
     <input type="file" id="sIn" accept=".srt" style="display:none" onchange="handleSRT(this.files)">
     <input type="file" id="fIn" accept=".ttf,.otf" style="display:none" onchange="handleFont(this.files)">
-    
     <button id="playBtn" onclick="startProduction()" disabled>▶ START PRODUCTION (REC)</button>
-
     <div id="subtitle-list"></div>
 </div>
-
 <div id="canvas-container"></div>
 
 <script>
@@ -62,28 +52,20 @@
     let subtitles = [], settings = [];
     let isPlaying = false, isStarted = false;
     let mediaRecorder, recordedChunks = [];
+    let editingIdx = 0; // 현재 편집 중인 자막 인덱스
 
     function setup() {
         resizeStudio();
         fft = new p5.FFT();
     }
 
-    // [수정] 폰트 로드 전까지 text() 호출 금지하여 에러 알람 방지
     function handleFont(files) {
         const url = URL.createObjectURL(files[0]);
-        loadFont(url, (f) => {
-            myFont = f;
-            document.getElementById('status-bar').innerText = `Font Active: ${files[0].name}`;
-            document.getElementById('status-bar').style.borderColor = "#ff3377";
-            checkReady();
-        });
+        loadFont(url, (f) => { myFont = f; document.getElementById('status-bar').innerText = `Font: ${files[0].name}`; checkReady(); });
     }
 
     function checkReady() {
-        if(myFont && audio && subtitles.length > 0) {
-            document.getElementById('playBtn').disabled = false;
-            document.getElementById('status-bar').innerText = "ALL READY - PRESS START";
-        }
+        if(myFont && audio && subtitles.length > 0) document.getElementById('playBtn').disabled = false;
     }
 
     function resizeStudio() {
@@ -93,72 +75,77 @@
         resizeCanvas(w, h);
         subCanvas = createGraphics(w, h, WEBGL);
         subCanvas.colorMode(HSB, 360, 100, 100, 100);
-        const container = document.getElementById('canvas-container');
-        const scale = Math.min(container.clientWidth/w, container.clientHeight/h) * 0.9;
+        const scale = Math.min(document.getElementById('canvas-container').clientWidth/w, document.getElementById('canvas-container').clientHeight/h) * 0.9;
         document.querySelector('canvas').style.transform = `scale(${scale})`;
     }
 
     function draw() {
         background(2);
         subCanvas.clear();
-
-        // [수정] 폰트가 로드된 경우에만 렌더링 시도 (에러 폭주 방지)
         if (myFont) {
             if (!isStarted) {
-                drawIntro(); // 폰트가 있어야 설명서 출력 가능
+                drawIntro();
+                drawVisualGuide(); // 편집 시 가이드 표시
             } else if (audio && audio.isPlaying()) {
                 fft.analyze();
                 renderTypo(audio.currentTime());
             }
         }
-
         push(); translate(-width/2, -height/2); image(subCanvas, 0, 0); pop();
     }
 
-    // [신규] 화면 중앙 사용 설명서 (Start 누르면 사라짐)
+    // [신규] 실시간 비주얼 가이드 로직
+    function drawVisualGuide() {
+        if (subtitles.length === 0) return;
+        let set = settings[editingIdx];
+        subCanvas.push();
+        
+        // 가이드 선 (중앙 십자선)
+        subCanvas.stroke(0, 255, 204, 50);
+        subCanvas.strokeWeight(1);
+        subCanvas.line(set.x, -height/2, set.x, height/2); // 세로선
+        subCanvas.line(-width/2, set.y, width/2, set.y);   // 가로선
+        
+        // 자막 영역 박스 (Size 기반)
+        subCanvas.noFill();
+        subCanvas.stroke(255, 50, 119, 80);
+        subCanvas.translate(set.x, set.y, 0);
+        subCanvas.rotateZ(radians(set.rot));
+        subCanvas.rect(-set.size*2, -set.size/2, set.size*4, set.size);
+        
+        // 현재 가이드 가사 텍스트 프리뷰
+        subCanvas.textFont(myFont);
+        subCanvas.textAlign(CENTER, CENTER);
+        subCanvas.fill(255, 50);
+        subCanvas.textSize(set.size);
+        subCanvas.text(subtitles[editingIdx].text, 0, 0);
+        
+        // 좌표 툴팁
+        subCanvas.resetMatrix();
+        subCanvas.translate(set.x + 10, set.y - 10, 0);
+        subCanvas.fill(0, 255, 204);
+        subCanvas.textSize(12);
+        subCanvas.text(`POS: ${set.x}, ${set.y} | SIZE: ${set.size}`, 60, 0);
+        subCanvas.pop();
+    }
+
     function drawIntro() {
         subCanvas.push();
         subCanvas.textFont(myFont);
         subCanvas.textAlign(CENTER, CENTER);
-        
-        // 제목
-        subCanvas.fill(0, 255, 204);
-        subCanvas.textSize(40);
-        subCanvas.text("TYPO PRODUCTION MASTER", 0, -100);
-        
-        // 상세 설명서
-        subCanvas.fill(255);
-        subCanvas.textSize(18);
-        let manual = "1. FONT: 팀장님 컴퓨터의 .ttf 파일을 먼저 로드하세요.\n" +
-                     "2. SOURCE: MP3 음악과 SRT 자막을 순서대로 넣으세요.\n" +
-                     "3. CUSTOM: 왼쪽 리스트에서 가사별 모션을 설정하세요.\n" +
-                     "4. RECORD: START 버튼을 누르면 자동으로 MP4 녹화가 시작됩니다.\n" +
-                     "5. SAVE: STOP 버튼을 누르면 영상이 즉시 저장됩니다.";
-        subCanvas.text(manual, 0, 50);
-        
-        subCanvas.fill(255, 50, 119);
-        subCanvas.textSize(22);
-        subCanvas.text("READY TO CREATE?", 0, 180);
+        subCanvas.fill(0, 255, 204); subCanvas.textSize(40);
+        subCanvas.text("PRODUCTION READY", 0, -200);
+        subCanvas.fill(255); subCanvas.textSize(16);
+        let manual = "리스트 항목을 클릭하면 해당 줄의 위치 가이드가 표시됩니다.\n" +
+                     "화면의 분홍색 박스는 글자 크기를 나타내며, 십자선은 정렬 기준입니다.\n" +
+                     "START 버튼을 누르면 가이드는 자동으로 제거되고 녹화가 시작됩니다.";
+        subCanvas.text(manual, 0, -120);
         subCanvas.pop();
     }
 
     async function startProduction() {
-        if (!isPlaying) {
-            isStarted = true; // 설명서 삭제
-            recordedChunks = [];
-            startRecording(); 
-            audio.play();
-            isPlaying = true;
-            document.getElementById('playBtn').innerText = "⏹ STOP & SAVE MP4";
-            document.getElementById('playBtn').style.background = "#ff3377";
-        } else {
-            audio.stop();
-            if(mediaRecorder) mediaRecorder.stop();
-            isPlaying = false;
-            isStarted = false;
-            document.getElementById('playBtn').innerText = "▶ START MP4 PRODUCTION";
-            document.getElementById('playBtn').style.background = "#00ffcc";
-        }
+        if (!isPlaying) { isStarted = true; recordedChunks = []; startRecording(); audio.play(); isPlaying = true; document.getElementById('playBtn').innerText = "⏹ STOP & SAVE MP4"; document.getElementById('playBtn').style.background = "#ff3377"; }
+        else { audio.stop(); if(mediaRecorder) mediaRecorder.stop(); isPlaying = false; isStarted = false; document.getElementById('playBtn').innerText = "▶ START MP4 PRODUCTION"; document.getElementById('playBtn').style.background = "#00ffcc"; }
     }
 
     function handleSRT(files) {
@@ -166,25 +153,22 @@
         reader.onload = (e) => {
             const blocks = e.target.result.replace(/\r/g, '').split('\n\n');
             subtitles = []; settings = [];
-            const listEl = document.getElementById('subtitle-list');
-            listEl.innerHTML = '';
+            const listEl = document.getElementById('subtitle-list'); listEl.innerHTML = '';
             blocks.forEach((block, i) => {
-                const lines = block.split('\n');
-                if (lines.length < 3) return;
-                const times = lines[1].split(' --> ');
-                const text = lines.slice(2).join(' ').trim();
+                const lines = block.split('\n'); if (lines.length < 3) return;
+                const times = lines[1].split(' --> '), text = lines.slice(2).join(' ').trim();
                 subtitles.push({ start: timeToSec(times[0]), end: timeToSec(times[1]), text: text });
                 settings.push({ motion: 'Char_Wave', size: 70, x: 0, y: 150, hue: 180, rot: 0 });
                 const item = document.createElement('div');
-                item.className = 'sub-item';
-                item.id = `item-${i}`;
+                item.className = 'sub-item'; item.id = `item-${i}`;
+                item.onclick = () => { editingIdx = i; document.querySelectorAll('.sub-item').forEach(el => el.classList.remove('active')); item.classList.add('active'); }; // 클릭 시 가이드 전환
                 item.innerHTML = `
                     <div class="sub-text">${i+1}. ${text}</div>
                     <div class="grid-ctrl">
-                        <div><label>MOTION</label><select onchange="updateSet(${i}, 'motion', this.value)"><option value="Char_Wave">Char: Wave</option><option value="Word_Bounce">Word: Bounce</option><option value="Typing">Typing</option><option value="Pulse">Pulse</option><option value="3D_Flip">3D Flip</option></select></div>
-                        <div><label>SIZE</label><input type="range" min="20" max="300" value="70" oninput="updateSet(${i}, 'size', this.value)"></div>
-                        <div><label>X / Y</label><div style="display:flex;gap:2px;"><input type="number" value="0" oninput="updateSet(${i}, 'x', this.value)"><input type="number" value="150" oninput="updateSet(${i}, 'y', this.value)"></div></div>
-                        <div><label>HUE/ROT</label><div style="display:flex;gap:2px;"><input type="range" min="0" max="360" value="180" oninput="updateSet(${i}, 'hue', this.value)"><input type="range" min="-180" max="180" value="0" oninput="updateSet(${i}, 'rot', this.value)"></div></div>
+                        <div><label>MOTION</label><select onfocus="editingIdx=${i}" onchange="updateSet(${i}, 'motion', this.value)"><option value="Char_Wave">Char: Wave</option><option value="Word_Bounce">Word: Bounce</option><option value="Typing">Typing</option><option value="Pulse">Pulse</option><option value="3D_Flip">3D Flip</option></select></div>
+                        <div><label>SIZE</label><input type="range" min="20" max="300" value="70" onfocus="editingIdx=${i}" oninput="updateSet(${i}, 'size', this.value)"></div>
+                        <div><label>X / Y</label><div style="display:flex;gap:2px;"><input type="number" value="0" onfocus="editingIdx=${i}" oninput="updateSet(${i}, 'x', this.value)"><input type="number" value="150" onfocus="editingIdx=${i}" oninput="updateSet(${i}, 'y', this.value)"></div></div>
+                        <div><label>HUE/ROT</label><div style="display:flex;gap:2px;"><input type="range" min="0" max="360" value="180" onfocus="editingIdx=${i}" oninput="updateSet(${i}, 'hue', this.value)"><input type="range" min="-180" max="180" value="0" onfocus="editingIdx=${i}" oninput="updateSet(${i}, 'rot', this.value)"></div></div>
                     </div>
                 `;
                 listEl.appendChild(item);
@@ -197,78 +181,31 @@
     function renderTypo(curr) {
         let idx = subtitles.findIndex(s => curr >= s.start && curr <= s.end);
         if (idx === -1) return;
-        let sub = subtitles[idx], set = settings[idx];
-        let progress = map(curr, sub.start, sub.end, 0, 1);
-        let bass = fft.getEnergy("bass");
-
-        // UI 하이라이트 & 자동 스크롤
-        document.querySelectorAll('.sub-item').forEach(el => el.classList.remove('active'));
-        const activeItem = document.getElementById(`item-${idx}`);
-        if(activeItem) { activeItem.classList.add('active'); activeItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
-
-        subCanvas.push();
-        subCanvas.textFont(myFont);
-        subCanvas.translate(set.x, set.y, 0);
-        subCanvas.rotateZ(radians(set.rot));
-        subCanvas.textAlign(CENTER, CENTER);
-        subCanvas.textSize(set.size);
-        subCanvas.fill(set.hue, 80, 100);
-
+        let sub = subtitles[idx], set = settings[idx], progress = map(curr, sub.start, sub.end, 0, 1), bass = fft.getEnergy("bass");
+        subCanvas.push(); subCanvas.textFont(myFont); subCanvas.translate(set.x, set.y, 0); subCanvas.rotateZ(radians(set.rot)); subCanvas.textAlign(CENTER, CENTER); subCanvas.textSize(set.size); subCanvas.fill(set.hue, 80, 100);
         if (set.motion === 'Char_Wave') {
-            let chars = sub.text.split('');
-            let totalW = subCanvas.textWidth(sub.text);
-            let currentX = -totalW / 2;
-            chars.forEach((c, i) => {
-                let offY = sin(frameCount * 0.1 + i * 0.5) * (bass/10);
-                subCanvas.text(c, currentX + subCanvas.textWidth(c)/2, offY);
-                currentX += subCanvas.textWidth(c);
-            });
-        } 
-        else if (set.motion === 'Word_Bounce') {
-            let words = sub.text.split(' ');
-            let totalW = subCanvas.textWidth(sub.text);
-            let currentX = -totalW / 2;
-            words.forEach((w, i) => {
-                let bounce = abs(sin(frameCount * 0.1 + i)) * (bass/5);
-                subCanvas.text(w, currentX + subCanvas.textWidth(w)/2, -bounce);
-                currentX += subCanvas.textWidth(w + ' ');
-            });
-        }
-        else if (set.motion === 'Typing') {
-            subCanvas.text(sub.text.substring(0, floor(map(progress, 0, 0.4, 0, sub.text.length, true))), 0, 0);
-        }
-        else if (set.motion === '3D_Flip') {
-            subCanvas.rotateX(progress * TWO_PI);
-            subCanvas.text(sub.text, 0, 0);
-        }
-        else if (set.motion === 'Pulse') {
-            subCanvas.scale(1.0 + (bass/500));
-            subCanvas.text(sub.text, 0, 0);
-        }
+            let chars = sub.text.split(''), totalW = subCanvas.textWidth(sub.text), curX = -totalW/2;
+            chars.forEach((c, i) => { let offY = sin(frameCount*0.1 + i*0.5)*(bass/10); subCanvas.text(c, curX + subCanvas.textWidth(c)/2, offY); curX += subCanvas.textWidth(c); });
+        } else if (set.motion === 'Word_Bounce') {
+            let words = sub.text.split(' '), totalW = subCanvas.textWidth(sub.text), curX = -totalW/2;
+            words.forEach((w, i) => { let bnc = abs(sin(frameCount*0.1+i))*(bass/5); subCanvas.text(w, curX + subCanvas.textWidth(w)/2, -bnc); curX += subCanvas.textWidth(w+' '); });
+        } else if (set.motion === 'Typing') { subCanvas.text(sub.text.substring(0, floor(map(progress, 0, 0.4, 0, sub.text.length, true))), 0, 0);
+        } else if (set.motion === '3D_Flip') { subCanvas.rotateX(progress * TWO_PI); subCanvas.text(sub.text, 0, 0);
+        } else if (set.motion === 'Pulse') { subCanvas.scale(1.0 + (bass/500)); subCanvas.text(sub.text, 0, 0); }
         subCanvas.pop();
     }
 
-    // [수정] H.264 MP4 고정 저장 로직
     function startRecording() {
-        let stream = document.querySelector('canvas').captureStream(30);
-        let options = { mimeType: 'video/mp4; codecs=avc1' };
-        if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-            options = { mimeType: 'video/webm; codecs=vp9' };
-        }
+        let stream = document.querySelector('canvas').captureStream(30), options = { mimeType: 'video/mp4; codecs=avc1' };
+        if (!MediaRecorder.isTypeSupported(options.mimeType)) options = { mimeType: 'video/webm; codecs=vp9' };
         mediaRecorder = new MediaRecorder(stream, options);
         mediaRecorder.ondataavailable = (e) => { if(e.data.size > 0) recordedChunks.push(e.data); };
-        mediaRecorder.onstop = () => {
-            let blob = new Blob(recordedChunks, { type: options.mimeType });
-            let a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-            let ext = options.mimeType.includes('mp4') ? 'mp4' : 'webm';
-            a.download = `production_v21.9_${Date.now()}.${ext}`;
-            a.click();
-        };
+        mediaRecorder.onstop = () => { let blob = new Blob(recordedChunks, { type: options.mimeType }); let a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `typo_master_${Date.now()}.mp4`; a.click(); };
         mediaRecorder.start();
     }
 
     function updateSet(idx, key, val) { settings[idx][key] = isNaN(val) ? val : parseFloat(val); }
-    function timeToSec(t) { let p = t.split(':'); return parseInt(p[0]) * 3600 + parseInt(p[1]) * 60 + parseFloat(p[2].replace(',', '.')); }
+    function timeToSec(t) { let p = t.split(':'); return parseInt(p[0])*3600 + parseInt(p[1])*60 + parseFloat(p[2].replace(',','.')); }
     function handleAudio(f) { audio = loadSound(URL.createObjectURL(f[0]), () => { checkReady(); }); }
 </script>
 </body>
