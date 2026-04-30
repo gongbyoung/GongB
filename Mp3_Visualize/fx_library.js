@@ -1,6 +1,6 @@
 /* 
-   SPECTRUM STUDIO FX LIBRARY v21.1.4
-   32 Unique Visual Engines (No Omissions)
+   SPECTRUM STUDIO FX LIBRARY v21.1.5
+   32 Unique Visual Engines (Final Bug Fix)
 */
 
 function applyColorStyle(pg, style, h, i, fI, alphaVal) {
@@ -41,7 +41,7 @@ window.FX_ENGINES = {
         let chars = ['ㄱ','ㄴ','ㄷ','ㄹ','ㅁ','ㅂ','ㅅ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
         for (let i = 0; i < p1; i++) {
             applyColorStyle(pg, s, h, i, fI, p3);
-            pg.fill(pg.drawingContext.strokeStyle);
+            pg.fill(h, 80, 100, p3 / 255 * 100); // [Fix] fill 에러 방지
             let idx = floor(noise(i, floor(t * p2)) * chars.length);
             pg.text(chars[idx], -960 + (i * (1920 / p1)), (t * 500 + i * 200) % 1080 - 540 + b[i % 12]);
         }
@@ -50,14 +50,14 @@ window.FX_ENGINES = {
         for (let i = 0; i < floor(p1 / 2); i++) {
             applyColorStyle(pg, s, h, i, fI, p3);
             pg.circle(0, 0, (t * 100 * p2 + i * 150) % 1500 + b[i % 12]);
-            pg.fill(pg.drawingContext.strokeStyle);
+            pg.fill(h, 80, 100, p3 / 255 * 50);
             pg.circle(cos(t + i) * 400 * p2, sin(t + i) * 400 * p2, 50 + b[i % 12]);
         }
     },
     bokRip: (pg, t, b, fI, h, s, p1, p2, p3) => {
         for (let i = 0; i < p1; i++) {
             applyColorStyle(pg, s, h, i, fI, p3);
-            pg.fill(pg.drawingContext.strokeStyle);
+            pg.fill(h, 80, 100, p3 / 255 * 80);
             pg.circle(cos(i + t) * b[i % 12] * p2, sin(i + t) * b[i % 12] * p2, 50 + b[i % 12]);
         }
     },
@@ -84,9 +84,12 @@ window.FX_ENGINES = {
         }
     },
     lightning: (pg, t, b, fI, h, s, p1, p2, p3) => {
-        if (b[10] > 180) {
+        if (b[10] > 100) { // [Fix] 임계값 하향 (180 -> 100)
             applyColorStyle(pg, s, h, 0, fI, p3);
-            for (let i = 0; i < floor(p1 / 10); i++) pg.line(random(-960, 960), -540, random(-960, 960), 540);
+            pg.strokeWeight(fI * (b[10]/50)); 
+            for (let i = 0; i < floor(p1 / 10) + 1; i++) {
+                pg.line(random(-960, 960), -540, random(-960, 960), 540);
+            }
         }
     },
     web: (pg, t, b, fI, h, s, p1, p2, p3) => {
@@ -279,8 +282,8 @@ window.FX_ENGINES = {
         for (let i = 0; i < slices; i++) {
             let offsetX = (hiEnergy > 100) ? random(-p2 * 80, p2 * 80) : 0;
             let y = -540 + i * sliceH + sliceH / 2;
-            applyColorStyle(pg, s, (h + i * 20) % 360, i, fI, p3);
-            pg.fill(pg.drawingContext.strokeStyle);
+            // [Fix] pg.fill() 에러 수정: 색상 파라미터를 직접 전달
+            pg.fill((h + i * 20) % 360, 80, 100, p3 / 255 * 100); 
             pg.text(chars[floor(noise(i + 5, t * 0.5) * chars.length)], offsetX, y);
         }
     },
@@ -318,4 +321,4 @@ window.FX_ENGINES = {
     }
 };
 
-console.log("FX_LIBRARY v21.1.4 Loaded.");
+console.log("FX_LIBRARY v21.1.5 Loaded.");
