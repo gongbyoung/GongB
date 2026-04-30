@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>SPECTRUM STUDIO v21.1.0 — 32 FX Master</title>
+    <title>SPECTRUM STUDIO v21.1.1 — Ultra Stability</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <script src="fx_library.js" onload="isLibraryReady = true;"></script>
@@ -25,12 +25,13 @@
         .log-error { color: var(--accent2); }
         .btn { background:transparent; border:1px solid var(--border); border-radius:4px; color:#fff; padding:6px; cursor:pointer; font-size:9px; width:100%; height: 32px; margin-bottom:5px; transition: 0.2s; }
         .btn:hover:not(:disabled) { border-color: var(--accent); background: rgba(0,255,204,0.05); }
+        input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; height:2px; margin: 10px 0; }
     </style>
 </head>
 <body>
 
 <div class="topbar">
-    <div style="letter-spacing:4px; color:var(--accent); font-weight:bold; font-size:14px;">SPECTRUM STUDIO v21.1.0</div>
+    <div style="letter-spacing:4px; color:var(--accent); font-weight:bold; font-size:14px;">SPECTRUM STUDIO v21.1.1</div>
     <div id="timeCode" style="font-size:12px; font-family:monospace;">00:00 / 00:00</div>
 </div>
 
@@ -51,11 +52,11 @@
 
     <div class="side-panel">
         <div class="ctrl-box">
-            <span style="font-size:9px; color:var(--accent);">3. PARAMETERS</span>
-            <input type="range" id="fxP1" min="1" max="100" value="25" style="width:100%;">
-            <input type="range" id="fxP2" min="0.1" max="5.0" step="0.1" value="1.0" style="width:100%;">
-            <input type="range" id="fxP3" min="1" max="255" value="150" style="width:100%;">
-            <input type="range" id="fxHue" min="0" max="360" value="200" style="width:100%;">
+            <span style="font-size:9px; color:var(--accent);">3. LIVE PARAMETERS</span>
+            <label style="font-size:8px;">P1: DENSITY</label><input type="range" id="fxP1" min="1" max="100" value="25">
+            <label style="font-size:8px;">P2: SPEED</label><input type="range" id="fxP2" min="0.1" max="5.0" step="0.1" value="1.0">
+            <label style="font-size:8px;">P3: ALPHA</label><input type="range" id="fxP3" min="1" max="255" value="150">
+            <label style="font-size:8px;">HUE</label><input type="range" id="fxHue" min="0" max="360" value="200">
         </div>
         <div class="ctrl-box">
             <button class="btn" onclick="saveThumbnail()">📷 SAVE PALETTE PNG</button>
@@ -69,7 +70,7 @@
 
 <script>
     let audio, fft, canvasRef, bgCanvas, isPlaying = false, currentFXId = '';
-    let isEngineActive = false;
+    let isLibraryReady = false, isEngineActive = false;
 
     function addLog(msg, type = 'info') {
         const p = document.getElementById('logPanel');
@@ -86,11 +87,11 @@
         
         let check = setInterval(() => {
             if(window.FX_ENGINES) {
-                addLog(`Engine: v21.1.0 Ready. ${Object.keys(window.FX_ENGINES).length} FX found.`, "success");
+                addLog(`Engine Ready: ${Object.keys(window.FX_ENGINES).length} FX found.`, "success");
                 generateUI();
                 clearInterval(check);
             }
-        }, 200);
+        }, 300);
     }
 
     function generateUI() {
@@ -115,14 +116,19 @@
         }
     }
 
+    // --- [Safety Check 추가] viz13:119 에러 방어 ---
     function syncThumbnails(force = false) {
+        if (!window.FX_ENGINES) {
+            addLog("⚠️ Library not loaded yet.", "error");
+            return;
+        }
         const keys = Object.keys(window.FX_ENGINES);
         addLog(`Syncing ${keys.length} assets...`, "info");
         keys.forEach(id => {
             const path = `thumbnails/palette_${id.trim()}.png${force ? '?v='+Date.now() : ''}`;
             const img = new Image();
             img.onload = () => { document.getElementById('fxBtn_'+id).style.backgroundImage = `url(${path})`; };
-            img.onerror = () => { addLog(`Missing: ${id}`, "error"); };
+            img.onerror = () => { console.warn(`Missing: ${path}`); };
             img.src = path;
         });
     }
@@ -141,11 +147,13 @@
         let bands = new Array(12).fill(0);
         if (isEngineActive && audio && audio.isPlaying()) {
             let spectrum = fft.analyze();
-            for (let i = 0; i < 12; i++) {
-                let start = floor(map(i, 0, 12, 0, spectrum.length * 0.4));
-                let end = floor(map(i + 1, 0, 12, 0, spectrum.length * 0.4));
-                let sum = 0; for (let j = start; j < end; j++) sum += spectrum[j];
-                bands[i] = sum / (end - start || 1);
+            if (spectrum) {
+                for (let i = 0; i < 12; i++) {
+                    let start = floor(map(i, 0, 12, 0, spectrum.length * 0.4));
+                    let end = floor(map(i + 1, 0, 12, 0, spectrum.length * 0.4));
+                    let sum = 0; for (let j = start; j < end; j++) sum += spectrum[j];
+                    bands[i] = sum / (end - start || 1);
+                }
             }
         }
         bgCanvas.push(); bgCanvas.translate(960, 540);
@@ -154,9 +162,20 @@
         }
         bgCanvas.pop();
         push(); translate(-width/2, -height/2); image(bgCanvas, 0, 0); pop();
+        
+        if (audio && audio.isPlaying()) {
+            let cur = audio.currentTime(); let dur = audio.duration();
+            document.getElementById('timeCode').innerText = `${nf(floor(cur/60),2)}:${nf(floor(cur%60),2)} / ${nf(floor(dur/60),2)}:${nf(floor(dur%60),2)}`;
+        }
     }
 
-    function handleFile(files) { audio = loadSound(URL.createObjectURL(files[0]), () => { document.getElementById('analyzeBtn').disabled = false; addLog("MP3 Loaded."); }); }
+    function handleFile(files) { 
+        audio = loadSound(URL.createObjectURL(files[0]), () => { 
+            addLog("MP3 Loaded."); 
+            document.getElementById('analyzeBtn').disabled = false; 
+        }); 
+    }
+
     function saveThumbnail() { saveCanvas(canvasRef, 'palette_'+currentFXId, 'png'); addLog("Thumbnail saved."); }
     async function toggleSync() { if (isPlaying) { audio.stop(); isPlaying = false; } else { audio.play(); isPlaying = true; } }
 </script>
