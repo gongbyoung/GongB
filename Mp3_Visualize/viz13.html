@@ -2,10 +2,9 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>SPECTRUM STUDIO v21.0.37 — Stability Fix</title>
+    <title>SPECTRUM STUDIO v21.0.38 — Engine Trigger</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
-    <!-- [필수] 분리된 라이브러리 파일 연결 -->
     <script src="fx_library.js"></script>
     <style>
         *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
@@ -14,28 +13,35 @@
         .topbar{ padding:10px 25px; background:var(--panel); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
         .logo{letter-spacing:4px; color:var(--accent); font-weight:bold; font-size:14px;}
         .main-workspace { display: grid; grid-template-columns: 360px 1fr 340px; flex:1; min-height:0; }
-        .side-panel { background:var(--panel); padding:15px; overflow-y:auto; scrollbar-width: thin; border-left:1px solid var(--border); border-right:1px solid var(--border); }
+        .side-panel { background:var(--panel); padding:15px; overflow-y:auto; border-left:1px solid var(--border); border-right:1px solid var(--border); }
         .ctrl-box { background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:12px; }
-        .fx-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 5px; }
-        .fx-thumb { aspect-ratio: 1; border: 2px solid rgba(255,255,255,0.1); border-radius: 6px; cursor: pointer; background-size: cover; background-color: #111; position: relative; }
+        .fx-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+        .fx-thumb { aspect-ratio: 1; border: 2px solid rgba(255,255,255,0.1); border-radius: 6px; cursor: pointer; background-color: #111; position: relative; }
         .fx-thumb.active { border-color: var(--accent2); box-shadow: 0 0 10px var(--accent2); }
-        .fx-thumb::after { content: attr(data-name); position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(0,0,0,0.8); font-size: 5px; text-align: center; color: #fff; padding: 2px 0; }
         .viz-area { position:relative; background:#000; overflow:hidden; display: flex; align-items: center; justify-content: center; }
         #p5-container canvas { width: 100% !important; height: auto !important; max-height: 100% !important; }
-        .btn { background:transparent; border:1px solid var(--border); border-radius:4px; color:#fff; padding:6px; cursor:pointer; font-size:9px; width:100%; height: 32px; margin-bottom:5px; }
-        .btn:hover { border-color: var(--accent); }
+        .btn { background:transparent; border:1px solid var(--border); border-radius:4px; color:#fff; padding:6px; cursor:pointer; font-size:9px; width:100%; height: 32px; margin-bottom:5px; transition: 0.2s; }
+        .btn:hover { border-color: var(--accent); background: rgba(0,255,204,0.05); }
+        .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+        .btn.active-engine { background: var(--accent2); border-color: var(--accent2); font-weight: bold; }
     </style>
 </head>
 <body>
 
-<div class="topbar"><div class="logo">SPECTRUM STUDIO v21.0.37</div><div id="timeCode">00:00 / 00:00</div></div>
+<div class="topbar"><div class="logo">SPECTRUM STUDIO v21.0.38</div><div id="timeCode">00:00 / 00:00</div></div>
 
 <div class="main-workspace">
     <div class="side-panel">
         <div class="ctrl-box">
             <span style="font-size:9px; color:var(--accent);">1. VISUAL PALETTE</span>
             <div class="fx-grid" id="fxThumbGrid"></div>
-            <button class="btn" onclick="fetchGithubAssets()" style="margin-top:10px; color:var(--accent2); border-color:var(--accent2);">☁️ FETCH FROM GITHUB</button>
+            <button class="btn" onclick="fetchGithubAssets()" style="margin-top:10px; color:var(--accent2); border-color:var(--accent2);">☁️ FETCH CLOUD THUMBS</button>
+        </div>
+        <div class="ctrl-box">
+            <span style="font-size:9px; color:var(--accent);">2. ENGINE STATUS</span>
+            <!-- [추가] 분석 버튼: 오디오 엔진을 명시적으로 깨움 -->
+            <button class="btn" id="analyzeBtn" onclick="activateEngine()" disabled>⚡ PRE-ANALYZE AUDIO</button>
+            <div id="engineStatus" style="font-size:10px; color:#555; text-align:center; margin-top:5px;">ENGINE IDLE</div>
         </div>
     </div>
 
@@ -43,7 +49,7 @@
 
     <div class="side-panel">
         <div class="ctrl-box">
-            <span style="font-size:9px; color:var(--accent);">3. CUSTOM PARAMETERS</span>
+            <span style="font-size:9px; color:var(--accent);">3. PARAMETERS</span>
             <input type="range" id="fxP1" min="1" max="100" value="25" style="width:100%;">
             <input type="range" id="fxP2" min="0.1" max="10.0" step="0.1" value="2.5" style="width:100%;">
             <input type="range" id="fxP3" min="1" max="255" value="150" style="width:100%;">
@@ -59,38 +65,46 @@
             <button class="btn" onclick="saveThumbnail()">📷 SAVE PALETTE PNG</button>
         </div>
         <div class="ctrl-box">
-            <input type="text" id="ghUser" value="gongbyoung" style="width:100%; background:#000; color:#fff; border:1px solid #333; margin-bottom:5px; padding:3px;">
-            <input type="text" id="ghRepo" value="GongB" style="width:100%; background:#000; color:#fff; border:1px solid #333; margin-bottom:5px; padding:3px;">
-            <input type="text" id="ghPath" value="Mp3_Visualize" style="width:100%; background:#000; color:#fff; border:1px solid #333; padding:3px;">
-        </div>
-        <div class="ctrl-box">
-            <button class="btn" onclick="document.getElementById('mIn').click()">LOAD MP3</button>
+            <button class="btn" onclick="document.getElementById('mIn').click()">1. LOAD MP3</button>
             <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleFile(this.files)">
-            <button class="btn" id="recBtn" onclick="toggleSync()" disabled style="background:var(--accent2); border:none;">▶ START PRODUCTION</button>
+            <button class="btn primary" id="recBtn" onclick="toggleSync()" disabled style="background:var(--accent2); border:none;">2. START PRODUCTION</button>
+            <div id="statusInfo" style="font-size:9px; color:var(--accent); text-align:center; margin-top:8px;">READY</div>
         </div>
     </div>
 </div>
 
 <script>
     let audio, fft, ampObj, canvasRef, bgCanvas, isPlaying = false, currentFXId = 'waves';
+    let isEngineActive = false; // 분석 엔진 상태 플래그
 
     function setup() {
         let cnv = createCanvas(1920, 1080, WEBGL); cnv.parent('p5-container'); canvasRef = cnv.elt;
         bgCanvas = createGraphics(1920, 1080); bgCanvas.imageMode(CENTER); bgCanvas.colorMode(HSB, 360, 100, 100, 100);
-        fft = new p5.FFT(0.8, 512); ampObj = new p5.Amplitude();
+        fft = new p5.FFT(0.8, 512);
         generateThumbnails();
+    }
+
+    // [핵심] 오디오 엔진 활성화 함수
+    function activateEngine() {
+        if (!audio) return;
+        userStartAudio().then(() => {
+            isEngineActive = true;
+            document.getElementById('analyzeBtn').innerText = "✅ ANALYZE ACTIVE";
+            document.getElementById('analyzeBtn').classList.add('active-engine');
+            document.getElementById('engineStatus').innerText = "ENGINE RUNNING";
+            document.getElementById('engineStatus').style.color = "var(--accent)";
+            document.getElementById('recBtn').disabled = false;
+        });
     }
 
     function draw() {
         background(2, 2, 8); bgCanvas.clear();
-        
         let bands = new Array(12).fill(0);
         
-        // [에러 수정] 오디오가 실제로 재생 중일 때만 getEnergy를 호출하도록 안전 장치 강화
-        if (audio && audio.isPlaying()) {
+        // 엔진이 활성화되었고 오디오가 재생 중일 때만 분석 실행
+        if (isEngineActive && audio && audio.isPlaying()) {
             fft.analyze();
             for (let i = 0; i < 12; i++) {
-                // 주파수 범위를 안전하게 100Hz 단위로 쪼갬 (0~1200Hz 범위)
                 bands[i] = fft.getEnergy(i * 100, (i + 1) * 100);
             }
         }
@@ -99,9 +113,8 @@
         bgCanvas.translate(960, 540);
         
         // 라이브러리(FX_ENGINES) 호출
-        const engine = FX_ENGINES[currentFXId];
-        if (engine) {
-            engine(bgCanvas, frameCount * 0.02, bands, 1.5, 
+        if (typeof FX_ENGINES !== 'undefined' && FX_ENGINES[currentFXId]) {
+            FX_ENGINES[currentFXId](bgCanvas, frameCount * 0.02, bands, 1.5, 
                    parseFloat(document.getElementById('fxHue').value), 
                    document.getElementById('colorStyle').value,
                    parseFloat(document.getElementById('fxP1').value),
@@ -113,13 +126,19 @@
         push(); translate(-width/2, -height/2); image(bgCanvas, 0, 0); pop();
     }
 
+    function handleFile(files) { 
+        audio = loadSound(URL.createObjectURL(files[0]), () => { 
+            document.getElementById('analyzeBtn').disabled = false; 
+            document.getElementById('statusInfo').innerText = "AUDIO LOADED";
+            document.getElementById('engineStatus').innerText = "WAITING FOR ANALYZE";
+        }); 
+    }
+
     function generateThumbnails() {
         const grid = document.getElementById('fxThumbGrid');
-        // FX_ENGINES 객체가 로드되었는지 확인 후 생성
         if (typeof FX_ENGINES !== 'undefined') {
             Object.keys(FX_ENGINES).forEach(id => {
                 let b = document.createElement('div'); b.className = 'fx-thumb'; b.id = 'fxBtn_'+id;
-                b.setAttribute('data-name', id.toUpperCase());
                 b.onclick = () => { currentFXId = id; document.querySelectorAll('.fx-thumb').forEach(el=>el.classList.remove('active')); b.classList.add('active'); };
                 grid.appendChild(b);
             });
@@ -130,7 +149,7 @@
     function saveThumbnail() { saveCanvas(canvasRef, 'palette_'+currentFXId, 'png'); }
     
     function fetchGithubAssets() {
-        const u = document.getElementById('ghUser').value, r = document.getElementById('ghRepo').value, p = document.getElementById('ghPath').value;
+        const u = "gongbyoung", r = "GongB", p = "Mp3_Visualize";
         Object.keys(FX_ENGINES).forEach(id => {
             const url = `https://raw.githubusercontent.com/${u}/${r}/main/${p}/thumbnails/palette_${id}.png?v=${Date.now()}`;
             const btn = document.getElementById('fxBtn_'+id);
@@ -138,14 +157,9 @@
         });
     }
 
-    function handleFile(files) { audio = loadSound(URL.createObjectURL(files[0]), () => { document.getElementById('recBtn').disabled = false; }); }
-    
     async function toggleSync() { 
         if (isPlaying) { audio.stop(); isPlaying = false; } 
-        else { 
-            if (getAudioContext().state === 'suspended') await userStartAudio();
-            audio.play(); isPlaying = true; 
-        } 
+        else { audio.play(); isPlaying = true; } 
     }
 </script>
 </body>
