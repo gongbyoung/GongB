@@ -2,14 +2,14 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>TYPO PRODUCTION STUDIO v21.7.0</title>
+    <title>TYPO PRODUCTION STUDIO v21.7.5 — H.264 MP4</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <style>
         :root{ --bg:#050508; --accent:#00ffcc; --panel:#0e0e15; --text:#fff; --record:#ff3377; }
         body{ background:var(--bg); color:var(--text); margin:0; overflow:hidden; font-family:'Pretendard', sans-serif; display:flex; }
         
-        #editor-panel { width:420px; background:var(--panel); height:100vh; padding:15px; border-right:1px solid rgba(0,255,204,0.2); z-index:10; display:flex; flex-direction:column; }
+        #editor-panel { width:400px; background:var(--panel); height:100vh; padding:15px; border-right:1px solid rgba(0,255,204,0.2); z-index:10; display:flex; flex-direction:column; }
         #subtitle-list { flex:1; overflow-y:auto; margin-top:15px; padding-right:5px; scrollbar-width:thin; }
         
         .sub-item { background:rgba(255,255,255,0.03); border:1px solid #333; border-radius:6px; padding:12px; margin-bottom:10px; font-size:11px; }
@@ -22,13 +22,13 @@
         input[type=range] { accent-color:var(--accent); height:2px; }
 
         #canvas-container { flex:1; position:relative; display:flex; align-items:center; justify-content:center; background:#000; overflow:hidden; }
-        /* 1. Start 버튼 크기 축소 */
-        .btn { padding:8px 12px; background:transparent; border:1px solid var(--accent); color:var(--accent); cursor:pointer; font-size:10px; border-radius:4px; font-weight:bold; }
+        .btn { padding:6px 10px; background:transparent; border:1px solid var(--accent); color:var(--accent); cursor:pointer; font-size:9px; border-radius:4px; font-weight:bold; }
         .btn:hover { background:rgba(0,255,204,0.1); }
-        .btn-rec { border-color:var(--record); color:var(--record); }
-        .top-btns { display:flex; gap:5px; margin-bottom:10px; }
+        .top-btns { display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-bottom:10px; }
         
-        #playBtn { background:var(--accent); color:#000; width:100%; height:32px; border:none; margin-top:10px; cursor:pointer; font-size:11px; font-weight:bold; border-radius:4px; }
+        /* 1. Start 버튼 크기 축소 */
+        #playBtn { background:var(--accent); color:#000; width:100%; height:28px; border:none; margin-top:10px; cursor:pointer; font-size:10px; font-weight:bold; border-radius:4px; }
+        #playBtn:disabled { opacity:0.3; cursor:default; }
     </style>
 </head>
 <body>
@@ -37,34 +37,31 @@
     <div class="top-btns">
         <button class="btn" onclick="document.getElementById('mIn').click()">🎵 AUDIO</button>
         <button class="btn" onclick="document.getElementById('sIn').click()">📝 SRT</button>
-        <!-- 3. 종횡비 선택 추가 -->
-        <select class="btn" id="aspectRatio" onchange="resizeStudio()" style="flex:1.5;">
+        <!-- 폰트 로드 버튼 추가 -->
+        <button class="btn" onclick="document.getElementById('fIn').click()" style="color:var(--record); border-color:var(--record);">🔤 LOAD FONT</button>
+        <!-- 3. 종횡비 선택 -->
+        <select class="btn" id="aspectRatio" onchange="resizeStudio()">
             <option value="16:9">16:9 Landscape</option>
             <option value="9:16">9:16 Portrait</option>
         </select>
     </div>
     
-    <!-- 4. 공통 폰트 설정 추가 -->
-    <div class="sub-item" style="border-color:var(--accent2);">
-        <label>GLOBAL FONT FAMILY</label>
-        <input type="text" id="globalFont" value="sans-serif" placeholder="Font Name (e.g. Impact, Arial)" oninput="updateAllFonts()">
-    </div>
-
     <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleAudio(this.files)">
     <input type="file" id="sIn" accept=".srt" style="display:none" onchange="handleSRT(this.files)">
+    <input type="file" id="fIn" accept=".ttf,.otf" style="display:none" onchange="handleFont(this.files)">
     
-    <!-- 1 & 2. Start 버튼 축소 및 원클릭 녹화 연동 -->
-    <button id="playBtn" onclick="startProduction()" disabled>▶ START PRODUCTION (REC)</button>
+    <!-- 2. Start 버튼 클릭 시 녹화 자동 시작 -->
+    <button id="playBtn" onclick="startProduction()" disabled>▶ START MP4 PRODUCTION</button>
 
     <div id="subtitle-list">
-        <div style="text-align:center; color:#555; margin-top:50px;">Load files to start production...</div>
+        <div style="text-align:center; color:#555; margin-top:50px;">1. Load Font (Required)<br>2. Load MP3 & SRT</div>
     </div>
 </div>
 
 <div id="canvas-container"></div>
 
 <script>
-    let audio, fft, subCanvas;
+    let audio, fft, subCanvas, myFont;
     let subtitles = [], settings = [];
     let isPlaying = false, isRecording = false, isStarted = false;
     let mediaRecorder, recordedChunks = [];
@@ -74,18 +71,32 @@
         fft = new p5.FFT();
     }
 
+    // 폰트 파일 로드 처리
+    function handleFont(files) {
+        const url = URL.createObjectURL(files[0]);
+        loadFont(url, (f) => {
+            myFont = f;
+            document.getElementById('subtitle-list').innerHTML = `<div style="color:var(--accent); text-align:center; margin-top:20px;">Font Loaded: ${files[0].name}</div>`;
+            checkReady();
+        });
+    }
+
+    function checkReady() {
+        if(myFont && audio && subtitles.length > 0) {
+            document.getElementById('playBtn').disabled = false;
+        }
+    }
+
     // 3. 종횡비 실시간 변경 로직
     function resizeStudio() {
         const ratio = document.getElementById('aspectRatio').value;
         let w = 1280, h = 720;
         if(ratio === "9:16") { w = 720; h = 1280; }
         
-        let cnv = createCanvas(w, h, WEBGL);
-        cnv.parent('canvas-container');
+        resizeCanvas(w, h);
         subCanvas = createGraphics(w, h, WEBGL);
         subCanvas.colorMode(HSB, 360, 100, 100, 100);
         
-        // 컨테이너 크기에 맞춰 캔버스 스케일 조정 (CSS)
         const container = document.getElementById('canvas-container');
         const scale = Math.min(container.clientWidth/w, container.clientHeight/h) * 0.9;
         document.querySelector('canvas').style.transform = `scale(${scale})`;
@@ -111,13 +122,14 @@
 
     function drawIntro() {
         subCanvas.push();
+        if(myFont) subCanvas.textFont(myFont);
         subCanvas.textAlign(CENTER, CENTER);
         subCanvas.fill(255);
         subCanvas.textSize(30);
         subCanvas.text("PRODUCTION READY", 0, -50);
         subCanvas.textSize(15);
         subCanvas.fill(0, 255, 204);
-        subCanvas.text("1. LOAD MP3 & SRT FILES\n2. SET MOTIONS & STYLES\n3. CLICK 'START' TO RECORD AUTOMATICALLY", 0, 30);
+        subCanvas.text("H.264 MP4 EXPORT MODE\nCLICK 'START' TO BEGIN RECORDING", 0, 30);
         subCanvas.pop();
     }
 
@@ -125,16 +137,17 @@
     async function startProduction() {
         if (!isPlaying) {
             isStarted = true;
-            await toggleRecord(true); // 녹화 시작
+            recordedChunks = [];
+            startRecording(); 
             audio.play();
             isPlaying = true;
-            document.getElementById('playBtn').innerText = "⏹ STOP PRODUCTION";
+            document.getElementById('playBtn').innerText = "⏹ STOP & SAVE MP4";
         } else {
             audio.stop();
-            toggleRecord(false); // 녹화 중지 및 저장
+            mediaRecorder.stop();
             isPlaying = false;
             isStarted = false;
-            document.getElementById('playBtn').innerText = "▶ START PRODUCTION (REC)";
+            document.getElementById('playBtn').innerText = "▶ START MP4 PRODUCTION";
         }
     }
 
@@ -153,7 +166,7 @@
                 const text = lines.slice(2).join(' ').trim();
 
                 subtitles.push({ start: timeToSec(times[0]), end: timeToSec(times[1]), text: text });
-                // 5. 신규 분리 모션 기본값 추가
+                // 기본 모션 설정
                 settings.push({ motion: 'Char_Wave', size: 70, x: 0, y: 150, hue: 180, rot: 0 });
 
                 const item = document.createElement('div');
@@ -172,13 +185,14 @@
                                 <option value="3D_Flip">3D Flip</option>
                             </select>
                         </div>
-                        <div><label>SIZE</label><input type="range" min="20" max="250" value="70" oninput="updateSet(${i}, 'size', this.value)"></div>
+                        <div><label>SIZE</label><input type="range" min="20" max="300" value="70" oninput="updateSet(${i}, 'size', this.value)"></div>
                         <div><label>POS X/Y</label><div style="display:flex;gap:2px;"><input type="number" value="0" oninput="updateSet(${i}, 'x', this.value)"><input type="number" value="150" oninput="updateSet(${i}, 'y', this.value)"></div></div>
                         <div><label>HUE / ROT</label><div style="display:flex;gap:2px;"><input type="range" min="0" max="360" value="180" oninput="updateSet(${i}, 'hue', this.value)"><input type="range" min="-180" max="180" value="0" oninput="updateSet(${i}, 'rot', this.value)"></div></div>
                     </div>
                 `;
                 listEl.appendChild(item);
             });
+            checkReady();
         };
         reader.readAsText(files[0]);
     }
@@ -192,29 +206,27 @@
         let progress = map(curr, sub.start, sub.end, 0, 1);
         let bass = fft.getEnergy("bass");
 
+        // UI 하이라이트
         document.querySelectorAll('.sub-item').forEach(el => el.classList.remove('active'));
         const activeItem = document.getElementById(`item-${idx}`);
-        if(activeItem) {
-            activeItem.classList.add('active');
-            activeItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }
+        if(activeItem) { activeItem.classList.add('active'); activeItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
 
         subCanvas.push();
-        subCanvas.textFont(document.getElementById('globalFont').value); // 4. 공통 폰트 적용
+        if(myFont) subCanvas.textFont(myFont); // 폰트 적용
         subCanvas.translate(set.x, set.y, 0);
         subCanvas.rotateZ(radians(set.rot));
         subCanvas.textAlign(CENTER, CENTER);
         subCanvas.textSize(set.size);
         subCanvas.fill(set.hue, 80, 100);
 
-        // 5. 개별 글자/단어 분리 모션 로직
+        // 5. 쪼개기 모션 로직
         if (set.motion === 'Char_Wave') {
             let chars = sub.text.split('');
             let totalW = subCanvas.textWidth(sub.text);
             let currentX = -totalW / 2;
             chars.forEach((c, i) => {
                 let offY = sin(frameCount * 0.1 + i * 0.5) * (bass/10);
-                subCanvas.text(c, currentX, offY);
+                subCanvas.text(c, currentX + subCanvas.textWidth(c)/2, offY);
                 currentX += subCanvas.textWidth(c);
             });
         } 
@@ -244,28 +256,31 @@
         subCanvas.pop();
     }
 
-    async function toggleRecord(start) {
-        if (start) {
-            recordedChunks = [];
-            let stream = document.querySelector('canvas').captureStream(30);
-            mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
-            mediaRecorder.ondataavailable = (e) => recordedChunks.push(e.data);
-            mediaRecorder.onstop = () => {
-                let blob = new Blob(recordedChunks, { type: 'video/webm' });
-                let a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-                a.download = `typo_production_${Date.now()}.webm`; a.click();
-            };
-            mediaRecorder.start();
-            isRecording = true;
-        } else {
-            if(mediaRecorder) mediaRecorder.stop();
-            isRecording = false;
+    // 2 & 4. MP4 녹화 로직
+    function startRecording() {
+        let stream = document.querySelector('canvas').captureStream(30);
+        
+        // H.264 MP4 시도, 지원 안 할 시 WebM 폴백
+        let options = { mimeType: 'video/mp4; codecs=avc1' };
+        if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+            options = { mimeType: 'video/webm; codecs=vp9' };
+            console.warn("MP4 not supported, falling back to WebM");
         }
+
+        mediaRecorder = new MediaRecorder(stream, options);
+        mediaRecorder.ondataavailable = (e) => { if(e.data.size > 0) recordedChunks.push(e.data); };
+        mediaRecorder.onstop = () => {
+            let blob = new Blob(recordedChunks, { type: options.mimeType });
+            let a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+            a.download = `typo_production_${Date.now()}.${options.mimeType.includes('mp4') ? 'mp4' : 'webm'}`;
+            a.click();
+        };
+        mediaRecorder.start();
     }
 
     function updateSet(idx, key, val) { settings[idx][key] = isNaN(val) ? val : parseFloat(val); }
     function timeToSec(t) { let p = t.split(':'); return parseInt(p[0]) * 3600 + parseInt(p[1]) * 60 + parseFloat(p[2].replace(',', '.')); }
-    function handleAudio(f) { audio = loadSound(URL.createObjectURL(f[0]), () => { document.getElementById('playBtn').disabled = false; }); }
+    function handleAudio(f) { audio = loadSound(URL.createObjectURL(f[0]), () => { checkReady(); }); }
 </script>
 </body>
 </html>
