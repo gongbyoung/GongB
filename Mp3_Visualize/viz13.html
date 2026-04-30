@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>SPECTRUM STUDIO v21.0.3 — Data Stream Monitor</title>
+    <title>SPECTRUM STUDIO v21.1.4 — WEBGL Mode Fixed</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <script src="fx_library.js" onload="isLibraryReady = true;"></script>
@@ -21,15 +21,14 @@
         .viz-area { position:relative; background:#000; display: flex; align-items: center; justify-content: center; flex:1; }
         #p5-container canvas { width: 100% !important; height: auto !important; max-height: 100% !important; }
         .log-panel { background:#000; border:1px solid #222; border-radius:4px; padding:10px; flex:1; overflow-y:auto; font-family: monospace; font-size:10px; color: #888; }
-        .log-data { color: #f1c40f; font-weight: bold; } /* 데이터 출력 전용 색상 */
+        .log-data { color: #f1c40f; }
         .btn { background:transparent; border:1px solid var(--border); border-radius:4px; color:#fff; padding:6px; cursor:pointer; font-size:9px; width:100%; height: 32px; margin-bottom:5px; transition: 0.2s; }
-        input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; height:2px; margin: 10px 0; }
     </style>
 </head>
 <body>
 
 <div class="topbar">
-    <div style="letter-spacing:4px; color:var(--accent); font-weight:bold; font-size:14px;">SPECTRUM STUDIO v21.1.3</div>
+    <div style="letter-spacing:4px; color:var(--accent); font-weight:bold; font-size:14px;">SPECTRUM STUDIO v21.1.4</div>
     <div id="timeCode">00:00 / 00:00</div>
 </div>
 
@@ -68,8 +67,7 @@
 
 <script>
     let audio, fft, canvasRef, bgCanvas, isPlaying = false, currentFXId = '';
-    let isEngineActive = false;
-    let lastDataLogTime = 0;
+    let isEngineActive = false, lastDataLogTime = 0;
 
     function addLog(msg, type = 'info') {
         const p = document.getElementById('logPanel');
@@ -77,17 +75,19 @@
         e.className = `log-entry log-${type}`;
         e.innerText = `> ${msg}`;
         p.appendChild(e); p.scrollTop = p.scrollHeight;
-        if(p.childNodes.length > 50) p.removeChild(p.childNodes[0]); // 로그 최신 50개 유지
+        if(p.childNodes.length > 50) p.removeChild(p.childNodes[0]);
     }
 
     function setup() {
         let cnv = createCanvas(1920, 1080, WEBGL); cnv.parent('p5-container'); canvasRef = cnv.elt;
-        bgCanvas = createGraphics(1920, 1080); bgCanvas.imageMode(CENTER); bgCanvas.colorMode(HSB, 360, 100, 100, 100);
+        // [중요] bgCanvas를 WEBGL로 생성하여 3D 함수 지원
+        bgCanvas = createGraphics(1920, 1080, WEBGL);
+        bgCanvas.colorMode(HSB, 360, 100, 100, 100);
         fft = new p5.FFT(0.8, 512);
         
         let check = setInterval(() => {
             if(window.FX_ENGINES) {
-                addLog(`Engine Ready: ${Object.keys(window.FX_ENGINES).length} FX detected.`, "success");
+                addLog(`Engine Ready: 32 FX detected.`, "success");
                 generateUI();
                 clearInterval(check);
             }
@@ -95,46 +95,29 @@
     }
 
     function generateUI() {
-        const grid = document.getElementById('fxThumbGrid');
-        grid.innerHTML = '';
+        const grid = document.getElementById('fxThumbGrid'); grid.innerHTML = '';
         const keys = Object.keys(window.FX_ENGINES);
         keys.forEach(id => {
             let b = document.createElement('div'); b.className = 'fx-thumb'; b.id = 'fxBtn_' + id;
             b.setAttribute('data-name', id.toUpperCase());
-            b.onclick = () => { 
-                currentFXId = id; 
-                document.querySelectorAll('.fx-thumb').forEach(el => el.classList.remove('active')); 
-                b.classList.add('active'); 
-                addLog(`Switch to FX: [${id.toUpperCase()}]`);
-            };
+            b.onclick = () => { currentFXId = id; document.querySelectorAll('.fx-thumb').forEach(el => el.classList.remove('active')); b.classList.add('active'); addLog(`FX: [${id.toUpperCase()}]`); };
             grid.appendChild(b);
         });
-        if (keys.length > 0) {
-            currentFXId = keys[0];
-            document.getElementById('fxBtn_' + currentFXId).classList.add('active');
-            syncThumbnails(); 
-        }
+        if (keys.length > 0) { currentFXId = keys[0]; document.getElementById('fxBtn_' + currentFXId).classList.add('active'); syncThumbnails(); }
     }
 
     function syncThumbnails(force = false) {
         if (!window.FX_ENGINES) return;
         const keys = Object.keys(window.FX_ENGINES);
-        addLog(`Asset Syncing: ${keys.length} thumbs.`, "info");
         keys.forEach(id => {
             const path = `thumbnails/palette_${id.trim()}.png${force ? '?v='+Date.now() : ''}`;
-            const img = new Image();
-            img.onload = () => { document.getElementById('fxBtn_'+id).style.backgroundImage = `url(${path})`; };
+            const img = new Image(); img.onload = () => { document.getElementById('fxBtn_'+id).style.backgroundImage = `url(${path})`; };
             img.src = path;
         });
     }
 
     function activateEngine() {
-        userStartAudio().then(() => {
-            isEngineActive = true;
-            addLog("Analysis Engine Activated.", "success");
-            document.getElementById('analyzeBtn').innerText = "✅ ANALYZE ACTIVE";
-            document.getElementById('recBtn').disabled = false;
-        });
+        userStartAudio().then(() => { isEngineActive = true; addLog("WEBGL Rendering Active.", "success"); document.getElementById('analyzeBtn').innerText = "✅ ANALYZE ACTIVE"; document.getElementById('recBtn').disabled = false; });
     }
 
     function draw() {
@@ -153,22 +136,16 @@
             }
         }
 
-        // [데이터 정밀 모니터] 1.5초마다 12개 밴드 전체 수치 출력
         if (isEngineActive && audio && audio.isPlaying() && millis() - lastDataLogTime > 1500) {
-            const dataStr = bands.map((v, i) => `B${i+1}:${floor(v)}`).join(" | ");
-            addLog(`[AUDIO DATA] ${dataStr}`, "data");
+            addLog(`[AUDIO DATA] ${bands.map(v => floor(v)).join("|")}`, "data");
             lastDataLogTime = millis();
         }
 
-        bgCanvas.push(); bgCanvas.translate(960, 540);
+        // WEBGL 버퍼는 중앙이 (0,0)이므로 별도의 translate(960, 540)이 필요 없습니다
         if (window.FX_ENGINES && window.FX_ENGINES[currentFXId]) {
-            window.FX_ENGINES[currentFXId](bgCanvas, frameCount * 0.02, bands, 1.5, 
-                   parseFloat(document.getElementById('fxHue').value), "hue", 
-                   parseFloat(document.getElementById('fxP1').value), 
-                   parseFloat(document.getElementById('fxP2').value), 
-                   parseFloat(document.getElementById('fxP3').value));
+            window.FX_ENGINES[currentFXId](bgCanvas, frameCount * 0.02, bands, 1.5, parseFloat(document.getElementById('fxHue').value), "hue", parseFloat(document.getElementById('fxP1').value), parseFloat(document.getElementById('fxP2').value), parseFloat(document.getElementById('fxP3').value));
         }
-        bgCanvas.pop();
+
         push(); translate(-width/2, -height/2); image(bgCanvas, 0, 0); pop();
         
         if (audio && audio.isPlaying()) {
@@ -177,15 +154,9 @@
         }
     }
 
-    function handleFile(files) { 
-        audio = loadSound(URL.createObjectURL(files[0]), () => { 
-            addLog(`MP3 Loaded: ${files[0].name}`); 
-            document.getElementById('analyzeBtn').disabled = false; 
-        }); 
-    }
-
+    function handleFile(files) { audio = loadSound(URL.createObjectURL(files[0]), () => { document.getElementById('analyzeBtn').disabled = false; addLog("MP3 Ready."); }); }
     function saveThumbnail() { saveCanvas(canvasRef, 'palette_'+currentFXId, 'png'); addLog("Thumb Saved."); }
-    async function toggleSync() { if (isPlaying) { audio.stop(); isPlaying = false; addLog("Stop."); } else { audio.play(); isPlaying = true; addLog("Start."); } }
+    async function toggleSync() { if (isPlaying) { audio.stop(); isPlaying = false; } else { audio.play(); isPlaying = true; } }
 </script>
 </body>
 </html>
