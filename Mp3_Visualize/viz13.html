@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>SPECTRUM STUDIO v21.0.027 — Total FX Complete</title>
+    <title>SPECTRUM STUDIO v21.0.028 — Final Production</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <style>
@@ -33,13 +33,16 @@
 </head>
 <body>
 
-<div class="topbar"><div class="logo">SPECTRUM STUDIO v21.0.027</div><div id="timeCode">00:00 / 00:00</div></div>
+<div class="topbar"><div class="logo">SPECTRUM STUDIO v21.0.028</div><div id="timeCode">00:00 / 00:00</div></div>
 
 <div class="main-workspace">
+    <!-- LEFT PANEL -->
     <div class="side-panel">
         <div class="ctrl-box">
-            <span class="label-small">1. Visual Palette (24 Unique FX)</span>
+            <span class="label-small">1. Visual Palette (24 FX)</span>
             <div class="fx-grid" id="fxThumbGrid"></div>
+            <!-- [복구] statusInfo ID 필수 요소 -->
+            <div id="statusInfo" style="font-size:10px; color:var(--accent); margin-top:8px; font-weight:bold;">파일을 불러와주세요.</div>
         </div>
         <div class="ctrl-box">
             <span class="label-small">2. Visual Tuning</span>
@@ -50,11 +53,13 @@
         </div>
     </div>
 
+    <!-- CENTER AREA -->
     <div class="viz-area" id="p5-container"></div>
 
+    <!-- RIGHT PANEL -->
     <div class="side-panel">
         <div class="ctrl-box">
-            <span class="label-small">3. Config & Asset</span>
+            <span class="label-small">3. Local Management</span>
             <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px;">
                 <button class="btn" onclick="saveConfig()">SAVE JSON</button>
                 <button class="btn" onclick="document.getElementById('cfgIn').click()">LOAD JSON</button>
@@ -66,17 +71,19 @@
             <span class="label-small">4. GitHub Cloud</span>
             <input type="text" id="ghUser" placeholder="Username" onchange="saveCloudInfo()">
             <input type="text" id="ghRepo" placeholder="Repository" onchange="saveCloudInfo()">
-            <input type="password" id="ghToken" placeholder="Token" onchange="saveCloudInfo()">
+            <input type="password" id="ghToken" placeholder="PAT Token" onchange="saveCloudInfo()">
             <button class="btn" onclick="pushToCloud('config')">📤 PUSH CONFIG</button>
             <button class="btn" onclick="pushToCloud('thumb')">🖼️ PUSH THUMB</button>
-            <div id="cloudStatus" style="font-size:9px; color:var(--accent); text-align:center; margin-top:5px;">Ready</div>
+            <div id="cloudStatus" style="font-size:9px; color:var(--accent); text-align:center; margin-top:5px;">Cloud Ready</div>
         </div>
         <div class="ctrl-box">
-            <span class="label-small">5. Production Control</span>
+            <span class="label-small">5. Engine Master</span>
             <button class="btn" onclick="document.getElementById('mIn').click()">SELECT MP3</button>
             <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleFile(this.files)">
-            <button class="btn primary" id="recBtn" onclick="toggleSync()" disabled>▶ START RECORDING</button>
+            <button class="btn primary" id="recBtn" onclick="toggleSync()" disabled>▶ START PRODUCTION</button>
         </div>
+        <!-- [복구] fps ID 필수 요소 -->
+        <div class="ctrl-box"><div id="fps" style="font-size:10px; color:var(--accent);">FPS: --</div></div>
     </div>
 </div>
 <div class="playbar"><div id="progFill"></div></div>
@@ -95,130 +102,69 @@
     ];
 
     function setup() {
-        let cnv = createCanvas(1920, 1080, WEBGL);
-        cnv.parent('p5-container'); canvasRef = cnv.elt;
+        let cnv = createCanvas(1920, 1080, WEBGL); cnv.parent('p5-container'); canvasRef = cnv.elt;
         bgCanvas = createGraphics(1920, 1080); bgCanvas.imageMode(CENTER); bgCanvas.colorMode(HSB, 360, 100, 100, 100);
-        frameRate(30);
-        fft = new p5.FFT(0.8, 512); ampObj = new p5.Amplitude();
-        generateThumbnails();
-        loadCloudInfo();
+        frameRate(30); fft = new p5.FFT(0.8, 512); ampObj = new p5.Amplitude();
+        generateThumbnails(); loadCloudInfo();
     }
 
     function generateThumbnails() {
-        const grid = document.getElementById('fxThumbGrid');
-        let tPg = createGraphics(80, 80);
+        const grid = document.getElementById('fxThumbGrid'); let tPg = createGraphics(80, 80);
         FX_DB.forEach(fx => {
             tPg.background(15, 20, 30); tPg.push(); tPg.translate(40, 40); tPg.stroke(0,255,200); tPg.noFill();
-            if(fx.id==='waves') tPg.bezier(-30,10, -10,-20, 10,20, 30,-10);
-            else if(fx.id==='matrix') { tPg.fill(0,255,100); tPg.textSize(10); tPg.text('ㄱ', -5, 5); }
-            else { tPg.circle(0,0,25); tPg.line(-10,-10,10,10); }
-            tPg.pop();
-            let btn = document.createElement('div');
-            btn.className = 'fx-thumb' + (fx.id===currentFXId?' active':'');
-            btn.setAttribute('id', 'fxBtn_' + fx.id); btn.setAttribute('data-name', fx.n);
-            btn.style.backgroundImage = `url(${tPg.canvas.toDataURL()})`;
-            btn.onclick = () => selectFX(fx.id);
-            grid.appendChild(btn);
-        });
-        tPg.remove();
+            if(fx.id==='waves') tPg.bezier(-30,10, -10,-20, 10,20, 30,-10); else if(fx.id==='matrix') { tPg.fill(0,255,100); tPg.textSize(10); tPg.text('ㄱ', -5, 5); } else { tPg.circle(0,0,25); tPg.line(-10,-10,10,10); } tPg.pop();
+            let btn = document.createElement('div'); btn.className = 'fx-thumb' + (fx.id===currentFXId?' active':''); btn.setAttribute('id', 'fxBtn_' + fx.id); btn.setAttribute('data-name', fx.n); btn.style.backgroundImage = `url(${tPg.canvas.toDataURL()})`; btn.onclick = () => selectFX(fx.id); grid.appendChild(btn);
+        }); tPg.remove();
     }
 
-    function selectFX(id) {
-        document.querySelectorAll('.fx-thumb').forEach(b=>b.classList.remove('active'));
-        let target = document.getElementById('fxBtn_'+id); if(target) target.classList.add('active');
-        currentFXId = id; bgCanvas.clear();
-    }
+    function selectFX(id) { document.querySelectorAll('.fx-thumb').forEach(b=>b.classList.remove('active')); let target = document.getElementById('fxBtn_'+id); if(target) target.classList.add('active'); currentFXId = id; bgCanvas.clear(); }
 
     function draw() {
-        background(2, 2, 8); bgCanvas.clear();
-        let bands = new Array(12).fill(0), vol = 0;
-        if (audio && audio.isPlaying()) {
-            fft.analyze(); vol = ampObj.getLevel();
-            for(let i=0; i<12; i++) bands[i] = fft.getEnergy(pow(2, i/1.2)*20, pow(2, (i+1)/1.2)*20);
-        }
-        let spd = parseFloat(document.getElementById('fxSpeed').value);
-        overlayT += 0.03 * spd;
-        bgCanvas.push();
-        let fSc = parseFloat(document.getElementById('fxScale').value), fI = parseFloat(document.getElementById('fxInten').value);
-        bgCanvas.translate(960, 540); bgCanvas.scale(fSc);
-        drawVisualCore(bgCanvas, overlayT, bands, fI, vol);
-        bgCanvas.pop();
-        push(); translate(-width/2, -height/2); image(bgCanvas, 0, 0); pop();
-        updateUI();
+        background(2, 2, 8); bgCanvas.clear(); let bands = new Array(12).fill(0), vol = 0;
+        if (audio && audio.isPlaying()) { fft.analyze(); vol = ampObj.getLevel(); for(let i=0; i<12; i++) bands[i] = fft.getEnergy(pow(2, i/1.2)*20, pow(2, (i+1)/1.2)*20); }
+        let spd = parseFloat(document.getElementById('fxSpeed').value); overlayT += 0.03 * spd;
+        bgCanvas.push(); let fSc = parseFloat(document.getElementById('fxScale').value), fI = parseFloat(document.getElementById('fxInten').value);
+        bgCanvas.translate(960, 540); bgCanvas.scale(fSc); drawVisualCore(bgCanvas, overlayT, bands, fI, vol); bgCanvas.pop();
+        push(); translate(-width/2, -height/2); image(bgCanvas, 0, 0); pop(); updateUI();
     }
 
-    // --- 24종 FX 알고리즘 매칭 연결 ---
     function drawVisualCore(pg, t, bands, fI, vol) {
-        let sid = currentFXId; pg.noFill(); pg.strokeWeight(2 * fI);
-        let h = parseFloat(document.getElementById('fxHue').value);
-        pg.stroke(h, 80, 100);
-
-        if(sid==='waves'){
-            for(let j=0; j<5; j++){
-                let c = pg.color(h, 70, 100, 70); pg.fill(c); pg.stroke(h, 70, 100); pg.beginShape();
-                for(let i=-960; i<=960; i+=40){ let y = sin(i*0.005 + t*(j+1.2)) * bands[j] * fI; pg.vertex(i, 200 + j*100 + y); }
-                pg.vertex(960, 540); pg.vertex(-960, 540); pg.endShape(CLOSE);
-            }
-        } else if(sid==='matrix'){
-            pg.fill(h, 80, 100); pg.textSize(26); let chars = ['ㄱ','ㄴ','ㄷ','ㄹ','ㅁ','ㅂ','ㅅ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
-            for(let i=0; i<30; i++){ let idx = floor(noise(i, floor(t*4))*chars.length); pg.text(chars[idx], -960+(i*70), (t*100+i*200)%1080-540 + bands[i%12]); }
-        } else if(sid==='ripBok'){
-            for(let i=0; i<8; i++){ pg.stroke(h, 50, 100, 150); pg.circle(0, 0, (t*250+i*180)%1300 + bands[i]); pg.fill(h, 80, 100, 40); pg.circle(cos(t+i)*500, sin(t+i)*500, 70+bands[i]); }
-        } else if(sid==='bokRip'){
-            pg.noStroke(); for(let i=0; i<25; i++){ pg.fill(h, 80, 100, 80); pg.circle(cos(t+i)*bands[i%12]*4, sin(t+i)*bands[i%12]*4, 120 + bands[i%12]); }
-        } else if(sid==='dna'){
-            for(let i=0; i<40; i++){ pg.fill(h, 80, 100); pg.circle(cos(i*0.5+t)*350, sin(i*0.5+t)*100, 12+bands[i%12]/6); pg.fill((h+180)%360, 80, 100); pg.circle(cos(i*0.5+t+PI)*350, sin(i*0.5+t+PI)*100, 12+bands[i%12]/6); }
-        } else if(sid==='nebula'){
-            let g=pg.drawingContext.createRadialGradient(0,0,0,0,0,600); g.addColorStop(0,`hsla(${h}, 80%, 50%, 0.6)`); g.addColorStop(1,'rgba(0,0,0,0)'); pg.drawingContext.fillStyle=g; pg.rect(-960,-540,1920,1080);
-        } else if(sid==='mandala'){
-            for(let i=0; i<12; i++){ pg.rotate(PI/6); pg.rect(-50, -50, 100+bands[i], 100+bands[i]); pg.circle(150, 0, bands[i]/2); }
-        } else if(sid==='lightning'){
-            pg.stroke(h, 20, 100); if(bands[10]>180) drawBranch(pg, random(-500,500), -500, PI/2, 300*fI, 5);
-        } else if(sid==='web'){
-            let pts = []; for(let i=0; i<10; i++) pts.push({x: noise(i,t)*1920-960, y: noise(i,t+10)*1080-540});
-            for(let i=0; i<pts.length; i++) for(let j=i+1; j<pts.length; j++) pg.line(pts[i].x, pts[i].y, pts[j].x, pts[j].y);
-        } else if(sid==='vortex'){
-            for(let i=0; i<20; i++){ pg.rotate(t*0.05); pg.rect(-i*20, -i*20, i*40+bands[0], i*40); }
-        } else if(sid==='chladni'){
-            for(let i=0; i<50; i++){ let x = sin(i*t)*400; let y = cos(i*t)*400; pg.circle(x, y, bands[i%12]/10); pg.circle(-x, -y, bands[i%12]/10); }
-        } else if(sid==='starfield'){
-            for(let i=0; i<60; i++){ let r = noise(i,t)*2000-1000; pg.line(r, -540, r + cos(t)*bands[0], 540); }
-        } else if(sid==='cyber'){
-            for(let i=0; i<12; i++){ pg.line(-960, (t*300+i*150)%1080-540, 960, (t*300+i*150)%1080-540); pg.line(i*200-960 + bands[i], -540, i*400-1920, 540); }
-        } else if(sid==='radar'){
-            pg.circle(0,0, 400); pg.fill(h, 80, 100, 30); pg.arc(0,0, 800, 800, t%TWO_PI, (t%TWO_PI)+PI/4);
-        } else if(sid==='hex'){
-            for(let j=1; j<5; j++){ pg.beginShape(); for(let i=0; i<6; i++) pg.vertex(cos(i*PI/3)*(200*j+bands[j]), sin(i*PI/3)*(200*j+bands[j])); pg.endShape(CLOSE); }
-        } else if(sid==='flow'){
-            for(let i=0; i<30; i++){ pg.line(-960, noise(i, t)*1080-540, 960, noise(i+1, t)*1080-540 + bands[i%12]); }
-        } else if(sid==='orbit'){
-            for(let i=0; i<8; i++){ pg.ellipse(0, 0, 400+bands[i], 200+i*50); pg.circle(cos(t+i)* (200+bands[i]/2), sin(t+i)*100, 20); }
-        } else if(sid==='tree'){
-            pg.push(); pg.translate(0, 400); drawBranch(pg, 0, 0, -PI/2, 200 + bands[1]*fI, 6); pg.pop();
-        } else if(sid==='triangles'){
-            for(let i=0; i<10; i++){ pg.rotate(PI/5); pg.triangle(-100-bands[i], 100, 100+bands[i], 100, 0, -100-bands[i]); }
-        } else if(sid==='spiral'){
-            for(let i=0; i<100; i++){ let r = i*5 + bands[i%12]; pg.point(cos(i*0.2+t)*r, sin(i*0.2+t)*r); }
-        } else if(sid==='particles'){
-            for(let i=0; i<40; i++){ pg.circle(noise(i,t)*1920-960, noise(i,t+5)*1080-540, 5+bands[i%12]/10); }
-        } else if(sid==='tunnel'){
-            for(let i=0; i<10; i++){ let r = (t*400+i*200)%1800; pg.rect(-r/2, -r/2, r, r); }
-        } else if(sid==='warp'){
-            for(let i=0; i<30; i++){ pg.line(0,0, cos(i)*1500 + bands[i%12], sin(i)*1500); }
-        } else if(sid==='ripples'){
-            for(let i=0; i<10; i++) pg.circle(0, 0, (t*300+i*200)%1500 + bands[0]);
-        }
+        let sid = currentFXId; pg.noFill(); pg.strokeWeight(2 * fI); let h = parseFloat(document.getElementById('fxHue').value); pg.stroke(h, 80, 100);
+        if(sid==='waves'){ for(let j=0; j<5; j++){ let c = pg.color(h, 70, 100, 70); pg.fill(c); pg.stroke(h, 70, 100); pg.beginShape(); for(let i=-960; i<=960; i+=40){ let y = sin(i*0.005 + t*(j+1.2)) * bands[j] * fI; pg.vertex(i, 200 + j*100 + y); } pg.vertex(960, 540); pg.vertex(-960, 540); pg.endShape(CLOSE); } }
+        else if(sid==='matrix'){ pg.fill(h, 80, 100); pg.textSize(26); let chars = ['ㄱ','ㄴ','ㄷ','ㄹ','ㅁ','ㅂ','ㅅ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ']; for(let i=0; i<30; i++){ let idx = floor(noise(i, floor(t*4))*chars.length); pg.text(chars[idx], -960+(i*70), (t*50+i*200)%1080-540 + bands[i%12]); } }
+        else if(sid==='ripBok'){ for(let i=0; i<8; i++){ pg.stroke(h, 50, 100, 150); pg.circle(0, 0, (t*250+i*180)%1300 + bands[i]); pg.fill(h, 80, 100, 40); pg.circle(cos(t+i)*500, sin(t+i)*500, 70+bands[i]); } }
+        else if(sid==='bokRip'){ pg.noStroke(); for(let i=0; i<25; i++){ pg.fill(h, 80, 100, 80); pg.circle(cos(t+i)*bands[i%12]*4, sin(t+i)*bands[i%12]*4, 120 + bands[i%12]); } }
+        else if(sid==='dna'){ for(let i=0; i<40; i++){ pg.fill(h, 80, 100); pg.circle(cos(i*0.5+t)*350, sin(i*0.5+t)*100, 12+bands[i%12]/6); pg.fill((h+180)%360, 80, 100); pg.circle(cos(i*0.5+t+PI)*350, sin(i*0.5+t+PI)*100, 12+bands[i%12]/6); } }
+        else if(sid==='nebula'){ let g=pg.drawingContext.createRadialGradient(0,0,0,0,0,600); g.addColorStop(0,`hsla(${h}, 80%, 50%, 0.6)`); g.addColorStop(1,'rgba(0,0,0,0)'); pg.drawingContext.fillStyle=g; pg.rect(-960,-540,1920,1080); }
+        else if(sid==='mandala'){ for(let i=0; i<12; i++){ pg.rotate(PI/6); pg.rect(-50, -50, 100+bands[i], 100+bands[i]); pg.circle(150, 0, bands[i]/2); } }
+        else if(sid==='lightning'){ pg.stroke(h, 20, 100); if(bands[10]>180) drawBranch(pg, random(-500,500), -500, PI/2, 300*fI, 5); }
+        else if(sid==='web'){ let pts = []; for(let i=0; i<10; i++) pts.push({x: noise(i,t)*1920-960, y: noise(i,t+10)*1080-540}); for(let i=0; i<pts.length; i++) for(let j=i+1; j<pts.length; j++) pg.line(pts[i].x, pts[i].y, pts[j].x, pts[j].y); }
+        else if(sid==='vortex'){ for(let i=0; i<20; i++){ pg.rotate(t*0.05); pg.rect(-i*20, -i*20, i*40+bands[0], i*40); } }
+        else if(sid==='chladni'){ for(let i=0; i<50; i++){ let x = sin(i*t)*400; let y = cos(i*t)*400; pg.circle(x, y, bands[i%12]/10); pg.circle(-x, -y, bands[i%12]/10); } }
+        else if(sid==='starfield'){ for(let i=0; i<60; i++){ let r = noise(i,t)*2000-1000; pg.line(r, -540, r + cos(t)*bands[0], 540); } }
+        else if(sid==='cyber'){ for(let i=0; i<12; i++){ pg.line(-960, (t*300+i*150)%1080-540, 960, (t*300+i*150)%1080-540); pg.line(i*200-960 + bands[i], -540, i*400-1920, 540); } }
+        else if(sid==='radar'){ pg.circle(0,0, 400); pg.fill(h, 80, 100, 30); pg.arc(0,0, 800, 800, t%TWO_PI, (t%TWO_PI)+PI/4); }
+        else if(sid==='hex'){ for(let j=1; j<5; j++){ pg.beginShape(); for(let i=0; i<6; i++) pg.vertex(cos(i*PI/3)*(200*j+bands[j]), sin(i*PI/3)*(200*j+bands[j])); pg.endShape(CLOSE); } }
+        else if(sid==='flow'){ for(let i=0; i<30; i++){ pg.line(-960, noise(i, t)*1080-540, 960, noise(i+1, t)*1080-540 + bands[i%12]); } }
+        else if(sid==='orbit'){ for(let i=0; i<8; i++){ pg.ellipse(0, 0, 400+bands[i], 200+i*50); pg.circle(cos(t+i)* (200+bands[i]/2), sin(t+i)*100, 20); } }
+        else if(sid==='tree'){ pg.push(); pg.translate(0, 400); drawBranch(pg, 0, 0, -PI/2, 200 + bands[1]*fI, 6); pg.pop(); }
+        else if(sid==='triangles'){ for(let i=0; i<10; i++){ pg.rotate(PI/5); pg.triangle(-100-bands[i], 100, 100+bands[i], 100, 0, -100-bands[i]); } }
+        else if(sid==='spiral'){ for(let i=0; i<100; i++){ let r = i*5 + bands[i%12]; pg.point(cos(i*0.2+t)*r, sin(i*0.2+t)*r); } }
+        else if(sid==='particles'){ for(let i=0; i<40; i++){ pg.circle(noise(i,t)*1920-960, noise(i,t+5)*1080-540, 5+bands[i%12]/10); } }
+        else if(sid==='tunnel'){ for(let i=0; i<10; i++){ let r = (t*400+i*200)%1800; pg.rect(-r/2, -r/2, r, r); } }
+        else if(sid==='warp'){ for(let i=0; i<30; i++){ pg.line(0,0, cos(i)*1500 + bands[i%12], sin(i)*1500); } }
+        else if(sid==='ripples'){ for(let i=0; i<10; i++) pg.circle(0, 0, (t*300+i*200)%1500 + bands[0]); }
     }
 
     function drawBranch(pg, x, y, ang, len, gen) { if(gen <= 0 || len < 5) return; let nx = x + cos(ang)*len, ny = y + sin(ang)*len; pg.line(x, y, nx, ny); drawBranch(pg, nx, ny, ang+0.4, len*0.7, gen-1); drawBranch(pg, nx, ny, ang-0.4, len*0.7, gen-1); }
     function saveConfig() { const cfg = { id: currentFXId, sc: document.getElementById('fxScale').value, it: document.getElementById('fxInten').value, sp: document.getElementById('fxSpeed').value, hu: document.getElementById('fxHue').value }; const blob = new Blob([JSON.stringify(cfg)], {type: 'application/json'}); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'config.json'; a.click(); }
     function loadConfig(files) { const reader = new FileReader(); reader.onload = e => { const cfg = JSON.parse(e.target.result); selectFX(cfg.id); document.getElementById('fxScale').value = cfg.sc; document.getElementById('fxInten').value = cfg.it; document.getElementById('fxSpeed').value = cfg.sp; document.getElementById('fxHue').value = cfg.hu; }; reader.readAsText(files[0]); }
     function saveThumbnail() { saveCanvas(canvasRef, `THUMB_${hour()}${minute()}${second()}`, 'png'); }
-    async function pushToCloud(type) { const user = document.getElementById('ghUser').value; const repo = document.getElementById('ghRepo').value; const token = document.getElementById('ghToken').value; const status = document.getElementById('cloudStatus'); if(!user || !repo || !token) { alert('GitHub 정보를 입력해주세요.'); return; } status.innerText = "⏳ Pushing..."; const ts = `${year()}${nf(month(),2)}${nf(day(),2)}_${nf(hour(),2)}${nf(minute(),2)}`; let path, content, msg; if(type === 'config') { path = `configs/cfg_${ts}.json`; const cfg = { id: currentFXId, sc: document.getElementById('fxScale').value, it: document.getElementById('fxInten').value, sp: document.getElementById('fxSpeed').value, hu: document.getElementById('fxHue').value }; content = btoa(JSON.stringify(cfg, null, 2)); msg = `Config: ${ts}`; } else { path = `thumbnails/thumb_${ts}.png`; content = canvasRef.toDataURL('image/png').split(',')[1]; msg = `Thumb: ${ts}`; } try { const res = await fetch(`https://api.github.com/repos/${user}/${repo}/contents/${path}`, { method: 'PUT', headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ message: msg, content }) }); if(res.ok) { status.innerText = "✅ Success!"; setTimeout(()=>status.innerText="Ready", 3000); } else { const e = await res.json(); throw new Error(e.message); } } catch (e) { alert('Push 실패: ' + e.message); status.innerText = "❌ Failed"; } }
+    async function pushToCloud(type) { const user = document.getElementById('ghUser').value; const repo = document.getElementById('ghRepo').value; const token = document.getElementById('ghToken').value; const status = document.getElementById('cloudStatus'); if(!user || !repo || !token) { alert('GitHub 정보를 입력해주세요.'); return; } status.innerText = "⏳ Pushing..."; const ts = `${year()}${nf(month(),2)}${nf(day(),2)}_${nf(hour(),2)}${nf(minute(),2)}`; let path, content, msg; if(type === 'config') { path = `configs/cfg_${ts}.json`; const cfg = { id: currentFXId, sc: document.getElementById('fxScale').value, it: document.getElementById('fxInten').value, sp: document.getElementById('fxSpeed').value, hu: document.getElementById('fxHue').value }; content = btoa(JSON.stringify(cfg, null, 2)); msg = `Config: ${ts}`; } else { path = `thumbnails/thumb_${ts}.png`; content = canvasRef.toDataURL('image/png').split(',')[1]; msg = `Thumb: ${ts}`; } try { const res = await fetch(`https://api.github.com/repos/${user}/${repo}/contents/${path}`, { method: 'PUT', headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ message: msg, content }) }); if(res.ok) { status.innerText = "✅ Success!"; setTimeout(()=>status.innerText="Cloud Ready", 3000); } else { const e = await res.json(); throw new Error(e.message); } } catch (e) { alert('Push 실패: ' + e.message); status.innerText = "❌ Failed"; } }
     function saveCloudInfo() { const info = { user: document.getElementById('ghUser').value, repo: document.getElementById('ghRepo').value, token: document.getElementById('ghToken').value }; localStorage.setItem('spectrum_gh_info', JSON.stringify(info)); }
     function loadCloudInfo() { const info = JSON.parse(localStorage.getItem('spectrum_gh_info')); if(info) { document.getElementById('ghUser').value = info.user; document.getElementById('ghRepo').value = info.repo; document.getElementById('ghToken').value = info.token; } }
     function handleFile(files) { audio = loadSound(URL.createObjectURL(files[0]), () => { document.getElementById('recBtn').disabled = false; document.getElementById('statusInfo').innerText = "오디오 분석 완료"; }); }
-    function updateUI() { if(audio && audio.isPlaying()){ document.getElementById('progFill').style.width = (audio.currentTime()/audio.duration()*100)+'%'; let m = floor(audio.currentTime()/60), s = floor(audio.currentTime()%60); document.getElementById('timeCode').innerText = `${nf(m,2)}:${nf(s,2)} / ${nf(floor(audio.duration()/60),2)}:${nf(floor(audio.duration()%60),2)}`; document.getElementById('fps').innerText = floor(frameRate()); } }
+    function updateUI() { if(audio && audio.isPlaying()){ document.getElementById('progFill').style.width = (audio.currentTime()/audio.duration()*100)+'%'; let m = floor(audio.currentTime()/60), s = floor(audio.currentTime()%60); document.getElementById('timeCode').innerText = `${nf(m,2)}:${nf(s,2)} / ${nf(floor(audio.duration()/60),2)}:${nf(floor(audio.duration()%60),2)}`; if(document.getElementById('fps')) document.getElementById('fps').innerText = `FPS: ${floor(frameRate())}`; } }
     async function toggleSync() { if (isPlaying) { audio.stop(); isPlaying = false; } else { if (getAudioContext().state === 'suspended') await userStartAudio(); recordedChunks = []; const dest = getAudioContext().createMediaStreamDestination(); p5.soundOut.output.connect(dest); mediaRecorder = new MediaRecorder(new MediaStream([...canvasRef.captureStream(30).getVideoTracks(), ...dest.stream.getAudioTracks()]), { videoBitsPerSecond: 80000000 }); mediaRecorder.ondataavailable = e => recordedChunks.push(e.data); mediaRecorder.onstop = () => { let a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(recordedChunks, { type: 'video/mp4' })); a.download = `VFX_${year()}${nf(month(),2)}${nf(day(),2)}.mp4`; a.click(); }; audio.play(); mediaRecorder.start(); isPlaying = true; document.getElementById('recBtn').innerText = "■ STOP & SAVE"; } }
     setInterval(() => { ['fxScale','fxInten','fxSpeed','fxHue'].forEach(id => { let el = document.getElementById(id); if(el) document.getElementById('v' + id.charAt(0).toUpperCase() + id.slice(1)).innerText = el.value; }); }, 100);
 </script>
