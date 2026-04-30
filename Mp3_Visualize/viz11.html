@@ -2,33 +2,33 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>TYPO EDITOR STUDIO v21.6.0</title>
+    <title>TYPO PRODUCTION STUDIO v21.7.0</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <style>
         :root{ --bg:#050508; --accent:#00ffcc; --panel:#0e0e15; --text:#fff; --record:#ff3377; }
         body{ background:var(--bg); color:var(--text); margin:0; overflow:hidden; font-family:'Pretendard', sans-serif; display:flex; }
         
-        /* 왼쪽 에디터 패널 */
-        #editor-panel { width:450px; background:var(--panel); height:100vh; padding:15px; border-right:1px solid rgba(0,255,204,0.2); z-index:10; display:flex; flex-direction:column; }
+        #editor-panel { width:420px; background:var(--panel); height:100vh; padding:15px; border-right:1px solid rgba(0,255,204,0.2); z-index:10; display:flex; flex-direction:column; }
         #subtitle-list { flex:1; overflow-y:auto; margin-top:15px; padding-right:5px; scrollbar-width:thin; }
         
-        /* 가사 줄별 설정 박스 */
         .sub-item { background:rgba(255,255,255,0.03); border:1px solid #333; border-radius:6px; padding:12px; margin-bottom:10px; font-size:11px; }
         .sub-item.active { border-color:var(--accent); background:rgba(0,255,204,0.05); }
         .sub-text { color:var(--accent); font-weight:bold; margin-bottom:8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         
-        /* 컨트롤 요소 */
         .grid-ctrl { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
         label { font-size:9px; color:#888; display:block; margin-top:5px; }
         select, input { width:100%; background:#000; color:#fff; border:1px solid #444; padding:4px; font-size:10px; border-radius:3px; outline:none; }
         input[type=range] { accent-color:var(--accent); height:2px; }
 
-        #canvas-container { flex:1; position:relative; display:flex; align-items:center; justify-content:center; background:#000; }
-        .top-btns { display:flex; gap:5px; }
-        .btn { flex:1; padding:10px; background:transparent; border:1px solid var(--accent); color:var(--accent); cursor:pointer; font-size:10px; border-radius:4px; }
+        #canvas-container { flex:1; position:relative; display:flex; align-items:center; justify-content:center; background:#000; overflow:hidden; }
+        /* 1. Start 버튼 크기 축소 */
+        .btn { padding:8px 12px; background:transparent; border:1px solid var(--accent); color:var(--accent); cursor:pointer; font-size:10px; border-radius:4px; font-weight:bold; }
         .btn:hover { background:rgba(0,255,204,0.1); }
         .btn-rec { border-color:var(--record); color:var(--record); }
+        .top-btns { display:flex; gap:5px; margin-bottom:10px; }
+        
+        #playBtn { background:var(--accent); color:#000; width:100%; height:32px; border:none; margin-top:10px; cursor:pointer; font-size:11px; font-weight:bold; border-radius:4px; }
     </style>
 </head>
 <body>
@@ -37,15 +37,27 @@
     <div class="top-btns">
         <button class="btn" onclick="document.getElementById('mIn').click()">🎵 AUDIO</button>
         <button class="btn" onclick="document.getElementById('sIn').click()">📝 SRT</button>
-        <button class="btn btn-rec" id="recBtn" onclick="toggleRecord()" disabled>🔴 REC</button>
+        <!-- 3. 종횡비 선택 추가 -->
+        <select class="btn" id="aspectRatio" onchange="resizeStudio()" style="flex:1.5;">
+            <option value="16:9">16:9 Landscape</option>
+            <option value="9:16">9:16 Portrait</option>
+        </select>
     </div>
+    
+    <!-- 4. 공통 폰트 설정 추가 -->
+    <div class="sub-item" style="border-color:var(--accent2);">
+        <label>GLOBAL FONT FAMILY</label>
+        <input type="text" id="globalFont" value="sans-serif" placeholder="Font Name (e.g. Impact, Arial)" oninput="updateAllFonts()">
+    </div>
+
     <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleAudio(this.files)">
     <input type="file" id="sIn" accept=".srt" style="display:none" onchange="handleSRT(this.files)">
     
-    <button class="btn" id="playBtn" onclick="togglePlay()" disabled style="background:var(--accent); color:#000; margin-top:10px; font-weight:bold;">▶ START PRODUCTION</button>
+    <!-- 1 & 2. Start 버튼 축소 및 원클릭 녹화 연동 -->
+    <button id="playBtn" onclick="startProduction()" disabled>▶ START PRODUCTION (REC)</button>
 
     <div id="subtitle-list">
-        <div style="text-align:center; color:#555; margin-top:50px;">Load SRT to start editing...</div>
+        <div style="text-align:center; color:#555; margin-top:50px;">Load files to start production...</div>
     </div>
 </div>
 
@@ -53,24 +65,40 @@
 
 <script>
     let audio, fft, subCanvas;
-    let subtitles = []; // 시간 데이터 전용
-    let settings = [];  // UI 설정 데이터 전용
-    let isPlaying = false, isRecording = false;
+    let subtitles = [], settings = [];
+    let isPlaying = false, isRecording = false, isStarted = false;
     let mediaRecorder, recordedChunks = [];
 
     function setup() {
-        let cnv = createCanvas(1280, 720, WEBGL);
-        cnv.parent('canvas-container');
-        subCanvas = createGraphics(1280, 720, WEBGL);
-        subCanvas.colorMode(HSB, 360, 100, 100, 100);
+        resizeStudio();
         fft = new p5.FFT();
+    }
+
+    // 3. 종횡비 실시간 변경 로직
+    function resizeStudio() {
+        const ratio = document.getElementById('aspectRatio').value;
+        let w = 1280, h = 720;
+        if(ratio === "9:16") { w = 720; h = 1280; }
+        
+        let cnv = createCanvas(w, h, WEBGL);
+        cnv.parent('canvas-container');
+        subCanvas = createGraphics(w, h, WEBGL);
+        subCanvas.colorMode(HSB, 360, 100, 100, 100);
+        
+        // 컨테이너 크기에 맞춰 캔버스 스케일 조정 (CSS)
+        const container = document.getElementById('canvas-container');
+        const scale = Math.min(container.clientWidth/w, container.clientHeight/h) * 0.9;
+        document.querySelector('canvas').style.transform = `scale(${scale})`;
     }
 
     function draw() {
         background(2);
         subCanvas.clear();
 
-        if (audio && audio.isPlaying()) {
+        // 6. 시작 전 가이드 텍스트 표시
+        if (!isStarted) {
+            drawIntro();
+        } else if (audio && audio.isPlaying()) {
             fft.analyze();
             renderTypo(audio.currentTime());
         }
@@ -81,13 +109,40 @@
         pop();
     }
 
-    // --- 1. SRT 로드 및 UI 리스트 생성 ---
+    function drawIntro() {
+        subCanvas.push();
+        subCanvas.textAlign(CENTER, CENTER);
+        subCanvas.fill(255);
+        subCanvas.textSize(30);
+        subCanvas.text("PRODUCTION READY", 0, -50);
+        subCanvas.textSize(15);
+        subCanvas.fill(0, 255, 204);
+        subCanvas.text("1. LOAD MP3 & SRT FILES\n2. SET MOTIONS & STYLES\n3. CLICK 'START' TO RECORD AUTOMATICALLY", 0, 30);
+        subCanvas.pop();
+    }
+
+    // 2. Start 버튼 클릭 시 녹화 자동 시작
+    async function startProduction() {
+        if (!isPlaying) {
+            isStarted = true;
+            await toggleRecord(true); // 녹화 시작
+            audio.play();
+            isPlaying = true;
+            document.getElementById('playBtn').innerText = "⏹ STOP PRODUCTION";
+        } else {
+            audio.stop();
+            toggleRecord(false); // 녹화 중지 및 저장
+            isPlaying = false;
+            isStarted = false;
+            document.getElementById('playBtn').innerText = "▶ START PRODUCTION (REC)";
+        }
+    }
+
     function handleSRT(files) {
         const reader = new FileReader();
         reader.onload = (e) => {
             const blocks = e.target.result.replace(/\r/g, '').split('\n\n');
-            subtitles = [];
-            settings = [];
+            subtitles = []; settings = [];
             const listEl = document.getElementById('subtitle-list');
             listEl.innerHTML = '';
 
@@ -97,14 +152,10 @@
                 const times = lines[1].split(' --> ');
                 const text = lines.slice(2).join(' ').trim();
 
-                // 1. 데이터 저장
                 subtitles.push({ start: timeToSec(times[0]), end: timeToSec(times[1]), text: text });
-                
-                // 2. 초기 설정값
-                const config = { motion: 'Fade', size: 70, x: 0, y: 200, hue: 180, rot: 0 };
-                settings.push(config);
+                // 5. 신규 분리 모션 기본값 추가
+                settings.push({ motion: 'Char_Wave', size: 70, x: 0, y: 150, hue: 180, rot: 0 });
 
-                // 3. UI 요소 생성
                 const item = document.createElement('div');
                 item.className = 'sub-item';
                 item.id = `item-${i}`;
@@ -112,33 +163,18 @@
                     <div class="sub-text">${i+1}. ${text}</div>
                     <div class="grid-ctrl">
                         <div>
-                            <label>MOTION</label>
+                            <label>MOTION ENGINE</label>
                             <select onchange="updateSet(${i}, 'motion', this.value)">
-                                <option value="Fade">Fade</option>
+                                <option value="Char_Wave">Char: Wave</option>
+                                <option value="Word_Bounce">Word: Bounce</option>
                                 <option value="Typing">Typing</option>
                                 <option value="Pulse">Pulse (Bass)</option>
-                                <option value="Float">Float</option>
-                                <option value="3D">3D Spin</option>
+                                <option value="3D_Flip">3D Flip</option>
                             </select>
                         </div>
-                        <div>
-                            <label>SIZE</label>
-                            <input type="range" min="20" max="250" value="70" oninput="updateSet(${i}, 'size', this.value)">
-                        </div>
-                        <div>
-                            <label>POS X / Y</label>
-                            <div style="display:flex; gap:2px;">
-                                <input type="number" value="0" oninput="updateSet(${i}, 'x', this.value)">
-                                <input type="number" value="200" oninput="updateSet(${i}, 'y', this.value)">
-                            </div>
-                        </div>
-                        <div>
-                            <label>HUE / ROTATION</label>
-                            <div style="display:flex; gap:2px;">
-                                <input type="range" min="0" max="360" value="180" oninput="updateSet(${i}, 'hue', this.value)">
-                                <input type="range" min="-180" max="180" value="0" oninput="updateSet(${i}, 'rot', this.value)">
-                            </div>
-                        </div>
+                        <div><label>SIZE</label><input type="range" min="20" max="250" value="70" oninput="updateSet(${i}, 'size', this.value)"></div>
+                        <div><label>POS X/Y</label><div style="display:flex;gap:2px;"><input type="number" value="0" oninput="updateSet(${i}, 'x', this.value)"><input type="number" value="150" oninput="updateSet(${i}, 'y', this.value)"></div></div>
+                        <div><label>HUE / ROT</label><div style="display:flex;gap:2px;"><input type="range" min="0" max="360" value="180" oninput="updateSet(${i}, 'hue', this.value)"><input type="range" min="-180" max="180" value="0" oninput="updateSet(${i}, 'rot', this.value)"></div></div>
                     </div>
                 `;
                 listEl.appendChild(item);
@@ -147,16 +183,6 @@
         reader.readAsText(files[0]);
     }
 
-    function updateSet(idx, key, val) {
-        settings[idx][key] = isNaN(val) ? val : parseFloat(val);
-    }
-
-    function timeToSec(t) {
-        let p = t.split(':');
-        return parseInt(p[0]) * 3600 + parseInt(p[1]) * 60 + parseFloat(p[2].replace(',', '.'));
-    }
-
-    // --- 2. 설정된 UI 기반 렌더링 ---
     function renderTypo(curr) {
         let idx = subtitles.findIndex(s => curr >= s.start && curr <= s.end);
         if (idx === -1) return;
@@ -166,49 +192,60 @@
         let progress = map(curr, sub.start, sub.end, 0, 1);
         let bass = fft.getEnergy("bass");
 
-        // 현재 가사 리스트 하이라이트
         document.querySelectorAll('.sub-item').forEach(el => el.classList.remove('active'));
-        document.getElementById(`item-${idx}`).classList.add('active');
-        // 스크롤 자동 이동
-        document.getElementById(`item-${idx}`).scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-
-        subCanvas.push();
-        subCanvas.translate(set.x, set.y, 0);
-        subCanvas.rotateZ(radians(set.rot));
-
-        // 모션 엔진 분기
-        let txt = sub.text;
-        let alpha = 255;
-
-        if (set.motion === 'Typing') {
-            let count = floor(map(progress, 0, 0.4, 0, txt.length, true));
-            txt = txt.substring(0, count);
-        } else if (set.motion === 'Pulse') {
-            subCanvas.scale(1.0 + (bass/500));
-        } else if (set.motion === 'Float') {
-            subCanvas.translate(0, sin(frameCount * 0.1) * 30, 0);
-        } else if (set.motion === '3D') {
-            subCanvas.rotateX(progress * TWO_PI);
-            subCanvas.translate(0, 0, sin(progress * PI) * 150);
-        } else {
-            alpha = progress < 0.2 ? map(progress, 0, 0.2, 0, 255) : (progress > 0.8 ? map(progress, 0.8, 1, 255, 0) : 255);
+        const activeItem = document.getElementById(`item-${idx}`);
+        if(activeItem) {
+            activeItem.classList.add('active');
+            activeItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
 
+        subCanvas.push();
+        subCanvas.textFont(document.getElementById('globalFont').value); // 4. 공통 폰트 적용
+        subCanvas.translate(set.x, set.y, 0);
+        subCanvas.rotateZ(radians(set.rot));
         subCanvas.textAlign(CENTER, CENTER);
         subCanvas.textSize(set.size);
-        subCanvas.fill(set.hue, 80, 100, alpha/255 * 100);
-        
-        // 글로우 효과
-        subCanvas.drawingContext.shadowBlur = 20;
-        subCanvas.drawingContext.shadowColor = `hsla(${set.hue}, 100%, 50%, 0.8)`;
-        
-        subCanvas.text(txt, 0, 0);
+        subCanvas.fill(set.hue, 80, 100);
+
+        // 5. 개별 글자/단어 분리 모션 로직
+        if (set.motion === 'Char_Wave') {
+            let chars = sub.text.split('');
+            let totalW = subCanvas.textWidth(sub.text);
+            let currentX = -totalW / 2;
+            chars.forEach((c, i) => {
+                let offY = sin(frameCount * 0.1 + i * 0.5) * (bass/10);
+                subCanvas.text(c, currentX, offY);
+                currentX += subCanvas.textWidth(c);
+            });
+        } 
+        else if (set.motion === 'Word_Bounce') {
+            let words = sub.text.split(' ');
+            let totalW = subCanvas.textWidth(sub.text);
+            let currentX = -totalW / 2;
+            words.forEach((w, i) => {
+                let bounce = abs(sin(frameCount * 0.1 + i)) * (bass/5);
+                subCanvas.text(w, currentX + subCanvas.textWidth(w)/2, -bounce);
+                currentX += subCanvas.textWidth(w + ' ');
+            });
+        }
+        else if (set.motion === 'Typing') {
+            let count = floor(map(progress, 0, 0.4, 0, sub.text.length, true));
+            subCanvas.text(sub.text.substring(0, count), 0, 0);
+        }
+        else if (set.motion === '3D_Flip') {
+            subCanvas.rotateX(progress * TWO_PI);
+            subCanvas.text(sub.text, 0, 0);
+        }
+        else if (set.motion === 'Pulse') {
+            subCanvas.scale(1.0 + (bass/500));
+            subCanvas.text(sub.text, 0, 0);
+        }
+
         subCanvas.pop();
     }
 
-    // --- 영상 녹화 ---
-    function toggleRecord() {
-        if (!isRecording) {
+    async function toggleRecord(start) {
+        if (start) {
             recordedChunks = [];
             let stream = document.querySelector('canvas').captureStream(30);
             mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
@@ -216,18 +253,19 @@
             mediaRecorder.onstop = () => {
                 let blob = new Blob(recordedChunks, { type: 'video/webm' });
                 let a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-                a.download = `typo_edit_${Date.now()}.webm`; a.click();
+                a.download = `typo_production_${Date.now()}.webm`; a.click();
             };
             mediaRecorder.start();
-            isRecording = true; document.getElementById('recBtn').innerText = "⏹ STOP";
+            isRecording = true;
         } else {
-            mediaRecorder.stop();
-            isRecording = false; document.getElementById('recBtn').innerText = "🔴 REC";
+            if(mediaRecorder) mediaRecorder.stop();
+            isRecording = false;
         }
     }
 
-    function handleAudio(f) { audio = loadSound(URL.createObjectURL(f[0]), () => { document.getElementById('playBtn').disabled = false; document.getElementById('recBtn').disabled = false; }); }
-    function togglePlay() { if (isPlaying) { audio.pause(); isPlaying = false; } else { audio.play(); isPlaying = true; } }
+    function updateSet(idx, key, val) { settings[idx][key] = isNaN(val) ? val : parseFloat(val); }
+    function timeToSec(t) { let p = t.split(':'); return parseInt(p[0]) * 3600 + parseInt(p[1]) * 60 + parseFloat(p[2].replace(',', '.')); }
+    function handleAudio(f) { audio = loadSound(URL.createObjectURL(f[0]), () => { document.getElementById('playBtn').disabled = false; }); }
 </script>
 </body>
 </html>
