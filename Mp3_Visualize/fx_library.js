@@ -315,6 +315,81 @@ window.FX_ENGINES = {
             pg.pop();
         }
     }
+// 1. Bloom: 음악 강도에 따라 꽃이 피어나는 효과
+    bloom: (pg, t, b, fI, h, s, p1, p2, p3) => {
+        let count = floor(p1 / 5) + 3;
+        for (let i = 0; i < count; i++) {
+            pg.push();
+            // 화면 전체에 골고루 배치 (노이즈 기반)
+            let x = noise(i, 10) * 1600 - 800;
+            let y = noise(i, 20) * 1000 - 500;
+            pg.translate(x, y, 0);
+            pg.rotateZ(t * 0.2 + i);
+
+            applyColorStyle(pg, s, (h + i * 30) % 360, i, fI, p3);
+
+            // 꽃잎 그리기 (주파수에 반응하여 크기 변화)
+            let petals = 6;
+            let size = (20 + b[i % 12] * 0.5) * p2;
+            for (let j = 0; j < petals; j++) {
+                pg.rotateZ(TWO_PI / petals);
+                pg.ellipse(size / 2, 0, size, size * 0.6);
+            }
+            // 꽃술 부분
+            pg.circle(0, 0, size * 0.3);
+            pg.pop();
+        }
+    },
+
+    // 2. Sakura: 화면 위에서 아래로 꽃잎이 흩날리는 효과
+    sakura: (pg, t, b, fI, h, s, p1, p2, p3) => {
+        for (let i = 0; i < p1; i++) {
+            applyColorStyle(pg, s, (h + i) % 360, i, fI, p3);
+            pg.push();
+            // 바람에 흔들리는 듯한 좌우 움직임 (sin) + 아래로 하강
+            let fallSpeed = t * 150 * p2;
+            let x = (noise(i) * 2000 - 1000) + sin(t + i) * 50;
+            let y = (-540 + (i * 100 + fallSpeed) % 1100) - 50;
+            
+            pg.translate(x, y, 0);
+            pg.rotateX(t + i);
+            pg.rotateY(t * 0.5);
+            
+            // 꽃잎 모양 (하트 형태의 베지어 곡선)
+            let sz = (10 + b[0] * 0.1) * fI;
+            pg.beginShape();
+            pg.vertex(0, 0);
+            pg.bezierVertex(-sz, -sz, -sz * 1.5, sz, 0, sz);
+            pg.bezierVertex(sz * 1.5, sz, sz, -sz, 0, 0);
+            pg.endShape();
+            pg.pop();
+        }
+    },
+
+    // 3. Floral: 중앙에서 꽃들이 화선형으로 뿜어져 나오는 효과
+    floral: (pg, t, b, fI, h, s, p1, p2, p3) => {
+        let count = floor(p1 / 3) + 5;
+        for (let i = 0; i < count; i++) {
+            let angle = i * (TWO_PI / count) + t * 0.1;
+            let dist = (t * 300 * p2 + i * 200) % 1200;
+            
+            pg.push();
+            pg.translate(cos(angle) * dist, sin(angle) * dist, -dist * 0.5);
+            pg.rotateZ(angle + t);
+            
+            applyColorStyle(pg, s, (h + i * 15) % 360, i, fI, p3 * (1 - dist/1200));
+            
+            // 고음 대역(b[10])에 반응하여 꽃잎이 더 뾰족해짐
+            let petalCount = 5;
+            let petalLen = (30 + b[5] * 0.3) * p2;
+            for (let k = 0; k < petalCount; k++) {
+                pg.rotateZ(TWO_PI / petalCount);
+                pg.line(0, 0, petalLen, 0);
+                pg.ellipse(petalLen, 0, 10 + b[10] * 0.2);
+            }
+            pg.pop();
+        }
+    }
 };
 
 console.log("FX_LIBRARY v21.1.6 Fully Updated.");
