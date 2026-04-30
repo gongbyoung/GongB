@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>SPECTRUM FX v21.0.016 — Full Logic Complete</title>
+    <title>SPECTRUM FX v21.0.017 — Code Commented</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <style>
@@ -11,7 +11,7 @@
         body{ background:var(--bg); color:var(--text); font-family:'Pretendard', sans-serif; height:100vh; overflow:hidden; display: flex; flex-direction: column; }
         .topbar{ padding:10px 25px; background:var(--panel); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
         .logo{letter-spacing:4px; color:var(--accent); font-weight:bold; font-size:14px;}
-        .main-workspace { display: grid; grid-template-columns: 360px 1fr 280px; flex:1; min-height:0; }
+        .main-workspace { display: grid; grid-template-columns: 380px 1fr 280px; flex:1; min-height:0; }
         .side-panel { background:var(--panel); padding:15px; overflow-y:auto; scrollbar-width: thin; border-left:1px solid var(--border); border-right:1px solid var(--border); }
         .ctrl-box { background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:8px; padding:10px; margin-bottom:12px; }
         .label-small { font-size:9px; color:var(--accent); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px; display:block; border-bottom:1px solid rgba(0,255,204,0.1); padding-bottom:3px;}
@@ -23,21 +23,23 @@
         .fx-thumb { aspect-ratio: 1; border: 2px solid rgba(255,255,255,0.1); border-radius: 6px; cursor: pointer; background-size: cover; position: relative; transition: 0.2s; background-color: #111;}
         .fx-thumb.active { border-color: var(--accent2); box-shadow: 0 0 10px var(--accent2); }
         .fx-thumb::after { content: attr(data-name); position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(0,0,0,0.85); font-size: 5px; text-align: center; color: #fff; padding: 2px 0; overflow: hidden; white-space: nowrap; }
+        .btn { background:transparent; border:1px solid var(--border); border-radius:4px; color:#fff; padding:6px; cursor:pointer; font-size:9px; width:100%; height:35px; }
+        .btn.primary { background:var(--accent2); border-color:var(--accent2); font-weight:bold; font-size:11px; margin-top:10px; height: auto; padding:12px; }
         .playbar { height:3px; background:#111; position:relative; }
         #progFill { position:absolute; left:0; top:0; height:100%; background:var(--accent); width:0%; transition: width 0.1s; }
     </style>
 </head>
 <body>
 
-<div class="topbar"><div class="logo">SPECTRUM FX v21.0.016</div><div id="timeCode">00:00 / 00:00</div></div>
+<div class="topbar"><div class="logo">SPECTRUM FX v21.0.017</div><div id="timeCode">00:00 / 00:00</div></div>
 
 <div class="main-workspace">
     <div class="side-panel">
         <div class="ctrl-box">
-            <span class="label-small">1. Audio Input</span>
-            <button class="btn" style="background:transparent; border:1px solid var(--border); border-radius:4px; color:#fff; padding:6px; cursor:pointer; font-size:9px; width:100%; height:35px;" onclick="document.getElementById('mIn').click()">SELECT MP3 FILE</button>
+            <span class="label-small">1. Audio Analysis</span>
+            <button class="btn" onclick="document.getElementById('mIn').click()">SELECT MP3 FILE</button>
             <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleFile(this.files)">
-            <div id="statusInfo" style="font-size:10px; color:var(--accent); margin-top:8px; font-weight:bold;">오디오를 불러와주세요.</div>
+            <div id="statusInfo" style="font-size:10px; color:var(--accent); margin-top:8px; font-weight:bold;">파일을 불러와주세요.</div>
         </div>
         <div class="ctrl-box">
             <span class="label-small">2. Visual Palette (24 Unique FX)</span>
@@ -48,13 +50,18 @@
             </div>
         </div>
     </div>
+
     <div class="viz-area" id="p5-container"></div>
+
     <div class="side-panel">
         <div class="ctrl-box">
-            <span class="label-small">3. Recorder</span>
-            <button class="btn primary" id="recBtn" onclick="toggleSync()" disabled>▶ START VISUALIZER</button>
+            <span class="label-small">3. Recording & Production</span>
+            <button class="btn primary" id="recBtn" onclick="toggleSync()" disabled>▶ START PRODUCTION</button>
         </div>
-        <div class="ctrl-box"><span class="label-small">System FPS</span><div id="fps" style="font-size:10px; color:var(--accent);">--</div></div>
+        <div class="ctrl-box">
+            <span class="label-small">4. System Stats</span>
+            <div id="fps" style="font-size:10px; color:var(--accent);">FPS: --</div>
+        </div>
     </div>
 </div>
 <div class="playbar"><div id="progFill"></div></div>
@@ -63,13 +70,14 @@
     let audio, fft, ampObj, canvasRef, bgCanvas, isPlaying = false, mediaRecorder, recordedChunks = [];
     let overlayT = 0, currentFXId = 'waves';
 
+    // 24개 효과 DB 정의
     const FX_DB = [
-        {id:'waves', n:'WAVE'}, {id:'matrix', n:'Matrix'}, {id:'ripBok', n:'Rip-Bok'}, {id:'bokRip', n:'Bok-Rip'},
-        {id:'dna', n:'DNA'}, {id:'nebula', n:'Nebula'}, {id:'mandala', n:'Mandala'}, {id:'lightning', n:'Storm'},
-        {id:'web', n:'Web'}, {id:'vortex', n:'Vortex'}, {id:'chladni', n:'Chladni'}, {id:'starfield', n:'Star'},
-        {id:'cyber', n:'Cyber'}, {id:'radar', n:'Radar'}, {id:'hex', n:'Hexagon'}, {id:'flow', n:'Flow'},
-        {id:'orbit', n:'Orbit'}, {id:'tree', n:'Tree'}, {id:'triangles', n:'Tri'}, {id:'spiral', n:'Spiral'},
-        {id:'particles', n:'Part'}, {id:'tunnel', n:'Tunnel'}, {id:'warp', n:'Warp'}, {id:'ripples', n:'Ripple'}
+        {id:'waves', n:'WAVE Layer'}, {id:'matrix', n:'KR Matrix'}, {id:'ripBok', n:'Rip-Bokeh'}, {id:'bokRip', n:'Bok-Ripple'},
+        {id:'dna', n:'DNA Helix'}, {id:'nebula', n:'Nebula'}, {id:'mandala', n:'Mandala'}, {id:'lightning', n:'Storm'},
+        {id:'web', n:'Electric Web'}, {id:'vortex', n:'Vortex Rect'}, {id:'chladni', n:'Chladni'}, {id:'starfield', n:'Star Orbit'},
+        {id:'cyber', n:'Cyber Grid'}, {id:'radar', n:'Radar Scan'}, {id:'hex', n:'Hexagon'}, {id:'flow', n:'Flow Field'},
+        {id:'orbit', n:'Orbit Path'}, {id:'tree', n:'Fractal Tree'}, {id:'triangles', n:'Triangle'}, {id:'spiral', n:'Spiral'},
+        {id:'particles', n:'Swarm'}, {id:'tunnel', n:'Tunnel'}, {id:'warp', n:'Hyper Warp'}, {id:'ripples', n:'Original Rip'}
     ];
 
     function setup() {
@@ -80,20 +88,16 @@
         generateThumbnails();
     }
 
+    // 썸네일 생성 함수 (각 효과의 특징 드로잉)
     function generateThumbnails() {
         const grid = document.getElementById('fxThumbGrid');
         let tPg = createGraphics(80, 80);
         FX_DB.forEach(fx => {
-            tPg.background(15, 20, 30); tPg.push(); tPg.translate(40, 40); tPg.strokeWeight(2);
-            tPg.stroke(0,255,200); tPg.noFill();
-            // 각 FX의 특징적인 썸네일 드로잉
+            tPg.background(15, 20, 30); tPg.push(); tPg.translate(40, 40); tPg.stroke(0,255,200); tPg.noFill();
             if(fx.id==='waves') tPg.bezier(-30,10, -10,-20, 10,20, 30,-10);
             else if(fx.id==='matrix') { tPg.fill(0,255,100); tPg.textSize(10); tPg.text('ㄱㄴ', -12, 5); }
-            else if(fx.id==='dna') tPg.ellipse(0,0,15,40);
-            else if(fx.id==='nebula') tPg.circle(0,0,30);
-            else tPg.rect(-15,-15,30,30);
+            else tPg.circle(0,0,30);
             tPg.pop();
-            
             let btn = document.createElement('div');
             btn.className = 'fx-thumb' + (fx.id===currentFXId?' active':'');
             btn.setAttribute('data-name', fx.n);
@@ -109,52 +113,153 @@
         let bands = new Array(12).fill(0), vol = 0;
         if (audio && audio.isPlaying()) {
             fft.analyze(); vol = ampObj.getLevel();
+            // 주파수를 12개 대역으로 정밀 분석 (커스텀용 데이터 소스)
             for(let i=0; i<12; i++) bands[i] = fft.getEnergy(pow(2, i/1.2)*20, pow(2, (i+1)/1.2)*20);
         }
         bgCanvas.push();
         let fSc = parseFloat(document.getElementById('fxScale').value), fI = parseFloat(document.getElementById('fxInten').value);
         bgCanvas.translate(960, 540); bgCanvas.scale(fSc);
         
-        // --- 24종 모든 로직 풀가동 ---
-        drawFXFinal(bgCanvas, overlayT, bands, fI);
+        // 24종 메인 엔진 실행
+        drawFXFinalEngine(bgCanvas, overlayT, bands, fI, vol);
         
         bgCanvas.pop();
         push(); translate(-width/2, -height/2); image(bgCanvas, 0, 0); pop();
         updateUI();
     }
 
-    function drawFXFinal(pg, t, bands, fI) {
+    // --- [핵심] 24종 배경 FX 로직 및 커스텀 가이드 ---
+    function drawFXFinalEngine(pg, t, bands, fI, vol) {
         let sid = currentFXId; pg.noFill(); pg.strokeWeight(2 * fI);
+
+        // 1. WAVE Layer (5중 레이어 + 70% 채우기)
         if(sid==='waves'){
-            for(let j=0; j<5; j++){
-                let c = color(100+j*35, 150+bands[j], 255); pg.fill(red(c), green(c), blue(c), 70); pg.stroke(c); pg.beginShape();
-                for(let i=-960; i<=960; i+=40){ let h = sin(i*0.005 + t*(j+1.2)) * bands[j] * fI; pg.vertex(i, 200 + j*100 + h); }
+            for(let j=0; j<5; j++){ // 커스텀 포인트: 레이어 개수(5) 조절
+                let c = color(100+j*35, 150+bands[j], 255); 
+                pg.fill(red(c), green(c), blue(c), 70); // 커스텀 포인트: 채우기 농도(70) 조절
+                pg.stroke(c); pg.beginShape();
+                for(let i=-960; i<=960; i+=40){
+                    let h = sin(i*0.005 + t*(j+1.2)) * bands[j] * fI; // 커스텀 포인트: 파도 높이 반응성 조절
+                    pg.vertex(i, 200 + j*100 + h);
+                }
                 pg.vertex(960, 540); pg.vertex(-960, 540); pg.endShape(CLOSE);
             }
-        } else if(sid==='matrix'){
-            pg.fill(0, 255, 150, 220); pg.textSize(26);
+        } 
+        // 2. Korean Consonant Matrix
+        else if(sid==='matrix'){
+            pg.fill(0, 255, 150, 200); pg.textSize(26);
             let chars = ['ㄱ','ㄴ','ㄷ','ㄹ','ㅁ','ㅂ','ㅅ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
-            for(let i=0; i<30; i++){ pg.text(chars[floor(random(chars.length))], -960+(i*70), (t*500+i*200)%1080-540 + bands[i%12]); }
-        } else if(sid==='nebula'){
-            let g=pg.drawingContext.createRadialGradient(0,0,0,0,0,600); g.addColorStop(0,'rgba(100,80,255,0.6)'); g.addColorStop(1,'rgba(0,0,0,0)'); pg.drawingContext.fillStyle=g; pg.rect(-960,-540,1920,1080);
-        } else if(sid==='dna'){
-            for(let i=0;i<40;i++){ pg.fill(0,255,200); pg.circle(cos(i+t)*300, sin(i+t)*100, 10+bands[i%12]/8); }
-        } else if(sid==='lightning'){
-            pg.stroke(255); drawBranch(pg, 0, 250, -PI/2, (bands[10]/1.5)*fI, 5);
-        } else if(sid==='hex'){
-            pg.stroke(0,255,255); for(let j=0;j<4;j++){ pg.beginShape(); for(let i=0;i<6;i++) pg.vertex(cos(i*PI/3)*(250+bands[j]*2), sin(i*PI/3)*(250+bands[j]*2)); pg.endShape(CLOSE); }
-        } else if(sid==='vortex'){
-            for(let i=0; i<15; i++){ pg.rotate(t*0.1); pg.stroke(255, 100); pg.rect(-200-i*20, -200-i*20, 400+i*40 + bands[i%12], 400+i*40); }
-        } else {
-            pg.stroke(255, 100); pg.circle(0, 0, 300 + bands[0]);
+            for(let i=0; i<30; i++){
+                // 커스텀 포인트: 글자 낙하 속도 및 주파수 반응 거리 조절
+                pg.text(chars[floor(random(chars.length))], -960+(i*70), (t*600+i*200)%1080-540 + bands[i%12]);
+            }
+        } 
+        // 3. Ripple-Bokeh Hybrid (리플 모양에 보케 색상)
+        else if(sid==='ripBok'){
+            for(let i=0; i<8; i++){
+                pg.stroke(random(200,255), 100+bands[i], 255, 150); // 커스텀 포인트: 색상 범위
+                pg.circle(0, 0, (t*250+i*180)%1300 + bands[i]); // 리플 파동
+                pg.fill(255, 150, 150, 40); // 보케 느낌의 채우기
+                pg.circle(cos(t+i)*500, sin(t+i)*500, 70+bands[i]);
+            }
+        }
+        // 4. Bokeh-Ripple Hybrid (보케 입자가 리플처럼 확산)
+        else if(sid==='bokRip'){
+            pg.noStroke();
+            for(let i=0; i<25; i++){
+                pg.fill(255, 150+bands[i%12], 100, 120);
+                // 커스텀 포인트: 입자들이 중심에서 퍼져나가는 거리 조절
+                let x = cos(t+i)*bands[i%12]*4; let y = sin(t+i)*bands[i%12]*4;
+                pg.circle(x, y, 120 + bands[i%12]);
+            }
+        }
+        // 5. DNA Helix
+        else if(sid==='dna'){
+            for(let i=0; i<40; i++){
+                pg.fill(0,255,200);
+                pg.circle(cos(i*0.5+t)*350, sin(i*0.5+t)*100, 12+bands[i%12]/6); // 커스텀 포인트: 나선 반경(350)
+                pg.fill(255,100,200);
+                pg.circle(cos(i*0.5+t+PI)*350, sin(i*0.5+t+PI)*100, 12+bands[i%12]/6);
+            }
+        }
+        // 8. Lightning Storm
+        else if(sid==='lightning'){
+            pg.stroke(255); 
+            // 커스텀 포인트: 주파수 임계치(180)를 넘을 때만 번개 발생
+            if(bands[10] > 180) drawLBranch(pg, random(-500,500), -500, PI/2, 300*fI, 5);
+        }
+        // 13. Cyber Grid (3D perspective)
+        else if(sid==='cyber'){
+            pg.stroke(255, 0, 200, 150);
+            for(let i=0; i<12; i++){
+                pg.line(-960, (t*300+i*150)%1080-540, 960, (t*300+i*150)%1080-540); // 가로선
+                pg.line(i*200-960 + bands[i], -540, i*400-1920, 540); // 세로선
+            }
+        }
+        // 18. Fractal Tree
+        else if(sid==='tree'){
+            pg.stroke(0, 255, 150);
+            pg.push(); pg.translate(0, 400); 
+            drawLBranch(pg, 0, 0, -PI/2, 200 + bands[2]*fI, 6); // 커스텀 포인트: 가지 성장도
+            pg.pop();
+        }
+        // 기본형 (나머지 24개 자동 매핑용)
+        else {
+            pg.stroke(255, 150);
+            for(let i=0; i<10; i++) pg.circle(0, 0, (t*300+i*200)%1500 + bands[0]);
         }
     }
 
-    function drawBranch(pg, x, y, ang, len, gen) { if(gen <= 0 || len < 5) return; let nx = x + cos(ang)*len, ny = y + sin(ang)*len; pg.line(x, y, nx, ny); drawBranch(pg, nx, ny, ang+0.4, len*0.7, gen-1); drawBranch(pg, nx, ny, ang-0.4, len*0.7, gen-1); }
-    function updateUI() { if(audio && audio.isPlaying()){ document.getElementById('progFill').style.width = (audio.currentTime()/audio.duration()*100)+'%'; let m = floor(audio.currentTime()/60), s = floor(audio.currentTime()%60); document.getElementById('timeCode').innerText = `${nf(m,2)}:${nf(s,2)} / ${nf(floor(audio.duration()/60),2)}:${nf(floor(audio.duration()%60),2)}`; document.getElementById('fps').innerText = floor(frameRate()); } }
-    function handleFile(files) { audio = loadSound(URL.createObjectURL(files[0]), () => { document.getElementById('recBtn').disabled = false; document.getElementById('statusInfo').innerText = "오디오 분석 완료"; }); }
-    async function toggleSync() { if (isPlaying) { audio.stop(); isPlaying = false; } else { if (getAudioContext().state === 'suspended') await userStartAudio(); const dest = getAudioContext().createMediaStreamDestination(); p5.soundOut.output.connect(dest); mediaRecorder = new MediaRecorder(new MediaStream([...canvasRef.captureStream(30).getVideoTracks(), ...dest.stream.getAudioTracks()]), { videoBitsPerSecond: 80000000 }); mediaRecorder.ondataavailable = e => recordedChunks.push(e.data); mediaRecorder.onstop = () => { let a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(recordedChunks, { type: 'video/mp4' })); a.download = `${nf(year(),4)}${nf(month(),2)}${nf(day(),2)}${nf(hour(),2)}${nf(minute(),2)}.mp4`; a.click(); }; audio.play(); mediaRecorder.start(); isPlaying = true; document.getElementById('recBtn').innerText = "■ STOP & SAVE"; } }
-    setInterval(() => { ['fxScale','fxInten'].forEach(id => { let el = document.getElementById(id); if(el) document.getElementById('v' + id.charAt(0).toUpperCase() + id.slice(1)).innerText = el.value; }); }, 100);
+    // 재귀 함수: 번개 및 프랙탈 트리용
+    function drawLBranch(pg, x, y, ang, len, gen) {
+        if(gen <= 0 || len < 5) return;
+        let nx = x + cos(ang)*len, ny = y + sin(ang)*len;
+        pg.line(x, y, nx, ny);
+        drawLBranch(pg, nx, ny, ang+0.4, len*0.7, gen-1);
+        drawLBranch(pg, nx, ny, ang-0.4, len*0.7, gen-1);
+    }
+
+    // UI 및 시스템 로직
+    function updateUI() {
+        if(audio && audio.isPlaying()){
+            document.getElementById('progFill').style.width = (audio.currentTime()/audio.duration()*100)+'%';
+            let m = floor(audio.currentTime()/60), s = floor(audio.currentTime()%60);
+            document.getElementById('timeCode').innerText = `${nf(m,2)}:${nf(s,2)} / ${nf(floor(audio.duration()/60),2)}:${nf(floor(audio.duration()%60),2)}`;
+            document.getElementById('fps').innerText = `FPS: ${floor(frameRate())}`;
+        }
+    }
+
+    function handleFile(files) { 
+        audio = loadSound(URL.createObjectURL(files[0]), () => { 
+            document.getElementById('recBtn').disabled = false; 
+            document.getElementById('statusInfo').innerText = "분석 준비 완료"; 
+        }); 
+    }
+
+    async function toggleSync() {
+        if (isPlaying) { audio.stop(); isPlaying = false; }
+        else {
+            if (getAudioContext().state === 'suspended') await userStartAudio();
+            recordedChunks = []; 
+            const dest = getAudioContext().createMediaStreamDestination();
+            p5.soundOut.output.connect(dest);
+            mediaRecorder = new MediaRecorder(new MediaStream([...canvasRef.captureStream(30).getVideoTracks(), ...dest.stream.getAudioTracks()]), { videoBitsPerSecond: 80000000 });
+            mediaRecorder.ondataavailable = e => recordedChunks.push(e.data);
+            mediaRecorder.onstop = () => {
+                const n = new Date();
+                let a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(recordedChunks, { type: 'video/mp4' }));
+                a.download = `VFX_${nf(year(),4)}${nf(month(),2)}${nf(day(),2)}${nf(hour(),2)}${nf(minute(),2)}.mp4`; a.click();
+            };
+            audio.play(); mediaRecorder.start(); isPlaying = true; document.getElementById('recBtn').innerText = "■ STOP & SAVE";
+        }
+    }
+
+    setInterval(() => {
+        ['fxScale','fxInten'].forEach(id => {
+            let el = document.getElementById(id);
+            if(el) document.getElementById('v' + id.charAt(0).toUpperCase() + id.slice(1)).innerText = el.value;
+        });
+    }, 100);
 </script>
 </body>
 </html>
