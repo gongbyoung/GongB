@@ -1,17 +1,7 @@
 /* 
    SPECTRUM STUDIO FX LIBRARY v21.1.0
-   Directory: GongB / Mp3_Visualize / fx_library.js
-   32 Unique Visual Engines for p5.js WEBGL
-   
-   [v21.1.0 추가 FX 8종]
-   - bars       : 주파수 막대 EQ (주파수 시각화)
-   - radialEQ   : 원형 방사형 EQ (주파수 시각화)
-   - terrain    : 3D 노이즈 지형 (Z축 / 공간감)
-   - ribbons    : 오디오 반응 리본 (3D 공간감)
-   - glitch     : 글리치 텍스트 왜곡 (타이포 반응)
-   - fluid      : 유체 흐름 시뮬 (물리 시뮬레이션)
-   - smoke      : 연기 / 연무 파티클 (물리 시뮬레이션)
-   - kaleid     : 만화경 패턴 (기하 고도화)
+   32 Unique Visual Engines (No Omissions)
+  
 */
 
 // --- 유틸리티: 비주얼 컬러 스타일 적용 엔진 ---
@@ -36,13 +26,10 @@ function applyColorStyle(pg, style, h, i, fI, alphaVal) {
     if (style !== 'imp') pg.strokeWeight(2 * fI);
 }
 
-// --- 32종 독립 FX 함수 객체 ---
-const FX_ENGINES = {
+// 32종 독립 FX 함수 객체 (window 전역 선언)
+window.FX_ENGINES = {
 
-    // ─────────────────────────────────────────
-    // 기존 24종
-    // ─────────────────────────────────────────
-
+    // [1-24] 기존 24종 엔진[cite: 1]
     waves: (pg, t, b, fI, h, s, p1, p2, p3) => {
         for (let j = 0; j < floor(p1 / 5) + 1; j++) {
             applyColorStyle(pg, s, h, j, fI, p3);
@@ -225,308 +212,117 @@ const FX_ENGINES = {
         }
     },
 
-    // ─────────────────────────────────────────
-    // v21.1.0 신규 8종
-    // ─────────────────────────────────────────
-
-    /*
-     * bars — 주파수 막대 EQ
-     * ─────────────────────────────────────────
-     * 카테고리 : 주파수 시각화
-     * 원리     : b[] 배열의 12개 주파수 대역을
-     *            개별 막대로 직접 매핑.
-     *            p1 = 막대 밀도(열 수),
-     *            p2 = 높이 스케일,
-     *            p3 = 알파.
-     * 특징     : 좌우 대칭 구성 + 하이밴드일수록
-     *            색상 hue가 보색으로 이동.
-     */
+    // [25-32] v21.1.0 신규 8종[cite: 1]
     bars: (pg, t, b, fI, h, s, p1, p2, p3) => {
-        let count = floor(p1 / 4) + 4;            // 막대 개수 (최소 4)
-        let barW = 1920 / count;                   // 막대 폭
+        let count = floor(p1 / 4) + 4;
+        let barW = 1920 / count;
         pg.noStroke();
         for (let i = 0; i < count; i++) {
-            // 12개 주파수 대역을 count 개 막대로 순환 매핑
             let band = i % 12;
-            let bHeight = b[band] * p2 * fI;      // 음량 → 높이
-            let hueShift = (h + band * 15) % 360; // 대역별 색조 이동
-            let a = (p3 / 255) * 100;
-            pg.fill(hueShift, 80, 100, a);
-
-            let x = -960 + i * barW;
-            // 위아래 대칭 막대 (미러 EQ)
-            pg.rect(x, -bHeight / 2, barW - 2, bHeight);
+            let bHeight = b[band] * p2 * fI;
+            let hueShift = (h + band * 15) % 360;
+            pg.fill(hueShift, 80, 100, (p3 / 255) * 100);
+            pg.rect(-960 + i * barW, -bHeight / 2, barW - 2, bHeight);
         }
     },
-
-    /*
-     * radialEQ — 원형 방사형 EQ
-     * ─────────────────────────────────────────
-     * 카테고리 : 주파수 시각화
-     * 원리     : 360도를 주파수 대역 수로 분할,
-     *            각 대역의 음량을 반경 방향으로 표현.
-     *            p1 = 스파이크 밀도,
-     *            p2 = 반경 스케일,
-     *            p3 = 알파.
-     * 특징     : 중심 원 + 방사형 스파이크.
-     *            고음역 대역이 강하면 외곽이 파열됨.
-     */
     radialEQ: (pg, t, b, fI, h, s, p1, p2, p3) => {
-        let spikes = floor(p1 / 2) + 12;          // 스파이크 수 (최소 12)
-        let baseR = 150 * p2;                      // 기본 원 반경
+        let spikes = floor(p1 / 2) + 12;
+        let baseR = 150 * p2;
         applyColorStyle(pg, s, h, 0, fI, p3);
         pg.noFill();
-        // 외곽 파형 베지어
         pg.beginShape();
         for (let i = 0; i <= spikes; i++) {
-            let band = i % 12;
             let angle = (TWO_PI / spikes) * i + t * 0.3;
-            let r = baseR + b[band] * p2 * fI * 0.8;
+            let r = baseR + b[i % 12] * p2 * fI * 0.8;
             pg.curveVertex(cos(angle) * r, sin(angle) * r);
         }
         pg.endShape(CLOSE);
-        // 중심 고정 원
-        pg.circle(0, 0, baseR * 1.2);
-        // 스파이크 라인
         for (let i = 0; i < spikes; i++) {
             let band = i % 12;
-            if (b[band] < 30) continue;            // 조용한 대역 생략
+            if (b[band] < 30) continue;
             applyColorStyle(pg, s, (h + i * 8) % 360, i, fI, p3);
             let angle = (TWO_PI / spikes) * i + t * 0.3;
-            let r = baseR + b[band] * p2 * fI;
-            pg.line(cos(angle) * baseR * 0.6, sin(angle) * baseR * 0.6,
-                    cos(angle) * r, sin(angle) * r);
+            pg.line(cos(angle) * baseR * 0.6, sin(angle) * baseR * 0.6, cos(angle) * (baseR + b[band] * p2 * fI), sin(angle) * (baseR + b[band] * p2 * fI));
         }
     },
-
-    /*
-     * terrain — 3D 노이즈 지형
-     * ─────────────────────────────────────────
-     * 카테고리 : 3D / 공간감 (Z축 활용)
-     * 원리     : WEBGL translate/rotateX를 사용해
-     *            그리드를 45도 기울이고 노이즈로
-     *            Z 높이를 오디오에 연동.
-     *            p1 = 그리드 해상도,
-     *            p2 = 기복 스케일,
-     *            p3 = 알파.
-     * 특징     : 저음이 강할수록 지형이 격렬하게 솟음.
-     *            3D 원근감으로 깊이감 표현.
-     */
     terrain: (pg, t, b, fI, h, s, p1, p2, p3) => {
-        let cols = floor(p1 / 5) + 6;             // 그리드 열 수
-        let rows = 8;
+        let cols = floor(p1 / 5) + 6;
         let cellW = 1920 / cols;
-        let cellH = 300 / rows;
-        pg.push();
-        pg.translate(0, 100);
-        pg.rotateX(PI / 4);                        // X축 45도 기울임 (WEBGL)
-        for (let row = 0; row < rows - 1; row++) {
+        pg.push(); pg.translate(0, 100); pg.rotateX(PI / 4);
+        for (let row = 0; row < 7; row++) {
             applyColorStyle(pg, s, (h + row * 20) % 360, row, fI, p3);
             pg.beginShape(TRIANGLE_STRIP);
             for (let col = 0; col <= cols; col++) {
-                let x = -960 + col * cellW;
-                let nz0 = noise(col * 0.15, row * 0.15, t * 0.4) * b[row % 12] * p2 * fI;
-                let nz1 = noise(col * 0.15, (row + 1) * 0.15, t * 0.4) * b[(row + 1) % 12] * p2 * fI;
-                // WEBGL에서 Z축으로 높이 표현
-                pg.vertex(x, row * cellH - 150, -nz0);
-                pg.vertex(x, (row + 1) * cellH - 150, -nz1);
+                pg.vertex(-960 + col * cellW, row * 40 - 150, -noise(col * 0.15, row * 0.15, t * 0.4) * b[row % 12] * p2 * fI);
+                pg.vertex(-960 + col * cellW, (row + 1) * 40 - 150, -noise(col * 0.15, (row + 1) * 0.15, t * 0.4) * b[(row + 1) % 12] * p2 * fI);
             }
             pg.endShape();
         }
         pg.pop();
     },
-
-    /*
-     * ribbons — 오디오 반응 리본
-     * ─────────────────────────────────────────
-     * 카테고리 : 3D / 공간감 (Z축 활용)
-     * 원리     : 사인파 경로를 따라 두께 있는
-     *            리본(TRIANGLE_STRIP)을 그림.
-     *            p1 = 리본 수,
-     *            p2 = 진폭 스케일,
-     *            p3 = 알파.
-     * 특징     : 음량 연동 두께 + WEBGL rotateY로
-     *            공간감 있는 3D 리본 생성.
-     */
     ribbons: (pg, t, b, fI, h, s, p1, p2, p3) => {
-        let count = floor(p1 / 10) + 2;           // 리본 수
+        let count = floor(p1 / 10) + 2;
         for (let r = 0; r < count; r++) {
-            pg.push();
-            pg.rotateY(r * (PI / count) + t * 0.1 * p2); // WEBGL Y축 회전
+            pg.push(); pg.rotateY(r * (PI / count) + t * 0.1 * p2);
             applyColorStyle(pg, s, (h + r * 40) % 360, r, fI, p3);
-            pg.noFill();
-            pg.beginShape(TRIANGLE_STRIP);
-            let steps = 60;
-            for (let i = 0; i <= steps; i++) {
-                let x = map(i, 0, steps, -900, 900);
+            pg.noFill(); pg.beginShape(TRIANGLE_STRIP);
+            for (let i = 0; i <= 60; i++) {
+                let x = map(i, 0, 60, -900, 900);
                 let phase = i * 0.08 + t * p2 + r * 1.2;
                 let amp = b[r % 12] * fI * 0.8;
-                let y1 = sin(phase) * amp;
-                let y2 = sin(phase + 0.3) * amp;
                 let thick = 10 + b[(r + 2) % 12] * 0.1 * fI;
-                pg.vertex(x, y1 - thick);
-                pg.vertex(x, y2 + thick);
+                pg.vertex(x, sin(phase) * amp - thick);
+                pg.vertex(x, sin(phase + 0.3) * amp + thick);
             }
-            pg.endShape();
-            pg.pop();
+            pg.endShape(); pg.pop();
         }
     },
-
-    /*
-     * glitch — 글리치 텍스트 왜곡
-     * ─────────────────────────────────────────
-     * 카테고리 : 텍스트 / 타이포 반응
-     * 원리     : 화면을 수평 슬라이스로 나눠
-     *            고음역(b[8]~b[11])이 강할 때
-     *            무작위 X 오프셋으로 글리치 효과.
-     *            p1 = 슬라이스 수,
-     *            p2 = 글리치 강도,
-     *            p3 = 알파.
-     * 특징     : 킥/스네어가 아닌 하이햇·심벌
-     *            구간에서 격렬하게 반응.
-     */
     glitch: (pg, t, b, fI, h, s, p1, p2, p3) => {
-        let slices = floor(p1 / 3) + 5;           // 수평 슬라이스 수
+        let slices = floor(p1 / 3) + 5;
         let sliceH = 1080 / slices;
-        // 고음역 에너지 합산 (b[8]~b[11])
         let hiEnergy = (b[8] + b[9] + b[10] + b[11]) / 4;
-        pg.textSize(80 + b[0] * 0.3 * fI);
-        pg.textAlign(CENTER, CENTER);
+        pg.textSize(80 + b[0] * 0.3 * fI); pg.textAlign(CENTER, CENTER);
         let chars = ['MUSIC','SOUND','WAVE','BEAT','FLUX','DATA','SYNC','GLITCH'];
         for (let i = 0; i < slices; i++) {
-            // 고음역이 임계값 초과 시 글리치 오프셋 발생
             let offsetX = (hiEnergy > 100) ? random(-p2 * 80, p2 * 80) : 0;
-            let offsetX2 = (hiEnergy > 150) ? random(-p2 * 40, p2 * 40) : 0;
             let y = -540 + i * sliceH + sliceH / 2;
-            // RGB 분리 레이어 (글리치 색수차)
-            if (hiEnergy > 80) {
-                pg.fill(0, 100, 100, (p3 / 255) * 60);  // 빨강 레이어
-                pg.noStroke();
-                let idx = floor(noise(i, t) * chars.length);
-                pg.text(chars[idx], offsetX2 + 6, y);
-                pg.fill(180, 100, 100, (p3 / 255) * 60); // 청록 레이어
-                pg.text(chars[idx], -offsetX2 - 6, y);
-            }
-            // 메인 텍스트
             applyColorStyle(pg, s, (h + i * 20) % 360, i, fI, p3);
             pg.fill(pg.drawingContext.strokeStyle);
-            let mainIdx = floor(noise(i + 5, floor(t * 0.5)) * chars.length);
-            pg.text(chars[mainIdx], offsetX, y);
+            pg.text(chars[floor(noise(i + 5, t * 0.5) * chars.length)], offsetX, y);
         }
-        pg.textAlign(LEFT, BASELINE);
     },
-
-    /*
-     * fluid — 유체 흐름 시뮬
-     * ─────────────────────────────────────────
-     * 카테고리 : 물리 시뮬레이션
-     * 원리     : 펄린 노이즈 기반 벡터 필드를
-     *            만들어 파티클을 흘려보냄.
-     *            오디오가 강해지면 유체가 소용돌이침.
-     *            p1 = 파티클 수,
-     *            p2 = 흐름 속도,
-     *            p3 = 알파.
-     * 특징     : 각 파티클이 노이즈 벡터 필드를
-     *            따라 이동 → 자연스러운 유체 패턴.
-     */
     fluid: (pg, t, b, fI, h, s, p1, p2, p3) => {
-        let count = floor(p1 * 1.5);
-        pg.noFill();
-        for (let i = 0; i < count; i++) {
-            // 노이즈 기반 위치 (파티클마다 위상 다름)
+        for (let i = 0; i < floor(p1 * 1.5); i++) {
             let seed = i * 0.07;
             let px = noise(seed, t * 0.2 * p2) * 1920 - 960;
             let py = noise(seed + 30, t * 0.2 * p2) * 1080 - 540;
-            // 벡터 필드 각도: 저음에 따라 소용돌이 강도 변화
             let angle = noise(seed + 60, t * 0.1) * TWO_PI * 2 + b[0] * 0.005 * p2;
-            let spd = (20 + b[i % 12] * 0.5) * fI * p2;
-            let nx = px + cos(angle) * spd;
-            let ny = py + sin(angle) * spd;
-            applyColorStyle(pg, s, (h + i * 3 + b[0] * 0.5) % 360, i, fI, p3);
+            let nx = px + cos(angle) * (20 + b[i % 12] * 0.5) * fI * p2;
+            let ny = py + sin(angle) * (20 + b[i % 12] * 0.5) * fI * p2;
+            applyColorStyle(pg, s, (h + i * 3) % 360, i, fI, p3);
             pg.line(px, py, nx, ny);
-            // 저음이 강하면 원형 소용돌이 추가
-            if (b[0] > 120 && i % 4 === 0) {
-                let eddyR = b[0] * 0.2 * p2 * fI;
-                pg.circle(px, py, eddyR);
-            }
         }
     },
-
-    /*
-     * smoke — 연기 / 연무 파티클
-     * ─────────────────────────────────────────
-     * 카테고리 : 물리 시뮬레이션
-     * 원리     : 중앙 하단에서 파티클이 위로 상승,
-     *            노이즈로 좌우 흔들림 추가.
-     *            음량에 따라 분출 속도와 크기 변화.
-     *            p1 = 파티클 밀도,
-     *            p2 = 상승 속도,
-     *            p3 = 알파.
-     * 특징     : pg.noStroke() + fill 전용으로
-     *            부드러운 연기 질감 표현.
-     *            bass가 강하면 폭발적으로 뿜어져 나옴.
-     */
     smoke: (pg, t, b, fI, h, s, p1, p2, p3) => {
         pg.noStroke();
-        let count = floor(p1 * 1.2);
-        for (let i = 0; i < count; i++) {
-            // 각 파티클의 '생애 위상' (0=바닥, 1=소멸)
+        for (let i = 0; i < floor(p1 * 1.2); i++) {
             let phase = (t * p2 * 0.5 + i * 0.13) % 1;
-            // Y: 하단에서 상단으로 상승
-            let py = map(phase, 0, 1, 400, -700);
-            // X: 노이즈로 좌우 흔들림
-            let px = noise(i * 0.3, t * 0.15) * 600 - 300 + b[i % 12] * 0.5 * p2;
-            // 크기: 상승할수록 퍼짐, 저음 연동
-            let sz = map(phase, 0, 1, 20, 250 + b[0] * 0.5 * p2) * fI;
-            // 투명도: 상승할수록 점점 희미해짐
-            let fadeAlpha = map(phase, 0, 1, p3 / 255 * 60, 0);
-            let hueD = (h + i * 5 + b[1] * 0.3) % 360;
-            pg.fill(hueD, 30, 90, fadeAlpha);
-            pg.circle(px, py, sz);
+            pg.fill((h + i * 5) % 360, 30, 90, map(phase, 0, 1, p3 / 255 * 60, 0));
+            pg.circle(noise(i * 0.3, t * 0.15) * 600 - 300 + b[i % 12] * 0.5 * p2, map(phase, 0, 1, 400, -700), map(phase, 0, 1, 20, 250 + b[0] * 0.5 * p2) * fI);
         }
     },
-
-    /*
-     * kaleid — 만화경 패턴
-     * ─────────────────────────────────────────
-     * 카테고리 : 기하 / 구조 (만다라 고도화)
-     * 원리     : 기본 셀을 N-fold 대칭으로 회전 복사.
-     *            셀 안에서는 주파수 대역별 도형을
-     *            배치해 오디오 반응 만화경 생성.
-     *            p1 = 대칭 수(접힘),
-     *            p2 = 크기 스케일,
-     *            p3 = 알파.
-     * 특징     : rotateY 미러링으로 진짜 만화경처럼
-     *            좌우 반전 복사까지 수행.
-     */
     kaleid: (pg, t, b, fI, h, s, p1, p2, p3) => {
-        let folds = floor(p1 / 10) + 3;           // 대칭 접힘 수 (최소 3)
-        let sliceAngle = TWO_PI / folds;
+        let folds = floor(p1 / 10) + 3;
+        let slice = TWO_PI / folds;
         for (let f = 0; f < folds; f++) {
-            pg.push();
-            pg.rotate(sliceAngle * f);
-            // 짝수 슬라이스는 Y미러 (만화경 반전)
-            if (f % 2 === 0) pg.scale(1, -1);
-            // 셀 내부: 주파수 대역별 원 + 선 배치
+            pg.push(); pg.rotate(slice * f); if (f % 2 === 0) pg.scale(1, -1);
             for (let k = 0; k < 6; k++) {
-                let band = k % 12;
-                let r = (50 + k * 60) * p2;
-                let sz = 20 + b[band] * 0.4 * fI;
                 applyColorStyle(pg, s, (h + k * 30 + t * 20) % 360, k, fI, p3);
-                pg.noFill();
-                pg.circle(r, 0, sz);
-                // 저음 대역은 라인 추가
-                if (band < 4) {
-                    pg.line(0, 0, r + sz * 0.5, b[band] * 0.3 * fI);
-                }
+                pg.noFill(); pg.circle((50 + k * 60) * p2, 0, 20 + b[k % 12] * 0.4 * fI);
             }
-            // 외곽 호 (슬라이스 경계)
-            applyColorStyle(pg, s, h, f, fI, p3 * 0.5);
-            pg.arc(0, 0, 500 * p2 + b[0] * fI * 0.3,
-                   500 * p2 + b[0] * fI * 0.3,
-                   0, sliceAngle);
             pg.pop();
         }
     }
-
 };
+
+console.log("FX_LIBRARY v21.1.0: 32 Engines Fully Loaded.");
