@@ -2,8 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>SPECTRUM STUDIO v21.0.025 — Network Stable</title>
-    <!-- [핵심] p5.js 공식 라이브러리 연결부 복구 -->
+    <title>SPECTRUM STUDIO v21.0.026 — Ultimate Master</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <style>
@@ -14,7 +13,7 @@
         .logo{letter-spacing:4px; color:var(--accent); font-weight:bold; font-size:14px;}
         .main-workspace { display: grid; grid-template-columns: 360px 1fr 340px; flex:1; min-height:0; }
         .side-panel { background:var(--panel); padding:15px; overflow-y:auto; scrollbar-width: thin; border-left:1px solid var(--border); border-right:1px solid var(--border); }
-        .ctrl-box { background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:12px; }
+        .ctrl-box { background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:8px; padding:10px; margin-bottom:12px; }
         .label-small { font-size:9px; color:var(--accent); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px; display:block; border-bottom:1px solid rgba(0,255,204,0.1); padding-bottom:3px;}
         .val-label { float:right; color:var(--accent); font-weight:bold; font-size:9px; }
         input[type=text], input[type=password] { width:100%; background:#000; border:1px solid var(--border); color:#fff; padding:5px; border-radius:4px; font-size:10px; margin-bottom:5px; outline:none; }
@@ -34,40 +33,55 @@
 </head>
 <body>
 
-<div class="topbar">
-    <div class="logo">SPECTRUM STUDIO v21.0.025</div>
-    <div id="timeCode">00:00 / 00:00</div>
-</div>
+<div class="topbar"><div class="logo">SPECTRUM STUDIO v21.0.026</div><div id="timeCode">00:00 / 00:00</div></div>
 
 <div class="main-workspace">
+    <!-- LEFT -->
     <div class="side-panel">
         <div class="ctrl-box">
             <span class="label-small">1. Visual Palette</span>
             <div class="fx-grid" id="fxThumbGrid"></div>
         </div>
         <div class="ctrl-box">
-            <span class="label-small">2. Visual Tuning (30FPS Mode)</span>
+            <span class="label-small">2. Visual Tuning</span>
             <label>FX SCALE <span class="val-label" id="vFxScale">1.0</span></label><input type="range" id="fxScale" min="0.1" max="5.0" step="0.1" value="1.0">
             <label>FX INTENSITY <span class="val-label" id="vFxInten">1.5</span></label><input type="range" id="fxInten" min="0.1" max="10.0" step="0.1" value="1.5">
             <label style="margin-top:10px; display:block;">FLOW SPEED <span class="val-label" id="vFxSpeed">1.0</span></label><input type="range" id="fxSpeed" min="0" max="5.0" step="0.1" value="1.0">
             <label style="margin-top:10px; display:block;">COLOR HUE <span class="val-label" id="vFxHue">200</span></label><input type="range" id="fxHue" min="0" max="360" value="200">
         </div>
     </div>
+
     <div class="viz-area" id="p5-container"></div>
+
+    <!-- RIGHT -->
     <div class="side-panel">
         <div class="ctrl-box">
-            <span class="label-small">3. GitHub Cloud Auth</span>
+            <span class="label-small">3. Local & Asset Management</span>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px;">
+                <button class="btn" onclick="saveConfig()">SAVE JSON</button>
+                <button class="btn" onclick="document.getElementById('cfgIn').click()">LOAD JSON</button>
+            </div>
+            <button class="btn" onclick="saveThumbnail()" style="border-color:var(--accent2); color:var(--accent2); margin-top:5px;">📷 SAVE THUMB (PNG)</button>
+            <input type="file" id="cfgIn" accept=".json" style="display:none" onchange="loadConfig(this.files)">
+        </div>
+
+        <div class="ctrl-box">
+            <span class="label-small">4. GitHub Cloud Sync</span>
             <input type="text" id="ghUser" placeholder="GitHub Username" onchange="saveCloudInfo()">
             <input type="text" id="ghRepo" placeholder="Repository Name" onchange="saveCloudInfo()">
             <input type="password" id="ghToken" placeholder="GitHub PAT (ghp_...)" onchange="saveCloudInfo()">
+            <button class="btn" onclick="pushToCloud('config')">📤 PUSH CONFIG TO CLOUD</button>
+            <button class="btn" onclick="pushToCloud('thumb')">🖼️ PUSH THUMB TO CLOUD</button>
+            <div id="cloudStatus" style="font-size:9px; color:var(--accent); text-align:center; margin-top:5px;">Ready</div>
         </div>
+
         <div class="ctrl-box">
-            <span class="label-small">4. Production Control</span>
+            <span class="label-small">5. Production Control</span>
             <button class="btn" onclick="document.getElementById('mIn').click()">SELECT MP3 FILE</button>
             <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleFile(this.files)">
-            <button class="btn primary" id="recBtn" onclick="toggleSync()" disabled>▶ START PRODUCTION</button>
+            <button class="btn primary" id="recBtn" onclick="toggleSync()" disabled>▶ START RECORDING (30FPS)</button>
         </div>
-        <div class="ctrl-box"><span class="label-small">Stats</span><div id="fps" style="font-size:10px; color:var(--accent);">FPS: 30</div></div>
+        <div class="ctrl-box"><div id="fps" style="font-size:10px; color:var(--accent);">FPS: 30</div></div>
     </div>
 </div>
 <div class="playbar"><div id="progFill"></div></div>
@@ -89,9 +103,7 @@
         let cnv = createCanvas(1920, 1080, WEBGL);
         cnv.parent('p5-container'); canvasRef = cnv.elt;
         bgCanvas = createGraphics(1920, 1080); bgCanvas.imageMode(CENTER); bgCanvas.colorMode(HSB, 360, 100, 100, 100);
-        
-        frameRate(30); // 팀장님 요청 FPS 30 고정
-        
+        frameRate(30); 
         fft = new p5.FFT(0.8, 512); ampObj = new p5.Amplitude();
         generateThumbnails();
         loadCloudInfo();
@@ -108,10 +120,9 @@
             tPg.pop();
             let btn = document.createElement('div');
             btn.className = 'fx-thumb' + (fx.id===currentFXId?' active':'');
-            btn.setAttribute('id', 'fxBtn_' + fx.id);
-            btn.setAttribute('data-name', fx.n);
+            btn.setAttribute('id', 'fxBtn_' + fx.id); btn.setAttribute('data-name', fx.n);
             btn.style.backgroundImage = `url(${tPg.canvas.toDataURL()})`;
-            btn.onclick = () => selectFX(fx.id); // [복구] selectFX 함수 연결
+            btn.onclick = () => selectFX(fx.id);
             grid.appendChild(btn);
         });
         tPg.remove();
@@ -131,7 +142,7 @@
             for(let i=0; i<12; i++) bands[i] = fft.getEnergy(pow(2, i/1.2)*20, pow(2, (i+1)/1.2)*20);
         }
         let spd = parseFloat(document.getElementById('fxSpeed').value);
-        overlayT += 0.03 * spd; // 30FPS 시각적 속도 보정
+        overlayT += 0.03 * spd;
         bgCanvas.push();
         let fSc = parseFloat(document.getElementById('fxScale').value), fI = parseFloat(document.getElementById('fxInten').value);
         bgCanvas.translate(960, 540); bgCanvas.scale(fSc);
@@ -157,16 +168,61 @@
         } else if(sid==='lightning'){
             pg.stroke(h, 20, 100); if(bands[10]>180) drawBranch(pg, random(-500,500), -500, PI/2, 300*fI, 5);
         } else {
-            pg.stroke(h, 80, 100); for(let i=0; i<10; i++){ pg.rotate(t*0.01); pg.rect(-100-i*10, -100-i*10, 200+i*20 + bands[0], 200+i*20); }
+            pg.stroke(h, 80, 100); for(let i=0; i<12; i++){ pg.rotate(t*0.01); pg.rect(-100-i*10, -100-i*10, 200+i*20 + bands[0], 200+i*20); }
         }
     }
 
     function drawBranch(pg, x, y, ang, len, gen) { if(gen <= 0 || len < 5) return; let nx = x + cos(ang)*len, ny = y + sin(ang)*len; pg.line(x, y, nx, ny); drawBranch(pg, nx, ny, ang+0.4, len*0.7, gen-1); drawBranch(pg, nx, ny, ang-0.4, len*0.7, gen-1); }
+
+    // --- SAVE & LOAD Logic ---
+    function saveConfig() {
+        const cfg = { id: currentFXId, sc: document.getElementById('fxScale').value, it: document.getElementById('fxInten').value, sp: document.getElementById('fxSpeed').value, hu: document.getElementById('fxHue').value };
+        const blob = new Blob([JSON.stringify(cfg)], {type: 'application/json'});
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'config.json'; a.click();
+    }
+    function loadConfig(files) {
+        const reader = new FileReader();
+        reader.onload = e => {
+            const cfg = JSON.parse(e.target.result);
+            selectFX(cfg.id);
+            document.getElementById('fxScale').value = cfg.sc; document.getElementById('fxInten').value = cfg.it;
+            document.getElementById('fxSpeed').value = cfg.sp; document.getElementById('fxHue').value = cfg.hu;
+        };
+        reader.readAsText(files[0]);
+    }
+    function saveThumbnail() { saveCanvas(canvasRef, `THUMB_${hour()}${minute()}${second()}`, 'png'); }
+
+    // --- CLOUD Logic ---
+    async function pushToCloud(type) {
+        const user = document.getElementById('ghUser').value; const repo = document.getElementById('ghRepo').value; const token = document.getElementById('ghToken').value;
+        const status = document.getElementById('cloudStatus');
+        if(!user || !repo || !token) { alert('GitHub 정보를 입력해주세요.'); return; }
+        status.innerText = "⏳ Pushing...";
+        const ts = `${year()}${nf(month(),2)}${nf(day(),2)}_${nf(hour(),2)}${nf(minute(),2)}`;
+        let path, content, msg;
+        if(type === 'config') {
+            path = `configs/cfg_${ts}.json`;
+            const cfg = { id: currentFXId, sc: document.getElementById('fxScale').value, it: document.getElementById('fxInten').value, sp: document.getElementById('fxSpeed').value, hu: document.getElementById('fxHue').value };
+            content = btoa(JSON.stringify(cfg, null, 2)); msg = `Config: ${ts}`;
+        } else {
+            path = `thumbnails/thumb_${ts}.png`;
+            content = canvasRef.toDataURL('image/png').split(',')[1]; msg = `Thumb: ${ts}`;
+        }
+        try {
+            const res = await fetch(`https://api.github.com/repos/${user}/${repo}/contents/${path}`, {
+                method: 'PUT', headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: msg, content })
+            });
+            if(res.ok) { status.innerText = "✅ Success!"; setTimeout(()=>status.innerText="Ready", 3000); }
+            else { const e = await res.json(); throw new Error(e.message); }
+        } catch (e) { alert('Push 실패: ' + e.message); status.innerText = "❌ Failed"; }
+    }
+
     function saveCloudInfo() { const info = { user: document.getElementById('ghUser').value, repo: document.getElementById('ghRepo').value, token: document.getElementById('ghToken').value }; localStorage.setItem('spectrum_gh_info', JSON.stringify(info)); }
     function loadCloudInfo() { const info = JSON.parse(localStorage.getItem('spectrum_gh_info')); if(info) { document.getElementById('ghUser').value = info.user; document.getElementById('ghRepo').value = info.repo; document.getElementById('ghToken').value = info.token; } }
     function handleFile(files) { audio = loadSound(URL.createObjectURL(files[0]), () => { document.getElementById('recBtn').disabled = false; }); }
     function updateUI() { if(audio && audio.isPlaying()){ document.getElementById('progFill').style.width = (audio.currentTime()/audio.duration()*100)+'%'; let m = floor(audio.currentTime()/60), s = floor(audio.currentTime()%60); document.getElementById('timeCode').innerText = `${nf(m,2)}:${nf(s,2)} / ${nf(floor(audio.duration()/60),2)}:${nf(floor(audio.duration()%60),2)}`; document.getElementById('fps').innerText = `FPS: ${floor(frameRate())}`; } }
-    async function toggleSync() { if (isPlaying) { audio.stop(); isPlaying = false; } else { if (getAudioContext().state === 'suspended') await userStartAudio(); recordedChunks = []; const dest = getAudioContext().createMediaStreamDestination(); p5.soundOut.output.connect(dest); mediaRecorder = new MediaRecorder(new MediaStream([...canvasRef.captureStream(30).getVideoTracks(), ...dest.stream.getAudioTracks()]), { videoBitsPerSecond: 80000000 }); mediaRecorder.ondataavailable = e => recordedChunks.push(e.data); mediaRecorder.onstop = () => { let a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(recordedChunks, { type: 'video/mp4' })); a.download = `VFX_STABLE_${year()}${nf(month(),2)}${nf(day(),2)}.mp4`; a.click(); }; audio.play(); mediaRecorder.start(); isPlaying = true; document.getElementById('recBtn').innerText = "■ STOP & SAVE"; } }
+    async function toggleSync() { if (isPlaying) { audio.stop(); isPlaying = false; } else { if (getAudioContext().state === 'suspended') await userStartAudio(); recordedChunks = []; const dest = getAudioContext().createMediaStreamDestination(); p5.soundOut.output.connect(dest); mediaRecorder = new MediaRecorder(new MediaStream([...canvasRef.captureStream(30).getVideoTracks(), ...dest.stream.getAudioTracks()]), { videoBitsPerSecond: 80000000 }); mediaRecorder.ondataavailable = e => recordedChunks.push(e.data); mediaRecorder.onstop = () => { let a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(recordedChunks, { type: 'video/mp4' })); a.download = `VFX_${year()}${nf(month(),2)}${nf(day(),2)}.mp4`; a.click(); }; audio.play(); mediaRecorder.start(); isPlaying = true; document.getElementById('recBtn').innerText = "■ STOP & SAVE"; } }
     setInterval(() => { ['fxScale','fxInten','fxSpeed','fxHue'].forEach(id => { let el = document.getElementById(id); if(el) document.getElementById('v' + id.charAt(0).toUpperCase() + id.slice(1)).innerText = el.value; }); }, 100);
 </script>
 </body>
