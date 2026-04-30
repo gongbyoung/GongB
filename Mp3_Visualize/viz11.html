@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>TYPO PRODUCTION v21.8.0 — MP4 Fix</title>
+    <title>TYPO PRODUCTION v21.9.0 — The Master</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <style>
@@ -10,9 +10,7 @@
         body{ background:var(--bg); color:var(--text); margin:0; overflow:hidden; font-family:'Pretendard', sans-serif; display:flex; }
         
         #editor-panel { width:400px; background:var(--panel); height:100vh; padding:15px; border-right:1px solid rgba(0,255,204,0.2); z-index:10; display:flex; flex-direction:column; }
-        
-        /* 상태창 분리 (폰트 로딩 시 UI 사라짐 방지) */
-        #status-bar { background:rgba(0,0,0,0.5); padding:10px; border-radius:4px; margin-bottom:10px; font-size:10px; color:var(--accent); border:1px solid #333; }
+        #status-bar { background:rgba(0,255,204,0.1); padding:10px; border-radius:4px; margin-bottom:10px; font-size:10px; color:var(--accent); border:1px solid var(--accent); text-align:center; font-weight:bold;}
         
         #subtitle-list { flex:1; overflow-y:auto; padding-right:5px; scrollbar-width:thin; }
         .sub-item { background:rgba(255,255,255,0.03); border:1px solid #333; border-radius:6px; padding:12px; margin-bottom:10px; font-size:11px; }
@@ -29,31 +27,30 @@
         .btn:hover { background:rgba(0,255,204,0.1); }
         .top-btns { display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-bottom:10px; }
         
-        #playBtn { background:var(--accent); color:#000; width:100%; height:32px; border:none; margin-top:10px; cursor:pointer; font-size:10px; font-weight:bold; border-radius:4px; }
-        #playBtn:disabled { opacity:0.3; cursor:default; }
+        #playBtn { background:var(--accent); color:#000; width:100%; height:30px; border:none; margin-top:10px; cursor:pointer; font-size:10px; font-weight:bold; border-radius:4px; transition: 0.3s; }
+        #playBtn:disabled { background:#333; color:#666; cursor:not-allowed; }
     </style>
 </head>
 <body>
 
 <div id="editor-panel">
     <div class="top-btns">
-        <button class="btn" onclick="document.getElementById('mIn').click()">🎵 AUDIO</button>
-        <button class="btn" onclick="document.getElementById('sIn').click()">📝 SRT</button>
-        <button class="btn" onclick="document.getElementById('fIn').click()" style="color:var(--record); border-color:var(--record);">🔤 FONT</button>
+        <button class="btn" onclick="document.getElementById('fIn').click()" style="color:var(--record); border-color:var(--record);">1. 🔤 LOAD FONT</button>
+        <button class="btn" onclick="document.getElementById('mIn').click()">2. 🎵 AUDIO</button>
+        <button class="btn" onclick="document.getElementById('sIn').click()">3. 📝 SRT</button>
         <select class="btn" id="aspectRatio" onchange="resizeStudio()">
-            <option value="16:9">16:9 Landscape</option>
-            <option value="9:16">9:16 Portrait</option>
+            <option value="16:9">📺 16:9 Landscape</option>
+            <option value="9:16">📱 9:16 Portrait</option>
         </select>
     </div>
     
-    <!-- 분리된 상태 표시창 -->
-    <div id="status-bar">Waiting for files...</div>
+    <div id="status-bar">VER 21.9.0 - WAITING FOR FONT</div>
 
     <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleAudio(this.files)">
     <input type="file" id="sIn" accept=".srt" style="display:none" onchange="handleSRT(this.files)">
     <input type="file" id="fIn" accept=".ttf,.otf" style="display:none" onchange="handleFont(this.files)">
     
-    <button id="playBtn" onclick="startProduction()" disabled>▶ START MP4 PRODUCTION</button>
+    <button id="playBtn" onclick="startProduction()" disabled>▶ START PRODUCTION (REC)</button>
 
     <div id="subtitle-list"></div>
 </div>
@@ -63,7 +60,7 @@
 <script>
     let audio, fft, subCanvas, myFont;
     let subtitles = [], settings = [];
-    let isPlaying = false, isRecording = false, isStarted = false;
+    let isPlaying = false, isStarted = false;
     let mediaRecorder, recordedChunks = [];
 
     function setup() {
@@ -71,12 +68,13 @@
         fft = new p5.FFT();
     }
 
-    // 폰트 로드: 리스트 삭제 없이 상태만 업데이트
+    // [수정] 폰트 로드 전까지 text() 호출 금지하여 에러 알람 방지
     function handleFont(files) {
         const url = URL.createObjectURL(files[0]);
         loadFont(url, (f) => {
             myFont = f;
             document.getElementById('status-bar').innerText = `Font Active: ${files[0].name}`;
+            document.getElementById('status-bar').style.borderColor = "#ff3377";
             checkReady();
         });
     }
@@ -84,6 +82,7 @@
     function checkReady() {
         if(myFont && audio && subtitles.length > 0) {
             document.getElementById('playBtn').disabled = false;
+            document.getElementById('status-bar').innerText = "ALL READY - PRESS START";
         }
     }
 
@@ -102,42 +101,63 @@
     function draw() {
         background(2);
         subCanvas.clear();
-        if (!isStarted) {
-            drawIntro();
-        } else if (audio && audio.isPlaying()) {
-            fft.analyze();
-            renderTypo(audio.currentTime());
+
+        // [수정] 폰트가 로드된 경우에만 렌더링 시도 (에러 폭주 방지)
+        if (myFont) {
+            if (!isStarted) {
+                drawIntro(); // 폰트가 있어야 설명서 출력 가능
+            } else if (audio && audio.isPlaying()) {
+                fft.analyze();
+                renderTypo(audio.currentTime());
+            }
         }
+
         push(); translate(-width/2, -height/2); image(subCanvas, 0, 0); pop();
     }
 
+    // [신규] 화면 중앙 사용 설명서 (Start 누르면 사라짐)
     function drawIntro() {
         subCanvas.push();
-        if(myFont) subCanvas.textFont(myFont);
+        subCanvas.textFont(myFont);
         subCanvas.textAlign(CENTER, CENTER);
-        subCanvas.fill(255);
-        subCanvas.textSize(30);
-        subCanvas.text("PRODUCTION READY", 0, -50);
-        subCanvas.textSize(15);
+        
+        // 제목
         subCanvas.fill(0, 255, 204);
-        subCanvas.text("H.264 MP4 EXPORT MODE\nLOAD FONT -> MP3 -> SRT -> CLICK START", 0, 30);
+        subCanvas.textSize(40);
+        subCanvas.text("TYPO PRODUCTION MASTER", 0, -100);
+        
+        // 상세 설명서
+        subCanvas.fill(255);
+        subCanvas.textSize(18);
+        let manual = "1. FONT: 팀장님 컴퓨터의 .ttf 파일을 먼저 로드하세요.\n" +
+                     "2. SOURCE: MP3 음악과 SRT 자막을 순서대로 넣으세요.\n" +
+                     "3. CUSTOM: 왼쪽 리스트에서 가사별 모션을 설정하세요.\n" +
+                     "4. RECORD: START 버튼을 누르면 자동으로 MP4 녹화가 시작됩니다.\n" +
+                     "5. SAVE: STOP 버튼을 누르면 영상이 즉시 저장됩니다.";
+        subCanvas.text(manual, 0, 50);
+        
+        subCanvas.fill(255, 50, 119);
+        subCanvas.textSize(22);
+        subCanvas.text("READY TO CREATE?", 0, 180);
         subCanvas.pop();
     }
 
     async function startProduction() {
         if (!isPlaying) {
-            isStarted = true;
+            isStarted = true; // 설명서 삭제
             recordedChunks = [];
             startRecording(); 
             audio.play();
             isPlaying = true;
             document.getElementById('playBtn').innerText = "⏹ STOP & SAVE MP4";
+            document.getElementById('playBtn').style.background = "#ff3377";
         } else {
             audio.stop();
             if(mediaRecorder) mediaRecorder.stop();
             isPlaying = false;
             isStarted = false;
             document.getElementById('playBtn').innerText = "▶ START MP4 PRODUCTION";
+            document.getElementById('playBtn').style.background = "#00ffcc";
         }
     }
 
@@ -169,7 +189,6 @@
                 `;
                 listEl.appendChild(item);
             });
-            document.getElementById('status-bar').innerText += " | SRT Loaded";
             checkReady();
         };
         reader.readAsText(files[0]);
@@ -182,20 +201,19 @@
         let progress = map(curr, sub.start, sub.end, 0, 1);
         let bass = fft.getEnergy("bass");
 
-        // UI 하이라이트
+        // UI 하이라이트 & 자동 스크롤
         document.querySelectorAll('.sub-item').forEach(el => el.classList.remove('active'));
         const activeItem = document.getElementById(`item-${idx}`);
         if(activeItem) { activeItem.classList.add('active'); activeItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
 
         subCanvas.push();
-        if(myFont) subCanvas.textFont(myFont);
+        subCanvas.textFont(myFont);
         subCanvas.translate(set.x, set.y, 0);
         subCanvas.rotateZ(radians(set.rot));
         subCanvas.textAlign(CENTER, CENTER);
         subCanvas.textSize(set.size);
         subCanvas.fill(set.hue, 80, 100);
 
-        // 정밀 분리 모션 로직
         if (set.motion === 'Char_Wave') {
             let chars = sub.text.split('');
             let totalW = subCanvas.textWidth(sub.text);
@@ -230,6 +248,7 @@
         subCanvas.pop();
     }
 
+    // [수정] H.264 MP4 고정 저장 로직
     function startRecording() {
         let stream = document.querySelector('canvas').captureStream(30);
         let options = { mimeType: 'video/mp4; codecs=avc1' };
@@ -241,17 +260,16 @@
         mediaRecorder.onstop = () => {
             let blob = new Blob(recordedChunks, { type: options.mimeType });
             let a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-            a.download = `typo_mp4_${Date.now()}.mp4`; a.click();
+            let ext = options.mimeType.includes('mp4') ? 'mp4' : 'webm';
+            a.download = `production_v21.9_${Date.now()}.${ext}`;
+            a.click();
         };
         mediaRecorder.start();
     }
 
     function updateSet(idx, key, val) { settings[idx][key] = isNaN(val) ? val : parseFloat(val); }
     function timeToSec(t) { let p = t.split(':'); return parseInt(p[0]) * 3600 + parseInt(p[1]) * 60 + parseFloat(p[2].replace(',', '.')); }
-    function handleAudio(f) { audio = loadSound(URL.createObjectURL(f[0]), () => { 
-        document.getElementById('status-bar').innerText += " | Audio Ready";
-        checkReady(); 
-    }); }
+    function handleAudio(f) { audio = loadSound(URL.createObjectURL(f[0]), () => { checkReady(); }); }
 </script>
 </body>
 </html>
