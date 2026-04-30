@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>SPECTRUM STUDIO v21.0.43 — System Monitor</title>
+    <title>SPECTRUM STUDIO v21.0.44 — Deep Link Fix</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <script src="fx_library.js" onload="isLibraryReady = true;"></script>
@@ -16,32 +16,30 @@
         .side-panel { background:var(--panel); padding:15px; overflow-y:auto; scrollbar-width: thin; border-left:1px solid var(--border); border-right:1px solid var(--border); display: flex; flex-direction: column; }
         .ctrl-box { background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:12px; }
         .fx-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-        .fx-thumb { aspect-ratio: 1; border: 2px solid rgba(255,255,255,0.1); border-radius: 6px; cursor: pointer; background-color: #111; position: relative; background-size: cover; }
+        .fx-thumb { aspect-ratio: 1; border: 2px solid rgba(255,255,255,0.1); border-radius: 6px; cursor: pointer; background-color: #111; position: relative; background-size: cover; background-position: center; }
         .fx-thumb.active { border-color: var(--accent2); box-shadow: 0 0 10px var(--accent2); }
-        .viz-area { position:relative; background:#000; display: flex; align-items: center; justify-content: center; flex:1; border-top:1px solid #111; }
-        
-        /* [신규] 시스템 로그 패널 스타일 */
-        .log-panel { background:#000; border:1px solid #222; border-radius:4px; padding:10px; flex:1; overflow-y:auto; font-family: 'Courier New', Courier, monospace; font-size:10px; line-height:1.4; color: #888; }
-        .log-entry { margin-bottom: 4px; border-bottom: 1px solid #111; padding-bottom: 2px; }
-        .log-info { color: #aaa; }
+        .fx-thumb::after { content: attr(data-name); position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(0,0,0,0.8); font-size: 5px; text-align: center; color: #fff; padding: 2px 0; border-radius: 0 0 4px 4px; overflow: hidden; white-space: nowrap; }
+        .log-panel { background:#000; border:1px solid #222; border-radius:4px; padding:10px; flex:1; overflow-y:auto; font-family: monospace; font-size:10px; color: #888; }
+        .log-entry { margin-bottom: 4px; border-bottom: 1px solid #111; }
         .log-success { color: var(--accent); }
         .log-error { color: var(--accent2); }
-
+        .viz-area { position:relative; background:#000; display: flex; align-items: center; justify-content: center; flex:1; }
         #p5-container canvas { width: 100% !important; height: auto !important; max-height: 100% !important; }
-        .btn { background:transparent; border:1px solid var(--border); border-radius:4px; color:#fff; padding:6px; cursor:pointer; font-size:9px; width:100%; height: 32px; margin-bottom:5px; }
+        .btn { background:transparent; border:1px solid var(--border); border-radius:4px; color:#fff; padding:6px; cursor:pointer; font-size:9px; width:100%; height: 32px; margin-bottom:5px; transition: 0.2s; }
         .btn:hover { border-color: var(--accent); }
+        input[type=text] { width:100%; background:#000; border:1px solid #333; color:#fff; padding:5px; font-size:10px; margin-bottom:5px; border-radius:4px; outline:none; }
     </style>
 </head>
 <body>
 
-<div class="topbar"><div class="logo">SPECTRUM STUDIO v21.0.43</div><div id="timeCode">00:00 / 00:00</div></div>
+<div class="topbar"><div class="logo">SPECTRUM STUDIO v21.0.44</div><div id="timeCode">00:00 / 00:00</div></div>
 
 <div class="main-workspace">
     <div class="side-panel">
         <div class="ctrl-box">
             <span style="font-size:9px; color:var(--accent);">1. VISUAL PALETTE</span>
             <div class="fx-grid" id="fxThumbGrid"></div>
-            <button class="btn" onclick="fetchGithubAssets(true)" style="margin-top:10px; color:var(--accent2); border-color:var(--accent2);">☁️ FORCE SYNC FROM CLOUD</button>
+            <button class="btn" onclick="fetchGithubAssets(true)" style="margin-top:10px; color:var(--accent2); border-color:var(--accent2); font-weight:bold;">☁️ FORCE SYNC CLOUD PNG</button>
         </div>
         <div class="ctrl-box">
             <span style="font-size:9px; color:var(--accent);">2. ENGINE CONTROL</span>
@@ -53,23 +51,18 @@
 
     <div class="side-panel">
         <div class="ctrl-box">
-            <span style="font-size:9px; color:var(--accent);">3. PARAMETERS</span>
-            <input type="range" id="fxP1" min="1" max="100" value="25" style="width:100%;">
-            <input type="range" id="fxP2" min="0.1" max="10.0" step="0.1" value="2.5" style="width:100%;">
-            <input type="range" id="fxP3" min="1" max="255" value="150" style="width:100%;">
+            <span style="font-size:9px; color:var(--accent);">3. CLOUD PATH SETTINGS</span>
+            <input type="text" id="ghUser" value="gongbyoung" onchange="saveSet()">
+            <input type="text" id="ghRepo" value="GongB" onchange="saveSet()">
+            <input type="text" id="ghPath" value="Mp3_Visualize" onchange="saveSet()">
         </div>
-        
         <div class="ctrl-box">
+            <button class="btn" onclick="saveThumbnail()">📷 SAVE CURRENT FX PNG</button>
             <button class="btn" onclick="document.getElementById('mIn').click()">1. LOAD MP3</button>
             <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleFile(this.files)">
             <button class="btn" id="recBtn" onclick="toggleSync()" disabled style="background:var(--accent2); border:none;">2. START PRODUCTION</button>
         </div>
-
-        <!-- [신규] 시스템 로그 출력 영역 -->
-        <span style="font-size:9px; color:var(--accent); margin-bottom:5px; display:block;">4. SYSTEM MONITOR LOG</span>
-        <div class="log-panel" id="logPanel">
-            <div class="log-entry log-info">> System Initializing...</div>
-        </div>
+        <div class="log-panel" id="logPanel"></div>
     </div>
 </div>
 
@@ -77,17 +70,12 @@
     let audio, fft, canvasRef, bgCanvas, isPlaying = false, currentFXId = '';
     let isLibraryReady = false, isEngineActive = false;
 
-    // --- [신규] 로그 출력 함수 ---
     function addLog(msg, type = 'info') {
-        const panel = document.getElementById('logPanel');
-        const entry = document.createElement('div');
-        const now = new Date();
-        const timeStr = `[${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}]`;
-        
-        entry.className = `log-entry log-${type}`;
-        entry.innerText = `${timeStr} ${msg}`;
-        panel.appendChild(entry);
-        panel.scrollTop = panel.scrollHeight;
+        const p = document.getElementById('logPanel');
+        const e = document.createElement('div');
+        e.className = `log-entry log-${type}`;
+        e.innerText = `> ${msg}`;
+        p.appendChild(e); p.scrollTop = p.scrollHeight;
     }
 
     function setup() {
@@ -95,14 +83,11 @@
         bgCanvas = createGraphics(1920, 1080); bgCanvas.imageMode(CENTER); bgCanvas.colorMode(HSB, 360, 100, 100, 100);
         fft = new p5.FFT(0.8, 512);
         
-        addLog("Canvas created. 1920x1080 resolution.", "info");
-
-        let checkInt = setInterval(() => {
+        let check = setInterval(() => {
             if(window.FX_ENGINES) {
-                const count = Object.keys(FX_ENGINES).length;
-                addLog(`FX Library Detected: ${count} effects found.`, "success");
                 generateThumbnails();
-                clearInterval(checkInt);
+                loadSet();
+                clearInterval(check);
             }
         }, 200);
     }
@@ -112,101 +97,88 @@
         grid.innerHTML = '';
         const keys = Object.keys(FX_ENGINES);
         keys.forEach(id => {
-            let b = document.createElement('div'); b.className = 'fx-thumb'; b.id = 'fxBtn_' + id;
-            b.setAttribute('data-name', id.toUpperCase());
+            // ID에 공백이 있을 경우를 대비해 트림 처리
+            const cleanId = id.trim();
+            let b = document.createElement('div'); b.className = 'fx-thumb'; b.id = 'fxBtn_' + cleanId;
+            b.setAttribute('data-name', cleanId.replace(/_/g,' ').toUpperCase());
             b.onclick = () => { 
                 currentFXId = id; 
-                addLog(`FX Selected: ${id}`, "info");
                 document.querySelectorAll('.fx-thumb').forEach(el => el.classList.remove('active')); 
                 b.classList.add('active'); 
+                addLog(`Selected: ${cleanId}`);
             };
             grid.appendChild(b);
         });
         if (keys.length > 0) {
             currentFXId = keys[0];
-            document.getElementById('fxBtn_' + currentFXId).classList.add('active');
-            addLog("Initial FX Thumbnails generated.", "info");
-            fetchGithubAssets(false);
+            const first = document.getElementById('fxBtn_' + currentFXId.trim());
+            if(first) first.classList.add('active');
         }
     }
 
+    // --- [중요] 주소 체계 수정 및 Null 체크 보강 ---
     async function fetchGithubAssets(force = false) {
-        const u = "gongbyoung", r = "GongB", p = "Mp3_Visualize";
-        const keys = Object.keys(FX_ENGINES);
-        addLog(`Starting Cloud Asset Sync (Total: ${keys.length})...`, "info");
+        const u = document.getElementById('ghUser').value.trim();
+        const r = document.getElementById('ghRepo').value.trim();
+        const p = document.getElementById('ghPath').value.trim().replace(/^\/|\/$/g, '');
         
-        let loaded = 0;
+        const keys = Object.keys(FX_ENGINES);
+        addLog(`Syncing Cloud Assets...`, "info");
+
         keys.forEach(id => {
-            const url = `https://raw.githubusercontent.com/${u}/${r}/main/${p}/thumbnails/palette_${id}.png${force ? '?v='+Date.now() : ''}`;
+            const cleanId = id.trim();
+            // 공백을 언더바(_)로 강제 치환하여 주소 생성
+            const fileName = `palette_${cleanId.replace(/\s+/g, '_')}.png`;
+            const url = `https://raw.githubusercontent.com/${u}/${r}/main/${p}/thumbnails/${fileName}${force ? '?v='+Date.now() : ''}`;
+            
             const img = new Image();
             img.crossOrigin = "Anonymous";
             img.onload = () => {
-                document.getElementById('fxBtn_'+id).style.backgroundImage = `url(${url})`;
-                loaded++;
-                if(loaded === keys.length) addLog("All cloud thumbnails loaded successfully.", "success");
+                const btn = document.getElementById('fxBtn_' + cleanId);
+                if(btn) {
+                    btn.style.backgroundImage = `url(${url})`;
+                }
             };
-            img.onerror = () => { 
-                loaded++;
-                addLog(`Asset Missing: palette_${id}.png`, "error");
-            };
+            img.onerror = () => { addLog(`404 Not Found: ${fileName}`, "error"); };
             img.src = url;
         });
     }
 
     function activateEngine() {
-        if (!audio) {
-            addLog("Error: No audio file loaded.", "error");
-            return;
-        }
-        addLog("Activating Audio Engine...", "info");
+        if (!audio) return;
         userStartAudio().then(() => {
             isEngineActive = true;
-            addLog("Audio Engine Active. FFT Input Ready.", "success");
+            addLog("Audio Engine Activated", "success");
             document.getElementById('analyzeBtn').innerText = "✅ ANALYZE ACTIVE";
             document.getElementById('recBtn').disabled = false;
-        }).catch(err => addLog(`Engine Error: ${err.message}`, "error"));
+        });
     }
 
     function draw() {
         background(2, 2, 8); bgCanvas.clear();
         let bands = new Array(12).fill(0);
-        
         if (isEngineActive && audio && audio.isPlaying()) {
             let spectrum = fft.analyze();
-            if (spectrum) {
-                for (let i = 0; i < 12; i++) {
-                    let start = floor(map(i, 0, 12, 0, spectrum.length * 0.4));
-                    let end = floor(map(i + 1, 0, 12, 0, spectrum.length * 0.4));
-                    let sum = 0; for (let j = start; j < end; j++) sum += spectrum[j];
-                    bands[i] = sum / (end - start || 1);
-                }
+            for (let i = 0; i < 12; i++) {
+                let start = floor(map(i, 0, 12, 0, spectrum.length * 0.4));
+                let end = floor(map(i + 1, 0, 12, 0, spectrum.length * 0.4));
+                let sum = 0; for (let j = start; j < end; j++) sum += spectrum[j];
+                bands[i] = sum / (end - start || 1);
             }
         }
         bgCanvas.push(); bgCanvas.translate(960, 540);
         if (window.FX_ENGINES && FX_ENGINES[currentFXId]) {
-            FX_ENGINES[currentFXId](bgCanvas, frameCount * 0.02, bands, 1.5, parseFloat(document.getElementById('fxHue').value), "hue", parseFloat(document.getElementById('fxP1').value), parseFloat(document.getElementById('fxP2').value), parseFloat(document.getElementById('fxP3').value));
+            FX_ENGINES[currentFXId](bgCanvas, frameCount * 0.02, bands, 1.5, parseFloat(document.getElementById('fxHue').value), "hue", 25, 2.5, 150);
         }
         bgCanvas.pop();
         push(); translate(-width/2, -height/2); image(bgCanvas, 0, 0); pop();
     }
 
-    function handleFile(files) { 
-        addLog(`File Selected: ${files[0].name}`, "info");
-        audio = loadSound(URL.createObjectURL(files[0]), () => { 
-            addLog("Audio Load Complete. Ready for Pre-Analyze.", "success");
-            document.getElementById('analyzeBtn').disabled = false; 
-        }, (err) => addLog(`Audio Load Error: ${err}`, "error")); 
-    }
-
-    async function toggleSync() { 
-        if (isPlaying) { 
-            audio.stop(); isPlaying = false; 
-            addLog("Production Stopped.", "info");
-        } else { 
-            audio.play(); isPlaying = true; 
-            addLog("Production Started.", "success");
-        } 
-    }
+    function handleFile(files) { audio = loadSound(URL.createObjectURL(files[0]), () => { document.getElementById('analyzeBtn').disabled = false; addLog("MP3 Loaded"); }); }
+    function saveThumbnail() { saveCanvas(canvasRef, 'palette_'+currentFXId.trim(), 'png'); }
+    function saveSet() { localStorage.setItem('vfx_set_v2', JSON.stringify({u:document.getElementById('ghUser').value, r:document.getElementById('ghRepo').value, p:document.getElementById('ghPath').value})); }
+    function loadSet() { const s = JSON.parse(localStorage.getItem('vfx_set_v2')); if(s){ document.getElementById('ghUser').value=s.u; document.getElementById('ghRepo').value=s.r; document.getElementById('ghPath').value=s.p; fetchGithubAssets(); } }
+    async function toggleSync() { if (isPlaying) { audio.stop(); isPlaying = false; } else { audio.play(); isPlaying = true; } }
 </script>
 </body>
 </html>
