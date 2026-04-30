@@ -2,42 +2,40 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>SPECTRUM STUDIO v21.0.36 — Modular Engine</title>
+    <title>SPECTRUM STUDIO v21.0.37 — Stability Fix</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
-    <!-- [중요] 외부 FX 라이브러리 연결 -->
+    <!-- [필수] 분리된 라이브러리 파일 연결 -->
     <script src="fx_library.js"></script>
     <style>
-        /* CSS 스타일은 이전과 동일 */
         *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
         :root{ --bg:#05050a; --panel:#0d0d1a; --accent:#00ffcc; --accent2:#ff3377; --border:rgba(0,255,204,0.2); --text:#e0f0ff; }
         body{ background:var(--bg); color:var(--text); font-family:'Pretendard', sans-serif; height:100vh; overflow:hidden; display: flex; flex-direction: column; }
+        .topbar{ padding:10px 25px; background:var(--panel); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
+        .logo{letter-spacing:4px; color:var(--accent); font-weight:bold; font-size:14px;}
         .main-workspace { display: grid; grid-template-columns: 360px 1fr 340px; flex:1; min-height:0; }
-        .side-panel { background:var(--panel); padding:15px; overflow-y:auto; border:1px solid var(--border); }
-        .ctrl-box { background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:8px; padding:10px; margin-bottom:12px; }
+        .side-panel { background:var(--panel); padding:15px; overflow-y:auto; scrollbar-width: thin; border-left:1px solid var(--border); border-right:1px solid var(--border); }
+        .ctrl-box { background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:12px; }
         .fx-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 5px; }
-        .fx-thumb { aspect-ratio: 1; border: 2px solid rgba(255,255,255,0.1); border-radius: 6px; cursor: pointer; background-size: cover; position: relative; background-color: #111;}
-        .fx-thumb.active { border-color: var(--accent2); }
+        .fx-thumb { aspect-ratio: 1; border: 2px solid rgba(255,255,255,0.1); border-radius: 6px; cursor: pointer; background-size: cover; background-color: #111; position: relative; }
+        .fx-thumb.active { border-color: var(--accent2); box-shadow: 0 0 10px var(--accent2); }
+        .fx-thumb::after { content: attr(data-name); position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(0,0,0,0.8); font-size: 5px; text-align: center; color: #fff; padding: 2px 0; }
         .viz-area { position:relative; background:#000; overflow:hidden; display: flex; align-items: center; justify-content: center; }
-        #p5-container canvas { width: 100% !important; height: auto !important; }
+        #p5-container canvas { width: 100% !important; height: auto !important; max-height: 100% !important; }
+        .btn { background:transparent; border:1px solid var(--border); border-radius:4px; color:#fff; padding:6px; cursor:pointer; font-size:9px; width:100%; height: 32px; margin-bottom:5px; }
+        .btn:hover { border-color: var(--accent); }
     </style>
 </head>
 <body>
+
+<div class="topbar"><div class="logo">SPECTRUM STUDIO v21.0.37</div><div id="timeCode">00:00 / 00:00</div></div>
 
 <div class="main-workspace">
     <div class="side-panel">
         <div class="ctrl-box">
             <span style="font-size:9px; color:var(--accent);">1. VISUAL PALETTE</span>
             <div class="fx-grid" id="fxThumbGrid"></div>
-            <button class="btn" onclick="fetchGithubAssets()" style="width:100%; margin-top:10px; color:var(--accent2); border:1px solid var(--accent2); background:transparent; cursor:pointer; padding:5px; font-size:10px;">☁️ FETCH FROM GITHUB</button>
-        </div>
-        <div class="ctrl-box">
-            <select id="colorStyle" style="width:100%; background:#000; color:#fff; font-size:10px; padding:5px; margin-bottom:10px;">
-                <option value="hue">Standard HUE</option>
-                <option value="shadow">Shadow & Glow</option>
-                <option value="pastel">Soft Pastel</option>
-            </select>
-            <label style="font-size:9px;">HUE</label><input type="range" id="fxHue" min="0" max="360" value="200" style="width:100%;">
+            <button class="btn" onclick="fetchGithubAssets()" style="margin-top:10px; color:var(--accent2); border-color:var(--accent2);">☁️ FETCH FROM GITHUB</button>
         </div>
     </div>
 
@@ -49,36 +47,58 @@
             <input type="range" id="fxP1" min="1" max="100" value="25" style="width:100%;">
             <input type="range" id="fxP2" min="0.1" max="10.0" step="0.1" value="2.5" style="width:100%;">
             <input type="range" id="fxP3" min="1" max="255" value="150" style="width:100%;">
+            <label style="font-size:9px; margin-top:10px; display:block;">HUE</label>
+            <input type="range" id="fxHue" min="0" max="360" value="200" style="width:100%;">
+            <select id="colorStyle" style="width:100%; background:#000; color:#fff; font-size:10px; margin-top:10px; padding:5px;">
+                <option value="hue">Standard HUE</option>
+                <option value="shadow">Shadow & Glow</option>
+                <option value="pastel">Soft Pastel</option>
+            </select>
         </div>
         <div class="ctrl-box">
-            <button onclick="saveThumbnail()" style="width:100%; padding:10px; background:var(--accent2); border:none; color:#fff; cursor:pointer; font-size:10px; font-weight:bold;">📷 SAVE AS PALETTE_NAME.PNG</button>
+            <button class="btn" onclick="saveThumbnail()">📷 SAVE PALETTE PNG</button>
         </div>
         <div class="ctrl-box">
-            <input type="text" id="ghUser" value="gongbyoung" style="width:100%; background:#000; color:#fff; border:1px solid #333; margin-bottom:5px;">
-            <input type="text" id="ghRepo" value="GongB" style="width:100%; background:#000; color:#fff; border:1px solid #333; margin-bottom:5px;">
-            <input type="text" id="ghPath" value="Mp3_Visualize" style="width:100%; background:#000; color:#fff; border:1px solid #333;">
+            <input type="text" id="ghUser" value="gongbyoung" style="width:100%; background:#000; color:#fff; border:1px solid #333; margin-bottom:5px; padding:3px;">
+            <input type="text" id="ghRepo" value="GongB" style="width:100%; background:#000; color:#fff; border:1px solid #333; margin-bottom:5px; padding:3px;">
+            <input type="text" id="ghPath" value="Mp3_Visualize" style="width:100%; background:#000; color:#fff; border:1px solid #333; padding:3px;">
+        </div>
+        <div class="ctrl-box">
+            <button class="btn" onclick="document.getElementById('mIn').click()">LOAD MP3</button>
+            <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleFile(this.files)">
+            <button class="btn" id="recBtn" onclick="toggleSync()" disabled style="background:var(--accent2); border:none;">▶ START PRODUCTION</button>
         </div>
     </div>
 </div>
 
 <script>
-    let audio, fft, ampObj, canvasRef, bgCanvas, currentFXId = 'waves';
+    let audio, fft, ampObj, canvasRef, bgCanvas, isPlaying = false, currentFXId = 'waves';
 
     function setup() {
         let cnv = createCanvas(1920, 1080, WEBGL); cnv.parent('p5-container'); canvasRef = cnv.elt;
         bgCanvas = createGraphics(1920, 1080); bgCanvas.imageMode(CENTER); bgCanvas.colorMode(HSB, 360, 100, 100, 100);
-        fft = new p5.FFT(); ampObj = new p5.Amplitude();
+        fft = new p5.FFT(0.8, 512); ampObj = new p5.Amplitude();
         generateThumbnails();
     }
 
     function draw() {
         background(2, 2, 8); bgCanvas.clear();
-        let bands = fft.analyze() ? new Array(12).fill(0).map((_,i)=>fft.getEnergy(i*100, (i+1)*100)) : new Array(12).fill(0);
         
+        let bands = new Array(12).fill(0);
+        
+        // [에러 수정] 오디오가 실제로 재생 중일 때만 getEnergy를 호출하도록 안전 장치 강화
+        if (audio && audio.isPlaying()) {
+            fft.analyze();
+            for (let i = 0; i < 12; i++) {
+                // 주파수 범위를 안전하게 100Hz 단위로 쪼갬 (0~1200Hz 범위)
+                bands[i] = fft.getEnergy(i * 100, (i + 1) * 100);
+            }
+        }
+
         bgCanvas.push();
         bgCanvas.translate(960, 540);
         
-        // [핵심] 외부 라이브러리(FX_ENGINES)에서 현재 ID에 맞는 함수 실행
+        // 라이브러리(FX_ENGINES) 호출
         const engine = FX_ENGINES[currentFXId];
         if (engine) {
             engine(bgCanvas, frameCount * 0.02, bands, 1.5, 
@@ -95,11 +115,16 @@
 
     function generateThumbnails() {
         const grid = document.getElementById('fxThumbGrid');
-        Object.keys(FX_ENGINES).forEach(id => {
-            let b = document.createElement('div'); b.className = 'fx-thumb'; b.id = 'fxBtn_'+id;
-            b.onclick = () => { currentFXId = id; document.querySelectorAll('.fx-thumb').forEach(el=>el.classList.remove('active')); b.classList.add('active'); };
-            grid.appendChild(b);
-        });
+        // FX_ENGINES 객체가 로드되었는지 확인 후 생성
+        if (typeof FX_ENGINES !== 'undefined') {
+            Object.keys(FX_ENGINES).forEach(id => {
+                let b = document.createElement('div'); b.className = 'fx-thumb'; b.id = 'fxBtn_'+id;
+                b.setAttribute('data-name', id.toUpperCase());
+                b.onclick = () => { currentFXId = id; document.querySelectorAll('.fx-thumb').forEach(el=>el.classList.remove('active')); b.classList.add('active'); };
+                grid.appendChild(b);
+            });
+            if(document.getElementById('fxBtn_waves')) document.getElementById('fxBtn_waves').classList.add('active');
+        }
     }
 
     function saveThumbnail() { saveCanvas(canvasRef, 'palette_'+currentFXId, 'png'); }
@@ -108,8 +133,19 @@
         const u = document.getElementById('ghUser').value, r = document.getElementById('ghRepo').value, p = document.getElementById('ghPath').value;
         Object.keys(FX_ENGINES).forEach(id => {
             const url = `https://raw.githubusercontent.com/${u}/${r}/main/${p}/thumbnails/palette_${id}.png?v=${Date.now()}`;
-            document.getElementById('fxBtn_'+id).style.backgroundImage = `url(${url})`;
+            const btn = document.getElementById('fxBtn_'+id);
+            if(btn) btn.style.backgroundImage = `url(${url})`;
         });
+    }
+
+    function handleFile(files) { audio = loadSound(URL.createObjectURL(files[0]), () => { document.getElementById('recBtn').disabled = false; }); }
+    
+    async function toggleSync() { 
+        if (isPlaying) { audio.stop(); isPlaying = false; } 
+        else { 
+            if (getAudioContext().state === 'suspended') await userStartAudio();
+            audio.play(); isPlaying = true; 
+        } 
     }
 </script>
 </body>
