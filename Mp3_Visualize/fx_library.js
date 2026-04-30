@@ -1,7 +1,6 @@
 /* 
-   SPECTRUM STUDIO FX LIBRARY v21.1.2
+   SPECTRUM STUDIO FX LIBRARY v21.1.3
    32 Unique Visual Engines (No Omissions)
-  
 */
 
 function applyColorStyle(pg, style, h, i, fI, alphaVal) {
@@ -85,7 +84,7 @@ window.FX_ENGINES = {
         }
     },
     lightning: (pg, t, b, fI, h, s, p1, p2, p3) => {
-        if (b[10] > 180) {
+        if (b[10] > 180) { // 고음역 임계값
             applyColorStyle(pg, s, h, 0, fI, p3);
             for (let i = 0; i < floor(p1 / 10); i++) pg.line(random(-960, 960), -540, random(-960, 960), 540);
         }
@@ -207,6 +206,7 @@ window.FX_ENGINES = {
             pg.circle(0, 0, r + b[0]);
         }
     },
+    // v21.1.0 신규 8종
     bars: (pg, t, b, fI, h, s, p1, p2, p3) => {
         let count = floor(p1 / 4) + 4;
         let barW = 1920 / count;
@@ -274,7 +274,7 @@ window.FX_ENGINES = {
     glitch: (pg, t, b, fI, h, s, p1, p2, p3) => {
         let slices = floor(p1 / 3) + 5;
         let sliceH = 1080 / slices;
-        let hiEnergy = (b[8] + b[9] + b[10] + b[11]) / 4;
+        let hiEnergy = (b[8] + b[9] + b[10] + b[11]) / 4; // 고음역 기준
         pg.textSize(80 + b[0] * 0.3 * fI); pg.textAlign(CENTER, CENTER);
         let chars = ['MUSIC','SOUND','WAVE','BEAT','FLUX','DATA','SYNC','GLITCH'];
         for (let i = 0; i < slices; i++) {
@@ -319,4 +319,4 @@ window.FX_ENGINES = {
     }
 };
 
-console.log("FX_LIBRARY v21.1.2 Fully Loaded.");
+console.log("FX_LIBRARY v21.1.3 Loaded.");
