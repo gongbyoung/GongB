@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>SPECTRUM STUDIO v21.1.2 — Diagnostic Mode</title>
+    <title>SPECTRUM STUDIO v21.0.3 — Data Stream Monitor</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <script src="fx_library.js" onload="isLibraryReady = true;"></script>
@@ -21,17 +21,16 @@
         .viz-area { position:relative; background:#000; display: flex; align-items: center; justify-content: center; flex:1; }
         #p5-container canvas { width: 100% !important; height: auto !important; max-height: 100% !important; }
         .log-panel { background:#000; border:1px solid #222; border-radius:4px; padding:10px; flex:1; overflow-y:auto; font-family: monospace; font-size:10px; color: #888; }
-        .log-success { color: var(--accent); }
-        .log-error { color: var(--accent2); }
+        .log-data { color: #f1c40f; font-weight: bold; } /* 데이터 출력 전용 색상 */
         .btn { background:transparent; border:1px solid var(--border); border-radius:4px; color:#fff; padding:6px; cursor:pointer; font-size:9px; width:100%; height: 32px; margin-bottom:5px; transition: 0.2s; }
-        .btn:hover:not(:disabled) { border-color: var(--accent); background: rgba(0,255,204,0.05); }
+        input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; height:2px; margin: 10px 0; }
     </style>
 </head>
 <body>
 
 <div class="topbar">
-    <div style="letter-spacing:4px; color:var(--accent); font-weight:bold; font-size:14px;">SPECTRUM STUDIO v21.1.2</div>
-    <div id="timeCode" style="font-size:12px; font-family:monospace;">00:00 / 00:00</div>
+    <div style="letter-spacing:4px; color:var(--accent); font-weight:bold; font-size:14px;">SPECTRUM STUDIO v21.1.3</div>
+    <div id="timeCode">00:00 / 00:00</div>
 </div>
 
 <div class="main-workspace">
@@ -39,7 +38,7 @@
         <div class="ctrl-box">
             <span style="font-size:9px; color:var(--accent);">1. 32 FX PALETTE</span>
             <div class="fx-grid" id="fxThumbGrid"></div>
-            <button class="btn" onclick="syncThumbnails(true)" style="margin-top:10px; color:var(--accent2); border-color:var(--accent2);">☁️ FORCE SYNC THUMBS</button>
+            <button class="btn" onclick="syncThumbnails(true)">☁️ FORCE SYNC THUMBS</button>
         </div>
         <div class="ctrl-box">
             <span style="font-size:9px; color:var(--accent);">2. SYSTEM ENGINE</span>
@@ -53,8 +52,8 @@
         <div class="ctrl-box">
             <span style="font-size:9px; color:var(--accent);">3. LIVE PARAMETERS</span>
             <label style="font-size:8px;">P1: DENSITY</label><input type="range" id="fxP1" min="1" max="100" value="25">
-            <label style="font-size:8px;">P2: SPEED</label><input type="range" id="fxP2" min="0.1" max="5.0" step="0.1" value="1.0">
-            <label style="font-size:8px;">P3: ALPHA</label><input type="range" id="fxP3" min="1" max="255" value="150">
+            <label style="font-size:8px;">P2: SCALE/SPEED</label><input type="range" id="fxP2" min="0.1" max="10.0" step="0.1" value="2.0">
+            <label style="font-size:8px;">P3: ALPHA</label><input type="range" id="fxP3" min="1" max="255" value="180">
             <label style="font-size:8px;">HUE</label><input type="range" id="fxHue" min="0" max="360" value="200">
         </div>
         <div class="ctrl-box">
@@ -70,7 +69,7 @@
 <script>
     let audio, fft, canvasRef, bgCanvas, isPlaying = false, currentFXId = '';
     let isEngineActive = false;
-    let lastLogTime = 0;
+    let lastDataLogTime = 0;
 
     function addLog(msg, type = 'info') {
         const p = document.getElementById('logPanel');
@@ -78,6 +77,7 @@
         e.className = `log-entry log-${type}`;
         e.innerText = `> ${msg}`;
         p.appendChild(e); p.scrollTop = p.scrollHeight;
+        if(p.childNodes.length > 50) p.removeChild(p.childNodes[0]); // 로그 최신 50개 유지
     }
 
     function setup() {
@@ -87,7 +87,7 @@
         
         let check = setInterval(() => {
             if(window.FX_ENGINES) {
-                addLog(`Engine Ready: ${Object.keys(window.FX_ENGINES).length} FX found.`, "success");
+                addLog(`Engine Ready: ${Object.keys(window.FX_ENGINES).length} FX detected.`, "success");
                 generateUI();
                 clearInterval(check);
             }
@@ -105,7 +105,7 @@
                 currentFXId = id; 
                 document.querySelectorAll('.fx-thumb').forEach(el => el.classList.remove('active')); 
                 b.classList.add('active'); 
-                addLog(`FX Selected: ${id} (Ready for diagnostic)`);
+                addLog(`Switch to FX: [${id.toUpperCase()}]`);
             };
             grid.appendChild(b);
         });
@@ -117,17 +117,13 @@
     }
 
     function syncThumbnails(force = false) {
-        if (!window.FX_ENGINES) {
-            addLog("⚠️ Missing Engine Object.", "error");
-            return;
-        }
+        if (!window.FX_ENGINES) return;
         const keys = Object.keys(window.FX_ENGINES);
-        addLog(`Syncing ${keys.length} assets...`, "info");
+        addLog(`Asset Syncing: ${keys.length} thumbs.`, "info");
         keys.forEach(id => {
             const path = `thumbnails/palette_${id.trim()}.png${force ? '?v='+Date.now() : ''}`;
             const img = new Image();
             img.onload = () => { document.getElementById('fxBtn_'+id).style.backgroundImage = `url(${path})`; };
-            img.onerror = () => { console.warn(`Asset Missing: ${id}`); };
             img.src = path;
         });
     }
@@ -135,7 +131,7 @@
     function activateEngine() {
         userStartAudio().then(() => {
             isEngineActive = true;
-            addLog("Audio Engine Active. Analysis starting...", "success");
+            addLog("Analysis Engine Activated.", "success");
             document.getElementById('analyzeBtn').innerText = "✅ ANALYZE ACTIVE";
             document.getElementById('recBtn').disabled = false;
         });
@@ -144,45 +140,34 @@
     function draw() {
         background(2, 2, 8); bgCanvas.clear();
         let bands = new Array(12).fill(0);
-        let currentAvg = 0;
 
         if (isEngineActive && audio && audio.isPlaying()) {
             let spectrum = fft.analyze();
             if (spectrum) {
-                let sum = 0;
                 for (let i = 0; i < 12; i++) {
                     let start = floor(map(i, 0, 12, 0, spectrum.length * 0.4));
                     let end = floor(map(i + 1, 0, 12, 0, spectrum.length * 0.4));
                     let bandSum = 0; for (let j = start; j < end; j++) bandSum += spectrum[j];
                     bands[i] = bandSum / (end - start || 1);
-                    sum += bands[i];
                 }
-                currentAvg = sum / 12;
             }
         }
 
-        // [자가 진단 로그] 2초마다 현재 데이터 상태 보고
-        if (millis() - lastLogTime > 2000) {
-            if (isEngineActive && audio && audio.isPlaying()) {
-                if (currentAvg > 1) addLog(`Data Flowing: Avg Vol ${nf(currentAvg, 1, 1)} | FX: ${currentFXId}`, "success");
-                else addLog(`⚠️ Warning: Engine active but no audio data detected.`, "error");
-            }
-            lastLogTime = millis();
+        // [데이터 정밀 모니터] 1.5초마다 12개 밴드 전체 수치 출력
+        if (isEngineActive && audio && audio.isPlaying() && millis() - lastDataLogTime > 1500) {
+            const dataStr = bands.map((v, i) => `B${i+1}:${floor(v)}`).join(" | ");
+            addLog(`[AUDIO DATA] ${dataStr}`, "data");
+            lastDataLogTime = millis();
         }
 
         bgCanvas.push(); bgCanvas.translate(960, 540);
-        
-        // FX 엔진 존재 여부 최종 확인 후 실행
         if (window.FX_ENGINES && window.FX_ENGINES[currentFXId]) {
             window.FX_ENGINES[currentFXId](bgCanvas, frameCount * 0.02, bands, 1.5, 
                    parseFloat(document.getElementById('fxHue').value), "hue", 
                    parseFloat(document.getElementById('fxP1').value), 
                    parseFloat(document.getElementById('fxP2').value), 
                    parseFloat(document.getElementById('fxP3').value));
-        } else if (currentFXId !== '') {
-            if (frameCount % 60 === 0) console.error(`FX Engine Missing for ID: ${currentFXId}`);
         }
-
         bgCanvas.pop();
         push(); translate(-width/2, -height/2); image(bgCanvas, 0, 0); pop();
         
@@ -199,8 +184,8 @@
         }); 
     }
 
-    function saveThumbnail() { saveCanvas(canvasRef, 'palette_'+currentFXId, 'png'); addLog("Thumbnail saved."); }
-    async function toggleSync() { if (isPlaying) { audio.stop(); isPlaying = false; addLog("Stopped."); } else { audio.play(); isPlaying = true; addLog("Playing..."); } }
+    function saveThumbnail() { saveCanvas(canvasRef, 'palette_'+currentFXId, 'png'); addLog("Thumb Saved."); }
+    async function toggleSync() { if (isPlaying) { audio.stop(); isPlaying = false; addLog("Stop."); } else { audio.play(); isPlaying = true; addLog("Start."); } }
 </script>
 </body>
 </html>
