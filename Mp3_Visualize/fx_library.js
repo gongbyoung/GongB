@@ -1,9 +1,9 @@
 /**
- * SPECTRUM STUDIO FX LIBRARY v22.9.1
- * 2026.05.01 20가지 수정 사항 반영 및 32종 엔진 전체 포함 완결본
+ * SPECTRUM STUDIO FX LIBRARY v22.9.2
+ * 2026.05.01 수정 사항 반영 및 32종 엔진 전체 포함 완결본
  */
 window.ENGINES = {
-    // 1. Matrix: 가시성 확보 및 WEBGL 폰트 에러 방지
+    // 1. Matrix: 가시성 확보 및 폰트 에러 방지 (textFont 강제 지정)
     matrix: (pg, t, b, p1, p2, p3) => {
         pg.textFont('sans-serif'); 
         pg.textSize(p2 * 5 + 10);
@@ -16,7 +16,7 @@ window.ENGINES = {
         }
     },
 
-    // 2. DNA: 큐브 스케일 및 회전 반경 가변형
+    // 2. DNA: 큐브 회전 반경 및 스케일 가변형
     dna: (pg, t, b, p1, p2, p3) => {
         let rad = p3;
         let cSz = p2 * 2;
@@ -36,7 +36,7 @@ window.ENGINES = {
         pg.stroke(340, 100, 100); pg.circle(0, 0, b[11] * 2.5);
     },
 
-    // 4. Web: [롤백] 27가지 수정 전 안정 버전 (수정 전이 낫다는 의견 반영)
+    // 4. Web: [롤백] 수정 전 안정 버전 (베지어 제거 버전)
     web: (pg, t, b, p1, p2, p3) => {
         pg.noFill(); pg.stroke(180, 100, 100, 60);
         pg.strokeWeight(2);
@@ -56,7 +56,7 @@ window.ENGINES = {
         }
     },
 
-    // 6. Lightning: 가시성 확보 및 번개 연출 (안 보이던 문제 해결)
+    // 6. Lightning: 가시성 확보 및 번개 연출
     lightning: (pg, t, b, p1, p2, p3) => {
         if (b[0] > 160) {
             pg.stroke(60, 20, 100); pg.strokeWeight(p2);
@@ -68,7 +68,7 @@ window.ENGINES = {
         }
     },
 
-    // 7. Orbit: 중앙 테두리 스피어 + 외부 랜덤 위성 배치 및 음악 반응
+    // 7. Orbit: 중앙 테두리 스피어 + 외부 랜덤 위성 배치
     orbit: (pg, t, b, p1, p2, p3) => {
         pg.noFill(); pg.stroke(200, 100, 100); pg.strokeWeight(2);
         pg.sphere(p3); 
@@ -83,7 +83,7 @@ window.ENGINES = {
         }
     },
 
-    // 8. Tree: 3단계 시작 -> 비트 반응 시 끝부분만 가변 성장
+    // 8. Tree: 비트 반응형 가변 성장 (끝단 전용 애니메이션)
     tree: (pg, t, b, p1, p2, p3) => {
         pg.translate(0, 350); pg.stroke(120, 50, 40);
         const _drawBranch = (l, d) => {
@@ -98,7 +98,7 @@ window.ENGINES = {
         _drawBranch(p3 * 0.8, 0);
     },
 
-    // 9. Triangle: 평면 기준 4면체(Tetrahedron) + 인텐시티 비례 수량 증가
+    // 9. Triangle: 평면 기준 4면체(Tetrahedron) + 개수 증가
     triangle: (pg, t, b, p1, p2, p3) => {
         let count = Math.floor(p1 / 10) + 1;
         pg.noFill(); pg.stroke(40, 80, 100);
@@ -110,7 +110,7 @@ window.ENGINES = {
         }
     },
 
-    // 10. Tunnel: 다각형 변환 로직 (P2 스케일에 연동하여 삼각형~다각형)
+    // 10. Tunnel: 다각형 변환 로직 (스케일 연동)
     tunnel: (pg, t, b, p1, p2, p3) => {
         let sides = Math.floor(p5.prototype.map(p2, 1, 50, 3, 12));
         for (let i = 0; i < 24; i++) {
@@ -127,7 +127,7 @@ window.ENGINES = {
         }
     },
 
-    // 11. Cosmos: 일직선 발산 + 중앙 소(小), 외곽 대(大) + 비트 반응
+    // 11. Cosmos: 일직선 발산 + 중앙 소(小), 외곽 대(大)
     cosmos: (pg, t, b, p1, p2, p3) => {
         let genCount = Math.floor(p5.prototype.map(b[0], 0, 255, 30, 150));
         for (let i = 0; i < genCount; i++) {
@@ -142,7 +142,7 @@ window.ENGINES = {
         }
     },
 
-    // 12. Particles: 현재 스타일 유지 (P2로 최대 크기 조절)
+    // 12. Particles: 현재 스타일 유지 + 음악 반응
     particles: (pg, t, b, p1, p2, p3) => {
         p5.prototype.randomSeed(99);
         for(let i=0; i<p1; i++){
@@ -153,7 +153,7 @@ window.ENGINES = {
         }
     },
 
-    // 13. Spiral: 동일 회전축 + 인텐시티 증가 시 반경 가변 레이어 추가
+    // 13. Spiral: 회전반경 가변 레이어 추가
     spiral: (pg, t, b, p1, p2, p3) => {
         let layers = Math.floor(p1 / 25) + 1;
         for(let j = 0; j < layers; j++) {
@@ -169,7 +169,7 @@ window.ENGINES = {
         }
     },
 
-    // 14. Ripple: 내부 채움 및 그리드별 개별 색상 적용
+    // 14. Ripple: 내부 채움 및 그리드별 개별 색상
     ripple: (pg, t, b, p1, p2, p3) => {
         for (let x = 0; x < 4; x++) {
             for (let y = 0; y < 3; y++) {
@@ -182,13 +182,13 @@ window.ENGINES = {
         }
     },
 
-    // 15. Bloom: [롤백] 27가지 수정 요청 전 안정 버전 복구
+    // 15. Bloom: [롤백] 수정 전 안정 버전
     bloom: (pg, t, b, p1, p2, p3) => {
         pg.fill(320, 100, 100, 40); pg.noStroke();
         pg.ellipse(0, 0, 300 + b[0] * 2.5, 300 + b[0] * 2.5);
     },
 
-    // 16. Wave: 6개 파도 레이어 + 음영 채움 및 파도 연출
+    // 16. Wave: 6개 레이어 파도 + 음영 채움
     wave: (pg, t, b, p1, p2, p3) => {
         for(let j = 0; j < 6; j++) {
             pg.fill(200, 85, 100 - j * 12, 45); pg.noStroke();
@@ -203,7 +203,7 @@ window.ENGINES = {
         }
     },
 
-    // 17. Grid: [롤백] Terrain(지형) 지오메트리로 복구
+    // 17. Grid: [롤백] Terrain(지형) 복구
     grid: (pg, t, b, p1, p2, p3) => {
         pg.rotateX(Math.PI / 3); pg.stroke(180, 80, 100, 50); pg.noFill();
         for(let y = -10; y < 10; y++) {
@@ -224,7 +224,7 @@ window.ENGINES = {
         pg.stroke(320, 100, 100); pg.circle(0,0,p3*2 + b[11]*2.5);
     },
 
-    // 19. Floral: 베지어 커브 잎 모양 연출
+    // 19. Floral: 베지어 커브 잎 모양
     floral: (pg, t, b, p1, p2, p3) => {
         pg.fill(140, 70, 100, 65); pg.noStroke();
         for(let i=0; i<12; i++){
@@ -236,7 +236,7 @@ window.ENGINES = {
         }
     },
 
-    // 20. Kaleid: 볼륨별 입체 박스 높이 변화
+    // 20. Kaleid: 입체 높이 변화
     kaleid: (pg, t, b, p1, p2, p3) => {
         pg.rotateZ(t);
         for(let i=0; i<8; i++){
@@ -245,7 +245,7 @@ window.ENGINES = {
         }
     },
 
-    // 21. HEX: 타워형 육각 기둥 반응
+    // 21. HEX: 타워형 육각 기둥
     hex: (pg, t, b, p1, p2, p3) => {
         for(let i=0; i<6; i++){
             let h = p5.prototype.map(b[i*2], 0, 255, 20, p3);
@@ -315,13 +315,13 @@ window.ENGINES = {
         }
     },
 
-    // 29. Fluid: 유체 흐름 시뮬레이션 대용
+    // 29. Fluid: 유체 흐름 시뮬레이션
     fluid: (pg, t, b, p1, p2, p3) => {
         pg.noStroke(); pg.fill(200, 50, 100, 50);
         for(let i=0; i<10; i++){ pg.ellipse(Math.sin(t+i)*p3, Math.cos(t+i)*p3, b[i], b[i]); }
     },
 
-    // 30. Sakura: 흩날리는 꽃잎 효과
+    // 30. Sakura: 흩날리는 꽃잎
     sakura: (pg, t, b, p1, p2, p3) => {
         pg.fill(340, 40, 100, 60); pg.noStroke();
         for(let i=0; i<p1/2; i++){ 
@@ -347,4 +347,4 @@ window.ENGINES = {
         pg.noFill(); pg.stroke(t%360, 80, 100);
         pg.circle(0,0, p3 + b[0]*2.5);
     }
-}; // 세미콜론 포함 완결
+};
