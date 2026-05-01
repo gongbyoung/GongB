@@ -1,263 +1,197 @@
 /**
- * SPECTRUM STUDIO FX LIBRARY v22.7.0
- * 27 High-End Tech + Existing Engines (No Omissions)
+ * SPECTRUM STUDIO FX LIBRARY v22.8.0
+ * 20가지 수정 사항(2026.05.01) 반영 완료
  */
 window.ENGINES = {
-    // 1. Matrix: 주파수/수치 보정 완료 (한글 유니코드 매핑)
+    // 3. Matrix: 로직 전면 재점검 (보이지 않던 문제 해결)
     matrix: (pg, t, b, p1, p2, p3) => {
         pg.textSize(p2 * 5 + 10);
-        for(let i=0; i<35; i++){
-            pg.fill(120, 100, p5.prototype.map(b[i%12], 0, 255, 30, 100));
-            pg.text(char(p5.prototype.random(44032, 44100)), (i-17)*50, (t*p1*0.15*1000 + i*120)%1500 - 750);
+        pg.textAlign(CENTER, CENTER);
+        for(let i = 0; i < 40; i++) {
+            let x = (i - 20) * 50;
+            // 주파수 반응성 강화 및 y축 루프 계산 수정
+            let y = (t * p1 * 500 + i * 200) % 1600 - 800;
+            pg.fill(120, 100, p5.prototype.map(b[i % 12], 0, 255, 40, 100));
+            pg.text(char(p5.prototype.random(44032, 44100)), x, y);
         }
     },
 
-    // 2. DNA: 큐브 스케일 & 회전 지름 가변형
-    dna: (pg, t, b, p1, p2, p3) => {
-        let rad = p1 * 3; let cSz = p2 * 8;
-        for(let i=0; i<24; i++){
-            let y = p5.prototype.map(i, 0, 24, -350, 350);
-            pg.push(); pg.translate(Math.cos(t+i*0.4)*rad, y, Math.sin(t+i*0.3)*rad);
-            pg.rotateY(t); pg.fill(200, 80, 100); 
-            pg.box(cSz + b[i%12]*0.2); pg.pop();
+    // 4. Web: [롤백] 27가지 수정 전 로직으로 복구
+    web: (pg, t, b, p1, p2, p3) => {
+        pg.noFill(); pg.stroke(180, 100, 100, 60);
+        pg.strokeWeight(p2);
+        for (let i = 0; i < 20; i++) {
+            let r = p3 + b[i % 12];
+            pg.line(Math.cos(t + i) * r, Math.sin(t + i) * r, Math.cos(t + i + 1) * r, Math.sin(t + i + 1) * r);
         }
     },
 
-    // 3. RipBok: 3중 써클 저/중/고 독립 반응
-    ripbok: (pg, t, b, p1, p2, p3) => {
-        pg.noFill(); pg.strokeWeight(p2);
-        pg.stroke(200, 100, 100); pg.circle(0, 0, b[0] * 4);    // 저음
-        pg.stroke(100, 100, 100); pg.circle(0, 0, b[5] * 3.5);  // 중음
-        pg.stroke(340, 100, 100); pg.circle(0, 0, b[11] * 3);   // 고음
-    },
-
-    // 4. Nebula: 스피어 크기 조정 슬라이더 연동
-    nebula: (pg, t, b, p1, p2, p3) => {
-        pg.noStroke();
-        for(let i=0; i<p1; i++){
-            pg.fill(p5.prototype.map(i,0,p1,0,360), 70, 100, 50);
-            pg.push(); pg.translate(p5.prototype.noise(t,i)*800-400, p5.prototype.noise(i,t)*600-300);
-            pg.sphere(p2 * 3 + b[i%12]*0.2); pg.pop();
-        }
-    },
-
-    // 5. Mandala: 이클립스 지름/크기 수치 조정
-    mandala: (pg, t, b, p1, p2, p3) => {
-        pg.noFill(); pg.strokeWeight(2);
-        for(let i=0; i<12; i++){
-            pg.push(); pg.rotate(i*Math.PI/6 + t); pg.stroke(i*30, 80, 100);
-            pg.ellipse(p1*2.5, 0, p2*2 + b[i]*2, p2*2 + b[i]*2); pg.pop();
-        }
-    },
-
-    // 6. Lightning: 잔상 효과 + 번개 연출
+    // 6. Lightning: 가시성 확보 및 번개 로직 수정
     lightning: (pg, t, b, p1, p2, p3) => {
-        if(b[0] > 190) {
-            pg.stroke(60, 20, 100); pg.strokeWeight(p5.prototype.random(2, 8));
+        if (b[0] > 160) {
+            pg.stroke(60, 20, 100); pg.strokeWeight(p2 * 2);
             let lx = 0, ly = -400;
-            for(let i=0; i<15; i++) {
-                let nx = lx + p5.prototype.random(-70, 70), ny = ly + 65;
+            for (let i = 0; i < 12; i++) {
+                let nx = lx + p5.prototype.random(-80, 80), ny = ly + 70;
                 pg.line(lx, ly, nx, ny); lx = nx; ly = ny;
             }
         }
     },
 
-    // 7. Web: 곡선 흐느적 베지어 웹 (선에 곡선 부여)
-    web: (pg, t, b, p1, p2, p3) => {
-        pg.noFill(); pg.stroke(180, 100, 100, 50);
-        for(let i=0; i<12; i++){
-            let x1 = Math.cos(t+i)*p3, y1 = Math.sin(t+i)*p3;
-            let x2 = Math.cos(t+i+1)*p3, y2 = Math.sin(t+i+1)*p3;
-            pg.bezier(x1, y1, b[i]*2, b[(i+1)%12]*2, -b[i]*2, -b[(i+1)%12]*2, x2, y2);
-        }
-    },
-
-    // 8. Vortex: 사각형별 Z축 높이 차등화 (입체 빌딩 효과)
-    vortex: (pg, t, b, p1, p2, p3) => {
-        for(let i=0; i<p1; i++) {
-            pg.push(); pg.rotateZ(t + i*0.1); pg.noFill(); pg.stroke(i*12, 80, 100);
-            pg.rect(-200, -200, 400, 400); pg.translate(0, 0, Math.sin(t + i*0.5) * p3); pg.pop();
-        }
-    },
-
-    // 9. Chladni: 3개의 써클 나란히 배치 + 저중고음 반응
-    chladni: (pg, t, b, p1, p2, p3) => {
-        let ct = [[-350, 0], [0, 0], [350, 0]];
-        ct.forEach((p, i) => {
-            pg.push(); pg.translate(p[0], p[1]); pg.noFill(); pg.stroke(i*120, 80, 100);
-            pg.circle(0, 0, b[i*4] * p2); pg.pop();
-        });
-    },
-
-    // 10. Starfield: 라인 굵기 조정 가능형
-    starfield: (pg, t, b, p1, p2, p3) => {
-        pg.strokeWeight(p2);
-        for(let i=0; i<p1; i++){
-            pg.stroke(255, 150); let z = (t*1000 + i*50)%2000;
-            pg.push(); pg.translate(p5.prototype.noise(i)*1920-960, p5.prototype.noise(i+1)*1080-540, -z);
-            pg.line(0,0,0, 0,0,150); pg.pop();
-        }
-    },
-
-    // 11. Cyber: 라인 사이 그라데이션 채우기
-    cyber: (pg, t, b, p1, p2, p3) => {
-        for(let i=0; i<10; i++){
-            let y = p5.prototype.map(i, 0, 10, -400, 400);
-            pg.fill(pg.lerpColor(pg.color(180, 100, 100), pg.color(280, 100, 100), i/10)); pg.noStroke();
-            pg.rect(-960, y, 1920, 10 + b[i]);
-        }
-    },
-
-    // 12. Radar: 24개 개체 + 주파수 스케일 + 글로우
-    radar: (pg, t, b, p1, p2, p3) => {
-        pg.rotateZ(t); pg.noFill();
-        for(let i=0; i<24; i++){
-            let ang = (Math.PI*2)/24*i; let s = p5.prototype.map(b[i%12], 0, 255, 5, p2*10);
-            pg.push(); pg.translate(Math.cos(ang)*p3, Math.sin(ang)*p3);
-            pg.stroke(180, 100, 100); pg.drawingContext.shadowBlur = 25; pg.drawingContext.shadowColor = 'cyan';
-            pg.circle(0, 0, s); pg.pop();
-        }
-    },
-
-    // 13. HEX: 안쪽 높이 타워형 + 주파수 반응
-    hex: (pg, t, b, p1, p2, p3) => {
-        for(let i=0; i<6; i++){
-            let h = p5.prototype.map(b[i*2], 0, 255, 20, p3);
-            pg.push(); pg.rotateY(i*Math.PI/3); pg.translate(150, 0);
-            pg.fill(i*60, 80, 100); pg.box(50, h, 50); pg.pop();
-        }
-    },
-
-    // 14. Flow: 닫힌 도형 안쪽 색상 채우기
-    flow: (pg, t, b, p1, p2, p3) => {
-        pg.beginShape(); pg.fill(t*20%360, 80, 100, 50);
-        for(let i=0; i<12; i++){ pg.vertex(Math.cos(t+i)*p3 + b[i], Math.sin(t+i)*p3 + b[i]); }
-        pg.endShape(pg.CLOSE);
-    },
-
-    // 15. Orbit: 보색 위성 5% 추가
+    // 7. Orbit: 중앙 스피어 테두리화 + 외부 랜덤 위성 반응
     orbit: (pg, t, b, p1, p2, p3) => {
-        pg.fill(200, 80, 100); pg.sphere(p3 + b[0]*0.2);
-        pg.push(); pg.rotateY(t); pg.translate(p3*1.15, 0);
-        pg.fill(20, 80, 100); pg.sphere(p3*0.05 + b[5]*0.1); pg.pop();
+        // 중앙 스피어 (테두리만)
+        pg.noFill(); pg.stroke(200, 100, 100); pg.strokeWeight(2);
+        pg.sphere(p3);
+        
+        // 외부 랜덤 위성 배치 (인텐시티 비례 숫자 증가)
+        let satCount = Math.floor(p1 / 10);
+        for(let i = 0; i < satCount; i++) {
+            pg.push();
+            pg.rotateY(t * (i + 1) * 0.2);
+            pg.translate(p3 * 1.5, 0);
+            pg.fill(p5.prototype.random(360), 80, 100, 80);
+            pg.noStroke();
+            pg.sphere(10 + b[i % 12] * 0.1);
+            pg.pop();
+        }
     },
 
-    // 16. Tree: 24가지 발생 + 끝단 네온 꽃 비트 반응
+    // 8. Tree: 절차적 성장 로직 (끝부분만 주파수에 반응)
     tree: (pg, t, b, p1, p2, p3) => {
-        pg.translate(0, 400); pg.stroke(120, 50, 40);
-        const _tr = (l, d) => {
-            if(d > 8) return;
-            pg.line(0,0,0,-l); pg.translate(0,-l);
-            if(d === 8) { pg.noStroke(); pg.fill(330, 100, 100); pg.drawingContext.shadowBlur = 30; pg.circle(0, 0, b[0]*0.3); }
-            pg.push(); pg.rotate(0.35 + b[0]*0.001); _tr(l*0.75, d+1); pg.pop();
-            pg.push(); pg.rotate(-0.35 - b[1]*0.001); _tr(l*0.75, d+1); pg.pop();
+        pg.translate(0, 350); pg.stroke(120, 50, 40);
+        const _drawBranch = (l, d) => {
+            if (d > 7) return;
+            // 끝부분(d > 5)만 주파수에 따라 성장했다 돌아옴
+            let currentL = (d > 5) ? l * p5.prototype.map(b[d % 12], 0, 255, 1.0, 1.8) : l;
+            pg.line(0, 0, 0, -currentL);
+            pg.translate(0, -currentL);
+            
+            pg.push(); pg.rotate(0.3 + b[0] * 0.001); _drawBranch(l * 0.75, d + 1); pg.pop();
+            pg.push(); pg.rotate(-0.3 - b[1] * 0.001); _drawBranch(l * 0.75, d + 1); pg.pop();
         };
-        _tr(p3, 0);
+        _drawBranch(p3 * 0.8, 0);
     },
 
-    // 17. Triangle: 3D 사각뿔(Pyramid) 입체화
+    // 9. Triangle: 평면 기준 4면체 수정 (인텐시티 비례 개수 증가)
     triangle: (pg, t, b, p1, p2, p3) => {
-        pg.rotateY(t); pg.fill(40, 80, 100, 60); pg.cone(p3 + b[0], p3*1.5 + b[5], 4);
-    },
-
-    // 18. Spiral: 중심점으로 빨려 들어가는 블랙홀 효과
-    spiral: (pg, t, b, p1, p2, p3) => {
-        for(let i=0; i<p1; i++){
-            let r = p5.prototype.map(i, 0, p1, 800, 0);
-            pg.push(); pg.rotateZ(t*2 + i*0.1); pg.fill(i*3, 80, 100);
-            pg.circle(r, 0, 5 + b[i%12]*0.2); pg.pop();
+        let count = Math.floor(p1 / 15) + 1;
+        pg.noFill(); pg.stroke(40, 80, 100);
+        for(let i = 0; i < count; i++) {
+            pg.push();
+            pg.rotateY(t + i * 0.5);
+            pg.rotateX(t * 0.3);
+            // 4면체(Tetrahedron) 표현을 위해 cone의 side를 3으로 설정
+            pg.cone(p3 + b[i % 12], (p3 + b[i % 12]) * 1.2, 3);
+            pg.pop();
         }
     },
 
-    // 19. Particles: 크기 랜덤 최소/최대 설정
-    particles: (pg, t, b, p1, p2, p3) => {
-        p5.prototype.randomSeed(99);
-        for(let i=0; i<p1; i++){
-            let s = p5.prototype.random(2, p2) + b[i%12]*0.2;
-            pg.fill(p5.prototype.random(360), 70, 100);
-            pg.push(); pg.translate(p5.prototype.random(-960,960), p5.prototype.random(-540,540));
-            pg.circle(0,0,s); pg.pop();
-        }
-    },
-
-    // 20. Tunnel: 24개 삼각형 일렬 회전
+    // 10. Tunnel: 다각형 변환 로직 추가
     tunnel: (pg, t, b, p1, p2, p3) => {
-        for(let i=0; i<24; i++){
-            pg.push(); pg.translate(0, 0, -i*150 + (t*600)%150);
-            pg.rotateZ(i*0.2 + b[i%12]*0.01); pg.noFill(); pg.stroke(i*15, 80, 100);
-            pg.triangle(-150, 150, 0, -150, 150, 150); pg.pop();
+        let sides = Math.floor(p5.prototype.map(p2, 0, 20, 3, 12)); // 스케일에 따라 삼각형~다각형
+        for (let i = 0; i < 24; i++) {
+            pg.push();
+            pg.translate(0, 0, -i * 120 + (t * 500) % 120);
+            pg.rotateZ(i * 0.2 + b[i % 12] * 0.01);
+            pg.noFill(); pg.stroke(i * 15, 80, 100);
+            pg.polygon(0, 0, 200, sides); // 별도 정의된 다각형 함수
+            pg.pop();
         }
     },
 
-    // 21. Ripple: 12분할 그리드 개별 볼륨 써클
-    ripple: (pg, t, b, p1, p2, p3) => {
-        for(let x=0; x<4; x++){
-            for(let y=0; y<3; y++){
-                pg.push(); pg.translate(x*400-600, y*300-300);
-                pg.noFill(); pg.stroke(200, 80, 100); pg.circle(0,0,b[(x+y)%12]*3.5); pg.pop();
+    // 11. Cosmos: 일직선 발산 + 외곽 확장 로직
+    cosmos: (pg, t, b, p1, p2, p3) => {
+        let count = Math.floor(p5.prototype.map(b[0], 0, 255, 20, 100));
+        for (let i = 0; i < count; i++) {
+            pg.push();
+            let ang = p5.prototype.noise(i) * Math.PI * 2;
+            let dist = (t * 1000 + i * 50) % 1500;
+            // 중앙(dist=0)은 작고 외곽으로 갈수록 커짐
+            let s = p5.prototype.map(dist, 0, 1500, 2, 30) + b[i % 12] * 0.1;
+            pg.translate(Math.cos(ang) * dist, Math.sin(ang) * dist, 0);
+            pg.fill(i * 5 % 360, 70, 100); pg.noStroke();
+            pg.sphere(s);
+            pg.pop();
+        }
+    },
+
+    // 13. Spiral: 회전반경 가변형 레이어 추가
+    spiral: (pg, t, b, p1, p2, p3) => {
+        let layers = Math.floor(p1 / 30) + 1;
+        for(let j = 0; j < layers; j++) {
+            let baseRad = p3 * (1 + j * 0.5);
+            for (let i = 0; i < 60; i++) {
+                let r = p5.prototype.map(i, 0, 60, baseRad, 0);
+                pg.push();
+                pg.rotateZ(t * (2 + j) + i * 0.1);
+                pg.fill((i * 3 + j * 50) % 360, 80, 100);
+                pg.circle(r, 0, 5 + b[i % 12] * 0.1);
+                pg.pop();
             }
         }
     },
 
-    // 22. RadialEQ: 3중 동심원 저중고 반응
-    radialEQ: (pg, t, b, p1, p2, p3) => {
-        pg.noFill();
-        pg.stroke(200, 100, 100); pg.circle(0,0,400 + b[0]*2.5);
-        pg.stroke(120, 100, 100); pg.circle(0,0,600 + b[5]*2.5);
-        pg.stroke(320, 100, 100); pg.circle(0,0,800 + b[11]*2.5);
-    },
-
-    // 23. Cosmos: 사방 랜덤 각도 발산
-    cosmos: (pg, t, b, p1, p2, p3) => {
-        for(let i=0; i<p1; i++){
-            pg.push(); pg.rotateX(p5.prototype.noise(i)*Math.PI*2); pg.rotateY(p5.prototype.noise(i+t)*Math.PI*2);
-            pg.translate(0, 0, (t*1200+i*30)%2000);
-            pg.fill(i*5%360, 70, 100); pg.sphere(10 + b[i%12]*0.25); pg.pop();
+    // 14. Ripple: 내부 채움 및 개별 색상
+    ripple: (pg, t, b, p1, p2, p3) => {
+        for (let x = 0; x < 4; x++) {
+            for (let y = 0; y < 3; y++) {
+                pg.push(); pg.translate(x * 400 - 600, y * 300 - 300);
+                pg.fill((x * 90 + y * 30) % 360, 70, 100, 60); 
+                pg.noStroke();
+                pg.circle(0, 0, b[(x + y) % 12] * 3.5);
+                pg.pop();
+            }
         }
     },
 
-    // 24. Smoke: 알파값 감소 + 시작 굵기 조절
-    smoke: (pg, t, b, p1, p2, p3) => {
-        for(let i=0; i<30; i++){
-            pg.fill(0, 0, 100, p5.prototype.map(i, 0, 30, 100, 0)); pg.noStroke();
-            pg.push(); pg.translate(p5.prototype.noise(t,i)*250-125, -i*30);
-            pg.circle(0,0,p2*6 + i*8 + b[i%12]*0.3); pg.pop();
-        }
-    },
-
-    // 25. Kaleid: 볼륨별 입체 높이 변화
-    kaleid: (pg, t, b, p1, p2, p3) => {
-        pg.rotateZ(t);
-        for(let i=0; i<8; i++){
-            pg.push(); pg.rotate(i*Math.PI/4);
-            pg.fill(i*45, 80, 100, 60); pg.box(60, p5.prototype.map(b[i], 0, 255, 100, 600), 60); pg.pop();
-        }
-    },
-
-    // 26. Floral: 베지어 커브 잎 모양
-    floral: (pg, t, b, p1, p2, p3) => {
-        pg.fill(140, 70, 100, 65); pg.noStroke();
-        for(let i=0; i<12; i++){
-            let l = 150 + b[i]*2.5;
-            pg.push(); pg.rotate(i*Math.PI/6 + t);
-            pg.beginShape(); pg.vertex(0,0);
-            pg.bezierVertex(l/2, -l/2, l, -l/4, l, 0); pg.bezierVertex(l, l/4, l/2, l/2, 0, 0);
-            pg.endShape(); pg.pop();
-        }
-    },
-
-    // 27. Bloom: 네온 글로우 스피어
+    // 15. Bloom: [롤백] 27가지 수정 전 로직
     bloom: (pg, t, b, p1, p2, p3) => {
-        pg.drawingContext.shadowBlur = 40; pg.drawingContext.shadowColor = 'magenta';
-        pg.fill(320, 100, 100, 50); pg.sphere(250 + b[0]*1.2);
+        pg.fill(320, 100, 100, 40);
+        pg.noStroke();
+        pg.ellipse(0, 0, 300 + b[0] * 2, 300 + b[0] * 2);
     },
 
-    // 28~32: 기존 유지 엔진
+    // 16. Wave: 6개 레이어 + 음영 채움 파도
     wave: (pg, t, b, p1, p2, p3) => {
-        pg.noFill(); pg.stroke(180, 80, 100);
-        pg.beginShape(); for(let i=0; i<20; i++){ pg.vertex(i*50-500, Math.sin(t+i)*100 + b[i%12]); } pg.endShape();
+        for(let j = 0; j < 6; j++) {
+            pg.fill(200, 80, 100 - j * 15, 50);
+            pg.noStroke();
+            pg.beginShape();
+            for(let i = 0; i < 20; i++) {
+                let x = i * 100 - 1000;
+                let y = Math.sin(t + i * 0.5 + j) * 150 + b[j] + j * 50;
+                pg.vertex(x, y);
+            }
+            pg.vertex(1000, 540); pg.vertex(-1000, 540);
+            pg.endShape(pg.CLOSE);
+        }
     },
+
+    // 17. Grid: [롤백] Terrain(지형) 로직으로 변경
     grid: (pg, t, b, p1, p2, p3) => {
-        pg.stroke(255, 30); for(let i=-10; i<=10; i++){ pg.line(i*50, -500, i*50, 500); pg.line(-500, i*50, 500, i*50); }
+        pg.rotateX(Math.PI / 3);
+        pg.stroke(180, 80, 100, 50);
+        pg.noFill();
+        for(let y = -10; y < 10; y++) {
+            pg.beginShape();
+            for(let x = -10; x < 10; x++) {
+                let z = p5.prototype.noise(x * 0.2, y * 0.2 + t) * p3 + b[0] * 0.5;
+                pg.vertex(x * 100, y * 100, z);
+            }
+            pg.endShape();
+        }
+    },
+    
+    // 유틸리티: 다각형 그리기
+    polygon: (pg, x, y, radius, npoints) => {
+        let angle = (Math.PI * 2) / npoints;
+        pg.beginShape();
+        for (let a = 0; a < (Math.PI * 2); a += angle) {
+            let sx = x + Math.cos(a) * radius;
+            let sy = y + Math.sin(a) * radius;
+            pg.vertex(sx, sy);
+        }
+        pg.endShape(pg.CLOSE);
     }
 };
