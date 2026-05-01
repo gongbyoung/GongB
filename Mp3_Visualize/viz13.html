@@ -2,127 +2,251 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>SPECTRUM STUDIO v22.6.0 — Engine Separated</title>
+    <title>TYPO ARCHITECT v23.2.0 — Motion Master PRO</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
-    <!-- [분리] 외부 라이브러리 로드 -->
-    <script src="fx_library.js"></script>
     <style>
-        :root{ --bg:#020205; --accent:#00ffcc; --accent2:#ff3377; --panel:#0a0a10; --border:rgba(0,255,204,0.15); }
-        body{ background:var(--bg); color:#e0f0ff; margin:0; overflow:hidden; font-family:'Pretendard', sans-serif; display:flex; }
+        :root{ --bg:#020205; --accent:#00ffcc; --accent2:#ff3377; --panel:#0a0a10; --text:#e0f0ff; --border:rgba(0,255,204,0.15); }
+        body{ background:var(--bg); color:var(--text); margin:0; overflow:hidden; font-family:'Pretendard', sans-serif; display:flex; }
         
-        /* UI 분리: 왼쪽(FX) / 오른쪽(Params) */
-        #left-panel { width:220px; background:var(--panel); height:100vh; padding:15px; border-right:1px solid var(--border); overflow-y:auto; }
-        #canvas-container { flex:1; background:#000; display:flex; align-items:center; justify-content:center; }
+        /* 4. UI 레이아웃 분리: 왼쪽(SRT 리스트) / 중앙(Canvas) / 오른쪽(파라미터 조절) */
+        #left-panel { width:300px; background:var(--panel); height:100vh; padding:15px; border-right:1px solid var(--border); overflow-y:auto; display:flex; flex-direction:column; }
+        #canvas-container { flex:1; background:#000; display:flex; align-items:center; justify-content:center; overflow:hidden; position:relative; }
         #right-panel { width:360px; background:var(--panel); height:100vh; padding:15px; border-left:1px solid var(--border); overflow-y:auto; }
         
-        .fx-btn { width:100%; padding:10px; background:#111; border:1px solid #333; color:#666; font-size:10px; text-align:left; cursor:pointer; margin-bottom:4px; border-radius:4px; }
-        .fx-btn.active { border-color:var(--accent2); color:var(--accent2); background:rgba(255,51,119,0.1); font-weight:bold; }
-        .ctrl-box { background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:12px; }
-        .slider-row { display:flex; align-items:center; gap:8px; margin-top:8px; }
-        input[type=range] { flex:1; accent-color:var(--accent); height:2px; }
-        .num-in { width:60px; background:#000; color:var(--accent); border:1px solid #333; font-size:11px; text-align:center; padding:3px; }
+        canvas { border: 1px solid var(--accent); }
+        .sub-item { background:rgba(255,255,255,0.02); border:1px solid #333; border-radius:6px; padding:10px; margin-bottom:10px; cursor:pointer; font-size:11px; }
+        .sub-item.active { border-color:var(--accent); background:rgba(0,255,204,0.05); }
+        
+        /* 1. 수치 직접 입력 UI */
+        .ctrl-box { background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:12px; }
+        .ctrl-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+        .ctrl-row label { font-size:9px; color:#888; width:75px; }
+        input[type=range] { flex:1; accent-color:var(--accent); height:2px; cursor:pointer; }
+        .num-in { width:55px; background:#000; color:var(--accent); border:1px solid #333; font-size:10px; text-align:center; padding:3px; border-radius:2px; }
+
         .btn { width:100%; padding:10px; background:transparent; border:1px solid var(--accent); color:var(--accent); cursor:pointer; font-size:10px; border-radius:4px; font-weight:bold; margin-top:5px; }
+        #recBtn { border-color:var(--accent2); color:var(--accent2); margin-top:15px; }
+        #recBtn.active { background:var(--accent2); color:#fff; animation:blink 1s infinite; }
+        @keyframes blink { 50% { opacity:0.5; } }
     </style>
 </head>
 <body>
 
+<!-- 왼쪽: SRT 가사 리스트 -->
 <div id="left-panel">
-    <h3 style="font-size:10px; color:var(--accent);">FX PALETTE</h3>
-    <div id="fxList"></div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:5px; margin-bottom:10px;">
+        <button class="btn" onclick="document.getElementById('fIn').click()">🔤 FONT</button>
+        <button class="btn" onclick="document.getElementById('mIn').click()">🎵 AUDIO</button>
+    </div>
+    <button class="btn" onclick="document.getElementById('sIn').click()">📝 LOAD SRT 자막</button>
     <hr style="border:0.5px solid var(--border); margin:15px 0;">
-    <button class="btn" onclick="document.getElementById('mIn').click()">🎵 LOAD MP3</button>
+    <div id="subtitle-list"></div>
+    
+    <input type="file" id="fIn" accept=".ttf,.otf" style="display:none" onchange="handleFont(this.files)">
     <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleAudio(this.files)">
-    <button class="btn" id="analyzeBtn" onclick="activateEngine()" disabled>⚡ READY</button>
+    <input type="file" id="sIn" accept=".srt" style="display:none" onchange="handleSRT(this.files)">
 </div>
 
+<!-- 중앙: 캔버스 작업 영역 -->
 <div id="canvas-container"></div>
 
+<!-- 오른쪽: 선택된 가사의 세부 파라미터 설정 -->
 <div id="right-panel">
-    <div class="ctrl-box">
-        <h3>MASTER ENGINE</h3>
-        <label style="font-size:9px;">TRANS X / Y</label>
-        <div class="slider-row"><input type="range" id="mX" min="-600" max="600" value="0" oninput="uV('vMX',this.value)"><input type="number" id="vMX" class="num-in" value="0" oninput="uS('mX',this.value)"></div>
-        <div class="slider-row"><input type="range" id="mY" min="-600" max="600" value="0" oninput="uV('vMY',this.value)"><input type="number" id="vMY" class="num-in" value="0" oninput="uS('mY',this.value)"></div>
-        <label style="font-size:9px;">ROTATION X / Y / Z</label>
-        <input type="range" id="rX" min="-180" max="180" value="0">
-        <input type="range" id="rY" min="-180" max="180" value="0">
-        <input type="range" id="rZ" min="-180" max="180" value="0">
+    <div class="ctrl-box" id="param-editor">
+        <h3 style="font-size:10px; color:var(--accent); margin-bottom:10px;">MOTION SETTINGS</h3>
+        <label style="font-size:9px; color:#888;">ENGINE</label>
+        <select class="btn" id="mSelect" onchange="updateSet('motion', this.value)">
+            <option value="Directional">1. Directional (4-Way)</option>
+            <option value="Orbit90">2. Orbit 90 (Rot In/Out)</option>
+            <option value="Dissolve">3. Dust Dissolve (Particle)</option>
+            <option value="BusDrift">4. Bus Drift (Inertia)</option>
+            <option value="Laser">5. Laser Engrave</option>
+            <option value="Stamp">6. Stamp Zoom</option>
+            <option value="Assembly">7. Char Assembly</option>
+            <option value="Pulse">8. Bass Pulse</option>
+        </select>
+        
+        <div class="ctrl-row">
+            <label>SIZE</label>
+            <input type="range" id="sl_size" min="10" max="300" oninput="syncIn('size', this.value)">
+            <input type="number" id="num_size" class="num-in" oninput="syncSl('size', this.value)">
+        </div>
+        <div class="ctrl-row">
+            <label>POS X</label>
+            <input type="range" id="sl_x" min="-640" max="640" oninput="syncIn('x', this.value)">
+            <input type="number" id="num_x" class="num-in" oninput="syncSl('x', this.value)">
+        </div>
+        <div class="ctrl-row">
+            <label>POS Y</label>
+            <input type="range" id="sl_y" min="-360" max="360" oninput="syncIn('y', this.value)">
+            <input type="number" id="num_y" class="num-in" oninput="syncSl('y', this.value)">
+        </div>
+        
+        <label style="font-size:9px; margin-top:15px;"><input type="checkbox" id="chkVertical" onchange="updateSet('isVertical', this.checked)"> VERTICAL TEXT (세로 쓰기)</label>
     </div>
 
     <div class="ctrl-box">
-        <h3>LIVE PARAMETERS</h3>
-        <div class="slider-row"><label>P1</label><input type="range" id="p1" min="1" max="200" value="50" oninput="uV('vP1',this.value)"><input type="number" id="vP1" class="num-in" value="50" oninput="uS('p1',this.value)"></div>
-        <div class="slider-row"><label>P2</label><input type="range" id="p2" min="0.1" max="20" step="0.1" value="2" oninput="uV('vP2',this.value)"><input type="number" id="vP2" class="num-in" value="2" step="0.1" oninput="uS('p2',this.value)"></div>
-        <div class="slider-row"><label>P3</label><input type="range" id="p3" min="1" max="500" value="150" oninput="uV('vP3',this.value)"><input type="number" id="vP3" class="num-in" value="150" oninput="uS('p3',this.value)"></div>
+        <h3>PRODUCTION</h3>
+        <button class="btn" id="playBtn" onclick="toggleProduction()" disabled>▶ START MP4 PRODUCTION</button>
+        <button class="btn" onclick="savePreset()" style="border-color:#555; color:#888;">💾 SAVE PRESET (JSON)</button>
     </div>
-
-    <button class="btn" id="recBtn" onclick="toggleProduction()" disabled style="border-color:var(--accent2); color:var(--accent2);">🔴 START MP4 (H.264)</button>
 </div>
 
 <script>
-    let audio, fft, subCanvas, isPlaying = false, isStarted = false, currentFX = 'matrix';
+    let audio, fft, subCanvas, myFont;
+    let subtitles = [], settings = [];
+    let isPlaying = false, isStarted = false, editingIdx = 0;
     let mediaRecorder, recordedChunks = [];
-    
-    function uV(id, v){ document.getElementById(id).value = v; }
-    function uS(slId, v){ document.getElementById(slId).value = v; }
 
     function setup() {
-        let cnv = createCanvas(1280, 720, WEBGL);
+        let w = 1280, h = 720;
+        let cnv = createCanvas(w, h, WEBGL);
         cnv.parent('canvas-container');
-        subCanvas = createGraphics(1280, 720, WEBGL);
+        subCanvas = createGraphics(w, h, WEBGL);
         subCanvas.colorMode(HSB, 360, 100, 100, 100);
-        fft = new p5.FFT(0.8, 512);
+        fft = new p5.FFT();
         
-        const list = document.getElementById('fxList');
-        const FX_KEYS = Object.keys(window.ENGINES);
-        FX_KEYS.forEach(id => {
-            let b = document.createElement('button'); b.className = 'fx-btn'; b.innerText = id.toUpperCase();
-            if(id === currentFX) b.classList.add('active');
-            b.onclick = () => { currentFX = id; document.querySelectorAll('.fx-btn').forEach(x=>x.classList.remove('active')); b.classList.add('active'); };
-            list.appendChild(b);
-        });
-        
-        const scale = Math.min((windowWidth-600)/1280, windowHeight/720) * 0.95;
+        const scale = Math.min((windowWidth-660)/w, windowHeight/h) * 0.95;
         cnv.elt.style.transform = `scale(${scale})`;
     }
 
     function draw() {
         background(0); subCanvas.clear();
-        let bands = new Array(12).fill(0), fI = 1.0;
-        if (isStarted && audio && audio.isPlaying()) {
-            fft.analyze();
-            for(let i=0; i<12; i++) bands[i] = fft.getEnergy(map(i,0,11,20,8000));
-            fI = map(bands[0], 0, 255, 0.8, 4.0);
+        if (myFont) {
+            if (audio && audio.isPlaying()) {
+                fft.analyze();
+                renderTypoEngine(audio.currentTime());
+            } else if (!isStarted) {
+                drawGuideText();
+            }
         }
-
-        subCanvas.push();
-        subCanvas.translate(parseFloat(document.getElementById('mX').value), parseFloat(document.getElementById('mY').value), 0);
-        subCanvas.rotateX(radians(parseFloat(document.getElementById('rX').value)));
-        subCanvas.rotateY(radians(parseFloat(document.getElementById('rY').value)));
-        subCanvas.rotateZ(radians(parseFloat(document.getElementById('rZ').value)));
-
-        // [핵심] 분리된 라이브러리 엔진 호출
-        if(window.ENGINES[currentFX]) {
-            window.ENGINES[currentFX](
-                subCanvas, frameCount*0.02, bands, 
-                parseFloat(document.getElementById('p1').value),
-                parseFloat(document.getElementById('p2').value),
-                parseFloat(document.getElementById('p3').value)
-            );
-        }
-        subCanvas.pop();
-
         push(); translate(-width/2, -height/2); image(subCanvas, 0, 0); pop();
     }
 
-    function handleAudio(f) { audio = loadSound(URL.createObjectURL(f[0]), () => { document.getElementById('analyzeBtn').disabled=false; }); }
-    function activateEngine() { userStartAudio().then(()=>{ isStarted=true; document.getElementById('recBtn').disabled=false; }); }
+    function drawGuideText() {
+        subCanvas.push(); subCanvas.textFont(myFont); subCanvas.textAlign(CENTER, CENTER);
+        subCanvas.fill(0, 255, 204); subCanvas.textSize(30);
+        subCanvas.text("TYPO ARCHITECT v23.2.0\nWAITING FOR PRODUCTION", 0, 0); subCanvas.pop();
+    }
+
+    // --- 2. 요청된 8종 고난도 모션 로직 ---
+    function renderTypoEngine(curr) {
+        let idx = subtitles.findIndex(s => curr >= s.start && curr <= s.end);
+        if (idx === -1) return;
+        let sub = subtitles[idx], set = settings[idx], prog = map(curr, sub.start, sub.end, 0, 1);
+        let bass = fft.getEnergy("bass");
+
+        subCanvas.push();
+        subCanvas.textFont(myFont); subCanvas.textAlign(CENTER, CENTER);
+        subCanvas.textSize(set.size); subCanvas.fill(255);
+
+        let txt = set.isVertical ? sub.text.split('').join('\n') : sub.text;
+
+        switch(set.motion) {
+            case 'Directional': // 2-1 사방 진입
+                let d = floor(sub.start % 4);
+                let ox = d==0?-width*(1-prog):(d==1?width*(1-prog):0);
+                let oy = d==2?-height*(1-prog):(d==3?height*(1-prog):0);
+                subCanvas.translate(set.x + ox, set.y + oy);
+                subCanvas.text(txt, 0, 0);
+                break;
+
+            case 'Orbit90': // 2-2 90도 회전 진입/퇴장
+                let rot = prog<0.2?map(prog,0,0.2,-HALF_PI,0):(prog>0.8?map(prog,0.8,1,0,HALF_PI):0);
+                subCanvas.translate(set.x, set.y); subCanvas.rotateZ(rot);
+                subCanvas.text(txt, 0, 0);
+                break;
+
+            case 'Dissolve': // 2-3 & 2-4 가루 분해/비산
+                let chars = sub.text.split('');
+                chars.forEach((c, i) => {
+                    subCanvas.push();
+                    let sc = prog>0.7?map(prog,0.7,1,0,200):0;
+                    subCanvas.translate(set.x+(i-chars.length/2)*set.size*0.6+random(-sc,sc), set.y+random(-sc,sc));
+                    subCanvas.fill(255, map(prog,0.7,1,100,0));
+                    subCanvas.text(c, 0, 0); subCanvas.pop();
+                });
+                break;
+
+            case 'BusDrift': // 2-5 버스 뒤틀림
+                let bx = prog<0.2?map(prog,0,0.2,width,0):(prog>0.8?map(prog,0.8,1,0,-width):0);
+                subCanvas.translate(set.x+bx, set.y);
+                subCanvas.rotateZ(sin(prog*PI)*0.1);
+                subCanvas.text(txt, 0, 0);
+                break;
+
+            case 'Laser': // 2-6 레이저 각인
+                let l = floor(map(prog, 0, 0.5, 0, txt.length, true));
+                if(prog < 0.5) { subCanvas.drawingContext.shadowBlur = 20; subCanvas.drawingContext.shadowColor = 'cyan'; }
+                subCanvas.translate(set.x, set.y);
+                subCanvas.text(txt.substring(0, l), 0, 0);
+                break;
+
+            case 'Stamp': // 2-8 도장 찍기 (축소 후 확대)
+                let s = prog<0.1?map(prog,0,0.1,10,1):(prog>0.9?map(prog,0.9,1,1,10):1);
+                subCanvas.translate(set.x, set.y); subCanvas.scale(s);
+                subCanvas.text(txt, 0, 0);
+                break;
+
+            default:
+                subCanvas.translate(set.x, set.y); subCanvas.text(txt, 0, 0);
+        }
+        subCanvas.pop();
+    }
+
+    // --- 1. UI 양방향 수치 동기화 ---
+    function syncIn(key, v) { document.getElementById(`num_${key}`).value = v; settings[editingIdx][key] = parseFloat(v); }
+    function syncSl(key, v) { document.getElementById(`sl_${key}`).value = v; settings[editingIdx][key] = parseFloat(v); }
+    function updateSet(key, v) { settings[editingIdx][key] = (typeof v === 'boolean') ? v : (isNaN(v) ? v : parseFloat(v)); }
+
+    function handleSRT(files) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const blocks = e.target.result.replace(/\r/g, '').split('\n\n');
+            subtitles = []; settings = [];
+            const listEl = document.getElementById('subtitle-list'); listEl.innerHTML = '';
+            blocks.forEach((block, i) => {
+                const lines = block.split('\n'); if(lines.length<3) return;
+                const times = lines[1].split(' --> '), text = lines.slice(2).join(' ');
+                subtitles.push({ start: timeToSec(times[0]), end: timeToSec(times[1]), text: text });
+                settings.push({ motion: 'Directional', size: 60, x: 0, y: 0, isVertical: false });
+                
+                let item = document.createElement('div');
+                item.className = 'sub-item'; item.id = `sub_${i}`;
+                item.innerText = `${i+1}. ${text.substring(0,20)}...`;
+                item.onclick = () => selectSubtitle(i);
+                listEl.appendChild(item);
+            });
+            selectSubtitle(0); document.getElementById('playBtn').disabled = false;
+        };
+        reader.readAsText(files[0]);
+    }
+
+    function selectSubtitle(idx) {
+        editingIdx = idx;
+        document.querySelectorAll('.sub-item').forEach(el => el.classList.remove('active'));
+        document.getElementById(`sub_${idx}`).classList.add('active');
+        
+        let s = settings[idx];
+        document.getElementById('mSelect').value = s.motion;
+        document.getElementById('sl_size').value = s.size; document.getElementById('num_size').value = s.size;
+        document.getElementById('sl_x').value = s.x; document.getElementById('num_x').value = s.x;
+        document.getElementById('sl_y').value = s.y; document.getElementById('num_y').value = s.y;
+        document.getElementById('chkVertical').checked = s.isVertical;
+    }
+
+    // --- 프리셋 저장 및 MP4 PRODUCTION ---
+    function savePreset() {
+        const blob = new Blob([JSON.stringify(settings)], {type: 'application/json'});
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+        a.download = `motion_preset_${Date.now()}.json`; a.click();
+    }
 
     async function toggleProduction() {
         if(isPlaying) {
             audio.stop(); isPlaying = false; mediaRecorder.stop();
-            document.getElementById('recBtn').innerText = "🔴 START MP4 (H.264)";
+            document.getElementById('playBtn').innerText = "▶ START MP4 PRODUCTION";
         } else {
             recordedChunks = [];
             const stream = document.querySelector('canvas').captureStream(60);
@@ -131,12 +255,16 @@
             mediaRecorder.onstop = () => {
                 const blob = new Blob(recordedChunks, { type: 'video/mp4' });
                 const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-                a.download = `viz_master_${Date.now()}.mp4`; a.click();
+                a.download = `typo_export_${Date.now()}.mp4`; a.click();
             };
             mediaRecorder.start(); audio.play(); isPlaying = true; isStarted = true;
-            document.getElementById('recBtn').innerText = "⏹ STOP & SAVE";
+            document.getElementById('playBtn').innerText = "⏹ STOP & SAVE MP4";
         }
     }
+
+    function handleFont(f) { loadFont(URL.createObjectURL(f[0]), (font) => { myFont = font; }); }
+    function handleAudio(f) { audio = loadSound(URL.createObjectURL(f[0])); }
+    function timeToSec(t) { let p = t.split(':'); return parseInt(p[0])*3600 + parseInt(p[1])*60 + parseFloat(p[2].replace(',','.')); }
 </script>
 </body>
 </html>
