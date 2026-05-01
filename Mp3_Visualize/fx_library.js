@@ -5,9 +5,10 @@
 window.ENGINES = {
     // 1. Matrix: 가시성 및 Y축 루프 보정
     matrix: (pg, t, b, p1, p2, p3) => {
+        pg.textFont('sans-serif');
         pg.textSize(p2 * 5 + 10);
         pg.textAlign(CENTER, CENTER);
-        pg.textFont('sans-serif')
+
         for(let i = 0; i < 40; i++) {
             let x = (i - 20) * 50;
             let y = (t * p1 * 500 + i * 200) % 1600 - 800;
