@@ -2,15 +2,15 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>TYPO ARCHITECT v23.0.0</title>
+    <title>TYPO ARCHITECT v23.1.0 — Full Integrated PRO</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <style>
         :root{ --bg:#050508; --accent:#00ffcc; --panel:#0e0e15; --text:#fff; --record:#ff3377; }
         body{ background:var(--bg); color:var(--text); margin:0; overflow:hidden; font-family:'Pretendard', sans-serif; display:flex; }
         
-        /* 4. UI 레이아웃 분리: 왼쪽 설정 / 오른쪽 프리뷰 */
-        #editor-panel { width:450px; background:var(--panel); height:100vh; padding:15px; border-right:1px solid rgba(0,255,204,0.2); overflow-y:auto; }
+        /* 4. UI 레이아웃: 왼쪽 설정 패널 / 오른쪽 프리뷰 */
+        #editor-panel { width:450px; background:var(--panel); height:100vh; padding:15px; border-right:1px solid rgba(0,255,204,0.2); overflow-y:auto; display:flex; flex-direction:column; }
         #canvas-container { flex:1; background:#000; display:flex; align-items:center; justify-content:center; position:relative; }
         
         .sub-item { background:rgba(255,255,255,0.03); border:1px solid #333; border-radius:6px; padding:12px; margin-bottom:15px; }
@@ -18,31 +18,31 @@
         
         /* 1. 수치 직접 입력 UI */
         .ctrl-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
-        .ctrl-row label { font-size:9px; color:#888; width:60px; }
-        .ctrl-row input[type=range] { flex:1; accent-color:var(--accent); }
-        .num-in { width:45px; background:#000; color:var(--accent); border:1px solid #444; font-size:10px; text-align:center; padding:2px; }
+        .ctrl-row label { font-size:9px; color:#888; width:70px; }
+        .ctrl-row input[type=range] { flex:1; accent-color:var(--accent); height:2px; }
+        .num-in { width:55px; background:#000; color:var(--accent); border:1px solid #444; font-size:10px; text-align:center; padding:2px; }
 
         .btn { padding:8px; background:transparent; border:1px solid var(--accent); color:var(--accent); cursor:pointer; font-size:10px; border-radius:4px; font-weight:bold; width:100%; margin-bottom:5px; }
-        .btn:hover { background:rgba(0,255,204,0.1); }
-        canvas { border: 1px solid #333; }
+        #recBtn { border-color:var(--record); color:var(--record); }
+        #recBtn.active { background:var(--record); color:#fff; animation:blink 1s infinite; }
+        @keyframes blink { 50% { opacity:0.5; } }
+        canvas { border: 1px solid var(--accent); }
     </style>
 </head>
 <body>
 
 <div id="editor-panel">
-    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:5px; margin-bottom:15px;">
-        <button class="btn" onclick="document.getElementById('fIn').click()">FONT</button>
-        <button class="btn" onclick="document.getElementById('mIn').click()">AUDIO</button>
-        <button class="btn" onclick="document.getElementById('sIn').click()">SRT</button>
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:5px; margin-bottom:10px;">
+        <button class="btn" onclick="document.getElementById('fIn').click()">🔤 FONT</button>
+        <button class="btn" onclick="document.getElementById('mIn').click()">🎵 AUDIO</button>
+        <button class="btn" onclick="document.getElementById('sIn').click()">📝 SRT</button>
     </div>
     <input type="file" id="fIn" accept=".ttf,.otf" style="display:none" onchange="handleFont(this.files)">
     <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleAudio(this.files)">
     <input type="file" id="sIn" accept=".srt" style="display:none" onchange="handleSRT(this.files)">
     
-    <div style="display:flex; gap:5px;">
-        <button class="btn" id="playBtn" onclick="startProduction()" disabled>▶ START REC</button>
-        <button class="btn" onclick="saveAllPresets()" style="color:var(--record); border-color:var(--record);">💾 SAVE PRESET</button>
-    </div>
+    <button class="btn" id="playBtn" onclick="toggleProduction()" disabled>▶ START MP4 PRODUCTION</button>
+    <button class="btn" onclick="savePreset()" style="border-color:#aaa; color:#aaa;">💾 SAVE PRESET (JSON)</button>
 
     <div id="subtitle-list"></div>
 </div>
@@ -63,8 +63,8 @@
         subCanvas.colorMode(HSB, 360, 100, 100, 100);
         fft = new p5.FFT();
         
-        const scale = Math.min((windowWidth-450)/w, windowHeight/h) * 0.9;
-        cnv.style('transform', `scale(${scale})`);
+        const scale = Math.min((windowWidth-450)/w, windowHeight/h) * 0.95;
+        cnv.elt.style.transform = `scale(${scale})`;
     }
 
     function draw() {
@@ -73,23 +73,18 @@
         if (myFont) {
             if (audio && audio.isPlaying()) {
                 fft.analyze();
-                renderTypoMaster(audio.currentTime());
+                renderTypoEngine(audio.currentTime());
             } else if (!isStarted) {
-                drawGuideText();
+                subCanvas.push(); subCanvas.textFont(myFont); subCanvas.textAlign(CENTER, CENTER);
+                subCanvas.fill(0, 255, 204); subCanvas.textSize(30);
+                subCanvas.text("READY FOR MP4 PRODUCTION\nLOAD FONT/AUDIO/SRT", 0, 0); subCanvas.pop();
             }
         }
         push(); translate(-width/2, -height/2); image(subCanvas, 0, 0); pop();
     }
 
-    function drawGuideText() {
-        subCanvas.push(); subCanvas.textFont(myFont); subCanvas.textAlign(CENTER, CENTER);
-        subCanvas.fill(0, 255, 204); subCanvas.textSize(30);
-        subCanvas.text("TYPO ARCHITECT v23\nREADY FOR PRODUCTION", 0, 0);
-        subCanvas.pop();
-    }
-
-    // --- 2. 하이엔드 모션 엔진 로직 ---
-    function renderTypoMaster(curr) {
+    // --- 2. 8종 고난도 모션 엔진 구현 ---
+    function renderTypoEngine(curr) {
         let idx = subtitles.findIndex(s => curr >= s.start && curr <= s.end);
         if (idx === -1) return;
         let sub = subtitles[idx], set = settings[idx], prog = map(curr, sub.start, sub.end, 0, 1), bass = fft.getEnergy("bass");
@@ -100,60 +95,61 @@
         subCanvas.textSize(set.size);
         subCanvas.fill(255);
 
-        // 3. 세로 쓰기 적용
-        let displayLines = set.isVertical ? sub.text.split('').join('\n') : sub.text;
+        let txt = set.isVertical ? sub.text.split('').join('\n') : sub.text;
 
         switch(set.motion) {
-            case 'DirectionalIn': // 2-1 사방 진입
-                let dir = floor(sub.start % 4);
-                let offX = dir==0 ? -width*0.5*(1-prog) : (dir==1 ? width*0.5*(1-prog) : 0);
-                let offY = dir==2 ? -height*0.5*(1-prog) : (dir==3 ? height*0.5*(1-prog) : 0);
-                subCanvas.translate(set.x + offX, set.y + offY);
-                subCanvas.text(displayLines, 0, 0);
+            case 'Directional': // 2-1 사방 진입
+                let d = floor(sub.start % 4);
+                let ox = d==0?-width*(1-prog):(d==1?width*(1-prog):0);
+                let oy = d==2?-height*(1-prog):(d==3?height*(1-prog):0);
+                subCanvas.translate(set.x + ox, set.y + oy);
+                subCanvas.text(txt, 0, 0);
                 break;
 
             case 'Orbit90': // 2-2 90도 회전 진입/퇴장
-                let rot = prog < 0.2 ? map(prog, 0, 0.2, -HALF_PI, 0) : (prog > 0.8 ? map(prog, 0.8, 1, 0, -HALF_PI) : 0);
-                subCanvas.translate(set.x, set.y);
-                subCanvas.rotateZ(rot);
-                subCanvas.text(displayLines, 0, 0);
+                let rot = prog<0.2?map(prog,0,0.2,-HALF_PI,0):(prog>0.8?map(prog,0.8,1,0,HALF_PI):0);
+                subCanvas.translate(set.x, set.y); subCanvas.rotateZ(rot);
+                subCanvas.text(txt, 0, 0);
                 break;
 
-            case 'DustDissolve': // 2-3 & 2-4 가루 분해
+            case 'Dissolve': // 2-3 & 2-4 가루 분해/비산
                 let chars = sub.text.split('');
                 chars.forEach((c, i) => {
                     subCanvas.push();
-                    let scatter = prog > 0.7 ? map(prog, 0.7, 1, 0, 200) : 0;
-                    subCanvas.translate(set.x + (i-chars.length/2)*set.size*0.6 + random(-scatter, scatter), set.y + random(-scatter, scatter));
-                    subCanvas.fill(255, map(prog, 0.7, 1, 100, 0));
-                    subCanvas.text(c, 0, 0);
-                    subCanvas.pop();
+                    let sc = prog>0.7?map(prog,0.7,1,0,200):0;
+                    subCanvas.translate(set.x+(i-chars.length/2)*set.size*0.6+random(-sc,sc), set.y+random(-sc,sc));
+                    subCanvas.fill(255, map(prog,0.7,1,100,0));
+                    subCanvas.text(c, 0, 0); subCanvas.pop();
                 });
                 break;
 
-            case 'BusDrift': // 2-5 버스 뒤틀림 진입
-                let bX = prog < 0.3 ? map(prog, 0, 0.3, width, 0) : (prog > 0.8 ? map(prog, 0.8, 1, 0, -width) : 0);
-                let skew = sin(frameCount*0.2) * 0.2;
-                subCanvas.translate(set.x + bX, set.y);
-                subCanvas.rotateZ(skew);
-                subCanvas.text(displayLines, 0, 0);
+            case 'BusDrift': // 2-5 버스 뒤틀림
+                let bx = prog<0.2?map(prog,0,0.2,width,0):(prog>0.8?map(prog,0.8,1,0,-width):0);
+                subCanvas.translate(set.x+bx, set.y);
+                subCanvas.rotateZ(sin(prog*PI)*0.1);
+                subCanvas.text(txt, 0, 0);
                 break;
 
             case 'Stamp': // 2-8 도장 찍기
-                let scl = prog < 0.2 ? map(prog, 0, 0.2, 5, 1) : (prog > 0.8 ? map(prog, 0.8, 1, 1, 5) : 1);
+                let s = prog<0.15?map(prog,0,0.15,8,1):(prog>0.85?map(prog,0.85,1,1,8):1);
+                subCanvas.translate(set.x, set.y); subCanvas.scale(s);
+                subCanvas.text(txt, 0, 0);
+                break;
+
+            case 'Laser': // 2-6 레이저 각인 (타이핑 변형)
+                let l = floor(map(prog, 0, 0.5, 0, txt.length, true));
+                if(prog < 0.5) { subCanvas.drawingContext.shadowBlur = 15; subCanvas.drawingContext.shadowColor = 'cyan'; }
                 subCanvas.translate(set.x, set.y);
-                subCanvas.scale(scl);
-                subCanvas.text(displayLines, 0, 0);
+                subCanvas.text(txt.substring(0, l), 0, 0);
                 break;
 
             default:
-                subCanvas.translate(set.x, set.y);
-                subCanvas.text(displayLines, 0, 0);
+                subCanvas.translate(set.x, set.y); subCanvas.text(txt, 0, 0);
         }
         subCanvas.pop();
     }
 
-    // --- 1 & 4. UI 생성 및 양방향 수치 제어 ---
+    // --- 1. UI 및 양방향 제어 ---
     function handleSRT(files) {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -164,29 +160,24 @@
                 const lines = block.split('\n'); if(lines.length<3) return;
                 const times = lines[1].split(' --> '), text = lines.slice(2).join(' ');
                 subtitles.push({ start: timeToSec(times[0]), end: timeToSec(times[1]), text: text });
-                settings.push({ motion: 'DirectionalIn', size: 60, x: 0, y: 0, isVertical: false });
+                settings.push({ motion: 'Directional', size: 60, x: 0, y: 0, isVertical: false });
                 
                 const item = document.createElement('div');
                 item.className = 'sub-item';
                 item.innerHTML = `
                     <div style="color:var(--accent); font-size:10px; margin-bottom:8px;">${i+1}. ${text}</div>
-                    <div class="ctrl-row">
-                        <label>MOTION</label>
-                        <select onchange="updateSet(${i}, 'motion', this.value)">
-                            <option value="DirectionalIn">Directional In</option>
-                            <option value="Orbit90">90deg Orbit</option>
-                            <option value="DustDissolve">Dust Dissolve</option>
-                            <option value="BusDrift">Bus Drift</option>
-                            <option value="Stamp">Stamp Zoom</option>
-                        </select>
-                    </div>
-                    ${createNumSlider(i, 'SIZE', 'size', 10, 300, 60)}
-                    ${createNumSlider(i, 'POS X', 'x', -640, 640, 0)}
-                    ${createNumSlider(i, 'POS Y', 'y', -360, 360, 0)}
-                    <div class="ctrl-row">
-                        <label>VERTICAL</label>
-                        <input type="checkbox" onchange="updateSet(${i}, 'isVertical', this.checked)">
-                    </div>
+                    <select class="btn" onchange="updateSet(${i}, 'motion', this.value)">
+                        <option value="Directional">Directional In</option>
+                        <option value="Orbit90">Orbit 90deg</option>
+                        <option value="Dissolve">Dust Dissolve</option>
+                        <option value="BusDrift">Bus Drift</option>
+                        <option value="Stamp">Stamp Zoom</option>
+                        <option value="Laser">Laser Engrave</option>
+                    </select>
+                    ${createCtrl(i, 'SIZE', 'size', 10, 300, 60)}
+                    ${createCtrl(i, 'POS X', 'x', -640, 640, 0)}
+                    ${createCtrl(i, 'POS Y', 'y', -360, 360, 0)}
+                    <label style="font-size:9px;"><input type="checkbox" onchange="updateSet(${i}, 'isVertical', this.checked)"> VERTICAL TEXT</label>
                 `;
                 listEl.appendChild(item);
             });
@@ -195,48 +186,53 @@
         reader.readAsText(files[0]);
     }
 
-    function createNumSlider(idx, label, key, min, max, def) {
+    function createCtrl(i, label, key, min, max, def) {
         return `
             <div class="ctrl-row">
                 <label>${label}</label>
-                <input type="range" id="sl_${key}_${idx}" min="${min}" max="${max}" value="${def}" 
-                    oninput="syncInput(${idx}, '${key}', this.value)">
-                <input type="number" id="num_${key}_${idx}" class="num-in" value="${def}" 
-                    oninput="syncSlider(${idx}, '${key}', this.value)">
+                <input type="range" id="sl_${key}_${i}" min="${min}" max="${max}" value="${def}" oninput="syncIn(${i},'${key}',this.value)">
+                <input type="number" id="num_${key}_${i}" class="num-in" value="${def}" oninput="syncSl(${i},'${key}',this.value)">
             </div>
         `;
     }
 
-    function syncInput(idx, key, val) {
-        document.getElementById(`num_${key}_${idx}`).value = val;
-        updateSet(idx, key, val);
-    }
-    function syncSlider(idx, key, val) {
-        document.getElementById(`sl_${key}_${idx}`).value = val;
-        updateSet(idx, key, val);
-    }
+    function syncIn(i, k, v) { document.getElementById(`num_${k}_${i}`).value = v; updateSet(i,k,v); }
+    function syncSl(i, k, v) { document.getElementById(`sl_${k}_${i}`).value = v; updateSet(i,k,v); }
+    function updateSet(i, k, v) { settings[i][k] = (typeof v === 'boolean') ? v : (isNaN(v) ? v : parseFloat(v)); }
 
-    // --- 4. 프리셋 저장/불러오기 ---
-    function saveAllPresets() {
-        const data = JSON.stringify(settings);
-        const now = new Date();
-        const timestamp = `${now.getHours()}${now.getMinutes()}${now.getSeconds()}`;
-        const filename = `${settings[0].motion}_${timestamp}.json`;
-        
-        const blob = new Blob([data], {type: 'application/json'});
+    // --- 4. 프리셋 저장 ---
+    function savePreset() {
+        const blob = new Blob([JSON.stringify(settings)], {type: 'application/json'});
         const a = document.createElement('a');
+        const now = new Date();
         a.href = URL.createObjectURL(blob);
-        a.download = filename;
+        a.download = `preset_${now.getHours()}${now.getMinutes()}${now.getSeconds()}.json`;
         a.click();
     }
 
-    function updateSet(idx, key, val) { 
-        settings[idx][key] = (typeof val === 'boolean') ? val : (isNaN(val) ? val : parseFloat(val)); 
+    // --- 5. MP4 저장 통합 ---
+    async function toggleProduction() {
+        if(isPlaying) {
+            audio.stop(); isPlaying = false; mediaRecorder.stop();
+            document.getElementById('playBtn').innerText = "▶ START MP4 PRODUCTION";
+        } else {
+            recordedChunks = [];
+            const stream = document.querySelector('canvas').captureStream(60);
+            mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/mp4; codecs=avc1' });
+            mediaRecorder.ondataavailable = e => { if(e.data.size > 0) recordedChunks.push(e.data); };
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(recordedChunks, { type: 'video/mp4' });
+                const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+                a.download = `production_${Date.now()}.mp4`; a.click();
+            };
+            mediaRecorder.start(); audio.play(); isPlaying = true; isStarted = true;
+            document.getElementById('playBtn').innerText = "⏹ STOP & EXPORT MP4";
+        }
     }
+
     function handleFont(f) { loadFont(URL.createObjectURL(f[0]), (font) => { myFont = font; }); }
     function handleAudio(f) { audio = loadSound(URL.createObjectURL(f[0])); }
     function timeToSec(t) { let p = t.split(':'); return parseInt(p[0])*3600 + parseInt(p[1])*60 + parseFloat(p[2].replace(',','.')); }
-    async function startProduction() { audio.play(); isStarted = true; isPlaying = true; }
 </script>
 </body>
 </html>
