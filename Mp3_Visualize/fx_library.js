@@ -408,15 +408,6 @@ window.ENGINES = {
         }
     },
 
-    matrix: (pg, t, b, p1, p2, p3, st) => {
-        pg.textSize(p2 * 5 + 10); pg.textAlign(CENTER, CENTER);
-        for(let i = 0; i < 40; i++) {
-            let x = (i - 20) * 50; let y = (t * p1 * 300 + i * 200) % 1600 - 800;
-            pg.fill(120, 100, p5.prototype.map(b[i % 12], 0, 255, 40, 100));
-            pg.text(char(p5.prototype.random(44032, 44100)), x, y);
-        }
-    },
-
     final_void: (pg, t, b, p1, p2, p3, st) => {
         pg.background(0, 0, p5.prototype.map(b[0], 0, 255, 0, 15));
     },
