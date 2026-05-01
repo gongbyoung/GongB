@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>SPECTRUM STUDIO v21.1.8 — Orientation Master</title>
+    <title>SPECTRUM STUDIO v21.1.8 — MP4 Exporter</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <script src="fx_library.js" onload="isLibraryReady = true;"></script>
@@ -19,14 +19,15 @@
         .fx-thumb.active { border-color: var(--accent2); box-shadow: 0 0 10px var(--accent2); }
         .fx-thumb::after { content: attr(data-name); position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(0,0,0,0.8); font-size: 5px; text-align: center; color: #fff; padding: 2px 0; overflow: hidden; white-space: nowrap; }
         .viz-area { position:relative; background:#000; display: flex; align-items: center; justify-content: center; flex:1; }
-        #p5-container canvas { width: 100% !important; height: auto !important; max-height: 100% !important; }
+        #p5-container canvas { width: 100% !important; height: auto !important; max-height: 100% !important; border: 1px solid var(--accent); }
         .log-panel { background:#000; border:1px solid #222; border-radius:4px; padding:10px; flex:1; overflow-y:auto; font-family: monospace; font-size:10px; color: #888; }
-        .log-data { color: #f1c40f; }
         .btn { background:transparent; border:1px solid var(--border); border-radius:4px; color:#fff; padding:6px; cursor:pointer; font-size:9px; width:100%; height: 32px; margin-bottom:5px; transition: 0.2s; }
         .btn:hover:not(:disabled) { border-color: var(--accent); background: rgba(0,255,204,0.05); }
         select { width:100%; background:#000; color:var(--accent); border:1px solid var(--border); padding:5px; font-size:10px; margin-bottom:5px; border-radius:4px; outline:none; }
         input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; height:2px; margin: 5px 0; }
         .rot-label { font-size:8px; color:var(--accent2); display: flex; justify-content: space-between; }
+        #recBtn.recording { background: var(--accent2) !important; color: white; animation: blink 1s infinite; }
+        @keyframes blink { 50% { opacity: 0.5; } }
     </style>
 </head>
 <body>
@@ -79,7 +80,8 @@
             <button class="btn" onclick="saveThumbnail()">📷 SAVE PALETTE PNG</button>
             <button class="btn" onclick="document.getElementById('mIn').click()">1. LOAD MP3</button>
             <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleFile(this.files)">
-            <button class="btn" id="recBtn" onclick="toggleSync()" disabled style="background:var(--accent2); border:none;">2. START PRODUCTION</button>
+            <!-- 녹화 기능이 통합된 버튼 -->
+            <button class="btn" id="recBtn" onclick="toggleSync()" disabled style="background:var(--accent2); border:none;">2. START PRODUCTION (MP4)</button>
         </div>
         <div class="log-panel" id="logPanel"></div>
     </div>
@@ -88,6 +90,10 @@
 <script>
     let audio, fft, canvasRef, bgCanvas, isPlaying = false, currentFXId = '';
     let isEngineActive = false, lastDataLogTime = 0, bgColor = [2, 2, 8];
+
+    // 녹화 관련 변수
+    let mediaRecorder;
+    let recordedChunks = [];
 
     function addLog(msg, type = 'info') {
         const p = document.getElementById('logPanel'); const e = document.createElement('div');
@@ -150,7 +156,6 @@
             }
         }
 
-        // [중요] 비주얼 버퍼에 전역 회전값 적용[cite: 1]
         bgCanvas.push();
         bgCanvas.rotateX(radians(parseFloat(document.getElementById('rotX').value)));
         bgCanvas.rotateY(radians(parseFloat(document.getElementById('rotY').value)));
@@ -170,8 +175,59 @@
     }
 
     function handleFile(files) { audio = loadSound(URL.createObjectURL(files[0]), () => { document.getElementById('analyzeBtn').disabled = false; addLog("MP3 Loaded."); }); }
+    
     function saveThumbnail() { saveCanvas(canvasRef, 'palette_'+currentFXId, 'png'); addLog("Thumb Saved."); }
-    async function toggleSync() { if (isPlaying) { audio.stop(); isPlaying = false; } else { audio.play(); isPlaying = true; } }
+
+    // --- MP4 녹화 핵심 로직 ---
+    async function toggleSync() {
+        if (isPlaying) {
+            // 정지 및 저장
+            audio.stop();
+            isPlaying = false;
+            mediaRecorder.stop();
+            document.getElementById('recBtn').innerText = "2. START PRODUCTION (MP4)";
+            document.getElementById('recBtn').classList.remove('recording');
+            addLog("Recording stopped. Saving MP4...");
+        } else {
+            // 녹화 시작
+            recordedChunks = [];
+            const stream = canvasRef.captureStream(60); // 60fps 캡처
+            
+            // H264 MP4 코덱 설정 시도 (브라우저 지원 여부에 따라 다름)
+            let options = { mimeType: 'video/mp4; codecs=avc1' };
+            if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                addLog("MP4/H264 not supported. Using WebM/VP9 instead.", "warn");
+                options = { mimeType: 'video/webm; codecs=vp9' };
+            }
+
+            mediaRecorder = new MediaRecorder(stream, options);
+            
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) recordedChunks.push(event.data);
+            };
+
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(recordedChunks, { type: options.mimeType });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `viz_production_${Date.now()}.${options.mimeType.includes('mp4') ? 'mp4' : 'webm'}`;
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+                }, 100);
+            };
+
+            mediaRecorder.start();
+            audio.play();
+            isPlaying = true;
+            document.getElementById('recBtn').innerText = "⏹ STOP & EXPORT VIDEO";
+            document.getElementById('recBtn').classList.add('recording');
+            addLog(`Recording started (${options.mimeType})...`, "success");
+        }
+    }
 </script>
 </body>
 </html>
