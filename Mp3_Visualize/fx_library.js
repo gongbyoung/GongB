@@ -1,11 +1,7 @@
 /**
- * SPECTRUM STUDIO FX LIBRARY v22.9.5
- * 2026.05.01 수정 사항 완벽 반영 및 32종 엔진 전체 포함
- */
-window.ENGINES = {
-    /**
- * SPECTRUM STUDIO FX LIBRARY - FLOWER ENGINES INTEGRATION
- * 모란, 해바라기, 데이지, 나팔꽃, 무궁화 엔진 포함
+ * SPECTRUM STUDIO FX LIBRARY v22.9.6
+ * 32종 기존 엔진 + 5종 프리미엄 꽃 엔진 (모란, 해바라기, 데이지, 나팔꽃, 무궁화)
+ * 모든 수정 사항 반영 및 문법 오류 교정 완결본
  */
 
 // ─────────────────────────────────────────────
@@ -34,122 +30,120 @@ const _flyPetal = (pg, t, b, hue, sat, bri, petalW, petalH, seed, count) => {
     }
 };
 
-// 1. PEONY (모란)
-window.ENGINES.peony = (pg, t, b, p1, p2, p3, st) => {
-    let vol = b[0], mid = b[4], hi = b[8];
-    let layers = Math.floor(p5.prototype.map(p1, 10, 100, 3, 7));
-    let baseHue = st === 'random' ? (t * 20) % 360 : 340;
-    pg.push(); pg.noStroke();
-    for (let layer = layers; layer >= 0; layer--) {
-        let petals = 6 + layer * 2;
-        let radius = p3 * (0.35 + layer * 0.12) + vol * 0.3;
+window.ENGINES = {
+    // 1~5. 프리미엄 꽃 엔진 (신규 통합)
+    peony: (pg, t, b, p1, p2, p3, st) => {
+        let vol = b[0], mid = b[4], hi = b[8];
+        let layers = Math.floor(p5.prototype.map(p1, 10, 100, 3, 7));
+        let baseHue = st === 'random' ? (t * 20) % 360 : 340;
+        pg.push(); pg.noStroke();
+        for (let layer = layers; layer >= 0; layer--) {
+            let petals = 6 + layer * 2;
+            let radius = p3 * (0.35 + layer * 0.12) + vol * 0.3;
+            for (let i = 0; i < petals; i++) {
+                pg.push();
+                let ang = (TWO_PI / petals) * i + t * 0.2 + layer * 0.15;
+                let tremor = p5.prototype.map(hi, 0, 255, 0, 8) * Math.sin(t * 8 + i + layer);
+                pg.rotateZ(ang + tremor * 0.02); pg.translate(radius, 0); pg.rotateZ(HALF_PI);
+                pg.fill(st === 'random' ? (baseHue - layer * 8 + i * 5) % 360 : baseHue - layer * 8, 60 + layer * 5, 95 - layer * 3, 82);
+                let pLen = p3 * 0.38 + p5.prototype.map(mid, 0, 255, 0, p3 * 0.15) + tremor;
+                pg.beginShape(); pg.vertex(0, 0);
+                pg.bezierVertex(-p2 * 1.8, -pLen * 0.4, -p2 * 2, -pLen * 0.8, 0, -pLen);
+                pg.bezierVertex(p2 * 2, -pLen * 0.8, p2 * 1.8, -pLen * 0.4, 0, 0);
+                pg.endShape(CLOSE); pg.pop();
+            }
+        }
+        pg.fill(50, 90, 100); pg.sphere(p2 * 2 + vol * 0.05); pg.pop();
+        _flyPetal(pg, t, b, baseHue, 50, 95, 12, 22, 1001, 18);
+    },
+
+    sunflower: (pg, t, b, p1, p2, p3, st) => {
+        let vol = b[0], mid = b[3], hi = b[9];
+        let petals = Math.floor(p5.prototype.map(p1, 10, 100, 16, 28));
+        let baseH = st === 'random' ? (t * 15) % 360 : 40;
+        pg.push(); pg.noStroke();
         for (let i = 0; i < petals; i++) {
             pg.push();
-            let ang = (TWO_PI / petals) * i + t * 0.2 + layer * 0.15;
-            let tremor = p5.prototype.map(hi, 0, 255, 0, 8) * Math.sin(t * 8 + i + layer);
-            pg.rotateZ(ang + tremor * 0.02); pg.translate(radius, 0); pg.rotateZ(HALF_PI);
-            pg.fill(st === 'random' ? (baseHue - layer * 8 + i * 5) % 360 : baseHue - layer * 8, 60 + layer * 5, 95 - layer * 3, 82);
-            let pLen = p3 * 0.38 + p5.prototype.map(mid, 0, 255, 0, p3 * 0.15) + tremor;
+            let ang = (TWO_PI / petals) * i + t * 0.15;
+            let flap = p5.prototype.map(hi, 0, 255, 0, 0.12) * Math.sin(t * 6 + i * 1.3);
+            pg.rotateZ(ang + flap); pg.translate(p3 * 0.55 + vol * 0.25, 0); pg.rotateZ(HALF_PI);
+            pg.fill(st === 'random' ? (baseH + i * 3) % 360 : baseH + (i % 3) * 8, 85, 98, 90);
+            let pLen = p3 * 0.42 + p5.prototype.map(mid, 0, 255, 0, p3 * 0.12);
             pg.beginShape(); pg.vertex(0, 0);
-            pg.bezierVertex(-p2 * 1.8, -pLen * 0.4, -p2 * 2, -pLen * 0.8, 0, -pLen);
-            pg.bezierVertex(p2 * 2, -pLen * 0.8, p2 * 1.8, -pLen * 0.4, 0, 0);
+            pg.bezierVertex(-p2 * 2.2, -pLen * 0.35, -p2 * 1.5, -pLen * 0.9, 0, -pLen);
+            pg.bezierVertex(p2 * 1.5, -pLen * 0.9, p2 * 2.2, -pLen * 0.35, 0, 0);
             pg.endShape(CLOSE); pg.pop();
         }
-    }
-    pg.fill(50, 90, 100); pg.sphere(p2 * 2 + vol * 0.05); pg.pop();
-    _flyPetal(pg, t, b, baseHue, 50, 95, 12, 22, 1001, 18);
-};
+        pg.fill(25, 60, 20); pg.push(); pg.translate(0, 0, vol * 0.05); pg.cylinder(p3 * 0.28, 15, 32); pg.pop();
+        _flyPetal(pg, t, b, baseH, 85, 98, 14, 26, 2002, 14);
+    },
 
-// 2. SUNFLOWER (해바라기)
-window.ENGINES.sunflower = (pg, t, b, p1, p2, p3, st) => {
-    let vol = b[0], mid = b[3], hi = b[9];
-    let petals = Math.floor(p5.prototype.map(p1, 10, 100, 16, 28));
-    let baseH = st === 'random' ? (t * 15) % 360 : 40;
-    pg.push(); pg.noStroke();
-    for (let i = 0; i < petals; i++) {
-        pg.push();
-        let ang = (TWO_PI / petals) * i + t * 0.15;
-        let flap = p5.prototype.map(hi, 0, 255, 0, 0.12) * Math.sin(t * 6 + i * 1.3);
-        pg.rotateZ(ang + flap); pg.translate(p3 * 0.55 + vol * 0.25, 0); pg.rotateZ(HALF_PI);
-        pg.fill(st === 'random' ? (baseH + i * 3) % 360 : baseH + (i % 3) * 8, 85, 98, 90);
-        let pLen = p3 * 0.42 + p5.prototype.map(mid, 0, 255, 0, p3 * 0.12);
-        pg.beginShape(); pg.vertex(0, 0);
-        pg.bezierVertex(-p2 * 2.2, -pLen * 0.35, -p2 * 1.5, -pLen * 0.9, 0, -pLen);
-        pg.bezierVertex(p2 * 1.5, -pLen * 0.9, p2 * 2.2, -pLen * 0.35, 0, 0);
-        pg.endShape(CLOSE); pg.pop();
-    }
-    pg.fill(25, 60, 20); pg.push(); pg.translate(0, 0, vol * 0.05); pg.cylinder(p3 * 0.28, 15, 32); pg.pop();
-    _flyPetal(pg, t, b, baseH, 85, 98, 14, 26, 2002, 14);
-};
+    daisy: (pg, t, b, p1, p2, p3, st) => {
+        let vol = b[0], mid = b[5], hi = b[10];
+        let petals = Math.floor(p5.prototype.map(p1, 10, 100, 18, 36));
+        pg.push(); pg.noStroke();
+        for (let layer = 0; layer < 2; layer++) {
+            for (let i = 0; i < petals; i++) {
+                pg.push();
+                let ang = (TWO_PI / petals) * i + (layer * PI / petals) + t * 0.1;
+                pg.rotateZ(ang); pg.translate(p3 * 0.25 + vol * 0.15, 0); pg.rotateZ(HALF_PI);
+                pg.fill(st === 'random' ? (i * 10) % 360 : 0, st === 'random' ? 30 : 5, 97, 88);
+                let pLen = p3 * 0.48 + p5.prototype.map(mid, 0, 255, 0, p3 * 0.1) + p5.prototype.map(hi, 0, 255, 0, 10);
+                pg.beginShape(); pg.vertex(0, 0);
+                pg.bezierVertex(-p2 * 0.8, -pLen * 0.3, -p2 * 0.4, -pLen * 0.85, 0, -pLen);
+                pg.bezierVertex(p2 * 0.4, -pLen * 0.85, p2 * 0.8, -pLen * 0.3, 0, 0);
+                pg.endShape(CLOSE); pg.pop();
+            }
+        }
+        pg.fill(28, 90, 100); pg.sphere(p3 * 0.18 + vol * 0.08); pg.pop();
+        _flyPetal(pg, t, b, 0, 5, 97, 6, 20, 3003, 20);
+    },
 
-// 3. DAISY (데이지)
-window.ENGINES.daisy = (pg, t, b, p1, p2, p3, st) => {
-    let vol = b[0], mid = b[5], hi = b[10];
-    let petals = Math.floor(p5.prototype.map(p1, 10, 100, 18, 36));
-    pg.push(); pg.noStroke();
-    for (let layer = 0; layer < 2; layer++) {
-        for (let i = 0; i < petals; i++) {
+    morning_glory: (pg, t, b, p1, p2, p3, st) => {
+        let vol = b[0], hi = b[8];
+        let baseH = st === 'random' ? (t * 25) % 360 : 265;
+        pg.push(); pg.noStroke();
+        for (let i = 0; i < 5; i++) {
             pg.push();
-            let ang = (TWO_PI / petals) * i + (layer * PI / petals) + t * 0.1;
-            pg.rotateZ(ang); pg.translate(p3 * 0.25 + vol * 0.15, 0); pg.rotateZ(HALF_PI);
-            pg.fill(st === 'random' ? (i * 10) % 360 : 0, st === 'random' ? 30 : 5, 97, 88);
-            let pLen = p3 * 0.48 + p5.prototype.map(mid, 0, 255, 0, p3 * 0.1) + p5.prototype.map(hi, 0, 255, 0, 10);
+            let ang = (TWO_PI / 5) * i + t * 0.2;
+            let edgeRipple = p5.prototype.map(hi, 0, 255, 0, 15) * Math.sin(t * 7 + i * 1.2);
+            pg.rotateZ(ang);
+            pg.fill(st === 'random' ? (baseH + i * 12) % 360 : baseH + i * 4, 75, 88, 85);
+            let outerR = p3 * 0.62 + vol * 0.25 + edgeRipple;
             pg.beginShape(); pg.vertex(0, 0);
-            pg.bezierVertex(-p2 * 0.8, -pLen * 0.3, -p2 * 0.4, -pLen * 0.85, 0, -pLen);
-            pg.bezierVertex(p2 * 0.4, -pLen * 0.85, p2 * 0.8, -pLen * 0.3, 0, 0);
+            for (let a = -PI/5; a <= PI/5; a += 0.1) {
+                let rr = outerR + Math.sin(a * 8 + t * 3) * edgeRipple * 0.4;
+                pg.vertex(Math.cos(a) * rr, Math.sin(a) * rr);
+            }
+            pg.vertex(0, 0); pg.endShape(CLOSE); pg.pop();
+        }
+        pg.fill(60, 20, 100); pg.cylinder(p3 * 0.15 + vol * 0.05, 10); pg.pop();
+        _flyPetal(pg, t, b, baseH, 70, 88, 18, 28, 4004, 12);
+    },
+
+    hibiscus: (pg, t, b, p1, p2, p3, st) => {
+        let vol = b[0], mid = b[3], hi = b[9];
+        let baseH = st === 'random' ? (t * 18) % 360 : 0;
+        pg.push(); pg.noStroke();
+        for (let i = 0; i < 5; i++) {
+            pg.push();
+            let ang = (TWO_PI / 5) * i + t * 0.15;
+            let open = p5.prototype.map(vol, 0, 255, 0.75, 1.15);
+            pg.rotateZ(ang); pg.translate(p3 * 0.32 * open, 0); pg.rotateZ(HALF_PI);
+            pg.fill(st === 'random' ? (baseH + i * 18) % 360 : baseH, 88, 90, 88);
+            let pLen = p3 * 0.60 * open, pW = p2 * 3.0 + p5.prototype.map(hi, 0, 255, 0, 15);
+            pg.beginShape(); pg.vertex(0, 0);
+            pg.bezierVertex(-pW, -pLen * 0.3, -pW, -pLen * 0.8, 0, -pLen);
+            pg.bezierVertex(pW, -pLen * 0.8, pW, -pLen * 0.3, 0, 0);
             pg.endShape(CLOSE); pg.pop();
         }
-    }
-    pg.fill(28, 90, 100); pg.sphere(p3 * 0.18 + vol * 0.08); pg.pop();
-    _flyPetal(pg, t, b, 0, 5, 97, 6, 20, 3003, 20);
-};
+        let tubeH = p5.prototype.map(mid, 0, 255, 60, 130);
+        pg.fill(50, 90, 100); pg.push(); pg.translate(0,0, tubeH/2); pg.cylinder(3, tubeH); pg.pop();
+        pg.pop();
+        _flyPetal(pg, t, b, baseH, 85, 88, 20, 32, 5005, 16);
+    },
 
-// 4. MORNING_GLORY (나팔꽃)
-window.ENGINES.morning_glory = (pg, t, b, p1, p2, p3, st) => {
-    let vol = b[0], hi = b[8];
-    let baseH = st === 'random' ? (t * 25) % 360 : 265;
-    pg.push(); pg.noStroke();
-    for (let i = 0; i < 5; i++) {
-        pg.push();
-        let ang = (TWO_PI / 5) * i + t * 0.2;
-        let edgeRipple = p5.prototype.map(hi, 0, 255, 0, 15) * Math.sin(t * 7 + i * 1.2);
-        pg.rotateZ(ang);
-        pg.fill(st === 'random' ? (baseH + i * 12) % 360 : baseH + i * 4, 75, 88, 85);
-        let outerR = p3 * 0.62 + vol * 0.25 + edgeRipple;
-        pg.beginShape(); pg.vertex(0, 0);
-        for (let a = -PI/5; a <= PI/5; a += 0.1) {
-            let rr = outerR + Math.sin(a * 8 + t * 3) * edgeRipple * 0.4;
-            pg.vertex(Math.cos(a) * rr, Math.sin(a) * rr);
-        }
-        pg.vertex(0, 0); pg.endShape(CLOSE); pg.pop();
-    }
-    pg.fill(60, 20, 100); pg.cylinder(p3 * 0.15 + vol * 0.05, 10); pg.pop();
-    _flyPetal(pg, t, b, baseH, 70, 88, 18, 28, 4004, 12);
-};
-
-// 5. HIBISCUS (무궁화)
-window.ENGINES.hibiscus = (pg, t, b, p1, p2, p3, st) => {
-    let vol = b[0], mid = b[3], hi = b[9];
-    let baseH = st === 'random' ? (t * 18) % 360 : 0;
-    pg.push(); pg.noStroke();
-    for (let i = 0; i < 5; i++) {
-        pg.push();
-        let ang = (TWO_PI / 5) * i + t * 0.15;
-        let open = p5.prototype.map(vol, 0, 255, 0.75, 1.15);
-        pg.rotateZ(ang); pg.translate(p3 * 0.32 * open, 0); pg.rotateZ(HALF_PI);
-        pg.fill(st === 'random' ? (baseH + i * 18) % 360 : baseH, 88, 90, 88);
-        let pLen = p3 * 0.60 * open, pW = p2 * 3.0 + p5.prototype.map(hi, 0, 255, 0, 15);
-        pg.beginShape(); pg.vertex(0, 0);
-        pg.bezierVertex(-pW, -pLen * 0.3, -pW, -pLen * 0.8, 0, -pLen);
-        pg.bezierVertex(pW, -pLen * 0.8, pW, -pLen * 0.3, 0, 0);
-        pg.endShape(CLOSE); pg.pop();
-    }
-    let tubeH = p5.prototype.map(mid, 0, 255, 60, 130);
-    pg.fill(50, 90, 100); pg.push(); pg.translate(0,0, tubeH/2); pg.cylinder(3, tubeH); pg.pop();
-    pg.pop();
-    _flyPetal(pg, t, b, baseH, 85, 88, 20, 32, 5005, 16);
-};
-    // 1. Flower Storm: 첫 번째 꽃 스타일 (발산형)
+    // 6~37. 기존 통합 엔진 (수정 사항 반영본)
     flower_storm: (pg, t, b, p1, p2, p3, st) => {
         let petals = Math.floor(p1 / 10) + 6;
         let volume = b[0];
@@ -173,7 +167,6 @@ window.ENGINES.hibiscus = (pg, t, b, p1, p2, p3, st) => {
         pg.fill(50, 90, 100); pg.sphere(p2 * 3 + volume * 0.1); pg.pop();
     },
 
-    // 2. Flower B: 두 번째 꽃 스타일 (겹꽃/성장형 - WAVE 대체)
     flower_b: (pg, t, b, p1, p2, p3, st) => {
         pg.push(); pg.noFill(); pg.strokeWeight(2);
         for(let j = 0; j < 5; j++) {
@@ -189,22 +182,6 @@ window.ENGINES.hibiscus = (pg, t, b, p1, p2, p3, st) => {
         pg.pop();
     },
 
-    // 3. Web: [롤백] 27가지 수정 요청 전 안정 버전
-    web: (pg, t, b, p1, p2, p3, st) => {
-        pg.noFill(); pg.stroke(180, 100, 100, 60); pg.strokeWeight(2);
-        for (let i = 0; i < 20; i++) {
-            let r = p3 + b[i % 12];
-            pg.line(Math.cos(t + i) * r, Math.sin(t + i) * r, Math.cos(t + i + 1) * r, Math.sin(t + i + 1) * r);
-        }
-    },
-
-    // 4. Bloom: [롤백] 27가지 수정 요청 전 안정 버전
-    bloom: (pg, t, b, p1, p2, p3, st) => {
-        pg.fill(st === 'random' ? p5.prototype.random(360) : 320, 100, 100, 40); pg.noStroke();
-        pg.ellipse(0, 0, 300 + b[0] * 2.5, 300 + b[0] * 2.5);
-    },
-
-    // 5. Grid: 지형 복구 및 하단부 명암 채우기 (WAVE 통합)
     grid: (pg, t, b, p1, p2, p3, st) => {
         pg.rotateX(PI / 3);
         for(let y = -8; y < 8; y++) {
@@ -221,7 +198,6 @@ window.ENGINES.hibiscus = (pg, t, b, p1, p2, p3, st) => {
         }
     },
 
-    // 6. Tree: 잎사귀/열매 복구 및 랜덤 색상 적용
     tree: (pg, t, b, p1, p2, p3, st) => {
         pg.translate(0, 300); pg.stroke(40, 50, 30);
         const _drawTree = (l, d) => {
@@ -239,11 +215,17 @@ window.ENGINES.hibiscus = (pg, t, b, p1, p2, p3, st) => {
         _drawTree(p3 * 0.7, 0);
     },
 
-    dna: (pg, t, b, p1, p2, p3, st) => {
-        for(let i=0; i<24; i++){
-            pg.push(); pg.translate(Math.cos(t+i*0.4)*p3, p5.prototype.map(i, 0, 24, -300, 300), Math.sin(t+i*0.3)*p3);
-            pg.fill(200, 80, 100); pg.box(p2 * 2 + b[i%12]*0.2); pg.pop();
+    web: (pg, t, b, p1, p2, p3, st) => {
+        pg.noFill(); pg.stroke(180, 100, 100, 60); pg.strokeWeight(2);
+        for (let i = 0; i < 20; i++) {
+            let r = p3 + b[i % 12];
+            pg.line(Math.cos(t + i) * r, Math.sin(t + i) * r, Math.cos(t + i + 1) * r, Math.sin(t + i + 1) * r);
         }
+    },
+
+    bloom: (pg, t, b, p1, p2, p3, st) => {
+        pg.fill(st === 'random' ? p5.prototype.random(360) : 320, 100, 100, 40); pg.noStroke();
+        pg.ellipse(0, 0, 300 + b[0] * 2.5, 300 + b[0] * 2.5);
     },
 
     cosmos: (pg, t, b, p1, p2, p3, st) => {
