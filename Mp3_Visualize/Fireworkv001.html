@@ -2,22 +2,19 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>FIREWORK STUDIO v4.5 — Strict Range Edition</title>
+    <title>FIREWORK STUDIO V001.001</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <style>
         :root { --accent: #00f2ff; --pink: #ff007b; --bg: #020205; --panel: #0d0d14; }
         body { background: var(--bg); color: #fff; margin: 0; font-family: sans-serif; display: flex; overflow: hidden; height: 100vh; }
         
-        /* 왼쪽 사이드바 */
         #ui-sidebar { width: 360px; height: 100vh; background: var(--panel); border-right: 1px solid #222; display: flex; flex-direction: column; z-index: 100; flex-shrink: 0; }
-        
-        /* 메인 뷰포트 (상단 정렬) */
         #canvas-viewport { flex: 1; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; overflow: hidden; position: relative; }
         
         canvas { 
             border: 1px solid var(--accent); 
-            margin-top: 30px; /* 상단 여백 고정 */
+            margin-top: 30px; 
             transform-origin: top center; 
             box-shadow: 0 0 40px rgba(0, 0, 0, 0.5);
         }
@@ -30,21 +27,17 @@
         label { display: flex; justify-content: space-between; font-size: 11px; color: #888; margin-bottom: 5px; }
         label span { color: var(--accent); font-weight: bold; }
         
-        /* 분석기 바 */
         .debug-bar-bg { width: 100%; height: 6px; background: #000; border-radius: 3px; overflow: hidden; margin-top: 4px; }
-        .debug-bar-fill { height: 100%; background: var(--accent); width: 0%; }
+        .debug-bar-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.1s; }
 
         select, button, input[type=range] { width: 100%; background: #000; color: #fff; border: 1px solid #444; padding: 10px; border-radius: 4px; font-size: 12px; box-sizing: border-box; outline: none; }
         input[type=range] { accent-color: var(--accent); cursor: pointer; height: 4px; }
         
         .btn-primary { background: var(--accent); color: #000; font-weight: bold; border: none; cursor: pointer; }
         .btn-rec { border-color: var(--pink); color: var(--pink); margin-top: 10px; font-weight: bold; cursor: pointer; }
-        .btn-rec.active { background: var(--pink); color: #fff; animation: pulse 1.5s infinite; }
         
         #log-console { height: 100px; background: #050508; font-family: monospace; font-size: 10px; padding: 10px; color: #00ff00; border-top: 1px solid #222; overflow-y: auto; }
         .predict-box { font-size: 10px; color: var(--pink); text-align: right; margin-top: 5px; }
-
-        @keyframes pulse { 50% { opacity: 0.5; } }
     </style>
 </head>
 <body>
@@ -52,7 +45,7 @@
 <div id="ui-sidebar">
     <div class="scroll-container">
         <div class="card">
-            <h3>📐 Canvas & Ratio</h3>
+            <h3>📐 Canvas Display</h3>
             <select id="resMode" onchange="changeResolution()">
                 <option value="fhd_wide">16:9 Landscape (1920x1080)</option>
                 <option value="fhd_tall">9:16 Portrait (1080x1920)</option>
@@ -81,7 +74,7 @@
                 <label>Probability <span id="v-prob">19</span>%</label>
                 <input type="range" id="prob" min="1" max="100" value="19" oninput="updateUI('v-prob', this.value); calcPredict();">
             </div>
-            <div id="predict-text" class="predict-box">예측 밀도: 계산 중...</div>
+            <div id="predict-text" class="predict-box">예측 밀도 계산 중...</div>
         </div>
 
         <div class="card">
@@ -94,11 +87,11 @@
         </div>
     </div>
     
-    <div id="log-console">>> Waiting for signal...</div>
+    <div id="log-console">>> V001.001 Ready...</div>
 
     <div style="padding: 20px;">
         <button id="startBtn" class="btn-primary" onclick="startEngine()" disabled style="height:40px">ENGINE ACTIVE</button>
-        <button id="recBtn" class="btn-rec" onclick="toggleRecording()" disabled style="height:40px">⬛ STOP & SAVE</button>
+        <button id="recBtn" class="btn-rec" onclick="toggleRecording()" disabled style="height:40px">🔴 START RECORDING</button>
     </div>
 </div>
 
@@ -139,15 +132,10 @@ function changeResolution() {
     let mode = document.getElementById('resMode').value;
     let w = (mode === 'fhd_wide') ? 1920 : 1080;
     let h = (mode === 'fhd_wide') ? 1080 : 1920;
-    
     if (mainCanvas) resizeCanvas(w, h);
-    else {
-        mainCanvas = createCanvas(w, h);
-        mainCanvas.parent('canvas-viewport');
-    }
-    
+    else { mainCanvas = createCanvas(w, h); mainCanvas.parent('canvas-viewport'); }
     scaleViewport();
-    gravity = createVector(0, height * 0.0002);
+    gravity = createVector(0, height * 0.00025); // 중력값 조정
     fireworks = []; 
 }
 
@@ -161,23 +149,15 @@ window.onresize = scaleViewport;
 
 function draw() {
     background(0);
-
     if (bgImg) {
-        push();
-        tint(255, 100); // 배경 투명도 100%
-        image(bgImg, 0, 0, width, height);
-        pop();
+        push(); tint(255, 100); image(bgImg, 0, 0, width, height); pop();
     }
-
-    fill(0, 0, 0, 20); 
-    rect(0, 0, width, height);
+    fill(0, 0, 0, 25); rect(0, 0, width, height);
 
     if (isStarted && audio && audio.isPlaying()) {
         fft.analyze();
         let b = fft.getEnergy("bass");
         let m = fft.getEnergy("mid");
-
-        // 분석기 UI 업데이트
         document.getElementById('bar-bass').style.width = (b/255*100) + "%";
         document.getElementById('bar-mid').style.width = (m/255*100) + "%";
         document.getElementById('val-bass').innerText = floor(b);
@@ -186,7 +166,6 @@ function draw() {
         let threshold = parseInt(document.getElementById('sens').value);
         let probability = parseInt(document.getElementById('prob').value) / 100;
         
-        // 베이스 신호가 문턱값을 넘으면 발사
         if (b > threshold && random(1) < probability) {
             fireworks.push(new Firework());
             addLog(b);
@@ -203,10 +182,8 @@ function draw() {
 class Firework {
     constructor() {
         this.hu = random(360);
-        // CRITICAL: 캔버스의 10%~90% 사이(중앙 80% 범위)에서만 터지도록 지정
-        let xRange = width * 0.1;
-        let safeX = random(xRange, width - xRange);
-        
+        // 중앙 80% 범위로 제한 (0.1 ~ 0.9)
+        let safeX = random(width * 0.1, width * 0.9);
         this.firework = new Particle(safeX, height, this.hu, true);
         this.exploded = false;
         this.particles = [];
@@ -228,7 +205,7 @@ class Firework {
         }
     }
     explode() {
-        for (let i = 0; i < 120; i++) {
+        for (let i = 0; i < 150; i++) {
             this.particles.push(new Particle(this.firework.pos.x, this.firework.pos.y, this.hu, false));
         }
     }
@@ -246,15 +223,15 @@ class Particle {
         this.hu = hu;
         this.acc = createVector(0, 0);
         if (this.isLead) {
-            // 수직 상승 위주 속도
-            this.vel = createVector(random(-0.5, 0.5), random(height * -0.02, height * -0.028));
+            // 발사 파워 강화 (FHD 대응: 높이 상승폭 확대)
+            this.vel = createVector(random(-1, 1), random(height * -0.025, height * -0.035));
         } else {
-            this.vel = p5.Vector.random2D().mult(random(width*0.004, width*0.012));
+            this.vel = p5.Vector.random2D().mult(random(width*0.005, width*0.015));
         }
     }
     applyForce(f) { this.acc.add(f); }
     update() {
-        if (!this.isLead) { this.vel.mult(0.95); this.lifespan -= 2.2; }
+        if (!this.isLead) { this.vel.mult(0.95); this.lifespan -= 2.0; }
         this.vel.add(this.acc);
         this.pos.add(this.vel);
         this.acc.mult(0);
@@ -262,9 +239,9 @@ class Particle {
     done() { return this.lifespan < 0; }
     show() {
         push();
-        drawingContext.shadowBlur = this.isLead ? 12 : 5;
+        drawingContext.shadowBlur = this.isLead ? 15 : 6;
         drawingContext.shadowColor = color(this.hu, 100, 100);
-        strokeWeight(this.isLead ? 4 : 2.5);
+        strokeWeight(this.isLead ? 5 : 3.5);
         stroke(this.hu, 90, 100, this.lifespan);
         point(this.pos.x, this.pos.y);
         pop();
@@ -286,10 +263,8 @@ function handleImage(files) {
 }
 
 function startEngine() {
-    userStartAudio();
-    isStarted = true;
+    userStartAudio(); isStarted = true;
     document.getElementById('recBtn').disabled = false;
-    document.getElementById('startBtn').innerText = "ENGINE ACTIVE";
 }
 
 function toggleRecording() {
@@ -306,10 +281,8 @@ function toggleRecording() {
         mediaRecorder.ondataavailable = e => chunks.push(e.data);
         mediaRecorder.onstop = () => {
             let blob = new Blob(chunks, { type: 'video/webm' });
-            let a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = `Firework_Viz.webm`;
-            a.click();
+            let a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+            a.download = `Firework_Viz_V001.001.webm`; a.click();
         };
         mediaRecorder.start(); audio.play(); isRecording = true;
         document.getElementById('recBtn').innerText = "⬛ STOP & SAVE";
