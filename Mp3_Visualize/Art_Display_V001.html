@@ -293,7 +293,7 @@ function initStyle(s) {
 }
 
 /* ==========================================================
-   1. FIRE: 하단 10% 베이스 불꽃 추가 및 음수 좌표(날카로운 바닥) 마스킹 처리
+   1. FIRE: 바깥쪽 레이어 알파값 대폭 감소 및 빛 번짐 효과 적용
    ========================================================== */
 let firePits = [];
 function initFire() {
@@ -308,7 +308,6 @@ function drawFire({ bass, mid, treble, vol, data }) {
   const w=W(), h=H();
   ctx.fillStyle = '#050308'; ctx.fillRect(0,0,w,h);
   
-  // 기준점을 화면 하단 10% (0.9)로 설정
   const gndY = h * 0.9; 
   
   firePits.sort((a,b) => a.sizeScale - b.sizeScale).forEach((pit) => {
@@ -325,11 +324,11 @@ function drawFire({ bass, mid, treble, vol, data }) {
       const nx = (t2 * 2) - 1; 
       const noiseX = Math.sin(time*2.5 + t2*5 + pit.phase) * baseW * 0.3;
       const env = Math.pow(Math.sin(t2*Math.PI), 1.5); 
-      // 바닥(env=0)에서는 노이즈(noiseY)도 0이 되도록 곱하여 바닥 삐져나옴 1차 방지
       const noiseY = Math.sin(time*3.5 + t2*4 + pit.phase) * (baseH * (0.3 + intensity*1.5)) * env;
       contour.push({ nx, noiseX, noiseY, env });
     }
 
+    // 레이어 그리기
     for (let layer = 0; layer < 4; layer++) {
       const lFrac = 1 - layer/4; 
       const lW = baseW * lFrac;
@@ -339,6 +338,9 @@ function drawFire({ bass, mid, treble, vol, data }) {
       const lSat = 80 + pitVol * 20; 
       const lLit = 45 + layer*10 + pitVol * 20; 
       
+      // 요청사항 1: 바깥쪽 레이어(layer=0)는 거의 투명하게, 안쪽으로 갈수록 진하게
+      const alpha = 0.15 + (layer * 0.25); 
+
       ctx.beginPath();
       for (let s=0; s<=segs; s++) {
         const c = contour[s];
@@ -349,16 +351,25 @@ function drawFire({ bass, mid, treble, vol, data }) {
       }
       ctx.lineTo(px + lW, gndY); 
       ctx.closePath();
-      ctx.fillStyle = `hsla(${lHue}, ${lSat}%, ${lLit}%, ${0.9 - layer*0.15})`; 
+      
+      // 바깥 레이어에만 강력한 빛 번짐(Glow) 효과를 주어 배경과 부드럽게 섞이게 함
+      if (layer === 0) {
+        ctx.shadowBlur = baseW;
+        ctx.shadowColor = `hsla(${lHue}, 100%, 50%, 0.6)`;
+      } else {
+        ctx.shadowBlur = 0;
+      }
+      
+      ctx.fillStyle = `hsla(${lHue}, ${lSat}%, ${lLit}%, ${alpha})`; 
       ctx.fill();
     }
+    ctx.shadowBlur = 0; // 그림자 초기화
   });
 
-  // 1-1. 날카로운 잔여물을 막기 위해 gndY 아래를 검은색으로 완벽히 마스킹(덮기)
+  // 하단 마스킹 및 기본 일렁임 불꽃
   ctx.fillStyle = '#050308';
   ctx.fillRect(0, gndY, w, h - gndY);
 
-  // 1-2. 화면 하단 10% (gndY ~ h)에 찰랑거리는 '기본 베이스 불꽃' 렌더링
   const baseGrd = ctx.createLinearGradient(0, gndY, 0, h);
   baseGrd.addColorStop(0, `hsla(20, 100%, 60%, ${0.6 + bass*0.4})`);
   baseGrd.addColorStop(1, `hsla(0, 100%, 20%, 0.8)`);
@@ -369,8 +380,8 @@ function drawFire({ bass, mid, treble, vol, data }) {
   for (let x = 0; x <= w; x += 10) {
     const binIdx = Math.floor((x / w) * 64);
     const v = data[binIdx] / 255;
-    const idleWobble = Math.sin(x * 0.02 + time * 4) * (h * 0.015); // 기본 일렁임
-    const activeWobble = v * (h * 0.05); // 주파수 반응 일렁임
+    const idleWobble = Math.sin(x * 0.02 + time * 4) * (h * 0.015);
+    const activeWobble = v * (h * 0.05); 
     ctx.lineTo(x, gndY - idleWobble - activeWobble);
   }
   ctx.lineTo(w, h);
@@ -378,7 +389,7 @@ function drawFire({ bass, mid, treble, vol, data }) {
 }
 
 /* ==========================================================
-   2. WAVE: 무음 시에도 우측에서 좌측으로 흐르는 기본 웨이브(Idle Wave) 추가
+   2. WAVE: 포인트 간격을 5px로 줄여 곡선 경계면을 압도적으로 부드럽게
    ========================================================== */
 function drawWave({ bass, mid, treble, vol, data }) {
   const w=W(), h=H();
@@ -395,12 +406,12 @@ function drawWave({ bass, mid, treble, vol, data }) {
     const speed  = 0.5 + l * 0.15;
     
     const pts = [];
-    for (let x = -10; x <= w + 20; x+=15) {
+    // 요청사항 2: 간격을 15 -> 5 로 대폭 줄여 초고해상도 곡선 처리
+    for (let x = -10; x <= w + 20; x+=5) { 
       const nx = Math.max(0, Math.min(x / w, 1));
       const binIdx = binStart + Math.floor(nx * (binEnd - binStart));
       const binVal = data[Math.min(binIdx, data.length-1)] / 255;
       
-      // 음악이 없을 때도 우측에서 좌측(+ time * speed)으로 흐르는 기본 파도
       const idleSpike = (h * 0.015) * Math.sin(nx * Math.PI * (6 + l) + time * (2 + l*0.5));
       const sineA  = Math.sin(nx * Math.PI * (2 + l*0.5) + time * speed) * 0.5 + 0.5;
       const spike  = (binVal * maxSpike * (0.3 + sineA * 0.7)) + Math.abs(idleSpike); 
@@ -425,12 +436,13 @@ function drawWave({ bass, mid, treble, vol, data }) {
     ctx.fillStyle = `hsla(${hue}, 80%, ${20 + l*5 + vol*20}%, ${alpha})`;
     ctx.fill();
     ctx.strokeStyle = `hsla(${hue}, 100%, 70%, ${alpha + 0.2})`;
-    ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.lineWidth = 1.0; // 얇게 하여 더욱 부드러운 느낌
+    ctx.stroke();
   }
 }
 
 /* ==========================================================
-   3. CLOUD: 구름, 비, 행성 3가지 렌더링 옵션 분기
+   3. CLOUD
    ========================================================== */
 let clouds3D = [];
 function initCloud() {
@@ -455,14 +467,12 @@ function drawCloud({ bass, mid, treble, vol, data }) {
   ctx.fillStyle = '#020205'; ctx.fillRect(0,0,w,h);
   const cx = w / 2, cy = h / 2;
   const speed = 5 + bass * 30; 
-  const shape = cloudShapeSelect.value; // UI에서 선택된 형태
+  const shape = cloudShapeSelect.value; 
 
   clouds3D.sort((a,b) => b.z - a.z);
 
   clouds3D.forEach(c => {
     c.z -= speed;
-    
-    // 비(Rain) 모드일 때는 아래로 떨어지는 물리 엔진 추가
     if (shape === 'rain') c.y += (15 + treble * 50);
 
     if (c.z < 10 || (shape === 'rain' && c.y > 2000)) {
@@ -484,7 +494,6 @@ function drawCloud({ bass, mid, treble, vol, data }) {
     ctx.translate(screenX, screenY);
     
     if (shape === 'cloud') {
-      // 1. 뭉게 구름 모드 (기존 Puffs 결합)
       c.puffs.forEach(puff => {
         const pX = puff.ox * scale;
         const pY = puff.oy * scale;
@@ -499,23 +508,19 @@ function drawCloud({ bass, mid, treble, vol, data }) {
         ctx.fill();
       });
     } else if (shape === 'rain') {
-      // 2. 비 모드 (떨어지는 빗방울 선)
       ctx.fillStyle = `hsla(200, 80%, ${80 + binVal*20}%, ${alpha * 1.5})`;
       ctx.fillRect(0, 0, 2 * scale, 60 * scale * (1 + binVal));
     } else if (shape === 'planet') {
-      // 3. 행성 모드 (원 + 고리)
       ctx.rotate(c.rot + time * 0.1);
       const radGrad = ctx.createRadialGradient(0, 0, baseSize*0.2, 0, 0, baseSize);
       radGrad.addColorStop(0, `hsla(${c.hue+60}, 50%, ${60 + binVal*30}%, ${alpha})`);
       radGrad.addColorStop(1, `hsla(${c.hue+30}, 40%, 10%, ${alpha})`);
       ctx.fillStyle = radGrad;
       ctx.beginPath(); ctx.arc(0, 0, baseSize, 0, Math.PI*2); ctx.fill();
-      // 행성 고리
       ctx.strokeStyle = `hsla(${c.hue}, 60%, 80%, ${alpha * 0.8})`;
       ctx.lineWidth = 4 * scale;
       ctx.beginPath(); ctx.ellipse(0, 0, baseSize * 2, baseSize * 0.4, 0, 0, Math.PI*2); ctx.stroke();
     }
-    
     ctx.restore();
   });
 }
@@ -578,42 +583,63 @@ function drawPetal({ bass, mid, treble, vol, data }) {
 }
 
 /* ==========================================================
-   5. GRASS: 좌우 Spread 대폭 확장 (빈공간 제거), X축을 주파수 배열에 매칭해 EQ화
+   5. GRASS: 땅 색상 추가 및 지평선 너머로 숲(산) 실루엣 배경 배치
    ========================================================== */
 function drawGrass({ bass, mid, treble, vol, data }) {
   const w=W(), h=H();
-  ctx.fillStyle = '#080c08'; ctx.fillRect(0,0,w,h);
-
+  
   const horizon = h * 0.35; 
+
+  // 요청사항 3: 스피어를 이용한 먼 산/숲 배경 실루엣 (오디오 베이스에 맞춰 살짝 진동)
+  ctx.fillStyle = '#020502'; 
+  ctx.fillRect(0, 0, w, horizon); // 하늘색
+
+  for (let i = 0; i < 30; i++) {
+    const nx = i / 29;
+    const cx = nx * w;
+    // 고정된 크기의 숲 실루엣 + 오디오 베이스 터질 때 살짝 맥박 뜀
+    const r = (w * 0.08) + Math.sin(i * 13.5) * (w * 0.03);
+    const rPulse = r + (bass * w * 0.015);
+    
+    ctx.beginPath();
+    ctx.arc(cx, horizon, rPulse, 0, Math.PI, true); // 반원 모양
+    
+    const hue = 110 + Math.sin(i * 7.2) * 20;
+    const lit = 5 + Math.sin(i * 3.1) * 3;
+    ctx.fillStyle = `hsl(${hue}, 30%, ${lit}%)`;
+    ctx.fill();
+  }
+
+  // 요청사항 3: 검은색 바닥 대신 어두운 흙/풀밭 느낌의 바닥 그라데이션 추가
+  const groundGrad = ctx.createLinearGradient(0, horizon, 0, h);
+  groundGrad.addColorStop(0, '#0b1c0b');
+  groundGrad.addColorStop(1, '#040804');
+  ctx.fillStyle = groundGrad;
+  ctx.fillRect(0, horizon, w, h - horizon);
+
   const userThick = parseInt(grassThickInput.value); 
   const userColor = grassColorInput.value; 
   const cameraX = w * 0.5;
   
-  // 밀도 유지
   const rows = 50, cols = 80;
 
   for (let row=0; row<rows; row++) {
     const zNorm = 1 - row/rows; 
     const screenY = horizon + (h - horizon) * (1 - zNorm);
-    
-    // 1. 좌우 끝의 빈 공간을 없애기 위해 spread 영역을 화면 너비의 2.5배 이상으로 크게 벌림
     const spread  = (1 - zNorm) * w * 2.8 + w * 0.5; 
     
-    // 2. 가로 위치(col)에 따라 오디오 주파수(data) 매칭 (EQ 이퀄라이저 효과)
     for (let col=0; col<cols; col++) {
-      const colFrac = col / cols; // 0 ~ 1 (좌측에서 우측으로)
-      const binIdx = Math.floor(colFrac * 64); // 0 ~ 64 주파수 대역으로 매핑
-      const binVal = data[binIdx] / 255; // 해당 위치의 주파수 크기 (0 ~ 1)
+      const colFrac = col / cols; 
+      const binIdx = Math.floor(colFrac * 64); 
+      const binVal = data[binIdx] / 255; 
       
       const worldOffX = (colFrac - 0.5) * 2;
       const screenX = cameraX + worldOffX * spread;
       
-      // 3. 잔디의 기본 높이를 주파수(binVal)에 곱하여 소리에 맞춰 위로 솟구치게 함!
       const baseBladeH = (1 - zNorm) * h * 0.15; 
       const bladeH  = baseBladeH * (1 + binVal * 3.5); 
       
       const randAngle = (Math.sin(col*13.2 + row*7.7) - 0.5) * 1.5; 
-      // 바람 효과도 주파수에 반응
       const wind = Math.sin(col*0.5 + row*0.3 + time*1.5) * bladeH * (0.3 + binVal*0.5);
       const targetTipSway = wind + randAngle * bladeH * 0.5;
       
@@ -635,7 +661,6 @@ function drawGrass({ bass, mid, treble, vol, data }) {
       ctx.closePath();
       
       ctx.fillStyle = userColor; 
-      // 주파수가 높을수록 알파값(밝기)도 상승
       ctx.globalAlpha = 0.4 + (1-zNorm)*0.5 + binVal*0.6;
       ctx.fill(); 
     }
