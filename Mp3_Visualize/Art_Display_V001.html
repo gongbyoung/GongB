@@ -255,13 +255,24 @@ playBtn.addEventListener('click', () => {
 
 function startAudio(offset = 0) {
   if (audioCtx.state === 'suspended') audioCtx.resume();
+  if (source) { try { source.stop(); } catch(e){} } // 기존 소스 중단 (중복재생 방지)
+  
   source = audioCtx.createBufferSource();
   source.buffer = audioBuffer;
   source.connect(analyser);
   source.start(0, offset);
   startTime = audioCtx.currentTime - offset;
   isPlaying = true;
-  source.onended = () => { if (isPlaying) { isPlaying = false; pauseOffset = 0; playBtn.textContent = '▶ 재생'; } };
+  
+  source.onended = () => { 
+    if (isPlaying) { 
+      isPlaying = false; 
+      pauseOffset = 0; 
+      playBtn.textContent = '▶ 재생'; 
+      cancelAnimationFrame(rafId); 
+    } 
+  };
+  
   if (rafId) cancelAnimationFrame(rafId);
   drawLoop();
 }
@@ -269,7 +280,7 @@ function stopAudio() {
   if (source) { try { source.stop(); } catch(e){} }
   pauseOffset = audioCtx ? audioCtx.currentTime - startTime : 0;
   isPlaying = false;
-  cancelAnimationFrame(rafId);
+  cancelAnimationFrame(rafId); // 루프 완벽히 정지
   rafId = null;
 }
 
@@ -278,22 +289,26 @@ function stopAudio() {
    ============================================================ */
 function getFreq() {
   if (!analyser) return { bass:0, mid:0, treble:0, vol:0, data: new Uint8Array(1024), waveData: new Uint8Array(1024) };
-  const data = new Uint8Array(analyser.frequencyBinCount);
+  
+  const bufferLength = analyser.frequencyBinCount;
+  const data = new Uint8Array(bufferLength);
   analyser.getByteFrequencyData(data);
+  
   const waveData = new Uint8Array(analyser.fftSize);
   analyser.getByteTimeDomainData(waveData);
 
-  const bn = analyser.frequencyBinCount;
-  const bassEnd  = Math.floor(bn * 0.08);
-  const midEnd   = Math.floor(bn * 0.35);
-  let bass=0, mid=0, treble=0;
-  for (let i=0;i<bassEnd;i++) bass+=data[i];
-  for (let i=bassEnd;i<midEnd;i++) mid+=data[i];
-  for (let i=midEnd;i<bn;i++) treble+=data[i];
-  bass   /= bassEnd * 255;
-  mid    /= (midEnd - bassEnd) * 255;
-  treble /= (bn - midEnd) * 255;
-  const vol = bass*0.5 + mid*0.3 + treble*0.2;
+  let bass = 0, mid = 0, treble = 0;
+  const section = Math.floor(bufferLength / 3);
+  
+  for (let i = 0; i < section; i++) bass += data[i];
+  for (let i = section; i < section * 2; i++) mid += data[section + i];
+  for (let i = section * 2; i < bufferLength; i++) treble += data[i];
+
+  bass /= (section * 255);
+  mid /= (section * 255);
+  treble /= (section * 255);
+  const vol = (bass + mid + treble) / 3;
+
   return { bass, mid, treble, vol, data, waveData };
 }
 
@@ -301,6 +316,8 @@ function getFreq() {
    DRAW LOOP
    ============================================================ */
 function drawLoop() {
+  if (!isPlaying && audioReady) return; // 일시정지 시 애니메이션 멈춤
+  
   rafId = requestAnimationFrame(drawLoop);
   time += 0.016;
   const f = getFreq();
@@ -312,7 +329,7 @@ function drawLoop() {
   else if (currentStyle==='petal') drawPetal(f);
   else if (currentStyle==='grass') drawGrass(f);
 }
-
+ 
 function drawIdle() {
   ctx.fillStyle = '#0a0a14';
   ctx.fillRect(0,0,W(),H());
@@ -915,6 +932,7 @@ function drawGrass({ bass, mid, treble, vol, data }) {
    STYLE INIT
    ============================================================ */
 function initStyle(s) {
+  ctx.clearRect(0, 0, W(), H()); // 스타일 변경 시 기존 화면 지우기
   if (s==='fire')   initFire();
   if (s==='cloud')  initCloud();
   if (s==='petal')  initPetal();
