@@ -2,36 +2,34 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>PRO FIREWORK STUDIO v2.5 — Stability Edition</title>
+    <title>FIREWORK STUDIO v3.0 — Precision Control</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <style>
         :root { --accent: #00f2ff; --pink: #ff007b; --bg: #050508; --panel: #12121a; }
         body { background: var(--bg); color: #fff; margin: 0; font-family: 'Pretendard', sans-serif; display: flex; overflow: hidden; }
         
-        /* Layout */
         #ui-sidebar { width: 360px; height: 100vh; background: var(--panel); border-right: 1px solid #222; display: flex; flex-direction: column; z-index: 100; }
         #canvas-viewport { flex: 1; background: #000; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative; }
         
-        /* Canvas Border */
-        canvas { border: 3px solid #333; transition: all 0.3s ease; }
+        canvas { border: 2px solid #333; outline: 1px solid var(--accent); }
 
         .scroll-container { flex: 1; overflow-y: auto; padding: 20px; }
         .card { background: rgba(255,255,255,0.03); border-radius: 10px; padding: 15px; margin-bottom: 15px; border: 1px solid #333; }
         h3 { font-size: 11px; color: var(--accent); margin: 0 0 12px 0; text-transform: uppercase; letter-spacing: 1.5px; border-bottom: 1px solid #333; padding-bottom: 5px; }
         
-        .row { margin-bottom: 12px; }
+        .row { margin-bottom: 15px; }
         label { display: flex; justify-content: space-between; font-size: 11px; color: #888; margin-bottom: 5px; }
-        label span { color: var(--accent); }
+        label span { color: var(--accent); font-weight: bold; }
         
         select, button, input[type=range] { width: 100%; background: #000; color: #fff; border: 1px solid #444; padding: 8px; border-radius: 4px; font-size: 12px; }
-        input[type=range] { accent-color: var(--accent); }
+        input[type=range] { accent-color: var(--accent); cursor: pointer; }
         
         .btn-primary { background: var(--accent); color: #000; font-weight: bold; border: none; margin-top: 5px; cursor: pointer; }
         .btn-rec { border-color: var(--pink); color: var(--pink); margin-top: 10px; font-weight: bold; cursor: pointer; }
         .btn-rec.active { background: var(--pink); color: #fff; animation: pulse 1.5s infinite; }
         
-        #log-console { height: 50px; background: #000; font-family: monospace; font-size: 10px; padding: 10px; color: #0f0; border-top: 1px solid #222; }
+        #log-console { height: 60px; background: #000; font-family: monospace; font-size: 10px; padding: 10px; color: #0f0; border-top: 1px solid #222; overflow: hidden; }
         @keyframes pulse { 50% { opacity: 0.6; } }
     </style>
 </head>
@@ -40,48 +38,50 @@
 <div id="ui-sidebar">
     <div class="scroll-container">
         <div class="card">
-            <h3>📐 Canvas Setting</h3>
+            <h3>📐 Canvas & Ratio</h3>
             <div class="row">
-                <label>Resolution Ratio</label>
                 <select id="resMode" onchange="changeResolution()">
-                    <option value="fhd_wide">16:9 Landscape (FHD)</option>
-                    <option value="fhd_tall">9:16 Portrait (FHD)</option>
-                    <option value="hd_wide">16:9 Landscape (HD)</option>
+                    <option value="fhd_wide">16:9 Landscape (1920x1080)</option>
+                    <option value="fhd_tall">9:16 Portrait (1080x1920)</option>
                 </select>
             </div>
-            <p style="font-size: 10px; color: #666;">※ 비율 변경 시 엔진 좌표가 초기화됩니다.</p>
         </div>
 
         <div class="card">
-            <h3>🖼️ Background & Audio</h3>
-            <button onclick="document.getElementById('m-file').click()">🎵 Load MP3</button>
-            <input type="file" id="m-file" hidden accept="audio/*" onchange="handleAudio(this.files)">
-            <div style="margin-top:8px;"></div>
-            <button onclick="document.getElementById('i-file').click()">🖼️ Load BG Image</button>
-            <input type="file" id="i-file" hidden accept="image/*" onchange="handleImage(this.files)">
-            <div class="row" style="margin-top:10px;">
+            <h3>🎵 Audio Analysis (Density)</h3>
+            <div class="row">
+                <label>Sensitivity (Threshold) <span id="v-sens">200</span></label>
+                <input type="range" id="sens" min="100" max="255" value="200" oninput="updateUI('v-sens', this.value)">
+                <p style="font-size:9px; color:#666; margin:4px 0;">낮을수록 작은 소리에도 터집니다.</p>
+            </div>
+            <div class="row">
+                <label>Launch Probability <span id="v-prob">10</span>%</label>
+                <input type="range" id="prob" min="1" max="50" value="10" oninput="updateUI('v-prob', this.value)">
+                <p style="font-size:9px; color:#666; margin:4px 0;">비트가 감지되었을 때 실제 발사될 확률입니다.</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>🎆 Visual Options</h3>
+            <div class="row">
                 <label>BG Opacity <span id="v-bgop">30</span>%</label>
                 <input type="range" id="bgop" min="0" max="100" value="30" oninput="updateUI('v-bgop', this.value)">
             </div>
-        </div>
-
-        <div class="card">
-            <h3>🎆 Firework Style</h3>
             <div class="row">
-                <label>Pattern</label>
+                <label>Pattern Style</label>
                 <select id="fStyle">
                     <option value="-1">Random Mix</option>
                     <option value="0">Sphere</option>
                     <option value="1">Heart</option>
                     <option value="2">Star</option>
                     <option value="3">Willow</option>
-                    <option value="4">Flower</option>
                 </select>
             </div>
-            <div class="row">
-                <label>Quantity (Launch) <span id="v-rate">High</span></label>
-                <input type="range" id="rate" min="0.85" max="0.99" step="0.01" value="0.91">
-            </div>
+            <button onclick="document.getElementById('m-file').click()">🎵 Load MP3</button>
+            <input type="file" id="m-file" hidden accept="audio/*" onchange="handleAudio(this.files)">
+            <div style="margin-top:5px;"></div>
+            <button onclick="document.getElementById('i-file').click()">🖼️ Load Image</button>
+            <input type="file" id="i-file" hidden accept="image/*" onchange="handleImage(this.files)">
         </div>
     </div>
     
@@ -89,7 +89,7 @@
         <button id="startBtn" class="btn-primary" onclick="startEngine()" disabled>ENGINE STANDBY</button>
         <button id="recBtn" class="btn-rec" onclick="toggleRecording()" disabled>🔴 START RECORDING</button>
     </div>
-    <div id="log-console">System Standby...</div>
+    <div id="log-console">Ready to analyze...</div>
 </div>
 
 <div id="canvas-viewport"></div>
@@ -110,37 +110,26 @@ function setup() {
 
 function changeResolution() {
     let mode = document.getElementById('resMode').value;
-    let w, h;
-    if (mode === 'fhd_wide') { w = 1920; h = 1080; }
-    else if (mode === 'fhd_tall') { w = 1080; h = 1920; }
-    else { w = 1280; h = 720; }
+    let w = (mode === 'fhd_wide') ? 1920 : 1080;
+    let h = (mode === 'fhd_wide') ? 1080 : 1920;
     
-    if (mainCanvas) {
-        resizeCanvas(w, h);
-    } else {
+    if (mainCanvas) resizeCanvas(w, h);
+    else {
         mainCanvas = createCanvas(w, h);
         mainCanvas.parent('canvas-viewport');
     }
     
-    // UI 스케일링 업데이트
-    scaleCanvas();
-    
-    // 중요: 해상도 변경 시 중력 및 기존 폭죽 초기화
-    gravity = createVector(0, height * 0.0002);
+    scaleViewport();
+    gravity = createVector(0, height * 0.00018);
     fireworks = []; 
-    document.getElementById('log-console').innerText = `Resized to ${w}x${h}. Fireworks reset.`;
+    document.getElementById('log-console').innerText = `Switched to ${w}x${h}. Buffer cleared.`;
 }
 
-function scaleCanvas() {
-    let w = width;
-    let h = height;
-    let containerW = window.innerWidth - 360;
-    let containerH = window.innerHeight;
-    let scale = Math.min(containerW / w, containerH / h) * 0.9;
+function scaleViewport() {
+    let scale = Math.min((window.innerWidth - 360) / width, window.innerHeight / height) * 0.9;
     mainCanvas.elt.style.transform = `scale(${scale})`;
 }
-
-window.onresize = scaleCanvas;
+window.onresize = scaleViewport;
 
 function draw() {
     background(0);
@@ -152,17 +141,19 @@ function draw() {
         pop();
     }
 
-    fill(0, 0, 0, 18);
+    fill(0, 0, 0, 20); // 잔상 강도
     rect(0, 0, width, height);
 
     if (isStarted && audio && audio.isPlaying()) {
         fft.analyze();
         let bass = fft.getEnergy("bass");
-        let launchRate = parseFloat(document.getElementById('rate').value);
+        let threshold = parseInt(document.getElementById('sens').value);
+        let probability = parseInt(document.getElementById('prob').value) / 100;
         
-        // 오디오 비트 매칭 발사
-        if (bass > 190 && random(1) > launchRate) {
+        // 1. 음악 분석 기반 발사 제어
+        if (bass > threshold && random(1) < probability) {
             fireworks.push(new Firework());
+            logStatus(bass);
         }
     }
 
@@ -173,14 +164,20 @@ function draw() {
     }
 }
 
+function logStatus(b) {
+    let log = document.getElementById('log-console');
+    log.innerText = `[EVENT] Beat Detected: ${floor(b)} | Active Fireworks: ${fireworks.length}`;
+}
+
 class Firework {
     constructor() {
         this.hu = random(360);
         let s = parseInt(document.getElementById('fStyle').value);
         this.type = (s === -1) ? floor(random(5)) : s;
         
-        // 수성: 화면 좌우 15%~85% 사이에서만 발사 (화면 밖 이탈 방지)
-        this.firework = new Particle(random(width * 0.15, width * 0.85), height, this.hu, true);
+        // 중심체 발사 위치 제한: 좌우 15% 여백 확보 (중심이 화면 밖으로 나가지 않음)
+        let safeX = random(width * 0.15, width * 0.85);
+        this.firework = new Particle(safeX, height, this.hu, true);
         this.exploded = false;
         this.particles = [];
     }
@@ -189,7 +186,6 @@ class Firework {
         if (!this.exploded) {
             this.firework.applyForce(gravity);
             this.firework.update();
-            // 최고점에 도달하면 폭발
             if (this.firework.vel.y >= 0) {
                 this.exploded = true;
                 this.explode();
@@ -198,12 +194,6 @@ class Firework {
         for (let i = this.particles.length - 1; i >= 0; i--) {
             this.particles[i].applyForce(gravity);
             this.particles[i].update();
-            
-            // 파편이 화면 밖으로 나가려 할 때 속도 감쇄 (선택 사항)
-            if(this.particles[i].pos.x < 0 || this.particles[i].pos.x > width) {
-                this.particles[i].vel.x *= -0.5;
-            }
-
             if (this.particles[i].done()) this.particles.splice(i, 1);
         }
     }
@@ -227,11 +217,11 @@ class Particle {
         this.hu = hu;
         this.acc = createVector(0, 0);
         if (this.isLead) {
-            // 발사 높이를 해상도 비례로 설정
-            this.vel = createVector(random(-1, 1), random(height * -0.018, height * -0.026));
+            // 발사체 속도: 수직 상승 위주로 설정 (중심이 옆으로 휘어 나가지 않게)
+            this.vel = createVector(random(-1, 1), random(height * -0.018, height * -0.025));
         } else {
             this.vel = this.getShape(type);
-            this.vel.mult(random(width * 0.005, width * 0.012)); // 해상도 대응 폭발력
+            this.vel.mult(random(width * 0.006, width * 0.012));
         }
     }
     getShape(t) {
@@ -253,7 +243,7 @@ class Particle {
     }
     applyForce(f) { this.acc.add(f); }
     update() {
-        if (!this.isLead) { this.vel.mult(0.94); this.lifespan -= 1.5; }
+        if (!this.isLead) { this.vel.mult(0.94); this.lifespan -= 2; }
         this.vel.add(this.acc);
         this.pos.add(this.vel);
         this.acc.mult(0);
@@ -261,10 +251,9 @@ class Particle {
     done() { return this.lifespan < 0; }
     show() {
         push();
-        // 발광 효과
-        drawingContext.shadowBlur = this.isLead ? 12 : 7;
+        drawingContext.shadowBlur = this.isLead ? 12 : 6;
         drawingContext.shadowColor = color(this.hu, 100, 100);
-        strokeWeight(this.isLead ? 4 : 3);
+        strokeWeight(this.isLead ? 5 : 3);
         stroke(this.hu, 90, 100, this.lifespan);
         point(this.pos.x, this.pos.y);
         pop();
@@ -276,7 +265,7 @@ function handleAudio(files) {
     audio = loadSound(URL.createObjectURL(files[0]), () => {
         fft = new p5.FFT();
         document.getElementById('startBtn').disabled = false;
-        document.getElementById('log-console').innerText = "Audio Ready.";
+        document.getElementById('log-console').innerText = "Audio analysis ready.";
     });
 }
 function handleImage(files) {
@@ -287,7 +276,7 @@ function handleImage(files) {
 function startEngine() {
     userStartAudio(); isStarted = true;
     document.getElementById('recBtn').disabled = false;
-    document.getElementById('startBtn').innerText = "RUNNING";
+    document.getElementById('startBtn').innerText = "ENGINE ACTIVE";
 }
 function toggleRecording() {
     if (isRecording) {
@@ -301,13 +290,13 @@ function toggleRecording() {
         let dest = ctx.createMediaStreamDestination();
         audio.connect(dest);
         stream.addTrack(dest.stream.getAudioTracks()[0]);
-        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9', videoBitsPerSecond: 12000000 });
+        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9', videoBitsPerSecond: 15000000 });
         mediaRecorder.ondataavailable = e => chunks.push(e.data);
         mediaRecorder.onstop = () => {
             let blob = new Blob(chunks, { type: 'video/webm' });
             let a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = `Show_FHD.webm`;
+            a.download = `Firework_Show.webm`;
             a.click();
         };
         mediaRecorder.start(); audio.play(); isRecording = true;
