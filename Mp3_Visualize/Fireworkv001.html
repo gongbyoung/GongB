@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>FIREWORK STUDIO V001.005</title>
+    <title>FIREWORK STUDIO V001.006</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <style>
@@ -11,21 +11,17 @@
         #ui-sidebar { width: 360px; height: 100vh; background: var(--panel); border-right: 1px solid #222; display: flex; flex-direction: column; z-index: 100; flex-shrink: 0; }
         #canvas-viewport { flex: 1; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; overflow: hidden; position: relative; }
         canvas { border: 1px solid var(--accent); margin-top: 30px; transform-origin: top center; box-shadow: 0 0 40px rgba(0,0,0,0.5); }
-        
         .scroll-container { flex: 1; overflow-y: auto; padding: 20px; }
         .card { background: rgba(255,255,255,0.03); border-radius: 8px; padding: 15px; margin-bottom: 15px; border: 1px solid #2a2a35; }
         h3 { font-size: 11px; color: var(--accent); margin: 0 0 12px 0; text-transform: uppercase; letter-spacing: 1.5px; border-bottom: 1px solid #333; padding-bottom: 5px; }
-        
         .freq-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
         .freq-box { background: #000; padding: 8px; border-radius: 4px; border: 1px solid #222; text-align: center; }
         .freq-label { font-size: 9px; color: #666; margin-bottom: 4px; }
         .freq-bar-bg { width: 100%; height: 30px; background: #111; position: relative; border-radius: 2px; overflow: hidden; }
         .freq-bar-fill { position: absolute; bottom: 0; width: 100%; background: var(--accent); }
-
         .row { margin-bottom: 15px; }
         label { display: flex; justify-content: space-between; font-size: 11px; color: #888; margin-bottom: 5px; }
         label span { color: var(--accent); font-weight: bold; }
-        
         select, button, input[type=range] { width: 100%; background: #000; color: #fff; border: 1px solid #444; padding: 10px; border-radius: 4px; font-size: 12px; box-sizing: border-box; outline: none; }
         input[type=range] { accent-color: var(--accent); cursor: pointer; height: 4px; }
         .btn-primary { background: var(--accent); color: #000; font-weight: bold; border: none; cursor: pointer; }
@@ -51,17 +47,17 @@
         <div class="card">
             <h3>⚡ Launch Sync</h3>
             <div class="row">
-                <label>Target Band</label>
+                <label>Target Mode</label>
                 <select id="targetBand">
-                    <option value="sub">Sub-Bass</option>
-                    <option value="bass" selected>Bass (Kick)</option>
-                    <option value="mid">Mid (Melody)</option>
+                    <option value="sub">Sub-Bass (Impact)</option>
+                    <option value="bass" selected>Bass (Kick/Rhythm)</option>
+                    <option value="vocal">Vocal / Speech (Voice)</option>
                     <option value="treble">Treble (Sharp)</option>
                 </select>
             </div>
             <div class="row">
                 <label>Sensitivity <span id="v-sens">160</span></label>
-                <input type="range" id="sens" min="50" max="255" value="160" oninput="updateUI('v-sens', this.value)">
+                <input type="range" id="sens" min="30" max="255" value="160" oninput="updateUI('v-sens', this.value)">
             </div>
         </div>
         <div class="card">
@@ -73,7 +69,7 @@
             <input type="file" id="i-file" hidden accept="image/*" onchange="handleImage(this.files)">
         </div>
     </div>
-    <div id="log-console">>> V001.005 System Ready...</div>
+    <div id="log-console">>> V001.006 Voice Sync Ready...</div>
     <div style="padding: 20px;">
         <button id="startBtn" class="btn-primary" onclick="startEngine()" disabled style="height:40px">ENGINE ACTIVE</button>
         <button id="recBtn" class="btn-rec" onclick="toggleRecording()" disabled style="height:40px">🔴 START RECORDING</button>
@@ -89,10 +85,7 @@ let gravity;
 let mainCanvas;
 let mediaRecorder, chunks = [];
 
-function updateUI(id, val) { 
-    const el = document.getElementById(id);
-    if(el) el.innerText = val; 
-}
+function updateUI(id, val) { const el = document.getElementById(id); if(el) el.innerText = val; }
 
 function setup() {
     mainCanvas = createCanvas(1920, 1080);
@@ -113,31 +106,38 @@ window.onresize = scaleViewport;
 function draw() {
     background(0);
     if (bgImg) { push(); tint(255, 100); image(bgImg, 0, 0, width, height); pop(); }
-    
-    // 초기 버전의 화려한 잔상 효과 복구
     fill(0, 0, 0, 20);
     rect(0, 0, width, height);
 
     if (isStarted && audio && audio.isPlaying()) {
         fft.analyze();
         
-        // 안전한 ID 참조로 에러 방지
-        updateFreqBar('sub', fft.getEnergy(20, 60));
-        updateFreqBar('bass', fft.getEnergy(60, 250));
-        updateFreqBar('lowmid', fft.getEnergy(250, 500));
-        updateFreqBar('mid', fft.getEnergy(500, 2000));
-        updateFreqBar('highmid', fft.getEnergy(2000, 4000));
-        updateFreqBar('treble', fft.getEnergy(4000, 20000));
+        // 실시간 분석 데이터 추출
+        let energies = {
+            sub: fft.getEnergy(20, 60),
+            bass: fft.getEnergy(60, 250),
+            lowmid: fft.getEnergy(250, 500),
+            mid: fft.getEnergy(500, 2000),
+            highmid: fft.getEnergy(2000, 4000),
+            treble: fft.getEnergy(4000, 20000)
+        };
 
-        let target = document.getElementById('targetBand').value;
+        // UI 바 업데이트
+        for(let k in energies) { updateFreqBar(k, energies[k]); }
+
+        let mode = document.getElementById('targetBand').value;
         let threshold = parseInt(document.getElementById('sens').value);
-        
-        // 소문자로 변환하여 비교
-        let energy = fft.getEnergy(target === 'highmid' ? [2000, 4000] : target);
-        
-        if (energy > threshold && random(1) < 0.15) {
-            fireworks.push(new FireworkSystem());
+        let trigger = false;
+
+        if (mode === 'vocal') {
+            // 보컬/음성 대역 (300Hz ~ 3000Hz) 집중 분석
+            let vocalEnergy = (energies.lowmid + energies.mid + energies.highmid) / 3;
+            if (vocalEnergy > threshold && random(1) < 0.12) trigger = true;
+        } else {
+            if (energies[mode] > threshold && random(1) < 0.15) trigger = true;
         }
+        
+        if (trigger) fireworks.push(new FireworkSystem());
     }
 
     for (let i = fireworks.length - 1; i >= 0; i--) {
@@ -146,146 +146,90 @@ function draw() {
     }
 }
 
-function updateFreqBar(id, val) {
-    const el = document.getElementById('bar-' + id);
-    if(el) el.style.height = (val/255*100) + "%";
-}
+function updateFreqBar(id, val) { const el = document.getElementById('bar-' + id); if(el) el.style.height = (val/255*100) + "%"; }
 
 class FireworkSystem {
     constructor() {
         this.hu = random(360);
-        // 중앙 80% 범위 안에서 목표 지점 설정
         this.startPos = createVector(random(width * 0.2, width * 0.8), height);
         this.targetPos = createVector(random(width * 0.1, width * 0.9), random(height * 0.1, height * 0.4));
         this.lead = new LeadParticle(this.startPos, this.targetPos, this.hu);
         this.particles = [];
-        this.explodedStage1 = false;
     }
-
     run() {
         if (this.lead) {
-            this.lead.update();
-            this.lead.show();
-            if (this.lead.arrived) {
-                this.explode(this.lead.pos, 1);
-                this.lead = null;
-                this.explodedStage1 = true;
-            }
+            this.lead.update(); this.lead.show();
+            if (this.lead.arrived) { this.explode(this.lead.pos, 1); this.lead = null; }
         }
-
         for (let i = this.particles.length - 1; i >= 0; i--) {
-            let p = this.particles[i];
-            p.applyForce(gravity);
-            p.update();
-            p.show();
-
-            // 2단계 폭발: 1단계 파편 중 일부가 수직 속도가 0에 가까워질 때
+            let p = this.particles[i]; p.applyForce(gravity); p.update(); p.show();
             if (p.level === 1 && p.canExplode && p.vel.y > -0.5 && p.vel.y < 0.5 && random(1) < 0.05) {
-                this.explode(p.pos, 2);
-                p.lifespan = 0;
+                this.explode(p.pos, 2); p.lifespan = 0;
             }
-
             if (p.isDead()) this.particles.splice(i, 1);
         }
     }
-
     explode(pos, level) {
         let count = level === 1 ? 150 : 40;
-        for (let i = 0; i < count; i++) {
-            this.particles.push(new Particle(pos, this.hu, level));
-        }
+        for (let i = 0; i < count; i++) { this.particles.push(new Particle(pos, this.hu, level)); }
     }
-
     isDead() { return !this.lead && this.particles.length === 0; }
 }
 
 class LeadParticle {
     constructor(start, target, hu) {
-        this.pos = start.copy();
-        this.start = start;
-        this.target = target;
-        this.hu = hu;
-        this.pct = 0;
-        this.speed = random(0.015, 0.025);
-        this.arrived = false;
+        this.pos = start.copy(); this.start = start; this.target = target; this.hu = hu; this.pct = 0;
+        this.speed = random(0.015, 0.025); this.arrived = false;
     }
     update() {
-        this.pct += this.speed;
-        this.pos = p5.Vector.lerp(this.start, this.target, this.pct);
+        this.pct += this.speed; this.pos = p5.Vector.lerp(this.start, this.target, this.pct);
         if (this.pct >= 1) this.arrived = true;
     }
     show() {
-        push();
-        drawingContext.shadowBlur = 15;
-        drawingContext.shadowColor = color(this.hu, 100, 100);
-        strokeWeight(6); stroke(this.hu, 100, 100);
-        point(this.pos.x, this.pos.y);
-        pop();
+        push(); drawingContext.shadowBlur = 15; drawingContext.shadowColor = color(this.hu, 100, 100);
+        strokeWeight(6); stroke(this.hu, 100, 100); point(this.pos.x, this.pos.y); pop();
     }
 }
 
 class Particle {
     constructor(pos, hu, level) {
-        this.pos = pos.copy();
-        this.level = level;
-        this.hu = hu + random(-20, 20);
-        // 자연스럽게 퍼지는 물리 효과 적용
+        this.pos = pos.copy(); this.level = level; this.hu = hu + random(-20, 20);
         this.vel = p5.Vector.random2D().mult(random(level === 1 ? 4 : 2, level === 1 ? 16 : 8));
-        this.acc = createVector(0, 0);
-        this.lifespan = 100.0;
-        this.decay = random(1.0, 3.0); // 가변 트레일
-        this.canExplode = (level === 1 && random(1) > 0.8);
+        this.acc = createVector(0, 0); this.lifespan = 100.0;
+        this.decay = random(1.0, 3.0); this.canExplode = (level === 1 && random(1) > 0.8);
     }
     applyForce(f) { this.acc.add(f); }
-    update() {
-        this.vel.mult(0.94);
-        this.vel.add(this.acc);
-        this.pos.add(this.vel);
-        this.acc.mult(0);
-        this.lifespan -= this.decay;
-    }
+    update() { this.vel.mult(0.94); this.vel.add(this.acc); this.pos.add(this.vel); this.acc.mult(0); this.lifespan -= this.decay; }
     show() {
-        push();
-        // 초기 버전의 선명한 글로우 효과 적용
-        drawingContext.shadowBlur = this.level === 1 ? 8 : 4;
-        drawingContext.shadowColor = color(this.hu, 100, 100);
+        push(); drawingContext.shadowBlur = this.level === 1 ? 8 : 4; drawingContext.shadowColor = color(this.hu, 100, 100);
         strokeWeight(map(this.lifespan, 0, 100, 1, this.level === 1 ? 5 : 3));
-        stroke(this.hu, 80, 100, this.lifespan);
-        point(this.pos.x, this.pos.y);
-        pop();
+        stroke(this.hu, 80, 100, this.lifespan); point(this.pos.x, this.pos.y); pop();
     }
     isDead() { return this.lifespan <= 0; }
 }
 
 function handleAudio(files) {
     audio = loadSound(URL.createObjectURL(files[0]), () => {
-        fft = new p5.FFT();
-        document.getElementById('startBtn').disabled = false;
-        document.getElementById('log-console').innerText = ">> Audio Loaded. Start Engine.";
+        fft = new p5.FFT(); document.getElementById('startBtn').disabled = false;
+        document.getElementById('log-console').innerText = ">> Vocal Sync Engine Ready.";
     });
 }
-function handleImage(files) {
-    let reader = new FileReader();
-    reader.onload = (e) => { bgImg = loadImage(e.target.result); };
-    reader.readAsDataURL(files[0]);
-}
+function handleImage(files) { let reader = new FileReader(); reader.onload = (e) => { bgImg = loadImage(e.target.result); }; reader.readAsDataURL(files[0]); }
 function startEngine() { userStartAudio(); isStarted = true; document.getElementById('recBtn').disabled = false; }
 function toggleRecording() {
     if (isRecording) {
         mediaRecorder.stop(); audio.stop(); isRecording = false;
         document.getElementById('recBtn').innerText = "🔴 START RECORDING";
     } else {
-        chunks = [];
-        let stream = mainCanvas.elt.captureStream(60);
+        chunks = []; let stream = mainCanvas.elt.captureStream(60);
         let dest = p5.prototype.getAudioContext().createMediaStreamDestination();
-        audio.connect(dest);
-        stream.addTrack(dest.stream.getAudioTracks()[0]);
+        audio.connect(dest); stream.addTrack(dest.stream.getAudioTracks()[0]);
         mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9', videoBitsPerSecond: 15000000 });
         mediaRecorder.ondataavailable = e => chunks.push(e.data);
         mediaRecorder.onstop = () => {
             let blob = new Blob(chunks, { type: 'video/webm' });
             let a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-            a.download = `Firework_Final_V001.005.webm`; a.click();
+            a.download = `Firework_Voice_V001.006.webm`; a.click();
         };
         mediaRecorder.start(); audio.play(); isRecording = true;
         document.getElementById('recBtn').innerText = "⬛ STOP & SAVE";
