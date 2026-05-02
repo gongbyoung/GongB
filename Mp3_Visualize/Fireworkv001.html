@@ -2,128 +2,187 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>FIREWORK STUDIO v24.1 — Audio Visualizer</title>
+    <title>PRO FIREWORK STUDIO v2.0</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <style>
-        :root{ --bg:#050508; --accent:#ffcc00; --accent2:#ff3377; --panel:#0f0f1a; --border:rgba(255,204,0,0.2); }
-        body{ background:var(--bg); color:#e0f0ff; margin:0; overflow:hidden; font-family:sans-serif; display:flex; }
-        #left-panel { width:220px; background:var(--panel); height:100vh; padding:15px; border-right:1px solid var(--border); }
-        #canvas-container { flex:1; background:#000; display:flex; align-items:center; justify-content:center; position:relative; }
-        #right-panel { width:320px; background:var(--panel); height:100vh; padding:15px; border-left:1px solid var(--border); overflow-y:auto; }
-        .ctrl-box { background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:12px; }
-        h3 { font-size:11px; color:var(--accent); margin:0 0 10px 0; letter-spacing:1px; }
-        .btn { width:100%; padding:10px; background:transparent; border:1px solid var(--accent); color:var(--accent); cursor:pointer; font-size:11px; border-radius:4px; margin-top:6px; transition: 0.3s; }
-        .btn:hover { background: var(--accent); color: #000; }
-        .btn:disabled { opacity: 0.3; cursor: default; }
-        #recBtn.active { background:var(--accent2); color:#fff; animation:blink 1s infinite; border-color: #fff; }
-        @keyframes blink { 50% { opacity:0.6; } }
-        select, input { width:100%; background:#000; color:var(--accent); border:1px solid var(--border); padding:8px; font-size:11px; margin-top:5px; box-sizing: border-box; }
-        #log-panel { height:80px; background:#000; border:1px solid #222; font-family:monospace; font-size:10px; color:#00ff00; padding:10px; margin-top:10px; overflow:hidden; }
+        :root { --accent: #00f2ff; --pink: #ff007b; --bg: #0a0a0f; --panel: #161622; }
+        body { background: var(--bg); color: #fff; margin: 0; font-family: 'Segoe UI', sans-serif; display: flex; overflow: hidden; }
+        
+        /* Layout */
+        #ui-layer { width: 350px; height: 100vh; background: var(--panel); border-right: 1px solid #333; display: flex; flex-direction: column; z-index: 10; }
+        #canvas-area { flex: 1; display: flex; align-items: center; justify-content: center; background: #000; position: relative; }
+        
+        /* Scrollable Panels */
+        .scroll-area { flex: 1; overflow-y: auto; padding: 20px; }
+        .section { background: rgba(0,0,0,0.3); border-radius: 8px; padding: 15px; margin-bottom: 15px; border: 1px solid #2a2a3a; }
+        h3 { font-size: 11px; color: var(--accent); margin: 0 0 15px 0; text-transform: uppercase; letter-spacing: 2px; border-bottom: 1px solid #333; padding-bottom: 5px; }
+        
+        /* Controls */
+        .ctrl-group { margin-bottom: 12px; }
+        .ctrl-group label { display: flex; justify-content: space-between; font-size: 10px; color: #aaa; margin-bottom: 5px; }
+        .ctrl-group label span { color: var(--accent); }
+        input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+        select, button { width: 100%; background: #000; color: #fff; border: 1px solid #444; padding: 8px; border-radius: 4px; font-size: 11px; cursor: pointer; }
+        button:hover { border-color: var(--accent); background: #111; }
+        .btn-main { background: var(--accent); color: #000; font-weight: bold; border: none; margin-top: 5px; }
+        .btn-rec { border-color: var(--pink); color: var(--pink); margin-top: 10px; }
+        .btn-rec.active { background: var(--pink); color: #fff; animation: blink 1s infinite; }
+
+        @keyframes blink { 50% { opacity: 0.5; } }
+        
+        /* Log */
+        #log { height: 100px; background: #000; font-family: monospace; font-size: 10px; padding: 10px; color: #0f0; overflow-y: hidden; border-top: 1px solid #333; }
     </style>
 </head>
 <body>
 
-<div id="left-panel">
-    <h3>🎆 FIREWORK PRESETS</h3>
-    <p style="font-size:10px; color:#888;">음악 주파수에 따라 12종의 폭죽과 6종의 궤적이 무작위로 생성됩니다.</p>
-    <div id="status-display" style="font-size:11px; margin-top:20px; color:var(--accent2);">Ready to Launch...</div>
-</div>
+<div id="ui-layer">
+    <div class="scroll-area">
+        <div class="section">
+            <h3>1. Project Setup</h3>
+            <div class="ctrl-group">
+                <label>Canvas Ratio</label>
+                <select id="resMode" onchange="changeResolution()">
+                    <option value="169">16:9 Landscape (1280x720)</option>
+                    <option value="916">9:16 Portrait (720x1280)</option>
+                </select>
+            </div>
+            <button class="btn-main" onclick="document.getElementById('audioFile').click()">📂 Load Music (MP3)</button>
+            <input type="file" id="audioFile" hidden accept="audio/*" onchange="loadAudio(this.files)">
+        </div>
 
-<div id="canvas-container"></div>
+        <div class="section">
+            <h3>2. Physics & Core</h3>
+            <div class="ctrl-group">
+                <label>Gravity <span id="v-grav">0.15</span></label>
+                <input type="range" id="grav" min="0.05" max="0.5" step="0.01" value="0.15" oninput="updateVal('v-grav', this.value)">
+            </div>
+            <div class="ctrl-group">
+                <label>Explosion Power <span id="v-pow">8</span></label>
+                <input type="range" id="pow" min="2" max="20" step="1" value="10" oninput="updateVal('v-pow', this.value)">
+            </div>
+            <div class="ctrl-group">
+                <label>Particle Count <span id="v-count">100</span></label>
+                <input type="range" id="pCount" min="50" max="300" step="10" value="120" oninput="updateVal('v-count', this.value)">
+            </div>
+        </div>
 
-<div id="right-panel">
-    <div class="ctrl-box">
-        <h3>1. PRODUCTION SETTING</h3>
-        <label style="font-size:10px;">ASPECT RATIO</label>
-        <select id="ratio" onchange="resizeViz()">
-            <option value="16:9">YouTube (16:9)</option>
-            <option value="9:16">Shorts/TikTok (9:16)</option>
-        </select>
-        <button class="btn" onclick="document.getElementById('mIn').click()">🎵 LOAD MP3</button>
-        <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleAudio(this.files)">
-    </div>
+        <div class="section">
+            <h3>3. Audio Analysis</h3>
+            <div class="ctrl-group">
+                <label>Sensitivity (Threshold) <span id="v-thres">180</span></label>
+                <input type="range" id="thres" min="100" max="255" step="1" value="200" oninput="updateVal('v-thres', this.value)">
+            </div>
+            <div class="ctrl-group">
+                <label>Auto-Launch Rate <span id="v-auto">0.02</span></label>
+                <input type="range" id="autoLaunch" min="0" max="0.2" step="0.01" value="0.02" oninput="updateVal('v-auto', this.value)">
+            </div>
+        </div>
 
-    <div class="ctrl-box">
-        <h3>2. SENSITIVITY</h3>
-        <label style="font-size:10px;">THREASHOLD (민감도)</label>
-        <input type="range" id="threshold" min="150" max="255" value="210">
-        <button class="btn" id="analyzeBtn" onclick="activateEngine()" disabled>⚡ ENGINE START</button>
-    </div>
-
-    <div class="ctrl-box">
-        <h3>3. RECORDING</h3>
-        <button class="btn" id="recBtn" onclick="toggleProduction()" disabled style="color:var(--accent2); border-color:var(--accent2);">🔴 START MP4 RECORDING</button>
+        <div class="section">
+            <h3>4. Visual Style</h3>
+            <div class="ctrl-group">
+                <label>Trail Length (Fade)</label>
+                <input type="range" id="fade" min="5" max="100" step="5" value="40">
+            </div>
+            <div class="ctrl-group">
+                <label>Color Mode</label>
+                <select id="cMode">
+                    <option value="multi">Multicolor Spectrum</option>
+                    <option value="mono">Single Gold</option>
+                    <option value="neon">Electric Neon</option>
+                </select>
+            </div>
+        </div>
     </div>
     
-    <div id="log-panel"><div id="log-content">Waiting for audio file...</div></div>
+    <div style="padding: 20px;">
+        <button id="startBtn" class="btn-main" onclick="initEngine()" disabled>READY TO START</button>
+        <button id="recBtn" class="btn-rec" onclick="toggleRecord()" disabled>🔴 START RECORDING</button>
+    </div>
+
+    <div id="log">System initialized. Waiting for audio...</div>
 </div>
+
+<div id="canvas-area"></div>
 
 <script>
 let audio, fft, isStarted = false, isRecording = false;
 let fireworks = [];
-let gravity;
-let mediaRecorder, recordedChunks = [];
-let canvasElement;
+let canvas;
+let mediaRecorder, chunks = [];
+
+function updateVal(id, val) { document.getElementById(id).innerText = val; }
 
 function setup() {
-    resizeViz();
-    gravity = createVector(0, 0.15);
-    fft = new p5.FFT(0.8, 512);
+    changeResolution();
+    colorMode(HSB);
 }
 
-function resizeViz() {
-    let ratio = document.getElementById('ratio').value;
-    let w, h;
-    if(ratio === "16:9") { w = 1280; h = 720; }
-    else { w = 405; h = 720; }
-    
+function changeResolution() {
+    let mode = document.getElementById('resMode').value;
+    let w = (mode === '169') ? 1280 : 540;
+    let h = (mode === '169') ? 720 : 960;
     let cnv = createCanvas(w, h);
-    cnv.parent('canvas-container');
-    canvasElement = cnv.elt;
+    cnv.parent('canvas-area');
+    canvas = cnv.elt;
+    // 화면 크기에 맞게 스케일 조정 (UI 방해 안되게)
+    let scale = Math.min((window.innerWidth - 350) / w, window.innerHeight / h) * 0.9;
+    cnv.style('transform', `scale(${scale})`);
 }
 
 function draw() {
-    background(0, 0, 0, 40); // 잔상 효과
-
-    if (isStarted && audio && audio.isPlaying()) {
-        fft.analyze();
-        let bass = fft.getEnergy("bass");
-        let treble = fft.getEnergy("treble");
-        let thresh = document.getElementById('threshold').value;
-
-        // 드럼 비트나 강한 베이스가 감지되면 폭죽 발사
-        if (bass > thresh && random(1) > 0.85) {
+    let fadeVal = document.getElementById('fade').value;
+    background(0, 0, 0, map(fadeVal, 0, 100, 1, 0.5)); // 잔상 농도 조절
+    
+    if (isStarted) {
+        // 1. 오디오 분석 기반 발사
+        if (audio && audio.isPlaying()) {
+            fft.analyze();
+            let bass = fft.getEnergy("bass");
+            let thres = document.getElementById('thres').value;
+            if (bass > thres && random(1) > 0.9) {
+                fireworks.push(new Firework());
+            }
+        }
+        
+        // 2. 자동 발사 (음악 없을 때나 보조용)
+        let autoRate = parseFloat(document.getElementById('autoLaunch').value);
+        if (random(1) < autoRate) {
             fireworks.push(new Firework());
-            document.getElementById('log-content').innerText = `BOOM! Bass: ${floor(bass)} | Active: ${fireworks.length}`;
         }
     }
 
+    // 폭죽 업데이트 및 렌더링
     for (let i = fireworks.length - 1; i >= 0; i--) {
         fireworks[i].update();
         fireworks[i].show();
         if (fireworks[i].done()) fireworks.splice(i, 1);
     }
+    
+    if (frameCount % 60 === 0) {
+        document.getElementById('log').innerText = `FPS: ${floor(frameRate())} | Particles: ${fireworks.length}`;
+    }
 }
 
-// 폭죽 클래스
+// --- Firework Engine ---
 class Firework {
     constructor() {
         this.hu = random(360);
-        this.type = floor(random(12)); // 12가지 모양
-        this.trailType = floor(random(6)); // 6가지 궤적
+        this.type = floor(random(12)); // 12종 모양
+        this.trailType = floor(random(6)); // 6종 궤적
         this.firework = new Particle(random(width), height, this.hu, true, this.trailType);
         this.exploded = false;
         this.particles = [];
     }
 
-    done() {
-        return (this.exploded && this.particles.length === 0);
-    }
+    done() { return this.exploded && this.particles.length === 0; }
 
     update() {
+        let gravityV = createVector(0, parseFloat(document.getElementById('grav').value));
         if (!this.exploded) {
-            this.firework.applyForce(gravity);
+            this.firework.applyForce(gravityV);
             this.firework.update();
             if (this.firework.vel.y >= 0) {
                 this.exploded = true;
@@ -131,16 +190,17 @@ class Firework {
             }
         }
         for (let i = this.particles.length - 1; i >= 0; i--) {
-            this.particles[i].applyForce(gravity);
+            this.particles[i].applyForce(gravityV);
             this.particles[i].update();
             if (this.particles[i].done()) this.particles.splice(i, 1);
         }
     }
 
     explode() {
-        let particleCount = 100;
-        for (let i = 0; i < particleCount; i++) {
-            let p = new Particle(this.firework.pos.x, this.firework.pos.y, this.hu, false, this.type);
+        let count = parseInt(document.getElementById('pCount').value);
+        let power = parseFloat(document.getElementById('pow').value);
+        for (let i = 0; i < count; i++) {
+            let p = new Particle(this.firework.pos.x, this.firework.pos.y, this.hu, false, this.type, power);
             this.particles.push(p);
         }
     }
@@ -151,57 +211,50 @@ class Firework {
     }
 }
 
-// 입자 클래스
 class Particle {
-    constructor(x, y, hu, firework, type) {
+    constructor(x, y, hu, isLead, type, power) {
         this.pos = createVector(x, y);
-        this.firework = firework;
+        this.isLead = isLead;
         this.lifespan = 255;
         this.hu = hu;
         this.type = type;
         this.acc = createVector(0, 0);
         
-        if (this.firework) {
-            this.vel = createVector(0, random(-12, -7));
+        if (this.isLead) {
+            this.vel = createVector(0, random(-15, -8));
         } else {
-            this.vel = this.getShapeVelocity(type);
-            this.vel.mult(random(2, 10));
+            this.vel = this.getPattern(type);
+            this.vel.mult(random(power * 0.5, power));
         }
     }
 
-    getShapeVelocity(type) {
-        let v;
-        let angle = random(TWO_PI);
-        switch(type) {
-            case 0: // 원형 (Classic)
-                v = p5.Vector.fromAngle(angle); break;
-            case 1: // 하트
-                let r = 16 * pow(sin(angle), 3);
-                let y = -(13 * cos(angle) - 5 * cos(2 * angle) - 2 * cos(3 * angle) - cos(4 * angle));
-                v = createVector(r / 10, y / 10); break;
-            case 2: // 별
-                let r2 = (angle % (TWO_PI/5) < TWO_PI/10) ? 1 : 0.5;
-                v = p5.Vector.fromAngle(angle).mult(r2); break;
-            case 3: // 꽃 (Flower)
-                let r3 = sin(angle * 6);
-                v = p5.Vector.fromAngle(angle).mult(r3); break;
-            case 4: // 비류나무 (Willow)
-                v = p5.Vector.fromAngle(angle + PI/2).mult(random(0.1, 1));
-                this.lifespan = 400; break;
-            case 5: // 사각형
-                v = createVector(cos(angle), sin(angle));
-                v.mult(1 / max(abs(cos(angle)), abs(sin(angle)))); break;
-            default: // 나머지 (랜덤 확산)
-                v = p5.Vector.random2D(); break;
+    getPattern(t) {
+        let a = random(TWO_PI);
+        switch(t) {
+            case 0: return p5.Vector.fromAngle(a); // Circle
+            case 1: // Heart
+                let x = 16 * pow(sin(a), 3);
+                let y = -(13 * cos(a) - 5 * cos(2*a) - 2 * cos(3*a) - cos(4*a));
+                return createVector(x/15, y/15);
+            case 2: // Star
+                let r = (a % (TWO_PI/5) < TWO_PI/10) ? 1 : 0.4;
+                return p5.Vector.fromAngle(a).mult(r);
+            case 3: // Flower
+                return p5.Vector.fromAngle(a).mult(sin(a*5));
+            case 4: // Willow
+                let v = p5.Vector.fromAngle(a);
+                this.lifespan = 400; return v.mult(random(0.2, 1));
+            case 5: return createVector(cos(a), sin(a)).mult(random() > 0.5 ? 1 : 0.2); // Ring
+            case 6: return createVector(cos(a)*abs(cos(a)), sin(a)*abs(sin(a))); // Squareish
+            default: return p5.Vector.random2D();
         }
-        return v;
     }
 
-    applyForce(force) { this.acc.add(force); }
+    applyForce(f) { this.acc.add(f); }
 
     update() {
-        if (!this.firework) {
-            this.vel.mult(0.92); // 공기 저항
+        if (!this.isLead) {
+            this.vel.mult(0.93); // Drag
             this.lifespan -= 4;
         }
         this.vel.add(this.acc);
@@ -212,76 +265,73 @@ class Particle {
     done() { return this.lifespan < 0; }
 
     show() {
-        colorMode(HSB);
-        if (!this.firework) {
-            strokeWeight(2);
-            stroke(this.hu, 255, 255, this.lifespan / 255);
-        } else {
+        let cm = document.getElementById('cMode').value;
+        if (cm === 'mono') stroke(45, 80, 100, this.lifespan/255);
+        else if (cm === 'neon') stroke(180, 100, 100, this.lifespan/255);
+        else stroke(this.hu, 255, 255, this.lifespan/255);
+        
+        if (this.isLead) {
             strokeWeight(3);
-            stroke(this.hu, 255, 255);
-            // 궤적 타입 (6가지 예시 중 2가지 로직 구현)
-            if(this.type % 2 === 0) { // 점선 궤적
-                 if(frameCount % 4 === 0) point(this.pos.x, this.pos.y);
+            if (this.type % 2 === 0) { // 점선 궤적
+                if (frameCount % 4 < 2) point(this.pos.x, this.pos.y);
             } else {
-                 point(this.pos.x, this.pos.y);
+                point(this.pos.x, this.pos.y);
             }
+        } else {
+            strokeWeight(2);
+            point(this.pos.x, this.pos.y);
         }
-        point(this.pos.x, this.pos.y);
     }
 }
 
-// 오디오 및 녹화 핸들러
-function handleAudio(f) {
+// --- System Functions ---
+function loadAudio(f) {
     if (audio) audio.stop();
     audio = loadSound(URL.createObjectURL(f[0]), () => {
-        document.getElementById('analyzeBtn').disabled = false;
-        document.getElementById('log-content').innerText = "Audio Loaded. Press ENGINE START.";
+        fft = new p5.FFT();
+        document.getElementById('startBtn').disabled = false;
+        document.getElementById('log').innerText = "Music Loaded. Press START.";
     });
 }
 
-function activateEngine() {
-    userStartAudio().then(() => {
-        isStarted = true;
-        document.getElementById('recBtn').disabled = false;
-        document.getElementById('status-display').innerText = "SYSTEM ACTIVE";
-    });
+function initEngine() {
+    userStartAudio();
+    isStarted = true;
+    document.getElementById('recBtn').disabled = false;
+    document.getElementById('startBtn').innerText = "ENGINE RUNNING";
 }
 
-async function toggleProduction() {
-    if(isRecording) {
-        audio.stop();
+function toggleRecord() {
+    if (isRecording) {
         mediaRecorder.stop();
+        audio.stop();
         isRecording = false;
+        document.getElementById('recBtn').innerText = "🔴 START RECORDING";
         document.getElementById('recBtn').classList.remove('active');
-        document.getElementById('recBtn').innerText = "🔴 START MP4 PRODUCTION";
     } else {
-        recordedChunks = [];
-        const stream = canvasElement.captureStream(60);
+        chunks = [];
+        let stream = canvas.captureStream(60);
         
-        // 오디오 컨텍스트 연결
-        const dest = p5.prototype.getAudioContext().createMediaStreamDestination();
+        // 오디오 믹싱
+        let ctx = p5.prototype.getAudioContext();
+        let dest = ctx.createMediaStreamDestination();
         audio.connect(dest);
         stream.addTrack(dest.stream.getAudioTracks()[0]);
 
-        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
-        mediaRecorder.ondataavailable = e => { if(e.data.size > 0) recordedChunks.push(e.data); };
+        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+        mediaRecorder.ondataavailable = e => chunks.push(e.data);
         mediaRecorder.onstop = () => {
-            const blob = new Blob(recordedChunks, { type: 'video/webm' });
-            const a = document.createElement('a');
+            let blob = new Blob(chunks, { type: 'video/webm' });
+            let a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = `Firework_Viz_${Date.now()}.webm`;
+            a.download = `Firework_Show_${Date.now()}.webm`;
             a.click();
-            location.reload(); // 저장 후 초기화
         };
-        
         mediaRecorder.start();
         audio.play();
         isRecording = true;
-        document.getElementById('recBtn').classList.add('active');
         document.getElementById('recBtn').innerText = "⬛ STOP & SAVE";
-        
-        // 노래 끝나면 자동 저장
-        audio.onended(() => { if(isRecording) toggleProduction(); });
+        document.getElementById('recBtn').classList.add('active');
     }
 }
 </script>
