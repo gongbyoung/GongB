@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>FIREWORK STUDIO v24.1 — Audio Visualizer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
+    <style>
+        :root{ --bg:#050508; --accent:#ffcc00; --accent2:#ff3377; --panel:#0f0f1a; --border:rgba(255,204,0,0.2); }
+        body{ background:var(--bg); color:#e0f0ff; margin:0; overflow:hidden; font-family:sans-serif; display:flex; }
+        #left-panel { width:220px; background:var(--panel); height:100vh; padding:15px; border-right:1px solid var(--border); }
+        #canvas-container { flex:1; background:#000; display:flex; align-items:center; justify-content:center; position:relative; }
+        #right-panel { width:320px; background:var(--panel); height:100vh; padding:15px; border-left:1px solid var(--border); overflow-y:auto; }
+        .ctrl-box { background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:12px; }
+        h3 { font-size:11px; color:var(--accent); margin:0 0 10px 0; letter-spacing:1px; }
+        .btn { width:100%; padding:10px; background:transparent; border:1px solid var(--accent); color:var(--accent); cursor:pointer; font-size:11px; border-radius:4px; margin-top:6px; transition: 0.3s; }
+        .btn:hover { background: var(--accent); color: #000; }
+        .btn:disabled { opacity: 0.3; cursor: default; }
+        #recBtn.active { background:var(--accent2); color:#fff; animation:blink 1s infinite; border-color: #fff; }
+        @keyframes blink { 50% { opacity:0.6; } }
+        select, input { width:100%; background:#000; color:var(--accent); border:1px solid var(--border); padding:8px; font-size:11px; margin-top:5px; box-sizing: border-box; }
+        #log-panel { height:80px; background:#000; border:1px solid #222; font-family:monospace; font-size:10px; color:#00ff00; padding:10px; margin-top:10px; overflow:hidden; }
+    </style>
+</head>
+<body>
+
+<div id="left-panel">
+    <h3>🎆 FIREWORK PRESETS</h3>
+    <p style="font-size:10px; color:#888;">음악 주파수에 따라 12종의 폭죽과 6종의 궤적이 무작위로 생성됩니다.</p>
+    <div id="status-display" style="font-size:11px; margin-top:20px; color:var(--accent2);">Ready to Launch...</div>
+</div>
+
+<div id="canvas-container"></div>
+
+<div id="right-panel">
+    <div class="ctrl-box">
+        <h3>1. PRODUCTION SETTING</h3>
+        <label style="font-size:10px;">ASPECT RATIO</label>
+        <select id="ratio" onchange="resizeViz()">
+            <option value="16:9">YouTube (16:9)</option>
+            <option value="9:16">Shorts/TikTok (9:16)</option>
+        </select>
+        <button class="btn" onclick="document.getElementById('mIn').click()">🎵 LOAD MP3</button>
+        <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleAudio(this.files)">
+    </div>
+
+    <div class="ctrl-box">
+        <h3>2. SENSITIVITY</h3>
+        <label style="font-size:10px;">THREASHOLD (민감도)</label>
+        <input type="range" id="threshold" min="150" max="255" value="210">
+        <button class="btn" id="analyzeBtn" onclick="activateEngine()" disabled>⚡ ENGINE START</button>
+    </div>
+
+    <div class="ctrl-box">
+        <h3>3. RECORDING</h3>
+        <button class="btn" id="recBtn" onclick="toggleProduction()" disabled style="color:var(--accent2); border-color:var(--accent2);">🔴 START MP4 RECORDING</button>
+    </div>
+    
+    <div id="log-panel"><div id="log-content">Waiting for audio file...</div></div>
+</div>
+
+<script>
+let audio, fft, isStarted = false, isRecording = false;
+let fireworks = [];
+let gravity;
+let mediaRecorder, recordedChunks = [];
+let canvasElement;
+
+function setup() {
+    resizeViz();
+    gravity = createVector(0, 0.15);
+    fft = new p5.FFT(0.8, 512);
+}
+
+function resizeViz() {
+    let ratio = document.getElementById('ratio').value;
+    let w, h;
+    if(ratio === "16:9") { w = 1280; h = 720; }
+    else { w = 405; h = 720; }
+    
+    let cnv = createCanvas(w, h);
+    cnv.parent('canvas-container');
+    canvasElement = cnv.elt;
+}
+
+function draw() {
+    background(0, 0, 0, 40); // 잔상 효과
+
+    if (isStarted && audio && audio.isPlaying()) {
+        fft.analyze();
+        let bass = fft.getEnergy("bass");
+        let treble = fft.getEnergy("treble");
+        let thresh = document.getElementById('threshold').value;
+
+        // 드럼 비트나 강한 베이스가 감지되면 폭죽 발사
+        if (bass > thresh && random(1) > 0.85) {
+            fireworks.push(new Firework());
+            document.getElementById('log-content').innerText = `BOOM! Bass: ${floor(bass)} | Active: ${fireworks.length}`;
+        }
+    }
+
+    for (let i = fireworks.length - 1; i >= 0; i--) {
+        fireworks[i].update();
+        fireworks[i].show();
+        if (fireworks[i].done()) fireworks.splice(i, 1);
+    }
+}
+
+// 폭죽 클래스
+class Firework {
+    constructor() {
+        this.hu = random(360);
+        this.type = floor(random(12)); // 12가지 모양
+        this.trailType = floor(random(6)); // 6가지 궤적
+        this.firework = new Particle(random(width), height, this.hu, true, this.trailType);
+        this.exploded = false;
+        this.particles = [];
+    }
+
+    done() {
+        return (this.exploded && this.particles.length === 0);
+    }
+
+    update() {
+        if (!this.exploded) {
+            this.firework.applyForce(gravity);
+            this.firework.update();
+            if (this.firework.vel.y >= 0) {
+                this.exploded = true;
+                this.explode();
+            }
+        }
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            this.particles[i].applyForce(gravity);
+            this.particles[i].update();
+            if (this.particles[i].done()) this.particles.splice(i, 1);
+        }
+    }
+
+    explode() {
+        let particleCount = 100;
+        for (let i = 0; i < particleCount; i++) {
+            let p = new Particle(this.firework.pos.x, this.firework.pos.y, this.hu, false, this.type);
+            this.particles.push(p);
+        }
+    }
+
+    show() {
+        if (!this.exploded) this.firework.show();
+        for (let p of this.particles) p.show();
+    }
+}
+
+// 입자 클래스
+class Particle {
+    constructor(x, y, hu, firework, type) {
+        this.pos = createVector(x, y);
+        this.firework = firework;
+        this.lifespan = 255;
+        this.hu = hu;
+        this.type = type;
+        this.acc = createVector(0, 0);
+        
+        if (this.firework) {
+            this.vel = createVector(0, random(-12, -7));
+        } else {
+            this.vel = this.getShapeVelocity(type);
+            this.vel.mult(random(2, 10));
+        }
+    }
+
+    getShapeVelocity(type) {
+        let v;
+        let angle = random(TWO_PI);
+        switch(type) {
+            case 0: // 원형 (Classic)
+                v = p5.Vector.fromAngle(angle); break;
+            case 1: // 하트
+                let r = 16 * pow(sin(angle), 3);
+                let y = -(13 * cos(angle) - 5 * cos(2 * angle) - 2 * cos(3 * angle) - cos(4 * angle));
+                v = createVector(r / 10, y / 10); break;
+            case 2: // 별
+                let r2 = (angle % (TWO_PI/5) < TWO_PI/10) ? 1 : 0.5;
+                v = p5.Vector.fromAngle(angle).mult(r2); break;
+            case 3: // 꽃 (Flower)
+                let r3 = sin(angle * 6);
+                v = p5.Vector.fromAngle(angle).mult(r3); break;
+            case 4: // 비류나무 (Willow)
+                v = p5.Vector.fromAngle(angle + PI/2).mult(random(0.1, 1));
+                this.lifespan = 400; break;
+            case 5: // 사각형
+                v = createVector(cos(angle), sin(angle));
+                v.mult(1 / max(abs(cos(angle)), abs(sin(angle)))); break;
+            default: // 나머지 (랜덤 확산)
+                v = p5.Vector.random2D(); break;
+        }
+        return v;
+    }
+
+    applyForce(force) { this.acc.add(force); }
+
+    update() {
+        if (!this.firework) {
+            this.vel.mult(0.92); // 공기 저항
+            this.lifespan -= 4;
+        }
+        this.vel.add(this.acc);
+        this.pos.add(this.vel);
+        this.acc.mult(0);
+    }
+
+    done() { return this.lifespan < 0; }
+
+    show() {
+        colorMode(HSB);
+        if (!this.firework) {
+            strokeWeight(2);
+            stroke(this.hu, 255, 255, this.lifespan / 255);
+        } else {
+            strokeWeight(3);
+            stroke(this.hu, 255, 255);
+            // 궤적 타입 (6가지 예시 중 2가지 로직 구현)
+            if(this.type % 2 === 0) { // 점선 궤적
+                 if(frameCount % 4 === 0) point(this.pos.x, this.pos.y);
+            } else {
+                 point(this.pos.x, this.pos.y);
+            }
+        }
+        point(this.pos.x, this.pos.y);
+    }
+}
+
+// 오디오 및 녹화 핸들러
+function handleAudio(f) {
+    if (audio) audio.stop();
+    audio = loadSound(URL.createObjectURL(f[0]), () => {
+        document.getElementById('analyzeBtn').disabled = false;
+        document.getElementById('log-content').innerText = "Audio Loaded. Press ENGINE START.";
+    });
+}
+
+function activateEngine() {
+    userStartAudio().then(() => {
+        isStarted = true;
+        document.getElementById('recBtn').disabled = false;
+        document.getElementById('status-display').innerText = "SYSTEM ACTIVE";
+    });
+}
+
+async function toggleProduction() {
+    if(isRecording) {
+        audio.stop();
+        mediaRecorder.stop();
+        isRecording = false;
+        document.getElementById('recBtn').classList.remove('active');
+        document.getElementById('recBtn').innerText = "🔴 START MP4 PRODUCTION";
+    } else {
+        recordedChunks = [];
+        const stream = canvasElement.captureStream(60);
+        
+        // 오디오 컨텍스트 연결
+        const dest = p5.prototype.getAudioContext().createMediaStreamDestination();
+        audio.connect(dest);
+        stream.addTrack(dest.stream.getAudioTracks()[0]);
+
+        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
+        mediaRecorder.ondataavailable = e => { if(e.data.size > 0) recordedChunks.push(e.data); };
+        mediaRecorder.onstop = () => {
+            const blob = new Blob(recordedChunks, { type: 'video/webm' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `Firework_Viz_${Date.now()}.webm`;
+            a.click();
+            location.reload(); // 저장 후 초기화
+        };
+        
+        mediaRecorder.start();
+        audio.play();
+        isRecording = true;
+        document.getElementById('recBtn').classList.add('active');
+        document.getElementById('recBtn').innerText = "⬛ STOP & SAVE";
+        
+        // 노래 끝나면 자동 저장
+        audio.onended(() => { if(isRecording) toggleProduction(); });
+    }
+}
+</script>
+</body>
+</html>
