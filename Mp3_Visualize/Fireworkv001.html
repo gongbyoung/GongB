@@ -2,40 +2,49 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>FIREWORK STUDIO v4.0 — Audio Mastering Edition</title>
+    <title>FIREWORK STUDIO v4.5 — Strict Range Edition</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <style>
         :root { --accent: #00f2ff; --pink: #ff007b; --bg: #020205; --panel: #0d0d14; }
-        body { background: var(--bg); color: #fff; margin: 0; font-family: 'Pretendard', sans-serif; display: flex; overflow: hidden; height: 100vh; }
+        body { background: var(--bg); color: #fff; margin: 0; font-family: sans-serif; display: flex; overflow: hidden; height: 100vh; }
         
-        /* UI Sidebar */
+        /* 왼쪽 사이드바 */
         #ui-sidebar { width: 360px; height: 100vh; background: var(--panel); border-right: 1px solid #222; display: flex; flex-direction: column; z-index: 100; flex-shrink: 0; }
-        #canvas-viewport { flex: 1; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; overflow: hidden; position: relative; padding-top: 20px; }
         
-        canvas { border: 1px solid var(--accent); box-shadow: 0 0 30px rgba(0, 242, 255, 0.15); transform-origin: top center; }
+        /* 메인 뷰포트 (상단 정렬) */
+        #canvas-viewport { flex: 1; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; overflow: hidden; position: relative; }
+        
+        canvas { 
+            border: 1px solid var(--accent); 
+            margin-top: 30px; /* 상단 여백 고정 */
+            transform-origin: top center; 
+            box-shadow: 0 0 40px rgba(0, 0, 0, 0.5);
+        }
 
         .scroll-container { flex: 1; overflow-y: auto; padding: 20px; }
-        .card { background: rgba(255,255,255,0.03); border-radius: 10px; padding: 15px; margin-bottom: 15px; border: 1px solid #2a2a35; }
+        .card { background: rgba(255,255,255,0.03); border-radius: 8px; padding: 15px; margin-bottom: 15px; border: 1px solid #2a2a35; }
         h3 { font-size: 11px; color: var(--accent); margin: 0 0 12px 0; text-transform: uppercase; letter-spacing: 1.5px; border-bottom: 1px solid #333; padding-bottom: 5px; }
         
         .row { margin-bottom: 15px; }
         label { display: flex; justify-content: space-between; font-size: 11px; color: #888; margin-bottom: 5px; }
         label span { color: var(--accent); font-weight: bold; }
         
-        /* Audio Debugger Styles */
-        .debug-bar-bg { width: 100%; height: 8px; background: #000; border-radius: 4px; overflow: hidden; margin-top: 4px; }
-        .debug-bar-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.1s; }
+        /* 분석기 바 */
+        .debug-bar-bg { width: 100%; height: 6px; background: #000; border-radius: 3px; overflow: hidden; margin-top: 4px; }
+        .debug-bar-fill { height: 100%; background: var(--accent); width: 0%; }
 
-        select, button, input[type=range] { width: 100%; background: #000; color: #fff; border: 1px solid #444; padding: 10px; border-radius: 4px; font-size: 12px; box-sizing: border-box; }
-        input[type=range] { accent-color: var(--accent); cursor: pointer; padding: 0; }
+        select, button, input[type=range] { width: 100%; background: #000; color: #fff; border: 1px solid #444; padding: 10px; border-radius: 4px; font-size: 12px; box-sizing: border-box; outline: none; }
+        input[type=range] { accent-color: var(--accent); cursor: pointer; height: 4px; }
         
-        .btn-primary { background: var(--accent); color: #000; font-weight: bold; border: none; cursor: pointer; margin-top: 5px; }
+        .btn-primary { background: var(--accent); color: #000; font-weight: bold; border: none; cursor: pointer; }
         .btn-rec { border-color: var(--pink); color: var(--pink); margin-top: 10px; font-weight: bold; cursor: pointer; }
         .btn-rec.active { background: var(--pink); color: #fff; animation: pulse 1.5s infinite; }
         
-        #log-console { height: 120px; background: #000; font-family: 'Courier New', monospace; font-size: 10px; padding: 10px; color: #0f0; border-top: 1px solid #222; overflow-y: auto; }
-        .predict-box { font-size: 10px; color: var(--pink); margin-top: 5px; text-align: right; }
+        #log-console { height: 100px; background: #050508; font-family: monospace; font-size: 10px; padding: 10px; color: #00ff00; border-top: 1px solid #222; overflow-y: auto; }
+        .predict-box { font-size: 10px; color: var(--pink); text-align: right; margin-top: 5px; }
+
+        @keyframes pulse { 50% { opacity: 0.5; } }
     </style>
 </head>
 <body>
@@ -43,59 +52,53 @@
 <div id="ui-sidebar">
     <div class="scroll-container">
         <div class="card">
-            <h3>📐 Canvas Display</h3>
-            <div class="row">
-                <select id="resMode" onchange="changeResolution()">
-                    <option value="fhd_wide">16:9 Landscape (1920x1080)</option>
-                    <option value="fhd_tall">9:16 Portrait (1080x1920)</option>
-                </select>
-            </div>
+            <h3>📐 Canvas & Ratio</h3>
+            <select id="resMode" onchange="changeResolution()">
+                <option value="fhd_wide">16:9 Landscape (1920x1080)</option>
+                <option value="fhd_tall">9:16 Portrait (1080x1920)</option>
+            </select>
         </div>
 
         <div class="card">
-            <h3>📊 Master Audio Analyzer</h3>
+            <h3>📊 Master Analyzer</h3>
             <div class="row">
-                <label>BASS (Kick/Beat) <span id="val-bass">0</span></label>
+                <label>BASS (Beat) <span id="val-bass">0</span></label>
                 <div class="debug-bar-bg"><div id="bar-bass" class="debug-bar-fill"></div></div>
             </div>
             <div class="row">
                 <label>MID (Melody) <span id="val-mid">0</span></label>
                 <div class="debug-bar-bg"><div id="bar-mid" class="debug-bar-fill"></div></div>
             </div>
-            <div class="row">
-                <label>TREBLE (High) <span id="val-treble">0</span></label>
-                <div class="debug-bar-bg"><div id="bar-treble" class="debug-bar-fill"></div></div>
-            </div>
         </div>
 
         <div class="card">
             <h3>⚡ Launch Engine</h3>
             <div class="row">
-                <label>Sensitivity <span id="v-sens">200</span></label>
-                <input type="range" id="sens" min="100" max="255" value="200" oninput="updateUI('v-sens', this.value); calcPredict();">
+                <label>Sensitivity <span id="v-sens">163</span></label>
+                <input type="range" id="sens" min="100" max="255" value="163" oninput="updateUI('v-sens', this.value); calcPredict();">
             </div>
             <div class="row">
-                <label>Probability <span id="v-prob">15</span>%</label>
-                <input type="range" id="prob" min="1" max="100" value="15" oninput="updateUI('v-prob', this.value); calcPredict();">
+                <label>Probability <span id="v-prob">19</span>%</label>
+                <input type="range" id="prob" min="1" max="100" value="19" oninput="updateUI('v-prob', this.value); calcPredict();">
             </div>
-            <div id="predict-text" class="predict-box">예상 빈도: 계산 중...</div>
+            <div id="predict-text" class="predict-box">예측 밀도: 계산 중...</div>
         </div>
 
         <div class="card">
-            <h3>🎨 Visuals & Media</h3>
+            <h3>🎨 Media Assets</h3>
             <button class="btn-primary" onclick="document.getElementById('m-file').click()">🎵 LOAD MUSIC (MP3)</button>
             <input type="file" id="m-file" hidden accept="audio/*" onchange="handleAudio(this.files)">
             <div style="margin-top:8px;"></div>
-            <button class="btn-primary" style="background:#444; color:#fff" onclick="document.getElementById('i-file').click()">🖼️ LOAD BG IMAGE</button>
+            <button class="btn-primary" style="background:#333; color:#fff" onclick="document.getElementById('i-file').click()">🖼️ LOAD BG IMAGE</button>
             <input type="file" id="i-file" hidden accept="image/*" onchange="handleImage(this.files)">
         </div>
     </div>
     
-    <div id="log-console">>> System initialized...</div>
+    <div id="log-console">>> Waiting for signal...</div>
 
-    <div style="padding: 20px; background: #000;">
-        <button id="startBtn" class="btn-primary" onclick="startEngine()" disabled style="height:45px">ENGINE STANDBY</button>
-        <button id="recBtn" class="btn-rec" onclick="toggleRecording()" disabled style="height:45px">🔴 START RECORDING</button>
+    <div style="padding: 20px;">
+        <button id="startBtn" class="btn-primary" onclick="startEngine()" disabled style="height:40px">ENGINE ACTIVE</button>
+        <button id="recBtn" class="btn-rec" onclick="toggleRecording()" disabled style="height:40px">⬛ STOP & SAVE</button>
     </div>
 </div>
 
@@ -110,19 +113,20 @@ let mediaRecorder, chunks = [];
 
 function updateUI(id, val) { document.getElementById(id).innerText = val; }
 
-function addLog(msg) {
+function addLog(b) {
     let log = document.getElementById('log-console');
+    let msg = `[${new Date().toLocaleTimeString()}] Launch Signal: Bass ${floor(b)} Detected`;
     let div = document.createElement('div');
-    div.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    div.innerText = msg;
     log.prepend(div);
-    if(log.childNodes.length > 50) log.lastChild.remove();
+    if(log.childNodes.length > 30) log.lastChild.remove();
 }
 
 function calcPredict() {
     let sens = parseInt(document.getElementById('sens').value);
     let prob = parseInt(document.getElementById('prob').value);
-    let est = floor((255 - sens) * (prob/100) * 0.5);
-    document.getElementById('predict-text').innerText = `예측 밀도: 10초당 약 ${max(1, est * 5)}개`;
+    let est = floor((255 - sens) * (prob/100) * 0.4);
+    document.getElementById('predict-text').innerText = `예측 밀도: 10초당 약 ${max(1, est * 8)}개`;
 }
 
 function setup() {
@@ -145,12 +149,11 @@ function changeResolution() {
     scaleViewport();
     gravity = createVector(0, height * 0.0002);
     fireworks = []; 
-    addLog(`Canvas Ratio Changed: ${w}x${h}`);
 }
 
 function scaleViewport() {
     let containerW = window.innerWidth - 360;
-    let containerH = window.innerHeight - 40; // 상단 패딩 고려
+    let containerH = window.innerHeight - 60; 
     let scale = Math.min(containerW / width, containerH / height);
     mainCanvas.elt.style.transform = `scale(${scale})`;
 }
@@ -161,34 +164,32 @@ function draw() {
 
     if (bgImg) {
         push();
-        tint(255, document.getElementById('bgop')?.value || 40);
+        tint(255, 100); // 배경 투명도 100%
         image(bgImg, 0, 0, width, height);
         pop();
     }
 
-    fill(0, 0, 0, 25); 
+    fill(0, 0, 0, 20); 
     rect(0, 0, width, height);
 
     if (isStarted && audio && audio.isPlaying()) {
         fft.analyze();
         let b = fft.getEnergy("bass");
         let m = fft.getEnergy("mid");
-        let t = fft.getEnergy("treble");
 
-        // UI Debugger Update
+        // 분석기 UI 업데이트
         document.getElementById('bar-bass').style.width = (b/255*100) + "%";
         document.getElementById('bar-mid').style.width = (m/255*100) + "%";
-        document.getElementById('bar-treble').style.width = (t/255*100) + "%";
         document.getElementById('val-bass').innerText = floor(b);
         document.getElementById('val-mid').innerText = floor(m);
-        document.getElementById('val-treble').innerText = floor(t);
 
         let threshold = parseInt(document.getElementById('sens').value);
         let probability = parseInt(document.getElementById('prob').value) / 100;
         
+        // 베이스 신호가 문턱값을 넘으면 발사
         if (b > threshold && random(1) < probability) {
             fireworks.push(new Firework());
-            if(random(1) > 0.8) addLog(`Launch Signal: Bass ${floor(b)} Detected`);
+            addLog(b);
         }
     }
 
@@ -202,7 +203,11 @@ function draw() {
 class Firework {
     constructor() {
         this.hu = random(360);
-        this.firework = new Particle(random(width * 0.15, width * 0.85), height, this.hu, true);
+        // CRITICAL: 캔버스의 10%~90% 사이(중앙 80% 범위)에서만 터지도록 지정
+        let xRange = width * 0.1;
+        let safeX = random(xRange, width - xRange);
+        
+        this.firework = new Particle(safeX, height, this.hu, true);
         this.exploded = false;
         this.particles = [];
     }
@@ -223,7 +228,7 @@ class Firework {
         }
     }
     explode() {
-        for (let i = 0; i < 150; i++) {
+        for (let i = 0; i < 120; i++) {
             this.particles.push(new Particle(this.firework.pos.x, this.firework.pos.y, this.hu, false));
         }
     }
@@ -241,14 +246,15 @@ class Particle {
         this.hu = hu;
         this.acc = createVector(0, 0);
         if (this.isLead) {
-            this.vel = createVector(random(-1,1), random(height * -0.019, height * -0.026));
+            // 수직 상승 위주 속도
+            this.vel = createVector(random(-0.5, 0.5), random(height * -0.02, height * -0.028));
         } else {
-            this.vel = p5.Vector.random2D().mult(random(width*0.005, width*0.013));
+            this.vel = p5.Vector.random2D().mult(random(width*0.004, width*0.012));
         }
     }
     applyForce(f) { this.acc.add(f); }
     update() {
-        if (!this.isLead) { this.vel.mult(0.95); this.lifespan -= 1.8; }
+        if (!this.isLead) { this.vel.mult(0.95); this.lifespan -= 2.2; }
         this.vel.add(this.acc);
         this.pos.add(this.vel);
         this.acc.mult(0);
@@ -256,9 +262,9 @@ class Particle {
     done() { return this.lifespan < 0; }
     show() {
         push();
-        drawingContext.shadowBlur = this.isLead ? 15 : 6;
+        drawingContext.shadowBlur = this.isLead ? 12 : 5;
         drawingContext.shadowColor = color(this.hu, 100, 100);
-        strokeWeight(this.isLead ? 4 : 3);
+        strokeWeight(this.isLead ? 4 : 2.5);
         stroke(this.hu, 90, 100, this.lifespan);
         point(this.pos.x, this.pos.y);
         pop();
@@ -266,20 +272,16 @@ class Particle {
 }
 
 function handleAudio(files) {
-    addLog("Loading audio file...");
     audio = loadSound(URL.createObjectURL(files[0]), () => {
         fft = new p5.FFT();
         document.getElementById('startBtn').disabled = false;
-        addLog("Audio Load Complete.");
+        document.getElementById('log-console').prepend(document.createTextNode(">> Audio File Ready\n"));
     });
 }
 
 function handleImage(files) {
     let reader = new FileReader();
-    reader.onload = (e) => { 
-        bgImg = loadImage(e.target.result); 
-        addLog("Background Image Loaded.");
-    };
+    reader.onload = (e) => { bgImg = loadImage(e.target.result); };
     reader.readAsDataURL(files[0]);
 }
 
@@ -288,14 +290,12 @@ function startEngine() {
     isStarted = true;
     document.getElementById('recBtn').disabled = false;
     document.getElementById('startBtn').innerText = "ENGINE ACTIVE";
-    addLog("Firework Engine Started.");
 }
 
 function toggleRecording() {
     if (isRecording) {
         mediaRecorder.stop(); audio.stop(); isRecording = false;
         document.getElementById('recBtn').innerText = "🔴 START RECORDING";
-        addLog("Recording Finished & Saving...");
     } else {
         chunks = [];
         let stream = mainCanvas.elt.captureStream(60);
@@ -308,12 +308,11 @@ function toggleRecording() {
             let blob = new Blob(chunks, { type: 'video/webm' });
             let a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = `Firework_Show_${Date.now()}.webm`;
+            a.download = `Firework_Viz.webm`;
             a.click();
         };
         mediaRecorder.start(); audio.play(); isRecording = true;
         document.getElementById('recBtn').innerText = "⬛ STOP & SAVE";
-        addLog("Recording Started...");
     }
 }
 </script>
