@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>FIREWORK STUDIO V001.007</title>
+    <title>FIREWORK STUDIO V001.008</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <style>
@@ -23,54 +23,48 @@
         .btn-rec { border-color: var(--pink); color: var(--pink); margin-top: 10px; font-weight: bold; cursor: pointer; }
         #log-console { height: 80px; background: #050508; font-family: monospace; font-size: 10px; padding: 10px; color: #00ff00; border-top: 1px solid #222; overflow-y: auto; }
         .freq-bar-bg { width: 100%; height: 6px; background: #111; border-radius: 3px; overflow: hidden; margin-top: 5px; }
-        .freq-bar-fill { height: 100%; background: var(--pink); transition: width 0.1s; }
+        .freq-bar-fill { height: 100%; background: #ff5500; transition: width 0.1s; }
     </style>
 </head>
 <body>
 
 <div id="ui-sidebar">
     <div class="scroll-container">
-        <div class="card" id="vocalMaster">
-            <h3>🎙️ Vocal Mastering UI</h3>
+        <div class="card">
+            <h3>🔥 Campfire Vocal UI</h3>
             <div class="row">
-                <label>Vocal Input Gain <span id="v-gain">1.5</span>x</label>
-                <input type="range" id="vocalGain" min="1.0" max="5.0" step="0.1" value="1.5" oninput="updateUI('v-gain', this.value)">
+                <label>Vocal Power <span id="v-gain">2.0</span>x</label>
+                <input type="range" id="vocalGain" min="1.0" max="10.0" step="0.1" value="2.0" oninput="updateUI('v-gain', this.value)">
                 <div class="freq-bar-bg"><div id="vocal-indicator" class="freq-bar-fill" style="width: 0%"></div></div>
             </div>
             <div class="row">
-                <label>Vocal Burst Scale <span id="v-scale">1.2</span>x</label>
-                <input type="range" id="vocalScale" min="0.5" max="3.0" step="0.1" value="1.2" oninput="updateUI('v-scale', this.value)">
-            </div>
-            <div class="row">
-                <label>Particle Density <span id="v-dense">150</span></label>
-                <input type="range" id="vocalDense" min="50" max="300" step="10" value="150" oninput="updateUI('v-dense', this.value)">
+                <label>Fire Intensity <span id="v-scale">1.5</span>x</label>
+                <input type="range" id="vocalScale" min="0.5" max="4.0" step="0.1" value="1.5" oninput="updateUI('v-scale', this.value)">
             </div>
         </div>
-
         <div class="card">
-            <h3>⚡ Engine Sync</h3>
+            <h3>⚡ Engine Settings</h3>
             <div class="row">
                 <label>Target Mode</label>
                 <select id="targetBand">
+                    <option value="vocal" selected>Vocal (Campfire Mode)</option>
                     <option value="bass">Bass Beat</option>
-                    <option value="vocal" selected>Vocal focus</option>
                 </select>
             </div>
             <div class="row">
-                <label>Sensitivity <span id="v-sens">120</span></label>
-                <input type="range" id="sens" min="20" max="255" value="120" oninput="updateUI('v-sens', this.value)">
+                <label>Sensitivity <span id="v-sens">100</span></label>
+                <input type="range" id="sens" min="10" max="255" value="100" oninput="updateUI('v-sens', this.value)">
             </div>
         </div>
-
         <div class="card">
-            <h3>🎨 Media</h3>
+            <h3>🎨 Assets</h3>
             <button class="btn-primary" onclick="document.getElementById('m-file').click()">🎵 LOAD MP3</button>
             <input type="file" id="m-file" hidden accept="audio/*" onchange="handleAudio(this.files)">
             <button class="btn-primary" style="background:#333; color:#fff; margin-top:8px;" onclick="document.getElementById('i-file').click()">🖼️ LOAD BG</button>
             <input type="file" id="i-file" hidden accept="image/*" onchange="handleImage(this.files)">
         </div>
     </div>
-    <div id="log-console">>> V001.007 Mastering Ready.</div>
+    <div id="log-console">>> V001.008 Campfire Ready.</div>
     <div style="padding: 20px;">
         <button id="startBtn" class="btn-primary" onclick="startEngine()" disabled style="height:40px">ENGINE ACTIVE</button>
         <button id="recBtn" class="btn-rec" onclick="toggleRecording()" disabled style="height:40px">🔴 START RECORDING</button>
@@ -107,33 +101,23 @@ window.onresize = scaleViewport;
 function draw() {
     background(0);
     if (bgImg) { push(); tint(255, 100); image(bgImg, 0, 0, width, height); pop(); }
-    fill(0, 0, 0, 20);
+    fill(0, 0, 0, 25);
     rect(0, 0, width, height);
 
     if (isStarted && audio && audio.isPlaying()) {
         fft.analyze();
-        
-        let midEnergy = fft.getEnergy(300, 3000); // 보컬 대역
+        let midEnergy = fft.getEnergy(300, 3000);
         let gain = parseFloat(document.getElementById('vocalGain').value);
-        let boostedVocal = midEnergy * gain;
+        let boosted = midEnergy * gain;
 
-        // 보컬 인디케이터 업데이트
-        document.getElementById('vocal-indicator').style.width = Math.min(100, (boostedVocal/255)*100) + "%";
+        document.getElementById('vocal-indicator').style.width = Math.min(100, (boosted/255)*100) + "%";
 
         let mode = document.getElementById('targetBand').value;
         let threshold = parseInt(document.getElementById('sens').value);
         
-        let trigger = false;
-        if (mode === 'vocal') {
-            if (boostedVocal > threshold && random(1) < 0.15) trigger = true;
-        } else {
-            if (fft.getEnergy("bass") > threshold && random(1) < 0.15) trigger = true;
-        }
-        
-        if (trigger) {
+        if (boosted > threshold && random(1) < 0.2) {
             let vScale = parseFloat(document.getElementById('vocalScale').value);
-            let vDense = parseInt(document.getElementById('vocalDense').value);
-            fireworks.push(new FireworkSystem(vScale, vDense));
+            fireworks.push(new FireworkSystem(vScale, boosted));
         }
     }
 
@@ -144,66 +128,119 @@ function draw() {
 }
 
 class FireworkSystem {
-    constructor(vScale, vDense) {
-        this.hu = random(360);
+    constructor(vScale, energy) {
+        this.hu = random(10, 45); // 모닥불 색상 (주황~빨강 계열)
         this.vScale = vScale;
-        this.vDense = vDense;
+        this.energy = energy;
         this.startPos = createVector(random(width * 0.2, width * 0.8), height);
-        this.targetPos = createVector(random(width * 0.1, width * 0.9), random(height * 0.1, height * 0.4));
-        this.lead = new LeadParticle(this.startPos, this.targetPos, this.hu);
+        this.targetPos = createVector(random(width * 0.1, width * 0.9), random(height * 0.2, height * 0.6));
+        this.lead = new CampfireLead(this.startPos, this.targetPos, this.hu, vScale);
         this.particles = [];
+        this.isExploded = false;
     }
     run() {
         if (this.lead) {
-            this.lead.update(); this.lead.show();
-            if (this.lead.arrived) { this.explode(this.lead.pos, 1); this.lead = null; }
+            this.lead.update(this.energy);
+            this.lead.show();
+            if (this.lead.arrived) {
+                this.explode(this.lead.pos);
+                this.lead = null;
+            }
         }
         for (let i = this.particles.length - 1; i >= 0; i--) {
-            let p = this.particles[i]; p.applyForce(gravity); p.update(); p.show();
-            if (p.level === 1 && p.canExplode && p.vel.y > -0.5 && p.vel.y < 0.5 && random(1) < 0.05) {
-                this.explode(p.pos, 2); p.lifespan = 0;
-            }
+            let p = this.particles[i];
+            p.applyForce(gravity);
+            p.update();
+            p.show();
             if (p.isDead()) this.particles.splice(i, 1);
         }
     }
-    explode(pos, level) {
-        let count = level === 1 ? this.vDense : 40;
-        for (let i = 0; i < count; i++) { 
-            this.particles.push(new Particle(pos, this.hu, level, this.vScale)); 
+    explode(pos) {
+        let count = map(this.energy, 0, 255, 100, 300);
+        for (let i = 0; i < count; i++) {
+            this.particles.push(new Particle(pos, this.hu, this.vScale));
         }
     }
     isDead() { return !this.lead && this.particles.length === 0; }
 }
 
-class LeadParticle {
-    constructor(start, target, hu) {
-        this.pos = start.copy(); this.start = start; this.target = target; this.hu = hu; this.pct = 0;
-        this.speed = random(0.015, 0.03); this.arrived = false;
+// 모닥불 형태의 발사체
+class CampfireLead {
+    constructor(start, target, hu, vScale) {
+        this.pos = start.copy();
+        this.start = start;
+        this.target = target;
+        this.hu = hu;
+        this.vScale = vScale;
+        this.pct = 0;
+        this.speed = random(0.01, 0.02);
+        this.arrived = false;
+        this.flameParticles = [];
     }
-    update() {
-        this.pct += this.speed; this.pos = p5.Vector.lerp(this.start, this.target, this.pct);
+    update(energy) {
+        this.pct += this.speed;
+        this.pos = p5.Vector.lerp(this.start, this.target, this.pct);
+        
+        // 이동 중 모닥불 불꽃 생성
+        if (random(1) < 0.8) {
+            this.flameParticles.push({
+                offset: createVector(random(-10, 10), random(0, 10)),
+                vel: createVector(random(-1, 1), random(-2, -5) * this.vScale),
+                life: 255
+            });
+        }
+        
+        for (let i = this.flameParticles.length-1; i>=0; i--) {
+            let fp = this.flameParticles[i];
+            fp.offset.add(fp.vel);
+            fp.life -= 10;
+            if (fp.life <= 0) this.flameParticles.splice(i, 1);
+        }
+
         if (this.pct >= 1) this.arrived = true;
     }
     show() {
-        push(); drawingContext.shadowBlur = 15; drawingContext.shadowColor = color(this.hu, 100, 100);
-        strokeWeight(6); stroke(this.hu, 100, 100); point(this.pos.x, this.pos.y); pop();
+        push();
+        // 모닥불 중심 불꽃
+        for (let fp of this.flameParticles) {
+            noStroke();
+            fill(this.hu + random(-10, 10), 100, 100, fp.life / 255 * 100);
+            ellipse(this.pos.x + fp.offset.x, this.pos.y + fp.offset.y, random(5, 15) * this.vScale);
+        }
+        // 핵심 심지
+        drawingContext.shadowBlur = 20;
+        drawingContext.shadowColor = color(this.hu, 100, 100);
+        fill(60, 20, 100); // 하얀 빛 중심
+        ellipse(this.pos.x, this.pos.y, 10 * this.vScale);
+        pop();
     }
 }
 
 class Particle {
-    constructor(pos, hu, level, vScale) {
-        this.pos = pos.copy(); this.level = level; this.hu = hu + random(-20, 20);
-        let baseMult = level === 1 ? 16 : 8;
-        this.vel = p5.Vector.random2D().mult(random(2, baseMult * vScale));
-        this.acc = createVector(0, 0); this.lifespan = 100.0;
-        this.decay = random(1.0, 3.0); this.canExplode = (level === 1 && random(1) > 0.8);
+    constructor(pos, hu, vScale) {
+        this.pos = pos.copy();
+        this.hu = hu + random(-15, 30);
+        this.vel = p5.Vector.random2D().mult(random(2, 18 * vScale));
+        this.acc = createVector(0, 0);
+        this.lifespan = 100.0;
+        this.decay = random(1.5, 4.0);
     }
     applyForce(f) { this.acc.add(f); }
-    update() { this.vel.mult(0.94); this.vel.add(this.acc); this.pos.add(this.vel); this.acc.mult(0); this.lifespan -= this.decay; }
+    update() {
+        this.vel.mult(0.93);
+        this.vel.add(this.acc);
+        this.pos.add(this.vel);
+        this.acc.mult(0);
+        this.lifespan -= this.decay;
+    }
     show() {
-        push(); drawingContext.shadowBlur = 8; drawingContext.shadowColor = color(this.hu, 100, 100);
-        strokeWeight(map(this.lifespan, 0, 100, 1, this.level === 1 ? 5 : 3));
-        stroke(this.hu, 80, 100, this.lifespan); point(this.pos.x, this.pos.y); pop();
+        push();
+        drawingContext.shadowBlur = 10;
+        drawingContext.shadowColor = color(this.hu, 100, 100);
+        noStroke();
+        fill(this.hu, 90, 100, this.lifespan);
+        ellipse(this.pos.x, this.pos.y, map(this.lifespan, 0, 100, 1, 8));
+        pop();
     }
     isDead() { return this.lifespan <= 0; }
 }
@@ -211,7 +248,7 @@ class Particle {
 function handleAudio(files) {
     audio = loadSound(URL.createObjectURL(files[0]), () => {
         fft = new p5.FFT(); document.getElementById('startBtn').disabled = false;
-        document.getElementById('log-console').innerText = ">> Mastering Engine Ready.";
+        document.getElementById('log-console').innerText = ">> Campfire Engine Sync Ready.";
     });
 }
 function handleImage(files) { let reader = new FileReader(); reader.onload = (e) => { bgImg = loadImage(e.target.result); }; reader.readAsDataURL(files[0]); }
@@ -229,7 +266,7 @@ function toggleRecording() {
         mediaRecorder.onstop = () => {
             let blob = new Blob(chunks, { type: 'video/webm' });
             let a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-            a.download = `Firework_V001.007.webm`; a.click();
+            a.download = `Campfire_V001.008.webm`; a.click();
         };
         mediaRecorder.start(); audio.play(); isRecording = true;
         document.getElementById('recBtn').innerText = "⬛ STOP & SAVE";
