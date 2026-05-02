@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Audio Visualizer Pro V001.013</title>
+<title>Audio Visualizer Pro</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -45,7 +45,7 @@
   #rec-indicator { font-size: 12px; color: var(--danger); font-weight: 600; display: none; margin-left: 5px; }
   #rec-indicator.show { display: inline; }
 
-  #style-options { display: flex; gap: 15px; align-items: center; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 8px 18px; backdrop-filter: blur(10px); align-self: center; justify-content: center; }
+  #style-options { display: flex; flex-wrap: wrap; gap: 15px; align-items: center; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 8px 18px; backdrop-filter: blur(10px); align-self: center; justify-content: center; }
   .opt-item { display: none; align-items: center; gap: 8px; }
   .opt-item.active { display: flex; }
 </style>
@@ -60,6 +60,14 @@
   <div id="style-options">
     <span class="ctrl-label">세부 설정:</span>
     <div class="opt-item petal-opt">
+      <span class="ctrl-label">모양</span>
+      <select id="petalShape">
+        <option value="petal">🌸 벚꽃잎</option>
+        <option value="leaf">🍂 단풍잎</option>
+        <option value="snow">❄️ 눈송이</option>
+      </select>
+    </div>
+    <div class="opt-item petal-opt">
       <span class="ctrl-label">방향</span>
       <select id="petalDir">
         <option value="up">위로</option>
@@ -70,11 +78,11 @@
     </div>
     <div class="opt-item grass-opt">
       <span class="ctrl-label">굵기</span>
-      <input type="range" id="grassThick" min="1" max="10" value="3">
+      <input type="range" id="grassThick" min="1" max="10" value="4">
     </div>
     <div class="opt-item grass-opt">
       <span class="ctrl-label">색상</span>
-      <input type="color" id="grassColor" value="#88ff88">
+      <input type="color" id="grassColor" value="#55ff55">
     </div>
     <div class="opt-item empty-opt active">
       <span style="font-size: 12px; color: var(--text-dim);">이 스타일은 추가 옵션이 없습니다.</span>
@@ -91,11 +99,11 @@
     <div class="ctrl-group">
       <span class="ctrl-label">스타일</span>
       <select id="styleSelect">
-        <option value="fire">🔥 모닥불 (개별반응)</option>
+        <option value="fire">🔥 겹치는 모닥불</option>
         <option value="wave">🌊 부드러운 곡선 파도</option>
-        <option value="cloud">☁️ 폴리곤 3D 비행</option>
-        <option value="petal">🌸 비트반응 꽃잎</option>
-        <option value="grass">🌿 리얼 3D 잔디</option>
+        <option value="cloud">☁️ 노이즈 뭉게구름 3D</option>
+        <option value="petal">🌸 비트반응 파티클</option>
+        <option value="grass">🌿 춤추는 곡선 잔디</option>
       </select>
     </div>
     <div class="divider"></div>
@@ -121,6 +129,7 @@ const recIndEl = document.getElementById('rec-indicator');
 const recSecEl = document.getElementById('recSec');
 
 const petalDirSelect = document.getElementById('petalDir');
+const petalShapeSelect = document.getElementById('petalShape');
 const grassThickInput = document.getElementById('grassThick');
 const grassColorInput = document.getElementById('grassColor');
 
@@ -146,7 +155,7 @@ resizeCanvas();
 styleSelect.addEventListener('change', () => {
   currentStyle = styleSelect.value;
   document.querySelectorAll('.opt-item').forEach(el => el.classList.remove('active'));
-  if (currentStyle === 'petal') document.querySelector('.petal-opt').classList.add('active');
+  if (currentStyle === 'petal') document.querySelectorAll('.petal-opt').forEach(el => el.classList.add('active'));
   else if (currentStyle === 'grass') document.querySelectorAll('.grass-opt').forEach(el => el.classList.add('active'));
   else document.querySelector('.empty-opt').classList.add('active');
   initStyle(currentStyle);
@@ -271,11 +280,17 @@ function initStyle(s) {
   if (s==='petal') initPetal();
 }
 
-/* 1. FIRE: 볼륨(주파수)에 따라 불꽃마다 고유한 그라데이션 색상 적용 */
+/* ==========================================================
+   1. FIRE: 겹치도록 랜덤 X좌표 배치 & 내부 레이어가 삐져나오지 않도록 비율(Scale) 계산
+   ========================================================== */
 let firePits = [];
 function initFire() {
-  firePits = Array.from({length:10}, (_, i) => ({
-    x: (i + 0.5) / 10, phase: Math.random() * Math.PI * 2, sizeScale: 0.8 + Math.random() * 0.5, freqBin: Math.floor(i / 10 * 64)
+  firePits = Array.from({length: 15}, (_, i) => ({
+    // 불꽃 간 간격을 불규칙하게 주어 겹치게 (0.1 ~ 0.9 사이)
+    x: 0.1 + Math.random() * 0.8, 
+    phase: Math.random() * Math.PI * 2, 
+    sizeScale: 0.7 + Math.random() * 0.6, 
+    freqBin: Math.floor(i / 15 * 64)
   }));
 }
 function drawFire({ bass, mid, treble, vol, data }) {
@@ -283,43 +298,56 @@ function drawFire({ bass, mid, treble, vol, data }) {
   ctx.fillStyle = '#050308'; ctx.fillRect(0,0,w,h);
   const gndY = h * 0.8;
   
-  firePits.forEach((pit) => {
+  // 뒤에 있는 불꽃부터 그리기 위해 크기(혹은 X순서) 정렬 (시각적 겹침 최적화)
+  firePits.sort((a,b) => a.sizeScale - b.sizeScale).forEach((pit) => {
     const px = pit.x * w;
-    const pitVol = data[pit.freqBin] / 255; // 이 모닥불 전용 볼륨
+    const pitVol = data[pit.freqBin] / 255; 
     const intensity = pitVol * 0.8 + bass * 0.2; 
-    const baseW = w * 0.03 * pit.sizeScale;
-    const baseH = h * 0.15 * pit.sizeScale;
+    const baseW = w * 0.035 * pit.sizeScale;
+    const baseH = h * 0.2 * pit.sizeScale;
+
+    // 요점 1: '외곽선'을 먼저 수학적으로 하나 계산하고, 내부 레이어는 그것을 %로 축소만 시킵니다.
+    // 이렇게 하면 내부 레이어가 절대 외부 레이어 밖으로 삐져나갈 수 없습니다.
+    const contour = [];
+    const segs = 15;
+    for (let s=0; s<=segs; s++) {
+      const t2 = s/segs; // 0 ~ 1
+      const nx = (t2 * 2) - 1; // -1 ~ 1
+      const noiseX = Math.sin(time*2.5 + t2*5 + pit.phase) * baseW * 0.3;
+      const noiseY = Math.sin(time*3.5 + t2*4 + pit.phase) * (baseH * (0.3 + intensity*1.5));
+      const env = Math.pow(Math.sin(t2*Math.PI), 1.5); // 끝이 뾰족해지는 곡선
+      contour.push({ nx, noiseX, noiseY, env });
+    }
 
     for (let layer = 0; layer < 4; layer++) {
-      const lFrac = 1 - layer/4;
-      const lW = baseW * (1.2 - layer*0.2);
-      const dynamicH = baseH * lFrac * (0.3 + intensity * 2.5); 
+      const lFrac = 1 - layer/4; // 1, 0.75, 0.5, 0.25 (레이어가 작아지는 비율)
+      const lW = baseW * lFrac;
+      const dynamicH = baseH * lFrac * (0.4 + intensity * 2); 
       
-      // 요청사항 1: 모닥불 전용 볼륨(pitVol)에 따라 채도와 명도를 다르게 설정 (통일X)
-      const lHue = 10 + layer*15 + treble*30 + (pitVol * 30); 
-      const lSat = 70 + pitVol * 30; // 70~100% 변화
-      const lLit = 40 + layer*8 + pitVol * 20; // 불꽃 안쪽일수록, 소리가 클수록 밝아짐
+      const lHue = 10 + layer*15 + treble*30 + (pitVol * 20); 
+      const lSat = 80 + pitVol * 20; 
+      const lLit = 45 + layer*10 + pitVol * 20; 
       
       ctx.beginPath();
-      const segs = 15;
       for (let s=0; s<=segs; s++) {
-        const t2 = s/segs;
-        const nx = px - lW + lW*2*t2;
-        const noiseX = Math.sin(time*(2+layer)+t2*5+pit.phase)*lW*0.3;
-        const noiseY = Math.sin(time*(3+layer)+t2*4)*dynamicH*0.1;
-        const env = Math.pow(Math.sin(t2*Math.PI), 1.5);
-        const fy = gndY - env*dynamicH + noiseY;
-        if (s===0) ctx.moveTo(nx+noiseX, gndY);
-        else ctx.lineTo(nx+noiseX, fy);
+        const c = contour[s];
+        // 외곽선의 노이즈 곡선을 레이어 비율(lFrac)만큼 정확히 줄여서 적용
+        const finalX = px + (c.nx * lW) + (c.noiseX * lFrac);
+        const finalY = gndY - (c.env * dynamicH) + (c.noiseY * lFrac);
+        if (s===0) ctx.moveTo(finalX, gndY);
+        else ctx.lineTo(finalX, finalY);
       }
-      ctx.lineTo(px+lW, gndY); ctx.closePath();
-      ctx.fillStyle = `hsla(${lHue}, ${lSat}%, ${lLit}%, ${0.9 - layer*0.2})`; 
+      ctx.lineTo(px + lW, gndY); 
+      ctx.closePath();
+      ctx.fillStyle = `hsla(${lHue}, ${lSat}%, ${lLit}%, ${0.9 - layer*0.15})`; 
       ctx.fill();
     }
   });
 }
 
-/* 2. WAVE: 직각 경계선을 부드러운 Bezier 곡선(QuadraticCurveTo)으로 처리 */
+/* ==========================================================
+   2. WAVE: (기존에 부드러운 곡선 적용 완료)
+   ========================================================== */
 function drawWave({ bass, mid, treble, vol, data }) {
   const w=W(), h=H();
   const bg = ctx.createLinearGradient(0,0,0,h);
@@ -328,14 +356,12 @@ function drawWave({ bass, mid, treble, vol, data }) {
 
   const laneCount = 8;
   const maxSpike = h * 0.45; 
-  
   for (let l = 0; l < laneCount; l++) {
     const laneBaseY = h * 0.95 - (laneCount - l) * (h * 0.05); 
     const binStart = Math.floor(l / laneCount * data.length * 0.5);
     const binEnd   = Math.floor((l+1) / laneCount * data.length * 0.5);
     const speed  = 0.5 + l * 0.15;
     
-    // 점들을 먼저 계산
     const pts = [];
     for (let x = -10; x <= w + 20; x+=15) {
       const nx = Math.max(0, Math.min(x / w, 1));
@@ -346,7 +372,6 @@ function drawWave({ bass, mid, treble, vol, data }) {
       pts.push({ x, y: laneBaseY - spike });
     }
 
-    // 요청사항 2: 부드러운 곡선 그리기
     ctx.beginPath();
     ctx.moveTo(0, h);
     ctx.lineTo(pts[0].x, pts[0].y);
@@ -368,16 +393,30 @@ function drawWave({ bass, mid, treble, vol, data }) {
   }
 }
 
-/* 3. CLOUD: 구름을 다양한 폴리곤(원, 사각형, 삼각형, 타원, 육각형)으로 구성 */
+/* ==========================================================
+   3. CLOUD: 각진 모양 제거, 원/타원 기반의 '뭉게구름(1~10개)' 송이 생성
+   ========================================================== */
 let clouds3D = [];
 function initCloud() {
-  const shapes = ['circle', 'rect', 'triangle', 'ellipse', 'hexagon'];
-  clouds3D = Array.from({length: 50}, () => ({
-    x: (Math.random() - 0.5) * 3000, y: (Math.random() - 0.5) * 2000, z: Math.random() * 2000 + 100,
-    freqBin: Math.floor(Math.random() * 64), hue: 200 + Math.random() * 40,
-    shape: shapes[Math.floor(Math.random() * shapes.length)], // 요청사항 3: 랜덤 폴리곤
-    rot: Math.random() * Math.PI * 2 // 폴리곤 회전용
-  }));
+  clouds3D = Array.from({length: 35}, () => {
+    // 1~10개의 타원이 뭉쳐서 하나의 '구름'을 형성
+    const puffCount = Math.floor(Math.random() * 10) + 1;
+    const puffs = Array.from({length: puffCount}, () => ({
+      ox: (Math.random() - 0.5) * 120, // 중심 기준 X 오프셋
+      oy: (Math.random() - 0.5) * 80,  // 중심 기준 Y 오프셋
+      scale: 0.4 + Math.random() * 0.8,
+      isEllipse: Math.random() > 0.5
+    }));
+
+    return {
+      x: (Math.random() - 0.5) * 3000, 
+      y: (Math.random() - 0.5) * 2000, 
+      z: Math.random() * 2000 + 100,
+      freqBin: Math.floor(Math.random() * 64), 
+      hue: 200 + Math.random() * 40,
+      puffs: puffs
+    };
+  });
 }
 function drawCloud({ bass, mid, treble, vol, data }) {
   const w=W(), h=H();
@@ -396,32 +435,39 @@ function drawCloud({ bass, mid, treble, vol, data }) {
     const scale = 800 / c.z; 
     const screenX = cx + c.x * scale;
     const screenY = cy + c.y * scale;
-    const size = 150 * scale * (0.5 + binVal * 1.5); 
+    const baseSize = 80 * scale * (0.8 + binVal * 1.5); 
 
-    if (screenX < -size || screenX > w+size || screenY < -size || screenY > h+size) return;
+    // 화면 밖으로 완전히 나간 뭉게구름 패스 (최적화)
+    if (screenX < -baseSize*2 || screenX > w+baseSize*2 || screenY < -baseSize*2 || screenY > h+baseSize*2) return;
 
     const alpha = Math.min(1, (2000 - c.z) / 1000) * (0.3 + binVal*0.5);
-    const radGrad = ctx.createRadialGradient(0, 0, size*0.1, 0, 0, size);
-    radGrad.addColorStop(0, `hsla(${c.hue}, 30%, ${60 + binVal*40}%, ${alpha})`);
-    radGrad.addColorStop(1, `hsla(${c.hue}, 30%, 20%, 0)`);
-    
-    // 폴리곤 렌더링
-    ctx.save();
-    ctx.translate(screenX, screenY);
-    ctx.rotate(c.rot + time * 0.2); // 천천히 회전
-    ctx.fillStyle = radGrad;
-    ctx.beginPath();
-    if (c.shape === 'circle') { ctx.arc(0, 0, size, 0, Math.PI*2); } 
-    else if (c.shape === 'rect') { ctx.rect(-size/2, -size/2, size, size); } 
-    else if (c.shape === 'ellipse') { ctx.ellipse(0, 0, size, size*0.6, 0, 0, Math.PI*2); } 
-    else if (c.shape === 'triangle') { ctx.moveTo(0, -size); ctx.lineTo(size*0.866, size*0.5); ctx.lineTo(-size*0.866, size*0.5); ctx.closePath(); } 
-    else { for(let i=0; i<6; i++) ctx.lineTo(size * Math.cos(i * Math.PI / 3), size * Math.sin(i * Math.PI / 3)); ctx.closePath(); }
-    ctx.fill();
-    ctx.restore();
+
+    // 구름 덩어리 안의 각 송이(puff) 렌더링
+    c.puffs.forEach(puff => {
+      const pX = screenX + puff.ox * scale;
+      const pY = screenY + puff.oy * scale;
+      const pSize = baseSize * puff.scale;
+      
+      const radGrad = ctx.createRadialGradient(0, 0, pSize*0.1, 0, 0, pSize);
+      radGrad.addColorStop(0, `hsla(${c.hue}, 20%, ${70 + binVal*30}%, ${alpha})`);
+      radGrad.addColorStop(1, `hsla(${c.hue}, 20%, 30%, 0)`);
+      
+      ctx.save();
+      ctx.translate(pX, pY);
+      ctx.fillStyle = radGrad;
+      ctx.beginPath();
+      // 오직 원(스피어)과 타원(이클립스)만 사용
+      if (puff.isEllipse) ctx.ellipse(0, 0, pSize, pSize*0.6, 0, 0, Math.PI*2);
+      else ctx.arc(0, 0, pSize, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    });
   });
 }
 
-/* 4. PETAL: 볼륨이 터질 때(bass>0.8) 시간이 멈추는 매트릭스 불릿타임 효과 */
+/* ==========================================================
+   4. PETAL: 파티클 모양 변경 UI 추가 및 시간 정지 효과 유지
+   ========================================================== */
 let petals = [];
 function initPetal() { petals = []; }
 function spawnPetal(w, h, bass, dir) {
@@ -438,38 +484,60 @@ function drawPetal({ bass, mid, treble, vol, data }) {
   ctx.fillStyle='rgba(10,8,15,0.3)'; ctx.fillRect(0,0,w,h); 
 
   const dir = petalDirSelect.value; 
+  const shape = petalShapeSelect.value; // UI에서 선택한 모양
   const spawnCount = Math.floor(1 + bass*5 + mid*2);
+  
   if (petals.length < 300) {
     for (let i=0; i<spawnCount; i++) petals.push(spawnPetal(w, h, bass, dir));
   }
 
-  // 요청사항 4: 주파수/볼륨에 따른 시간 제어 (Time Warp)
+  // 매트릭스 불릿타임 (베이스 터질 때 속도 거의 정지)
   let timeSpeed = 1;
-  if (bass > 0.8) timeSpeed = 0.05; // 베이스 터질 때 공중에 멈춤 (Freeze!)
-  else timeSpeed = 0.5 + vol * 3.5; // 평소에는 볼륨에 맞춰 가속/감속
+  if (bass > 0.8) timeSpeed = 0.05; 
+  else timeSpeed = 0.5 + vol * 3.5; 
 
   petals.forEach(p => {
     p.x += p.vx * timeSpeed; 
     p.y += p.vy * timeSpeed;
     p.rot += p.rspeed * timeSpeed;
-    p.alpha -= 0.002 * (timeSpeed > 0.1 ? 1 : 0.2); // 얼어있을땐 덜 사라지게
+    p.alpha -= 0.002 * (timeSpeed > 0.1 ? 1 : 0.2); 
     
     ctx.save();
     ctx.translate(p.x, p.y);
     ctx.rotate(p.rot);
     ctx.globalAlpha = Math.max(0, p.alpha);
     ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.bezierCurveTo(p.size/2, -p.size/2, p.size, -p.size/4, p.size/2, 0);
-    ctx.bezierCurveTo(p.size, p.size/4, p.size/2, p.size/2, 0, 0);
-    ctx.fillStyle = `hsla(330, 80%, ${70+bass*30}%, ${p.alpha})`;
+    
+    // 파티클 모양 렌더링
+    if (shape === 'petal') {
+      // 부드러운 벚꽃잎
+      ctx.moveTo(0, 0);
+      ctx.bezierCurveTo(p.size/2, -p.size/2, p.size, -p.size/4, p.size/2, 0);
+      ctx.bezierCurveTo(p.size, p.size/4, p.size/2, p.size/2, 0, 0);
+      ctx.fillStyle = `hsla(330, 80%, ${70+bass*30}%, ${p.alpha})`;
+    } else if (shape === 'leaf') {
+      // 날카로운 단풍잎(다이아몬드 형태)
+      ctx.moveTo(0, p.size*0.8);
+      ctx.lineTo(p.size*0.4, 0);
+      ctx.lineTo(0, -p.size*0.8);
+      ctx.lineTo(-p.size*0.4, 0);
+      ctx.closePath();
+      ctx.fillStyle = `hsla(30, 80%, ${50+bass*20}%, ${p.alpha})`; // 주황/갈색 계열
+    } else {
+      // 눈송이 (원형)
+      ctx.arc(0, 0, p.size/2, 0, Math.PI*2);
+      ctx.fillStyle = `hsla(200, 80%, ${90+bass*10}%, ${p.alpha})`; // 흰색/푸른색 계열
+    }
+    
     ctx.fill();
     ctx.restore();
   });
   petals = petals.filter(p => p.alpha > 0 && p.x > -50 && p.x < w+50 && p.y > -50 && p.y < h+50);
 }
 
-/* 5. GRASS: 선 긋기 대신 다각형 채우기(Fill)를 써서 아래는 두껍고 끝은 뾰족하게, 각도 랜덤 부여 */
+/* ==========================================================
+   5. GRASS: 밀도를 높이고(세로간격 좁힘), 베지어 곡선으로 S자로 흐느적거리게
+   ========================================================== */
 function drawGrass({ bass, mid, treble, vol, data }) {
   const w=W(), h=H();
   ctx.fillStyle = '#080c08'; ctx.fillRect(0,0,w,h);
@@ -477,53 +545,57 @@ function drawGrass({ bass, mid, treble, vol, data }) {
   const horizon = h * 0.35; 
   const userThick = parseInt(grassThickInput.value); 
   const userColor = grassColorInput.value; 
-  
   const cameraX = w * 0.5;
-  const rows = 25, cols = 50;
+  
+  // 밀도 증가: rows를 45로 늘려서 세로 간격을 훨씬 촘촘하게 만듦
+  const rows = 45, cols = 55;
 
   for (let row=0; row<rows; row++) {
     const zNorm = 1 - row/rows; 
     const screenY = horizon + (h - horizon) * (1 - zNorm);
-    const spread  = (1 - zNorm) * w * 0.8 + w * 0.1; 
-    const bladeH  = (1 - zNorm) * h * 0.15; 
+    const spread  = (1 - zNorm) * w * 0.9 + w * 0.1; 
+    const bladeH  = (1 - zNorm) * h * 0.18; 
     const binVal = data[Math.floor(row/rows * 64)]/255;
 
     for (let col=0; col<cols; col++) {
       const worldOffX = ((col+0.5)/cols - 0.5) * 2;
       const screenX = cameraX + worldOffX * spread;
       
-      // 요청사항 5: 처음 생성될 때 풀잎의 시작 각도(기울기)를 모두 다르게 랜덤 적용
       const randAngle = (Math.sin(col*13.2 + row*7.7) - 0.5) * 1.5; 
+      // 바람 효과를 위해 시간(time) 연산
+      const wind = Math.sin(col*0.5 + row*0.3 + time*1.5) * bladeH * (0.4 + vol*0.4);
+      const targetTipSway = wind + randAngle * bladeH * 0.5;
       
-      // 바람에 흔들리는 sway + 기본 랜덤 뻗어나가는 각도
-      const sway = Math.sin(col*0.5 + row*0.3 + time*(2+bass)) * bladeH * (0.3 + vol*0.5);
-      const targetSway = sway + randAngle * bladeH * 0.4;
-      
-      // 요청사항 5: 젓가락(stroke) 형태 대신, 밑단 두께를 계산하여 채우기(fill) 도형 생성
-      const baseThickness = Math.max(2, (1-zNorm) * userThick * 2.5);
+      const baseThickness = Math.max(1.5, (1-zNorm) * userThick * 2.5);
       
       const baseX1 = screenX - baseThickness/2;
       const baseX2 = screenX + baseThickness/2;
-      const tipX = screenX + targetSway;
+      const tipX = screenX + targetTipSway;
       const tipY = screenY - bladeH;
-      const cpX = screenX + targetSway * 0.5;
-      const cpY = screenY - bladeH * 0.5;
+
+      // 흐느적거리는 곡선(S-Curve)을 위해 2개의 컨트롤 포인트(베지어) 계산
+      const cp1x = screenX + targetTipSway * 0.2 + Math.sin(time*2 + row)*bladeH*0.2;
+      const cp1y = screenY - bladeH * 0.3;
+      const cp2x = screenX + targetTipSway * 0.8 + Math.sin(time*1.5 + col)*bladeH*0.2;
+      const cp2y = screenY - bladeH * 0.7;
 
       ctx.beginPath();
-      ctx.moveTo(baseX1, screenY); // 밑동 왼쪽
-      ctx.quadraticCurveTo(cpX - baseThickness*0.4, cpY, tipX, tipY); // 왼쪽 외곽선을 타고 끝점(Tip)으로
-      ctx.quadraticCurveTo(cpX + baseThickness*0.4, cpY, baseX2, screenY); // 끝점에서 오른쪽 외곽선을 타고 밑동 오른쪽으로
+      ctx.moveTo(baseX1, screenY);
+      // 왼쪽 곡선면 (베이스 -> 팁)
+      ctx.bezierCurveTo(cp1x - baseThickness/2, cp1y, cp2x - baseThickness/4, cp2y, tipX, tipY);
+      // 오른쪽 곡선면 (팁 -> 베이스)
+      ctx.bezierCurveTo(cp2x + baseThickness/4, cp2y, cp1x + baseThickness/2, cp1y, baseX2, screenY);
       ctx.closePath();
       
       ctx.fillStyle = userColor; 
-      ctx.globalAlpha = 0.4 + (1-zNorm)*0.6 + binVal*0.5;
-      ctx.fill(); // 선이 아닌 면으로 채워 진짜 풀잎처럼 만듦
+      ctx.globalAlpha = 0.5 + (1-zNorm)*0.5 + binVal*0.4;
+      ctx.fill(); 
     }
   }
   ctx.globalAlpha = 1.0;
 }
 
-// 녹화 로직
+// 수동 및 자동 녹화
 recBtn.addEventListener('click', () => {
   if (mediaRecorder && mediaRecorder.state==='recording') stopRec();
   else startRec();
