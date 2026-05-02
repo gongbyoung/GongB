@@ -1,102 +1,238 @@
-
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Audio Visualizer</title>
 <style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { background: #0a0a0f; color: #fff; font-family: var(--font-sans, sans-serif); }
-#app { width: 100%; min-height: 600px; background: #0a0a0f; padding: 12px; }
-#canvas-wrap { position: relative; width: 100%; background: #000; border-radius: 8px; overflow: hidden; }
-canvas#vis { display: block; width: 100%; }
-#controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
-.btn { padding: 7px 14px; border: 1px solid #444; border-radius: 6px; background: #1a1a2e; color: #fff; cursor: pointer; font-size: 13px; transition: all 0.2s; }
-.btn:hover { background: #2a2a4e; border-color: #7c6cf0; }
-.btn.active { background: #7c6cf0; border-color: #7c6cf0; color: #fff; }
-.btn.rec { background: #c0392b; border-color: #e74c3c; }
-.btn.rec:hover { background: #e74c3c; }
-select, input[type=file] { padding: 6px 10px; border: 1px solid #444; border-radius: 6px; background: #1a1a2e; color: #fff; font-size: 13px; cursor: pointer; }
-label.file-btn { padding: 7px 14px; border: 1px solid #444; border-radius: 6px; background: #1a1a2e; color: #bbb; cursor: pointer; font-size: 13px; }
-label.file-btn:hover { border-color: #7c6cf0; color: #fff; }
-#status { font-size: 12px; color: #888; margin-left: auto; }
-#rec-time { font-size: 12px; color: #e74c3c; font-weight: 500; display: none; }
-.ratio-btns { display: flex; gap: 4px; }
-</style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #080810;
+    --panel: #10101e;
+    --border: #2a2a45;
+    --accent: #7c6cf0;
+    --text: #d0cfe8;
+    --text-dim: #666688;
+    --danger: #e74c3c;
+  }
+  html, body { width: 100%; min-height: 100vh; background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; overflow-x: hidden; }
 
+  #app { display: flex; flex-direction: column; align-items: center; padding: 18px 12px 32px; min-height: 100vh; gap: 14px; }
+
+  h1 { font-size: 18px; font-weight: 600; letter-spacing: 0.1em; color: #a89cf0; text-transform: uppercase; }
+
+  /* ── CANVAS AREA ── */
+  #stage { position: relative; display: flex; align-items: center; justify-content: center; width: 100%; }
+  #canvas-outer {
+    position: relative;
+    transition: width 0.3s, height 0.3s;
+  }
+  /* complementary border outside canvas */
+  #canvas-outer::before {
+    content: '';
+    position: absolute;
+    inset: -6px;
+    border-radius: 4px;
+    pointer-events: none;
+    z-index: 10;
+  }
+  #canvas-outer.ratio-16-9::before { border: 3px solid #f0c030; box-shadow: 0 0 18px #f0c03066; }
+  #canvas-outer.ratio-9-16::before { border: 3px solid #30f0a0; box-shadow: 0 0 18px #30f0a066; }
+
+  canvas#vis { display: block; width: 100%; height: 100%; border-radius: 2px; }
+
+  /* ── CONTROLS ── */
+  #controls {
+    width: 100%;
+    max-width: 860px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+
+  .ctrl-group { display: flex; gap: 6px; align-items: center; }
+  .ctrl-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; white-space: nowrap; }
+
+  .btn {
+    padding: 7px 13px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    white-space: nowrap;
+  }
+  .btn:hover { background: #1c1c38; border-color: var(--accent); }
+  .btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .btn.rec-btn { border-color: #c0392b; color: #e74c3c; }
+  .btn.rec-btn.recording { background: #c0392b; color: #fff; border-color: #e74c3c; animation: recpulse 1s ease-in-out infinite; }
+  @keyframes recpulse { 0%,100% { opacity: 1; } 50% { opacity: 0.7; } }
+
+  label.file-btn {
+    padding: 7px 13px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    white-space: nowrap;
+  }
+  label.file-btn:hover { background: #1c1c38; border-color: var(--accent); color: var(--text); }
+
+  select {
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--text);
+    font-size: 13px;
+    cursor: pointer;
+    outline: none;
+  }
+  select:focus { border-color: var(--accent); }
+
+  #status { font-size: 12px; color: var(--text-dim); margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+  #rec-indicator { font-size: 12px; color: var(--danger); font-weight: 600; display: none; }
+  #rec-indicator.show { display: inline; }
+
+  .divider { width: 1px; height: 24px; background: var(--border); margin: 0 4px; }
+
+  /* idle overlay text */
+  #idle-msg { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; gap: 8px; }
+  #idle-msg p { color: rgba(168,156,240,0.6); font-size: clamp(11px, 2vw, 16px); }
+  #idle-msg p.sub { color: rgba(100,90,160,0.4); font-size: clamp(9px, 1.5vw, 13px); }
+</style>
+</head>
+<body>
 <div id="app">
-  <div id="canvas-wrap">
-    <canvas id="vis"></canvas>
+  <h1>🎵 Audio Visualizer</h1>
+
+  <div id="stage">
+    <div id="canvas-outer" class="ratio-16-9">
+      <canvas id="vis"></canvas>
+      <div id="idle-msg">
+        <p>MP3 파일을 불러오면 시각화가 시작됩니다</p>
+        <p class="sub">16:9 / 9:16 비율 선택 후 녹화 가능</p>
+      </div>
+    </div>
   </div>
+
   <div id="controls">
-    <label class="file-btn">🎵 MP3 불러오기 <input type="file" id="fileInput" accept="audio/*" style="display:none"></label>
-    <button class="btn" id="playBtn" disabled>▶ 재생</button>
-    <select id="styleSelect">
-      <option value="fire">🔥 모닥불</option>
-      <option value="wave">🌊 파도</option>
-      <option value="cloud">☁️ 구름</option>
-      <option value="petal">🌸 꽃잎날림</option>
-      <option value="grass">🌿 잔디흔들림</option>
-    </select>
-    <div class="ratio-btns">
+    <div class="ctrl-group">
+      <label class="file-btn">🎵 MP3 불러오기<input type="file" id="fileInput" accept="audio/*" style="display:none"></label>
+      <button class="btn" id="playBtn" disabled>▶ 재생</button>
+    </div>
+    <div class="divider"></div>
+    <div class="ctrl-group">
+      <span class="ctrl-label">스타일</span>
+      <select id="styleSelect">
+        <option value="fire">🔥 모닥불</option>
+        <option value="wave">🌊 파도</option>
+        <option value="cloud">☁️ 구름</option>
+        <option value="petal">🌸 꽃잎날림</option>
+        <option value="grass">🌿 잔디 (3D)</option>
+      </select>
+    </div>
+    <div class="divider"></div>
+    <div class="ctrl-group">
+      <span class="ctrl-label">비율</span>
       <button class="btn active" id="r169">16:9</button>
       <button class="btn" id="r916">9:16</button>
     </div>
-    <button class="btn" id="recBtn" disabled>⏺ 녹화</button>
-    <span id="rec-time" id="recTime">● REC <span id="recSec">0</span>s</span>
+    <div class="divider"></div>
+    <div class="ctrl-group">
+      <button class="btn rec-btn" id="recBtn" disabled>⏺ 녹화</button>
+      <span id="rec-indicator">● REC <span id="recSec">0</span>s</span>
+    </div>
     <span id="status">MP3 파일을 불러오세요</span>
   </div>
 </div>
 
 <script>
-const canvas = document.getElementById('vis');
-const ctx = canvas.getContext('2d');
-const fileInput = document.getElementById('fileInput');
-const playBtn = document.getElementById('playBtn');
-const styleSelect = document.getElementById('styleSelect');
-const recBtn = document.getElementById('recBtn');
-const status = document.getElementById('status');
-const recTimeEl = document.getElementById('rec-time');
-const recSecEl = document.getElementById('recSec');
-const r169Btn = document.getElementById('r169');
-const r916Btn = document.getElementById('r916');
+/* ============================================================
+   GLOBALS
+   ============================================================ */
+const canvas   = document.getElementById('vis');
+const ctx      = canvas.getContext('2d');
+const fileInput  = document.getElementById('fileInput');
+const playBtn    = document.getElementById('playBtn');
+const styleSelect= document.getElementById('styleSelect');
+const recBtn     = document.getElementById('recBtn');
+const statusEl   = document.getElementById('status');
+const recIndEl   = document.getElementById('rec-indicator');
+const recSecEl   = document.getElementById('recSec');
+const r169Btn    = document.getElementById('r169');
+const r916Btn    = document.getElementById('r916');
+const canvasOuter= document.getElementById('canvas-outer');
+const idleMsg    = document.getElementById('idle-msg');
 
 let audioCtx, analyser, source, audioBuffer, gainNode;
-let isPlaying = false, rafId, startTime = 0, pauseOffset = 0;
+let isPlaying = false, rafId = null;
+let startTime = 0, pauseOffset = 0;
 let ratio = '16:9';
 let mediaRecorder = null, recChunks = [], recInterval = null, recSeconds = 0;
 let currentStyle = 'fire';
+let time = 0;
+let audioReady = false;
 
-function setRatio(r) {
-  ratio = r;
-  resizeCanvas();
-  r169Btn.classList.toggle('active', r === '16:9');
-  r916Btn.classList.toggle('active', r === '9:16');
-}
-r169Btn.onclick = () => setRatio('16:9');
-r916Btn.onclick = () => setRatio('9:16');
-
+/* ============================================================
+   CANVAS SIZING
+   ============================================================ */
 function resizeCanvas() {
-  const wrap = document.getElementById('canvas-wrap');
-  const w = wrap.clientWidth || 640;
+  const stageW = Math.min(document.getElementById('stage').clientWidth, 900);
   if (ratio === '16:9') {
-    canvas.width = Math.min(w, 960);
-    canvas.height = Math.round(canvas.width * 9 / 16);
+    const w = stageW;
+    const h = Math.round(w * 9 / 16);
+    canvasOuter.style.width  = w + 'px';
+    canvasOuter.style.height = h + 'px';
+    canvas.width  = w;
+    canvas.height = h;
   } else {
-    canvas.width = Math.min(w, 360);
-    canvas.height = Math.round(canvas.width * 16 / 9);
+    const h = Math.min(window.innerHeight * 0.7, 600);
+    const w = Math.round(h * 9 / 16);
+    canvasOuter.style.width  = w + 'px';
+    canvasOuter.style.height = h + 'px';
+    canvas.width  = w;
+    canvas.height = h;
   }
-  canvas.style.width = canvas.width + 'px';
-  canvas.style.height = canvas.height + 'px';
+  if (!audioReady) drawIdle();
 }
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
 
+function setRatio(r) {
+  ratio = r;
+  canvasOuter.className = r === '16:9' ? 'ratio-16-9' : 'ratio-9-16';
+  r169Btn.classList.toggle('active', r === '16:9');
+  r916Btn.classList.toggle('active', r === '9:16');
+  resizeCanvas();
+}
+r169Btn.onclick = () => setRatio('16:9');
+r916Btn.onclick = () => setRatio('9:16');
+
+const W = () => canvas.width;
+const H = () => canvas.height;
+
+/* ============================================================
+   AUDIO
+   ============================================================ */
 fileInput.addEventListener('change', async e => {
   const file = e.target.files[0];
   if (!file) return;
-  status.textContent = '로딩 중...';
+  statusEl.textContent = '로딩 중...';
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   const ab = await file.arrayBuffer();
   audioBuffer = await audioCtx.decodeAudioData(ab);
-  playBtn.disabled = false;
-  recBtn.disabled = false;
-  status.textContent = file.name.slice(0, 30);
   if (!analyser) {
     analyser = audioCtx.createAnalyser();
     analyser.fftSize = 2048;
@@ -104,6 +240,11 @@ fileInput.addEventListener('change', async e => {
     analyser.connect(gainNode);
     gainNode.connect(audioCtx.destination);
   }
+  playBtn.disabled = false;
+  recBtn.disabled = false;
+  idleMsg.style.display = 'none';
+  audioReady = true;
+  statusEl.textContent = file.name.length > 28 ? file.name.slice(0, 28) + '…' : file.name;
 });
 
 playBtn.addEventListener('click', () => {
@@ -113,7 +254,7 @@ playBtn.addEventListener('click', () => {
 });
 
 function startAudio(offset = 0) {
-  if (!audioCtx) return;
+  if (audioCtx.state === 'suspended') audioCtx.resume();
   source = audioCtx.createBufferSource();
   source.buffer = audioBuffer;
   source.connect(analyser);
@@ -121,505 +262,717 @@ function startAudio(offset = 0) {
   startTime = audioCtx.currentTime - offset;
   isPlaying = true;
   source.onended = () => { if (isPlaying) { isPlaying = false; pauseOffset = 0; playBtn.textContent = '▶ 재생'; } };
-  draw();
+  if (rafId) cancelAnimationFrame(rafId);
+  drawLoop();
 }
 function stopAudio() {
   if (source) { try { source.stop(); } catch(e){} }
-  pauseOffset = audioCtx.currentTime - startTime;
+  pauseOffset = audioCtx ? audioCtx.currentTime - startTime : 0;
   isPlaying = false;
   cancelAnimationFrame(rafId);
+  rafId = null;
 }
 
-styleSelect.addEventListener('change', () => { currentStyle = styleSelect.value; });
-
-const W = () => canvas.width, H = () => canvas.height;
-
-// Particle systems
-let particles = [];
-function initParticles(style) {
-  particles = [];
-  if (style === 'petal') {
-    for (let i = 0; i < 80; i++) particles.push({ x: Math.random()*W(), y: Math.random()*H(), vx: (Math.random()-0.5)*1.5, vy: -Math.random()*1.5-0.5, size: Math.random()*10+5, rot: Math.random()*Math.PI*2, rspeed: (Math.random()-0.5)*0.05, color: `hsl(${Math.random()*60+300},90%,${60+Math.random()*20}%)`, alpha: Math.random()*0.5+0.5, swing: Math.random()*2*Math.PI, swingSpeed: 0.02+Math.random()*0.03 });
-  } else if (style === 'grass') {
-    for (let i = 0; i < 120; i++) particles.push({ x: (i/120)*W(), baseH: Math.random()*H()*0.25+H()*0.1, segments: 5, phase: Math.random()*Math.PI*2, color: `hsl(${100+Math.random()*40},${70+Math.random()*20}%,${30+Math.random()*20}%)` });
-  }
-}
-initParticles('fire');
-
-const fireEmbers = Array.from({length: 120}, () => ({ x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 0, size: 0, hue: 0 }));
-
-function getFreqData() {
-  if (!analyser) return { bass: 0, mid: 0, treble: 0, data: new Uint8Array(512) };
+/* ============================================================
+   ANALYSER HELPERS
+   ============================================================ */
+function getFreq() {
+  if (!analyser) return { bass:0, mid:0, treble:0, vol:0, data: new Uint8Array(1024), waveData: new Uint8Array(1024) };
   const data = new Uint8Array(analyser.frequencyBinCount);
   analyser.getByteFrequencyData(data);
-  const bassEnd = Math.floor(data.length * 0.1);
-  const midEnd = Math.floor(data.length * 0.4);
-  let bass = 0, mid = 0, treble = 0;
-  for (let i = 0; i < bassEnd; i++) bass += data[i];
-  for (let i = bassEnd; i < midEnd; i++) mid += data[i];
-  for (let i = midEnd; i < data.length; i++) treble += data[i];
-  bass /= bassEnd * 255; mid /= (midEnd - bassEnd) * 255; treble /= (data.length - midEnd) * 255;
-  return { bass, mid, treble, data };
+  const waveData = new Uint8Array(analyser.fftSize);
+  analyser.getByteTimeDomainData(waveData);
+
+  const bn = analyser.frequencyBinCount;
+  const bassEnd  = Math.floor(bn * 0.08);
+  const midEnd   = Math.floor(bn * 0.35);
+  let bass=0, mid=0, treble=0;
+  for (let i=0;i<bassEnd;i++) bass+=data[i];
+  for (let i=bassEnd;i<midEnd;i++) mid+=data[i];
+  for (let i=midEnd;i<bn;i++) treble+=data[i];
+  bass   /= bassEnd * 255;
+  mid    /= (midEnd - bassEnd) * 255;
+  treble /= (bn - midEnd) * 255;
+  const vol = bass*0.5 + mid*0.3 + treble*0.2;
+  return { bass, mid, treble, vol, data, waveData };
 }
 
-let time = 0;
-function draw() {
-  rafId = requestAnimationFrame(draw);
+/* ============================================================
+   DRAW LOOP
+   ============================================================ */
+function drawLoop() {
+  rafId = requestAnimationFrame(drawLoop);
   time += 0.016;
-  const { bass, mid, treble, data } = getFreqData();
-  const vol = (bass * 0.5 + mid * 0.3 + treble * 0.2);
+  const f = getFreq();
+  ctx.clearRect(0,0,W(),H());
 
-  ctx.clearRect(0, 0, W(), H());
-
-  if (currentStyle === 'fire') drawFire(bass, mid, treble, vol, data);
-  else if (currentStyle === 'wave') drawWave(bass, mid, treble, vol, data);
-  else if (currentStyle === 'cloud') drawCloud(bass, mid, treble, vol, data);
-  else if (currentStyle === 'petal') drawPetal(bass, mid, treble, vol, data);
-  else if (currentStyle === 'grass') drawGrass(bass, mid, treble, vol, data);
+  if      (currentStyle==='fire')  drawFire(f);
+  else if (currentStyle==='wave')  drawWave(f);
+  else if (currentStyle==='cloud') drawCloud(f);
+  else if (currentStyle==='petal') drawPetal(f);
+  else if (currentStyle==='grass') drawGrass(f);
 }
 
-// ---- FIRE ----
-let fireLayer = Array.from({length: 80}, () => ({ x: 0, y: 0, h: 0, phase: Math.random()*Math.PI*2, hue: 0 }));
-function drawFire(bass, mid, treble, vol, data) {
-  const w = W(), h = H();
-  ctx.fillStyle = `rgb(5,3,8)`;
-  ctx.fillRect(0, 0, w, h);
-
-  const fireH = h * (0.35 + bass * 0.55);
-  const cx = w / 2;
-  const fireW = w * (0.25 + mid * 0.35);
-
-  // Ground glow
-  const grd = ctx.createRadialGradient(cx, h, 0, cx, h, fireW * 0.8);
-  grd.addColorStop(0, `rgba(255,120,20,${0.5 + bass * 0.4})`);
-  grd.addColorStop(0.4, `rgba(200,50,5,${0.2 + bass * 0.2})`);
-  grd.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = grd;
-  ctx.fillRect(cx - fireW, h * 0.7, fireW * 2, h * 0.35);
-
-  // Multiple flame layers
-  for (let layer = 0; layer < 5; layer++) {
-    const lFade = 1 - layer / 5;
-    const lW = fireW * (1 - layer * 0.12) * (0.7 + bass * 0.4);
-    const lH = fireH * (1 - layer * 0.08) * (0.8 + mid * 0.3);
-    const lHue = 15 + layer * 12 + treble * 30;
-    const alpha = (0.6 - layer * 0.08) * (0.5 + vol * 0.8);
-
-    ctx.beginPath();
-    ctx.moveTo(cx - lW * 0.5, h);
-    const segs = 30;
-    for (let i = 0; i <= segs; i++) {
-      const t = i / segs;
-      const fx = cx - lW * 0.5 + lW * t;
-      const noiseX = Math.sin(time * (1.2 + layer * 0.3) + t * 8 + layer) * lW * 0.12 * (0.5 + vol);
-      const noiseY = Math.sin(time * (1.5 + layer * 0.4) + t * 5 + layer * 2) * lH * 0.1;
-      const shape = Math.sin(t * Math.PI);
-      const envelope = Math.pow(Math.sin(t * Math.PI), 1.5 + layer * 0.2);
-      const fy = h - envelope * lH + noiseY;
-      if (i === 0) ctx.moveTo(fx + noiseX, h);
-      else ctx.lineTo(fx + noiseX, fy);
-    }
-    ctx.lineTo(cx + lW * 0.5, h);
-    ctx.closePath();
-
-    const fg = ctx.createLinearGradient(cx, h - lH, cx, h);
-    fg.addColorStop(0, `hsla(${lHue + 40},100%,90%,0)`);
-    fg.addColorStop(0.3, `hsla(${lHue + 20},100%,75%,${alpha * 0.6})`);
-    fg.addColorStop(0.7, `hsla(${lHue},100%,55%,${alpha})`);
-    fg.addColorStop(1, `hsla(${lHue - 10},100%,30%,${alpha * 1.2})`);
-    ctx.fillStyle = fg;
-    ctx.fill();
-  }
-
-  // Embers
-  for (let i = 0; i < fireEmbers.length; i++) {
-    const e = fireEmbers[i];
-    if (e.life <= 0 && bass > 0.15 && Math.random() < 0.3) {
-      e.x = cx + (Math.random() - 0.5) * fireW * 0.6;
-      e.y = h - fireH * 0.2;
-      e.vx = (Math.random() - 0.5) * 2 * (1 + treble * 2);
-      e.vy = -(Math.random() * 3 + 1) * (1 + bass * 2);
-      e.maxLife = Math.random() * 60 + 30;
-      e.life = e.maxLife;
-      e.size = Math.random() * 2.5 + 0.5;
-      e.hue = Math.random() * 40 + 10;
-    }
-    if (e.life > 0) {
-      e.life--;
-      e.x += e.vx + Math.sin(time * 3 + i) * 0.5;
-      e.y += e.vy;
-      e.vy += 0.04;
-      e.vx *= 0.98;
-      const a = e.life / e.maxLife;
-      ctx.beginPath();
-      ctx.arc(e.x, e.y, e.size * a, 0, Math.PI * 2);
-      ctx.fillStyle = `hsla(${e.hue},100%,80%,${a * 0.9})`;
-      ctx.fill();
-    }
-  }
-
-  // Smoke
-  for (let i = 0; i < 8; i++) {
-    const sx = cx + Math.sin(time * 0.5 + i * 1.2) * fireW * 0.3;
-    const sy = h - fireH - i * h * 0.05 - mid * h * 0.1;
-    const sr = (i * 12 + 8) * (0.5 + vol * 0.5);
-    const sa = (0.06 - i * 0.006) * (0.3 + vol * 0.5);
-    const sg = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
-    sg.addColorStop(0, `rgba(80,70,90,${sa})`);
-    sg.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = sg;
-    ctx.beginPath();
-    ctx.arc(sx, sy, sr, 0, Math.PI * 2);
-    ctx.fill();
-  }
+function drawIdle() {
+  ctx.fillStyle = '#0a0a14';
+  ctx.fillRect(0,0,W(),H());
 }
 
-// ---- WAVE ----
-function drawWave(bass, mid, treble, vol, data) {
-  const w = W(), h = H();
-  const skyG = ctx.createLinearGradient(0, 0, 0, h * 0.55);
-  skyG.addColorStop(0, `hsl(${210 + bass * 20},${50 + mid * 30}%,${15 + bass * 10}%)`);
-  skyG.addColorStop(1, `hsl(${190 + mid * 20},${60 + vol * 20}%,${25 + vol * 15}%)`);
-  ctx.fillStyle = skyG;
-  ctx.fillRect(0, 0, w, h);
+styleSelect.addEventListener('change', () => {
+  currentStyle = styleSelect.value;
+  initStyle(currentStyle);
+});
 
-  // Moon/sun
-  const moonR = w * 0.04 + bass * w * 0.02;
-  const moonG = ctx.createRadialGradient(w * 0.8, h * 0.15, 0, w * 0.8, h * 0.15, moonR * 2.5);
-  moonG.addColorStop(0, `rgba(255,240,180,${0.7 + vol * 0.3})`);
-  moonG.addColorStop(0.4, `rgba(255,220,120,${0.2 + vol * 0.2})`);
-  moonG.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = moonG;
-  ctx.fillRect(w * 0.7, 0, w * 0.3, h * 0.35);
-  ctx.beginPath();
-  ctx.arc(w * 0.8, h * 0.15, moonR, 0, Math.PI * 2);
-  ctx.fillStyle = `rgba(255,245,200,${0.85 + vol * 0.15})`;
-  ctx.fill();
-
-  // Wave layers
-  const waveLayers = 5;
-  for (let l = waveLayers; l >= 0; l--) {
-    const ly = h * (0.45 + l * 0.09 + bass * 0.05);
-    const lAmp = (h * 0.035 + bass * h * 0.055) * (1 - l * 0.12);
-    const lSpeed = 0.8 + l * 0.3 + mid * 0.8;
-    const lFreq = 2 + l * 0.7 + treble * 1.5;
-    const lHue = 200 + l * 8;
-    const lLight = 20 + l * 10 + vol * 15;
-    const lAlpha = 0.7 + l * 0.06;
-
-    ctx.beginPath();
-    ctx.moveTo(0, h);
-    for (let x = 0; x <= w; x += 3) {
-      const nx = x / w;
-      const y = ly + Math.sin(nx * Math.PI * lFreq + time * lSpeed) * lAmp
-        + Math.sin(nx * Math.PI * (lFreq * 1.7) + time * lSpeed * 1.3) * lAmp * 0.4
-        + Math.sin(nx * Math.PI * (lFreq * 0.5) + time * lSpeed * 0.7) * lAmp * 0.6;
-      if (x === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    ctx.lineTo(w, h); ctx.lineTo(0, h); ctx.closePath();
-    const wg = ctx.createLinearGradient(0, ly - lAmp, 0, h);
-    wg.addColorStop(0, `hsla(${lHue},70%,${lLight}%,${lAlpha})`);
-    wg.addColorStop(0.5, `hsla(${lHue + 10},65%,${lLight - 8}%,${lAlpha})`);
-    wg.addColorStop(1, `hsla(${lHue + 20},60%,${10 + l * 3}%,1)`);
-    ctx.fillStyle = wg;
-    ctx.fill();
+/* ============================================================
+   STYLE: FIRE  (6~12 campfires)
+   ============================================================ */
+let firePits = [];
+function initFire() {
+  firePits = [];
+  const count = 9; // 6~12, we'll use 9 as base and scale
+  for (let i = 0; i < count; i++) {
+    const t = (i + 0.5) / count;
+    firePits.push({
+      x: t,           // normalized x [0,1]
+      phase: Math.random() * Math.PI * 2,
+      sizeScale: 0.7 + Math.random() * 0.6,
+      freqBin: Math.floor(i / count * 64), // which freq bin drives this fire
+      embers: Array.from({length:20}, () => ({ life:0, maxLife:0, x:0, y:0, vx:0, vy:0, size:0, hue:0 }))
+    });
   }
-
-  // Foam / sparkle on top wave
-  const topY = h * (0.45 + bass * 0.05);
-  for (let i = 0; i < 40; i++) {
-    const fx = (Math.sin(i * 2.3 + time * 1.5) * 0.5 + 0.5) * w;
-    const wAmp = h * 0.04 + bass * h * 0.06;
-    const fy = topY + Math.sin(fx / w * Math.PI * (2 + treble) + time * 0.8) * wAmp;
-    const fa = (0.3 + treble * 0.5) * (0.5 + Math.random() * 0.5);
-    ctx.beginPath();
-    ctx.arc(fx, fy, 1.5 + treble * 2, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(255,255,255,${fa})`;
-    ctx.fill();
-  }
-
-  // Moonlight reflection
-  const reflG = ctx.createLinearGradient(w * 0.75, h * 0.45, w * 0.85, h);
-  reflG.addColorStop(0, `rgba(255,245,180,${0.15 + vol * 0.1})`);
-  reflG.addColorStop(1, `rgba(255,245,180,0)`);
-  ctx.fillStyle = reflG;
-  ctx.fillRect(w * 0.73, h * 0.45, w * 0.14, h * 0.55);
 }
+initFire();
 
-// ---- CLOUD ----
-let cloudPos = Array.from({length: 10}, (_, i) => ({ x: Math.random() * 1200 - 100, y: Math.random() * 0.45, size: 0.5 + Math.random() * 0.8, speed: 0.1 + Math.random() * 0.3, puffs: Math.floor(3 + Math.random() * 4), hue: Math.random() * 30 - 10 }));
-function drawCloud(bass, mid, treble, vol, data) {
-  const w = W(), h = H();
+function drawFire({ bass, mid, treble, vol, data }) {
+  const w=W(), h=H();
 
-  // Sky gradient - shifts with music
-  const skyG = ctx.createLinearGradient(0, 0, 0, h);
-  const skyHue = 200 + bass * 30;
-  skyG.addColorStop(0, `hsl(${skyHue + 20},${60 + vol * 20}%,${25 + vol * 20}%)`);
-  skyG.addColorStop(0.5, `hsl(${skyHue},${50 + mid * 20}%,${45 + bass * 15}%)`);
-  skyG.addColorStop(1, `hsl(${skyHue - 20},${40 + treble * 20}%,${60 + vol * 10}%)`);
-  ctx.fillStyle = skyG;
-  ctx.fillRect(0, 0, w, h);
+  // Night sky
+  const sky = ctx.createLinearGradient(0,0,0,h);
+  sky.addColorStop(0, '#02020a');
+  sky.addColorStop(1, '#070510');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0,0,w,h);
 
   // Stars
-  for (let i = 0; i < 60; i++) {
-    const sx = ((i * 137.5) % 1) * w;
-    const sy = ((i * 97.3) % 0.5) * h;
-    const sa = (0.3 + Math.sin(time * 2 + i) * 0.2) * (1 - vol * 0.8);
-    if (sa > 0) {
-      ctx.beginPath();
-      ctx.arc(sx, sy, 1 + treble, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(255,255,220,${sa})`;
-      ctx.fill();
-    }
+  for (let i=0;i<80;i++) {
+    const sx = ((i*137.508)%1)*w;
+    const sy = ((i*97.31)%0.55)*h;
+    const sa = 0.3 + Math.sin(time*2+i*0.7)*0.2;
+    ctx.beginPath();
+    ctx.arc(sx,sy,0.8+treble,0,Math.PI*2);
+    ctx.fillStyle = `rgba(255,255,220,${sa*(0.5+vol)})`;
+    ctx.fill();
   }
 
-  // Sun/light source
-  const sunY = h * (0.15 + bass * 0.08);
-  const sunR = w * 0.06 + vol * w * 0.03;
-  const sunHue = 30 + treble * 30;
-  const sunG = ctx.createRadialGradient(w * 0.5, sunY, 0, w * 0.5, sunY, sunR * 3);
-  sunG.addColorStop(0, `hsla(${sunHue},100%,90%,${0.9 + bass * 0.1})`);
-  sunG.addColorStop(0.3, `hsla(${sunHue - 10},100%,70%,${0.4 + vol * 0.2})`);
-  sunG.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = sunG;
-  ctx.fillRect(0, 0, w, h * 0.5);
+  // Ground
+  const gndY = h * 0.72;
+  const gnd = ctx.createLinearGradient(0, gndY, 0, h);
+  gnd.addColorStop(0, '#1a1008');
+  gnd.addColorStop(1, '#0a0805');
+  ctx.fillStyle = gnd;
+  ctx.fillRect(0, gndY, w, h - gndY);
 
-  // Clouds
-  cloudPos.forEach(c => {
-    c.x += c.speed * (1 + mid * 2) * (w / 800);
-    if (c.x > w + 200) c.x = -200;
-    const cy = c.y * h;
-    const cs = c.size * w * 0.12 * (1 + bass * 0.3);
-    const alpha = 0.6 + vol * 0.3;
-    for (let p = 0; p < c.puffs; p++) {
-      const px = c.x + p * cs * 0.55;
-      const py = cy + Math.sin(p * 1.5) * cs * 0.25;
-      const pr = cs * (0.5 + Math.sin(p * 2) * 0.2) * (1 + Math.sin(time * 0.5 + p) * 0.05 * bass);
-      const cg = ctx.createRadialGradient(px, py - pr * 0.2, 0, px, py, pr);
-      const lightness = 85 + vol * 10;
-      cg.addColorStop(0, `hsla(${c.hue + 200},20%,${lightness}%,${alpha})`);
-      cg.addColorStop(0.7, `hsla(${c.hue + 210},15%,${lightness - 10}%,${alpha * 0.7})`);
-      cg.addColorStop(1, `hsla(${c.hue + 220},10%,${lightness - 20}%,0)`);
-      ctx.fillStyle = cg;
+  // Ground glow — collective
+  firePits.forEach((pit, pi) => {
+    const px = pit.x * w;
+    const binVal = data[pit.freqBin] / 255;
+    const localBass = (data[Math.max(0, pit.freqBin-2)] + data[pit.freqBin] + data[Math.min(255, pit.freqBin+2)]) / 3 / 255;
+    const intensity = localBass * 0.6 + bass * 0.4;
+    const gr = w * 0.06 * pit.sizeScale * (1 + intensity * 0.5);
+    const gg = ctx.createRadialGradient(px, gndY, 0, px, gndY, gr);
+    gg.addColorStop(0, `rgba(255,120,20,${0.35+intensity*0.4})`);
+    gg.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = gg;
+    ctx.beginPath(); ctx.arc(px, gndY, gr, 0, Math.PI*2); ctx.fill();
+  });
+
+  // Each fire pit
+  firePits.forEach((pit, pi) => {
+    const px = pit.x * w;
+    const binVal = data[pit.freqBin] / 255;
+    const local = (data[Math.max(0,pit.freqBin-3)]+data[pit.freqBin]+data[Math.min(255,pit.freqBin+3)])/3/255;
+    const intensity = local*0.55 + bass*0.45;
+    const baseW = w * 0.028 * pit.sizeScale;
+    const baseH = h * (0.06 + intensity * 0.18) * pit.sizeScale;
+
+    // Logs
+    ctx.save();
+    ctx.strokeStyle = '#3d2010';
+    ctx.lineWidth = Math.max(3, w*0.006);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(px - baseW*1.4, gndY+2);
+    ctx.lineTo(px + baseW*0.6, gndY - baseW*0.3);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(px + baseW*1.4, gndY+2);
+    ctx.lineTo(px - baseW*0.6, gndY - baseW*0.3);
+    ctx.stroke();
+    ctx.restore();
+
+    // Flame layers
+    for (let layer = 0; layer < 4; layer++) {
+      const lFrac = 1 - layer/4;
+      const lW = baseW * (1.4 - layer*0.2) * (0.8 + intensity*0.4);
+      const lH = baseH * lFrac * (0.9 + mid*0.2);
+      const lHue = 12 + layer*15 + treble*25;
+      const lAlpha = (0.7 - layer*0.1) * (0.5 + intensity*0.7);
+
       ctx.beginPath();
-      ctx.arc(px, py, pr, 0, Math.PI * 2);
-      ctx.fill();
+      const segs = 18;
+      for (let s=0; s<=segs; s++) {
+        const t2 = s/segs;
+        const nx = px - lW + lW*2*t2;
+        const noiseX = Math.sin(time*(1.5+layer*0.4+pi*0.3)+t2*6+pit.phase)*lW*0.25*(0.5+intensity);
+        const noiseY = Math.sin(time*(2+layer*0.3+pi*0.2)+t2*4+pit.phase*1.3)*lH*0.1;
+        const env = Math.pow(Math.sin(t2*Math.PI), 1.3+layer*0.3);
+        const fy = gndY - env*lH + noiseY;
+        if (s===0) ctx.moveTo(nx+noiseX, gndY);
+        else ctx.lineTo(nx+noiseX, fy);
+      }
+      ctx.lineTo(px+lW, gndY); ctx.closePath();
+
+      const fg = ctx.createLinearGradient(px, gndY-lH, px, gndY);
+      fg.addColorStop(0, `hsla(${lHue+40},100%,92%,0)`);
+      fg.addColorStop(0.25,`hsla(${lHue+20},100%,78%,${lAlpha*0.5})`);
+      fg.addColorStop(0.6, `hsla(${lHue},100%,55%,${lAlpha})`);
+      fg.addColorStop(1,   `hsla(${lHue-10},100%,28%,${lAlpha*1.2})`);
+      ctx.fillStyle = fg; ctx.fill();
+    }
+
+    // Embers
+    pit.embers.forEach(e => {
+      if (e.life<=0 && intensity>0.2 && Math.random()<0.25) {
+        e.x=px+(Math.random()-0.5)*baseW*0.8;
+        e.y=gndY-baseH*0.3;
+        e.vx=(Math.random()-0.5)*1.5*(1+treble*2);
+        e.vy=-(Math.random()*2.5+0.8)*(1+intensity*2);
+        e.maxLife=40+Math.random()*50;
+        e.life=e.maxLife;
+        e.size=0.5+Math.random()*2;
+        e.hue=Math.random()*40+8;
+      }
+      if (e.life>0) {
+        e.life--; e.x+=e.vx+Math.sin(time*4+pi)*0.3; e.y+=e.vy; e.vy+=0.06; e.vx*=0.97;
+        const a=e.life/e.maxLife;
+        ctx.beginPath(); ctx.arc(e.x,e.y,e.size*a,0,Math.PI*2);
+        ctx.fillStyle=`hsla(${e.hue},100%,80%,${a*0.85})`; ctx.fill();
+      }
+    });
+
+    // Smoke
+    for (let s=0;s<4;s++) {
+      const sx2=px+Math.sin(time*0.4+s*1.5+pi)*baseW*0.5;
+      const sy2=gndY-baseH-s*h*0.04-mid*h*0.05;
+      const sr=baseW*(1+s*0.8)*(0.4+vol*0.4);
+      const sa=(0.05-s*0.01)*(0.3+vol*0.4);
+      const sg=ctx.createRadialGradient(sx2,sy2,0,sx2,sy2,sr);
+      sg.addColorStop(0,`rgba(70,60,80,${sa})`); sg.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=sg; ctx.beginPath(); ctx.arc(sx2,sy2,sr,0,Math.PI*2); ctx.fill();
+    }
+  });
+}
+
+/* ============================================================
+   STYLE: WAVE  (non-overlapping, frequency-driven spikes)
+   ============================================================ */
+function drawWave({ bass, mid, treble, vol, data, waveData }) {
+  const w=W(), h=H();
+
+  // Deep ocean bg
+  const bg = ctx.createLinearGradient(0,0,0,h);
+  bg.addColorStop(0, `hsl(215,50%,8%)`);
+  bg.addColorStop(0.4, `hsl(205,55%,12%)`);
+  bg.addColorStop(1, `hsl(195,60%,6%)`);
+  ctx.fillStyle=bg; ctx.fillRect(0,0,w,h);
+
+  // Moon
+  const moonX=w*0.82, moonY=h*0.12, moonR=w*0.032+bass*w*0.01;
+  const moonGl=ctx.createRadialGradient(moonX,moonY,0,moonX,moonY,moonR*3);
+  moonGl.addColorStop(0,`rgba(255,245,200,${0.5+vol*0.2})`);
+  moonGl.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=moonGl; ctx.beginPath(); ctx.arc(moonX,moonY,moonR*3,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(moonX,moonY,moonR,0,Math.PI*2);
+  ctx.fillStyle=`rgba(255,248,210,${0.88+vol*0.12})`; ctx.fill();
+
+  // Moonlight reflection
+  const reflGrd=ctx.createLinearGradient(moonX,h*0.35,moonX,h);
+  reflGrd.addColorStop(0,`rgba(255,248,200,${0.08+vol*0.06})`);
+  reflGrd.addColorStop(1,'rgba(255,248,200,0)');
+  ctx.fillStyle=reflGrd; ctx.fillRect(moonX-w*0.04,h*0.35,w*0.08,h*0.65);
+
+  // Wave lanes — each occupies its own Y band, never overlapping
+  const laneCount = 5;
+  const laneH = h / laneCount;
+
+  for (let l = 0; l < laneCount; l++) {
+    // Each lane has a fixed Y band
+    const laneTop    = l * laneH;
+    const laneBottom = laneTop + laneH;
+    const laneBaseY  = laneBottom - laneH * 0.15; // baseline sits near bottom of lane
+
+    // Frequency bins for this lane
+    const binStart = Math.floor(l / laneCount * data.length * 0.6);
+    const binEnd   = Math.floor((l+1) / laneCount * data.length * 0.6);
+    // Per-X frequency value
+    const maxAmpFrac = laneH * 0.82; // max spike can go up to 82% of the lane height
+
+    // Speed and phase per lane
+    const speed  = 0.6 + l * 0.25 + mid * 0.5;
+    const hue    = 200 + l * 10;
+    const bright = 18 + l * 7 + vol * 8;
+
+    // Draw filled wave shape
+    ctx.beginPath();
+    ctx.moveTo(0, laneBottom);
+
+    const steps = w;
+    for (let x = 0; x <= steps; x++) {
+      const nx   = x / steps;
+      const binIdx = binStart + Math.floor(nx * (binEnd - binStart));
+      const binVal = data[Math.min(binIdx, data.length-1)] / 255;
+
+      // Travelling sine for shape, freq magnitude drives spike height
+      const sineA  = Math.sin(nx * Math.PI * (3 + l) + time * speed) * 0.5 + 0.5;
+      const spike  = binVal * maxAmpFrac * (0.4 + sineA * 0.6);
+      const ripple = Math.sin(nx * Math.PI * 8 + time * speed * 2) * maxAmpFrac * 0.06 * binVal;
+
+      const py = laneBaseY - spike - ripple;
+      if (x === 0) ctx.moveTo(0, py);
+      else         ctx.lineTo(x, py);
+    }
+    ctx.lineTo(w, laneBottom);
+    ctx.lineTo(0, laneBottom);
+    ctx.closePath();
+
+    const wg = ctx.createLinearGradient(0, laneBaseY - maxAmpFrac, 0, laneBottom);
+    wg.addColorStop(0, `hsla(${hue},75%,${bright+20}%,0.85)`);
+    wg.addColorStop(0.5,`hsla(${hue+5},70%,${bright}%,0.75)`);
+    wg.addColorStop(1,  `hsla(${hue+10},60%,${bright-8}%,0.9)`);
+    ctx.fillStyle = wg;
+    ctx.fill();
+
+    // Crest highlight line
+    ctx.beginPath();
+    for (let x=0; x<=steps; x++) {
+      const nx   = x/steps;
+      const binIdx = binStart + Math.floor(nx*(binEnd-binStart));
+      const binVal = data[Math.min(binIdx,data.length-1)]/255;
+      const sineA  = Math.sin(nx*Math.PI*(3+l)+time*speed)*0.5+0.5;
+      const spike  = binVal*maxAmpFrac*(0.4+sineA*0.6);
+      const ripple = Math.sin(nx*Math.PI*8+time*speed*2)*maxAmpFrac*0.06*binVal;
+      const py = laneBaseY - spike - ripple;
+      if (x===0) ctx.moveTo(0,py); else ctx.lineTo(x,py);
+    }
+    ctx.strokeStyle=`hsla(${hue},90%,80%,${0.3+treble*0.4})`;
+    ctx.lineWidth=1.2; ctx.stroke();
+
+    // Foam dots on crest peaks
+    for (let fi=0; fi<30; fi++) {
+      const nx  = (Math.sin(fi*3.7+time*speed*0.5)*0.5+0.5);
+      const x2  = nx * w;
+      const binIdx = binStart + Math.floor(nx*(binEnd-binStart));
+      const binVal = data[Math.min(binIdx,data.length-1)]/255;
+      const sineA  = Math.sin(nx*Math.PI*(3+l)+time*speed)*0.5+0.5;
+      const spike  = binVal*maxAmpFrac*(0.4+sineA*0.6);
+      const py = laneBaseY - spike;
+      if (binVal > 0.3) {
+        ctx.beginPath(); ctx.arc(x2, py, 1+treble*2, 0, Math.PI*2);
+        ctx.fillStyle=`rgba(255,255,255,${binVal*0.5})`; ctx.fill();
+      }
+    }
+  }
+}
+
+/* ============================================================
+   STYLE: CLOUD  (only clouds, no sky extras)
+   ============================================================ */
+let clouds = [];
+function initCloud() {
+  clouds = Array.from({length:16}, (_,i) => ({
+    x: Math.random() * 1.5 - 0.2,
+    y: Math.random() * 0.85,
+    size: 0.06 + Math.random() * 0.1,
+    speed: 0.03 + Math.random() * 0.08,
+    puffs: 3 + Math.floor(Math.random() * 4),
+    hue: Math.random() * 40 - 20,
+    alpha: 0.4 + Math.random() * 0.5,
+    lightness: 75 + Math.random() * 20,
+    freqBin: Math.floor(i/16*128)
+  }));
+}
+initCloud();
+
+function drawCloud({ bass, mid, treble, vol, data }) {
+  const w=W(), h=H();
+
+  // Pure black / dark bg — no sky, no ground
+  ctx.fillStyle = '#04040c';
+  ctx.fillRect(0,0,w,h);
+
+  // Ambient glow reacts to bass
+  if (bass > 0.1) {
+    const ag = ctx.createRadialGradient(w*0.5,h*0.5,0,w*0.5,h*0.5,w*0.5);
+    ag.addColorStop(0, `rgba(40,30,80,${bass*0.25})`);
+    ag.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle=ag; ctx.fillRect(0,0,w,h);
+  }
+
+  clouds.forEach((c, ci) => {
+    const binVal = data[c.freqBin] / 255;
+    const localEnergy = binVal * 0.6 + vol * 0.4;
+
+    // Move — faster with mid frequency
+    c.x += c.speed * (1 + mid * 2.5) * (w > 400 ? 0.0008 : 0.0012);
+    if (c.x > 1.3) c.x = -0.3;
+
+    const cx2 = c.x * w;
+    const cy  = c.y * h;
+    const cs  = c.size * w * (1 + localEnergy * 0.45);
+
+    // Pulsing on beat
+    const pulse = 1 + Math.sin(time * 3 + ci * 1.7) * 0.04 * bass;
+
+    for (let p = 0; p < c.puffs; p++) {
+      const offX = p * cs * 0.52;
+      const offY = Math.sin(p * 1.6) * cs * 0.28;
+      const pr   = cs * (0.45 + Math.sin(p * 2.1) * 0.18) * pulse * (1 + localEnergy * 0.15);
+
+      const lum = c.lightness + localEnergy * 15;
+      const alpha = c.alpha * (0.6 + localEnergy * 0.5);
+
+      const cg = ctx.createRadialGradient(cx2+offX, cy+offY-pr*0.18, 0, cx2+offX, cy+offY, pr);
+      cg.addColorStop(0,   `hsla(${c.hue+220},18%,${lum}%,${alpha})`);
+      cg.addColorStop(0.65,`hsla(${c.hue+215},12%,${lum-12}%,${alpha*0.75})`);
+      cg.addColorStop(1,   `hsla(${c.hue+210},8%,${lum-25}%,0)`);
+      ctx.fillStyle=cg;
+      ctx.beginPath(); ctx.arc(cx2+offX, cy+offY, pr, 0, Math.PI*2); ctx.fill();
+    }
+
+    // Lightning inside large clouds on bass peak
+    if (bass > 0.55 && localEnergy > 0.5 && Math.random() < 0.06) {
+      ctx.save();
+      ctx.strokeStyle = `rgba(200,180,255,${0.6+Math.random()*0.4})`;
+      ctx.lineWidth   = 0.8;
+      ctx.beginPath();
+      let lx=cx2+cs*0.3, ly=cy-cs*0.4;
+      ctx.moveTo(lx,ly);
+      for (let s=0;s<4;s++) {
+        lx += (Math.random()-0.5)*cs*0.5;
+        ly += cs*0.25;
+        ctx.lineTo(lx,ly);
+      }
+      ctx.stroke(); ctx.restore();
     }
   });
 
-  // Horizon glow
-  const hg = ctx.createLinearGradient(0, h * 0.6, 0, h);
-  hg.addColorStop(0, `hsla(${30 + bass * 20},${80 + vol * 20}%,70%,${0.2 + vol * 0.2})`);
-  hg.addColorStop(1, `hsla(20,60%,50%,0)`);
-  ctx.fillStyle = hg;
-  ctx.fillRect(0, h * 0.6, w, h * 0.4);
+  // Frequency dots scattered (stars = audio energy)
+  for (let i=0;i<data.length*0.3;i++) {
+    if (data[i]<20) continue;
+    const nx=(i/(data.length*0.3));
+    const sx = (nx + time*0.02*mid)%1 * w;
+    const sy = ((i*0.618)%1)*h;
+    const sv = data[i]/255;
+    ctx.beginPath(); ctx.arc(sx,sy,sv*1.5,0,Math.PI*2);
+    ctx.fillStyle=`rgba(180,160,255,${sv*0.25})`; ctx.fill();
+  }
 }
 
-// ---- PETAL ----
-function drawPetal(bass, mid, treble, vol, data) {
-  const w = W(), h = H();
-  ctx.fillStyle = `rgba(5,5,15,0.25)`;
-  ctx.fillRect(0, 0, w, h);
+/* ============================================================
+   STYLE: PETAL  (multi-directional: left/right + up/down)
+   ============================================================ */
+let petals = [];
+function initPetal() { petals = []; }
+initPetal();
 
-  // Background gradient
-  const bg = ctx.createRadialGradient(w * 0.5, h * 0.5, 0, w * 0.5, h * 0.5, w * 0.7);
-  bg.addColorStop(0, `hsla(${310 + bass * 30},60%,${10 + vol * 15}%,0.4)`);
-  bg.addColorStop(1, `hsla(260,40%,5%,0.2)`);
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, w, h);
+function spawnPetal(w, h, bass, treble) {
+  const dir = Math.floor(Math.random()*4); // 0=up, 1=down, 2=left, 3=right
+  let x, y, vx, vy;
+  if      (dir===0) { x=Math.random()*w; y=h+10;  vx=(Math.random()-0.5)*1.5; vy=-(1.5+bass*3+Math.random()*2); }
+  else if (dir===1) { x=Math.random()*w; y=-10;    vx=(Math.random()-0.5)*1.5; vy=(1.5+bass*2+Math.random()*2); }
+  else if (dir===2) { x=w+10; y=Math.random()*h;   vx=-(1.5+mid2*2+Math.random()*1.5); vy=(Math.random()-0.5)*1.5; }
+  else              { x=-10;  y=Math.random()*h;   vx=(1.5+mid2*2+Math.random()*1.5);  vy=(Math.random()-0.5)*1.5; }
+  return { x, y, vx, vy, baseVx: vx, baseVy: vy,
+    size: 5+Math.random()*13, rot: Math.random()*Math.PI*2, rspeed:(Math.random()-0.5)*0.12,
+    color:`hsl(${Math.random()*80+285},${85+Math.random()*15}%,${58+Math.random()*22}%)`,
+    alpha:0.7+Math.random()*0.3, swing:Math.random()*Math.PI*2, swingSpeed:0.025+Math.random()*0.04, dir };
+}
+let mid2 = 0; // closure for petal spawn
 
-  // Spawn new petals based on beat
-  if (bass > 0.25 && particles.length < 200) {
-    for (let i = 0; i < Math.floor(bass * 5); i++) {
-      particles.push({ x: Math.random() * w, y: h + 20, vx: (Math.random() - 0.5) * 2, vy: -(Math.random() * 2 + 1) * (1 + bass * 2), size: Math.random() * 12 + 4, rot: Math.random() * Math.PI * 2, rspeed: (Math.random() - 0.5) * 0.1, color: `hsl(${Math.random() * 80 + 290},90%,${60 + Math.random() * 20}%)`, alpha: 0.8 + Math.random() * 0.2, swing: Math.random() * 2 * Math.PI, swingSpeed: 0.02 + Math.random() * 0.03 });
+function drawPetal({ bass, mid, treble, vol, data }) {
+  mid2 = mid;
+  const w=W(), h=H();
+
+  // Trail fade
+  ctx.fillStyle='rgba(4,3,14,0.22)'; ctx.fillRect(0,0,w,h);
+
+  // Bg radial glow
+  const bg=ctx.createRadialGradient(w*0.5,h*0.5,0,w*0.5,h*0.5,w*0.6);
+  bg.addColorStop(0,`hsla(${300+bass*40},55%,${8+vol*12}%,0.5)`);
+  bg.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=bg; ctx.fillRect(0,0,w,h);
+
+  // Spawn petals on beat
+  const maxP = 250;
+  if (petals.length < maxP) {
+    const newCount = Math.floor(bass*6 + mid*3 + treble*2 + 1);
+    for (let i=0; i<newCount && petals.length<maxP; i++) {
+      petals.push(spawnPetal(w, h, bass, treble));
     }
   }
 
-  particles.forEach((p, i) => {
-    p.swing += p.swingSpeed * (1 + mid * 2);
-    p.vx = Math.sin(p.swing) * (0.8 + treble * 1.5);
-    p.y += p.vy * (0.5 + vol * 0.8);
-    p.x += p.vx;
-    p.rot += p.rspeed * (1 + bass * 2);
-    p.vy += 0.01;
-    p.alpha -= 0.002;
+  petals.forEach(p => {
+    p.swing += p.swingSpeed * (1 + vol * 1.5);
+    const sway = Math.sin(p.swing) * (0.6 + treble * 1.2);
 
-    if (p.alpha > 0 && p.y > -50) {
+    if (p.dir === 0 || p.dir === 1) {
+      p.vx = p.baseVx * 0.3 + sway;
+      p.vy += (p.dir===0 ? 0.012 : -0.012);
+    } else {
+      p.vy = p.baseVy * 0.3 + sway;
+      p.vx += (p.dir===2 ? 0.012 : -0.012);
+    }
+    p.x += p.vx * (0.6 + vol*0.8);
+    p.y += p.vy * (0.6 + vol*0.8);
+    p.rot += p.rspeed * (1 + bass*2);
+    p.alpha -= 0.003;
+
+    if (p.alpha > 0) {
       ctx.save();
       ctx.translate(p.x, p.y);
       ctx.rotate(p.rot);
       ctx.globalAlpha = p.alpha;
-      // Petal shape
       ctx.beginPath();
       ctx.moveTo(0, 0);
-      ctx.bezierCurveTo(p.size * 0.5, -p.size * 0.4, p.size, -p.size * 0.3, p.size * 0.5, 0);
-      ctx.bezierCurveTo(p.size, p.size * 0.3, p.size * 0.5, p.size * 0.4, 0, 0);
+      ctx.bezierCurveTo(p.size*0.5,-p.size*0.4, p.size,-p.size*0.3, p.size*0.5, 0);
+      ctx.bezierCurveTo(p.size, p.size*0.3, p.size*0.5, p.size*0.4, 0, 0);
       ctx.fillStyle = p.color;
       ctx.fill();
-      ctx.strokeStyle = `rgba(255,255,255,0.3)`;
-      ctx.lineWidth = 0.5;
-      ctx.stroke();
+      ctx.strokeStyle='rgba(255,255,255,0.25)'; ctx.lineWidth=0.5; ctx.stroke();
       ctx.restore();
     }
   });
-  particles = particles.filter(p => p.alpha > 0 && p.y > -60 && p.y < h + 60);
 
-  // Frequency bars as light streaks
-  const barCount = 32;
-  for (let i = 0; i < barCount; i++) {
-    const idx = Math.floor(i / barCount * data.length * 0.5);
-    const val = data[idx] / 255;
-    if (val < 0.1) continue;
-    const x = (i / barCount) * w;
-    const bh = val * h * 0.3;
-    const hue = 290 + i * 3 + bass * 30;
-    const lg = ctx.createLinearGradient(x, h, x, h - bh);
-    lg.addColorStop(0, `hsla(${hue},100%,70%,0.5)`);
-    lg.addColorStop(1, `hsla(${hue + 20},100%,90%,0)`);
-    ctx.fillStyle = lg;
-    ctx.fillRect(x - 1, h - bh, 3, bh);
+  // Remove dead / out-of-bounds
+  petals = petals.filter(p => {
+    if (p.alpha <= 0) return false;
+    if (p.dir===0 && p.y < -60) return false;
+    if (p.dir===1 && p.y > h+60) return false;
+    if (p.dir===2 && p.x < -60) return false;
+    if (p.dir===3 && p.x > w+60) return false;
+    return true;
+  });
+
+  // Freq light bars
+  const bars = 48;
+  for (let i=0;i<bars;i++) {
+    const binIdx = Math.floor(i/bars*data.length*0.5);
+    const val = data[binIdx]/255;
+    if (val<0.08) continue;
+    const x2 = (i/bars)*w;
+    const bh = val*h*0.28;
+    const hue = 288+i*2+bass*25;
+    const lg=ctx.createLinearGradient(x2,h,x2,h-bh);
+    lg.addColorStop(0,`hsla(${hue},100%,65%,0.45)`);
+    lg.addColorStop(1,`hsla(${hue+20},100%,85%,0)`);
+    ctx.fillStyle=lg; ctx.fillRect(x2-1,h-bh,2.5,bh);
   }
 }
 
-// ---- GRASS ----
-function drawGrass(bass, mid, treble, vol, data) {
-  const w = W(), h = H();
+/* ============================================================
+   STYLE: GRASS  (3D perspective — drone view)
+   ============================================================ */
+function drawGrass({ bass, mid, treble, vol, data }) {
+  const w=W(), h=H();
 
-  // Sky
-  const skyG = ctx.createLinearGradient(0, 0, 0, h * 0.7);
-  const dusk = bass * 0.5;
-  skyG.addColorStop(0, `hsl(${195 + dusk * 40},${55 + vol * 25}%,${30 + bass * 20}%)`);
-  skyG.addColorStop(0.6, `hsl(${170 + mid * 30},${45 + vol * 20}%,${55 + bass * 15}%)`);
-  skyG.addColorStop(1, `hsl(${100 + treble * 30},${50 + vol * 20}%,${50 + bass * 10}%)`);
-  ctx.fillStyle = skyG;
-  ctx.fillRect(0, 0, w, h);
+  // Sky — occupies top 2/3
+  const horizon = h * 0.667;
+  const sky = ctx.createLinearGradient(0,0,0,horizon);
+  sky.addColorStop(0, `hsl(${200+bass*20},${55+vol*20}%,${18+bass*15}%)`);
+  sky.addColorStop(1, `hsl(${185+mid*15},${45+vol*15}%,${32+bass*10}%)`);
+  ctx.fillStyle=sky; ctx.fillRect(0,0,w,horizon);
 
-  // Wind streaks
-  const windStr = mid * 0.8 + treble * 0.2;
-  for (let i = 0; i < 15; i++) {
-    const wy = Math.random() * h * 0.5;
-    const wx = (time * 60 * (0.5 + i * 0.1) + i * 137) % (w + 200) - 100;
-    ctx.beginPath();
-    ctx.moveTo(wx, wy);
-    ctx.lineTo(wx + 30 + windStr * 80, wy + (Math.random() - 0.5) * 10);
-    ctx.strokeStyle = `rgba(255,255,255,${windStr * 0.12})`;
-    ctx.lineWidth = 1;
-    ctx.stroke();
+  // Distant horizon glow
+  const hg = ctx.createLinearGradient(0, horizon-h*0.08, 0, horizon);
+  hg.addColorStop(0,'rgba(0,0,0,0)');
+  hg.addColorStop(1,`hsla(${110+bass*20},${50+vol*20}%,${25+bass*10}%,0.9)`);
+  ctx.fillStyle=hg; ctx.fillRect(0,horizon-h*0.08,w,h*0.08);
+
+  // ── 3D PERSPECTIVE GRASS ──
+  // Ground plane: horizon at y=horizon, camera at bottom of canvas
+  // We use a perspective projection:
+  //   real_z maps from 0 (near camera) to MAX_Z (horizon)
+  //   screen_y = horizon - (horizon - h) / (1 + real_z / MAX_Z) ... simplified:
+  //   screen_y = horizon + (h-horizon) * (1 - z_norm)
+  // screen_x: spreads wider at bottom (near), narrower at horizon
+
+  const MAX_Z = 100;
+  const cameraX = w * 0.5;
+
+  // Ground fill (flat dark plane)
+  const gnd = ctx.createLinearGradient(0, horizon, 0, h);
+  gnd.addColorStop(0, `hsl(${108+bass*15},${45+vol*15}%,${12+bass*8}%)`);
+  gnd.addColorStop(1, `hsl(${95},35%,8%)`);
+  ctx.fillStyle=gnd; ctx.fillRect(0,horizon,w,h-horizon);
+
+  // Grid lines for depth reference (subtle)
+  ctx.save();
+  ctx.globalAlpha = 0.06 + mid * 0.06;
+  for (let zi=1; zi<=12; zi++) {
+    const zn = zi/12;
+    const sy = horizon + (h-horizon)*zn;
+    ctx.beginPath(); ctx.moveTo(0,sy); ctx.lineTo(w,sy);
+    ctx.strokeStyle='#88ff88'; ctx.lineWidth=0.5; ctx.stroke();
   }
+  // Vanishing lines
+  for (let xi=-5; xi<=5; xi++) {
+    const bx = cameraX + xi*(w*0.18);
+    ctx.beginPath(); ctx.moveTo(cameraX, horizon); ctx.lineTo(bx, h);
+    ctx.strokeStyle='#88ff88'; ctx.lineWidth=0.3; ctx.stroke();
+  }
+  ctx.restore();
 
-  // Ground
-  const groundG = ctx.createLinearGradient(0, h * 0.65, 0, h);
-  groundG.addColorStop(0, `hsl(${110 + bass * 20},${55 + vol * 20}%,${25 + bass * 10}%)`);
-  groundG.addColorStop(1, `hsl(90,40%,12%)`);
-  ctx.fillStyle = groundG;
-  ctx.fillRect(0, h * 0.65, w, h * 0.35);
+  // GRASS BLADES in 3D
+  // We draw rows from back (horizon) to front (bottom) so nearer blades overlap far ones
+  const rows  = 32;
+  const colsPerRow = 40;
+  const windPhase = time*(1.5+mid*2.5);
+  const windStr  = 0.25 + vol*0.7 + bass*0.35;
 
-  // Grass blades
-  const bladeCount = 200;
-  const windPhase = time * (1.5 + mid * 2.5);
-  const windAmp = 0.2 + vol * 0.6 + bass * 0.3;
+  for (let row=0; row<rows; row++) {
+    const zNorm = 1 - row/rows; // 1 = near horizon, 0 = near camera
+    // zNorm close to 1 means small/far, close to 0 means large/near
+    const screenY = horizon + (h - horizon) * (1 - zNorm);
+    const spread  = (1 - zNorm) * w * 0.55 + w * 0.08; // how wide this row is in world X
+    const bladeH  = (1 - zNorm) * h * 0.22 + 4;        // blade height in screen px
 
-  for (let i = 0; i < bladeCount; i++) {
-    const bx = (i / bladeCount) * w + Math.sin(i * 7.3) * 8;
-    const bBaseY = h * (0.65 + Math.sin(i * 3.1) * 0.03);
-    const bHeight = h * (0.08 + Math.sin(i * 5.7) * 0.04 + bass * 0.06) * (1 + vol * 0.3);
-    const bPhase = i * 0.4 + windPhase;
-    const bSway = Math.sin(bPhase) * windAmp * bHeight * 0.6;
-    const bSway2 = Math.sin(bPhase * 1.7 + 1.2) * windAmp * bHeight * 0.2;
-    const hue = 95 + Math.sin(i * 2.1) * 20 + bass * 15;
-    const lightness = 30 + Math.sin(i * 1.7) * 8 + vol * 10;
+    // Frequency bin for this row
+    const binIdx = Math.floor(row/rows * data.length * 0.55);
+    const binVal = data[binIdx]/255;
+    const rowEnergy = binVal * 0.6 + vol * 0.4;
 
-    ctx.beginPath();
-    ctx.moveTo(bx, bBaseY);
-    ctx.quadraticCurveTo(bx + bSway * 0.5 + bSway2, bBaseY - bHeight * 0.5, bx + bSway + bSway2, bBaseY - bHeight);
-    ctx.lineWidth = 1.5 + Math.sin(i * 2.3) * 0.8;
-    ctx.strokeStyle = `hsl(${hue},${65 + vol * 15}%,${lightness}%)`;
-    ctx.stroke();
+    for (let col=0; col<colsPerRow; col++) {
+      const t2 = (col+0.5)/colsPerRow;
+      // X position: converges to horizon center, spreads at bottom
+      const worldOffX = (t2 - 0.5) * 2; // -1..1
+      const screenX = cameraX + worldOffX * spread;
 
-    // Seed head on some blades
-    if (i % 5 === 0 && bass > 0.1) {
-      const tx = bx + bSway + bSway2;
-      const ty = bBaseY - bHeight;
+      const phase  = col*0.45 + row*0.3 + windPhase;
+      const sway   = Math.sin(phase)*(1+Math.sin(phase*0.7+1.3)*0.4)*windStr;
+      const swayPx = sway * bladeH * 0.7;
+
+      // Foreshorten thickness
+      const thickness = Math.max(0.5, (1-zNorm)*3.5 + 0.5);
+
+      const hue = 95 + Math.sin(col*2.1+row)*18 + bass*12;
+      const lum = 25 + (1-zNorm)*18 + rowEnergy*14;
+      const alpha = 0.55 + (1-zNorm)*0.45;
+
       ctx.beginPath();
-      ctx.arc(tx, ty, 2 + bass * 2, 0, Math.PI * 2);
-      ctx.fillStyle = `hsl(${hue + 20},70%,${lightness + 20}%)`;
-      ctx.fill();
+      ctx.moveTo(screenX, screenY);
+      // Quadratic curve: base → control → tip
+      const cpX = screenX + swayPx*0.45;
+      const cpY = screenY - bladeH*0.55;
+      const tipX = screenX + swayPx;
+      const tipY = screenY - bladeH;
+      ctx.quadraticCurveTo(cpX, cpY, tipX, tipY);
+      ctx.strokeStyle = `hsla(${hue},${60+rowEnergy*20}%,${lum}%,${alpha})`;
+      ctx.lineWidth = thickness;
+      ctx.stroke();
+
+      // Seed head on some blades (near rows only)
+      if (zNorm < 0.35 && col % 6 === 0 && binVal > 0.15) {
+        ctx.beginPath();
+        ctx.arc(tipX, tipY, thickness*1.8+rowEnergy*3, 0, Math.PI*2);
+        ctx.fillStyle=`hsla(${hue+15},65%,${lum+20}%,${alpha*0.9})`;
+        ctx.fill();
+      }
     }
   }
 
-  // Frequency waveform on ground
-  ctx.beginPath();
-  for (let i = 0; i <= w; i += 4) {
-    const di = Math.floor(i / w * data.length * 0.5);
-    const val = (data[di] / 255) * h * 0.04;
-    const y = h * 0.65 - val;
-    if (i === 0) ctx.moveTo(0, y);
-    else ctx.lineTo(i, y);
+  // Wind shimmer overlay
+  if (mid > 0.1) {
+    for (let i=0;i<8;i++) {
+      const wx=(time*55*(0.4+i*0.08)+i*170)%(w+150)-70;
+      const wy=horizon+(h-horizon)*(0.1+i*0.1);
+      ctx.beginPath(); ctx.moveTo(wx,wy); ctx.lineTo(wx+20+mid*60,wy+(Math.random()-0.5)*5);
+      ctx.strokeStyle=`rgba(200,255,180,${mid*0.08})`; ctx.lineWidth=1; ctx.stroke();
+    }
   }
-  ctx.strokeStyle = `rgba(150,255,100,${0.3 + vol * 0.3})`;
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
+
+  // Frequency waveform on ground horizon
+  ctx.beginPath();
+  for (let x=0;x<=w;x+=3) {
+    const di=Math.floor(x/w*data.length*0.4);
+    const val=(data[di]/255)*h*0.035;
+    const y=horizon-val;
+    if (x===0) ctx.moveTo(0,y); else ctx.lineTo(x,y);
+  }
+  ctx.strokeStyle=`rgba(140,255,100,${0.25+vol*0.3})`; ctx.lineWidth=1.5; ctx.stroke();
 }
 
-// ---- Recording ----
+/* ============================================================
+   STYLE INIT
+   ============================================================ */
+function initStyle(s) {
+  if (s==='fire')   initFire();
+  if (s==='cloud')  initCloud();
+  if (s==='petal')  initPetal();
+}
+
+/* ============================================================
+   RECORDING
+   ============================================================ */
 recBtn.addEventListener('click', () => {
-  if (mediaRecorder && mediaRecorder.state === 'recording') {
-    stopRec();
-  } else {
-    startRec();
-  }
+  if (mediaRecorder && mediaRecorder.state==='recording') stopRec();
+  else startRec();
 });
 
 function startRec() {
-  recChunks = [];
+  recChunks=[];
   const stream = canvas.captureStream(30);
-  const opts = ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=h264', 'video/webm;codecs=vp9', 'video/webm'];
-  let mimeType = opts.find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
-  mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 5000000 });
-  mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recChunks.push(e.data); };
+  const mimeTypes = ['video/mp4;codecs=avc1','video/mp4','video/webm;codecs=h264','video/webm;codecs=vp9','video/webm'];
+  const mimeType = mimeTypes.find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
+  try {
+    mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond:6000000 });
+  } catch(e) {
+    mediaRecorder = new MediaRecorder(stream);
+  }
+  mediaRecorder.ondataavailable = e => { if (e.data.size>0) recChunks.push(e.data); };
   mediaRecorder.onstop = saveRec;
   mediaRecorder.start(100);
-  recBtn.textContent = '⏹ 녹화중지';
-  recBtn.classList.add('rec');
-  recTimeEl.style.display = 'inline';
-  recSeconds = 0;
-  recInterval = setInterval(() => { recSeconds++; recSecEl.textContent = recSeconds; }, 1000);
-  status.textContent = '🔴 녹화 중...';
+  recBtn.textContent='⏹ 녹화중지';
+  recBtn.classList.add('recording');
+  recIndEl.classList.add('show');
+  recSeconds=0; recSecEl.textContent='0';
+  recInterval=setInterval(()=>{ recSeconds++; recSecEl.textContent=recSeconds; },1000);
+  statusEl.textContent='🔴 녹화 중...';
 }
-
 function stopRec() {
-  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+  if (mediaRecorder && mediaRecorder.state!=='inactive') mediaRecorder.stop();
   clearInterval(recInterval);
-  recBtn.textContent = '⏺ 녹화';
-  recBtn.classList.remove('rec');
-  recTimeEl.style.display = 'none';
+  recBtn.textContent='⏺ 녹화';
+  recBtn.classList.remove('recording');
+  recIndEl.classList.remove('show');
 }
-
 function saveRec() {
-  const opts = ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=h264', 'video/webm;codecs=vp9', 'video/webm'];
-  const mimeType = opts.find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
+  const mimeTypes = ['video/mp4;codecs=avc1','video/mp4','video/webm;codecs=h264','video/webm;codecs=vp9','video/webm'];
+  const mimeType = mimeTypes.find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
   const isMP4 = mimeType.includes('mp4');
   const blob = new Blob(recChunks, { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `visualizer_${currentStyle}_${ratio.replace(':','x')}_${Date.now()}.${isMP4 ? 'mp4' : 'webm'}`;
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href=url;
+  a.download=`visualizer_${currentStyle}_${ratio.replace(':','x')}_${Date.now()}.${isMP4?'mp4':'webm'}`;
   a.click();
   URL.revokeObjectURL(url);
-  status.textContent = `✅ 저장완료 (${isMP4 ? 'MP4/H264' : 'WebM'})`;
+  statusEl.textContent=`✅ 저장완료 (${isMP4?'MP4/H264':'WebM'}) — ${recSeconds}s`;
 }
 
-// Draw idle frame
-(function idleDraw() {
-  ctx.fillStyle = '#05030a';
-  ctx.fillRect(0, 0, W(), H());
-  ctx.fillStyle = 'rgba(120,100,180,0.7)';
-  ctx.font = `${Math.max(12, W() * 0.025)}px sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.fillText('MP3 파일을 불러오면 시각화가 시작됩니다', W() / 2, H() / 2);
-  ctx.fillStyle = 'rgba(80,70,120,0.5)';
-  ctx.font = `${Math.max(10, W() * 0.018)}px sans-serif`;
-  ctx.fillText('16:9 / 9:16 비율 선택 후 녹화 가능', W() / 2, H() / 2 + W() * 0.04);
-})();
+/* ============================================================
+   INIT
+   ============================================================ */
+drawIdle();
 </script>
+</body>
+</html>
