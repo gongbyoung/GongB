@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>FIREWORK STUDIO V001.011</title>
+    <title>FIREWORK STUDIO V001.012</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <style>
@@ -10,7 +10,7 @@
         body { background: var(--bg); color: #fff; margin: 0; font-family: sans-serif; display: flex; overflow: hidden; height: 100vh; }
         #ui-sidebar { width: 360px; height: 100vh; background: var(--panel); border-right: 1px solid #222; display: flex; flex-direction: column; z-index: 100; flex-shrink: 0; }
         #canvas-viewport { flex: 1; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; overflow: hidden; position: relative; }
-        canvas { border: 1px solid var(--accent); margin-top: 30px; transform-origin: top center; box-shadow: 0 0 40px rgba(0,0,0,0.5); }
+        canvas { border: 1px solid var(--accent); margin-top: 30px; transform-origin: top center; box-shadow: 0 0 50px rgba(255, 100, 0, 0.2); }
         .scroll-container { flex: 1; overflow-y: auto; padding: 20px; }
         .card { background: rgba(255,255,255,0.03); border-radius: 8px; padding: 15px; margin-bottom: 15px; border: 1px solid #2a2a35; }
         h3 { font-size: 11px; color: var(--accent); margin: 0 0 12px 0; text-transform: uppercase; letter-spacing: 1.5px; border-bottom: 1px solid #333; padding-bottom: 5px; }
@@ -29,39 +29,36 @@
 <div id="ui-sidebar">
     <div class="scroll-container">
         <div class="card">
-            <h3>🔥 Flame Master</h3>
+            <h3>🔥 Realistic Campfire Master</h3>
             <div class="row">
-                <label>Vocal Gain <span id="v-gain">3.0</span>x</label>
-                <input type="range" id="vocalGain" min="1.0" max="10.0" step="0.1" value="3.0" oninput="updateUI('v-gain', this.value)">
+                <label>Vocal Sync Gain <span id="v-gain">4.0</span>x</label>
+                <input type="range" id="vocalGain" min="1.0" max="15.0" step="0.5" value="4.0" oninput="updateUI('v-gain', this.value)">
             </div>
             <div class="row">
-                <label>Flame Type</label>
-                <select id="flameType">
-                    <option value="campfire">Wild Campfire (Orange)</option>
-                    <option value="gas">Clean Gas (Blue)</option>
-                </select>
+                <label>Flame Density <span id="v-dense">8</span></label>
+                <input type="range" id="flameDensity" min="3" max="20" value="8" oninput="updateUI('v-dense', this.value)">
             </div>
             <div class="row">
-                <label>Flame Softness <span id="v-blur">40</span></label>
-                <input type="range" id="blurVal" min="10" max="80" value="40" oninput="updateUI('v-blur', this.value)">
+                <label>Ember (Spark) Amount <span id="v-spark">20</span></label>
+                <input type="range" id="sparkAmt" min="0" max="50" value="20" oninput="updateUI('v-spark', this.value)">
             </div>
         </div>
         <div class="card">
-            <h3>⚡ Launch Sync</h3>
+            <h3>⚡ Engine Control</h3>
             <div class="row">
-                <label>Threshold <span id="v-sens">100</span></label>
-                <input type="range" id="sens" min="10" max="255" value="100" oninput="updateUI('v-sens', this.value)">
+                <label>Sens Threshold <span id="v-sens">90</span></label>
+                <input type="range" id="sens" min="10" max="255" value="90" oninput="updateUI('v-sens', this.value)">
             </div>
         </div>
         <div class="card">
-            <h3>🎨 Assets</h3>
-            <button class="btn-primary" onclick="document.getElementById('m-file').click()">🎵 LOAD MP3</button>
+            <h3>🎨 Media</h3>
+            <button class="btn-primary" onclick="document.getElementById('m-file').click()">🎵 LOAD MUSIC</button>
             <input type="file" id="m-file" hidden accept="audio/*" onchange="handleAudio(this.files)">
-            <button class="btn-primary" style="background:#333; color:#fff; margin-top:8px;" onclick="document.getElementById('i-file').click()">🖼️ LOAD BG IMAGE</button>
+            <button class="btn-primary" style="background:#333; color:#fff; margin-top:8px;" onclick="document.getElementById('i-file').click()">🖼️ LOAD BG</button>
             <input type="file" id="i-file" hidden accept="image/*" onchange="handleImage(this.files)">
         </div>
     </div>
-    <div id="log-console">>> V001.011 Flame Ready.</div>
+    <div id="log-console">>> V001.012 Image-Ref Ready.</div>
     <div style="padding: 20px;">
         <button id="startBtn" class="btn-primary" onclick="startEngine()" disabled style="height:40px">ENGINE ACTIVE</button>
         <button id="recBtn" class="btn-rec" onclick="toggleRecording()" disabled style="height:40px">🔴 START RECORDING</button>
@@ -72,7 +69,7 @@
 
 <script>
 let audio, fft, bgImg, isStarted = false, isRecording = false;
-let flames = [];
+let activeFlames = [];
 let mainCanvas;
 let mediaRecorder, chunks = [];
 
@@ -97,99 +94,110 @@ function draw() {
     background(0);
     if (bgImg) { push(); tint(255, 100); image(bgImg, 0, 0, width, height); pop(); }
     
-    // 부드러운 잔상 효과
-    fill(0, 0, 0, 40);
+    // 부드러운 화염 질감을 위한 투명도 레이어
+    fill(0, 0, 0, 45);
     rect(0, 0, width, height);
 
     if (isStarted && audio && audio.isPlaying()) {
         fft.analyze();
-        let vocalEnergy = fft.getEnergy(300, 3000);
+        let vocal = fft.getEnergy(300, 3000);
         let gain = parseFloat(document.getElementById('vocalGain').value);
         let threshold = parseInt(document.getElementById('sens').value);
-        let boosted = vocalEnergy * gain;
+        let boosted = vocal * gain;
 
-        if (boosted > threshold && random(1) < 0.25) {
-            flames.push(new RealisticFlame(boosted));
+        if (boosted > threshold && random(1) < 0.3) {
+            let density = parseInt(document.getElementById('flameDensity').value);
+            activeFlames.push(new MasterCampfire(boosted, density));
         }
     }
 
-    for (let i = flames.length - 1; i >= 0; i--) {
-        flames[i].update();
-        flames[i].show();
-        if (flames[i].isDead()) flames.splice(i, 1);
+    for (let i = activeFlames.length - 1; i >= 0; i--) {
+        activeFlames[i].update();
+        activeFlames[i].show();
+        if (activeFlames[i].isDead()) activeFlames.splice(i, 1);
     }
 }
 
-class RealisticFlame {
-    constructor(energy) {
-        this.centerX = random(width * 0.3, width * 0.7);
-        this.baseY = height;
+class MasterCampfire {
+    constructor(energy, density) {
+        this.x = random(width * 0.35, width * 0.65);
+        this.y = height;
         this.energy = energy;
         this.life = 100;
-        this.type = document.getElementById('flameType').value;
-        this.blur = parseInt(document.getElementById('blurVal').value);
-        
-        // 화염의 가닥 수 및 높이
-        this.numStrands = floor(map(energy, 0, 255, 3, 10));
-        this.maxH = map(energy, 0, 255, height * 0.2, height * 0.7);
+        this.density = density;
+        this.sparks = [];
         this.seed = random(1000);
+        this.maxH = map(energy, 0, 255, height * 0.3, height * 0.8);
     }
 
     update() {
-        this.life -= 2.0;
+        this.life -= 2.5;
+        // 이미지 참조: 주변에 튀는 불꽃 알갱이(Spark) 생성
+        let sAmt = parseInt(document.getElementById('sparkAmt').value);
+        if (random(100) < sAmt) {
+            this.sparks.push({
+                pos: createVector(this.x + random(-50, 50), this.y - random(100)),
+                vel: createVector(random(-2, 2), random(-5, -10)),
+                alpha: 255
+            });
+        }
+        for (let i = this.sparks.length - 1; i >= 0; i--) {
+            this.sparks[i].pos.add(this.sparks[i].vel);
+            this.sparks[i].alpha -= 10;
+            if (this.sparks[i].alpha <= 0) this.sparks.splice(i, 1);
+        }
     }
 
     show() {
         push();
         noFill();
         
-        // 글로우 효과 설정
-        drawingContext.shadowBlur = this.blur;
-        let baseHue = (this.type === 'gas') ? 200 : 15; // 파랑 vs 주황
-        drawingContext.shadowColor = color(baseHue, 100, 100);
-
-        for (let i = 0; i < this.numStrands; i++) {
-            let offset = map(i, 0, this.numStrands - 1, -40, 40);
-            let h = this.maxH * random(0.8, 1.2);
+        // 1. 이미지 기반 화염 묘사 (메인 코어)
+        for (let i = 0; i < this.density; i++) {
+            let hueBase = random(10, 45); // 주황~노랑
+            drawingContext.shadowBlur = map(this.life, 0, 100, 0, 50);
+            drawingContext.shadowColor = color(hueBase, 100, 100);
             
-            // 베지어 곡선을 이용한 부드러운 화염 가닥
+            let h = this.maxH * random(0.7, 1.3);
+            let xOff = map(i, 0, this.density, -60, 60);
+
+            strokeWeight(map(this.life, 0, 100, 1, 20));
+            stroke(hueBase, 80, 100, this.life);
+
             beginShape();
-            let hu = baseHue + random(-10, 10);
-            stroke(hu, 80, 100, this.life);
-            strokeWeight(map(this.life, 0, 100, 1, 15));
-
-            let x1 = this.centerX + offset;
-            let y1 = this.baseY;
+            let startX = this.x + xOff;
+            let startY = this.y;
             
-            // 노이즈를 이용한 일렁임 좌표
-            let t = frameCount * 0.05;
-            let cp1x = x1 + map(noise(this.seed, i, t), 0, 1, -100, 100);
-            let cp1y = y1 - h * 0.3;
-            let cp2x = x1 + map(noise(this.seed + 10, i, t), 0, 1, -150, 150);
-            let cp2y = y1 - h * 0.7;
-            let x2 = x1 + map(noise(this.seed + 20, i, t), 0, 1, -50, 50);
-            let y2 = y1 - h;
-
-            bezier(x1, y1, cp1x, cp1y, cp2x, cp2y, x2, y2);
+            vertex(startX, startY);
+            // 베지어 곡선으로 이미지 특유의 '안쪽으로 말린 화염' 구현
+            let t = frameCount * 0.08;
+            let cp1x = startX + sin(t + i) * 100;
+            let cp1y = startY - h * 0.4;
+            let cp2x = startX - cos(t + i) * 150;
+            let cp2y = startY - h * 0.7;
+            let endX = startX + sin(t) * 80;
+            let endY = startY - h;
             
-            // 끝부분 점 처리
-            if(random(1) > 0.5) {
-                noStroke();
-                fill(hu, 50, 100, this.life * 0.8);
-                ellipse(x2, y2, random(2, 6));
-            }
+            bezierVertex(cp1x, cp1y, cp2x, cp2y, endX, endY);
             endShape();
+        }
+
+        // 2. 스파크(Spark) 묘사
+        for (let s of this.sparks) {
+            noStroke();
+            fill(random(30, 60), 100, 100, s.alpha);
+            ellipse(s.pos.x, s.pos.y, random(2, 5));
         }
         pop();
     }
 
-    isDead() { return this.life <= 0; }
+    isDead() { return this.life <= 0 && this.sparks.length === 0; }
 }
 
 function handleAudio(files) {
     audio = loadSound(URL.createObjectURL(files[0]), () => {
         fft = new p5.FFT(); document.getElementById('startBtn').disabled = false;
-        document.getElementById('log-console').innerText = ">> Mastering Engine Ready.";
+        document.getElementById('log-console').innerText = ">> Mastering Ready.";
     });
 }
 function handleImage(files) { let reader = new FileReader(); reader.onload = (e) => { bgImg = loadImage(e.target.result); }; reader.readAsDataURL(files[0]); }
@@ -202,12 +210,12 @@ function toggleRecording() {
         chunks = []; let stream = mainCanvas.elt.captureStream(60);
         let dest = p5.prototype.getAudioContext().createMediaStreamDestination();
         audio.connect(dest); stream.addTrack(dest.stream.getAudioTracks()[0]);
-        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9', videoBitsPerSecond: 15000000 });
+        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9', videoBitsPerSecond: 20000000 });
         mediaRecorder.ondataavailable = e => chunks.push(e.data);
         mediaRecorder.onstop = () => {
             let blob = new Blob(chunks, { type: 'video/webm' });
             let a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-            a.download = `Realistic_Flame_V001.011.webm`; a.click();
+            a.download = `Fire_V001.012.webm`; a.click();
         };
         mediaRecorder.start(); audio.play(); isRecording = true;
         document.getElementById('recBtn').innerText = "⬛ STOP & SAVE";
