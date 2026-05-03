@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>TYPO PARTICLE ENGINE v1.9 — Perfect Assembly</title>
+    <title>TYPO ELEMENTAL ENGINE v3.0</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <style>
@@ -12,10 +12,10 @@
         #panel { width: 320px; background: #0a0a0f; padding: 20px; border-left: 1px solid #1a1a1a; font-size: 11px; color: #666; overflow-y: auto; height: 100vh; }
         .btn { width: 100%; padding: 12px; background: transparent; color: var(--accent); border: 1px solid var(--accent); cursor: pointer; font-weight: bold; margin-bottom: 8px; }
         .btn:hover { background: var(--accent); color: #000; }
-        .status-box { padding: 10px; background: #111; border-radius: 4px; margin-top: 5px; color: #aaa; border: 1px solid #222; }
-        .ratio-btns { display: flex; gap: 5px; margin-bottom: 15px; }
+        .mode-btns { display: flex; gap: 5px; margin-bottom: 15px; }
         .btn-s { padding: 8px; flex: 1; font-size: 10px; border-color: #555; color: #888; background: #000; cursor: pointer; }
-        .active-r { border-color: var(--accent) !important; color: var(--accent) !important; }
+        .active-m { border-color: var(--accent) !important; color: var(--accent) !important; }
+        .status-box { padding: 10px; background: #111; border-radius: 4px; margin-top: 5px; color: #aaa; border: 1px solid #222; }
         b { color: var(--accent); }
     </style>
 </head>
@@ -23,15 +23,21 @@
 
 <div id="canvas-container"></div>
 <div id="panel">
-    <h3 style="color:white; margin-top:0;">MASTER v1.9</h3>
+    <h3 style="color:white; margin-top:0;">ELEMENTAL v3.0</h3>
     
-    <p><b>1. ASPECT RATIO</b></p>
-    <div class="ratio-btns">
-        <button id="r169" class="btn btn-s active-r" onclick="changeRatio(1280, 720, 'r169')">16:9 Landscape</button>
-        <button id="r916" class="btn btn-s" onclick="changeRatio(720, 1280, 'r916')">9:16 Shorts</button>
+    <p><b>1. VISUAL MODE</b></p>
+    <div class="mode-btns">
+        <button id="modeStar" class="btn btn-s active-m" onclick="setMode('star')">🌌 STARS</button>
+        <button id="modeWave" class="btn btn-s" onclick="setMode('wave')">🌊 WAVES</button>
     </div>
 
-    <p><b>2. ASSET LOAD</b></p>
+    <p><b>2. ASPECT RATIO</b></p>
+    <div class="mode-btns">
+        <button id="r169" class="btn btn-s active-m" onclick="changeRatio(1280, 720, 'r169')">16:9</button>
+        <button id="r916" class="btn btn-s" onclick="changeRatio(720, 1280, 'r916')">9:16</button>
+    </div>
+
+    <p><b>3. ASSET LOAD</b></p>
     <button class="btn" style="border-color:#ffcc00; color:#ffcc00;" onclick="document.getElementById('fIn').click()">📁 FONT (.ttf)</button>
     <input type="file" id="fIn" accept=".ttf,.otf" style="display:none" onchange="handleFont(this.files)">
     <button class="btn" onclick="document.getElementById('mIn').click()">🎵 MP3</button>
@@ -41,47 +47,45 @@
     
     <hr style="border:0; border-top:1px solid #1a1a1a; margin:15px 0;">
     <button class="btn" id="startBtn" onclick="startEngine()" disabled style="border-color:#ff3377; color:#ff3377; height: 50px;">🔴 START & RECORD</button>
-    <div class="status-box" id="status">Waiting...</div>
-    <div id="rec-tag" style="color:#ff3377; font-weight:bold; display:none; margin-top:10px;">● REC NOW</div>
+    <div class="status-box" id="status">Waiting for assets...</div>
 </div>
 
 <script>
     let audio, fft, myFont, subtitles = [], currentSub = "";
-    let particles = [], ripples = [];
+    let particles = [], ripples = [], visualMode = 'star';
     let isFontReady = false, canvasW = 1280, canvasH = 720;
     let recorder, recordedChunks = [];
 
     const INITIALS = ["ㄱ","ㄲ","ㄴ","ㄷ","ㄸ","ㄹ","ㅁ","ㅂ","ㅃ","ㅅ","ㅆ","ㅇ","ㅈ","ㅉ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
     const MEDIALS = ["ㅏ","ㅐ","ㅑ","ㅒ","ㅓ","ㅔ","ㅕ","ㅖ","ㅗ","ㅘ","ㅙ","ㅚ","ㅛ","ㅜ","ㅝ","ㅞ","ㅟ","ㅠ","ㅡ","ㅢ","ㅣ"];
-    const FINALS = ["ㄱ","ㄲ","ㄳ","ㄴ","ㄵ","ㄶ","ㄷ","ㄹ","ㄺ","ㄻ","ㄼ","ㄽ","ㄾ","ㄿ","ㅀ","ㅁ","ㅂ","ㅄ","ㅅ","ㅆ","ㅇ","ㅈ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
-    const SOURCE_POOL = [...INITIALS, ...MEDIALS, ...FINALS];
-
+    const FINALS = ["","ㄱ","ㄲ","ㄳ","ㄴ","ㄵ","ㄶ","ㄷ","ㄹ","ㄺ","ㄻ","ㄼ","ㄽ","ㄾ","ㄿ","ㅀ","ㅁ","ㅂ","ㅄ","ㅅ","ㅆ","ㅇ","ㅈ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
+    
     function setup() {
         let cnv = createCanvas(canvasW, canvasH, WEBGL);
         cnv.parent('canvas-container');
         colorMode(HSB, 360, 100, 100, 100);
         fft = new p5.FFT(0.8, 512);
-        initGrid();
+        initParticles();
     }
 
-    function initGrid() {
+    function initParticles() {
         particles = [];
-        let count = SOURCE_POOL.length;
-        let aspect = width / height;
-        let cols = ceil(sqrt(count * aspect));
-        let rows = ceil(count / cols);
-        let sw = width / cols;
-        let sh = height / rows;
-
-        for (let i = 0; i < count; i++) {
-            let cx = (i % cols) * sw - width/2 + sw/2;
-            let cy = floor(i / cols) * sh - height/2 + sh/2;
+        // 배경 자음 모음 대신 일반 파티클 풀 생성
+        for (let i = 0; i < 800; i++) {
             particles.push({
-                char: SOURCE_POOL[i], bx: cx, by: cy, x: cx, y: cy, tx: cx, ty: cy,
-                size: sh * 0.4, tSize: sh * 0.4, hue: random(360),
-                alpha: 20, tAlpha: 20, history: [], assigned: false
+                x: random(-width, width), y: random(-height, height), z: random(-500, 500),
+                tx: 0, ty: 0, tz: 0,
+                vx: random(-1, 1), vy: random(-1, 1),
+                char: '', assigned: false,
+                size: random(2, 5), hue: random(180, 240)
             });
         }
+    }
+
+    function setMode(m) {
+        visualMode = m;
+        document.querySelectorAll('.active-m').forEach(b => b.classList.remove('active-m'));
+        document.getElementById(m === 'star' ? 'modeStar' : 'modeWave').classList.add('active-m');
     }
 
     function draw() {
@@ -91,93 +95,123 @@
         let curTime = audio ? audio.currentTime() : 0;
         updateSubtitles(curTime);
         fft.analyze();
+        let bass = fft.getEnergy("bass");
 
-        // 파장
-        let bands = [20, 150, 400, 1000, 2500, 5000];
-        for(let i=0; i<6; i++) {
-            if (fft.getEnergy(bands[i]) > 210) {
-                ripples.push({ x: map(i, 0, 5, -width/3, width/3), y: height/2 - 50, r: 0, a: 50, h: map(i, 0, 5, 180, 320) });
-            }
-        }
-        noFill();
-        for (let i = ripples.length - 1; i >= 0; i--) {
-            let r = ripples[i];
-            stroke(r.h, 80, 100, r.a); ellipse(r.x, r.y, r.r);
-            r.r += 12; r.a -= 1.5;
-            if (r.a <= 0) ripples.splice(i, 1);
+        // --- 배경 로직 ---
+        if (visualMode === 'star') {
+            drawStars();
+        } else {
+            drawWaves();
         }
 
-        // 역산 기반 타이포 로직
+        // --- 타이포 정밀 역산 로직 ---
         let targetLocs = decomposeHangul(currentSub);
+        // 파티클 초기화 및 할당
         particles.forEach(p => p.assigned = false);
 
-        targetLocs.forEach(t => {
-            let found = particles.find(p => !p.assigned && p.char === t.char);
-            if (found) {
-                found.assigned = true; found.tx = t.x; found.ty = t.y;
-                found.tSize = 75 + fft.getEnergy("bass")*0.1; found.tAlpha = 100;
+        targetLocs.forEach((t, i) => {
+            if (i < particles.length) {
+                let p = particles[i];
+                p.assigned = true;
+                p.char = t.char;
+                p.tx = t.x; p.ty = t.y; p.tz = 100;
             }
         });
 
         textFont(myFont);
         particles.forEach(p => {
-            if (!p.assigned) {
-                p.tx = p.bx; p.ty = p.by; p.tSize = (height / 14); p.tAlpha = 20;
-                p.history = [];
-            } else {
-                p.history.push({x: p.x, y: p.y});
-                if (p.history.length > 8) p.history.shift();
+            if (p.assigned) {
+                // 글자로 모이는 움직임
+                p.x = lerp(p.x, p.tx, 0.15);
+                p.y = lerp(p.y, p.ty, 0.15);
+                p.z = lerp(p.z, p.tz, 0.15);
                 
-                // 트레일
-                noFill(); stroke(p.hue, 80, 100, 40); strokeWeight(2);
-                beginShape();
-                p.history.forEach(pos => vertex(pos.x, pos.y, 40));
-                endShape();
+                push();
+                translate(p.x, p.y, p.z);
+                fill(0, 0, 100); noStroke();
+                textAlign(CENTER, CENTER); textSize(60 + bass * 0.1);
+                text(p.char, 0, 0);
+                pop();
+            } else {
+                // 배경으로 표류
+                p.x += p.vx; p.y += p.vy;
+                if (abs(p.x) > width) p.x = -p.x;
+                if (abs(p.y) > height) p.y = -p.y;
+                
+                push();
+                translate(p.x, p.y, p.z);
+                if (visualMode === 'star') {
+                    fill(p.hue, 50, 100, 50); noStroke();
+                    sphere(p.size);
+                } else {
+                    // 파도는 drawWaves에서 별도 처리
+                }
+                pop();
             }
-
-            p.x = lerp(p.x, p.tx, 0.12);
-            p.y = lerp(p.y, p.ty, 0.12);
-            p.alpha = lerp(p.alpha, p.tAlpha, 0.1);
-            p.size = lerp(p.size, p.tSize, 0.1);
-
-            push();
-            translate(p.x, p.y, p.assigned ? 50 : 0);
-            fill(p.assigned ? 0 : p.hue, p.assigned ? 0 : 80, 100, p.alpha);
-            noStroke(); textAlign(CENTER, CENTER); textSize(p.size);
-            text(p.char, 0, 0);
-            pop();
         });
+    }
+
+    function drawStars() {
+        // 별 반짝임 효과
+        for(let i=0; i<50; i++) {
+            push();
+            translate(random(-width, width), random(-height, height), -500);
+            fill(200, 20, 100, random(20, 80));
+            ellipse(0, 0, random(1, 4));
+            pop();
+        }
+    }
+
+    function drawWaves() {
+        push();
+        rotateX(PI/3);
+        translate(-width, 0, -200);
+        stroke(180, 80, 100, 30); noFill();
+        for (let z = 0; z < 20; z++) {
+            beginShape();
+            for (let x = 0; x < 40; x++) {
+                let y = sin(x * 0.3 + frameCount * 0.05 + z * 0.5) * 50;
+                vertex(x * 50, y, z * 50);
+            }
+            endShape();
+        }
+        pop();
     }
 
     function decomposeHangul(str) {
         let res = [];
-        let gap = width > height ? 100 : 80;
+        let gap = width > height ? 110 : 90;
         let startX = -(str.length * gap) / 2;
-        
+
         for (let i = 0; i < str.length; i++) {
             let charCode = str.charCodeAt(i);
             let curX = startX + i * gap;
 
             if (charCode >= 0xAC00 && charCode <= 0xD7A3) {
                 let code = charCode - 0xAC00;
-                let cho = floor(code / 588);
-                let jung = floor((code % 588) / 28);
+                let cho = Math.floor(code / 588);
+                let jung = Math.floor((code % 588) / 28);
                 let jong = code % 28;
 
-                // [역산 로직] 모음 형태에 따른 배치
                 let jungChar = MEDIALS[jung];
                 let isVertical = ["ㅏ","ㅐ","ㅑ","ㅒ","ㅓ","ㅔ","ㅕ","ㅖ","ㅣ"].includes(jungChar);
+                let isComplex = ["ㅘ","ㅙ","ㅚ","ㅝ","ㅞ","ㅟ","ㅢ"].includes(jungChar);
                 
+                // [좌표 정밀 수정] 이미지 image_ff7915.png 피드백 반영
                 if (isVertical) {
-                    res.push({ char: INITIALS[cho], x: curX - 18, y: -10 });
-                    res.push({ char: jungChar, x: curX + 18, y: 0 });
-                } else {
-                    res.push({ char: INITIALS[cho], x: curX, y: -22 });
-                    res.push({ char: jungChar, x: curX, y: 15 });
+                    res.push({ char: INITIALS[cho], x: curX - 25, y: -20 }); // 초성을 더 왼쪽 위로
+                    res.push({ char: jungChar, x: curX + 25, y: -5 });  // 중성을 더 오른쪽으로
+                } else if (isComplex) {
+                    res.push({ char: INITIALS[cho], x: curX - 20, y: -30 });
+                    res.push({ char: jungChar, x: curX + 20, y: -10 });
+                } else { // 가로형
+                    res.push({ char: INITIALS[cho], x: curX, y: -35 });
+                    res.push({ char: jungChar, x: curX, y: 10 });
                 }
                 
                 if (jong > 0) {
-                    res.push({ char: FINALS[jong - 1], x: curX, y: 35 });
+                    // 받침이 있을 경우 전체적으로 위로 살짝 올리고 받침 배치
+                    res.push({ char: FINALS[jong], x: curX, y: 45 });
                 }
             } else {
                 res.push({ char: str[i], x: curX, y: 0 });
@@ -189,16 +223,15 @@
     function changeRatio(w, h, id) {
         canvasW = w; canvasH = h;
         resizeCanvas(w, h);
-        document.querySelectorAll('.btn-s').forEach(b => b.classList.remove('active-r'));
-        document.getElementById(id).classList.add('active-r');
-        initGrid();
+        document.querySelectorAll('.active-m').forEach(b => b.classList.remove('active-m')); // 비율 버튼에도 같은 클래스 사용중이면 주의
+        initParticles();
     }
 
-    function handleFont(f) { loadFont(URL.createObjectURL(f[0]), (font) => { myFont = font; isFontReady = true; document.getElementById('status').innerText = "Font OK"; }); }
-    function handleAudio(f) { audio = loadSound(URL.createObjectURL(f[0]), () => { document.getElementById('status').innerText = "MP3 OK"; audio.onended(stopRecording); }); }
+    function handleFont(f) { loadFont(URL.createObjectURL(f[0]), (font) => { myFont = font; isFontReady = true; document.getElementById('status').innerText = "Font Ready."; }); }
+    function handleAudio(f) { audio = loadSound(URL.createObjectURL(f[0]), () => { document.getElementById('status').innerText = "MP3 Ready."; audio.onended(stopRecording); }); }
     function handleSRT(f) {
         const reader = new FileReader();
-        reader.onload = (e) => { subtitles = parseSRT(e.target.result); document.getElementById('status').innerText = "SRT OK"; document.getElementById('startBtn').disabled = false; };
+        reader.onload = (e) => { subtitles = parseSRT(e.target.result); document.getElementById('status').innerText = "SRT Ready."; document.getElementById('startBtn').disabled = false; };
         reader.readAsText(f[0]);
     }
 
@@ -216,8 +249,7 @@
             userStartAudio().then(() => {
                 startRecording();
                 audio.play();
-                document.getElementById('startBtn').innerText = "RECORDING...";
-                document.getElementById('rec-tag').style.display = "block";
+                document.getElementById('status').innerText = "PRODUCING...";
             });
         }
     }
@@ -230,9 +262,8 @@
         recorder.onstop = () => {
             let blob = new Blob(recordedChunks, { type: 'video/mp4' });
             let a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-            a.download = `typo_master_${Date.now()}.mp4`; a.click();
-            document.getElementById('rec-tag').style.display = "none";
-            document.getElementById('startBtn').innerText = "DONE";
+            a.download = `viz_production_${Date.now()}.mp4`; a.click();
+            document.getElementById('status').innerText = "DOWNLOADED";
         };
         recorder.start();
     }
