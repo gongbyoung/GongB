@@ -2,45 +2,59 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>TYPO PARTICLE ENGINE v1.4 — Zero Font Error</title>
+    <title>TYPO PARTICLE ENGINE v1.5 — Bulletproof Edition</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <style>
         :root { --accent: #00ffcc; --bg: #030305; }
-        body { margin: 0; background: var(--bg); overflow: hidden; font-family: sans-serif; color: #fff; display: flex; }
+        body { margin: 0; background: var(--bg); overflow: hidden; font-family: 'Pretendard', -apple-system, sans-serif; color: #fff; display: flex; }
         #canvas-container { flex: 1; }
-        #panel { width: 300px; background: #0a0a0f; padding: 20px; border-left: 1px solid #1a1a1a; font-size: 11px; color: #666; }
-        .btn { width: 100%; padding: 12px; background: transparent; color: var(--accent); border: 1px solid var(--accent); cursor: pointer; font-weight: bold; margin-bottom: 10px; }
+        #panel { width: 300px; background: #0a0a0f; padding: 20px; border-left: 1px solid #1a1a1a; font-size: 11px; color: #666; overflow-y: auto; }
+        .btn { width: 100%; padding: 12px; background: transparent; color: var(--accent); border: 1px solid var(--accent); cursor: pointer; font-weight: bold; margin-bottom: 10px; transition: 0.2s; }
         .btn:hover { background: var(--accent); color: #000; }
-        .status-box { padding: 8px; background: #15151a; border-radius: 4px; margin-top: 5px; color: #aaa; border: 1px solid #222; }
+        .btn-font { border-color: #ffcc00; color: #ffcc00; }
+        .btn-font:hover { background: #ffcc00; color: #000; }
+        .status-box { padding: 10px; background: #15151a; border-radius: 4px; margin-top: 5px; color: #aaa; border: 1px solid #222; line-height: 1.4; }
         b { color: var(--accent); }
+        .error-msg { color: #ff3377; font-weight: bold; }
     </style>
 </head>
 <body>
 
 <div id="canvas-container"></div>
 <div id="panel">
-    <h3 style="color:white; margin-top:0;">TYPO & EQ ENGINE</h3>
+    <h3 style="color:white; margin-top:0;">TYPO & EQ v1.5</h3>
     
-    <p><b>1. FONT (Essential)</b></p>
-    <button class="btn" style="border-color:#ffcc00; color:#ffcc00;" onclick="document.getElementById('fIn').click()">📁 LOAD LOCAL FONT (.ttf)</button>
+    <p><b>STEP 1: FONT CONFIG</b></p>
+    <button class="btn btn-font" onclick="document.getElementById('fIn').click()">📁 LOAD FONT FROM WINDOWS</button>
     <input type="file" id="fIn" accept=".ttf,.otf" style="display:none" onchange="handleFont(this.files)">
-    <div class="status-box" id="f-status">Font: Checking CDN...</div>
+    <div class="status-box" id="f-status">
+        [권장] C:\Windows\Fonts 폴더에서 <b>NanumGothic.ttf</b> 또는 <b>Arial.ttf</b>를 선택해 주세요.
+    </div>
 
-    <p><b>2. MEDIA</b></p>
+    <p><b>STEP 2: MEDIA LOAD</b></p>
     <button class="btn" onclick="document.getElementById('mIn').click()">🎵 LOAD MP3</button>
     <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleAudio(this.files)">
+    
     <button class="btn" onclick="document.getElementById('sIn').click()">📄 LOAD SRT</button>
     <input type="file" id="sIn" accept=".srt" style="display:none" onchange="handleSRT(this.files)">
     
     <button class="btn" id="startBtn" onclick="startEngine()" disabled style="border-color:#ff3377; color:#ff3377; margin-top:10px;">⚡ START ENGINE</button>
     
-    <div class="status-box" id="status">파일을 기다리는 중...</div>
+    <div class="status-box" id="status">파일 대기 중...</div>
+    
+    <hr style="border:0; border-top:1px solid #1a1a1a; margin:20px 0;">
+    <div style="font-size:10px; color:#444;">
+        * 6-Band EQ: 악기별 주파수 시각화<br>
+        * Particle System: 실시간 한글 분해/결합<br>
+        * WEBGL 렌더러 기반 입체 구동
+    </div>
 </div>
 
 <script>
     let audio, fft, myFont, subtitles = [], currentSub = "";
-    let particles = [], eqCircles = [];
+    let particles = [];
+    let eqCircles = [];
     let isFontReady = false;
     
     const INITIALS = ["ㄱ","ㄲ","ㄴ","ㄷ","ㄸ","ㄹ","ㅁ","ㅂ","ㅃ","ㅅ","ㅆ","ㅇ","ㅈ","ㅉ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
@@ -49,12 +63,16 @@
     const SOURCE_POOL = [...INITIALS, ...MEDIALS, ...FINALS.filter(x=>x!="")];
 
     function preload() {
-        // [수정] 가장 안정적인 구글 폰트 CDN 주소로 변경
-        let safeFontUrl = 'https://raw.githubusercontent.com/google/fonts/main/apache/robotomono/RobotoMono-Regular.ttf';
-        myFont = loadFont(safeFontUrl, 
-            () => { isFontReady = true; document.getElementById('f-status').innerText = "Font: CDN Ready"; },
-            () => { document.getElementById('f-status').innerText = "Font: Load Failed. Use Local!"; }
-        );
+        // [안전장치] 외부 링크가 죽을 경우를 대비해 404가 나더라도 에러로 멈추지 않게 처리
+        let backupFontUrl = 'https://cdn.jsdelivr.net/gh/googlefonts/roboto@main/src/Roboto-Regular.ttf';
+        try {
+            myFont = loadFont(backupFontUrl, 
+                () => { isFontReady = true; document.getElementById('f-status').innerText = "Font: Default (Roboto) Ready"; },
+                () => { document.getElementById('f-status').innerHTML = "<span class='error-msg'>Font Load Failed!</span><br>로컬 폰트 파일을 선택해 주세요."; }
+            );
+        } catch (e) {
+            console.log("Font preloading bypassed.");
+        }
     }
 
     function setup() {
@@ -63,69 +81,100 @@
         colorMode(HSB, 360, 100, 100, 100);
         fft = new p5.FFT(0.8, 512);
 
+        // 배경 입자 450개 생성 (자음/모음)
         for (let i = 0; i < 450; i++) {
             let rx = random(-width/2, width/2);
             let ry = random(-height/2, height/2);
             particles.push({
-                char: random(SOURCE_POOL), bx: rx, by: ry, x: rx, y: ry, tx: rx, ty: ry,
+                char: random(SOURCE_POOL),
+                bx: rx, by: ry, x: rx, y: ry, tx: rx, ty: ry,
                 size: 12, tSize: 12, alpha: 20, tAlpha: 20, assigned: false
             });
         }
-        for(let i=0; i<6; i++) eqCircles.push({ x: map(i, 0, 5, -width/3, width/3), y: height/2 - 120 });
+
+        // 하단 6개 원형 EQ 위치
+        for(let i=0; i<6; i++) {
+            eqCircles.push({ x: map(i, 0, 5, -width/3, width/3), y: height/2 - 120 });
+        }
     }
 
     function draw() {
         background(5);
         
-        // [핵심] 폰트가 없으면 그리기 루프를 중단하여 에러 방지
+        // 폰트 미로드 시 그리기 중단 (에러 방지)
         if (!isFontReady || !myFont) {
-            push(); fill(255); textAlign(CENTER); textSize(20);
-            text("PLEASE LOAD A FONT FILE (.TTF)", 0, 0); pop();
-            return; 
+            push();
+            fill(0, 0, 100);
+            textAlign(CENTER);
+            textSize(16);
+            text("WAITING FOR FONT DATA...", 0, 0);
+            pop();
+            return;
         }
 
         let curTime = audio ? audio.currentTime() : 0;
         updateSubtitles(curTime);
+        
         fft.analyze();
-        let b = [fft.getEnergy(20,120), fft.getEnergy(120,300), fft.getEnergy(300,1000), fft.getEnergy(1000,2000), fft.getEnergy(2000,4500), fft.getEnergy(4500,8000)];
+        let b = [
+            fft.getEnergy(20, 120), fft.getEnergy(120, 300), fft.getEnergy(300, 1000),
+            fft.getEnergy(1000, 2000), fft.getEnergy(2000, 4500), fft.getEnergy(4500, 8000)
+        ];
 
-        // EQ
+        // 6-BAND CIRCLE EQ
         noFill();
         for(let i=0; i<6; i++) {
-            push(); translate(eqCircles[i].x, eqCircles[i].y);
-            stroke(map(i,0,5,180,320), 80, 100, 40); ellipse(0,0, 60+b[i]*0.9);
-            stroke(map(i,0,5,180,320), 80, 100, 15); ellipse(0,0, 90+b[i]*1.3);
+            push();
+            translate(eqCircles[i].x, eqCircles[i].y);
+            stroke(map(i, 0, 5, 180, 320), 80, 100, 40);
+            ellipse(0, 0, 60 + b[i] * 0.9);
+            stroke(map(i, 0, 5, 180, 320), 80, 100, 15);
+            ellipse(0, 0, 90 + b[i] * 1.3);
             pop();
         }
 
-        // TYPO
+        // TYPO SCRAMBLE SYSTEM
         let needed = decomposeHangul(currentSub);
         particles.forEach(p => p.assigned = false);
+
         needed.forEach(n => {
             let found = particles.find(p => !p.assigned && p.char === n.char);
             if (found) {
-                found.assigned = true; found.tx = n.x; found.ty = n.y;
-                found.tSize = 50 + b[1]*0.15; found.tAlpha = 100;
+                found.assigned = true;
+                found.tx = n.x; found.ty = n.y;
+                found.tSize = 50 + b[1] * 0.15;
+                found.tAlpha = 100;
             }
         });
 
         textFont(myFont);
         particles.forEach(p => {
-            if (!p.assigned) { p.tx = p.bx; p.ty = p.by; p.tSize = 12; p.tAlpha = 20; }
-            p.x = lerp(p.x, p.tx, 0.14); p.y = lerp(p.y, p.ty, 0.14);
-            p.size = lerp(p.size, p.tSize, 0.1); p.alpha = lerp(p.alpha, p.tAlpha, 0.1);
-            push(); translate(p.x, p.y, p.assigned ? 60 : 0);
-            fill(p.assigned ? 180 : 0, 0, 100, p.alpha); noStroke();
-            textAlign(CENTER, CENTER); textSize(p.size); text(p.char, 0, 0);
+            if (!p.assigned) {
+                p.tx = p.bx; p.ty = p.by;
+                p.tSize = 12; p.tAlpha = 20;
+            }
+            p.x = lerp(p.x, p.tx, 0.14);
+            p.y = lerp(p.y, p.ty, 0.14);
+            p.size = lerp(p.size, p.tSize, 0.1);
+            p.alpha = lerp(p.alpha, p.tAlpha, 0.1);
+
+            push();
+            translate(p.x, p.y, p.assigned ? 60 : 0);
+            fill(p.assigned ? 180 : 0, 0, 100, p.alpha);
+            noStroke();
+            textAlign(CENTER, CENTER);
+            textSize(p.size);
+            text(p.char, 0, 0);
             pop();
         });
     }
 
-    function handleFont(f) {
-        if (f.length > 0) {
-            loadFont(URL.createObjectURL(f[0]), (font) => {
-                myFont = font; isFontReady = true;
-                document.getElementById('f-status').innerText = `Font: ${f[0].name}`;
+    function handleFont(files) {
+        if (files.length > 0) {
+            loadFont(URL.createObjectURL(files[0]), (f) => {
+                myFont = f;
+                isFontReady = true;
+                document.getElementById('f-status').innerHTML = "Font: <b>" + files[0].name + "</b> Ready";
             });
         }
     }
@@ -133,35 +182,61 @@
     function decomposeHangul(str) {
         let res = [], startX = -(str.length * 45) / 2;
         for (let i = 0; i < str.length; i++) {
-            let code = str.charCodeAt(i) - 44032, curX = startX + i * 90;
+            let code = str.charCodeAt(i) - 44032;
+            let curX = startX + i * 90;
             if (code >= 0 && code <= 11171) {
                 res.push({ char: INITIALS[Math.floor(code / 588)], x: curX, y: -25 });
                 res.push({ char: MEDIALS[Math.floor((code % 588) / 28)], x: curX + 28, y: 5 });
-                let jong = code % 28; if (jong !== 0) res.push({ char: FINALS[jong], x: curX, y: 35 });
-            } else { res.push({ char: str[i], x: curX, y: 0 }); }
+                let jong = code % 28;
+                if (jong !== 0) res.push({ char: FINALS[jong], x: curX, y: 35 });
+            } else {
+                res.push({ char: str[i], x: curX, y: 0 });
+            }
         }
         return res;
     }
 
-    function handleAudio(f) { audio = loadSound(URL.createObjectURL(f[0]), () => { document.getElementById('status').innerText = "Audio Ready."; }); }
+    function handleAudio(f) {
+        audio = loadSound(URL.createObjectURL(f[0]), () => {
+            document.getElementById('status').innerText = "MP3 준비 완료.";
+        });
+    }
+
     function handleSRT(f) {
         const reader = new FileReader();
         reader.onload = (e) => {
             subtitles = parseSRT(e.target.result);
-            document.getElementById('status').innerText = `SRT Ready (${subtitles.length} words)`;
+            document.getElementById('status').innerText = `SRT 완료 (${subtitles.length} words)`;
             document.getElementById('startBtn').disabled = false;
         };
         reader.readAsText(f[0]);
     }
+
     function parseSRT(d) {
         const regex = /(\d+)\n(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\n([\s\S]*?)(?=\n{2}|\n*$)/g;
         let m, r = [];
         while ((m = regex.exec(d)) !== null) { r.push({ start: tToS(m[2]), end: tToS(m[3]), text: m[4].trim() }); }
         return r;
     }
-    function tToS(t) { let a = t.split(':'), s = a[2].split(','); return (+a[0])*3600 + (+a[1])*60 + (+s[0]) + (+s[1]/1000); }
-    function updateSubtitles(t) { let f = subtitles.find(s => t >= s.start && t <= s.end); currentSub = f ? f.text : ""; }
-    function startEngine() { if (audio && !audio.isPlaying()) { userStartAudio().then(() => { audio.play(); document.getElementById('startBtn').innerText = "ENGINE RUNNING..."; }); } }
+
+    function tToS(t) {
+        let a = t.split(':'), s = a[2].split(',');
+        return (+a[0]) * 3600 + (+a[1]) * 60 + (+s[0]) + (+s[1] / 1000);
+    }
+
+    function updateSubtitles(t) {
+        let f = subtitles.find(s => t >= s.start && t <= s.end);
+        currentSub = f ? f.text : "";
+    }
+
+    function startEngine() {
+        if (audio && !audio.isPlaying()) {
+            userStartAudio().then(() => {
+                audio.play();
+                document.getElementById('startBtn').innerText = "ENGINE RUNNING...";
+            });
+        }
+    }
 </script>
 </body>
 </html>
