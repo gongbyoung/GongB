@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>TYPO VFX MASTER v3.158 — Fluid Depth</title>
+    <title>TYPO VFX MASTER v3.168 — Surge & Glitter</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <style>
@@ -22,7 +22,7 @@
 
 <div id="canvas-container"></div>
 <div id="panel">
-    <h3 style="color:white; margin-top:0;">PRODUCTION v3.158</h3>
+    <h3 style="color:white; margin-top:0;">PRODUCTION v3.168</h3>
     
     <div class="select-group">
         <p><b>1. VISUAL MODE</b></p>
@@ -79,7 +79,13 @@
     let audio, fft, myFont, subtitles = [], currentSub = "", lastSub = "";
     let stars = [], particles = [], visualMode = 'star', artStyle = 'default';
     let isFontReady = false, isVertical = false, canvasW = 1280, canvasH = 720;
-    let waveSurge = 0, recorder, recordedChunks = [];
+    
+    // 파도 물리 서지 변수
+    let waveSurgeY = 0;
+    let waveVelocity = 0;
+    let isSurging = false;
+
+    let recorder, recordedChunks = [];
 
     function setup() {
         let cnv = createCanvas(canvasW, canvasH, WEBGL);
@@ -88,12 +94,22 @@
         fft = new p5.FFT(0.8, 512);
         initStars();
         initParticles();
+        // 렌더링 최적화를 위해 클리어 방식을 커스텀
+        setAttributes('alpha', true);
     }
 
     function initStars() {
         stars = [];
-        for (let i = 0; i < 600; i++) {
-            stars.push({ x: random(-width, width), y: random(-height, height), z: random(-1200, -500), s: random(1, 3) });
+        for (let i = 0; i < 500; i++) {
+            stars.push({ 
+                x: random(-width, width), 
+                y: random(-height, height), 
+                z: random(-1200, -500), 
+                s: random(1, 3.5),
+                // 반짝임(Glitter) 속성
+                glintSpeed: random(0.01, 0.05),
+                glintOffset: random(TWO_PI)
+            });
         }
     }
 
@@ -109,9 +125,15 @@
     }
 
     function draw() {
-        background(0);
+        // [v3.168] 트레일 지속성 확보: 매 프레임 검게 칠하지 않고, 반투명한 판을 덧대어 잔상을 남김
+        push();
+        translate(0, 0, -500);
+        fill(0, 0, 5, 25); // 검은색 반투명
+        noStroke();
+        rect(-width, -height, width*2, height*2);
+        pop();
         
-        // 1. 최하단 배경: 별무리
+        // 1. 최하단 배경: 반짝이는 별무리
         drawStars();
 
         if (!isFontReady || !myFont) return;
@@ -122,26 +144,41 @@
         let bass = fft.getEnergy("bass");
         let mid = fft.getEnergy("mid");
 
-        // 자막 변경 감지 및 파도 선행 서지(Surge)
+        // 2. 파도 물리 서지 (Physics Surge)
         if (currentSub !== lastSub) {
-            if (visualMode === 'wave') waveSurge = height * 1.4; 
+            if (visualMode === 'wave' && currentSub !== "") {
+                waveSurgeY = -height * 0.5; // 시작 위치 (아래)
+                waveVelocity = height * 0.15; // 초기 솟구치는 속도
+                isSurging = true;
+            }
             lastSub = currentSub;
         }
-        waveSurge = lerp(waveSurge, 0, 0.06);
+
+        if (isSurging) {
+            waveSurgeY += waveVelocity;
+            waveVelocity -= height * 0.005; // 중력 적용 (감속)
+            // 파도가 최대치로 올라갔다가 0(기본 수위)으로 수렴
+            if (waveSurgeY < 0 && waveVelocity < 0) {
+                waveSurgeY = lerp(waveSurgeY, 0, 0.1);
+                if(abs(waveSurgeY) < 1) isSurging = false;
+            }
+        } else {
+            waveSurgeY = lerp(waveSurgeY, 0, 0.05);
+        }
 
         let fSize = parseInt(document.getElementById('fSize').value);
         let yPos = parseInt(document.getElementById('yOff').value);
 
         if (visualMode === 'wave') {
-            // 2. 뒤쪽 파도 (Z: -50)
-            drawIllustWave(bass, mid, waveSurge, true);
+            // 뒤쪽 파도 (Z: -50)
+            drawIllustWave(bass, mid, waveSurgeY, true);
             
-            // 3. 자막 본체 및 트레일 (Z: 0)
+            // 자막 본체 및 트레일 (Z: 0)
             if (currentSub !== "") renderMasterText(currentSub, bass, fSize, yPos);
             renderParticles();
             
-            // 4. 앞쪽 파도 (Z: 100) -> 자막을 부분적으로 덮어 물 사이에서 나오는 연출
-            drawIllustWave(bass, mid, waveSurge, false);
+            // 앞쪽 파도 (Z: 100) -> 자막을 부분적으로 덮어 물 사이에서 나오는 연출
+            drawIllustWave(bass, mid, waveSurgeY, false);
         } else {
             if (currentSub !== "") renderMasterText(currentSub, bass, fSize, yPos);
             renderParticles();
@@ -151,33 +188,36 @@
         push(); noFill(); stroke(340, 80, 100, 50); strokeWeight(5); translate(0,0,200); rect(-width/2, -height/2, width, height); pop();
     }
 
+    // [v3.168] 반짝이는 별 (Glittering)
     function drawStars() {
-        push(); noStroke(); fill(0, 0, 100, 30);
+        push(); noStroke();
         for (let s of stars) {
+            // 사인파를 이용한 깜빡임 계산
+            let alpha = map(sin(frameCount * s.glintSpeed + s.glintOffset), -1, 1, 10, 80);
+            fill(0, 0, 100, alpha);
             push(); translate(s.x, s.y, s.z); ellipse(0, 0, s.s, s.s); pop();
         }
         pop();
     }
 
-    // 일러스트 파도: 뒤쪽(back)과 앞쪽(front) 레이어 분리
+    // 일러스트 파도
     function drawIllustWave(bass, mid, surge, isBack) {
         let startLayer = isBack ? 3 : 0;
         let endLayer = isBack ? 6 : 3;
 
         push();
+        // surge가 양수일 때 파도가 솟구침 (Y축 음수 방향으로 이동해야 화면 위로 올라감)
         translate(-width/2, height/2.2 - surge, isBack ? -50 : 100);
         
         for(let j = startLayer; j < endLayer; j++) {
             let h = map(j, 0, 5, 210, 180);
-            // 앞쪽일수록 더 밝고 투명도를 낮춤
-            fill(h, 90, isBack ? 60 : 100, isBack ? 95 : 70); 
+            fill(h, 90, isBack ? 60 : 100, isBack ? 95 : 85); 
             noStroke();
             
             beginShape();
             vertex(0, height * 2);
             for(let i=0; i<=40; i++) {
                 let x = map(i, 0, 40, 0, width);
-                // 주파수 + 노이즈로 유기적인 일렁임
                 let noiseVal = noise(i * 0.1, j, frameCount * 0.02);
                 let waveH = sin(i * 0.3 + frameCount * 0.05 + j) * (30 + bass * 0.4 + mid * 0.2) * noiseVal;
                 vertex(x, waveH - (j * 20));
@@ -225,26 +265,25 @@
         pop();
     }
 
+    // [v3.168] 트레일 렌더링 강화
     function renderParticles() {
         let trailStr = parseFloat(document.getElementById('trailT').value);
         particles.forEach(p => {
-            p.x = lerp(p.x, p.hx, 0.03); p.y = lerp(p.y, p.hy, 0.03); p.z = lerp(p.z, p.hz, 0.03);
+            p.x = lerp(p.x, p.hx, 0.05); p.y = lerp(p.y, p.hy, 0.05); p.z = lerp(p.z, p.hz, 0.05);
             
-            // 트레일 히스토리 관리
             p.history.push(createVector(p.x, p.y, p.z));
-            if (p.history.length > 20) p.history.shift();
+            if (p.history.length > 25) p.history.shift(); // 꼬리 길이 증가
 
-            // 트레일 렌더링 (가시성 강화)
             if (p.history.length > 1) {
                 noFill();
-                stroke(p.hue, 60, 100, 40 * trailStr);
-                strokeWeight(2 * trailStr);
+                stroke(p.hue, 60, 100, 60 * trailStr); // 트레일 불투명도 및 두께 증가
+                strokeWeight(2.5 * trailStr);
                 beginShape();
                 for (let v of p.history) vertex(v.x, v.y, v.z);
                 endShape();
             }
 
-            push(); translate(p.x, p.y, p.z); fill(p.hue, 50, 100, 50); noStroke(); ellipse(0,0,3,3); pop();
+            push(); translate(p.x, p.y, p.z); fill(p.hue, 50, 100, 80); noStroke(); ellipse(0,0,3.5,3.5); pop();
         });
     }
 
@@ -259,7 +298,7 @@
     function tToS(t) { let a = t.split(':'), s = a[2].split(','); return (+a[0])*3600 + (+a[1])*60 + (+s[0]) + (+s[1]/1000); }
     function updateSubtitles(t) { let f = subtitles.find(s => t >= s.start && t <= s.end); currentSub = f ? f.text : ""; }
     function startEngine() { if (audio && !audio.isPlaying()) { userStartAudio().then(() => { startRecording(); audio.play(); }); } }
-    function startRecording() { recordedChunks = []; let stream = document.querySelector('canvas').captureStream(60); recorder = new MediaRecorder(stream, { mimeType: 'video/mp4; codecs=avc1' }); recorder.ondataavailable = e => recordedChunks.push(e.data); recorder.onstop = () => { let blob = new Blob(recordedChunks, { type: 'video/mp4' }); let a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `VFX_Fluid_v3158.mp4`; a.click(); }; recorder.start(); }
+    function startRecording() { recordedChunks = []; let stream = document.querySelector('canvas').captureStream(60); recorder = new MediaRecorder(stream, { mimeType: 'video/mp4; codecs=avc1' }); recorder.ondataavailable = e => recordedChunks.push(e.data); recorder.onstop = () => { let blob = new Blob(recordedChunks, { type: 'video/mp4' }); let a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `VFX_Surge_v3168.mp4`; a.click(); }; recorder.start(); }
     function stopRecording() { if(recorder) recorder.stop(); }
 </script>
 </body>
