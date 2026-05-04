@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>TYPO VFX MASTER v3.037 — Wave Reveal Edition</title>
+    <title>TYPO VFX MASTER v3.048 — Path Tracer Edition</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <style>
@@ -23,18 +23,17 @@
 
 <div id="canvas-container"></div>
 <div id="panel">
-    <h3 style="color:white; margin-top:0;">PRODUCTION v3.037</h3>
+    <h3 style="color:white; margin-top:0;">PRODUCTION v3.048</h3>
     
-    <p><b>1. LAYOUT & RATIO</b></p>
+    <p><b>1. RATIO & LAYOUT</b></p>
     <div style="display:flex; gap:5px; margin-bottom:5px;">
         <button id="r169" class="btn btn-active" style="font-size:10px" onclick="changeRatio(1280, 720, 'r169')">16:9</button>
         <button id="r916" class="btn" style="font-size:10px" onclick="changeRatio(720, 1280, 'r916')">9:16</button>
     </div>
-    <button id="vSrt" class="btn" onclick="toggleVertical()">↕️ VERTICAL: OFF</button>
 
     <p><b>2. VISUAL MODE</b></p>
     <div style="display:flex; gap:5px; margin-bottom:15px;">
-        <button id="mStar" class="btn btn-active" style="flex:1" onclick="setMode('star')">🌌 STAR</button>
+        <button id="mStar" class="btn btn-active" style="flex:1" onclick="setMode('star')">🌌 STAR PATH</button>
         <button id="mWave" class="btn" style="flex:1" onclick="setMode('wave')">🌊 WAVE REVEAL</button>
     </div>
 
@@ -44,32 +43,28 @@
         <input type="range" id="trailT" min="0.1" max="1.0" step="0.1" value="0.5" oninput="document.getElementById('valT').innerText=this.value">
     </div>
     <div class="slider-row">
-        <label>FONT SIZE: <span id="valP2">75</span></label>
-        <input type="range" id="p2" min="30" max="150" value="75" oninput="document.getElementById('valP2').innerText=this.value">
+        <label>FONT SIZE: <span id="valP2">120</span></label>
+        <input type="range" id="p2" min="50" max="250" value="120" oninput="document.getElementById('valP2').innerText=this.value">
     </div>
 
     <p><b>4. ASSET LOADING</b></p>
-    <button class="btn" style="border-color:#ffcc00; color:#ffcc00;" onclick="document.getElementById('fIn').click()">📁 FONT</button>
+    <button class="btn" style="border-color:#ffcc00; color:#ffcc00;" onclick="document.getElementById('fIn').click()">📁 LOAD FONT (.ttf)</button>
     <input type="file" id="fIn" accept=".ttf,.otf" style="display:none" onchange="handleFont(this.files)">
-    <button class="btn" onclick="document.getElementById('mIn').click()">🎵 MP3</button>
+    <button class="btn" onclick="document.getElementById('mIn').click()">🎵 LOAD MP3</button>
     <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleAudio(this.files)">
-    <button class="btn" onclick="document.getElementById('sIn').click()">📄 SRT</button>
+    <button class="btn" onclick="document.getElementById('sIn').click()">📄 LOAD SRT</button>
     <input type="file" id="sIn" accept=".srt" style="display:none" onchange="handleSRT(this.files)">
     
     <button class="btn" id="startBtn" onclick="startEngine()" disabled style="border-color:#ff3377; color:#ff3377; height: 50px; margin-top:10px;">🔴 START & RECORD</button>
-    <div class="status-box" id="status">Wave Interaction Synced (v3.037)</div>
+    <div class="status-box" id="status">Path Matrix Ready.</div>
 </div>
 
 <script>
-    let audio, fft, myFont, subtitles = [], currentSub = "";
-    let particles = [], visualMode = 'star', isVerticalSRT = false;
+    let audio, fft, myFont, subtitles = [], currentSub = "", lastSub = "";
+    let particles = [], visualMode = 'star';
     let isFontReady = false, canvasW = 1280, canvasH = 720;
     let recorder, recordedChunks = [];
-    let revealAnim = 0; // 파도가 벌어지는 정도
-
-    const INITIALS = ["ㄱ","ㄲ","ㄴ","ㄷ","ㄸ","ㄹ","ㅁ","ㅂ","ㅃ","ㅅ","ㅆ","ㅇ","ㅈ","ㅉ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
-    const MEDIALS = ["ㅏ","ㅐ","ㅑ","ㅒ","ㅓ","ㅔ","ㅕ","ㅖ","ㅗ","ㅘ","ㅙ","ㅚ","ㅛ","ㅜ","ㅝ","ㅞ","ㅟ","ㅠ","ㅡ","ㅢ","ㅣ"];
-    const FINALS = ["","ㄱ","ㄲ","ㄳ","ㄴ","ㄵ","ㄶ","ㄷ","ㄹ","ㄺ","ㄻ","ㄼ","ㄽ","ㄾ","ㄿ","ㅀ","ㅁ","ㅂ","ㅄ","ㅅ","ㅆ","ㅇ","ㅈ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
+    let waveCoverY = 0; // 파도 높이 컨트롤러
 
     function setup() {
         let cnv = createCanvas(canvasW, canvasH, WEBGL);
@@ -81,23 +76,17 @@
 
     function initParticles() {
         particles = [];
-        for (let i = 0; i < 1500; i++) {
+        for (let i = 0; i < 2000; i++) { // 점의 밀도를 높이기 위해 2000개로 증설
             let hX = random(-width, width);
             let hY = random(-height, height);
-            let hZ = random(-1000, -200);
+            let hZ = random(-800, -200);
             particles.push({
                 x: hX, y: hY, z: hZ, hx: hX, hy: hY, hz: hZ,
-                tx: 0, ty: 0, tz: 0, tScale: 0.1, curScale: 0.1,
+                tx: hX, ty: hY, tz: hZ, tScale: 0.1, curScale: 0.1,
                 history: [], assigned: false,
-                size: random(2, 5), hue: random(170, 240)
+                size: random(1, 3), hue: random(180, 240)
             });
         }
-    }
-
-    function toggleVertical() {
-        isVerticalSRT = !isVerticalSRT;
-        document.getElementById('vSrt').innerText = isVerticalSRT ? "↕️ VERTICAL: ON" : "↕️ VERTICAL: OFF";
-        document.getElementById('vSrt').classList.toggle('btn-active', isVerticalSRT);
     }
 
     function setMode(m) { 
@@ -111,7 +100,7 @@
         background(0);
         if (!isFontReady || !myFont) return;
 
-        // 보색 프레임
+        // 보색(Magenta) 가이드 테두리
         push(); noFill(); stroke(340, 80, 100); strokeWeight(10);
         rect(-width/2, -height/2, width, height); pop();
 
@@ -119,157 +108,107 @@
         updateSubtitles(curTime);
         fft.analyze();
         let bass = fft.getEnergy("bass");
-        let treble = fft.getEnergy(4000, 8000);
 
-        // 자막 유무에 따른 리빌 애니메이션 (벌어지는 속도 조절)
-        let targetReveal = (currentSub !== "") ? 1.0 : 0.0;
-        revealAnim = lerp(revealAnim, targetReveal, 0.1);
+        // 자막 변경 감지 시 파도 덮기 트리거
+        if (currentSub !== lastSub) {
+            if (visualMode === 'wave') waveCoverY = height; 
+            lastSub = currentSub;
+        }
+        waveCoverY = lerp(waveCoverY, 0, 0.1); // 파도가 서서히 내려감
 
-        if (visualMode === 'wave') drawRevealWaves(bass, treble, revealAnim);
-        else drawStarField();
+        // 배경 및 파도 렌더링
+        if (visualMode === 'wave') drawOceanReveal(bass, waveCoverY);
+        else drawStarAmbient();
 
+        // --- 폰트 벡터 경로 추출 로직 ---
         let fSize = parseInt(document.getElementById('p2').value);
         let trailTime = parseFloat(document.getElementById('trailT').value);
-        let targetLocs = decomposeHangul(currentSub, fSize);
+        
+        // p5.Font.textToPoints를 사용해 글자 경로의 좌표를 직접 획득
+        let pts = currentSub !== "" ? myFont.textToPoints(currentSub, 0, 0, fSize, {
+            sampleFactor: 0.1, // 점의 밀도
+            simplifyThreshold: 0
+        }) : [];
+
+        // 텍스트 중앙 정렬을 위한 바운딩 박스 오프셋 계산
+        let tw = 0;
+        if (pts.length > 0) {
+            let minX = Math.min(...pts.map(p => p.x));
+            let maxX = Math.max(...pts.map(p => p.x));
+            tw = maxX - minX;
+        }
 
         particles.forEach(p => p.assigned = false);
-        targetLocs.forEach((t, i) => {
+
+        pts.forEach((pt, i) => {
             if (i < particles.length) {
                 let p = particles[i];
-                p.assigned = true; p.char = t.char;
-                p.tx = t.x; p.ty = t.y; p.tz = 150; p.tScale = 1.0;
+                p.assigned = true;
+                p.tx = pt.x - tw/2; // 중앙 정렬
+                p.ty = pt.y + fSize/3;
+                p.tz = 100;
+                p.tScale = 1.0;
             }
         });
 
-        textFont(myFont);
+        // --- 입자 업데이트 및 렌더링 ---
         particles.forEach(p => {
             if (p.assigned) {
                 let maxH = floor(trailTime * 60);
                 p.history.push({x: p.x, y: p.y, z: p.z});
                 if (p.history.length > maxH) p.history.shift();
-                p.x = lerp(p.x, p.tx, 0.1); p.y = lerp(p.y, p.ty, 0.1); p.z = lerp(p.z, p.tz, 0.1);
-                p.curScale = lerp(p.curScale, p.tScale, 0.12);
+
+                p.x = lerp(p.x, p.tx, 0.12);
+                p.y = lerp(p.y, p.ty, 0.12);
+                p.z = lerp(p.z, p.tz, 0.12);
+                p.curScale = lerp(p.curScale, p.tScale, 0.15);
+
                 if(p.history.length > 1) {
-                    noFill(); stroke(p.hue, 40, 100, 35); strokeWeight(1.5);
+                    noFill(); stroke(p.hue, 40, 100, 40); strokeWeight(1.5);
                     beginShape(); p.history.forEach(h => vertex(h.x, h.y, h.z)); endShape();
                 }
+
                 push(); translate(p.x, p.y, p.z); scale(p.curScale);
-                fill(0, 0, 100); noStroke(); textAlign(CENTER, CENTER); textSize(fSize);
-                text(p.char, 0, 0); pop();
+                fill(0, 0, 100); noStroke(); 
+                ellipse(0, 0, 4, 4); // 글자를 이루는 개별 입자
+                pop();
             } else {
                 p.tx = p.hx; p.ty = p.hy; p.tz = p.hz; p.tScale = 0.1;
-                p.x = lerp(p.x, p.tx, 0.05); p.y = lerp(p.y, p.ty, 0.05); p.z = lerp(p.z, p.tz, 0.05);
+                p.x = lerp(p.x, p.tx, 0.04); p.y = lerp(p.y, p.ty, 0.04); p.z = lerp(p.z, p.tz, 0.04);
                 p.curScale = lerp(p.curScale, p.tScale, 0.1);
                 p.history = [];
+
                 push(); translate(p.x, p.y, p.z);
-                if (visualMode === 'star') { fill(p.hue, 20, 100, 40); sphere(p.size * 0.5); }
+                fill(p.hue, 20, 100, 30); noStroke();
+                ellipse(0, 0, p.size, p.size);
                 pop();
             }
         });
     }
 
-    function drawStarField() {
-        for(let i=0; i<10; i++) {
-            push(); translate(random(-width, width), random(-height, height), -800);
-            fill(0,0,100,10); ellipse(0,0,random(2,5)); pop();
+    function drawStarAmbient() {
+        for(let i=0; i<5; i++) {
+            push(); translate(random(-width, width), random(-height, height), -900);
+            fill(0,0,100,10); ellipse(0,0,5,5); pop();
         }
     }
 
-    // --- 가로 파도 리빌 엔진 (v3.037) ---
-    function drawRevealWaves(bass, treble, reveal) {
-        let spacing = 40;
-        let waveCount = 10;
-        let crash = treble > 150 ? map(treble, 150, 255, 0, 80) : 0;
+    function drawOceanReveal(bass, coverY) {
+        push(); translate(-width/2, height/2 - coverY, -150);
+        fill(200, 80, 100, 50); noStroke();
         
-        push(); translate(-width/2, 0, -200);
-        stroke(200, 80, 100, 45); noFill();
-        
-        for (let j = 0; j < waveCount; j++) {
-            // 자막이 나오면 위아래로 밀려나는 오프셋 계산
-            let yBase = (j - waveCount/2) * spacing;
-            let revealOffset = 0;
-            
-            if (isVerticalSRT) {
-                // 세로 모드면 좌우로 밀려나야 하지만, 일단 가로 파도의 상하 벌어짐으로 처리
-                revealOffset = yBase > 0 ? reveal * 300 : reveal * -300;
-            } else {
-                revealOffset = yBase > 0 ? reveal * 250 : reveal * -250;
-            }
-
-            beginShape();
-            for (let i = 0; i <= 30; i++) {
-                let x = map(i, 0, 30, 0, width);
-                let waveShift = sin(i * 0.3 + frameCount * 0.05 + j) * (20 + bass * 0.15 + crash);
-                let finalY = yBase + revealOffset + waveShift;
-                vertex(x, finalY, j * 20);
-
-                // 파도 선상에 입자 배치 (가사가 없을 때만 배경으로 활용)
-                let pIdx = j * 31 + i;
-                if(particles[pIdx] && !particles[pIdx].assigned) {
-                    particles[pIdx].hx = x - width/2;
-                    particles[pIdx].hy = finalY;
-                    particles[pIdx].hz = j * 20 - 100;
-                }
-            }
-            endShape();
+        // 파도 본체 (글자를 덮고 내려가는 면)
+        beginShape();
+        vertex(0, 0);
+        for (let i = 0; i <= 20; i++) {
+            let x = map(i, 0, 20, 0, width);
+            let y = -sin(i * 0.5 + frameCount * 0.1) * (40 + bass * 0.3);
+            vertex(x, y);
         }
+        vertex(width, height);
+        vertex(0, height);
+        endShape(CLOSE);
         pop();
-    }
-
-    function decomposeHangul(str, fSize) {
-        let res = [];
-        let gap = fSize * 1.15;
-        if (isVerticalSRT) {
-            let totalH = str.length * (gap * 1.3);
-            let startY = -totalH / 2 + gap/2;
-            for (let i = 0; i < str.length; i++) {
-                let charCode = str.charCodeAt(i) - 44032;
-                let curY = startY + i * (gap * 1.3);
-                let curX = 0;
-                if (charCode >= 0 && charCode <= 11171) {
-                    let cho = Math.floor(charCode / 588);
-                    let jung = Math.floor((charCode % 588) / 28);
-                    let jong = charCode % 28;
-                    let jungChar = MEDIALS[jung];
-                    let isV = ["ㅏ","ㅐ","ㅑ","ㅒ","ㅓ","ㅔ","ㅕ","ㅖ","ㅣ"].includes(jungChar);
-                    if (isV) {
-                        res.push({ char: INITIALS[cho], x: curX - fSize*0.26, y: curY - fSize*0.18 });
-                        res.push({ char: jungChar, x: curX + fSize*0.26, y: curY - fSize*0.05 });
-                    } else {
-                        res.push({ char: INITIALS[cho], x: curX, y: curY - fSize*0.35 });
-                        res.push({ char: jungChar, x: curX, y: curY + fSize*0.1 });
-                    }
-                    if (jong > 0) res.push({ char: FINALS[jong], x: curX, y: curY + fSize*0.48 });
-                } else { res.push({ char: str[i], x: curX, y: curY }); }
-            }
-        } else {
-            let totalW = str.length * gap;
-            let startX = -totalW / 2 + gap/2;
-            for (let i = 0; i < str.length; i++) {
-                let charCode = str.charCodeAt(i) - 44032;
-                let curX = startX + i * gap;
-                if (charCode >= 0 && charCode <= 11171) {
-                    let cho = Math.floor(charCode / 588);
-                    let jung = Math.floor((charCode % 588) / 28);
-                    let jong = charCode % 28;
-                    let jungChar = MEDIALS[jung];
-                    let isV = ["ㅏ","ㅐ","ㅑ","ㅒ","ㅓ","ㅔ","ㅕ","ㅖ","ㅣ"].includes(jungChar);
-                    let isC = ["ㅘ","ㅙ","ㅚ","ㅝ","ㅞ","ㅟ","ㅢ"].includes(jungChar);
-                    if (isV) {
-                        res.push({ char: INITIALS[cho], x: curX - fSize*0.28, y: -fSize*0.18 });
-                        res.push({ char: jungChar, x: curX + fSize*0.28, y: -fSize*0.05 });
-                    } else if (isC) {
-                        res.push({ char: INITIALS[cho], x: curX - fSize*0.18, y: -fSize*0.32 });
-                        res.push({ char: jungChar, x: curX + fSize*0.18, y: -fSize*0.05 });
-                    } else {
-                        res.push({ char: INITIALS[cho], x: curX, y: -fSize*0.35 });
-                        res.push({ char: jungChar, x: curX, y: fSize*0.12 });
-                    }
-                    if (jong > 0) res.push({ char: FINALS[jong], x: curX, y: fSize*0.5 });
-                } else { res.push({ char: str[i], x: curX, y: 0 }); }
-            }
-        }
-        return res;
     }
 
     function changeRatio(w, h, id) {
@@ -278,13 +217,25 @@
         document.getElementById('r916').classList.toggle('btn-active', id === 'r916');
         initParticles();
     }
-    function handleFont(f) { loadFont(URL.createObjectURL(f[0]), (font) => { myFont = font; isFontReady = true; }); }
+
+    function handleFont(f) { 
+        // WEBGL에서 textToPoints를 쓰기 위해 opentype 데이터가 필요하므로 loadFont 사용
+        let reader = new FileReader();
+        reader.onload = (e) => {
+            myFont = loadFont(URL.createObjectURL(f[0]), () => { 
+                isFontReady = true; 
+                document.getElementById('status').innerText="Font Vectors Loaded.";
+            });
+        }
+        reader.readAsArrayBuffer(f[0]);
+    }
     function handleAudio(f) { audio = loadSound(URL.createObjectURL(f[0]), () => { audio.onended(stopRecording); }); }
     function handleSRT(f) {
         const reader = new FileReader();
-        reader.onload = (e) => { subtitles = parseSRT(e.target.result); document.getElementById('startBtn').disabled = false; document.getElementById('status').innerText="Ready."; };
+        reader.onload = (e) => { subtitles = parseSRT(e.target.result); document.getElementById('startBtn').disabled = false; document.getElementById('status').innerText="All Systems Ready."; };
         reader.readAsText(f[0]);
     }
+
     function parseSRT(d) {
         const regex = /(\d+)\n(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\n([\s\S]*?)(?=\n{2}|\n*$)/g;
         let m, r = [];
@@ -293,7 +244,13 @@
     }
     function tToS(t) { let a = t.split(':'), s = a[2].split(','); return (+a[0])*3600 + (+a[1])*60 + (+s[0]) + (+s[1]/1000); }
     function updateSubtitles(t) { let f = subtitles.find(s => t >= s.start && t <= s.end); currentSub = f ? f.text : ""; }
-    function startEngine() { if (audio && !audio.isPlaying()) { userStartAudio().then(() => { startRecording(); audio.play(); }); } }
+
+    function startEngine() {
+        if (audio && !audio.isPlaying()) {
+            userStartAudio().then(() => { startRecording(); audio.play(); document.getElementById('status').innerText = "RECORDING..."; });
+        }
+    }
+
     function startRecording() {
         recordedChunks = [];
         let stream = document.querySelector('canvas').captureStream(60);
@@ -302,7 +259,7 @@
         recorder.onstop = () => {
             let blob = new Blob(recordedChunks, { type: 'video/mp4' });
             let a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-            a.download = `VFX_Reveal_v3037_${Date.now()}.mp4`; a.click();
+            a.download = `VFX_PathTracer_v3048_${Date.now()}.mp4`; a.click();
         };
         recorder.start();
     }
