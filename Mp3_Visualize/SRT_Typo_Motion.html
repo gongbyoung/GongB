@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>TYPO VFX MASTER v3.118 — Illustrative Edition</title>
+    <title>TYPO VFX MASTER v3.128 — Fail-Safe Illust</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <style>
@@ -23,7 +23,7 @@
 
 <div id="canvas-container"></div>
 <div id="panel">
-    <h3 style="color:white; margin-top:0;">PRODUCTION v3.118</h3>
+    <h3 style="color:white; margin-top:0;">PRODUCTION v3.128</h3>
     
     <div class="select-group">
         <p><b>1. VISUAL MODE</b></p>
@@ -63,6 +63,7 @@
     <input type="file" id="sIn" accept=".srt" style="display:none" onchange="handleSRT(this.files)">
     
     <button class="btn" id="startBtn" onclick="startEngine()" disabled style="border-color:#ff3377; color:#ff3377; height: 50px; margin-top:10px;">🔴 START RECORDING</button>
+    <div id="status" style="font-size: 10px; color: #555;">Ready.</div>
 </div>
 
 <script>
@@ -100,20 +101,18 @@
 
     function draw() {
         background(0);
-        // 보색 Magenta 테두리 가이드
+        // 보색 가이드 테두리
         push(); noFill(); stroke(340, 80, 100); strokeWeight(10); rect(-width/2, -height/2, width, height); pop();
 
-        if (!isFontReady || !myFont) {
-            drawStars(); // 폰트 없어도 밤하늘은 보여줌
-            return;
-        }
+        // [v3.128 핵심 고정] 폰트 안전 검사
+        drawStars();
+
+        if (!isFontReady || !myFont) return; 
 
         let curTime = audio ? audio.currentTime() : 0;
         updateSubtitles(curTime);
         fft.analyze();
         let bass = fft.getEnergy("bass");
-
-        drawStars();
 
         if (currentSub !== lastSub) {
             if (visualMode === 'wave') waveSplashY = height * 1.5;
@@ -137,24 +136,21 @@
         pop();
     }
 
-    // --- 일러스트 스타일 파도 엔진 (v3.118) ---
+    // 일러스트 스타일 파도 로직 (Foam 효과 추가)
     function drawIllustWave(bass, splash) {
         push(); translate(-width/2, height/2.2 - splash, -100);
         for(let j=0; j<6; j++) {
-            // 레이어별 색상 차분 (짙은 블루 -> 밝은 청록)
-            let h = map(j, 0, 5, 200, 185);
-            fill(h, 85, 100 - j*10, 85); noStroke();
-            
+            let h = map(j, 0, 5, 205, 180);
+            fill(h, 90, 100 - j*12, 90); noStroke();
             beginShape();
             vertex(0, height);
             for(let i=0; i<=30; i++) {
                 let x = map(i, 0, 30, 0, width);
-                let waveH = sin(i * 0.3 + frameCount * 0.06 + j) * (35 + bass * 0.5);
+                let waveH = sin(i * 0.35 + frameCount * 0.07 + j) * (40 + bass * 0.5);
                 vertex(x, waveH);
-                
-                // 파도 마루에 하얀 거품(Foam) 라인 추가
-                if (j === 0) { 
-                    push(); stroke(0, 0, 100, 80); strokeWeight(3); point(x, waveH - 2); pop(); 
+                // 파도 끝에 하얀 포영(Foam) 포인트 추가
+                if (j === 0 && i % 2 === 0) {
+                    push(); fill(0, 0, 100, 80); ellipse(x, waveH - 5, 4, 4); pop();
                 }
             }
             vertex(width, height);
@@ -164,10 +160,14 @@
     }
 
     function renderMasterText(txt, bass) {
+        // [v3.128 핵심 고정] 함수 진입 시점에도 폰트 재검사
+        if (!myFont) return; 
+        
         push();
         translate(0, 0, 150);
+        textFont(myFont); // 텍스트 그리기 직전 폰트 재지정
         textAlign(CENTER, CENTER);
-        textSize(100);
+        textSize(110);
         fill(255); // 화이트 고정
 
         if (artStyle === 'neon') {
@@ -177,14 +177,14 @@
             fill(255);
         } else if (artStyle === 'impression') {
             for(let i=0; i<5; i++) {
-                fill(random(180, 220), 50, 100, 50); text(txt, random(-5,5), random(-5,5));
+                fill(random(190, 230), 60, 100, 50); text(txt, random(-6,6), random(-6,6));
             }
-            fill(255, 80);
+            fill(255, 85);
         }
 
         if (isVertical) {
             let chars = txt.split('');
-            chars.forEach((c, i) => text(c, 0, (i - chars.length/2) * 120));
+            chars.forEach((c, i) => text(c, 0, (i - chars.length/2) * 130));
         } else {
             text(txt, 0, 0);
         }
@@ -205,9 +205,10 @@
     function changeRatio(w, h, id) { canvasW = w; canvasH = h; resizeCanvas(w, h); document.querySelectorAll('[id^="r1"]').forEach(b => b.classList.remove('btn-active')); document.getElementById(id).classList.add('btn-active'); initStars(); initParticles(); }
     
     function handleFont(f) { 
+        isFontReady = false; // 새 폰트 로드 시 잠시 플래그 내림
         myFont = loadFont(URL.createObjectURL(f[0]), () => { 
             isFontReady = true; 
-            document.getElementById('status').innerText = "Font Fixed & Loaded.";
+            document.getElementById('status').innerText = "Font Success.";
         }); 
     }
     function handleAudio(f) { audio = loadSound(URL.createObjectURL(f[0]), () => audio.onended(stopRecording)); }
@@ -216,7 +217,7 @@
     function tToS(t) { let a = t.split(':'), s = a[2].split(','); return (+a[0])*3600 + (+a[1])*60 + (+s[0]) + (+s[1]/1000); }
     function updateSubtitles(t) { let f = subtitles.find(s => t >= s.start && t <= s.end); currentSub = f ? f.text : ""; }
     function startEngine() { if (audio && !audio.isPlaying()) { userStartAudio().then(() => { startRecording(); audio.play(); }); } }
-    function startRecording() { recordedChunks = []; let stream = document.querySelector('canvas').captureStream(60); recorder = new MediaRecorder(stream, { mimeType: 'video/mp4; codecs=avc1' }); recorder.ondataavailable = e => recordedChunks.push(e.data); recorder.onstop = () => { let blob = new Blob(recordedChunks, { type: 'video/mp4' }); let a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `VFX_Illust_v3118.mp4`; a.click(); }; recorder.start(); }
+    function startRecording() { recordedChunks = []; let stream = document.querySelector('canvas').captureStream(60); recorder = new MediaRecorder(stream, { mimeType: 'video/mp4; codecs=avc1' }); recorder.ondataavailable = e => recordedChunks.push(e.data); recorder.onstop = () => { let blob = new Blob(recordedChunks, { type: 'video/mp4' }); let a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `VFX_Production_v3128.mp4`; a.click(); }; recorder.start(); }
     function stopRecording() { if(recorder) recorder.stop(); }
 </script>
 </body>
