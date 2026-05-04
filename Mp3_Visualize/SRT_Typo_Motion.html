@@ -2,19 +2,19 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>TYPO VFX MASTER v3.198 — Robust Loader</title>
+    <title>TYPO VFX MASTER v3.208 — Timeline Precision</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <style>
         :root { --accent: #00ffcc; --bg: #030305; }
         body { margin: 0; background: var(--bg); overflow: hidden; font-family: sans-serif; color: #fff; display: flex; }
         #canvas-container { flex: 1; display: flex; align-items: center; justify-content: center; background: #000; }
-        #panel { width: 320px; background: #0a0a0f; padding: 20px; border-left: 1px solid #1a1a1a; font-size: 11px; color: #666; overflow-y: auto; height: 100vh; }
+        #panel { width: 340px; background: #0a0a0f; padding: 20px; border-left: 1px solid #1a1a1a; font-size: 11px; color: #666; overflow-y: auto; height: 100vh; }
         .btn { width: 100%; padding: 10px; background: transparent; color: var(--accent); border: 1px solid var(--accent); cursor: pointer; font-weight: bold; margin-bottom: 5px; transition: 0.2s; }
         .btn:hover { background: var(--accent); color: #000; }
         .btn-active { background: var(--accent) !important; color: #000 !important; }
-        .select-group { margin-bottom: 15px; border-bottom: 1px solid #222; padding-bottom: 10px; }
-        .slider-row { margin: 10px 0; }
+        .select-group { margin-bottom: 12px; border-bottom: 1px solid #222; padding-bottom: 10px; }
+        .slider-row { margin: 8px 0; }
         input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
     </style>
 </head>
@@ -22,7 +22,7 @@
 
 <div id="canvas-container"></div>
 <div id="panel">
-    <h3 style="color:white; margin-top:0;">PRODUCTION v3.198</h3>
+    <h3 style="color:white; margin-top:0;">PRODUCTION v3.208</h3>
     
     <div class="select-group">
         <p><b>1. VISUAL MODE</b></p>
@@ -48,6 +48,10 @@
             <input type="range" id="fSize" min="30" max="300" value="120" oninput="document.getElementById('valS').innerText=this.value">
         </div>
         <div class="slider-row">
+            <label>LETTER SPACING: <span id="valSpace">0</span></label>
+            <input type="range" id="tracking" min="-30" max="100" value="0" oninput="document.getElementById('valSpace').innerText=this.value">
+        </div>
+        <div class="slider-row">
             <label>Y-POSITION: <span id="valY">0</span></label>
             <input type="range" id="yOff" min="-500" max="500" value="0" oninput="document.getElementById('valY').innerText=this.value">
         </div>
@@ -64,7 +68,15 @@
         <button id="sImp" class="btn" onclick="setStyle('impression')">IMPRESSIONIST</button>
     </div>
 
-    <p><b>5. ASSETS</b></p>
+    <div class="select-group">
+        <p><b>5. TIMELINE PREVIEW</b></p>
+        <div class="slider-row">
+            <label>TIME: <span id="valTime">0.0</span>s</label>
+            <input type="range" id="timeline" min="0" max="100" step="0.1" value="0" oninput="document.getElementById('valTime').innerText=this.value">
+        </div>
+    </div>
+
+    <p><b>6. ASSETS</b></p>
     <button class="btn" style="border-color:#ffcc00; color:#ffcc00;" onclick="document.getElementById('fIn').click()">📁 LOAD FONT</button>
     <input type="file" id="fIn" accept=".ttf,.otf" style="display:none" onchange="handleFont(this.files)">
     <button class="btn" onclick="document.getElementById('mIn').click()">🎵 LOAD MP3</button>
@@ -81,7 +93,7 @@
     let isFontReady = false, isVertical = false, canvasW = 1280, canvasH = 720;
     
     let sweepPhase = 0, sweepProgress = 0, sweepDir = 1, textSwapped = false;
-    let lastFSize = 120, lastYPos = 0, lastIsVertical = false;
+    let lastFSize = 120, lastYPos = 0, lastTracking = 0, lastIsVertical = false;
     let recorder, recordedChunks = [];
 
     function setup() {
@@ -117,31 +129,45 @@
 
     function draw() {
         background(0);
-        drawStars(); // 밤하늘 유지
+        drawStars(); 
 
         if (!isFontReady || !myFont) return;
 
-        let curTime = audio ? audio.currentTime() : 0;
+        // [v3.208] 타임라인(플레이바) 동기화 로직
+        let curTime = 0;
+        let isPlaying = audio && audio.isPlaying();
+        let timelineUI = document.getElementById('timeline');
+
+        if (isPlaying) {
+            curTime = audio.currentTime();
+            timelineUI.value = curTime;
+            document.getElementById('valTime').innerText = curTime.toFixed(1);
+        } else {
+            curTime = parseFloat(timelineUI.value);
+        }
+
         let targetSub = subtitles.find(s => curTime >= s.start && curTime <= s.end);
         let currentLogicalSub = targetSub ? targetSub.text : "";
         
         fft.analyze();
-        let bass = fft.getEnergy("bass");
-        let mid = fft.getEnergy("mid");
+        let bass = isPlaying ? fft.getEnergy("bass") : 0;
+        let mid = isPlaying ? fft.getEnergy("mid") : 0;
 
         let fSize = parseInt(document.getElementById('fSize').value);
+        let tracking = parseInt(document.getElementById('tracking').value);
         let yPos = parseInt(document.getElementById('yOff').value);
         let isPort = canvasH > canvasW; 
 
         if (currentLogicalSub !== nextSub) {
             nextSub = currentLogicalSub;
-            if (visualMode === 'wave') {
+            // 재생 중일 때만 파도 스윕 발동, 일시정지 상태(스크러빙)에선 즉각 변경
+            if (visualMode === 'wave' && isPlaying) {
                 sweepPhase = 1; sweepProgress = 0;
                 sweepDir = random() > 0.5 ? 1 : -1; 
                 textSwapped = false;
             } else {
                 displaySub = nextSub;
-                updateTextParticles(fSize, yPos);
+                updateTextParticles(fSize, yPos, tracking);
             }
         }
 
@@ -150,54 +176,63 @@
             if (sweepProgress >= 0.5 && !textSwapped) {
                 textSwapped = true;
                 displaySub = nextSub;
-                updateTextParticles(fSize, yPos);
+                updateTextParticles(fSize, yPos, tracking);
                 particles.forEach(p => { if (p.assigned) { p.x = p.tx; p.y = p.ty; p.history = []; } });
             }
-            if (sweepProgress >= 1.0) {
-                sweepPhase = 0; sweepProgress = 0;
-            }
+            if (sweepProgress >= 1.0) { sweepPhase = 0; sweepProgress = 0; }
         }
 
-        if (fSize !== lastFSize || isVertical !== lastIsVertical || yPos !== lastYPos) {
-            updateTextParticles(fSize, yPos);
-            if (isVertical !== lastIsVertical) {
-                particles.forEach(p => { if(p.assigned) { p.x = p.tx; p.y = p.ty; p.history = []; } });
-            }
-            lastFSize = fSize; lastIsVertical = isVertical; lastYPos = yPos;
+        if (fSize !== lastFSize || isVertical !== lastIsVertical || yPos !== lastYPos || tracking !== lastTracking) {
+            updateTextParticles(fSize, yPos, tracking);
+            // 레이아웃 변경 시 잔상 제거 스냅
+            particles.forEach(p => { if(p.assigned) { p.x = p.tx; p.y = p.ty; p.history = []; } });
+            lastFSize = fSize; lastIsVertical = isVertical; lastYPos = yPos; lastTracking = tracking;
         }
 
         if (visualMode === 'wave') {
             drawIllustWave(bass, mid, true, isPort); 
-            if (displaySub !== "") renderMasterText(displaySub, bass, fSize, yPos);
+            if (displaySub !== "") renderMasterText(displaySub, fSize, yPos, tracking);
             renderParticles(); 
             drawIllustWave(bass, mid, false, isPort); 
         } else {
-            if (displaySub !== "") renderMasterText(displaySub, bass, fSize, yPos);
+            if (displaySub !== "") renderMasterText(displaySub, fSize, yPos, tracking);
             renderParticles();
         }
 
         push(); noFill(); stroke(340, 80, 100, 50); strokeWeight(5); translate(0,0,200); rect(-width/2, -height/2, width, height); pop();
     }
 
-    function updateTextParticles(fSize, yPos) {
+    // [v3.208] 자간(Tracking)을 포함한 역산 파티클 생성
+    function updateTextParticles(fSize, yPos, tracking) {
         if (displaySub === "") {
             particles.forEach(p => p.assigned = false);
             return;
         }
         let pts = [];
+        let chars = displaySub.split('');
+
         if (isVertical) {
-            let chars = displaySub.split('');
+            let totalH = (chars.length - 1) * (fSize + tracking);
             chars.forEach((c, i) => {
                 if(c && c.trim() !== '') {
-                    let yOffset = (i - (chars.length-1)/2) * (fSize * 1.2);
+                    let yOffset = (i * (fSize + tracking)) - totalH/2;
                     let bounds = myFont.textBounds(c, 0, 0, fSize);
                     let charPts = myFont.textToPoints(c, -bounds.w/2, yOffset + bounds.h/2, fSize, { sampleFactor: 0.15 });
                     pts.push(...charPts);
                 }
             });
         } else {
-            let bounds = myFont.textBounds(displaySub, 0, 0, fSize);
-            pts = myFont.textToPoints(displaySub, -bounds.w/2, bounds.h/2, fSize, { sampleFactor: 0.15 });
+            let widths = chars.map(c => myFont.textBounds(c, 0, 0, fSize).w + tracking);
+            let totalW = widths.length > 0 ? widths.reduce((a,b)=>a+b, 0) - tracking : 0;
+            let curX = -totalW/2;
+            chars.forEach((c, i) => {
+                if(c && c.trim() !== '') {
+                    let bounds = myFont.textBounds(c, 0, 0, fSize);
+                    let charPts = myFont.textToPoints(c, curX, bounds.h/2, fSize, { sampleFactor: 0.15 });
+                    pts.push(...charPts);
+                }
+                curX += widths[i];
+            });
         }
 
         particles.forEach(p => p.assigned = false);
@@ -272,26 +307,49 @@
         pop();
     }
 
-    function renderMasterText(txt, bass, fSize, yPos) {
+    // [v3.208] 렌더링 중첩 버그 픽스 (커스텀 텍스트 드로어)
+    function drawCustomText(txt, fSize, tracking, xOff, yOff) {
+        let chars = txt.split('');
+        if (isVertical) {
+            let totalH = (chars.length - 1) * (fSize + tracking);
+            chars.forEach((c, i) => {
+                let y = (i * (fSize + tracking)) - totalH/2;
+                text(c, xOff, yOff + y);
+            });
+        } else {
+            let widths = chars.map(c => myFont.textBounds(c, 0, 0, fSize).w + tracking);
+            let totalW = widths.length > 0 ? widths.reduce((a,b)=>a+b, 0) - tracking : 0;
+            let curX = -totalW/2;
+            chars.forEach((c, i) => {
+                let bounds = myFont.textBounds(c, 0, 0, fSize);
+                text(c, xOff + curX + bounds.w/2, yOff);
+                curX += widths[i];
+            });
+        }
+    }
+
+    function renderMasterText(txt, fSize, yPos, tracking) {
         if (!txt || !myFont) return;
         push(); translate(0, yPos, 0);
         textFont(myFont); textAlign(CENTER, CENTER); textSize(fSize);
-        fill(255); 
-
+        
         if (artStyle === 'neon') {
-            for(let i=0; i<3; i++) { fill(255, 40); text(txt, random(-4,4), random(-4,4)); }
+            for(let i=0; i<3; i++) { 
+                fill(255, 40); 
+                drawCustomText(txt, fSize, tracking, random(-4,4), random(-4,4)); 
+            }
             fill(255);
         } else if (artStyle === 'impression') {
-            for(let i=0; i<5; i++) { fill(random(180, 240), 70, 100, 60); text(txt, random(-8,8), random(-8,8)); }
+            for(let i=0; i<5; i++) { 
+                fill(random(180, 240), 70, 100, 60); 
+                drawCustomText(txt, fSize, tracking, random(-8,8), random(-8,8)); 
+            }
             fill(255, 90);
+        } else {
+            fill(255);
         }
 
-        if (isVertical) {
-            let chars = txt.split('');
-            chars.forEach((c, i) => { if(c && c.trim() !== '') text(c, 0, (i - (chars.length-1)/2) * (fSize * 1.2)); });
-        } else {
-            text(txt, 0, 0);
-        }
+        drawCustomText(txt, fSize, tracking, 0, 0);
         pop();
     }
 
@@ -328,15 +386,20 @@
     function setStyle(s) { artStyle = s; document.querySelectorAll('[id^="s"]').forEach(b => b.classList.remove('btn-active')); let tId = s === 'impression' ? 'sImp' : (s === 'neon' ? 'sNeon' : 'sDefault'); document.getElementById(tId).classList.add('btn-active'); }
     function changeRatio(w, h, id) { canvasW = w; canvasH = h; resizeCanvas(w, h); document.querySelectorAll('[id^="r1"]').forEach(b => b.classList.remove('btn-active')); document.getElementById(id).classList.add('btn-active'); initStars(); initParticles(); }
     
-    // [Issue Fix] 방어 로직 (빈 파일 처리)
     function handleFont(f) { if(!f || f.length===0) return; isFontReady = false; myFont = loadFont(URL.createObjectURL(f[0]), () => isFontReady = true); }
-    function handleAudio(f) { if(!f || f.length===0) return; audio = loadSound(URL.createObjectURL(f[0]), () => audio.onended(stopRecording)); }
+    function handleAudio(f) { 
+        if(!f || f.length===0) return; 
+        audio = loadSound(URL.createObjectURL(f[0]), () => {
+            document.getElementById('timeline').max = audio.duration(); // 오디오 로드 시 타임라인 최대치 설정
+            audio.onended(stopRecording);
+        }); 
+    }
     function handleSRT(f) { if(!f || f.length===0) return; const reader = new FileReader(); reader.onload = (e) => { subtitles = parseSRT(e.target.result); document.getElementById('startBtn').disabled = false; }; reader.readAsText(f[0]); }
     
     function parseSRT(d) { const regex = /(\d+)\n(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\n([\s\S]*?)(?=\n{2}|\n*$)/g; let m, r = []; while ((m = regex.exec(d)) !== null) r.push({ start: tToS(m[2]), end: tToS(m[3]), text: m[4].trim() }); return r; }
     function tToS(t) { let a = t.split(':'), s = a[2].split(','); return (+a[0])*3600 + (+a[1])*60 + (+s[0]) + (+s[1]/1000); }
     function startEngine() { if (audio && !audio.isPlaying()) { userStartAudio().then(() => { startRecording(); audio.play(); }); } }
-    function startRecording() { recordedChunks = []; let stream = document.querySelector('canvas').captureStream(60); recorder = new MediaRecorder(stream, { mimeType: 'video/mp4; codecs=avc1' }); recorder.ondataavailable = e => recordedChunks.push(e.data); recorder.onstop = () => { let blob = new Blob(recordedChunks, { type: 'video/mp4' }); let a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `VFX_Robust_v3198.mp4`; a.click(); }; recorder.start(); }
+    function startRecording() { recordedChunks = []; let stream = document.querySelector('canvas').captureStream(60); recorder = new MediaRecorder(stream, { mimeType: 'video/mp4; codecs=avc1' }); recorder.ondataavailable = e => recordedChunks.push(e.data); recorder.onstop = () => { let blob = new Blob(recordedChunks, { type: 'video/mp4' }); let a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `VFX_Precision_v3208.mp4`; a.click(); }; recorder.start(); }
     function stopRecording() { if(recorder) recorder.stop(); }
 </script>
 </body>
