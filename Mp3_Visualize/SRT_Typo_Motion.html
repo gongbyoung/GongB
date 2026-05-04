@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>TYPO VFX MASTER v3.024 — Dynamic Production</title>
+    <title>TYPO VFX MASTER v3.026 — Precision Master</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <style>
@@ -23,7 +23,7 @@
 
 <div id="canvas-container"></div>
 <div id="panel">
-    <h3 style="color:white; margin-top:0;">PRODUCTION v3.024</h3>
+    <h3 style="color:white; margin-top:0;">PRODUCTION v3.026</h3>
     
     <p><b>1. LAYOUT & RATIO</b></p>
     <div style="display:flex; gap:5px; margin-bottom:5px;">
@@ -57,7 +57,7 @@
     <input type="file" id="sIn" accept=".srt" style="display:none" onchange="handleSRT(this.files)">
     
     <button class="btn" id="startBtn" onclick="startEngine()" disabled style="border-color:#ff3377; color:#ff3377; height: 50px; margin-top:10px;">🔴 START & RECORD</button>
-    <div class="status-box" id="status">System Standby...</div>
+    <div class="status-box" id="status">Vowel Mapping Fixed (v3.026)</div>
 </div>
 
 <script>
@@ -67,7 +67,8 @@
     let recorder, recordedChunks = [];
 
     const INITIALS = ["ㄱ","ㄲ","ㄴ","ㄷ","ㄸ","ㄹ","ㅁ","ㅂ","ㅃ","ㅅ","ㅆ","ㅇ","ㅈ","ㅉ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
-    const MEDIALS = ["ㅏ","ㅐ","ㅑ","ㅒ","ㅓ","ㅔ","ㅕ","ㅖ","ㅗ","ㅘ","ㅙ","ㅚ","ㅛ","ㅜ","ㅜ","ㅝ","ㅞ","ㅟ","ㅠ","ㅡ","ㅢ","ㅣ"];
+    // [v3.026] 모음 중복 ㅜ 제거 및 인덱스 정밀 보정
+    const MEDIALS = ["ㅏ","ㅐ","ㅑ","ㅒ","ㅓ","ㅔ","ㅕ","ㅖ","ㅗ","ㅘ","ㅙ","ㅚ","ㅛ","ㅜ","ㅝ","ㅞ","ㅟ","ㅠ","ㅡ","ㅢ","ㅣ"];
     const FINALS = ["","ㄱ","ㄲ","ㄳ","ㄴ","ㄵ","ㄶ","ㄷ","ㄹ","ㄺ","ㄻ","ㄼ","ㄽ","ㄾ","ㄿ","ㅀ","ㅁ","ㅂ","ㅄ","ㅅ","ㅆ","ㅇ","ㅈ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
 
     function setup() {
@@ -110,7 +111,7 @@
         background(0);
         if (!isFontReady || !myFont) return;
 
-        // 보색 프레임
+        // 보색 프레임 (Magenta)
         push(); noFill(); stroke(340, 80, 100); strokeWeight(10);
         rect(-width/2, -height/2, width, height); pop();
 
@@ -118,19 +119,16 @@
         updateSubtitles(curTime);
         fft.analyze();
         let bass = fft.getEnergy("bass");
-        let treble = fft.getEnergy(4000, 8000); // 파도치게 만드는 트리거 주파수
+        let treble = fft.getEnergy(4000, 8000);
 
-        // 배경 연출
         if (visualMode === 'wave') drawDynamicWaves(bass, treble);
         else drawStarField();
 
-        // 텍스트 레이아웃
         let fSize = parseInt(document.getElementById('p2').value);
         let trailTime = parseFloat(document.getElementById('trailT').value);
         let targetLocs = decomposeHangul(currentSub, fSize);
 
         particles.forEach(p => p.assigned = false);
-
         targetLocs.forEach((t, i) => {
             if (i < particles.length) {
                 let p = particles[i];
@@ -146,9 +144,9 @@
                 p.history.push({x: p.x, y: p.y, z: p.z});
                 if (p.history.length > maxH) p.history.shift();
 
-                p.x = lerp(p.x, p.tx, 0.09);
-                p.y = lerp(p.y, p.ty, 0.09);
-                p.z = lerp(p.z, p.tz, 0.09);
+                p.x = lerp(p.x, p.tx, 0.1);
+                p.y = lerp(p.y, p.ty, 0.1);
+                p.z = lerp(p.z, p.tz, 0.1);
                 p.curScale = lerp(p.curScale, p.tScale, 0.1);
 
                 if(p.history.length > 1) {
@@ -164,7 +162,6 @@
                 p.x = lerp(p.x, p.tx, 0.05); p.y = lerp(p.y, p.ty, 0.05); p.z = lerp(p.z, p.tz, 0.05);
                 p.curScale = lerp(p.curScale, p.tScale, 0.1);
                 p.history = [];
-
                 push(); translate(p.x, p.y, p.z);
                 if (visualMode === 'star') { fill(p.hue, 20, 100, 40); sphere(p.size * 0.5); }
                 pop();
@@ -182,16 +179,13 @@
     function drawDynamicWaves(bass, treble) {
         push(); translate(-width/2, height/3.5, -200);
         stroke(200, 80, 100, 45); noFill();
-        // 고음(treble)이 강할 때 파도치게 진폭(crash) 추가
         let crash = treble > 150 ? map(treble, 150, 255, 10, 120) : 0;
-        
         for (let j = 0; j < 6; j++) {
             beginShape();
             for (let i = 0; i <= 25; i++) {
                 let x = map(i, 0, 25, 0, width);
                 let waveY = sin(i * 0.4 + frameCount * 0.05 + j) * (30 + bass * 0.2 + (i % 2 === 0 ? crash : 0));
                 vertex(x, waveY, j * 45);
-                
                 let pIdx = j * 25 + i;
                 if(particles[pIdx] && !particles[pIdx].assigned) {
                     particles[pIdx].hx = x - width/2;
@@ -205,45 +199,56 @@
 
     function decomposeHangul(str, fSize) {
         let res = [];
-        let gap = fSize * 1.1;
+        let gap = fSize * 1.15;
         
         if (isVerticalSRT) {
-            // 세로 쓰기 로직
             let totalH = str.length * gap;
             let startY = -totalH / 2 + gap/2;
             for (let i = 0; i < str.length; i++) {
-                let code = str.charCodeAt(i) - 44032;
-                let curY = startY + i * gap;
-                let curX = 0; // 세로 한 줄 중앙
-                if (code >= 0 && code <= 11171) {
-                    let cho = Math.floor(code / 588);
-                    let jung = Math.floor((code % 588) / 28);
-                    let jong = code % 28;
-                    res.push({ char: INITIALS[cho], x: curX - fSize*0.1, y: curY - fSize*0.2 });
-                    res.push({ char: MEDIALS[jung], x: curX + fSize*0.1, y: curY });
-                    if (jong > 0) res.push({ char: FINALS[jong], x: curX, y: curY + fSize*0.3 });
+                let charCode = str.charCodeAt(i) - 44032;
+                let curY = startY + i * (gap * 1.2);
+                let curX = 0;
+                if (charCode >= 0 && charCode <= 11171) {
+                    let cho = Math.floor(charCode / 588);
+                    let jung = Math.floor((charCode % 588) / 28);
+                    let jong = charCode % 28;
+                    let jungChar = MEDIALS[jung];
+                    let isV = ["ㅏ","ㅐ","ㅑ","ㅒ","ㅓ","ㅔ","ㅕ","ㅖ","ㅣ"].includes(jungChar);
+                    if (isV) {
+                        res.push({ char: INITIALS[cho], x: curX - fSize*0.25, y: curY - fSize*0.15 });
+                        res.push({ char: jungChar, x: curX + fSize*0.25, y: curY });
+                    } else {
+                        res.push({ char: INITIALS[cho], x: curX, y: curY - fSize*0.3 });
+                        res.push({ char: jungChar, x: curX, y: curY + fSize*0.1 });
+                    }
+                    if (jong > 0) res.push({ char: FINALS[jong], x: curX, y: curY + fSize*0.45 });
                 } else { res.push({ char: str[i], x: curX, y: curY }); }
             }
         } else {
-            // 가로 쓰기 로직
             let totalW = str.length * gap;
             let startX = -totalW / 2 + gap/2;
             for (let i = 0; i < str.length; i++) {
-                let code = str.charCodeAt(i) - 44032;
+                let charCode = str.charCodeAt(i) - 44032;
                 let curX = startX + i * gap;
-                if (code >= 0 && code <= 11171) {
-                    let cho = Math.floor(code / 588);
-                    let jung = Math.floor((code % 588) / 28);
-                    let jong = code % 28;
-                    let isV = ["ㅏ","ㅐ","ㅑ","ㅒ","ㅓ","ㅔ","ㅕ","ㅖ","ㅣ"].includes(MEDIALS[jung]);
+                if (charCode >= 0 && charCode <= 11171) {
+                    let cho = Math.floor(charCode / 588);
+                    let jung = Math.floor((charCode % 588) / 28);
+                    let jong = charCode % 28;
+                    let jungChar = MEDIALS[jung];
+                    let isV = ["ㅏ","ㅐ","ㅑ","ㅒ","ㅓ","ㅔ","ㅕ","ㅖ","ㅣ"].includes(jungChar);
+                    let isC = ["ㅘ","ㅙ","ㅚ","ㅝ","ㅞ","ㅟ","ㅢ"].includes(jungChar);
+                    
                     if (isV) {
-                        res.push({ char: INITIALS[cho], x: curX - fSize*0.24, y: -fSize*0.12 });
-                        res.push({ char: MEDIALS[jung], x: curX + fSize*0.24, y: 0 });
+                        res.push({ char: INITIALS[cho], x: curX - fSize*0.26, y: -fSize*0.15 });
+                        res.push({ char: jungChar, x: curX + fSize*0.26, y: -fSize*0.05 });
+                    } else if (isC) {
+                        res.push({ char: INITIALS[cho], x: curX - fSize*0.15, y: -fSize*0.3 });
+                        res.push({ char: jungChar, x: curX + fSize*0.15, y: -fSize*0.05 });
                     } else {
-                        res.push({ char: INITIALS[cho], x: curX, y: -fSize*0.3 });
-                        res.push({ char: MEDIALS[jung], x: curX, y: fSize*0.14 });
+                        res.push({ char: INITIALS[cho], x: curX, y: -fSize*0.35 });
+                        res.push({ char: jungChar, x: curX, y: fSize*0.12 });
                     }
-                    if (jong > 0) res.push({ char: FINALS[jong], x: curX, y: fSize*0.45 });
+                    if (jong > 0) res.push({ char: FINALS[jong], x: curX, y: fSize*0.48 });
                 } else { res.push({ char: str[i], x: curX, y: 0 }); }
             }
         }
@@ -256,7 +261,6 @@
         document.getElementById('r916').classList.toggle('btn-active', id === 'r916');
         initParticles();
     }
-
     function handleFont(f) { loadFont(URL.createObjectURL(f[0]), (font) => { myFont = font; isFontReady = true; }); }
     function handleAudio(f) { audio = loadSound(URL.createObjectURL(f[0]), () => { audio.onended(stopRecording); }); }
     function handleSRT(f) {
@@ -264,7 +268,6 @@
         reader.onload = (e) => { subtitles = parseSRT(e.target.result); document.getElementById('startBtn').disabled = false; document.getElementById('status').innerText="Ready."; };
         reader.readAsText(f[0]);
     }
-
     function parseSRT(d) {
         const regex = /(\d+)\n(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\n([\s\S]*?)(?=\n{2}|\n*$)/g;
         let m, r = [];
@@ -273,13 +276,7 @@
     }
     function tToS(t) { let a = t.split(':'), s = a[2].split(','); return (+a[0])*3600 + (+a[1])*60 + (+s[0]) + (+s[1]/1000); }
     function updateSubtitles(t) { let f = subtitles.find(s => t >= s.start && t <= s.end); currentSub = f ? f.text : ""; }
-
-    function startEngine() {
-        if (audio && !audio.isPlaying()) {
-            userStartAudio().then(() => { startRecording(); audio.play(); document.getElementById('status').innerText = "RECORDING..."; });
-        }
-    }
-
+    function startEngine() { if (audio && !audio.isPlaying()) { userStartAudio().then(() => { startRecording(); audio.play(); }); } }
     function startRecording() {
         recordedChunks = [];
         let stream = document.querySelector('canvas').captureStream(60);
@@ -288,7 +285,7 @@
         recorder.onstop = () => {
             let blob = new Blob(recordedChunks, { type: 'video/mp4' });
             let a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-            a.download = `Production_v3024_${Date.now()}.mp4`; a.click();
+            a.download = `Production_v3026_${Date.now()}.mp4`; a.click();
         };
         recorder.start();
     }
