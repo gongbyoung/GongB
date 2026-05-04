@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>TYPO VFX MASTER v3.128 — Fail-Safe Illust</title>
+    <title>TYPO VFX MASTER v3.138 — Ultimate Layout</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <style>
@@ -15,7 +15,7 @@
         .btn-active { background: var(--accent) !important; color: #000 !important; }
         .select-group { margin-bottom: 15px; border-bottom: 1px solid #222; padding-bottom: 10px; }
         .slider-row { margin: 10px 0; }
-        input[type=range] { width: 100%; accent-color: var(--accent); }
+        input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
         b { color: var(--accent); }
     </style>
 </head>
@@ -23,7 +23,7 @@
 
 <div id="canvas-container"></div>
 <div id="panel">
-    <h3 style="color:white; margin-top:0;">PRODUCTION v3.128</h3>
+    <h3 style="color:white; margin-top:0;">PRODUCTION v3.138</h3>
     
     <div class="select-group">
         <p><b>1. VISUAL MODE</b></p>
@@ -43,18 +43,29 @@
     </div>
 
     <div class="select-group">
-        <p><b>3. ART STYLE</b></p>
+        <p><b>3. VFX & TEXT CONTROL</b></p>
+        <div class="slider-row">
+            <label>FONT SIZE: <span id="valS">120</span></label>
+            <input type="range" id="fSize" min="30" max="300" value="120" oninput="document.getElementById('valS').innerText=this.value">
+        </div>
+        <div class="slider-row">
+            <label>Y-POSITION: <span id="valY">0</span></label>
+            <input type="range" id="yOff" min="-500" max="500" value="0" oninput="document.getElementById('valY').innerText=this.value">
+        </div>
+        <div class="slider-row">
+            <label>TRAIL TIME: <span id="valT">0.5</span>s</label>
+            <input type="range" id="trailT" min="0.1" max="1.0" step="0.1" value="0.5" oninput="document.getElementById('valT').innerText=this.value">
+        </div>
+    </div>
+
+    <div class="select-group">
+        <p><b>4. ART STYLE</b></p>
         <button id="sDefault" class="btn btn-active" onclick="setStyle('default')">SOLID WHITE</button>
         <button id="sNeon" class="btn" onclick="setStyle('neon')">NEON GLOW</button>
         <button id="sImp" class="btn" onclick="setStyle('impression')">IMPRESSIONIST</button>
     </div>
 
-    <div class="slider-row">
-        <label>TRAIL TIME: <span id="valT">0.5</span>s</label>
-        <input type="range" id="trailT" min="0.1" max="1.0" step="0.1" value="0.5" oninput="document.getElementById('valT').innerText=this.value">
-    </div>
-
-    <p><b>4. ASSET LOAD</b></p>
+    <p><b>5. ASSETS</b></p>
     <button class="btn" style="border-color:#ffcc00; color:#ffcc00;" onclick="document.getElementById('fIn').click()">📁 LOAD FONT</button>
     <input type="file" id="fIn" accept=".ttf,.otf" style="display:none" onchange="handleFont(this.files)">
     <button class="btn" onclick="document.getElementById('mIn').click()">🎵 LOAD MP3</button>
@@ -101,10 +112,8 @@
 
     function draw() {
         background(0);
-        // 보색 가이드 테두리
         push(); noFill(); stroke(340, 80, 100); strokeWeight(10); rect(-width/2, -height/2, width, height); pop();
 
-        // [v3.128 핵심 고정] 폰트 안전 검사
         drawStars();
 
         if (!isFontReady || !myFont) return; 
@@ -122,7 +131,13 @@
 
         if (visualMode === 'wave') drawIllustWave(bass, waveSplashY);
 
-        if (currentSub !== "") renderMasterText(currentSub, bass);
+        // UI 설정값 실시간 반영
+        let fSize = parseInt(document.getElementById('fSize').value);
+        let yPos = parseInt(document.getElementById('yOff').value);
+
+        if (currentSub && currentSub !== "") {
+            renderMasterText(currentSub, bass, fSize, yPos);
+        }
 
         renderParticles();
     }
@@ -136,7 +151,6 @@
         pop();
     }
 
-    // 일러스트 스타일 파도 로직 (Foam 효과 추가)
     function drawIllustWave(bass, splash) {
         push(); translate(-width/2, height/2.2 - splash, -100);
         for(let j=0; j<6; j++) {
@@ -148,9 +162,8 @@
                 let x = map(i, 0, 30, 0, width);
                 let waveH = sin(i * 0.35 + frameCount * 0.07 + j) * (40 + bass * 0.5);
                 vertex(x, waveH);
-                // 파도 끝에 하얀 포영(Foam) 포인트 추가
                 if (j === 0 && i % 2 === 0) {
-                    push(); fill(0, 0, 100, 80); ellipse(x, waveH - 5, 4, 4); pop();
+                    push(); fill(0, 0, 100, 80); ellipse(x, waveH - 5, 5, 5); pop();
                 }
             }
             vertex(width, height);
@@ -159,16 +172,16 @@
         pop();
     }
 
-    function renderMasterText(txt, bass) {
-        // [v3.128 핵심 고정] 함수 진입 시점에도 폰트 재검사
-        if (!myFont) return; 
+    function renderMasterText(txt, bass, fSize, yPos) {
+        // [v3.138] Null 참조 방어 로직 강화
+        if (!txt || typeof txt !== 'string' || !myFont) return; 
         
         push();
-        translate(0, 0, 150);
-        textFont(myFont); // 텍스트 그리기 직전 폰트 재지정
+        translate(0, yPos, 150);
+        textFont(myFont);
         textAlign(CENTER, CENTER);
-        textSize(110);
-        fill(255); // 화이트 고정
+        textSize(fSize);
+        fill(255); 
 
         if (artStyle === 'neon') {
             for(let i=0; i<3; i++) {
@@ -184,7 +197,9 @@
 
         if (isVertical) {
             let chars = txt.split('');
-            chars.forEach((c, i) => text(c, 0, (i - chars.length/2) * 130));
+            chars.forEach((c, i) => {
+                if(c) text(c, 0, (i - chars.length/2) * (fSize * 1.1));
+            });
         } else {
             text(txt, 0, 0);
         }
@@ -205,7 +220,7 @@
     function changeRatio(w, h, id) { canvasW = w; canvasH = h; resizeCanvas(w, h); document.querySelectorAll('[id^="r1"]').forEach(b => b.classList.remove('btn-active')); document.getElementById(id).classList.add('btn-active'); initStars(); initParticles(); }
     
     function handleFont(f) { 
-        isFontReady = false; // 새 폰트 로드 시 잠시 플래그 내림
+        isFontReady = false; 
         myFont = loadFont(URL.createObjectURL(f[0]), () => { 
             isFontReady = true; 
             document.getElementById('status').innerText = "Font Success.";
@@ -217,7 +232,7 @@
     function tToS(t) { let a = t.split(':'), s = a[2].split(','); return (+a[0])*3600 + (+a[1])*60 + (+s[0]) + (+s[1]/1000); }
     function updateSubtitles(t) { let f = subtitles.find(s => t >= s.start && t <= s.end); currentSub = f ? f.text : ""; }
     function startEngine() { if (audio && !audio.isPlaying()) { userStartAudio().then(() => { startRecording(); audio.play(); }); } }
-    function startRecording() { recordedChunks = []; let stream = document.querySelector('canvas').captureStream(60); recorder = new MediaRecorder(stream, { mimeType: 'video/mp4; codecs=avc1' }); recorder.ondataavailable = e => recordedChunks.push(e.data); recorder.onstop = () => { let blob = new Blob(recordedChunks, { type: 'video/mp4' }); let a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `VFX_Production_v3128.mp4`; a.click(); }; recorder.start(); }
+    function startRecording() { recordedChunks = []; let stream = document.querySelector('canvas').captureStream(60); recorder = new MediaRecorder(stream, { mimeType: 'video/mp4; codecs=avc1' }); recorder.ondataavailable = e => recordedChunks.push(e.data); recorder.onstop = () => { let blob = new Blob(recordedChunks, { type: 'video/mp4' }); let a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `VFX_Ultimate_v3138.mp4`; a.click(); }; recorder.start(); }
     function stopRecording() { if(recorder) recorder.stop(); }
 </script>
 </body>
