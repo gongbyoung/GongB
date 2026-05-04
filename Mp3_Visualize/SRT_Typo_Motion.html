@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>TYPO MASTER v3.078 — Artistic Wave Edition</title>
+    <title>TYPO VFX MASTER v3.088 — Full Recovery</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <style>
@@ -22,10 +22,10 @@
 
 <div id="canvas-container"></div>
 <div id="panel">
-    <h3 style="color:white; margin-top:0;">MASTER v3.078</h3>
+    <h3 style="color:white; margin-top:0;">PRODUCTION v3.088</h3>
     
     <div class="select-group">
-        <p><b>1. LAYOUT</b></p>
+        <p><b>1. LAYOUT & RATIO</b></p>
         <button id="vSrt" class="btn" onclick="toggleVertical()">↕️ VERTICAL MODE: OFF</button>
         <div style="display:flex; gap:4px; margin-top:5px;">
             <button id="r169" class="btn btn-active" onclick="changeRatio(1280, 720, 'r169')">16:9</button>
@@ -35,17 +35,17 @@
 
     <div class="select-group">
         <p><b>2. TEXT ART STYLE</b></p>
-        <button id="sDefault" class="btn btn-active" onclick="setStyle('default')">SOLID STANDARD</button>
+        <button id="sDefault" class="btn btn-active" onclick="setStyle('default')">SOLID WHITE</button>
         <button id="sPastel" class="btn" onclick="setStyle('pastel')">SOFT PASTEL</button>
-        <button id="sNeon" class="btn" onclick="setStyle('neon')">NEON EMISSION</button>
+        <button id="sNeon" class="btn" onclick="setStyle('neon')">NEON GLOW</button>
         <button id="sImp" class="btn" onclick="setStyle('impression')">IMPRESSIONIST</button>
     </div>
 
     <div class="select-group">
-        <p><b>3. COLOR & PALETTE</b></p>
-        <button id="pRandom" class="btn btn-active" onclick="setPalette('random')">RANDOM COLOR</button>
-        <button id="pBW" class="btn" onclick="setPalette('bw')">MONO B&W</button>
-        <button id="pSepia" class="btn" onclick="setPalette('sepia')">CLASSIC SEPIA</button>
+        <p><b>3. COLOR PALETTE</b></p>
+        <button id="pRandom" class="btn btn-active" onclick="setPalette('random')">RANDOM</button>
+        <button id="pBW" class="btn" onclick="setPalette('bw')">B&W</button>
+        <button id="pSepia" class="btn" onclick="setPalette('sepia')">SEPIA</button>
     </div>
 
     <div class="slider-row">
@@ -66,7 +66,7 @@
 
 <script>
     let audio, fft, myFont, subtitles = [], currentSub = "", lastSub = "";
-    let particles = [], visualMode = 'wave', artStyle = 'default', colorPalette = 'random';
+    let particles = [], stars = [], artStyle = 'default', colorPalette = 'random';
     let isFontReady = false, isVertical = false, canvasW = 1280, canvasH = 720;
     let recorder, recordedChunks = [];
 
@@ -75,7 +75,15 @@
         cnv.parent('canvas-container');
         colorMode(HSB, 360, 100, 100, 100);
         fft = new p5.FFT(0.8, 512);
+        initStars();
         initParticles();
+    }
+
+    function initStars() {
+        stars = [];
+        for (let i = 0; i < 500; i++) {
+            stars.push({ x: random(-width, width), y: random(-height, height), z: random(-1200, -400), s: random(1, 3) });
+        }
     }
 
     function initParticles() {
@@ -84,8 +92,7 @@
             particles.push({
                 x: random(-width, width), y: random(-height, height), z: random(-800, -200),
                 hx: random(-width, width), hy: random(-height, height), hz: random(-800, -200),
-                tx: 0, ty: 0, tz: 0, curScale: 0.1, tScale: 0.1, history: [], assigned: false,
-                hue: random(360)
+                tx: 0, ty: 0, tz: 0, tScale: 0.1, curScale: 0.1, history: [], assigned: false, hue: random(360)
             });
         }
     }
@@ -112,7 +119,7 @@
         background(0);
         if (!isFontReady || !myFont) return;
 
-        // 보색 프레임 가이드
+        // 1. 보색 프레임 가이드
         push(); noFill(); stroke(340, 80, 100); strokeWeight(10);
         rect(-width/2, -height/2, width, height); pop();
 
@@ -124,21 +131,23 @@
         let mid = fft.getEnergy("mid");
         let treble = fft.getEnergy("treble");
 
-        // 레퍼런스 스타일의 레이어드 파도
+        // 2. 밤하늘 복구
+        drawStarField();
+
+        // 3. 레이어드 파도 (레퍼런스 이미지 기반)
         drawLayeredWaves(bass, mid, treble);
 
-        let fSize = 100;
+        let fSize = 120;
         let trailTime = parseFloat(document.getElementById('trailT').value);
         
         particles.forEach(p => p.assigned = false);
         
         if (currentSub !== "") {
-            // 수직/수평 폰트 경로 추출
             let pts = [];
             if (isVertical) {
                 let chars = currentSub.split('');
                 chars.forEach((c, i) => {
-                    let charPts = myFont.textToPoints(c, -fSize/2, (i - chars.length/2) * fSize * 1.2, fSize, { sampleFactor: 0.1 });
+                    let charPts = myFont.textToPoints(c, -fSize/2, (i - chars.length/2) * fSize * 1.3, fSize, { sampleFactor: 0.1 });
                     pts.push(...charPts);
                 });
             } else {
@@ -153,18 +162,17 @@
                 }
             });
 
-            // 자막 글자에 직접 아트 스타일 적용
+            // 4. 자막 글자에 직접 아트 스타일 적용 (가시성 확보)
             renderArtText(currentSub, fSize, bass);
         }
 
-        // 입자 및 트레일 렌더링
+        // 5. 입자 및 트레일 렌더링
         particles.forEach(p => {
             if (p.assigned) {
                 p.x = lerp(p.x, p.tx, 0.12); p.y = lerp(p.y, p.ty, 0.12); p.z = lerp(p.z, p.tz, 0.12);
-                p.curScale = lerp(p.curScale, p.tScale, 0.1);
+                p.curScale = lerp(p.curScale, 1.0, 0.1);
                 p.history.push({x:p.x, y:p.y, z:p.z});
                 if(p.history.length > trailTime*60) p.history.shift();
-                
                 noFill(); stroke(getPaletteColor(p.hue, 40)); 
                 beginShape(); p.history.forEach(h => vertex(h.x, h.y, h.z)); endShape();
             } else {
@@ -174,39 +182,50 @@
         });
     }
 
+    function drawStarField() {
+        push();
+        noStroke();
+        for (let s of stars) {
+            fill(0, 0, 100, 40);
+            push(); translate(s.x, s.y, s.z); ellipse(0, 0, s.s, s.s); pop();
+        }
+        pop();
+    }
+
     function renderArtText(txt, fSize, bass) {
         push();
-        translate(0, 0, 105);
+        translate(0, 0, 105); // 입자보다 살짝 앞에 배치
         let c = getPaletteColor(200, 100);
         
+        // 폰트가 검게 보이지 않도록 색상 강제 지정
         if (artStyle === 'neon') {
-            drawingContext.shadowBlur = 25 + bass * 0.3;
-            drawingContext.shadowColor = str(getPaletteColor(200, 100));
+            drawingContext.shadowBlur = 30 + bass * 0.4;
+            drawingContext.shadowColor = 'white';
             fill(255);
         } else if (artStyle === 'pastel') {
-            fill(hue(c), 30, 95, 90);
+            fill(hue(c), 30, 95, 95);
         } else if (artStyle === 'impression') {
-            noFill(); stroke(hue(c), 70, 90, 70); strokeWeight(2);
+            fill(hue(c), 70, 95, 60);
             for(let i=0; i<3; i++) {
-                push(); translate(random(-3, 3), random(-3, 3));
-                drawTextContent(txt, fSize); pop();
+                push(); translate(random(-4, 4), random(-4, 4));
+                drawTextBase(txt, fSize); pop();
             }
-            fill(hue(c), 70, 90, 40);
+            fill(255, 90);
         } else {
-            fill(255);
+            fill(255); // 기본 화이트
         }
 
         noStroke();
         textAlign(CENTER, CENTER);
-        drawTextContent(txt, fSize);
+        drawTextBase(txt, fSize);
         pop();
     }
 
-    function drawTextContent(txt, fSize) {
+    function drawTextBase(txt, fSize) {
         textSize(fSize);
         if (isVertical) {
             let chars = txt.split('');
-            chars.forEach((c, i) => text(c, 0, (i - chars.length/2) * fSize * 1.2));
+            chars.forEach((c, i) => text(c, 0, (i - chars.length/2) * fSize * 1.3));
         } else {
             text(txt, 0, 0);
         }
@@ -216,15 +235,12 @@
         push(); translate(-width/2, height/4, -300);
         noFill(); strokeWeight(2);
         for (let j = 0; j < 6; j++) {
-            let h = map(j, 0, 5, 190, 240);
-            stroke(h, 80, 100, 40 - j*5);
+            stroke(200 + j*10, 80, 100, 50 - j*5);
             beginShape();
             for (let i = 0; i <= 40; i++) {
                 let x = map(i, 0, 40, 0, width);
-                let freq = 0.05 + j * 0.01;
-                let amp = (bass * 0.5) + (mid * (j/10)) + (treble * 0.1);
-                let y = sin(i * freq + frameCount * 0.05 + j) * amp;
-                vertex(x, y + j * 25);
+                let y = sin(i * 0.1 + frameCount * 0.05 + j) * (40 + bass*0.3 + mid*0.1);
+                vertex(x, y + j * 30);
             }
             endShape();
         }
@@ -241,6 +257,7 @@
         canvasW = w; canvasH = h; resizeCanvas(w, h);
         document.querySelectorAll('[id^="r169"], [id^="r916"]').forEach(b => b.classList.remove('btn-active'));
         document.getElementById(id).classList.add('btn-active');
+        initStars(); initParticles();
     }
 
     function handleFont(f) { myFont = loadFont(URL.createObjectURL(f[0]), () => isFontReady = true); }
@@ -267,7 +284,7 @@
         recorder.onstop = () => {
             let blob = new Blob(recordedChunks, { type: 'video/mp4' });
             let a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-            a.download = `VFX_Final_v3078.mp4`; a.click();
+            a.download = `VFX_Production_v3088.mp4`; a.click();
         };
         recorder.start();
     }
