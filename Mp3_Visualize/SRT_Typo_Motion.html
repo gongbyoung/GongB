@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>TYPO VFX MASTER v3.188 — Tidal Sweep</title>
+    <title>TYPO VFX MASTER v3.198 — Robust Loader</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <style>
@@ -22,7 +22,7 @@
 
 <div id="canvas-container"></div>
 <div id="panel">
-    <h3 style="color:white; margin-top:0;">PRODUCTION v3.188</h3>
+    <h3 style="color:white; margin-top:0;">PRODUCTION v3.198</h3>
     
     <div class="select-group">
         <p><b>1. VISUAL MODE</b></p>
@@ -80,15 +80,8 @@
     let stars = [], particles = [], visualMode = 'star', artStyle = 'default';
     let isFontReady = false, isVertical = false, canvasW = 1280, canvasH = 720;
     
-    // 파도 스윕(Sweep) 로직 변수
-    let sweepPhase = 0; 
-    let sweepProgress = 0; 
-    let sweepDir = 1; 
-    let textSwapped = false;
-
-    // UI 변경 감지 변수
+    let sweepPhase = 0, sweepProgress = 0, sweepDir = 1, textSwapped = false;
     let lastFSize = 120, lastYPos = 0, lastIsVertical = false;
-
     let recorder, recordedChunks = [];
 
     function setup() {
@@ -105,7 +98,7 @@
         for (let i = 0; i < 500; i++) {
             stars.push({ 
                 x: random(-width, width), y: random(-height, height), z: random(-1200, -500), 
-                vx: random(-1, 1), vy: random(-1, 1), // Issue 4: 유영 속도
+                vx: random(-1, 1), vy: random(-1, 1),
                 s: random(1.5, 4), glintSpeed: random(0.02, 0.06), glintOffset: random(TWO_PI)
             });
         }
@@ -124,7 +117,7 @@
 
     function draw() {
         background(0);
-        drawStars(); // 1. 배경 밤하늘 렌더링
+        drawStars(); // 밤하늘 유지
 
         if (!isFontReady || !myFont) return;
 
@@ -140,60 +133,49 @@
         let yPos = parseInt(document.getElementById('yOff').value);
         let isPort = canvasH > canvasW; 
 
-        // 2. 자막 전환 감지 및 스윕(Sweep) 발동 로직
         if (currentLogicalSub !== nextSub) {
             nextSub = currentLogicalSub;
             if (visualMode === 'wave') {
-                sweepPhase = 1;
-                sweepProgress = 0;
-                sweepDir = random() > 0.5 ? 1 : -1; // 좌->우 또는 우->좌
+                sweepPhase = 1; sweepProgress = 0;
+                sweepDir = random() > 0.5 ? 1 : -1; 
                 textSwapped = false;
             } else {
-                // 파도 모드가 아니면 즉시 변경
                 displaySub = nextSub;
                 updateTextParticles(fSize, yPos);
             }
         }
 
-        // 스윕 프로그레스 및 자막 은폐 교체 로직
         if (sweepPhase === 1) {
-            sweepProgress += 0.04; // 파도가 휩쓰는 속도
+            sweepProgress += 0.04; 
             if (sweepProgress >= 0.5 && !textSwapped) {
-                // [Issue 2] 파도가 화면을 완전히 가렸을 때 자막 교체
                 textSwapped = true;
                 displaySub = nextSub;
                 updateTextParticles(fSize, yPos);
-                // 겹침 방지 (자막 교체 시 파티클 즉시 스냅)
                 particles.forEach(p => { if (p.assigned) { p.x = p.tx; p.y = p.ty; p.history = []; } });
             }
             if (sweepProgress >= 1.0) {
-                sweepPhase = 0;
-                sweepProgress = 0;
+                sweepPhase = 0; sweepProgress = 0;
             }
         }
 
-        // 3. UI 변경 감지 (실시간 레이아웃 반영 및 겹침 방지)
         if (fSize !== lastFSize || isVertical !== lastIsVertical || yPos !== lastYPos) {
             updateTextParticles(fSize, yPos);
             if (isVertical !== lastIsVertical) {
-                // [Issue 3] 가로/세로 전환 시 파티클 겹침 버그 차단
                 particles.forEach(p => { if(p.assigned) { p.x = p.tx; p.y = p.ty; p.history = []; } });
             }
             lastFSize = fSize; lastIsVertical = isVertical; lastYPos = yPos;
         }
 
-        // 4. 렌더링 파이프라인
         if (visualMode === 'wave') {
-            drawIllustWave(bass, mid, true, isPort); // Z: -50 (뒤쪽 0~4번 파도)
+            drawIllustWave(bass, mid, true, isPort); 
             if (displaySub !== "") renderMasterText(displaySub, bass, fSize, yPos);
-            renderParticles(); // 트레일
-            drawIllustWave(bass, mid, false, isPort); // Z: 100 (앞쪽 5번 파도 - 단독 스윕)
+            renderParticles(); 
+            drawIllustWave(bass, mid, false, isPort); 
         } else {
             if (displaySub !== "") renderMasterText(displaySub, bass, fSize, yPos);
             renderParticles();
         }
 
-        // 가이드 테두리
         push(); noFill(); stroke(340, 80, 100, 50); strokeWeight(5); translate(0,0,200); rect(-width/2, -height/2, width, height); pop();
     }
 
@@ -228,7 +210,6 @@
         });
     }
 
-    // [Issue 4] 유영 및 반짝임 로직 강화
     function drawStars() {
         push(); noStroke();
         for (let s of stars) {
@@ -243,9 +224,8 @@
         pop();
     }
 
-    // [Issue 2, 6] 제일 앞 파도 하나의 단독 스윕 로직
     function drawIllustWave(bass, mid, isBack, isPort) {
-        let startLayer = isBack ? 0 : 5; // 뒤쪽은 0~4, 앞쪽은 5(가장 앞)
+        let startLayer = isBack ? 0 : 5; 
         let endLayer = isBack ? 5 : 6;
         let waveLen = isPort ? height : width;
 
@@ -270,20 +250,18 @@
                 let waveH = -sin(i * 0.3 + frameCount * 0.05 + j) * (30 + bass * 0.4 + mid * 0.2) * noiseVal;
                 
                 let sweepY = 0;
-                // 오직 가장 앞쪽 파도(j=5)만 화면을 가리는 스플래시 연출을 수행함
                 if (!isBack && j === 5 && sweepPhase === 1) {
                     let px = map(sweepProgress, 0, 1, -waveLen*0.8, waveLen*0.8);
                     if (sweepDir === -1) px = map(sweepProgress, 0, 1, waveLen*0.8, -waveLen*0.8);
                     let dist = abs(x - px);
-                    let peakH = isPort ? width * 1.6 : height * 1.6; // 화면을 완전히 덮는 높이
+                    let peakH = isPort ? width * 1.6 : height * 1.6; 
                     let spread = waveLen * 0.45;
-                    let cover = exp(-sq(dist)/sq(spread)); // 거대한 종 모양의 파도 마루
+                    let cover = exp(-sq(dist)/sq(spread)); 
                     sweepY = -peakH * cover;
                 }
 
                 vertex(x, waveH - (j * 20) + sweepY);
                 
-                // 최상단 포영(거품)
                 if (!isBack && j === 5 && i % 2 === 0) {
                     push(); fill(0, 0, 100, 90); ellipse(x, waveH - (j*20) + sweepY - 10, 8, 8); pop();
                 }
@@ -317,7 +295,6 @@
         pop();
     }
 
-    // [Issue 1, 5, 7] 트레일 영구 동작 및 글자 반짝임 로직
     function renderParticles() {
         let trailStr = parseFloat(document.getElementById('trailT').value);
         particles.forEach(p => {
@@ -330,13 +307,11 @@
             p.history.push(createVector(p.x, p.y, p.z));
             if (p.history.length > 25) p.history.shift();
 
-            // 트레일
             if (p.history.length > 1) {
                 noFill(); stroke(p.hue, 60, 100, 50 * trailStr); strokeWeight(2.5 * trailStr);
                 beginShape(); for (let v of p.history) vertex(v.x, v.y, v.z); endShape();
             }
 
-            // 입자 반짝임
             push(); translate(p.x, p.y, p.z); 
             if (p.assigned) {
                 let alpha = map(sin(frameCount * 0.2 + p.hue), -1, 1, 30, 100);
@@ -352,13 +327,16 @@
     function toggleVertical() { isVertical = !isVertical; let btn = document.getElementById('vSrt'); btn.innerText = isVertical ? "↕️ VERTICAL MODE: ON" : "↕️ VERTICAL MODE: OFF"; btn.classList.toggle('btn-active'); }
     function setStyle(s) { artStyle = s; document.querySelectorAll('[id^="s"]').forEach(b => b.classList.remove('btn-active')); let tId = s === 'impression' ? 'sImp' : (s === 'neon' ? 'sNeon' : 'sDefault'); document.getElementById(tId).classList.add('btn-active'); }
     function changeRatio(w, h, id) { canvasW = w; canvasH = h; resizeCanvas(w, h); document.querySelectorAll('[id^="r1"]').forEach(b => b.classList.remove('btn-active')); document.getElementById(id).classList.add('btn-active'); initStars(); initParticles(); }
-    function handleFont(f) { isFontReady = false; myFont = loadFont(URL.createObjectURL(f[0]), () => isFontReady = true); }
-    function handleAudio(f) { audio = loadSound(URL.createObjectURL(f[0]), () => audio.onended(stopRecording)); }
-    function handleSRT(f) { const reader = new FileReader(); reader.onload = (e) => { subtitles = parseSRT(e.target.result); document.getElementById('startBtn').disabled = false; }; reader.readAsText(f[0]); }
+    
+    // [Issue Fix] 방어 로직 (빈 파일 처리)
+    function handleFont(f) { if(!f || f.length===0) return; isFontReady = false; myFont = loadFont(URL.createObjectURL(f[0]), () => isFontReady = true); }
+    function handleAudio(f) { if(!f || f.length===0) return; audio = loadSound(URL.createObjectURL(f[0]), () => audio.onended(stopRecording)); }
+    function handleSRT(f) { if(!f || f.length===0) return; const reader = new FileReader(); reader.onload = (e) => { subtitles = parseSRT(e.target.result); document.getElementById('startBtn').disabled = false; }; reader.readAsText(f[0]); }
+    
     function parseSRT(d) { const regex = /(\d+)\n(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\n([\s\S]*?)(?=\n{2}|\n*$)/g; let m, r = []; while ((m = regex.exec(d)) !== null) r.push({ start: tToS(m[2]), end: tToS(m[3]), text: m[4].trim() }); return r; }
     function tToS(t) { let a = t.split(':'), s = a[2].split(','); return (+a[0])*3600 + (+a[1])*60 + (+s[0]) + (+s[1]/1000); }
     function startEngine() { if (audio && !audio.isPlaying()) { userStartAudio().then(() => { startRecording(); audio.play(); }); } }
-    function startRecording() { recordedChunks = []; let stream = document.querySelector('canvas').captureStream(60); recorder = new MediaRecorder(stream, { mimeType: 'video/mp4; codecs=avc1' }); recorder.ondataavailable = e => recordedChunks.push(e.data); recorder.onstop = () => { let blob = new Blob(recordedChunks, { type: 'video/mp4' }); let a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `VFX_Ultimate_v3188.mp4`; a.click(); }; recorder.start(); }
+    function startRecording() { recordedChunks = []; let stream = document.querySelector('canvas').captureStream(60); recorder = new MediaRecorder(stream, { mimeType: 'video/mp4; codecs=avc1' }); recorder.ondataavailable = e => recordedChunks.push(e.data); recorder.onstop = () => { let blob = new Blob(recordedChunks, { type: 'video/mp4' }); let a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `VFX_Robust_v3198.mp4`; a.click(); }; recorder.start(); }
     function stopRecording() { if(recorder) recorder.stop(); }
 </script>
 </body>
