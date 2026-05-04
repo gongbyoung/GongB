@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>TYPO VFX MASTER v3.148 — Vector Precision</title>
+    <title>TYPO VFX MASTER v3.158 — Fluid Depth</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
     <style>
@@ -22,7 +22,7 @@
 
 <div id="canvas-container"></div>
 <div id="panel">
-    <h3 style="color:white; margin-top:0;">PRODUCTION v3.148</h3>
+    <h3 style="color:white; margin-top:0;">PRODUCTION v3.158</h3>
     
     <div class="select-group">
         <p><b>1. VISUAL MODE</b></p>
@@ -52,8 +52,8 @@
             <input type="range" id="yOff" min="-500" max="500" value="0" oninput="document.getElementById('valY').innerText=this.value">
         </div>
         <div class="slider-row">
-            <label>TRAIL TIME: <span id="valT">0.5</span>s</label>
-            <input type="range" id="trailT" min="0.1" max="1.0" step="0.1" value="0.5" oninput="document.getElementById('valT').innerText=this.value">
+            <label>TRAIL STRENGTH: <span id="valT">0.8</span></label>
+            <input type="range" id="trailT" min="0.1" max="2.0" step="0.1" value="0.8" oninput="document.getElementById('valT').innerText=this.value">
         </div>
     </div>
 
@@ -79,7 +79,7 @@
     let audio, fft, myFont, subtitles = [], currentSub = "", lastSub = "";
     let stars = [], particles = [], visualMode = 'star', artStyle = 'default';
     let isFontReady = false, isVertical = false, canvasW = 1280, canvasH = 720;
-    let waveRevealY = 0, recorder, recordedChunks = [];
+    let waveSurge = 0, recorder, recordedChunks = [];
 
     function setup() {
         let cnv = createCanvas(canvasW, canvasH, WEBGL);
@@ -92,8 +92,8 @@
 
     function initStars() {
         stars = [];
-        for (let i = 0; i < 800; i++) {
-            stars.push({ x: random(-width, width), y: random(-height, height), z: random(-1200, -300), s: random(1, 3) });
+        for (let i = 0; i < 600; i++) {
+            stars.push({ x: random(-width, width), y: random(-height, height), z: random(-1200, -500), s: random(1, 3) });
         }
     }
 
@@ -101,8 +101,8 @@
         particles = [];
         for (let i = 0; i < 2000; i++) {
             particles.push({
-                x: random(-width, width), y: random(-height, height), z: random(-1000, -500),
-                hx: random(-width, width), hy: random(-height, height), hz: random(-1000, -500),
+                x: random(-width, width), y: random(-height, height), z: random(-1000, -400),
+                hx: random(-width, width), hy: random(-height, height), hz: random(-1000, -400),
                 tx: 0, ty: 0, tz: 0, history: [], assigned: false, hue: random(180, 240)
             });
         }
@@ -110,35 +110,45 @@
 
     function draw() {
         background(0);
-        push(); noFill(); stroke(340, 80, 100); strokeWeight(10); rect(-width/2, -height/2, width, height); pop();
-
-        // 배경 밤하늘 상시 렌더링
+        
+        // 1. 최하단 배경: 별무리
         drawStars();
 
-        if (!isFontReady || !myFont) return; 
+        if (!isFontReady || !myFont) return;
 
         let curTime = audio ? audio.currentTime() : 0;
         updateSubtitles(curTime);
         fft.analyze();
         let bass = fft.getEnergy("bass");
+        let mid = fft.getEnergy("mid");
 
-        // 자막 변경 시 파도 리빌 트리거
+        // 자막 변경 감지 및 파도 선행 서지(Surge)
         if (currentSub !== lastSub) {
-            if (visualMode === 'wave') waveRevealY = height * 1.3;
+            if (visualMode === 'wave') waveSurge = height * 1.4; 
             lastSub = currentSub;
         }
-        waveRevealY = lerp(waveRevealY, 0, 0.08);
-
-        if (visualMode === 'wave') drawIllustWave(bass, waveRevealY);
+        waveSurge = lerp(waveSurge, 0, 0.06);
 
         let fSize = parseInt(document.getElementById('fSize').value);
         let yPos = parseInt(document.getElementById('yOff').value);
 
-        if (currentSub !== "") {
-            renderMasterText(currentSub, bass, fSize, yPos);
+        if (visualMode === 'wave') {
+            // 2. 뒤쪽 파도 (Z: -50)
+            drawIllustWave(bass, mid, waveSurge, true);
+            
+            // 3. 자막 본체 및 트레일 (Z: 0)
+            if (currentSub !== "") renderMasterText(currentSub, bass, fSize, yPos);
+            renderParticles();
+            
+            // 4. 앞쪽 파도 (Z: 100) -> 자막을 부분적으로 덮어 물 사이에서 나오는 연출
+            drawIllustWave(bass, mid, waveSurge, false);
+        } else {
+            if (currentSub !== "") renderMasterText(currentSub, bass, fSize, yPos);
+            renderParticles();
         }
 
-        renderParticles();
+        // 가이드 테두리 (최상단)
+        push(); noFill(); stroke(340, 80, 100, 50); strokeWeight(5); translate(0,0,200); rect(-width/2, -height/2, width, height); pop();
     }
 
     function drawStars() {
@@ -149,22 +159,35 @@
         pop();
     }
 
-    function drawIllustWave(bass, splash) {
-        push(); translate(-width/2, height/2 - splash, -100);
-        for(let j=0; j<6; j++) {
-            let h = map(j, 0, 5, 210, 185);
-            fill(h, 90, 100 - j*12, 85); noStroke();
+    // 일러스트 파도: 뒤쪽(back)과 앞쪽(front) 레이어 분리
+    function drawIllustWave(bass, mid, surge, isBack) {
+        let startLayer = isBack ? 3 : 0;
+        let endLayer = isBack ? 6 : 3;
+
+        push();
+        translate(-width/2, height/2.2 - surge, isBack ? -50 : 100);
+        
+        for(let j = startLayer; j < endLayer; j++) {
+            let h = map(j, 0, 5, 210, 180);
+            // 앞쪽일수록 더 밝고 투명도를 낮춤
+            fill(h, 90, isBack ? 60 : 100, isBack ? 95 : 70); 
+            noStroke();
+            
             beginShape();
-            vertex(0, height);
-            for(let i=0; i<=30; i++) {
-                let x = map(i, 0, 30, 0, width);
-                let waveH = sin(i * 0.4 + frameCount * 0.07 + j) * (35 + bass * 0.45);
-                vertex(x, waveH);
-                if (j === 0 && i % 3 === 0) {
-                    push(); fill(0, 0, 100, 70); ellipse(x, waveH - 4, 6, 6); pop();
+            vertex(0, height * 2);
+            for(let i=0; i<=40; i++) {
+                let x = map(i, 0, 40, 0, width);
+                // 주파수 + 노이즈로 유기적인 일렁임
+                let noiseVal = noise(i * 0.1, j, frameCount * 0.02);
+                let waveH = sin(i * 0.3 + frameCount * 0.05 + j) * (30 + bass * 0.4 + mid * 0.2) * noiseVal;
+                vertex(x, waveH - (j * 20));
+                
+                // 파도 거품 포인트 (최상단 레이어에만)
+                if (!isBack && j === 0 && i % 2 === 0) {
+                    push(); fill(0, 0, 100, 90); ellipse(x, waveH - 10, 8, 8); pop();
                 }
             }
-            vertex(width, height);
+            vertex(width, height * 2);
             endShape(CLOSE);
         }
         pop();
@@ -173,22 +196,22 @@
     function renderMasterText(txt, bass, fSize, yPos) {
         if (!txt || !myFont) return;
         push();
-        translate(0, yPos, 150);
+        translate(0, yPos, 0); // 메인 뎁스
         textFont(myFont);
         textAlign(CENTER, CENTER);
         textSize(fSize);
-        fill(255); // 폰트 컬러 강제 화이트 (가시성)
+        fill(255); 
 
         if (artStyle === 'neon') {
             for(let i=0; i<3; i++) {
-                fill(255, 30); text(txt, random(-3,3), random(-3,3));
+                fill(255, 40); text(txt, random(-4,4), random(-4,4));
             }
             fill(255);
         } else if (artStyle === 'impression') {
             for(let i=0; i<5; i++) {
-                fill(random(190, 230), 60, 100, 50); text(txt, random(-6,6), random(-6,6));
+                fill(random(180, 240), 70, 100, 60); text(txt, random(-8,8), random(-8,8));
             }
-            fill(255, 80);
+            fill(255, 90);
         }
 
         if (isVertical) {
@@ -203,30 +226,31 @@
     }
 
     function renderParticles() {
-        let trailTime = parseFloat(document.getElementById('trailT').value);
+        let trailStr = parseFloat(document.getElementById('trailT').value);
         particles.forEach(p => {
-            p.x = lerp(p.x, p.hx, 0.04); p.y = lerp(p.y, p.hy, 0.04); p.z = lerp(p.z, p.hz, 0.04);
-            push(); translate(p.x, p.y, p.z); fill(p.hue, 40, 100, 25); noStroke(); ellipse(0,0,2,2); pop();
+            p.x = lerp(p.x, p.hx, 0.03); p.y = lerp(p.y, p.hy, 0.03); p.z = lerp(p.z, p.hz, 0.03);
+            
+            // 트레일 히스토리 관리
+            p.history.push(createVector(p.x, p.y, p.z));
+            if (p.history.length > 20) p.history.shift();
+
+            // 트레일 렌더링 (가시성 강화)
+            if (p.history.length > 1) {
+                noFill();
+                stroke(p.hue, 60, 100, 40 * trailStr);
+                strokeWeight(2 * trailStr);
+                beginShape();
+                for (let v of p.history) vertex(v.x, v.y, v.z);
+                endShape();
+            }
+
+            push(); translate(p.x, p.y, p.z); fill(p.hue, 50, 100, 50); noStroke(); ellipse(0,0,3,3); pop();
         });
     }
 
-    // UI 제어 함수 (ID 매핑 수정됨)
-    function setStyle(s) { 
-        artStyle = s; 
-        document.querySelectorAll('[id^="s"]').forEach(b => b.classList.remove('btn-active'));
-        let targetId = s === 'impression' ? 'sImp' : (s === 'neon' ? 'sNeon' : 'sDefault');
-        document.getElementById(targetId).classList.add('btn-active'); 
-    }
-    
     function setMode(m) { visualMode = m; document.getElementById('mStar').classList.toggle('btn-active', m === 'star'); document.getElementById('mWave').classList.toggle('btn-active', m === 'wave'); }
-    
-    function toggleVertical() { 
-        isVertical = !isVertical; 
-        let btn = document.getElementById('vSrt');
-        btn.innerText = isVertical ? "↕️ VERTICAL MODE: ON" : "↕️ VERTICAL MODE: OFF";
-        btn.classList.toggle('btn-active', isVertical);
-    }
-
+    function toggleVertical() { isVertical = !isVertical; let btn = document.getElementById('vSrt'); btn.innerText = isVertical ? "↕️ VERTICAL MODE: ON" : "↕️ VERTICAL MODE: OFF"; btn.classList.toggle('btn-active'); }
+    function setStyle(s) { artStyle = s; document.querySelectorAll('[id^="s"]').forEach(b => b.classList.remove('btn-active')); let tId = s === 'impression' ? 'sImp' : (s === 'neon' ? 'sNeon' : 'sDefault'); document.getElementById(tId).classList.add('btn-active'); }
     function changeRatio(w, h, id) { canvasW = w; canvasH = h; resizeCanvas(w, h); document.querySelectorAll('[id^="r1"]').forEach(b => b.classList.remove('btn-active')); document.getElementById(id).classList.add('btn-active'); initStars(); initParticles(); }
     function handleFont(f) { isFontReady = false; myFont = loadFont(URL.createObjectURL(f[0]), () => isFontReady = true); }
     function handleAudio(f) { audio = loadSound(URL.createObjectURL(f[0]), () => audio.onended(stopRecording)); }
@@ -235,7 +259,7 @@
     function tToS(t) { let a = t.split(':'), s = a[2].split(','); return (+a[0])*3600 + (+a[1])*60 + (+s[0]) + (+s[1]/1000); }
     function updateSubtitles(t) { let f = subtitles.find(s => t >= s.start && t <= s.end); currentSub = f ? f.text : ""; }
     function startEngine() { if (audio && !audio.isPlaying()) { userStartAudio().then(() => { startRecording(); audio.play(); }); } }
-    function startRecording() { recordedChunks = []; let stream = document.querySelector('canvas').captureStream(60); recorder = new MediaRecorder(stream, { mimeType: 'video/mp4; codecs=avc1' }); recorder.ondataavailable = e => recordedChunks.push(e.data); recorder.onstop = () => { let blob = new Blob(recordedChunks, { type: 'video/mp4' }); let a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `VFX_Layout_v3148.mp4`; a.click(); }; recorder.start(); }
+    function startRecording() { recordedChunks = []; let stream = document.querySelector('canvas').captureStream(60); recorder = new MediaRecorder(stream, { mimeType: 'video/mp4; codecs=avc1' }); recorder.ondataavailable = e => recordedChunks.push(e.data); recorder.onstop = () => { let blob = new Blob(recordedChunks, { type: 'video/mp4' }); let a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `VFX_Fluid_v3158.mp4`; a.click(); }; recorder.start(); }
     function stopRecording() { if(recorder) recorder.stop(); }
 </script>
 </body>
