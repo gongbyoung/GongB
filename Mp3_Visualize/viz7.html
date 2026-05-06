@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SPECTRUM ART LAB v17.1 — Time-Synced Art Master</title>
+<title>SPECTRUM ART LAB v17.2 — Graphite Detail</title>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
 :root{ --bg:#050505; --panel:#0d0d12; --accent:#00ffcc; --border:rgba(255,255,255,0.06); --text:#ffffff; }
@@ -40,8 +40,8 @@ select { width: 100%; background: #000; border: 1px solid #333; color: var(--acc
 <body>
 
 <div class="topbar">
-  <div class="logo">SPECTRUM ART LAB v17.1</div>
-  <div id="statusTag" style="font-size: 10px; color: #555;">TIME-SYNCED ENGINE READY</div>
+  <div class="logo">SPECTRUM ART LAB v17.2</div>
+  <div id="statusTag" style="font-size: 10px; color: #555;">GRAPHITE DETAIL ENGINE READY</div>
 </div>
 
 <div class="container">
@@ -79,7 +79,7 @@ select { width: 100%; background: #000; border: 1px solid #333; color: var(--acc
         <label>PHASE CONTROL <span class="val-label" id="phaseVal">AUTO</span></label>
         <select id="drawingPhase" onchange="document.getElementById('phaseVal').innerText=this.options[this.selectedIndex].text">
             <option value="auto">10% 분할 자동 진행 (Auto to 80%)</option>
-            <option value="sketch">강제: 1. 밑그림 (Sketch)</option>
+            <option value="sketch">강제: 1. 밑그림 (80% Pencil Sketch)</option>
             <option value="coarse">강제: 2. 큰 덩어리 채색 (Coarse)</option>
             <option value="mid">강제: 3. 중간 묘사 (Mid)</option>
             <option value="fine">강제: 4. 세부 묘사 (Fine)</option>
@@ -206,11 +206,10 @@ function updateSamplingBuffer() {
     sCtx.drawImage(sourceImgObj, nx, ny, nw, nh);
     sImageData = sCtx.getImageData(0, 0, samplingCanvas.width, samplingCanvas.height);
     
-    // 강도 높은 엣지 추출 (완벽한 스케치를 위해)
+    // 엣지 추출
     extractEdges(sImageData, edgeCanvas.width, edgeCanvas.height);
 }
 
-// 엣지 추출 알고리즘
 function extractEdges(imageData, width, height) {
     const data = imageData.data;
     const edgeData = new ImageData(width, height);
@@ -219,11 +218,8 @@ function extractEdges(imageData, width, height) {
     for (let y = 1; y < height - 1; y++) {
         for (let x = 1; x < width - 1; x++) {
             const idx = (y * width + x) * 4;
-            // 상하좌우 픽셀과의 명도차 계산
             const diff = Math.abs(data[idx - 4] - data[idx + 4]) + Math.abs(data[idx - width * 4] - data[idx + width * 4]);
-            
             eData[idx] = 0; eData[idx+1] = 0; eData[idx+2] = 0;
-            // 엣지가 선명한 부분만 255 처리
             eData[idx+3] = diff > 40 ? 255 : 0; 
         }
     }
@@ -281,18 +277,16 @@ function drawProgressiveArt(amp, progress) {
     
     let currentPhase = manualPhase;
     
-    // 10% 단위의 완벽한 80% 종료 파이프라인
     if (manualPhase === 'auto') {
-        if (progress <= 0.10) currentPhase = 'sketch';         // 0~10%: 밑그림
-        else if (progress <= 0.20) currentPhase = 'coarse';    // 10~20%: 큰 덩어리
-        else if (progress <= 0.40) currentPhase = 'mid';       // 20~40%: 중간 요소
-        else if (progress <= 0.60) currentPhase = 'fine';      // 40~60%: 세부 묘사
-        else if (progress <= 0.70) currentPhase = 'light_shadow';// 60~70%: 빛과 그림자
-        else if (progress <= 0.80) currentPhase = 'finish';    // 70~80%: 마무리
-        else currentPhase = 'done';                            // 80% 이후: 완료 (그림 멈춤)
+        if (progress <= 0.10) currentPhase = 'sketch';         
+        else if (progress <= 0.20) currentPhase = 'coarse';    
+        else if (progress <= 0.40) currentPhase = 'mid';       
+        else if (progress <= 0.60) currentPhase = 'fine';      
+        else if (progress <= 0.70) currentPhase = 'light_shadow';
+        else if (progress <= 0.80) currentPhase = 'finish';    
+        else currentPhase = 'done';                            
     }
 
-    // 80%가 넘어가면 렌더링 중지 (완성 감상)
     if (currentPhase === 'done') {
         document.getElementById('logPhase').innerText = "COMPLETED (80%+)";
         return; 
@@ -304,7 +298,6 @@ function drawProgressiveArt(amp, progress) {
     for(let i=0; i < numBrushes; i++) {
         let targetX, targetY;
         
-        // 전체 캔버스를 기준으로 그림
         if (drawDir === 'global') {
             targetX = Math.random() * canvas.width;
             targetY = Math.random() * canvas.height;
@@ -342,20 +335,37 @@ function paintArt(x, y, amp, phase) {
     ctx.save();
     ctx.translate(x, y);
 
-    // 1. 순수 윤곽선 스케치 (랜덤 터치 완전 차단)
+    // --- [v17.2 수정] 80% 밀도 수준의 정밀 흑백 연필화 (Sketch) ---
     if (phase === 'sketch') {
         const isEdge = eImageData && eImageData.data[idx+3] > 128;
-        if (isEdge) {
-            ctx.strokeStyle = `rgba(100, 100, 100, ${0.3 + amp*0.5})`; // 흑연 연필색
-            ctx.lineWidth = (0.5 + amp) * pScale;
-            const len = (5 + Math.random() * 10) * pScale;
-            ctx.rotate(Math.random() * Math.PI);
+        const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+        
+        // 외곽선은 100% 긋고, 명암(어두운 곳)일수록 그릴 확률 증가 (밀도 80% 달성을 위한 Shading)
+        const drawProbability = isEdge ? 1.0 : (1.0 - (luminance / 255) * 0.9);
+
+        if (Math.random() < drawProbability) {
+            // 어두울수록 더 진한 흑연 색상 적용
+            const pencilTone = luminance * 0.5; 
+            ctx.strokeStyle = `rgba(${pencilTone}, ${pencilTone}, ${pencilTone}, ${0.5 + amp*0.5})`;
+            ctx.lineWidth = (0.5 + amp) * pScale * 1.5; 
+
+            // 해칭 (일정 각도를 유지하는 사선 빗금)
+            const angle = (Math.PI / 4) + (Math.random() * 0.3 - 0.15); 
+            ctx.rotate(angle);
+
+            const len = (4 + Math.random() * 10) * pScale;
             ctx.beginPath(); ctx.moveTo(-len, 0); ctx.lineTo(len, 0); ctx.stroke();
+
+            // 교차 해칭 (아주 어두운 곳에 교차하는 선을 추가해 밀도와 입체감 부여)
+            if (luminance < 120 && Math.random() < 0.6) {
+                ctx.rotate(Math.PI / 2 + (Math.random()*0.2));
+                ctx.beginPath(); ctx.moveTo(-len*0.7, 0); ctx.lineTo(len*0.7, 0); ctx.stroke();
+            }
         }
         ctx.restore();
-        return; // 스케치 단계에서는 다른 채색을 하지 않음
+        return; // 스케치 중엔 채색 안 함
     } 
-    // 2. 단계별 붓 속성 정의
+    // --- 컬러링 파이프라인 (이전 기능 동일하게 유지) ---
     else if (phase === 'coarse') {
         pScale *= 4.5; 
         ctx.globalAlpha = 0.15; 
@@ -378,15 +388,14 @@ function paintArt(x, y, amp, phase) {
             ctx.globalAlpha = 0.9;
             r*=0.6; g*=0.6; b*=0.6;
         } else {
-            ctx.restore(); return; // 중간톤 제외
+            ctx.restore(); return; 
         }
     } 
     else if (phase === 'finish') {
-        pScale *= 0.5; // 마무리 잔터치
+        pScale *= 0.5; 
         ctx.globalAlpha = 1.0;
     }
 
-    // 3. 브러시 렌더링
     let brushSize = (3 + amp * 20) * pScale;
 
     switch(style) {
@@ -436,7 +445,6 @@ function paintArt(x, y, amp, phase) {
             break;
     }
     
-    // 커스텀 브러시
     if(customBrushImg && style === 'point') {
         const size = brushSize * 2;
         tCtx.globalCompositeOperation = 'source-over';
