@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SPECTRUM ART LAB v15.0.21 — Fine Art Studio</title>
+<title>SPECTRUM ART LAB v16.1 — Total Integration</title>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
 :root{ --bg:#050505; --panel:#0d0d12; --accent:#00ffcc; --border:rgba(255,255,255,0.06); --text:#ffffff; }
@@ -40,7 +40,7 @@ select { width: 100%; background: #000; border: 1px solid #333; color: var(--acc
 <body>
 
 <div class="topbar">
-  <div class="logo">SPECTRUM ART LAB v15.0.21</div>
+  <div class="logo">SPECTRUM ART LAB v16.1</div>
   <div id="statusTag" style="font-size: 10px; color: #555;">FINE ART ENGINE READY</div>
 </div>
 
@@ -66,7 +66,39 @@ select { width: 100%; background: #000; border: 1px solid #333; color: var(--acc
     <button class="btn" style="border-color: #ffcc00; color: #ffcc00;" onclick="document.getElementById('bIn').click()">LOAD CUSTOM PNG ALPHA</button>
     <input type="file" id="bIn" accept="image/png" style="display:none" onchange="handleBrushPNG(this.files)">
 
-    <h3>3. Image Transform</h3>
+    <h3>3. Progressive Drawing</h3>
+    <div class="control-group">
+      <label>DRAWING DIRECTION</label>
+      <select id="drawDirection">
+          <option value="diagonal">좌상 → 우하 (Diagonal)</option>
+          <option value="horizontal">좌 → 우 (Horizontal)</option>
+          <option value="vertical">상 → 하 (Vertical)</option>
+          <option value="random">무작위 (Random Scatter)</option>
+      </select>
+    </div>
+    <div class="control-group">
+        <label>PHASE <span class="val-label" id="phaseVal">AUTO</span></label>
+        <select id="drawingPhase" onchange="document.getElementById('phaseVal').innerText=this.options[this.selectedIndex].text">
+            <option value="auto">자동 진행 (Auto-Progression)</option>
+            <option value="sketch">강제: 스케치 (Edge Sketch)</option>
+            <option value="coarse">강제: 초벌 (Coarse Paint)</option>
+            <option value="fine">강제: 세밀화 (Fine Detail)</option>
+        </select>
+    </div>
+
+    <div class="log-panel" style="margin-top: 10px;">
+      <div>STYLE: <b id="logStyle">POINT</b></div>
+      <div>AMP: <b id="logAmp">0.00</b></div>
+      <div>PHASE: <b id="logPhase" style="color:var(--accent);">WAITING</b></div>
+    </div>
+  </div>
+
+  <div class="viz-area">
+    <canvas id="artCanvas"></canvas>
+  </div>
+
+  <div class="side-panel right">
+    <h3>4. Image Transform</h3>
     <div class="control-group">
       <label>IMAGE OFFSET X / Y</label>
       <input type="range" id="imgX" min="-500" max="500" value="0" oninput="updateSamplingBuffer(); clearCanvas();">
@@ -77,18 +109,7 @@ select { width: 100%; background: #000; border: 1px solid #333; color: var(--acc
       <input type="range" id="imgScale" min="0.5" max="3.0" step="0.1" value="1.0" oninput="document.getElementById('imgScaleVal').innerText=this.value; updateSamplingBuffer(); clearCanvas();">
     </div>
 
-    <div class="log-panel" style="margin-top: 10px;">
-      <div>STYLE: <b id="logStyle">POINT</b></div>
-      <div>AMP: <b id="logAmp">0.00</b></div>
-    </div>
-  </div>
-
-  <div class="viz-area">
-    <canvas id="artCanvas"></canvas>
-  </div>
-
-  <div class="side-panel right">
-    <h3>4. Rendering FX</h3>
+    <h3>5. Rendering FX</h3>
     <div class="control-group">
       <label>DENSITY <span class="val-label" id="densityVal">100</span></label>
       <input type="range" id="density" min="1" max="800" value="100" oninput="document.getElementById('densityVal').innerText=this.value">
@@ -106,7 +127,7 @@ select { width: 100%; background: #000; border: 1px solid #333; color: var(--acc
       <input type="range" id="trailPower" min="0" max="0.2" step="0.005" value="0.00" oninput="document.getElementById('trailVal').innerText=this.value">
     </div>
 
-    <h3>5. Canvas Settings</h3>
+    <h3>6. Canvas Settings</h3>
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom:15px;">
         <button class="btn active" id="b169" onclick="setAspect('16:9')">16:9</button>
         <button class="btn" id="b916" onclick="setAspect('9:16')">9:16</button>
@@ -126,23 +147,27 @@ select { width: 100%; background: #000; border: 1px solid #333; color: var(--acc
 <div class="playbar">
     <div class="progress-container">
         <span id="currTime">00:00</span>
-        <input type="range" id="progBar" value="0" min="0" max="100" step="0.1">
+        <input type="range" id="progBar" value="0" min="0" max="100" step="0.1" onchange="seekAudio(this.value)">
         <span id="totalTime">00:00</span>
     </div>
 </div>
 
 <script>
 let aspect = '16:9', audioCtx, analyser, source, audioBuffer, isPlaying = false, startTime = 0, pauseOffset = 0;
-let lastPaintTime = 0, sourceImgObj = null, customBrushImg = null;
+let sourceImgObj = null, customBrushImg = null;
 let mediaRecorder, recordedChunks = [];
 
-const canvas = document.getElementById('artCanvas'), ctx = canvas.getContext('2d');
-const samplingCanvas = document.createElement('canvas'), sCtx = samplingCanvas.getContext('2d');
+const canvas = document.getElementById('artCanvas'), ctx = canvas.getContext('2d', { alpha: false });
+const samplingCanvas = document.createElement('canvas'), sCtx = samplingCanvas.getContext('2d', { willReadFrequently: true });
 const tintCanvas = document.createElement('canvas'), tCtx = tintCanvas.getContext('2d');
+const edgeCanvas = document.createElement('canvas'), eCtx = edgeCanvas.getContext('2d', { willReadFrequently: true });
+
+let sImageData = null;
+let eImageData = null;
 
 function handleBrushPNG(files) {
     const img = new Image();
-    img.onload = () => { customBrushImg = img; tintCanvas.width = img.width; tintCanvas.height = img.height; document.getElementById('logBrush').innerText = "CUSTOM ALPHA"; };
+    img.onload = () => { customBrushImg = img; tintCanvas.width = img.width; tintCanvas.height = img.height; document.getElementById('statusTag').innerText = "CUSTOM ALPHA LOADED"; };
     img.src = URL.createObjectURL(files[0]);
 }
 
@@ -158,8 +183,8 @@ function handleImage(files) {
 
 function updateSamplingBuffer() {
     if(!sourceImgObj) return;
-    samplingCanvas.width = canvas.width;
-    samplingCanvas.height = canvas.height;
+    samplingCanvas.width = canvas.width; samplingCanvas.height = canvas.height;
+    edgeCanvas.width = canvas.width; edgeCanvas.height = canvas.height;
     
     const imgScale = parseFloat(document.getElementById('imgScale').value);
     const mX = parseInt(document.getElementById('imgX').value);
@@ -168,7 +193,6 @@ function updateSamplingBuffer() {
     sCtx.fillStyle = "black";
     sCtx.fillRect(0, 0, samplingCanvas.width, samplingCanvas.height);
     
-    // 비율 유지 계산 (Fit to Width/Height)
     const ratio = Math.min(canvas.width / sourceImgObj.width, canvas.height / sourceImgObj.height) * imgScale;
     const nw = sourceImgObj.width * ratio;
     const nh = sourceImgObj.height * ratio;
@@ -176,23 +200,40 @@ function updateSamplingBuffer() {
     const ny = (canvas.height - nh) / 2 + mY;
     
     sCtx.drawImage(sourceImgObj, nx, ny, nw, nh);
+    sImageData = sCtx.getImageData(0, 0, samplingCanvas.width, samplingCanvas.height);
+    extractEdges(sImageData, edgeCanvas.width, edgeCanvas.height);
+}
+
+// 윤곽선(Edge) 추출 엔진
+function extractEdges(imageData, width, height) {
+    const data = imageData.data;
+    const edgeData = new ImageData(width, height);
+    const eData = edgeData.data;
+
+    for (let y = 1; y < height - 1; y++) {
+        for (let x = 1; x < width - 1; x++) {
+            const idx = (y * width + x) * 4;
+            const diff = Math.abs(data[idx - 4] - data[idx + 4]) + Math.abs(data[idx - width * 4] - data[idx + width * 4]);
+            
+            eData[idx] = 0; eData[idx+1] = 0; eData[idx+2] = 0;
+            eData[idx+3] = diff > 40 ? 255 : 0; 
+        }
+    }
+    eCtx.putImageData(edgeData, 0, 0);
+    eImageData = eCtx.getImageData(0, 0, width, height);
 }
 
 function clearCanvas() {
     ctx.fillStyle = document.getElementById('canvasBg').value;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    // 밑그림 확인 모드 (시작 전이나 체크 버튼 시에만)
     if(sourceImgObj && !isPlaying) {
         ctx.save(); ctx.globalAlpha = 0.2;
         ctx.drawImage(samplingCanvas, 0, 0);
         ctx.restore();
     }
-    
-    // 경계선 가이드
     ctx.strokeStyle = document.getElementById('boundaryColor').value;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(1, 1, canvas.width-2, canvas.height-2);
+    ctx.lineWidth = 1; ctx.strokeRect(1, 1, canvas.width-2, canvas.height-2);
 }
 
 function animate() {
@@ -200,10 +241,13 @@ function animate() {
     requestAnimationFrame(animate);
 
     const nowTime = audioCtx.currentTime - startTime;
+    let progress = 0;
+
     if (audioBuffer) {
-        document.getElementById('progBar').value = (nowTime / audioBuffer.duration) * 100;
+        progress = nowTime / audioBuffer.duration;
+        document.getElementById('progBar').value = progress * 100;
         document.getElementById('currTime').textContent = formatTime(nowTime);
-        document.getElementById('totalTime').textContent = formatTime(audioBuffer.duration);
+        if(progress >= 1) { togglePlay(); return; }
     }
 
     const trail = parseFloat(document.getElementById('trailPower').value);
@@ -217,52 +261,128 @@ function animate() {
     const amp = (data.reduce((a, b) => a + b, 0) / data.length) / 255;
     document.getElementById('logAmp').innerText = amp.toFixed(2);
 
-    if (amp > 0.05) { 
-        const density = parseInt(document.getElementById('density').value);
-        for(let i=0; i < Math.floor(amp * (density/5)); i++) {
-            const x = Math.random() * canvas.width;
-            const y = Math.random() * canvas.height;
-            paintArt(amp, x, y);
-        }
+    if (amp > 0.05 && sImageData) { 
+        drawProgressiveArt(amp, progress);
     }
 }
 
-function paintArt(amp, x, y) {
-    const style = document.getElementById('artStyle').value;
-    const imgData = sCtx.getImageData(x, y, 1, 1).data;
-    let r = imgData[0], g = imgData[1], b = imgData[2], a = imgData[3] / 255;
+function drawProgressiveArt(amp, progress) {
+    const density = parseInt(document.getElementById('density').value);
+    const drawDir = document.getElementById('drawDirection').value;
+    let manualPhase = document.getElementById('drawingPhase').value;
     
-    if(a < 0.1 && sourceImgObj) return; // 이미지 없는 영역은 스킵
+    let currentPhase = manualPhase;
+    if (manualPhase === 'auto') {
+        if (progress < 0.2) currentPhase = 'sketch';
+        else if (progress < 0.6) currentPhase = 'coarse';
+        else currentPhase = 'fine';
+    }
+    document.getElementById('logPhase').innerText = currentPhase.toUpperCase();
+
+    let basePathX = 0, basePathY = 0, scatterRange = 0;
+
+    switch(drawDir) {
+        case 'diagonal':
+            basePathX = progress * canvas.width;
+            basePathY = progress * canvas.height;
+            scatterRange = canvas.width * 0.35;
+            break;
+        case 'horizontal':
+            basePathX = progress * canvas.width;
+            basePathY = canvas.height / 2;
+            scatterRange = canvas.height;
+            break;
+        case 'vertical':
+            basePathX = canvas.width / 2;
+            basePathY = progress * canvas.height;
+            scatterRange = canvas.width;
+            break;
+        case 'random':
+            basePathX = canvas.width / 2;
+            basePathY = canvas.height / 2;
+            scatterRange = Math.max(canvas.width, canvas.height) * 2;
+            break;
+    }
+
+    const numBrushes = Math.floor(amp * (density / 5));
+    for(let i=0; i < numBrushes; i++) {
+        let targetX, targetY;
+        
+        if (drawDir === 'horizontal') {
+             targetX = basePathX + (Math.random() - 0.5) * canvas.width * 0.3;
+             targetY = Math.random() * canvas.height;
+        } else if (drawDir === 'vertical') {
+             targetX = Math.random() * canvas.width;
+             targetY = basePathY + (Math.random() - 0.5) * canvas.height * 0.3;
+        } else {
+             targetX = basePathX + (Math.random() - 0.5) * scatterRange;
+             targetY = basePathY + (Math.random() - 0.5) * scatterRange;
+        }
+
+        targetX = Math.max(0, Math.min(canvas.width - 1, Math.floor(targetX)));
+        targetY = Math.max(0, Math.min(canvas.height - 1, Math.floor(targetY)));
+
+        paintArt(targetX, targetY, amp, currentPhase);
+    }
+}
+
+function paintArt(x, y, amp, phase) {
+    const idx = (y * canvas.width + x) * 4;
+    const sData = sImageData.data;
+    
+    let r = sData[idx], g = sData[idx+1], b = sData[idx+2], a = sData[idx+3] / 255;
+    if(a < 0.1 && sourceImgObj) return;
 
     const bright = parseFloat(document.getElementById('brightness').value);
-    const pScale = parseFloat(document.getElementById('paintScale').value);
-    
+    let pScale = parseFloat(document.getElementById('paintScale').value);
     r = Math.min(255, r * bright); g = Math.min(255, g * bright); b = Math.min(255, b * bright);
+
+    const style = document.getElementById('artStyle').value;
 
     ctx.save();
     ctx.translate(x, y);
-    
+
+    // 1. 스케치 (윤곽선) 단계
+    if (phase === 'sketch') {
+        const isEdge = eImageData && eImageData.data[idx+3] > 128;
+        if (isEdge || Math.random() > 0.96) {
+            ctx.strokeStyle = `rgba(150, 150, 150, ${0.1 + amp*0.5})`;
+            ctx.lineWidth = (0.5 + amp) * pScale;
+            const len = (5 + Math.random() * 15) * pScale;
+            ctx.rotate(Math.random() * Math.PI);
+            ctx.beginPath(); ctx.moveTo(-len, 0); ctx.lineTo(len, 0); ctx.stroke();
+        }
+        ctx.restore();
+        return;
+    }
+
+    // 2. 초벌(Coarse) vs 세밀(Fine) 스케일 및 투명도 조정
+    if (phase === 'coarse') {
+        pScale *= 3;
+        ctx.globalAlpha = 0.3;
+    } else {
+        ctx.globalAlpha = 1.0;
+    }
+
+    // 기존 7가지 브러시 렌더링
     switch(style) {
         case 'point':
             ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.8)`;
             const rad = (1 + amp * 20) * pScale;
             ctx.beginPath(); ctx.arc(0, 0, rad, 0, Math.PI*2); ctx.fill();
             break;
-            
         case 'impression':
             ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.7)`;
             ctx.rotate(Math.random() * Math.PI);
             ctx.fillRect(-(10*pScale), -(2*pScale), (10 + amp*80)*pScale, (2 + amp*15)*pScale);
             break;
-            
         case 'grayscale':
             const gray = 0.299*r + 0.587*g + 0.114*b;
             ctx.fillStyle = `rgba(${gray}, ${gray}, ${gray}, 0.8)`;
             ctx.beginPath(); ctx.arc(0, 0, (2+amp*15)*pScale, 0, Math.PI*2); ctx.fill();
             break;
-            
         case 'watercolor':
-            ctx.globalAlpha = 0.15;
+            ctx.globalAlpha *= 0.15;
             ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
             for(let j=0; j<2; j++) {
                 ctx.beginPath();
@@ -270,7 +390,6 @@ function paintArt(amp, x, y) {
                 ctx.fill();
             }
             break;
-            
         case 'oil':
             ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.9)`;
             ctx.lineWidth = (5 + amp * 25) * pScale;
@@ -278,7 +397,6 @@ function paintArt(amp, x, y) {
             ctx.rotate(Math.random() * 0.5);
             ctx.beginPath(); ctx.moveTo(-10, 0); ctx.lineTo(10 + amp*40, 0); ctx.stroke();
             break;
-            
         case 'pencil':
             ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.3)`;
             ctx.lineWidth = 0.5 * pScale;
@@ -287,7 +405,6 @@ function paintArt(amp, x, y) {
                 ctx.beginPath(); ctx.moveTo(-20, -20); ctx.lineTo(20, 20); ctx.stroke();
             }
             break;
-            
         case 'pastel':
             ctx.shadowBlur = (5 + amp * 20) * pScale;
             ctx.shadowColor = `rgb(${r}, ${g}, ${b})`;
@@ -296,7 +413,7 @@ function paintArt(amp, x, y) {
             break;
     }
     
-    // 만약 커스텀 PNG가 로드되어 있다면 틴팅해서 덧씌움
+    // 기존 커스텀 PNG 렌더링 완전 복구 (점묘 모드 전용)
     if(customBrushImg && style === 'point') {
         const size = (10 + amp * 100) * pScale;
         tCtx.globalCompositeOperation = 'source-over';
@@ -317,18 +434,31 @@ async function togglePlay() {
 
     if(isPlaying) {
         isPlaying = false; source.stop(); if(mediaRecorder) mediaRecorder.stop();
-        document.getElementById('playBtn').textContent = "START PERFORMANCE";
+        document.getElementById('playBtn').textContent = "START ART PERFORMANCE";
     } else {
         source = audioCtx.createBufferSource(); source.buffer = audioBuffer;
         analyser = audioCtx.createAnalyser(); analyser.fftSize = 512;
         source.connect(analyser); analyser.connect(audioCtx.destination);
-        source.start(0, pauseOffset); startTime = audioCtx.currentTime - pauseOffset;
-        isPlaying = true; document.getElementById('playBtn').textContent = "STOP & SAVE MP4";
-        updateSamplingBuffer();
-        ctx.fillStyle = document.getElementById('canvasBg').value;
-        ctx.fillRect(0,0,canvas.width,canvas.height); // 시작 시 밑그림 지우고 깨끗하게 시작
+        
+        const prog = document.getElementById('progBar').value;
+        pauseOffset = (prog / 100) * audioBuffer.duration;
+        
+        source.start(0, pauseOffset); 
+        startTime = audioCtx.currentTime - pauseOffset;
+        isPlaying = true; 
+        document.getElementById('playBtn').textContent = "STOP & SAVE MP4";
+        
+        if(pauseOffset === 0) {
+            updateSamplingBuffer();
+            clearCanvas();
+        }
+        
         animate(); startRecording();
     }
+}
+
+function seekAudio(val) {
+    if(isPlaying) togglePlay().then(() => togglePlay());
 }
 
 function startRecording() {
@@ -339,8 +469,8 @@ function startRecording() {
     mediaRecorder.onstop = () => {
         const blob = new Blob(recordedChunks, { type: 'video/mp4' });
         const now = new Date();
-        const dateStr = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0') + "_" + String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0') + String(now.getSeconds()).padStart(2, '0');
-        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `Spectrum_${dateStr}.mp4`; a.click();
+        const dateStr = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0') + "_" + String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0');
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `SpectrumArt_${dateStr}.mp4`; a.click();
     };
     mediaRecorder.start();
 }
