@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SPECTRUM ART LAB v16.1 — Total Integration</title>
+<title>SPECTRUM ART LAB v17.0 — True Progressive</title>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
 :root{ --bg:#050505; --panel:#0d0d12; --accent:#00ffcc; --border:rgba(255,255,255,0.06); --text:#ffffff; }
@@ -40,8 +40,8 @@ select { width: 100%; background: #000; border: 1px solid #333; color: var(--acc
 <body>
 
 <div class="topbar">
-  <div class="logo">SPECTRUM ART LAB v16.1</div>
-  <div id="statusTag" style="font-size: 10px; color: #555;">FINE ART ENGINE READY</div>
+  <div class="logo">SPECTRUM ART LAB v17.0</div>
+  <div id="statusTag" style="font-size: 10px; color: #555;">TRUE PROGRESSIVE ENGINE READY</div>
 </div>
 
 <div class="container">
@@ -66,23 +66,25 @@ select { width: 100%; background: #000; border: 1px solid #333; color: var(--acc
     <button class="btn" style="border-color: #ffcc00; color: #ffcc00;" onclick="document.getElementById('bIn').click()">LOAD CUSTOM PNG ALPHA</button>
     <input type="file" id="bIn" accept="image/png" style="display:none" onchange="handleBrushPNG(this.files)">
 
-    <h3>3. Progressive Drawing</h3>
+    <h3>3. Real Painting Phase</h3>
     <div class="control-group">
-      <label>DRAWING DIRECTION</label>
+      <label>DRAWING FOCUS</label>
       <select id="drawDirection">
-          <option value="diagonal">좌상 → 우하 (Diagonal)</option>
-          <option value="horizontal">좌 → 우 (Horizontal)</option>
-          <option value="vertical">상 → 하 (Vertical)</option>
-          <option value="random">무작위 (Random Scatter)</option>
+          <option value="global">전체 캔버스 (Global Scatter)</option>
+          <option value="diagonal">좌상 → 우하 방향성 (Diagonal)</option>
+          <option value="horizontal">좌 → 우 방향성 (Horizontal)</option>
       </select>
     </div>
     <div class="control-group">
-        <label>PHASE <span class="val-label" id="phaseVal">AUTO</span></label>
+        <label>PHASE CONTROL <span class="val-label" id="phaseVal">AUTO</span></label>
         <select id="drawingPhase" onchange="document.getElementById('phaseVal').innerText=this.options[this.selectedIndex].text">
-            <option value="auto">자동 진행 (Auto-Progression)</option>
-            <option value="sketch">강제: 스케치 (Edge Sketch)</option>
-            <option value="coarse">강제: 초벌 (Coarse Paint)</option>
-            <option value="fine">강제: 세밀화 (Fine Detail)</option>
+            <option value="auto">자동 진행 (7-Step Auto)</option>
+            <option value="sketch">1. 밑그림 (Sketch)</option>
+            <option value="coarse">2. 큰 덩어리 채색 (Coarse)</option>
+            <option value="mid">3. 중간 요소 묘사 (Mid)</option>
+            <option value="fine">4. 세부 묘사 (Fine)</option>
+            <option value="light_shadow">5. 빛과 그림자 (Light & Shadow)</option>
+            <option value="finish">6. 마무리 (Finish)</option>
         </select>
     </div>
 
@@ -134,7 +136,7 @@ select { width: 100%; background: #000; border: 1px solid #333; color: var(--acc
     </div>
     <div class="control-group">
       <label>CANVAS BG / BOUNDARY</label>
-      <input type="color" id="canvasBg" value="#000000" oninput="clearCanvas()">
+      <input type="color" id="canvasBg" value="#f4f4f4" oninput="clearCanvas()">
       <input type="color" id="boundaryColor" value="#00ffcc" oninput="clearCanvas()" style="margin-top:5px;">
     </div>
 
@@ -166,12 +168,14 @@ let sImageData = null;
 let eImageData = null;
 
 function handleBrushPNG(files) {
+    if(!files || files.length===0) return;
     const img = new Image();
     img.onload = () => { customBrushImg = img; tintCanvas.width = img.width; tintCanvas.height = img.height; document.getElementById('statusTag').innerText = "CUSTOM ALPHA LOADED"; };
     img.src = URL.createObjectURL(files[0]);
 }
 
 function handleImage(files) {
+    if(!files || files.length===0) return;
     const img = new Image();
     img.onload = () => {
         sourceImgObj = img;
@@ -204,7 +208,7 @@ function updateSamplingBuffer() {
     extractEdges(sImageData, edgeCanvas.width, edgeCanvas.height);
 }
 
-// 윤곽선(Edge) 추출 엔진
+// 윤곽선(Edge) 추출 엔진 (스케치 페이즈 용)
 function extractEdges(imageData, width, height) {
     const data = imageData.data;
     const edgeData = new ImageData(width, height);
@@ -261,7 +265,7 @@ function animate() {
     const amp = (data.reduce((a, b) => a + b, 0) / data.length) / 255;
     document.getElementById('logAmp').innerText = amp.toFixed(2);
 
-    if (amp > 0.05 && sImageData) { 
+    if (amp > 0.03 && sImageData) { 
         drawProgressiveArt(amp, progress);
     }
 }
@@ -272,51 +276,34 @@ function drawProgressiveArt(amp, progress) {
     let manualPhase = document.getElementById('drawingPhase').value;
     
     let currentPhase = manualPhase;
+    // 7단계 실제 작화법 오토 페이즈 로직
     if (manualPhase === 'auto') {
-        if (progress < 0.2) currentPhase = 'sketch';
-        else if (progress < 0.6) currentPhase = 'coarse';
-        else currentPhase = 'fine';
+        if (progress < 0.15) currentPhase = 'sketch';          // 1. 구상 및 밑그림
+        else if (progress < 0.35) currentPhase = 'coarse';     // 2. 큰 덩어리 채색
+        else if (progress < 0.55) currentPhase = 'mid';        // 3. 중간 요소 묘사
+        else if (progress < 0.75) currentPhase = 'fine';       // 4. 세부 묘사
+        else if (progress < 0.90) currentPhase = 'light_shadow';// 5. 빛과 그림자
+        else currentPhase = 'finish';                          // 6. 마무리
     }
     document.getElementById('logPhase').innerText = currentPhase.toUpperCase();
-
-    let basePathX = 0, basePathY = 0, scatterRange = 0;
-
-    switch(drawDir) {
-        case 'diagonal':
-            basePathX = progress * canvas.width;
-            basePathY = progress * canvas.height;
-            scatterRange = canvas.width * 0.35;
-            break;
-        case 'horizontal':
-            basePathX = progress * canvas.width;
-            basePathY = canvas.height / 2;
-            scatterRange = canvas.height;
-            break;
-        case 'vertical':
-            basePathX = canvas.width / 2;
-            basePathY = progress * canvas.height;
-            scatterRange = canvas.width;
-            break;
-        case 'random':
-            basePathX = canvas.width / 2;
-            basePathY = canvas.height / 2;
-            scatterRange = Math.max(canvas.width, canvas.height) * 2;
-            break;
-    }
 
     const numBrushes = Math.floor(amp * (density / 5));
     for(let i=0; i < numBrushes; i++) {
         let targetX, targetY;
         
-        if (drawDir === 'horizontal') {
-             targetX = basePathX + (Math.random() - 0.5) * canvas.width * 0.3;
-             targetY = Math.random() * canvas.height;
-        } else if (drawDir === 'vertical') {
-             targetX = Math.random() * canvas.width;
-             targetY = basePathY + (Math.random() - 0.5) * canvas.height * 0.3;
-        } else {
-             targetX = basePathX + (Math.random() - 0.5) * scatterRange;
-             targetY = basePathY + (Math.random() - 0.5) * scatterRange;
+        // 방향성 제어 (Global Scatter를 기본으로 하여 전체 캔버스 작화)
+        if (drawDir === 'global') {
+            targetX = Math.random() * canvas.width;
+            targetY = Math.random() * canvas.height;
+        } else if (drawDir === 'diagonal') {
+            let lineX = progress * canvas.width;
+            let lineY = progress * canvas.height;
+            targetX = lineX + (Math.random() - 0.5) * canvas.width * 0.4;
+            targetY = lineY + (Math.random() - 0.5) * canvas.height * 0.4;
+        } else if (drawDir === 'horizontal') {
+            let lineX = progress * canvas.width;
+            targetX = lineX + (Math.random() - 0.5) * canvas.width * 0.3;
+            targetY = Math.random() * canvas.height;
         }
 
         targetX = Math.max(0, Math.min(canvas.width - 1, Math.floor(targetX)));
@@ -342,85 +329,108 @@ function paintArt(x, y, amp, phase) {
     ctx.save();
     ctx.translate(x, y);
 
-    // 1. 스케치 (윤곽선) 단계
+    // --- PHASE별 드로잉 속성 정의 (진짜 그림 그리는 순서) ---
     if (phase === 'sketch') {
         const isEdge = eImageData && eImageData.data[idx+3] > 128;
-        if (isEdge || Math.random() > 0.96) {
-            ctx.strokeStyle = `rgba(150, 150, 150, ${0.1 + amp*0.5})`;
+        if (isEdge || Math.random() > 0.98) {
+            ctx.strokeStyle = `rgba(100, 100, 100, ${0.1 + amp*0.5})`; // 연필 느낌
             ctx.lineWidth = (0.5 + amp) * pScale;
-            const len = (5 + Math.random() * 15) * pScale;
+            const len = (10 + Math.random() * 20) * pScale;
             ctx.rotate(Math.random() * Math.PI);
             ctx.beginPath(); ctx.moveTo(-len, 0); ctx.lineTo(len, 0); ctx.stroke();
         }
         ctx.restore();
         return;
-    }
-
-    // 2. 초벌(Coarse) vs 세밀(Fine) 스케일 및 투명도 조정
-    if (phase === 'coarse') {
-        pScale *= 3;
-        ctx.globalAlpha = 0.3;
-    } else {
+    } 
+    else if (phase === 'coarse') {
+        pScale *= 4; // 큰 붓
+        ctx.globalAlpha = 0.15; // 옅은 투명도로 넓게 채움
+    } 
+    else if (phase === 'mid') {
+        pScale *= 2; // 중간 붓
+        ctx.globalAlpha = 0.4;
+    } 
+    else if (phase === 'fine') {
+        pScale *= 1; // 기본 붓
+        ctx.globalAlpha = 0.8;
+    } 
+    else if (phase === 'light_shadow') {
+        // 빛과 그림자 (명암 대비)
+        const luminance = 0.299*r + 0.587*g + 0.114*b;
+        pScale *= 0.8;
+        if (luminance > 180) { // 밝은 곳 (하이라이트)
+            ctx.globalAlpha = 0.9;
+            r=Math.min(255, r*1.2); g=Math.min(255, g*1.2); b=Math.min(255, b*1.2);
+        } else if (luminance < 80) { // 어두운 곳 (그림자)
+            ctx.globalAlpha = 0.9;
+            r*=0.7; g*=0.7; b*=0.7;
+        } else {
+            ctx.restore(); return; // 중간톤은 스킵
+        }
+    } 
+    else if (phase === 'finish') {
+        pScale *= 0.5; // 가장 작은 붓으로 마무리 점찍기/선정리
         ctx.globalAlpha = 1.0;
     }
 
-    // 기존 7가지 브러시 렌더링
+    // --- 스타일별 브러시 모양 렌더링 ---
+    let brushSize = (3 + amp * 20) * pScale;
+
     switch(style) {
         case 'point':
-            ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.8)`;
-            const rad = (1 + amp * 20) * pScale;
-            ctx.beginPath(); ctx.arc(0, 0, rad, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${ctx.globalAlpha})`;
+            ctx.beginPath(); ctx.arc(0, 0, brushSize, 0, Math.PI*2); ctx.fill();
             break;
         case 'impression':
-            ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.7)`;
+            ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${ctx.globalAlpha})`;
             ctx.rotate(Math.random() * Math.PI);
-            ctx.fillRect(-(10*pScale), -(2*pScale), (10 + amp*80)*pScale, (2 + amp*15)*pScale);
+            ctx.fillRect(-(brushSize*1.5), -(brushSize*0.3), brushSize*3, brushSize*0.6);
             break;
         case 'grayscale':
             const gray = 0.299*r + 0.587*g + 0.114*b;
-            ctx.fillStyle = `rgba(${gray}, ${gray}, ${gray}, 0.8)`;
-            ctx.beginPath(); ctx.arc(0, 0, (2+amp*15)*pScale, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = `rgba(${gray}, ${gray}, ${gray}, ${ctx.globalAlpha})`;
+            ctx.beginPath(); ctx.arc(0, 0, brushSize, 0, Math.PI*2); ctx.fill();
             break;
         case 'watercolor':
-            ctx.globalAlpha *= 0.15;
+            ctx.globalAlpha *= 0.3; // 수채화는 더 투명하게
             ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
             for(let j=0; j<2; j++) {
                 ctx.beginPath();
-                ctx.arc((Math.random()-0.5)*10, (Math.random()-0.5)*10, (10 + amp*60)*pScale, 0, Math.PI*2);
+                ctx.arc((Math.random()-0.5)*brushSize, (Math.random()-0.5)*brushSize, brushSize*1.5, 0, Math.PI*2);
                 ctx.fill();
             }
             break;
         case 'oil':
-            ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.9)`;
-            ctx.lineWidth = (5 + amp * 25) * pScale;
+            ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${ctx.globalAlpha})`;
+            ctx.lineWidth = brushSize;
             ctx.lineCap = 'round';
             ctx.rotate(Math.random() * 0.5);
-            ctx.beginPath(); ctx.moveTo(-10, 0); ctx.lineTo(10 + amp*40, 0); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(-brushSize, 0); ctx.lineTo(brushSize*1.5, 0); ctx.stroke();
             break;
         case 'pencil':
-            ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.3)`;
+            ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${ctx.globalAlpha * 0.5})`;
             ctx.lineWidth = 0.5 * pScale;
             for(let k=0; k<3; k++) {
                 ctx.rotate(Math.random()*0.2);
-                ctx.beginPath(); ctx.moveTo(-20, -20); ctx.lineTo(20, 20); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(-brushSize, -brushSize); ctx.lineTo(brushSize, brushSize); ctx.stroke();
             }
             break;
         case 'pastel':
-            ctx.shadowBlur = (5 + amp * 20) * pScale;
+            ctx.shadowBlur = brushSize;
             ctx.shadowColor = `rgb(${r}, ${g}, ${b})`;
-            ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.5)`;
-            ctx.beginPath(); ctx.arc(0, 0, (3 + amp*10)*pScale, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${ctx.globalAlpha * 0.7})`;
+            ctx.beginPath(); ctx.arc(0, 0, brushSize*0.8, 0, Math.PI*2); ctx.fill();
             break;
     }
     
-    // 기존 커스텀 PNG 렌더링 완전 복구 (점묘 모드 전용)
+    // 커스텀 PNG 브러시 렌더링
     if(customBrushImg && style === 'point') {
-        const size = (10 + amp * 100) * pScale;
+        const size = brushSize * 2;
         tCtx.globalCompositeOperation = 'source-over';
         tCtx.clearRect(0,0,tintCanvas.width, tintCanvas.height);
         tCtx.drawImage(customBrushImg, 0, 0);
         tCtx.globalCompositeOperation = 'source-in';
-        tCtx.fillStyle = `rgb(${r},${g},${b})`;
+        tCtx.fillStyle = `rgba(${r},${g},${b}, ${ctx.globalAlpha})`;
         tCtx.fillRect(0,0,tintCanvas.width, tintCanvas.height);
         ctx.drawImage(tintCanvas, -size/2, -size/2, size, size);
     }
@@ -457,10 +467,7 @@ async function togglePlay() {
     }
 }
 
-function seekAudio(val) {
-    if(isPlaying) togglePlay().then(() => togglePlay());
-}
-
+function seekAudio(val) { if(isPlaying) togglePlay().then(() => togglePlay()); }
 function startRecording() {
     recordedChunks = [];
     const stream = canvas.captureStream(30);
@@ -477,6 +484,7 @@ function startRecording() {
 
 function formatTime(s) { const mins = Math.floor(s / 60); const secs = Math.floor(s % 60); return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`; }
 function handleMusic(f) { 
+    if(!f || f.length===0) return;
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const r = new FileReader(); r.onload = (e) => audioCtx.decodeAudioData(e.target.result, (b) => { audioBuffer = b; document.getElementById('totalTime').textContent = formatTime(b.duration); }); r.readAsArrayBuffer(f[0]); 
 }
