@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SPECTRUM ART LAB v17.0 — True Progressive</title>
+<title>SPECTRUM ART LAB v17.1 — Time-Synced Art Master</title>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
 :root{ --bg:#050505; --panel:#0d0d12; --accent:#00ffcc; --border:rgba(255,255,255,0.06); --text:#ffffff; }
@@ -33,15 +33,15 @@ select { width: 100%; background: #000; border: 1px solid #333; color: var(--acc
 .btn.active { border-color: var(--accent); color: var(--accent); background: rgba(0,255,204,0.05); }
 
 .viz-area { position: relative; background: #000; overflow: hidden; flex: 1; display: flex; justify-content: center; align-items: center; }
-#artCanvas { background: #000; }
+#artCanvas { background: #000; box-shadow: 0 0 20px rgba(0,0,0,0.8); }
 .log-panel { background: #000; border: 1px solid #222; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 10px; color: #888; line-height: 1.6; }
 </style>
 </head>
 <body>
 
 <div class="topbar">
-  <div class="logo">SPECTRUM ART LAB v17.0</div>
-  <div id="statusTag" style="font-size: 10px; color: #555;">TRUE PROGRESSIVE ENGINE READY</div>
+  <div class="logo">SPECTRUM ART LAB v17.1</div>
+  <div id="statusTag" style="font-size: 10px; color: #555;">TIME-SYNCED ENGINE READY</div>
 </div>
 
 <div class="container">
@@ -71,20 +71,20 @@ select { width: 100%; background: #000; border: 1px solid #333; color: var(--acc
       <label>DRAWING FOCUS</label>
       <select id="drawDirection">
           <option value="global">전체 캔버스 (Global Scatter)</option>
-          <option value="diagonal">좌상 → 우하 방향성 (Diagonal)</option>
-          <option value="horizontal">좌 → 우 방향성 (Horizontal)</option>
+          <option value="diagonal">좌상 → 우하 (Diagonal)</option>
+          <option value="horizontal">좌 → 우 (Horizontal)</option>
       </select>
     </div>
     <div class="control-group">
         <label>PHASE CONTROL <span class="val-label" id="phaseVal">AUTO</span></label>
         <select id="drawingPhase" onchange="document.getElementById('phaseVal').innerText=this.options[this.selectedIndex].text">
-            <option value="auto">자동 진행 (7-Step Auto)</option>
-            <option value="sketch">1. 밑그림 (Sketch)</option>
-            <option value="coarse">2. 큰 덩어리 채색 (Coarse)</option>
-            <option value="mid">3. 중간 요소 묘사 (Mid)</option>
-            <option value="fine">4. 세부 묘사 (Fine)</option>
-            <option value="light_shadow">5. 빛과 그림자 (Light & Shadow)</option>
-            <option value="finish">6. 마무리 (Finish)</option>
+            <option value="auto">10% 분할 자동 진행 (Auto to 80%)</option>
+            <option value="sketch">강제: 1. 밑그림 (Sketch)</option>
+            <option value="coarse">강제: 2. 큰 덩어리 채색 (Coarse)</option>
+            <option value="mid">강제: 3. 중간 묘사 (Mid)</option>
+            <option value="fine">강제: 4. 세부 묘사 (Fine)</option>
+            <option value="light_shadow">강제: 5. 빛과 그림자 (Light & Shadow)</option>
+            <option value="finish">강제: 6. 마무리 (Finish)</option>
         </select>
     </div>
 
@@ -205,10 +205,12 @@ function updateSamplingBuffer() {
     
     sCtx.drawImage(sourceImgObj, nx, ny, nw, nh);
     sImageData = sCtx.getImageData(0, 0, samplingCanvas.width, samplingCanvas.height);
+    
+    // 강도 높은 엣지 추출 (완벽한 스케치를 위해)
     extractEdges(sImageData, edgeCanvas.width, edgeCanvas.height);
 }
 
-// 윤곽선(Edge) 추출 엔진 (스케치 페이즈 용)
+// 엣지 추출 알고리즘
 function extractEdges(imageData, width, height) {
     const data = imageData.data;
     const edgeData = new ImageData(width, height);
@@ -217,9 +219,11 @@ function extractEdges(imageData, width, height) {
     for (let y = 1; y < height - 1; y++) {
         for (let x = 1; x < width - 1; x++) {
             const idx = (y * width + x) * 4;
+            // 상하좌우 픽셀과의 명도차 계산
             const diff = Math.abs(data[idx - 4] - data[idx + 4]) + Math.abs(data[idx - width * 4] - data[idx + width * 4]);
             
             eData[idx] = 0; eData[idx+1] = 0; eData[idx+2] = 0;
+            // 엣지가 선명한 부분만 255 처리
             eData[idx+3] = diff > 40 ? 255 : 0; 
         }
     }
@@ -276,22 +280,31 @@ function drawProgressiveArt(amp, progress) {
     let manualPhase = document.getElementById('drawingPhase').value;
     
     let currentPhase = manualPhase;
-    // 7단계 실제 작화법 오토 페이즈 로직
+    
+    // 10% 단위의 완벽한 80% 종료 파이프라인
     if (manualPhase === 'auto') {
-        if (progress < 0.15) currentPhase = 'sketch';          // 1. 구상 및 밑그림
-        else if (progress < 0.35) currentPhase = 'coarse';     // 2. 큰 덩어리 채색
-        else if (progress < 0.55) currentPhase = 'mid';        // 3. 중간 요소 묘사
-        else if (progress < 0.75) currentPhase = 'fine';       // 4. 세부 묘사
-        else if (progress < 0.90) currentPhase = 'light_shadow';// 5. 빛과 그림자
-        else currentPhase = 'finish';                          // 6. 마무리
+        if (progress <= 0.10) currentPhase = 'sketch';         // 0~10%: 밑그림
+        else if (progress <= 0.20) currentPhase = 'coarse';    // 10~20%: 큰 덩어리
+        else if (progress <= 0.40) currentPhase = 'mid';       // 20~40%: 중간 요소
+        else if (progress <= 0.60) currentPhase = 'fine';      // 40~60%: 세부 묘사
+        else if (progress <= 0.70) currentPhase = 'light_shadow';// 60~70%: 빛과 그림자
+        else if (progress <= 0.80) currentPhase = 'finish';    // 70~80%: 마무리
+        else currentPhase = 'done';                            // 80% 이후: 완료 (그림 멈춤)
     }
-    document.getElementById('logPhase').innerText = currentPhase.toUpperCase();
+
+    // 80%가 넘어가면 렌더링 중지 (완성 감상)
+    if (currentPhase === 'done') {
+        document.getElementById('logPhase').innerText = "COMPLETED (80%+)";
+        return; 
+    }
+    
+    document.getElementById('logPhase').innerText = currentPhase.toUpperCase() + ` (${(progress*100).toFixed(1)}%)`;
 
     const numBrushes = Math.floor(amp * (density / 5));
     for(let i=0; i < numBrushes; i++) {
         let targetX, targetY;
         
-        // 방향성 제어 (Global Scatter를 기본으로 하여 전체 캔버스 작화)
+        // 전체 캔버스를 기준으로 그림
         if (drawDir === 'global') {
             targetX = Math.random() * canvas.width;
             targetY = Math.random() * canvas.height;
@@ -329,51 +342,51 @@ function paintArt(x, y, amp, phase) {
     ctx.save();
     ctx.translate(x, y);
 
-    // --- PHASE별 드로잉 속성 정의 (진짜 그림 그리는 순서) ---
+    // 1. 순수 윤곽선 스케치 (랜덤 터치 완전 차단)
     if (phase === 'sketch') {
         const isEdge = eImageData && eImageData.data[idx+3] > 128;
-        if (isEdge || Math.random() > 0.98) {
-            ctx.strokeStyle = `rgba(100, 100, 100, ${0.1 + amp*0.5})`; // 연필 느낌
+        if (isEdge) {
+            ctx.strokeStyle = `rgba(100, 100, 100, ${0.3 + amp*0.5})`; // 흑연 연필색
             ctx.lineWidth = (0.5 + amp) * pScale;
-            const len = (10 + Math.random() * 20) * pScale;
+            const len = (5 + Math.random() * 10) * pScale;
             ctx.rotate(Math.random() * Math.PI);
             ctx.beginPath(); ctx.moveTo(-len, 0); ctx.lineTo(len, 0); ctx.stroke();
         }
         ctx.restore();
-        return;
+        return; // 스케치 단계에서는 다른 채색을 하지 않음
     } 
+    // 2. 단계별 붓 속성 정의
     else if (phase === 'coarse') {
-        pScale *= 4; // 큰 붓
-        ctx.globalAlpha = 0.15; // 옅은 투명도로 넓게 채움
+        pScale *= 4.5; 
+        ctx.globalAlpha = 0.15; 
     } 
     else if (phase === 'mid') {
-        pScale *= 2; // 중간 붓
+        pScale *= 2.0; 
         ctx.globalAlpha = 0.4;
     } 
     else if (phase === 'fine') {
-        pScale *= 1; // 기본 붓
+        pScale *= 1.0; 
         ctx.globalAlpha = 0.8;
     } 
     else if (phase === 'light_shadow') {
-        // 빛과 그림자 (명암 대비)
         const luminance = 0.299*r + 0.587*g + 0.114*b;
         pScale *= 0.8;
-        if (luminance > 180) { // 밝은 곳 (하이라이트)
+        if (luminance > 180) { // 하이라이트
             ctx.globalAlpha = 0.9;
             r=Math.min(255, r*1.2); g=Math.min(255, g*1.2); b=Math.min(255, b*1.2);
-        } else if (luminance < 80) { // 어두운 곳 (그림자)
+        } else if (luminance < 80) { // 그림자
             ctx.globalAlpha = 0.9;
-            r*=0.7; g*=0.7; b*=0.7;
+            r*=0.6; g*=0.6; b*=0.6;
         } else {
-            ctx.restore(); return; // 중간톤은 스킵
+            ctx.restore(); return; // 중간톤 제외
         }
     } 
     else if (phase === 'finish') {
-        pScale *= 0.5; // 가장 작은 붓으로 마무리 점찍기/선정리
+        pScale *= 0.5; // 마무리 잔터치
         ctx.globalAlpha = 1.0;
     }
 
-    // --- 스타일별 브러시 모양 렌더링 ---
+    // 3. 브러시 렌더링
     let brushSize = (3 + amp * 20) * pScale;
 
     switch(style) {
@@ -392,7 +405,7 @@ function paintArt(x, y, amp, phase) {
             ctx.beginPath(); ctx.arc(0, 0, brushSize, 0, Math.PI*2); ctx.fill();
             break;
         case 'watercolor':
-            ctx.globalAlpha *= 0.3; // 수채화는 더 투명하게
+            ctx.globalAlpha *= 0.3; 
             ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
             for(let j=0; j<2; j++) {
                 ctx.beginPath();
@@ -423,7 +436,7 @@ function paintArt(x, y, amp, phase) {
             break;
     }
     
-    // 커스텀 PNG 브러시 렌더링
+    // 커스텀 브러시
     if(customBrushImg && style === 'point') {
         const size = brushSize * 2;
         tCtx.globalCompositeOperation = 'source-over';
@@ -468,6 +481,7 @@ async function togglePlay() {
 }
 
 function seekAudio(val) { if(isPlaying) togglePlay().then(() => togglePlay()); }
+
 function startRecording() {
     recordedChunks = [];
     const stream = canvas.captureStream(30);
