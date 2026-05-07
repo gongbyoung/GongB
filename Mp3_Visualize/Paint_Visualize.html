@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>🎵 Music Video Creator</title>
+<title>🎵 Music Video Creator (FHD 24fps)</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Syne:wght@400;600;700;800&display=swap');
 
@@ -262,6 +262,7 @@
     overflow: hidden;
   }
 
+  /* Object-fit contain ensures FHD canvas scales nicely down to UI view */
   #mainCanvas {
     max-width: 100%;
     max-height: 100%;
@@ -352,7 +353,7 @@
 <header>
   <div class="status-dot" id="statusDot"></div>
   <h1>🎵 Music Video Creator</h1>
-  <span style="font-size:0.65rem;color:var(--muted);margin-left:auto;">H.264 MP4 Export (Optimized)</span>
+  <span style="font-size:0.65rem;color:var(--muted);margin-left:auto;">FHD 1080p | 24 FPS Export</span>
 </header>
 
 <div class="layout">
@@ -386,7 +387,7 @@
   </div>
 
   <div class="canvas-area" id="canvasArea">
-    <canvas id="mainCanvas" width="1280" height="720"></canvas>
+    <canvas id="mainCanvas" width="1920" height="1080"></canvas>
 
     <div class="empty-hint" id="emptyHint">
       <div class="big">🎨</div>
@@ -394,7 +395,7 @@
     </div>
 
     <div class="rec-badge" id="recBadge">
-      <div class="rec-dot"></div> REC
+      <div class="rec-dot"></div> REC 24fps
     </div>
 
     <div class="progress-log" id="progressLog"></div>
@@ -658,7 +659,7 @@ function drawVignette(ctx, w, h, strength) {
   grad.addColorStop(1, `rgba(0,0,0,${0.92 * (1-strength) + 0.08})`);
   
   ctx.save();
-  ctx.globalCompositeOperation = 'multiply'; // 조금 더 자연스럽게 덮이도록 변경
+  ctx.globalCompositeOperation = 'multiply'; 
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, w, h);
   ctx.restore();
@@ -678,7 +679,7 @@ let paintState = {};
 function initPaintState() {
   paintState = {};
   slots.filter(s=>s.file).forEach(s => {
-    paintState[s.index] = { progress: 0, strips: buildStrips(1280, 720) };
+    paintState[s.index] = { progress: 0, strips: buildStrips(canvas.width, canvas.height) }; // FHD 동적 해상도 반영
   });
 }
 
@@ -743,8 +744,9 @@ function drawFrame(currentTime) {
   // 4. HUD
   ctx.save();
   ctx.fillStyle = 'rgba(255,255,255,0.7)';
-  ctx.font = '500 14px DM Mono, monospace';
-  ctx.fillText(STYLE_LABELS[sl.style], 20, h - 20);
+  // 캔버스 크기가 커졌으므로 폰트 사이즈도 FHD에 맞게 스케일업
+  ctx.font = '500 26px DM Mono, monospace'; 
+  ctx.fillText(STYLE_LABELS[sl.style], 36, h - 36);
   ctx.restore();
 }
 
@@ -756,7 +758,6 @@ async function startSession() {
   if (!audioFile || slots.filter(s=>s.file).length < 4) return;
 
   initPaintState();
-  // 모든 슬롯의 렌더링 캐시를 초기화(혹시 모를 변경 대비)
   slots.forEach(s => s.preRenderedCanvas = null);
 
   document.getElementById('emptyHint').style.display = 'none';
@@ -767,7 +768,9 @@ async function startSession() {
   document.getElementById('progressLog').classList.add('visible');
   document.getElementById('statusDot').className = 'status-dot recording';
 
-  const stream = canvas.captureStream(30);
+  // FHD 24fps 적용
+  const stream = canvas.captureStream(24);
+  
   const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   const dest = audioCtx.createMediaStreamDestination();
   const source = audioCtx.createMediaElementSource(audioEl);
@@ -784,25 +787,25 @@ async function startSession() {
     'video/webm;codecs=vp8',
     'video/webm'
   ];
-  let chosenMime = 'video/webm'; // fallback 안전장치
+  let chosenMime = 'video/webm'; 
   for (const mt of mimeTypes) {
     if (MediaRecorder.isTypeSupported(mt)) { chosenMime = mt; break; }
   }
 
   recordedChunks = [];
-  mediaRecorder = new MediaRecorder(stream, { mimeType: chosenMime, videoBitsPerSecond: 8000000 });
+  // FHD 고화질 유지를 위해 비트레이트를 15Mbps로 상향
+  mediaRecorder = new MediaRecorder(stream, { mimeType: chosenMime, videoBitsPerSecond: 15000000 });
   mediaRecorder.ondataavailable = e => { if (e.data.size>0) recordedChunks.push(e.data); };
   mediaRecorder.onstop = () => saveRecording(chosenMime);
   mediaRecorder.start(100);
 
-  // Resume context (브라우저 정책)
   if(audioCtx.state === 'suspended') await audioCtx.resume();
   
   audioEl.currentTime = 0;
   audioEl.play();
   isPlaying = true;
 
-  document.getElementById('progressLog').textContent = `🎬 녹화중 — ${chosenMime.split(';')[0]}`;
+  document.getElementById('progressLog').textContent = `🎬 녹화중 (FHD 24fps) — ${chosenMime.split(';')[0]}`;
 
   audioEl.onended = () => stopSession();
 
@@ -837,7 +840,7 @@ function saveRecording(mime) {
   const a = document.createElement('a');
   const now = new Date();
   const pad = n => String(n).padStart(2,'0');
-  const fname = `MusicVideo_${pad(now.getMonth()+1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.${ext}`;
+  const fname = `MusicVideo_FHD_${pad(now.getMonth()+1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.${ext}`;
   a.href = url;
   a.download = fname;
   a.click();
