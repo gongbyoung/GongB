@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>SPECTRUM ART LAB v18.28 — The Absolute Canvas</title>
+<title>ART LAB v18.29 — The Absolute Master</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -11,10 +11,10 @@
 body{ background:var(--bg); color:var(--text); font-family:sans-serif; height:100vh; overflow:hidden; display: flex; flex-direction: column; }
 .topbar{ padding:10px 20px; background:var(--panel); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
 .logo{letter-spacing:4px; color:var(--accent); font-weight:800; font-size:12px;}
-.container { display: grid; grid-template-columns: 350px 1fr 340px; flex: 1; min-height: 0; }
+.container { display: grid; grid-template-columns: 360px 1fr 340px; flex: 1; min-height: 0; }
 .side-panel { background: var(--panel); padding: 15px; overflow-y: auto; border-right: 1px solid var(--border); }
 .side-panel.right { border-right:none; border-left: 1px solid var(--border); }
-.seq-item { background: #16161d; padding: 12px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #222; cursor: pointer; transition: 0.2s; }
+.seq-item { background: #16161d; padding: 12px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #222; cursor: pointer; }
 .seq-item.active { border-color: var(--accent); background: #1a2523; }
 .seq-info { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .time-input { background:#000; border:1px solid #444; color:var(--accent); width:65px; padding:4px; font-size:11px; text-align:center; border-radius:4px; }
@@ -31,34 +31,29 @@ label { font-size: 9px; color: #888; display:block; margin-bottom:3px; margin-to
 <body>
 
 <div class="topbar">
-    <div class="logo">ART LAB v18.28 ABSOLUTE CANVAS</div>
+    <div class="logo">ART LAB v18.29 ABSOLUTE MASTER</div>
     <div id="status" style="font-size:10px; color:var(--accent);">STANDBY</div>
 </div>
 
 <div class="container">
     <div class="side-panel">
-        <h3>1. Audio & Sequence</h3>
-        <button class="btn" onclick="document.getElementById('mIn').click()">🎵 LOAD MP3 AUDIO</button>
+        <h3>1. Sequence</h3>
+        <button class="btn" onclick="document.getElementById('mIn').click()">🎵 LOAD AUDIO</button>
         <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleMusic(this.files)">
         <button class="btn" style="background:var(--accent); color:#000; font-weight:bold; border:none; margin-top:10px;" onclick="document.getElementById('iIn').click()">🖼️ ADD IMAGES</button>
         <input type="file" id="iIn" accept="image/*" style="display:none" onchange="handleImageAdd(this.files)" multiple>
         <div id="sequenceList" style="margin-top:20px;"></div>
     </div>
-
     <div class="viz-area" id="vArea"></div>
-
     <div class="side-panel right">
-        <h3>2. Viewport & Canvas</h3>
-        <div style="display: flex; gap:5px; margin-bottom:10px;">
-            <button class="btn active" id="b169" onclick="setAspect('16:9')">16:9 Landscape</button>
-            <button class="btn" id="b916" onclick="setAspect('9:16')">9:16 Portrait</button>
+        <h3>2. Canvas & Engine</h3>
+        <div style="display: flex; gap:5px; margin-bottom:15px;">
+            <button class="btn active" id="b169" onclick="setAspect('16:9')">16:9</button>
+            <button class="btn" id="b916" onclick="setAspect('9:16')">9:16</button>
         </div>
-        
-        <h3>3. Rendering Engine FX</h3>
         <label>BRUSH SCALE <span class="val-label" id="valBScale">1.5</span></label>
-        <input type="range" id="paintScale" min="0.5" max="5.0" step="0.1" value="1.5" oninput="document.getElementById('valBScale').innerText=this.value">
-        
-        <h3>4. Active Transform</h3>
+        <input type="range" id="paintScale" min="0.5" max="4.0" step="0.1" value="1.5" oninput="document.getElementById('valBScale').innerText=this.value">
+        <h3>3. Active Transform</h3>
         <div id="seqUI" style="opacity: 0.3; pointer-events: none; background:#111; padding:10px; border-radius:8px;">
             <label>IMAGE SCALE <span id="txtS" class="val-label">1.0</span></label>
             <input type="range" id="curScale" min="0.1" max="4.0" step="0.05" value="1.0" oninput="updateCurSeq()">
@@ -67,7 +62,6 @@ label { font-size: 9px; color: #888; display:block; margin-bottom:3px; margin-to
             <label>OFFSET Y <span id="txtY" class="val-label">0</span></label>
             <input type="range" id="curY" min="-800" max="800" value="0" oninput="updateCurSeq()">
         </div>
-
         <button class="btn" id="recBtn" onclick="togglePlay()" style="margin-top:20px; background:#ff3e81; color:white; font-weight:bold; border:none; padding:12px;">🔴 START REC</button>
     </div>
 </div>
@@ -79,20 +73,26 @@ label { font-size: 9px; color: #888; display:block; margin-bottom:3px; margin-to
 </div>
 
 <script>
-let audio, analyser, isPlaying = false, sequences = [], currentActiveIdx = -1;
+let audio, isPlaying = false, sequences = [], currentActiveIdx = -1;
 let aspect = '16:9', canvasW = 1280, canvasH = 720;
 let paintBuffer, maskBuffer, vignetteBuffer;
 let prevDist = 0;
 
 function setup() {
+    // willReadFrequently 경고를 방지하기 위해 캔버스 옵션 설정
     let cnv = createCanvas(canvasW, canvasH);
     cnv.parent('vArea');
-    pixelDensity(1);
+    let ctx = cnv.canvas.getContext('2d', { willReadFrequently: true });
+
     paintBuffer = createGraphics(canvasW, canvasH);
     maskBuffer = createGraphics(canvasW, canvasH);
     vignetteBuffer = createGraphics(canvasW, canvasH);
+    
+    // 버퍼들도 동일하게 옵션 설정
+    paintBuffer.canvas.getContext('2d', { willReadFrequently: true });
+    maskBuffer.canvas.getContext('2d', { willReadFrequently: true });
+
     updateVignette();
-    analyser = new p5.FFT();
 }
 
 function updateVignette() {
@@ -100,10 +100,10 @@ function updateVignette() {
     vignetteBuffer.clear();
     vignetteBuffer.noStroke();
     let maxR = max(width, height) * 0.95;
-    for(let r = 0; r < maxR; r += 4) {
+    for(let r = 0; r < maxR; r += 5) {
         let alpha = map(r, 0, maxR, 0, 240);
         vignetteBuffer.fill(0, alpha);
-        vignetteBuffer.ellipse(width/2, height/2, maxR*2.4 - r*1.8);
+        vignetteBuffer.ellipse(width/2, height/2, maxR*2.5 - r*2.0);
     }
 }
 
@@ -139,8 +139,8 @@ function renderSeqList() {
             <input class="time-input" type="number" step="0.1" value="${s.end.toFixed(1)}" onchange="cascadeTime(${i}, this.value)"></div>
             <div style="display:flex; gap:3px;">
                 <button class="btn ${s.style==='oil'?'active':''}" onclick="setSeqStyle(${i}, 'oil')">유채</button>
-                <button class="btn ${s.style==='pencil'?'active':''}" onclick="setSeqStyle(${i}, 'pencil')">연필</button>
-                <button class="btn ${s.style==='point'?'active':''}" onclick="setSeqStyle(${i}, 'point')">점묘</button>
+                <button class="btn ${s.style==='pencil'?'active':''}" onclick="setSeqStyle(${i}, '연필')">연필</button>
+                <button class="btn ${s.style==='point'?'active':''}" onclick="setSeqStyle(${i}, '점묘')">점묘</button>
             </div>`;
         list.appendChild(div);
     });
@@ -172,12 +172,14 @@ function setSeqStyle(i, style) {
     renderSeqList(); if(!isPlaying) drawFrame(audio ? audio.currentTime() : 0);
 }
 
-// [핵심] Pre-render 엔진 개조 (getImageData 성능 병목 제거)
 function preRenderBuffers(seq) {
     let art = createGraphics(width, height);
     let sk = createGraphics(width, height);
     art.pixelDensity(1); sk.pixelDensity(1);
     
+    // [픽스] willReadFrequently 설정은 캔버스 객체에서 직접 수행
+    art.canvas.getContext('2d', { willReadFrequently: true });
+
     let img = seq.img;
     let r = Math.max(width/img.width, height/img.height) * seq.scale;
     let dw = img.width * r, dh = img.height * r;
@@ -185,13 +187,11 @@ function preRenderBuffers(seq) {
 
     let temp = createGraphics(width, height);
     temp.imageMode(CENTER); temp.image(img, dx, dy, dw, dh);
-    
-    // [willReadFrequently 대책] 메모리상에 한 번만 픽셀 데이터를 가져와서 처리
     let d = temp.get(); d.loadPixels();
     
     art.background("#f4f4f4");
     art.noStroke();
-    let total = 120000;
+    let total = 100000;
     for(let i=0; i<total; i++) {
         let x = Math.floor(Math.random()*width), y = Math.floor(Math.random()*height);
         let col = d.get(x, y);
@@ -201,7 +201,7 @@ function preRenderBuffers(seq) {
         if(seq.style === 'oil') {
             art.fill(red(col)+random(-10,10), green(col)+random(-10,10), blue(col)+random(-10,10), 220);
             art.rotate(random(TWO_PI)); art.rect(-bSize, -bSize*0.3, bSize*2, bSize*0.6, 2);
-        } else if(seq.style === 'pencil') {
+        } else if(seq.style === '연필') {
             if(brightness(col) < 180) {
                 art.stroke(red(col)*0.5, 150); art.strokeWeight(1);
                 art.rotate(PI/4 + random(0.2)); art.line(-bSize, 0, bSize, 0);
@@ -226,19 +226,15 @@ function preRenderBuffers(seq) {
 }
 
 function drawFrame(ct) {
-    let idx = sequences.findIndex(s => ct >= s.start && ct <= s.end);
-    if(idx === -1) idx = currentActiveIdx;
-    if(idx === -1) return;
-    let s = sequences[idx];
-    if(!s.artBuffer) preRenderBuffers(s);
+    const sl = sequences.find(s => ct >= s.start && ct < s.end) || sequences[sequences.length-1];
+    if (!sl || !sl.img) return;
+    if(!sl.artBuffer) preRenderBuffers(sl);
 
-    let prog = (ct - s.start) / (s.end - s.start);
+    let prog = (ct - sl.start) / (sl.end - sl.start);
     let zigProg = Math.min(1.0, prog / 0.8);
 
-    // 1. 스케치 배경 (전체 화면 꽉 참)
-    image(s.sketchBuffer, 0, 0);
+    image(sl.sketchBuffer, 0, 0);
 
-    // 2. 유기적 지우개 마스크
     maskBuffer.clear();
     maskBuffer.background(0);
     maskBuffer.fill(255);
@@ -251,24 +247,20 @@ function drawFrame(ct) {
         let ti = Math.random() * zigProg;
         let bx = Math.max(0, Math.min(width, ti * width + (Math.random()-0.5)*100));
         let by = Math.max(0, Math.min(height, ti * height + (Math.random()-0.5)*100));
-        maskBuffer.push();
-        maskBuffer.translate(bx, by);
+        maskBuffer.push(); maskBuffer.translate(bx, by);
         maskBuffer.rotate(Math.random() * TWO_PI);
-        // 비원형 노이즈 형태
+        // 비원형(Organic) 노이즈
         maskBuffer.ellipse(0, 0, eraserSize * (0.8+Math.random()*0.4), eraserSize * (0.4+Math.random()*0.3));
         maskBuffer.pop();
     }
 
-    // 3. 합성 (지워지는 컬러 영역)
     paintBuffer.clear();
     paintBuffer.image(maskBuffer, 0, 0);
     paintBuffer.drawingContext.globalCompositeOperation = 'source-in';
-    paintBuffer.image(s.artBuffer, 0, 0);
+    paintBuffer.image(sl.artBuffer, 0, 0);
     paintBuffer.drawingContext.globalCompositeOperation = 'source-over';
 
     image(paintBuffer, 0, 0);
-
-    // 4. [요구사항] 각진 마스크 없이 오직 유기적 비네팅 그라데이션만 상단에 덮음
     image(vignetteBuffer, 0, 0);
 }
 
@@ -289,29 +281,16 @@ function setAspect(r) {
     paintBuffer.resizeCanvas(width, height); maskBuffer.resizeCanvas(width, height);
     updateVignette();
     sequences.forEach(s => { s.artBuffer = null; });
-    clearCanvas(); drawFrame(0);
+    drawFrame(0);
 }
 
 function togglePlay() {
     if(!audio) return;
     if(isPlaying) { audio.stop(); isPlaying = false; document.getElementById('recBtn').innerText = "🔴 START REC"; } 
-    else { audio.play(); isPlaying = true; document.getElementById('recBtn').innerText = "⏹ STOP"; startRecording(); }
-}
-
-function startRecording() {
-    recordedChunks = [];
-    let stream = document.querySelector('canvas').captureStream(24);
-    recorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
-    recorder.ondataavailable = e => recordedChunks.push(e.data);
-    recorder.onstop = () => {
-        let a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(recordedChunks, {type:'video/mp4'}));
-        a.download = `ArtLab_v18.28_${Date.now()}.mp4`; a.click();
-    };
-    recorder.start();
+    else { audio.play(); isPlaying = true; document.getElementById('recBtn').innerText = "⏹ STOP"; }
 }
 
 function formatTime(s) { let m=floor(s/60), sec=floor(s%60); return `${nf(m,2)}:${nf(sec,2)}`; }
-function clearCanvas() { background("#f4f4f4"); }
 function seekTime(v) { if(!audio) return; audio.jump(Number(v)); if(!isPlaying) drawFrame(Number(v)); }
 function cascadeTime(i, v) { sequences[i].end=Number(v); for(let j=i+1; j<sequences.length; j++){ let d=sequences[j].end-sequences[j].start; sequences[j].start=sequences[j-1].end; sequences[j].end=sequences[j].start+d; } renderSeqList(); }
 </script>
