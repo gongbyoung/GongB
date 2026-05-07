@@ -1,0 +1,939 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🎵 Music Video Creator</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Syne:wght@400;600;700;800&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #13131a;
+    --surface2: #1c1c26;
+    --border: rgba(255,255,255,0.08);
+    --accent: #c084fc;
+    --accent2: #818cf8;
+    --text: #f1f0ff;
+    --muted: #888;
+    --green: #4ade80;
+    --red: #f87171;
+    --amber: #fbbf24;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  header {
+    padding: 1.5rem 2rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    background: var(--surface);
+  }
+
+  header h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.4rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    letter-spacing: -0.03em;
+  }
+
+  header .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.3s;
+  }
+  header .status-dot.active { background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 1.5s infinite; }
+  header .status-dot.recording { background: var(--red); box-shadow: 0 0 8px var(--red); animation: pulse 0.8s infinite; }
+
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    height: calc(100vh - 65px);
+  }
+
+  .panel {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .panel::-webkit-scrollbar { width: 4px; }
+  .panel::-webkit-scrollbar-track { background: transparent; }
+  .panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .section-label {
+    font-size: 0.65rem;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 0.75rem;
+  }
+
+  .upload-zone {
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+    padding: 1.2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--surface2);
+    position: relative;
+  }
+  .upload-zone:hover { border-color: var(--accent); background: rgba(192,132,252,0.05); }
+  .upload-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .upload-zone .icon { font-size: 1.5rem; margin-bottom: 0.4rem; }
+  .upload-zone p { font-size: 0.75rem; color: var(--muted); }
+  .upload-zone span { font-size: 0.7rem; color: var(--accent); }
+
+  .file-info {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    font-size: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .file-info .fi-name { color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-info .fi-dur { color: var(--accent); white-space: nowrap; }
+
+  .image-slot {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.9rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    transition: border-color 0.2s;
+  }
+  .image-slot.has-image { border-color: rgba(192,132,252,0.3); }
+
+  .slot-header {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .slot-num {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.65rem;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+  .slot-thumb {
+    width: 40px; height: 32px;
+    border-radius: 4px;
+    object-fit: cover;
+    border: 1px solid var(--border);
+  }
+  .slot-name { font-size: 0.72rem; color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .slot-add-btn {
+    background: none;
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+    font-size: 0.7rem;
+    font-family: 'DM Mono', monospace;
+    cursor: pointer;
+    padding: 0.4rem 0.7rem;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .slot-add-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .time-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+    align-items: center;
+  }
+  .time-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  .time-field label { font-size: 0.6rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+  .time-field input[type="number"] {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 0.75rem;
+    padding: 0.4rem 0.6rem;
+    width: 100%;
+    transition: border-color 0.2s;
+  }
+  .time-field input[type="number"]:focus { outline: none; border-color: var(--accent); }
+
+  .style-row {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+  }
+  .style-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    color: var(--muted);
+    font-size: 0.62rem;
+    font-family: 'DM Mono', monospace;
+    cursor: pointer;
+    padding: 0.3rem 0.65rem;
+    transition: all 0.18s;
+    letter-spacing: 0.04em;
+  }
+  .style-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+  .style-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  .action-bar {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: auto;
+    padding-top: 0.5rem;
+  }
+
+  .btn-start {
+    flex: 1;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border: none;
+    border-radius: 8px;
+    color: #fff;
+    font-family: 'Syne', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-start:hover { opacity: 0.9; transform: translateY(-1px); }
+  .btn-start:active { transform: translateY(0); }
+  .btn-start:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+  .btn-stop {
+    background: rgba(248,113,113,0.1);
+    border: 1px solid rgba(248,113,113,0.3);
+    border-radius: 8px;
+    color: var(--red);
+    font-family: 'DM Mono', monospace;
+    font-size: 0.75rem;
+    padding: 0.85rem 1.1rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: none;
+  }
+  .btn-stop:hover { background: rgba(248,113,113,0.2); }
+  .btn-stop.visible { display: block; }
+
+  /* Canvas area */
+  .canvas-area {
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  #mainCanvas {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+
+  .canvas-overlay {
+    position: absolute;
+    bottom: 1.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    pointer-events: none;
+  }
+
+  .progress-bar-wrap {
+    width: 300px;
+    height: 3px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+    transition: width 0.1s linear;
+    width: 0%;
+  }
+
+  .time-display {
+    font-size: 0.7rem;
+    color: rgba(255,255,255,0.5);
+    letter-spacing: 0.06em;
+  }
+
+  .rec-badge {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: rgba(248,113,113,0.15);
+    border: 1px solid rgba(248,113,113,0.4);
+    border-radius: 20px;
+    padding: 0.3rem 0.75rem;
+    font-size: 0.65rem;
+    color: var(--red);
+    letter-spacing: 0.08em;
+    display: none;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .rec-badge.visible { display: flex; }
+  .rec-dot { width:6px; height:6px; border-radius:50%; background: var(--red); animation: pulse 0.8s infinite; }
+
+  .empty-hint {
+    color: var(--muted);
+    font-size: 0.75rem;
+    text-align: center;
+    line-height: 1.8;
+  }
+  .empty-hint .big { font-size: 2.5rem; margin-bottom: 0.5rem; }
+
+  .progress-log {
+    position: absolute;
+    top: 1rem;
+    left: 1rem;
+    background: rgba(0,0,0,0.6);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.6rem 0.9rem;
+    font-size: 0.65rem;
+    color: rgba(255,255,255,0.6);
+    max-width: 220px;
+    display: none;
+  }
+  .progress-log.visible { display: block; }
+
+  .slot-file-input { display: none; }
+
+  .warn { color: var(--amber); font-size: 0.68rem; }
+  .ok { color: var(--green); font-size: 0.68rem; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="status-dot" id="statusDot"></div>
+  <h1>🎵 Music Video Creator</h1>
+  <span style="font-size:0.65rem;color:var(--muted);margin-left:auto;">H.264 MP4 Export</span>
+</header>
+
+<div class="layout">
+  <!-- LEFT PANEL -->
+  <div class="panel" id="panel">
+
+    <!-- AUDIO -->
+    <div>
+      <div class="section-label">01 — 음악 파일</div>
+      <div class="upload-zone" id="audioZone">
+        <input type="file" accept="audio/*" id="audioInput">
+        <div class="icon">🎵</div>
+        <p>MP3 파일을 드래그하거나 클릭하세요</p>
+        <span>MP3, AAC, WAV 지원</span>
+      </div>
+      <div class="file-info" id="audioInfo" style="display:none;">
+        <span style="font-size:1.2rem;">🎵</span>
+        <span class="fi-name" id="audioName"></span>
+        <span class="fi-dur" id="audioDur"></span>
+      </div>
+    </div>
+
+    <!-- IMAGES -->
+    <div>
+      <div class="section-label">02 — 이미지 슬롯 (4~5장)</div>
+      <div id="imageSlots" style="display:flex;flex-direction:column;gap:0.75rem;"></div>
+    </div>
+
+    <!-- GLOBAL STYLE fallback note -->
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:0.75rem 1rem;">
+      <div class="section-label" style="margin-bottom:0.4rem;">아트 스타일</div>
+      <p style="font-size:0.65rem;color:var(--muted);">각 이미지 슬롯에서 개별 스타일 선택 가능.<br>스타일은 Canvas 2D 필터로 실시간 렌더링됩니다.</p>
+    </div>
+
+    <!-- ACTION -->
+    <div class="action-bar">
+      <button class="btn-start" id="btnStart" disabled>▶ START &amp; RECORD</button>
+      <button class="btn-stop" id="btnStop">■ STOP</button>
+    </div>
+
+    <p id="statusMsg" style="font-size:0.68rem;color:var(--muted);text-align:center;"></p>
+
+  </div>
+
+  <!-- RIGHT: CANVAS -->
+  <div class="canvas-area" id="canvasArea">
+    <canvas id="mainCanvas" width="1280" height="720"></canvas>
+
+    <div class="empty-hint" id="emptyHint">
+      <div class="big">🎨</div>
+      음악과 이미지를 업로드하면<br>여기에 미리보기가 표시됩니다
+    </div>
+
+    <div class="rec-badge" id="recBadge">
+      <div class="rec-dot"></div> REC
+    </div>
+
+    <div class="progress-log" id="progressLog"></div>
+
+    <div class="canvas-overlay" id="canvasOverlay" style="display:none;">
+      <div class="progress-bar-wrap">
+        <div class="progress-bar-fill" id="progressFill"></div>
+      </div>
+      <div class="time-display" id="timeDisplay">0:00 / 0:00</div>
+    </div>
+  </div>
+</div>
+
+<audio id="audioEl" style="display:none;"></audio>
+
+<script>
+// ─── STATE ──────────────────────────────────────────────
+const NUM_SLOTS = 5;
+let audioFile = null;
+let audioDuration = 0;
+let slots = Array.from({length: NUM_SLOTS}, (_,i) => ({
+  file: null, img: null, dataUrl: null,
+  start: 0, end: 0,
+  style: 'watercolor',
+  index: i
+}));
+
+const STYLES = ['watercolor','oil','impressionism','abstract','anime'];
+const STYLE_LABELS = { watercolor:'수채화', oil:'유채화', impressionism:'인상파', abstract:'추상파', anime:'애니메이션' };
+
+let mediaRecorder = null;
+let recordedChunks = [];
+let animFrameId = null;
+let isPlaying = false;
+
+const canvas = document.getElementById('mainCanvas');
+const ctx = canvas.getContext('2d');
+const audioEl = document.getElementById('audioEl');
+
+// ─── AUDIO UPLOAD ────────────────────────────────────────
+document.getElementById('audioInput').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  audioFile = f;
+  const url = URL.createObjectURL(f);
+  audioEl.src = url;
+  audioEl.addEventListener('loadedmetadata', () => {
+    audioDuration = audioEl.duration;
+    document.getElementById('audioDur').textContent = fmtTime(audioDuration);
+    document.getElementById('audioName').textContent = f.name;
+    document.getElementById('audioInfo').style.display = 'flex';
+    document.getElementById('audioZone').style.display = 'none';
+    // auto-fill slot end times
+    autoFillSlotTimes();
+    checkReady();
+  }, {once: true});
+});
+
+function autoFillSlotTimes() {
+  const filledSlots = slots.filter(s => s.file);
+  if (filledSlots.length === 0) return;
+  const dur = audioDuration;
+  const n = filledSlots.length;
+  const seg = dur / n;
+  filledSlots.forEach((s, i) => {
+    s.start = parseFloat((i * seg).toFixed(2));
+    s.end = parseFloat(((i + 1) * seg).toFixed(2));
+    const row = document.getElementById(`slot-row-${s.index}`);
+    if (row) {
+      row.querySelector('.slot-start').value = s.start.toFixed(1);
+      row.querySelector('.slot-end').value = s.end.toFixed(1);
+    }
+  });
+}
+
+// ─── SLOT RENDERING ─────────────────────────────────────
+function renderSlots() {
+  const container = document.getElementById('imageSlots');
+  container.innerHTML = '';
+  slots.forEach((slot, i) => {
+    const div = document.createElement('div');
+    div.className = 'image-slot' + (slot.file ? ' has-image' : '');
+    div.id = `slot-row-${i}`;
+
+    div.innerHTML = `
+      <div class="slot-header">
+        <div class="slot-num">${i+1}</div>
+        ${slot.img ? `<img class="slot-thumb" src="${slot.dataUrl}">` : ''}
+        <span class="slot-name">${slot.file ? slot.file.name : '이미지 없음'}</span>
+        <button class="slot-add-btn" data-slot="${i}">+ 업로드</button>
+        <input type="file" accept="image/*" class="slot-file-input" id="slotInput-${i}">
+      </div>
+      ${slot.file ? `
+      <div class="time-row">
+        <div class="time-field">
+          <label>시작 (초)</label>
+          <input type="number" class="slot-start" value="${slot.start.toFixed(1)}" min="0" step="0.1" data-slot="${i}">
+        </div>
+        <div class="time-field">
+          <label>종료 (초)</label>
+          <input type="number" class="slot-end" value="${slot.end.toFixed(1)}" min="0" step="0.1" data-slot="${i}">
+        </div>
+      </div>
+      <div>
+        <div class="section-label" style="margin-bottom:0.4rem;">아트 스타일</div>
+        <div class="style-row">
+          ${STYLES.map(s => `<button class="style-btn ${slot.style===s?'active':''}" data-slot="${i}" data-style="${s}">${STYLE_LABELS[s]}</button>`).join('')}
+        </div>
+      </div>
+      ` : ''}
+    `;
+    container.appendChild(div);
+
+    // events
+    div.querySelector('.slot-add-btn').addEventListener('click', () => {
+      document.getElementById(`slotInput-${i}`).click();
+    });
+    document.getElementById(`slotInput-${i}`).addEventListener('change', e => {
+      loadSlotImage(i, e.target.files[0]);
+    });
+
+    if (slot.file) {
+      div.querySelector('.slot-start').addEventListener('change', e => {
+        slots[i].start = parseFloat(e.target.value) || 0;
+        checkReady();
+      });
+      div.querySelector('.slot-end').addEventListener('change', e => {
+        slots[i].end = parseFloat(e.target.value) || 0;
+        checkReady();
+      });
+      div.querySelectorAll('.style-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          slots[i].style = btn.dataset.style;
+          renderSlots();
+        });
+      });
+    }
+  });
+}
+renderSlots();
+
+function loadSlotImage(idx, file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      slots[idx].file = file;
+      slots[idx].img = img;
+      slots[idx].dataUrl = e.target.result;
+      if (audioDuration > 0) autoFillSlotTimes();
+      renderSlots();
+      checkReady();
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function checkReady() {
+  const hasAudio = !!audioFile;
+  const hasImages = slots.filter(s => s.file).length >= 4;
+  const ready = hasAudio && hasImages;
+  document.getElementById('btnStart').disabled = !ready;
+  if (ready) {
+    document.getElementById('statusMsg').textContent = `✓ 준비완료 — ${slots.filter(s=>s.file).length}개 이미지, ${fmtTime(audioDuration)}`;
+    document.getElementById('statusMsg').className = 'ok';
+  } else {
+    const missing = [];
+    if (!hasAudio) missing.push('음악 파일');
+    if (!hasImages) missing.push(`이미지 ${4-slots.filter(s=>s.file).length}장 더 필요`);
+    document.getElementById('statusMsg').textContent = missing.join(' · ');
+    document.getElementById('statusMsg').className = 'warn';
+  }
+}
+
+// ─── ART STYLE FILTERS ───────────────────────────────────
+function applyStyle(imgData, style, w, h) {
+  const d = imgData.data;
+  if (style === 'watercolor') {
+    // Soft blur + desaturate slightly + paper texture feel
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], g = d[i+1], b = d[i+2];
+      // Slight desaturation + lightening
+      const gray = r*0.299 + g*0.587 + b*0.114;
+      const mix = 0.25;
+      d[i]   = Math.min(255, r*(1-mix) + gray*mix + 8);
+      d[i+1] = Math.min(255, g*(1-mix) + gray*mix + 8);
+      d[i+2] = Math.min(255, b*(1-mix) + gray*mix + 12);
+    }
+  } else if (style === 'oil') {
+    // High saturation + contrast
+    for (let i = 0; i < d.length; i += 4) {
+      let r = d[i]/255, g = d[i+1]/255, b = d[i+2]/255;
+      const avg = (r+g+b)/3;
+      const sat = 1.5;
+      r = avg + (r-avg)*sat;
+      g = avg + (g-avg)*sat;
+      b = avg + (b-avg)*sat;
+      // contrast
+      r = ((r-0.5)*1.3+0.5);
+      g = ((g-0.5)*1.3+0.5);
+      b = ((b-0.5)*1.3+0.5);
+      d[i]   = Math.min(255,Math.max(0,r*255));
+      d[i+1] = Math.min(255,Math.max(0,g*255));
+      d[i+2] = Math.min(255,Math.max(0,b*255));
+    }
+  } else if (style === 'impressionism') {
+    // Warm tones + slightly broken color
+    for (let i = 0; i < d.length; i += 4) {
+      let r = d[i], g = d[i+1], b = d[i+2];
+      const noise = (Math.random()-0.5)*18;
+      r = Math.min(255, Math.max(0, r + noise + 10));
+      g = Math.min(255, Math.max(0, g + noise*0.6));
+      b = Math.min(255, Math.max(0, b + noise - 5));
+      d[i]=r; d[i+1]=g; d[i+2]=b;
+    }
+  } else if (style === 'abstract') {
+    // Posterize + vibrant
+    for (let i = 0; i < d.length; i += 4) {
+      const levels = 5;
+      d[i]   = Math.round(d[i]   / 255 * levels) / levels * 255;
+      d[i+1] = Math.round(d[i+1] / 255 * levels) / levels * 255;
+      d[i+2] = Math.round(d[i+2] / 255 * levels) / levels * 255;
+    }
+  } else if (style === 'anime') {
+    // Edge-preserve flat color + slight outline effect
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], g = d[i+1], b = d[i+2];
+      const levels = 8;
+      d[i]   = Math.round(r/255*levels)/levels*255;
+      d[i+1] = Math.round(g/255*levels)/levels*255;
+      d[i+2] = Math.round(b/255*levels)/levels*255;
+      // boost saturation slightly
+      const gray = d[i]*0.3+d[i+1]*0.59+d[i+2]*0.11;
+      d[i]   = Math.min(255,d[i]  *1.2 - gray*0.2);
+      d[i+1] = Math.min(255,d[i+1]*1.2 - gray*0.2);
+      d[i+2] = Math.min(255,d[i+2]*1.2 - gray*0.2);
+    }
+  }
+  return imgData;
+}
+
+// ─── PAINT REVEAL ────────────────────────────────────────
+// Zigzag paint columns from top-left → bottom in irregular strips
+function getPaintMaskProgress(t, w, h) {
+  // t = 0..1 progress of reveal
+  // We divide canvas into ~20 vertical strips, each revealed top-to-bottom
+  // Zigzag: even strips go down, odd strips go up (for visual interest)
+  const strips = 18;
+  const stripW = w / strips;
+  const totalSteps = strips;
+  const stripsDone = t * totalSteps;
+
+  const mask = new OffscreenCanvas ? new OffscreenCanvas(w,h) : createCanvas(w,h);
+  const mctx = mask.getContext('2d');
+  mctx.fillStyle = '#fff';
+
+  for (let s = 0; s < strips; s++) {
+    const stripProgress = Math.min(1, Math.max(0, stripsDone - s));
+    if (stripProgress <= 0) continue;
+    const x = s * stripW;
+    const isEven = s % 2 === 0;
+    // add irregular offset
+    const irregFactor = 1 + (Math.sin(s * 2.3 + 0.7) * 0.25); // 0.75..1.25
+    const effectiveProg = Math.min(1, stripProgress * irregFactor);
+    if (isEven) {
+      mctx.fillRect(x, 0, stripW + 1, h * effectiveProg);
+    } else {
+      const revealH = h * effectiveProg;
+      mctx.fillRect(x, h - revealH, stripW + 1, revealH);
+    }
+  }
+  return mask;
+}
+
+function createCanvas(w,h) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  return c;
+}
+
+// ─── VIGNETTE ────────────────────────────────────────────
+function drawVignette(ctx, w, h, strength) {
+  // strength 0=max vignette, 1=almost none
+  const rad = Math.max(w,h) * (0.35 + strength * 0.65);
+  const grad = ctx.createRadialGradient(w/2, h/2, rad*0.1, w/2, h/2, rad);
+  grad.addColorStop(0, 'rgba(0,0,0,0)');
+  grad.addColorStop(0.5, `rgba(0,0,0,${0.4 * (1-strength)})`);
+  grad.addColorStop(1, `rgba(0,0,0,${0.92 * (1-strength) + 0.08})`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, w, h);
+}
+
+// ─── MAIN DRAW LOOP ──────────────────────────────────────
+function getCurrentSlot(t) {
+  const active = slots.filter(s => s.file);
+  for (const sl of active) {
+    if (t >= sl.start && t < sl.end) return sl;
+  }
+  return active[active.length-1] || null;
+}
+
+// Offscreen for style processing
+let styleCanvas = createCanvas(1280, 720);
+let styleCtx = styleCanvas.getContext('2d');
+
+// Paint progress per slot (so it doesn't restart)
+let paintState = {};
+
+function initPaintState() {
+  paintState = {};
+  slots.filter(s=>s.file).forEach(s => {
+    paintState[s.index] = { progress: 0, strips: buildStrips(1280, 720) };
+  });
+}
+
+function buildStrips(w, h) {
+  const strips = 18;
+  const stripW = w / strips;
+  return Array.from({length: strips}, (_,i) => ({
+    x: i * stripW,
+    w: stripW + 1,
+    even: i % 2 === 0,
+    irregFactor: 1 + (Math.sin(i * 2.3 + 0.7) * 0.25)
+  }));
+}
+
+function drawFrame(currentTime) {
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0,0,w,h);
+
+  const sl = getCurrentSlot(currentTime);
+  if (!sl || !sl.img) return;
+
+  const dur = sl.end - sl.start;
+  const elapsed = currentTime - sl.start;
+  const tSlot = Math.min(1, Math.max(0, elapsed / dur)); // 0..1
+
+  const REVEAL_START = 0.80; // 80% into slot
+
+  // 1. Draw styled image onto styleCanvas
+  styleCtx.clearRect(0,0,w,h);
+  // Fit image
+  const img = sl.img;
+  const scale = Math.max(w/img.width, h/img.height);
+  const dw = img.width * scale, dh = img.height * scale;
+  const dx = (w - dw)/2, dy = (h - dh)/2;
+  styleCtx.drawImage(img, dx, dy, dw, dh);
+
+  // Apply art style filter
+  const imageData = styleCtx.getImageData(0,0,w,h);
+  applyStyle(imageData, sl.style, w, h);
+  styleCtx.putImageData(imageData, 0, 0);
+
+  // 2. Paint-reveal mask (0% start → 80% of slot → all revealed)
+  // Paint progress goes 0→1 during 0..80% of slot duration
+  const paintProgress = Math.min(1, tSlot / REVEAL_START);
+
+  // Vignette opens 80%→100%
+  const vignetteOpen = tSlot < REVEAL_START ? 0 : (tSlot - REVEAL_START) / (1 - REVEAL_START);
+
+  // Draw styled image with paint mask
+  if (paintProgress < 1) {
+    // Mask: reveal columns with zigzag
+    const strips = paintState[sl.index]?.strips || buildStrips(w,h);
+
+    // Clip to revealed strips
+    ctx.save();
+    ctx.beginPath();
+    strips.forEach((strip, si) => {
+      const stripsDone = paintProgress * strips.length;
+      const sp = Math.min(1, Math.max(0, (stripsDone - si) * strip.irregFactor));
+      if (sp <= 0) return;
+      const revH = h * sp;
+      if (strip.even) {
+        ctx.rect(strip.x, 0, strip.w, revH);
+      } else {
+        ctx.rect(strip.x, h - revH, strip.w, revH);
+      }
+    });
+    ctx.closePath();
+    ctx.clip();
+    ctx.drawImage(styleCanvas, 0, 0);
+    ctx.restore();
+  } else {
+    ctx.drawImage(styleCanvas, 0, 0);
+  }
+
+  // 3. Vignette overlay
+  const vigStr = vignetteOpen; // 0=full vignette, 1=open
+  drawVignette(ctx, w, h, vigStr);
+
+  // HUD: current style label
+  ctx.save();
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.font = '500 13px DM Mono, monospace';
+  ctx.fillText(STYLE_LABELS[sl.style], 18, h - 18);
+  ctx.restore();
+}
+
+// ─── PLAYBACK & RECORDING ────────────────────────────────
+document.getElementById('btnStart').addEventListener('click', startSession);
+document.getElementById('btnStop').addEventListener('click', stopSession);
+
+async function startSession() {
+  if (!audioFile || slots.filter(s=>s.file).length < 4) return;
+
+  initPaintState();
+
+  document.getElementById('emptyHint').style.display = 'none';
+  document.getElementById('canvasOverlay').style.display = 'flex';
+  document.getElementById('btnStart').disabled = true;
+  document.getElementById('btnStop').classList.add('visible');
+  document.getElementById('recBadge').classList.add('visible');
+  document.getElementById('progressLog').classList.add('visible');
+  document.getElementById('statusDot').className = 'status-dot recording';
+
+  // Setup MediaRecorder
+  const stream = canvas.captureStream(30);
+  // Add audio
+  const audioCtx = new AudioContext();
+  const dest = audioCtx.createMediaStreamDestination();
+  const source = audioCtx.createMediaElementSource(audioEl);
+  source.connect(dest);
+  source.connect(audioCtx.destination);
+  const audioTrack = dest.stream.getAudioTracks()[0];
+  if (audioTrack) stream.addTrack(audioTrack);
+
+  // Try H.264 mp4 first
+  const mimeTypes = [
+    'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+    'video/mp4;codecs=h264',
+    'video/mp4',
+    'video/webm;codecs=vp9',
+    'video/webm;codecs=vp8',
+    'video/webm'
+  ];
+  let chosenMime = 'video/webm';
+  for (const mt of mimeTypes) {
+    if (MediaRecorder.isTypeSupported(mt)) { chosenMime = mt; break; }
+  }
+
+  recordedChunks = [];
+  mediaRecorder = new MediaRecorder(stream, { mimeType: chosenMime, videoBitsPerSecond: 8000000 });
+  mediaRecorder.ondataavailable = e => { if (e.data.size>0) recordedChunks.push(e.data); };
+  mediaRecorder.onstop = () => saveRecording(chosenMime);
+  mediaRecorder.start(100);
+
+  audioEl.currentTime = 0;
+  audioEl.play();
+  isPlaying = true;
+
+  document.getElementById('progressLog').textContent = `🎬 녹화중 — ${chosenMime.split(';')[0]}`;
+
+  audioEl.onended = () => stopSession();
+
+  function loop() {
+    if (!isPlaying) return;
+    const ct = audioEl.currentTime;
+    const dur = audioDuration;
+    drawFrame(ct);
+    document.getElementById('progressFill').style.width = (ct/dur*100)+'%';
+    document.getElementById('timeDisplay').textContent = `${fmtTime(ct)} / ${fmtTime(dur)}`;
+    animFrameId = requestAnimationFrame(loop);
+  }
+  loop();
+}
+
+function stopSession() {
+  if (!isPlaying) return;
+  isPlaying = false;
+  cancelAnimationFrame(animFrameId);
+  audioEl.pause();
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+  document.getElementById('btnStop').classList.remove('visible');
+  document.getElementById('recBadge').classList.remove('visible');
+  document.getElementById('statusDot').className = 'status-dot active';
+  document.getElementById('progressLog').textContent = '⏸ 저장 중...';
+}
+
+function saveRecording(mime) {
+  const ext = mime.includes('mp4') ? 'mp4' : 'webm';
+  const blob = new Blob(recordedChunks, { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const now = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  const fname = `${pad(now.getMonth()+1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.${ext}`;
+  a.href = url;
+  a.download = fname;
+  a.click();
+  URL.revokeObjectURL(url);
+  document.getElementById('progressLog').textContent = `✓ 저장완료: ${fname}`;
+  document.getElementById('btnStart').disabled = false;
+  document.getElementById('canvasOverlay').style.display = 'none';
+  document.getElementById('statusDot').className = 'status-dot';
+  setTimeout(() => document.getElementById('progressLog').classList.remove('visible'), 4000);
+}
+
+// ─── UTILS ───────────────────────────────────────────────
+function fmtTime(s) {
+  const m = Math.floor(s/60);
+  const sec = Math.floor(s%60);
+  return `${m}:${String(sec).padStart(2,'0')}`;
+}
+
+// ─── DRAG & DROP AUDIO ───────────────────────────────────
+document.getElementById('audioZone').addEventListener('dragover', e => { e.preventDefault(); });
+document.getElementById('audioZone').addEventListener('drop', e => {
+  e.preventDefault();
+  const f = e.dataTransfer.files[0];
+  if (f && f.type.startsWith('audio/')) {
+    const dt = new DataTransfer();
+    dt.items.add(f);
+    document.getElementById('audioInput').files = dt.files;
+    document.getElementById('audioInput').dispatchEvent(new Event('change'));
+  }
+});
+
+// Initial ready check
+checkReady();
+</script>
+</body>
+</html>
