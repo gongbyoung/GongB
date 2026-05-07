@@ -2,595 +2,950 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>ART LAB v18.19 — The Liquid Paint Protocol</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🎵 Music/Video v1.02</title>
 <style>
-*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
-:root{ --bg:#050505; --panel:#0d0d12; --accent:#00ffcc; --border:rgba(255,255,255,0.08); --text:#ffffff; }
-body{ background:var(--bg); color:var(--text); font-family:sans-serif; height:100vh; overflow:hidden; display: flex; flex-direction: column; }
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Syne:wght@400;600;700;800&display=swap');
 
-.topbar{ padding:10px 20px; background:var(--panel); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
-.logo{letter-spacing:4px; color:var(--accent); font-weight:800; font-size:12px;}
-.container { display: grid; grid-template-columns: 350px 1fr 340px; flex: 1; min-height: 0; }
-.side-panel { background: var(--panel); padding: 15px; overflow-y: auto; border-right: 1px solid var(--border); }
-.side-panel.right { border-right:none; border-left: 1px solid var(--border); }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-.seq-item { background: #16161d; padding: 12px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #222; cursor: pointer; transition: 0.2s; }
-.seq-item.active { border-color: var(--accent); background: #1a2523; box-shadow: 0 0 10px rgba(0,255,204,0.1); }
-.seq-info { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-.time-input { background:#000; border:1px solid #444; color:var(--accent); width:65px; padding:4px; font-size:12px; text-align:center; border-radius:4px; font-family:monospace; }
-.time-input:focus { border-color:var(--accent); outline:none; }
-.seq-style-row { display: flex; gap:5px; margin-top:5px; }
+  :root {
+    --bg: #0a0a0f;
+    --surface: #13131a;
+    --surface2: #1c1c26;
+    --border: rgba(255,255,255,0.08);
+    --accent: #c084fc;
+    --accent2: #818cf8;
+    --text: #f1f0ff;
+    --muted: #888;
+    --green: #4ade80;
+    --red: #f87171;
+    --amber: #fbbf24;
+  }
 
-.viz-area { background: #000; flex: 1; display: flex; justify-content: center; align-items: center; overflow:hidden; }
-canvas { box-shadow: 0 0 50px rgba(0,0,0,1); }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
 
-h3 { font-size: 10px; color: #555; text-transform: uppercase; margin-bottom: 10px; border-bottom: 1px solid var(--border); padding-bottom: 5px; }
-.btn { background: transparent; border: 1px solid var(--border); color: #fff; padding: 10px; cursor: pointer; font-size: 11px; border-radius: 4px; width: 100%; margin-bottom: 5px; transition: 0.2s; }
-.btn:hover { background: rgba(255,255,255,0.05); }
-.btn.primary { background: var(--accent); color: #000; font-weight: bold; border:none; margin-top:10px; padding:12px;}
-.btn.primary:hover { background: #00e6b8; }
-.btn.active { border-color: var(--accent); color: var(--accent); }
+  header {
+    padding: 1.5rem 2rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    background: var(--surface);
+  }
 
-input[type=range] { width: 100%; accent-color: var(--accent); height: 4px; cursor: pointer; margin-bottom: 10px;}
-label { font-size: 9px; color: #888; display:block; margin-bottom:3px; margin-top:8px;}
-select { width:100%; background:#000; color:var(--accent); border:1px solid #333; font-size:11px; padding:6px; border-radius:4px; margin-bottom:8px;}
-.val-label { float: right; color: var(--accent); font-weight: bold; }
+  header h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.4rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    letter-spacing: -0.03em;
+  }
 
-#audioInfo { font-family: monospace; font-size: 11px; color: #ffcc00; margin-bottom: 15px; padding: 8px; background: rgba(255,204,0,0.1); border-radius: 4px; display: none; text-align: center;}
+  header .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.3s;
+  }
+  header .status-dot.active { background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 1.5s infinite; }
+  header .status-dot.recording { background: var(--red); box-shadow: 0 0 8px var(--red); animation: pulse 0.8s infinite; }
+
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    height: calc(100vh - 65px);
+  }
+
+  .panel {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .panel::-webkit-scrollbar { width: 4px; }
+  .panel::-webkit-scrollbar-track { background: transparent; }
+  .panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .section-label {
+    font-size: 0.65rem;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 0.75rem;
+  }
+
+  .upload-zone {
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+    padding: 1.2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--surface2);
+    position: relative;
+  }
+  .upload-zone:hover { border-color: var(--accent); background: rgba(192,132,252,0.05); }
+  .upload-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .upload-zone .icon { font-size: 1.5rem; margin-bottom: 0.4rem; }
+  .upload-zone p { font-size: 0.75rem; color: var(--muted); }
+  .upload-zone span { font-size: 0.7rem; color: var(--accent); }
+
+  .file-info {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    font-size: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .file-info .fi-name { color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-info .fi-dur { color: var(--accent); white-space: nowrap; }
+
+  .image-slot {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.9rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    transition: border-color 0.2s;
+  }
+  .image-slot.has-image { border-color: rgba(192,132,252,0.3); }
+
+  .slot-header {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .slot-num {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.65rem;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+  .slot-thumb {
+    width: 40px; height: 32px;
+    border-radius: 4px;
+    object-fit: cover;
+    border: 1px solid var(--border);
+  }
+  .slot-name { font-size: 0.72rem; color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .slot-add-btn {
+    background: none;
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+    font-size: 0.7rem;
+    font-family: 'DM Mono', monospace;
+    cursor: pointer;
+    padding: 0.4rem 0.7rem;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .slot-add-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .time-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+    align-items: center;
+  }
+  .time-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  .time-field label { font-size: 0.6rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+  .time-field input[type="number"] {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 0.75rem;
+    padding: 0.4rem 0.6rem;
+    width: 100%;
+    transition: border-color 0.2s;
+  }
+  .time-field input[type="number"]:focus { outline: none; border-color: var(--accent); }
+
+  .style-row {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+  }
+  .style-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    color: var(--muted);
+    font-size: 0.62rem;
+    font-family: 'DM Mono', monospace;
+    cursor: pointer;
+    padding: 0.3rem 0.65rem;
+    transition: all 0.18s;
+    letter-spacing: 0.04em;
+  }
+  .style-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+  .style-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  .action-bar {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: auto;
+    padding-top: 0.5rem;
+  }
+
+  .btn-start {
+    flex: 1;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border: none;
+    border-radius: 8px;
+    color: #fff;
+    font-family: 'Syne', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-start:hover { opacity: 0.9; transform: translateY(-1px); }
+  .btn-start:active { transform: translateY(0); }
+  .btn-start:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+  .btn-stop {
+    background: rgba(248,113,113,0.1);
+    border: 1px solid rgba(248,113,113,0.3);
+    border-radius: 8px;
+    color: var(--red);
+    font-family: 'DM Mono', monospace;
+    font-size: 0.75rem;
+    padding: 0.85rem 1.1rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: none;
+  }
+  .btn-stop:hover { background: rgba(248,113,113,0.2); }
+  .btn-stop.visible { display: block; }
+
+  .canvas-area {
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  #mainCanvas {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+
+  .canvas-overlay {
+    position: absolute;
+    bottom: 1.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    pointer-events: none;
+  }
+
+  .progress-bar-wrap {
+    width: 300px;
+    height: 3px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+    transition: width 0.1s linear;
+    width: 0%;
+  }
+
+  .time-display {
+    font-size: 0.7rem;
+    color: rgba(255,255,255,0.5);
+    letter-spacing: 0.06em;
+  }
+
+  .rec-badge {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: rgba(248,113,113,0.15);
+    border: 1px solid rgba(248,113,113,0.4);
+    border-radius: 20px;
+    padding: 0.3rem 0.75rem;
+    font-size: 0.65rem;
+    color: var(--red);
+    letter-spacing: 0.08em;
+    display: none;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .rec-badge.visible { display: flex; }
+  .rec-dot { width:6px; height:6px; border-radius:50%; background: var(--red); animation: pulse 0.8s infinite; }
+
+  .empty-hint {
+    color: var(--muted);
+    font-size: 0.75rem;
+    text-align: center;
+    line-height: 1.8;
+  }
+  .empty-hint .big { font-size: 2.5rem; margin-bottom: 0.5rem; }
+
+  .progress-log {
+    position: absolute;
+    top: 1rem;
+    left: 1rem;
+    background: rgba(0,0,0,0.6);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.6rem 0.9rem;
+    font-size: 0.65rem;
+    color: rgba(255,255,255,0.6);
+    max-width: 220px;
+    display: none;
+  }
+  .progress-log.visible { display: block; }
+
+  .slot-file-input { display: none; }
+  .warn { color: var(--amber); font-size: 0.68rem; }
+  .ok { color: var(--green); font-size: 0.68rem; }
 </style>
 </head>
 <body>
 
-<div class="topbar">
-    <div class="logo">ART LAB v18.19 LIQUID PAINT</div>
-    <div id="status" style="font-size:10px; color:var(--accent);">STANDBY</div>
-</div>
+<header>
+  <div class="status-dot" id="statusDot"></div>
+  <h1>🎵 Music Video Creator</h1>
+  <span style="font-size:0.65rem;color:var(--muted);margin-left:auto;">FHD 1080p | 24 FPS Export</span>
+</header>
 
-<div class="container">
-    <div class="side-panel">
-        <h3>1. Audio & Sequence</h3>
-        <button class="btn" onclick="document.getElementById('mIn').click()">🎵 LOAD MP3 AUDIO</button>
-        <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleMusic(this.files)">
-        
-        <div id="audioInfo">TOTAL AUDIO: 0.0s (00:00)</div>
-
-        <button class="btn primary" onclick="document.getElementById('iIn').click()">🖼️ ADD IMAGE</button>
-        <input type="file" id="iIn" accept="image/*" style="display:none" onchange="handleImageAdd(this.files)">
-        <button class="btn" style="border-color:#ffcc00; color:#ffcc00; margin-top:5px;" onclick="document.getElementById('bIn').click()">PNG ALPHA BRUSH (점묘용)</button>
-        <input type="file" id="bIn" accept="image/png" style="display:none" onchange="handleBrushPNG(this.files)">
-        
-        <div id="sequenceList" style="margin-top:20px;"></div>
+<div class="layout">
+  <div class="panel" id="panel">
+    <div>
+      <div class="section-label">01 — 음악 파일</div>
+      <div class="upload-zone" id="audioZone">
+        <input type="file" accept="audio/*" id="audioInput">
+        <div class="icon">🎵</div>
+        <p>MP3 파일을 드래그하거나 클릭하세요</p>
+        <span>MP3, AAC, WAV 지원</span>
+      </div>
+      <div class="file-info" id="audioInfo" style="display:none;">
+        <span style="font-size:1.2rem;">🎵</span>
+        <span class="fi-name" id="audioName"></span>
+        <span class="fi-dur" id="audioDur"></span>
+      </div>
     </div>
 
-    <div class="viz-area" id="vArea"></div>
-
-    <div class="side-panel right">
-        <h3>2. Viewport & Canvas</h3>
-        <div style="display: flex; gap:5px; margin-bottom:10px;">
-            <button class="btn active" id="b169" onclick="setAspect('16:9')">16:9</button>
-            <button class="btn" id="b916" onclick="setAspect('9:16')">9:16</button>
-        </div>
-        <div style="display: flex; align-items:center; gap:10px; margin-bottom:15px;">
-            <label style="margin:0;">BG COLOR</label>
-            <input type="color" id="canvasBg" value="#f4f4f4" onchange="invalidateArtBuffers()" style="height:25px; border:none; cursor:pointer;">
-        </div>
-
-        <h3>3. Rendering Engine FX</h3>
-        <label>DRAWING FOCUS (칠판 지우개 연출)</label>
-        <select id="drawDirection">
-            <option value="diagonal">사선 지우개 (Diagonal Master)</option>
-            <option value="horizontal">좌우 지우개 (Horizontal ZigZag)</option>
-            <option value="global">중앙 확산 (Center Expand)</option>
-        </select>
-
-        <label>PHASE CONTROL (작화 모드)</label>
-        <select id="drawingPhase">
-            <option value="auto">100% 자동 완성 진행 (Wipe to 80%)</option>
-            <option value="sketch">강제: 스케치 비네팅 유지 (Vignette)</option>
-            <option value="finish">강제: 풀 컬러 아트 유지</option>
-        </select>
-
-        <label>BRUSH SCALE (지우개 굵기) <span class="val-label" id="valBScale">1.0</span></label>
-        <input type="range" id="paintScale" min="0.1" max="5.0" step="0.1" value="1.0" onchange="invalidateArtBuffers()" oninput="document.getElementById('valBScale').innerText=this.value">
-        
-        <label>BRIGHTNESS <span class="val-label" id="valBri">1.0</span></label>
-        <input type="range" id="brightness" min="0.1" max="3.0" step="0.1" value="1.0" onchange="invalidateArtBuffers()" oninput="document.getElementById('valBri').innerText=this.value">
-        
-        <label>TRAIL (잔상) <span class="val-label" id="valT">0.0</span></label>
-        <input type="range" id="trail" min="0" max="0.25" step="0.01" value="0" oninput="document.getElementById('valT').innerText=this.value">
-
-        <h3>4. Active Transform</h3>
-        <div id="seqUI" style="opacity: 0.3; pointer-events: none; background:#111; padding:10px; border-radius:8px;">
-            <label>IMAGE SCALE <span id="txtS" class="val-label">1.0</span></label>
-            <input type="range" id="curScale" min="0.1" max="4.0" step="0.05" value="1.0" oninput="updateCurSeq()">
-            <label>OFFSET X <span id="txtX" class="val-label">0</span></label>
-            <input type="range" id="curX" min="-800" max="800" value="0" oninput="updateCurSeq()">
-            <label>OFFSET Y <span id="txtY" class="val-label">0</span></label>
-            <input type="range" id="curY" min="-800" max="800" value="0" oninput="updateCurSeq()">
-        </div>
-
-        <button class="btn primary" id="recBtn" onclick="togglePlay()" style="margin-top:20px; background:#ff3e81; color:white;">🔴 START REC & AUTO SAVE</button>
-        <div style="display:flex; gap:5px; margin-top:5px;">
-            <button class="btn" onclick="clearCanvas()">CLEAR CANVAS</button>
-            <button class="btn" onclick="saveArt()">SAVE PNG</button>
-        </div>
+    <div>
+      <div class="section-label">02 — 이미지 슬롯 (4~5장)</div>
+      <div id="imageSlots" style="display:flex;flex-direction:column;gap:0.75rem;"></div>
     </div>
+
+    <div class="action-bar">
+      <button class="btn-start" id="btnStart" disabled>▶ START &amp; RECORD</button>
+      <button class="btn-stop" id="btnStop">■ STOP</button>
+    </div>
+
+    <p id="statusMsg" style="font-size:0.68rem;color:var(--muted);text-align:center;"></p>
+  </div>
+
+  <div class="canvas-area" id="canvasArea">
+    <canvas id="mainCanvas" width="1920" height="1080"></canvas>
+
+    <div class="empty-hint" id="emptyHint">
+      <div class="big">🎨</div>
+      음악과 이미지를 업로드하면<br>여기에 미리보기가 표시됩니다
+    </div>
+
+    <div class="rec-badge" id="recBadge">
+      <div class="rec-dot"></div> REC 24fps
+    </div>
+
+    <div class="progress-log" id="progressLog"></div>
+
+    <div class="canvas-overlay" id="canvasOverlay" style="display:none;">
+      <div class="progress-bar-wrap">
+        <div class="progress-bar-fill" id="progressFill"></div>
+      </div>
+      <div class="time-display" id="timeDisplay">0:00 / 0:00</div>
+    </div>
+  </div>
 </div>
 
-<div class="playbar" style="height:60px; background:var(--panel); border-top:1px solid var(--border); display:flex; align-items:center; padding:0 20px; gap:15px;">
-    <span id="currTime" style="font-size:14px; color:var(--accent); font-family:monospace; min-width:45px;">00:00</span>
-    <input type="range" id="progBar" value="0" min="0" max="100" step="0.1" style="flex:1;" oninput="seekTime(this.value)">
-    <span id="totalTime" style="font-size:14px; color:#888; font-family:monospace; min-width:45px;">00:00</span>
-</div>
+<audio id="audioEl" style="display:none;"></audio>
 
 <script>
-let audio, analyser, isPlaying = false, sequences = [], currentActiveIdx = -1;
-let aspect = '16:9', canvasW = 1280, canvasH = 720;
-let recorder, recordedChunks = [];
-let customBrushImg = null;
+// ─── STATE ──────────────────────────────────────────────
+const NUM_SLOTS = 5;
+let audioFile = null;
+let audioDuration = 0;
+let slots = Array.from({length: NUM_SLOTS}, (_,i) => ({
+  file: null, img: null, dataUrl: null,
+  start: 0, end: 0,
+  style: 'watercolor',
+  index: i,
+  preRenderedCanvas: null 
+}));
 
-// [v18.19 핵심] 물리적 마스크 버퍼
-let maskBuffer, viewBuffer;
+const STYLES = ['watercolor','oil','impressionism','abstract','anime'];
+const STYLE_LABELS = { watercolor:'수채화', oil:'유채화', impressionism:'인상파', abstract:'추상파', anime:'애니메이션' };
 
-function setup() {
-    let cnv = createCanvas(canvasW, canvasH);
-    cnv.parent('vArea');
-    pixelDensity(1);
-    
-    maskBuffer = createGraphics(canvasW, canvasH);
-    viewBuffer = createGraphics(canvasW, canvasH);
-    maskBuffer.pixelDensity(1);
-    viewBuffer.pixelDensity(1);
-    
-    clearCanvas();
-    analyser = new p5.FFT();
+let mediaRecorder = null;
+let recordedChunks = [];
+let animFrameId = null;
+let isPlaying = false;
+
+const canvas = document.getElementById('mainCanvas');
+const ctx = canvas.getContext('2d');
+const audioEl = document.getElementById('audioEl');
+
+// 마스크 성능 최적화를 위한 전역 캔버스 (가비지 컬렉션 방지)
+const maskCanvas = document.createElement('canvas');
+maskCanvas.width = 1920; maskCanvas.height = 1080;
+const mctx = maskCanvas.getContext('2d');
+
+const compCanvas = document.createElement('canvas');
+compCanvas.width = 1920; compCanvas.height = 1080;
+const cctx = compCanvas.getContext('2d');
+
+// ─── AUDIO UPLOAD ────────────────────────────────────────
+document.getElementById('audioInput').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  audioFile = f;
+  const url = URL.createObjectURL(f);
+  audioEl.src = url;
+  audioEl.addEventListener('loadedmetadata', () => {
+    audioDuration = audioEl.duration;
+    document.getElementById('audioDur').textContent = fmtTime(audioDuration);
+    document.getElementById('audioName').textContent = f.name;
+    document.getElementById('audioInfo').style.display = 'flex';
+    document.getElementById('audioZone').style.display = 'none';
+    autoFillSlotTimes();
+    renderSlots();
+    checkReady();
+  }, {once: true});
+});
+
+function autoFillSlotTimes() {
+  const filledSlots = slots.filter(s => s.file);
+  if (filledSlots.length === 0) return;
+  const dur = audioDuration;
+  const n = filledSlots.length;
+  const seg = dur / n;
+  filledSlots.forEach((s, i) => {
+    s.start = parseFloat((i * seg).toFixed(2));
+    s.end = parseFloat(((i + 1) * seg).toFixed(2));
+    const row = document.getElementById(`slot-row-${s.index}`);
+    if (row) {
+      const startEl = row.querySelector('.slot-start');
+      const endEl = row.querySelector('.slot-end');
+      if (startEl) startEl.value = s.start.toFixed(1);
+      if (endEl) endEl.value = s.end.toFixed(1);
+    }
+  });
 }
 
-function handleMusic(files) {
-    if(!files[0]) return;
-    audio = loadSound(URL.createObjectURL(files[0]), (b)=>{
-        let dur = audio.duration();
-        document.getElementById('totalTime').innerText = formatTime(dur);
-        document.getElementById('progBar').max = dur;
-        document.getElementById('status').innerText = "AUDIO LOADED";
-        
-        let infoDiv = document.getElementById('audioInfo');
-        infoDiv.style.display = "block";
-        infoDiv.innerText = `TOTAL AUDIO: ${dur.toFixed(1)}s (${formatTime(dur)})`;
+// ─── SLOT RENDERING ─────────────────────────────────────
+function renderSlots() {
+  const container = document.getElementById('imageSlots');
+  container.innerHTML = '';
+  slots.forEach((slot, i) => {
+    const div = document.createElement('div');
+    div.className = 'image-slot' + (slot.file ? ' has-image' : '');
+    div.id = `slot-row-${i}`;
 
-        audio.onended(() => { if(isPlaying) stopAndSave(); });
+    div.innerHTML = `
+      <div class="slot-header">
+        <div class="slot-num">${i+1}</div>
+        ${slot.img ? `<img class="slot-thumb" src="${slot.dataUrl}">` : ''}
+        <span class="slot-name">${slot.file ? slot.file.name : '이미지 없음'}</span>
+        <button class="slot-add-btn" data-slot="${i}">+ 업로드</button>
+        <input type="file" accept="image/*" class="slot-file-input" id="slotInput-${i}">
+      </div>
+      ${slot.file ? `
+      <div class="time-row">
+        <div class="time-field">
+          <label>시작 (초)</label>
+          <input type="number" class="slot-start" value="${slot.start.toFixed(1)}" min="0" step="0.1" data-slot="${i}">
+        </div>
+        <div class="time-field">
+          <label>종료 (초)</label>
+          <input type="number" class="slot-end" value="${slot.end.toFixed(1)}" min="0" step="0.1" data-slot="${i}">
+        </div>
+      </div>
+      <div>
+        <div class="section-label" style="margin-bottom:0.4rem;">아트 스타일</div>
+        <div class="style-row">
+          ${STYLES.map(s => `<button class="style-btn ${slot.style===s?'active':''}" data-slot="${i}" data-style="${s}">${STYLE_LABELS[s]}</button>`).join('')}
+        </div>
+      </div>
+      ` : ''}
+    `;
+    container.appendChild(div);
+
+    div.querySelector('.slot-add-btn').addEventListener('click', () => {
+      document.getElementById(`slotInput-${i}`).click();
     });
-}
-
-function handleBrushPNG(files) {
-    if(!files[0]) return;
-    loadImage(URL.createObjectURL(files[0]), (img) => {
-        customBrushImg = img;
-        document.getElementById('status').innerText = "CUSTOM BRUSH LOADED";
-        invalidateArtBuffers();
+    document.getElementById(`slotInput-${i}`).addEventListener('change', e => {
+      loadSlotImage(i, e.target.files[0]);
     });
-}
 
-function handleImageAdd(files) {
-    if(!files[0]) return;
-    loadImage(URL.createObjectURL(files[0]), (img) => {
-        let lastEnd = sequences.length > 0 ? sequences[sequences.length-1].end : 0;
-        let newSeq = {
-            img: img, name: files[0].name,
-            start: lastEnd, end: lastEnd + 10,
-            style: 'oil', scale: 1.0, x: 0, y: 0,
-            sData: null, eData: null,
-            artBuffer: null, sketchBuffer: null
-        };
-        sequences.push(newSeq);
-        currentActiveIdx = sequences.length - 1;
-        processImageData(newSeq);
-        renderSeqList();
-        enableUI(true);
-    });
-}
-
-function renderSeqList() {
-    const list = document.getElementById('sequenceList');
-    list.innerHTML = "";
-    sequences.forEach((s, i) => {
-        let div = document.createElement('div');
-        div.className = `seq-item ${i === currentActiveIdx ? 'active' : ''}`;
-        div.onclick = () => selectSeq(i);
-        
-        div.innerHTML = `
-            <div class="seq-info">
-                <span style="font-size:12px; color:#fff; font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:130px;">${i+1}. ${s.name}</span>
-                <div style="display:flex; align-items:center; gap:5px;">
-                    <input class="time-input" type="number" step="0.1" value="${s.start.toFixed(1)}" onchange="updateSeqStart(${i}, this.value)" onclick="event.stopPropagation()">
-                    <span style="color:#666;">~</span>
-                    <input class="time-input" type="number" step="0.1" value="${s.end.toFixed(1)}" onchange="cascadeTime(${i}, this.value)" onclick="event.stopPropagation()">
-                </div>
-            </div>
-            <div class="seq-style-row">
-                <select style="margin:0; padding:4px;" onchange="sequences[${i}].style=this.value; invalidateArtBuffers(); event.stopPropagation();">
-                    <option value="oil" ${s.style==='oil'?'selected':''}>유채화 (Oil)</option>
-                    <option value="impression" ${s.style==='impression'?'selected':''}>인상파 (Impression)</option>
-                    <option value="pencil" ${s.style==='pencil'?'selected':''}>연필화 (Pencil)</option>
-                    <option value="watercolor" ${s.style==='watercolor'?'selected':''}>수채화 (Water)</option>
-                    <option value="pastel" ${s.style==='pastel'?'selected':''}>파스텔 (Pastel)</option>
-                    <option value="grayscale" ${s.style==='grayscale'?'selected':''}>흑백 (Grayscale)</option>
-                    <option value="point" ${s.style==='point'?'selected':''}>점묘 (Point)</option>
-                </select>
-            </div>
-        `;
-        list.appendChild(div);
-    });
-}
-
-function updateSeqStart(idx, val) {
-    let newStart = Number(val);
-    let dur = sequences[idx].end - sequences[idx].start;
-    sequences[idx].start = newStart;
-    sequences[idx].end = newStart + dur;
-    if(idx > 0) sequences[idx-1].end = newStart;
-    cascadeTime(idx, sequences[idx].end);
-}
-
-function cascadeTime(idx, val) {
-    sequences[idx].end = Number(val);
-    for(let i = idx + 1; i < sequences.length; i++) {
-        let dur = sequences[i].end - sequences[i].start;
-        sequences[i].start = sequences[i-1].end;
-        sequences[i].end = sequences[i].start + dur;
+    if (slot.file) {
+      div.querySelector('.slot-start').addEventListener('change', e => {
+        slots[i].start = parseFloat(e.target.value) || 0;
+        checkReady();
+      });
+      div.querySelector('.slot-end').addEventListener('change', e => {
+        slots[i].end = parseFloat(e.target.value) || 0;
+        checkReady();
+      });
+      div.querySelectorAll('.style-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          slots[i].style = btn.dataset.style;
+          slots[i].preRenderedCanvas = null;
+          renderSlots();
+        });
+      });
     }
-    renderSeqList();
+  });
 }
+renderSlots();
 
-function selectSeq(i) {
-    currentActiveIdx = i;
-    enableUI(true);
-    let s = sequences[i];
-    document.getElementById('curScale').value = s.scale;
-    document.getElementById('curX').value = s.x;
-    document.getElementById('curY').value = s.y;
-    document.getElementById('txtS').innerText = s.scale;
-    document.getElementById('txtX').innerText = s.x;
-    document.getElementById('txtY').innerText = s.y;
-    renderSeqList();
-    if(!isPlaying) drawGhostPreview();
-}
-
-function updateCurSeq() {
-    if(currentActiveIdx < 0) return;
-    let s = sequences[currentActiveIdx];
-    s.scale = Number(document.getElementById('curScale').value);
-    s.x = Number(document.getElementById('curX').value);
-    s.y = Number(document.getElementById('curY').value);
-    document.getElementById('txtS').innerText = s.scale;
-    document.getElementById('txtX').innerText = s.x;
-    document.getElementById('txtY').innerText = s.y;
-    processImageData(s);
-    if(!isPlaying) drawGhostPreview();
-}
-
-function invalidateArtBuffers() {
-    if(currentActiveIdx >= 0 && sequences[currentActiveIdx]) {
-        sequences[currentActiveIdx].artBuffer = null;
-    }
-    if(!isPlaying) drawGhostPreview();
-}
-
-function processImageData(seq) {
-    let temp = createGraphics(width, height);
-    temp.background(255);
-    let r = Math.min(width/seq.img.width, height/seq.img.height) * seq.scale;
-    temp.imageMode(CENTER);
-    temp.image(seq.img, width/2 + seq.x, height/2 + seq.y, seq.img.width*r, seq.img.height*r);
-    seq.sData = temp.get();
-    
-    let edge = createGraphics(width, height);
-    edge.image(seq.sData, 0, 0);
-    edge.filter(THRESHOLD, 0.2); 
-    seq.eData = edge.get();
-    temp.remove(); edge.remove();
-    seq.artBuffer = null; 
-}
-
-// [v18.19 핵심] 백그라운드 프리렌더링 (Targeting Image 2)
-function generateArtBuffers(seq) {
-    document.getElementById('status').innerText = "GENERATING BUFFERS...";
-    
-    let art = createGraphics(width, height);
-    let sk = createGraphics(width, height);
-    art.pixelDensity(1); sk.pixelDensity(1);
-    
-    let bgCol = document.getElementById('canvasBg').value;
-    art.background(bgCol);
-    sk.background(bgCol);
-
-    seq.sData.loadPixels();
-    seq.eData.loadPixels();
-    let p = seq.sData.pixels;
-    let e = seq.eData.pixels;
-
-    let bri = Number(document.getElementById('brightness').value);
-
-    // [v18.19 타겟 연출] 옅은 스케치 비네팅 버퍼 (외곽용)
-    sk.stroke(60, 160); sk.strokeWeight(1.0);
-    // 가장자리 외곽 15% 영역
-    let padX = width * 0.15;
-    let padY = height * 0.15;
-    
-    for(let i=0; i<80000; i++) {
-        let x = floor(random(width)), y = floor(random(height));
-        let idx = (y * width + x) * 4;
-        if(e[idx+3] > 128) {
-            // 외곽 영역에만 스케치 그리기
-            let distToPad = min(x, width-x, y, height-y);
-            let prob = distToPad < padX ? 1.0 : max(0.0, 1.0 - (distToPad - padX) / (width*0.2));
-            
-            if(prob > 0.05) {
-                sk.push(); sk.translate(x, y); sk.rotate(random(PI));
-                let l = 4 + random(6);
-                sk.line(-l, 0, l, 0); sk.pop();
-            }
-        }
-    }
-    // [v18.19 타겟 연출] 짙은 비네팅 오버레이 
-    sk.fill(0, 160); sk.noStroke(); sk.rect(0,0,width,padY); sk.rect(0,height-padY,width,padY);
-    sk.rect(0,padY,padX,height-2*padY); sk.rect(width-padX,padY,padX,height-2*padY);
-    seq.sketchBuffer = sk;
-
-    // 풀 컬러 버퍼 생성
-    let totalStrokes = 160000; 
-    art.noStroke();
-    
-    for(let i=0; i<totalStrokes; i++) {
-        let x = floor(random(width)), y = floor(random(height));
-        let idx = (y * width + x) * 4;
-        if (p[idx+3] < 20) continue;
-
-        let r = min(255, p[idx]*bri), g = min(255, p[idx+1]*bri), b = min(255, p[idx+2]*bri);
-        
-        art.push();
-        art.translate(x, y);
-        let sMul = random(0.8, 1.3);
-        let bSize = 10 * sMul; // 기본 크기
-
-        if(seq.style === 'oil') {
-            art.fill(r+random(-15,15), g+random(-15,15), b+random(-15,15), 250);
-            art.rotate(random(TWO_PI));
-            art.rect(-bSize, -bSize*0.3, bSize*2, bSize*0.6, 2);
-        } else if(seq.style === 'impression') {
-            art.fill(r+random(-25,25), g+random(-25,25), b+random(-25,25), 230);
-            art.rotate(random(TWO_PI));
-            art.rect(-bSize, -bSize*0.4, bSize*2, bSize*0.8);
-        } else if(seq.style === 'pencil') {
-            let lum = 0.299*r + 0.587*g + 0.114*b;
-            if(lum < 160) {
-                art.stroke(r*0.5, 200); art.strokeWeight(0.7);
-                art.rotate(PI/4 + random(0.2)); art.line(-bSize, 0, bSize, 0);
-                if(lum < 80 && random()<0.7) { art.rotate(PI/2); art.line(-bSize, 0, bSize, 0); }
-            }
-        } else if(seq.style === 'watercolor') {
-            art.fill(r, g, b, 70); art.ellipse(0,0, bSize*1.5);
-        } else if(seq.style === 'pastel') {
-            art.fill(r, g, b, 180); art.ellipse(0,0, bSize);
-        } else if(seq.style === 'grayscale') {
-            let lum = 0.299*r + 0.587*g + 0.114*b;
-            art.fill(lum, lum, lum, 240); art.ellipse(0,0, bSize);
-        } else if(seq.style === 'point') {
-            art.fill(r, g, b, 255); art.ellipse(0,0, bSize);
-        }
-        art.pop();
-    }
-    
-    seq.artBuffer = art;
-    document.getElementById('status').innerText = "PLAYING...";
-}
-
-let drawW, drawH;
-
-function draw() {
-    let t = isPlaying && audio ? audio.currentTime() : Number(document.getElementById('progBar').value);
-    document.getElementById('currTime').innerText = formatTime(t);
-    document.getElementById('progBar').value = t;
-
-    if(!isPlaying) return;
-
-    let idx = sequences.findIndex(s => t >= s.start && t <= s.end);
-    if(idx !== -1) {
-        if(idx !== currentActiveIdx) { currentActiveIdx = idx; renderSeqList(); }
-        let s = sequences[idx];
-        
-        // 프리-렌더 버퍼 준비
-        if (!s.artBuffer) generateArtBuffers(s);
-
-        // 시간 진행률 (시간에 100% 의존)
-        let prog = (t - s.start) / (s.end - s.start);
-        let zigProg = min(1.0, prog / 0.8); // 80% 완결
-        let expandProg = max(0.0, (prog - 0.8) / 0.2); // 80~100% 확장
-
-        let phaseMode = document.getElementById('drawingPhase').value;
-        if(phaseMode === 'sketch') { image(s.sketchBuffer, 0, 0); return; }
-        if(phaseMode === 'finish') { image(s.artBuffer, 0, 0); return; }
-
-        // 스케치 비네팅 배경
-        let trail = Number(document.getElementById('trail').value);
-        if(trail > 0) {
-            let c = color(document.getElementById('canvasBg').value);
-            c.setAlpha(trail * 255); fill(c); noStroke(); rect(0,0,width,height);
-        } else {
-            image(s.sketchBuffer, 0, 0); 
-        }
-
-        maskBuffer.clear(); 
-        
-        // [v18.19 픽스] 직선(fillRect) 제거 → 유기적 액체 덩어리(Liquid Blobs) 마스킹
-        maskBuffer.background(0); // 검은색 배경에
-        maskBuffer.fill(255); maskBuffer.noStroke(); // 흰색으로 칠함
-        
-        // 지우개 굵기
-        let pScale = Number(document.getElementById('paintScale').value);
-        let eraserSize = (width * 0.08) * pScale; // 화면 너비의 8% 기준
-
-        let drawDir = document.getElementById('drawDirection').value;
-        let padX = width * 0.15;
-        let padY = height * 0.15;
-        drawW = width - 2*padX;
-        drawH = height - 2*padY;
-
-        // [v18.19 핵심 복구] 직선 제거를 위한 "수십 개의 둥근 덩어리" 생성 엔진
-        if (drawDir === 'diagonal') {
-            // [v18.19 타겟 연출] 불규칙 사선 마스킹 (Diagonal ZigZag)
-            let pathX = padX + drawW * zigProg;
-            let pathY = padY + drawH * zigProg;
-            
-            // 그림이 드러난 뒷부분을 수많은 둥근 액체 덩어리로 채웁니다.
-            let numBlobs = 120 * zigProg; 
-            for(let i=0; i<numBlobs; i++) {
-                // 사선 경로상의 랜덤 위치에 불규칙한 크기의 둥근 덩어리를 그립니다.
-                let t_i = random(zigProg); // 지나온 경로상의 한 점
-                let bx = padX + drawW * t_i + random(-eraserSize/2, eraserSize/2);
-                let by = padY + drawH * t_i + random(-eraserSize/2, eraserSize/2);
-                let bSize = eraserSize * random(0.8, 1.4);
-                maskBuffer.ellipse(bx, by, bSize, bSize);
-            }
-            
-            // 지우개 헤드 (사선 끝점) 통통 튀는 효과
-            let bounce = audio ? (analyser.getEnergy("bass") / 255) * 15 : 0; 
-            maskBuffer.ellipse(pathX, pathY + bounce, eraserSize * 1.3);
-        }
-        else if (drawDir === 'horizontal') {
-            // [v18.19 타겟 연출] 불규칙 수평 지그재그 마스킹
-            let sweeps = 12; // 수평 Z자 횟수
-            let rowH = drawH / sweeps;
-            let totalDist = sweeps * drawW;
-            let currentDist = zigProg * totalDist;
-            let curSweep = floor(currentDist / drawW);
-            let sweepRem = currentDist % drawW;
-
-            // 이미 지나간 윗줄은 둥근 덩어리들로 꽉 채웁니다.
-            for(let i=0; i<curSweep; i++) {
-                let y = padY + i*rowH + rowH/2;
-                // 한 줄당 수십 개의 둥근 덩어리로 직선 느낌 제거
-                let numBlobsInRow = drawW / (eraserSize*0.3);
-                for(let j=0; j<numBlobsInRow; j++) {
-                    let bx = padX + drawW * random() + random(-eraserSize/4, eraserSize/4);
-                    let by = y + random(-eraserSize/4, eraserSize/4);
-                    let bSize = eraserSize * random(0.9, 1.5);
-                    maskBuffer.ellipse(bx, by, bSize, bSize);
-                }
-            }
-            // 현재 지나가고 있는 줄 마스킹
-            if(curSweep < sweeps) {
-                let isLtoR = (curSweep % 2 === 0);
-                let cx = isLtoR ? padX + sweepRem : (width - padX) - sweepRem;
-                let cy = padY + curSweep * rowH + rowH/2;
-                
-                // 현재 진행 중인 구간에 둥근 덩어리를 사정없이 칠합니다.
-                let numBlobsInProg = sweepRem / (eraserSize*0.3);
-                for(let j=0; j<numBlobsInProg; j++) {
-                    let bx = isLtoR ? padX + sweepRem*random() : cx + sweepRem*random();
-                    let by = cy + random(-rowH/2, rowH/2);
-                    let bSize = eraserSize * random(0.8, 1.4);
-                    maskBuffer.ellipse(bx, by, bSize, bSize);
-                }
-                
-                // 지우개 헤드 바운스
-                let bounce = audio ? (analyser.getEnergy("bass") / 255) * 15 : 0; 
-                maskBuffer.ellipse(cx, cy + bounce, eraserSize * 1.3);
-            }
-        } 
-        else {
-            // 중앙 확산 (global)
-            maskBuffer.ellipse(width/2, height/2, eraserSize * zigProg * 5, eraserSize * zigProg * 5);
-        }
-
-        // [v18.19] 80% 이후 전체 영역 마스킹 (Vignette 확장)
-        if(expandProg > 0) {
-            // 내부에서 외부로 흰색 사각형이 확장됨 (경계 완화)
-            let exX = padX * (1 - expandProg);
-            let exY = padY * (1 - expandProg);
-            maskBuffer.rect(exX, exY, width - 2*exX, height - 2*exY);
-        }
-
-        // 소스-인 합성으로 컬러 아트 추출
-        viewBuffer.clear();
-        viewBuffer.image(maskBuffer, 0, 0); // 바탕이 검고 지우개 경로만 흰색
-        viewBuffer.drawingContext.globalCompositeOperation = 'source-in';
-        viewBuffer.image(s.artBuffer, 0, 0); // 흰색 영역에만 컬러 아트를 채움
-        viewBuffer.drawingContext.globalCompositeOperation = 'source-over'; // 원상복구
-
-        // 최종 출력 (비네팅 스케치 위에 지워진 컬러 아트 덮기)
-        image(viewBuffer, 0, 0);
-    }
-}
-
-function clearCanvas() { background(document.getElementById('canvasBg').value); }
-
-function drawGhostPreview() {
-    clearCanvas();
-    if(currentActiveIdx !== -1 && sequences[currentActiveIdx].sData) {
-        tint(255, 80); image(sequences[currentActiveIdx].sData, 0, 0); noTint();
-    }
-}
-
-function togglePlay() {
-    if(!audio) return alert("오디오 파일(MP3)을 로드해주세요.");
-    if(isPlaying) {
-        if(audio) audio.stop(); isPlaying = false; 
-        if(recorder && recorder.state !== "inactive") recorder.stop();
-        document.getElementById('recBtn').innerText = "🔴 START REC & AUTO SAVE";
-        document.getElementById('status').innerText = "STANDBY";
-    } else {
-        clearCanvas(); startRecording(); 
-        if(audio) audio.play(); 
-        isPlaying = true;
-        document.getElementById('status').innerText = "RECORDING & PLAYING...";
-        document.getElementById('recBtn').innerText = "⏹ STOP (AUTO SAVING)";
-    }
-}
-
-function stopAndSave() {
-    if(audio) audio.stop(); isPlaying = false;
-    if(recorder && recorder.state !== "inactive") recorder.stop();
-    document.getElementById('status').innerText = "SAVING VIDEO...";
-    document.getElementById('recBtn').innerText = "🔴 START REC & AUTO SAVE";
-}
-
-function startRecording() {
-    recordedChunks = [];
-    let stream = document.querySelector('canvas').captureStream(30);
-    recorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
-    recorder.ondataavailable = e => recordedChunks.push(e.data);
-    recorder.onstop = () => {
-        let blob = new Blob(recordedChunks, { type: 'video/mp4' });
-        let a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-        a.download = `LiquidPaint_v18.19_${Date.now()}.mp4`; a.click();
-        document.getElementById('status').innerText = "VIDEO SAVED!";
+function loadSlotImage(idx, file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      slots[idx].file = file;
+      slots[idx].img = img;
+      slots[idx].dataUrl = e.target.result;
+      slots[idx].preRenderedCanvas = null; 
+      
+      if (audioDuration > 0) autoFillSlotTimes(); 
+      renderSlots(); 
+      checkReady();
     };
-    recorder.start();
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
 }
 
-function setAspect(r) {
-    aspect = r;
-    document.getElementById('b169').classList.toggle('active', r==='16:9');
-    document.getElementById('b916').classList.toggle('active', r==='9:16');
-    if(r==='16:9') { canvasW = 1280; canvasH = 720; } else { canvasW = 720; canvasH = 1280; }
-    resizeCanvas(canvasW, canvasH);
-    maskBuffer.resizeCanvas(canvasW, canvasH);
-    viewBuffer.resizeCanvas(canvasW, canvasH);
-    sequences.forEach(s => { processImageData(s); s.artBuffer=null; });
-    clearCanvas();
-    if(!isPlaying) drawGhostPreview();
+function checkReady() {
+  const hasAudio = !!audioFile;
+  const hasImages = slots.filter(s => s.file).length >= 4;
+  const ready = hasAudio && hasImages;
+  document.getElementById('btnStart').disabled = !ready;
+  if (ready) {
+    document.getElementById('statusMsg').textContent = `✓ 준비완료 — ${slots.filter(s=>s.file).length}개 이미지, ${fmtTime(audioDuration)}`;
+    document.getElementById('statusMsg').className = 'ok';
+  } else {
+    const missing = [];
+    if (!hasAudio) missing.push('음악 파일');
+    if (!hasImages) missing.push(`이미지 ${4-slots.filter(s=>s.file).length}장 더 필요`);
+    document.getElementById('statusMsg').textContent = missing.join(' · ');
+    document.getElementById('statusMsg').className = 'warn';
+  }
 }
 
-function enableUI(on) { 
-    let ui = document.getElementById('seqUI');
-    ui.style.opacity = on ? "1" : "0.3"; ui.style.pointerEvents = on ? "all" : "none";
+// ─── ART STYLE FILTERS ───────────────────────────────────
+function applyStyle(imgData, style, w, h) {
+  const d = imgData.data;
+  if (style === 'watercolor') {
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], g = d[i+1], b = d[i+2];
+      const gray = r*0.299 + g*0.587 + b*0.114;
+      const mix = 0.25;
+      d[i]   = Math.min(255, r*(1-mix) + gray*mix + 8);
+      d[i+1] = Math.min(255, g*(1-mix) + gray*mix + 8);
+      d[i+2] = Math.min(255, b*(1-mix) + gray*mix + 12);
+    }
+  } else if (style === 'oil') {
+    for (let i = 0; i < d.length; i += 4) {
+      let r = d[i]/255, g = d[i+1]/255, b = d[i+2]/255;
+      const avg = (r+g+b)/3; const sat = 1.5;
+      r = avg + (r-avg)*sat; g = avg + (g-avg)*sat; b = avg + (b-avg)*sat;
+      r = ((r-0.5)*1.3+0.5); g = ((g-0.5)*1.3+0.5); b = ((b-0.5)*1.3+0.5);
+      d[i]   = Math.min(255,Math.max(0,r*255));
+      d[i+1] = Math.min(255,Math.max(0,g*255));
+      d[i+2] = Math.min(255,Math.max(0,b*255));
+    }
+  } else if (style === 'impressionism') {
+    for (let i = 0; i < d.length; i += 4) {
+      let r = d[i], g = d[i+1], b = d[i+2];
+      const noise = (Math.random()-0.5)*18;
+      d[i]   = Math.min(255, Math.max(0, r + noise + 10));
+      d[i+1] = Math.min(255, Math.max(0, g + noise*0.6));
+      d[i+2] = Math.min(255, Math.max(0, b + noise - 5));
+    }
+  } else if (style === 'abstract') {
+    for (let i = 0; i < d.length; i += 4) {
+      const levels = 5;
+      d[i]   = Math.round(d[i]   / 255 * levels) / levels * 255;
+      d[i+1] = Math.round(d[i+1] / 255 * levels) / levels * 255;
+      d[i+2] = Math.round(d[i+2] / 255 * levels) / levels * 255;
+    }
+  } else if (style === 'anime') {
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], g = d[i+1], b = d[i+2];
+      const levels = 8;
+      d[i]   = Math.round(r/255*levels)/levels*255;
+      d[i+1] = Math.round(g/255*levels)/levels*255;
+      d[i+2] = Math.round(b/255*levels)/levels*255;
+      const gray = d[i]*0.3+d[i+1]*0.59+d[i+2]*0.11;
+      d[i]   = Math.min(255,d[i]  *1.2 - gray*0.2);
+      d[i+1] = Math.min(255,d[i+1]*1.2 - gray*0.2);
+      d[i+2] = Math.min(255,d[i+2]*1.2 - gray*0.2);
+    }
+  }
+  return imgData;
 }
-function formatTime(s) { let m=floor(s/60), sec=floor(s%60); return `${nf(m,2)}:${nf(sec,2)}`; }
-function seekTime(v) { if(!isPlaying) { drawGhostPreview(); } }
-function saveArt() { saveCanvas('StillMasterpiece', 'png'); }
+
+// ─── OPTIMIZED RENDER LOGIC (CACHING) ────────────────────
+function preRenderSlotImage(slot, w, h) {
+  if (slot.preRenderedCanvas) return slot.preRenderedCanvas;
+
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = w; tempCanvas.height = h;
+  const tempCtx = tempCanvas.getContext('2d');
+
+  const img = slot.img;
+  const scale = Math.max(w/img.width, h/img.height);
+  const dw = img.width * scale, dh = img.height * scale;
+  const dx = (w - dw)/2, dy = (h - dh)/2;
+  
+  tempCtx.drawImage(img, dx, dy, dw, dh);
+
+  const imageData = tempCtx.getImageData(0,0,w,h);
+  applyStyle(imageData, slot.style, w, h);
+  tempCtx.putImageData(imageData, 0, 0);
+
+  slot.preRenderedCanvas = tempCanvas;
+  return tempCanvas;
+}
+
+// ─── VIGNETTE ────────────────────────────────────────────
+function drawVignette(ctx, w, h, strength) {
+  const rad = Math.max(w,h) * (0.35 + strength * 0.65);
+  const grad = ctx.createRadialGradient(w/2, h/2, rad*0.1, w/2, h/2, rad);
+  grad.addColorStop(0, 'rgba(0,0,0,0)');
+  grad.addColorStop(0.5, `rgba(0,0,0,${0.4 * (1-strength)})`);
+  grad.addColorStop(1, `rgba(0,0,0,${0.92 * (1-strength) + 0.08})`);
+  
+  ctx.save();
+  ctx.globalCompositeOperation = 'multiply'; 
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, w, h);
+  ctx.restore();
+}
+
+// ─── WOBBLY WIPE LOGIC (SIN/COS) ─────────────────────────
+// 팀장님이 원하신 "직선이 아닌 사람이 그리는 듯한 울퉁불퉁한 지우개질"
+function drawWobblyWipe(mctx, w, h, progress) {
+  mctx.save();
+  // 대각선 30도 각도로 세팅
+  mctx.translate(w/2, h/2);
+  mctx.rotate(Math.PI / 6); 
+
+  const sweepW = w * 1.5;
+  const sweepH = h * 1.5;
+  const startX = -sweepW / 2;
+  const startY = -sweepH / 2;
+
+  const brushSize = 220; // 굵직한 칠판 지우개 크기
+  const sweeps = Math.max(2, Math.ceil(sweepH / (brushSize * 0.65)));
+  const rowH = sweepH / sweeps;
+  const totalDist = sweeps * sweepW;
+  const curDist = progress * totalDist;
+
+  mctx.beginPath();
+  mctx.lineCap = 'round';
+  mctx.lineJoin = 'round';
+  mctx.lineWidth = brushSize;
+  mctx.strokeStyle = '#fff';
+
+  mctx.moveTo(startX, startY + rowH/2);
+  let acc = 0;
+
+  for (let i = 0; i < sweeps; i++) {
+    const isLtoR = (i % 2 === 0);
+    const x0 = isLtoR ? startX : startX + sweepW;
+    const x1 = isLtoR ? startX + sweepW : startX;
+    const y = startY + i * rowH + rowH/2;
+
+    // 수직 이동 (줄 바꿈)
+    if (i > 0) {
+      const dDist = rowH;
+      if (acc + dDist > curDist) {
+        mctx.lineTo(x0, y - rowH + (curDist - acc));
+        acc = curDist; break;
+      }
+      mctx.lineTo(x0, y);
+      acc += dDist;
+    }
+
+    // 수평 이동 (SIN/COS를 이용한 울퉁불퉁한 궤적)
+    const sDist = sweepW;
+    const steps = 40; // 곡선을 부드럽게 만들기 위한 세그먼트 수
+    const stepDist = sDist / steps;
+
+    for (let j = 1; j <= steps; j++) {
+      if (acc + stepDist > curDist) {
+        const rem = curDist - acc;
+        const px = isLtoR ? x0 + rem : x0 - rem;
+        // SIN과 COS의 조합으로 불규칙한 흔들림(wobble) 생성
+        const wobbleY = Math.sin(px / 60) * 40 + Math.cos(px / 30) * 20;
+        mctx.lineTo(px, y + wobbleY);
+        acc = curDist; break;
+      }
+      const px = isLtoR ? x0 + j*stepDist : x0 - j*stepDist;
+      const wobbleY = Math.sin(px / 60) * 40 + Math.cos(px / 30) * 20;
+      mctx.lineTo(px, y + wobbleY);
+      acc += stepDist;
+    }
+    if (acc >= curDist) break;
+  }
+  mctx.stroke();
+  mctx.restore();
+}
+
+// ─── MAIN DRAW LOOP ──────────────────────────────────────
+function getCurrentSlot(t) {
+  const active = slots.filter(s => s.file);
+  for (const sl of active) {
+    if (t >= sl.start && t < sl.end) return sl;
+  }
+  return active[active.length-1] || null;
+}
+
+function drawFrame(currentTime) {
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0,0,w,h);
+
+  const sl = getCurrentSlot(currentTime);
+  if (!sl || !sl.img) return;
+
+  const dur = sl.end - sl.start;
+  const elapsed = currentTime - sl.start;
+  const tSlot = Math.min(1, Math.max(0, elapsed / dur)); 
+
+  // 80% 시점까지 지우개질 완료, 나머지 20%는 비네팅 확장
+  const REVEAL_START = 0.80; 
+  const paintProgress = Math.min(1, tSlot / REVEAL_START);
+  const vignetteOpen = tSlot < REVEAL_START ? 0 : (tSlot - REVEAL_START) / (1 - REVEAL_START);
+
+  // 캐싱된 컬러 이미지 가져오기
+  const styledCanvas = preRenderSlotImage(sl, w, h);
+
+  // 마스크 캔버스 초기화
+  mctx.clearRect(0, 0, w, h);
+
+  // 타겟 이미지 2번 스타일의 외곽 15% 비네팅(여백) 보호 영역
+  const padX = w * 0.15;
+  const padY = h * 0.15;
+  const drawW = w - 2 * padX;
+  const drawH = h - 2 * padY;
+
+  // 1. 불규칙한 사선 지우개질 그리기
+  if (paintProgress > 0) {
+    drawWobblyWipe(mctx, w, h, paintProgress);
+  }
+
+  // 2. 비네팅 영역 컨트롤
+  if (vignetteOpen === 0) {
+    // 80% 이전: 지우개가 캔버스 외곽을 넘지 못하도록 패딩 바깥쪽을 잘라냄
+    mctx.globalCompositeOperation = 'destination-in';
+    mctx.fillStyle = '#fff';
+    mctx.fillRect(padX, padY, drawW, drawH);
+    mctx.globalCompositeOperation = 'source-over';
+  } else {
+    // 80% ~ 100%: 닦아낸 영역이 외곽까지 부드럽게 확장되며 100% 꽉 찬 그림이 됨
+    mctx.fillStyle = `rgba(255,255,255,${vignetteOpen})`;
+    const exX = padX * (1 - vignetteOpen);
+    const exY = padY * (1 - vignetteOpen);
+    mctx.fillRect(exX, exY, w - 2*exX, h - 2*exY);
+  }
+
+  // 3. 합성 (지우개 모양대로 컬러 이미지 오려내기)
+  cctx.clearRect(0, 0, w, h);
+  cctx.drawImage(maskCanvas, 0, 0);
+  cctx.globalCompositeOperation = 'source-in';
+  cctx.drawImage(styledCanvas, 0, 0);
+  cctx.globalCompositeOperation = 'source-over';
+
+  // 4. 메인 캔버스에 그리기
+  ctx.drawImage(compCanvas, 0, 0);
+
+  // 5. 검은색 그라데이션 비네팅 덮기
+  drawVignette(ctx, w, h, vignetteOpen);
+
+  // 6. HUD (FHD 비율에 맞게 폰트 크기 업)
+  ctx.save();
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.font = '500 26px DM Mono, monospace'; 
+  ctx.fillText(STYLE_LABELS[sl.style], 36, h - 36);
+  ctx.restore();
+}
+
+// ─── PLAYBACK & RECORDING ────────────────────────────────
+document.getElementById('btnStart').addEventListener('click', startSession);
+document.getElementById('btnStop').addEventListener('click', stopSession);
+
+async function startSession() {
+  if (!audioFile || slots.filter(s=>s.file).length < 4) return;
+
+  slots.forEach(s => s.preRenderedCanvas = null);
+
+  document.getElementById('emptyHint').style.display = 'none';
+  document.getElementById('canvasOverlay').style.display = 'flex';
+  document.getElementById('btnStart').disabled = true;
+  document.getElementById('btnStop').classList.add('visible');
+  document.getElementById('recBadge').classList.add('visible');
+  document.getElementById('progressLog').classList.add('visible');
+  document.getElementById('statusDot').className = 'status-dot recording';
+
+  const stream = canvas.captureStream(24); // 24FPS 시네마틱 프레임
+  
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const dest = audioCtx.createMediaStreamDestination();
+  const source = audioCtx.createMediaElementSource(audioEl);
+  source.connect(dest);
+  source.connect(audioCtx.destination);
+  const audioTrack = dest.stream.getAudioTracks()[0];
+  if (audioTrack) stream.addTrack(audioTrack);
+
+  const mimeTypes = [
+    'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+    'video/mp4;codecs=h264',
+    'video/mp4',
+    'video/webm;codecs=vp9',
+    'video/webm;codecs=vp8',
+    'video/webm'
+  ];
+  let chosenMime = 'video/webm'; 
+  for (const mt of mimeTypes) {
+    if (MediaRecorder.isTypeSupported(mt)) { chosenMime = mt; break; }
+  }
+
+  recordedChunks = [];
+  mediaRecorder = new MediaRecorder(stream, { mimeType: chosenMime, videoBitsPerSecond: 15000000 });
+  mediaRecorder.ondataavailable = e => { if (e.data.size>0) recordedChunks.push(e.data); };
+  mediaRecorder.onstop = () => saveRecording(chosenMime);
+  mediaRecorder.start(100);
+
+  if(audioCtx.state === 'suspended') await audioCtx.resume();
+  
+  audioEl.currentTime = 0;
+  audioEl.play();
+  isPlaying = true;
+
+  document.getElementById('progressLog').textContent = `🎬 녹화중 (FHD 24fps) — ${chosenMime.split(';')[0]}`;
+
+  audioEl.onended = () => stopSession();
+
+  function loop() {
+    if (!isPlaying) return;
+    const ct = audioEl.currentTime;
+    const dur = audioDuration;
+    drawFrame(ct);
+    document.getElementById('progressFill').style.width = (ct/dur*100)+'%';
+    document.getElementById('timeDisplay').textContent = `${fmtTime(ct)} / ${fmtTime(dur)}`;
+    animFrameId = requestAnimationFrame(loop);
+  }
+  loop();
+}
+
+function stopSession() {
+  if (!isPlaying) return;
+  isPlaying = false;
+  cancelAnimationFrame(animFrameId);
+  audioEl.pause();
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+  document.getElementById('btnStop').classList.remove('visible');
+  document.getElementById('recBadge').classList.remove('visible');
+  document.getElementById('statusDot').className = 'status-dot active';
+  document.getElementById('progressLog').textContent = '⏸ 저장 중...';
+}
+
+function saveRecording(mime) {
+  const ext = mime.includes('mp4') ? 'mp4' : 'webm';
+  const blob = new Blob(recordedChunks, { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const now = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  const fname = `MusicVideo_FHD_${pad(now.getMonth()+1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.${ext}`;
+  a.href = url;
+  a.download = fname;
+  a.click();
+  URL.revokeObjectURL(url);
+  document.getElementById('progressLog').textContent = `✓ 저장완료: ${fname}`;
+  document.getElementById('btnStart').disabled = false;
+  document.getElementById('canvasOverlay').style.display = 'none';
+  document.getElementById('statusDot').className = 'status-dot';
+  setTimeout(() => document.getElementById('progressLog').classList.remove('visible'), 4000);
+}
+
+// ─── UTILS ───────────────────────────────────────────────
+function fmtTime(s) {
+  const m = Math.floor(s/60);
+  const sec = Math.floor(s%60);
+  return `${m}:${String(sec).padStart(2,'0')}`;
+}
+
+// ─── DRAG & DROP AUDIO ───────────────────────────────────
+document.getElementById('audioZone').addEventListener('dragover', e => { e.preventDefault(); });
+document.getElementById('audioZone').addEventListener('drop', e => {
+  e.preventDefault();
+  const f = e.dataTransfer.files[0];
+  if (f && f.type.startsWith('audio/')) {
+    const dt = new DataTransfer();
+    dt.items.add(f);
+    document.getElementById('audioInput').files = dt.files;
+    document.getElementById('audioInput').dispatchEvent(new Event('change'));
+  }
+});
+
+checkReady();
 </script>
 </body>
 </html>
