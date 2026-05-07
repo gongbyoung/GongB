@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>ART LAB v18.3 — Cascading Director</title>
+<title>ART LAB v18.4 — Perfect Closure Edition</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -16,7 +16,6 @@ body{ background:var(--bg); color:var(--text); font-family:sans-serif; height:10
 .side-panel { background: var(--panel); padding: 15px; overflow-y: auto; border-right: 1px solid var(--border); }
 .side-panel.right { border-right:none; border-left: 1px solid var(--border); }
 
-/* 시퀀스 리스트 UI */
 .seq-item { background: #16161d; padding: 12px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #222; cursor: pointer; }
 .seq-item.active { border-color: var(--accent); background: #1a2523; }
 .seq-info { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; }
@@ -36,7 +35,7 @@ label { font-size: 9px; color: #777; display:block; margin-top:8px;}
 <body>
 
 <div class="topbar">
-    <div class="logo">ART LAB v18.3 Cascading</div>
+    <div class="logo">ART LAB v18.4 Perfect Closure</div>
     <div id="status">READY</div>
 </div>
 
@@ -58,7 +57,7 @@ label { font-size: 9px; color: #777; display:block; margin-top:8px;}
             <button class="btn active" id="b169" onclick="setAspect('16:9')">16:9</button>
             <button class="btn" id="b916" onclick="setAspect('9:16')">9:16</button>
         </div>
-        <label>DENSITY</label><input type="range" id="density" min="10" max="1000" value="300">
+        <label>DENSITY</label><input type="range" id="density" min="10" max="1000" value="350">
         <label>BRUSH SCALE</label><input type="range" id="paintScale" min="0.1" max="5.0" step="0.1" value="1.0">
         
         <h3>3. Active Transform</h3>
@@ -99,7 +98,6 @@ function handleMusic(files) {
 function handleImageAdd(files) {
     if(!files[0]) return;
     loadImage(URL.createObjectURL(files[0]), (img) => {
-        // [v18.3 연쇄 로직] 마지막 이미지의 종료시간을 새 이미지의 시작시간으로!
         let lastEnd = sequences.length > 0 ? sequences[sequences.length-1].end : 0;
         let newSeq = {
             img: img, name: files[0].name,
@@ -127,20 +125,17 @@ function renderSeqList() {
                 <span style="font-size:11px; color:#fff;">${i+1}. ${s.name}</span>
                 <input class="time-input" type="number" value="${s.end}" onchange="cascadeTime(${i}, this.value)">
             </div>
-            <div style="font-size:9px; color:#555;">Start: ${s.start.toFixed(1)}s | End: ${s.end.toFixed(1)}s</div>
+            <div style="font-size:9px; color:#555;">Start: ${s.start.toFixed(1)}s | End: ${s.end.toFixed(1)}s (Done at 80%)</div>
         `;
         list.appendChild(div);
     });
 }
 
-// [v18.3 핵심] 종료 시간 변경 시 다음 시퀀스들 자동 정렬
 function cascadeTime(idx, val) {
     sequences[idx].end = Number(val);
     for(let i = idx + 1; i < sequences.length; i++) {
         sequences[i].start = sequences[i-1].end;
-        // 기존 듀레이션 유지하며 종료시간 밀기
-        let dur = 10; // 기본값
-        sequences[i].end = sequences[i].start + dur;
+        sequences[i].end = sequences[i].start + 10;
     }
     renderSeqList();
 }
@@ -174,7 +169,6 @@ function processImageData(seq) {
     temp.imageMode(CENTER);
     temp.image(seq.img, width/2 + seq.x, height/2 + seq.y, seq.img.width*r, seq.img.height*r);
     seq.sData = temp.get();
-    
     let edge = createGraphics(width, height);
     edge.image(seq.sData, 0, 0);
     edge.filter(THRESHOLD, 0.1); 
@@ -184,11 +178,8 @@ function processImageData(seq) {
 
 function draw() {
     if(!isPlaying && currentActiveIdx !== -1) {
-        // [v18.3] 고스트 프리뷰 (배치 가이드)
-        background(240);
-        tint(255, 100);
-        image(sequences[currentActiveIdx].sData, 0, 0);
-        noTint();
+        background(240); tint(255, 100);
+        image(sequences[currentActiveIdx].sData, 0, 0); noTint();
         return;
     }
     
@@ -197,9 +188,12 @@ function draw() {
         let idx = sequences.findIndex(s => t >= s.start && t <= s.end);
         if(idx !== -1) {
             let s = sequences[idx];
-            let progress = (t - s.start) / (s.end - s.start);
+            // [v18.4 핵심] 진행도를 0.8로 나누어 80% 시점에서 1.0(완성)이 되게 함
+            let rawProg = (t - s.start) / (s.end - s.start);
+            let progress = min(1.0, rawProg / 0.8); 
+            
             let amp = analyser.getEnergy(20, 200) / 255;
-            paint(s, progress, amp);
+            if(progress < 1.0) paint(s, progress, amp);
         }
     }
 }
@@ -208,14 +202,13 @@ function paint(seq, prog, amp) {
     let dens = Number(document.getElementById('density').value) * (amp + 0.2);
     let pScale = Number(document.getElementById('paintScale').value);
     
-    // 7단계 아카데믹 로직 적용
     let phase = 'done';
     if(prog <= 0.1) phase = 'sketch';
     else if(prog <= 0.2) phase = 'coarse';
     else if(prog <= 0.4) phase = 'mid';
     else if(prog <= 0.6) phase = 'fine';
     else if(prog <= 0.7) phase = 'shadow';
-    else if(prog <= 0.8) phase = 'finish';
+    else if(prog <= 0.9) phase = 'finish'; // 80% 즈음 마무리
     if(phase === 'done') return;
 
     for(let i=0; i<dens/8; i++) {
@@ -259,7 +252,7 @@ function startRecording() {
     recorder.onstop = () => {
         let blob = new Blob(recordedChunks, { type: 'video/mp4' });
         let a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-        a.download = `Art_v18.3_${Date.now()}.mp4`; a.click();
+        a.download = `PerfectArt_v18.4_${Date.now()}.mp4`; a.click();
     };
     recorder.start();
 }
