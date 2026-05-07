@@ -2,31 +2,35 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>ART LAB v18.1 — Sequence Director Pro</title>
+<title>ART LAB v18.2 — Visual Sequence Editor</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
-:root{ --bg:#050505; --panel:#0d0d12; --accent:#00ffcc; --border:rgba(255,255,255,0.06); --text:#ffffff; }
+:root{ --bg:#050505; --panel:#0d0d12; --accent:#00ffcc; --border:rgba(255,255,255,0.08); --text:#ffffff; --point:#ff3e81; }
 body{ background:var(--bg); color:var(--text); font-family:sans-serif; height:100vh; overflow:hidden; display: flex; flex-direction: column; }
 
 .topbar{ padding:10px 20px; background:var(--panel); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
 .logo{letter-spacing:4px; color:var(--accent); font-weight:800; font-size:12px;}
-.container { display: grid; grid-template-columns: 320px 1fr 320px; flex: 1; min-height: 0; }
+.container { display: grid; grid-template-columns: 350px 1fr 320px; flex: 1; min-height: 0; }
 .side-panel { background: var(--panel); padding: 15px; overflow-y: auto; border-right: 1px solid var(--border); }
 .side-panel.right { border-right:none; border-left: 1px solid var(--border); }
 
-/* SEQUENCE ITEM UI */
-.seq-item { background: #1a1a24; padding: 10px; border-radius: 6px; margin-bottom: 10px; border-left: 4px solid #444; position: relative; font-size: 11px; }
-.seq-item.active { border-left-color: var(--accent); background: #1a2420; }
-.seq-ctrl { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 5px; }
-.seq-ctrl input, .seq-ctrl select { background:#000; border:1px solid #333; color:var(--accent); padding:2px; font-size:10px; width:100%; }
+/* 시퀀스 아이템 디자인 강화 */
+.seq-item { background: #16161d; padding: 12px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #222; position: relative; transition: 0.2s; }
+.seq-item.active { border-color: var(--accent); background: #1a2523; box-shadow: 0 0 15px rgba(0,255,204,0.1); }
+.seq-name { font-weight:bold; font-size:11px; color:var(--accent); margin-bottom:8px; display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.time-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+.time-row label { font-size:9px; color:#666; display:block; }
+.time-row input[type=number] { background:#000; border:1px solid #333; color:#fff; width:100%; padding:3px; font-size:11px; border-radius:4px; }
+.style-row { display: flex; gap:5px; align-items:center; margin-top:8px; }
+.style-row select { flex:1; background:#000; border:1px solid #333; color:var(--accent); font-size:11px; padding:3px; }
 
 .playbar { height: 60px; background: var(--panel); border-top: 1px solid var(--border); display: flex; align-items: center; padding: 0 20px; gap: 15px; }
 #progBar { flex: 1; accent-color: var(--accent); cursor: pointer; }
 
 .viz-area { background: #000; flex: 1; display: flex; justify-content: center; align-items: center; position: relative; }
-canvas { box-shadow: 0 0 40px rgba(0,0,0,1); }
+canvas { box-shadow: 0 0 50px rgba(0,0,0,1); }
 
 h3 { font-size: 10px; color: #555; text-transform: uppercase; margin-bottom: 10px; border-bottom: 1px solid var(--border); padding-bottom: 5px; }
 .btn { background: transparent; border: 1px solid var(--border); color: #fff; padding: 8px; cursor: pointer; font-size: 10px; border-radius: 4px; width: 100%; margin-bottom: 5px; }
@@ -39,69 +43,73 @@ label { font-size: 9px; color: #777; }
 <body>
 
 <div class="topbar">
-    <div class="logo">ART LAB v18.1 Director</div>
-    <div id="status">READY</div>
+    <div class="logo">ART LAB v18.2 — SEQUENCE DIRECTOR</div>
+    <div id="status" style="font-size:10px; color:var(--accent);">READY</div>
 </div>
 
 <div class="container">
     <div class="side-panel">
         <h3>1. Audio & Sequence</h3>
-        <button class="btn" onclick="document.getElementById('mIn').click()">LOAD MP3</button>
+        <button class="btn" onclick="document.getElementById('mIn').click()">🎵 LOAD MP3 AUDIO</button>
         <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleMusic(this.files)">
-        <button class="btn primary" onclick="document.getElementById('iIn').click()">+ ADD IMAGE</button>
+        <button class="btn primary" onclick="document.getElementById('iIn').click()">🖼️ ADD IMAGE TO LIST</button>
         <input type="file" id="iIn" accept="image/*" style="display:none" onchange="handleImageAdd(this.files)">
         
-        <div id="sequenceList" style="margin-top:15px;"></div>
+        <div id="sequenceList" style="margin-top:20px;"></div>
     </div>
 
-    <div class="viz-area" id="vArea">
-        </div>
+    <div class="viz-area" id="vArea"></div>
 
     <div class="side-panel right">
-        <h3>2. Global Config</h3>
+        <h3>2. Viewport Config</h3>
         <div style="display: flex; gap:5px; margin-bottom:15px;">
             <button class="btn active" id="b169" onclick="setAspect('16:9')">16:9</button>
             <button class="btn" id="b916" onclick="setAspect('9:16')">9:16</button>
         </div>
         
-        <div style="margin-bottom:15px;">
-            <label>DENSITY</label>
-            <input type="range" id="density" min="10" max="800" value="200">
-            <label>TRAIL (残留)</label>
-            <input type="range" id="trail" min="0" max="0.2" step="0.01" value="0">
+        <h3>3. Active Sequence Transform</h3>
+        <div id="seqTransformUI" style="opacity: 0.3; pointer-events: none;">
+            <div style="background:#111; padding:10px; border-radius:8px;">
+                <label>IMAGE SCALE <span id="valS" style="float:right; color:var(--accent);">1.0</span></label>
+                <input type="range" id="curScale" min="0.1" max="4.0" step="0.05" value="1.0" oninput="updateCurSeq()">
+                <label>OFFSET X <span id="valX" style="float:right; color:var(--accent);">0</span></label>
+                <input type="range" id="curX" min="-800" max="800" value="0" oninput="updateCurSeq()">
+                <label>OFFSET Y <span id="valY" style="float:right; color:var(--accent);">0</span></label>
+                <input type="range" id="curY" min="-800" max="800" value="0" oninput="updateCurSeq()">
+            </div>
+            <p style="font-size:9px; color:#555; margin-top:5px;">* 조절 중에는 캔버스에 가이드 이미지가 표시됩니다.</p>
         </div>
 
-        <h3>3. Sequence Transform</h3>
-        <div id="seqTransformUI" style="opacity: 0.5; pointer-events: none;">
-            <label>IMAGE SCALE</label>
-            <input type="range" id="curScale" min="0.5" max="3.0" step="0.1" value="1.0" oninput="updateCurSeq()">
-            <label>OFFSET X</label>
-            <input type="range" id="curX" min="-500" max="500" value="0" oninput="updateCurSeq()">
-            <label>OFFSET Y</label>
-            <input type="range" id="curY" min="-500" max="500" value="0" oninput="updateCurSeq()">
-        </div>
+        <h3 style="margin-top:20px;">4. Global FX</h3>
+        <label>PAINT DENSITY</label>
+        <input type="range" id="density" min="10" max="1000" value="250">
+        <label>BRUSH SCALE</label>
+        <input type="range" id="paintScale" min="0.1" max="5.0" step="0.1" value="1.0">
+        <label>TRAIL (잔상)</label>
+        <input type="range" id="trail" min="0" max="0.25" step="0.01" value="0">
 
-        <button class="btn primary" id="recBtn" onclick="togglePlay()">🔴 START REC & PLAY</button>
+        <button class="btn primary" id="recBtn" onclick="togglePlay()" style="margin-top:20px; font-size:14px;">🔴 START REC & PLAY</button>
         <button class="btn" onclick="clearCanvas()">CLEAR CANVAS</button>
     </div>
 </div>
 
 <div class="playbar">
-    <span id="currTime" style="font-size:12px; color:var(--accent); font-family:monospace;">00:00</span>
+    <span id="currTime" style="font-size:12px; color:var(--accent); font-family:monospace; min-width:40px;">00:00</span>
     <input type="range" id="progBar" value="0" min="0" max="100" step="0.1" oninput="seekTime(this.value)">
-    <span id="totalTime" style="font-size:12px; color:#555; font-family:monospace;">00:00</span>
+    <span id="totalTime" style="font-size:12px; color:#555; font-family:monospace; min-width:40px;">00:00</span>
 </div>
 
 <script>
-let audio, analyser, audioBuffer, isPlaying = false, sequences = [], currentActiveIdx = -1;
+let audio, analyser, isPlaying = false, sequences = [], currentActiveIdx = -1;
 let aspect = '16:9', canvasW = 1280, canvasH = 720;
 let recorder, recordedChunks = [];
+let canvasBgColor = "#f4f4f4";
 
 function setup() {
     let cnv = createCanvas(canvasW, canvasH);
     cnv.parent('vArea');
     pixelDensity(1);
-    background(0);
+    background(canvasBgColor);
 }
 
 function handleMusic(files) {
@@ -117,16 +125,19 @@ function handleImageAdd(files) {
     if(!files[0]) return;
     loadImage(URL.createObjectURL(files[0]), (img) => {
         let lastEnd = sequences.length > 0 ? sequences[sequences.length-1].end : 0;
+        let totalDur = audio ? audio.duration() : 100;
         let newSeq = {
             img: img, name: files[0].name,
-            start: lastEnd, end: lastEnd + 15,
+            start: lastEnd, end: min(lastEnd + 15, totalDur),
             targetDone: 100, style: 'oil',
             scale: 1.0, x: 0, y: 0,
             sData: null, eData: null
         };
         sequences.push(newSeq);
+        currentActiveIdx = sequences.length - 1;
         processImageData(newSeq);
         renderSeqList();
+        enableTransformUI(true);
     });
 }
 
@@ -138,10 +149,10 @@ function processImageData(seq) {
     temp.image(seq.img, width/2 + seq.x, height/2 + seq.y, seq.img.width*r, seq.img.height*r);
     seq.sData = temp.get();
     
-    // Edge detection for sketch
+    // Edge detection
     let edge = createGraphics(width, height);
     edge.image(seq.sData, 0, 0);
-    edge.filter(THRESHOLD, 0.1); // Simple edge-like threshold
+    edge.filter(THRESHOLD, 0.1); 
     seq.eData = edge.get();
     temp.remove(); edge.remove();
 }
@@ -154,16 +165,19 @@ function renderSeqList() {
         div.className = `seq-item ${i === currentActiveIdx ? 'active' : ''}`;
         div.onclick = () => selectSeq(i);
         div.innerHTML = `
-            <b>${i+1}. ${s.name}</b>
-            <div class="seq-ctrl">
-                <input type="number" step="0.1" value="${s.start}" onchange="sequences[${i}].start=Number(this.value)">
-                <input type="number" step="0.1" value="${s.end}" onchange="sequences[${i}].end=Number(this.value)">
+            <span class="seq-name">${i+1}. ${s.name}</span>
+            <div class="time-row">
+                <div><label>START(s)</label><input type="number" step="0.1" value="${s.start}" onchange="updateSeqTime(${i}, 'start', this.value)"></div>
+                <div><label>END(s)</label><input type="number" step="0.1" value="${s.end}" onchange="updateSeqTime(${i}, 'end', this.value)"></div>
+            </div>
+            <input type="range" min="0" max="${audio?audio.duration():100}" step="0.1" value="${s.start}" oninput="updateSeqTime(${i}, 'slider', this.value)">
+            <div class="style-row">
                 <select onchange="sequences[${i}].style=this.value">
-                    <option value="oil" ${s.style==='oil'?'selected':''}>OIL</option>
-                    <option value="impression" ${s.style==='impression'?'selected':''}>IMPRESS</option>
-                    <option value="pencil" ${s.style==='pencil'?'selected':''}>PENCIL</option>
+                    <option value="oil" ${s.style==='oil'?'selected':''}>유채화 (OIL)</option>
+                    <option value="pencil" ${s.style==='pencil'?'selected':''}>연필화 (PENCIL)</option>
+                    <option value="watercolor" ${s.style==='watercolor'?'selected':''}>수채화 (WATER)</option>
                 </select>
-                <input type="number" value="${s.targetDone}" onchange="sequences[${i}].targetDone=Number(this.value)">
+                <input type="number" value="${s.targetDone}" style="width:40px; background:#000; color:var(--accent); border:1px solid #333; font-size:10px;" onchange="sequences[${i}].targetDone=Number(this.value)"> <span style="font-size:9px;">%</span>
             </div>
         `;
         list.appendChild(div);
@@ -172,13 +186,33 @@ function renderSeqList() {
 
 function selectSeq(i) {
     currentActiveIdx = i;
-    const s = sequences[i];
-    const ui = document.getElementById('seqTransformUI');
-    ui.style.opacity = "1"; ui.style.pointerEvents = "all";
+    enableTransformUI(true);
+    let s = sequences[i];
     document.getElementById('curScale').value = s.scale;
     document.getElementById('curX').value = s.x;
     document.getElementById('curY').value = s.y;
+    document.getElementById('valS').innerText = s.scale;
+    document.getElementById('valX').innerText = s.x;
+    document.getElementById('valY').innerText = s.y;
     renderSeqList();
+}
+
+function updateSeqTime(idx, type, val) {
+    let s = sequences[idx];
+    if(type === 'start') s.start = Number(val);
+    if(type === 'end') s.end = Number(val);
+    if(type === 'slider') {
+        let dur = s.end - s.start;
+        s.start = Number(val);
+        s.end = s.start + dur;
+    }
+    renderSeqList();
+}
+
+function enableTransformUI(on) {
+    const ui = document.getElementById('seqTransformUI');
+    ui.style.opacity = on ? "1" : "0.3";
+    ui.style.pointerEvents = on ? "all" : "none";
 }
 
 function updateCurSeq() {
@@ -187,28 +221,39 @@ function updateCurSeq() {
     s.scale = Number(document.getElementById('curScale').value);
     s.x = Number(document.getElementById('curX').value);
     s.y = Number(document.getElementById('curY').value);
+    document.getElementById('valS').innerText = s.scale;
+    document.getElementById('valX').innerText = s.x;
+    document.getElementById('valY').innerText = s.y;
     processImageData(s);
 }
 
 function draw() {
-    if(!isPlaying && !audio) return;
-    
     let t = isPlaying ? audio.currentTime() : Number(document.getElementById('progBar').value);
     document.getElementById('currTime').innerText = formatTime(t);
     document.getElementById('progBar').value = t;
 
+    // 잔상 처리
     let trail = Number(document.getElementById('trail').value);
     if(trail > 0) {
-        fill(0, trail * 255); rect(0,0,width,height);
+        fill(244, trail * 255); 
+        noStroke(); rect(0,0,width,height);
+    }
+
+    // [중요] 비재생 시 배치 가이드 표시 (Ghost Preview)
+    if(!isPlaying && currentActiveIdx !== -1) {
+        background(canvasBgColor);
+        imageMode(CORNER);
+        tint(255, 80); // 30% 정도의 옅은 가이드
+        image(sequences[currentActiveIdx].sData, 0, 0);
+        noTint();
     }
 
     let idx = sequences.findIndex(s => t >= s.start && t <= s.end);
     if(idx !== -1) {
-        if(idx !== currentActiveIdx) { currentActiveIdx = idx; renderSeqList(); }
+        if(idx !== currentActiveIdx && isPlaying) { currentActiveIdx = idx; renderSeqList(); }
         let s = sequences[idx];
         let amp = analyser ? analyser.getEnergy(20, 200) / 255 : 0.5;
         let progress = ((t - s.start) / (s.end - s.start)) * (s.targetDone/100);
-        
         paint(s, progress, amp);
     }
 }
@@ -217,7 +262,7 @@ function paint(seq, prog, amp) {
     let dens = Number(document.getElementById('density').value) * (amp + 0.2);
     let pScale = Number(document.getElementById('paintScale').value);
     
-    // 7-Phase logic
+    // 7단계 작화 로직
     let phase = 'done';
     if(prog <= 0.1) phase = 'sketch';
     else if(prog <= 0.2) phase = 'coarse';
@@ -228,31 +273,42 @@ function paint(seq, prog, amp) {
 
     if(phase === 'done') return;
 
-    for(let i=0; i<dens/5; i++) {
-        let x = random(width), y = random(height);
+    for(let i=0; i<dens/10; i++) {
+        let x = floor(random(width)), y = floor(random(height));
         let col = seq.sData.get(x, y);
         if(alpha(col) < 10) continue;
 
         push();
-        translate(x - width/2, y - height/2);
+        translate(x, y);
         
         if(phase === 'sketch') {
-            let isE = alpha(seq.eData.get(x, y)) > 128;
-            if(isE) {
-                stroke(50, 150); strokeWeight(0.5 * pScale);
-                rotate(random(PI)); line(-10, 0, 10, 0);
+            // 십자 가이드 (0.01% 시점)
+            if(prog < 0.005 && (abs(x - width/2) < 2 || abs(y - height/2) < 2)) {
+                stroke(180, 100); line(-20,0,20,0);
+            }
+            if(alpha(seq.eData.get(x, y)) > 128) {
+                stroke(80, 180); strokeWeight(0.7 * pScale);
+                rotate(random(PI)); line(-8, 0, 8, 0);
             }
         } else {
-            let sMul = 1; let a = 200;
-            if(phase === 'coarse') { sMul = 5; a = 50; }
-            else if(phase === 'mid') { sMul = 2.5; a = 120; }
+            // 경계면 우선 채색 (v17.5 로직)
+            let isE = alpha(seq.eData.get(x, y)) > 128;
+            let localPhaseProg = (phase==='coarse')? (prog-0.1)*10 : (prog-0.2)*5;
+            if(!isE && phase !== 'fine' && random() > localPhaseProg) { pop(); continue; }
+
+            let sMul = 1; let a = 220;
+            if(phase === 'coarse') { sMul = 4.5; a = 60; }
+            else if(phase === 'mid') { sMul = 2.2; a = 140; }
             
             noStroke(); 
-            fill(red(col)+random(-20,20), green(col)+random(-20,20), blue(col)+random(-20,20), a);
+            fill(red(col)+random(-15,15), green(col)+random(-15,15), blue(col)+random(-15,15), a);
             
-            if(seq.style === 'oil' || seq.style === 'impression') {
+            if(seq.style === 'oil') {
                 rotate(random(TWO_PI));
-                rect(-10*pScale*sMul, -3*pScale*sMul, 20*pScale*sMul, 6*pScale*sMul, 2);
+                rect(-8*pScale*sMul, -2.5*pScale*sMul, 16*pScale*sMul, 5*pScale*sMul, 1);
+            } else if(seq.style === 'pencil') {
+                stroke(red(col)*0.5, a); strokeWeight(0.5*pScale);
+                rotate(PI/4 + random(0.2)); line(-10*sMul, 0, 10*sMul, 0);
             } else {
                 ellipse(0, 0, 10*pScale*sMul);
             }
@@ -283,9 +339,9 @@ function startRecording() {
     recorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
     recorder.ondataavailable = e => recordedChunks.push(e.data);
     recorder.onstop = () => {
-        let blob = new Blob(recordedChunks, { type: 'video/mp4' });
-        let a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-        a.download = `ArtSequence_${Date.now()}.mp4`; a.click();
+        const blob = new Blob(recordedChunks, { type: 'video/mp4' });
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+        a.download = `Director_v18.2_${Date.now()}.mp4`; a.click();
     };
     recorder.start();
 }
@@ -304,10 +360,9 @@ function setAspect(r) {
     clearCanvas();
 }
 
-function clearCanvas() { background(document.getElementById('canvasBg').value); }
+function clearCanvas() { background(canvasBgColor); }
 function formatTime(s) { let m=floor(s/60), sec=floor(s%60); return `${nf(m,2)}:${nf(sec,2)}`; }
 function seekTime(v) { if(!isPlaying) redraw(); }
-function saveArt() { saveCanvas('StillArt', 'png'); }
 </script>
 </body>
 </html>
