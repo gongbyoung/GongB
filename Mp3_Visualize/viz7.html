@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>ART LAB v18.4 — Perfect Closure Edition</title>
+<title>ART LAB v18.6 — Auto-Export Master</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -21,7 +21,7 @@ body{ background:var(--bg); color:var(--text); font-family:sans-serif; height:10
 .seq-info { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; }
 .time-input { background:#000; border:1px solid #333; color:var(--accent); width:70px; padding:2px; font-size:11px; text-align:center; }
 
-.viz-area { background: #000; flex: 1; display: flex; justify-content: center; align-items: center; }
+.viz-area { background: #000; flex: 1; display: flex; justify-content: center; align-items: center; overflow:hidden; }
 canvas { box-shadow: 0 0 50px rgba(0,0,0,1); }
 
 h3 { font-size: 10px; color: #555; text-transform: uppercase; margin-bottom: 10px; border-bottom: 1px solid var(--border); padding-bottom: 5px; }
@@ -35,16 +35,16 @@ label { font-size: 9px; color: #777; display:block; margin-top:8px;}
 <body>
 
 <div class="topbar">
-    <div class="logo">ART LAB v18.4 Perfect Closure</div>
-    <div id="status">READY</div>
+    <div class="logo">ART LAB v18.6 AUTO-SAVE</div>
+    <div id="status" style="font-size:10px; color:var(--accent);">STANDBY</div>
 </div>
 
 <div class="container">
     <div class="side-panel">
         <h3>1. Audio & Sequence</h3>
-        <button class="btn" onclick="document.getElementById('mIn').click()">🎵 LOAD MP3</button>
+        <button class="btn" onclick="document.getElementById('mIn').click()">🎵 1. LOAD MP3 (필수)</button>
         <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleMusic(this.files)">
-        <button class="btn primary" onclick="document.getElementById('iIn').click()">🖼️ ADD IMAGE</button>
+        <button class="btn primary" onclick="document.getElementById('iIn').click()">🖼️ 2. ADD IMAGES</button>
         <input type="file" id="iIn" accept="image/*" style="display:none" onchange="handleImageAdd(this.files)">
         <div id="sequenceList" style="margin-top:15px;"></div>
     </div>
@@ -52,13 +52,11 @@ label { font-size: 9px; color: #777; display:block; margin-top:8px;}
     <div class="viz-area" id="vArea"></div>
 
     <div class="side-panel right">
-        <h3>2. Global Config</h3>
+        <h3>2. Viewport Config</h3>
         <div style="display: flex; gap:5px; margin-bottom:15px;">
             <button class="btn active" id="b169" onclick="setAspect('16:9')">16:9</button>
             <button class="btn" id="b916" onclick="setAspect('9:16')">9:16</button>
         </div>
-        <label>DENSITY</label><input type="range" id="density" min="10" max="1000" value="350">
-        <label>BRUSH SCALE</label><input type="range" id="paintScale" min="0.1" max="5.0" step="0.1" value="1.0">
         
         <h3>3. Active Transform</h3>
         <div id="seqUI" style="opacity: 0.3; pointer-events: none;">
@@ -70,29 +68,41 @@ label { font-size: 9px; color: #777; display:block; margin-top:8px;}
             <input type="range" id="curY" min="-800" max="800" value="0" oninput="updateCurSeq()">
         </div>
 
-        <button class="btn primary" id="recBtn" onclick="togglePlay()" style="margin-top:20px;">🔴 START REC & PLAY</button>
+        <button class="btn primary" id="recBtn" onclick="togglePlay()" style="margin-top:20px; background:#ff3e81; color:white;">🔴 START REC & AUTO SAVE</button>
+        <p id="recInfo" style="font-size:9px; color:#ff3e81; text-align:center; margin-top:5px; display:none;">노래가 끝나면 파일이 자동 저장됩니다...</p>
         <button class="btn" onclick="clearCanvas()">CLEAR CANVAS</button>
     </div>
+</div>
+
+<div class="playbar">
+    <span id="currTime" style="font-size:12px; color:var(--accent); font-family:monospace; min-width:40px;">00:00</span>
+    <input type="range" id="progBar" value="0" min="0" max="100" step="0.1" oninput="seekTime(this.value)">
+    <span id="totalTime" style="font-size:12px; color:#555; font-family:monospace; min-width:40px;">00:00</span>
 </div>
 
 <script>
 let audio, analyser, isPlaying = false, sequences = [], currentActiveIdx = -1;
 let aspect = '16:9', canvasW = 1280, canvasH = 720;
 let recorder, recordedChunks = [];
+let canvasBgColor = "#f4f4f4";
 
 function setup() {
     let cnv = createCanvas(canvasW, canvasH);
     cnv.parent('vArea');
     pixelDensity(1);
-    background(240);
+    background(canvasBgColor);
+    analyser = new p5.FFT();
 }
 
 function handleMusic(files) {
     if(!files[0]) return;
     audio = loadSound(URL.createObjectURL(files[0]), (b)=>{
+        document.getElementById('totalTime').innerText = formatTime(audio.duration());
+        document.getElementById('progBar').max = audio.duration();
         document.getElementById('status').innerText = "AUDIO LOADED";
+        // 노래가 끝나면 자동으로 녹화 중지 및 저장 로직 연결
+        audio.onended(() => { if(isPlaying) stopAndSave(); });
     });
-    analyser = new p5.FFT();
 }
 
 function handleImageAdd(files) {
@@ -122,10 +132,10 @@ function renderSeqList() {
         div.onclick = () => selectSeq(i);
         div.innerHTML = `
             <div class="seq-info">
-                <span style="font-size:11px; color:#fff;">${i+1}. ${s.name}</span>
-                <input class="time-input" type="number" value="${s.end}" onchange="cascadeTime(${i}, this.value)">
+                <span style="font-size:11px; color:#fff; font-weight:bold;">${i+1}. ${s.name}</span>
+                <input class="time-input" type="number" value="${s.end.toFixed(1)}" onchange="cascadeTime(${i}, this.value)">
             </div>
-            <div style="font-size:9px; color:#555;">Start: ${s.start.toFixed(1)}s | End: ${s.end.toFixed(1)}s (Done at 80%)</div>
+            <div style="font-size:9px; color:#888;">${s.start.toFixed(1)}s ~ ${s.end.toFixed(1)}s (100% Done at 80% mark)</div>
         `;
         list.appendChild(div);
     });
@@ -134,8 +144,9 @@ function renderSeqList() {
 function cascadeTime(idx, val) {
     sequences[idx].end = Number(val);
     for(let i = idx + 1; i < sequences.length; i++) {
+        let dur = sequences[i].end - sequences[i].start;
         sequences[i].start = sequences[i-1].end;
-        sequences[i].end = sequences[i].start + 10;
+        sequences[i].end = sequences[i].start + dur;
     }
     renderSeqList();
 }
@@ -147,6 +158,9 @@ function selectSeq(i) {
     document.getElementById('curScale').value = s.scale;
     document.getElementById('curX').value = s.x;
     document.getElementById('curY').value = s.y;
+    document.getElementById('txtS').innerText = s.scale;
+    document.getElementById('txtX').innerText = s.x;
+    document.getElementById('txtY').innerText = s.y;
     renderSeqList();
 }
 
@@ -164,42 +178,48 @@ function updateCurSeq() {
 
 function processImageData(seq) {
     let temp = createGraphics(width, height);
-    temp.background(0);
+    temp.background(255);
     let r = Math.min(width/seq.img.width, height/seq.img.height) * seq.scale;
     temp.imageMode(CENTER);
     temp.image(seq.img, width/2 + seq.x, height/2 + seq.y, seq.img.width*r, seq.img.height*r);
     seq.sData = temp.get();
     let edge = createGraphics(width, height);
     edge.image(seq.sData, 0, 0);
-    edge.filter(THRESHOLD, 0.1); 
+    edge.filter(THRESHOLD, 0.2); 
     seq.eData = edge.get();
     temp.remove(); edge.remove();
 }
 
 function draw() {
-    if(!isPlaying && currentActiveIdx !== -1) {
-        background(240); tint(255, 100);
-        image(sequences[currentActiveIdx].sData, 0, 0); noTint();
-        return;
+    let t = isPlaying && audio ? audio.currentTime() : Number(document.getElementById('progBar').value);
+    document.getElementById('currTime').innerText = formatTime(t);
+    document.getElementById('progBar').value = t;
+
+    // 프리뷰 가이드 (고스트 이미지)
+    if(!isPlaying && currentActiveIdx !== -1 && sequences[currentActiveIdx].sData) {
+        background(canvasBgColor);
+        tint(255, 60);
+        image(sequences[currentActiveIdx].sData, 0, 0);
+        noTint();
     }
     
     if(isPlaying) {
-        let t = audio.currentTime();
         let idx = sequences.findIndex(s => t >= s.start && t <= s.end);
         if(idx !== -1) {
+            if(idx !== currentActiveIdx) { currentActiveIdx = idx; renderSeqList(); }
             let s = sequences[idx];
-            // [v18.4 핵심] 진행도를 0.8로 나누어 80% 시점에서 1.0(완성)이 되게 함
+            // 80% 지점에서 완성되도록 보정
             let rawProg = (t - s.start) / (s.end - s.start);
             let progress = min(1.0, rawProg / 0.8); 
             
             let amp = analyser.getEnergy(20, 200) / 255;
-            if(progress < 1.0) paint(s, progress, amp);
+            if(progress < 1.0) paintBrush(s, progress, amp);
         }
     }
 }
 
-function paint(seq, prog, amp) {
-    let dens = Number(document.getElementById('density').value) * (amp + 0.2);
+function paintBrush(seq, prog, amp) {
+    let dens = Number(document.getElementById('density').value) * (amp + 0.3); // 최소 작화 보장
     let pScale = Number(document.getElementById('paintScale').value);
     
     let phase = 'done';
@@ -207,54 +227,72 @@ function paint(seq, prog, amp) {
     else if(prog <= 0.2) phase = 'coarse';
     else if(prog <= 0.4) phase = 'mid';
     else if(prog <= 0.6) phase = 'fine';
-    else if(prog <= 0.7) phase = 'shadow';
-    else if(prog <= 0.9) phase = 'finish'; // 80% 즈음 마무리
+    else if(prog <= 0.8) phase = 'shadow';
+    else if(prog <= 0.98) phase = 'finish';
     if(phase === 'done') return;
 
     for(let i=0; i<dens/8; i++) {
         let x = floor(random(width)), y = floor(random(height));
         let col = seq.sData.get(x, y);
-        if(alpha(col) < 20) continue;
+        if(alpha(col) < 30) continue;
 
         push();
         translate(x, y);
         if(phase === 'sketch') {
             if(alpha(seq.eData.get(x, y)) > 128) {
-                stroke(100, 150); rotate(random(PI)); line(-8, 0, 8, 0);
+                stroke(120, 150); rotate(random(PI)); line(-8, 0, 8, 0);
             }
         } else {
+            let isE = alpha(seq.eData.get(x, y)) > 128;
+            let localProg = (phase==='coarse')? (prog-0.1)*10 : (prog-0.2)*5;
+            if(!isE && phase !== 'fine' && random() > localProg) { pop(); continue; }
+
             let sMul = (phase==='coarse')? 5 : (phase==='mid'? 2.5 : 1);
-            let a = (phase==='coarse')? 40 : 180;
-            noStroke(); fill(red(col), green(col), blue(col), a);
+            let a = (phase==='coarse')? 50 : 200;
+            noStroke(); 
+            fill(red(col)+random(-10,10), green(col)+random(-10,10), blue(col)+random(-10,10), a);
             rotate(random(TWO_PI));
-            rect(-10*pScale*sMul, -3*pScale*sMul, 20*pScale*sMul, 6*pScale*sMul);
+            rect(-10*pScale*sMul, -3*pScale*sMul, 20*pScale*sMul, 6*pScale*sMul, 2);
         }
         pop();
     }
 }
 
 function togglePlay() {
-    if(!audio) return alert("LOAD MP3");
+    if(!audio) return alert("음악(MP3)을 먼저 로드해야 자동 녹화가 가능합니다.");
     if(isPlaying) {
-        audio.stop(); isPlaying = false; recorder.stop();
-        document.getElementById('recBtn').innerText = "🔴 START REC & PLAY";
+        stopAndSave();
     } else {
-        clearCanvas(); startRecording(); audio.play(); isPlaying = true;
-        document.getElementById('recBtn').innerText = "⏹ STOP & SAVE";
+        clearCanvas();
+        recordedChunks = [];
+        let stream = document.querySelector('canvas').captureStream(30);
+        recorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
+        recorder.ondataavailable = e => recordedChunks.push(e.data);
+        recorder.onstop = exportVideo;
+        
+        recorder.start();
+        audio.play();
+        isPlaying = true;
+        document.getElementById('status').innerText = "RECORDING...";
+        document.getElementById('recBtn').innerText = "⏹ STOP & SAVE NOW";
+        document.getElementById('recInfo').style.display = "block";
     }
 }
 
-function startRecording() {
-    recordedChunks = [];
-    let stream = document.querySelector('canvas').captureStream(30);
-    recorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
-    recorder.ondataavailable = e => recordedChunks.push(e.data);
-    recorder.onstop = () => {
-        let blob = new Blob(recordedChunks, { type: 'video/mp4' });
-        let a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-        a.download = `PerfectArt_v18.4_${Date.now()}.mp4`; a.click();
-    };
-    recorder.start();
+function stopAndSave() {
+    if(audio) audio.stop();
+    isPlaying = false;
+    if(recorder && recorder.state !== "inactive") recorder.stop();
+    document.getElementById('status').innerText = "SAVING...";
+    document.getElementById('recBtn').innerText = "🔴 START REC & AUTO SAVE";
+    document.getElementById('recInfo').style.display = "none";
+}
+
+function exportVideo() {
+    let blob = new Blob(recordedChunks, { type: 'video/mp4' });
+    let a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = `ArtDirector_v18.6_${Date.now()}.mp4`; a.click();
+    document.getElementById('status').innerText = "SAVE COMPLETED";
 }
 
 function setAspect(r) {
@@ -271,7 +309,9 @@ function enableUI(on) {
     let ui = document.getElementById('seqUI');
     ui.style.opacity = on ? "1" : "0.3"; ui.style.pointerEvents = on ? "all" : "none";
 }
-function clearCanvas() { background(240); }
+function clearCanvas() { background(canvasBgColor); }
+function formatTime(s) { let m=floor(s/60), sec=floor(s%60); return `${nf(m,2)}:${nf(sec,2)}`; }
+function seekTime(v) { if(!isPlaying) redraw(); }
 </script>
 </body>
 </html>
