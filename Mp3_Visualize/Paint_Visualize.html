@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>🎵 Music Video Creator (FHD 24fps)</title>
+<title>🎵 Music Video Creator</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Syne:wght@400;600;700;800&display=swap');
 
@@ -262,7 +262,7 @@
     overflow: hidden;
   }
 
-  /* Object-fit contain ensures FHD canvas scales nicely down to UI view */
+  /* FHD Resolution fit */
   #mainCanvas {
     max-width: 100%;
     max-height: 100%;
@@ -421,7 +421,7 @@ let slots = Array.from({length: NUM_SLOTS}, (_,i) => ({
   start: 0, end: 0,
   style: 'watercolor',
   index: i,
-  preRenderedCanvas: null // 캐싱용 캔버스 (프레임 드랍 방지)
+  preRenderedCanvas: null // 캐싱용 캔버스
 }));
 
 const STYLES = ['watercolor','oil','impressionism','abstract','anime'];
@@ -449,11 +449,13 @@ document.getElementById('audioInput').addEventListener('change', e => {
     document.getElementById('audioName').textContent = f.name;
     document.getElementById('audioInfo').style.display = 'flex';
     document.getElementById('audioZone').style.display = 'none';
-    autoFillSlotTimes();
+    autoFillSlotTimes(); // 상태 업데이트
+    renderSlots();       // UI 업데이트 (이 순서가 중요)
     checkReady();
   }, {once: true});
 });
 
+// [에러 픽스] null 객체 속성 참조 방지
 function autoFillSlotTimes() {
   const filledSlots = slots.filter(s => s.file);
   if (filledSlots.length === 0) return;
@@ -463,10 +465,13 @@ function autoFillSlotTimes() {
   filledSlots.forEach((s, i) => {
     s.start = parseFloat((i * seg).toFixed(2));
     s.end = parseFloat(((i + 1) * seg).toFixed(2));
+    // 여기서 직접 DOM을 수정하지 않고, 상태(State)만 변경한 뒤 renderSlots()에 렌더링을 맡깁니다.
     const row = document.getElementById(`slot-row-${s.index}`);
     if (row) {
-      row.querySelector('.slot-start').value = s.start.toFixed(1);
-      row.querySelector('.slot-end').value = s.end.toFixed(1);
+      const startEl = row.querySelector('.slot-start');
+      const endEl = row.querySelector('.slot-end');
+      if (startEl) startEl.value = s.start.toFixed(1);
+      if (endEl) endEl.value = s.end.toFixed(1);
     }
   });
 }
@@ -547,8 +552,9 @@ function loadSlotImage(idx, file) {
       slots[idx].img = img;
       slots[idx].dataUrl = e.target.result;
       slots[idx].preRenderedCanvas = null; // 새 이미지 로드 시 캐시 지움
-      if (audioDuration > 0) autoFillSlotTimes();
-      renderSlots();
+      
+      if (audioDuration > 0) autoFillSlotTimes(); // 상태 업데이트
+      renderSlots(); // UI 업데이트
       checkReady();
     };
     img.src = e.target.result;
@@ -758,6 +764,7 @@ async function startSession() {
   if (!audioFile || slots.filter(s=>s.file).length < 4) return;
 
   initPaintState();
+  // 모든 슬롯의 렌더링 캐시를 초기화(혹시 모를 변경 대비)
   slots.forEach(s => s.preRenderedCanvas = null);
 
   document.getElementById('emptyHint').style.display = 'none';
@@ -787,7 +794,7 @@ async function startSession() {
     'video/webm;codecs=vp8',
     'video/webm'
   ];
-  let chosenMime = 'video/webm'; 
+  let chosenMime = 'video/webm'; // fallback 안전장치
   for (const mt of mimeTypes) {
     if (MediaRecorder.isTypeSupported(mt)) { chosenMime = mt; break; }
   }
@@ -799,6 +806,7 @@ async function startSession() {
   mediaRecorder.onstop = () => saveRecording(chosenMime);
   mediaRecorder.start(100);
 
+  // Resume context (브라우저 정책)
   if(audioCtx.state === 'suspended') await audioCtx.resume();
   
   audioEl.currentTime = 0;
