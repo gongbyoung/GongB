@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>🎵 Music Video Creator v18.21 (Dual Aspect)</title>
+<title>🎵 Music Video Creator v18.22 (Aspect Fixed)</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Syne:wght@400;600;700;800&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -54,12 +54,9 @@
   input[type=range] { width: 100%; accent-color: var(--accent); height: 3px; cursor: pointer; margin-bottom: 10px;}
   label { font-size: 0.7rem; color: var(--muted); display:flex; justify-content:space-between; margin-bottom:3px; margin-top:8px;}
   .val-label { color: var(--accent); font-weight: 500; }
-  
-  /* v18.21 신규 신규: 비율 전환 버튼 */
   .aspect-btn { background: #333; border: 1px solid #444; color: #aaa; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-family: monospace; font-size: 0.65rem; margin-top: 5px;}
   .aspect-btn:hover { background: #444; color: #fff; }
   .aspect-btn.active { background: var(--accent2); color: #fff; border-color: var(--accent2); font-weight: bold; }
-
   .btn-start { flex: 1; background: #fff; border: none; border-radius: 8px; color: #000; font-family: 'Syne', sans-serif; font-size: 0.8rem; font-weight: 700; padding: 0.85rem; cursor: pointer; }
   .btn-start:disabled { background: #333; color: #666; cursor: not-allowed; }
   .btn-stop { background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.3); border-radius: 8px; color: var(--red); font-size: 0.75rem; padding: 0.85rem 1.1rem; cursor: pointer; display: none; }
@@ -83,7 +80,7 @@
 <header>
   <div class="status-dot" id="statusDot"></div>
   <h1>🎵 Music Video Creator</h1>
-  <span style="font-size:0.65rem;color:var(--muted);margin-left:auto;">Dual Aspect (Stable v18.21)</span>
+  <span style="font-size:0.65rem;color:var(--muted);margin-left:auto;">FHD 1080p | Stable v18.22 Fix</span>
 </header>
 
 <div class="layout">
@@ -100,7 +97,6 @@
         <span class="fi-dur" id="audioDur"></span>
       </div>
     </div>
-    
     <div>
       <div class="section-label">02 — 이미지 슬롯</div>
       <div style="display:flex; gap:5px; margin-bottom:10px;">
@@ -109,7 +105,6 @@
       </div>
       <div id="imageSlots" style="display:flex;flex-direction:column;gap:0.75rem; max-height:400px; overflow-y:auto; padding-right:5px;"></div>
     </div>
-    
     <div class="action-bar">
       <button class="btn-start" id="btnStart" disabled>▶ START REC</button>
       <button class="btn-stop" id="btnStop">■ STOP</button>
@@ -134,7 +129,7 @@
         <label>Offset X (px) <span id="valX" class="val-label">0</span></label>
         <input type="range" id="curX" min="-1500" max="1500" step="5" value="0" oninput="updateActiveTransform()">
         <label>Offset Y (px) <span id="valY" class="val-label">0</span></label>
-        <input type="range" id="curY" min="-1000" max="1000" step="5" value="0" oninput="updateActiveTransform()">
+        <input type="range" id="curY" min="-1500" max="1500" step="5" value="0" oninput="updateActiveTransform()">
     </div>
   </div>
 </div>
@@ -150,10 +145,7 @@
 <script>
 // ─── STATE & CONFIG ─────────────────────────────────────
 const NUM_SLOTS = 5;
-// v18.21 신규: 비율 상태 (기본 16:9 Landscape)
-let baseWidth = 1920, baseHeight = 1080, aspectStr = "16_9"; 
-let W = 1920, H = 1080; 
-
+let W = 1920, H = 1080, aspectStr = "16_9"; 
 let audioFile = null, audioDuration = 0, isPlaying = false, currentActiveIdx = -1;
 let slots = Array.from({length: NUM_SLOTS}, (_,i) => ({
   file: null, img: null, dataUrl: null, start: 0, end: 0, style: 'oil',
@@ -168,38 +160,26 @@ const maskCanvas = document.createElement('canvas'), compCanvas = document.creat
 let mctx = maskCanvas.getContext('2d'), cctx = compCanvas.getContext('2d');
 let mediaRecorder = null, recordedChunks = [], animFrameId = null, prevDist = 0;
 
-// [v18.21 신규] 비율 전환 시스템 (FHD 품질 유지)
+// [에러 픽스] DEN_ACTIVE 오타 수정 및 비율 전환 로직 안정화
 function setAspectRatio(num, den) {
-    if (DEN_ACTIVE === num && DEN_ACTIVE === den) return; // 같은거 클릭 시 건너뜀
+    if (aspectStr === `${num}_${den}`) return;
     
-    // Landscape 16:9
-    if (num === 16 && den === 9) {
-        W = 1920; H = 1080; aspectStr = "16_9";
-        document.getElementById('btn169').className = 'aspect-btn active';
-        document.getElementById('btn916').className = 'aspect-btn';
-    } 
-    // Portrait 9:16 (숏폼 스타일)
-    else {
-        W = 1080; H = 1920; aspectStr = "9_16";
-        document.getElementById('btn169').className = 'aspect-btn';
-        document.getElementById('btn916').className = 'aspect-btn active';
-    }
+    if (num === 16) { W = 1920; H = 1080; aspectStr = "16_9"; } 
+    else { W = 1080; H = 1920; aspectStr = "9_16"; }
 
-    // 캔버스 크기 즉시 갱신
+    document.getElementById('btn169').className = (aspectStr === "16_9" ? 'aspect-btn active' : 'aspect-btn');
+    document.getElementById('btn916').className = (aspectStr === "9_16" ? 'aspect-btn active' : 'aspect-btn');
+
     canvas.width = maskCanvas.width = compCanvas.width = W;
     canvas.height = maskCanvas.height = compCanvas.height = H;
-    mctx = maskCanvas.getContext('2d'); cctx = compCanvas.getContext('2d'); // 컨텍스트 갱신
+    mctx = maskCanvas.getContext('2d'); cctx = compCanvas.getContext('2d'); 
 
-    // 모든 슬롯의 프리렌더링 캐시를 무효화 (FHD 비율 변경 대응)
-    slots.forEach(s => { s.preRenderedCanvas = null; s.preRenderedSketch = null; });
-
-    // 정지 상태일 때 첫화면 새로 그리기
-    if (!isPlaying) drawFrame(audioDuration > 0 ? (audioDuration * (parseFloat(document.getElementById('progBar').value)/100)) : 0);
+    slots.forEach(s => { s.preRenderedCanvas = s.preRenderedSketch = null; });
+    if (!isPlaying) drawFrame(audioEl.currentTime);
 }
-// global DEN_ACTIVE 변수 삭제 -> argument num, den으로 판단
 
 // ─── AUDIO ───────────────────────────────────────────────
-document.getElementById('audioInput').addEventListener('change', e => {
+document.getElementById('audioInput').onchange = e => {
   const f = e.target.files[0]; if (!f) return;
   audioFile = f; audioEl.src = URL.createObjectURL(f);
   audioEl.onloadedmetadata = () => {
@@ -211,7 +191,7 @@ document.getElementById('audioInput').addEventListener('change', e => {
     document.getElementById('audioZone').style.display = 'none';
     autoFillSlotTimes(); renderSlots(); checkReady();
   };
-});
+};
 
 function autoFillSlotTimes() {
   const filled = slots.filter(s => s.file); if (!filled.length) return;
@@ -219,7 +199,7 @@ function autoFillSlotTimes() {
   filled.forEach((s, i) => { s.start = i * seg; s.end = (i + 1) * seg; });
 }
 
-// ─── RENDER UI ──────────────────────────────────────────
+// ─── UI RENDER ───────────────────────────────────────────
 function renderSlots() {
   const container = document.getElementById('imageSlots'); container.innerHTML = '';
   slots.forEach((slot, i) => {
@@ -265,14 +245,14 @@ function selectSlot(idx, e) {
     document.getElementById('curScale').value = s.scale; document.getElementById('curX').value = s.offsetX; document.getElementById('curY').value = s.offsetY;
     document.getElementById('valScale').innerText = s.scale.toFixed(2); document.getElementById('valX').innerText = s.offsetX; document.getElementById('valY').innerText = s.offsetY;
     document.getElementById('editPanel').style.display = 'block'; document.getElementById('emptyHint').style.display = 'none';
-    if(!isPlaying) drawFrame(s.start);
+    if(!isPlaying) drawFrame(audioEl.currentTime);
 }
 
 function renderStyleGrid(idx) {
     const grid = document.getElementById('styleGrid'); grid.innerHTML = '';
     STYLES.forEach(k => {
         const btn = document.createElement('button'); btn.className = `style-btn ${slots[idx].style === k ? 'active' : ''}`;
-        btn.innerText = STYLE_LABELS[k]; btn.onclick = () => { slots[idx].style = k; slots[idx].preRenderedCanvas = null; renderStyleGrid(idx); if(!isPlaying) drawFrame(slots[idx].start); };
+        btn.innerText = STYLE_LABELS[k]; btn.onclick = () => { slots[idx].style = k; slots[idx].preRenderedCanvas = null; renderStyleGrid(idx); if(!isPlaying) drawFrame(audioEl.currentTime); };
         grid.appendChild(btn);
     });
 }
@@ -283,7 +263,7 @@ function updateActiveTransform() {
     s.offsetX = parseInt(document.getElementById('curX').value);
     s.offsetY = parseInt(document.getElementById('curY').value);
     document.getElementById('valScale').innerText = s.scale.toFixed(2); document.getElementById('valX').innerText = s.offsetX; document.getElementById('valY').innerText = s.offsetY;
-    s.preRenderedCanvas = s.preRenderedSketch = null; if(!isPlaying) drawFrame(s.start);
+    s.preRenderedCanvas = s.preRenderedSketch = null; if(!isPlaying) drawFrame(audioEl.currentTime);
 }
 
 function checkReady() {
@@ -294,23 +274,20 @@ function checkReady() {
   else { m.textContent = `음악 및 이미지(${4-slots.filter(s=>s.file).length}장 더) 필요`; m.className = 'warn'; }
 }
 
-// ─── FILTERS ─────────────────────────────────────────────
-function applyOilStyle(imgData, bri) {
-    const d = imgData.data;
-    for (let i = 0; i < d.length; i += 4) {
-        let r = d[i], g = d[i+1], b = d[i+2]; const avg = (r+g+b)/3, sat = 1.35;
+// ─── RENDER ENGINE ──────────────────────────────────────
+function applyOilStyle(id, bri) {
+    const d = id.data; for (let i = 0; i < d.length; i += 4) {
+        let r = d[i], g = d[i+1], b = d[i+2], avg = (r+g+b)/3, sat = 1.35;
         d[i]=Math.min(255,(avg+(r-avg)*sat)*bri+5); d[i+1]=Math.min(255,(avg+(g-avg)*sat)*bri+5); d[i+2]=Math.min(255,(avg+(b-avg)*sat)*bri);
     }
 }
-function applyWatercolorStyle(imgData, bri) {
-    const d = imgData.data;
-    for (let i = 0; i < d.length; i += 4) {
+function applyWatercolorStyle(id, bri) {
+    const d = id.data; for (let i = 0; i < d.length; i += 4) {
         const r=d[i]*bri, g=d[i+1]*bri, b=d[i+2]*bri, gray=r*0.299+g*0.587+b*0.114, mix=0.3;
         d[i]=r*(1-mix)+gray*mix+20; d[i+1]=g*(1-mix)+gray*mix+20; d[i+2]=b*(1-mix)+gray*mix+30;
     }
 }
 
-// ─── CORE RENDER (CACHING) (Dual Aspect Support) ────────
 function preRenderSlot(slot, w, h) {
     if (slot.preRenderedCanvas) return;
     const tc = document.createElement('canvas'); tc.width = w; tc.height = h; const tx = tc.getContext('2d');
@@ -330,8 +307,7 @@ function preRenderSketch(slot, w, h) {
     const tc = document.createElement('canvas'); tc.width = w; tc.height = h; const tx = tc.getContext('2d');
     tx.filter = 'grayscale(1) contrast(1.5)'; tx.drawImage(slot.preRenderedCanvas, 0, 0); tx.filter = 'none';
     const id = tx.getImageData(0,0,w,h), d = id.data;
-    tx.fillStyle = '#f4f4f4'; tx.fillRect(0,0,w,h);
-    tx.strokeStyle = 'rgba(60,60,60,0.4)'; tx.lineWidth = 1.0;
+    tx.fillStyle = '#f4f4f4'; tx.fillRect(0,0,w,h); tx.strokeStyle = 'rgba(60,60,60,0.4)'; tx.lineWidth = 1.0;
     for(let i=0; i<60000; i++) {
         let x = Math.floor(Math.random()*w), y = Math.floor(Math.random()*h);
         if(d[(y*w+x)*4] < Math.random()*200) {
@@ -344,68 +320,41 @@ function preRenderSketch(slot, w, h) {
     slot.preRenderedSketch = tc;
 }
 
-// v18.21 신규: 비율에 맞춘 지우개 궤적 튜닝 (SIN/COS)
 function drawWobblyWipe(mx, w, h, st, et) {
-    // Landscape는 30도, Portrait는 60도로 설정
-    const angle = (aspectStr === "16_9") ? Math.PI/6 : Math.PI/3;
-    const sw = Math.max(w, h)*1.6, sh = Math.max(w, h)*1.6;
-    const sx = -sw/2, sy = -sh/2;
-    // 칠판 지우개 크기 (캔버스 좁은 쪽 너비의 25%)
+    const ang = (aspectStr === "16_9" ? Math.PI/6 : Math.PI/3);
+    const sw = Math.max(w, h)*1.6, sh = Math.max(w, h)*1.6, sx = -sw/2, sy = -sh/2;
     const bs = Math.min(w,h) * 0.25; 
-    
-    // 지그재그 세로 간격 튜닝
-    const sweeps = Math.ceil(sh/(bs * ((aspectStr === "16_9") ? 0.65 : 0.8)));
-    const rh = sh/sweeps, td = sweeps*sw, cd = et*td, pd = st*td;
-    
-    mx.save(); mx.translate(w/2, h/2); mx.rotate(angle);
+    const sweeps = Math.ceil(sh/(bs * (aspectStr === "16_9" ? 0.65 : 0.8))), rh = sh/sweeps, td = sweeps*sw, cd = et*td, pd = st*td;
+    mx.save(); mx.translate(w/2, h/2); mx.rotate(ang);
     mx.lineCap = 'round'; mx.lineJoin = 'round'; mx.lineWidth = bs; mx.strokeStyle = '#fff'; mx.beginPath();
     let acc = 0, started = false;
     for(let i=0; i<sweeps; i++) {
         let l2r = (i%2===0), x0 = l2r?sx:sx+sw, y = sy+i*rh+rh/2;
-        if(i>0) {
-            acc += rh; if(acc > pd && !started) { started = true; mx.moveTo(x0, y-rh); }
+        if(i>0) { acc += rh; if(acc > pd && !started) { started = true; mx.moveTo(x0, y-rh); }
             if(started) { if(acc > cd) { mx.lineTo(x0, y-rh+(cd-(acc-rh))); acc = cd; break; } mx.lineTo(x0, y); }
         }
-        let step = sw/40;
         for(let j=1; j<=40; j++) {
-            acc += step; let pxs = l2r?x0+j*step:x0-j*step;
-            // 수직 및 비율에 따른 흔들림 수식 튜닝
-            let wy = (aspectStr === "16_9") ? (Math.sin(pxs/60)*40 + Math.cos(pxs/30)*20) : (Math.sin(pxs/40)*30 + Math.cos(pxs/20)*15);
-            let py = y+wy;
-            if(acc > pd && !started) { started = true; mx.moveTo(pxs, py); }
-            if(started) {
-                if(acc > cd) { let rem = cd-(acc-step), rxs = l2r?x0+(j-1)*step+rem:x0-(j-1)*step-rem;
-                let final_wy = (aspectStr === "16_9") ? (Math.sin(rxs/60)*40 + Math.cos(rxs/30)*20) : (Math.sin(rxs/40)*30 + Math.cos(rxs/20)*15);
-                mx.lineTo(rxs, y+final_wy); acc = cd; break; }
-                mx.lineTo(pxs, py);
-            }
+            acc += sw/40; let pxs = l2r?x0+j*(sw/40):x0-j*(sw/40), wy = (aspectStr === "16_9" ? (Math.sin(pxs/60)*40 + Math.cos(pxs/30)*20) : (Math.sin(pxs/40)*30 + Math.cos(pxs/20)*15));
+            if(acc > pd && !started) { started = true; mx.moveTo(pxs, y+wy); }
+            if(started) { if(acc > cd) { let rem = cd-(acc-sw/40), rxs = l2r?x0+(j-1)*(sw/40)+rem:x0-(j-1)*(sw/40)-rem;
+                mx.lineTo(rxs, y+(aspectStr === "16_9" ? (Math.sin(rxs/60)*40+Math.cos(rxs/30)*20) : (Math.sin(rxs/40)*30+Math.cos(rxs/20)*15))); acc = cd; break; } mx.lineTo(pxs, y+wy); }
         } if(acc >= cd) break;
-    }
-    mx.stroke(); mx.restore();
+    } mx.stroke(); mx.restore();
 }
 
-// ─── MAIN LOOP ───────────────────────────────────────────
-function drawFrame(currentTime) {
-  const dur = audioDuration || 1; //fallback
-  const sl = slots.find(s => currentTime >= s.start && currentTime < s.end) || slots.filter(s=>s.file).pop();
-  if (!sl || !sl.img) return;
-  preRenderSlot(sl, W, H); preRenderSketch(sl, W, H);
-  const tSlot = Math.min(1, Math.max(0, (currentTime-sl.start)/(sl.end-sl.start || 1))); // dur=0 방지
+function drawFrame(ct) {
+  const sl = slots.find(s => ct >= s.start && ct < s.end) || slots.filter(s=>s.file).pop();
+  if (!sl || !sl.img) return; preRenderSlot(sl, W, H); preRenderSketch(sl, W, H);
+  const tSlot = Math.min(1, Math.max(0, (ct-sl.start)/(sl.end-sl.start || 1)));
   const RS = 0.8, pP = Math.min(1, tSlot/RS), vO = tSlot<RS?0:(tSlot-RS)/(1-RS);
-  if (elapsedT() === 0 || prevDist > pP) { mctx.clearRect(0,0,W,H); prevDist = 0; } // elapsedT=0 픽스
-  ctx.drawImage(sl.preRenderedSketch, 0, 0);
-  if (pP > prevDist) { drawWobblyWipe(mctx, W, H, prevDist, pP); prevDist = pP; }
-  const px = W*0.15, py = H*0.15; // vignette padding
-  if (vO === 0) { mctx.save(); mctx.globalCompositeOperation = 'destination-in'; mctx.fillStyle = '#fff'; mctx.fillRect(px, py, W-2*px, H-2*py); mctx.restore(); }
+  if (ct-sl.start === 0 || prevDist > pP) { mctx.clearRect(0,0,W,H); prevDist = 0; }
+  ctx.drawImage(sl.preRenderedSketch, 0, 0); if (pP > prevDist) { drawWobblyWipe(mctx, W, H, prevDist, pP); prevDist = pP; }
+  const px = W*0.15, py = H*0.15; if (vO === 0) { mctx.save(); mctx.globalCompositeOperation = 'destination-in'; mctx.fillStyle = '#fff'; mctx.fillRect(px, py, W-2*px, H-2*py); mctx.restore(); }
   else { mctx.fillStyle = `rgba(255,255,255,${vO})`; const ex = px*(1-vO), ey = py*(1-vO); mctx.fillRect(ex, ey, W-2*ex, H-2*ey); }
   cctx.clearRect(0,0,W,H); cctx.drawImage(maskCanvas, 0, 0); cctx.globalCompositeOperation = 'source-in'; cctx.drawImage(sl.preRenderedCanvas, 0, 0); cctx.globalCompositeOperation = 'source-over';
-  ctx.drawImage(compCanvas, 0, 0);
-  const rad = Math.max(W,H)*(0.35+vO*0.65), grad = ctx.createRadialGradient(W/2,H/2,rad*0.1,W/2,H/2,rad);
+  ctx.drawImage(compCanvas, 0, 0); const rad = Math.max(W,H)*(0.35+vO*0.65), grad = ctx.createRadialGradient(W/2,H/2,rad*0.1,W/2,H/2,rad);
   grad.addColorStop(0,'rgba(0,0,0,0)'); grad.addColorStop(0.5,`rgba(0,0,0,${0.4*(1-vO)})`); grad.addColorStop(1,`rgba(0,0,0,${0.92*(1-vO)+0.08})`);
   ctx.save(); ctx.globalCompositeOperation = 'multiply'; ctx.fillStyle = grad; ctx.fillRect(0,0,W,H); ctx.restore();
-
-  // helper function for prevDist reset logic
-  function elapsedT() { return currentTime-sl.start; }
 }
 
 async function startSession() {
@@ -416,16 +365,14 @@ async function startSession() {
   mediaRecorder.ondataavailable = e => { if(e.data.size>0) recordedChunks.push(e.data); };
   mediaRecorder.onstop = () => {
     const url = URL.createObjectURL(new Blob(recordedChunks, {type:'video/webm'})), a = document.createElement('a');
-    a.href = url; a.download = `Spectrum_v18.21_${aspectStr}_${Date.now()}.webm`; a.click();
+    a.href = url; a.download = `Spectrum_v18.22_${aspectStr}_${Date.now()}.webm`; a.click();
   };
   mediaRecorder.start(100); audioEl.currentTime = 0; audioEl.play(); isPlaying = true;
-  document.getElementById('statusDot').className = 'status-dot recording';
-  document.getElementById('recBadge').classList.add('visible');
-  function loop() { if(!isPlaying) return; drawFrame(audioEl.currentTime); document.getElementById('progBar').value = (audioEl.currentTime/audioDuration*100); document.getElementById('currTime').textContent = fmtTime(audioEl.currentTime); animFrameId = requestAnimationFrame(loop); }
-  loop();
+  document.getElementById('statusDot').className = 'status-dot recording'; document.getElementById('recBadge').classList.add('visible');
+  function loop() { if(!isPlaying) return; drawFrame(audioEl.currentTime); document.getElementById('progBar').value = (audioEl.currentTime/audioDuration*100); document.getElementById('currTime').textContent = fmtTime(audioEl.currentTime); animFrameId = requestAnimationFrame(loop); } loop();
 }
 
-function stopSession() { isPlaying = false; cancelAnimationFrame(animFrameId); audioEl.pause(); if(mediaRecorder) mediaRecorder.stop(); document.getElementById('statusDot').className = 'status-dot active'; document.getElementById('recBadge').classList.remove('visible'); }
+function stopSession() { isPlaying = false; cancelAnimationFrame(animFrameId); audioEl.pause(); if(mediaRecorder) mediaRecorder.stop(); document.getElementById('statusDot').className = 'status-dot active'; document.getElementById('recBadge').classList.remove('visible'); document.getElementById('btnStart').disabled = false; }
 document.getElementById('btnStart').onclick = startSession;
 document.getElementById('btnStop').onclick = stopSession;
 function fmtTime(s) { const m=Math.floor(s/60), sec=Math.floor(s%60); return `${m}:${String(sec).padStart(2,'0')}`; }
