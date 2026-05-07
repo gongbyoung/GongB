@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>ART LAB v18.15 — Physical Wiping Protocol</title>
+<title>ART LAB v18.16 — The Masterwork Protocol</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -44,19 +44,19 @@ select { width:100%; background:#000; color:var(--accent); border:1px solid #333
 <body>
 
 <div class="topbar">
-    <div class="logo">ART LAB v18.15 PHYSICAL WIPE</div>
+    <div class="logo">ART LAB v18.16 MASTERWORK PROTOCOL</div>
     <div id="status" style="font-size:10px; color:var(--accent);">STANDBY</div>
 </div>
 
 <div class="container">
     <div class="side-panel">
         <h3>1. Audio & Sequence</h3>
-        <button class="btn" onclick="document.getElementById('mIn').click()">🎵 1. LOAD MP3 (필수)</button>
+        <button class="btn" onclick="document.getElementById('mIn').click()">🎵 LOAD MP3 AUDIO</button>
         <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleMusic(this.files)">
         
         <div id="audioInfo">TOTAL AUDIO: 0.0s (00:00)</div>
 
-        <button class="btn primary" onclick="document.getElementById('iIn').click()">🖼️ 2. ADD IMAGES</button>
+        <button class="btn primary" onclick="document.getElementById('iIn').click()">🖼️ ADD IMAGE</button>
         <input type="file" id="iIn" accept="image/*" style="display:none" onchange="handleImageAdd(this.files)">
         <button class="btn" style="border-color:#ffcc00; color:#ffcc00; margin-top:5px;" onclick="document.getElementById('bIn').click()">PNG ALPHA BRUSH (점묘용)</button>
         <input type="file" id="bIn" accept="image/png" style="display:none" onchange="handleBrushPNG(this.files)">
@@ -80,8 +80,8 @@ select { width:100%; background:#000; color:var(--accent); border:1px solid #333
         <h3>3. Rendering Engine FX</h3>
         <label>DRAWING FOCUS (칠판 지우개 연출)</label>
         <select id="drawDirection">
-            <option value="diagonal">사선 지우개 (Diagonal ZigZag)</option>
-            <option value="horizontal">좌우 지우개 (Horizontal ZigZag)</option>
+            <option value="diagonal">진정한 대각선 사선 Sweep (Diagonal Master)</option>
+            <option value="horizontal">좌우 칠판 지우개 (Chalkboard Wipe)</option>
             <option value="global">중앙 확산 (Center Expand)</option>
         </select>
 
@@ -131,7 +131,7 @@ let aspect = '16:9', canvasW = 1280, canvasH = 720;
 let recorder, recordedChunks = [];
 let customBrushImg = null;
 
-// [v18.15] 물리적 마스크 버퍼
+// [v18.16] 물리적 마스크 버퍼
 let maskBuffer, viewBuffer;
 
 function setup() {
@@ -294,7 +294,9 @@ function processImageData(seq) {
     seq.artBuffer = null; 
 }
 
-// [v18.15] 백그라운드 프리렌더링 (Targeting Image 2)
+// ==========================================
+// [v18.16 핵심] 백그라운드 프리렌더링 (Vignette)
+// ==========================================
 function generateArtBuffers(seq) {
     document.getElementById('status').innerText = "GENERATING BUFFERS...";
     
@@ -311,37 +313,36 @@ function generateArtBuffers(seq) {
     let p = seq.sData.pixels;
     let e = seq.eData.pixels;
 
-    let pScale = Number(document.getElementById('paintScale').value);
     let bri = Number(document.getElementById('brightness').value);
 
-    // 1. 스케치 비네팅 버퍼
-    sk.stroke(50, 160); sk.strokeWeight(1.0);
+    // 1. [v18.16 타겟] 옅은 스케치 비네팅 버퍼 (외곽용)
+    sk.stroke(60, 160); sk.strokeWeight(1.0);
     let padX = width * 0.15;
     let padY = height * 0.15;
     
-    for(let i=0; i<80000; i++) {
+    for(let i=0; i<90000; i++) {
         let x = floor(random(width)), y = floor(random(height));
         let idx = (y * width + x) * 4;
         if(e[idx+3] > 128) {
+            // 외곽 영역에만 스케치 그리기
             let distToPad = min(x, width-x, y, height-y);
             let prob = distToPad < padX ? 1.0 : max(0.0, 1.0 - (distToPad - padX) / (width*0.2));
             if(prob > 0.05) {
                 sk.push(); sk.translate(x, y); sk.rotate(random(PI));
-                let l = 5 + random(5);
+                let l = 4 + random(6);
                 sk.line(-l, 0, l, 0); sk.pop();
             }
         }
     }
     // 짙은 비네팅 오버레이 
-    sk.fill(0, 180); sk.noStroke(); 
+    sk.fill(0, 160); sk.noStroke(); 
     sk.rect(0,0,width,padY); sk.rect(0,height-padY,width,padY);
     sk.rect(0,padY,padX,height-2*padY); sk.rect(width-padX,padY,padX,height-2*padY);
     seq.sketchBuffer = sk;
 
     // 2. 풀 컬러 버퍼 생성
-    let totalStrokes = 150000; 
+    let totalStrokes = 180000; 
     art.noStroke();
-    let baseSize = 12 * pScale; 
     
     for(let i=0; i<totalStrokes; i++) {
         let x = floor(random(width)), y = floor(random(height));
@@ -353,7 +354,7 @@ function generateArtBuffers(seq) {
         art.push();
         art.translate(x, y);
         let sMul = random(0.8, 1.3);
-        let bSize = baseSize * sMul; 
+        let bSize = 10 * sMul; // 기본 크기
 
         if(seq.style === 'oil') {
             art.fill(r+random(-15,15), g+random(-15,15), b+random(-15,15), 250);
@@ -366,7 +367,7 @@ function generateArtBuffers(seq) {
         } else if(seq.style === 'pencil') {
             let lum = 0.299*r + 0.587*g + 0.114*b;
             if(lum < 160) {
-                art.stroke(r*0.5, 200); art.strokeWeight(0.8 * pScale);
+                art.stroke(r*0.5, 200); art.strokeWeight(0.7);
                 art.rotate(PI/4 + random(0.2)); art.line(-bSize, 0, bSize, 0);
                 if(lum < 80 && random()<0.7) { art.rotate(PI/2); art.line(-bSize, 0, bSize, 0); }
             }
@@ -387,7 +388,9 @@ function generateArtBuffers(seq) {
     document.getElementById('status').innerText = "PLAYING...";
 }
 
-// [v18.15 핵심] 물리적 지우개 엔진 (선이 아닌 두꺼운 Path)
+let drawW, drawH;
+
+// [v18.16 핵심 픽스] 물리적 지우개 엔진 (선이 아닌 꽉 찬 Path)
 function draw() {
     let t = isPlaying && audio ? audio.currentTime() : Number(document.getElementById('progBar').value);
     document.getElementById('currTime').innerText = formatTime(t);
@@ -400,8 +403,10 @@ function draw() {
         if(idx !== currentActiveIdx) { currentActiveIdx = idx; renderSeqList(); }
         let s = sequences[idx];
         
+        // 프리-렌더 버퍼 준비
         if (!s.artBuffer) generateArtBuffers(s);
 
+        // 시간 진행률 (시간에 100% 의존)
         let prog = (t - s.start) / (s.end - s.start);
         let zigProg = min(1.0, prog / 0.8); // 80% 완결
         let expandProg = max(0.0, (prog - 0.8) / 0.2); // 80~100% 확장
@@ -426,7 +431,7 @@ function draw() {
         let pScale = Number(document.getElementById('paintScale').value);
         let eraserSize = (width * 0.08) * pScale; // 화면 너비의 8% 기준
 
-        // 물리적 선(Path)으로 마스크 그리기
+        // 물리적 Path로 마스크 그리기 (꽉 찬 덩어리 보장)
         maskBuffer.stroke(255); // 흰색으로 칠함
         maskBuffer.strokeWeight(eraserSize);
         maskBuffer.strokeJoin(ROUND);
@@ -515,7 +520,7 @@ function draw() {
             maskBuffer.ellipse(width/2, height/2, headR, headR);
         }
 
-        // [v18.15] 80% 이후 전체 영역 마스킹 (Vignette 확장)
+        // [v18.16] 80% 이후 전체 영역 마스킹 (Vignette 확장)
         if(expandProg > 0) {
             maskBuffer.fill(255); maskBuffer.noStroke();
             // 내부에서 외부로 흰색 사각형이 확장됨
@@ -576,7 +581,7 @@ function startRecording() {
     recorder.onstop = () => {
         let blob = new Blob(recordedChunks, { type: 'video/mp4' });
         let a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-        a.download = `PhysicalWipe_v18.15_${Date.now()}.mp4`; a.click();
+        a.download = `PerfectWipe_v18.16_${Date.now()}.mp4`; a.click();
         document.getElementById('status').innerText = "VIDEO SAVED!";
     };
     recorder.start();
