@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>🎵 Music Video Creator v18.22 (Aspect Fixed)</title>
+<title>🎵 Music Video Creator v18.23 (Fluid Vignette)</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Syne:wght@400;600;700;800&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -80,7 +80,7 @@
 <header>
   <div class="status-dot" id="statusDot"></div>
   <h1>🎵 Music Video Creator</h1>
-  <span style="font-size:0.65rem;color:var(--muted);margin-left:auto;">FHD 1080p | Stable v18.22 Fix</span>
+  <span style="font-size:0.65rem;color:var(--muted);margin-left:auto;">v18.23 Fluid Vignette</span>
 </header>
 
 <div class="layout">
@@ -160,7 +160,7 @@ const maskCanvas = document.createElement('canvas'), compCanvas = document.creat
 let mctx = maskCanvas.getContext('2d'), cctx = compCanvas.getContext('2d');
 let mediaRecorder = null, recordedChunks = [], animFrameId = null, prevDist = 0;
 
-// [에러 픽스] DEN_ACTIVE 오타 수정 및 비율 전환 로직 안정화
+// ─── ASPECT RATIO SYSTEM ──────────────────────────────────
 function setAspectRatio(num, den) {
     if (aspectStr === `${num}_${den}`) return;
     
@@ -252,7 +252,7 @@ function renderStyleGrid(idx) {
     const grid = document.getElementById('styleGrid'); grid.innerHTML = '';
     STYLES.forEach(k => {
         const btn = document.createElement('button'); btn.className = `style-btn ${slots[idx].style === k ? 'active' : ''}`;
-        btn.innerText = STYLE_LABELS[k]; btn.onclick = () => { slots[idx].style = k; slots[idx].preRenderedCanvas = null; renderStyleGrid(idx); if(!isPlaying) drawFrame(audioEl.currentTime); };
+        btn.innerText = STYLE_LABELS[k]; btn.onclick = () => { slots[idx].style = k; slots[idx].preRenderedCanvas = null; slots[idx].preRenderedSketch = null; renderStyleGrid(idx); if(!isPlaying) drawFrame(audioEl.currentTime); };
         grid.appendChild(btn);
     });
 }
@@ -302,21 +302,36 @@ function preRenderSlot(slot, w, h) {
     tx.putImageData(id, 0, 0); slot.preRenderedCanvas = tc;
 }
 
+// ─── [v18.23 핵심 픽스] preRenderSketch 변경 ───
 function preRenderSketch(slot, w, h) {
     if(slot.preRenderedSketch) return;
     const tc = document.createElement('canvas'); tc.width = w; tc.height = h; const tx = tc.getContext('2d');
-    tx.filter = 'grayscale(1) contrast(1.5)'; tx.drawImage(slot.preRenderedCanvas, 0, 0); tx.filter = 'none';
-    const id = tx.getImageData(0,0,w,h), d = id.data;
-    tx.fillStyle = '#f4f4f4'; tx.fillRect(0,0,w,h); tx.strokeStyle = 'rgba(60,60,60,0.4)'; tx.lineWidth = 1.0;
+    
+    // styled canvas를 grayscale로 변환하여 에지 검출용으로 사용
+    const tcEdge = document.createElement('canvas'); tcEdge.width = w; tcEdge.height = h; const txEdge = tcEdge.getContext('2d');
+    txEdge.filter = 'grayscale(1) contrast(1.8)'; // 에지 강조
+    txEdge.drawImage(slot.preRenderedCanvas, 0, 0);
+    txEdge.filter = 'none';
+    
+    const idEdge = txEdge.getImageData(0,0,w,h), dEdge = idEdge.data;
+    
+    // 바탕 그리기 (흰색 칠판)
+    tx.fillStyle = '#f4f4f4'; tx.fillRect(0,0,w,h);
+    
+    // 연필 질감 그리기 (에지 기반)
+    tx.strokeStyle = 'rgba(60,60,60,0.5)'; // 옅은 흑백 스케치선
+    tx.lineWidth = 1.0;
     for(let i=0; i<60000; i++) {
         let x = Math.floor(Math.random()*w), y = Math.floor(Math.random()*h);
-        if(d[(y*w+x)*4] < Math.random()*200) {
+        if(dEdge[(y*w+x)*4] < Math.random()*200) {
             tx.save(); tx.translate(x, y); tx.rotate(Math.random()*Math.PI);
             tx.beginPath(); tx.moveTo(-3,0); tx.lineTo(3,0); tx.stroke(); tx.restore();
         }
     }
-    const px = w*0.15, py = h*0.15; tx.fillStyle = 'rgba(0,0,0,0.75)';
-    tx.fillRect(0,0,w,py); tx.fillRect(0,h-py,w,py); tx.fillRect(0,py,px,h-2*py); tx.fillRect(w-px,py,px,h-2*py);
+    
+    // [v18.23 픽스] 각진 마스크 가리기 삭제 (레터박스/필러박스 제거)
+    // tx.fillRect(0,0,w,py)... <- 이 코드를 삭제하여 전체 화면이 연필 스케치로 채워짐
+
     slot.preRenderedSketch = tc;
 }
 
@@ -342,21 +357,52 @@ function drawWobblyWipe(mx, w, h, st, et) {
     } mx.stroke(); mx.restore();
 }
 
+// ─── MAIN DRAW LOOP ──────────────────────────────────────
 function drawFrame(ct) {
   const sl = slots.find(s => ct >= s.start && ct < s.end) || slots.filter(s=>s.file).pop();
   if (!sl || !sl.img) return; preRenderSlot(sl, W, H); preRenderSketch(sl, W, H);
-  const tSlot = Math.min(1, Math.max(0, (ct-sl.start)/(sl.end-sl.start || 1)));
+  const elapsedT = ct-sl.start;
+  const tSlot = Math.min(1, Math.max(0, (elapsedT)/(sl.end-sl.start || 1)));
   const RS = 0.8, pP = Math.min(1, tSlot/RS), vO = tSlot<RS?0:(tSlot-RS)/(1-RS);
-  if (ct-sl.start === 0 || prevDist > pP) { mctx.clearRect(0,0,W,H); prevDist = 0; }
-  ctx.drawImage(sl.preRenderedSketch, 0, 0); if (pP > prevDist) { drawWobblyWipe(mctx, W, H, prevDist, pP); prevDist = pP; }
-  const px = W*0.15, py = H*0.15; if (vO === 0) { mctx.save(); mctx.globalCompositeOperation = 'destination-in'; mctx.fillStyle = '#fff'; mctx.fillRect(px, py, W-2*px, H-2*py); mctx.restore(); }
-  else { mctx.fillStyle = `rgba(255,255,255,${vO})`; const ex = px*(1-vO), ey = py*(1-vO); mctx.fillRect(ex, ey, W-2*ex, H-2*ey); }
-  cctx.clearRect(0,0,W,H); cctx.drawImage(maskCanvas, 0, 0); cctx.globalCompositeOperation = 'source-in'; cctx.drawImage(sl.preRenderedCanvas, 0, 0); cctx.globalCompositeOperation = 'source-over';
-  ctx.drawImage(compCanvas, 0, 0); const rad = Math.max(W,H)*(0.35+vO*0.65), grad = ctx.createRadialGradient(W/2,H/2,rad*0.1,W/2,H/2,rad);
-  grad.addColorStop(0,'rgba(0,0,0,0)'); grad.addColorStop(0.5,`rgba(0,0,0,${0.4*(1-vO)})`); grad.addColorStop(1,`rgba(0,0,0,${0.92*(1-vO)+0.08})`);
-  ctx.save(); ctx.globalCompositeOperation = 'multiply'; ctx.fillStyle = grad; ctx.fillRect(0,0,W,H); ctx.restore();
+  if (elapsedT === 0 || prevDist > pP) { mctx.clearRect(0,0,W,H); prevDist = 0; }
+  
+  // 1. [v18.23 픽스] 스케치 배경 그리기 (이제 캔버스 전체가 스케치로 채워짐)
+  ctx.drawImage(sl.preRenderedSketch, 0, 0); 
+  
+  // 2. 누적 지우개 마스크 그리기
+  if (pP > prevDist) { drawWobblyWipe(mctx, W, H, prevDist, pP); prevDist = pP; }
+  
+  // 3. [v18.23 픽스] 비네팅 영역 컨트롤 수정
+  // 이전의 딱딱한 레터박스 여백을 제거하고, 전체 화면에 유기적인 비네팅만 적용
+  if (vO > 0) {
+      // 80% 이후에만 그라데이션 비네팅이 서서히 짙어지며 통합됨 (소스-오버)
+      mctx.globalCompositeOperation = 'source-over';
+      const rad = Math.max(W,H)*(0.45 + vO*0.55); // 그라데이션 반지름 조정
+      const gradM = mctx.createRadialGradient(W/2, H/2, rad*0.2, W/2, H/2, rad);
+      gradM.addColorStop(0, 'rgba(255,255,255,1)'); // 중앙은 컬러
+      gradM.addColorStop(0.7 + vO*0.2, 'rgba(255,255,255,1)'); // 그라데이션 시작점 조절
+      gradM.addColorStop(1, 'rgba(255,255,255,0)'); // 가장자리는 투명하게 스케치 배경 노출
+      mctx.fillStyle = gradM;
+      mctx.fillRect(0, 0, W, H);
+  } else {
+      // 80% 이전에는 지우개로 닦인 흰색 영역만 마스크로 유지
+  }
+
+  // 4. 합성
+  cctx.clearRect(0,0,W,H); 
+  cctx.drawImage(maskCanvas, 0, 0); 
+  cctx.globalCompositeOperation = 'source-in'; // 마스크 영역에만 컬러 이미지
+  cctx.drawImage(sl.preRenderedCanvas, 0, 0); 
+  cctx.globalCompositeOperation = 'source-over';
+
+  // 5. 최종 출력 (Fluid Letterbox 통합)
+  ctx.drawImage(compCanvas, 0, 0); 
+  
+  // HUD (Vignette에 가려지지 않게 최상단)
+  ctx.save(); ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.font = '500 24px DM Mono, monospace'; ctx.fillText(STYLE_LABELS[sl.style], 36, H - 36); ctx.restore();
 }
 
+// ─── RECORDING ──────────────────────────────────────────
 async function startSession() {
   recordedChunks = []; const stream = canvas.captureStream(24);
   const audioCtx = new AudioContext(), dest = audioCtx.createMediaStreamDestination(), source = audioCtx.createMediaElementSource(audioEl);
@@ -365,7 +411,7 @@ async function startSession() {
   mediaRecorder.ondataavailable = e => { if(e.data.size>0) recordedChunks.push(e.data); };
   mediaRecorder.onstop = () => {
     const url = URL.createObjectURL(new Blob(recordedChunks, {type:'video/webm'})), a = document.createElement('a');
-    a.href = url; a.download = `Spectrum_v18.22_${aspectStr}_${Date.now()}.webm`; a.click();
+    a.href = url; a.download = `Spectrum_v18.23_${aspectStr}_${Date.now()}.webm`; a.click();
   };
   mediaRecorder.start(100); audioEl.currentTime = 0; audioEl.play(); isPlaying = true;
   document.getElementById('statusDot').className = 'status-dot recording'; document.getElementById('recBadge').classList.add('visible');
