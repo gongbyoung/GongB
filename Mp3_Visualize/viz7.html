@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>ART LAB v18.9 — The Masterwork</title>
+<title>ART LAB v18.10 — Absolute Deadline</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -16,11 +16,9 @@ body{ background:var(--bg); color:var(--text); font-family:sans-serif; height:10
 .side-panel { background: var(--panel); padding: 15px; overflow-y: auto; border-right: 1px solid var(--border); }
 .side-panel.right { border-right:none; border-left: 1px solid var(--border); }
 
-/* 시퀀스 아이템 디자인 */
 .seq-item { background: #16161d; padding: 12px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #222; cursor: pointer; transition: 0.2s; }
 .seq-item.active { border-color: var(--accent); background: #1a2523; box-shadow: 0 0 10px rgba(0,255,204,0.1); }
 .seq-info { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-/* 타이핑하기 편하도록 인풋 박스 스타일링 */
 .time-input { background:#000; border:1px solid #444; color:var(--accent); width:65px; padding:4px; font-size:12px; text-align:center; border-radius:4px; font-family:monospace; }
 .time-input:focus { border-color:var(--accent); outline:none; }
 .seq-style-row { display: flex; gap:5px; margin-top:5px; }
@@ -46,7 +44,7 @@ select { width:100%; background:#000; color:var(--accent); border:1px solid #333
 <body>
 
 <div class="topbar">
-    <div class="logo">ART LAB v18.9 THE MASTERWORK</div>
+    <div class="logo">ART LAB v18.10 ABSOLUTE DEADLINE</div>
     <div id="status" style="font-size:10px; color:var(--accent);">STANDBY</div>
 </div>
 
@@ -98,9 +96,6 @@ select { width:100%; background:#000; color:var(--accent); border:1px solid #333
             <option value="finish">강제: 6. 마무리 (Finish)</option>
         </select>
 
-        <label>PAINT DENSITY <span class="val-label" id="valD">400</span></label>
-        <input type="range" id="density" min="10" max="1000" value="400" oninput="document.getElementById('valD').innerText=this.value">
-        
         <label>BRUSH SCALE <span class="val-label" id="valBScale">1.0</span></label>
         <input type="range" id="paintScale" min="0.1" max="5.0" step="0.1" value="1.0" oninput="document.getElementById('valBScale').innerText=this.value">
         
@@ -156,7 +151,6 @@ function handleMusic(files) {
         document.getElementById('progBar').max = dur;
         document.getElementById('status').innerText = "AUDIO LOADED";
         
-        // 오디오 전체 길이 표시 로직
         let infoDiv = document.getElementById('audioInfo');
         infoDiv.style.display = "block";
         infoDiv.innerText = `TOTAL AUDIO: ${dur.toFixed(1)}s (${formatTime(dur)})`;
@@ -230,9 +224,8 @@ function updateSeqStart(idx, val) {
     let dur = sequences[idx].end - sequences[idx].start;
     sequences[idx].start = newStart;
     sequences[idx].end = newStart + dur;
-    // 이전 시퀀스들의 끝시간 맞춤 (역 연쇄)
     if(idx > 0) sequences[idx-1].end = newStart;
-    cascadeTime(idx, sequences[idx].end); // 뒷 시퀀스들도 정렬
+    cascadeTime(idx, sequences[idx].end);
 }
 
 function cascadeTime(idx, val) {
@@ -279,6 +272,7 @@ function processImageData(seq) {
     temp.imageMode(CENTER);
     temp.image(seq.img, width/2 + seq.x, height/2 + seq.y, seq.img.width*r, seq.img.height*r);
     seq.sData = temp.get();
+    
     let edge = createGraphics(width, height);
     edge.image(seq.sData, 0, 0);
     edge.filter(THRESHOLD, 0.2); 
@@ -293,7 +287,7 @@ function clearCanvas() {
 function drawGhostPreview() {
     clearCanvas();
     if(currentActiveIdx !== -1 && sequences[currentActiveIdx].sData) {
-        tint(255, 70); // 고스트 투명도
+        tint(255, 70); 
         image(sequences[currentActiveIdx].sData, 0, 0);
         noTint();
     }
@@ -304,7 +298,7 @@ function draw() {
     document.getElementById('currTime').innerText = formatTime(t);
     document.getElementById('progBar').value = t;
 
-    if(!isPlaying) return; // 비재생시는 selectSeq/updateCurSeq에서 고스트 렌더링 호출
+    if(!isPlaying) return;
 
     let idx = sequences.findIndex(s => t >= s.start && t <= s.end);
     if(idx !== -1) {
@@ -312,9 +306,10 @@ function draw() {
         let s = sequences[idx];
         
         let rawProg = (t - s.start) / (s.end - s.start);
-        let progress = min(1.0, rawProg / 0.8); // 80% 완성 룰
+        // 정확히 80% 시점에서 진행도 1.0(완성)에 도달하도록 보정
+        let progress = min(1.0, rawProg / 0.8); 
         
-        // 잔상 처리 (Trail)
+        // 잔상 처리
         let trail = Number(document.getElementById('trail').value);
         if(trail > 0) {
             let bgHex = document.getElementById('canvasBg').value;
@@ -323,35 +318,47 @@ function draw() {
             fill(c); noStroke(); rect(0,0,width,height);
         }
 
+        // 오디오 신호. 없을 경우 기본 0.3 보장
         let amp = audio ? analyser.getEnergy(20, 200) / 255 : 0.3;
+        
         if(progress < 1.0) paintSequence(s, progress, amp);
     }
 }
 
 function paintSequence(seq, prog, amp) {
-    let dens = Number(document.getElementById('density').value) * (amp + 0.3); // 최소 붓질 보장
     let pScale = Number(document.getElementById('paintScale').value);
     let bri = Number(document.getElementById('brightness').value);
     
     let manualPhase = document.getElementById('drawingPhase').value;
     let phase = manualPhase;
     
+    // 80% 완성 룰에 맞춘 페이즈 자동 분배
     if(manualPhase === 'auto') {
-        if(prog <= 0.1) phase = 'sketch';
-        else if(prog <= 0.2) phase = 'coarse';
-        else if(prog <= 0.4) phase = 'mid';
-        else if(prog <= 0.6) phase = 'fine';
-        else if(prog <= 0.8) phase = 'shadow';
-        else if(prog <= 0.98) phase = 'finish';
+        if(prog <= 0.10) phase = 'sketch';
+        else if(prog <= 0.25) phase = 'coarse';
+        else if(prog <= 0.45) phase = 'mid';
+        else if(prog <= 0.70) phase = 'fine';
+        else if(prog <= 0.85) phase = 'shadow';
+        else if(prog <= 0.99) phase = 'finish';
         else phase = 'done';
     }
-    
     if(phase === 'done') return;
+
+    // [v18.10 자동 밀도 계산] 
+    // 설정된 시간에 따라 캔버스를 무조건 채울 수 있는 붓질 횟수 동적 도출
+    let duration = max(1, seq.end - seq.start);
+    let baseStrokesNeeded = 120000; // 1080p 화면을 채우기 위한 넉넉한 기준치
+    let strokesPerFrame = (baseStrokesNeeded / (duration * 60)) * (amp + 0.5);
+    
+    // 페이즈별 밀도 조정 (큰 붓은 덜 찍고, 얇은 붓은 많이 찍음)
+    if(phase === 'coarse') strokesPerFrame *= 0.4;
+    if(phase === 'fine' || phase === 'finish') strokesPerFrame *= 2.0;
 
     let drawDir = document.getElementById('drawDirection').value;
 
-    for(let i=0; i<dens/5; i++) {
+    for(let i=0; i<strokesPerFrame; i++) {
         let x, y;
+        // 그려지는 방향성에 맞춘 좌표 도출
         if (drawDir === 'global') {
             x = floor(random(width)); y = floor(random(height));
         } else if (drawDir === 'diagonal') {
@@ -390,15 +397,17 @@ function paintSequence(seq, prog, amp) {
             }
         } else {
             let isE = alpha(seq.eData.get(x, y)) > 128;
-            let localProg = (phase==='coarse')? (prog-0.1)*10 : (phase==='mid'? (prog-0.2)*5 : 1);
+            // 경계면부터 파고드는 알고리즘
+            let localProg = (phase==='coarse')? (prog-0.1)*6.6 : (phase==='mid'? (prog-0.25)*5 : 1);
             if(!isE && phase !== 'fine' && phase !== 'finish' && random() > localProg) { pop(); continue; }
 
             let sMul = 1; let alp = 200;
-            if(phase === 'coarse') { sMul = 4.5; alp = 50; }
-            else if(phase === 'mid') { sMul = 2.0; alp = 120; }
+            // [v18.10] 초벌 스케일 대폭 상향하여 빈틈 없이 메움
+            if(phase === 'coarse') { sMul = 8.0; alp = 80; } 
+            else if(phase === 'mid') { sMul = 3.5; alp = 150; }
             else if(phase === 'shadow') {
                 let lum = 0.299*r + 0.587*g + 0.114*b;
-                sMul = 0.8; alp = 230;
+                sMul = 1.2; alp = 230;
                 if(lum > 180) { r=min(255,r*1.2); g=min(255,g*1.2); b=min(255,b*1.2); }
                 else if(lum < 80) { r*=0.6; g*=0.6; b*=0.6; }
                 else { pop(); continue; }
@@ -445,7 +454,6 @@ function paintSequence(seq, prog, amp) {
             }
             else if(seq.style === 'point') {
                 if(customBrushImg) {
-                    // 점묘 모드에서 커스텀 브러시 팅팅 적용
                     drawingContext.globalCompositeOperation = 'source-over';
                     let tCv = createGraphics(brushSize*2, brushSize*2);
                     tCv.image(customBrushImg, 0, 0, brushSize*2, brushSize*2);
@@ -495,7 +503,7 @@ function startRecording() {
     recorder.onstop = () => {
         let blob = new Blob(recordedChunks, { type: 'video/mp4' });
         let a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-        a.download = `Masterwork_v18.9_${Date.now()}.mp4`; a.click();
+        a.download = `Masterwork_v18.10_${Date.now()}.mp4`; a.click();
         document.getElementById('status').innerText = "VIDEO SAVED!";
     };
     recorder.start();
@@ -512,10 +520,16 @@ function setAspect(r) {
     if(!isPlaying) drawGhostPreview();
 }
 
-function enableUI(on) { 
-    let ui = document.getElementById('seqUI');
-    ui.style.opacity = on ? "1" : "0.3"; ui.style.pointerEvents = on ? "all" : "none";
+function clearCanvas() { background(document.getElementById('canvasBg').value); }
+function drawGhostPreview() {
+    clearCanvas();
+    if(currentActiveIdx !== -1 && sequences[currentActiveIdx].sData) {
+        tint(255, 70); 
+        image(sequences[currentActiveIdx].sData, 0, 0);
+        noTint();
+    }
 }
+
 function formatTime(s) { let m=floor(s/60), sec=floor(s%60); return `${nf(m,2)}:${nf(sec,2)}`; }
 function seekTime(v) { if(!isPlaying) { drawGhostPreview(); } }
 function saveArt() { saveCanvas('StillMasterwork', 'png'); }
