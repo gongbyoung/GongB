@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>ART LAB v18.46 — Async Baking Engine</title>
+<title>ART LAB v18.47 — Video Export Fixed</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -19,7 +19,6 @@ body{ background:var(--bg); color:var(--text); font-family:sans-serif; height:10
 .seq-info{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
 .time-input{ background:#000; border:1px solid #444; color:var(--accent); width:65px; padding:4px; font-size:11px; text-align:center; border-radius:4px; font-weight:bold; }
 .viz-area{ background:#000; flex:1; display:flex; justify-content:center; align-items:center; overflow:hidden; position:relative; }
-/* [신규] 베이킹 로딩 UI */
 #loader { display:none; position:absolute; inset:0; background:rgba(0,0,0,0.85); z-index:100; flex-direction:column; justify-content:center; align-items:center; backdrop-filter:blur(5px); }
 #loaderTxt { color:var(--accent); font-size:28px; font-weight:900; letter-spacing:3px; font-family:monospace; margin-bottom:10px; }
 #loaderSub { color:#888; font-size:12px; }
@@ -38,7 +37,7 @@ label{ font-size:9px; color:#888; display:block; margin-bottom:3px; margin-top:8
 <body>
 
 <div class="topbar">
-    <div class="logo">ART LAB v18.46 ASYNC ENGINE</div>
+    <div class="logo">ART LAB v18.47 VIDEO EXPORT FIXED</div>
     <div id="status" style="font-size:10px; color:var(--accent);">READY</div>
 </div>
 
@@ -104,11 +103,15 @@ label{ font-size:9px; color:#888; display:block; margin-bottom:3px; margin-top:8
 let audio, isPlaying = false, isBaking = false, sequences = [], currentActiveIdx = -1;
 let canvasW = 1280, canvasH = 720;
 let paintBuffer, maskBuffer, vignetteBuffer;
-let globalRawCnv, globalRawCtx; // 경고 해결용 전역 메모리 캔버스
+let globalRawCnv, globalRawCtx; 
 
 let artBrushScaleGlobal = 1.0;
 let artIntensityGlobal = 1.0; 
 let lightnessGlobal = 100;
+
+// [영상 저장 전역 변수 선언]
+let mediaRecorder; 
+let recordedChunks = [];
 
 function setup() {
     let cnv = createCanvas(canvasW, canvasH);
@@ -117,7 +120,6 @@ function setup() {
     maskBuffer = createGraphics(canvasW, canvasH);
     vignetteBuffer = createGraphics(canvasW, canvasH);
     
-    // [경고 완치] 영구적인 픽셀 데이터 리더기 (willReadFrequently 1회 고정)
     globalRawCnv = document.createElement('canvas');
     globalRawCtx = globalRawCnv.getContext('2d', { willReadFrequently: true });
     
@@ -157,7 +159,6 @@ function handleImageAdd(files) {
             });
             loadedCount++;
             renderSeqList();
-            // 이미지가 모두 로드되면 첫 번째 슬롯 자동 선택 및 베이킹
             if(loadedCount === files.length && currentActiveIdx === -1) {
                 selectSeq(0);
             }
@@ -256,15 +257,11 @@ function updateArtIntensity(val) {
 function updateLightness(val) {
     lightnessGlobal = parseInt(val);
     document.getElementById('valLightness').innerText = lightnessGlobal + '%';
-    // 밝기는 단순 필터이므로 실시간 프리뷰
     if(!isPlaying && currentActiveIdx !== -1 && !isBaking) {
         showPreview(currentActiveIdx);
     }
 }
 
-// =========================================================================
-// [핵심] 비동기(Async) 베이킹 엔진: 브라우저 프리징과 경고를 완벽히 차단합니다.
-// =========================================================================
 async function bakeArtwork(idx) {
     if(isBaking) return;
     isBaking = true;
@@ -272,9 +269,8 @@ async function bakeArtwork(idx) {
     
     document.getElementById('loader').style.display = 'flex';
     document.getElementById('loaderTxt').innerText = `BAKING... 0%`;
-    renderSeqList(); // 버튼 비활성화 시각화
+    renderSeqList(); 
     
-    // 브라우저 렌더링에 양보 (로딩 화면이 뜰 시간 확보)
     await new Promise(r => setTimeout(r, 50)); 
     
     let art = createGraphics(width, height);
@@ -286,7 +282,6 @@ async function bakeArtwork(idx) {
     let r = Math.max(width/imgW, height/imgH) * seq.scale;
     let cx = width/2 + seq.x, cy = height/2 + seq.y;
     
-    // 전용 메모리 캔버스를 통해 픽셀 데이터 로드 (Warning 완치)
     globalRawCnv.width = imgW;
     globalRawCnv.height = imgH;
     globalRawCtx.drawImage(img.canvas || img.elt, 0, 0, imgW, imgH);
@@ -301,7 +296,7 @@ async function bakeArtwork(idx) {
 
     if(seq.style !== 'raw' && artIntensityGlobal > 0) {
         let total = 140000;
-        let chunkSize = 15000; // 1만5천개씩 쪼개어 연산 (브라우저 숨통 트기)
+        let chunkSize = 15000; 
         let alphaMult = artIntensityGlobal;
         
         for(let i=0; i<total; i+=chunkSize) {
@@ -338,7 +333,6 @@ async function bakeArtwork(idx) {
                 }
                 art.pop();
             }
-            // 진행률 업데이트 및 이벤트 루프 양보 (UI 멈춤 방지)
             let progress = Math.floor(((i + chunkSize) / total) * 100);
             document.getElementById('loaderTxt').innerText = `BAKING... ${Math.min(progress, 100)}%`;
             await new Promise(r => setTimeout(r, 0));
@@ -346,7 +340,6 @@ async function bakeArtwork(idx) {
     }
     seq.artBuffer = art;
 
-    // 스케치 버퍼 생성
     let skBuf = createGraphics(width, height);
     skBuf.pixelDensity(1);
     skBuf.background("#f4f4f4");
@@ -376,15 +369,13 @@ async function bakeArtwork(idx) {
     }
     seq.sketchBuffer = skBuf;
     
-    // 베이킹 완료
     isBaking = false;
     document.getElementById('loader').style.display = 'none';
-    renderSeqList(); // 버튼 활성화
-    showPreview(idx); // 완성된 화면 보여주기
+    renderSeqList(); 
+    showPreview(idx); 
 }
 
 function drawFrame(ct) {
-    // 렌더링 중일 때는 이전 프레임을 강제하지 않고 대기
     if(isBaking) return;
     
     const sl = sequences.find(s => ct >= s.start && ct < s.end) || sequences[sequences.length-1];
@@ -470,22 +461,55 @@ function setAspect(r) {
     if(currentActiveIdx !== -1) bakeArtwork(currentActiveIdx);
 }
 
+// [영상 저장 기능 픽스] STOP 시 녹화를 종료하고 다운로드
 function togglePlay() {
     if(!audio || isBaking) return;
-    if(isPlaying) { audio.stop(); isPlaying = false; document.getElementById('recBtn').innerText = "🔴 START REC"; } 
-    else { audio.play(); isPlaying = true; document.getElementById('recBtn').innerText = "⏹ STOP"; startRecording(); }
+    if(isPlaying) { 
+        audio.stop(); 
+        isPlaying = false; 
+        document.getElementById('recBtn').innerText = "🔴 START REC";
+        
+        // 추가: 녹화 종료 시 파일 생성 트리거
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            mediaRecorder.stop();
+        }
+    } 
+    else { 
+        audio.play(); 
+        isPlaying = true; 
+        document.getElementById('recBtn').innerText = "⏹ STOP"; 
+        startRecording(); 
+    }
 }
 
+// [영상 저장 기능 픽스] 메인 캔버스를 정확히 잡아 녹화 시작
 function startRecording() {
     recordedChunks = [];
-    let stream = document.querySelector('canvas').captureStream(24);
-    let recorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
-    recorder.ondataavailable = e => recordedChunks.push(e.data);
-    recorder.onstop = () => {
-        let a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(recordedChunks, {type:'video/mp4'}));
-        a.download = `ArtLab_v18.46_${Date.now()}.mp4`; a.click();
+    
+    // 숨겨진 캔버스가 아닌 현재 화면에 보이는 메인 캔버스 캡처
+    let mainCanvas = document.querySelector('#vArea canvas');
+    let stream = mainCanvas.captureStream(30); // 30fps로 부드럽게
+    
+    mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+    
+    mediaRecorder.ondataavailable = e => {
+        if (e.data.size > 0) recordedChunks.push(e.data);
     };
-    recorder.start();
+    
+    mediaRecorder.onstop = () => {
+        let blob = new Blob(recordedChunks, { type: 'video/webm' });
+        let url = URL.createObjectURL(blob);
+        let a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = `ArtLab_Record_${Date.now()}.webm`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+    
+    mediaRecorder.start();
 }
 
 function formatTime(s) { let m=Math.floor(s/60), sec=Math.floor(s%60); return `${nf(m,2)}:${nf(sec,2)}`; }
