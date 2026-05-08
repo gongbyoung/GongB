@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>v18.34 — Zero Issue Master</title>
+<title> v18.35 — Absolute Zero Warning</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -32,7 +32,7 @@ label{ font-size:9px; color:#888; display:block; margin-bottom:3px; margin-top:8
 <body>
 
 <div class="topbar">
-    <div class="logo">ART LAB v18.34 STABLE CANVAS</div>
+    <div class="logo">ART LAB v18.35 ZERO WARNING</div>
     <div id="status" style="font-size:10px; color:var(--accent);">READY</div>
 </div>
 
@@ -40,9 +40,9 @@ label{ font-size:9px; color:#888; display:block; margin-bottom:3px; margin-top:8
     <div class="side-panel">
         <h3>1. Sequence & Duration</h3>
         <button class="btn" onclick="document.getElementById('mIn').click()">🎵 LOAD AUDIO</button>
-        <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleMusic(this.files)">
+        <input type="file" id="mIn" aria-label="Audio Input" accept="audio/*" style="display:none" onchange="handleMusic(this.files)">
         <button class="btn" style="background:var(--accent); color:#000; font-weight:bold; border:none; margin-top:10px;" onclick="document.getElementById('iIn').click()">🖼️ ADD IMAGES</button>
-        <input type="file" id="iIn" accept="image/*" style="display:none" onchange="handleImageAdd(this.files)" multiple>
+        <input type="file" id="iIn" aria-label="Image Input" accept="image/*" style="display:none" onchange="handleImageAdd(this.files)" multiple>
         <div id="sequenceList" style="margin-top:20px;"></div>
     </div>
     <div class="viz-area" id="vArea"></div>
@@ -53,15 +53,15 @@ label{ font-size:9px; color:#888; display:block; margin-bottom:3px; margin-top:8
             <button class="btn" id="b916" onclick="setAspect('9:16')">9:16</button>
         </div>
         <label>BRUSH SCALE <span class="val-label" id="valBScale">1.5</span></label>
-        <input type="range" id="paintScale" min="0.5" max="4.0" step="0.1" value="1.5" oninput="document.getElementById('valBScale').innerText=this.value">
+        <input type="range" id="paintScale" aria-label="Brush Scale" min="0.5" max="4.0" step="0.1" value="1.5" oninput="document.getElementById('valBScale').innerText=this.value">
         <h3>3. Active Transform</h3>
         <div id="seqUI" style="opacity:0.3; pointer-events:none; background:#111; padding:10px; border-radius:8px;">
             <label>SCALE <span id="valS" class="val-label">1.0</span></label>
-            <input type="range" id="curScale" min="0.1" max="4.0" step="0.05" value="1.0" oninput="updateCurSeq()">
+            <input type="range" id="curScale" aria-label="Image Scale" min="0.1" max="4.0" step="0.05" value="1.0" oninput="updateCurSeq()">
             <label>OFFSET X <span id="valX" class="val-label">0</span></label>
-            <input type="range" id="curX" min="-1200" max="1200" step="5" value="0" oninput="updateCurSeq()">
+            <input type="range" id="curX" aria-label="Offset X" min="-1200" max="1200" step="5" value="0" oninput="updateCurSeq()">
             <label>OFFSET Y <span id="valY" class="val-label">0</span></label>
-            <input type="range" id="curY" min="-1200" max="1200" step="5" value="0" oninput="updateCurSeq()">
+            <input type="range" id="curY" aria-label="Offset Y" min="-1200" max="1200" step="5" value="0" oninput="updateCurSeq()">
         </div>
         <button class="btn" id="recBtn" onclick="togglePlay()" style="margin-top:20px; background:#ff3e81; color:white; font-weight:bold; border:none; padding:12px;">🔴 START REC</button>
     </div>
@@ -69,37 +69,37 @@ label{ font-size:9px; color:#888; display:block; margin-bottom:3px; margin-top:8
 
 <div class="playbar">
     <span id="currTime" style="font-size:14px; color:var(--accent); font-family:monospace; min-width:50px;">00:00</span>
-    <input type="range" id="progBar" value="0" min="0" max="100" step="0.1" style="flex:1;" oninput="seekTime(this.value)">
+    <input type="range" id="progBar" aria-label="Progress Bar" value="0" min="0" max="100" step="0.1" style="flex:1;" oninput="seekTime(this.value)">
     <span id="totalTime" style="font-size:14px; color:#555; font-family:monospace; min-width:50px;">00:00</span>
 </div>
 
-<audio id="audioEl" style="display:none;"></audio>
+<audio id="audioEl" aria-label="Audio Player" style="display:none;"></audio>
 
 <script>
 let audio, isPlaying = false, sequences = [], currentActiveIdx = -1;
 let canvasW = 1280, canvasH = 720;
-let artLayer, maskBuffer, vignetteLayer;
+let paintBuffer, maskBuffer, vignetteBuffer;
 
 function setup() {
     let cnv = createCanvas(canvasW, canvasH);
     cnv.parent('vArea');
-    // willReadFrequently 이슈 해결을 위한 힌트
-    cnv.canvas.getContext('2d', { willReadFrequently: true });
     
+    paintBuffer = createGraphics(canvasW, canvasH);
     maskBuffer = createGraphics(canvasW, canvasH);
-    vignetteLayer = createGraphics(canvasW, canvasH);
+    vignetteBuffer = createGraphics(canvasW, canvasH);
+    
     updateVignette();
 }
 
 function updateVignette() {
-    vignetteLayer.resizeCanvas(width, height);
-    vignetteLayer.clear();
-    vignetteLayer.noStroke();
-    let maxR = Math.max(width, height) * 1.1;
+    vignetteBuffer.resizeCanvas(width, height);
+    vignetteBuffer.clear();
+    vignetteBuffer.noStroke();
+    let maxR = Math.max(width, height) * 0.95;
     for(let r = 0; r < maxR; r += 8) {
         let alpha = map(r, 0, maxR, 0, 255);
-        vignetteLayer.fill(0, alpha);
-        vignetteLayer.ellipse(width/2, height/2, maxR*2.5 - r*2.0);
+        vignetteBuffer.fill(0, alpha);
+        vignetteBuffer.ellipse(width/2, height/2, maxR*2.5 - r*2.0);
     }
 }
 
@@ -117,7 +117,7 @@ function handleImageAdd(files) {
             let lastEnd = sequences.length > 0 ? sequences[sequences.length-1].end : 0;
             sequences.push({
                 img: img, name: f.name, start: lastEnd, end: lastEnd + 10,
-                style: 'oil', scale: 1.0, x: 0, y: 0, artBuffer: null
+                style: 'oil', scale: 1.0, x: 0, y: 0, artBuffer: null, sketchBuffer: null
             });
             renderSeqList();
             if(currentActiveIdx === -1) selectSeq(0);
@@ -132,7 +132,7 @@ function renderSeqList() {
         div.className = `seq-item ${i === currentActiveIdx ? 'active' : ''}`;
         div.onclick = () => selectSeq(i);
         div.innerHTML = `<div class="seq-info"><span style="font-size:11px; color:#fff; font-weight:bold;">${i+1}. ${s.name}</span>
-            <input class="time-input" type="number" step="0.1" value="${s.end.toFixed(1)}" onchange="updateSeqTime(${i}, this.value)" onclick="event.stopPropagation()"></div>
+            <input class="time-input" aria-label="End Time" type="number" step="0.1" value="${s.end.toFixed(1)}" onchange="updateSeqTime(${i}, this.value)" onclick="event.stopPropagation()"></div>
             <div style="display:flex; gap:3px;">
                 <button class="btn ${s.style==='oil'?'active':''}" onclick="setSeqStyle(${i}, 'oil')">유채</button>
                 <button class="btn ${s.style==='pencil'?'active':''}" onclick="setSeqStyle(${i}, 'pencil')">연필</button>
@@ -158,6 +158,8 @@ function selectSeq(i) {
     document.getElementById('curScale').value = s.scale;
     document.getElementById('curX').value = s.x; document.getElementById('curY').value = s.y;
     document.getElementById('valS').innerText = s.scale.toFixed(2);
+    document.getElementById('valX').innerText = s.x;
+    document.getElementById('valY').innerText = s.y;
     document.getElementById('seqUI').style.opacity = "1"; document.getElementById('seqUI').style.pointerEvents = "all";
     renderSeqList();
     if(!isPlaying) drawFrame(s.start);
@@ -170,6 +172,8 @@ function updateCurSeq() {
     s.x = Number(document.getElementById('curX').value);
     s.y = Number(document.getElementById('curY').value);
     document.getElementById('valS').innerText = s.scale.toFixed(2);
+    document.getElementById('valX').innerText = s.x;
+    document.getElementById('valY').innerText = s.y;
     s.artBuffer = null; 
     if(!isPlaying) drawFrame(s.start);
 }
@@ -179,7 +183,7 @@ function setSeqStyle(i, style) {
     renderSeqList(); if(!isPlaying) drawFrame(sequences[i].start);
 }
 
-// [핵심] 성능 이슈 해결을 위한 가속 렌더링
+// [v18.35 핵심 픽스] 순수 HTML5 캔버스를 이용한 픽셀 가속 엔진
 function preRenderBuffers(seq) {
     let art = createGraphics(width, height);
     art.pixelDensity(1);
@@ -190,33 +194,40 @@ function preRenderBuffers(seq) {
     let dw = img.width * r, dh = img.height * r;
     let dx = width/2 + seq.x, dy = height/2 + seq.y;
 
-    // 픽셀 연산을 루프 밖에서 처리
-    let temp = createGraphics(width, height);
-    temp.imageMode(CENTER);
-    temp.image(img, dx, dy, dw, dh);
-    temp.loadPixels();
+    // p5.js의 loadPixels를 피해 순수 DOM Canvas 생성 (willReadFrequently 옵션 강제 적용)
+    const rawCnv = document.createElement('canvas');
+    rawCnv.width = width; rawCnv.height = height;
+    const rawCtx = rawCnv.getContext('2d', { willReadFrequently: true });
+    
+    // 트랜스폼 반영하여 그리기
+    rawCtx.translate(dx, dy);
+    rawCtx.drawImage(img.canvas, -dw/2, -dh/2, dw, dh);
+    rawCtx.translate(-dx, -dy);
+    
+    // 에러 0개 보장: 브라우저가 최적화된 방식으로 픽셀을 읽음
+    const rawData = rawCtx.getImageData(0, 0, width, height).data;
     
     art.noStroke();
-    let total = 100000;
+    let total = 120000;
     for(let i=0; i<total; i++) {
         let rx = Math.floor(Math.random() * width);
         let ry = Math.floor(Math.random() * height);
         let idx = (ry * width + rx) * 4;
         
-        if (temp.pixels[idx+3] < 10) continue;
+        if (rawData[idx+3] < 10) continue;
 
-        let r_v = temp.pixels[idx], g_v = temp.pixels[idx+1], b_v = temp.pixels[idx+2];
+        let r_v = rawData[idx], g_v = rawData[idx+1], b_v = rawData[idx+2];
         art.push();
         art.translate(rx, ry);
         let bSize = 12 * seq.scale;
 
         if(seq.style === 'oil') {
-            art.fill(r_v + random(-10,10), g_v + random(-10,10), b_v + random(-10,10), 200);
+            art.fill(r_v + random(-10,10), g_v + random(-10,10), b_v + random(-10,10), 220);
             art.rotate(random(TWO_PI));
             art.rect(-bSize, -bSize*0.3, bSize*2, bSize*0.6, 2);
         } else if(seq.style === 'pencil') {
             let lum = r_v*0.299 + g_v*0.587 + b_v*0.114;
-            if(lum < 200) {
+            if(lum < 180) {
                 art.stroke(r_v*0.5, 150); art.strokeWeight(1);
                 art.rotate(PI/4 + random(0.2)); art.line(-bSize, 0, bSize, 0);
             }
@@ -227,7 +238,33 @@ function preRenderBuffers(seq) {
         art.pop();
     }
     seq.artBuffer = art;
-    temp.remove();
+
+    // 스케치 배경 생성 (마찬가지로 순수 DOM Canvas 데이터 활용)
+    let sk = createGraphics(width, height);
+    sk.pixelDensity(1);
+    sk.background("#f4f4f4");
+    
+    rawCtx.fillStyle = "#f4f4f4";
+    rawCtx.fillRect(0,0,width,height);
+    rawCtx.filter = 'grayscale(100%) contrast(150%)';
+    rawCtx.translate(dx, dy);
+    rawCtx.drawImage(img.canvas, -dw/2, -dh/2, dw, dh);
+    rawCtx.translate(-dx, -dy);
+    rawCtx.filter = 'none';
+
+    const skData = rawCtx.getImageData(0, 0, width, height).data;
+    
+    sk.stroke(60, 100);
+    for(let i=0; i<60000; i++) {
+        let sx = Math.floor(Math.random() * width), sy = Math.floor(Math.random() * height);
+        let sIdx = (sy * width + sx) * 4;
+        let lum = skData[sIdx]*0.299 + skData[sIdx+1]*0.587 + skData[sIdx+2]*0.114;
+        if(lum < Math.random() * 200) {
+            sk.push(); sk.translate(sx, sy); sk.rotate(random(PI));
+            sk.line(-4, 0, 4, 0); sk.pop();
+        }
+    }
+    seq.sketchBuffer = sk;
 }
 
 function drawFrame(ct) {
@@ -238,42 +275,45 @@ function drawFrame(ct) {
     let prog = (ct - sl.start) / (sl.end - sl.start || 1);
     let zigProg = Math.min(1.0, prog / 0.8);
 
-    // 바탕 (흰색 칠판)
-    background("#f4f4f4");
+    // 바탕 (팀장님 요청: 꽉 찬 스케치, 각진 마스크 완전 배제)
+    image(sl.sketchBuffer, 0, 0);
 
-    // [핵심] 팀장님 스타일의 Organic S-Curve Zigzag Path
-    maskBuffer.resizeCanvas(width, height);
+    // [핵심] 유기적 S-Curve 지그재그 마스크 경로
     maskBuffer.clear();
+    maskBuffer.background(0);
     maskBuffer.fill(255);
     maskBuffer.noStroke();
     
     let pScale = Number(document.getElementById('paintScale').value);
-    let eraserSize = (width * 0.25) * pScale;
+    let eraserSize = (width * 0.22) * pScale;
     
+    maskBuffer.drawingContext.globalCompositeOperation = 'source-over';
     let sweeps = 7;
     for(let i=0; i<300 * zigProg; i++) {
         let t = (i / 300);
         let curSweep = t * sweeps;
-        // S자 궤적 수식 (Math.sin 기반 부드러운 턴)
-        let x = map(Math.sin(curSweep * Math.PI - Math.PI/2), -1, 1, eraserSize*0.3, width - eraserSize*0.3);
-        let y = map(t, 0, 1, eraserSize*0.3, height - eraserSize*0.3);
+        let x = map(Math.sin(curSweep * Math.PI - Math.PI/2), -1, 1, eraserSize*0.4, width - eraserSize*0.4);
+        let y = map(t, 0, 1, eraserSize*0.4, height - eraserSize*0.4);
         
         maskBuffer.push();
         maskBuffer.translate(x, y);
         maskBuffer.rotate(Math.random() * TWO_PI);
-        // 비원형 Organic Blob 지우개
+        // 비원형(Organic) 덩어리 지우개
         maskBuffer.ellipse(0, 0, eraserSize * (0.9+Math.random()*0.4), eraserSize * (0.5+Math.random()*0.3));
         maskBuffer.pop();
     }
 
-    // 마스크 합성 및 드로잉
-    let finalArt = sl.artBuffer.get();
-    finalArt.mask(maskBuffer);
-    
-    image(finalArt, 0, 0);
+    // 마스크 합성
+    paintBuffer.clear();
+    paintBuffer.image(maskBuffer, 0, 0);
+    paintBuffer.drawingContext.globalCompositeOperation = 'source-in';
+    paintBuffer.image(sl.artBuffer, 0, 0);
+    paintBuffer.drawingContext.globalCompositeOperation = 'source-over';
 
-    // [요구사항] 유기적 비네팅 오버레이 (사각 테두리 없음)
-    image(vignetteLayer, 0, 0);
+    image(paintBuffer, 0, 0);
+
+    // [핵심] 유기적 비네팅 오버레이 (사각 띠 없음)
+    image(vignetteBuffer, 0, 0);
 }
 
 function draw() {
@@ -287,10 +327,11 @@ function draw() {
 function setAspect(r) {
     if(r==='16:9') { canvasW=1280; canvasH=720; } else { canvasW=720; canvasH=1280; }
     resizeCanvas(canvasW, canvasH);
+    paintBuffer.resizeCanvas(width, height); maskBuffer.resizeCanvas(width, height);
     updateVignette();
-    sequences.forEach(s => s.artBuffer = null);
-    document.getElementById('b169').classList.toggle('active', r==='16:9');
-    document.getElementById('b916').classList.toggle('active', r==='9:16');
+    sequences.forEach(s => { s.artBuffer = null; s.sketchBuffer = null; });
+    document.getElementById('b169').className = r==='16:9'?'btn active':'btn';
+    document.getElementById('b916').className = r==='9:16'?'btn active':'btn';
     drawFrame(0);
 }
 
