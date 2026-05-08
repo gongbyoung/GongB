@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>v18.45 — The Ultimate Vision</title>
+<title>ART LAB v18.46 — Async Baking Engine</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -18,11 +18,17 @@ body{ background:var(--bg); color:var(--text); font-family:sans-serif; height:10
 .seq-item.active{ border-color:var(--accent); background:#1a2523; }
 .seq-info{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
 .time-input{ background:#000; border:1px solid #444; color:var(--accent); width:65px; padding:4px; font-size:11px; text-align:center; border-radius:4px; font-weight:bold; }
-.viz-area{ background:#000; flex:1; display:flex; justify-content:center; align-items:center; overflow:hidden; }
+.viz-area{ background:#000; flex:1; display:flex; justify-content:center; align-items:center; overflow:hidden; position:relative; }
+/* [신규] 베이킹 로딩 UI */
+#loader { display:none; position:absolute; inset:0; background:rgba(0,0,0,0.85); z-index:100; flex-direction:column; justify-content:center; align-items:center; backdrop-filter:blur(5px); }
+#loaderTxt { color:var(--accent); font-size:28px; font-weight:900; letter-spacing:3px; font-family:monospace; margin-bottom:10px; }
+#loaderSub { color:#888; font-size:12px; }
+
 canvas{ box-shadow:0 0 50px rgba(0,0,0,1); }
 h3{ font-size:10px; color:#555; text-transform:uppercase; margin-bottom:10px; border-bottom:1px solid var(--border); padding-bottom:5px; }
 .btn{ background:transparent; border:1px solid var(--border); color:#fff; padding:8px; cursor:pointer; font-size:11px; border-radius:4px; width:100%; margin-bottom:5px; transition:0.2s; }
 .btn.active{ border-color:var(--accent); color:var(--accent); background:rgba(0,255,204,0.05); }
+.btn:disabled { opacity: 0.3; cursor: not-allowed; }
 input[type=range]{ width:100%; accent-color:var(--accent); height:4px; cursor:pointer; margin-bottom:10px; }
 label{ font-size:9px; color:#888; display:block; margin-bottom:3px; margin-top:8px; }
 .val-label{ float:right; color:var(--accent); font-weight:bold; }
@@ -32,7 +38,7 @@ label{ font-size:9px; color:#888; display:block; margin-bottom:3px; margin-top:8
 <body>
 
 <div class="topbar">
-    <div class="logo">ART LAB v18.45 ULTIMATE VISION</div>
+    <div class="logo">ART LAB v18.46 ASYNC ENGINE</div>
     <div id="status" style="font-size:10px; color:var(--accent);">READY</div>
 </div>
 
@@ -45,7 +51,14 @@ label{ font-size:9px; color:#888; display:block; margin-bottom:3px; margin-top:8
         <input type="file" id="iIn" aria-label="Image Input" accept="image/*" style="display:none" onchange="handleImageAdd(this.files)" multiple>
         <div id="sequenceList" style="margin-top:20px;"></div>
     </div>
-    <div class="viz-area" id="vArea"></div>
+    
+    <div class="viz-area" id="vArea">
+        <div id="loader">
+            <div id="loaderTxt">BAKING... 0%</div>
+            <div id="loaderSub">메모리에 화풍을 캐싱하고 있습니다. UI 멈춤을 방지합니다.</div>
+        </div>
+    </div>
+    
     <div class="side-panel right">
         <h3>2. Viewport</h3>
         <div style="display:flex; gap:5px; margin-bottom:15px;">
@@ -88,11 +101,13 @@ label{ font-size:9px; color:#888; display:block; margin-bottom:3px; margin-top:8
 <audio id="audioEl" aria-label="Audio Player" style="display:none;"></audio>
 
 <script>
-let audio, isPlaying = false, sequences = [], currentActiveIdx = -1;
+let audio, isPlaying = false, isBaking = false, sequences = [], currentActiveIdx = -1;
 let canvasW = 1280, canvasH = 720;
 let paintBuffer, maskBuffer, vignetteBuffer;
+let globalRawCnv, globalRawCtx; // 경고 해결용 전역 메모리 캔버스
+
 let artBrushScaleGlobal = 1.0;
-let artIntensityGlobal = 1.0; // [신규] 화풍 세기
+let artIntensityGlobal = 1.0; 
 let lightnessGlobal = 100;
 
 function setup() {
@@ -101,6 +116,11 @@ function setup() {
     paintBuffer = createGraphics(canvasW, canvasH);
     maskBuffer = createGraphics(canvasW, canvasH);
     vignetteBuffer = createGraphics(canvasW, canvasH);
+    
+    // [경고 완치] 영구적인 픽셀 데이터 리더기 (willReadFrequently 1회 고정)
+    globalRawCnv = document.createElement('canvas');
+    globalRawCtx = globalRawCnv.getContext('2d', { willReadFrequently: true });
+    
     updateVignette();
 }
 
@@ -127,6 +147,7 @@ function handleMusic(files) {
 }
 
 function handleImageAdd(files) {
+    let loadedCount = 0;
     for(let f of files) {
         loadImage(URL.createObjectURL(f), (img) => {
             let lastEnd = sequences.length > 0 ? sequences[sequences.length-1].end : 0;
@@ -134,8 +155,12 @@ function handleImageAdd(files) {
                 img: img, name: f.name, start: lastEnd, end: lastEnd + 10,
                 style: 'oil', scale: 1.0, x: 0, y: 0, artBuffer: null, sketchBuffer: null
             });
+            loadedCount++;
             renderSeqList();
-            if(currentActiveIdx === -1) selectSeq(0);
+            // 이미지가 모두 로드되면 첫 번째 슬롯 자동 선택 및 베이킹
+            if(loadedCount === files.length && currentActiveIdx === -1) {
+                selectSeq(0);
+            }
         });
     }
 }
@@ -147,18 +172,19 @@ function renderSeqList() {
         div.className = `seq-item ${i === currentActiveIdx ? 'active' : ''}`;
         div.onclick = () => selectSeq(i);
         div.innerHTML = `<div class="seq-info"><span style="font-size:11px; color:#fff; font-weight:bold;">${i+1}. ${s.name}</span>
-            <input class="time-input" aria-label="End Time" type="number" step="0.1" value="${s.end.toFixed(1)}" onchange="updateSeqTime(${i}, this.value)" onclick="event.stopPropagation()"></div>
+            <input class="time-input" aria-label="End Time" type="number" step="0.1" value="${s.end.toFixed(1)}" onchange="updateSeqTime(${i}, this.value)" onclick="event.stopPropagation()" ${isBaking?'disabled':''}></div>
             <div style="display:flex; gap:2px; justify-content: space-between;">
-                <button class="btn ${s.style==='oil'?'active':''}" onclick="setSeqStyle(${i}, 'oil', event)">유채</button>
-                <button class="btn ${s.style==='pencil'?'active':''}" onclick="setSeqStyle(${i}, 'pencil', event)">연필</button>
-                <button class="btn ${s.style==='point'?'active':''}" onclick="setSeqStyle(${i}, 'point', event)">점묘</button>
-                <button class="btn ${s.style==='raw'?'active':''}" onclick="setSeqStyle(${i}, 'raw', event)" style="background: rgba(255,204,0,0.1); border-color: #ffcc00; color: #ffcc00;">原本</button>
+                <button class="btn ${s.style==='oil'?'active':''}" onclick="setSeqStyle(${i}, 'oil', event)" ${isBaking?'disabled':''}>유채</button>
+                <button class="btn ${s.style==='pencil'?'active':''}" onclick="setSeqStyle(${i}, 'pencil', event)" ${isBaking?'disabled':''}>연필</button>
+                <button class="btn ${s.style==='point'?'active':''}" onclick="setSeqStyle(${i}, 'point', event)" ${isBaking?'disabled':''}>점묘</button>
+                <button class="btn ${s.style==='raw'?'active':''}" onclick="setSeqStyle(${i}, 'raw', event)" style="background: rgba(255,204,0,0.1); border-color: #ffcc00; color: #ffcc00;" ${isBaking?'disabled':''}>原本</button>
             </div>`;
         list.appendChild(div);
     });
 }
 
 function updateSeqTime(idx, val) {
+    if(isBaking) return;
     sequences[idx].end = parseFloat(val);
     for(let i = idx + 1; i < sequences.length; i++) {
         let dur = sequences[i].end - sequences[i].start;
@@ -168,26 +194,19 @@ function updateSeqTime(idx, val) {
     renderSeqList();
 }
 
-// [프리뷰 강화] 자동으로 슬롯의 80% 시점(지우개 완성 시점)을 보여줌
 function showPreview(idx) {
-    if(isPlaying) return;
+    if(isPlaying || isBaking) return;
     let s = sequences[idx];
-    if(!s) return;
+    if(!s || !s.artBuffer) return;
     
-    // 80% 시점 (가장 화풍이 잘 보이는 시점)으로 이동
     let previewTime = s.start + (s.end - s.start) * 0.8;
-    
     document.getElementById('progBar').value = previewTime;
     document.getElementById('currTime').innerText = formatTime(previewTime);
-    
-    document.getElementById('status').innerText = "RENDERING...";
-    setTimeout(() => { 
-        drawFrame(previewTime); 
-        document.getElementById('status').innerText = "READY"; 
-    }, 50);
+    drawFrame(previewTime); 
 }
 
 function selectSeq(i) {
+    if(isBaking) return;
     currentActiveIdx = i;
     let s = sequences[i];
     document.getElementById('curScale').value = s.scale;
@@ -197,62 +216,82 @@ function selectSeq(i) {
     document.getElementById('valY').innerText = s.y;
     document.getElementById('seqUI').style.opacity = "1"; document.getElementById('seqUI').style.pointerEvents = "all";
     renderSeqList();
-    showPreview(i);
+    
+    if(!s.artBuffer) {
+        bakeArtwork(i);
+    } else {
+        showPreview(i);
+    }
 }
 
 function updateCurSeq() {
-    if(currentActiveIdx < 0) return;
+    if(currentActiveIdx < 0 || isBaking) return;
     let s = sequences[currentActiveIdx];
     s.scale = Number(document.getElementById('curScale').value);
     s.x = Number(document.getElementById('curX').value);
     s.y = Number(document.getElementById('curY').value);
-    s.artBuffer = null; 
-    showPreview(currentActiveIdx);
+    bakeArtwork(currentActiveIdx);
 }
 
 function setSeqStyle(i, style, e) {
     e.stopPropagation();
-    sequences[i].style = style; sequences[i].artBuffer = null;
+    if(isBaking) return;
+    sequences[i].style = style; 
     renderSeqList(); 
-    showPreview(i);
+    bakeArtwork(i);
 }
 
 function updateArtBrushScale(val) {
+    if(isBaking) return;
     artBrushScaleGlobal = parseFloat(val);
-    if(currentActiveIdx !== -1) {
-        sequences[currentActiveIdx].artBuffer = null;
-        showPreview(currentActiveIdx);
-    }
+    if(currentActiveIdx !== -1) bakeArtwork(currentActiveIdx);
 }
 
 function updateArtIntensity(val) {
+    if(isBaking) return;
     artIntensityGlobal = parseInt(val) / 100.0;
-    if(currentActiveIdx !== -1) {
-        sequences[currentActiveIdx].artBuffer = null;
-        showPreview(currentActiveIdx);
-    }
+    if(currentActiveIdx !== -1) bakeArtwork(currentActiveIdx);
 }
 
 function updateLightness(val) {
     lightnessGlobal = parseInt(val);
     document.getElementById('valLightness').innerText = lightnessGlobal + '%';
-    if(currentActiveIdx !== -1) showPreview(currentActiveIdx);
+    // 밝기는 단순 필터이므로 실시간 프리뷰
+    if(!isPlaying && currentActiveIdx !== -1 && !isBaking) {
+        showPreview(currentActiveIdx);
+    }
 }
 
-function preRenderBuffers(seq) {
+// =========================================================================
+// [핵심] 비동기(Async) 베이킹 엔진: 브라우저 프리징과 경고를 완벽히 차단합니다.
+// =========================================================================
+async function bakeArtwork(idx) {
+    if(isBaking) return;
+    isBaking = true;
+    let seq = sequences[idx];
+    
+    document.getElementById('loader').style.display = 'flex';
+    document.getElementById('loaderTxt').innerText = `BAKING... 0%`;
+    renderSeqList(); // 버튼 비활성화 시각화
+    
+    // 브라우저 렌더링에 양보 (로딩 화면이 뜰 시간 확보)
+    await new Promise(r => setTimeout(r, 50)); 
+    
     let art = createGraphics(width, height);
     art.pixelDensity(1);
     art.background("#f4f4f4");
     
     let img = seq.img;
-    img.loadPixels();
-    let d = img.pixels;
     let imgW = img.width, imgH = img.height;
-
     let r = Math.max(width/imgW, height/imgH) * seq.scale;
     let cx = width/2 + seq.x, cy = height/2 + seq.y;
     
-    // [신규] 화풍 세기 반영: 세기가 100% 미만이거나 원본 스타일이면 원본 이미지를 먼저 깔아둠
+    // 전용 메모리 캔버스를 통해 픽셀 데이터 로드 (Warning 완치)
+    globalRawCnv.width = imgW;
+    globalRawCnv.height = imgH;
+    globalRawCtx.drawImage(img.canvas || img.elt, 0, 0, imgW, imgH);
+    let d = globalRawCtx.getImageData(0, 0, imgW, imgH).data;
+
     if(artIntensityGlobal < 1.0 || seq.style === 'raw') {
         art.imageMode(CENTER);
         art.image(img, cx, cy, imgW * r, imgH * r);
@@ -262,73 +301,94 @@ function preRenderBuffers(seq) {
 
     if(seq.style !== 'raw' && artIntensityGlobal > 0) {
         let total = 140000;
-        let alphaMult = artIntensityGlobal; // 붓 터치 투명도 반영
+        let chunkSize = 15000; // 1만5천개씩 쪼개어 연산 (브라우저 숨통 트기)
+        let alphaMult = artIntensityGlobal;
         
-        for(let i=0; i<total; i++) {
-            let rx = Math.floor(Math.random() * width);
-            let ry = Math.floor(Math.random() * height);
-            let ix = Math.floor((rx - cx) / r + imgW / 2);
-            let iy = Math.floor((ry - cy) / r + imgH / 2);
-            
-            if (ix < 0 || ix >= imgW || iy < 0 || iy >= imgH) continue;
-            
-            let idx = (iy * imgW + ix) * 4;
-            if (d[idx+3] < 10) continue; 
+        for(let i=0; i<total; i+=chunkSize) {
+            for(let j=0; j<chunkSize && (i+j)<total; j++) {
+                let rx = Math.floor(Math.random() * width);
+                let ry = Math.floor(Math.random() * height);
+                let ix = Math.floor((rx - cx) / r + imgW / 2);
+                let iy = Math.floor((ry - cy) / r + imgH / 2);
+                
+                if (ix < 0 || ix >= imgW || iy < 0 || iy >= imgH) continue;
+                
+                let idx = (iy * imgW + ix) * 4;
+                if (d[idx+3] < 10) continue; 
 
-            let r_v = d[idx], g_v = d[idx+1], b_v = d[idx+2];
-            art.push();
-            art.translate(rx, ry);
-            let bSize = (12 * seq.scale) * artBrushScaleGlobal;
+                let r_v = d[idx], g_v = d[idx+1], b_v = d[idx+2];
+                art.push();
+                art.translate(rx, ry);
+                let bSize = (12 * seq.scale) * artBrushScaleGlobal;
 
-            if(seq.style === 'oil') {
-                art.fill(r_v + random(-15,15), g_v + random(-15,15), b_v + random(-15,15), 230 * alphaMult);
-                art.rotate(random(TWO_PI));
-                art.rect(-bSize, -bSize*0.3, bSize*2, bSize*0.6, 2);
-            } else if(seq.style === 'pencil') {
-                let lum = r_v*0.299 + g_v*0.587 + b_v*0.114;
-                if(lum < 180) {
-                    art.stroke(r_v*0.5, 150 * alphaMult); 
-                    art.strokeWeight(1.0 * artBrushScaleGlobal);
-                    art.rotate(PI/4 + random(0.2)); art.line(-bSize, 0, bSize, 0);
+                if(seq.style === 'oil') {
+                    art.fill(r_v + random(-15,15), g_v + random(-15,15), b_v + random(-15,15), 230 * alphaMult);
+                    art.rotate(random(TWO_PI));
+                    art.rect(-bSize, -bSize*0.3, bSize*2, bSize*0.6, 2);
+                } else if(seq.style === 'pencil') {
+                    let lum = r_v*0.299 + g_v*0.587 + b_v*0.114;
+                    if(lum < 180) {
+                        art.stroke(r_v*0.5, 150 * alphaMult); 
+                        art.strokeWeight(1.0 * artBrushScaleGlobal);
+                        art.rotate(PI/4 + random(0.2)); art.line(-bSize, 0, bSize, 0);
+                    }
+                } else {
+                    art.fill(r_v, g_v, b_v, 255 * alphaMult);
+                    art.ellipse(0, 0, bSize);
                 }
-            } else {
-                art.fill(r_v, g_v, b_v, 255 * alphaMult);
-                art.ellipse(0, 0, bSize);
+                art.pop();
             }
-            art.pop();
+            // 진행률 업데이트 및 이벤트 루프 양보 (UI 멈춤 방지)
+            let progress = Math.floor(((i + chunkSize) / total) * 100);
+            document.getElementById('loaderTxt').innerText = `BAKING... ${Math.min(progress, 100)}%`;
+            await new Promise(r => setTimeout(r, 0));
         }
     }
     seq.artBuffer = art;
 
+    // 스케치 버퍼 생성
     let skBuf = createGraphics(width, height);
     skBuf.pixelDensity(1);
     skBuf.background("#f4f4f4");
     
     if(seq.style !== 'raw') {
         skBuf.stroke(60, 100);
-        for(let i=0; i<60000; i++) {
-            let rx = Math.floor(Math.random() * width);
-            let ry = Math.floor(Math.random() * height);
-            let ix = Math.floor((rx - cx) / r + imgW / 2);
-            let iy = Math.floor((ry - cy) / r + imgH / 2);
-            if (ix < 0 || ix >= imgW || iy < 0 || iy >= imgH) continue;
-            
-            let idx = (iy * imgW + ix) * 4;
-            let lum = d[idx]*0.299 + d[idx+1]*0.587 + d[idx+2]*0.114;
-            
-            if(lum < Math.random() * 200) {
-                skBuf.push(); skBuf.translate(rx, ry); skBuf.rotate(random(PI));
-                skBuf.line(-4, 0, 4, 0); skBuf.pop();
+        let skTotal = 60000;
+        let skChunkSize = 20000;
+        for(let i=0; i<skTotal; i+=skChunkSize) {
+            for(let j=0; j<skChunkSize && (i+j)<skTotal; j++) {
+                let rx = Math.floor(Math.random() * width);
+                let ry = Math.floor(Math.random() * height);
+                let ix = Math.floor((rx - cx) / r + imgW / 2);
+                let iy = Math.floor((ry - cy) / r + imgH / 2);
+                if (ix < 0 || ix >= imgW || iy < 0 || iy >= imgH) continue;
+                
+                let idx = (iy * imgW + ix) * 4;
+                let lum = d[idx]*0.299 + d[idx+1]*0.587 + d[idx+2]*0.114;
+                
+                if(lum < Math.random() * 200) {
+                    skBuf.push(); skBuf.translate(rx, ry); skBuf.rotate(random(PI));
+                    skBuf.line(-4, 0, 4, 0); skBuf.pop();
+                }
             }
+            await new Promise(r => setTimeout(r, 0));
         }
     }
     seq.sketchBuffer = skBuf;
+    
+    // 베이킹 완료
+    isBaking = false;
+    document.getElementById('loader').style.display = 'none';
+    renderSeqList(); // 버튼 활성화
+    showPreview(idx); // 완성된 화면 보여주기
 }
 
 function drawFrame(ct) {
+    // 렌더링 중일 때는 이전 프레임을 강제하지 않고 대기
+    if(isBaking) return;
+    
     const sl = sequences.find(s => ct >= s.start && ct < s.end) || sequences[sequences.length-1];
-    if (!sl || !sl.img) return;
-    if(!sl.artBuffer) preRenderBuffers(sl);
+    if (!sl || !sl.img || !sl.artBuffer || !sl.sketchBuffer) return;
 
     let slotIdx = sequences.indexOf(sl);
     let prog = (ct - sl.start) / (sl.end - sl.start || 1);
@@ -391,7 +451,7 @@ function drawFrame(ct) {
 }
 
 function draw() {
-    if(!isPlaying) return;
+    if(!isPlaying || isBaking) return;
     let ct = audio.currentTime();
     document.getElementById('currTime').innerText = formatTime(ct);
     document.getElementById('progBar').value = ct;
@@ -399,6 +459,7 @@ function draw() {
 }
 
 function setAspect(r) {
+    if(isBaking) return;
     if(r==='16:9') { canvasW=1280; canvasH=720; } else { canvasW=720; canvasH=1280; }
     resizeCanvas(canvasW, canvasH);
     paintBuffer.resizeCanvas(width, height); maskBuffer.resizeCanvas(width, height);
@@ -406,11 +467,11 @@ function setAspect(r) {
     sequences.forEach(s => { s.artBuffer = null; s.sketchBuffer = null; });
     document.getElementById('b169').className = r==='16:9'?'btn active':'btn';
     document.getElementById('b916').className = r==='9:16'?'btn active':'btn';
-    if(currentActiveIdx !== -1) showPreview(currentActiveIdx);
+    if(currentActiveIdx !== -1) bakeArtwork(currentActiveIdx);
 }
 
 function togglePlay() {
-    if(!audio) return;
+    if(!audio || isBaking) return;
     if(isPlaying) { audio.stop(); isPlaying = false; document.getElementById('recBtn').innerText = "🔴 START REC"; } 
     else { audio.play(); isPlaying = true; document.getElementById('recBtn').innerText = "⏹ STOP"; startRecording(); }
 }
@@ -422,14 +483,14 @@ function startRecording() {
     recorder.ondataavailable = e => recordedChunks.push(e.data);
     recorder.onstop = () => {
         let a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(recordedChunks, {type:'video/mp4'}));
-        a.download = `ArtLab_v18.45_${Date.now()}.mp4`; a.click();
+        a.download = `ArtLab_v18.46_${Date.now()}.mp4`; a.click();
     };
     recorder.start();
 }
 
 function formatTime(s) { let m=Math.floor(s/60), sec=Math.floor(s%60); return `${nf(m,2)}:${nf(sec,2)}`; }
 function seekTime(v) { 
-    if(!audio) return; 
+    if(!audio || isBaking) return; 
     audio.jump(Number(v)); 
     if(!isPlaying) {
         document.getElementById('currTime').innerText = formatTime(Number(v));
