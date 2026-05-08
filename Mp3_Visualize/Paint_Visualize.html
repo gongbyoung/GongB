@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>v18.36 — The Absolute Truth</title>
+<title>ART LAB v18.37 — The Dawn</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -32,7 +32,7 @@ label{ font-size:9px; color:#888; display:block; margin-bottom:3px; margin-top:8
 <body>
 
 <div class="topbar">
-    <div class="logo">ART LAB v18.36 ABSOLUTE TRUTH</div>
+    <div class="logo">ART LAB v18.37 THE DAWN</div>
     <div id="status" style="font-size:10px; color:var(--accent);">READY</div>
 </div>
 
@@ -52,16 +52,17 @@ label{ font-size:9px; color:#888; display:block; margin-bottom:3px; margin-top:8
             <button class="btn active" id="b169" onclick="setAspect('16:9')">16:9</button>
             <button class="btn" id="b916" onclick="setAspect('9:16')">9:16</button>
         </div>
-        <label>BRUSH SCALE <span class="val-label" id="valBScale">1.5</span></label>
-        <input type="range" id="paintScale" aria-label="Brush Scale" min="0.5" max="4.0" step="0.1" value="1.5" oninput="document.getElementById('valBScale').innerText=this.value">
+        <label for="paintScale">BRUSH SCALE <span class="val-label" id="valBScale">1.5</span></label>
+        <input type="range" id="paintScale" name="paintScale" min="0.5" max="4.0" step="0.1" value="1.5" oninput="document.getElementById('valBScale').innerText=this.value">
+        
         <h3>3. Active Transform</h3>
         <div id="seqUI" style="opacity:0.3; pointer-events:none; background:#111; padding:10px; border-radius:8px;">
-            <label>SCALE <span id="valS" class="val-label">1.0</span></label>
-            <input type="range" id="curScale" aria-label="Image Scale" min="0.1" max="4.0" step="0.05" value="1.0" oninput="updateCurSeq()">
-            <label>OFFSET X <span id="valX" class="val-label">0</span></label>
-            <input type="range" id="curX" aria-label="Offset X" min="-1200" max="1200" step="5" value="0" oninput="updateCurSeq()">
-            <label>OFFSET Y <span id="valY" class="val-label">0</span></label>
-            <input type="range" id="curY" aria-label="Offset Y" min="-1200" max="1200" step="5" value="0" oninput="updateCurSeq()">
+            <label for="curScale">SCALE <span id="valS" class="val-label">1.0</span></label>
+            <input type="range" id="curScale" name="curScale" min="0.1" max="4.0" step="0.05" value="1.0" oninput="updateCurSeq()">
+            <label for="curX">OFFSET X <span id="valX" class="val-label">0</span></label>
+            <input type="range" id="curX" name="curX" min="-1200" max="1200" step="5" value="0" oninput="updateCurSeq()">
+            <label for="curY">OFFSET Y <span id="valY" class="val-label">0</span></label>
+            <input type="range" id="curY" name="curY" min="-1200" max="1200" step="5" value="0" oninput="updateCurSeq()">
         </div>
         <button class="btn" id="recBtn" onclick="togglePlay()" style="margin-top:20px; background:#ff3e81; color:white; font-weight:bold; border:none; padding:12px;">🔴 START REC</button>
     </div>
@@ -83,29 +84,31 @@ let paintBuffer, maskBuffer, vignetteBuffer;
 function setup() {
     let cnv = createCanvas(canvasW, canvasH);
     cnv.parent('vArea');
-    cnv.canvas.getContext('2d', { willReadFrequently: true });
     
     paintBuffer = createGraphics(canvasW, canvasH);
     maskBuffer = createGraphics(canvasW, canvasH);
     vignetteBuffer = createGraphics(canvasW, canvasH);
     
-    paintBuffer.canvas.getContext('2d', { willReadFrequently: true });
-    maskBuffer.canvas.getContext('2d', { willReadFrequently: true });
-    vignetteBuffer.canvas.getContext('2d', { willReadFrequently: true });
-
     updateVignette();
 }
 
+// [v18.37 핵심 픽스] 역방향 블랙홀 버그 완전 해결 -> 네이티브 그라데이션 사용
 function updateVignette() {
     vignetteBuffer.resizeCanvas(width, height);
     vignetteBuffer.clear();
-    vignetteBuffer.noStroke();
-    let maxR = Math.max(width, height) * 0.95;
-    for(let r = 0; r < maxR; r += 8) {
-        let alpha = map(r, 0, maxR, 0, 255);
-        vignetteBuffer.fill(0, alpha);
-        vignetteBuffer.ellipse(width/2, height/2, maxR*2.5 - r*2.0);
-    }
+    
+    let ctx = vignetteBuffer.drawingContext;
+    let cx = width / 2;
+    let cy = height / 2;
+    let maxR = Math.max(width, height) * 0.75;
+    
+    // 중앙은 투명(0), 가장자리는 어둡게(0.85)
+    let grad = ctx.createRadialGradient(cx, cy, maxR * 0.3, cx, cy, maxR);
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(1, 'rgba(0,0,0,0.85)');
+    
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, width, height);
 }
 
 function handleMusic(files) {
@@ -188,39 +191,42 @@ function setSeqStyle(i, style) {
     renderSeqList(); if(!isPlaying) drawFrame(sequences[i].start);
 }
 
-// [v18.36 핵심 픽스] 정석적인 픽셀 데이터 로드 방식으로 100% 출력 보장
+// [v18.37 핵심 픽스] 좌표 역산(Coordinate Mapping)으로 픽셀 직접 추출 -> Warning 제로화
 function preRenderBuffers(seq) {
     let art = createGraphics(width, height);
     art.pixelDensity(1);
+    art.background("#f4f4f4");
     
     let img = seq.img;
-    let r = Math.max(width/img.width, height/img.height) * seq.scale;
-    let dw = img.width * r, dh = img.height * r;
-    let dx = width/2 + seq.x, dy = height/2 + seq.y;
+    img.loadPixels();
+    let d = img.pixels;
+    let imgW = img.width;
+    let imgH = img.height;
 
-    // 안전한 임시 버퍼에서 원본 픽셀 추출
-    let temp = createGraphics(width, height);
-    temp.pixelDensity(1);
-    temp.canvas.getContext('2d', { willReadFrequently: true });
-    temp.imageMode(CENTER);
-    temp.image(img, dx, dy, dw, dh);
+    // 변환 비율 및 중심점 세팅
+    let r = Math.max(width/imgW, height/imgH) * seq.scale;
+    let cx = width/2 + seq.x;
+    let cy = height/2 + seq.y;
     
-    // 꼼수 없이 drawingContext로 정석 데이터 추출
-    let rawData = temp.drawingContext.getImageData(0, 0, width, height).data;
-    
-    art.background("#f4f4f4");
     art.noStroke();
+    let total = 120000;
     
-    let total = 100000;
     for(let i=0; i<total; i++) {
         let rx = Math.floor(Math.random() * width);
         let ry = Math.floor(Math.random() * height);
-        let idx = (ry * width + rx) * 4;
         
-        // 투명도 패스
-        if (rawData[idx+3] < 10) continue;
+        // 캔버스 좌표를 원본 이미지 좌표로 역산환
+        let ix = Math.floor((rx - cx) / r + imgW / 2);
+        let iy = Math.floor((ry - cy) / r + imgH / 2);
+        
+        // 이미지 바깥 영역 무시
+        if (ix < 0 || ix >= imgW || iy < 0 || iy >= imgH) continue;
+        
+        let idx = (iy * imgW + ix) * 4;
+        if (d[idx+3] < 10) continue; // 투명도 체크
 
-        let r_v = rawData[idx], g_v = rawData[idx+1], b_v = rawData[idx+2];
+        let r_v = d[idx], g_v = d[idx+1], b_v = d[idx+2];
+        
         art.push();
         art.translate(rx, ry);
         let bSize = 12 * seq.scale;
@@ -246,28 +252,37 @@ function preRenderBuffers(seq) {
     // 배경 스케치 처리
     let sk = createGraphics(width, height);
     sk.pixelDensity(1);
-    
-    temp.clear();
-    temp.background("#f4f4f4");
-    temp.drawingContext.filter = 'grayscale(100%) contrast(150%)';
-    temp.image(img, dx, dy, dw, dh);
-    temp.drawingContext.filter = 'none';
-    
-    let skData = temp.drawingContext.getImageData(0, 0, width, height).data;
-    
     sk.background("#f4f4f4");
-    sk.stroke(60, 100);
+    
+    sk.drawingContext.filter = 'grayscale(100%) contrast(150%)';
+    sk.imageMode(CENTER);
+    sk.image(img, cx, cy, imgW*r, imgH*r);
+    sk.drawingContext.filter = 'none';
+    
+    let skBuf = createGraphics(width, height);
+    skBuf.pixelDensity(1);
+    skBuf.background("#f4f4f4");
+    
+    // 스케치 선 그리기 (마찬가지로 원본 픽셀 역산환 응용)
+    skBuf.stroke(60, 100);
     for(let i=0; i<60000; i++) {
-        let sx = Math.floor(Math.random() * width), sy = Math.floor(Math.random() * height);
-        let sIdx = (sy * width + sx) * 4;
-        let lum = skData[sIdx]*0.299 + skData[sIdx+1]*0.587 + skData[sIdx+2]*0.114;
+        let rx = Math.floor(Math.random() * width);
+        let ry = Math.floor(Math.random() * height);
+        
+        let ix = Math.floor((rx - cx) / r + imgW / 2);
+        let iy = Math.floor((ry - cy) / r + imgH / 2);
+        if (ix < 0 || ix >= imgW || iy < 0 || iy >= imgH) continue;
+        
+        let idx = (iy * imgW + ix) * 4;
+        let lum = d[idx]*0.299 + d[idx+1]*0.587 + d[idx+2]*0.114;
+        
         if(lum < Math.random() * 200) {
-            sk.push(); sk.translate(sx, sy); sk.rotate(random(PI));
-            sk.line(-4, 0, 4, 0); sk.pop();
+            skBuf.push(); skBuf.translate(rx, ry); skBuf.rotate(random(PI));
+            skBuf.line(-4, 0, 4, 0); skBuf.pop();
         }
     }
-    seq.sketchBuffer = sk;
-    temp.remove();
+    seq.sketchBuffer = skBuf;
+    sk.remove();
 }
 
 function drawFrame(ct) {
@@ -281,7 +296,6 @@ function drawFrame(ct) {
     // 바탕 스케치 (액자 마스크 없음)
     image(sl.sketchBuffer, 0, 0);
 
-    // [v18.36 핵심 픽스] 투명 마스크 복구 (background(0) 완전 삭제)
     maskBuffer.clear();
     maskBuffer.fill(255);
     maskBuffer.noStroke();
@@ -350,7 +364,7 @@ function startRecording() {
     recorder.ondataavailable = e => recordedChunks.push(e.data);
     recorder.onstop = () => {
         let a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(recordedChunks, {type:'video/mp4'}));
-        a.download = `ArtLab_v18.36_${Date.now()}.mp4`; a.click();
+        a.download = `ArtLab_v18.37_${Date.now()}.mp4`; a.click();
     };
     recorder.start();
 }
