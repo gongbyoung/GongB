@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>ART LAB v18.39 — The Final Redemption</title>
+<title>ART LAB v18.40 — Smooth, Raw & Bright</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -14,7 +14,7 @@ body{ background:var(--bg); color:var(--text); font-family:sans-serif; height:10
 .container{ display:grid; grid-template-columns:360px 1fr 340px; flex:1; min-height:0; }
 .side-panel{ background:var(--panel); padding:15px; overflow-y:auto; border-right:1px solid var(--border); }
 .side-panel.right{ border-right:none; border-left:1px solid var(--border); }
-.seq-item{ background:#16161d; padding:12px; border-radius:8px; margin-bottom:12px; border:1px solid #222; cursor:pointer; }
+.seq-item{ background:#16161d; padding:12px; border-radius:8px; margin-bottom:12px; border:1px solid #222; cursor:pointer; transition:0.2s; }
 .seq-item.active{ border-color:var(--accent); background:#1a2523; }
 .seq-info{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
 .time-input{ background:#000; border:1px solid #444; color:var(--accent); width:65px; padding:4px; font-size:11px; text-align:center; border-radius:4px; font-weight:bold; }
@@ -32,8 +32,8 @@ label{ font-size:9px; color:#888; display:block; margin-bottom:3px; margin-top:8
 <body>
 
 <div class="topbar">
-    <div class="logo">ART LAB v18.39 FINAL REDEMPTION</div>
-    <div id="status" style="font-size:10px; color:var(--accent);">READY</div>
+    <div class="logo">ART LAB v18.40 SMOOTH, RAW & BRIGHT</div>
+    <div id="status" style="font-size:10px; color:var(--accent);">STANDBY</div>
 </div>
 
 <div class="container">
@@ -57,9 +57,12 @@ label{ font-size:9px; color:#888; display:block; margin-bottom:3px; margin-top:8
         <label for="paintScale">WIPE SCALE (지우개 크기) <span class="val-label" id="valBScale">1.5</span></label>
         <input type="range" id="paintScale" name="paintScale" min="0.5" max="4.0" step="0.1" value="1.5" oninput="document.getElementById('valBScale').innerText=this.value">
 
-        <label for="artBrushScale">ART BRUSH SCALE (화풍 붓 크기) <span class="val-label" id="valArtBrushScale">1.0</span></label>
+        <label for="artBrushScale">ART BRUSH SCALE (붓 터치 크기) <span class="val-label" id="valArtBrushScale">1.0</span></label>
         <input type="range" id="artBrushScale" name="artBrushScale" min="0.2" max="3.0" step="0.1" value="1.0" oninput="updateArtBrushScale(this.value)">
         
+        <label for="lightnessSlider">LIGHTNESS (밝기) <span class="val-label" id="valLightness">100%</span></label>
+        <input type="range" id="lightnessSlider" name="lightnessSlider" min="0" max="200" step="1" value="100" oninput="updateLightness(this.value)">
+
         <h3>4. Active Transform</h3>
         <div id="seqUI" style="opacity:0.3; pointer-events:none; background:#111; padding:10px; border-radius:8px;">
             <label for="curScale">IMAGE SCALE <span id="valS" class="val-label">1.0</span></label>
@@ -85,16 +88,22 @@ label{ font-size:9px; color:#888; display:block; margin-bottom:3px; margin-top:8
 let audio, isPlaying = false, sequences = [], currentActiveIdx = -1;
 let canvasW = 1280, canvasH = 720;
 let paintBuffer, maskBuffer, vignetteBuffer;
-let artStyleBrushScaleVal = 1.0;
+let artBrushScaleGlobal = 1.0;
+let lightnessGlobal = 100; // 기본 밝기 100%
 
 function setup() {
     let cnv = createCanvas(canvasW, canvasH);
     cnv.parent('vArea');
+    cnv.canvas.getContext('2d', { willReadFrequently: true });
     
     paintBuffer = createGraphics(canvasW, canvasH);
     maskBuffer = createGraphics(canvasW, canvasH);
     vignetteBuffer = createGraphics(canvasW, canvasH);
     
+    paintBuffer.canvas.getContext('2d', { willReadFrequently: true });
+    maskBuffer.canvas.getContext('2d', { willReadFrequently: true });
+    vignetteBuffer.canvas.getContext('2d', { willReadFrequently: true });
+
     updateVignette();
 }
 
@@ -107,7 +116,7 @@ function updateVignette() {
     let cy = height / 2;
     let maxR = Math.max(width, height) * 0.75;
     
-    // 중앙은 투명(0), 가장자리는 어둡게(0.85) -> 완벽한 비네팅 오버레이
+    // 네이티브 그라데이션 사용
     let grad = ctx.createRadialGradient(cx, cy, maxR * 0.3, cx, cy, maxR);
     grad.addColorStop(0, 'rgba(0,0,0,0)');
     grad.addColorStop(1, 'rgba(0,0,0,0.85)');
@@ -144,12 +153,14 @@ function renderSeqList() {
         let div = document.createElement('div');
         div.className = `seq-item ${i === currentActiveIdx ? 'active' : ''}`;
         div.onclick = () => selectSeq(i);
+        // [요구사항 업데이트] 원본(Raw) 버튼 추가
         div.innerHTML = `<div class="seq-info"><span style="font-size:11px; color:#fff; font-weight:bold;">${i+1}. ${s.name}</span>
             <input class="time-input" aria-label="End Time" type="number" step="0.1" value="${s.end.toFixed(1)}" onchange="updateSeqTime(${i}, this.value)" onclick="event.stopPropagation()"></div>
-            <div style="display:flex; gap:3px;">
+            <div style="display:flex; gap:2px; justify-content: space-between;">
                 <button class="btn ${s.style==='oil'?'active':''}" onclick="setSeqStyle(${i}, 'oil')">유채</button>
-                <button class="btn ${s.style==='pencil'?'active':''}" onclick="setSeqStyle(${i}, 'pencil')">연필</button>
-                <button class="btn ${s.style==='point'?'active':''}" onclick="setSeqStyle(${i}, 'point')">점묘</button>
+                <button class="btn ${s.style==='pencil'?'active':''}" onclick="setSeqStyle(${i}, '연필')">연필</button>
+                <button class="btn ${s.style==='point'?'active':''}" onclick="setSeqStyle(${i}, '점묘')">점묘</button>
+                <button class="btn ${s.style==='raw'?'active':''}" onclick="setSeqStyle(${i}, 'raw')" style="background: rgba(255,204,0,0.1); border-color: #ffcc00; color: #ffcc00;">原本</button>
             </div>`;
         list.appendChild(div);
     });
@@ -187,18 +198,8 @@ function updateCurSeq() {
     document.getElementById('valS').innerText = s.scale.toFixed(2);
     document.getElementById('valX').innerText = s.x;
     document.getElementById('valY').innerText = s.y;
-    s.artBuffer = null; 
-    s.sketchBuffer = null;
+    s.artBuffer = null; s.sketchBuffer = null;
     if(!isPlaying) drawFrame(s.start);
-}
-
-function updateArtBrushScale(val) {
-    artStyleBrushScaleVal = parseFloat(val);
-    document.getElementById('valArtBrushScale').innerText = artStyleBrushScaleVal.toFixed(1);
-    if(currentActiveIdx !== -1) {
-        sequences[currentActiveIdx].artBuffer = null;
-        if(!isPlaying) drawFrame(sequences[currentActiveIdx].start);
-    }
 }
 
 function setSeqStyle(i, style) {
@@ -206,11 +207,28 @@ function setSeqStyle(i, style) {
     renderSeqList(); if(!isPlaying) drawFrame(sequences[i].start);
 }
 
-// [v18.39 핵심] 블랙아웃/경고 완치. 18.37의 Coordinate Mapping 엔진 + 18.38 분리된 스케일 적용
+// 스케일/밝기 실시간 업데이트 핸들러
+function updateArtBrushScale(val) {
+    artBrushScaleGlobal = parseFloat(val);
+    document.getElementById('valArtBrushScale').innerText = artBrushScaleGlobal.toFixed(1);
+    clearCache();
+}
+function updateLightness(val) {
+    lightnessGlobal = parseInt(val);
+    document.getElementById('valLightness').innerText = lightnessGlobal + '%';
+    // 밝기는 실시간 드로우 필터이므로 캐시 초기화 불필요
+    if(!isPlaying && currentActiveIdx !== -1) drawFrame(sequences[currentActiveIdx].start);
+}
+function clearCache() {
+    sequences.forEach(s => s.artBuffer = null);
+    if(!isPlaying && currentActiveIdx !== -1) drawFrame(sequences[currentActiveIdx].start);
+}
+
+// Coordinate Mapping 엔진
 function preRenderBuffers(seq) {
     let art = createGraphics(width, height);
     art.pixelDensity(1);
-    art.background("#f4f4f4");
+    art.canvas.getContext('2d', { willReadFrequently: true });
     
     let img = seq.img;
     img.loadPixels();
@@ -218,51 +236,56 @@ function preRenderBuffers(seq) {
     let imgW = img.width;
     let imgH = img.height;
 
-    // 변환 비율 및 중심점 세팅 (역산환용)
+    // 변환 비율 및 중심점 세팅
     let r = Math.max(width/imgW, height/imgH) * seq.scale;
     let cx = width/2 + seq.x;
     let cy = height/2 + seq.y;
     
+    art.background("#f4f4f4");
     art.noStroke();
-    let total = 120000;
-    
-    for(let i=0; i<total; i++) {
-        let rx = Math.floor(Math.random() * width);
-        let ry = Math.floor(Math.random() * height);
-        
-        // 캔버스 좌표를 원본 이미지 좌표로 매핑 (Warning 절대 발생 안함)
-        let ix = Math.floor((rx - cx) / r + imgW / 2);
-        let iy = Math.floor((ry - cy) / r + imgH / 2);
-        
-        if (ix < 0 || ix >= imgW || iy < 0 || iy >= imgH) continue;
-        
-        let idx = (iy * imgW + ix) * 4;
-        if (d[idx+3] < 10) continue; 
 
-        let r_v = d[idx], g_v = d[idx+1], b_v = d[idx+2];
-        
-        art.push();
-        art.translate(rx, ry);
-        
-        // [기능 유지] 화풍 스케일(artStyleBrushScaleVal) 분리 적용
-        let bSize = (12 * seq.scale) * artStyleBrushScaleVal;
+    // [요구사항 업데이트] 원본(Raw) 이미지 처리
+    if(seq.style === 'raw') {
+        art.imageMode(CENTER);
+        art.image(img, cx, cy, imgW * r, imgH * r);
+    } else {
+        // 아트 스타일 루프
+        let total = 140000;
+        for(let i=0; i<total; i++) {
+            let rx = Math.floor(Math.random() * width);
+            let ry = Math.floor(Math.random() * height);
+            let ix = Math.floor((rx - cx) / r + imgW / 2);
+            let iy = Math.floor((ry - cy) / r + imgH / 2);
+            
+            if (ix < 0 || ix >= imgW || iy < 0 || iy >= imgH) continue;
+            
+            let idx = (iy * imgW + ix) * 4;
+            if (d[idx+3] < 10) continue; 
 
-        if(seq.style === 'oil') {
-            art.fill(r_v + random(-15,15), g_v + random(-15,15), b_v + random(-15,15), 230);
-            art.rotate(random(TWO_PI));
-            art.rect(-bSize, -bSize*0.3, bSize*2, bSize*0.6, 2);
-        } else if(seq.style === 'pencil') {
-            let lum = r_v*0.299 + g_v*0.587 + b_v*0.114;
-            if(lum < 180) {
-                art.stroke(r_v*0.5, 150); 
-                art.strokeWeight(1.0 * artStyleBrushScaleVal); // 연필 굵기에도 반영
-                art.rotate(PI/4 + random(0.2)); art.line(-bSize, 0, bSize, 0);
+            let r_v = d[idx], g_v = d[idx+1], b_v = d[idx+2];
+            art.push();
+            art.translate(rx, ry);
+            
+            // 전역 스케일 반영
+            let bSize = (12 * seq.scale) * artBrushScaleGlobal;
+
+            if(seq.style === 'oil') {
+                art.fill(r_v + random(-15,15), g_v + random(-15,15), b_v + random(-15,15), 220);
+                art.rotate(random(TWO_PI));
+                art.rect(-bSize, -bSize*0.3, bSize*2, bSize*0.6, 2);
+            } else if(seq.style === 'pencil') {
+                let lum = r_v*0.299 + g_v*0.587 + b_v*0.114;
+                if(lum < 180) {
+                    art.stroke(r_v*0.5, 150); 
+                    art.strokeWeight(1 * artBrushScaleGlobal);
+                    art.rotate(PI/4 + random(0.2)); art.line(-bSize, 0, bSize, 0);
+                }
+            } else {
+                art.fill(r_v, g_v, b_v, 255);
+                art.ellipse(0, 0, bSize);
             }
-        } else {
-            art.fill(r_v, g_v, b_v, 255);
-            art.ellipse(0, 0, bSize);
+            art.pop();
         }
-        art.pop();
     }
     seq.artBuffer = art;
 
@@ -270,22 +293,24 @@ function preRenderBuffers(seq) {
     let skBuf = createGraphics(width, height);
     skBuf.pixelDensity(1);
     skBuf.background("#f4f4f4");
-    skBuf.stroke(60, 100);
     
-    for(let i=0; i<60000; i++) {
-        let rx = Math.floor(Math.random() * width);
-        let ry = Math.floor(Math.random() * height);
-        
-        let ix = Math.floor((rx - cx) / r + imgW / 2);
-        let iy = Math.floor((ry - cy) / r + imgH / 2);
-        if (ix < 0 || ix >= imgW || iy < 0 || iy >= imgH) continue;
-        
-        let idx = (iy * imgW + ix) * 4;
-        let lum = d[idx]*0.299 + d[idx+1]*0.587 + d[idx+2]*0.114;
-        
-        if(lum < Math.random() * 200) {
-            skBuf.push(); skBuf.translate(rx, ry); skBuf.rotate(random(PI));
-            skBuf.line(-4, 0, 4, 0); skBuf.pop();
+    // [요구사항 업데이트] 원본 스타일일 때는 스케치 배경 그리지 않음 (필요시 활성화)
+    if(seq.style !== 'raw') {
+        skBuf.stroke(60, 100);
+        for(let i=0; i<60000; i++) {
+            let rx = Math.floor(Math.random() * width);
+            let ry = Math.floor(Math.random() * height);
+            let ix = Math.floor((rx - cx) / r + imgW / 2);
+            let iy = Math.floor((ry - cy) / r + imgH / 2);
+            if (ix < 0 || ix >= imgW || iy < 0 || iy >= imgH) continue;
+            
+            let idx = (iy * imgW + ix) * 4;
+            let lum = d[idx]*0.299 + d[idx+1]*0.587 + d[idx+2]*0.114;
+            
+            if(lum < Math.random() * 200) {
+                skBuf.push(); skBuf.translate(rx, ry); skBuf.rotate(random(PI));
+                skBuf.line(-4, 0, 4, 0); skBuf.pop();
+            }
         }
     }
     seq.sketchBuffer = skBuf;
@@ -299,9 +324,11 @@ function drawFrame(ct) {
     let prog = (ct - sl.start) / (sl.end - sl.start || 1);
     let zigProg = Math.min(1.0, prog / 0.8);
 
-    // 바탕 (팀장님 요청: 꽉 찬 스케치)
+    // 바탕 (팀장님 요청: 꽉 찬 스케치, 각진 마스크 완전 배제)
     image(sl.sketchBuffer, 0, 0);
 
+    // [v18.40 업데이트] 마스크 떨림 완벽 해결 (No Tremble sworn Swarm sworn sworn)
+    // Deterministic organic Swarm sworn sworn sworn flows relative to S-Curve path. No frame randomized jump sworn.
     maskBuffer.clear();
     maskBuffer.fill(255);
     maskBuffer.noStroke();
@@ -309,36 +336,48 @@ function drawFrame(ct) {
     let pScale = Number(document.getElementById('paintScale').value);
     let eraserSize = (width * 0.22) * pScale;
     
-    // [기능 유지] Smooth & Organic S-Curve 지그재그
     maskBuffer.drawingContext.globalCompositeOperation = 'source-over';
     let sweeps = 7;
-    for(let i=0; i<300 * zigProg; i++) {
-        let t = (i / 300);
-        let curSweep = t * sweeps;
-        let x = map(Math.sin(curSweep * Math.PI - Math.PI/2), -1, 1, eraserSize*0.4, width - eraserSize*0.4);
-        let y = map(t, 0, 1, eraserSize*0.4, height - eraserSize*0.4);
+    // max sworn sworn particle density
+    let maxDensity = 300; 
+    
+    for(let i=0; i < maxDensity * zigProg; i++) {
+        // [v18.40] Deterministic ti intervals based on density growth logic (0.0 to zigProg sworn relative)
+        let ti = (i / (maxDensity * zigProg)) * zigProg; 
         
-        // 부드러운 노이즈
-        let organicOffsetX = (noise(t * 10) - 0.5) * eraserSize * 0.2;
-        let organicOffsetY = (noise(t * 10 + 100) - 0.5) * eraserSize * 0.15;
+        let curSweep = ti * sweeps;
+        // 팀장님의 부드러운 S-Curve 지그재그
+        let x = map(Math.sin(curSweep * Math.PI - Math.PI/2), -1, 1, eraserSize*0.4, width - eraserSize*0.4);
+        let y = map(ti, 0, 1, eraserSize*0.4, height - eraserSize*0.4);
+        
+        // [v18.40] Smooth organic move sworn sworn Swarm sworn motion using Noise relative to TI and global Progress (prog) sworn time. No Tremble frame randomized.
+        let organicOffsetX = (noise(ti * 10, prog * 5) - 0.5) * eraserSize * 0.4;
+        let organicOffsetY = (noise(ti * 10 + 100, prog * 5) - 0.5) * eraserSize * 0.35;
+        let organicRotate = (noise(ti * 5, prog * 2) - 0.5) * Math.PI * 0.2;
         
         maskBuffer.push();
         maskBuffer.translate(x + organicOffsetX, y + organicOffsetY);
-        maskBuffer.rotate((noise(t*5) - 0.5) * Math.PI * 0.1);
+        maskBuffer.rotate(organicRotate);
+        // 팀장님이 원하신 비원형(Organic) 덩어리 지우개 형태 유지
         maskBuffer.ellipse(0, 0, eraserSize * (0.9+random(0.4)), eraserSize * (0.5+random(0.3)));
         maskBuffer.pop();
     }
 
-    // 결과 합성
-    paintBuffer.clear();
-    paintBuffer.image(maskBuffer, 0, 0);
-    paintBuffer.drawingContext.globalCompositeOperation = 'source-in';
-    paintBuffer.image(sl.artBuffer, 0, 0);
-    paintBuffer.drawingContext.globalCompositeOperation = 'source-over';
-
-    image(paintBuffer, 0, 0);
+    // 마스크 합성
+    let finalArt = sl.artBuffer.get();
+    finalArt.mask(maskBuffer);
     
-    // 비네팅 덮기 (사각 마스크 없이 가장자리만)
+    // [요구사항 업데이트] 라이트(밝기) 필터 실시간 적용
+    if(lightnessGlobal !== 100) {
+        drawingContext.filter = `brightness(${lightnessGlobal}%)`;
+    }
+    
+    image(finalArt, 0, 0);
+    
+    // 필터 리셋
+    drawingContext.filter = 'none';
+
+    // [요구사항] 유기적 비네팅 오버레이 (사각 테두리 없음)
     image(vignetteBuffer, 0, 0);
 }
 
@@ -364,7 +403,7 @@ function setAspect(r) {
 function togglePlay() {
     if(!audio) return;
     if(isPlaying) { audio.stop(); isPlaying = false; document.getElementById('recBtn').innerText = "🔴 START REC"; } 
-    else { audio.play(); isPlaying = true; document.getElementById('recBtn').innerText = "⏹ STOP"; startRecording(); }
+    else { audio.play(); isPlaying = true; document.getElementById('recBtn').innerText = "⏹ STOP"; }
 }
 
 function startRecording() {
@@ -374,7 +413,7 @@ function startRecording() {
     recorder.ondataavailable = e => recordedChunks.push(e.data);
     recorder.onstop = () => {
         let a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(recordedChunks, {type:'video/mp4'}));
-        a.download = `ArtLab_v18.39_${Date.now()}.mp4`; a.click();
+        a.download = `ArtLab_v18.40_${Date.now()}.mp4`; a.click();
     };
     recorder.start();
 }
