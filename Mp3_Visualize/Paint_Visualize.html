@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>ART LAB v18.43 — The Final Polish</title>
+<title>ART LAB v18.44 — Absolute Silence</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -32,7 +32,7 @@ label{ font-size:9px; color:#888; display:block; margin-bottom:3px; margin-top:8
 <body>
 
 <div class="topbar">
-    <div class="logo">ART LAB v18.43 FINAL POLISH</div>
+    <div class="logo">ART LAB v18.44 ABSOLUTE SILENCE</div>
     <div id="status" style="font-size:10px; color:var(--accent);">READY</div>
 </div>
 
@@ -143,7 +143,7 @@ function renderSeqList() {
         div.className = `seq-item ${i === currentActiveIdx ? 'active' : ''}`;
         div.onclick = () => selectSeq(i);
         div.innerHTML = `<div class="seq-info"><span style="font-size:11px; color:#fff; font-weight:bold;">${i+1}. ${s.name}</span>
-            <input class="time-input" type="number" step="0.1" value="${s.end.toFixed(1)}" onchange="updateSeqTime(${i}, this.value)" onclick="event.stopPropagation()"></div>
+            <input class="time-input" aria-label="End Time" type="number" step="0.1" value="${s.end.toFixed(1)}" onchange="updateSeqTime(${i}, this.value)" onclick="event.stopPropagation()"></div>
             <div style="display:flex; gap:2px; justify-content: space-between;">
                 <button class="btn ${s.style==='oil'?'active':''}" onclick="setSeqStyle(${i}, 'oil', event)">유채</button>
                 <button class="btn ${s.style==='pencil'?'active':''}" onclick="setSeqStyle(${i}, 'pencil', event)">연필</button>
@@ -183,14 +183,16 @@ function updateCurSeq() {
     s.scale = Number(document.getElementById('curScale').value);
     s.x = Number(document.getElementById('curX').value);
     s.y = Number(document.getElementById('curY').value);
+    document.getElementById('valS').innerText = s.scale.toFixed(2);
+    document.getElementById('valX').innerText = s.x;
+    document.getElementById('valY').innerText = s.y;
     s.artBuffer = null; 
     if(!isPlaying) drawFrame(s.start);
 }
 
 function setSeqStyle(i, style, e) {
     e.stopPropagation();
-    sequences[i].style = style; 
-    sequences[i].artBuffer = null;
+    sequences[i].style = style; sequences[i].artBuffer = null;
     renderSeqList(); 
     if(!isPlaying) {
         document.getElementById('status').innerText = "RENDERING...";
@@ -215,19 +217,25 @@ function updateLightness(val) {
     if(!isPlaying && currentActiveIdx !== -1) drawFrame(audio ? audio.currentTime() : sequences[currentActiveIdx].start);
 }
 
+// [v18.44 핵심] p5.js의 한계를 회피하는 순수 Vanilla Canvas 픽셀 추출
 function preRenderBuffers(seq) {
     let art = createGraphics(width, height);
     art.pixelDensity(1);
+    art.background("#f4f4f4");
     
     let img = seq.img;
-    img.loadPixels();
-    let d = img.pixels;
     let imgW = img.width, imgH = img.height;
-
     let r = Math.max(width/imgW, height/imgH) * seq.scale;
     let cx = width/2 + seq.x, cy = height/2 + seq.y;
-    
-    art.background("#f4f4f4");
+
+    // 경고의 주범이었던 loadPixels() 대신 순수 HTML DOM 캔버스 생성 및 willReadFrequently 강제 할당
+    const rawCnv = document.createElement('canvas');
+    rawCnv.width = imgW;
+    rawCnv.height = imgH;
+    const rawCtx = rawCnv.getContext('2d', { willReadFrequently: true });
+    rawCtx.drawImage(img.canvas, 0, 0, imgW, imgH);
+    const d = rawCtx.getImageData(0, 0, imgW, imgH).data;
+
     art.noStroke();
 
     if(seq.style === 'raw') {
@@ -304,7 +312,6 @@ function drawFrame(ct) {
     let slotIdx = sequences.indexOf(sl);
     let prog = (ct - sl.start) / (sl.end - sl.start || 1);
     
-    // [요구사항 1] 80% 구간까지 닦기 완성, 80~100% 구간은 서서히 풀 노출
     let zigProg = Math.min(1.0, prog / 0.8);
     let expandProg = Math.max(0.0, Math.min(1.0, (prog - 0.8) / 0.2));
 
@@ -321,21 +328,16 @@ function drawFrame(ct) {
     
     let sweeps = 7;
     
-    // 지그재그 그리기
     for(let i=0; i<300 * zigProg; i++) {
-        // [치명적 오타 수정] ti -> t 로 변경
         let t = (i / 300);
         let curSweep = t * sweeps;
         
-        // [요구사항 2] 이미지마다 돌아오는 턴의 좌우 좌표를 노이즈로 다르게(불규칙하게) 설정
         let leftBound = eraserSize * 0.4 + (noise(curSweep * 0.5, slotIdx * 10, 0) - 0.5) * (width * 0.2);
         let rightBound = width - eraserSize * 0.4 + (noise(curSweep * 0.5, slotIdx * 10, 100) - 0.5) * (width * 0.2);
         
-        // 부드러운 S-Curve
         let x = map(Math.sin(curSweep * Math.PI - Math.PI/2), -1, 1, leftBound, rightBound);
         let y = map(t, 0, 1, eraserSize*0.4, height - eraserSize*0.4);
         
-        // [오타 픽스] t를 사용하여 노이즈 계산
         let organicOffsetX = (noise(t * 10, slotIdx) - 0.5) * eraserSize * 0.2;
         let organicOffsetY = (noise(t * 10 + 100, slotIdx) - 0.5) * eraserSize * 0.15;
         let organicRotate = (noise(t * 5, slotIdx) - 0.5) * Math.PI * 0.1;
@@ -347,7 +349,6 @@ function drawFrame(ct) {
         maskBuffer.pop();
     }
 
-    // [요구사항 1] 80~100% 구간: 가려졌던 나머지 영역이 부드럽게 페이드인 되며 100% 완성
     if (expandProg > 0) {
         maskBuffer.fill(255, 255 * expandProg);
         maskBuffer.rect(0, 0, width, height);
@@ -400,7 +401,7 @@ function startRecording() {
     recorder.ondataavailable = e => recordedChunks.push(e.data);
     recorder.onstop = () => {
         let a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(recordedChunks, {type:'video/mp4'}));
-        a.download = `ArtLab_v18.43_${Date.now()}.mp4`; a.click();
+        a.download = `ArtLab_v18.44_${Date.now()}.mp4`; a.click();
     };
     recorder.start();
 }
