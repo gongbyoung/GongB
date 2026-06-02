@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>v1.03</title>
+<title>AUDIO-WAVE PAINTING STUDIO v1.04</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -10,7 +10,6 @@
 :root { --bg: #0a0a0f; --panel: #12121a; --accent: #00ffcc; --text: #ffffff; --border: rgba(255,255,255,0.08); }
 body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, sans-serif; height: 100vh; overflow: hidden; display: flex; }
 
-/* 뷰포트 레이아웃 개조 */
 .control-sidebar { width: 380px; background: var(--panel); border-right: 1px solid var(--border); padding: 25px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; flex-shrink: 0; }
 .main-viewport { flex: 1; display: flex; flex-direction: column; background: #020205; position: relative; }
 .canvas-zone { flex: 1; display: flex; justify-content: center; align-items: center; padding: 20px; overflow: hidden; }
@@ -107,7 +106,6 @@ let canvasW = 1120, canvasH = 630;
 let currentStyle = 'oil', paintingDuration = 30;
 let strokeSequence = []; 
 
-// 하이브리드 축적 가속 버퍼 인프라
 let paintingBuffer;
 let lastBakedIdx = 0;
 
@@ -116,8 +114,8 @@ let mediaRecorder, recordedChunks = [];
 function setup() {
     let cnv = createCanvas(canvasW, canvasH);
     cnv.parent('canvasContainer');
+    cnv.canvas.getContext('2d', { willReadFrequently: true });
     
-    // 점진적 백그라운드 캔버스 세팅
     paintingBuffer = createGraphics(canvasW, canvasH);
     paintingBuffer.pixelDensity(1);
     paintingBuffer.background('#f4f3ec');
@@ -167,7 +165,6 @@ function changeRatio(r) {
     if(r === '16:9') { canvasW = 1120; canvasH = 630; } else { canvasW = 450; canvasH = 800; }
     
     resizeCanvas(canvasW, canvasH);
-    // 버퍼 안전 안전 재설계 (크래시 유발 메커니즘 방지)
     paintingBuffer = createGraphics(canvasW, canvasH);
     paintingBuffer.pixelDensity(1);
     resetPaintingBuffer();
@@ -199,4 +196,287 @@ async function bakePaintingStrokes() {
     strokeSequence = [];
     resetPaintingBuffer();
     
-    targetImg.load
+    targetImg.loadPixels();
+    let d = targetImg.pixels;
+    let imgW = targetImg.width;
+    let imgH = targetImg.height;
+    let rScale = Math.max(width / imgW, height / imgH);
+
+    let totalStrokes = 120000;
+    let chunkSize = 20000;
+
+    for (let i = 0; i < totalStrokes; i += chunkSize) {
+        for (let j = 0; j < chunkSize && (i + j) < totalStrokes; j++) {
+            let rx = Math.floor(Math.random() * width);
+            let ry = Math.floor(Math.random() * height);
+
+            let ix = Math.floor((rx - width / 2) / rScale + imgW / 2);
+            let iy = Math.floor((ry - height / 2) / rScale + imgH / 2);
+
+            if (ix >= 0 && ix < imgW && iy >= 0 && iy < imgH) {
+                let pIdx = (iy * imgW + ix) * 4;
+                let r = d[pIdx];
+                let g = d[pIdx + 1];
+                let b = d[pIdx + 2];
+                let a = d[pIdx + 3];
+
+                if (a >= 10) {
+                    let lum = r * 0.299 + g * 0.587 + b * 0.114;
+                    strokeSequence.push({
+                        x: rx, y: ry, r: r, g: g, b: b, lum: lum, seed: Math.random()
+                    });
+                }
+            }
+        }
+        let progress = Math.floor(((i + chunkSize) / totalStrokes) * 100);
+        document.getElementById('bakeText').innerText = `BAKING ${Math.min(progress, 100)}%`;
+        await new Promise(r => setTimeout(r, 10));
+    }
+
+    strokeSequence.sort((a, b) => {
+        let orderA = (Math.sin(a.y * 0.05) + Math.cos(a.x * 0.05)) * a.seed;
+        let orderB = (Math.sin(b.y * 0.05) + Math.cos(b.x * 0.05)) * b.seed;
+        return orderA - orderB;
+    });
+
+    isBaking = false;
+    document.getElementById('bakeOverlay').style.display = 'none';
+    
+    if(!isPlaying) {
+        let previewTime = paintingDuration * 0.8;
+        document.getElementById('studioTimeline').value = 80;
+        document.getElementById('timeCurrent').innerText = formatStudioTime(previewTime);
+        drawFrame(previewTime);
+    }
+}
+
+function renderSingleStroke(g, s, xOffset, sizeOffset) {
+    let finalX = s.x + xOffset;
+    let finalSize = sizeOffset;
+    
+    if (currentStyle === 'oil') {
+        let r_v = s.r + random(-10, 10);
+        let g_v = s.g + random(-10, 10);
+        let b_v = s.b + random(-10, 10);
+        let bW = 18 * finalSize;
+        let bH = 6 * finalSize;
+        let rot = s.seed * TWO_PI + (xOffset * 0.02);
+
+        if (g) {
+            g.noStroke(); g.fill(r_v, g_v, b_v, 230); g.push();
+            g.translate(finalX, s.y); g.rotate(rot); g.rect(-bW/2, -bH/2, bW, bH, 2); g.pop();
+        } else {
+            noStroke(); fill(r_v, g_v, b_v, 230); push();
+            translate(finalX, s.y); rotate(rot); rect(-bW/2, -bH/2, bW, bH, 2); pop();
+        }
+    } 
+    else if (currentStyle === 'watercolor') {
+        let rDiam = (32 * finalSize) * (0.8 + noise(s.seed * 150) * 0.4);
+        if (g) {
+            g.noStroke(); g.fill(s.r, s.g, s.b, 45); g.ellipse(finalX, s.y, rDiam, rDiam);
+        } else {
+            noStroke(); fill(s.r, s.g, s.b, 45); ellipse(finalX, s.y, rDiam, rDiam);
+        }
+    } 
+    else if (currentStyle === 'pencil') {
+        let lLen = map(s.lum, 0, 255, 15, 4);
+        let rot = PI/4 + (s.seed * 0.2);
+        if (g) {
+            g.stroke(s.lum * 0.3, 140); g.strokeWeight(1); g.push();
+            g.translate(finalX, s.y); g.rotate(rot); g.line(-lLen, 0, lLen, 0); g.pop();
+        } else {
+            stroke(s.lum * 0.3, 140); strokeWeight(1); push();
+            translate(finalX, s.y); rotate(rot); line(-lLen, 0, lLen, 0); pop();
+        }
+    }
+}
+
+function drawFrame(ct) {
+    if(isBaking || strokeSequence.length === 0) return;
+
+    let progress = ct / paintingDuration;
+    if(progress > 1.0) progress = 1.0;
+
+    let drawingProg = Math.min(1.0, progress / 0.8);
+    let revealProg = Math.max(0.0, Math.min(1.0, (progress - 0.8) / 0.2));
+
+    let activeStrokesCount = Math.floor(strokeSequence.length * drawingProg);
+
+    if (activeStrokesCount < lastBakedIdx) {
+        resetPaintingBuffer();
+    }
+
+    let targetBakeIdx = Math.max(0, activeStrokesCount - 1500);
+    if (targetBakeIdx > lastBakedIdx) {
+        for (let i = lastBakedIdx; i < targetBakeIdx; i++) {
+            renderSingleStroke(paintingBuffer, strokeSequence[i], 0, 1.0);
+        }
+        lastBakedIdx = targetBakeIdx;
+    }
+
+    background('#f4f3ec'); 
+    image(paintingBuffer, 0, 0);
+
+    let wave = [];
+    let bassEnergy = 0;
+    if(isPlaying) {
+        fft.analyze();
+        wave = fft.waveform(); 
+        bassEnergy = fft.getEnergy("bass"); 
+    }
+
+    let bassFactor = map(bassEnergy, 0, 255, 0.9, 1.8);
+
+    // [치명적 오타 완벽 픽스] 과거 파편 ti 를 루프 변수 t 로 교체 완료
+    let sweeps = 7;
+    let eraserSize = width * 0.22;
+
+    for (let i = lastBakedIdx; i < activeStrokesCount; i++) {
+        let s = strokeSequence[i];
+        let xOffset = 0, sizeOffset = 1.0;
+
+        if (isPlaying && wave.length > 0) {
+            let t = (i / strokeSequence.length); // 내부 로컬 스케일 정의
+            let curSweep = t * sweeps;
+
+            let leftBound = eraserSize * 0.4 + (noise(curSweep * 0.5, 0) - 0.5) * (width * 0.2);
+            let rightBound = width - eraserSize * 0.4 + (noise(curSweep * 0.5, 100) - 0.5) * (width * 0.2);
+            
+            let wIdx = Math.floor(s.seed * (wave.length - 1));
+            // S-Curve 및 사운드 오프셋 매핑
+            let waveOffset = wave[wIdx] * (width * 0.06);
+            xOffset = map(Math.sin(curSweep * Math.PI - Math.PI/2), -1, 1, leftBound, rightBound) - s.x + waveOffset;
+            
+            // 안정적인 결정론적 노이즈 오프셋 추가
+            let organicOffsetX = (noise(t * 10) - 0.5) * eraserSize * 0.2;
+            let organicOffsetY = (noise(t * 10 + 100) - 0.5) * eraserSize * 0.15;
+            
+            xOffset += organicOffsetX;
+            sizeOffset = bassFactor;
+        }
+        renderSingleStroke(null, s, xOffset, sizeOffset); 
+    }
+
+    if(revealProg > 0) {
+        push();
+        imageMode(CENTER);
+        let imgW = targetImg.width, imgH = targetImg.height;
+        let rScale = Math.max(width / imgW, height / imgH);
+        tint(255, 255 * revealProg);
+        image(targetImg, width/2, height/2, imgW*rScale, imgH*rScale);
+        pop();
+    }
+
+    let ctx = drawingContext;
+    let cx = width / 2, cy = height / 2;
+    let maxR = Math.max(width, height) * 0.7;
+    let grad = ctx.createRadialGradient(cx, cy, maxR * 0.4, cx, cy, maxR);
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(1, 'rgba(10,10,15,0.75)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, width, height);
+}
+
+function draw() {
+    if(!isPlaying || isBaking) return;
+    
+    let ct = audio.currentTime();
+    if(ct >= paintingDuration) {
+        togglePlayback();
+        seekStudioTime(100);
+        return;
+    }
+    
+    document.getElementById('timeCurrent').innerText = formatStudioTime(ct);
+    document.getElementById('studioTimeline').value = (ct / paintingDuration) * 100;
+    drawFrame(ct);
+}
+
+function togglePlayback() {
+    if(!loadedAudio || isBaking) return;
+    
+    if(isPlaying) {
+        loadedAudio.stop();
+        isPlaying = false;
+        document.getElementById('timeCurrent').classList.remove('active');
+        document.getElementById('recBtn').innerText = "🔴 START DRAWING";
+        document.getElementById('recBtn').style.background = "#ff3e81";
+        
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            mediaRecorder.stop();
+        }
+    } 
+    else {
+        let rateVal = loadedAudio.duration() / paintingDuration;
+        loadedAudio.rate(rateVal);
+        
+        loadedAudio.play();
+        isPlaying = true;
+        document.getElementById('timeCurrent').classList.add('active');
+        document.getElementById('recBtn').innerText = "⏹ STOP & SAVE";
+        document.getElementById('recBtn').style.background = "#00ffcc";
+        document.getElementById('recBtn').style.color = "#000";
+        
+        startStudioRecording();
+    }
+}
+
+function startRecording() { startStudioRecording(); } // 하위 호환 매핑
+
+function startStudioRecording() {
+    recordedChunks = [];
+    let targetCanvas = document.querySelector('#canvasContainer canvas');
+    let stream = targetCanvas.captureStream(30); 
+    
+    let options = {};
+    if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
+        options = { mimeType: 'video/webm;codecs=vp9' };
+    } else if (MediaRecorder.isTypeSupported('video/webm')) {
+        options = { mimeType: 'video/webm' };
+    } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+        options = { mimeType: 'video/mp4' };
+    }
+    
+    try { mediaRecorder = new MediaRecorder(stream, options); } catch (e) { mediaRecorder = new MediaRecorder(stream); }
+
+    mediaRecorder.ondataavailable = e => {
+        if (e.data.size > 0) recordedChunks.push(e.data);
+    };
+    
+    mediaRecorder.onstop = () => {
+        let blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' });
+        let url = URL.createObjectURL(blob);
+        let a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        
+        let ext = 'webm';
+        if (mediaRecorder.mimeType && mediaRecorder.mimeType.includes('mp4')) ext = 'mp4';
+        a.download = `AudioArt_Studio_Master_${Date.now()}.${ext}`;
+        
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+    mediaRecorder.start();
+}
+
+function seekStudioTime(v) {
+    if(!loadedAudio || isBaking) return;
+    let targetSec = (parseFloat(v) / 100) * paintingDuration;
+    
+    if(isPlaying) {
+        loadedAudio.jump(targetSec);
+    } else {
+        document.getElementById('timeCurrent').innerText = formatStudioTime(targetSec);
+        drawFrame(targetSec);
+    }
+}
+
+function formatStudioTime(s) {
+    let m = Math.floor(s / 60);
+    let sec = Math.floor(s % 60);
+    return `${nf(m, 2)}:${nf(sec, 2)}`;
+}
+</script>
+</body>
+</html>
