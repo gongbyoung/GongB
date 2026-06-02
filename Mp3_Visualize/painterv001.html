@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>AUDIO-WAVE PAINTING STUDIO v1.04</title>
+<title>AUDIO-WAVE PAINTING STUDIO v1.05</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -87,7 +87,7 @@ h2 { font-size: 14px; letter-spacing: 3px; color: var(--accent); font-weight: 80
     <div id="bakeOverlay">
         <div class="spinner"></div>
         <div id="bakeText">BAKING 0%</div>
-        <div style="color: #666; font-size: 11px;">하드웨어 가속 메모리에서 직접 화풍 데이터를 추출하고 있습니다.</div>
+        <div style="color: #666; font-size: 11px;">사물의 경계선 정보와 화가의 붓길 동선을 수학적으로 매핑하고 있습니다.</div>
     </div>
 
     <div class="canvas-zone" id="canvasContainer"></div>
@@ -160,6 +160,7 @@ function updateDuration(val) {
 }
 
 function changeRatio(r) {
+    if(isBaking) return;
     document.getElementById('ratio169').classList.toggle('active', r === '16:9');
     document.getElementById('ratio916').classList.toggle('active', r === '9:16');
     if(r === '16:9') { canvasW = 1120; canvasH = 630; } else { canvasW = 450; canvasH = 800; }
@@ -173,6 +174,7 @@ function changeRatio(r) {
 }
 
 function changeStyle(s) {
+    if(isBaking) return;
     currentStyle = s;
     document.getElementById('styleOil').classList.toggle('active', s === 'oil');
     document.getElementById('styleWater').classList.toggle('active', s === 'watercolor');
@@ -185,6 +187,7 @@ function resetPaintingBuffer() {
     lastBakedIdx = 0;
 }
 
+// [핵심 개조] 팀장님의 인간형 드로잉 프로세스 빌더 엔진
 async function bakePaintingStrokes() {
     if(isBaking || !targetImg) return;
     isBaking = true;
@@ -202,11 +205,13 @@ async function bakePaintingStrokes() {
     let imgH = targetImg.height;
     let rScale = Math.max(width / imgW, height / imgH);
 
-    let totalStrokes = 120000;
-    let chunkSize = 20000;
+    let totalSamples = 100000;
+    let chunkSize = 25000;
+    let tempStrokes = [];
 
-    for (let i = 0; i < totalStrokes; i += chunkSize) {
-        for (let j = 0; j < chunkSize && (i + j) < totalStrokes; j++) {
+    // 1단계: 메모리 공간 샘플링 및 경고 유발 코드 차단
+    for (let i = 0; i < totalSamples; i += chunkSize) {
+        for (let j = 0; j < chunkSize && (i + j) < totalSamples; j++) {
             let rx = Math.floor(Math.random() * width);
             let ry = Math.floor(Math.random() * height);
 
@@ -215,29 +220,66 @@ async function bakePaintingStrokes() {
 
             if (ix >= 0 && ix < imgW && iy >= 0 && iy < imgH) {
                 let pIdx = (iy * imgW + ix) * 4;
-                let r = d[pIdx];
-                let g = d[pIdx + 1];
-                let b = d[pIdx + 2];
-                let a = d[pIdx + 3];
+                let r = d[pIdx], g = d[pIdx + 1], b = d[pIdx + 2], a = d[pIdx + 3];
 
                 if (a >= 10) {
                     let lum = r * 0.299 + g * 0.587 + b * 0.114;
-                    strokeSequence.push({
-                        x: rx, y: ry, r: r, g: g, b: b, lum: lum, seed: Math.random()
+                    
+                    // 정밀 경계선 검출 알고리즘 고속 처리
+                    let ixRight = Math.min(imgW - 1, ix + 2);
+                    let iyDown = Math.min(imgH - 1, iy + 2);
+                    let idxRight = (iy * imgW + ixRight) * 4;
+                    let idxDown = (iyDown * imgW + ix) * 4;
+                    
+                    let edgeScore = Math.abs(r - d[idxRight]) + Math.abs(g - d[idxRight+1]) + Math.abs(b - d[idxRight+2]) +
+                                    Math.abs(r - d[idxDown]) + Math.abs(g - d[idxDown+1]) + Math.abs(b - d[idxDown+2]);
+
+                    tempStrokes.push({
+                        x: rx, y: ry, r: r, g: g, b: b, lum: lum, seed: Math.random(), edgeScore: edgeScore
                     });
                 }
             }
         }
-        let progress = Math.floor(((i + chunkSize) / totalStrokes) * 100);
-        document.getElementById('bakeText').innerText = `BAKING ${Math.min(progress, 100)}%`;
+        let progress = Math.floor(((i + chunkSize) / totalSamples) * 50);
+        document.getElementById('bakeText').innerText = `BAKING ${progress}%`;
         await new Promise(r => setTimeout(r, 10));
     }
 
-    strokeSequence.sort((a, b) => {
-        let orderA = (Math.sin(a.y * 0.05) + Math.cos(a.x * 0.05)) * a.seed;
-        let orderB = (Math.sin(b.y * 0.05) + Math.cos(b.x * 0.05)) * b.seed;
-        return orderA - orderB;
+    // 2단계: 인간의 그리기 순서대로 타임라인 분리 정렬
+    let sketchStrokes = [];
+    let colorStrokes = [];
+
+    tempStrokes.forEach(s => {
+        if(s.edgeScore > 35) {
+            sketchStrokes.push({ ...s, isSketch: true }); // 외곽 스케치 노드
+        }
+        colorStrokes.push({ ...s, isSketch: false }); // 채색 노드
     });
+
+    // 요구사항: 스케치를 일부분부터 진행 (상단에서 하단으로 슥슥 그어나감)
+    sketchStrokes.sort((a, b) => (a.y * 2 + a.x) - (b.y * 2 + b.x));
+
+    // 요구사항: 색칠도 경계선부터 진행하고 외곽(평면 영역)으로 퍼져나가듯이
+    colorStrokes.sort((a, b) => {
+        let bandA = Math.floor(a.y / 50); // 50px 두께의 수평 밴드로 영역 세분화
+        let bandB = Math.floor(b.y / 50);
+        if(bandA !== bandB) return bandA - bandB; // 구역별 순차 전개
+        return b.edgeScore - a.edgeScore; // 구역 내에서는 경계선(high edge)이 무조건 먼저 칠해짐
+    });
+
+    // 3단계: 80% 가속 룰에 기반한 절대 좌표 타임라인 주입
+    strokeSequence = [];
+    sketchStrokes.forEach((s, k) => {
+        s.targetProg = map(k, 0, sketchStrokes.length, 0.0, 0.2); // 0%~20% 타임라인은 순수 펜 스케치
+        strokeSequence.push(s);
+    });
+    colorStrokes.forEach((s, k) => {
+        s.targetProg = map(k, 0, colorStrokes.length, 0.2, 0.8); // 20%~80% 타임라인은 경계선 확산 채색
+        strokeSequence.push(s);
+    });
+
+    // 타임라인 기준 오름차순 최종 결합
+    strokeSequence.sort((a, b) => a.targetProg - b.targetProg);
 
     isBaking = false;
     document.getElementById('bakeOverlay').style.display = 'none';
@@ -250,17 +292,29 @@ async function bakePaintingStrokes() {
     }
 }
 
+// 붓 터치 그래픽 컨텍스트 맵
 function renderSingleStroke(g, s, xOffset, sizeOffset) {
     let finalX = s.x + xOffset;
-    let finalSize = sizeOffset;
     
+    // 펜 스케치 단계 렌더링
+    if (s.isSketch) {
+        let opacity = 150;
+        if (g) {
+            g.stroke(s.lum * 0.2, opacity); g.strokeWeight(1); g.push();
+            g.translate(finalX, s.y); g.rotate(s.seed * TWO_PI); g.line(-6, 0, 6, 0); g.pop();
+        } else {
+            stroke(s.lum * 0.2, opacity); strokeWeight(1); push();
+            translate(finalX, s.y); rotate(s.seed * TWO_PI); line(-6, 0, 6, 0); pop();
+        }
+        return;
+    }
+
+    // 스타일별 채색 렌더링
     if (currentStyle === 'oil') {
-        let r_v = s.r + random(-10, 10);
-        let g_v = s.g + random(-10, 10);
-        let b_v = s.b + random(-10, 10);
-        let bW = 18 * finalSize;
-        let bH = 6 * finalSize;
+        let bW = 18 * sizeOffset;
+        let bH = 6 * sizeOffset;
         let rot = s.seed * TWO_PI + (xOffset * 0.02);
+        let r_v = s.r + random(-10, 10), g_v = s.g + random(-10, 10), b_v = s.b + random(-10, 10);
 
         if (g) {
             g.noStroke(); g.fill(r_v, g_v, b_v, 230); g.push();
@@ -271,7 +325,7 @@ function renderSingleStroke(g, s, xOffset, sizeOffset) {
         }
     } 
     else if (currentStyle === 'watercolor') {
-        let rDiam = (32 * finalSize) * (0.8 + noise(s.seed * 150) * 0.4);
+        let rDiam = (32 * sizeOffset) * (0.8 + noise(s.seed * 150) * 0.4);
         if (g) {
             g.noStroke(); g.fill(s.r, s.g, s.b, 45); g.ellipse(finalX, s.y, rDiam, rDiam);
         } else {
@@ -291,6 +345,22 @@ function renderSingleStroke(g, s, xOffset, sizeOffset) {
     }
 }
 
+// 이진 탐색 가속화 서칭 알고리즘 ($O(\log N)$ 성능 확보)
+function findActiveCount(prog) {
+    let low = 0, high = strokeSequence.length - 1;
+    let ans = 0;
+    while(low <= high) {
+        let mid = Math.floor((low + high) / 2);
+        if(strokeSequence[mid].targetProg <= prog) {
+            ans = mid + 1;
+            low = mid + 1;
+        } else {
+            high = mid - 1;
+        }
+    }
+    return ans;
+}
+
 function drawFrame(ct) {
     if(isBaking || strokeSequence.length === 0) return;
 
@@ -300,12 +370,13 @@ function drawFrame(ct) {
     let drawingProg = Math.min(1.0, progress / 0.8);
     let revealProg = Math.max(0.0, Math.min(1.0, (progress - 0.8) / 0.2));
 
-    let activeStrokesCount = Math.floor(strokeSequence.length * drawingProg);
+    let activeStrokesCount = findActiveCount(drawingProg);
 
     if (activeStrokesCount < lastBakedIdx) {
         resetPaintingBuffer();
     }
 
+    // 백그라운드 캔버스 하드웨어 누적 박제
     let targetBakeIdx = Math.max(0, activeStrokesCount - 1500);
     if (targetBakeIdx > lastBakedIdx) {
         for (let i = lastBakedIdx; i < targetBakeIdx; i++) {
@@ -326,31 +397,25 @@ function drawFrame(ct) {
     }
 
     let bassFactor = map(bassEnergy, 0, 255, 0.9, 1.8);
-
-    // [치명적 오타 완벽 픽스] 과거 파편 ti 를 루프 변수 t 로 교체 완료
-    let sweeps = 7;
     let eraserSize = width * 0.22;
 
+    // 라이브 주파수 에지 루프 (ti 오타 완벽 제거)
     for (let i = lastBakedIdx; i < activeStrokesCount; i++) {
         let s = strokeSequence[i];
         let xOffset = 0, sizeOffset = 1.0;
 
         if (isPlaying && wave.length > 0) {
-            let t = (i / strokeSequence.length); // 내부 로컬 스케일 정의
+            let t = s.targetProg; 
             let curSweep = t * sweeps;
 
             let leftBound = eraserSize * 0.4 + (noise(curSweep * 0.5, 0) - 0.5) * (width * 0.2);
             let rightBound = width - eraserSize * 0.4 + (noise(curSweep * 0.5, 100) - 0.5) * (width * 0.2);
             
             let wIdx = Math.floor(s.seed * (wave.length - 1));
-            // S-Curve 및 사운드 오프셋 매핑
             let waveOffset = wave[wIdx] * (width * 0.06);
             xOffset = map(Math.sin(curSweep * Math.PI - Math.PI/2), -1, 1, leftBound, rightBound) - s.x + waveOffset;
             
-            // 안정적인 결정론적 노이즈 오프셋 추가
             let organicOffsetX = (noise(t * 10) - 0.5) * eraserSize * 0.2;
-            let organicOffsetY = (noise(t * 10 + 100) - 0.5) * eraserSize * 0.15;
-            
             xOffset += organicOffsetX;
             sizeOffset = bassFactor;
         }
@@ -420,8 +485,6 @@ function togglePlayback() {
         startStudioRecording();
     }
 }
-
-function startRecording() { startStudioRecording(); } // 하위 호환 매핑
 
 function startStudioRecording() {
     recordedChunks = [];
