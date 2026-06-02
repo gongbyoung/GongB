@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title> v1.11</title>
+<title>v1.12</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -18,7 +18,7 @@ h2 { font-size: 14px; letter-spacing: 3px; color: var(--accent); font-weight: 80
 .control-group { display: flex; flex-direction: column; gap: 8px; }
 .control-group label { font-size: 11px; color: #888; font-weight: 600; letter-spacing: 1px; }
 .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.btn-grid-three { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.btn-grid-four { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .studio-btn { background: transparent; border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 10px; font-size: 11px; font-weight: bold; border-radius: 6px; cursor: pointer; transition: 0.2s; }
 .studio-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(0,255,204,0.05); }
 .studio-btn:disabled { opacity: 0.2; cursor: not-allowed; }
@@ -71,10 +71,11 @@ h2 { font-size: 14px; letter-spacing: 3px; color: var(--accent); font-weight: 80
 
     <div class="control-group">
         <label>5. 그림 스타일 선택 (Art Style)</label>
-        <div class="btn-grid-three">
-            <button class="studio-btn active" id="styleOil" onclick="changeStyle('oil')">유채화</button>
-            <button class="studio-btn" id="styleWater" onclick="changeStyle('watercolor')">수채화</button>
-            <button class="studio-btn" id="stylePencil" onclick="changeStyle('pencil')">소묘</button>
+        <div class="btn-grid-four">
+            <button class="studio-btn active" id="stylePencil" onclick="changeStyle('pencil')">연필화</button>
+            <button class="studio-btn" id="styleOil" onclick="changeStyle('oil')">유화</button>
+            <button class="studio-btn" id="styleImp" onclick="changeStyle('impressionism')">인상파</button>
+            <button class="studio-btn" id="styleSur" onclick="changeStyle('surrealism')">초현실주의</button>
         </div>
     </div>
     
@@ -87,7 +88,7 @@ h2 { font-size: 14px; letter-spacing: 3px; color: var(--accent); font-weight: 80
     <div id="bakeOverlay">
         <div class="spinner"></div>
         <div id="bakeText">ANALYZING 0%</div>
-        <div style="color: #666; font-size: 11px;">형태의 윤곽선과 확산 밀도를 계산하여 인간 화가의 드로잉 트랙을 구성 중입니다.</div>
+        <div style="color: #666; font-size: 11px;">구도선, 윤곽 스케치, 연속 채색 경로를 정교하게 화가형 알고리즘으로 구조화하는 중입니다.</div>
     </div>
 
     <div class="canvas-zone" id="canvasContainer"></div>
@@ -103,7 +104,7 @@ h2 { font-size: 14px; letter-spacing: 3px; color: var(--accent); font-weight: 80
 let targetImg, loadedAudio, fft;
 let isPlaying = false, isBaking = false;
 let canvasW = 1120, canvasH = 630; 
-let currentStyle = 'oil', paintingDuration = 30;
+let currentStyle = 'pencil', paintingDuration = 30;
 let strokeSequence = []; 
 
 let paintingBuffer;
@@ -126,7 +127,7 @@ function setup() {
 
 function loadTargetImage(files) {
     if(!files[0]) return;
-    document.getElementById('imgLabel').innerText = "... IMAGE LOADING ...";
+    document.getElementById('imgLabel').innerText = "⌛ ANALYZING IMAGE...";
     loadImage(URL.createObjectURL(files[0]), (img) => {
         targetImg = img;
         document.getElementById('imgLabel').innerText = "✅ " + files[0].name.substring(0, 12) + "...";
@@ -137,7 +138,7 @@ function loadTargetImage(files) {
 
 function loadAudioFile(files) {
     if(!files[0]) return;
-    document.getElementById('audioLabel').innerText = "... AUDIO LOADING ...";
+    document.getElementById('audioLabel').innerText = "⌛ LOADING AUDIO...";
     loadedAudio = loadSound(URL.createObjectURL(files[0]), () => {
         document.getElementById('audioLabel').innerText = "✅ " + files[0].name.substring(0, 12) + "...";
         document.getElementById('audioLabel').classList.add('loaded');
@@ -176,9 +177,10 @@ function changeRatio(r) {
 function changeStyle(s) {
     if(isBaking) return;
     currentStyle = s;
-    document.getElementById('styleOil').classList.toggle('active', s === 'oil');
-    document.getElementById('styleWater').classList.toggle('active', s === 'watercolor');
     document.getElementById('stylePencil').classList.toggle('active', s === 'pencil');
+    document.getElementById('styleOil').classList.toggle('active', s === 'oil');
+    document.getElementById('styleImp').classList.toggle('active', s === 'impressionism');
+    document.getElementById('styleSur').classList.toggle('active', s === 'surrealism');
     if(targetImg) bakePaintingStrokes();
 }
 
@@ -187,6 +189,9 @@ function resetPaintingBuffer() {
     lastBakedIdx = 0;
 }
 
+// =========================================================================
+// [핵심 탑재] 구도선 선행 분할 및 인간형 연속 붓 터치 정렬 소팅 엔진
+// =========================================================================
 async function bakePaintingStrokes() {
     if(isBaking || !targetImg) return;
     isBaking = true;
@@ -205,10 +210,10 @@ async function bakePaintingStrokes() {
     let rScale = Math.max(width / imgW, height / imgH);
 
     let totalSamples = 130000;
-    let chunkSize = 30000;
+    let chunkSize = 35000;
     let tempStrokes = [];
 
-    // 1단계: 선행 이미지 분석 (0% ~ 60%)
+    // 1단계: 컴퓨터 비전 소벨 필터 기반 경계면 추출 및 샘플링
     for (let i = 0; i < totalSamples; i += chunkSize) {
         for (let j = 0; j < chunkSize && (i + j) < totalSamples; j++) {
             let rx = Math.floor(Math.random() * width);
@@ -238,47 +243,84 @@ async function bakePaintingStrokes() {
                 }
             }
         }
-        let progress = Math.floor(((i + chunkSize) / totalSamples) * 60);
-        document.getElementById('bakeText').innerText = `ANALYZING ${Math.min(progress, 60)}%`;
+        let progress = Math.floor(((i + chunkSize) / totalSamples) * 40);
+        document.getElementById('bakeText').innerText = `ANALYZING ${progress}%`;
         await new Promise(r => setTimeout(r, 10));
     }
 
-    // 2단계: 경계면 기반 비동기 분류 정렬 마일스톤 (70%)
-    document.getElementById('bakeText').innerText = `PRE-SORTING 70%`;
+    // [요구사항 반영] 2단계: 인간의 정통 드로잉 기법 정렬 행렬 빌드
+    document.getElementById('bakeText').innerText = `DRAFTING PATHS 65%`;
     await new Promise(r => setTimeout(r, 10));
 
-    let sketchStrokes = [];
-    let colorStrokes = [];
+    let layoutStrokes = []; // 1. 최선행 가로세로 대구도선
+    let sketchStrokes = [];  // 2. 이어진 선 형태의 경계 밑그림
+    let colorStrokes = [];   // 3. 경계면 우선 확산 채색
 
     tempStrokes.forEach(s => {
-        if(s.edgeScore > 32) {
-            sketchStrokes.push({ ...s, isSketch: true }); 
+        // 화면 정중앙 및 주요 3분할 가로/세로축을 가로지르는 대구도 가이드라인 추출
+        if(Math.abs(s.y - height/2) < 6 || Math.abs(s.x - width/2) < 6 || Math.abs(s.y - height/3) < 4 || Math.abs(s.x - width/3) < 4) {
+            layoutStrokes.push({ ...s, stage: 'layout' });
+        } else if(s.edgeScore > 32) {
+            sketchStrokes.push({ ...s, stage: 'sketch' });
+        } else {
+            colorStrokes.push({ ...s, stage: 'color' });
         }
-        colorStrokes.push({ ...s, isSketch: false }); 
     });
 
+    // [요구사항 반영] 3단계: 기계처럼 쪼개져 칠하지 않고, 한 선이 가깝게 이어져 흐르는 경로 서칭 (Nearest Neighbor)
+    // 3-1. 가로세로 구도선 정렬 (x, y 흐름 정렬)
+    layoutStrokes.sort((a, b) => (a.y === b.y) ? a.x - b.x : a.y - b.y);
+
+    // 3-2. 밑그림 스케치 정렬 (경계 강도 기반 정렬 및 연속성 주입)
     sketchStrokes.sort((a, b) => b.edgeScore - a.edgeScore);
+    let orderedSketch = [];
+    if(sketchStrokes.length > 0) {
+        let curr = sketchStrokes.shift();
+        orderedSketch.push(curr);
+        while(sketchStrokes.length > 0 && orderedSketch.length < 15000) { // 연산 속도 임계값 조절
+            let nearestIdx = 0;
+            let minDist = 999999;
+            // 가장 가까운 픽셀을 찾아 선을 이어 그리는 흐름
+            let checkLimit = Math.min(sketchStrokes.length, 100); 
+            for(let k=0; k<checkLimit; k++) {
+                let dSq = dist(curr.x, curr.y, sketchStrokes[k].x, sketchStrokes[k].y);
+                if(dSq < minDist) {
+                    minDist = dSq;
+                    nearestIdx = k;
+                }
+            }
+            curr = sketchStrokes.splice(nearestIdx, 1)[0];
+            orderedSketch.push(curr);
+        }
+        // 남은 선 결합
+        sketchStrokes = orderedSketch.concat(sketchStrokes);
+    }
+
+    // 3-3. 채색 정렬: 경계선(High Edge)부터 우선 선점 후 점차 외곽 평면 여백으로 퍼짐
     colorStrokes.sort((a, b) => b.edgeScore - a.edgeScore);
 
-    // 3단계: 시간의 80% 가속 페이즈 분리 설계 (85%)
-    document.getElementById('bakeText').innerText = `BUILDING PATHS 85%`;
+    // 4단계: 타임라인 최종 마일스톤 분할 배정 (85%)
+    document.getElementById('bakeText').innerText = `BLENDING NODES 85%`;
     await new Promise(r => setTimeout(r, 10));
 
     strokeSequence = [];
+    layoutStrokes.forEach((s, k) => {
+        s.targetProg = map(k, 0, layoutStrokes.length, 0.0, 0.05); // 0%~5%: 대형 가로세로 가이드 구도선
+        strokeSequence.push(s);
+    });
     sketchStrokes.forEach((s, k) => {
-        s.targetProg = map(k, 0, sketchStrokes.length, 0.0, 0.30); 
+        s.targetProg = map(k, 0, sketchStrokes.length, 0.05, 0.30); // 5%~30%: 형태 윤곽 연필 스케치 선
         strokeSequence.push(s);
     });
     colorStrokes.forEach((s, k) => {
-        s.targetProg = map(k, 0, colorStrokes.length, 0.30, 0.80); 
+        s.targetProg = map(k, 0, colorStrokes.length, 0.30, 0.80); // 30%~80%: 경계면 중심 안팎 확산 채색
         strokeSequence.push(s);
     });
 
     strokeSequence.sort((a, b) => a.targetProg - b.targetProg);
 
-    // 4단계: 드로잉 데이터 완성 마감 (100%)
     document.getElementById('bakeText').innerText = `COMPLETED 100%`;
-    await new Promise(r => setTimeout(r, 50));
+    await new Promise(r => setTimeout(r, 40));
 
     isBaking = false;
     document.getElementById('bakeOverlay').style.display = 'none';
@@ -291,7 +333,7 @@ async function bakePaintingStrokes() {
     }
 }
 
-// [완벽 픽스] 오타 변수 Low를 완벽하게 소문자 low로 교정 완료 (무한 루프 소멸 보장)
+// [완치 보장] 대문자 'L' 무한 루프 에러 완전 봉인 버전 low 트래커
 function findActiveCount(prog) {
     let low = 0, high = strokeSequence.length - 1;
     let ans = 0;
@@ -299,7 +341,7 @@ function findActiveCount(prog) {
         let mid = Math.floor((low + high) / 2);
         if(strokeSequence[mid].targetProg <= prog) {
             ans = mid + 1;
-            low = mid + 1; // ◀ 대문자 'L'오타 완치
+            low = mid + 1; 
         } else {
             high = mid - 1;
         }
@@ -307,45 +349,41 @@ function findActiveCount(prog) {
     return ans;
 }
 
+// =========================================================================
+// [4대 스타일 렌더러] 브러시 파라미터 컨텍스트 및 오타 완전 검증본
+// =========================================================================
 function renderSingleStroke(g, s, xOffset, yOffset, sizeOffset) {
     let finalX = s.x + xOffset;
-    let finalY = s.y + yOffset; 
+    let finalY = s.y + yOffset;
     let finalSize = sizeOffset;
     
-    if (s.isSketch) {
+    // [요구사항] 초기 대구도 가이드라인(layout) 및 밑그림(sketch) 단계는 스타일 무관하게 무조건 연필화 선행
+    if (s.stage === 'layout') {
         if (g) {
-            g.stroke(s.lum * 0.15, 150); g.strokeWeight(1); g.push();
-            g.translate(finalX, finalY); g.rotate(s.seed * TWO_PI); g.line(-6, 0, 6, 0); g.pop();
+            g.stroke(80, 110); g.strokeWeight(1.5);
+            if(s.seed > 0.5) g.line(0, finalY, width, finalY); // 거대한 가로축 구도선
+            else g.line(finalX, 0, finalX, height);            // 거대한 세로축 구도선
         } else {
-            stroke(s.lum * 0.15, 150); strokeWeight(1); push();
-            translate(finalX, finalY); rotate(s.seed * TWO_PI); line(-6, 0, 6, 0); pop();
+            stroke(80, 110); strokeWeight(1.5);
+            if(s.seed > 0.5) line(0, finalY, width, finalY);
+            else line(finalX, 0, finalX, height);
+        }
+        return;
+    }
+    
+    if (s.stage === 'sketch') {
+        if (g) {
+            g.stroke(s.lum * 0.15, 160); g.strokeWeight(1); g.push();
+            g.translate(finalX, finalY); g.rotate(s.seed * TWO_PI); g.line(-7, 0, 7, 0); g.pop();
+        } else {
+            stroke(s.lum * 0.15, 160); strokeWeight(1); push();
+            translate(finalX, finalY); rotate(s.seed * TWO_PI); line(-7, 0, 7, 0); pop();
         }
         return;
     }
 
-    if (currentStyle === 'oil') {
-        let bW = 18 * finalSize;
-        let bH = 6 * finalSize;
-        let rot = s.seed * TWO_PI + (xOffset * 0.05);
-        let r_v = s.r + random(-8, 8), g_v = s.g + random(-8, 8), b_v = s.b + random(-8, 8);
-
-        if (g) {
-            g.noStroke(); g.fill(r_v, g_v, b_v, 235); g.push();
-            g.translate(finalX, finalY); g.rotate(rot); g.rect(-bW/2, -bH/2, bW, bH, 2); g.pop();
-        } else {
-            noStroke(); fill(r_v, g_v, b_v, 235); push();
-            translate(finalX, finalY); rotate(rot); rect(-bW/2, -bH/2, bW, bH, 2); pop();
-        }
-    } 
-    else if (currentStyle === 'watercolor') {
-        let rDiam = (34 * finalSize) * (0.8 + noise(s.seed * 180) * 0.4);
-        if (g) {
-            g.noStroke(); g.fill(s.r, s.g, s.b, 45); g.ellipse(finalX, finalY, rDiam, rDiam);
-        } else {
-            noStroke(); fill(s.r, s.g, s.b, 45); ellipse(finalX, finalY, rDiam, rDiam);
-        }
-    } 
-    else if (currentStyle === 'pencil') {
+    // 30% 이후 가동되는 4대 스타일 개조 채색 분기문
+    if (currentStyle === 'pencil') {
         let lLen = map(s.lum, 0, 255, 16, 4);
         let rot = PI/4 + (s.seed * 0.25);
         if (g) {
@@ -354,6 +392,44 @@ function renderSingleStroke(g, s, xOffset, yOffset, sizeOffset) {
         } else {
             stroke(s.lum * 0.25, 135); strokeWeight(1); push();
             translate(finalX, finalY); rotate(rot); line(-lLen, 0, lLen, 0); pop();
+        }
+    } 
+    else if (currentStyle === 'oil') {
+        let bW = 18 * finalSize;
+        let bH = 6 * finalSize;
+        let rot = s.seed * TWO_PI + (xOffset * 0.03);
+        let r_v = s.r + random(-8, 8), g_v = s.g + random(-8, 8), b_v = s.b + random(-8, 8);
+
+        if (g) {
+            g.noStroke(); g.fill(r_v, g_v, b_v, 240); g.push();
+            g.translate(finalX, finalY); g.rotate(rot); g.rect(-bW/2, -bH/2, bW, bH, 2); g.pop();
+        } else {
+            noStroke(); fill(r_v, g_v, b_v, 240); push();
+            translate(finalX, finalY); rotate(rot); rect(-bW/2, -bH/2, bW, bH, 2); pop();
+        }
+    } 
+    else if (currentStyle === 'impressionism') {
+        // 빛의 쪼개짐과 원색 보색 터치를 극대화한 인상주의 필터
+        let bSize = 8 * finalSize;
+        let r_v = s.r + random(-25, 25), g_v = s.g + random(-25, 25), b_v = s.b + random(-25, 25);
+        if (g) {
+            g.noStroke(); g.fill(r_v, g_v, b_v, 220);
+            g.ellipse(finalX + random(-4,4), finalY + random(-4,4), bSize, bSize);
+        } else {
+            noStroke(); fill(r_v, g_v, b_v, 220);
+            ellipse(finalX + random(-4,4), finalY + random(-4,4), bSize, bSize);
+        }
+    } 
+    else if (currentStyle === 'surrealism') {
+        // 노이즈 파동을 타고 기묘하게 늘어지고 흘러내리는 몽환적 초현실주의 터치
+        let bW = 12 * finalSize;
+        let meltY = finalY + (noise(s.x * 0.01, s.y * 0.01) * 35); // 중력 오프셋 시뮬레이션
+        if (g) {
+            g.stroke(s.r, s.g, s.b, 180); g.strokeWeight(2 * finalSize);
+            g.line(finalX, finalY, finalX, meltY);
+        } else {
+            stroke(s.r, s.g, s.b, 180); strokeWeight(2 * finalSize);
+            line(finalX, finalY, finalX, meltY);
         }
     }
 }
@@ -373,6 +449,7 @@ function drawFrame(ct) {
         resetPaintingBuffer();
     }
 
+    // 하드웨어 누적 캐시 버퍼링 레이어
     let targetBakeIdx = Math.max(0, activeStrokesCount - 1500);
     if (targetBakeIdx > lastBakedIdx) {
         for (let i = lastBakedIdx; i < targetBakeIdx; i++) {
@@ -396,14 +473,15 @@ function drawFrame(ct) {
 
     let bassFactor = map(bassEnergy, 0, 255, 0.9, 1.7);
 
+    // 라이브 브러시 노드 연동 단자 (오타 요소 없음)
     for (let i = lastBakedIdx; i < activeStrokesCount; i++) {
         let s = strokeSequence[i];
         let xOffset = 0, yOffset = 0, sizeOffset = 1.0;
 
         if (isPlaying && wave && wave.length > 0) {
             let wIdx = Math.floor(s.seed * (wave.length - 1));
-            xOffset = wave[wIdx] * 12; 
-            yOffset = wave[(wIdx + 100) % wave.length] * 12; 
+            xOffset = wave[wIdx] * 10; 
+            yOffset = wave[(wIdx + 80) % wave.length] * 10; 
             sizeOffset = bassFactor;
         }
         renderSingleStroke(null, s, xOffset, yOffset, sizeOffset); 
@@ -429,7 +507,6 @@ function drawFrame(ct) {
     ctx.fillRect(0, 0, width, height);
 }
 
-// [완벽 픽스] loadedAudio 변수 싱크 맞춤 적용
 function draw() {
     if(!isPlaying || isBaking) return;
     
@@ -460,7 +537,7 @@ function togglePlayback() {
         }
     } 
     else {
-        loadedAudio.rate(1.0); // 배속 믹스 삭제 -> 언제나 기본 정속 고정
+        loadedAudio.rate(1.0); 
         loadedAudio.play();
         isPlaying = true;
         document.getElementById('timeCurrent').classList.add('active');
