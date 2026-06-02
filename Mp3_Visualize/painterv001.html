@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>v1.08</title>
+<title>v1.09</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -24,7 +24,7 @@ h2 { font-size: 14px; letter-spacing: 3px; color: var(--accent); font-weight: 80
 .studio-btn:disabled { opacity: 0.2; cursor: not-allowed; }
 
 .file-btn { width: 100%; background: rgba(255,255,255,0.03); border: 1px dashed rgba(255,255,255,0.15); color: #ccc; padding: 12px; font-size: 11px; text-align: center; border-radius: 6px; cursor: pointer; display: block; }
-.file-btn.loaded { border-color: var(--accent); color: var(--accent); background: rgba(0,0,0,0.02); }
+.file-btn.loaded { border-color: var(--accent); color: var(--accent); background: rgba(0,255,204,0.02); }
 .file-input { display: none; }
 .num-input { background: #000; border: 1px solid rgba(255,255,255,0.1); color: var(--accent); font-size: 14px; font-weight: bold; padding: 10px; border-radius: 6px; text-align: center; width: 100%; font-family: monospace; }
 
@@ -87,7 +87,7 @@ h2 { font-size: 14px; letter-spacing: 3px; color: var(--accent); font-weight: 80
     <div id="bakeOverlay">
         <div class="spinner"></div>
         <div id="bakeText">ANALYZING 0%</div>
-        <div style="color: #666; font-size: 11px;">형태의 윤곽선과 확산 밀도를 계산하여 인간 화가의 드로잉 트랙을 구성 중입니다.</div>
+        <div style="color: #666; font-size: 11px;">밑그림과 채색 노드를 모두 경계선 우선순위로 재정렬하고 있습니다.</div>
     </div>
 
     <div class="canvas-zone" id="canvasContainer"></div>
@@ -252,7 +252,10 @@ async function bakePaintingStrokes() {
         colorStrokes.push({ ...s, isSketch: false }); 
     });
 
-    sketchStrokes.sort((a, b) => (a.y * 1.4 + a.x) - (b.y * 1.4 + b.x));
+    // [v1.09 핵심 픽스] 밑그림(연필)도 무작위/선형 패스를 버리고 가장 선명한 핵심 경계선(Edge)부터 우선 드로잉
+    sketchStrokes.sort((a, b) => b.edgeScore - a.edgeScore);
+
+    // 색칠 역시 연필 스케치가 끝난 경계선 부근부터 시작해 점차 외곽 평면으로 확산
     colorStrokes.sort((a, b) => b.edgeScore - a.edgeScore);
 
     strokeSequence = [];
@@ -278,10 +281,10 @@ async function bakePaintingStrokes() {
     }
 }
 
-// [완벽 픽스] 파라미터 시그니처에 yOffset 추가 및 finalY 선언 완치
+// [v1.09 완벽 선언] finalX와 finalY 변수 오타 완전 박멸 보장
 function renderSingleStroke(g, s, xOffset, yOffset, sizeOffset) {
     let finalX = s.x + xOffset;
-    let finalY = s.y + yOffset; // 이 한 줄이 누락되어 에러가 났었습니다!
+    let finalY = s.y + yOffset; 
     let finalSize = sizeOffset;
     
     if (s.isSketch) {
@@ -381,12 +384,14 @@ function drawFrame(ct) {
 
     let bassFactor = map(bassEnergy, 0, 255, 0.9, 1.7);
 
+    // 로봇 청소기 같은 인위적 수식을 전부 폐기하여 에러 유발 가능성 차단
     for (let i = lastBakedIdx; i < activeStrokesCount; i++) {
         let s = strokeSequence[i];
         let xOffset = 0, yOffset = 0, sizeOffset = 1.0;
 
         if (isPlaying && wave.length > 0) {
             let wIdx = Math.floor(s.seed * (wave.length - 1));
+            // 순수 오디오 주파수에 연동된 아티스틱한 붓끝의 라이브 떨림 효과
             xOffset = wave[wIdx] * 12; 
             yOffset = wave[(wIdx + 100) % wave.length] * 12; 
             sizeOffset = bassFactor;
