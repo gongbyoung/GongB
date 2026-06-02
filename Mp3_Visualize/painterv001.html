@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>v1.09</title>
+<title>v1.10</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -252,10 +252,7 @@ async function bakePaintingStrokes() {
         colorStrokes.push({ ...s, isSketch: false }); 
     });
 
-    // [v1.09 핵심 픽스] 밑그림(연필)도 무작위/선형 패스를 버리고 가장 선명한 핵심 경계선(Edge)부터 우선 드로잉
     sketchStrokes.sort((a, b) => b.edgeScore - a.edgeScore);
-
-    // 색칠 역시 연필 스케치가 끝난 경계선 부근부터 시작해 점차 외곽 평면으로 확산
     colorStrokes.sort((a, b) => b.edgeScore - a.edgeScore);
 
     strokeSequence = [];
@@ -281,7 +278,6 @@ async function bakePaintingStrokes() {
     }
 }
 
-// [v1.09 완벽 선언] finalX와 finalY 변수 오타 완전 박멸 보장
 function renderSingleStroke(g, s, xOffset, yOffset, sizeOffset) {
     let finalX = s.x + xOffset;
     let finalY = s.y + yOffset; 
@@ -339,8 +335,7 @@ function findActiveCount(prog) {
     while(low <= high) {
         let mid = Math.floor((low + high) / 2);
         if(strokeSequence[mid].targetProg <= prog) {
-            ans = mid + 1;
-            low = mid + 1;
+            ans = mid + 1; Low = mid + 1;
         } else {
             high = mid - 1;
         }
@@ -376,22 +371,23 @@ function drawFrame(ct) {
 
     let wave = [];
     let bassEnergy = 0;
-    if(isPlaying) {
+    
+    // [완벽 픽스] 실시간 FFT 주파수 파형 추출 세션 안전장치 주입
+    if(isPlaying && fft) {
         fft.analyze();
-        wave = fft.waveform(); 
+        let w = fft.waveform(); 
+        if(w) wave = w; // 안전하게 배열 치환
         bassEnergy = fft.getEnergy("bass"); 
     }
 
     let bassFactor = map(bassEnergy, 0, 255, 0.9, 1.7);
 
-    // 로봇 청소기 같은 인위적 수식을 전부 폐기하여 에러 유발 가능성 차단
     for (let i = lastBakedIdx; i < activeStrokesCount; i++) {
         let s = strokeSequence[i];
         let xOffset = 0, yOffset = 0, sizeOffset = 1.0;
 
-        if (isPlaying && wave.length > 0) {
+        if (isPlaying && wave && wave.length > 0) {
             let wIdx = Math.floor(s.seed * (wave.length - 1));
-            // 순수 오디오 주파수에 연동된 아티스틱한 붓끝의 라이브 떨림 효과
             xOffset = wave[wIdx] * 12; 
             yOffset = wave[(wIdx + 100) % wave.length] * 12; 
             sizeOffset = bassFactor;
@@ -422,7 +418,8 @@ function drawFrame(ct) {
 function draw() {
     if(!isPlaying || isBaking) return;
     
-    let ct = audio.currentTime();
+    // [완벽 픽스] 오타 변수 audio -> loadedAudio 로 정상 치환
+    let ct = loadedAudio.currentTime();
     if(ct >= paintingDuration) {
         togglePlayback();
         seekStudioTime(100);
@@ -449,8 +446,8 @@ function togglePlayback() {
         }
     } 
     else {
-        let rateVal = loadedAudio.duration() / paintingDuration;
-        loadedAudio.rate(rateVal);
+        // [완벽 픽스] 음악 속도를 강제 배속하던 배전반 수식을 삭제하고, 언제나 정속(1.0)으로 감상/녹화되게 수정
+        loadedAudio.rate(1.0);
         
         loadedAudio.play();
         isPlaying = true;
