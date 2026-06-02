@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>AUDIO-WAVE PAINTING STUDIO v1.0</title>
+<title>AUDIO-WAVE PAINTING STUDIO v1.01</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -87,7 +87,7 @@ h2 { font-size: 14px; letter-spacing: 3px; color: var(--accent); font-weight: 80
     <div id="bakeOverlay">
         <div class="spinner"></div>
         <div id="bakeText">BAKING 0%</div>
-        <div style="color: #666; font-size: 11px;">하드웨어 가속 컨텍스트에서 화풍 노드를 분석 중입니다.</div>
+        <div style="color: #666; font-size: 11px;">하드웨어 메모리 배열에서 직접 화풍 노드를 추출하고 있습니다.</div>
     </div>
 
     <div class="canvas-zone" id="canvasContainer"></div>
@@ -167,25 +167,23 @@ function changeStyle(s) {
     if(targetImg) bakePaintingStrokes();
 }
 
+// 가속 버퍼 오류를 원천 배제하는 Native p5 픽셀 디코더 개조
 async function bakePaintingStrokes() {
-    if(isBaking) return;
+    if(isBaking || !targetImg) return;
     isBaking = true;
     
     document.getElementById('bakeOverlay').style.display = 'flex';
+    document.getElementById('bakeText').innerText = `BAKING 0%`;
     await new Promise(r => setTimeout(r, 50));
 
     strokeSequence = [];
-    let imgW = targetImg.width, imgH = targetImg.height;
+    
+    // 네이티브 메모리 영역 로드
+    targetImg.loadPixels();
+    let d = targetImg.pixels;
+    let imgW = targetImg.width;
+    let imgH = targetImg.height;
     let rScale = Math.max(width / imgW, height / imgH);
-    let dw = imgW * rScale, dh = imgH * rScale;
-
-    let tCnv = document.createElement('canvas');
-    tCnv.width = width; tCnv.height = height;
-    let tCtx = tCnv.getContext('2d', { willReadFrequently: true });
-    tCtx.translate(width/2, height/2);
-    tCtx.drawImage(targetImg.canvas || targetImg.elt, -dw/2, -dh/2, dw, dh);
-    tCtx.translate(-width/2, -height/2);
-    let imgData = tCtx.getImageData(0, 0, width, height).data;
 
     let totalStrokes = 120000;
     let chunkSize = 20000;
@@ -194,23 +192,32 @@ async function bakePaintingStrokes() {
         for (let j = 0; j < chunkSize && (i + j) < totalStrokes; j++) {
             let rx = Math.floor(Math.random() * width);
             let ry = Math.floor(Math.random() * height);
-            let pIdx = (ry * width + rx) * 4;
 
-            if (imgData[pIdx + 3] < 10) continue;
+            // 캔버스 난수를 이미지 메모리 주소로 정확하게 역산 매핑
+            let ix = Math.floor((rx - width / 2) / rScale + imgW / 2);
+            let iy = Math.floor((ry - height / 2) / rScale + imgH / 2);
 
-            let r = imgData[pIdx], g = imgData[pIdx+1], b = imgData[pIdx+2];
-            let lum = r * 0.299 + g * 0.587 + b * 0.114;
+            if (ix >= 0 && ix < imgW && iy >= 0 && iy < imgH) {
+                let pIdx = (iy * imgW + ix) * 4;
+                let r = d[pIdx];
+                let g = d[pIdx + 1];
+                let b = d[pIdx + 2];
+                let a = d[pIdx + 3];
 
-            strokeSequence.push({
-                x: rx, y: ry, r: r, g: g, b: b, lum: lum, seed: Math.random()
-            });
+                if (a >= 10) {
+                    let lum = r * 0.299 + g * 0.587 + b * 0.114;
+                    strokeSequence.push({
+                        x: rx, y: ry, r: r, g: g, b: b, lum: lum, seed: Math.random()
+                    });
+                }
+            }
         }
         let progress = Math.floor(((i + chunkSize) / totalStrokes) * 100);
         document.getElementById('bakeText').innerText = `BAKING ${Math.min(progress, 100)}%`;
-        await new Promise(r => setTimeout(r, 0));
+        await new Promise(r => setTimeout(r, 10));
     }
 
-    // 앤드류 루미스식 구조 흐름에 최적화된 리드미컬 붓길 정렬
+    // 앤드류 루미스 리드미컬 흐름 가중치 배열
     strokeSequence.sort((a, b) => {
         let orderA = (Math.sin(a.y * 0.05) + Math.cos(a.x * 0.05)) * a.seed;
         let orderB = (Math.sin(b.y * 0.05) + Math.cos(b.x * 0.05)) * b.seed;
@@ -228,13 +235,11 @@ function drawFrame(ct) {
     let progress = ct / paintingDuration;
     if(progress > 1.0) progress = 1.0;
 
-    // [기획 조건 1] 시간의 80% 동안 비트 드로잉, 80~100% 구간은 나머지 가려진 부분 스르륵 풀 노출
     let drawingProg = Math.min(1.0, progress / 0.8);
     let revealProg = Math.max(0.0, Math.min(1.0, (progress - 0.8) / 0.2));
 
     background('#f4f3ec'); 
 
-    // 오디오 실시간 분석 노드 가동
     let wave = [];
     let bassEnergy = 0;
     if(isPlaying) {
@@ -252,7 +257,6 @@ function drawFrame(ct) {
             let s = strokeSequence[i];
             let xOffset = 0, sizeOffset = 1.0;
             
-            // 실시간 오디오 음악 파동 주입 구간 (오타 요소 ti, slotIdx, eraserSize 완벽 제거)
             if(isPlaying && i > activeStrokesCount - 4000 && wave.length > 0) {
                 let wIdx = Math.floor(s.seed * (wave.length - 1));
                 xOffset = wave[wIdx] * (width * 0.06); 
@@ -309,24 +313,18 @@ function drawFrame(ct) {
     }
     pop();
 
-    // 80~100% 구간 백그라운드 자연 해상도 블렌딩 대단원 완성 연출
+    // [치명적 성능 오류 해결]: createGraphics 버퍼 누수 완벽 제거 및 메인 스트림 오버레이 직접 사양 결합
     if(revealProg > 0) {
         push();
-        let finalGraphics = createGraphics(width, height);
-        finalGraphics.pixelDensity(1);
-        finalGraphics.imageMode(CENTER);
-        
+        imageMode(CENTER);
         let imgW = targetImg.width, imgH = targetImg.height;
         let rScale = Math.max(width / imgW, height / imgH);
-        finalGraphics.image(targetImg, width/2, height/2, imgW*rScale, imgH*rScale);
-        
         tint(255, 255 * revealProg);
-        image(finalGraphics, 0, 0);
-        finalGraphics.remove();
+        image(targetImg, width/2, height/2, imgW*rScale, imgH*rScale);
         pop();
     }
 
-    // 앤드류 루미스 비네트 장식 섀도우 마감
+    // 앤드류 루미스 비네트 섀도우 림 필터
     let ctx = drawingContext;
     let cx = width / 2, cy = height / 2;
     let maxR = Math.max(width, height) * 0.7;
@@ -381,23 +379,42 @@ function togglePlayback() {
     }
 }
 
+// 브라우저 멜팅 현상을 방지하는 방어형 인코더 세션 빌드
 function startStudioRecording() {
     recordedChunks = [];
     let targetCanvas = document.querySelector('#canvasContainer canvas');
     let stream = targetCanvas.captureStream(30); 
     
-    mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+    let options = {};
+    if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
+        options = { mimeType: 'video/webm;codecs=vp9' };
+    } else if (MediaRecorder.isTypeSupported('video/webm')) {
+        options = { mimeType: 'video/webm' };
+    } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+        options = { mimeType: 'video/mp4' };
+    }
+    
+    try {
+        mediaRecorder = new MediaRecorder(stream, options);
+    } catch (e) {
+        mediaRecorder = new MediaRecorder(stream);
+    }
+
     mediaRecorder.ondataavailable = e => {
         if (e.data.size > 0) recordedChunks.push(e.data);
     };
     
     mediaRecorder.onstop = () => {
-        let blob = new Blob(recordedChunks, { type: 'video/webm' });
+        let blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' });
         let url = URL.createObjectURL(blob);
         let a = document.createElement('a');
         a.style.display = 'none';
         a.href = url;
-        a.download = `AudioArt_Studio_Fixed_${Date.now()}.webm`;
+        
+        let ext = 'webm';
+        if (mediaRecorder.mimeType && mediaRecorder.mimeType.includes('mp4')) ext = 'mp4';
+        a.download = `AudioArt_Studio_Master_${Date.now()}.${ext}`;
+        
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
