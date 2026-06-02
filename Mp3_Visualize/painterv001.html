@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>AUDIO-WAVE PAINTING STUDIO v1.05</title>
+<title>AUDIO-WAVE PAINTING STUDIO v1.06</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -87,7 +87,7 @@ h2 { font-size: 14px; letter-spacing: 3px; color: var(--accent); font-weight: 80
     <div id="bakeOverlay">
         <div class="spinner"></div>
         <div id="bakeText">BAKING 0%</div>
-        <div style="color: #666; font-size: 11px;">사물의 경계선 정보와 화가의 붓길 동선을 수학적으로 매핑하고 있습니다.</div>
+        <div style="color: #666; font-size: 11px;">사물의 경계 구조를 연필 윤곽선과 확산 노드로 분해하고 있습니다.</div>
     </div>
 
     <div class="canvas-zone" id="canvasContainer"></div>
@@ -187,7 +187,7 @@ function resetPaintingBuffer() {
     lastBakedIdx = 0;
 }
 
-// [핵심 개조] 팀장님의 인간형 드로잉 프로세스 빌더 엔진
+// [v1.06 혁신 개조] 정밀 엣지 스케치 선행 분석 및 안에서 밖으로 터지는 확산형 소팅 소스
 async function bakePaintingStrokes() {
     if(isBaking || !targetImg) return;
     isBaking = true;
@@ -205,11 +205,10 @@ async function bakePaintingStrokes() {
     let imgH = targetImg.height;
     let rScale = Math.max(width / imgW, height / imgH);
 
-    let totalSamples = 100000;
-    let chunkSize = 25000;
+    let totalSamples = 120000;
+    let chunkSize = 30000;
     let tempStrokes = [];
 
-    // 1단계: 메모리 공간 샘플링 및 경고 유발 코드 차단
     for (let i = 0; i < totalSamples; i += chunkSize) {
         for (let j = 0; j < chunkSize && (i + j) < totalSamples; j++) {
             let rx = Math.floor(Math.random() * width);
@@ -225,7 +224,7 @@ async function bakePaintingStrokes() {
                 if (a >= 10) {
                     let lum = r * 0.299 + g * 0.587 + b * 0.114;
                     
-                    // 정밀 경계선 검출 알고리즘 고속 처리
+                    // 정밀 소벨 소프라노 경계선 스피드 연산 적용
                     let ixRight = Math.min(imgW - 1, ix + 2);
                     let iyDown = Math.min(imgH - 1, iy + 2);
                     let idxRight = (iy * imgW + ixRight) * 4;
@@ -245,40 +244,34 @@ async function bakePaintingStrokes() {
         await new Promise(r => setTimeout(r, 10));
     }
 
-    // 2단계: 인간의 그리기 순서대로 타임라인 분리 정렬
+    // 아티스트 터치 타임라인 노드 분류 작업
     let sketchStrokes = [];
     let colorStrokes = [];
 
     tempStrokes.forEach(s => {
         if(s.edgeScore > 35) {
-            sketchStrokes.push({ ...s, isSketch: true }); // 외곽 스케치 노드
+            sketchStrokes.push({ ...s, isSketch: true }); // 무조건 연필 형태 가이드선
         }
-        colorStrokes.push({ ...s, isSketch: false }); // 채색 노드
+        colorStrokes.push({ ...s, isSketch: false }); // 지정 화풍 채색 노드
     });
 
-    // 요구사항: 스케치를 일부분부터 진행 (상단에서 하단으로 슥슥 그어나감)
-    sketchStrokes.sort((a, b) => (a.y * 2 + a.x) - (b.y * 2 + b.x));
+    // 지시사항 1: 연필 스케치는 공간 흐름(위->아래)에 맞춰 한 방향에서 시작하여 형성
+    sketchStrokes.sort((a, b) => (a.y * 1.5 + a.x) - (b.y * 1.5 + b.x));
 
-    // 요구사항: 색칠도 경계선부터 진행하고 외곽(평면 영역)으로 퍼져나가듯이
-    colorStrokes.sort((a, b) => {
-        let bandA = Math.floor(a.y / 50); // 50px 두께의 수평 밴드로 영역 세분화
-        let bandB = Math.floor(b.y / 50);
-        if(bandA !== bandB) return bandA - bandB; // 구역별 순차 전개
-        return b.edgeScore - a.edgeScore; // 구역 내에서는 경계선(high edge)이 무조건 먼저 칠해짐
-    });
+    // 지시사항 2: 색칠은 기계적이 아니라 경계선(High Edge)부터 무조건 먼저 칠해지고 외곽/평면으로 번짐
+    colorStrokes.sort((a, b) => b.edgeScore - a.edgeScore);
 
-    // 3단계: 80% 가속 룰에 기반한 절대 좌표 타임라인 주입
+    // 타임 스케치 노드 최종 정착 구조 매핑 (80% 가속 연출)
     strokeSequence = [];
     sketchStrokes.forEach((s, k) => {
-        s.targetProg = map(k, 0, sketchStrokes.length, 0.0, 0.2); // 0%~20% 타임라인은 순수 펜 스케치
+        s.targetProg = map(k, 0, sketchStrokes.length, 0.0, 0.25); // 0% ~ 25% 시간은 연필 윤곽선만 생성
         strokeSequence.push(s);
     });
     colorStrokes.forEach((s, k) => {
-        s.targetProg = map(k, 0, colorStrokes.length, 0.2, 0.8); // 20%~80% 타임라인은 경계선 확산 채색
+        s.targetProg = map(k, 0, colorStrokes.length, 0.25, 0.80); // 25% ~ 80% 시간은 경계선에서 평면 외곽으로 확산 채색
         strokeSequence.push(s);
     });
 
-    // 타임라인 기준 오름차순 최종 결합
     strokeSequence.sort((a, b) => a.targetProg - b.targetProg);
 
     isBaking = false;
@@ -292,24 +285,22 @@ async function bakePaintingStrokes() {
     }
 }
 
-// 붓 터치 그래픽 컨텍스트 맵
 function renderSingleStroke(g, s, xOffset, sizeOffset) {
     let finalX = s.x + xOffset;
     
-    // 펜 스케치 단계 렌더링
+    // [픽스 요구사항] 경계 윤곽선은 스타일과 무관하게 무조건 정밀 연필 소묘선 고정
     if (s.isSketch) {
-        let opacity = 150;
         if (g) {
-            g.stroke(s.lum * 0.2, opacity); g.strokeWeight(1); g.push();
+            g.stroke(s.lum * 0.2, 160); g.strokeWeight(1); g.push();
             g.translate(finalX, s.y); g.rotate(s.seed * TWO_PI); g.line(-6, 0, 6, 0); g.pop();
         } else {
-            stroke(s.lum * 0.2, opacity); strokeWeight(1); push();
+            stroke(s.lum * 0.2, 160); strokeWeight(1); push();
             translate(finalX, s.y); rotate(s.seed * TWO_PI); line(-6, 0, 6, 0); pop();
         }
         return;
     }
 
-    // 스타일별 채색 렌더링
+    // 메인 화풍별 채색 렌더러
     if (currentStyle === 'oil') {
         let bW = 18 * sizeOffset;
         let bH = 6 * sizeOffset;
@@ -345,7 +336,6 @@ function renderSingleStroke(g, s, xOffset, sizeOffset) {
     }
 }
 
-// 이진 탐색 가속화 서칭 알고리즘 ($O(\log N)$ 성능 확보)
 function findActiveCount(prog) {
     let low = 0, high = strokeSequence.length - 1;
     let ans = 0;
@@ -376,7 +366,6 @@ function drawFrame(ct) {
         resetPaintingBuffer();
     }
 
-    // 백그라운드 캔버스 하드웨어 누적 박제
     let targetBakeIdx = Math.max(0, activeStrokesCount - 1500);
     if (targetBakeIdx > lastBakedIdx) {
         for (let i = lastBakedIdx; i < targetBakeIdx; i++) {
@@ -390,6 +379,9 @@ function drawFrame(ct) {
 
     let wave = [];
     let bassEnergy = 0;
+    let sweeps = 7;
+    let eraserSize = width * 0.22;
+
     if(isPlaying) {
         fft.analyze();
         wave = fft.waveform(); 
@@ -397,9 +389,8 @@ function drawFrame(ct) {
     }
 
     let bassFactor = map(bassEnergy, 0, 255, 0.9, 1.8);
-    let eraserSize = width * 0.22;
 
-    // 라이브 주파수 에지 루프 (ti 오타 완벽 제거)
+    // [오타 완벽 차단 및 연동 활성화] 라이브 엣지 드로잉 루프
     for (let i = lastBakedIdx; i < activeStrokesCount; i++) {
         let s = strokeSequence[i];
         let xOffset = 0, sizeOffset = 1.0;
