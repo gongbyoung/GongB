@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>AUDIO-WAVE PAINTING STUDIO v1.01</title>
+<title>AUDIO-WAVE PAINTING STUDIO v1.02</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -87,7 +87,7 @@ h2 { font-size: 14px; letter-spacing: 3px; color: var(--accent); font-weight: 80
     <div id="bakeOverlay">
         <div class="spinner"></div>
         <div id="bakeText">BAKING 0%</div>
-        <div style="color: #666; font-size: 11px;">하드웨어 메모리 배열에서 직접 화풍 노드를 추출하고 있습니다.</div>
+        <div style="color: #666; font-size: 11px;">하드웨어 캐시 버퍼에 고성능 화풍 데이터를 분해하고 있습니다.</div>
     </div>
 
     <div class="canvas-zone" id="canvasContainer"></div>
@@ -106,12 +106,22 @@ let canvasW = 1120, canvasH = 630;
 let currentStyle = 'oil', paintingDuration = 30;
 let strokeSequence = []; 
 
+// [v1.02 가속 핵심] 점진적 연산용 캔버스 버퍼 및 인덱스 트래커
+let paintingBuffer;
+let lastBakedIdx = 0;
+
 let mediaRecorder, recordedChunks = [];
 
 function setup() {
     let cnv = createCanvas(canvasW, canvasH);
     cnv.parent('canvasContainer');
     cnv.canvas.getContext('2d', { willReadFrequently: true });
+    
+    // 점진적 백그라운드 축적 버퍼 초기화
+    paintingBuffer = createGraphics(canvasW, canvasH);
+    paintingBuffer.canvas.getContext('2d', { willReadFrequently: true });
+    paintingBuffer.background('#f4f3ec');
+
     fft = new p5.FFT();
     background('#f4f3ec'); 
 }
@@ -155,7 +165,11 @@ function changeRatio(r) {
     document.getElementById('ratio169').classList.toggle('active', r === '16:9');
     document.getElementById('ratio916').classList.toggle('active', r === '9:16');
     if(r === '16:9') { canvasW = 1120; canvasH = 630; } else { canvasW = 450; canvasH = 800; }
+    
     resizeCanvas(canvasW, canvasH);
+    paintingBuffer.resizeCanvas(canvasW, canvasH);
+    resetPaintingBuffer();
+
     if(targetImg) bakePaintingStrokes();
 }
 
@@ -167,7 +181,11 @@ function changeStyle(s) {
     if(targetImg) bakePaintingStrokes();
 }
 
-// 가속 버퍼 오류를 원천 배제하는 Native p5 픽셀 디코더 개조
+function resetPaintingBuffer() {
+    paintingBuffer.background('#f4f3ec');
+    lastBakedIdx = 0;
+}
+
 async function bakePaintingStrokes() {
     if(isBaking || !targetImg) return;
     isBaking = true;
@@ -177,8 +195,8 @@ async function bakePaintingStrokes() {
     await new Promise(r => setTimeout(r, 50));
 
     strokeSequence = [];
+    resetPaintingBuffer();
     
-    // 네이티브 메모리 영역 로드
     targetImg.loadPixels();
     let d = targetImg.pixels;
     let imgW = targetImg.width;
@@ -193,7 +211,6 @@ async function bakePaintingStrokes() {
             let rx = Math.floor(Math.random() * width);
             let ry = Math.floor(Math.random() * height);
 
-            // 캔버스 난수를 이미지 메모리 주소로 정확하게 역산 매핑
             let ix = Math.floor((rx - width / 2) / rScale + imgW / 2);
             let iy = Math.floor((ry - height / 2) / rScale + imgH / 2);
 
@@ -217,7 +234,7 @@ async function bakePaintingStrokes() {
         await new Promise(r => setTimeout(r, 10));
     }
 
-    // 앤드류 루미스 리드미컬 흐름 가중치 배열
+    // 루미스 디자인 구도 정렬
     strokeSequence.sort((a, b) => {
         let orderA = (Math.sin(a.y * 0.05) + Math.cos(a.x * 0.05)) * a.seed;
         let orderB = (Math.sin(b.y * 0.05) + Math.cos(b.x * 0.05)) * b.seed;
@@ -229,6 +246,36 @@ async function bakePaintingStrokes() {
     if(!isPlaying) drawFrame(0);
 }
 
+// 개별 브러시 드로잉 노드 분리 매핑 함수
+function renderSingleStroke(g, s, xOffset, sizeOffset) {
+    let finalX = s.x + xOffset;
+    if (currentStyle === 'oil') {
+        g.noStroke();
+        g.fill(s.r + random(-10,10), s.g + random(-10,10), s.b + random(-10,10), 230);
+        g.push();
+        g.translate(finalX, s.y);
+        g.rotate(s.seed * TWO_PI + (xOffset * 0.02));
+        g.rect(-9 * sizeOffset, -3 * sizeOffset, 18 * sizeOffset, 6 * sizeOffset, 2);
+        g.pop();
+    } 
+    else if (currentStyle === 'watercolor') {
+        g.noStroke();
+        g.fill(s.r, s.g, s.b, 45); 
+        let rDiam = (32 * sizeOffset) * (0.8 + noise(s.seed * 150) * 0.4);
+        g.ellipse(finalX, s.y, rDiam, rDiam);
+    } 
+    else if (currentStyle === 'pencil') {
+        g.stroke(s.lum * 0.3, 140);
+        g.strokeWeight(1);
+        g.push();
+        g.translate(finalX, s.y);
+        g.rotate(PI/4 + (s.seed * 0.2));
+        let lLen = map(s.lum, 0, 255, 15, 4);
+        g.line(-lLen, 0, lLen, 0);
+        g.pop();
+    }
+}
+
 function drawFrame(ct) {
     if(isBaking || strokeSequence.length === 0) return;
 
@@ -238,8 +285,27 @@ function drawFrame(ct) {
     let drawingProg = Math.min(1.0, progress / 0.8);
     let revealProg = Math.max(0.0, Math.min(1.0, (progress - 0.8) / 0.2));
 
-    background('#f4f3ec'); 
+    let activeStrokesCount = Math.floor(strokeSequence.length * drawingProg);
 
+    // [타임라인 조작 감지] 사용자가 시간을 뒤로 돌렸을 경우 버퍼 완전 리셋
+    if (activeStrokesCount < lastBakedIdx) {
+        resetPaintingBuffer();
+    }
+
+    // [v1.02 하이브리드 가속 설계] 최신 1,500개를 제외한 과거 터치들은 백그라운드 버퍼에 박제
+    let targetBakeIdx = Math.max(0, activeStrokesCount - 1500);
+    if (targetBakeIdx > lastBakedIdx) {
+        for (let i = lastBakedIdx; i < targetBakeIdx; i++) {
+            renderSingleStroke(paintingBuffer, strokeSequence[i], 0, 1.0);
+        }
+        lastBakedIdx = targetBakeIdx;
+    }
+
+    // 메인 디스플레이 화면 출력
+    background('#f4f3ec'); 
+    image(paintingBuffer, 0, 0);
+
+    // 오디오 실시간 분석 및 최신 브러시 파형 왜곡 연동
     let wave = [];
     let bassEnergy = 0;
     if(isPlaying) {
@@ -248,72 +314,22 @@ function drawFrame(ct) {
         bassEnergy = fft.getEnergy("bass"); 
     }
 
-    let activeStrokesCount = Math.floor(strokeSequence.length * drawingProg);
-    
-    push();
-    if(currentStyle === 'oil') {
-        noStroke();
-        for(let i = 0; i < activeStrokesCount; i++) {
-            let s = strokeSequence[i];
-            let xOffset = 0, sizeOffset = 1.0;
-            
-            if(isPlaying && i > activeStrokesCount - 4000 && wave.length > 0) {
-                let wIdx = Math.floor(s.seed * (wave.length - 1));
-                xOffset = wave[wIdx] * (width * 0.06); 
-                sizeOffset = map(bassEnergy, 0, 255, 0.9, 1.8); 
-            }
+    let bassFactor = map(bassEnergy, 0, 255, 0.9, 1.8);
 
-            let bW = 18 * sizeOffset;
-            let bH = 6 * sizeOffset;
+    // 최신 에지 터치(1,500개)만 실시간 파형에 반응하도록 라이브 드로잉
+    for (let i = lastBakedIdx; i < activeStrokesCount; i++) {
+        let s = strokeSequence[i];
+        let xOffset = 0, sizeOffset = 1.0;
 
-            fill(s.r + random(-10,10), s.g + random(-10,10), s.b + random(-10,10), 230);
-            push();
-            translate(s.x + xOffset, s.y);
-            rotate(s.seed * TWO_PI + (xOffset * 0.02));
-            rect(-bW/2, -bH/2, bW, bH, 2);
-            pop();
+        if (isPlaying && wave.length > 0) {
+            let wIdx = Math.floor(s.seed * (wave.length - 1));
+            xOffset = wave[wIdx] * (width * 0.06); 
+            sizeOffset = bassFactor;
         }
-    } 
-    else if(currentStyle === 'watercolor') {
-        noStroke();
-        for(let i = 0; i < activeStrokesCount; i++) {
-            let s = strokeSequence[i];
-            let xOffset = 0, sizeOffset = 1.0;
-            
-            if(isPlaying && i > activeStrokesCount - 3000 && wave.length > 0) {
-                let wIdx = Math.floor(s.seed * (wave.length - 1));
-                xOffset = wave[wIdx] * (width * 0.08);
-                sizeOffset = map(bassEnergy, 0, 255, 1.0, 2.0);
-            }
-            
-            fill(s.r, s.g, s.b, 45); 
-            let rDiam = (32 * sizeOffset) * (0.8 + noise(i*0.01)*0.4);
-            ellipse(s.x + xOffset, s.y, rDiam, rDiam);
-        }
-    } 
-    else if(currentStyle === 'pencil') {
-        for(let i = 0; i < activeStrokesCount; i++) {
-            let s = strokeSequence[i];
-            let xOffset = 0;
-            
-            if(isPlaying && i > activeStrokesCount - 4000 && wave.length > 0) {
-                let wIdx = Math.floor(s.seed * (wave.length - 1));
-                xOffset = wave[wIdx] * (width * 0.05);
-            }
-
-            stroke(s.lum * 0.3, 140);
-            strokeWeight(1);
-            push();
-            translate(s.x + xOffset, s.y);
-            rotate(PI/4 + (s.seed * 0.2));
-            let lLen = map(s.lum, 0, 255, 15, 4);
-            line(-lLen, 0, lLen, 0);
-            pop();
-        }
+        renderSingleStroke(this, s, xOffset, sizeOffset);
     }
-    pop();
 
-    // [치명적 성능 오류 해결]: createGraphics 버퍼 누수 완벽 제거 및 메인 스트림 오버레이 직접 사양 결합
+    // 80%~100% 가려진 여백 은은한 페이드인 오버레이 완성 연출
     if(revealProg > 0) {
         push();
         imageMode(CENTER);
@@ -324,7 +340,7 @@ function drawFrame(ct) {
         pop();
     }
 
-    // 앤드류 루미스 비네트 섀도우 림 필터
+    // 루미스 Vignette 비네팅 그라데이션 매감
     let ctx = drawingContext;
     let cx = width / 2, cy = height / 2;
     let maxR = Math.max(width, height) * 0.7;
@@ -379,7 +395,6 @@ function togglePlayback() {
     }
 }
 
-// 브라우저 멜팅 현상을 방지하는 방어형 인코더 세션 빌드
 function startStudioRecording() {
     recordedChunks = [];
     let targetCanvas = document.querySelector('#canvasContainer canvas');
@@ -430,16 +445,4 @@ function seekStudioTime(v) {
     if(isPlaying) {
         loadedAudio.jump(targetSec);
     } else {
-        document.getElementById('timeCurrent').innerText = formatStudioTime(targetSec);
-        drawFrame(targetSec);
-    }
-}
-
-function formatStudioTime(s) {
-    let m = Math.floor(s / 60);
-    let sec = Math.floor(s % 60);
-    return `${nf(m, 2)}:${nf(sec, 2)}`;
-}
-</script>
-</body>
-</html>
+        document.getElementById('timeCurrent').innerText = formatStudioTime(targetSec
