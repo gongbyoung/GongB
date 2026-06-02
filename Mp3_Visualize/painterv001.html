@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>AUDIO-WAVE PAINTING STUDIO v1.06</title>
+<title>AUDIO-WAVE PAINTING STUDIO v1.07</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -24,7 +24,7 @@ h2 { font-size: 14px; letter-spacing: 3px; color: var(--accent); font-weight: 80
 .studio-btn:disabled { opacity: 0.2; cursor: not-allowed; }
 
 .file-btn { width: 100%; background: rgba(255,255,255,0.03); border: 1px dashed rgba(255,255,255,0.15); color: #ccc; padding: 12px; font-size: 11px; text-align: center; border-radius: 6px; cursor: pointer; display: block; }
-.file-btn.loaded { border-color: var(--accent); color: var(--accent); background: rgba(0,255,204,0.02); }
+.file-btn.loaded { border-color: var(--accent); color: var(--accent); background: rgba(0,0,0,0.02); }
 .file-input { display: none; }
 .num-input { background: #000; border: 1px solid rgba(255,255,255,0.1); color: var(--accent); font-size: 14px; font-weight: bold; padding: 10px; border-radius: 6px; text-align: center; width: 100%; font-family: monospace; }
 
@@ -33,7 +33,7 @@ h2 { font-size: 14px; letter-spacing: 3px; color: var(--accent); font-weight: 80
 .time-display.active { color: var(--accent); }
 .slider-timeline { flex: 1; accent-color: var(--accent); height: 4px; background: rgba(255,255,255,0.1); cursor: pointer; }
 
-#bakeOverlay { display: none; position: absolute; inset: 0; background: rgba(2,2,5,0.92); z-index: 1000; flex-direction: column; justify-content: center; align-items: center; gap: 12px; backdrop-filter: blur(4px); }
+#bakeOverlay { display: none; position: absolute; inset: 0; background: rgba(2,2,5,0.95); z-index: 1000; flex-direction: column; justify-content: center; align-items: center; gap: 12px; backdrop-filter: blur(4px); }
 .spinner { width: 40px; height: 40px; border: 3px solid rgba(0,255,204,0.1); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 #bakeText { font-size: 20px; font-weight: 900; letter-spacing: 4px; color: var(--accent); font-family: monospace; }
@@ -86,8 +86,8 @@ h2 { font-size: 14px; letter-spacing: 3px; color: var(--accent); font-weight: 80
 <div class="main-viewport">
     <div id="bakeOverlay">
         <div class="spinner"></div>
-        <div id="bakeText">BAKING 0%</div>
-        <div style="color: #666; font-size: 11px;">사물의 경계 구조를 연필 윤곽선과 확산 노드로 분해하고 있습니다.</div>
+        <div id="bakeText">ANALYZING 0%</div>
+        <div style="color: #666; font-size: 11px;">형태의 윤곽선과 확산 밀도를 계산하여 인간 화가의 드로잉 트랙을 구성 중입니다.</div>
     </div>
 
     <div class="canvas-zone" id="canvasContainer"></div>
@@ -126,7 +126,7 @@ function setup() {
 
 function loadTargetImage(files) {
     if(!files[0]) return;
-    document.getElementById('imgLabel').innerText = "⌛ LOADING IMAGE...";
+    document.getElementById('imgLabel').innerText = "⌛ ANALYZING IMAGE...";
     loadImage(URL.createObjectURL(files[0]), (img) => {
         targetImg = img;
         document.getElementById('imgLabel').innerText = "✅ " + files[0].name.substring(0, 12) + "...";
@@ -187,13 +187,13 @@ function resetPaintingBuffer() {
     lastBakedIdx = 0;
 }
 
-// [v1.06 혁신 개조] 정밀 엣지 스케치 선행 분석 및 안에서 밖으로 터지는 확산형 소팅 소스
+// [핵심 개조] 이미지를 선행 분석하여 경계선을 먼저 따고 색을 경계선부터 퍼트리는 엔진
 async function bakePaintingStrokes() {
     if(isBaking || !targetImg) return;
     isBaking = true;
     
     document.getElementById('bakeOverlay').style.display = 'flex';
-    document.getElementById('bakeText').innerText = `BAKING 0%`;
+    document.getElementById('bakeText').innerText = `ANALYZING 0%`;
     await new Promise(r => setTimeout(r, 50));
 
     strokeSequence = [];
@@ -205,10 +205,11 @@ async function bakePaintingStrokes() {
     let imgH = targetImg.height;
     let rScale = Math.max(width / imgW, height / imgH);
 
-    let totalSamples = 120000;
+    let totalSamples = 130000;
     let chunkSize = 30000;
     let tempStrokes = [];
 
+    // 1단계: 선행 이미지 분석 및 에지 맵 픽셀 마이닝
     for (let i = 0; i < totalSamples; i += chunkSize) {
         for (let j = 0; j < chunkSize && (i + j) < totalSamples; j++) {
             let rx = Math.floor(Math.random() * width);
@@ -224,7 +225,7 @@ async function bakePaintingStrokes() {
                 if (a >= 10) {
                     let lum = r * 0.299 + g * 0.587 + b * 0.114;
                     
-                    // 정밀 소벨 소프라노 경계선 스피드 연산 적용
+                    // 정밀 소벨 수평/수직 경계 강도 검출
                     let ixRight = Math.min(imgW - 1, ix + 2);
                     let iyDown = Math.min(imgH - 1, iy + 2);
                     let idxRight = (iy * imgW + ixRight) * 4;
@@ -239,36 +240,36 @@ async function bakePaintingStrokes() {
                 }
             }
         }
-        let progress = Math.floor(((i + chunkSize) / totalSamples) * 50);
-        document.getElementById('bakeText').innerText = `BAKING ${progress}%`;
-        await new Promise(r => setTimeout(r, 10));
+        let progress = Math.floor(((i + chunkSize) / totalSamples) * 60);
+        document.getElementById('bakeText').innerText = `ANALYZING ${progress}%`;
+        await new Promise(r => setTimeout(r, 50));
     }
 
-    // 아티스트 터치 타임라인 노드 분류 작업
+    // 2단계: 인간의 그리기 정통 순서로 시퀀스 소팅 (기계적 일괄 드로잉 차단)
     let sketchStrokes = [];
     let colorStrokes = [];
 
     tempStrokes.forEach(s => {
-        if(s.edgeScore > 35) {
-            sketchStrokes.push({ ...s, isSketch: true }); // 무조건 연필 형태 가이드선
+        if(s.edgeScore > 32) {
+            sketchStrokes.push({ ...s, isSketch: true }); // 오직 연필 가이드선
         }
-        colorStrokes.push({ ...s, isSketch: false }); // 지정 화풍 채색 노드
+        colorStrokes.push({ ...s, isSketch: false }); // 지정 화풍 채색 브러시
     });
 
-    // 지시사항 1: 연필 스케치는 공간 흐름(위->아래)에 맞춰 한 방향에서 시작하여 형성
-    sketchStrokes.sort((a, b) => (a.y * 1.5 + a.x) - (b.y * 1.5 + b.x));
+    // 법칙 1: 윤곽 스케치는 사방에서 동시에 나타나지 않고, 왼쪽에서 오른쪽, 위에서 아래로 손동작에 맞춰 순차 드로잉
+    sketchStrokes.sort((a, b) => (a.y * 1.4 + a.x) - (b.y * 1.4 + b.x));
 
-    // 지시사항 2: 색칠은 기계적이 아니라 경계선(High Edge)부터 무조건 먼저 칠해지고 외곽/평면으로 번짐
+    // 법칙 2: 색칠은 형태의 경계선(High Edge)부터 최우선으로 밀도 있게 칠하고 점차 배경/평면(Low Edge)으로 확산
     colorStrokes.sort((a, b) => b.edgeScore - a.edgeScore);
 
-    // 타임 스케치 노드 최종 정착 구조 매핑 (80% 가속 연출)
+    // 3단계: 시간의 80% 규칙에 맞춰 정교하게 드로잉 타임라인 배치
     strokeSequence = [];
     sketchStrokes.forEach((s, k) => {
-        s.targetProg = map(k, 0, sketchStrokes.length, 0.0, 0.25); // 0% ~ 25% 시간은 연필 윤곽선만 생성
+        s.targetProg = map(k, 0, sketchStrokes.length, 0.0, 0.30); // 0%~30% 구간: 형태 연필 가이드선 완성
         strokeSequence.push(s);
     });
     colorStrokes.forEach((s, k) => {
-        s.targetProg = map(k, 0, colorStrokes.length, 0.25, 0.80); // 25% ~ 80% 시간은 경계선에서 평면 외곽으로 확산 채색
+        s.targetProg = map(k, 0, colorStrokes.length, 0.30, 0.80); // 30%~80% 구간: 경계선부터 시작해 외곽으로 물들이는 채색
         strokeSequence.push(s);
     });
 
@@ -277,6 +278,7 @@ async function bakePaintingStrokes() {
     isBaking = false;
     document.getElementById('bakeOverlay').style.display = 'none';
     
+    // 로딩 즉시 80% 완성 상태의 선명한 프리뷰 표출 (경고 0개)
     if(!isPlaying) {
         let previewTime = paintingDuration * 0.8;
         document.getElementById('studioTimeline').value = 80;
@@ -285,53 +287,56 @@ async function bakePaintingStrokes() {
     }
 }
 
-function renderSingleStroke(g, s, xOffset, sizeOffset) {
+// [완벽 구조] 실제 본연의 위치(s.x, s.y)에 정밀 묘사 (S자 로봇 궤적 파괴 완료)
+function renderSingleStroke(g, s, xOffset, yOffset, sizeOffset) {
     let finalX = s.x + xOffset;
+    let finalY = s.y + yOffset;
+    let finalSize = sizeOffset;
     
-    // [픽스 요구사항] 경계 윤곽선은 스타일과 무관하게 무조건 정밀 연필 소묘선 고정
+    // 연필 윤곽선 선행 드로잉
     if (s.isSketch) {
         if (g) {
-            g.stroke(s.lum * 0.2, 160); g.strokeWeight(1); g.push();
-            g.translate(finalX, s.y); g.rotate(s.seed * TWO_PI); g.line(-6, 0, 6, 0); g.pop();
+            g.stroke(s.lum * 0.15, 150); g.strokeWeight(1); g.push();
+            g.translate(finalX, finalY); g.rotate(s.seed * TWO_PI); g.line(-6, 0, 6, 0); g.pop();
         } else {
-            stroke(s.lum * 0.2, 160); strokeWeight(1); push();
-            translate(finalX, s.y); rotate(s.seed * TWO_PI); line(-6, 0, 6, 0); pop();
+            stroke(s.lum * 0.15, 150); strokeWeight(1); push();
+            translate(finalX, finalY); rotate(s.seed * TWO_PI); line(-6, 0, 6, 0); pop();
         }
         return;
     }
 
-    // 메인 화풍별 채색 렌더러
+    // 지정 화풍 채색 세션
     if (currentStyle === 'oil') {
-        let bW = 18 * sizeOffset;
-        let bH = 6 * sizeOffset;
-        let rot = s.seed * TWO_PI + (xOffset * 0.02);
-        let r_v = s.r + random(-10, 10), g_v = s.g + random(-10, 10), b_v = s.b + random(-10, 10);
+        let bW = 18 * finalSize;
+        let bH = 6 * finalSize;
+        let rot = s.seed * TWO_PI + (xOffset * 0.05);
+        let r_v = s.r + random(-8, 8), g_v = s.g + random(-8, 8), b_v = s.b + random(-8, 8);
 
         if (g) {
-            g.noStroke(); g.fill(r_v, g_v, b_v, 230); g.push();
-            g.translate(finalX, s.y); g.rotate(rot); g.rect(-bW/2, -bH/2, bW, bH, 2); g.pop();
+            g.noStroke(); g.fill(r_v, g_v, b_v, 235); g.push();
+            g.translate(finalX, finalY); g.rotate(rot); g.rect(-bW/2, -bH/2, bW, bH, 2); g.pop();
         } else {
-            noStroke(); fill(r_v, g_v, b_v, 230); push();
-            translate(finalX, s.y); rotate(rot); rect(-bW/2, -bH/2, bW, bH, 2); pop();
+            noStroke(); fill(r_v, g_v, b_v, 235); push();
+            translate(finalX, finalY); rotate(rot); rect(-bW/2, -bH/2, bW, bH, 2); pop();
         }
     } 
     else if (currentStyle === 'watercolor') {
-        let rDiam = (32 * sizeOffset) * (0.8 + noise(s.seed * 150) * 0.4);
+        let rDiam = (34 * finalSize) * (0.8 + noise(s.seed * 180) * 0.4);
         if (g) {
-            g.noStroke(); g.fill(s.r, s.g, s.b, 45); g.ellipse(finalX, s.y, rDiam, rDiam);
+            g.noStroke(); g.fill(s.r, s.g, s.b, 45); g.ellipse(finalX, finalY, rDiam, rDiam);
         } else {
-            noStroke(); fill(s.r, s.g, s.b, 45); ellipse(finalX, s.y, rDiam, rDiam);
+            noStroke(); fill(s.r, s.g, s.b, 45); ellipse(finalX, finalY, rDiam, rDiam);
         }
     } 
     else if (currentStyle === 'pencil') {
-        let lLen = map(s.lum, 0, 255, 15, 4);
-        let rot = PI/4 + (s.seed * 0.2);
+        let lLen = map(s.lum, 0, 255, 16, 4);
+        let rot = PI/4 + (s.seed * 0.25);
         if (g) {
-            g.stroke(s.lum * 0.3, 140); g.strokeWeight(1); g.push();
-            g.translate(finalX, s.y); g.rotate(rot); g.line(-lLen, 0, lLen, 0); g.pop();
+            g.stroke(s.lum * 0.25, 135); g.strokeWeight(1); g.push();
+            g.translate(finalX, finalY); g.rotate(rot); g.line(-lLen, 0, lLen, 0); g.pop();
         } else {
-            stroke(s.lum * 0.3, 140); strokeWeight(1); push();
-            translate(finalX, s.y); rotate(rot); line(-lLen, 0, lLen, 0); pop();
+            stroke(s.lum * 0.25, 135); strokeWeight(1); push();
+            translate(finalX, finalY); rotate(rot); line(-lLen, 0, lLen, 0); pop();
         }
     }
 }
@@ -366,10 +371,11 @@ function drawFrame(ct) {
         resetPaintingBuffer();
     }
 
+    // 백그라운드 누적형 레이어 고속 렌더링 (지연 완치)
     let targetBakeIdx = Math.max(0, activeStrokesCount - 1500);
     if (targetBakeIdx > lastBakedIdx) {
         for (let i = lastBakedIdx; i < targetBakeIdx; i++) {
-            renderSingleStroke(paintingBuffer, strokeSequence[i], 0, 1.0);
+            renderSingleStroke(paintingBuffer, strokeSequence[i], 0, 0, 1.0);
         }
         lastBakedIdx = targetBakeIdx;
     }
@@ -377,42 +383,33 @@ function drawFrame(ct) {
     background('#f4f3ec'); 
     image(paintingBuffer, 0, 0);
 
+    // [리얼타임 주파수 매핑] 그림을 그리는 실시간 브러시 끝단(Live Edge)이 파형에 맞춰 진동
     let wave = [];
     let bassEnergy = 0;
-    let sweeps = 7;
-    let eraserSize = width * 0.22;
-
     if(isPlaying) {
         fft.analyze();
         wave = fft.waveform(); 
         bassEnergy = fft.getEnergy("bass"); 
     }
 
-    let bassFactor = map(bassEnergy, 0, 255, 0.9, 1.8);
+    let bassFactor = map(bassEnergy, 0, 255, 0.9, 1.7);
 
-    // [오타 완벽 차단 및 연동 활성화] 라이브 엣지 드로잉 루프
+    // 현재 그리는 1500개의 라이브 브러시 노드가 음악의 파형 모양대로 부르르 떨림
     for (let i = lastBakedIdx; i < activeStrokesCount; i++) {
         let s = strokeSequence[i];
-        let xOffset = 0, sizeOffset = 1.0;
+        let xOffset = 0, yOffset = 0, sizeOffset = 1.0;
 
         if (isPlaying && wave.length > 0) {
-            let t = s.targetProg; 
-            let curSweep = t * sweeps;
-
-            let leftBound = eraserSize * 0.4 + (noise(curSweep * 0.5, 0) - 0.5) * (width * 0.2);
-            let rightBound = width - eraserSize * 0.4 + (noise(curSweep * 0.5, 100) - 0.5) * (width * 0.2);
-            
             let wIdx = Math.floor(s.seed * (wave.length - 1));
-            let waveOffset = wave[wIdx] * (width * 0.06);
-            xOffset = map(Math.sin(curSweep * Math.PI - Math.PI/2), -1, 1, leftBound, rightBound) - s.x + waveOffset;
-            
-            let organicOffsetX = (noise(t * 10) - 0.5) * eraserSize * 0.2;
-            xOffset += organicOffsetX;
+            // 음악의 실시간 소리 파형 데이터(-1.0 ~ 1.0)에 의한 아티스틱한 떨림 오프셋
+            xOffset = wave[wIdx] * 12; 
+            yOffset = wave[(wIdx + 100) % wave.length] * 12; 
             sizeOffset = bassFactor;
         }
-        renderSingleStroke(null, s, xOffset, sizeOffset); 
+        renderSingleStroke(null, s, xOffset, yOffset, sizeOffset); 
     }
 
+    // 80~100% 구간 가려진 미세 실사 텍스처 페이드인 마감 규칙
     if(revealProg > 0) {
         push();
         imageMode(CENTER);
@@ -423,6 +420,7 @@ function drawFrame(ct) {
         pop();
     }
 
+    // 정통 앤드류 루미스 비네트 오버레이 마감
     let ctx = drawingContext;
     let cx = width / 2, cy = height / 2;
     let maxR = Math.max(width, height) * 0.7;
