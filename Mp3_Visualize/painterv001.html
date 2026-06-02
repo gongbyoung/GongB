@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>v1.16</title>
+<title>AUDIO-WAVE PAINTING STUDIO v1.16</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -23,22 +23,13 @@
 
 <div class="control-sidebar">
     <h2>Studio Settings</h2>
-    <div class="control-group">
-        <label>1. Target Image</label>
-        <input type="file" id="imgIn" accept="image/*" onchange="loadTargetImage(this.files)" class="file-btn">
-    </div>
-    <div class="control-group">
-        <label>2. Audio File</label>
-        <input type="file" id="audioIn" accept="audio/*" onchange="loadAudioFile(this.files)" class="file-btn">
-    </div>
-    <div class="control-group">
-        <label>3. Style (연필 → 채색)</label>
-        <div class="btn-grid-four">
-            <button class="studio-btn active" id="sPencil" onclick="changeStyle('pencil')">연필화</button>
-            <button class="studio-btn" id="sOil" onclick="changeStyle('oil')">유화</button>
-            <button class="studio-btn" id="sImp" onclick="changeStyle('impressionism')">인상파</button>
-            <button class="studio-btn" id="sSur" onclick="changeStyle('surrealism')">초현실</button>
-        </div>
+    <input type="file" id="imgIn" accept="image/*" onchange="loadTargetImage(this.files)" class="file-btn">
+    <input type="file" id="audioIn" accept="audio/*" onchange="loadAudioFile(this.files)" class="file-btn">
+    <div class="btn-grid-four">
+        <button class="studio-btn active" id="sPencil" onclick="changeStyle('pencil')">연필</button>
+        <button class="studio-btn" id="sOil" onclick="changeStyle('oil')">유화</button>
+        <button class="studio-btn" id="sImp" onclick="changeStyle('impressionism')">인상파</button>
+        <button class="studio-btn" id="sSur" onclick="changeStyle('surrealism')">초현실</button>
     </div>
     <button id="recBtn" onclick="togglePlayback()" style="width:100%; padding:14px; background:#ff3e81; color:#fff; border:none; cursor:pointer;" disabled>🔴 START DRAWING</button>
 </div>
@@ -57,7 +48,6 @@
 let targetImg, loadedAudio, fft;
 let isPlaying = false, isBaking = false, currentStyle = 'pencil', paintingDuration = 30;
 let strokeSequence = [], paintingBuffer, lastBakedIdx = 0;
-let mediaRecorder, recordedChunks = [];
 
 function setup() {
     let cnv = createCanvas(1120, 630);
@@ -67,28 +57,9 @@ function setup() {
     fft = new p5.FFT();
 }
 
-function loadTargetImage(files) {
-    if(!files[0]) return;
-    loadImage(URL.createObjectURL(files[0]), (img) => {
-        targetImg = img;
-        checkReadyState();
-    });
-}
-
-function loadAudioFile(files) {
-    if(!files[0]) return;
-    loadedAudio = loadSound(URL.createObjectURL(files[0]), () => {
-        document.getElementById('timeTotal').innerText = formatStudioTime(paintingDuration);
-        checkReadyState();
-    });
-}
-
-function checkReadyState() {
-    if(targetImg && loadedAudio) {
-        document.getElementById('recBtn').disabled = false;
-        bakePaintingStrokes();
-    }
-}
+function loadTargetImage(files) { loadImage(URL.createObjectURL(files[0]), img => { targetImg = img; checkReadyState(); }); }
+function loadAudioFile(files) { loadedAudio = loadSound(URL.createObjectURL(files[0]), () => { document.getElementById('timeTotal').innerText = formatStudioTime(paintingDuration); checkReadyState(); }); }
+function checkReadyState() { if(targetImg && loadedAudio) bakePaintingStrokes(); }
 
 function changeStyle(s) {
     currentStyle = s;
@@ -100,69 +71,73 @@ function changeStyle(s) {
 async function bakePaintingStrokes() {
     isBaking = true;
     document.getElementById('bakeOverlay').style.display = 'flex';
-    
     strokeSequence = [];
     paintingBuffer.background('#f4f3ec');
     lastBakedIdx = 0;
     
     targetImg.loadPixels();
     let d = targetImg.pixels;
-    let rScale = Math.max(width / targetImg.width, height / targetImg.height);
-    let tempNodes = [];
+    let rScale = Math.max(width/targetImg.width, height/targetImg.height);
 
-    // [로직] 엣지 기반 샘플링
     for(let i=0; i<80000; i++) {
         let rx = random(width), ry = random(height);
         let ix = Math.floor((rx - width/2)/rScale + targetImg.width/2);
         let iy = Math.floor((ry - height/2)/rScale + targetImg.height/2);
-        if(ix>=0 && ix<targetImg.width && iy>=0 && iy<targetImg.height) {
-            let pIdx = (iy * targetImg.width + ix) * 4;
-            if(d[pIdx+3] > 10) {
-                let edge = Math.abs(d[pIdx]-d[pIdx+4] || 0); // 간단 에지 감지
-                tempNodes.push({ x: rx, y: ry, r: d[pIdx], g: d[pIdx+1], b: d[pIdx+2], lum: (d[pIdx]*0.299 + d[pIdx+1]*0.587 + d[pIdx+2]*0.114), edge: edge, seed: random() });
-            }
+        let pIdx = (iy * targetImg.width + ix) * 4;
+        if(d[pIdx+3] > 10) {
+            let edge = Math.abs(d[pIdx]-d[pIdx+4] || 0);
+            strokeSequence.push({ x:rx, y:ry, r:d[pIdx], g:d[pIdx+1], b:d[pIdx+2], lum:d[pIdx]*0.3 + d[pIdx+1]*0.59 + d[pIdx+2]*0.11, edge:edge, seed:random(), targetProg: 0 });
         }
     }
 
-    let sketch = tempNodes.filter(s => s.edge > 20).sort((a,b) => b.edge - a.edge);
-    let color = tempNodes.filter(s => s.edge <= 20).sort((a,b) => b.edge - a.edge);
-
-    sketch.forEach((s, k) => { s.targetProg = map(k, 0, sketch.length, 0, 0.3); s.isSketch = true; strokeSequence.push(s); });
-    color.forEach((s, k) => { s.targetProg = map(k, 0, color.length, 0.3, 0.8); s.isSketch = false; strokeSequence.push(s); });
-
+    // [핵심] 연필 스케치 선행 -> 채색 순서 정렬
+    let sk = strokeSequence.filter(s => s.edge > 25).sort((a,b) => b.edge-a.edge);
+    let col = strokeSequence.filter(s => s.edge <= 25).sort((a,b) => b.edge-a.edge);
+    
+    strokeSequence = [];
+    sk.forEach((s, k) => { s.targetProg = map(k, 0, sk.length, 0, 0.3); s.isSketch = true; strokeSequence.push(s); });
+    col.forEach((s, k) => { s.targetProg = map(k, 0, col.length, 0.3, 0.8); s.isSketch = false; strokeSequence.push(s); });
+    
     isBaking = false;
     document.getElementById('bakeOverlay').style.display = 'none';
-}
-
-function renderStroke(g, s, xOffset, yOffset, size) {
-    let finalX = s.x + xOffset, finalY = s.y + yOffset;
-    if (s.isSketch) {
-        if(g) { g.stroke(s.lum*0.1, 150); g.line(finalX-5, finalY, finalX+5, finalY); }
-        else { stroke(s.lum*0.1, 150); line(finalX-5, finalY, finalX+5, finalY); }
-    } else {
-        if(g) { g.noStroke(); g.fill(s.r, s.g, s.b, 200); g.ellipse(finalX, finalY, 10*size, 10*size); }
-        else { noStroke(); fill(s.r, s.g, s.b, 200); ellipse(finalX, finalY, 10*size, 10*size); }
-    }
-}
-
-function drawFrame(ct) {
-    if(isBaking) return;
-    let prog = Math.min(1.0, ct / paintingDuration);
-    let active = strokeSequence.filter(s => s.targetProg <= prog);
-    
-    // 누적 버퍼 및 라이브 드로잉 구현... (v1.15와 동일 구조)
+    document.getElementById('recBtn').disabled = false;
 }
 
 function draw() {
-    if(!isPlaying) return;
-    drawFrame(loadedAudio.currentTime());
+    if(!isPlaying || isBaking) return;
+    let ct = loadedAudio.currentTime();
+    let prog = ct / paintingDuration;
+    
+    // 누적 버퍼 렌더링
+    let activeStrokes = strokeSequence.filter(s => s.targetProg <= prog);
+    activeStrokes.forEach((s, i) => {
+        if(i > lastBakedIdx) {
+            let wave = fft.waveform();
+            let xOff = (wave[i%1024] || 0) * 10;
+            renderStroke(paintingBuffer, s, xOff, 1.0);
+            lastBakedIdx = i;
+        }
+    });
+    image(paintingBuffer, 0, 0);
+    // [최종 페이드인]
+    if(prog > 0.8) {
+        tint(255, (prog-0.8)*500);
+        image(targetImg, 0, 0, width, height);
+    }
+}
+
+function renderStroke(g, s, xOff, size) {
+    g.push();
+    g.translate(s.x + xOff, s.y);
+    if(s.isSketch) { g.stroke(0, 150); g.line(-5, 0, 5, 0); }
+    else { g.noStroke(); g.fill(s.r, s.g, s.b, 200); g.ellipse(0, 0, 8*size, 8*size); }
+    g.pop();
 }
 
 function togglePlayback() {
     isPlaying = !isPlaying;
-    if(isPlaying) loadedAudio.play(); else loadedAudio.stop();
+    if(isPlaying) { loadedAudio.play(); } else { loadedAudio.stop(); }
 }
-
 function formatStudioTime(s) { return nf(floor(s/60), 2) + ":" + nf(floor(s%60), 2); }
 function seekStudioTime(v) { loadedAudio.jump((v/100)*paintingDuration); }
 </script>
