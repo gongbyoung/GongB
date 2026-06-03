@@ -2,103 +2,332 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>AUDIO-WAVE MASTER STUDIO v1.20</title>
+<title> v1.21</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
-    body { background: #0a0a0f; color: #fff; font-family: sans-serif; display: flex; height: 100vh; overflow: hidden; }
-    .sidebar { width: 350px; background: #12121a; padding: 20px; display: flex; flex-direction: column; gap: 15px; border-right: 1px solid #333; }
-    .main { flex: 1; display: flex; align-items: center; justify-content: center; }
-    .control-group { display: flex; flex-direction: column; gap: 5px; font-size: 12px; }
-    .studio-btn { border: 1px solid #444; color: white; padding: 8px; background: none; cursor: pointer; }
-    .studio-btn.active { border-color: #00ffcc; color: #00ffcc; background: #1a2a2a; }
+    *, *::before, *::after { box-sizing: border-box; }
+    body { background: #050508; color: #fff; font-family: -apple-system, sans-serif; display: flex; height: 100vh; margin: 0; overflow: hidden; }
+    .sidebar { width: 340px; background: #0f0f14; padding: 20px; display: flex; flex-direction: column; gap: 15px; border-right: 1px solid #222; overflow-y: auto; }
+    .main { flex: 1; display: flex; flex-direction: column; position: relative; }
+    .canvas-zone { flex: 1; display: flex; justify-content: center; align-items: center; overflow: hidden; }
+    
+    h2 { font-size: 14px; color: #00ffcc; letter-spacing: 2px; border-bottom: 1px solid #333; padding-bottom: 8px; margin: 0; }
+    .control-group { display: flex; flex-direction: column; gap: 6px; font-size: 11px; color: #aaa; }
+    .control-group label { display: flex; justify-content: space-between; align-items: center; }
+    .file-btn { border: 1px dashed #444; padding: 10px; cursor: pointer; color: #ccc; text-align: center; background: rgba(255,255,255,0.02); border-radius: 4px; }
+    
+    input[type=range] { width: 60%; accent-color: #00ffcc; }
+    input[type=number], select { background: #000; border: 1px solid #333; color: #00ffcc; padding: 4px; font-weight: bold; width: 60px; text-align: right; }
+    
+    .btn-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; }
+    .studio-btn { border: 1px solid #444; color: white; padding: 8px; background: none; cursor: pointer; font-size: 11px; border-radius: 4px; }
+    .studio-btn.active { border-color: #00ffcc; color: #00ffcc; background: rgba(0,255,204,0.1); }
+    
+    .player-bar { height: 60px; background: #0f0f14; border-top: 1px solid #222; display: flex; align-items: center; padding: 0 20px; gap: 15px; }
+    #bakeOverlay { display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.9); z-index: 1000; flex-direction: column; justify-content: center; align-items: center; color: #00ffcc; font-family: monospace; font-size: 18px; letter-spacing: 2px; }
 </style>
 </head>
 <body>
 <div class="sidebar">
     <h2>Studio Settings</h2>
-    <input type="file" id="imgIn" onchange="loadTarget(this.files)" class="file-btn">
-    <input type="file" id="audioIn" onchange="loadAudio(this.files)" class="file-btn">
+    
     <div class="control-group">
-        <label>비율: <select id="ratio" onchange="updateSettings()"><option value="1.77">16:9</option><option value="0.56">9:16</option></select></label>
-        <label>크기: <input type="range" id="scale" min="0.5" max="2" step="0.1" value="1" oninput="updateSettings()"></label>
-        <label>위치X: <input type="range" id="posX" min="-200" max="200" value="0" oninput="updateSettings()"></label>
-        <label>위치Y: <input type="range" id="posY" min="-200" max="200" value="0" oninput="updateSettings()"></label>
-        <label>밝기: <input type="range" id="light" min="50" max="150" value="100" oninput="updateSettings()"></label>
+        <span>1. 이미지 로딩 (구도/경계면 분석)</span>
+        <input type="file" id="imgIn" accept="image/*" onchange="loadTarget(this.files)" class="file-btn">
     </div>
-    <div class="btn-grid-four">
-        <button class="studio-btn active" id="sPencil" onclick="changeStyle('pencil')">연필</button>
-        <button class="studio-btn" id="sOil" onclick="changeStyle('oil')">유화</button>
+    
+    <div class="control-group">
+        <span>2. 음악 로딩 (파장/주파수 분석)</span>
+        <input type="file" id="audioIn" accept="audio/*" onchange="loadAudio(this.files)" class="file-btn">
     </div>
-    <button id="recBtn" onclick="togglePlayback()" style="padding:15px; background:#ff3e81; color:white; border:none; cursor:pointer;" disabled>🔴 START DRAWING</button>
+
+    <div class="control-group" style="border:1px solid #222; padding:10px; border-radius:4px; gap:10px;">
+        <span>3. 세부 옵션 체크</span>
+        <label>비율: 
+            <select id="ratioOpt" onchange="updateSettings()">
+                <option value="1.777">16:9</option>
+                <option value="0.562">9:16</option>
+            </select>
+        </label>
+        <label>크기: <input type="range" id="scaleOpt" min="0.5" max="2.5" step="0.1" value="1.0" oninput="updateSettings()"></label>
+        <label>위치 X: <input type="range" id="posXOpt" min="-500" max="500" value="0" step="10" oninput="updateSettings()"></label>
+        <label>위치 Y: <input type="range" id="posYOpt" min="-500" max="500" value="0" step="10" oninput="updateSettings()"></label>
+        <label>밝기: <input type="range" id="lightOpt" min="30" max="200" value="100" oninput="updateSettings()"></label>
+        <label>드로잉 시간(초): <input type="number" id="timeOpt" value="30" onchange="updateSettings()"></label>
+    </div>
+
+    <div class="control-group">
+        <span>7. 브러쉬 화풍 (단일 붓 채색)</span>
+        <div class="btn-grid">
+            <button class="studio-btn active" id="sBasic" onclick="changeStyle('basic')">베이직</button>
+            <button class="studio-btn" id="sOil" onclick="changeStyle('oil')">유화</button>
+            <button class="studio-btn" id="sImp" onclick="changeStyle('impressionism')">인상파</button>
+        </div>
+    </div>
+    
+    <button id="recBtn" onclick="togglePlayback()" style="margin-top:auto; padding:15px; background:#ff3e81; color:white; border:none; font-weight:bold; letter-spacing:1px; cursor:pointer; border-radius:4px;" disabled>🔴 START DRAWING</button>
 </div>
-<div class="main" id="canvasContainer"></div>
+
+<div class="main">
+    <div id="bakeOverlay"><div id="bakeText">ANALYZING PATHWAYS...</div></div>
+    <div class="canvas-zone" id="canvasContainer"></div>
+    <div class="player-bar">
+        <span id="timeCurrent" style="font-family:monospace; color:#888;">00:00</span>
+        <input type="range" id="timeline" style="flex:1; accent-color:#ff3e81;" value="0" min="0" max="100" step="0.1" oninput="seekTime(this.value)">
+        <span id="timeTotal" style="font-family:monospace; color:#888;">00:00</span>
+    </div>
+</div>
 
 <script>
-let targetImg, loadedAudio, fft, isPlaying = false;
-let style = 'pencil', settings = { ratio: 1.77, scale: 1, posX: 0, posY: 0, light: 100 }, strokeSequence = [];
+let targetImg, loadedAudio, fft, isPlaying = false, isBaking = false;
+let paintBuffer;
+let strokeSequence = [];
+let lastDrawnIdx = 0;
+let currentStyle = 'basic';
+let settings = { ratio: 1.777, scale: 1.0, x: 0, y: 0, light: 100, time: 30 };
+
+let mediaRecorder, recordedChunks = [];
 
 function setup() {
-    let cnv = createCanvas(800, 450);
+    let cnv = createCanvas(1120, 630); // 기본 16:9
     cnv.parent('canvasContainer');
+    paintBuffer = createGraphics(1120, 630);
+    paintBuffer.background('#f4f3ec');
     fft = new p5.FFT();
 }
 
 function updateSettings() {
-    settings.ratio = parseFloat(document.getElementById('ratio').value);
-    settings.scale = parseFloat(document.getElementById('scale').value);
-    settings.posX = parseInt(document.getElementById('posX').value);
-    settings.posY = parseInt(document.getElementById('posY').value);
-    settings.light = parseInt(document.getElementById('light').value);
-    if(targetImg) analyzeImage();
+    settings.ratio = parseFloat(document.getElementById('ratioOpt').value);
+    settings.scale = parseFloat(document.getElementById('scaleOpt').value);
+    settings.x = parseInt(document.getElementById('posXOpt').value);
+    settings.y = parseInt(document.getElementById('posYOpt').value);
+    settings.light = parseInt(document.getElementById('lightOpt').value);
+    settings.time = parseInt(document.getElementById('timeOpt').value);
+    
+    document.getElementById('timeTotal').innerText = formatTime(settings.time);
+    
+    let w = settings.ratio > 1 ? 1120 : 450;
+    let h = settings.ratio > 1 ? 630 : 800;
+    resizeCanvas(w, h);
+    paintBuffer = createGraphics(w, h);
+    paintBuffer.background('#f4f3ec');
+    
+    if(targetImg) buildSingleBrushPath();
 }
 
-function loadTarget(files) { loadImage(URL.createObjectURL(files[0]), img => { targetImg = img; analyzeImage(); }); }
+function loadTarget(files) { loadImage(URL.createObjectURL(files[0]), img => { targetImg = img; buildSingleBrushPath(); }); }
+function loadAudio(files) { loadedAudio = loadSound(URL.createObjectURL(files[0]), () => { document.getElementById('timeTotal').innerText = formatTime(settings.time); checkReady(); }); }
+function changeStyle(s) { currentStyle = s; document.querySelectorAll('.studio-btn').forEach(b => b.classList.remove('active')); document.getElementById('s'+s.charAt(0).toUpperCase()+s.slice(1)).classList.add('active'); if(targetImg) { paintBuffer.background('#f4f3ec'); lastDrawnIdx=0; drawFrame(loadedAudio ? loadedAudio.currentTime() : 0); } }
+function checkReady() { if(targetImg && loadedAudio) document.getElementById('recBtn').disabled = false; }
 
-async function analyzeImage() {
+// [핵심 로직] 이미지를 분석하여 경계면 -> 먼 곳으로 이어지는 '하나의 붓 궤적' 생성
+async function buildSingleBrushPath() {
+    if(!targetImg || isBaking) return;
+    isBaking = true;
+    document.getElementById('bakeOverlay').style.display = 'flex';
+    document.getElementById('bakeText').innerText = "EXTRACTING EDGES...";
+    await new Promise(r => setTimeout(r, 50));
+
+    paintBuffer.background('#f4f3ec');
+    lastDrawnIdx = 0;
     strokeSequence = [];
+    
     targetImg.loadPixels();
     let d = targetImg.pixels;
-    
-    // 경계선 추출 (Edge Score)
-    for(let y=0; y<targetImg.height; y+=2) {
-        for(let x=0; x<targetImg.width; x+=2) {
-            let p = (y*targetImg.width + x)*4;
-            let edge = abs(d[p]-d[p+4]||0) + abs(d[p+1]-d[p+5]||0);
-            strokeSequence.push({ x: x/targetImg.width*width + settings.posX, y: y/targetImg.height*height + settings.posY, r:d[p], g:d[p+1], b:d[p+2], edge: edge });
+    let rScale = Math.max(width / targetImg.width, height / targetImg.height) * settings.scale;
+    let rawNodes = [];
+
+    // 1. 이미지 전체 스캔하여 픽셀 정보 및 경계 강도(Edge) 산출
+    for(let i=0; i<60000; i++) {
+        let cx = random(width), cy = random(height);
+        // 사용자 Offset 반영 역계산
+        let ix = Math.floor((cx - width/2 - settings.x) / rScale + targetImg.width/2);
+        let iy = Math.floor((cy - height/2 - settings.y) / rScale + targetImg.height/2);
+
+        if (ix >= 0 && ix < targetImg.width-1 && iy >= 0 && iy < targetImg.height-1) {
+            let pIdx = (iy * targetImg.width + ix) * 4;
+            if (d[pIdx+3] > 10) { // 투명도 제외
+                let nextIdx = (iy * targetImg.width + (ix+1)) * 4;
+                let edge = abs(d[pIdx]-d[nextIdx]) + abs(d[pIdx+1]-d[nextIdx+1]); // 경계면 계산
+                let lum = d[pIdx]*0.3 + d[pIdx+1]*0.59 + d[pIdx+2]*0.11;
+                rawNodes.push({ x: cx, y: cy, r: d[pIdx], g: d[pIdx+1], b: d[pIdx+2], lum: lum, edge: edge });
+            }
         }
     }
-    // [핵심] 경계선이 높은 순으로 정렬 (경계부터 그리고 안에서 밖으로 채색)
-    strokeSequence.sort((a,b) => b.edge - a.edge);
-    document.getElementById('recBtn').disabled = false;
+
+    document.getElementById('bakeText').innerText = "BUILDING SINGLE PATH...";
+    await new Promise(r => setTimeout(r, 50));
+
+    // 2. 경계면(Edge)이 가장 높은 것부터 칠하도록 정렬 (핵심 요구사항: 경계면 -> 먼 쪽)
+    rawNodes.sort((a,b) => b.edge - a.edge);
+
+    // 3. 브러시가 캔버스 전역을 번쩍번쩍 뛰어다니지 않고 "하나의 이어지는 선"이 되도록 청크 단위 공간 정렬
+    let path = [];
+    let chunkSize = 1500;
+    for(let i=0; i<rawNodes.length; i+=chunkSize) {
+        let chunk = rawNodes.slice(i, i+chunkSize);
+        // 경계선 강도가 비슷한 그룹 내에서, 붓이 자연스럽게 이어지도록 좌표 정렬
+        chunk.sort((a,b) => (a.x + a.y) - (b.x + b.y)); 
+        path.push(...chunk);
+    }
+
+    // 4. 타임라인(0~100%)에 따른 작업 단계 할당
+    strokeSequence = path.map((node, i) => {
+        let prog = i / path.length;
+        let stage = '';
+        if(prog < 0.05) stage = 'layout';      // 불규칙 구도 잡기 (0~5%)
+        else if(prog < 0.35) stage = 'pencil'; // 연필 경계 드로잉 (5~35%)
+        else if(prog < 0.80) stage = 'color';  // 경계면 중심 채색 확산 (35~80%)
+        else stage = 'detail';                 // 전체 묘사 완성 (80~100%)
+        
+        return { ...node, stage: stage };
+    });
+
+    isBaking = false;
+    document.getElementById('bakeOverlay').style.display = 'none';
+    checkReady();
+    
+    // 로딩 즉시 프리뷰 렌더링
+    if(!isPlaying) {
+        document.getElementById('timeline').value = 80;
+        seekTime(80);
+    }
+}
+
+// [핵심] 단 하나의 브러시로 이전 좌표에서 현재 좌표로 '선(Line)'을 이어서 그리는 렌더러
+function renderSingleBrush(g, prevNode, currNode, waveOffset) {
+    let x1 = prevNode.x, y1 = prevNode.y;
+    let x2 = currNode.x + waveOffset, y2 = currNode.y + waveOffset; // 오디오 파장 움직임 반영
+
+    if (currNode.stage === 'layout') {
+        // 불규칙한 대형 구도선
+        g.stroke(0, 30); g.strokeWeight(2);
+        if(currNode.x > width/2) g.line(0, y2, width, y2);
+        else g.line(x2, 0, x2, height);
+    } 
+    else if (currNode.stage === 'pencil') {
+        // 연필 스케치 (가장 진한 경계면 위주)
+        g.stroke(currNode.lum * 0.2, 180); g.strokeWeight(1);
+        g.line(x1, y1, x2, y2);
+    } 
+    else {
+        // 채색 단계 (경계면에서 먼 평면 쪽으로 확산)
+        if (currentStyle === 'oil') {
+            g.stroke(currNode.r, currNode.g, currNode.b, 220);
+            g.strokeWeight(12 * settings.scale); // 두꺼운 유화 붓 터치
+            g.line(x1, y1, x2, y2);
+        } else if (currentStyle === 'impressionism') {
+            g.noStroke(); g.fill(currNode.r, currNode.g, currNode.b, 200);
+            g.ellipse(x2, y2, 10 * settings.scale, 10 * settings.scale); // 점묘 브러시
+        } else { // basic
+            g.stroke(currNode.r, currNode.g, currNode.b, 180);
+            g.strokeWeight(5 * settings.scale);
+            g.line(x1, y1, x2, y2);
+        }
+    }
+}
+
+function drawFrame(ct) {
+    if(isBaking || strokeSequence.length < 2) return;
+    
+    let prog = Math.min(1.0, ct / settings.time);
+    let targetIdx = Math.floor((strokeSequence.length - 1) * prog);
+
+    // 타임라인을 뒤로 돌렸을 경우 버퍼 리셋
+    if (targetIdx < lastDrawnIdx) {
+        paintBuffer.background('#f4f3ec');
+        lastDrawnIdx = 0;
+    }
+
+    // 음악 파장 분석
+    let wave = [];
+    if(isPlaying && fft) { fft.analyze(); wave = fft.waveform(); }
+
+    // 이전 인덱스부터 현재 타겟 인덱스까지 브러시가 끊기지 않고 주욱 밀고 나감
+    for(let i = max(1, lastDrawnIdx); i <= targetIdx; i++) {
+        let prev = strokeSequence[i-1];
+        let curr = strokeSequence[i];
+        let waveOff = 0;
+        
+        // 오디오 재생 중일 때만 브러시 끝단이 파장에 따라 떨림
+        if(isPlaying && wave.length > 0) {
+            waveOff = wave[i % 1024] * 15;
+        }
+        
+        renderSingleBrush(paintBuffer, prev, curr, waveOff);
+    }
+    lastDrawnIdx = targetIdx;
+
+    // 밝기 옵션 적용하여 메인 화면에 출력
+    background(244 * (settings.light/100), 243 * (settings.light/100), 236 * (settings.light/100));
+    push();
+    if(settings.light !== 100) tint(255, 255, 255, 255 * (settings.light/100));
+    image(paintBuffer, 0, 0);
+    pop();
+
+    // 100% 진행 시, 세부 묘사를 위해 원본 이미지의 디테일을 오버레이 (자연스러운 완성)
+    if(prog > 0.8) {
+        let detailAlpha = map(prog, 0.8, 1.0, 0, 255);
+        push();
+        imageMode(CENTER);
+        tint(255, detailAlpha);
+        let rScale = Math.max(width / targetImg.width, height / targetImg.height) * settings.scale;
+        image(targetImg, width/2 + settings.x, height/2 + settings.y, targetImg.width*rScale, targetImg.height*rScale);
+        pop();
+    }
 }
 
 function draw() {
-    if(!isPlaying || !targetImg) return;
+    if(!isPlaying || !loadedAudio) return;
     let ct = loadedAudio.currentTime();
-    let duration = 30; // 설정 시간
-    let prog = ct / duration;
-    let activeNodes = Math.floor(strokeSequence.length * prog);
+    if(ct >= settings.time) { togglePlayback(); seekTime(100); return; }
     
-    background(244 * (settings.light/100), 243 * (settings.light/100), 236 * (settings.light/100));
-    
-    for(let i=0; i<activeNodes; i++) {
-        let s = strokeSequence[i];
-        let wave = fft.waveform();
-        let x = s.x + (wave[i%1024]||0)*5;
-        
-        // 0~30%는 연필 윤곽선, 이후는 스타일 채색
-        if(prog < 0.3) {
-            stroke(0, 150); strokeWeight(1); line(x-5, s.y, x+5, s.y);
-        } else {
-            noStroke(); fill(s.r, s.g, s.b, 200); ellipse(x, s.y, 8*settings.scale, 8*settings.scale);
-        }
+    document.getElementById('timeCurrent').innerText = formatTime(ct);
+    document.getElementById('timeline').value = (ct / settings.time) * 100;
+    drawFrame(ct);
+}
+
+function togglePlayback() {
+    if(!loadedAudio || isBaking) return;
+    isPlaying = !isPlaying;
+    let btn = document.getElementById('recBtn');
+    if(isPlaying) {
+        loadedAudio.rate(1.0);
+        loadedAudio.play();
+        btn.innerText = "⏹ STOP & SAVE";
+        btn.style.background = "#00ffcc"; btn.style.color = "#000";
+        startRecording();
+    } else {
+        loadedAudio.stop();
+        btn.innerText = "🔴 START DRAWING";
+        btn.style.background = "#ff3e81"; btn.style.color = "#fff";
+        if(mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
     }
 }
 
-function loadAudio(files) { loadedAudio = loadSound(URL.createObjectURL(files[0])); }
-function changeStyle(s) { style = s; document.querySelectorAll('.studio-btn').forEach(b => b.classList.remove('active')); document.getElementById('s'+s.charAt(0).toUpperCase()+s.slice(1)).classList.add('active'); }
-function togglePlayback() { isPlaying = !isPlaying; isPlaying ? loadedAudio.play() : loadedAudio.stop(); }
+function startRecording() {
+    recordedChunks = [];
+    let stream = document.querySelector('#canvasContainer canvas').captureStream(30);
+    mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+    mediaRecorder.onstop = () => {
+        let a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob(recordedChunks, { type: 'video/webm' }));
+        a.download = `AudioArt_Sequence_${Date.now()}.webm`;
+        a.click();
+    };
+    mediaRecorder.start();
+}
+
+function seekTime(v) {
+    if(!loadedAudio || isBaking) return;
+    let targetSec = (parseFloat(v) / 100) * settings.time;
+    if(isPlaying) loadedAudio.jump(targetSec);
+    else { document.getElementById('timeCurrent').innerText = formatTime(targetSec); drawFrame(targetSec); }
+}
+
+function formatTime(s) { return nf(floor(s/60), 2) + ":" + nf(floor(s%60), 2); }
 </script>
 </body>
 </html>
