@@ -2,144 +2,107 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>AUDIO-WAVE PAINTING STUDIO v1.16</title>
+<title>v1.17</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
-    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-    :root { --bg: #0a0a0f; --panel: #12121a; --accent: #00ffcc; --text: #ffffff; --border: rgba(255,255,255,0.08); }
-    body { background: var(--bg); color: var(--text); font-family: sans-serif; height: 100vh; overflow: hidden; display: flex; }
-    .control-sidebar { width: 380px; background: var(--panel); border-right: 1px solid var(--border); padding: 25px; display: flex; flex-direction: column; gap: 20px; }
-    .main-viewport { flex: 1; display: flex; flex-direction: column; background: #020205; position: relative; }
-    .canvas-zone { flex: 1; display: flex; justify-content: center; align-items: center; padding: 20px; }
-    .studio-btn { background: transparent; border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 10px; font-size: 11px; font-weight: bold; border-radius: 6px; cursor: pointer; }
-    .studio-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(0,255,204,0.05); }
-    .file-btn { border: 1px dashed rgba(255,255,255,0.15); color: #ccc; padding: 12px; text-align: center; border-radius: 6px; cursor: pointer; display: block; margin-top: 5px; }
-    .player-bar { height: 70px; background: var(--panel); border-top: 1px solid var(--border); display: flex; align-items: center; padding: 0 30px; gap: 20px; }
-    #bakeOverlay { display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.95); z-index: 1000; flex-direction: column; justify-content: center; align-items: center; color: var(--accent); }
+    body { background: #0a0a0f; color: #fff; font-family: sans-serif; display: flex; height: 100vh; overflow: hidden; }
+    .sidebar { width: 350px; background: #12121a; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
+    .main { flex: 1; display: flex; align-items: center; justify-content: center; }
+    .studio-btn { border: 1px solid #333; color: white; padding: 10px; background: none; cursor: pointer; }
+    .studio-btn.active { border-color: #00ffcc; color: #00ffcc; }
 </style>
 </head>
 <body>
-
-<div class="control-sidebar">
+<div class="sidebar">
     <h2>Studio Settings</h2>
-    <input type="file" id="imgIn" accept="image/*" onchange="loadTargetImage(this.files)" class="file-btn">
-    <input type="file" id="audioIn" accept="audio/*" onchange="loadAudioFile(this.files)" class="file-btn">
-    <div class="btn-grid-four">
+    <input type="file" id="imgIn" onchange="loadTarget(this.files)" class="file-btn">
+    <input type="file" id="audioIn" onchange="loadAudio(this.files)" class="file-btn">
+    <div class="btn-grid">
         <button class="studio-btn active" id="sPencil" onclick="changeStyle('pencil')">연필</button>
         <button class="studio-btn" id="sOil" onclick="changeStyle('oil')">유화</button>
         <button class="studio-btn" id="sImp" onclick="changeStyle('impressionism')">인상파</button>
-        <button class="studio-btn" id="sSur" onclick="changeStyle('surrealism')">초현실</button>
     </div>
-    <button id="recBtn" onclick="togglePlayback()" style="width:100%; padding:14px; background:#ff3e81; color:#fff; border:none; cursor:pointer;" disabled>🔴 START DRAWING</button>
+    <button id="recBtn" onclick="togglePlayback()" style="padding:15px; background:#ff3e81; color:white; border:none; cursor:pointer;" disabled>🔴 START DRAWING</button>
 </div>
-
-<div class="main-viewport">
-    <div id="bakeOverlay"><div id="bakeText">ANALYZING...</div></div>
-    <div class="canvas-zone" id="canvasContainer"></div>
-    <div class="player-bar">
-        <span id="timeCurrent">00:00</span>
-        <input type="range" id="studioTimeline" style="flex:1" value="0" min="0" max="100" step="0.1" oninput="seekStudioTime(this.value)">
-        <span id="timeTotal">00:00</span>
-    </div>
-</div>
+<div class="main" id="canvasContainer"></div>
 
 <script>
-let targetImg, loadedAudio, fft;
-let isPlaying = false, isBaking = false, currentStyle = 'pencil', paintingDuration = 30;
-let strokeSequence = [], paintingBuffer, lastBakedIdx = 0;
+let targetImg, loadedAudio, fft, isPlaying = false;
+let currentStyle = 'pencil', paintingDuration = 30;
+let fullPath = []; // 붓이 하나로 이어진 궤적 저장소
 
 function setup() {
-    let cnv = createCanvas(1120, 630);
+    let cnv = createCanvas(800, 600);
     cnv.parent('canvasContainer');
-    paintingBuffer = createGraphics(1120, 630);
-    paintingBuffer.background('#f4f3ec');
     fft = new p5.FFT();
+    background('#f4f3ec');
 }
 
-function loadTargetImage(files) { loadImage(URL.createObjectURL(files[0]), img => { targetImg = img; checkReadyState(); }); }
-function loadAudioFile(files) { loadedAudio = loadSound(URL.createObjectURL(files[0]), () => { document.getElementById('timeTotal').innerText = formatStudioTime(paintingDuration); checkReadyState(); }); }
-function checkReadyState() { if(targetImg && loadedAudio) bakePaintingStrokes(); }
-
-function changeStyle(s) {
-    currentStyle = s;
-    document.querySelectorAll('.studio-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById('s'+s.charAt(0).toUpperCase()+s.slice(1)).classList.add('active');
-    if(targetImg) bakePaintingStrokes();
+function loadTarget(files) {
+    loadImage(URL.createObjectURL(files[0]), img => { 
+        targetImg = img;
+        generateContinuousPath();
+    });
 }
 
-async function bakePaintingStrokes() {
-    isBaking = true;
-    document.getElementById('bakeOverlay').style.display = 'flex';
-    strokeSequence = [];
-    paintingBuffer.background('#f4f3ec');
-    lastBakedIdx = 0;
-    
+// [핵심] 한 손으로 그리듯 하나로 이어진 선 생성 (Nearest Neighbor Pathing)
+async function generateContinuousPath() {
     targetImg.loadPixels();
     let d = targetImg.pixels;
-    let rScale = Math.max(width/targetImg.width, height/targetImg.height);
-
-    for(let i=0; i<80000; i++) {
-        let rx = random(width), ry = random(height);
-        let ix = Math.floor((rx - width/2)/rScale + targetImg.width/2);
-        let iy = Math.floor((ry - height/2)/rScale + targetImg.height/2);
-        let pIdx = (iy * targetImg.width + ix) * 4;
-        if(d[pIdx+3] > 10) {
-            let edge = Math.abs(d[pIdx]-d[pIdx+4] || 0);
-            strokeSequence.push({ x:rx, y:ry, r:d[pIdx], g:d[pIdx+1], b:d[pIdx+2], lum:d[pIdx]*0.3 + d[pIdx+1]*0.59 + d[pIdx+2]*0.11, edge:edge, seed:random(), targetProg: 0 });
-        }
+    let nodes = [];
+    
+    // 외곽선 경계 위주로 샘플링
+    for(let i=0; i<5000; i++) {
+        let x = random(targetImg.width), y = random(targetImg.height);
+        let pIdx = (Math.floor(y)*targetImg.width + Math.floor(x))*4;
+        if(d[pIdx+3] > 100) nodes.push({ x: x/targetImg.width*width, y: y/targetImg.height*height, r:d[pIdx], g:d[pIdx+1], b:d[pIdx+2], lum:d[pIdx]*0.3+d[pIdx+1]*0.59+d[pIdx+2]*0.11 });
     }
 
-    // [핵심] 연필 스케치 선행 -> 채색 순서 정렬
-    let sk = strokeSequence.filter(s => s.edge > 25).sort((a,b) => b.edge-a.edge);
-    let col = strokeSequence.filter(s => s.edge <= 25).sort((a,b) => b.edge-a.edge);
-    
-    strokeSequence = [];
-    sk.forEach((s, k) => { s.targetProg = map(k, 0, sk.length, 0, 0.3); s.isSketch = true; strokeSequence.push(s); });
-    col.forEach((s, k) => { s.targetProg = map(k, 0, col.length, 0.3, 0.8); s.isSketch = false; strokeSequence.push(s); });
-    
-    isBaking = false;
-    document.getElementById('bakeOverlay').style.display = 'none';
+    // [로직] 시작점부터 가장 가까운 점을 차례대로 연결 (하나의 브러시 궤적)
+    let path = [];
+    let curr = nodes.shift();
+    while(curr) {
+        path.push(curr);
+        let nearestIdx = 0, minDist = Infinity;
+        for(let i=0; i<Math.min(nodes.length, 50); i++) {
+            let distSq = dist(curr.x, curr.y, nodes[i].x, nodes[i].y);
+            if(distSq < minDist) { minDist = distSq; nearestIdx = i; }
+        }
+        curr = nodes.splice(nearestIdx, 1)[0];
+    }
+    strokeSequence = path;
     document.getElementById('recBtn').disabled = false;
 }
 
 function draw() {
-    if(!isPlaying || isBaking) return;
+    if(!isPlaying) return;
     let ct = loadedAudio.currentTime();
     let prog = ct / paintingDuration;
+    let activeIdx = Math.floor(strokeSequence.length * prog);
     
-    // 누적 버퍼 렌더링
-    let activeStrokes = strokeSequence.filter(s => s.targetProg <= prog);
-    activeStrokes.forEach((s, i) => {
-        if(i > lastBakedIdx) {
-            let wave = fft.waveform();
-            let xOff = (wave[i%1024] || 0) * 10;
-            renderStroke(paintingBuffer, s, xOff, 1.0);
-            lastBakedIdx = i;
+    // 하나의 브러시로 궤적을 따라 그리기
+    let wave = fft.waveform();
+    for(let i = max(0, activeIdx-5); i < activeIdx; i++) {
+        let s = strokeSequence[i];
+        let x = s.x + (wave[i%1024] || 0) * 5;
+        let y = s.y;
+        
+        // 0~30%는 연필 스케치 선, 그 이후는 스타일 채색
+        if(prog < 0.3) {
+            stroke(0, 150); strokeWeight(1); line(strokeSequence[max(0,i-1)].x, strokeSequence[max(0,i-1)].y, x, y);
+        } else {
+            noStroke(); fill(s.r, s.g, s.b, 200); ellipse(x, y, 8, 8);
         }
-    });
-    image(paintingBuffer, 0, 0);
-    // [최종 페이드인]
-    if(prog > 0.8) {
-        tint(255, (prog-0.8)*500);
-        image(targetImg, 0, 0, width, height);
     }
-}
-
-function renderStroke(g, s, xOff, size) {
-    g.push();
-    g.translate(s.x + xOff, s.y);
-    if(s.isSketch) { g.stroke(0, 150); g.line(-5, 0, 5, 0); }
-    else { g.noStroke(); g.fill(s.r, s.g, s.b, 200); g.ellipse(0, 0, 8*size, 8*size); }
-    g.pop();
 }
 
 function togglePlayback() {
     isPlaying = !isPlaying;
-    if(isPlaying) { loadedAudio.play(); } else { loadedAudio.stop(); }
+    isPlaying ? loadedAudio.play() : loadedAudio.stop();
 }
-function formatStudioTime(s) { return nf(floor(s/60), 2) + ":" + nf(floor(s%60), 2); }
-function seekStudioTime(v) { loadedAudio.jump((v/100)*paintingDuration); }
+function loadAudio(files) { loadedAudio = loadSound(URL.createObjectURL(files[0])); }
+function changeStyle(s) { currentStyle = s; }
 </script>
 </body>
 </html>
