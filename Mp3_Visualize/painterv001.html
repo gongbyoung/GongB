@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>v1.26</title>
+<title>v1.27</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -138,7 +138,6 @@ function changeStyle(s) {
     } 
 }
 
-// [핵심 1] 캔버스의 특정 기준점으로부터 반시계 방향으로 회전하며 그려나가는 경로 생성 알고리즘
 async function buildArtistPathways() {
     if(!targetImg || isBaking) return;
     isBaking = true;
@@ -182,16 +181,15 @@ async function buildArtistPathways() {
         }
     }
 
-    // [요구사항 반영] 지정된 시작 위치 계산
     let startX = (minX + maxX) / 2, startY = (minY + maxY) / 2;
     if(settings.startPos === 'left') startX = minX + (maxX - minX) * 0.1;
     else if(settings.startPos === 'right') startX = maxX - (maxX - minX) * 0.1;
     else if(settings.startPos === 'top') startY = minY + (maxY - minY) * 0.1;
     else if(settings.startPos === 'bottom') startY = maxY - (maxY - minY) * 0.1;
 
-    // 회전 각도(Angle) 및 거리(Rad) 계산
     let calcRadial = (n) => {
-        n.angle = Math.atan2(n.y - startY, n.x - startX); // -PI ~ PI
+        n.angle = Math.atan2(n.y - startY, n.x - startX);
+        if (n.angle < 0) n.angle += TWO_PI; // 0 ~ 2PI로 정규화
         n.rad = dist(startX, startY, n.x, n.y);
     };
     sketchNodes.forEach(calcRadial);
@@ -200,22 +198,23 @@ async function buildArtistPathways() {
     document.getElementById('bakeText').innerText = "회전 궤적 및 확산 렌더링 중...";
     await new Promise(r => setTimeout(r, 50));
 
-    // 반시계 방향 정렬 (각도가 큰 순서대로)
+    // [핵심 1] 레이더 현상 완치: '쓱싹쓱싹' 지그재그(Hatching) 알고리즘
+    // 각도를 잘게 썰어(slice) 짝수 번째 구간은 안에서 밖으로, 홀수 번째 구간은 밖에서 안으로 왕복합니다.
     sketchNodes.sort((a, b) => {
-        let angA = Math.floor(a.angle * 8); 
-        let angB = Math.floor(b.angle * 8);
-        if(angA !== angB) return angB - angA; 
-        return a.rad - b.rad; // 같은 각도면 안에서 밖으로
+        let binA = Math.floor(a.angle * 25); 
+        let binB = Math.floor(b.angle * 25);
+        if(binA !== binB) return binB - binA; // 반시계 방향 진행
+        return (binA % 2 === 0) ? (a.rad - b.rad) : (b.rad - a.rad); // 지그재그 왕복
     });
 
+    // [핵심 2] 채색은 경계면부터 칠하고 이어서 들어감
     colorNodes.sort((a, b) => {
-        let angA = Math.floor(a.angle * 5);
-        let angB = Math.floor(b.angle * 5);
-        if(angA !== angB) return angB - angA;
-        return b.edge - a.edge; // 경계선 우선 채색
+        let binA = Math.floor(a.angle * 15);
+        let binB = Math.floor(b.angle * 15);
+        if(binA !== binB) return binB - binA; 
+        return b.edge - a.edge; // 경계선(높은 엣지)부터 먼 쪽(낮은 엣지)으로
     });
 
-    // 타임라인 매핑 (인위적 구도선 완전 삭제, 스케치가 0~30% 차지)
     let totS = sketchNodes.length, totC = colorNodes.length;
     sketchNodes.forEach((s, i) => { s.prog = map(i, 0, totS, 0.0, 0.30); s.stage='sketch'; strokeSequence.push(s); });
     colorNodes.forEach((s, i) => { s.prog = map(i, 0, totC, 0.30, 0.80); s.stage='color'; strokeSequence.push(s); });
@@ -230,60 +229,52 @@ async function buildArtistPathways() {
     }
 }
 
-// [핵심 2] 노이즈를 곁들인 부드러운 스케치 곡선 (직선 배제)
-function drawNoisyCurve(g, prev, curr, energy) {
-    let dSq = dist(prev.x, prev.y, curr.x, curr.y);
-    if (dSq > 40) return; // 거리가 멀면 붓을 떼고 이동함 (거미줄 방지)
-
-    g.stroke(curr.lum * 0.2, 160); 
-    g.strokeWeight(1);
-    g.noFill();
-
-    // 음악의 볼륨(energy)이 크면 선이 더 다이나믹하게 휨
-    let noiseFactor = map(energy, 0, 255, 5, 25);
-    let midX = (prev.x + curr.x) / 2 + (noise(prev.x*0.01, noiseZ) - 0.5) * noiseFactor;
-    let midY = (prev.y + curr.y) / 2 + (noise(prev.y*0.01, noiseZ) - 0.5) * noiseFactor;
-    noiseZ += 0.05;
-
-    g.beginShape();
-    g.vertex(prev.x, prev.y);
-    g.quadraticVertex(midX, midY, curr.x, curr.y); // 부드러운 베지어 곡선
-    g.endShape();
-}
-
 function drawBrushStroke(g, prev, curr, energy) {
-    let dSq = dist(prev.x, prev.y, curr.x, curr.y);
-    let waveOff = map(energy, 0, 255, 0, 15) * (noise(curr.x) - 0.5); // 파장에 따른 미세 떨림
+    let d = dist(prev.x, prev.y, curr.x, curr.y);
+    
+    // [핵심 3] 도트 프린터 및 거미줄 현상 원천 차단
+    // 거리가 30픽셀 이상이면 붓을 공중으로 뗀 것. 어떠한 선(line)이나 점(point)도 찍지 않습니다.
+    if (d > 30) return; 
+
+    let waveOff = map(energy, 0, 255, 0, 8) * (noise(curr.x * 0.1) - 0.5);
     let x2 = curr.x + waveOff, y2 = curr.y + waveOff;
 
     if (curr.stage === 'sketch') {
-        drawNoisyCurve(g, prev, {x: x2, y: y2, lum: curr.lum}, energy);
+        g.stroke(curr.lum * 0.2, 180); 
+        g.strokeWeight(1);
+        g.noFill();
+
+        // [핵심 4] 부드러운 곡선 노이즈 베지어 (직선 배제)
+        let noiseFactor = map(energy, 0, 255, 2, 10);
+        let midX = (prev.x + x2) / 2 + (noise(prev.x*0.02, noiseZ) - 0.5) * noiseFactor;
+        let midY = (prev.y + y2) / 2 + (noise(prev.y*0.02, noiseZ) - 0.5) * noiseFactor;
+        noiseZ += 0.05;
+
+        g.beginShape();
+        g.vertex(prev.x, prev.y);
+        g.quadraticVertex(midX, midY, x2, y2); 
+        g.endShape();
     } 
     else {
-        // 음악이 빠르고 강할수록 붓 크기도 약간 팽창
         let baseSize = map(curr.edge, 0, 40, 10, 2) * settings.scale; 
         let brushSize = constrain(baseSize + map(energy, 0, 255, 0, 5), 2, 18);
 
         if (currentStyle === 'oil') {
             g.stroke(curr.r, curr.g, curr.b, 220); g.strokeWeight(brushSize);
-            if (dSq < 30) g.line(prev.x, prev.y, x2, y2);
-            else g.ellipse(x2, y2, brushSize);
+            g.line(prev.x, prev.y, x2, y2); // 오직 이어지는 선으로만 채색
         } else if (currentStyle === 'impressionism') {
             g.noStroke(); g.fill(curr.r, curr.g, curr.b, 200);
-            g.ellipse(x2, y2, brushSize);
+            g.ellipse(x2, y2, brushSize); // 인상파 특유의 점묘 (거리가 가까울 때만)
         } else {
             g.stroke(curr.r, curr.g, curr.b, 160); g.strokeWeight(brushSize * 0.5);
-            if (dSq < 20) g.line(prev.x, prev.y, x2, y2);
-            else g.point(x2, y2);
+            g.line(prev.x, prev.y, x2, y2);
         }
     }
 }
 
-// [핵심 3] 오디오 파장에 맞춰 그리는 속도를 제어 (쭉쭉 그리고, 천천히 그리고)
 function drawFrame(ct) {
     if(isBaking || strokeSequence.length < 2) return;
     
-    // 사용자가 임의로 탐색바를 조작했는지 확인
     let isScrubbing = Math.abs(ct - lastTime) > 0.5;
     lastTime = ct;
 
@@ -292,23 +283,20 @@ function drawFrame(ct) {
 
     if (isScrubbing || expectedIdx < lastDrawnIdx) {
         paintBuffer.background('#f4f3ec');
-        lastDrawnIdx = 0; // 버퍼 리셋 후 따라잡기
+        lastDrawnIdx = 0; 
     }
 
-    // 오디오 에너지(볼륨) 분석
     let energy = 0;
     if(isPlaying && fft) { 
         fft.analyze(); 
-        energy = fft.getEnergy("bass") * 0.5 + fft.getEnergy("mid") * 0.5; // 0 ~ 255
+        energy = fft.getEnergy("bass") * 0.5 + fft.getEnergy("mid") * 0.5; 
     }
 
-    // 에너지가 높으면 한 번에 많은 노드를 그림(쭉쭉), 낮으면 조금만 그림(천천히)
-    let speedFactor = isPlaying ? map(energy, 0, 255, 0.05, 1.0) : 1.0; 
+    // 오디오 가속 엔진 (파장에 맞춰 템포 조절)
+    let speedFactor = isPlaying ? map(energy, 0, 255, 0.1, 1.0) : 1.0; 
     let gap = expectedIdx - lastDrawnIdx;
-    
-    // 그릴 스텝 계산 (최소 1, 갭에 비례하여 동적 가속)
     let step = Math.max(1, Math.floor(gap * speedFactor));
-    if (gap <= 0) step = 0; // 이미 다 그렸으면 대기
+    if (gap <= 0) step = 0; 
 
     let drawUpToIdx = Math.min(strokeSequence.length - 1, lastDrawnIdx + step);
 
