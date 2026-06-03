@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title> v1.24</title>
+<title>v1.25</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -65,7 +65,7 @@
 </div>
 
 <div class="main">
-    <div id="loader"><div id="bakeText">이미지 구도 분석 중...</div></div>
+    <div id="loader"><div id="bakeText">아티스트 궤적 분석 중...</div></div>
     <div class="canvas-zone" id="canvasContainer"></div>
     <div class="player-bar">
         <span id="timeCurrent" style="font-family:monospace; color:#888;">00:00</span>
@@ -81,6 +81,9 @@ let strokeSequence = [];
 let lastDrawnIdx = 0;
 let currentStyle = 'pencil';
 let settings = { ratio: 1.777, scale: 1.0, x: 0, y: 0, light: 100, time: 30 };
+
+// 노이즈 시드를 위한 변수
+let noiseZ = 0;
 
 function setup() {
     let cnv = createCanvas(1120, 630);
@@ -126,11 +129,12 @@ function changeStyle(s) {
     } 
 }
 
+// [핵심 1] 프린터 스캔(격자 분할) 삭제 -> 중앙 기준 반시계 방향 회전 추출
 async function buildArtistPathways() {
     if(!targetImg || isBaking) return;
     isBaking = true;
     document.getElementById('loader').style.display = 'flex';
-    document.getElementById('bakeText').innerText = "1. 형태 및 윤곽선 스캔 중...";
+    document.getElementById('bakeText').innerText = "1. 반시계 방향 형태 분석 중...";
     await new Promise(r => setTimeout(r, 50));
 
     paintBuffer.background('#f4f3ec');
@@ -143,8 +147,9 @@ async function buildArtistPathways() {
     let rScale = Math.max(width / tw, height / th) * settings.scale;
 
     let sketchNodes = [], colorNodes = [];
+    let minX = width, maxX = 0, minY = height, maxY = 0;
 
-    // 1. 전체 픽셀 샘플링
+    // 샘플링
     for(let i=0; i<60000; i++) {
         let cx = random(width), cy = random(height);
         let ix = Math.floor((cx - width/2 - settings.x) / rScale + tw/2);
@@ -160,44 +165,54 @@ async function buildArtistPathways() {
                 
                 let node = { x: cx, y: cy, r: d[p], g: d[p+1], b: d[p+2], lum: lum, edge: edge };
                 
+                if(cx < minX) minX = cx; if(cx > maxX) maxX = cx;
+                if(cy < minY) minY = cy; if(cy > maxY) maxY = cy;
+
                 if(edge > 35) sketchNodes.push(node);
                 else colorNodes.push(node);
             }
         }
     }
 
-    // [핵심 수정] 2. 구도 러프 스케치: 좌표를 수학적으로 긋는 대신, 추출된 실제 이미지의 외곽선(sketchNodes) 중 일부를 추출하여 부드럽게 연결
-    let layoutNodes = [];
-    let step = Math.max(1, Math.floor(sketchNodes.length / 250)); // 대략 250개의 주요 포인트 추출
-    for(let i=0; i<sketchNodes.length; i+=step) {
-        layoutNodes.push({ ...sketchNodes[i] });
-    }
-    // 공간적으로 자연스럽게 이어지도록 청크 정렬
-    layoutNodes.sort((a, b) => {
-        let chunkA = Math.floor(a.y/60)*100 + Math.floor(a.x/60);
-        let chunkB = Math.floor(b.y/60)*100 + Math.floor(b.x/60);
-        return chunkA - chunkB;
+    // 좌측 중앙점(Left Center) 계산
+    let leftCenterX = minX + (maxX - minX) * 0.2; 
+    let midY = (minY + maxY) / 2;
+
+    // 수학 각도(Angle) 계산하여 반시계 방향으로 그리기 위한 준비
+    sketchNodes.forEach(n => {
+        n.angle = Math.atan2(n.y - midY, n.x - leftCenterX); // -PI ~ PI
+        n.rad = dist(leftCenterX, midY, n.x, n.y); // 중심으로부터의 거리
     });
 
-    document.getElementById('bakeText').innerText = "2. 채색 확산 매핑 중...";
+    colorNodes.forEach(n => {
+        n.angle = Math.atan2(n.y - midY, n.x - leftCenterX);
+        n.rad = dist(leftCenterX, midY, n.x, n.y);
+    });
+
+    document.getElementById('bakeText').innerText = "2. 붓 궤적 렌더링 중...";
     await new Promise(r => setTimeout(r, 50));
 
-    // 3. 연필 스케치 정렬 (공간 분할)
+    // [핵심 2] 반시계 방향(Counter-clockwise) 정렬: 각도가 큰 것부터 작은 것으로
     sketchNodes.sort((a, b) => {
-        let chunkA = Math.floor(a.y/20)*100 + Math.floor(a.x/20);
-        let chunkB = Math.floor(b.y/20)*100 + Math.floor(b.x/20);
-        return chunkA - chunkB;
+        let angA = Math.floor(a.angle * 8); // 각도를 덩어리로 묶음
+        let angB = Math.floor(b.angle * 8);
+        if(angA !== angB) return angB - angA; // 각도 순 (반시계)
+        return a.rad - b.rad; // 같은 각도 선상에서는 안쪽에서 바깥쪽으로
     });
 
-    // 4. 채색 정렬 (경계선 -> 먼 곳)
-    colorNodes.sort((a, b) => b.edge - a.edge);
+    // 채색은 경계선(가장자리)부터 먼저 칠하고 먼 쪽으로 이동
+    colorNodes.sort((a, b) => {
+        let angA = Math.floor(a.angle * 5);
+        let angB = Math.floor(b.angle * 5);
+        if(angA !== angB) return angB - angA;
+        return b.edge - a.edge; // 경계선 우선
+    });
 
-    // 5. 타임라인 매핑
-    let totL = layoutNodes.length, totS = sketchNodes.length, totC = colorNodes.length;
+    // 타임라인 매핑 (스케치는 30%까지만)
+    let totS = sketchNodes.length, totC = colorNodes.length;
     
-    layoutNodes.forEach((s, i) => { s.prog = map(i, 0, totL, 0.0, 0.05); s.stage='layout'; strokeSequence.push(s); });
-    sketchNodes.forEach((s, i) => { s.prog = map(i, 0, totS, 0.05, 0.35); s.stage='sketch'; strokeSequence.push(s); });
-    colorNodes.forEach((s, i) => { s.prog = map(i, 0, totC, 0.35, 0.80); s.stage='color'; strokeSequence.push(s); });
+    sketchNodes.forEach((s, i) => { s.prog = map(i, 0, totS, 0.0, 0.30); s.stage='sketch'; strokeSequence.push(s); });
+    colorNodes.forEach((s, i) => { s.prog = map(i, 0, totC, 0.30, 0.80); s.stage='color'; strokeSequence.push(s); });
 
     document.getElementById('loader').style.display = 'none';
     isBaking = false;
@@ -209,20 +224,34 @@ async function buildArtistPathways() {
     }
 }
 
+// [핵심 3] 딱딱한 직선을 버리고 노이즈가 들어간 부드러운 곡선(Curve) 생성 함수
+function drawNoisyCurve(g, x1, y1, x2, y2, lum) {
+    let d = dist(x1, y1, x2, y2);
+    // 붓을 들어서 이동하는 경우 (거리가 너무 멀면 긋지 않음)
+    if (d > 40) return; 
+
+    g.stroke(lum * 0.2, 160); 
+    g.strokeWeight(1);
+    g.noFill();
+
+    // 시작점과 끝점 사이에 노이즈를 주어 부드럽게 휜 선을 그림
+    let midX = (x1 + x2) / 2 + (noise(x1*0.01, noiseZ) - 0.5) * 15;
+    let midY = (y1 + y2) / 2 + (noise(y1*0.01, noiseZ) - 0.5) * 15;
+    noiseZ += 0.05;
+
+    g.beginShape();
+    g.vertex(x1, y1);
+    g.quadraticVertex(midX, midY, x2, y2); // 베지어 곡선으로 스케치 느낌 극대화
+    g.endShape();
+}
+
 function drawBrushStroke(g, prev, curr, waveOff) {
     let dSq = dist(prev.x, prev.y, curr.x, curr.y);
     let x2 = curr.x + waveOff, y2 = curr.y + waveOff;
 
-    if (curr.stage === 'layout') {
-        // [핵심 수정] 가로세로 딱딱한 직선 대신, 실제 좌표를 연하고 부드럽게 이어주는 러프 스케치 선
-        g.stroke(0, 40); g.strokeWeight(1.5);
-        if(dSq < 200) g.line(prev.x, prev.y, x2, y2); // 구도선은 붓을 좀 더 멀리까지 잇도록 허용
-        else g.point(x2, y2);
-    } 
-    else if (curr.stage === 'sketch') {
-        g.stroke(curr.lum * 0.2, 180); g.strokeWeight(1);
-        if (dSq < 15) g.line(prev.x, prev.y, x2, y2);
-        else g.point(x2, y2);
+    if (curr.stage === 'sketch') {
+        // [적용] 커스텀 노이즈 곡선 드로잉
+        drawNoisyCurve(g, prev.x, prev.y, x2, y2, curr.lum);
     } 
     else {
         let brushSize = map(curr.edge, 0, 40, 10, 2) * settings.scale; 
@@ -230,14 +259,14 @@ function drawBrushStroke(g, prev, curr, waveOff) {
 
         if (currentStyle === 'oil') {
             g.stroke(curr.r, curr.g, curr.b, 220); g.strokeWeight(brushSize);
-            if (dSq < 20) g.line(prev.x, prev.y, x2, y2);
+            if (dSq < 30) g.line(prev.x, prev.y, x2, y2);
             else g.ellipse(x2, y2, brushSize);
         } else if (currentStyle === 'impressionism') {
             g.noStroke(); g.fill(curr.r, curr.g, curr.b, 200);
             g.ellipse(x2, y2, brushSize);
         } else {
             g.stroke(curr.r, curr.g, curr.b, 160); g.strokeWeight(brushSize * 0.5);
-            if (dSq < 15) g.line(prev.x, prev.y, x2, y2);
+            if (dSq < 20) g.line(prev.x, prev.y, x2, y2);
             else g.point(x2, y2);
         }
     }
