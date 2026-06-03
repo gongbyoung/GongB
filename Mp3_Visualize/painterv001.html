@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>v2.08</title>
+<title>v2.09</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -54,8 +54,8 @@
         <span style="color:#fff;">4. 아티스트 붓 터치 제어</span>
         <label>시작 방향: 
             <select id="startPosOpt" onchange="updateLayout()">
-                <option value="top">위에서 아래로</option>
                 <option value="center">중앙에서 바깥으로</option>
+                <option value="top">위에서 아래로</option>
                 <option value="bottom">아래서 위로</option>
             </select>
         </label>
@@ -107,6 +107,8 @@ let loadedAudio, fft, isPlaying = false, isBaking = false;
 let paintBuffer;
 let renderQueue = []; 
 let lastDrawnIdx = 0;
+// [버그 수정] 삭제되었던 lastTime 전역 변수 복구
+let lastTime = 0; 
 let simulatedTime = 0;
 let lastMillis = 0;
 let currentStyle = 'watercolor';
@@ -125,7 +127,6 @@ function setup() {
 
 function getVal(id, parseFunc = parseFloat) { return parseFunc(document.getElementById(id).value); }
 
-// [수정] 크기/위치 변경 시에만 렌더링 맵 재생성 (무한루프 방지)
 function updateLayout() {
     let ratio = getVal('ratioOpt');
     let w = ratio > 1 ? 1120 : (ratio < 1 ? 450 : 800);
@@ -137,7 +138,6 @@ function updateLayout() {
     if(sketchImg && targetImg) buildDualPathwaysSafe();
 }
 
-// [수정] 붓 굵기, 색상, 시간 변경 시에는 화면만 빠르게 재그림 (렉 제거)
 function updateStyle() {
     document.getElementById('timeTotal').innerText = formatTime(getVal('timeOpt'));
     if (!isPlaying && sketchImg && targetImg && !isBaking) {
@@ -182,9 +182,6 @@ function changeStyle(s) {
     updateStyle();
 }
 
-// ==========================================
-// [무한루프 100% 제거 & 진행률 표시 엔진]
-// ==========================================
 async function buildDualPathwaysSafe() {
     if(isBaking) return;
     isBaking = true;
@@ -244,7 +241,6 @@ async function buildDualPathwaysSafe() {
         let processed = 0;
 
         while(sketchNodes.length > 0) {
-            // 한 번에 400개씩만 처리하여 브라우저 기절 방지
             let chunkLimit = Math.min(sketchNodes.length, 400);
             
             for(let step = 0; step < chunkLimit; step++) {
@@ -263,7 +259,7 @@ async function buildDualPathwaysSafe() {
             
             let percent = Math.floor((processed / totalNodes) * 100);
             progressTxt.innerText = `${percent}%`;
-            await new Promise(r => setTimeout(r, 5)); // UI 업데이트 허용
+            await new Promise(r => setTimeout(r, 5)); 
         }
     }
 
@@ -303,12 +299,10 @@ async function buildDualPathwaysSafe() {
     loader.style.display = 'none';
     isBaking = false;
     
-    // [해결] 여기서 다시 checkReady나 updateLayout을 호출하지 않음! (무한루프 제거)
-    
     if(!isPlaying) { 
         simulatedTime = getVal('timeOpt') * 0.8; 
         document.getElementById('timeline').value = 80;
-        updateStyle(); // 정지 상태일 때 프리뷰 렌더링
+        updateStyle(); 
     }
     
     sg.remove(); cg.remove();
@@ -316,9 +310,6 @@ async function buildDualPathwaysSafe() {
 
 let prevPt = null;
 
-// ==========================================
-// [진짜 한붓그리기 렌더러]
-// ==========================================
 function drawItem(g, item, energy) {
     if (!prevPt || prevPt.type !== item.type) { prevPt = item; return; }
 
@@ -333,14 +324,19 @@ function drawItem(g, item, energy) {
     noiseZ += 0.05;
 
     if (item.type === 'sketch') {
-        // [완벽한 한선그리기] 거리가 멀든 가깝든 무조건 펜을 떼지 않고 동일한 선명도로 이어나감
-        g.stroke(item.r, item.g, item.b, 200); 
-        g.strokeWeight(bMin);
-        g.noFill();
-        g.beginShape(); 
-        g.vertex(prevPt.x, prevPt.y); 
-        g.quadraticVertex(midX, midY, item.x, item.y); 
-        g.endShape();
+        if (dSq > 900) { 
+            g.stroke(item.r, item.g, item.b, 60); 
+            g.strokeWeight(1);
+            g.line(prevPt.x, prevPt.y, item.x, item.y);
+        } else {
+            g.stroke(item.r, item.g, item.b, 200); 
+            g.strokeWeight(bMin);
+            g.noFill();
+            g.beginShape(); 
+            g.vertex(prevPt.x, prevPt.y); 
+            g.quadraticVertex(midX, midY, item.x, item.y); 
+            g.endShape();
+        }
     } 
     else if (item.type === 'color') {
         let audioExpand = map(energy, 0, 255, 0, bMax * 0.5); 
