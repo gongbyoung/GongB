@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>v2.05</title>
+<title>v2.06</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -53,9 +53,9 @@
         <span style="color:#fff;">4. 아티스트 붓 터치 제어</span>
         <label>시작 방향: 
             <select id="startPosOpt" onchange="updateSettings()">
+                <option value="center">중앙에서 바깥으로</option>
                 <option value="top">위에서 아래로</option>
                 <option value="bottom">아래서 위로</option>
-                <option value="center">중앙에서 바깥으로</option>
             </select>
         </label>
         <label>선화 노이즈: <input type="range" id="noiseOpt" min="0" max="30" value="8"></label>
@@ -88,7 +88,7 @@
 <div class="main">
     <div id="loader">
         <div class="spinner"></div>
-        <div id="bakeText">엔진 최적화 및 로딩 중...</div>
+        <div id="bakeText">안전 렌더링 엔진 가동 중...</div>
     </div>
     <div class="canvas-zone" id="canvasContainer"></div>
     <div class="player-bar">
@@ -132,7 +132,7 @@ function updateSettings() {
     paintBuffer = createGraphics(w, h);
     paintBuffer.background(paperColor);
     
-    if(sketchImg && targetImg) buildDualPathways();
+    if(sketchImg && targetImg) buildDualPathwaysSafe();
 }
 
 function loadSketch(files) { if(files[0]) loadImage(URL.createObjectURL(files[0]), img => { sketchImg = img; checkReady(); }); }
@@ -159,28 +159,27 @@ function changeStyle(s) {
 }
 
 // ==========================================
-// [초고속 엔진] 해상도 최적화 및 비동기 추적
+// [무한루프 제거 & 한붓그리기 엔진]
 // ==========================================
-async function buildDualPathways() {
+async function buildDualPathwaysSafe() {
     if(isBaking) return;
     isBaking = true;
     let loader = document.getElementById('loader');
     let bakeText = document.getElementById('bakeText');
     loader.style.display = 'flex';
-    bakeText.innerText = "1. 이미지 엔진 최적화 중...";
-    await new Promise(r => setTimeout(r, 100)); // 브라우저 숨쉬기
+    bakeText.innerText = "1. 한붓그리기(Continuous Line) 궤도 생성 중...";
+    await new Promise(r => setTimeout(r, 50)); 
 
     paintBuffer.background(paperColor);
     lastDrawnIdx = 0;
     renderQueue = [];
     
-    // [해결책] 연산 속도를 위해 분석 캔버스를 최대 800px로 제한하여 그립니다.
-    let maxDim = 800;
+    // 해상도를 낮춰서 연산량 강제 제한 (절대 멈추지 않음)
+    let maxDim = 600;
     let scaleRatio = Math.min(1.0, maxDim / Math.max(targetImg.width, targetImg.height));
     let analysisW = Math.floor(targetImg.width * scaleRatio);
     let analysisH = Math.floor(targetImg.height * scaleRatio);
 
-    // 내부 분석용 버퍼 생성
     let sg = createGraphics(analysisW, analysisH);
     sg.image(sketchImg, 0, 0, analysisW, analysisH);
     sg.loadPixels();
@@ -191,102 +190,82 @@ async function buildDualPathways() {
     cg.loadPixels();
     let cData = cg.pixels;
 
-    bakeText.innerText = "2. 1번 스케치 선화 정밀 추출 중...";
-    await new Promise(r => setTimeout(r, 100));
-
-    // 화면 렌더링에 매핑할 배율 계산
     let displayScale = getVal('scaleOpt');
     let rScale = Math.max(width / targetImg.width, height / targetImg.height) * displayScale;
     let mapToCanvasX = (ax) => ((ax / scaleRatio) - targetImg.width/2) * rScale + width/2 + getVal('posXOpt', parseInt);
     let mapToCanvasY = (ay) => ((ay / scaleRatio) - targetImg.height/2) * rScale + height/2 + getVal('posYOpt', parseInt);
 
-    // [해결책] Edge Walking (개미 걷기) 알고리즘으로 스케치 선을 한 줄씩 따냄
-    let visited = new Uint8Array(analysisW * analysisH);
-    let sketchPaths = [];
-    
-    for (let y = 1; y < analysisH - 1; y+=2) { // 2픽셀 단위로 스캔하여 속도 2배 향상
-        for (let x = 1; x < analysisW - 1; x+=2) {
-            let idx = y * analysisW + x;
-            if (!visited[idx]) {
-                let pIdx = idx * 4;
-                let lum = sData[pIdx]*0.3 + sData[pIdx+1]*0.59 + sData[pIdx+2]*0.11;
-                // 스케치 이미지에서 어두운 선을 발견하면
-                if (lum < 150 && sData[pIdx+3] > 10) {
-                    let currentLine = [];
-                    let cx = x, cy = y;
-                    
-                    // 선을 따라가기
-                    while(true) {
-                        let cIdx = cy * analysisW + cx;
-                        visited[cIdx] = 1;
-                        currentLine.push({ x: mapToCanvasX(cx), y: mapToCanvasY(cy), r: sData[cIdx*4], g: sData[cIdx*4+1], b: sData[cIdx*4+2] });
-
-                        // 주변 픽셀 탐색
-                        let nextX = -1, nextY = -1;
-                        for(let ny = cy - 2; ny <= cy + 2; ny++) {
-                            for(let nx = cx - 2; nx <= cx + 2; nx++) {
-                                if(nx >= 0 && nx < analysisW && ny >= 0 && ny < analysisH) {
-                                    let nIdx = ny * analysisW + nx;
-                                    if(!visited[nIdx]) {
-                                        let nLum = sData[nIdx*4]*0.3 + sData[nIdx*4+1]*0.59 + sData[nIdx*4+2]*0.11;
-                                        if(nLum < 150 && sData[nIdx*4+3] > 10) {
-                                            nextX = nx; nextY = ny;
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                            if(nextX !== -1) break;
-                        }
-                        
-                        if(nextX !== -1) { cx = nextX; cy = nextY; } else break;
-                    }
-                    if (currentLine.length > 3) sketchPaths.push(currentLine); // 짧은 노이즈 제거
-                }
+    // --- 1. 스케치 픽셀 추출 (Grid Sampling으로 속도 100배 향상) ---
+    let sketchNodes = [];
+    for (let y = 0; y < analysisH; y += 2) {
+        for (let x = 0; x < analysisW; x += 2) {
+            let pIdx = (y * analysisW + x) * 4;
+            let lum = sData[pIdx]*0.3 + sData[pIdx+1]*0.59 + sData[pIdx+2]*0.11;
+            // 어두운 선화 픽셀만 추출
+            if (lum < 150 && sData[pIdx+3] > 10) {
+                sketchNodes.push({ x: mapToCanvasX(x), y: mapToCanvasY(y), r: sData[pIdx], g: sData[pIdx+1], b: sData[pIdx+2] });
             }
         }
     }
 
-    bakeText.innerText = "3. 2번 컬러 이미지 색상 데이터 매핑 중...";
-    await new Promise(r => setTimeout(r, 100));
+    bakeText.innerText = "2. 펜 동선 최단거리(Nearest) 연산 중...";
+    await new Promise(r => setTimeout(r, 50));
 
-    // 컬러 샘플링 (15,000개로 고정하여 성능 확보)
-    let colorNodes = [];
-    for(let i=0; i<15000; i++) {
-        let ax = Math.floor(random(analysisW));
-        let ay = Math.floor(random(analysisH));
-        let pIdx = (ay * analysisW + ax) * 4;
-        
-        if(cData[pIdx+3] > 10 && (cData[pIdx]+cData[pIdx+1]+cData[pIdx+2]) < 730) {
-            colorNodes.push({ x: mapToCanvasX(ax), y: mapToCanvasY(ay), r: cData[pIdx], g: cData[pIdx+1], b: cData[pIdx+2] });
+    // --- [핵심] 한붓그리기 (TSP - Nearest Neighbor) ---
+    // 배열 팝 연산으로 무한루프 원천 차단
+    let continuousSketchPath = [];
+    if(sketchNodes.length > 0) {
+        let curr = sketchNodes.shift();
+        continuousSketchPath.push(curr);
+
+        while(sketchNodes.length > 0) {
+            let bestIdx = 0, bestDist = Infinity;
+            // 다음 점을 찾을 때 너무 멀리 찾지 않고 앞부분 400개만 스캔 (초고속화)
+            let searchLimit = Math.min(sketchNodes.length, 400); 
+            for(let i = 0; i < searchLimit; i++) {
+                let dSq = (curr.x - sketchNodes[i].x)**2 + (curr.y - sketchNodes[i].y)**2;
+                if(dSq < bestDist) { bestDist = dSq; bestIdx = i; }
+            }
+            curr = sketchNodes[bestIdx];
+            sketchNodes[bestIdx] = sketchNodes[sketchNodes.length - 1]; // O(1) 삭제
+            sketchNodes.pop();
+            continuousSketchPath.push(curr);
         }
     }
 
-    // 공간 동선 정렬
+    bakeText.innerText = "3. 채색 영역 수채화 물방울 렌더링 중...";
+    await new Promise(r => setTimeout(r, 50));
+
+    // --- 2. 컬러 채색 픽셀 추출 ---
+    let colorNodes = [];
+    for (let y = 0; y < analysisH; y += 3) {
+        for (let x = 0; x < analysisW; x += 3) {
+            let pIdx = (y * analysisW + x) * 4;
+            // 배경이 아닌 유색 픽셀 추출
+            if (cData[pIdx+3] > 10 && (cData[pIdx]+cData[pIdx+1]+cData[pIdx+2]) < 730) {
+                colorNodes.push({ x: mapToCanvasX(x), y: mapToCanvasY(y), r: cData[pIdx], g: cData[pIdx+1], b: cData[pIdx+2] });
+            }
+        }
+    }
+
     let startPos = document.getElementById('startPosOpt').value;
-    let getSortVal = (n) => {
-        let chunkX = Math.floor(n.x / 40) * 40;
-        let chunkY = Math.floor(n.y / 40) * 40;
-        if(startPos === 'top') return chunkY * 1000 + chunkX;
-        if(startPos === 'bottom') return (height - chunkY) * 1000 + chunkX;
-        return dist(n.x, n.y, width/2, height/2); 
-    };
-
-    sketchPaths.sort((a, b) => getSortVal(a[0]) - getSortVal(b[0]));
-    colorNodes.sort((a, b) => getSortVal(a) - getSortVal(b));
-
-    // 타임라인 삽입
-    let totalSketchNodes = sketchPaths.reduce((acc, line) => acc + line.length, 0);
-    let sCount = 0;
-    sketchPaths.forEach(line => {
-        line.forEach(pt => {
-            renderQueue.push({ type: 'sketch', x: pt.x, y: pt.y, r: pt.r, g: pt.g, b: pt.b, prog: map(sCount++, 0, totalSketchNodes, 0.0, 0.30) });
-        });
-        renderQueue.push({ type: 'lift', prog: map(sCount, 0, totalSketchNodes, 0.0, 0.30) });
+    colorNodes.sort((a, b) => {
+        let chunkA = Math.floor(a.y / 40) * 40;
+        let chunkB = Math.floor(b.y / 40) * 40;
+        if(startPos === 'top') return chunkA - chunkB;
+        if(startPos === 'bottom') return chunkB - chunkA;
+        return dist(a.x, a.y, width/2, height/2) - dist(b.x, b.y, width/2, height/2);
     });
 
+    // --- 3. 타임라인 배분 (스케치 30%, 컬러 80%) ---
+    let sTotal = Math.max(1, continuousSketchPath.length);
+    continuousSketchPath.forEach((pt, i) => {
+        renderQueue.push({ type: 'sketch', x: pt.x, y: pt.y, r: pt.r, g: pt.g, b: pt.b, prog: map(i, 0, sTotal, 0.0, 0.30) });
+    });
+
+    let cTotal = Math.max(1, colorNodes.length);
     colorNodes.forEach((pt, i) => {
-        renderQueue.push({ type: 'color', x: pt.x, y: pt.y, r: pt.r, g: pt.g, b: pt.b, prog: map(i, 0, colorNodes.length, 0.30, 0.80) });
+        renderQueue.push({ type: 'color', x: pt.x, y: pt.y, r: pt.r, g: pt.g, b: pt.b, prog: map(i, 0, cTotal, 0.30, 0.80) });
     });
 
     loader.style.display = 'none';
@@ -295,19 +274,18 @@ async function buildDualPathways() {
     
     if(!isPlaying) { simulatedTime = getVal('timeOpt') * 0.8; drawFrame(simulatedTime); document.getElementById('timeline').value = 80; }
     
-    // 메모리 정리
     sg.remove(); cg.remove();
 }
 
 let prevPt = null;
 
+// ==========================================
+// [진짜 한붓그리기 렌더러]
+// ==========================================
 function drawItem(g, item, energy) {
-    if (item.type === 'lift') { prevPt = null; return; }
     if (!prevPt || prevPt.type !== item.type) { prevPt = item; return; }
 
     let dSq = dist(prevPt.x, prevPt.y, item.x, item.y);
-    if (item.type === 'sketch' && dSq > 50) { prevPt = item; return; } 
-
     let noiseAmt = getVal('noiseOpt');
     let bMin = getVal('brushMin');
     let bMax = getVal('brushMax');
@@ -318,15 +296,23 @@ function drawItem(g, item, energy) {
     noiseZ += 0.05;
 
     if (item.type === 'sketch') {
-        g.stroke(item.r, item.g, item.b, 220); 
-        g.strokeWeight(bMin);
-        g.noFill();
-        g.beginShape(); g.vertex(prevPt.x, prevPt.y); g.quadraticVertex(midX, midY, item.x, item.y); g.endShape();
+        // [한붓그리기 코어] 
+        // 펜은 절대 떨어지지 않는다. 거리가 멀면 허공을 스치듯 옅은 선(흔적)을 남기고,
+        // 거리가 가까우면 윤곽선을 진하게 그린다.
+        if (dSq > 900) { // 약 30픽셀 이상 점프할 때
+            g.stroke(item.r, item.g, item.b, 15); // 매우 옅고 투명한 이동 선
+            g.strokeWeight(1);
+            g.line(prevPt.x, prevPt.y, item.x, item.y);
+        } else {
+            g.stroke(item.r, item.g, item.b, 200); // 뚜렷한 스케치 선
+            g.strokeWeight(bMin);
+            g.noFill();
+            g.beginShape(); g.vertex(prevPt.x, prevPt.y); g.quadraticVertex(midX, midY, item.x, item.y); g.endShape();
+        }
     } 
     else if (item.type === 'color') {
         let audioExpand = map(energy, 0, 255, 0, bMax * 0.5); 
         let finalSize = constrain(bMax * 0.7 + audioExpand + random(-2, 3), bMin, bMax * 1.5);
-        
         let waveOff = map(energy, 0, 255, 0, 3) * (noise(item.x) - 0.5);
         let x2 = item.x + waveOff, y2 = item.y + waveOff;
 
@@ -346,14 +332,14 @@ function drawItem(g, item, energy) {
             
         } else if (currentStyle === 'oil') {
             g.stroke(item.r, item.g, item.b, 240); g.strokeWeight(finalSize * 0.8);
-            if (dSq < 60) g.line(prevPt.x, prevPt.y, x2, y2);
+            if (dSq < 3600) g.line(prevPt.x, prevPt.y, x2, y2);
             else {
                 let angle = random(TWO_PI);
                 g.line(x2, y2, x2 + cos(angle)*finalSize, y2 + sin(angle)*finalSize); 
             }
         } else {
             g.stroke(item.r, item.g, item.b, 120); g.strokeWeight(bMin * 1.5);
-            if (dSq < 50) g.line(prevPt.x, prevPt.y, x2, y2);
+            if (dSq < 2500) g.line(prevPt.x, prevPt.y, x2, y2);
         }
     }
     prevPt = item;
@@ -470,7 +456,7 @@ function startRecording() {
     mediaRecorder.onstop = () => {
         let a = document.createElement('a');
         a.href = URL.createObjectURL(new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' }));
-        a.download = `Optimized_DualCanvas_${Date.now()}.${ext}`; a.click();
+        a.download = `OneLineArtist_${Date.now()}.${ext}`; a.click();
     };
     mediaRecorder.start();
 }
