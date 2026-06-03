@@ -2,91 +2,102 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>v1.19</title>
+<title>AUDIO-WAVE MASTER STUDIO v1.20</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
-    body { background: #0a0a0f; color: #fff; font-family: sans-serif; display: flex; height: 100vh; }
-    .sidebar { width: 350px; background: #12121a; padding: 20px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
-    .main { flex: 1; display: flex; align-items: center; justify-content: center; background: #020205; }
-    .control-group { font-size: 11px; display: flex; flex-direction: column; gap: 4px; }
-    input[type=range] { width: 100%; accent-color: #00ffcc; }
+    body { background: #0a0a0f; color: #fff; font-family: sans-serif; display: flex; height: 100vh; overflow: hidden; }
+    .sidebar { width: 350px; background: #12121a; padding: 20px; display: flex; flex-direction: column; gap: 15px; border-right: 1px solid #333; }
+    .main { flex: 1; display: flex; align-items: center; justify-content: center; }
+    .control-group { display: flex; flex-direction: column; gap: 5px; font-size: 12px; }
     .studio-btn { border: 1px solid #444; color: white; padding: 8px; background: none; cursor: pointer; }
-    .studio-btn.active { border-color: #00ffcc; color: #00ffcc; }
+    .studio-btn.active { border-color: #00ffcc; color: #00ffcc; background: #1a2a2a; }
 </style>
 </head>
 <body>
 <div class="sidebar">
     <h2>Studio Settings</h2>
-    <input type="file" id="imgIn" class="file-btn" onchange="loadTarget(this.files)">
-    <input type="file" id="audioIn" class="file-btn" onchange="loadAudio(this.files)">
+    <input type="file" id="imgIn" onchange="loadTarget(this.files)" class="file-btn">
+    <input type="file" id="audioIn" onchange="loadAudio(this.files)" class="file-btn">
     <div class="control-group">
-        <label>비율: <select id="ratio" onchange="applySettings()"><option value="1.77">16:9</option><option value="0.56">9:16</option></select></label>
-        <label>크기 <input type="range" id="scale" min="0.5" max="2" step="0.1" value="1" oninput="applySettings()"></label>
-        <label>밝기 <input type="range" id="light" min="50" max="150" value="100" oninput="applySettings()"></label>
+        <label>비율: <select id="ratio" onchange="updateSettings()"><option value="1.77">16:9</option><option value="0.56">9:16</option></select></label>
+        <label>크기: <input type="range" id="scale" min="0.5" max="2" step="0.1" value="1" oninput="updateSettings()"></label>
+        <label>위치X: <input type="range" id="posX" min="-200" max="200" value="0" oninput="updateSettings()"></label>
+        <label>위치Y: <input type="range" id="posY" min="-200" max="200" value="0" oninput="updateSettings()"></label>
+        <label>밝기: <input type="range" id="light" min="50" max="150" value="100" oninput="updateSettings()"></label>
     </div>
     <div class="btn-grid-four">
-        <button class="studio-btn active" id="sPencil" onclick="setStyle('pencil')">연필화</button>
-        <button class="studio-btn" id="sOil" onclick="setStyle('oil')">유화</button>
+        <button class="studio-btn active" id="sPencil" onclick="changeStyle('pencil')">연필</button>
+        <button class="studio-btn" id="sOil" onclick="changeStyle('oil')">유화</button>
     </div>
     <button id="recBtn" onclick="togglePlayback()" style="padding:15px; background:#ff3e81; color:white; border:none; cursor:pointer;" disabled>🔴 START DRAWING</button>
 </div>
 <div class="main" id="canvasContainer"></div>
 
 <script>
-let targetImg, loadedAudio, fft, isPlaying = false, strokeSequence = [];
-let style = 'pencil', settings = { ratio: 1.77, scale: 1, light: 100 };
+let targetImg, loadedAudio, fft, isPlaying = false;
+let style = 'pencil', settings = { ratio: 1.77, scale: 1, posX: 0, posY: 0, light: 100 }, strokeSequence = [];
 
-function setup() { createCanvas(800, 600).parent('canvasContainer'); fft = new p5.FFT(); }
-
-function applySettings() {
-    settings.scale = select('#scale').value();
-    settings.light = select('#light').value();
-    if(targetImg) bakePaths();
+function setup() {
+    let cnv = createCanvas(800, 450);
+    cnv.parent('canvasContainer');
+    fft = new p5.FFT();
 }
 
-function loadTarget(files) {
-    loadImage(URL.createObjectURL(files[0]), img => { targetImg = img; bakePaths(); });
+function updateSettings() {
+    settings.ratio = parseFloat(document.getElementById('ratio').value);
+    settings.scale = parseFloat(document.getElementById('scale').value);
+    settings.posX = parseInt(document.getElementById('posX').value);
+    settings.posY = parseInt(document.getElementById('posY').value);
+    settings.light = parseInt(document.getElementById('light').value);
+    if(targetImg) analyzeImage();
 }
 
-// [핵심] 아티스트의 작업 시퀀스대로 궤적 추출
-function bakePaths() {
+function loadTarget(files) { loadImage(URL.createObjectURL(files[0]), img => { targetImg = img; analyzeImage(); }); }
+
+async function analyzeImage() {
     strokeSequence = [];
     targetImg.loadPixels();
     let d = targetImg.pixels;
     
-    // 큰 뼈대(구도선) 우선 분석
-    for(let i=0; i<80000; i++) {
-        let x = random(targetImg.width), y = random(targetImg.height);
-        let p = (Math.floor(y)*targetImg.width + Math.floor(x))*4;
-        let edge = abs(d[p]-d[p+4]||0); 
-        strokeSequence.push({ x: x/targetImg.width*width, y: y/targetImg.height*height, r:d[p], g:d[p+1], b:d[p+2], edge: edge, stage: edge > 30 ? 'sketch' : 'color' });
+    // 경계선 추출 (Edge Score)
+    for(let y=0; y<targetImg.height; y+=2) {
+        for(let x=0; x<targetImg.width; x+=2) {
+            let p = (y*targetImg.width + x)*4;
+            let edge = abs(d[p]-d[p+4]||0) + abs(d[p+1]-d[p+5]||0);
+            strokeSequence.push({ x: x/targetImg.width*width + settings.posX, y: y/targetImg.height*height + settings.posY, r:d[p], g:d[p+1], b:d[p+2], edge: edge });
+        }
     }
-    // 스케치(경계) 우선 정렬
+    // [핵심] 경계선이 높은 순으로 정렬 (경계부터 그리고 안에서 밖으로 채색)
     strokeSequence.sort((a,b) => b.edge - a.edge);
     document.getElementById('recBtn').disabled = false;
 }
 
 function draw() {
     if(!isPlaying || !targetImg) return;
-    let prog = loadedAudio.currentTime() / parseFloat(document.getElementById('timeIn')?.value || 30);
+    let ct = loadedAudio.currentTime();
+    let duration = 30; // 설정 시간
+    let prog = ct / duration;
     let activeNodes = Math.floor(strokeSequence.length * prog);
     
-    background(244, 243, 236, settings.light/100 * 255);
+    background(244 * (settings.light/100), 243 * (settings.light/100), 236 * (settings.light/100));
     
     for(let i=0; i<activeNodes; i++) {
         let s = strokeSequence[i];
-        if(s.stage === 'sketch') {
-            stroke(0, 100); strokeWeight(1);
+        let wave = fft.waveform();
+        let x = s.x + (wave[i%1024]||0)*5;
+        
+        // 0~30%는 연필 윤곽선, 이후는 스타일 채색
+        if(prog < 0.3) {
+            stroke(0, 150); strokeWeight(1); line(x-5, s.y, x+5, s.y);
         } else {
-            noStroke(); fill(s.r, s.g, s.b, 150);
+            noStroke(); fill(s.r, s.g, s.b, 200); ellipse(x, s.y, 8*settings.scale, 8*settings.scale);
         }
-        ellipse(s.x, s.y, 5, 5);
     }
 }
 
 function loadAudio(files) { loadedAudio = loadSound(URL.createObjectURL(files[0])); }
-function setStyle(s) { currentStyle = s; }
+function changeStyle(s) { style = s; document.querySelectorAll('.studio-btn').forEach(b => b.classList.remove('active')); document.getElementById('s'+s.charAt(0).toUpperCase()+s.slice(1)).classList.add('active'); }
 function togglePlayback() { isPlaying = !isPlaying; isPlaying ? loadedAudio.play() : loadedAudio.stop(); }
 </script>
 </body>
