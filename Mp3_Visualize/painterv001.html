@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>v2.07</title>
+<title>v2.08</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -53,25 +53,25 @@
     <div class="control-group" style="border:1px solid #222; padding:10px; border-radius:4px; gap:8px;">
         <span style="color:#fff;">4. 아티스트 붓 터치 제어</span>
         <label>시작 방향: 
-            <select id="startPosOpt" onchange="updateSettings()">
-                <option value="center">중앙에서 바깥으로</option>
+            <select id="startPosOpt" onchange="updateLayout()">
                 <option value="top">위에서 아래로</option>
+                <option value="center">중앙에서 바깥으로</option>
                 <option value="bottom">아래서 위로</option>
             </select>
         </label>
-        <label>선화 노이즈: <input type="range" id="noiseOpt" min="0" max="30" value="8"></label>
-        <label>최소 붓 굵기: <input type="range" id="brushMin" min="1" max="10" value="2"></label>
-        <label>최대 붓 굵기: <input type="range" id="brushMax" min="5" max="40" value="20"></label>
+        <label>선화 노이즈: <input type="range" id="noiseOpt" min="0" max="30" value="8" oninput="updateStyle()"></label>
+        <label>최소 붓 굵기: <input type="range" id="brushMin" min="1" max="10" value="2" oninput="updateStyle()"></label>
+        <label>최대 붓 굵기: <input type="range" id="brushMax" min="5" max="40" value="20" oninput="updateStyle()"></label>
     </div>
 
     <div class="control-group" style="border:1px solid #222; padding:10px; border-radius:4px; gap:8px;">
         <span style="color:#fff;">5. 뷰포트 및 시간 설정</span>
-        <label>비율: <select id="ratioOpt" onchange="updateSettings()"><option value="1.777">16:9</option><option value="0.562">9:16</option><option value="1.0">1:1</option></select></label>
-        <label>크기: <input type="range" id="scaleOpt" min="0.5" max="2.0" step="0.1" value="1.0" oninput="updateSettings()"></label>
-        <label>위치 X: <input type="range" id="posXOpt" min="-400" max="400" value="0" step="10" oninput="updateSettings()"></label>
-        <label>위치 Y: <input type="range" id="posYOpt" min="-400" max="400" value="0" step="10" oninput="updateSettings()"></label>
-        <label>배경 밝기: <input type="range" id="lightOpt" min="50" max="150" value="100" oninput="updateSettings()"></label>
-        <label>드로잉 시간: <input type="number" id="timeOpt" value="30" onchange="updateSettings()"></label>
+        <label>비율: <select id="ratioOpt" onchange="updateLayout()"><option value="1.777">16:9</option><option value="0.562">9:16</option><option value="1.0">1:1</option></select></label>
+        <label>크기: <input type="range" id="scaleOpt" min="0.5" max="2.0" step="0.1" value="1.0" oninput="updateLayout()"></label>
+        <label>위치 X: <input type="range" id="posXOpt" min="-400" max="400" value="0" step="10" oninput="updateLayout()"></label>
+        <label>위치 Y: <input type="range" id="posYOpt" min="-400" max="400" value="0" step="10" oninput="updateLayout()"></label>
+        <label>배경 밝기: <input type="range" id="lightOpt" min="50" max="150" value="100" oninput="updateStyle()"></label>
+        <label>드로잉 시간: <input type="number" id="timeOpt" value="30" onchange="updateStyle()"></label>
     </div>
 
     <div class="control-group">
@@ -125,8 +125,8 @@ function setup() {
 
 function getVal(id, parseFunc = parseFloat) { return parseFunc(document.getElementById(id).value); }
 
-function updateSettings() {
-    document.getElementById('timeTotal').innerText = formatTime(getVal('timeOpt'));
+// [수정] 크기/위치 변경 시에만 렌더링 맵 재생성 (무한루프 방지)
+function updateLayout() {
     let ratio = getVal('ratioOpt');
     let w = ratio > 1 ? 1120 : (ratio < 1 ? 450 : 800);
     let h = ratio > 1 ? 630 : (ratio < 1 ? 800 : 800);
@@ -137,15 +137,41 @@ function updateSettings() {
     if(sketchImg && targetImg) buildDualPathwaysSafe();
 }
 
-function loadSketch(files) { if(files[0]) loadImage(URL.createObjectURL(files[0]), img => { sketchImg = img; checkReady(); }); }
-function loadTarget(files) { if(files[0]) loadImage(URL.createObjectURL(files[0]), img => { targetImg = img; checkReady(); }); }
-function loadAudio(files) { if(files[0]) loadedAudio = loadSound(URL.createObjectURL(files[0])); }
+// [수정] 붓 굵기, 색상, 시간 변경 시에는 화면만 빠르게 재그림 (렉 제거)
+function updateStyle() {
+    document.getElementById('timeTotal').innerText = formatTime(getVal('timeOpt'));
+    if (!isPlaying && sketchImg && targetImg && !isBaking) {
+        paintBuffer.background(paperColor);
+        lastDrawnIdx = 0;
+        prevPt = null;
+        drawFrame(simulatedTime);
+    }
+}
 
 function checkReady() { 
     if(sketchImg && targetImg) { 
         document.getElementById('recBtn').disabled = false; 
-        updateSettings(); 
     } 
+}
+
+function loadSketch(files) { 
+    if(files[0]) loadImage(URL.createObjectURL(files[0]), img => { 
+        sketchImg = img; 
+        checkReady(); 
+        if(sketchImg && targetImg) updateLayout(); 
+    }); 
+}
+
+function loadTarget(files) { 
+    if(files[0]) loadImage(URL.createObjectURL(files[0]), img => { 
+        targetImg = img; 
+        checkReady(); 
+        if(sketchImg && targetImg) updateLayout(); 
+    }); 
+}
+
+function loadAudio(files) { 
+    if(files[0]) loadedAudio = loadSound(URL.createObjectURL(files[0])); 
 }
 
 function changeStyle(s) { 
@@ -153,15 +179,11 @@ function changeStyle(s) {
     document.querySelectorAll('.studio-btn').forEach(b => b.classList.remove('active')); 
     let btnId = 's' + (s === 'watercolor' ? 'Water' : (s === 'oil' ? 'Oil' : 'Pencil'));
     document.getElementById(btnId).classList.add('active'); 
-    if(sketchImg && targetImg) { 
-        paintBuffer.background(paperColor); 
-        lastDrawnIdx = 0; 
-        drawFrame(loadedAudio && isPlaying ? loadedAudio.currentTime() : simulatedTime); 
-    } 
+    updateStyle();
 }
 
 // ==========================================
-// [비동기 분산 엔진] 진행률(%) 렌더링 도입
+// [무한루프 100% 제거 & 진행률 표시 엔진]
 // ==========================================
 async function buildDualPathwaysSafe() {
     if(isBaking) return;
@@ -179,7 +201,7 @@ async function buildDualPathwaysSafe() {
     lastDrawnIdx = 0;
     renderQueue = [];
     
-    let maxDim = 600; // 해상도 리미트
+    let maxDim = 600; 
     let scaleRatio = Math.min(1.0, maxDim / Math.max(targetImg.width, targetImg.height));
     let analysisW = Math.floor(targetImg.width * scaleRatio);
     let analysisH = Math.floor(targetImg.height * scaleRatio);
@@ -213,7 +235,6 @@ async function buildDualPathwaysSafe() {
     bakeText.innerText = "2. 펜 동선 최단거리(Nearest) 연산 중...";
     await new Promise(r => setTimeout(r, 50));
 
-    // [핵심] 진행률 표시 및 비동기(Async) 쪼개기 (프리즈 방지)
     let continuousSketchPath = [];
     if(sketchNodes.length > 0) {
         let curr = sketchNodes.shift();
@@ -223,7 +244,7 @@ async function buildDualPathwaysSafe() {
         let processed = 0;
 
         while(sketchNodes.length > 0) {
-            // 한 프레임에 400개씩만 처리하고 브라우저에게 숨쉴 틈을 줌
+            // 한 번에 400개씩만 처리하여 브라우저 기절 방지
             let chunkLimit = Math.min(sketchNodes.length, 400);
             
             for(let step = 0; step < chunkLimit; step++) {
@@ -240,10 +261,9 @@ async function buildDualPathwaysSafe() {
                 processed++;
             }
             
-            // UI 업데이트 및 비동기 대기
             let percent = Math.floor((processed / totalNodes) * 100);
             progressTxt.innerText = `${percent}%`;
-            await new Promise(r => setTimeout(r, 5)); // 5ms 휴식 (UI 새로고침 허용)
+            await new Promise(r => setTimeout(r, 5)); // UI 업데이트 허용
         }
     }
 
@@ -282,15 +302,23 @@ async function buildDualPathwaysSafe() {
 
     loader.style.display = 'none';
     isBaking = false;
-    checkReady();
     
-    if(!isPlaying) { simulatedTime = getVal('timeOpt') * 0.8; drawFrame(simulatedTime); document.getElementById('timeline').value = 80; }
+    // [해결] 여기서 다시 checkReady나 updateLayout을 호출하지 않음! (무한루프 제거)
+    
+    if(!isPlaying) { 
+        simulatedTime = getVal('timeOpt') * 0.8; 
+        document.getElementById('timeline').value = 80;
+        updateStyle(); // 정지 상태일 때 프리뷰 렌더링
+    }
     
     sg.remove(); cg.remove();
 }
 
 let prevPt = null;
 
+// ==========================================
+// [진짜 한붓그리기 렌더러]
+// ==========================================
 function drawItem(g, item, energy) {
     if (!prevPt || prevPt.type !== item.type) { prevPt = item; return; }
 
@@ -305,17 +333,14 @@ function drawItem(g, item, energy) {
     noiseZ += 0.05;
 
     if (item.type === 'sketch') {
-        // [수정] 펜이 멀리 이동할 때(점프) 투명도를 높여 '이동하는 선'이 뚜렷하게 보이도록 하여 완벽한 한붓그리기 질감을 부여합니다.
-        if (dSq > 900) { 
-            g.stroke(item.r, item.g, item.b, 60); // 투명도를 15 -> 60으로 상향 조정 (사각사각 이동하는 선)
-            g.strokeWeight(1);
-            g.line(prevPt.x, prevPt.y, item.x, item.y);
-        } else {
-            g.stroke(item.r, item.g, item.b, 200); 
-            g.strokeWeight(bMin);
-            g.noFill();
-            g.beginShape(); g.vertex(prevPt.x, prevPt.y); g.quadraticVertex(midX, midY, item.x, item.y); g.endShape();
-        }
+        // [완벽한 한선그리기] 거리가 멀든 가깝든 무조건 펜을 떼지 않고 동일한 선명도로 이어나감
+        g.stroke(item.r, item.g, item.b, 200); 
+        g.strokeWeight(bMin);
+        g.noFill();
+        g.beginShape(); 
+        g.vertex(prevPt.x, prevPt.y); 
+        g.quadraticVertex(midX, midY, item.x, item.y); 
+        g.endShape();
     } 
     else if (item.type === 'color') {
         let audioExpand = map(energy, 0, 255, 0, bMax * 0.5); 
@@ -463,7 +488,7 @@ function startRecording() {
     mediaRecorder.onstop = () => {
         let a = document.createElement('a');
         a.href = URL.createObjectURL(new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' }));
-        a.download = `OneLineArtist_${Date.now()}.${ext}`; a.click();
+        a.download = `UnbrokenLine_Masterpiece_${Date.now()}.${ext}`; a.click();
     };
     mediaRecorder.start();
 }
