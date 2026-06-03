@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>v1.29</title>
+<title>v1.30</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -43,15 +43,16 @@
     </div>
 
     <div class="control-group" style="border:1px solid #00ffcc; padding:10px; border-radius:4px; gap:8px; background:rgba(0,255,204,0.02);">
-        <span style="color:#00ffcc; font-weight:bold;">3. 아티스트 구도/브러시 제어</span>
-        <label>구도틀 가이드: 
+        <span style="color:#00ffcc; font-weight:bold;">3. 미술 구도틀 및 브러시 제어</span>
+        <label>구도틀 (소실점/비율): 
             <select id="guideOpt" onchange="updateSettings()">
-                <option value="spiral">나선형 (Spiral)</option>
-                <option value="hatch">크로스 해칭 (Hatch)</option>
-                <option value="radial">방사형 (Radial)</option>
+                <option value="ruleOfThirds">3분할 구도 (Rule of Thirds)</option>
+                <option value="perspective">1점 투시 (소실점 집중)</option>
+                <option value="diagonal">대각선 구도 (Diagonal)</option>
+                <option value="centerCross">중심 십자선 (Center Cross)</option>
             </select>
         </label>
-        <label>시작 위치: 
+        <label>소실점/중심점 위치: 
             <select id="startPosOpt" onchange="updateSettings()">
                 <option value="center">정중앙</option>
                 <option value="left">왼쪽 중앙</option>
@@ -76,7 +77,7 @@
     </div>
 
     <div class="control-group">
-        <span style="color:#fff; font-weight:bold;">5. 브러쉬 화풍 (단일 붓 채색)</span>
+        <span style="color:#fff; font-weight:bold;">5. 브러쉬 화풍 (채색)</span>
         <div class="btn-grid">
             <button class="studio-btn active" id="sPencil" onclick="changeStyle('pencil')">베이직</button>
             <button class="studio-btn" id="sOil" onclick="changeStyle('oil')">유화</button>
@@ -88,7 +89,7 @@
 </div>
 
 <div class="main">
-    <div id="loader"><div id="bakeText">구도 가이드라인 구축 중...</div></div>
+    <div id="loader"><div id="bakeText">구도 분석 및 궤적 렌더링 중...</div></div>
     <div class="canvas-zone" id="canvasContainer"></div>
     <div class="player-bar">
         <span id="timeCurrent" style="font-family:monospace; color:#888;">00:00</span>
@@ -140,80 +141,79 @@ function changeStyle(s) {
     if(targetImg) { paintBuffer.background('#f4f3ec'); lastDrawnIdx = 0; drawFrame(loadedAudio && isPlaying ? loadedAudio.currentTime() : 0); } 
 }
 
-// ==========================================
-// [핵심] 구도틀(Path Guides) 기반 2-Pass 렌더링 
-// ==========================================
+// [핵심] 정통 미술 구도선(Layout) 및 스케치/채색 궤적 통합 엔진
 async function buildArtistPathways() {
     if(!targetImg || isBaking) return;
     isBaking = true;
     document.getElementById('loader').style.display = 'flex';
-    document.getElementById('bakeText').innerText = "가이드라인 궤도 생성 중...";
+    document.getElementById('bakeText').innerText = "1. 미술 구도틀(가이드라인) 생성 중...";
     await new Promise(r => setTimeout(r, 50));
 
     paintBuffer.background('#f4f3ec');
     lastDrawnIdx = 0;
     strokeSequence = [];
     
+    // --- 1. 레이아웃(구도선) 생성 ---
+    let layoutNodes = [];
+    // 두 점 사이를 부드럽게 이어주는 함수
+    function addLineGuide(x1, y1, x2, y2) {
+        let steps = dist(x1, y1, x2, y2) / 15; // 15픽셀 단위로 점 생성
+        for(let i=0; i<=steps; i++) {
+            layoutNodes.push({ x: lerp(x1, x2, i/steps), y: lerp(y1, y2, i/steps), stage: 'layout' });
+        }
+        layoutNodes.push({ x: x2, y: y2, stage: 'lift' }); // 붓 떼기 신호
+    }
+
+    let guideType = document.getElementById('guideOpt').value;
+    let startPos = document.getElementById('startPosOpt').value;
+    
+    // 소실점(Vanishing Point) 및 중심점 설정
+    let vpX = width/2, vpY = height/2;
+    if(startPos === 'left') vpX = width * 0.2;
+    if(startPos === 'right') vpX = width * 0.8;
+    if(startPos === 'top') vpY = height * 0.2;
+    if(startPos === 'bottom') vpY = height * 0.8;
+
+    if (guideType === 'ruleOfThirds') {
+        addLineGuide(width/3, 0, width/3, height);
+        addLineGuide(width*2/3, 0, width*2/3, height);
+        addLineGuide(0, height/3, width, height/3);
+        addLineGuide(0, height*2/3, width, height*2/3);
+    } 
+    else if (guideType === 'perspective') {
+        // 1점 투시: 지평선과 소실점 방사선
+        addLineGuide(0, vpY, width, vpY); // 지평선
+        addLineGuide(0, 0, vpX, vpY); // 좌상단 -> 소실점
+        addLineGuide(0, height, vpX, vpY); // 좌하단 -> 소실점
+        addLineGuide(width, 0, vpX, vpY); // 우상단 -> 소실점
+        addLineGuide(width, height, vpX, vpY); // 우하단 -> 소실점
+    } 
+    else if (guideType === 'diagonal') {
+        addLineGuide(0, 0, width, height);
+        addLineGuide(width, 0, 0, height);
+    } 
+    else if (guideType === 'centerCross') {
+        addLineGuide(vpX, 0, vpX, height);
+        addLineGuide(0, vpY, width, vpY);
+    }
+
+    document.getElementById('bakeText').innerText = "2. 사물 경계면(Edge) 분석 중...";
+    await new Promise(r => setTimeout(r, 50));
+
+    // --- 2. 스케치 및 채색(Edge) 분석 ---
     targetImg.loadPixels();
     let d = targetImg.pixels;
     let tw = targetImg.width, th = targetImg.height;
-    
     let scaleOpt = getVal('scaleOpt');
-    let posX = getVal('posXOpt', parseInt);
-    let posY = getVal('posYOpt', parseInt);
     let rScale = Math.max(width / tw, height / th) * scaleOpt;
+    let posX = getVal('posXOpt', parseInt), posY = getVal('posYOpt', parseInt);
 
-    let startPos = document.getElementById('startPosOpt').value;
-    let guideType = document.getElementById('guideOpt').value;
+    let sketchNodes = [], colorNodes = [];
 
-    let cx = width/2, cy = height/2;
-    if(startPos === 'left') cx = width * 0.2;
-    if(startPos === 'right') cx = width * 0.8;
-    if(startPos === 'top') cy = height * 0.2;
-    if(startPos === 'bottom') cy = height * 0.8;
-
-    // 1. 선택된 구도틀에 따른 순차적 경로점 생성 (Base Path)
-    let rawPath = [];
-    let maxDist = dist(0, 0, width, height);
-
-    if (guideType === 'spiral') {
-        // 나선형: 중심에서 밖으로 감아나감
-        for(let a = 0; a < 300; a += 0.05) {
-            let r = 4 * a;
-            let px = cx + r * Math.cos(a);
-            let py = cy + r * Math.sin(a);
-            if(px >= 0 && px <= width && py >= 0 && py <= height) rawPath.push({x: px, y: py});
-        }
-    } else if (guideType === 'hatch') {
-        // 크로스 해칭: 지그재그로 수평선을 긋고, 수직선을 그음
-        for(let y = 0; y <= height; y += 15) {
-            let dir = (y/15) % 2 === 0 ? 1 : -1;
-            for(let x = (dir===1?0:width); (dir===1?x<=width:x>=0); x += dir*15) {
-                rawPath.push({x: x, y: y});
-            }
-        }
-        for(let x = 0; x <= width; x += 15) {
-            let dir = (x/15) % 2 === 0 ? 1 : -1;
-            for(let y = (dir===1?0:height); (dir===1?y<=height:y>=0); y += dir*15) {
-                rawPath.push({x: x, y: y});
-            }
-        }
-    } else if (guideType === 'radial') {
-        // 방사형: 중심에서 밖으로 뻗어나가는 선들
-        for(let a = 0; a < TWO_PI; a += 0.1) {
-            for(let r = 0; r < maxDist; r += 15) {
-                let px = cx + r * Math.cos(a);
-                let py = cy + r * Math.sin(a);
-                if(px >= 0 && px <= width && py >= 0 && py <= height) rawPath.push({x: px, y: py});
-            }
-        }
-    }
-
-    // 2. 궤도 좌표를 원본 이미지 픽셀에 매핑하여 색상 및 경계값(Edge) 추출
-    let sampledPath = [];
-    for(let pt of rawPath) {
-        let ix = Math.floor((pt.x - width/2 - posX) / rScale + tw/2);
-        let iy = Math.floor((pt.y - height/2 - posY) / rScale + th/2);
+    for(let i=0; i<60000; i++) {
+        let cx = random(width), cy = random(height);
+        let ix = Math.floor((cx - width/2 - posX) / rScale + tw/2);
+        let iy = Math.floor((cy - height/2 - posY) / rScale + th/2);
 
         if (ix >= 0 && ix < tw-1 && iy >= 0 && iy < th-1) {
             let pIdx = (iy * tw + ix) * 4;
@@ -222,23 +222,31 @@ async function buildArtistPathways() {
                 let pD = ((iy+1) * tw + ix) * 4;
                 let edge = abs(d[pIdx]-d[pR]) + abs(d[pIdx+1]-d[pR+1]) + abs(d[pIdx]-d[pD]);
                 let lum = d[pIdx]*0.3 + d[pIdx+1]*0.59 + d[pIdx+2]*0.11;
-                sampledPath.push({ x: pt.x, y: pt.y, r: d[pIdx], g: d[pIdx+1], b: d[pIdx+2], lum: lum, edge: edge });
+                
+                let distToVp = dist(cx, cy, vpX, vpY); // 소실점/중심점으로부터의 거리
+                let node = { x: cx, y: cy, r: d[pIdx], g: d[pIdx+1], b: d[pIdx+2], lum: lum, edge: edge, dist: distToVp };
+
+                if(edge > 30) sketchNodes.push(node);
+                else colorNodes.push(node);
             }
         }
     }
 
-    document.getElementById('bakeText').innerText = "2-Pass 렌더링 동선 배정 중...";
-    await new Promise(r => setTimeout(r, 50));
+    // [핵심] 스케치 정렬: 소실점/중심점에 가까운 곳부터 바깥으로 형태를 잡아나감
+    sketchNodes.sort((a, b) => a.dist - b.dist);
+    // [핵심] 채색 정렬: 소실점 중심에서 시작하되, 경계면(Edge)이 높은 곳부터 색을 칠하며 나감
+    colorNodes.sort((a, b) => {
+        let distChunkA = Math.floor(a.dist / 50);
+        let distChunkB = Math.floor(b.dist / 50);
+        if (distChunkA !== distChunkB) return distChunkA - distChunkB; // 중심에서 바깥으로 영역 이동
+        return b.edge - a.edge; // 해당 영역 내에서는 경계면 우선
+    });
 
-    // [기획 핵심 2-Pass] 
-    // Pass 1: 구도틀을 따라가되, Edge가 강한 곳만 스케치 (0~30% 타임라인)
-    let sketchPass = sampledPath.filter(n => n.edge > 25);
-    // Pass 2: 구도틀을 따라가되, Edge가 약한 곳을 채색 (30~80% 타임라인)
-    let colorPass = sampledPath.filter(n => n.edge <= 25);
-
-    let totS = sketchPass.length, totC = colorPass.length;
-    sketchPass.forEach((s, i) => { s.prog = map(i, 0, totS, 0.0, 0.30); s.stage='sketch'; strokeSequence.push(s); });
-    colorPass.forEach((s, i) => { s.prog = map(i, 0, totC, 0.30, 0.80); s.stage='color'; strokeSequence.push(s); });
+    // 3. 타임라인(0~100%) 비율 분배
+    let totL = layoutNodes.length, totS = sketchNodes.length, totC = colorNodes.length;
+    layoutNodes.forEach((s, i) => { s.prog = map(i, 0, totL, 0.0, 0.05); strokeSequence.push(s); });
+    sketchNodes.forEach((s, i) => { s.prog = map(i, 0, totS, 0.05, 0.30); s.stage = 'sketch'; strokeSequence.push(s); });
+    colorNodes.forEach((s, i) => { s.prog = map(i, 0, totC, 0.30, 0.80); s.stage = 'color'; strokeSequence.push(s); });
 
     document.getElementById('loader').style.display = 'none';
     isBaking = false;
@@ -247,39 +255,46 @@ async function buildArtistPathways() {
     if(!isPlaying && targetImg) { document.getElementById('timeline').value = 80; seekTime(80); }
 }
 
-// [핵심] 오디오와 옵션에 반응하는 다이내믹 브러시 렌더러
+// 렌더링 엔진: 붓을 떼고 이동하는 로직 강화
 function drawBrushStroke(g, prev, curr, energy) {
+    // 붓을 떼는 신호(lift)이거나, 거리가 너무 멀면 그리지 않고 좌표만 이동
+    if (prev.stage === 'lift' || curr.stage === 'lift') return;
+    
     let dSq = dist(prev.x, prev.y, curr.x, curr.y);
-    if (dSq > 60) return; // 궤도상 너무 멀면 붓을 공중으로 띄움 (거미줄 완벽 방지)
+    if (dSq > 60) return; // 거미줄 방지용 Pen Lift
 
     let noiseAmt = getVal('noiseOpt');
     let bMin = getVal('brushMin');
     let bMax = getVal('brushMax');
 
-    // 오디오 에너지에 따라 떨림과 굵기가 팽창함
     let dynamicNoise = map(energy, 0, 255, 0, noiseAmt); 
     let midX = (prev.x + curr.x) / 2 + (noise(prev.x*0.05, noiseZ) - 0.5) * dynamicNoise;
     let midY = (prev.y + curr.y) / 2 + (noise(prev.y*0.05, noiseZ) - 0.5) * dynamicNoise;
     noiseZ += 0.05;
 
-    if (curr.stage === 'sketch') {
-        g.stroke(curr.lum * 0.1, 180); 
-        g.strokeWeight(bMin);
+    if (curr.stage === 'layout') {
+        // 구도선은 자를 대고 그은 듯 연하고 반듯하게
+        g.stroke(0, 50); g.strokeWeight(1);
+        g.line(prev.x, prev.y, curr.x, curr.y);
+    }
+    else if (curr.stage === 'sketch') {
+        // 사물 스케치 연필선
+        g.stroke(curr.lum * 0.15, 180); g.strokeWeight(bMin);
         g.noFill();
         g.beginShape(); g.vertex(prev.x, prev.y); g.quadraticVertex(midX, midY, curr.x, curr.y); g.endShape();
     } 
     else {
-        // 음악이 강할수록, 혹은 엣지가 낮을수록(평면일수록) 붓이 굵어짐
+        // 채색 단계: 음악 에너지에 맞춰 붓 굵기 팽창
         let targetSize = map(curr.edge, 40, 0, bMin, bMax);
         let audioExpand = map(energy, 0, 255, 0, bMax * 0.5);
-        let finalBrushSize = constrain(targetSize + audioExpand + random(-2, 2), bMin, bMax * 1.5);
+        let finalBrushSize = constrain(targetSize + audioExpand + random(-1, 1), bMin, bMax * 1.5);
 
         if (currentStyle === 'oil') {
-            g.stroke(curr.r, curr.g, curr.b, 230); g.strokeWeight(finalBrushSize);
+            g.stroke(curr.r, curr.g, curr.b, 220); g.strokeWeight(finalBrushSize);
             g.beginShape(); g.vertex(prev.x, prev.y); g.quadraticVertex(midX, midY, curr.x, curr.y); g.endShape();
         } else if (currentStyle === 'impressionism') {
             g.noStroke(); g.fill(curr.r, curr.g, curr.b, 200);
-            g.ellipse(curr.x + random(-dynamicNoise, dynamicNoise), curr.y + random(-dynamicNoise, dynamicNoise), finalBrushSize);
+            g.ellipse(curr.x, curr.y, finalBrushSize); // 인상파 점묘
         } else {
             g.stroke(curr.r, curr.g, curr.b, 150); g.strokeWeight(finalBrushSize * 0.5);
             g.beginShape(); g.vertex(prev.x, prev.y); g.quadraticVertex(midX, midY, curr.x, curr.y); g.endShape();
@@ -301,14 +316,12 @@ function drawFrame(ct) {
         lastDrawnIdx = 0; 
     }
 
-    // 음악 에너지(볼륨) 0~255
     let energy = 0;
     if(isPlaying && fft) { 
         fft.analyze(); 
         energy = fft.getEnergy("bass") * 0.6 + fft.getEnergy("mid") * 0.4; 
     }
 
-    // [핵심] 오디오 동적 가속 엔진: 에너지가 높으면 붓이 빨리 치고 나감
     let speedFactor = isPlaying ? map(energy, 0, 255, 0.2, 2.0) : 1.0; 
     let gap = expectedIdx - lastDrawnIdx;
     let step = Math.max(1, Math.floor(gap * speedFactor));
@@ -380,7 +393,7 @@ function startRecording() {
     mediaRecorder.onstop = () => {
         let a = document.createElement('a');
         a.href = URL.createObjectURL(new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' }));
-        a.download = `AudioArt_Masterpiece_${Date.now()}.${ext}`; a.click();
+        a.download = `AudioArt_Composition_${Date.now()}.${ext}`; a.click();
     };
     mediaRecorder.start();
 }
