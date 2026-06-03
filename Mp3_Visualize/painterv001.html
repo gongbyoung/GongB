@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>v2.06</title>
+<title>v2.07</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -25,9 +25,10 @@
     .studio-btn.active { border-color: #00ffcc; color: #00ffcc; background: rgba(0,255,204,0.1); }
     
     .player-bar { height: 60px; background: #0f0f14; border-top: 1px solid #222; display: flex; align-items: center; padding: 0 20px; gap: 15px; }
-    #loader { display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.85); z-index: 1000; flex-direction: column; justify-content: center; align-items: center; color: #00ffcc; font-family: monospace; font-size: 14px; gap: 15px; }
-    .spinner { width: 40px; height: 40px; border: 4px solid rgba(0,255,204,0.2); border-top-color: #00ffcc; border-radius: 50%; animation: spin 1s linear infinite; }
+    #loader { display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.85); z-index: 1000; flex-direction: column; justify-content: center; align-items: center; color: #00ffcc; font-family: monospace; font-size: 14px; gap: 15px; text-align: center; }
+    .spinner { width: 40px; height: 40px; border: 4px solid rgba(0,255,204,0.2); border-top-color: #00ffcc; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 10px; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    #bakeProgress { font-size: 24px; font-weight: bold; color: #ff3e81; margin-top: 5px; }
 </style>
 </head>
 <body>
@@ -89,6 +90,7 @@
     <div id="loader">
         <div class="spinner"></div>
         <div id="bakeText">안전 렌더링 엔진 가동 중...</div>
+        <div id="bakeProgress">0%</div>
     </div>
     <div class="canvas-zone" id="canvasContainer"></div>
     <div class="player-bar">
@@ -159,23 +161,25 @@ function changeStyle(s) {
 }
 
 // ==========================================
-// [무한루프 제거 & 한붓그리기 엔진]
+// [비동기 분산 엔진] 진행률(%) 렌더링 도입
 // ==========================================
 async function buildDualPathwaysSafe() {
     if(isBaking) return;
     isBaking = true;
     let loader = document.getElementById('loader');
     let bakeText = document.getElementById('bakeText');
+    let progressTxt = document.getElementById('bakeProgress');
+    
     loader.style.display = 'flex';
-    bakeText.innerText = "1. 한붓그리기(Continuous Line) 궤도 생성 중...";
+    bakeText.innerText = "1. 스케치 픽셀 분석 중...";
+    progressTxt.innerText = "0%";
     await new Promise(r => setTimeout(r, 50)); 
 
     paintBuffer.background(paperColor);
     lastDrawnIdx = 0;
     renderQueue = [];
     
-    // 해상도를 낮춰서 연산량 강제 제한 (절대 멈추지 않음)
-    let maxDim = 600;
+    let maxDim = 600; // 해상도 리미트
     let scaleRatio = Math.min(1.0, maxDim / Math.max(targetImg.width, targetImg.height));
     let analysisW = Math.floor(targetImg.width * scaleRatio);
     let analysisH = Math.floor(targetImg.height * scaleRatio);
@@ -195,13 +199,11 @@ async function buildDualPathwaysSafe() {
     let mapToCanvasX = (ax) => ((ax / scaleRatio) - targetImg.width/2) * rScale + width/2 + getVal('posXOpt', parseInt);
     let mapToCanvasY = (ay) => ((ay / scaleRatio) - targetImg.height/2) * rScale + height/2 + getVal('posYOpt', parseInt);
 
-    // --- 1. 스케치 픽셀 추출 (Grid Sampling으로 속도 100배 향상) ---
     let sketchNodes = [];
     for (let y = 0; y < analysisH; y += 2) {
         for (let x = 0; x < analysisW; x += 2) {
             let pIdx = (y * analysisW + x) * 4;
             let lum = sData[pIdx]*0.3 + sData[pIdx+1]*0.59 + sData[pIdx+2]*0.11;
-            // 어두운 선화 픽셀만 추출
             if (lum < 150 && sData[pIdx+3] > 10) {
                 sketchNodes.push({ x: mapToCanvasX(x), y: mapToCanvasY(y), r: sData[pIdx], g: sData[pIdx+1], b: sData[pIdx+2] });
             }
@@ -211,37 +213,48 @@ async function buildDualPathwaysSafe() {
     bakeText.innerText = "2. 펜 동선 최단거리(Nearest) 연산 중...";
     await new Promise(r => setTimeout(r, 50));
 
-    // --- [핵심] 한붓그리기 (TSP - Nearest Neighbor) ---
-    // 배열 팝 연산으로 무한루프 원천 차단
+    // [핵심] 진행률 표시 및 비동기(Async) 쪼개기 (프리즈 방지)
     let continuousSketchPath = [];
     if(sketchNodes.length > 0) {
         let curr = sketchNodes.shift();
         continuousSketchPath.push(curr);
+        
+        let totalNodes = sketchNodes.length;
+        let processed = 0;
 
         while(sketchNodes.length > 0) {
-            let bestIdx = 0, bestDist = Infinity;
-            // 다음 점을 찾을 때 너무 멀리 찾지 않고 앞부분 400개만 스캔 (초고속화)
-            let searchLimit = Math.min(sketchNodes.length, 400); 
-            for(let i = 0; i < searchLimit; i++) {
-                let dSq = (curr.x - sketchNodes[i].x)**2 + (curr.y - sketchNodes[i].y)**2;
-                if(dSq < bestDist) { bestDist = dSq; bestIdx = i; }
+            // 한 프레임에 400개씩만 처리하고 브라우저에게 숨쉴 틈을 줌
+            let chunkLimit = Math.min(sketchNodes.length, 400);
+            
+            for(let step = 0; step < chunkLimit; step++) {
+                let bestIdx = 0, bestDist = Infinity;
+                let searchLimit = Math.min(sketchNodes.length, 250); 
+                for(let i = 0; i < searchLimit; i++) {
+                    let dSq = (curr.x - sketchNodes[i].x)**2 + (curr.y - sketchNodes[i].y)**2;
+                    if(dSq < bestDist) { bestDist = dSq; bestIdx = i; }
+                }
+                curr = sketchNodes[bestIdx];
+                sketchNodes[bestIdx] = sketchNodes[sketchNodes.length - 1]; 
+                sketchNodes.pop();
+                continuousSketchPath.push(curr);
+                processed++;
             }
-            curr = sketchNodes[bestIdx];
-            sketchNodes[bestIdx] = sketchNodes[sketchNodes.length - 1]; // O(1) 삭제
-            sketchNodes.pop();
-            continuousSketchPath.push(curr);
+            
+            // UI 업데이트 및 비동기 대기
+            let percent = Math.floor((processed / totalNodes) * 100);
+            progressTxt.innerText = `${percent}%`;
+            await new Promise(r => setTimeout(r, 5)); // 5ms 휴식 (UI 새로고침 허용)
         }
     }
 
-    bakeText.innerText = "3. 채색 영역 수채화 물방울 렌더링 중...";
+    bakeText.innerText = "3. 2번 컬러 이미지 색상 매핑 중...";
+    progressTxt.innerText = "0%";
     await new Promise(r => setTimeout(r, 50));
 
-    // --- 2. 컬러 채색 픽셀 추출 ---
     let colorNodes = [];
     for (let y = 0; y < analysisH; y += 3) {
         for (let x = 0; x < analysisW; x += 3) {
             let pIdx = (y * analysisW + x) * 4;
-            // 배경이 아닌 유색 픽셀 추출
             if (cData[pIdx+3] > 10 && (cData[pIdx]+cData[pIdx+1]+cData[pIdx+2]) < 730) {
                 colorNodes.push({ x: mapToCanvasX(x), y: mapToCanvasY(y), r: cData[pIdx], g: cData[pIdx+1], b: cData[pIdx+2] });
             }
@@ -257,7 +270,6 @@ async function buildDualPathwaysSafe() {
         return dist(a.x, a.y, width/2, height/2) - dist(b.x, b.y, width/2, height/2);
     });
 
-    // --- 3. 타임라인 배분 (스케치 30%, 컬러 80%) ---
     let sTotal = Math.max(1, continuousSketchPath.length);
     continuousSketchPath.forEach((pt, i) => {
         renderQueue.push({ type: 'sketch', x: pt.x, y: pt.y, r: pt.r, g: pt.g, b: pt.b, prog: map(i, 0, sTotal, 0.0, 0.30) });
@@ -279,9 +291,6 @@ async function buildDualPathwaysSafe() {
 
 let prevPt = null;
 
-// ==========================================
-// [진짜 한붓그리기 렌더러]
-// ==========================================
 function drawItem(g, item, energy) {
     if (!prevPt || prevPt.type !== item.type) { prevPt = item; return; }
 
@@ -296,15 +305,13 @@ function drawItem(g, item, energy) {
     noiseZ += 0.05;
 
     if (item.type === 'sketch') {
-        // [한붓그리기 코어] 
-        // 펜은 절대 떨어지지 않는다. 거리가 멀면 허공을 스치듯 옅은 선(흔적)을 남기고,
-        // 거리가 가까우면 윤곽선을 진하게 그린다.
-        if (dSq > 900) { // 약 30픽셀 이상 점프할 때
-            g.stroke(item.r, item.g, item.b, 15); // 매우 옅고 투명한 이동 선
+        // [수정] 펜이 멀리 이동할 때(점프) 투명도를 높여 '이동하는 선'이 뚜렷하게 보이도록 하여 완벽한 한붓그리기 질감을 부여합니다.
+        if (dSq > 900) { 
+            g.stroke(item.r, item.g, item.b, 60); // 투명도를 15 -> 60으로 상향 조정 (사각사각 이동하는 선)
             g.strokeWeight(1);
             g.line(prevPt.x, prevPt.y, item.x, item.y);
         } else {
-            g.stroke(item.r, item.g, item.b, 200); // 뚜렷한 스케치 선
+            g.stroke(item.r, item.g, item.b, 200); 
             g.strokeWeight(bMin);
             g.noFill();
             g.beginShape(); g.vertex(prevPt.x, prevPt.y); g.quadraticVertex(midX, midY, item.x, item.y); g.endShape();
