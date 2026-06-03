@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>v2.04</title>
+<title>v2.05</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -25,7 +25,9 @@
     .studio-btn.active { border-color: #00ffcc; color: #00ffcc; background: rgba(0,255,204,0.1); }
     
     .player-bar { height: 60px; background: #0f0f14; border-top: 1px solid #222; display: flex; align-items: center; padding: 0 20px; gap: 15px; }
-    #loader { display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.85); z-index: 1000; flex-direction: column; justify-content: center; align-items: center; color: #00ffcc; font-family: monospace; font-size: 14px; gap: 10px; }
+    #loader { display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.85); z-index: 1000; flex-direction: column; justify-content: center; align-items: center; color: #00ffcc; font-family: monospace; font-size: 14px; gap: 15px; }
+    .spinner { width: 40px; height: 40px; border: 4px solid rgba(0,255,204,0.2); border-top-color: #00ffcc; border-radius: 50%; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
@@ -84,7 +86,10 @@
 </div>
 
 <div class="main">
-    <div id="loader"><div id="bakeText">스케치 라인 및 채색 영역 동기화 중...</div></div>
+    <div id="loader">
+        <div class="spinner"></div>
+        <div id="bakeText">엔진 최적화 및 로딩 중...</div>
+    </div>
     <div class="canvas-zone" id="canvasContainer"></div>
     <div class="player-bar">
         <span id="timeCurrent" style="font-family:monospace; color:#888;">00:00</span>
@@ -127,7 +132,6 @@ function updateSettings() {
     paintBuffer = createGraphics(w, h);
     paintBuffer.background(paperColor);
     
-    // 두 이미지가 모두 로드되어야 분석 시작
     if(sketchImg && targetImg) buildDualPathways();
 }
 
@@ -138,7 +142,7 @@ function loadAudio(files) { if(files[0]) loadedAudio = loadSound(URL.createObjec
 function checkReady() { 
     if(sketchImg && targetImg) { 
         document.getElementById('recBtn').disabled = false; 
-        updateSettings(); // 두 이미지가 준비되면 렌더링 맵 생성
+        updateSettings(); 
     } 
 }
 
@@ -155,163 +159,154 @@ function changeStyle(s) {
 }
 
 // ==========================================
-// [핵심 엔진] 1. 스케치 선화 추적 -> 2. 컬러 채색 추적
+// [초고속 엔진] 해상도 최적화 및 비동기 추적
 // ==========================================
 async function buildDualPathways() {
     if(isBaking) return;
     isBaking = true;
-    document.getElementById('loader').style.display = 'flex';
-    document.getElementById('bakeText').innerText = "1. 스케치 이미지(1번) 선화 추출 중...";
-    await new Promise(r => setTimeout(r, 50));
+    let loader = document.getElementById('loader');
+    let bakeText = document.getElementById('bakeText');
+    loader.style.display = 'flex';
+    bakeText.innerText = "1. 이미지 엔진 최적화 중...";
+    await new Promise(r => setTimeout(r, 100)); // 브라우저 숨쉬기
 
     paintBuffer.background(paperColor);
     lastDrawnIdx = 0;
     renderQueue = [];
     
-    let tw = targetImg.width, th = targetImg.height;
-    let scaleOpt = getVal('scaleOpt');
-    let posX = getVal('posXOpt', parseInt), posY = getVal('posYOpt', parseInt);
-    let rScale = Math.max(width / tw, height / th) * scaleOpt;
+    // [해결책] 연산 속도를 위해 분석 캔버스를 최대 800px로 제한하여 그립니다.
+    let maxDim = 800;
+    let scaleRatio = Math.min(1.0, maxDim / Math.max(targetImg.width, targetImg.height));
+    let analysisW = Math.floor(targetImg.width * scaleRatio);
+    let analysisH = Math.floor(targetImg.height * scaleRatio);
 
-    // [1단계] 스케치 이미지(1번)를 원본(2번) 크기에 맞춰 내부적으로 리사이즈하여 픽셀을 1:1 매칭
-    let sg = createGraphics(tw, th);
-    sg.image(sketchImg, 0, 0, tw, th);
+    // 내부 분석용 버퍼 생성
+    let sg = createGraphics(analysisW, analysisH);
+    sg.image(sketchImg, 0, 0, analysisW, analysisH);
     sg.loadPixels();
     let sData = sg.pixels;
 
-    let sketchNodes = [];
-    // 어두운 픽셀(선화) 추출 (약 15000개 샘플링)
-    for(let i=0; i<15000; i++) {
-        let px = random(tw), py = random(th);
-        let ix = Math.floor(px), iy = Math.floor(py);
-        let pIdx = (iy * tw + ix) * 4;
-        
-        let lum = sData[pIdx]*0.3 + sData[pIdx+1]*0.59 + sData[pIdx+2]*0.11;
-        if(lum < 150 && sData[pIdx+3] > 10) { // 선이 어둡고 투명하지 않으면
-            let canvasX = (px - tw/2) * rScale + width/2 + posX;
-            let canvasY = (py - th/2) * rScale + height/2 + posY;
-            sketchNodes.push({ x: canvasX, y: canvasY, r: sData[pIdx], g: sData[pIdx+1], b: sData[pIdx+2] });
+    let cg = createGraphics(analysisW, analysisH);
+    cg.image(targetImg, 0, 0, analysisW, analysisH);
+    cg.loadPixels();
+    let cData = cg.pixels;
+
+    bakeText.innerText = "2. 1번 스케치 선화 정밀 추출 중...";
+    await new Promise(r => setTimeout(r, 100));
+
+    // 화면 렌더링에 매핑할 배율 계산
+    let displayScale = getVal('scaleOpt');
+    let rScale = Math.max(width / targetImg.width, height / targetImg.height) * displayScale;
+    let mapToCanvasX = (ax) => ((ax / scaleRatio) - targetImg.width/2) * rScale + width/2 + getVal('posXOpt', parseInt);
+    let mapToCanvasY = (ay) => ((ay / scaleRatio) - targetImg.height/2) * rScale + height/2 + getVal('posYOpt', parseInt);
+
+    // [해결책] Edge Walking (개미 걷기) 알고리즘으로 스케치 선을 한 줄씩 따냄
+    let visited = new Uint8Array(analysisW * analysisH);
+    let sketchPaths = [];
+    
+    for (let y = 1; y < analysisH - 1; y+=2) { // 2픽셀 단위로 스캔하여 속도 2배 향상
+        for (let x = 1; x < analysisW - 1; x+=2) {
+            let idx = y * analysisW + x;
+            if (!visited[idx]) {
+                let pIdx = idx * 4;
+                let lum = sData[pIdx]*0.3 + sData[pIdx+1]*0.59 + sData[pIdx+2]*0.11;
+                // 스케치 이미지에서 어두운 선을 발견하면
+                if (lum < 150 && sData[pIdx+3] > 10) {
+                    let currentLine = [];
+                    let cx = x, cy = y;
+                    
+                    // 선을 따라가기
+                    while(true) {
+                        let cIdx = cy * analysisW + cx;
+                        visited[cIdx] = 1;
+                        currentLine.push({ x: mapToCanvasX(cx), y: mapToCanvasY(cy), r: sData[cIdx*4], g: sData[cIdx*4+1], b: sData[cIdx*4+2] });
+
+                        // 주변 픽셀 탐색
+                        let nextX = -1, nextY = -1;
+                        for(let ny = cy - 2; ny <= cy + 2; ny++) {
+                            for(let nx = cx - 2; nx <= cx + 2; nx++) {
+                                if(nx >= 0 && nx < analysisW && ny >= 0 && ny < analysisH) {
+                                    let nIdx = ny * analysisW + nx;
+                                    if(!visited[nIdx]) {
+                                        let nLum = sData[nIdx*4]*0.3 + sData[nIdx*4+1]*0.59 + sData[nIdx*4+2]*0.11;
+                                        if(nLum < 150 && sData[nIdx*4+3] > 10) {
+                                            nextX = nx; nextY = ny;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            if(nextX !== -1) break;
+                        }
+                        
+                        if(nextX !== -1) { cx = nextX; cy = nextY; } else break;
+                    }
+                    if (currentLine.length > 3) sketchPaths.push(currentLine); // 짧은 노이즈 제거
+                }
+            }
         }
     }
 
-    document.getElementById('bakeText').innerText = "2. 원본 이미지(2번) 채색 영역 매핑 중...";
-    await new Promise(r => setTimeout(r, 50));
+    bakeText.innerText = "3. 2번 컬러 이미지 색상 데이터 매핑 중...";
+    await new Promise(r => setTimeout(r, 100));
 
-    // [2단계] 완성본 이미지(2번) 픽셀 분석
-    targetImg.loadPixels();
-    let cData = targetImg.pixels;
+    // 컬러 샘플링 (15,000개로 고정하여 성능 확보)
     let colorNodes = [];
-
-    // 채색할 픽셀 추출 (약 25000개 샘플링)
-    for(let i=0; i<25000; i++) {
-        let px = random(tw), py = random(th);
-        let ix = Math.floor(px), iy = Math.floor(py);
-        let pIdx = (iy * tw + ix) * 4;
+    for(let i=0; i<15000; i++) {
+        let ax = Math.floor(random(analysisW));
+        let ay = Math.floor(random(analysisH));
+        let pIdx = (ay * analysisW + ax) * 4;
         
-        // 배경(순백색/투명) 제외하고 유효한 색상 영역만 추출
         if(cData[pIdx+3] > 10 && (cData[pIdx]+cData[pIdx+1]+cData[pIdx+2]) < 730) {
-            let canvasX = (px - tw/2) * rScale + width/2 + posX;
-            let canvasY = (py - th/2) * rScale + height/2 + posY;
-            colorNodes.push({ x: canvasX, y: canvasY, r: cData[pIdx], g: cData[pIdx+1], b: cData[pIdx+2] });
+            colorNodes.push({ x: mapToCanvasX(ax), y: mapToCanvasY(ay), r: cData[pIdx], g: cData[pIdx+1], b: cData[pIdx+2] });
         }
     }
 
-    // [3단계] 화가의 동선에 따른 정렬 (공간 분할)
+    // 공간 동선 정렬
     let startPos = document.getElementById('startPosOpt').value;
-    let getSortValue = (n) => {
+    let getSortVal = (n) => {
         let chunkX = Math.floor(n.x / 40) * 40;
         let chunkY = Math.floor(n.y / 40) * 40;
         if(startPos === 'top') return chunkY * 1000 + chunkX;
         if(startPos === 'bottom') return (height - chunkY) * 1000 + chunkX;
-        return dist(n.x, n.y, width/2, height/2); // center
+        return dist(n.x, n.y, width/2, height/2); 
     };
 
-    sketchNodes.sort((a, b) => getSortValue(a) - getSortValue(b));
-    colorNodes.sort((a, b) => getSortValue(a) - getSortValue(b));
+    sketchPaths.sort((a, b) => getSortVal(a[0]) - getSortVal(b[0]));
+    colorNodes.sort((a, b) => getSortVal(a) - getSortVal(b));
 
-    // 꼬리물기 최적화 (선 긋기와 쓱싹 칠하기)
-    function buildTracePath(nodes, isSketch) {
-        let paths = [];
-        if(nodes.length === 0) return paths;
-        
-        let currentPath = [];
-        let curr = nodes.shift();
-        currentPath.push(curr);
-
-        while(nodes.length > 0) {
-            let bestIdx = 0, bestDist = Infinity;
-            // 덩어리 지어 자연스럽게 이어지도록 탐색
-            let searchLimit = Math.min(nodes.length, 100); 
-            for(let i=0; i<searchLimit; i++) {
-                let dSq = dist(curr.x, curr.y, nodes[i].x, nodes[i].y);
-                if(dSq < bestDist) { bestDist = dSq; bestIdx = i; }
-            }
-            
-            // 스케치는 선이 길게 이어져야 하므로 거리가 멀면 새 패스로 분리
-            if (isSketch && bestDist > 1500) { // dist 약 38 이상
-                paths.push({ type: 'sketch_path', nodes: currentPath });
-                currentPath = [];
-            }
-
-            curr = nodes[bestIdx];
-            nodes[bestIdx] = nodes[nodes.length - 1]; nodes.pop();
-            currentPath.push(curr);
-        }
-        if(currentPath.length > 0) {
-            if(isSketch) paths.push({ type: 'sketch_path', nodes: currentPath });
-            else paths.push({ type: 'color_path', nodes: currentPath }); // 채색은 통으로 쓱싹
-        }
-        return paths;
-    }
-
-    let finalSketch = buildTracePath(sketchNodes, true);
-    let finalColor = buildTracePath(colorNodes, false);
-
-    // [4단계] 타임라인 배분 
-    // 기획 요구사항: 1번 이미지(스케치)는 0~30%, 2번 이미지(채색)는 30~80%
-    
-    // 1. 스케치 타임라인 배정 (0.0 ~ 0.3)
-    let totalSketchNodes = finalSketch.reduce((acc, path) => acc + path.nodes.length, 0);
+    // 타임라인 삽입
+    let totalSketchNodes = sketchPaths.reduce((acc, line) => acc + line.length, 0);
     let sCount = 0;
-    finalSketch.forEach(pathGroup => {
-        pathGroup.nodes.forEach(pt => {
-            let prog = map(sCount++, 0, totalSketchNodes, 0.0, 0.30);
-            renderQueue.push({ type: 'sketch', x: pt.x, y: pt.y, r: pt.r, g: pt.g, b: pt.b, prog: prog });
+    sketchPaths.forEach(line => {
+        line.forEach(pt => {
+            renderQueue.push({ type: 'sketch', x: pt.x, y: pt.y, r: pt.r, g: pt.g, b: pt.b, prog: map(sCount++, 0, totalSketchNodes, 0.0, 0.30) });
         });
-        // 선과 선 사이 붓 떼기
         renderQueue.push({ type: 'lift', prog: map(sCount, 0, totalSketchNodes, 0.0, 0.30) });
     });
 
-    // 2. 채색 타임라인 배정 (0.3 ~ 0.8)
-    if(finalColor.length > 0) {
-        let colorPoints = finalColor[0].nodes;
-        let cCount = 0;
-        colorPoints.forEach(pt => {
-            let prog = map(cCount++, 0, colorPoints.length, 0.30, 0.80);
-            renderQueue.push({ type: 'color', x: pt.x, y: pt.y, r: pt.r, g: pt.g, b: pt.b, prog: prog });
-        });
-    }
+    colorNodes.forEach((pt, i) => {
+        renderQueue.push({ type: 'color', x: pt.x, y: pt.y, r: pt.r, g: pt.g, b: pt.b, prog: map(i, 0, colorNodes.length, 0.30, 0.80) });
+    });
 
-    document.getElementById('loader').style.display = 'none';
+    loader.style.display = 'none';
     isBaking = false;
     checkReady();
     
-    // 스크러버 프리뷰 갱신
     if(!isPlaying) { simulatedTime = getVal('timeOpt') * 0.8; drawFrame(simulatedTime); document.getElementById('timeline').value = 80; }
+    
+    // 메모리 정리
+    sg.remove(); cg.remove();
 }
 
-// ==========================================
-// [렌더러] 스케치 라인과 채색 브러시 구분 렌더링
-// ==========================================
 let prevPt = null;
 
 function drawItem(g, item, energy) {
     if (item.type === 'lift') { prevPt = null; return; }
-    
     if (!prevPt || prevPt.type !== item.type) { prevPt = item; return; }
 
     let dSq = dist(prevPt.x, prevPt.y, item.x, item.y);
-    if (item.type === 'sketch' && dSq > 50) { prevPt = item; return; } // 스케치 시 튀는 선 방지
+    if (item.type === 'sketch' && dSq > 50) { prevPt = item; return; } 
 
     let noiseAmt = getVal('noiseOpt');
     let bMin = getVal('brushMin');
@@ -323,14 +318,12 @@ function drawItem(g, item, energy) {
     noiseZ += 0.05;
 
     if (item.type === 'sketch') {
-        // [스케치 0~30%] 사용자가 입력한 스케치 이미지의 색과 농도를 반영하여 그음
-        g.stroke(item.r, item.g, item.b, 200); 
+        g.stroke(item.r, item.g, item.b, 220); 
         g.strokeWeight(bMin);
         g.noFill();
         g.beginShape(); g.vertex(prevPt.x, prevPt.y); g.quadraticVertex(midX, midY, item.x, item.y); g.endShape();
     } 
     else if (item.type === 'color') {
-        // [채색 30~80%] 2번 이미지 색상으로 선택한 화풍에 맞게 칠함
         let audioExpand = map(energy, 0, 255, 0, bMax * 0.5); 
         let finalSize = constrain(bMax * 0.7 + audioExpand + random(-2, 3), bMin, bMax * 1.5);
         
@@ -339,7 +332,7 @@ function drawItem(g, item, energy) {
 
         if (currentStyle === 'watercolor') {
             g.noStroke();
-            let waterAlpha = 20; // 겹겹이 쌓이는 물맛
+            let waterAlpha = 20; 
             g.fill(item.r, item.g, item.b, waterAlpha);
             
             g.beginShape();
@@ -348,19 +341,17 @@ function drawItem(g, item, energy) {
                 g.vertex(x2 + rOff*cos(a), y2 + rOff*sin(a));
             }
             g.endShape(CLOSE);
-            
-            // 중앙 코어
             g.fill(item.r, item.g, item.b, waterAlpha * 0.5);
             g.ellipse(x2, y2, finalSize * 1.2);
             
         } else if (currentStyle === 'oil') {
-            g.stroke(item.r, item.g, item.b, 230); g.strokeWeight(finalSize * 0.8);
+            g.stroke(item.r, item.g, item.b, 240); g.strokeWeight(finalSize * 0.8);
             if (dSq < 60) g.line(prevPt.x, prevPt.y, x2, y2);
             else {
                 let angle = random(TWO_PI);
                 g.line(x2, y2, x2 + cos(angle)*finalSize, y2 + sin(angle)*finalSize); 
             }
-        } else { // Pencil (채색용 색연필 해칭)
+        } else {
             g.stroke(item.r, item.g, item.b, 120); g.strokeWeight(bMin * 1.5);
             if (dSq < 50) g.line(prevPt.x, prevPt.y, x2, y2);
         }
@@ -414,8 +405,7 @@ function drawFrame(ct) {
     image(paintBuffer, 0, 0);
     pop();
 
-    // 80~100%: 2번 완성본 이미지를 서서히 오버레이하여 완벽한 화질 완성
-    if(targetProg > 0.80) {
+    if(targetProg > 0.80 && targetImg) {
         let detailAlpha = map(targetProg, 0.80, 1.0, 0, 255);
         push();
         imageMode(CENTER);
@@ -480,7 +470,7 @@ function startRecording() {
     mediaRecorder.onstop = () => {
         let a = document.createElement('a');
         a.href = URL.createObjectURL(new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' }));
-        a.download = `DualCanvas_Masterpiece_${Date.now()}.${ext}`; a.click();
+        a.download = `Optimized_DualCanvas_${Date.now()}.${ext}`; a.click();
     };
     mediaRecorder.start();
 }
