@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>v1.33</title>
+<title>v2.02</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -38,42 +38,33 @@
     </div>
     
     <div class="control-group">
-        <span style="color:#fff; font-weight:bold;">2. 🎵 음악 오디오 파일</span>
+        <span style="color:#fff; font-weight:bold;">2. 🎵 음악 오디오 (선택)</span>
         <input type="file" id="audioIn" accept="audio/*" onchange="loadAudio(this.files)" class="file-btn">
     </div>
 
     <div class="control-group" style="border:1px solid #00ffcc; padding:10px; border-radius:4px; gap:8px; background:rgba(0,255,204,0.02);">
-        <span style="color:#00ffcc; font-weight:bold;">3. 아티스트 확산 제어</span>
-        <label>시작 방향(구도 기준): 
-            <select id="startPosOpt" onchange="updateSettings()">
-                <option value="center">정중앙 확산</option>
-                <option value="left">왼쪽 → 오른쪽</option>
-                <option value="right">오른쪽 → 왼쪽</option>
-                <option value="top">위 → 아래</option>
-                <option value="bottom">아래 → 위</option>
-            </select>
-        </label>
-        <label>스케치 거친 정도: <input type="range" id="noiseOpt" min="0" max="50" value="25"></label>
-        <label>최소 붓 굵기: <input type="range" id="brushMin" min="1" max="10" value="2"></label>
-        <label>최대 붓 굵기: <input type="range" id="brushMax" min="5" max="40" value="15"></label>
+        <span style="color:#00ffcc; font-weight:bold;">3. 아티스트 붓 터치 제어</span>
+        <label>스케치 연필 노이즈: <input type="range" id="noiseOpt" min="0" max="30" value="8"></label>
+        <label>수채화 물 번짐 크기: <input type="range" id="bloomSize" min="5" max="40" value="20"></label>
+        <label>수채화 투명도(Alpha): <input type="range" id="waterAlpha" min="5" max="50" value="15"></label>
     </div>
 
     <div class="control-group" style="border:1px solid #222; padding:10px; border-radius:4px; gap:8px;">
         <span style="color:#fff;">4. 뷰포트 및 시간 설정</span>
-        <label>비율: <select id="ratioOpt" onchange="updateSettings()"><option value="1.777">16:9</option><option value="0.562">9:16</option></select></label>
+        <label>비율: <select id="ratioOpt" onchange="updateSettings()"><option value="1.777">16:9</option><option value="0.562">9:16</option><option value="1.0">1:1</option></select></label>
         <label>크기: <input type="range" id="scaleOpt" min="0.5" max="2.0" step="0.1" value="1.0" oninput="updateSettings()"></label>
         <label>위치 X: <input type="range" id="posXOpt" min="-400" max="400" value="0" step="10" oninput="updateSettings()"></label>
         <label>위치 Y: <input type="range" id="posYOpt" min="-400" max="400" value="0" step="10" oninput="updateSettings()"></label>
-        <label>밝기: <input type="range" id="lightOpt" min="50" max="150" value="100" oninput="updateSettings()"></label>
+        <label>캔버스 텍스처 밝기: <input type="range" id="lightOpt" min="50" max="150" value="100" oninput="updateSettings()"></label>
         <label>드로잉 시간(초): <input type="number" id="timeOpt" value="30" onchange="updateSettings()"></label>
     </div>
 
     <div class="control-group">
-        <span style="color:#fff; font-weight:bold;">5. 브러쉬 화풍 (채색 단계)</span>
+        <span style="color:#fff; font-weight:bold;">5. 브러쉬 화풍 선택</span>
         <div class="btn-grid">
-            <button class="studio-btn active" id="sPencil" onclick="changeStyle('pencil')">베이직</button>
+            <button class="studio-btn active" id="sWater" onclick="changeStyle('watercolor')">수채화</button>
             <button class="studio-btn" id="sOil" onclick="changeStyle('oil')">유화</button>
-            <button class="studio-btn" id="sImp" onclick="changeStyle('impressionism')">인상파</button>
+            <button class="studio-btn" id="sPencil" onclick="changeStyle('pencil')">색연필</button>
         </div>
     </div>
     
@@ -81,7 +72,7 @@
 </div>
 
 <div class="main">
-    <div id="loader"><div id="bakeText">경계면 분석 및 확산 경로 계산 중...</div></div>
+    <div id="loader"><div id="bakeText">아티스트의 획(Stroke) 추출 중...</div></div>
     <div class="canvas-zone" id="canvasContainer"></div>
     <div class="player-bar">
         <span id="timeCurrent" style="font-family:monospace; color:#888;">00:00</span>
@@ -93,18 +84,21 @@
 <script>
 let targetImg, loadedAudio, fft, isPlaying = false, isBaking = false;
 let paintBuffer;
-let strokeSequence = [];
+let renderQueue = []; // 그릴 획(Stroke)들을 담아두는 큐
 let lastDrawnIdx = 0;
-let lastTime = 0;
-let currentStyle = 'pencil';
+let simulatedTime = 0;
+let lastMillis = 0;
+let currentStyle = 'watercolor';
 let noiseZ = 0;
 let mediaRecorder, recordedChunks = [];
+
+const paperColor = '#f0eee6'; // 고급 수채화 용지 색상
 
 function setup() {
     let cnv = createCanvas(1120, 630);
     cnv.parent('canvasContainer');
     paintBuffer = createGraphics(1120, 630);
-    paintBuffer.background('#f4f3ec');
+    paintBuffer.background(paperColor);
     fft = new p5.FFT();
 }
 
@@ -113,242 +107,251 @@ function getVal(id, parseFunc = parseFloat) { return parseFunc(document.getEleme
 function updateSettings() {
     document.getElementById('timeTotal').innerText = formatTime(getVal('timeOpt'));
     let ratio = getVal('ratioOpt');
-    let w = ratio > 1 ? 1120 : 450;
-    let h = ratio > 1 ? 630 : 800;
+    let w = ratio > 1 ? 1120 : (ratio < 1 ? 450 : 800);
+    let h = ratio > 1 ? 630 : (ratio < 1 ? 800 : 800);
     resizeCanvas(w, h);
     paintBuffer = createGraphics(w, h);
-    paintBuffer.background('#f4f3ec');
-    if(targetImg) buildArtistPathways();
+    paintBuffer.background(paperColor);
+    if(targetImg) buildSBRPathways();
 }
 
 function loadTarget(files) { loadImage(URL.createObjectURL(files[0]), img => { targetImg = img; updateSettings(); }); }
-function loadAudio(files) { loadedAudio = loadSound(URL.createObjectURL(files[0]), () => { document.getElementById('timeTotal').innerText = formatTime(getVal('timeOpt')); checkReady(); }); }
-function checkReady() { if(targetImg && loadedAudio) document.getElementById('recBtn').disabled = false; }
+function loadAudio(files) { loadedAudio = loadSound(URL.createObjectURL(files[0]), () => { checkReady(); }); }
+function checkReady() { if(targetImg) document.getElementById('recBtn').disabled = false; }
 
 function changeStyle(s) { 
     currentStyle = s; 
     document.querySelectorAll('.studio-btn').forEach(b => b.classList.remove('active')); 
-    let btnId = 's' + (s === 'impressionism' ? 'Imp' : s.charAt(0).toUpperCase() + s.slice(1));
+    let btnId = 's' + (s === 'watercolor' ? 'Water' : (s === 'oil' ? 'Oil' : 'Pencil'));
     document.getElementById(btnId).classList.add('active'); 
-    if(targetImg) { paintBuffer.background('#f4f3ec'); lastDrawnIdx = 0; drawFrame(loadedAudio && isPlaying ? loadedAudio.currentTime() : 0); } 
+    if(targetImg) { paintBuffer.background(paperColor); lastDrawnIdx = 0; drawFrame(loadedAudio && isPlaying ? loadedAudio.currentTime() : simulatedTime); } 
 }
 
 // ==========================================
-// [핵심 1] 경계면 탐색 및 거리 확산(Distance Spread) 맵 생성
+// [핵심] SBR (Stroke-Based Rendering) 엔진 - 획 추출
 // ==========================================
-async function buildArtistPathways() {
+async function buildSBRPathways() {
     if(!targetImg || isBaking) return;
     isBaking = true;
     document.getElementById('loader').style.display = 'flex';
-    document.getElementById('bakeText').innerText = "1. 희미한 검은색 구도 스케치 매핑 중...";
+    document.getElementById('bakeText').innerText = "1. 윤곽선(Contour) 걷기 분석 중...";
     await new Promise(r => setTimeout(r, 50));
 
-    paintBuffer.background('#f4f3ec');
+    paintBuffer.background(paperColor);
     lastDrawnIdx = 0;
-    strokeSequence = [];
+    renderQueue = [];
     
     targetImg.loadPixels();
     let d = targetImg.pixels;
     let tw = targetImg.width, th = targetImg.height;
     
     let scaleOpt = getVal('scaleOpt');
-    let posX = getVal('posXOpt', parseInt);
-    let posY = getVal('posYOpt', parseInt);
+    let posX = getVal('posXOpt', parseInt), posY = getVal('posYOpt', parseInt);
     let rScale = Math.max(width / tw, height / th) * scaleOpt;
 
-    // 1. 이미지 전체를 분석하여 완벽한 경계선(Edge) 맵 추출
-    let edgeThreshold = 35;
-    let edgeQueue = []; // 엣지 픽셀 큐 (BFS용)
-    let distMap = new Int32Array(tw * th).fill(99999); // 경계면으로부터의 거리 맵
-
+    // 1. Edge Map 만들기
+    let edgeMap = new Uint8Array(tw * th);
     for (let y = 1; y < th - 1; y++) {
         for (let x = 1; x < tw - 1; x++) {
             let i = (y * tw + x) * 4;
-            if (d[i+3] > 10) {
+            if (d[i+3] > 10) { // 투명 픽셀 패스
                 let pR = (y * tw + (x+1)) * 4;
                 let pD = ((y+1) * tw + x) * 4;
-                let e = abs(d[i]-d[pR]) + abs(d[i+1]-d[pR+1]) + abs(d[i]-d[pD]);
-                
-                if (e > edgeThreshold) {
-                    let idx = y * tw + x;
-                    distMap[idx] = 0; // 경계선은 거리가 0
-                    edgeQueue.push({x: x, y: y});
-                }
+                let edge = abs(d[i]-d[pR]) + abs(d[i+1]-d[pR+1]) + abs(d[i]-d[pD]);
+                edgeMap[y * tw + x] = edge;
             }
         }
     }
 
-    document.getElementById('bakeText').innerText = "2. 경계면에서 반대 방향으로 확산 시뮬레이션 중...";
+    // 2. [진짜 선 그리기] Edge Walking Algorithm (거미줄 완벽 차단)
+    let visited = new Uint8Array(tw * th);
+    let sketchPaths = []; // 선(Path)들의 모음
+    let edgeThreshold = 35;
+
+    for (let y = 2; y < th - 2; y++) {
+        for (let x = 2; x < tw - 2; x++) {
+            let idx = y * tw + x;
+            if (!visited[idx] && edgeMap[idx] > edgeThreshold) {
+                // 새로운 선 시작
+                let currentLine = [];
+                let cx = x, cy = y;
+                
+                while(true) {
+                    visited[cy * tw + cx] = 1;
+                    
+                    // 캔버스 좌표 변환
+                    let canvasX = (cx - tw/2) * rScale + width/2 + posX;
+                    let canvasY = (cy - th/2) * rScale + height/2 + posY;
+                    let cIdx = (cy * tw + cx) * 4;
+                    currentLine.push({ x: canvasX, y: canvasY, r: d[cIdx], g: d[cIdx+1], b: d[cIdx+2] });
+
+                    // 가장 강력한 인접 엣지로 이동 (바로 옆 1~2픽셀 이내만 확인 -> 끊어지면 붓 뗌)
+                    let nextX = -1, nextY = -1, maxE = 0;
+                    for (let ny = cy - 2; ny <= cy + 2; ny++) {
+                        for (let nx = cx - 2; nx <= cx + 2; nx++) {
+                            let nIdx = ny * tw + nx;
+                            if (!visited[nIdx] && edgeMap[nIdx] > edgeThreshold && edgeMap[nIdx] > maxE) {
+                                maxE = edgeMap[nIdx];
+                                nextX = nx; nextY = ny;
+                            }
+                        }
+                    }
+                    if (nextX !== -1) { cx = nextX; cy = nextY; } 
+                    else { break; } // 더 이을 선이 없으면 붓을 뗌
+                }
+                
+                // 길이가 너무 짧은 노이즈 선은 버림
+                if (currentLine.length > 5) sketchPaths.push(currentLine);
+            }
+        }
+    }
+
+    document.getElementById('bakeText').innerText = "2. 수채화 면 채우기(Wash) 스캔 중...";
     await new Promise(r => setTimeout(r, 50));
 
-    // 2. BFS(너비 우선 탐색)를 이용해 경계선에서 평면(바깥)으로 퍼져나가는 거리 계산
-    let head = 0;
-    let dirs = [[0,1],[1,0],[0,-1],[-1,0],[1,1],[-1,-1],[1,-1],[-1,1]];
-    while (head < edgeQueue.length) {
-        let p = edgeQueue[head++];
-        let currDist = distMap[p.y * tw + p.x];
+    // 3. 수채화 블룸 덩어리(Washes) 생성
+    let paintWashes = [];
+    for (let i = 0; i < 25000; i++) { // 수채화 터치 개수
+        let px = random(tw), py = random(th);
+        let idx = Math.floor(py) * tw + Math.floor(px);
         
-        for (let dir of dirs) {
-            let nx = p.x + dir[0];
-            let ny = p.y + dir[1];
-            if (nx >= 0 && nx < tw && ny >= 0 && ny < th) {
-                let nIdx = ny * tw + nx;
-                if (distMap[nIdx] > currDist + 1) {
-                    distMap[nIdx] = currDist + 1; // 경계선으로부터 1픽셀씩 멀어짐
-                    edgeQueue.push({x: nx, y: ny});
-                }
+        // 경계선이 아닌 면(Flat) 영역에만 물감을 떨어뜨림
+        if (edgeMap[idx] <= edgeThreshold && edgeMap[idx] > 0) {
+            let pIdx = (Math.floor(py) * tw + Math.floor(px)) * 4;
+            if (d[pIdx+3] > 10 && (d[pIdx]+d[pIdx+1]+d[pIdx+2]) < 730) { // 완전 흰 배경 제외
+                let canvasX = (px - tw/2) * rScale + width/2 + posX;
+                let canvasY = (py - th/2) * rScale + height/2 + posY;
+                paintWashes.push({ x: canvasX, y: canvasY, r: d[pIdx], g: d[pIdx+1], b: d[pIdx+2], type: 'paint' });
             }
         }
     }
 
-    // 3. 샘플링 및 노드 분류
-    let sketchNodes = [];
-    let colorNodes = [];
+    // 4. 화가의 동선(위에서 아래로 자연스럽게)으로 정렬
+    sketchPaths.sort((a, b) => a[0].y - b[0].y); // 선의 시작점 Y좌표 기준 정렬
+    paintWashes.sort((a, b) => a.y - b.y);
 
-    for (let i = 0; i < 40000; i++) {
-        let px = random(width), py = random(height);
-        let ix = Math.floor((px - width/2 - posX) / rScale + tw/2);
-        let iy = Math.floor((py - height/2 - posY) / rScale + th/2);
-
-        if (ix >= 0 && ix < tw && iy >= 0 && iy < th) {
-            let idx = iy * tw + ix;
-            let distToEdge = distMap[idx];
-            
-            if (distToEdge < 99999) {
-                let pIdx = (iy * tw + ix) * 4;
-                let node = { x: px, y: py, r: d[pIdx], g: d[pIdx+1], b: d[pIdx+2], dist: distToEdge };
-                
-                if (distToEdge === 0) {
-                    sketchNodes.push(node); // 경계면은 스케치로
-                } else {
-                    colorNodes.push(node); // 그 외는 채색으로 (거리가 멀수록 나중에 칠해짐)
-                }
-            }
-        }
-    }
-
-    // [핵심 정렬 로직]
-    // 1. 스케치는 지정된 시작 위치(startPosOpt)에 가까운 곳부터 그려 형태를 잡아감
-    let startPos = document.getElementById('startPosOpt').value;
-    let cx = width/2, cy = height/2;
-    if(startPos === 'left') cx = 0;
-    if(startPos === 'right') cx = width;
-    if(startPos === 'top') cy = 0;
-    if(startPos === 'bottom') cy = height;
-
-    sketchNodes.sort((a, b) => dist(a.x, a.y, cx, cy) - dist(b.x, b.y, cx, cy));
-
-    // 2. 채색은 '거리(dist)'를 1순위로 정렬하여, 경계면에 딱 붙은 곳부터 먼저 칠하고 점점 바깥 빈 곳으로 채워나감
-    colorNodes.sort((a, b) => {
-        if (a.dist !== b.dist) return a.dist - b.dist; // 확산 (Edge -> Outward)
-        
-        // 같은 거리 선상에선 거미줄을 막기 위해 공간(청크) 단위로 정렬
-        let chunkA = Math.floor(a.y/20)*100 + Math.floor(a.x/20);
-        let chunkB = Math.floor(b.y/20)*100 + Math.floor(b.x/20);
-        return chunkA - chunkB; 
+    // 5. 렌더링 큐에 타임라인 분배하여 삽입
+    // 스케치 (0~35%)
+    let totS = sketchPaths.length;
+    sketchPaths.forEach((path, i) => {
+        let prog = map(i, 0, totS, 0.0, 0.35);
+        renderQueue.push({ type: 'sketch_path', path: path, prog: prog });
     });
 
-    // 타임라인 비율 배정
-    let totS = sketchNodes.length, totC = colorNodes.length;
-    sketchNodes.forEach((s, i) => { s.prog = map(i, 0, totS, 0.0, 0.35); s.stage='sketch'; strokeSequence.push(s); });
-    colorNodes.forEach((s, i) => { s.prog = map(i, 0, totC, 0.35, 0.85); s.stage='color'; strokeSequence.push(s); });
+    // 채색 (35~85%)
+    let totP = paintWashes.length;
+    paintWashes.forEach((wash, i) => {
+        wash.prog = map(i, 0, totP, 0.35, 0.85);
+        renderQueue.push(wash);
+    });
 
     document.getElementById('loader').style.display = 'none';
     isBaking = false;
     checkReady();
     
-    if(!isPlaying && targetImg) { document.getElementById('timeline').value = 80; seekTime(80); }
+    if(!isPlaying) { simulatedTime = getVal('timeOpt') * 0.8; drawFrame(simulatedTime); document.getElementById('timeline').value = 80; }
 }
 
 // ==========================================
-// [핵심 2] 거친 연필 렌더링 & 오디오 다이내믹 붓
+// [핵심 3] 유색 색연필 라인 & 수채화 번짐 이펙트 렌더러
 // ==========================================
-function drawBrushStroke(g, prev, curr, energy) {
-    let dSq = dist(prev.x, prev.y, curr.x, curr.y);
-    // 물리적으로 너무 멀면 붓을 떼고 이동함 (거미줄/엉킨 실 차단)
-    if (dSq > 40) return; 
-
+function drawItem(g, item, energy) {
     let noiseAmt = getVal('noiseOpt');
-    let bMin = getVal('brushMin');
-    let bMax = getVal('brushMax');
+    let bloomSize = getVal('bloomSize');
+    let waterAlpha = getVal('waterAlpha');
 
-    let dynamicNoise = map(energy, 0, 255, 0, noiseAmt); 
-    // 거친 느낌을 위해 노이즈를 x, y 궤적에 반영
-    let midX = (prev.x + curr.x) / 2 + (noise(prev.x*0.1, noiseZ) - 0.5) * dynamicNoise * 2;
-    let midY = (prev.y + curr.y) / 2 + (noise(prev.y*0.1, noiseZ) - 0.5) * dynamicNoise * 2;
-    noiseZ += 0.05;
-
-    if (curr.stage === 'sketch') {
-        // [지시사항 완벽 반영] 거친 검은색 스케치, 너무 선명하지 않게 희미한 연필로
-        // 원본 색상(curr.r, g, b)을 무시하고, 거친 검은색(0, 0, 0)과 낮은 투명도(30~50) 사용
-        g.stroke(10, 10, 10, 40); 
-        g.strokeWeight(bMin);
+    if (item.type === 'sketch_path') {
+        // [진짜 선 그리기] 추출된 윤곽선 궤적을 따라 유색 색연필 선을 주욱 긋습니다.
+        let path = item.path;
         g.noFill();
         
-        g.beginShape(); 
-        g.vertex(prev.x, prev.y); 
-        g.quadraticVertex(midX, midY, curr.x, curr.y); // 비뚤빼뚤한 선 묘사
+        // 원본 사물의 색상을 진하게 튜닝하여 선 색상으로 사용
+        g.stroke(path[0].r * 0.7, path[0].g * 0.7, path[0].b * 0.7, 200); 
+        g.strokeWeight(1.5);
+
+        g.beginShape();
+        for (let pt of path) {
+            // 미세한 연필 떨림 추가
+            let nx = pt.x + (noise(pt.x*0.1, noiseZ) - 0.5) * noiseAmt;
+            let ny = pt.y + (noise(pt.y*0.1, noiseZ) - 0.5) * noiseAmt;
+            g.vertex(nx, ny);
+            noiseZ += 0.01;
+        }
         g.endShape();
     } 
-    else {
-        // 채색 단계: 경계선에서 먼 평면일수록(dist 증가) 붓이 커짐
-        let distExpand = map(curr.dist, 1, 20, 0, bMax*0.5);
-        distExpand = constrain(distExpand, 0, bMax*0.5);
-        let audioExpand = map(energy, 0, 255, 0, bMax * 0.5); 
-        let finalBrushSize = constrain(bMin + distExpand + audioExpand + random(-2, 2), bMin, bMax * 1.5);
+    else if (item.type === 'paint') {
+        // [수채화 블룸 이펙트] 불규칙한 유기적 도형을 낮음 투명도로 겹쳐 그려 번짐 구현
+        let audioExpand = map(energy, 0, 255, 0, bloomSize * 0.5); 
+        let finalSize = bloomSize + audioExpand + random(-bloomSize*0.2, bloomSize*0.2);
 
-        let waveOff = map(energy, 0, 255, 0, 5) * (noise(curr.x) - 0.5);
-        let x2 = curr.x + waveOff, y2 = curr.y + waveOff;
-
-        if (currentStyle === 'oil') {
-            g.stroke(curr.r, curr.g, curr.b, 220); g.strokeWeight(finalBrushSize);
-            g.line(prev.x, prev.y, x2, y2);
-        } else if (currentStyle === 'impressionism') {
-            g.noStroke(); g.fill(curr.r, curr.g, curr.b, 200);
-            g.ellipse(x2, y2, finalBrushSize); 
+        if (currentStyle === 'watercolor') {
+            g.noStroke();
+            g.fill(item.r, item.g, item.b, waterAlpha); // 물이 번지는 투명도
+            
+            // 둥글지 않은 유기적 붓터치 자국 생성
+            g.beginShape();
+            for(let a=0; a<TWO_PI; a+=0.8) {
+                let rOffset = finalSize + random(-finalSize*0.3, finalSize*0.3);
+                g.vertex(item.x + rOffset*cos(a), item.y + rOffset*sin(a));
+            }
+            g.endShape(CLOSE);
+            
+            // 번지는 외곽선 디테일
+            g.fill(item.r, item.g, item.b, waterAlpha * 0.5);
+            g.ellipse(item.x, item.y, finalSize * 1.5);
+            
+        } else if (currentStyle === 'oil') {
+            g.stroke(item.r, item.g, item.b, 240); g.strokeWeight(finalSize * 0.6);
+            let angle = random(TWO_PI);
+            g.line(item.x, item.y, item.x + cos(angle)*finalSize, item.y + sin(angle)*finalSize); // 두꺼운 붓자국
         } else {
-            g.stroke(curr.r, curr.g, curr.b, 170); g.strokeWeight(finalBrushSize * 0.6);
-            g.line(prev.x, prev.y, x2, y2);
+            g.stroke(item.r, item.g, item.b, 150); g.strokeWeight(3);
+            g.line(item.x - finalSize/2, item.y + finalSize/2, item.x + finalSize/2, item.y - finalSize/2); // 색연필 해칭
         }
     }
 }
 
 function drawFrame(ct) {
-    if(isBaking || strokeSequence.length < 2) return;
+    if(isBaking || renderQueue.length < 1) return;
     
     let isScrubbing = Math.abs(ct - lastTime) > 0.5;
     lastTime = ct;
     let totalTime = getVal('timeOpt');
     let targetProg = ct / totalTime;
-    let expectedIdx = Math.floor(strokeSequence.length * targetProg);
+    
+    // 이진 탐색으로 현재 진행도에 맞는 인덱스 찾기
+    let low = 0, high = renderQueue.length - 1, expectedIdx = 0;
+    while(low <= high) {
+        let mid = Math.floor((low + high)/2);
+        if(renderQueue[mid].prog <= targetProg) { expectedIdx = mid; low = mid + 1; }
+        else { high = mid - 1; }
+    }
 
     if (isScrubbing || expectedIdx < lastDrawnIdx) {
-        paintBuffer.background('#f4f3ec');
+        paintBuffer.background(paperColor);
         lastDrawnIdx = 0; 
     }
 
-    let energy = 0;
-    if(isPlaying && fft) { 
+    let energy = 50; 
+    if(isPlaying && loadedAudio && fft) { 
         fft.analyze(); 
         energy = fft.getEnergy("bass") * 0.6 + fft.getEnergy("mid") * 0.4; 
     }
 
-    let speedFactor = isPlaying ? map(energy, 0, 255, 0.2, 2.0) : 1.0; 
+    let speedFactor = (isPlaying && loadedAudio) ? map(energy, 0, 255, 0.3, 2.5) : 1.0; 
     let gap = expectedIdx - lastDrawnIdx;
     let step = Math.max(1, Math.floor(gap * speedFactor));
     if (gap <= 0) step = 0; 
 
-    let drawUpToIdx = Math.min(strokeSequence.length - 1, lastDrawnIdx + step);
+    let drawUpToIdx = Math.min(renderQueue.length - 1, lastDrawnIdx + step);
 
-    for(let i = max(1, lastDrawnIdx); i <= drawUpToIdx; i++) {
-        let prev = strokeSequence[i-1];
-        let curr = strokeSequence[i];
-        drawBrushStroke(paintBuffer, prev, curr, energy);
+    for(let i = lastDrawnIdx; i <= drawUpToIdx; i++) {
+        drawItem(paintBuffer, renderQueue[i], energy);
     }
-    lastDrawnIdx = drawUpToIdx;
+    lastDrawnIdx = drawUpToIdx + 1;
 
     let light = getVal('lightOpt');
-    background(244 * (light/100), 243 * (light/100), 236 * (light/100));
+    background(242 * (light/100), 239 * (light/100), 233 * (light/100));
     push();
     if(light !== 100) tint(255, 255 * (light/100));
     image(paintBuffer, 0, 0);
@@ -366,10 +369,24 @@ function drawFrame(ct) {
 }
 
 function draw() {
-    if(!isPlaying || !loadedAudio) return;
-    let ct = loadedAudio.currentTime();
+    if(!isPlaying) return;
+    
     let totalTime = getVal('timeOpt');
-    if(ct >= totalTime) { togglePlayback(); seekTime(100); return; }
+    let ct = 0;
+
+    if(loadedAudio) { ct = loadedAudio.currentTime(); } 
+    else {
+        simulatedTime += (millis() - lastMillis) / 1000;
+        lastMillis = millis();
+        ct = simulatedTime;
+    }
+
+    if(ct >= totalTime) { 
+        ct = totalTime;
+        togglePlayback(); 
+        seekTime(100); 
+        return; 
+    }
     
     document.getElementById('timeCurrent').innerText = formatTime(ct);
     document.getElementById('timeline').value = (ct / totalTime) * 100;
@@ -377,16 +394,17 @@ function draw() {
 }
 
 function togglePlayback() {
-    if(!loadedAudio || isBaking) return;
+    if(isBaking) return;
     isPlaying = !isPlaying;
     let btn = document.getElementById('recBtn');
     if(isPlaying) {
-        loadedAudio.rate(1.0); loadedAudio.play();
+        if(loadedAudio) { loadedAudio.rate(1.0); loadedAudio.play(); }
+        lastMillis = millis(); 
         btn.innerText = "⏹ STOP & SAVE";
         btn.style.background = "#00ffcc"; btn.style.color = "#000";
         startRecording();
     } else {
-        loadedAudio.stop();
+        if(loadedAudio) loadedAudio.stop();
         btn.innerText = "🔴 START DRAWING";
         btn.style.background = "#ff3e81"; btn.style.color = "#fff";
         if(mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
@@ -404,17 +422,24 @@ function startRecording() {
     mediaRecorder.onstop = () => {
         let a = document.createElement('a');
         a.href = URL.createObjectURL(new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' }));
-        a.download = `AudioArt_EdgeSpread_${Date.now()}.${ext}`; a.click();
+        a.download = `TrueArtist_Watercolor_${Date.now()}.${ext}`; a.click();
     };
     mediaRecorder.start();
 }
 
 function seekTime(v) {
-    if(!loadedAudio || isBaking) return;
+    if(isBaking) return;
     let totalTime = getVal('timeOpt');
     let targetSec = (parseFloat(v) / 100) * totalTime;
-    if(isPlaying) loadedAudio.jump(targetSec);
-    else { document.getElementById('timeCurrent').innerText = formatTime(targetSec); drawFrame(targetSec); }
+    
+    if(isPlaying) {
+        if(loadedAudio) loadedAudio.jump(targetSec);
+        else simulatedTime = targetSec;
+    } else { 
+        simulatedTime = targetSec;
+        document.getElementById('timeCurrent').innerText = formatTime(targetSec); 
+        drawFrame(targetSec); 
+    }
 }
 
 function formatTime(s) { return nf(floor(s/60), 2) + ":" + nf(floor(s%60), 2); }
