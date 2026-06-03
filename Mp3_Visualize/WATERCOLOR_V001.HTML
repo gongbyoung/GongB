@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>v2.01</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
+<style>
+    * { box-sizing: border-box; }
+    body { background: #050508; color: #fff; font-family: -apple-system, sans-serif; display: flex; height: 100vh; margin: 0; overflow: hidden; }
+    .sidebar { width: 360px; background: #0f0f14; padding: 20px; display: flex; flex-direction: column; gap: 15px; border-right: 1px solid #222; overflow-y: auto; }
+    .main { flex: 1; display: flex; flex-direction: column; position: relative; }
+    .canvas-zone { flex: 1; display: flex; justify-content: center; align-items: center; overflow: hidden; background: #020205; }
+    
+    h2 { font-size: 14px; color: #00ffcc; letter-spacing: 1px; border-bottom: 1px solid #333; padding-bottom: 8px; margin: 0; }
+    .control-group { display: flex; flex-direction: column; gap: 5px; font-size: 11px; color: #ccc; }
+    .control-group label { display: flex; justify-content: space-between; align-items: center; }
+    .file-btn { border: 1px dashed #444; padding: 8px; cursor: pointer; color: #aaa; text-align: center; background: #111; border-radius: 4px; }
+    
+    input[type=range] { width: 50%; accent-color: #00ffcc; }
+    input[type=number], select { background: #000; border: 1px solid #333; color: #00ffcc; padding: 4px; font-weight: bold; width: 65px; text-align: right; }
+    
+    .btn-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; }
+    .studio-btn { border: 1px solid #444; color: white; padding: 8px; background: none; cursor: pointer; font-size: 11px; border-radius: 4px; transition: 0.2s; }
+    .studio-btn.active { border-color: #00ffcc; color: #00ffcc; background: rgba(0,255,204,0.1); }
+    
+    .player-bar { height: 60px; background: #0f0f14; border-top: 1px solid #222; display: flex; align-items: center; padding: 0 20px; gap: 15px; }
+    #loader { display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.85); z-index: 1000; flex-direction: column; justify-content: center; align-items: center; color: #00ffcc; font-family: monospace; font-size: 14px; gap: 10px; }
+</style>
+</head>
+<body>
+<div class="sidebar">
+    <h2>Studio Settings</h2>
+    
+    <div class="control-group">
+        <span style="color:#fff; font-weight:bold;">1. 🖼️ 그림 이미지 파일</span>
+        <input type="file" id="imgIn" accept="image/*" onchange="loadTarget(this.files)" class="file-btn">
+    </div>
+    
+    <div class="control-group">
+        <span style="color:#fff; font-weight:bold;">2. 🎵 음악 오디오 파일</span>
+        <input type="file" id="audioIn" accept="audio/*" onchange="loadAudio(this.files)" class="file-btn">
+    </div>
+
+    <div class="control-group" style="border:1px solid #00ffcc; padding:10px; border-radius:4px; gap:8px; background:rgba(0,255,204,0.02);">
+        <span style="color:#00ffcc; font-weight:bold;">3. 아티스트 스케치/브러시 제어</span>
+        <label>시작 방향: 
+            <select id="startPosOpt" onchange="updateSettings()">
+                <option value="top">위에서 아래로</option>
+                <option value="bottom">아래서 위로</option>
+                <option value="center">중앙에서 바깥으로</option>
+            </select>
+        </label>
+        <label>색연필 거친 정도: <input type="range" id="noiseOpt" min="0" max="30" value="10"></label>
+        <label>최소 붓 굵기: <input type="range" id="brushMin" min="1" max="10" value="2"></label>
+        <label>최대 붓 굵기: <input type="range" id="brushMax" min="5" max="40" value="20"></label>
+    </div>
+
+    <div class="control-group" style="border:1px solid #222; padding:10px; border-radius:4px; gap:8px;">
+        <span style="color:#fff;">4. 뷰포트 및 시간 설정</span>
+        <label>비율: <select id="ratioOpt" onchange="updateSettings()"><option value="1.777">16:9</option><option value="0.562">9:16</option><option value="1.0">1:1</option></select></label>
+        <label>크기: <input type="range" id="scaleOpt" min="0.5" max="2.0" step="0.1" value="1.0" oninput="updateSettings()"></label>
+        <label>위치 X: <input type="range" id="posXOpt" min="-400" max="400" value="0" step="10" oninput="updateSettings()"></label>
+        <label>위치 Y: <input type="range" id="posYOpt" min="-400" max="400" value="0" step="10" oninput="updateSettings()"></label>
+        <label>밝기: <input type="range" id="lightOpt" min="50" max="150" value="100" oninput="updateSettings()"></label>
+        <label>드로잉 시간(초): <input type="number" id="timeOpt" value="30" onchange="updateSettings()"></label>
+    </div>
+
+    <div class="control-group">
+        <span style="color:#fff; font-weight:bold;">5. 브러쉬 화풍 (채색 단계)</span>
+        <div class="btn-grid">
+            <button class="studio-btn active" id="sWater" onclick="changeStyle('watercolor')">수채화</button>
+            <button class="studio-btn" id="sOil" onclick="changeStyle('oil')">유화</button>
+            <button class="studio-btn" id="sPencil" onclick="changeStyle('pencil')">색연필</button>
+        </div>
+    </div>
+    
+    <button id="recBtn" onclick="togglePlayback()" style="margin-top:auto; padding:15px; background:#ff3e81; color:white; border:none; font-weight:bold; cursor:pointer; border-radius:4px;" disabled>🔴 START DRAWING</button>
+</div>
+
+<div class="main">
+    <div id="loader"><div id="bakeText">수채화 동선 및 색연필 스케치 분석 중...</div></div>
+    <div class="canvas-zone" id="canvasContainer"></div>
+    <div class="player-bar">
+        <span id="timeCurrent" style="font-family:monospace; color:#888;">00:00</span>
+        <input type="range" id="timeline" style="flex:1; accent-color:#ff3e81;" value="0" min="0" max="100" step="0.1" oninput="seekTime(this.value)">
+        <span id="timeTotal" style="font-family:monospace; color:#888;">00:00</span>
+    </div>
+</div>
+
+<script>
+let targetImg, loadedAudio, fft, isPlaying = false, isBaking = false;
+let paintBuffer;
+let strokeSequence = [];
+let lastDrawnIdx = 0;
+let lastTime = 0;
+let currentStyle = 'watercolor';
+let noiseZ = 0;
+let mediaRecorder, recordedChunks = [];
+
+// 영상에서 확인된 수채화 종이 질감용 배경색
+const paperColor = '#f2efe9'; 
+
+function setup() {
+    let cnv = createCanvas(1120, 630);
+    cnv.parent('canvasContainer');
+    paintBuffer = createGraphics(1120, 630);
+    paintBuffer.background(paperColor);
+    fft = new p5.FFT();
+}
+
+function getVal(id, parseFunc = parseFloat) { return parseFunc(document.getElementById(id).value); }
+
+function updateSettings() {
+    document.getElementById('timeTotal').innerText = formatTime(getVal('timeOpt'));
+    let ratio = getVal('ratioOpt');
+    let w = ratio > 1 ? 1120 : (ratio < 1 ? 450 : 800);
+    let h = ratio > 1 ? 630 : (ratio < 1 ? 800 : 800);
+    resizeCanvas(w, h);
+    paintBuffer = createGraphics(w, h);
+    paintBuffer.background(paperColor);
+    if(targetImg) buildWatercolorPathways();
+}
+
+function loadTarget(files) { loadImage(URL.createObjectURL(files[0]), img => { targetImg = img; updateSettings(); }); }
+function loadAudio(files) { loadedAudio = loadSound(URL.createObjectURL(files[0]), () => { document.getElementById('timeTotal').innerText = formatTime(getVal('timeOpt')); checkReady(); }); }
+function checkReady() { if(targetImg && loadedAudio) document.getElementById('recBtn').disabled = false; }
+
+function changeStyle(s) { 
+    currentStyle = s; 
+    document.querySelectorAll('.studio-btn').forEach(b => b.classList.remove('active')); 
+    let btnId = 's' + (s === 'watercolor' ? 'Water' : (s === 'oil' ? 'Oil' : 'Pencil'));
+    document.getElementById(btnId).classList.add('active'); 
+    if(targetImg) { paintBuffer.background(paperColor); lastDrawnIdx = 0; drawFrame(loadedAudio && isPlaying ? loadedAudio.currentTime() : 0); } 
+}
+
+// ==========================================
+// [핵심 1] 색연필 선화 + 수채화 채색 영역 분리 알고리즘
+// ==========================================
+async function buildWatercolorPathways() {
+    if(!targetImg || isBaking) return;
+    isBaking = true;
+    document.getElementById('loader').style.display = 'flex';
+    document.getElementById('bakeText').innerText = "색연필 밑그림 추출 중...";
+    await new Promise(r => setTimeout(r, 50));
+
+    paintBuffer.background(paperColor);
+    lastDrawnIdx = 0;
+    strokeSequence = [];
+    
+    targetImg.loadPixels();
+    let d = targetImg.pixels;
+    let tw = targetImg.width, th = targetImg.height;
+    
+    let scaleOpt = getVal('scaleOpt');
+    let posX = getVal('posXOpt', parseInt);
+    let posY = getVal('posYOpt', parseInt);
+    let rScale = Math.max(width / tw, height / th) * scaleOpt;
+
+    let sketchNodes = [];
+    let colorNodes = [];
+
+    // 픽셀 샘플링
+    for(let i=0; i<60000; i++) {
+        let px = random(width), py = random(height);
+        let ix = Math.floor((px - width/2 - posX) / rScale + tw/2);
+        let iy = Math.floor((py - height/2 - posY) / rScale + th/2);
+
+        if (ix >= 0 && ix < tw-1 && iy >= 0 && iy < th-1) {
+            let pIdx = (iy * tw + ix) * 4;
+            // 배경 투명도 및 밝은 흰색 배경 무시 (수채화 특성상 사물만 포커스)
+            if(d[pIdx+3] > 10 && (d[pIdx]+d[pIdx+1]+d[pIdx+2]) < 730) {
+                let pR = (iy * tw + (ix+1)) * 4;
+                let pD = ((iy+1) * tw + ix) * 4;
+                let edge = abs(d[pIdx]-d[pR]) + abs(d[pIdx+1]-d[pR+1]) + abs(d[pIdx]-d[pD]);
+                
+                let node = { x: px, y: py, r: d[pIdx], g: d[pIdx+1], b: d[pIdx+2], edge: edge };
+                
+                if(edge > 30) sketchNodes.push(node);
+                else colorNodes.push(node);
+            }
+        }
+    }
+
+    document.getElementById('bakeText').innerText = "공간 구역별(Chunk) 자연스러운 붓 터치 정렬 중...";
+    await new Promise(r => setTimeout(r, 50));
+
+    // [핵심] 화가가 그리는 순서: 방향성(위/아래)을 가지되, 구역(Chunk)별로 완료하며 진행
+    let startPos = document.getElementById('startPosOpt').value;
+    let getSortValue = (n) => {
+        let chunkX = Math.floor(n.x / 40) * 40;
+        let chunkY = Math.floor(n.y / 40) * 40;
+        if(startPos === 'top') return chunkY * 1000 + chunkX; // 위에서 아래로
+        if(startPos === 'bottom') return (height - chunkY) * 1000 + chunkX; // 아래서 위로
+        return dist(n.x, n.y, width/2, height/2); // 중앙에서 바깥으로
+    };
+
+    sketchNodes.sort((a, b) => getSortValue(a) - getSortValue(b));
+    colorNodes.sort((a, b) => getSortValue(a) - getSortValue(b));
+
+    // 꼬리물기 최적화 (가까운 거리는 붓을 떼지 않도록)
+    function buildTracePath(nodes) {
+        let path = [];
+        if(nodes.length === 0) return path;
+        let curr = nodes.shift();
+        path.push(curr);
+
+        while(nodes.length > 0) {
+            let bestIdx = 0, bestDist = Infinity;
+            // 덩어리 지어 그린다는 느낌을 위해 좁은 범위만 탐색
+            let searchLimit = Math.min(nodes.length, 100); 
+            for(let i=0; i<searchLimit; i++) {
+                let dSq = dist(curr.x, curr.y, nodes[i].x, nodes[i].y);
+                if(dSq < bestDist) { bestDist = dSq; bestIdx = i; }
+            }
+            curr = nodes[bestIdx];
+            nodes[bestIdx] = nodes[nodes.length - 1]; nodes.pop();
+            path.push(curr);
+        }
+        return path;
+    }
+
+    let finalSketch = buildTracePath(sketchNodes);
+    let finalColor = buildTracePath(colorNodes);
+
+    let totS = finalSketch.length, totC = finalColor.length;
+    finalSketch.forEach((s, i) => { s.prog = map(i, 0, totS, 0.0, 0.35); s.stage='sketch'; strokeSequence.push(s); });
+    finalColor.forEach((s, i) => { s.prog = map(i, 0, totC, 0.35, 0.85); s.stage='color'; strokeSequence.push(s); });
+
+    document.getElementById('loader').style.display = 'none';
+    isBaking = false;
+    checkReady();
+    
+    if(!isPlaying && targetImg) { document.getElementById('timeline').value = 80; seekTime(80); }
+}
+
+// ==========================================
+// [핵심 2] 영상의 '유색 색연필' + '수채화 물 번짐' 렌더링
+// ==========================================
+function drawBrushStroke(g, prev, curr, energy) {
+    let dSq = dist(prev.x, prev.y, curr.x, curr.y);
+    if (dSq > 50) return; // 물리적 붓 떼기
+
+    let noiseAmt = getVal('noiseOpt');
+    let bMin = getVal('brushMin');
+    let bMax = getVal('brushMax');
+
+    let dynamicNoise = map(energy, 0, 255, 0, noiseAmt); 
+    let waveOff = map(energy, 0, 255, 0, 3) * (noise(curr.x) - 0.5);
+    let x2 = curr.x + waveOff, y2 = curr.y + waveOff;
+
+    if (curr.stage === 'sketch') {
+        // [수채화 영상 매칭] 검은색 선이 아닌, 이미지의 실제 색상(curr.r,g,b)을 진하게 한 '색연필' 질감
+        g.stroke(curr.r * 0.8, curr.g * 0.8, curr.b * 0.8, 160); 
+        g.strokeWeight(bMin);
+        g.noFill();
+        
+        let midX = (prev.x + x2) / 2 + (noise(prev.x*0.1, noiseZ) - 0.5) * dynamicNoise;
+        let midY = (prev.y + y2) / 2 + (noise(prev.y*0.1, noiseZ) - 0.5) * dynamicNoise;
+        noiseZ += 0.05;
+
+        g.beginShape(); g.vertex(prev.x, prev.y); g.quadraticVertex(midX, midY, x2, y2); g.endShape();
+    } 
+    else {
+        // [수채화 영상 매칭] 수채화 채색 단계: 매우 투명한 색을 넓게 번지듯 겹쳐 바름
+        let audioExpand = map(energy, 0, 255, 0, bMax * 0.5); 
+        let finalBrushSize = constrain(bMax * 0.5 + audioExpand + random(-2, 5), bMin, bMax * 1.5);
+
+        if (currentStyle === 'watercolor') {
+            g.noStroke();
+            // 겹쳐 칠해지는 물맛(Bloom) 표현을 위해 투명도(Alpha)를 15~25 사이로 극단적으로 낮춤
+            let waterAlpha = map(energy, 0, 255, 15, 30);
+            g.fill(curr.r, curr.g, curr.b, waterAlpha);
+            
+            // 중앙 메인 물방울
+            g.ellipse(x2, y2, finalBrushSize);
+            // 외곽으로 은은하게 번지는 서브 물방울
+            g.fill(curr.r, curr.g, curr.b, waterAlpha * 0.5);
+            g.ellipse(x2 + random(-3,3), y2 + random(-3,3), finalBrushSize * 1.4);
+
+        } else if (currentStyle === 'oil') {
+            g.stroke(curr.r, curr.g, curr.b, 220); g.strokeWeight(finalBrushSize);
+            g.line(prev.x, prev.y, x2, y2);
+        } else { // Pencil fill
+            g.stroke(curr.r, curr.g, curr.b, 100); g.strokeWeight(bMin * 1.5);
+            g.line(prev.x, prev.y, x2, y2);
+        }
+    }
+}
+
+function drawFrame(ct) {
+    if(isBaking || strokeSequence.length < 2) return;
+    
+    let isScrubbing = Math.abs(ct - lastTime) > 0.5;
+    lastTime = ct;
+    let totalTime = getVal('timeOpt');
+    let targetProg = ct / totalTime;
+    let expectedIdx = Math.floor(strokeSequence.length * targetProg);
+
+    if (isScrubbing || expectedIdx < lastDrawnIdx) {
+        paintBuffer.background(paperColor);
+        lastDrawnIdx = 0; 
+    }
+
+    let energy = 0;
+    if(isPlaying && fft) { 
+        fft.analyze(); 
+        energy = fft.getEnergy("bass") * 0.6 + fft.getEnergy("mid") * 0.4; 
+    }
+
+    let speedFactor = isPlaying ? map(energy, 0, 255, 0.2, 2.0) : 1.0; 
+    let gap = expectedIdx - lastDrawnIdx;
+    let step = Math.max(1, Math.floor(gap * speedFactor));
+    if (gap <= 0) step = 0; 
+
+    let drawUpToIdx = Math.min(strokeSequence.length - 1, lastDrawnIdx + step);
+
+    for(let i = max(1, lastDrawnIdx); i <= drawUpToIdx; i++) {
+        let prev = strokeSequence[i-1];
+        let curr = strokeSequence[i];
+        drawBrushStroke(paintBuffer, prev, curr, energy);
+    }
+    lastDrawnIdx = drawUpToIdx;
+
+    let light = getVal('lightOpt');
+    background(242 * (light/100), 239 * (light/100), 233 * (light/100)); // Paper color base
+    push();
+    if(light !== 100) tint(255, 255 * (light/100));
+    image(paintBuffer, 0, 0);
+    pop();
+
+    if(targetProg > 0.85) {
+        let detailAlpha = map(targetProg, 0.85, 1.0, 0, 255);
+        push();
+        imageMode(CENTER);
+        tint(255, detailAlpha);
+        let rScale = Math.max(width / targetImg.width, height / targetImg.height) * getVal('scaleOpt');
+        image(targetImg, width/2 + getVal('posXOpt', parseInt), height/2 + getVal('posYOpt', parseInt), targetImg.width*rScale, targetImg.height*rScale);
+        pop();
+    }
+}
+
+function draw() {
+    if(!isPlaying || !loadedAudio) return;
+    let ct = loadedAudio.currentTime();
+    let totalTime = getVal('timeOpt');
+    if(ct >= totalTime) { togglePlayback(); seekTime(100); return; }
+    
+    document.getElementById('timeCurrent').innerText = formatTime(ct);
+    document.getElementById('timeline').value = (ct / totalTime) * 100;
+    drawFrame(ct);
+}
+
+function togglePlayback() {
+    if(!loadedAudio || isBaking) return;
+    isPlaying = !isPlaying;
+    let btn = document.getElementById('recBtn');
+    if(isPlaying) {
+        loadedAudio.rate(1.0); loadedAudio.play();
+        btn.innerText = "⏹ STOP & SAVE";
+        btn.style.background = "#00ffcc"; btn.style.color = "#000";
+        startRecording();
+    } else {
+        loadedAudio.stop();
+        btn.innerText = "🔴 START DRAWING";
+        btn.style.background = "#ff3e81"; btn.style.color = "#fff";
+        if(mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+    }
+}
+
+function startRecording() {
+    recordedChunks = [];
+    let stream = document.querySelector('#canvasContainer canvas').captureStream(30);
+    let options = { mimeType: 'video/webm' }; let ext = 'webm';
+    if (MediaRecorder.isTypeSupported('video/mp4; codecs="avc1.42E01E"')) { options = { mimeType: 'video/mp4; codecs="avc1.42E01E"' }; ext = 'mp4'; } 
+    else if (MediaRecorder.isTypeSupported('video/mp4')) { options = { mimeType: 'video/mp4' }; ext = 'mp4'; }
+    try { mediaRecorder = new MediaRecorder(stream, options); } catch (e) { mediaRecorder = new MediaRecorder(stream); ext = 'webm'; }
+    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+    mediaRecorder.onstop = () => {
+        let a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' }));
+        a.download = `AudioArt_Watercolor_${Date.now()}.${ext}`; a.click();
+    };
+    mediaRecorder.start();
+}
+
+function seekTime(v) {
+    if(!loadedAudio || isBaking) return;
+    let totalTime = getVal('timeOpt');
+    let targetSec = (parseFloat(v) / 100) * totalTime;
+    if(isPlaying) loadedAudio.jump(targetSec);
+    else { document.getElementById('timeCurrent').innerText = formatTime(targetSec); drawFrame(targetSec); }
+}
+
+function formatTime(s) { return nf(floor(s/60), 2) + ":" + nf(floor(s%60), 2); }
+</script>
+</body>
+</html>
