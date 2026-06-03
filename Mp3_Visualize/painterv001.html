@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>v1.31</title>
+<title>v1.32</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -43,15 +43,8 @@
     </div>
 
     <div class="control-group" style="border:1px solid #00ffcc; padding:10px; border-radius:4px; gap:8px; background:rgba(0,255,204,0.02);">
-        <span style="color:#00ffcc; font-weight:bold;">3. 아티스트 구도/브러시 제어</span>
-        <label>미술 구도 가이드: 
-            <select id="guideOpt" onchange="updateSettings()">
-                <option value="perspective">1점 투시 (소실점)</option>
-                <option value="ruleOfThirds">3분할 구도</option>
-                <option value="centerCross">중심 십자선</option>
-            </select>
-        </label>
-        <label>시작점(소실점) 위치: 
+        <span style="color:#00ffcc; font-weight:bold;">3. 아티스트 궤적/브러시 제어</span>
+        <label>시작점 기준: 
             <select id="startPosOpt" onchange="updateSettings()">
                 <option value="center">정중앙</option>
                 <option value="left">왼쪽 중앙</option>
@@ -60,7 +53,7 @@
                 <option value="bottom">하단 중앙</option>
             </select>
         </label>
-        <label>노이즈(떨림) 강도: <input type="range" id="noiseOpt" min="0" max="50" value="15"></label>
+        <label>노이즈(떨림) 강도: <input type="range" id="noiseOpt" min="0" max="50" value="10"></label>
         <label>최소 붓 굵기: <input type="range" id="brushMin" min="1" max="10" value="2"></label>
         <label>최대 붓 굵기: <input type="range" id="brushMax" min="5" max="40" value="15"></label>
     </div>
@@ -76,7 +69,7 @@
     </div>
 
     <div class="control-group">
-        <span style="color:#fff; font-weight:bold;">5. 브러쉬 화풍 (단일 붓 채색)</span>
+        <span style="color:#fff; font-weight:bold;">5. 브러쉬 화풍 (채색 단계)</span>
         <div class="btn-grid">
             <button class="studio-btn active" id="sPencil" onclick="changeStyle('pencil')">베이직</button>
             <button class="studio-btn" id="sOil" onclick="changeStyle('oil')">유화</button>
@@ -88,7 +81,7 @@
 </div>
 
 <div class="main">
-    <div id="loader"><div id="bakeText">경계선 꼬리물기 추적 중...</div></div>
+    <div id="loader"><div id="bakeText">윤곽선(Edge) 정밀 추적 중...</div></div>
     <div class="canvas-zone" id="canvasContainer"></div>
     <div class="player-bar">
         <span id="timeCurrent" style="font-family:monospace; color:#888;">00:00</span>
@@ -141,13 +134,13 @@ function changeStyle(s) {
 }
 
 // ==========================================
-// [핵심 1] 레이더 삭제 & 꼬리물기(Nearest Neighbor Trace) 알고리즘
+// [핵심] 랜덤 픽셀을 버리고 '인접 픽셀 추적(Edge Walking)' 도입
 // ==========================================
 async function buildArtistPathways() {
     if(!targetImg || isBaking) return;
     isBaking = true;
     document.getElementById('loader').style.display = 'flex';
-    document.getElementById('bakeText').innerText = "1. 이미지 엣지(경계선) 스캔 중...";
+    document.getElementById('bakeText').innerText = "1. 실제 윤곽선 픽셀 추적 중...";
     await new Promise(r => setTimeout(r, 50));
 
     paintBuffer.background('#f4f3ec');
@@ -163,99 +156,126 @@ async function buildArtistPathways() {
     let posY = getVal('posYOpt', parseInt);
     let rScale = Math.max(width / tw, height / th) * scaleOpt;
 
-    // 시작점 (소실점/구도 중심점) 설정
+    // 시작점 설정
     let startPos = document.getElementById('startPosOpt').value;
-    let cx = width/2, cy = height/2;
-    if(startPos === 'left') cx = width * 0.2;
-    if(startPos === 'right') cx = width * 0.8;
-    if(startPos === 'top') cy = height * 0.2;
-    if(startPos === 'bottom') cy = height * 0.8;
+    let startX = tw/2, startY = th/2;
+    if(startPos === 'left') startX = tw * 0.2;
+    if(startPos === 'right') startX = tw * 0.8;
+    if(startPos === 'top') startY = th * 0.2;
+    if(startPos === 'bottom') startY = th * 0.8;
 
-    // 1. 구도 가이드라인 (레이더 아님! 화면 분할을 위한 짧은 선)
-    let layoutNodes = [];
-    let guideType = document.getElementById('guideOpt').value;
-    function addLine(x1, y1, x2, y2) {
-        layoutNodes.push({x: x1, y: y1, stage: 'layout_jump'}); // 붓 시작점
-        layoutNodes.push({x: lerp(x1,x2,0.3), y: lerp(y1,y2,0.3), stage: 'layout'}); // 짧게 스케치
-        layoutNodes.push({x: lerp(x1,x2,0.6), y: lerp(y1,y2,0.6), stage: 'layout'});
-        layoutNodes.push({x: x2, y: y2, stage: 'layout'});
-    }
-    if (guideType === 'perspective') {
-        addLine(cx, cy, 0, 0); addLine(cx, cy, width, height);
-        addLine(cx, cy, 0, height); addLine(cx, cy, width, 0);
-    } else if (guideType === 'ruleOfThirds') {
-        addLine(width/3, 0, width/3, height); addLine(width*2/3, 0, width*2/3, height);
-        addLine(0, height/3, width, height/3); addLine(0, height*2/3, width, height*2/3);
-    } else if (guideType === 'centerCross') {
-        addLine(cx, 0, cx, height); addLine(0, cy, width, cy);
-    }
-
-    // 2. 경계선(Edge) 픽셀 샘플링
-    let rawNodes = [];
-    for(let i=0; i<30000; i++) { // 속도와 밀도의 균형
-        let px = random(width), py = random(height);
-        let ix = Math.floor((px - width/2 - posX) / rScale + tw/2);
-        let iy = Math.floor((py - height/2 - posY) / rScale + th/2);
-
-        if (ix >= 0 && ix < tw-1 && iy >= 0 && iy < th-1) {
-            let pIdx = (iy * tw + ix) * 4;
-            if(d[pIdx+3] > 10) {
-                let pR = (iy * tw + (ix+1)) * 4;
-                let pD = ((iy+1) * tw + ix) * 4;
-                let edge = abs(d[pIdx]-d[pR]) + abs(d[pIdx+1]-d[pR+1]) + abs(d[pIdx]-d[pD]);
-                let lum = d[pIdx]*0.3 + d[pIdx+1]*0.59 + d[pIdx+2]*0.11;
-                rawNodes.push({ x: px, y: py, r: d[pIdx], g: d[pIdx+1], b: d[pIdx+2], lum: lum, edge: edge });
+    // 1. 전체 이미지 엣지 점수 계산 및 맵(Map) 생성
+    let edgeMap = new Uint8Array(tw * th);
+    let visited = new Uint8Array(tw * th);
+    let lumMap = new Float32Array(tw * th);
+    
+    for (let y = 1; y < th - 1; y++) {
+        for (let x = 1; x < tw - 1; x++) {
+            let i = (y * tw + x) * 4;
+            if (d[i+3] > 10) {
+                let pR = (y * tw + (x+1)) * 4;
+                let pD = ((y+1) * tw + x) * 4;
+                let e = abs(d[i]-d[pR]) + abs(d[i+1]-d[pR+1]) + abs(d[i]-d[pD]);
+                let idx = y * tw + x;
+                edgeMap[idx] = e;
+                lumMap[idx] = d[i]*0.3 + d[i+1]*0.59 + d[i+2]*0.11;
             }
         }
     }
 
-    document.getElementById('bakeText').innerText = "2. 경계선 꼬리물기 추적 중...";
+    document.getElementById('bakeText').innerText = "2. 윤곽선 연속성 조립 중...";
     await new Promise(r => setTimeout(r, 50));
 
-    // [핵심] 원형 레이더 정렬 삭제 -> 중심에서 가장 가까운 점을 찾고, 그 점부터 '물리적으로 이어지는' 꼬리물기
-    // 시작점에서 거리순으로 1차 대략 정렬을 해두면 꼬리물기 연산이 훨씬 빠르고 자연스러움
-    rawNodes.sort((a,b) => dist(a.x, a.y, cx, cy) - dist(b.x, b.y, cx, cy));
-
-    let sketchNodes = [];
+    let edgeThreshold = 35; 
+    let allSketchPaths = [];
     let colorNodes = [];
 
-    // 가장 강력한 경계선은 스케치로, 나머지는 채색으로 분리
-    let edgeThreshold = 30;
-    let tempSketch = rawNodes.filter(n => n.edge > edgeThreshold);
-    let tempColor = rawNodes.filter(n => n.edge <= edgeThreshold);
+    // [핵심] 실제 인접한 픽셀을 따라 걷기 (Contour Tracing) - 거미줄/지그재그 완벽 차단
+    for (let y = 1; y < th - 1; y++) {
+        for (let x = 1; x < tw - 1; x++) {
+            let idx = y * tw + x;
+            
+            // 경계선(Edge)을 발견하면, 인접한 경계선으로만 이동하며 선을 완성함
+            if (edgeMap[idx] > edgeThreshold && visited[idx] === 0) {
+                let currentPath = [];
+                let cx = x, cy = y;
 
-    // 꼬리물기 함수 (Nearest Neighbor)
-    function buildTracePath(nodes) {
-        let path = [];
-        if(nodes.length === 0) return path;
-        let curr = nodes.shift();
-        path.push(curr);
+                while (true) {
+                    let cidx = cy * tw + cx;
+                    visited[cidx] = 1;
+                    
+                    // 캔버스 좌표계로 변환하여 저장
+                    let canvasX = (cx - tw/2) * rScale + width/2 + posX;
+                    let canvasY = (cy - th/2) * rScale + height/2 + posY;
+                    
+                    currentPath.push({ x: canvasX, y: canvasY, lum: lumMap[cidx] });
 
-        while(nodes.length > 0) {
-            let bestIdx = 0;
-            let bestDist = Infinity;
-            // 가까운 인덱스 주변만 탐색하여 선을 부드럽게 이음
-            let searchLimit = Math.min(nodes.length, 300); 
-            for(let i=0; i<searchLimit; i++) {
-                let dSq = (curr.x - nodes[i].x)**2 + (curr.y - nodes[i].y)**2;
-                if(dSq < bestDist) { bestDist = dSq; bestIdx = i; }
+                    // 8방향 주변 픽셀 중 가장 Edge가 강한 미방문 픽셀을 찾아 이동
+                    let bestNx = -1, bestNy = -1, maxE = -1;
+                    for (let ny = cy - 1; ny <= cy + 1; ny++) {
+                        for (let nx = cx - 1; nx <= cx + 1; nx++) {
+                            if (nx === cx && ny === cy) continue;
+                            if (nx > 0 && nx < tw-1 && ny > 0 && ny < th-1) {
+                                let nidx = ny * tw + nx;
+                                if (visited[nidx] === 0 && edgeMap[nidx] > edgeThreshold) {
+                                    if (edgeMap[nidx] > maxE) {
+                                        maxE = edgeMap[nidx];
+                                        bestNx = nx; bestNy = ny;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // 더 이상 이어질 선이 없으면 추적 종료
+                    if (bestNx !== -1) { cx = bestNx; cy = bestNy; } 
+                    else { break; }
+                }
+                
+                // 길이가 너무 짧은 자잘한 노이즈 선은 버리고 의미 있는 형태(선)만 보존
+                if (currentPath.length > 8) {
+                    // 시작점과의 거리 계산 (정렬용)
+                    let dToStart = dist(x, y, startX, startY);
+                    allSketchPaths.push({ path: currentPath, dist: dToStart });
+                }
+            } 
+            // 스케치가 아닌 평면(Color) 영역 샘플링
+            else if (edgeMap[idx] > 0 && edgeMap[idx] <= edgeThreshold && visited[idx] === 0) {
+                if (random() < 0.15) { // 15% 밀도로 추출
+                    let i = (y * tw + x) * 4;
+                    let canvasX = (x - tw/2) * rScale + width/2 + posX;
+                    let canvasY = (y - th/2) * rScale + height/2 + posY;
+                    colorNodes.push({ x: canvasX, y: canvasY, r: d[i], g: d[i+1], b: d[i+2], edge: edgeMap[idx] });
+                }
             }
-            curr = nodes[bestIdx];
-            nodes[bestIdx] = nodes[nodes.length - 1]; // 빠른 삭제
-            nodes.pop();
-            path.push(curr);
         }
-        return path;
     }
 
-    sketchNodes = buildTracePath(tempSketch);
-    colorNodes = buildTracePath(tempColor);
+    // 3. 정렬 및 타임라인 배열화
+    // 스케치: 시작점(startPos)에서 가까운 선부터 순차적으로 그림
+    allSketchPaths.sort((a, b) => a.dist - b.dist);
+    
+    let sketchSequence = [];
+    allSketchPaths.forEach(lineGroup => {
+        lineGroup.path.forEach(pt => {
+            sketchSequence.push({ x: pt.x, y: pt.y, lum: pt.lum, stage: 'sketch' });
+        });
+        // 선과 선 사이를 이동할 때 붓을 떼도록 마커(lift) 삽입
+        sketchSequence.push({ stage: 'lift' }); 
+    });
 
-    // 3. 타임라인 매핑
-    let totL = layoutNodes.length, totS = sketchNodes.length, totC = colorNodes.length;
-    layoutNodes.forEach((s, i) => { s.prog = map(i, 0, totL, 0.0, 0.05); strokeSequence.push(s); });
-    sketchNodes.forEach((s, i) => { s.prog = map(i, 0, totS, 0.05, 0.35); s.stage='sketch'; strokeSequence.push(s); });
-    colorNodes.forEach((s, i) => { s.prog = map(i, 0, totC, 0.35, 0.80); s.stage='color'; strokeSequence.push(s); });
+    // 채색: 자연스러운 붓질을 위해 공간(30x30 픽셀) 단위로 청크를 나누어 쓱싹쓱싹 칠함
+    colorNodes.sort((a, b) => {
+        let chunkA = Math.floor(a.y/30)*100 + Math.floor(a.x/30);
+        let chunkB = Math.floor(b.y/30)*100 + Math.floor(b.x/30);
+        if (chunkA !== chunkB) return chunkA - chunkB;
+        return b.edge - a.edge; // 청크 내에서는 경계면 가까운 곳부터
+    });
+    colorNodes.forEach(n => n.stage = 'color');
+
+    let totS = sketchSequence.length, totC = colorNodes.length;
+    sketchSequence.forEach((s, i) => { s.prog = map(i, 0, totS, 0.0, 0.35); strokeSequence.push(s); });
+    colorNodes.forEach((s, i) => { s.prog = map(i, 0, totC, 0.35, 0.80); strokeSequence.push(s); });
 
     document.getElementById('loader').style.display = 'none';
     isBaking = false;
@@ -265,55 +285,46 @@ async function buildArtistPathways() {
 }
 
 // ==========================================
-// [핵심 2] 다이내믹 브러시 엔진 (노이즈와 랜덤 굵기)
+// [핵심 3] 다이내믹 렌더러 (노이즈와 오디오 연동)
 // ==========================================
 function drawBrushStroke(g, prev, curr, energy) {
-    // 붓 떼기 로직 (거리가 40픽셀 이상 멀어지면 허공으로 이동한 것 -> 선을 안 그음)
-    if (curr.stage === 'layout_jump') return; 
+    if (prev.stage === 'lift' || curr.stage === 'lift') return; // 붓 떼기 마커
+    
     let dSq = dist(prev.x, prev.y, curr.x, curr.y);
-    if (dSq > 40) return; 
+    if (dSq > 80) return; // 물리적으로 너무 멀면 강제로 그리지 않음
 
     let noiseAmt = getVal('noiseOpt');
     let bMin = getVal('brushMin');
     let bMax = getVal('brushMax');
 
-    // 오디오에 맞춰 붓끝이 미세하게 진동
-    let waveOff = map(energy, 0, 255, 0, noiseAmt * 0.5) * (noise(curr.x*0.1) - 0.5);
-    let x2 = curr.x + waveOff, y2 = curr.y + waveOff;
+    // 오디오 진동에 따른 노이즈 추가
+    let dynamicNoise = map(energy, 0, 255, 0, noiseAmt); 
+    let midX = (prev.x + curr.x) / 2 + (noise(prev.x*0.05, noiseZ) - 0.5) * dynamicNoise;
+    let midY = (prev.y + curr.y) / 2 + (noise(prev.y*0.05, noiseZ) - 0.5) * dynamicNoise;
+    noiseZ += 0.05;
 
-    if (curr.stage === 'layout') {
-        g.stroke(0, 80); g.strokeWeight(1);
-        g.line(prev.x, prev.y, x2, y2);
-    }
-    else if (curr.stage === 'sketch') {
-        // 연필 스케치: 미세한 노이즈로 손떨림 구현
-        g.stroke(curr.lum * 0.2, 180); 
+    if (curr.stage === 'sketch') {
+        // [수정] 이제 실제 윤곽선을 따라가므로, 선명하고 또렷하게 스케치됨
+        g.stroke(curr.lum * 0.1, 190); 
         g.strokeWeight(bMin);
-        
-        let midX = (prev.x + x2) / 2 + (noise(prev.x*0.05, noiseZ) - 0.5) * noiseAmt;
-        let midY = (prev.y + y2) / 2 + (noise(prev.y*0.05, noiseZ) - 0.5) * noiseAmt;
-        noiseZ += 0.05;
-
         g.noFill();
-        g.beginShape(); g.vertex(prev.x, prev.y); g.quadraticVertex(midX, midY, x2, y2); g.endShape();
+        g.beginShape(); g.vertex(prev.x, prev.y); g.quadraticVertex(midX, midY, curr.x, curr.y); g.endShape();
     } 
     else {
-        // [핵심 수정] 획의 굵기가 고정되지 않고, 오디오 볼륨 + 랜덤 + 경계선 강도에 의해 역동적으로 변함
-        let targetSize = map(curr.edge, 30, 0, bMin, bMax); // 평면일수록 굵어짐
-        let audioExpand = map(energy, 0, 255, 0, bMax * 0.5); // 소리가 크면 팽창
-        let finalBrushSize = constrain(targetSize + audioExpand + random(-2, 3), bMin, bMax * 1.5);
+        // 채색 시 오디오 에너지 + 랜덤 요소를 섞어 붓 두께가 역동적으로 변함
+        let targetSize = map(curr.edge, 35, 0, bMin, bMax);
+        let audioExpand = map(energy, 0, 255, 0, bMax * 0.5);
+        let finalBrushSize = constrain(targetSize + audioExpand + random(-2, 2), bMin, bMax * 1.5);
 
         if (currentStyle === 'oil') {
-            g.stroke(curr.r, curr.g, curr.b, 220); 
-            g.strokeWeight(finalBrushSize);
-            g.line(prev.x, prev.y, x2, y2);
+            g.stroke(curr.r, curr.g, curr.b, 220); g.strokeWeight(finalBrushSize);
+            g.beginShape(); g.vertex(prev.x, prev.y); g.quadraticVertex(midX, midY, curr.x, curr.y); g.endShape();
         } else if (currentStyle === 'impressionism') {
             g.noStroke(); g.fill(curr.r, curr.g, curr.b, 200);
-            g.ellipse(x2, y2, finalBrushSize); 
-        } else { // Basic
-            g.stroke(curr.r, curr.g, curr.b, 160); 
-            g.strokeWeight(finalBrushSize * 0.6);
-            g.line(prev.x, prev.y, x2, y2);
+            g.ellipse(curr.x + random(-dynamicNoise, dynamicNoise), curr.y + random(-dynamicNoise, dynamicNoise), finalBrushSize);
+        } else {
+            g.stroke(curr.r, curr.g, curr.b, 150); g.strokeWeight(finalBrushSize * 0.5);
+            g.beginShape(); g.vertex(prev.x, prev.y); g.quadraticVertex(midX, midY, curr.x, curr.y); g.endShape();
         }
     }
 }
@@ -338,7 +349,7 @@ function drawFrame(ct) {
         energy = fft.getEnergy("bass") * 0.6 + fft.getEnergy("mid") * 0.4; 
     }
 
-    // 음악에 따른 그리기 가속도
+    // 음악 템포에 맞춘 드로잉 속도 조절
     let speedFactor = isPlaying ? map(energy, 0, 255, 0.2, 2.0) : 1.0; 
     let gap = expectedIdx - lastDrawnIdx;
     let step = Math.max(1, Math.floor(gap * speedFactor));
@@ -399,29 +410,19 @@ function togglePlayback() {
     }
 }
 
-// [핵심 3] MP4(H.264) 코덱 강제 요청
+// MP4 H.264 코덱 최우선 저장
 function startRecording() {
     recordedChunks = [];
     let stream = document.querySelector('#canvasContainer canvas').captureStream(30);
-    let options = { mimeType: 'video/webm' }; 
-    let ext = 'webm';
-    
-    // MP4 코덱 지원 여부 확인 후 강제 할당
-    if (MediaRecorder.isTypeSupported('video/mp4; codecs="avc1.42E01E"')) { 
-        options = { mimeType: 'video/mp4; codecs="avc1.42E01E"' }; ext = 'mp4'; 
-    } else if (MediaRecorder.isTypeSupported('video/mp4')) { 
-        options = { mimeType: 'video/mp4' }; ext = 'mp4'; 
-    }
-
-    try { mediaRecorder = new MediaRecorder(stream, options); } 
-    catch (e) { mediaRecorder = new MediaRecorder(stream); ext = 'webm'; }
-    
+    let options = { mimeType: 'video/webm' }; let ext = 'webm';
+    if (MediaRecorder.isTypeSupported('video/mp4; codecs="avc1.42E01E"')) { options = { mimeType: 'video/mp4; codecs="avc1.42E01E"' }; ext = 'mp4'; } 
+    else if (MediaRecorder.isTypeSupported('video/mp4')) { options = { mimeType: 'video/mp4' }; ext = 'mp4'; }
+    try { mediaRecorder = new MediaRecorder(stream, options); } catch (e) { mediaRecorder = new MediaRecorder(stream); ext = 'webm'; }
     mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
     mediaRecorder.onstop = () => {
         let a = document.createElement('a');
         a.href = URL.createObjectURL(new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' }));
-        a.download = `AudioArt_Drawing_${Date.now()}.${ext}`; 
-        a.click();
+        a.download = `AudioArt_ContourTrace_${Date.now()}.${ext}`; a.click();
     };
     mediaRecorder.start();
 }
