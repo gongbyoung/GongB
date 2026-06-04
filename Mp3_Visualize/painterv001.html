@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>v2.09</title>
+<title>v2.10</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
 <style>
@@ -59,9 +59,9 @@
                 <option value="bottom">아래서 위로</option>
             </select>
         </label>
-        <label>선화 노이즈: <input type="range" id="noiseOpt" min="0" max="30" value="8" oninput="updateStyle()"></label>
+        <label>스케치 노이즈: <input type="range" id="noiseOpt" min="0" max="30" value="8" oninput="updateStyle()"></label>
         <label>최소 붓 굵기: <input type="range" id="brushMin" min="1" max="10" value="2" oninput="updateStyle()"></label>
-        <label>최대 붓 굵기: <input type="range" id="brushMax" min="5" max="40" value="20" oninput="updateStyle()"></label>
+        <label>최대 붓 굵기: <input type="range" id="brushMax" min="5" max="40" value="25" oninput="updateStyle()"></label>
     </div>
 
     <div class="control-group" style="border:1px solid #222; padding:10px; border-radius:4px; gap:8px;">
@@ -89,7 +89,7 @@
 <div class="main">
     <div id="loader">
         <div class="spinner"></div>
-        <div id="bakeText">안전 렌더링 엔진 가동 중...</div>
+        <div id="bakeText">아티스트의 동선을 분석 중...</div>
         <div id="bakeProgress">0%</div>
     </div>
     <div class="canvas-zone" id="canvasContainer"></div>
@@ -107,7 +107,6 @@ let loadedAudio, fft, isPlaying = false, isBaking = false;
 let paintBuffer;
 let renderQueue = []; 
 let lastDrawnIdx = 0;
-// [버그 수정] 삭제되었던 lastTime 전역 변수 복구
 let lastTime = 0; 
 let simulatedTime = 0;
 let lastMillis = 0;
@@ -182,6 +181,9 @@ function changeStyle(s) {
     updateStyle();
 }
 
+// ==========================================
+// [v2.10 핵심] 잘림 현상 방지 & 유기적(Organic) 샘플링
+// ==========================================
 async function buildDualPathwaysSafe() {
     if(isBaking) return;
     isBaking = true;
@@ -190,7 +192,7 @@ async function buildDualPathwaysSafe() {
     let progressTxt = document.getElementById('bakeProgress');
     
     loader.style.display = 'flex';
-    bakeText.innerText = "1. 스케치 픽셀 분석 중...";
+    bakeText.innerText = "1. 유기적(Organic) 스케치 추출 중...";
     progressTxt.innerText = "0%";
     await new Promise(r => setTimeout(r, 50)); 
 
@@ -198,7 +200,7 @@ async function buildDualPathwaysSafe() {
     lastDrawnIdx = 0;
     renderQueue = [];
     
-    let maxDim = 600; 
+    let maxDim = 800; 
     let scaleRatio = Math.min(1.0, maxDim / Math.max(targetImg.width, targetImg.height));
     let analysisW = Math.floor(targetImg.width * scaleRatio);
     let analysisH = Math.floor(targetImg.height * scaleRatio);
@@ -213,23 +215,30 @@ async function buildDualPathwaysSafe() {
     cg.loadPixels();
     let cData = cg.pixels;
 
+    // [수정] Math.min을 사용하여 이미지가 화면 밖으로 잘리지 않고 완벽히 쏙 들어가도록 조치 (Fit)
     let displayScale = getVal('scaleOpt');
-    let rScale = Math.max(width / targetImg.width, height / targetImg.height) * displayScale;
+    let rScale = Math.min(width / targetImg.width, height / targetImg.height) * displayScale;
     let mapToCanvasX = (ax) => ((ax / scaleRatio) - targetImg.width/2) * rScale + width/2 + getVal('posXOpt', parseInt);
     let mapToCanvasY = (ay) => ((ay / scaleRatio) - targetImg.height/2) * rScale + height/2 + getVal('posYOpt', parseInt);
 
+    // [수정] 격자망(Grid) 스캔 완전 삭제 -> Monte Carlo 불규칙 난수 샘플링
+    // 이 방식은 기계적인 직선이나 격자를 절대 생성하지 않으며 실제 사람의 펜선 질감을 만듭니다.
     let sketchNodes = [];
-    for (let y = 0; y < analysisH; y += 2) {
-        for (let x = 0; x < analysisW; x += 2) {
-            let pIdx = (y * analysisW + x) * 4;
-            let lum = sData[pIdx]*0.3 + sData[pIdx+1]*0.59 + sData[pIdx+2]*0.11;
-            if (lum < 150 && sData[pIdx+3] > 10) {
-                sketchNodes.push({ x: mapToCanvasX(x), y: mapToCanvasY(y), r: sData[pIdx], g: sData[pIdx+1], b: sData[pIdx+2] });
-            }
+    let sketchSampleCount = 6000; // 스케치 선 밀도 조절
+    
+    for (let i = 0; i < sketchSampleCount; i++) {
+        let x = Math.floor(random(analysisW));
+        let y = Math.floor(random(analysisH));
+        let pIdx = (y * analysisW + x) * 4;
+        let lum = sData[pIdx]*0.3 + sData[pIdx+1]*0.59 + sData[pIdx+2]*0.11;
+        
+        // 너무 밝거나 투명한 픽셀 무시, 어두운 펜선 영역만 확보
+        if (lum < 180 && sData[pIdx+3] > 10) {
+            sketchNodes.push({ x: mapToCanvasX(x), y: mapToCanvasY(y), r: sData[pIdx], g: sData[pIdx+1], b: sData[pIdx+2] });
         }
     }
 
-    bakeText.innerText = "2. 펜 동선 최단거리(Nearest) 연산 중...";
+    bakeText.innerText = "2. 한붓그리기 최단거리 연산 중...";
     await new Promise(r => setTimeout(r, 50));
 
     let continuousSketchPath = [];
@@ -241,11 +250,11 @@ async function buildDualPathwaysSafe() {
         let processed = 0;
 
         while(sketchNodes.length > 0) {
-            let chunkLimit = Math.min(sketchNodes.length, 400);
+            let chunkLimit = Math.min(sketchNodes.length, 300);
             
             for(let step = 0; step < chunkLimit; step++) {
                 let bestIdx = 0, bestDist = Infinity;
-                let searchLimit = Math.min(sketchNodes.length, 250); 
+                let searchLimit = Math.min(sketchNodes.length, 150); 
                 for(let i = 0; i < searchLimit; i++) {
                     let dSq = (curr.x - sketchNodes[i].x)**2 + (curr.y - sketchNodes[i].y)**2;
                     if(dSq < bestDist) { bestDist = dSq; bestIdx = i; }
@@ -263,17 +272,21 @@ async function buildDualPathwaysSafe() {
         }
     }
 
-    bakeText.innerText = "3. 2번 컬러 이미지 색상 매핑 중...";
+    bakeText.innerText = "3. 컬러 이미지 유기적 매핑 중...";
     progressTxt.innerText = "0%";
     await new Promise(r => setTimeout(r, 50));
 
+    // 컬러 역시 격자를 버리고 완전 랜덤 산포 적용
     let colorNodes = [];
-    for (let y = 0; y < analysisH; y += 3) {
-        for (let x = 0; x < analysisW; x += 3) {
-            let pIdx = (y * analysisW + x) * 4;
-            if (cData[pIdx+3] > 10 && (cData[pIdx]+cData[pIdx+1]+cData[pIdx+2]) < 730) {
-                colorNodes.push({ x: mapToCanvasX(x), y: mapToCanvasY(y), r: cData[pIdx], g: cData[pIdx+1], b: cData[pIdx+2] });
-            }
+    let colorSampleCount = 15000;
+    
+    for (let i = 0; i < colorSampleCount; i++) {
+        let x = Math.floor(random(analysisW));
+        let y = Math.floor(random(analysisH));
+        let pIdx = (y * analysisW + x) * 4;
+        
+        if (cData[pIdx+3] > 10 && (cData[pIdx]+cData[pIdx+1]+cData[pIdx+2]) < 730) {
+            colorNodes.push({ x: mapToCanvasX(x), y: mapToCanvasY(y), r: cData[pIdx], g: cData[pIdx+1], b: cData[pIdx+2] });
         }
     }
 
@@ -310,6 +323,9 @@ async function buildDualPathwaysSafe() {
 
 let prevPt = null;
 
+// ==========================================
+// [진짜 화가의 붓질 렌더러]
+// ==========================================
 function drawItem(g, item, energy) {
     if (!prevPt || prevPt.type !== item.type) { prevPt = item; return; }
 
@@ -319,17 +335,21 @@ function drawItem(g, item, energy) {
     let bMax = getVal('brushMax');
 
     let dynamicNoise = map(energy, 0, 255, 0, noiseAmt); 
-    let midX = (prevPt.x + item.x) / 2 + (noise(prevPt.x*0.1, noiseZ) - 0.5) * dynamicNoise;
-    let midY = (prevPt.y + item.y) / 2 + (noise(prevPt.y*0.1, noiseZ) - 0.5) * dynamicNoise;
+    
+    // 부드러운 유선형 선을 위한 노이즈 제어
+    let midX = (prevPt.x + item.x) / 2 + (noise(item.x*0.05, noiseZ) - 0.5) * dynamicNoise;
+    let midY = (prevPt.y + item.y) / 2 + (noise(item.y*0.05, noiseZ) - 0.5) * dynamicNoise;
     noiseZ += 0.05;
 
     if (item.type === 'sketch') {
         if (dSq > 900) { 
-            g.stroke(item.r, item.g, item.b, 60); 
+            // 붓이 점프할 때 남는 연한 궤적 (진짜 스케치 데생의 묘미)
+            g.stroke(item.r, item.g, item.b, 20); 
             g.strokeWeight(1);
             g.line(prevPt.x, prevPt.y, item.x, item.y);
         } else {
-            g.stroke(item.r, item.g, item.b, 200); 
+            // 사각사각 윤곽선을 잡는 흑연/색연필 느낌
+            g.stroke(item.r, item.g, item.b, 150); 
             g.strokeWeight(bMin);
             g.noFill();
             g.beginShape(); 
@@ -340,34 +360,29 @@ function drawItem(g, item, energy) {
     } 
     else if (item.type === 'color') {
         let audioExpand = map(energy, 0, 255, 0, bMax * 0.5); 
-        let finalSize = constrain(bMax * 0.7 + audioExpand + random(-2, 3), bMin, bMax * 1.5);
-        let waveOff = map(energy, 0, 255, 0, 3) * (noise(item.x) - 0.5);
-        let x2 = item.x + waveOff, y2 = item.y + waveOff;
+        let finalSize = constrain(bMax * 0.5 + audioExpand + random(-3, 3), bMin, bMax * 1.5);
 
         if (currentStyle === 'watercolor') {
             g.noStroke();
-            let waterAlpha = 20; 
+            let waterAlpha = 25; // 투명한 물감
             g.fill(item.r, item.g, item.b, waterAlpha);
             
-            g.beginShape();
-            for(let a=0; a<TWO_PI; a+=1.0) {
-                let rOff = finalSize + random(-finalSize*0.2, finalSize*0.2);
-                g.vertex(x2 + rOff*cos(a), y2 + rOff*sin(a));
+            // 물감이 종이에 스며들 듯 불규칙하게 여러 번 난수(Drop) 처리
+            let drops = Math.floor(random(2, 5));
+            for(let k=0; k<drops; k++) {
+                let dropX = item.x + random(-finalSize/2, finalSize/2);
+                let dropY = item.y + random(-finalSize/2, finalSize/2);
+                let dropSize = finalSize * random(0.5, 1.2);
+                g.ellipse(dropX, dropY, dropSize);
             }
-            g.endShape(CLOSE);
-            g.fill(item.r, item.g, item.b, waterAlpha * 0.5);
-            g.ellipse(x2, y2, finalSize * 1.2);
             
         } else if (currentStyle === 'oil') {
             g.stroke(item.r, item.g, item.b, 240); g.strokeWeight(finalSize * 0.8);
-            if (dSq < 3600) g.line(prevPt.x, prevPt.y, x2, y2);
-            else {
-                let angle = random(TWO_PI);
-                g.line(x2, y2, x2 + cos(angle)*finalSize, y2 + sin(angle)*finalSize); 
-            }
+            let angle = random(TWO_PI);
+            g.line(item.x, item.y, item.x + cos(angle)*finalSize, item.y + sin(angle)*finalSize); 
         } else {
-            g.stroke(item.r, item.g, item.b, 120); g.strokeWeight(bMin * 1.5);
-            if (dSq < 2500) g.line(prevPt.x, prevPt.y, x2, y2);
+            g.stroke(item.r, item.g, item.b, 100); g.strokeWeight(bMin * 1.5);
+            if (dSq < 2500) g.line(prevPt.x, prevPt.y, item.x, item.y);
         }
     }
     prevPt = item;
@@ -424,7 +439,10 @@ function drawFrame(ct) {
         push();
         imageMode(CENTER);
         tint(255, detailAlpha);
-        let rScale = Math.max(width / targetImg.width, height / targetImg.height) * getVal('scaleOpt');
+        
+        // [수정] 페이드인 시에도 Math.min 적용하여 캔버스 스케일과 완벽 일치
+        let displayScale = getVal('scaleOpt');
+        let rScale = Math.min(width / targetImg.width, height / targetImg.height) * displayScale;
         image(targetImg, width/2 + getVal('posXOpt', parseInt), height/2 + getVal('posYOpt', parseInt), targetImg.width*rScale, targetImg.height*rScale);
         pop();
     }
@@ -484,7 +502,7 @@ function startRecording() {
     mediaRecorder.onstop = () => {
         let a = document.createElement('a');
         a.href = URL.createObjectURL(new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' }));
-        a.download = `UnbrokenLine_Masterpiece_${Date.now()}.${ext}`; a.click();
+        a.download = `OrganicArtist_Masterpiece_${Date.now()}.${ext}`; a.click();
     };
     mediaRecorder.start();
 }
