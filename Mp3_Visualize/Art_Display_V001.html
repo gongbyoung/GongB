@@ -2,89 +2,103 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>디지털 페인팅 실험실</title>
+    <title>디지털 화풍 스튜디오</title>
     <style>
-        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #eee; padding: 20px; }
-        canvas { background: white; box-shadow: 0 0 15px rgba(0,0,0,0.2); cursor: crosshair; max-width: 90%; }
-        .controls { background: #fff; padding: 20px; border-radius: 10px; margin-top: 15px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        body { margin: 0; display: flex; height: 100vh; font-family: sans-serif; background: #ddd; }
+        /* 왼쪽 사이드바 UI */
+        .sidebar { width: 300px; background: #f9f9f9; padding: 20px; box-shadow: 2px 0 5px rgba(0,0,0,0.1); display: flex; flex-direction: column; gap: 15px; z-index: 10; }
+        .canvas-area { flex-grow: 1; display: flex; align-items: center; justify-content: center; overflow: auto; padding: 20px; }
+        canvas { background: white; box-shadow: 0 0 10px rgba(0,0,0,0.3); }
+        h3 { margin-top: 0; }
     </style>
 </head>
 <body>
-    <h2>브러시 스타일 페인터</h2>
+
+<div class="sidebar">
+    <h3>🎨 화풍 설정</h3>
     <input type="file" id="upload" accept="image/*">
-    
-    <div class="controls">
-        <label>브러시 크기: <input type="range" id="size" min="1" max="50" value="8"></label>
-        <label>브러시 간격: <input type="range" id="spacing" min="1" max="20" value="5"></label>
-        <label>투명도(겹침 효과): <input type="range" id="opacity" min="0.1" max="1.0" step="0.1" value="0.7"></label>
-        <label>브러시 모양: 
-            <select id="shape">
-                <option value="circle">부드러운 원형</option>
-                <option value="square">거친 사각형</option>
-            </select>
-        </label>
-        <button onclick="processImage()" style="grid-column: span 2;">그리기 시작</button>
-        <button onclick="download()" style="grid-column: span 2;">결과 저장</button>
-    </div>
+    <label>브러시 크기: <input type="range" id="size" min="1" max="50" value="8"></label>
+    <label>브러시 간격: <input type="range" id="spacing" min="1" max="30" value="5"></label>
+    <label>무작위성(Jitter): <input type="range" id="jitter" min="0" max="20" value="0"></label>
+    <label>투명도: <input type="range" id="opacity" min="0.1" max="1.0" step="0.1" value="0.7"></label>
+    <label>브러시 모양: 
+        <select id="shape">
+            <option value="circle">원형 (점묘법)</option>
+            <option value="square">사각형 (모자이크)</option>
+            <option value="line">짧은 선 (유화풍)</option>
+        </select>
+    </label>
+    <button onclick="processImage()" style="padding: 10px; cursor: pointer;">스타일 적용하기</button>
+    <button onclick="download()" style="padding: 10px; cursor: pointer;">결과 저장</button>
+</div>
+
+<div class="canvas-area">
     <canvas id="outputCanvas"></canvas>
+</div>
 
-    <script>
-        const upload = document.getElementById('upload');
-        const canvas = document.getElementById('outputCanvas');
-        const ctx = canvas.getContext('2d');
-        let img = new Image();
+<script>
+    const upload = document.getElementById('upload');
+    const canvas = document.getElementById('outputCanvas');
+    const ctx = canvas.getContext('2d');
+    let img = new Image();
 
-        upload.addEventListener('change', (e) => {
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                img.onload = () => {
-                    canvas.width = img.width;
-                    canvas.height = img.height;
-                    ctx.drawImage(img, 0, 0);
-                };
-                img.src = event.target.result;
+    upload.addEventListener('change', (e) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            img.onload = () => {
+                canvas.width = img.width; canvas.height = img.height;
+                ctx.drawImage(img, 0, 0);
             };
-            reader.readAsDataURL(e.target.files[0]);
-        });
+            img.src = event.target.result;
+        };
+        reader.readAsDataURL(e.target.files[0]);
+    });
 
-        function processImage() {
-            const size = parseInt(document.getElementById('size').value);
-            const spacing = parseInt(document.getElementById('spacing').value);
-            const opacity = parseFloat(document.getElementById('opacity').value);
-            const shape = document.getElementById('shape').value;
-            
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-            
-            // 배경을 하얗게 초기화
-            ctx.fillStyle = 'white';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.globalAlpha = opacity;
+    function processImage() {
+        const size = parseInt(document.getElementById('size').value);
+        const spacing = parseInt(document.getElementById('spacing').value);
+        const jitter = parseInt(document.getElementById('jitter').value);
+        const opacity = parseFloat(document.getElementById('opacity').value);
+        const shape = document.getElementById('shape').value;
+        
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.globalAlpha = opacity;
 
-            for (let y = 0; y < canvas.height; y += spacing) {
-                for (let x = 0; x < canvas.width; x += spacing) {
-                    const i = (y * canvas.width + x) * 4;
-                    const r = imageData[i], g = imageData[i+1], b = imageData[i+2];
-                    
-                    ctx.fillStyle = `rgb(${r},${g},${b})`;
-                    
-                    if (shape === 'circle') {
-                        ctx.beginPath();
-                        ctx.arc(x, y, size / 2, 0, Math.PI * 2);
-                        ctx.fill();
-                    } else {
-                        ctx.fillRect(x - size/2, y - size/2, size, size);
-                    }
+        for (let y = 0; y < canvas.height; y += spacing) {
+            for (let x = 0; x < canvas.width; x += spacing) {
+                // 무작위성(Jitter) 추가
+                const rx = x + (Math.random() - 0.5) * jitter;
+                const ry = y + (Math.random() - 0.5) * jitter;
+                
+                const i = (y * canvas.width + x) * 4;
+                ctx.fillStyle = `rgb(${imageData[i]},${imageData[i+1]},${imageData[i+2]})`;
+                
+                ctx.beginPath();
+                if (shape === 'circle') {
+                    ctx.arc(rx, ry, size / 2, 0, Math.PI * 2);
+                } else if (shape === 'square') {
+                    ctx.rect(rx - size/2, ry - size/2, size, size);
+                } else { // 선 화풍
+                    ctx.moveTo(rx, ry);
+                    ctx.lineTo(rx + size, ry + size);
+                    ctx.lineWidth = size / 3;
+                    ctx.stroke();
+                    continue;
                 }
+                ctx.fill();
             }
-            ctx.globalAlpha = 1.0; // 투명도 초기화
         }
+        ctx.globalAlpha = 1.0;
+    }
 
-        function download() {
-            const link = document.createElement('a');
-            link.download = 'my-art-work.png';
-            link.href = canvas.toDataURL();
-            link.click();
-        }
-    </script>
+    function download() {
+        const link = document.createElement('a');
+        link.download = 'art-work.png';
+        link.href = canvas.toDataURL();
+        link.click();
+    }
+</script>
 </body>
 </html>
