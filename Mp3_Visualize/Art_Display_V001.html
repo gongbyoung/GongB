@@ -1,705 +1,80 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Audio Visualizer Pro</title>
-<style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  :root {
-    --bg: #080810;
-    --panel: rgba(16, 16, 30, 0.85);
-    --border: #2a2a45;
-    --accent: #7c6cf0;
-    --text: #d0cfe8;
-    --text-dim: #666688;
-    --danger: #e74c3c;
-  }
-  html, body { width: 100%; height: 100vh; background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 13px; overflow: hidden; }
-
-  #stage { position: absolute; inset: 0; z-index: 0; display: flex; align-items: center; justify-content: center; }
-  canvas#vis { display: block; width: 100%; height: 100%; }
-
-  #controls-wrapper { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 10; display: flex; flex-direction: column; gap: 10px; width: 95%; max-width: 1000px; }
-  
-  #controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 12px 18px; backdrop-filter: blur(10px); }
-
-  .ctrl-group { display: flex; gap: 8px; align-items: center; }
-  .ctrl-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; white-space: nowrap; }
-
-  .btn { padding: 7px 14px; border: 1px solid var(--border); border-radius: 6px; background: rgba(0,0,0,0.5); color: var(--text); cursor: pointer; font-size: 13px; transition: all 0.2s; white-space: nowrap; }
-  .btn:hover:not(:disabled) { background: #1c1c38; border-color: var(--accent); }
-  .btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-  .btn.rec-btn { border-color: #c0392b; color: #e74c3c; }
-  .btn.rec-btn.recording { background: #c0392b; color: #fff; border-color: #e74c3c; animation: recpulse 1s ease-in-out infinite; }
-  @keyframes recpulse { 0%,100% { opacity: 1; } 50% { opacity: 0.7; } }
-
-  label.file-btn { padding: 7px 14px; border: 1px solid var(--border); border-radius: 6px; background: rgba(0,0,0,0.5); color: var(--text-dim); cursor: pointer; font-size: 13px; transition: all 0.2s; white-space: nowrap; }
-  label.file-btn:hover { background: #1c1c38; border-color: var(--accent); color: var(--text); }
-
-  select, input[type="color"], input[type="range"] { padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: rgba(0,0,0,0.5); color: var(--text); font-size: 13px; cursor: pointer; outline: none; }
-  
-  .divider { width: 1px; height: 24px; background: var(--border); margin: 0 4px; }
-  #status { font-size: 12px; color: var(--accent); white-space: nowrap; }
-  #rec-indicator { font-size: 12px; color: var(--danger); font-weight: 600; display: none; margin-left: 5px; }
-  #rec-indicator.show { display: inline; }
-
-  #style-options { display: flex; flex-wrap: wrap; gap: 15px; align-items: center; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 8px 18px; backdrop-filter: blur(10px); align-self: center; justify-content: center; }
-  .opt-item { display: none; align-items: center; gap: 8px; }
-  .opt-item.active { display: flex; }
-</style>
+    <meta charset="UTF-8">
+    <title>디지털 브러시 화풍 생성기</title>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #f4f4f4; padding: 20px; }
+        canvas { background: white; box-shadow: 0 0 10px rgba(0,0,0,0.1); cursor: crosshair; }
+        .controls { background: white; padding: 20px; border-radius: 8px; margin-top: 10px; display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; }
+    </style>
 </head>
 <body>
-
-<div id="stage">
-  <canvas id="vis"></canvas>
-</div>
-
-<div id="controls-wrapper">
-  <div id="style-options">
-    <span class="ctrl-label">세부 설정:</span>
-    <div class="opt-item cloud-opt">
-      <span class="ctrl-label">형태</span>
-      <select id="cloudShape">
-        <option value="cloud">☁️ 뭉게구름</option>
-        <option value="rain">🌧️ 쏟아지는 비</option>
-        <option value="planet">🪐 고리 행성</option>
-      </select>
+    <h2>이미지 브러시 스타일 변환기</h2>
+    <input type="file" id="upload" accept="image/*">
+    <div class="controls">
+        <label>브러시 크기: <input type="range" id="size" min="2" max="20" value="5"></label>
+        <label>브러시 모양: 
+            <select id="shape">
+                <option value="circle">원형 (점묘법)</option>
+                <option value="square">사각형 (모자이크)</option>
+            </select>
+        </label>
+        <button onclick="processImage()">스타일 적용하기</button>
+        <button onclick="download()">이미지 저장</button>
     </div>
-    <div class="opt-item petal-opt">
-      <span class="ctrl-label">모양</span>
-      <select id="petalShape">
-        <option value="petal">🌸 벚꽃잎</option>
-        <option value="leaf">🍂 단풍잎</option>
-        <option value="snow">❄️ 눈송이</option>
-      </select>
-    </div>
-    <div class="opt-item petal-opt">
-      <span class="ctrl-label">방향</span>
-      <select id="petalDir">
-        <option value="up">위로</option>
-        <option value="down">아래로</option>
-        <option value="left">왼쪽으로</option>
-        <option value="right">오른쪽으로</option>
-      </select>
-    </div>
-    <div class="opt-item grass-opt">
-      <span class="ctrl-label">굵기</span>
-      <input type="range" id="grassThick" min="1" max="10" value="4">
-    </div>
-    <div class="opt-item grass-opt">
-      <span class="ctrl-label">색상</span>
-      <input type="color" id="grassColor" value="#55ff55">
-    </div>
-    <div class="opt-item empty-opt active">
-      <span style="font-size: 12px; color: var(--text-dim);">이 스타일은 추가 옵션이 없습니다.</span>
-    </div>
-  </div>
+    <canvas id="outputCanvas"></canvas>
 
-  <div id="controls">
-    <div class="ctrl-group">
-      <label class="file-btn">🎵 MP3 열기<input type="file" id="fileInput" accept="audio/*" style="display:none"></label>
-      <button class="btn" id="analyzeBtn" disabled>🔍 분석 (준비)</button>
-      <button class="btn" id="playBtn" disabled>▶ 재생 및 자동녹화</button>
-    </div>
-    <div class="divider"></div>
-    <div class="ctrl-group">
-      <span class="ctrl-label">스타일</span>
-      <select id="styleSelect">
-        <option value="fire">🔥 겹치는 모닥불</option>
-        <option value="wave">🌊 우측으로 흐르는 파도</option>
-        <option value="cloud">☁️ 테마 3D 비행</option>
-        <option value="petal">🌸 비트반응 파티클</option>
-        <option value="grass">🌿 EQ반응 곡선 잔디</option>
-      </select>
-    </div>
-    <div class="divider"></div>
-    <div class="ctrl-group">
-      <button class="btn rec-btn" id="recBtn" disabled>⏺ 수동 녹화</button>
-      <span id="rec-indicator">● REC <span id="recSec">0</span>s</span>
-    </div>
-    <div class="divider"></div>
-    <span id="status">MP3 파일을 선택하세요</span>
-  </div>
-</div>
+    <script>
+        const upload = document.getElementById('upload');
+        const canvas = document.getElementById('outputCanvas');
+        const ctx = canvas.getContext('2d');
+        let img = new Image();
 
-<script>
-const canvas = document.getElementById('vis');
-const ctx = canvas.getContext('2d');
-const fileInput = document.getElementById('fileInput');
-const analyzeBtn = document.getElementById('analyzeBtn');
-const playBtn = document.getElementById('playBtn');
-const styleSelect = document.getElementById('styleSelect');
-const recBtn = document.getElementById('recBtn');
-const statusEl = document.getElementById('status');
-const recIndEl = document.getElementById('rec-indicator');
-const recSecEl = document.getElementById('recSec');
+        upload.addEventListener('change', (e) => {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                img.onload = () => {
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    ctx.drawImage(img, 0, 0);
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(e.target.files[0]);
+        });
 
-const cloudShapeSelect = document.getElementById('cloudShape');
-const petalDirSelect = document.getElementById('petalDir');
-const petalShapeSelect = document.getElementById('petalShape');
-const grassThickInput = document.getElementById('grassThick');
-const grassColorInput = document.getElementById('grassColor');
+        function processImage() {
+            const size = parseInt(document.getElementById('size').value);
+            const shape = document.getElementById('shape').value;
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+            
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-let audioCtx, analyser, source, audioBuffer, gainNode;
-let isPlaying = false, rafId = null;
-let startTime = 0, pauseOffset = 0;
-let mediaRecorder = null, recChunks = [], recInterval = null, recSeconds = 0;
-let currentStyle = 'fire';
-let time = 0;
-let audioReady = false;
-let pendingFile = null;
+            for (let y = 0; y < canvas.height; y += size) {
+                for (let x = 0; x < canvas.width; x += size) {
+                    const i = (y * canvas.width + x) * 4;
+                    const r = imageData[i], g = imageData[i+1], b = imageData[i+2];
+                    ctx.fillStyle = `rgb(${r},${g},${b})`;
+                    
+                    if (shape === 'circle') {
+                        ctx.beginPath();
+                        ctx.arc(x, y, size/2, 0, Math.PI * 2);
+                        ctx.fill();
+                    } else {
+                        ctx.fillRect(x, y, size, size);
+                    }
+                }
+            }
+        }
 
-const W = () => canvas.width;
-const H = () => canvas.height;
-function resizeCanvas() {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-  if (!audioReady && !isPlaying) drawIdle();
-}
-window.addEventListener('resize', resizeCanvas);
-resizeCanvas();
-
-styleSelect.addEventListener('change', () => {
-  currentStyle = styleSelect.value;
-  document.querySelectorAll('.opt-item').forEach(el => el.classList.remove('active'));
-  
-  if (currentStyle === 'cloud') document.querySelectorAll('.cloud-opt').forEach(el => el.classList.add('active'));
-  else if (currentStyle === 'petal') document.querySelectorAll('.petal-opt').forEach(el => el.classList.add('active'));
-  else if (currentStyle === 'grass') document.querySelectorAll('.grass-opt').forEach(el => el.classList.add('active'));
-  else document.querySelector('.empty-opt').classList.add('active');
-  
-  initStyle(currentStyle);
-});
-
-fileInput.addEventListener('change', (e) => {
-  pendingFile = e.target.files[0];
-  if (!pendingFile) return;
-  statusEl.textContent = `${pendingFile.name} 선택됨. [분석]을 클릭하세요.`;
-  analyzeBtn.disabled = false;
-  playBtn.disabled = true;
-});
-
-analyzeBtn.addEventListener('click', async () => {
-  if (!pendingFile) return;
-  statusEl.textContent = '주파수 및 볼륨 분석 중...';
-  analyzeBtn.disabled = true;
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  
-  try {
-    const ab = await pendingFile.arrayBuffer();
-    audioBuffer = await audioCtx.decodeAudioData(ab);
-    if (!analyser) {
-      analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 2048;
-      analyser.smoothingTimeConstant = 0.8;
-      gainNode = audioCtx.createGain();
-      analyser.connect(gainNode);
-      gainNode.connect(audioCtx.destination);
-    }
-    audioReady = true;
-    playBtn.disabled = false;
-    recBtn.disabled = false;
-    statusEl.textContent = '분석 완료! 재생을 누르면 자동 녹화가 시작됩니다.';
-  } catch(err) {
-    statusEl.textContent = '분석 실패 (오류 발생)';
-  }
-});
-
-playBtn.addEventListener('click', () => {
-  if (!audioBuffer) return;
-  if (isPlaying) {
-    stopAudio(); stopRec();
-    playBtn.textContent = '▶ 재생 및 자동녹화';
-    statusEl.textContent = '일시 정지됨';
-  } else {
-    if(!mediaRecorder || mediaRecorder.state !== 'recording') startRec();
-    startAudio(pauseOffset);
-    playBtn.textContent = '⏸ 정지 및 저장';
-    statusEl.textContent = '재생 및 자동 녹화 중...';
-  }
-});
-
-function startAudio(offset = 0) {
-  if (audioCtx.state === 'suspended') audioCtx.resume();
-  if (source) { try { source.stop(); } catch(e){} }
-  source = audioCtx.createBufferSource();
-  source.buffer = audioBuffer;
-  source.connect(analyser);
-  source.start(0, offset);
-  startTime = audioCtx.currentTime - offset;
-  isPlaying = true;
-  source.onended = () => { 
-    if (isPlaying) { 
-      isPlaying = false; pauseOffset = 0; stopRec();
-      statusEl.textContent = '영상 저장 중... 잠시 후 자동 반복됩니다.';
-      setTimeout(() => { if(audioReady) { startRec(); startAudio(0); statusEl.textContent = '자동 반복 재생 중...'; } }, 1500);
-    } 
-  };
-  if (rafId) cancelAnimationFrame(rafId);
-  drawLoop();
-}
-
-function stopAudio() {
-  if (source) { try { source.stop(); } catch(e){} }
-  pauseOffset = audioCtx ? audioCtx.currentTime - startTime : 0;
-  isPlaying = false;
-  cancelAnimationFrame(rafId);
-}
-
-function getFreq() {
-  if (!analyser) return { bass:0, mid:0, treble:0, vol:0, data: new Uint8Array(1024), waveData: new Uint8Array(1024) };
-  const bufferLength = analyser.frequencyBinCount;
-  const data = new Uint8Array(bufferLength);
-  analyser.getByteFrequencyData(data);
-  const waveData = new Uint8Array(analyser.fftSize);
-  analyser.getByteTimeDomainData(waveData);
-
-  let bass = 0, mid = 0, treble = 0;
-  const section = Math.floor(bufferLength / 3);
-  for (let i = 0; i < section; i++) bass += data[i];
-  for (let i = section; i < section * 2; i++) mid += data[section + i];
-  for (let i = section * 2; i < bufferLength; i++) treble += data[i];
-  bass /= (section * 255); mid /= (section * 255); treble /= (section * 255);
-  const vol = (bass + mid + treble) / 3;
-  return { bass, mid, treble, vol, data, waveData };
-}
-
-function drawLoop() {
-  if (!isPlaying && audioReady) return;
-  rafId = requestAnimationFrame(drawLoop);
-  time += 0.016;
-  const f = getFreq();
-  
-  if      (currentStyle==='fire')  drawFire(f);
-  else if (currentStyle==='wave')  drawWave(f);
-  else if (currentStyle==='cloud') drawCloud(f);
-  else if (currentStyle==='petal') drawPetal(f);
-  else if (currentStyle==='grass') drawGrass(f);
-}
-
-function drawIdle() {
-  ctx.fillStyle = '#080810'; ctx.fillRect(0,0,W(),H());
-  ctx.fillStyle = '#666688'; ctx.font = '16px sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText('MP3 파일을 불러온 후 [분석] 버튼을 눌러주세요', W()/2, H()/2);
-}
-
-function initStyle(s) {
-  ctx.clearRect(0,0,W(),H());
-  if (s==='fire')  initFire();
-  if (s==='cloud') initCloud();
-  if (s==='petal') initPetal();
-}
-
-/* ==========================================================
-   1. FIRE: 바깥쪽 레이어 알파값 대폭 감소 및 빛 번짐 효과 적용
-   ========================================================== */
-let firePits = [];
-function initFire() {
-  firePits = Array.from({length: 15}, (_, i) => ({
-    x: 0.1 + Math.random() * 0.8, 
-    phase: Math.random() * Math.PI * 2, 
-    sizeScale: 0.7 + Math.random() * 0.6, 
-    freqBin: Math.floor(i / 15 * 64)
-  }));
-}
-function drawFire({ bass, mid, treble, vol, data }) {
-  const w=W(), h=H();
-  ctx.fillStyle = '#050308'; ctx.fillRect(0,0,w,h);
-  
-  const gndY = h * 0.9; 
-  
-  firePits.sort((a,b) => a.sizeScale - b.sizeScale).forEach((pit) => {
-    const px = pit.x * w;
-    const pitVol = data[pit.freqBin] / 255; 
-    const intensity = pitVol * 0.8 + bass * 0.2; 
-    const baseW = w * 0.035 * pit.sizeScale;
-    const baseH = h * 0.25 * pit.sizeScale;
-
-    const contour = [];
-    const segs = 15;
-    for (let s=0; s<=segs; s++) {
-      const t2 = s/segs; 
-      const nx = (t2 * 2) - 1; 
-      const noiseX = Math.sin(time*2.5 + t2*5 + pit.phase) * baseW * 0.3;
-      const env = Math.pow(Math.sin(t2*Math.PI), 1.5); 
-      const noiseY = Math.sin(time*3.5 + t2*4 + pit.phase) * (baseH * (0.3 + intensity*1.5)) * env;
-      contour.push({ nx, noiseX, noiseY, env });
-    }
-
-    // 레이어 그리기
-    for (let layer = 0; layer < 4; layer++) {
-      const lFrac = 1 - layer/4; 
-      const lW = baseW * lFrac;
-      const dynamicH = baseH * lFrac * (0.4 + intensity * 2.5); 
-      
-      const lHue = 10 + layer*15 + treble*30 + (pitVol * 20); 
-      const lSat = 80 + pitVol * 20; 
-      const lLit = 45 + layer*10 + pitVol * 20; 
-      
-      // 요청사항 1: 바깥쪽 레이어(layer=0)는 거의 투명하게, 안쪽으로 갈수록 진하게
-      const alpha = 0.15 + (layer * 0.25); 
-
-      ctx.beginPath();
-      for (let s=0; s<=segs; s++) {
-        const c = contour[s];
-        const finalX = px + (c.nx * lW) + (c.noiseX * lFrac);
-        const finalY = gndY - (c.env * dynamicH) + (c.noiseY * lFrac);
-        if (s===0) ctx.moveTo(finalX, gndY);
-        else ctx.lineTo(finalX, finalY);
-      }
-      ctx.lineTo(px + lW, gndY); 
-      ctx.closePath();
-      
-      // 바깥 레이어에만 강력한 빛 번짐(Glow) 효과를 주어 배경과 부드럽게 섞이게 함
-      if (layer === 0) {
-        ctx.shadowBlur = baseW;
-        ctx.shadowColor = `hsla(${lHue}, 100%, 50%, 0.6)`;
-      } else {
-        ctx.shadowBlur = 0;
-      }
-      
-      ctx.fillStyle = `hsla(${lHue}, ${lSat}%, ${lLit}%, ${alpha})`; 
-      ctx.fill();
-    }
-    ctx.shadowBlur = 0; // 그림자 초기화
-  });
-
-  // 하단 마스킹 및 기본 일렁임 불꽃
-  ctx.fillStyle = '#050308';
-  ctx.fillRect(0, gndY, w, h - gndY);
-
-  const baseGrd = ctx.createLinearGradient(0, gndY, 0, h);
-  baseGrd.addColorStop(0, `hsla(20, 100%, 60%, ${0.6 + bass*0.4})`);
-  baseGrd.addColorStop(1, `hsla(0, 100%, 20%, 0.8)`);
-  
-  ctx.fillStyle = baseGrd;
-  ctx.beginPath();
-  ctx.moveTo(0, h);
-  for (let x = 0; x <= w; x += 10) {
-    const binIdx = Math.floor((x / w) * 64);
-    const v = data[binIdx] / 255;
-    const idleWobble = Math.sin(x * 0.02 + time * 4) * (h * 0.015);
-    const activeWobble = v * (h * 0.05); 
-    ctx.lineTo(x, gndY - idleWobble - activeWobble);
-  }
-  ctx.lineTo(w, h);
-  ctx.fill();
-}
-
-/* ==========================================================
-   2. WAVE: 포인트 간격을 5px로 줄여 곡선 경계면을 압도적으로 부드럽게
-   ========================================================== */
-function drawWave({ bass, mid, treble, vol, data }) {
-  const w=W(), h=H();
-  const bg = ctx.createLinearGradient(0,0,0,h);
-  bg.addColorStop(0, '#040b16'); bg.addColorStop(1, '#02050a');
-  ctx.fillStyle=bg; ctx.fillRect(0,0,w,h);
-
-  const laneCount = 8;
-  const maxSpike = h * 0.45; 
-  for (let l = 0; l < laneCount; l++) {
-    const laneBaseY = h * 0.95 - (laneCount - l) * (h * 0.05); 
-    const binStart = Math.floor(l / laneCount * data.length * 0.5);
-    const binEnd   = Math.floor((l+1) / laneCount * data.length * 0.5);
-    const speed  = 0.5 + l * 0.15;
-    
-    const pts = [];
-    // 요청사항 2: 간격을 15 -> 5 로 대폭 줄여 초고해상도 곡선 처리
-    for (let x = -10; x <= w + 20; x+=5) { 
-      const nx = Math.max(0, Math.min(x / w, 1));
-      const binIdx = binStart + Math.floor(nx * (binEnd - binStart));
-      const binVal = data[Math.min(binIdx, data.length-1)] / 255;
-      
-      const idleSpike = (h * 0.015) * Math.sin(nx * Math.PI * (6 + l) + time * (2 + l*0.5));
-      const sineA  = Math.sin(nx * Math.PI * (2 + l*0.5) + time * speed) * 0.5 + 0.5;
-      const spike  = (binVal * maxSpike * (0.3 + sineA * 0.7)) + Math.abs(idleSpike); 
-      
-      pts.push({ x, y: laneBaseY - spike });
-    }
-
-    ctx.beginPath();
-    ctx.moveTo(0, h);
-    ctx.lineTo(pts[0].x, pts[0].y);
-    for (let i = 0; i < pts.length - 1; i++) {
-      const xc = (pts[i].x + pts[i + 1].x) / 2;
-      const yc = (pts[i].y + pts[i + 1].y) / 2;
-      ctx.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc);
-    }
-    ctx.lineTo(pts[pts.length-1].x, pts[pts.length-1].y);
-    ctx.lineTo(w, h);
-    ctx.closePath();
-
-    const hue = 190 + l * 8;
-    const alpha = 0.5 + (l/laneCount)*0.4;
-    ctx.fillStyle = `hsla(${hue}, 80%, ${20 + l*5 + vol*20}%, ${alpha})`;
-    ctx.fill();
-    ctx.strokeStyle = `hsla(${hue}, 100%, 70%, ${alpha + 0.2})`;
-    ctx.lineWidth = 1.0; // 얇게 하여 더욱 부드러운 느낌
-    ctx.stroke();
-  }
-}
-
-/* ==========================================================
-   3. CLOUD
-   ========================================================== */
-let clouds3D = [];
-function initCloud() {
-  clouds3D = Array.from({length: 40}, () => {
-    const puffCount = Math.floor(Math.random() * 8) + 1;
-    const puffs = Array.from({length: puffCount}, () => ({
-      ox: (Math.random() - 0.5) * 120, oy: (Math.random() - 0.5) * 80, scale: 0.4 + Math.random() * 0.8, isEllipse: Math.random() > 0.5
-    }));
-    return {
-      x: (Math.random() - 0.5) * 4000, 
-      y: (Math.random() - 0.5) * 3000, 
-      z: Math.random() * 2000 + 100,
-      freqBin: Math.floor(Math.random() * 64), 
-      hue: 200 + Math.random() * 40,
-      puffs: puffs,
-      rot: Math.random() * Math.PI * 2
-    };
-  });
-}
-function drawCloud({ bass, mid, treble, vol, data }) {
-  const w=W(), h=H();
-  ctx.fillStyle = '#020205'; ctx.fillRect(0,0,w,h);
-  const cx = w / 2, cy = h / 2;
-  const speed = 5 + bass * 30; 
-  const shape = cloudShapeSelect.value; 
-
-  clouds3D.sort((a,b) => b.z - a.z);
-
-  clouds3D.forEach(c => {
-    c.z -= speed;
-    if (shape === 'rain') c.y += (15 + treble * 50);
-
-    if (c.z < 10 || (shape === 'rain' && c.y > 2000)) {
-      c.z = 2000; 
-      c.x = (Math.random() - 0.5) * 4000; 
-      c.y = (shape === 'rain' ? -2000 : (Math.random() - 0.5) * 3000);
-    }
-    
-    const binVal = data[c.freqBin] / 255;
-    const scale = 800 / c.z; 
-    const screenX = cx + c.x * scale;
-    const screenY = cy + c.y * scale;
-    const baseSize = 80 * scale * (0.8 + binVal * 1.5); 
-
-    if (screenX < -baseSize*2 || screenX > w+baseSize*2 || screenY < -baseSize*2 || screenY > h+baseSize*2) return;
-    const alpha = Math.min(1, (2000 - c.z) / 1000) * (0.3 + binVal*0.5);
-
-    ctx.save();
-    ctx.translate(screenX, screenY);
-    
-    if (shape === 'cloud') {
-      c.puffs.forEach(puff => {
-        const pX = puff.ox * scale;
-        const pY = puff.oy * scale;
-        const pSize = baseSize * puff.scale;
-        const radGrad = ctx.createRadialGradient(pX, pY, pSize*0.1, pX, pY, pSize);
-        radGrad.addColorStop(0, `hsla(${c.hue}, 20%, ${70 + binVal*30}%, ${alpha})`);
-        radGrad.addColorStop(1, `hsla(${c.hue}, 20%, 30%, 0)`);
-        ctx.fillStyle = radGrad;
-        ctx.beginPath();
-        if (puff.isEllipse) ctx.ellipse(pX, pY, pSize, pSize*0.6, 0, 0, Math.PI*2);
-        else ctx.arc(pX, pY, pSize, 0, Math.PI*2);
-        ctx.fill();
-      });
-    } else if (shape === 'rain') {
-      ctx.fillStyle = `hsla(200, 80%, ${80 + binVal*20}%, ${alpha * 1.5})`;
-      ctx.fillRect(0, 0, 2 * scale, 60 * scale * (1 + binVal));
-    } else if (shape === 'planet') {
-      ctx.rotate(c.rot + time * 0.1);
-      const radGrad = ctx.createRadialGradient(0, 0, baseSize*0.2, 0, 0, baseSize);
-      radGrad.addColorStop(0, `hsla(${c.hue+60}, 50%, ${60 + binVal*30}%, ${alpha})`);
-      radGrad.addColorStop(1, `hsla(${c.hue+30}, 40%, 10%, ${alpha})`);
-      ctx.fillStyle = radGrad;
-      ctx.beginPath(); ctx.arc(0, 0, baseSize, 0, Math.PI*2); ctx.fill();
-      ctx.strokeStyle = `hsla(${c.hue}, 60%, 80%, ${alpha * 0.8})`;
-      ctx.lineWidth = 4 * scale;
-      ctx.beginPath(); ctx.ellipse(0, 0, baseSize * 2, baseSize * 0.4, 0, 0, Math.PI*2); ctx.stroke();
-    }
-    ctx.restore();
-  });
-}
-
-/* ==========================================================
-   4. PETAL
-   ========================================================== */
-let petals = [];
-function initPetal() { petals = []; }
-function spawnPetal(w, h, bass, dir) {
-  let x, y, vx, vy;
-  const initSpeed = 2 + Math.random()*2;
-  if (dir === 'up') { x = Math.random() * w; y = h + 20; vx = (Math.random()-0.5)*2; vy = -initSpeed; } 
-  else if (dir === 'down') { x = Math.random() * w; y = -20; vx = (Math.random()-0.5)*2; vy = initSpeed; } 
-  else if (dir === 'left') { x = w + 20; y = Math.random() * h; vx = -initSpeed; vy = (Math.random()-0.5)*2; } 
-  else { x = -20; y = Math.random() * h; vx = initSpeed; vy = (Math.random()-0.5)*2; }
-  return { x, y, vx, vy, size: 8 + Math.random()*15, rot: Math.random()*Math.PI*2, rspeed: (Math.random()-0.5)*0.2, alpha: 1 };
-}
-function drawPetal({ bass, mid, treble, vol, data }) {
-  const w=W(), h=H();
-  ctx.fillStyle='rgba(10,8,15,0.3)'; ctx.fillRect(0,0,w,h); 
-
-  const dir = petalDirSelect.value; 
-  const shape = petalShapeSelect.value; 
-  const spawnCount = Math.floor(1 + bass*5 + mid*2);
-  
-  if (petals.length < 300) {
-    for (let i=0; i<spawnCount; i++) petals.push(spawnPetal(w, h, bass, dir));
-  }
-
-  let timeSpeed = 1;
-  if (bass > 0.8) timeSpeed = 0.05; 
-  else timeSpeed = 0.5 + vol * 3.5; 
-
-  petals.forEach(p => {
-    p.x += p.vx * timeSpeed; 
-    p.y += p.vy * timeSpeed;
-    p.rot += p.rspeed * timeSpeed;
-    p.alpha -= 0.002 * (timeSpeed > 0.1 ? 1 : 0.2); 
-    
-    ctx.save();
-    ctx.translate(p.x, p.y);
-    ctx.rotate(p.rot);
-    ctx.globalAlpha = Math.max(0, p.alpha);
-    ctx.beginPath();
-    
-    if (shape === 'petal') {
-      ctx.moveTo(0, 0); ctx.bezierCurveTo(p.size/2, -p.size/2, p.size, -p.size/4, p.size/2, 0); ctx.bezierCurveTo(p.size, p.size/4, p.size/2, p.size/2, 0, 0);
-      ctx.fillStyle = `hsla(330, 80%, ${70+bass*30}%, ${p.alpha})`;
-    } else if (shape === 'leaf') {
-      ctx.moveTo(0, p.size*0.8); ctx.lineTo(p.size*0.4, 0); ctx.lineTo(0, -p.size*0.8); ctx.lineTo(-p.size*0.4, 0); ctx.closePath();
-      ctx.fillStyle = `hsla(30, 80%, ${50+bass*20}%, ${p.alpha})`; 
-    } else {
-      ctx.arc(0, 0, p.size/2, 0, Math.PI*2);
-      ctx.fillStyle = `hsla(200, 80%, ${90+bass*10}%, ${p.alpha})`; 
-    }
-    ctx.fill(); ctx.restore();
-  });
-  petals = petals.filter(p => p.alpha > 0 && p.x > -50 && p.x < w+50 && p.y > -50 && p.y < h+50);
-}
-
-/* ==========================================================
-   5. GRASS: 땅 색상 추가 및 지평선 너머로 숲(산) 실루엣 배경 배치
-   ========================================================== */
-function drawGrass({ bass, mid, treble, vol, data }) {
-  const w=W(), h=H();
-  
-  const horizon = h * 0.35; 
-
-  // 요청사항 3: 스피어를 이용한 먼 산/숲 배경 실루엣 (오디오 베이스에 맞춰 살짝 진동)
-  ctx.fillStyle = '#020502'; 
-  ctx.fillRect(0, 0, w, horizon); // 하늘색
-
-  for (let i = 0; i < 30; i++) {
-    const nx = i / 29;
-    const cx = nx * w;
-    // 고정된 크기의 숲 실루엣 + 오디오 베이스 터질 때 살짝 맥박 뜀
-    const r = (w * 0.08) + Math.sin(i * 13.5) * (w * 0.03);
-    const rPulse = r + (bass * w * 0.015);
-    
-    ctx.beginPath();
-    ctx.arc(cx, horizon, rPulse, 0, Math.PI, true); // 반원 모양
-    
-    const hue = 110 + Math.sin(i * 7.2) * 20;
-    const lit = 5 + Math.sin(i * 3.1) * 3;
-    ctx.fillStyle = `hsl(${hue}, 30%, ${lit}%)`;
-    ctx.fill();
-  }
-
-  // 요청사항 3: 검은색 바닥 대신 어두운 흙/풀밭 느낌의 바닥 그라데이션 추가
-  const groundGrad = ctx.createLinearGradient(0, horizon, 0, h);
-  groundGrad.addColorStop(0, '#0b1c0b');
-  groundGrad.addColorStop(1, '#040804');
-  ctx.fillStyle = groundGrad;
-  ctx.fillRect(0, horizon, w, h - horizon);
-
-  const userThick = parseInt(grassThickInput.value); 
-  const userColor = grassColorInput.value; 
-  const cameraX = w * 0.5;
-  
-  const rows = 50, cols = 80;
-
-  for (let row=0; row<rows; row++) {
-    const zNorm = 1 - row/rows; 
-    const screenY = horizon + (h - horizon) * (1 - zNorm);
-    const spread  = (1 - zNorm) * w * 2.8 + w * 0.5; 
-    
-    for (let col=0; col<cols; col++) {
-      const colFrac = col / cols; 
-      const binIdx = Math.floor(colFrac * 64); 
-      const binVal = data[binIdx] / 255; 
-      
-      const worldOffX = (colFrac - 0.5) * 2;
-      const screenX = cameraX + worldOffX * spread;
-      
-      const baseBladeH = (1 - zNorm) * h * 0.15; 
-      const bladeH  = baseBladeH * (1 + binVal * 3.5); 
-      
-      const randAngle = (Math.sin(col*13.2 + row*7.7) - 0.5) * 1.5; 
-      const wind = Math.sin(col*0.5 + row*0.3 + time*1.5) * bladeH * (0.3 + binVal*0.5);
-      const targetTipSway = wind + randAngle * bladeH * 0.5;
-      
-      const baseThickness = Math.max(1.5, (1-zNorm) * userThick * 2.5);
-      const baseX1 = screenX - baseThickness/2;
-      const baseX2 = screenX + baseThickness/2;
-      const tipX = screenX + targetTipSway;
-      const tipY = screenY - bladeH;
-
-      const cp1x = screenX + targetTipSway * 0.2 + Math.sin(time*2 + row)*bladeH*0.2;
-      const cp1y = screenY - bladeH * 0.3;
-      const cp2x = screenX + targetTipSway * 0.8 + Math.sin(time*1.5 + col)*bladeH*0.2;
-      const cp2y = screenY - bladeH * 0.7;
-
-      ctx.beginPath();
-      ctx.moveTo(baseX1, screenY);
-      ctx.bezierCurveTo(cp1x - baseThickness/2, cp1y, cp2x - baseThickness/4, cp2y, tipX, tipY);
-      ctx.bezierCurveTo(cp2x + baseThickness/4, cp2y, cp1x + baseThickness/2, cp1y, baseX2, screenY);
-      ctx.closePath();
-      
-      ctx.fillStyle = userColor; 
-      ctx.globalAlpha = 0.4 + (1-zNorm)*0.5 + binVal*0.6;
-      ctx.fill(); 
-    }
-  }
-  ctx.globalAlpha = 1.0;
-}
-
-// 수동 및 자동 녹화
-recBtn.addEventListener('click', () => {
-  if (mediaRecorder && mediaRecorder.state==='recording') stopRec();
-  else startRec();
-});
-
-function startRec() {
-  recChunks=[];
-  const stream = canvas.captureStream(30);
-  const mimeType = ['video/webm;codecs=vp9','video/webm'].find(t => MediaRecorder.isTypeSupported(t)) || '';
-  mediaRecorder = new MediaRecorder(stream, { mimeType });
-  mediaRecorder.ondataavailable = e => { if (e.data.size>0) recChunks.push(e.data); };
-  mediaRecorder.onstop = saveRec;
-  mediaRecorder.start(100);
-  recBtn.textContent='⏹ 녹화 중지'; recBtn.classList.add('recording'); recIndEl.classList.add('show');
-  recSeconds=0; recSecEl.textContent='0';
-  recInterval=setInterval(()=>{ recSeconds++; recSecEl.textContent=recSeconds; },1000);
-}
-
-function stopRec() {
-  if (mediaRecorder && mediaRecorder.state!=='inactive') mediaRecorder.stop();
-  clearInterval(recInterval);
-  recBtn.textContent='⏺ 수동 녹화'; recBtn.classList.remove('recording'); recIndEl.classList.remove('show');
-}
-
-function saveRec() {
-  const blob = new Blob(recChunks, { type: 'video/webm' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href=url; a.download=`visualizer_${currentStyle}_${Date.now()}.webm`; a.click();
-  URL.revokeObjectURL(url);
-}
-</script>
+        function download() {
+            const link = document.createElement('a');
+            link.download = 'my-art.png';
+            link.href = canvas.toDataURL();
+            link.click();
+        }
+    </script>
 </body>
 </html>
