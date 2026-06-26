@@ -6,7 +6,7 @@
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; color: #fff; font-family: sans-serif; }
         #ui { position: absolute; top: 20px; left: 20px; z-index: 10; background: rgba(0,0,0,0.7); padding: 20px; border-radius: 10px; }
-        #audio-input-area { display: none; } /* 처음엔 파일 선택창 숨김 */
+        #audio-input-area { display: none; }
         input { margin-bottom: 10px; display: block; color: white; }
         button { background-color: #00ffcc; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; color: black; font-weight: bold; margin-bottom: 10px; }
         #status { font-size: 14px; color: #00ffcc; margin-top: 10px; }
@@ -16,9 +16,7 @@
 
 <div id="ui">
     <h3>MP3 뮤직비디오 비주얼라이저</h3>
-    
     <button id="start-btn">시작하기 (클릭)</button>
-    
     <div id="audio-input-area">
         <input type="file" id="audio-file" accept="audio/*">
         <div id="status">파일을 선택하면 재생됩니다.</div>
@@ -35,23 +33,32 @@
     document.body.appendChild(renderer.domElement);
     camera.position.z = 200;
 
-    // 2. 파티클 시스템 생성 (원래 위치로 돌아오는 물리 적용)
-    const particles = new THREE.Geometry();
-    for (let i = 0; i < 8000; i++) {
-        let p = new THREE.Vector3(Math.random()*600-300, Math.random()*600-300, Math.random()*600-300);
-        p.originalPos = p.clone(); // 원래 위치를 기억하게 함
-        p.velocity = new THREE.Vector3(0,0,0);
-        particles.vertices.push(p);
+    // 2. [수정됨] BufferGeometry를 사용한 고성능 파티클 시스템 생성
+    const particleCount = 8000;
+    const geometry = new THREE.BufferGeometry();
+    
+    // x, y, z 좌표를 담을 1차원 배열 (8000 * 3)
+    const positions = new Float32Array(particleCount * 3);
+    const originalPositions = new Float32Array(particleCount * 3);
+
+    for (let i = 0; i < particleCount * 3; i++) {
+        let val = Math.random() * 600 - 300;
+        positions[i] = val;
+        originalPositions[i] = val; // 원래 위치 기억
     }
+
+    // geometry에 속성 부여
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
     const mat = new THREE.PointsMaterial({color: 0x00ffcc, size: 2, blending: THREE.AdditiveBlending});
-    const particleSystem = new THREE.Points(particles, mat);
+    const particleSystem = new THREE.Points(geometry, mat);
     scene.add(particleSystem);
 
-    // 3. 오디오 엔진 설정 (시작 버튼 클릭 시 생성)
+    // 3. 오디오 엔진 설정
     let audioCtx = null;
     let analyser = null;
     let dataArray = null;
-    let currentSource = null; // 현재 재생 중인 소스 추적
+    let currentSource = null;
 
     // UI 요소
     const startBtn = document.getElementById('start-btn');
@@ -59,20 +66,17 @@
     const audioInput = document.getElementById('audio-file');
     const statusEl = document.getElementById('status');
 
-    // 4. [해결] 시작 버튼 클릭 이벤트 (가장 확실한 사용자 상호작용)
+    // 4. 시작 버튼 클릭 이벤트
     startBtn.onclick = function() {
-        // [해결] 클릭 시 오디오 엔진 생성 및 강제 활성화
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         analyser = audioCtx.createAnalyser();
         analyser.fftSize = 256;
         dataArray = new Uint8Array(analyser.frequencyBinCount);
 
-        // UI 전환: 시작 버튼 숨기고 파일 선택창 보여줌
         startBtn.style.display = 'none';
         audioInputArea.style.display = 'block';
         statusEl.innerText = "이제 재생할 MP3 파일을 선택해주세요.";
         
-        // 애니메이션 루프 시작 (오디오 데이터가 없어도 파티클은 회전)
         animate(); 
     };
 
@@ -81,14 +85,11 @@
         const file = event.target.files[0];
         if (!file) return;
 
-        // [해결] 이미 클릭으로 깨어난 audioCtx는 suspended되지 않습니다.
-
         statusEl.innerText = "음원 분석 중... 잠시만 기다려주세요.";
 
         const reader = new FileReader();
         reader.onload = function(e) {
             audioCtx.decodeAudioData(e.target.result, function(buffer) {
-                // 다른 곡을 선택하면 이전 곡 정지
                 if (currentSource) {
                     currentSource.stop();
                 }
@@ -101,7 +102,6 @@
 
                 statusEl.innerText = "재생 중: " + file.name;
             }, function(err) {
-                // 파일 형식 오류 처리
                 statusEl.innerText = "오류: 지원하지 않는 음악 파일입니다.";
                 console.error("Audio decoding failed: ", err);
             });
@@ -109,44 +109,49 @@
         reader.readAsArrayBuffer(file);
     };
 
-    // 6. 애니메이션 및 물리 루프
+    // 6. [수정됨] BufferGeometry에 맞춘 애니메이션 및 물리 루프
     function animate() {
         requestAnimationFrame(animate);
         
         let bass = 0;
-
-        // [해결] 오디오 분석기가 생성된 후에만 데이터 추출
         if (analyser) {
             analyser.getByteFrequencyData(dataArray);
-            bass = dataArray[2] / 255; // 저음역대 추출 (0 ~ 1)
+            bass = dataArray[2] / 255; 
         }
 
-        // 전체 시스템 회전 속도를 비트에 연동
         particleSystem.rotation.y += 0.002 + (bass * 0.05);
 
-        particles.vertices.forEach(p => {
+        // BufferGeometry의 position 배열 가져오기
+        const posArray = particleSystem.geometry.attributes.position.array;
+
+        for (let i = 0; i < particleCount; i++) {
+            let ix = i * 3;     // x
+            let iy = i * 3 + 1; // y
+            let iz = i * 3 + 2; // z
+
             if (bass > 0.6) { 
-                // 비트가 강할 때 파티클이 폭발하듯 튀어 오름
-                p.x += (Math.random() - 0.5) * bass * 20;
-                p.y += (Math.random() - 0.5) * bass * 20;
-                p.z += (Math.random() - 0.5) * bass * 20;
+                // 강한 비트에서 무작위 확산
+                posArray[ix] += (Math.random() - 0.5) * bass * 20;
+                posArray[iy] += (Math.random() - 0.5) * bass * 20;
+                posArray[iz] += (Math.random() - 0.5) * bass * 20;
             } else {
-                // 비트가 약할 때는 서서히 원래 위치로 복귀 (우주로 날아가는 것 방지)
-                p.x += (p.originalPos.x - p.x) * 0.05;
-                p.y += (p.originalPos.y - p.y) * 0.05;
-                p.z += (p.originalPos.z - p.z) * 0.05;
+                // 약한 비트에서 원래 위치로 복귀 (보간법)
+                posArray[ix] += (originalPositions[ix] - posArray[ix]) * 0.05;
+                posArray[iy] += (originalPositions[iy] - posArray[iy]) * 0.05;
+                posArray[iz] += (originalPositions[iz] - posArray[iz]) * 0.05;
             }
-        });
+        }
         
-        // 강한 비트에서 색상이 무작위로 화려하게 변하도록 추가
+        // 데이터가 변경되었음을 Three.js 엔진에 알림
+        particleSystem.geometry.attributes.position.needsUpdate = true;
+        
+        // 색상 변화
         if (bass > 0.85) {
             mat.color.setHSL(Math.random(), 1.0, 0.6); 
         } else {
-            // 평소엔 원래 색상(민트색)으로 천천히 복귀
             mat.color.lerp(new THREE.Color(0x00ffcc), 0.1);
         }
 
-        particles.verticesNeedUpdate = true;
         renderer.render(scene, camera);
     }
 
