@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Visualizer 002</title>
+    <title>003</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; color: #fff; font-family: sans-serif; }
         
@@ -103,8 +103,7 @@
     let baseColor = new THREE.Color(ctrlColor.value);
     ctrlColor.oninput = (e) => { baseColor.set(e.target.value); };
 
-    // --- [Concept 1] 코어 이퀄라이저 시스템 (상시 렌더링) ---
-    // 저음, 중음, 고음에 개별적으로 반응하는 중앙 기하학 객체
+    // --- [Concept 1] 코어 이퀄라이저 시스템 ---
     const coreGeometry = new THREE.IcosahedronGeometry(25, 1);
     const coreMaterial = new THREE.MeshBasicMaterial({color: 0x00ffcc, wireframe: true, transparent: true, opacity: 0.8});
     const coreMesh = new THREE.Mesh(coreGeometry, coreMaterial);
@@ -123,6 +122,9 @@
     const velocities = new Float32Array(particleCount * 3);
     const originalPositions = new Float32Array(particleCount * 3);
 
+    // [에러 해결!] 버퍼 지오메트리에 속성을 먼저 세팅해야 합니다.
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
     const mat = new THREE.PointsMaterial({
         color: baseColor, size: parseFloat(ctrlSize.value), 
         map: circleTexture, transparent: true, alphaTest: 0.1, blending: THREE.AdditiveBlending
@@ -135,31 +137,30 @@
     // 모드 변경 시 파티클 초기화 함수
     function resetParticles(mode) {
         currentMode = mode;
+        const posArray = geometry.attributes.position.array;
+        
         for (let i = 0; i < particleCount; i++) {
             let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
             
             if (mode === 'terrain') {
-                // 그리드 형태 배치 (100x100)
                 let x = (i % 100) - 50;
                 let y = Math.floor(i / 100) - 50;
-                positions[ix] = x * 15;
-                positions[iy] = -150; // 하단으로 내림
-                positions[iz] = y * 15;
+                posArray[ix] = x * 15;
+                posArray[iy] = -150; 
+                posArray[iz] = y * 15;
             } else if (mode === 'explosion') {
-                // 중앙에 모아둠
-                positions[ix] = (Math.random() - 0.5) * 10;
-                positions[iy] = (Math.random() - 0.5) * 10;
-                positions[iz] = (Math.random() - 0.5) * 10;
+                posArray[ix] = (Math.random() - 0.5) * 10;
+                posArray[iy] = (Math.random() - 0.5) * 10;
+                posArray[iz] = (Math.random() - 0.5) * 10;
                 velocities[ix] = velocities[iy] = velocities[iz] = 0;
             } else if (mode === 'fluid') {
-                // 공간 전체 무작위 배치
-                positions[ix] = (Math.random() - 0.5) * 800;
-                positions[iy] = (Math.random() - 0.5) * 800;
-                positions[iz] = (Math.random() - 0.5) * 800;
+                posArray[ix] = (Math.random() - 0.5) * 800;
+                posArray[iy] = (Math.random() - 0.5) * 800;
+                posArray[iz] = (Math.random() - 0.5) * 800;
             }
-            originalPositions[ix] = positions[ix];
-            originalPositions[iy] = positions[iy];
-            originalPositions[iz] = positions[iz];
+            originalPositions[ix] = posArray[ix];
+            originalPositions[iy] = posArray[iy];
+            originalPositions[iz] = posArray[iz];
         }
         geometry.attributes.position.needsUpdate = true;
     }
@@ -181,7 +182,7 @@
     startBtn.onclick = function() {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 512; // 해상도 향상
+        analyser.fftSize = 512; 
         dataArray = new Uint8Array(analyser.frequencyBinCount);
 
         startBtn.style.display = 'none';
@@ -236,7 +237,7 @@
 
     // --- 4. 렌더링 및 알고리즘 애니메이션 ---
     let time = 0;
-    let burstIndex = 0; // 폭발 모드용 인덱스
+    let burstIndex = 0; 
 
     function animate() {
         requestAnimationFrame(animate);
@@ -247,7 +248,6 @@
 
         if (analyser) {
             analyser.getByteFrequencyData(dataArray);
-            // 주파수 대역 분리 (Bass: 0~10, Mid: 10~100, Treble: 100~200)
             let bSum = 0, mSum = 0, tSum = 0;
             for(let i=0; i<10; i++) bSum += dataArray[i];
             for(let i=10; i<100; i++) mSum += dataArray[i];
@@ -258,46 +258,38 @@
             treble = (tSum / 100 / 255) * sensitivity;
         }
 
-        // [Concept 1] 코어 애니메이션 (항상 적용)
+        // 코어 애니메이션
         let coreScale = 1 + (bass * 3);
         coreMesh.scale.set(coreScale, coreScale, coreScale);
         coreMesh.rotation.x += 0.005 + (treble * 0.1);
         coreMesh.rotation.y += 0.005 + (mid * 0.05);
-        // 고음(Treble)에 따라 코어의 색상이 번쩍임
         if (treble > 0.4) coreMaterial.color.setHSL((time * 0.5) % 1, 1.0, 0.6);
         else coreMaterial.color.setHex(0x00ffcc);
 
-        // 파티클 지오메트리 업데이트
         const posArray = geometry.attributes.position.array;
-        geometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
 
-        // 모드별 파티클 로직 처리
+        // 모드별 로직
         if (currentMode === 'terrain') {
-            // [Concept 2] 지형 모드: FFT 데이터를 Z축(높이)에 매핑
-            particleSystem.rotation.y = time * 0.1; // 전체를 살짝 회전
+            particleSystem.rotation.y = time * 0.1; 
             particleSystem.rotation.x = 0.2;
             for (let i = 0; i < particleCount; i++) {
                 let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
-                let fftIndex = (i % 100) * 2; // X축 인덱스를 주파수 배열에 매핑
+                let fftIndex = (i % 100) * 2; 
                 let freqData = (dataArray && dataArray[fftIndex] !== undefined) ? (dataArray[fftIndex] / 255) : 0;
                 
-                // 파도처럼 울렁이는 효과 + 오디오 데이터
-                let wave = Math.sin((posArray[ix] * 0.05) + time * 5) * 10;
+                let wave = Math.sin((originalPositions[ix] * 0.05) + time * 5) * 10;
                 posArray[iy] = originalPositions[iy] + (freqData * 200 * sensitivity) + wave;
             }
         } 
         else if (currentMode === 'explosion') {
-            // [Concept 3] 폭발 모드: 비트에 맞춰 중앙에서 파티클 방출
             particleSystem.rotation.y += 0.005;
             
-            // 강한 비트가 감지되면 새로운 파티클 뭉치를 중앙에서 방출
             if (bass > 0.5) {
                 let burstAmount = 150;
                 for(let b=0; b<burstAmount; b++) {
                     let idx = burstIndex * 3;
-                    posArray[idx] = 0; posArray[idx+1] = 0; posArray[idx+2] = 0; // 코어 위치에서 시작
+                    posArray[idx] = 0; posArray[idx+1] = 0; posArray[idx+2] = 0; 
                     
-                    // 구형 폭발 방향 설정
                     let u = Math.random();
                     let v = Math.random();
                     let theta = u * 2.0 * Math.PI;
@@ -308,43 +300,37 @@
                     velocities[idx+1] = Math.sin(phi) * Math.sin(theta) * speed;
                     velocities[idx+2] = Math.cos(phi) * speed;
                     
-                    burstIndex = (burstIndex + 1) % particleCount; // 큐 방식 순환
+                    burstIndex = (burstIndex + 1) % particleCount; 
                 }
             }
             
-            // 모든 파티클의 물리 계산 적용
             for (let i = 0; i < particleCount; i++) {
                 let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
                 posArray[ix] += velocities[ix];
                 posArray[iy] += velocities[iy];
                 posArray[iz] += velocities[iz];
                 
-                // 마찰력(Drag) 적용 - 서서히 느려짐
                 velocities[ix] *= 0.96;
                 velocities[iy] *= 0.96;
                 velocities[iz] *= 0.96;
                 
-                // 공간을 벗어나면 다시 중앙 근처로 대기
                 if(Math.abs(posArray[ix]) > 600 || Math.abs(posArray[iy]) > 600) {
                     posArray[ix] = 0; posArray[iy] = 0; posArray[iz] = 0;
                 }
             }
         } 
         else if (currentMode === 'fluid') {
-            // [Concept 4] 유체 모드: 삼각함수를 이용한 벡터 필드 (VEX 스타일)
             particleSystem.rotation.y = 0;
             particleSystem.rotation.x = 0;
-            let speedMult = 1.0 + (mid * 5); // 음악이 커질수록 유체 속도 증가
+            let speedMult = 1.0 + (mid * 5); 
 
             for (let i = 0; i < particleCount; i++) {
                 let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
                 
-                // 노이즈 필드 (수학적 컬 필드 모방)
                 let vx = Math.sin(posArray[iy] * 0.01 + time) * 2;
                 let vy = Math.cos(posArray[iz] * 0.01 + time) * 2;
                 let vz = Math.sin(posArray[ix] * 0.01 + time) * 2;
                 
-                // 중심점(Core)으로 살짝 당기는 중력 추가
                 vx -= posArray[ix] * 0.005;
                 vy -= posArray[iy] * 0.005;
                 vz -= posArray[iz] * 0.005;
@@ -357,7 +343,6 @@
 
         geometry.attributes.position.needsUpdate = true;
         
-        // 전체 파티클 색상: 강한 베이스에서 번쩍임
         if (bass > 0.7) mat.color.setHSL(Math.random(), 1.0, 0.6); 
         else mat.color.lerp(baseColor, 0.05);
 
