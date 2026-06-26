@@ -6,7 +6,9 @@
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; color: #fff; font-family: sans-serif; }
         #ui { position: absolute; top: 20px; left: 20px; z-index: 10; background: rgba(0,0,0,0.7); padding: 20px; border-radius: 10px; }
+        #audio-input-area { display: none; } /* 처음엔 파일 선택창 숨김 */
         input { margin-bottom: 10px; display: block; color: white; }
+        button { background-color: #00ffcc; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; color: black; font-weight: bold; margin-bottom: 10px; }
         #status { font-size: 14px; color: #00ffcc; margin-top: 10px; }
     </style>
 </head>
@@ -14,8 +16,13 @@
 
 <div id="ui">
     <h3>MP3 뮤직비디오 비주얼라이저</h3>
-    <input type="file" id="audio-file" accept="audio/*">
-    <div id="status">파일을 선택하면 재생됩니다.</div>
+    
+    <button id="start-btn">시작하기 (클릭)</button>
+    
+    <div id="audio-input-area">
+        <input type="file" id="audio-file" accept="audio/*">
+        <div id="status">파일을 선택하면 재생됩니다.</div>
+    </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -40,24 +47,43 @@
     const particleSystem = new THREE.Points(particles, mat);
     scene.add(particleSystem);
 
-    // 3. 오디오 엔진 설정
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 256;
-    let dataArray = new Uint8Array(analyser.frequencyBinCount);
+    // 3. 오디오 엔진 설정 (시작 버튼 클릭 시 생성)
+    let audioCtx = null;
+    let analyser = null;
+    let dataArray = null;
     let currentSource = null; // 현재 재생 중인 소스 추적
 
-    // 4. 파일 로딩 및 재생 로직
-    document.getElementById('audio-file').onchange = function(event) {
+    // UI 요소
+    const startBtn = document.getElementById('start-btn');
+    const audioInputArea = document.getElementById('audio-input-area');
+    const audioInput = document.getElementById('audio-file');
+    const statusEl = document.getElementById('status');
+
+    // 4. [해결] 시작 버튼 클릭 이벤트 (가장 확실한 사용자 상호작용)
+    startBtn.onclick = function() {
+        // [해결] 클릭 시 오디오 엔진 생성 및 강제 활성화
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+        // UI 전환: 시작 버튼 숨기고 파일 선택창 보여줌
+        startBtn.style.display = 'none';
+        audioInputArea.style.display = 'block';
+        statusEl.innerText = "이제 재생할 MP3 파일을 선택해주세요.";
+        
+        // 애니메이션 루프 시작 (오디오 데이터가 없어도 파티클은 회전)
+        animate(); 
+    };
+
+    // 5. 파일 로딩 및 재생 로직
+    audioInput.onchange = function(event) {
         const file = event.target.files[0];
         if (!file) return;
 
-        // [핵심 해결] 브라우저에 의해 일시정지된 오디오 컨텍스트를 강제로 깨웁니다.
-        if (audioCtx.state === 'suspended') {
-            audioCtx.resume();
-        }
+        // [해결] 이미 클릭으로 깨어난 audioCtx는 suspended되지 않습니다.
 
-        document.getElementById('status').innerText = "음원 분석 중... 잠시만 기다려주세요.";
+        statusEl.innerText = "음원 분석 중... 잠시만 기다려주세요.";
 
         const reader = new FileReader();
         reader.onload = function(e) {
@@ -73,22 +99,27 @@
                 analyser.connect(audioCtx.destination);
                 currentSource.start(0);
 
-                document.getElementById('status').innerText = "재생 중: " + file.name;
+                statusEl.innerText = "재생 중: " + file.name;
             }, function(err) {
                 // 파일 형식 오류 처리
-                document.getElementById('status').innerText = "오류: 지원하지 않는 음악 파일입니다.";
+                statusEl.innerText = "오류: 지원하지 않는 음악 파일입니다.";
                 console.error("Audio decoding failed: ", err);
             });
         };
         reader.readAsArrayBuffer(file);
     };
 
-    // 5. 애니메이션 및 물리 루프
+    // 6. 애니메이션 및 물리 루프
     function animate() {
         requestAnimationFrame(animate);
         
-        analyser.getByteFrequencyData(dataArray);
-        let bass = dataArray[2] / 255; // 저음역대 추출 (0 ~ 1)
+        let bass = 0;
+
+        // [해결] 오디오 분석기가 생성된 후에만 데이터 추출
+        if (analyser) {
+            analyser.getByteFrequencyData(dataArray);
+            bass = dataArray[2] / 255; // 저음역대 추출 (0 ~ 1)
+        }
 
         // 전체 시스템 회전 속도를 비트에 연동
         particleSystem.rotation.y += 0.002 + (bass * 0.05);
@@ -118,7 +149,6 @@
         particles.verticesNeedUpdate = true;
         renderer.render(scene, camera);
     }
-    animate();
 
     // 창 크기 조절 대응
     window.addEventListener('resize', () => {
