@@ -2,11 +2,10 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Audio Visualizer002</title>
+    <title>Visualizer 002</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; color: #fff; font-family: sans-serif; }
         
-        /* 메인 UI 패널 스타일 */
         #ui { 
             position: absolute; top: 20px; left: 20px; z-index: 10; 
             background: rgba(15, 15, 15, 0.85); padding: 20px; 
@@ -14,24 +13,27 @@
             width: 320px; backdrop-filter: blur(5px);
         }
         
-        h3 { margin-top: 0; color: #00ffcc; border-bottom: 1px solid #444; padding-bottom: 10px; }
+        h3 { margin-top: 0; color: #00ffcc; border-bottom: 1px solid #444; padding-bottom: 10px; font-size: 18px;}
         
-        /* 컨트롤 옵션 스타일 */
-        .control-group { margin-bottom: 15px; }
-        .control-group label { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 5px; color: #ccc; }
+        .control-group { margin-bottom: 12px; }
+        .control-group label { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px; color: #ccc; }
         .control-group input[type="range"] { width: 100%; cursor: pointer; }
         .control-group input[type="color"] { width: 100%; height: 30px; border: none; cursor: pointer; background: none; }
+        .control-group select { 
+            width: 100%; padding: 8px; background: #222; color: #00ffcc; 
+            border: 1px solid #555; border-radius: 4px; cursor: pointer; font-weight: bold;
+        }
         
         #audio-input-area { display: none; margin-top: 15px; border-top: 1px solid #444; padding-top: 15px; }
-        input[type="file"] { margin-bottom: 10px; display: block; color: white; width: 100%; }
+        input[type="file"] { margin-bottom: 10px; display: block; color: white; width: 100%; font-size: 12px; }
         
         button { 
             background-color: #00ffcc; border: none; padding: 12px; width: 100%;
-            border-radius: 5px; cursor: pointer; color: black; font-weight: bold; font-size: 15px; transition: 0.2s;
+            border-radius: 5px; cursor: pointer; color: black; font-weight: bold; font-size: 14px; transition: 0.2s;
         }
         button:hover { background-color: #00ccaa; }
         
-        #status { font-size: 13px; color: #aaa; margin-top: 10px; line-height: 1.4; }
+        #status { font-size: 12px; color: #aaa; margin-top: 10px; line-height: 1.4; word-break: break-all; }
         .recording-badge { color: #ff3366; font-weight: bold; animation: blink 1.5s infinite; }
         
         @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
@@ -40,11 +42,20 @@
 <body>
 
 <div id="ui">
-    <h3>VFX 비주얼라이저 제어반</h3>
+    <h3>VFX 멀티 모드 비주얼라이저</h3>
     
     <div class="control-group">
-        <label>줌 인/아웃 (Camera Z) <span id="val-zoom">200</span></label>
-        <input type="range" id="ctrl-zoom" min="10" max="600" value="200" step="1">
+        <label>파티클 모드 (VFX Mode)</label>
+        <select id="ctrl-mode">
+            <option value="fluid">유체 흐름 (Houdini Fluid Style)</option>
+            <option value="terrain">오디오 지형 (Audio Terrain)</option>
+            <option value="explosion">비트 폭발 (Emitter Explosion)</option>
+        </select>
+    </div>
+
+    <div class="control-group">
+        <label>줌 인/아웃 (Camera) <span id="val-zoom">250</span></label>
+        <input type="range" id="ctrl-zoom" min="50" max="800" value="250" step="10">
     </div>
     <div class="control-group">
         <label>파티클 크기 (Size) <span id="val-size">2.0</span></label>
@@ -53,10 +64,6 @@
     <div class="control-group">
         <label>반응 감도 (Sensitivity) <span id="val-sens">1.0</span></label>
         <input type="range" id="ctrl-sens" min="0.1" max="3" value="1.0" step="0.1">
-    </div>
-    <div class="control-group">
-        <label>회전 속도 (Rotation) <span id="val-rot">0.002</span></label>
-        <input type="range" id="ctrl-rot" min="0" max="0.02" value="0.002" step="0.001">
     </div>
     <div class="control-group">
         <label>기본 색상 (Color)</label>
@@ -73,32 +80,37 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-    // --- 1. Three.js 기본 및 UI 바인딩 ---
+    // --- 1. Three.js 기본 설정 ---
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer({antialias: true, preserveDrawingBuffer: true}); // 녹화를 위해 버퍼 보존
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 2000);
+    const renderer = new THREE.WebGLRenderer({antialias: true, preserveDrawingBuffer: true});
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
     
-    // UI 요소 바인딩
+    // UI 바인딩
+    const ctrlMode = document.getElementById('ctrl-mode');
     const ctrlZoom = document.getElementById('ctrl-zoom');
     const ctrlSize = document.getElementById('ctrl-size');
     const ctrlSens = document.getElementById('ctrl-sens');
-    const ctrlRot = document.getElementById('ctrl-rot');
     const ctrlColor = document.getElementById('ctrl-color');
-
-    // UI 값 업데이트 함수
     const updateUIVal = (id, val) => document.getElementById(id).innerText = val;
 
     camera.position.z = parseFloat(ctrlZoom.value);
     ctrlZoom.oninput = (e) => { camera.position.z = parseFloat(e.target.value); updateUIVal('val-zoom', e.target.value); };
     ctrlSize.oninput = (e) => { mat.size = parseFloat(e.target.value); updateUIVal('val-size', e.target.value); };
     ctrlSens.oninput = (e) => { updateUIVal('val-sens', e.target.value); };
-    ctrlRot.oninput = (e) => { updateUIVal('val-rot', e.target.value); };
+
+    let baseColor = new THREE.Color(ctrlColor.value);
     ctrlColor.oninput = (e) => { baseColor.set(e.target.value); };
 
-    // --- 2. 파티클 시스템 생성 (둥근 파티클 적용) ---
-    // 네모난 점 대신 둥근 점을 렌더링하기 위한 캔버스 텍스처 생성
+    // --- [Concept 1] 코어 이퀄라이저 시스템 (상시 렌더링) ---
+    // 저음, 중음, 고음에 개별적으로 반응하는 중앙 기하학 객체
+    const coreGeometry = new THREE.IcosahedronGeometry(25, 1);
+    const coreMaterial = new THREE.MeshBasicMaterial({color: 0x00ffcc, wireframe: true, transparent: true, opacity: 0.8});
+    const coreMesh = new THREE.Mesh(coreGeometry, coreMaterial);
+    scene.add(coreMesh);
+
+    // --- 2. 파티클 시스템 구성 ---
     const circleCanvas = document.createElement('canvas');
     circleCanvas.width = 64; circleCanvas.height = 64;
     const ctx = circleCanvas.getContext('2d');
@@ -108,33 +120,59 @@
     const particleCount = 10000;
     const geometry = new THREE.BufferGeometry();
     const positions = new Float32Array(particleCount * 3);
+    const velocities = new Float32Array(particleCount * 3);
     const originalPositions = new Float32Array(particleCount * 3);
 
-    for (let i = 0; i < particleCount * 3; i++) {
-        let val = Math.random() * 800 - 400; // 공간을 더 넓게
-        positions[i] = val;
-        originalPositions[i] = val;
-    }
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-
-    let baseColor = new THREE.Color(ctrlColor.value);
     const mat = new THREE.PointsMaterial({
-        color: baseColor, 
-        size: parseFloat(ctrlSize.value), 
-        map: circleTexture, // 둥근 텍스처 적용
-        transparent: true,
-        alphaTest: 0.5,
-        blending: THREE.AdditiveBlending
+        color: baseColor, size: parseFloat(ctrlSize.value), 
+        map: circleTexture, transparent: true, alphaTest: 0.1, blending: THREE.AdditiveBlending
     });
-    
     const particleSystem = new THREE.Points(geometry, mat);
     scene.add(particleSystem);
 
-    // --- 3. 오디오 및 녹화(MediaRecorder) 시스템 ---
+    let currentMode = ctrlMode.value;
+
+    // 모드 변경 시 파티클 초기화 함수
+    function resetParticles(mode) {
+        currentMode = mode;
+        for (let i = 0; i < particleCount; i++) {
+            let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
+            
+            if (mode === 'terrain') {
+                // 그리드 형태 배치 (100x100)
+                let x = (i % 100) - 50;
+                let y = Math.floor(i / 100) - 50;
+                positions[ix] = x * 15;
+                positions[iy] = -150; // 하단으로 내림
+                positions[iz] = y * 15;
+            } else if (mode === 'explosion') {
+                // 중앙에 모아둠
+                positions[ix] = (Math.random() - 0.5) * 10;
+                positions[iy] = (Math.random() - 0.5) * 10;
+                positions[iz] = (Math.random() - 0.5) * 10;
+                velocities[ix] = velocities[iy] = velocities[iz] = 0;
+            } else if (mode === 'fluid') {
+                // 공간 전체 무작위 배치
+                positions[ix] = (Math.random() - 0.5) * 800;
+                positions[iy] = (Math.random() - 0.5) * 800;
+                positions[iz] = (Math.random() - 0.5) * 800;
+            }
+            originalPositions[ix] = positions[ix];
+            originalPositions[iy] = positions[iy];
+            originalPositions[iz] = positions[iz];
+        }
+        geometry.attributes.position.needsUpdate = true;
+    }
+
+    // 초기 및 콤보박스 변경 이벤트 시 초기화
+    resetParticles(currentMode);
+    ctrlMode.onchange = (e) => resetParticles(e.target.value);
+
+    // --- 3. 오디오 및 녹화 시스템 ---
     let audioCtx, analyser, dataArray, currentSource;
     let mediaRecorder;
     let recordedChunks = [];
-
+    
     const startBtn = document.getElementById('start-btn');
     const audioInputArea = document.getElementById('audio-input-area');
     const audioInput = document.getElementById('audio-file');
@@ -143,125 +181,189 @@
     startBtn.onclick = function() {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 256;
+        analyser.fftSize = 512; // 해상도 향상
         dataArray = new Uint8Array(analyser.frequencyBinCount);
 
         startBtn.style.display = 'none';
         audioInputArea.style.display = 'block';
         statusEl.innerText = "이제 재생할 MP3 파일을 선택해주세요.";
-        
         animate(); 
     };
 
     audioInput.onchange = function(event) {
         const file = event.target.files[0];
         if (!file) return;
-
         statusEl.innerText = "음원 분석 중... 잠시만 기다려주세요.";
 
         const reader = new FileReader();
         reader.onload = function(e) {
             audioCtx.decodeAudioData(e.target.result, function(buffer) {
                 if (currentSource) currentSource.stop();
-
                 currentSource = audioCtx.createBufferSource();
                 currentSource.buffer = buffer;
                 currentSource.connect(analyser);
                 
-                // 오디오 출력을 스피커와 녹음기로 동시에 보냄
                 const audioDestination = audioCtx.createMediaStreamDestination();
-                analyser.connect(audioCtx.destination); // 스피커 출력
-                analyser.connect(audioDestination);     // 녹음기 출력
+                analyser.connect(audioCtx.destination);
+                analyser.connect(audioDestination);
                 
-                // --- 녹화 설정 ---
-                const canvasStream = renderer.domElement.captureStream(60); // 60 FPS 캡처
+                const canvasStream = renderer.domElement.captureStream(60);
                 const audioStream = audioDestination.stream;
                 const combinedStream = new MediaStream([...canvasStream.getVideoTracks(), ...audioStream.getAudioTracks()]);
                 
                 recordedChunks = [];
-                // 브라우저 호환성을 위해 webm 사용 (mp4는 브라우저 네이티브에서 미지원)
                 mediaRecorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm; codecs=vp9' });
-                
-                mediaRecorder.ondataavailable = (e) => {
-                    if (e.data.size > 0) recordedChunks.push(e.data);
-                };
-
-                // 녹화 종료 시 파일 다운로드 트리거
+                mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
                 mediaRecorder.onstop = () => {
                     const blob = new Blob(recordedChunks, { type: 'video/webm' });
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
-                    document.body.appendChild(a);
-                    a.style = 'display: none';
-                    a.href = url;
-                    a.download = file.name.replace(/\.[^/.]+$/, "") + '_Visualizer.webm'; // 원본 파일명 기반 저장
-                    a.click();
+                    a.style = 'display: none'; a.href = url;
+                    a.download = file.name.replace(/\.[^/.]+$/, "") + '_VFX.webm';
+                    document.body.appendChild(a); a.click();
                     window.URL.revokeObjectURL(url);
                     statusEl.innerText = "녹화 완료! 영상이 저장되었습니다.";
                 };
 
-                // 곡이 끝나면 자동으로 녹화 중지
-                currentSource.onended = () => {
-                    if(mediaRecorder.state === 'recording') {
-                        mediaRecorder.stop();
-                    }
-                };
-
+                currentSource.onended = () => { if(mediaRecorder.state === 'recording') mediaRecorder.stop(); };
                 currentSource.start(0);
                 mediaRecorder.start();
-
-                statusEl.innerHTML = `<span class="recording-badge">● REC</span> 재생 및 자동 녹화 중: ${file.name}`;
-            }, function(err) {
-                statusEl.innerText = "오류: 지원하지 않는 음악 파일입니다.";
+                statusEl.innerHTML = `<span class="recording-badge">● REC</span> 자동 녹화 중: ${file.name}`;
             });
         };
         reader.readAsArrayBuffer(file);
     };
 
-    // --- 4. 렌더링 및 애니메이션 루프 ---
+    // --- 4. 렌더링 및 알고리즘 애니메이션 ---
+    let time = 0;
+    let burstIndex = 0; // 폭발 모드용 인덱스
+
     function animate() {
         requestAnimationFrame(animate);
+        time += 0.01;
         
-        let bass = 0;
         let sensitivity = parseFloat(ctrlSens.value);
-        let rotationSpeed = parseFloat(ctrlRot.value);
+        let bass = 0, mid = 0, treble = 0;
 
         if (analyser) {
             analyser.getByteFrequencyData(dataArray);
-            bass = (dataArray[2] / 255) * sensitivity; // 감도 조절 적용
+            // 주파수 대역 분리 (Bass: 0~10, Mid: 10~100, Treble: 100~200)
+            let bSum = 0, mSum = 0, tSum = 0;
+            for(let i=0; i<10; i++) bSum += dataArray[i];
+            for(let i=10; i<100; i++) mSum += dataArray[i];
+            for(let i=100; i<200; i++) tSum += dataArray[i];
+            
+            bass = (bSum / 10 / 255) * sensitivity;
+            mid = (mSum / 90 / 255) * sensitivity;
+            treble = (tSum / 100 / 255) * sensitivity;
         }
 
-        particleSystem.rotation.y += rotationSpeed + (bass * 0.05);
+        // [Concept 1] 코어 애니메이션 (항상 적용)
+        let coreScale = 1 + (bass * 3);
+        coreMesh.scale.set(coreScale, coreScale, coreScale);
+        coreMesh.rotation.x += 0.005 + (treble * 0.1);
+        coreMesh.rotation.y += 0.005 + (mid * 0.05);
+        // 고음(Treble)에 따라 코어의 색상이 번쩍임
+        if (treble > 0.4) coreMaterial.color.setHSL((time * 0.5) % 1, 1.0, 0.6);
+        else coreMaterial.color.setHex(0x00ffcc);
 
-        const posArray = particleSystem.geometry.attributes.position.array;
+        // 파티클 지오메트리 업데이트
+        const posArray = geometry.attributes.position.array;
+        geometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
 
-        for (let i = 0; i < particleCount; i++) {
-            let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
+        // 모드별 파티클 로직 처리
+        if (currentMode === 'terrain') {
+            // [Concept 2] 지형 모드: FFT 데이터를 Z축(높이)에 매핑
+            particleSystem.rotation.y = time * 0.1; // 전체를 살짝 회전
+            particleSystem.rotation.x = 0.2;
+            for (let i = 0; i < particleCount; i++) {
+                let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
+                let fftIndex = (i % 100) * 2; // X축 인덱스를 주파수 배열에 매핑
+                let freqData = (dataArray && dataArray[fftIndex] !== undefined) ? (dataArray[fftIndex] / 255) : 0;
+                
+                // 파도처럼 울렁이는 효과 + 오디오 데이터
+                let wave = Math.sin((posArray[ix] * 0.05) + time * 5) * 10;
+                posArray[iy] = originalPositions[iy] + (freqData * 200 * sensitivity) + wave;
+            }
+        } 
+        else if (currentMode === 'explosion') {
+            // [Concept 3] 폭발 모드: 비트에 맞춰 중앙에서 파티클 방출
+            particleSystem.rotation.y += 0.005;
+            
+            // 강한 비트가 감지되면 새로운 파티클 뭉치를 중앙에서 방출
+            if (bass > 0.5) {
+                let burstAmount = 150;
+                for(let b=0; b<burstAmount; b++) {
+                    let idx = burstIndex * 3;
+                    posArray[idx] = 0; posArray[idx+1] = 0; posArray[idx+2] = 0; // 코어 위치에서 시작
+                    
+                    // 구형 폭발 방향 설정
+                    let u = Math.random();
+                    let v = Math.random();
+                    let theta = u * 2.0 * Math.PI;
+                    let phi = Math.acos(2.0 * v - 1.0);
+                    let speed = 5 + (bass * 20) + (Math.random() * 5);
+                    
+                    velocities[idx] = Math.sin(phi) * Math.cos(theta) * speed;
+                    velocities[idx+1] = Math.sin(phi) * Math.sin(theta) * speed;
+                    velocities[idx+2] = Math.cos(phi) * speed;
+                    
+                    burstIndex = (burstIndex + 1) % particleCount; // 큐 방식 순환
+                }
+            }
+            
+            // 모든 파티클의 물리 계산 적용
+            for (let i = 0; i < particleCount; i++) {
+                let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
+                posArray[ix] += velocities[ix];
+                posArray[iy] += velocities[iy];
+                posArray[iz] += velocities[iz];
+                
+                // 마찰력(Drag) 적용 - 서서히 느려짐
+                velocities[ix] *= 0.96;
+                velocities[iy] *= 0.96;
+                velocities[iz] *= 0.96;
+                
+                // 공간을 벗어나면 다시 중앙 근처로 대기
+                if(Math.abs(posArray[ix]) > 600 || Math.abs(posArray[iy]) > 600) {
+                    posArray[ix] = 0; posArray[iy] = 0; posArray[iz] = 0;
+                }
+            }
+        } 
+        else if (currentMode === 'fluid') {
+            // [Concept 4] 유체 모드: 삼각함수를 이용한 벡터 필드 (VEX 스타일)
+            particleSystem.rotation.y = 0;
+            particleSystem.rotation.x = 0;
+            let speedMult = 1.0 + (mid * 5); // 음악이 커질수록 유체 속도 증가
 
-            if (bass > 0.6) { 
-                posArray[ix] += (Math.random() - 0.5) * bass * 25;
-                posArray[iy] += (Math.random() - 0.5) * bass * 25;
-                posArray[iz] += (Math.random() - 0.5) * bass * 25;
-            } else {
-                posArray[ix] += (originalPositions[ix] - posArray[ix]) * 0.05;
-                posArray[iy] += (originalPositions[iy] - posArray[iy]) * 0.05;
-                posArray[iz] += (originalPositions[iz] - posArray[iz]) * 0.05;
+            for (let i = 0; i < particleCount; i++) {
+                let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
+                
+                // 노이즈 필드 (수학적 컬 필드 모방)
+                let vx = Math.sin(posArray[iy] * 0.01 + time) * 2;
+                let vy = Math.cos(posArray[iz] * 0.01 + time) * 2;
+                let vz = Math.sin(posArray[ix] * 0.01 + time) * 2;
+                
+                // 중심점(Core)으로 살짝 당기는 중력 추가
+                vx -= posArray[ix] * 0.005;
+                vy -= posArray[iy] * 0.005;
+                vz -= posArray[iz] * 0.005;
+
+                posArray[ix] += vx * speedMult;
+                posArray[iy] += vy * speedMult;
+                posArray[iz] += vz * speedMult;
             }
         }
+
+        geometry.attributes.position.needsUpdate = true;
         
-        particleSystem.geometry.attributes.position.needsUpdate = true;
-        
-        // 색상 변화 로직
-        if (bass > 0.85) {
-            mat.color.setHSL(Math.random(), 1.0, 0.6); 
-        } else {
-            mat.color.lerp(baseColor, 0.05); // 지정한 기본 색상으로 복귀
-        }
+        // 전체 파티클 색상: 강한 베이스에서 번쩍임
+        if (bass > 0.7) mat.color.setHSL(Math.random(), 1.0, 0.6); 
+        else mat.color.lerp(baseColor, 0.05);
 
         renderer.render(scene, camera);
     }
 
-    // 창 크기 조절 대응
     window.addEventListener('resize', () => {
         renderer.setSize(window.innerWidth, window.innerHeight);
         camera.aspect = window.innerWidth / window.innerHeight;
