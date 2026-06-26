@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitHub Pages 오디오 반응형 파티클 시스템</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; color: #fff; font-family: monospace; }
+        canvas { display: block; }
+        #ui-overlay {
+            position: absolute; top: 20px; left: 20px;
+            background: rgba(0,0,0,0.8); padding: 15px;
+            border: 1px solid #444; border-radius: 5px;
+            pointer-events: none; /* 클릭 방지 */
+        }
+        .ui-item { margin-bottom: 8px; }
+        .active-beat { color: #ff0055; text-shadow: 0 0 10px #ff0055; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div id="ui-overlay">
+    <div class="ui-item">오디오 입력: <span id="status">연결 안 됨</span></div>
+    <div class="ui-item">BPM: <span id="bpm">--</span></div>
+    <div class="ui-item">비트 감지: <span id="beat-trigger">-----</span></div>
+    <div class="ui-item" style="font-size: 10px;">(음악을 재생하거나 마이크에 입력하세요)</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+    let scene, camera, renderer, particles, particleSystem;
+    let particleCount = 10000; // 파티클 개수
+    let audioAnalyzer, audioContext, dataArray;
+    let beatTriggerThreshold = 180; // 비트 감지 민감도 (0~255)
+
+    // 1. 초기화
+    function init() {
+        // Scene / Camera
+        scene = new THREE.Scene();
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 200;
+
+        // Renderer
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // 2. 파티클 시스템 생성 (황금색/파란색 조화)
+        particles = new THREE.Geometry();
+        let pMaterial = new THREE.PointsMaterial({
+            color: 0xffaa00, // 기본 황금색
+            size: 2,
+            blending: THREE.AdditiveBlending,
+            transparent: true,
+            depthWrite: false
+        });
+
+        for (let p = 0; p < particleCount; p++) {
+            let px = Math.random() * 500 - 250;
+            let py = Math.random() * 500 - 250;
+            let pz = Math.random() * 500 - 250;
+            let particle = new THREE.Vector3(px, py, pz);
+            
+            // 데이터 기반 속성 추가 (기본 속도)
+            particle.velocity = new THREE.Vector3(
+                (Math.random() - 0.5) * 0.5,
+                (Math.random() - 0.5) * 0.5,
+                (Math.random() - 0.5) * 0.5
+            );
+            particles.vertices.push(particle);
+        }
+
+        particleSystem = new THREE.Points(particles, pMaterial);
+        scene.add(particleSystem);
+
+        // 오디오 입력 시작 버튼
+        statusEl.innerHTML = "<button onclick='setupAudio()'>마이크/오디오 시작</button>";
+
+        window.addEventListener('resize', onWindowResize, false);
+    }
+
+    // 3. 오디오 분석기 설정 (Web Audio API)
+    const statusEl = document.getElementById('status');
+    const bpmEl = document.getElementById('bpm');
+    const beatTriggerEl = document.getElementById('beat-trigger');
+
+    function setupAudio() {
+        statusEl.innerHTML = "연결 중...";
+        navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+            .then(function(stream) {
+                audioContext = new AudioContext();
+                let source = audioContext.createMediaStreamSource(stream);
+                audioAnalyzer = audioContext.createAnalyser();
+                audioAnalyzer.fftSize = 256;
+                source.connect(audioAnalyzer);
+                
+                let bufferLength = audioAnalyzer.frequencyBinCount;
+                dataArray = new Uint8Array(bufferLength);
+                
+                statusEl.innerHTML = "활성화됨 (마이크)";
+                animate();
+            })
+            .catch(function(err) {
+                statusEl.innerHTML = "오류: " + err;
+            });
+    }
+
+    // 4. 메인 애니메이션 루프 (파티클 반응 및 데이터 제어)
+    function animate() {
+        requestAnimationFrame(animate);
+
+        // 오디오 데이터 분석
+        if (audioAnalyzer) {
+            audioAnalyzer.getByteFrequencyData(dataArray);
+            
+            // 데이터 기반 비트 감지 (저음역대 에너지)
+            let bassEnergy = 0;
+            for (let i = 0; i < 10; i++) {
+                bassEnergy += dataArray[i];
+            }
+            bassEnergy /= 10;
+
+            // 비트 터질 때 파티클 시스템 반응
+            if (bassEnergy > beatTriggerThreshold) {
+                // 비트 트리거 UI 시각화 (이미지의 FLASH 참고)
+                beatTriggerEl.classList.add('active-beat');
+                beatTriggerEl.innerHTML = "!!! FLASH !!!";
+                
+                // 파티클 폭발 효과 (스케일 및 회전 가속)
+                particleSystem.rotation.y += 0.05;
+                particleSystem.material.color.setHex(0x00ffdd); // 비트 시 파란색으로 변경
+                
+                // 각 파티클에 가속도 주입 (튀어 오름)
+                particles.vertices.forEach(p => {
+                    p.velocity.multiplyScalar(1.05); // 속도 증가
+                });
+
+            } else {
+                beatTriggerEl.classList.remove('active-beat');
+                beatTriggerEl.innerHTML = "-----";
+                particleSystem.rotation.y += 0.001;
+                particleSystem.material.color.setHex(0xffaa00); // 평소엔 황금색
+            }
+        }
+
+        // 5. 파티클 움직임 업데이트 및 무한 루프 구현
+        for (let i = 0; i < particleCount; i++) {
+            let p = particles.vertices[i];
+            
+            p.add(p.velocity);
+
+            // 경계 설정 (우주 공간 무한 루프)
+            if (p.x < -250) p.x = 250; if (p.x > 250) p.x = -250;
+            if (p.y < -250) p.y = 250; if (p.y > 250) p.y = -250;
+            if (p.z < -250) p.z = 250; if (p.z > 250) p.z = -250;
+            
+            // 속도 감쇠 (평소 상태로 복원)
+            p.velocity.multiplyScalar(0.99);
+        }
+        particles.verticesNeedUpdate = true; // 중요: Three.js에 지오메트리 업데이트 알림
+
+        renderer.render(scene, camera);
+    }
+
+    function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    init();
+</script>
+</body>
+</html>
