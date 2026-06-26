@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>UAV004</title>
+    <title>Ultimate Audio Visualizer - Pro Studio</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; }
         
@@ -173,7 +173,7 @@
         reader.readAsDataURL(file);
     };
 
-    // 파티클 시스템 (5개 그룹 유지)
+    // 파티클 시스템 (5개 그룹)
     const circleCanvas = document.createElement('canvas');
     circleCanvas.width = 64; circleCanvas.height = 64;
     const ctx = circleCanvas.getContext('2d');
@@ -202,11 +202,11 @@
     function updateParticleSizes() {
         let baseSize = parseFloat(ctrlSize.value);
         let rand = parseFloat(ctrlRandom.value);
-        mats[0].size = Math.max(0.1, baseSize + rand); // Bass (크게)
-        mats[1].size = Math.max(0.1, baseSize - (rand * 0.4)); // Mid
-        mats[2].size = baseSize; // Mid
-        mats[3].size = Math.max(0.1, baseSize - (rand * 0.8)); // Treble (작게)
-        mats[4].size = baseSize + (rand * 0.5); // Treble
+        mats[0].size = Math.max(0.1, baseSize + rand); 
+        mats[1].size = Math.max(0.1, baseSize - (rand * 0.4)); 
+        mats[2].size = baseSize; 
+        mats[3].size = Math.max(0.1, baseSize - (rand * 0.8)); 
+        mats[4].size = baseSize + (rand * 0.5); 
     }
     
     ctrlSize.oninput = (e) => { updateUIVal('val-size', e.target.value); updateParticleSizes(); };
@@ -229,13 +229,12 @@
                 let globalIdx = (g * particlesPerGroup) + i;
                 
                 if (mode === 'multilayer') {
-                    // 멀티레이어용 초기화 (그룹별 역할 분담)
-                    if (g === 0) { // Bass (중앙 대기)
+                    if (g === 0) { 
                         pArr[ix] = (Math.random() - 0.5) * 10; pArr[iy] = (Math.random() - 0.5) * 10; pArr[iz] = (Math.random() - 0.5) * 10;
                         vArr[ix] = vArr[iy] = vArr[iz] = 0;
-                    } else if (g === 1 || g === 2) { // Mid (유체 공간)
+                    } else if (g === 1 || g === 2) { 
                         pArr[ix] = (Math.random() - 0.5) * 1500; pArr[iy] = (Math.random() - 0.5) * 1500; pArr[iz] = (Math.random() - 0.5) * 1500;
-                    } else { // Treble (나선 궤도)
+                    } else { 
                         let angle = Math.random() * Math.PI * 2;
                         let radius = 100 + Math.random() * 400;
                         pArr[ix] = Math.cos(angle) * radius; pArr[iy] = (Math.random() - 0.5) * 100; pArr[iz] = Math.sin(angle) * radius;
@@ -344,6 +343,7 @@
         let zoomRadius = parseFloat(ctrlZoom.value);
         let bass = 0, mid = 0, treble = 0;
 
+        // 음악이 재생 중일 때만 데이터 업데이트
         if (analyser) {
             analyser.getByteFrequencyData(dataArray);
             let bSum = 0, mSum = 0, tSum = 0;
@@ -387,9 +387,7 @@
             let pArr = posArrays[g], oArr = origArrays[g], vArr = velArrays[g];
             
             if (currentMode === 'multilayer') {
-                // [★ 멀티 레이어 모드 핵심 로직 ★]
                 if (g === 0) {
-                    // Group 0 (Bass): 비트에 맞춰 폭발
                     if (bass > 0.55) {
                         let burstAmount = 100;
                         for(let b=0; b<burstAmount; b++) {
@@ -407,15 +405,13 @@
                     for (let i = 0; i < particlesPerGroup; i++) {
                         let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
                         pArr[ix] += vArr[ix]; pArr[iy] += vArr[iy]; pArr[iz] += vArr[iz];
-                        vArr[ix] *= 0.94; vArr[iy] *= 0.94; vArr[iz] *= 0.94; // 강한 마찰
+                        vArr[ix] *= 0.94; vArr[iy] *= 0.94; vArr[iz] *= 0.94; 
                         if(Math.abs(pArr[ix]) > 1000) { pArr[ix] = 0; pArr[iy] = 0; pArr[iz] = 0; }
                     }
-                    // 베이스 그룹은 붉은색/따뜻한 계열로 번쩍임
                     if (bass > 0.6) mats[g].color.setHSL(0.05, 1.0, 0.6); 
                     else mats[g].color.lerp(baseColor, 0.1);
 
                 } else if (g === 1 || g === 2) {
-                    // Group 1,2 (Mid): 배경에서 유체처럼 흐름
                     let fluidSpeed = 1.0 + (mid * 8);
                     for (let i = 0; i < particlesPerGroup; i++) {
                         let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
@@ -425,28 +421,24 @@
                         vx -= pArr[ix] * 0.002; vy -= pArr[iy] * 0.002; vz -= pArr[iz] * 0.002;
                         pArr[ix] += vx * fluidSpeed; pArr[iy] += vy * fluidSpeed; pArr[iz] += vz * fluidSpeed;
                     }
-                    // 미드 그룹은 기본 색상 유지하며 살짝 밝아짐
                     mats[g].color.lerp(baseColor, 0.1);
                     if (mid > 0.5) mats[g].color.addScalar(0.05);
 
                 } else {
-                    // Group 3,4 (Treble): 코어 주변을 고속 궤도 비행
                     for (let i = 0; i < particlesPerGroup; i++) {
                         let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
                         let angle = Math.atan2(oArr[iz], oArr[ix]) - (time * 0.5) - (treble * 0.5);
                         let r = Math.sqrt(oArr[ix]**2 + oArr[iz]**2);
-                        let targetR = r * (1 + treble * 0.8); // 고음에 팽창
+                        let targetR = r * (1 + treble * 0.8); 
                         pArr[ix] += (Math.cos(angle) * targetR - pArr[ix]) * 0.2;
                         pArr[iz] += (Math.sin(angle) * targetR - pArr[iz]) * 0.2;
                         pArr[iy] += (oArr[iy] - pArr[iy]) * 0.1; 
                     }
-                    // 고음 그룹은 하얗게 번쩍임
                     if (treble > 0.5) mats[g].color.setHex(0xffffff);
                     else mats[g].color.lerp(baseColor, 0.05);
                 }
             } 
             else {
-                // 기존 단일 모드 로직 유지 (생략된 단일 모드 업데이트 로직)
                 if (currentMode === 'terrain') {
                     for (let i = 0; i < particlesPerGroup; i++) {
                         let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
@@ -513,7 +505,6 @@
                         pArr[iy] += (oArr[iy] - pArr[iy]) * 0.1; 
                     }
                 }
-                // 단일 모드일 때는 모든 파티클의 색상을 동일하게 통일
                 if (bass > 0.7) mats[g].color.setHSL(Math.random(), 1.0, 0.6); 
                 else mats[g].color.lerp(baseColor, 0.05);
             }
@@ -523,6 +514,11 @@
 
         renderer.render(scene, camera);
     }
+
+    // [해결의 핵심] 애니메이션 엔진 상시 가동!
+    // 파일 가장 마지막에 위치하여 페이지 로딩 즉시 3D 공간을 렌더링하기 시작합니다.
+    animate();
+    console.log("Animation Engine Started Successfully.");
 </script>
 </body>
 </html>
