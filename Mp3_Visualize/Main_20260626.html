@@ -460,15 +460,56 @@
                     if(Math.abs(pArr[ix]) > 1000) { pArr[ix] = 0; pArr[iy] = 0; pArr[iz] = 0; }
                 }
             } 
-            else if (currentMode === 'fluid') {
+          else if (currentMode === 'fluid') {
                 let fluidSpeed = 1.0 + (targetFreq * 10); 
                 for (let i = 0; i < particlesPerGroup; i++) {
                     let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
-                    let vx = Math.sin(pArr[iy] * 0.005 + time) * 2;
-                    let vy = Math.cos(pArr[iz] * 0.005 + time) * 2;
-                    let vz = Math.sin(pArr[ix] * 0.005 + time) * 2;
-                    vx -= pArr[ix] * 0.001; vy -= pArr[iy] * 0.001; vz -= pArr[iz] * 0.001;
-                    pArr[ix] += vx * fluidSpeed; pArr[iy] += vy * fluidSpeed; pArr[iz] += vz * fluidSpeed;
+                    let vx = 0, vy = 0, vz = 0;
+
+                    // 규진 님의 기획대로 5개의 대역이 완전히 다른 물리적 파동을 가지도록 분리!
+                    if (freqMode === '5band') {
+                        if (g === 0) { 
+                            // [Sub-Bass] 무겁게 위아래로 크게 꿀렁이는 파도 (Y축 중심)
+                            vx = Math.sin(pArr[iy] * 0.01) * 0.5;
+                            vy = Math.sin(pArr[ix] * 0.005 - time * 2) * 4; 
+                            vz = Math.cos(pArr[iz] * 0.01) * 0.5;
+                        } else if (g === 1) { 
+                            // [Low-Mid] 좌우로 넓게 밀려다니는 조류 (X축 중심)
+                            vx = Math.sin(pArr[iz] * 0.005 + time) * 3;
+                            vy = Math.cos(pArr[ix] * 0.01) * 0.5;
+                            vz = Math.sin(pArr[iy] * 0.01) * 0.5;
+                        } else if (g === 2) { 
+                            // [Mid] 공간 전체를 휘감는 3D 소용돌이 (기존 유체)
+                            vx = Math.sin(pArr[iy] * 0.005 + time) * 2;
+                            vy = Math.cos(pArr[iz] * 0.005 + time) * 2;
+                            vz = Math.sin(pArr[ix] * 0.005 + time) * 2;
+                        } else if (g === 3) { 
+                            // [High-Mid] 앞뒤(카메라 방향)로 강하게 쏘아지는 돌풍 (Z축 중심)
+                            vx = Math.cos(pArr[iy] * 0.01) * 0.5;
+                            vy = Math.sin(pArr[ix] * 0.01) * 0.5;
+                            vz = Math.cos(pArr[ix] * 0.005 - time * 3) * 4;
+                        } else if (g === 4) { 
+                            // [Treble] 제자리에서 아주 빠르고 날카롭게 떠는 미세 진동 (고주파 난기류)
+                            vx = Math.sin(pArr[iy] * 0.05 + time * 5) * 3;
+                            vy = Math.cos(pArr[iz] * 0.05 + time * 5) * 3;
+                            vz = Math.sin(pArr[ix] * 0.05 + time * 5) * 3;
+                        }
+                    } else {
+                        // 3-Band일 때는 기존처럼 전체가 섞여서 도는 거대한 와류
+                        vx = Math.sin(pArr[iy] * 0.005 + time) * 2;
+                        vy = Math.cos(pArr[iz] * 0.005 + time) * 2;
+                        vz = Math.sin(pArr[ix] * 0.005 + time) * 2;
+                    }
+
+                    // 공간 밖으로 영원히 날아가지 않도록 중앙으로 살짝 당기는 중력
+                    vx -= pArr[ix] * 0.001; 
+                    vy -= pArr[iy] * 0.001; 
+                    vz -= pArr[iz] * 0.001;
+
+                    // 최종 속도 적용
+                    pArr[ix] += vx * fluidSpeed; 
+                    pArr[iy] += vy * fluidSpeed; 
+                    pArr[iz] += vz * fluidSpeed;
                 }
             }
             else if (currentMode === 'wormhole') {
