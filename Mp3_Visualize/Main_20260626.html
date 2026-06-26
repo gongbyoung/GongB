@@ -2,11 +2,10 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>UAV003</title>
+    <title>UAV004</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; }
         
-        /* 화면 비율 유지를 위한 CSS - 캔버스가 창 크기에 맞춰지되 실제 해상도는 유지됨 */
         canvas { width: 100vw !important; height: 100vh !important; object-fit: contain; }
 
         #ui { 
@@ -64,27 +63,13 @@
     <div class="control-group">
         <label>파티클 모드 (VFX Mode)</label>
         <select id="ctrl-mode">
-            <option value="fluid">유체 흐름 (Houdini Fluid)</option>
-            <option value="terrain">오디오 지형 (Orbit Terrain)</option>
-            <option value="explosion">비트 폭발 (Emitter Explosion)</option>
-            <option value="wormhole">은하계 터널 (Wormhole)</option>
-            <option value="spiral">나선 은하 (Spiral Galaxy)</option>
+            <option value="multilayer" selected>★ 멀티 레이어 (저/중/고음 완전 분리)</option>
+            <option value="fluid">단일: 유체 흐름 (Houdini Fluid)</option>
+            <option value="terrain">단일: 오디오 지형 (Orbit Terrain)</option>
+            <option value="explosion">단일: 비트 폭발 (Emitter)</option>
+            <option value="wormhole">단일: 은하계 터널 (Wormhole)</option>
+            <option value="spiral">단일: 나선 은하 (Spiral)</option>
         </select>
-    </div>
-
-    <div class="section-title">[유체 흐름 (Fluid) 전용 설정]</div>
-    <div class="control-group">
-        <label>유체 반응 대역 (Frequency)</label>
-        <select id="ctrl-fluid-freq">
-            <option value="mid">중음 (보컬/신스) - 기본</option>
-            <option value="bass">저음 (킥/베이스)</option>
-            <option value="treble">고음 (하이햇/심벌)</option>
-            <option value="all">전체 주파수 혼합</option>
-        </select>
-    </div>
-    <div class="control-group">
-        <label>유체 웨이브 파장 힘 <span id="val-fluid-force">5.0</span></label>
-        <input type="range" id="ctrl-fluid-force" min="0" max="20" value="5.0" step="0.5">
     </div>
 
     <div class="section-title">[글로벌 비주얼 설정]</div>
@@ -124,13 +109,11 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-    // --- 1. Three.js 기본 설정 ---
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 3000);
     const renderer = new THREE.WebGLRenderer({antialias: true, preserveDrawingBuffer: true});
     document.body.appendChild(renderer.domElement);
     
-    // UI 바인딩
     const ctrlRatio = document.getElementById('ctrl-ratio');
     const ctrlMode = document.getElementById('ctrl-mode');
     const ctrlZoom = document.getElementById('ctrl-zoom');
@@ -138,43 +121,34 @@
     const ctrlRandom = document.getElementById('ctrl-random');
     const ctrlSens = document.getElementById('ctrl-sens');
     const ctrlColor = document.getElementById('ctrl-color');
-    const ctrlFluidFreq = document.getElementById('ctrl-fluid-freq');
-    const ctrlFluidForce = document.getElementById('ctrl-fluid-force');
     const updateUIVal = (id, val) => document.getElementById(id).innerText = val;
 
-    // --- 화면 비율 완벽 고정 함수 ---
     function updateAspectRatio() {
         let val = ctrlRatio.value;
         let w = window.innerWidth, h = window.innerHeight;
-
         if (val === '16:9') { w = 1920; h = 1080; }
         else if (val === '9:16') { w = 1080; h = 1920; }
 
-        renderer.setSize(w, h); // 렌더러 내부 픽셀 사이즈 강제 지정
+        renderer.setSize(w, h); 
         camera.aspect = w / h;
         camera.updateProjectionMatrix();
     }
     ctrlRatio.onchange = updateAspectRatio;
-    window.addEventListener('resize', () => {
-        if (ctrlRatio.value === 'fit') updateAspectRatio(); // fit 모드일 때만 리사이즈 반영
-    });
+    window.addEventListener('resize', () => { if (ctrlRatio.value === 'fit') updateAspectRatio(); });
     updateAspectRatio(); 
 
-    // UI 이벤트
     ctrlZoom.oninput = (e) => updateUIVal('val-zoom', e.target.value);
     ctrlSens.oninput = (e) => updateUIVal('val-sens', e.target.value);
-    ctrlFluidForce.oninput = (e) => updateUIVal('val-fluid-force', e.target.value);
-    
     let baseColor = new THREE.Color(ctrlColor.value);
     ctrlColor.oninput = (e) => baseColor.set(e.target.value);
 
-    // --- 코어 이미지(스피어 or PNG) 시스템 ---
+    // 코어 시스템
     const coreGeometry = new THREE.IcosahedronGeometry(25, 1);
     const coreMaterial = new THREE.MeshBasicMaterial({color: 0x00ffcc, wireframe: true, transparent: true, opacity: 0.8});
     const coreMesh = new THREE.Mesh(coreGeometry, coreMaterial);
     scene.add(coreMesh);
 
-    let coreSprite = null; // 업로드된 PNG 이미지를 담을 변수
+    let coreSprite = null; 
     document.getElementById('core-image-file').onchange = function(e) {
         const file = e.target.files[0];
         if (!file) return;
@@ -192,14 +166,14 @@
                 } else {
                     coreSprite.material.map = tex;
                 }
-                coreMesh.visible = false; // 기본 구체 숨김
+                coreMesh.visible = false; 
             };
             img.src = event.target.result;
         };
         reader.readAsDataURL(file);
     };
 
-    // --- 2. 파티클 시스템 (크기 랜덤화를 위한 5그룹 분할) ---
+    // 파티클 시스템 (5개 그룹 유지)
     const circleCanvas = document.createElement('canvas');
     circleCanvas.width = 64; circleCanvas.height = 64;
     const ctx = circleCanvas.getContext('2d');
@@ -207,7 +181,7 @@
     const circleTexture = new THREE.CanvasTexture(circleCanvas);
 
     const numGroups = 5;
-    const particlesPerGroup = 2400; // 총 12000 파티클
+    const particlesPerGroup = 2400; 
     const geometries = [], posArrays = [], velArrays = [], origArrays = [], mats = [];
 
     for (let g = 0; g < numGroups; g++) {
@@ -225,67 +199,63 @@
         scene.add(new THREE.Points(geo, mat));
     }
 
-    // 파티클 크기 랜덤성 업데이트 함수
     function updateParticleSizes() {
         let baseSize = parseFloat(ctrlSize.value);
         let rand = parseFloat(ctrlRandom.value);
-        
-        mats[0].size = Math.max(0.1, baseSize - (rand * 0.8)); // 가장 작은 그룹
-        mats[1].size = Math.max(0.1, baseSize - (rand * 0.4));
-        mats[2].size = baseSize; // 기본 그룹
-        mats[3].size = baseSize + (rand * 0.5);
-        mats[4].size = baseSize + rand; // 가장 큰 그룹
+        mats[0].size = Math.max(0.1, baseSize + rand); // Bass (크게)
+        mats[1].size = Math.max(0.1, baseSize - (rand * 0.4)); // Mid
+        mats[2].size = baseSize; // Mid
+        mats[3].size = Math.max(0.1, baseSize - (rand * 0.8)); // Treble (작게)
+        mats[4].size = baseSize + (rand * 0.5); // Treble
     }
     
     ctrlSize.oninput = (e) => { updateUIVal('val-size', e.target.value); updateParticleSizes(); };
     ctrlRandom.oninput = (e) => { updateUIVal('val-random', e.target.value); updateParticleSizes(); };
-    updateParticleSizes(); // 초기 세팅
+    updateParticleSizes(); 
 
     let currentMode = ctrlMode.value;
 
     function resetParticles(mode) {
         currentMode = mode;
         
-        // 코어(이미지/구체) 숨김 로직
         let showCore = (mode !== 'fluid');
-        if (coreSprite) {
-            coreSprite.visible = showCore;
-            coreMesh.visible = false;
-        } else {
-            coreMesh.visible = showCore;
-        }
+        if (coreSprite) { coreSprite.visible = showCore; coreMesh.visible = false; } 
+        else { coreMesh.visible = showCore; }
 
         for (let g = 0; g < numGroups; g++) {
             let pArr = posArrays[g], oArr = origArrays[g], vArr = velArrays[g];
             for (let i = 0; i < particlesPerGroup; i++) {
                 let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
-                let globalIdx = (g * particlesPerGroup) + i; // 전체 기준 인덱스 0~11999
+                let globalIdx = (g * particlesPerGroup) + i;
                 
-                if (mode === 'terrain') {
-                    let x = (globalIdx % 110) * 15 - 825;
-                    let z = Math.floor(globalIdx / 110) * 15 - 825;
+                if (mode === 'multilayer') {
+                    // 멀티레이어용 초기화 (그룹별 역할 분담)
+                    if (g === 0) { // Bass (중앙 대기)
+                        pArr[ix] = (Math.random() - 0.5) * 10; pArr[iy] = (Math.random() - 0.5) * 10; pArr[iz] = (Math.random() - 0.5) * 10;
+                        vArr[ix] = vArr[iy] = vArr[iz] = 0;
+                    } else if (g === 1 || g === 2) { // Mid (유체 공간)
+                        pArr[ix] = (Math.random() - 0.5) * 1500; pArr[iy] = (Math.random() - 0.5) * 1500; pArr[iz] = (Math.random() - 0.5) * 1500;
+                    } else { // Treble (나선 궤도)
+                        let angle = Math.random() * Math.PI * 2;
+                        let radius = 100 + Math.random() * 400;
+                        pArr[ix] = Math.cos(angle) * radius; pArr[iy] = (Math.random() - 0.5) * 100; pArr[iz] = Math.sin(angle) * radius;
+                    }
+                } 
+                else if (mode === 'terrain') {
+                    let x = (globalIdx % 110) * 15 - 825; let z = Math.floor(globalIdx / 110) * 15 - 825;
                     pArr[ix] = x; pArr[iy] = -150; pArr[iz] = z;
                 } else if (mode === 'explosion') {
-                    pArr[ix] = (Math.random() - 0.5) * 10;
-                    pArr[iy] = (Math.random() - 0.5) * 10;
-                    pArr[iz] = (Math.random() - 0.5) * 10;
+                    pArr[ix] = (Math.random() - 0.5) * 10; pArr[iy] = (Math.random() - 0.5) * 10; pArr[iz] = (Math.random() - 0.5) * 10;
                     vArr[ix] = vArr[iy] = vArr[iz] = 0;
                 } else if (mode === 'fluid') {
-                    pArr[ix] = (Math.random() - 0.5) * 1000;
-                    pArr[iy] = (Math.random() - 0.5) * 1000;
-                    pArr[iz] = (Math.random() - 0.5) * 1000;
+                    pArr[ix] = (Math.random() - 0.5) * 1000; pArr[iy] = (Math.random() - 0.5) * 1000; pArr[iz] = (Math.random() - 0.5) * 1000;
                 } else if (mode === 'wormhole') {
-                    let angle = Math.random() * Math.PI * 2;
-                    let radius = 80 + Math.random() * 200;
-                    pArr[ix] = Math.cos(angle) * radius; pArr[iy] = Math.sin(angle) * radius;
-                    pArr[iz] = (Math.random() * 2000) - 1000;
+                    let angle = Math.random() * Math.PI * 2; let radius = 80 + Math.random() * 200;
+                    pArr[ix] = Math.cos(angle) * radius; pArr[iy] = Math.sin(angle) * radius; pArr[iz] = (Math.random() * 2000) - 1000;
                 } else if (mode === 'spiral') {
-                    let arm = globalIdx % 4;
-                    let angle = (globalIdx / 12000) * Math.PI * 2 * 8 + (arm * Math.PI / 2);
+                    let arm = globalIdx % 4; let angle = (globalIdx / 12000) * Math.PI * 2 * 8 + (arm * Math.PI / 2);
                     let radius = (globalIdx / 12000) * 500 + (Math.random()*20);
-                    pArr[ix] = Math.cos(angle) * radius;
-                    pArr[iy] = (Math.random() - 0.5) * 40;
-                    pArr[iz] = Math.sin(angle) * radius;
+                    pArr[ix] = Math.cos(angle) * radius; pArr[iy] = (Math.random() - 0.5) * 40; pArr[iz] = Math.sin(angle) * radius;
                 }
                 oArr[ix] = pArr[ix]; oArr[iy] = pArr[iy]; oArr[iz] = pArr[iz];
             }
@@ -296,7 +266,7 @@
     resetParticles(currentMode);
     ctrlMode.onchange = (e) => resetParticles(e.target.value);
 
-    // --- 3. 오디오 및 녹화 시스템 ---
+    // 오디오 및 녹화 시스템
     let audioCtx, analyser, dataArray, currentSource;
     let mediaRecorder, recordedChunks = [];
     
@@ -313,7 +283,6 @@
 
         startBtn.style.display = 'none';
         fileSelectBox.style.display = 'block';
-        animate(); 
     };
 
     audioInput.onchange = function(event) {
@@ -355,17 +324,17 @@
                 currentSource.start(0);
                 mediaRecorder.start();
                 
-                ctrlRatio.disabled = true; // 녹화 중 해상도 변경 방지
+                ctrlRatio.disabled = true; 
                 statusEl.innerHTML = `<span class="recording-badge">● REC</span> 자동 녹화 중: ${file.name}`;
             });
         };
         reader.readAsArrayBuffer(file);
     };
 
-    // --- 4. 렌더링 및 알고리즘 애니메이션 ---
+    // 렌더링 루프
     let time = 0;
     let terrainCameraAngle = 0; 
-    let burstGlobalIndex = 0; // 그룹간 폭발 배분용
+    let burstLocalIndex = 0;
 
     function animate() {
         requestAnimationFrame(animate);
@@ -387,7 +356,7 @@
             treble = (tSum / 100 / 255) * sensitivity;
         }
 
-        // --- 카메라 제어 ---
+        // 카메라 워킹
         if (currentMode === 'terrain') {
             terrainCameraAngle += 0.002 + (bass * 0.015);
             camera.position.x = Math.cos(terrainCameraAngle) * zoomRadius;
@@ -397,10 +366,9 @@
         } else {
             camera.position.set(0, 0, zoomRadius);
             camera.lookAt(0, 0, 0);
-            terrainCameraAngle = 0;
         }
 
-        // --- 코어(스피어 or PNG) 리액션 ---
+        // 코어(스피어 or 로고) 리액션
         if(coreMesh.visible) {
             let scale = 1 + (bass * 3);
             coreMesh.scale.set(scale, scale, scale);
@@ -410,111 +378,147 @@
             else coreMaterial.color.setHex(0x00ffcc);
         }
         if(coreSprite && coreSprite.visible) {
-            let imgScale = 60 * (1 + (bass * 1.5)); // 비트에 맞춰 심장처럼 뜀
+            let imgScale = 60 * (1 + (bass * 1.5)); 
             coreSprite.scale.set(imgScale, imgScale, 1);
         }
 
-        // --- 유체 반응 컨트롤 (Fluid Custom) ---
-        let fluidFreq = ctrlFluidFreq.value;
-        let fluidForce = parseFloat(ctrlFluidForce.value);
-        let fluidTarget = mid; 
-        if (fluidFreq === 'bass') fluidTarget = bass;
-        else if (fluidFreq === 'treble') fluidTarget = treble;
-        else if (fluidFreq === 'all') fluidTarget = (bass + mid + treble) / 3;
-        let fluidSpeedMult = 1.0 + (fluidTarget * fluidForce); // 유체 속도/파장 강도 제어
-
-        // --- 5개 그룹 순회 애니메이션 적용 ---
+        // --- 그룹별 독립 애니메이션 계산 ---
         for (let g = 0; g < numGroups; g++) {
             let pArr = posArrays[g], oArr = origArrays[g], vArr = velArrays[g];
             
-            if (currentMode === 'terrain') {
-                for (let i = 0; i < particlesPerGroup; i++) {
-                    let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
-                    let globalIdx = (g * particlesPerGroup) + i;
-                    let fftIndex = (globalIdx % 110) * 2; 
-                    let freqData = (dataArray && dataArray[fftIndex] !== undefined) ? (dataArray[fftIndex] / 255) : 0;
-                    
-                    let wave = Math.sin((oArr[ix] * 0.03) + time * 3) * 15;
-                    pArr[iy] = oArr[iy] + (freqData * 200 * sensitivity) + wave;
+            if (currentMode === 'multilayer') {
+                // [★ 멀티 레이어 모드 핵심 로직 ★]
+                if (g === 0) {
+                    // Group 0 (Bass): 비트에 맞춰 폭발
+                    if (bass > 0.55) {
+                        let burstAmount = 100;
+                        for(let b=0; b<burstAmount; b++) {
+                            let idx = (burstLocalIndex % particlesPerGroup) * 3;
+                            pArr[idx] = 0; pArr[idx+1] = 0; pArr[idx+2] = 0; 
+                            let u = Math.random(), v = Math.random();
+                            let theta = u * 2.0 * Math.PI, phi = Math.acos(2.0 * v - 1.0);
+                            let speed = 5 + (bass * 25) + (Math.random() * 5);
+                            vArr[idx] = Math.sin(phi) * Math.cos(theta) * speed;
+                            vArr[idx+1] = Math.sin(phi) * Math.sin(theta) * speed;
+                            vArr[idx+2] = Math.cos(phi) * speed;
+                            burstLocalIndex++;
+                        }
+                    }
+                    for (let i = 0; i < particlesPerGroup; i++) {
+                        let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
+                        pArr[ix] += vArr[ix]; pArr[iy] += vArr[iy]; pArr[iz] += vArr[iz];
+                        vArr[ix] *= 0.94; vArr[iy] *= 0.94; vArr[iz] *= 0.94; // 강한 마찰
+                        if(Math.abs(pArr[ix]) > 1000) { pArr[ix] = 0; pArr[iy] = 0; pArr[iz] = 0; }
+                    }
+                    // 베이스 그룹은 붉은색/따뜻한 계열로 번쩍임
+                    if (bass > 0.6) mats[g].color.setHSL(0.05, 1.0, 0.6); 
+                    else mats[g].color.lerp(baseColor, 0.1);
+
+                } else if (g === 1 || g === 2) {
+                    // Group 1,2 (Mid): 배경에서 유체처럼 흐름
+                    let fluidSpeed = 1.0 + (mid * 8);
+                    for (let i = 0; i < particlesPerGroup; i++) {
+                        let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
+                        let vx = Math.sin(pArr[iy] * 0.005 + time) * 2;
+                        let vy = Math.cos(pArr[iz] * 0.005 + time) * 2;
+                        let vz = Math.sin(pArr[ix] * 0.005 + time) * 2;
+                        vx -= pArr[ix] * 0.002; vy -= pArr[iy] * 0.002; vz -= pArr[iz] * 0.002;
+                        pArr[ix] += vx * fluidSpeed; pArr[iy] += vy * fluidSpeed; pArr[iz] += vz * fluidSpeed;
+                    }
+                    // 미드 그룹은 기본 색상 유지하며 살짝 밝아짐
+                    mats[g].color.lerp(baseColor, 0.1);
+                    if (mid > 0.5) mats[g].color.addScalar(0.05);
+
+                } else {
+                    // Group 3,4 (Treble): 코어 주변을 고속 궤도 비행
+                    for (let i = 0; i < particlesPerGroup; i++) {
+                        let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
+                        let angle = Math.atan2(oArr[iz], oArr[ix]) - (time * 0.5) - (treble * 0.5);
+                        let r = Math.sqrt(oArr[ix]**2 + oArr[iz]**2);
+                        let targetR = r * (1 + treble * 0.8); // 고음에 팽창
+                        pArr[ix] += (Math.cos(angle) * targetR - pArr[ix]) * 0.2;
+                        pArr[iz] += (Math.sin(angle) * targetR - pArr[iz]) * 0.2;
+                        pArr[iy] += (oArr[iy] - pArr[iy]) * 0.1; 
+                    }
+                    // 고음 그룹은 하얗게 번쩍임
+                    if (treble > 0.5) mats[g].color.setHex(0xffffff);
+                    else mats[g].color.lerp(baseColor, 0.05);
                 }
             } 
-            else if (currentMode === 'explosion') {
-                if (bass > 0.5 && g === 0) { // 한 번만 발동시키기 위해 g===0일때 처리
-                    let burstAmount = 150;
-                    for(let b=0; b<burstAmount; b++) {
-                        let targetGroup = burstGlobalIndex % numGroups;
-                        let targetLocal = Math.floor(burstGlobalIndex / numGroups) % particlesPerGroup;
-                        let idx = targetLocal * 3;
-                        
-                        let tP = posArrays[targetGroup];
-                        let tV = velArrays[targetGroup];
-                        
-                        tP[idx] = 0; tP[idx+1] = 0; tP[idx+2] = 0; 
-                        let u = Math.random(), v = Math.random();
-                        let theta = u * 2.0 * Math.PI, phi = Math.acos(2.0 * v - 1.0);
-                        let speed = 5 + (bass * 25) + (Math.random() * 5);
-                        
-                        tV[idx] = Math.sin(phi) * Math.cos(theta) * speed;
-                        tV[idx+1] = Math.sin(phi) * Math.sin(theta) * speed;
-                        tV[idx+2] = Math.cos(phi) * speed;
-                        
-                        burstGlobalIndex++;
+            else {
+                // 기존 단일 모드 로직 유지 (생략된 단일 모드 업데이트 로직)
+                if (currentMode === 'terrain') {
+                    for (let i = 0; i < particlesPerGroup; i++) {
+                        let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
+                        let globalIdx = (g * particlesPerGroup) + i;
+                        let fftIndex = (globalIdx % 110) * 2; 
+                        let freqData = (dataArray && dataArray[fftIndex] !== undefined) ? (dataArray[fftIndex] / 255) : 0;
+                        let wave = Math.sin((oArr[ix] * 0.03) + time * 3) * 15;
+                        pArr[iy] = oArr[iy] + (freqData * 200 * sensitivity) + wave;
+                    }
+                } 
+                else if (currentMode === 'explosion') {
+                    if (bass > 0.5 && g === 0) { 
+                        let burstAmount = 150;
+                        for(let b=0; b<burstAmount; b++) {
+                            let idx = (burstLocalIndex % particlesPerGroup) * 3;
+                            pArr[idx] = 0; pArr[idx+1] = 0; pArr[idx+2] = 0; 
+                            let u = Math.random(), v = Math.random();
+                            let theta = u * 2.0 * Math.PI, phi = Math.acos(2.0 * v - 1.0);
+                            let speed = 5 + (bass * 25) + (Math.random() * 5);
+                            vArr[idx] = Math.sin(phi) * Math.cos(theta) * speed;
+                            vArr[idx+1] = Math.sin(phi) * Math.sin(theta) * speed;
+                            vArr[idx+2] = Math.cos(phi) * speed;
+                            burstLocalIndex++;
+                        }
+                    }
+                    for (let i = 0; i < particlesPerGroup; i++) {
+                        let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
+                        pArr[ix] += vArr[ix]; pArr[iy] += vArr[iy]; pArr[iz] += vArr[iz];
+                        vArr[ix] *= 0.96; vArr[iy] *= 0.96; vArr[iz] *= 0.96;
+                        if(Math.abs(pArr[ix]) > 800) { pArr[ix] = 0; pArr[iy] = 0; pArr[iz] = 0; }
+                    }
+                } 
+                else if (currentMode === 'fluid') {
+                    for (let i = 0; i < particlesPerGroup; i++) {
+                        let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
+                        let vx = Math.sin(pArr[iy] * 0.01 + time) * 2;
+                        let vy = Math.cos(pArr[iz] * 0.01 + time) * 2;
+                        let vz = Math.sin(pArr[ix] * 0.01 + time) * 2;
+                        vx -= pArr[ix] * 0.003; vy -= pArr[iy] * 0.003; vz -= pArr[iz] * 0.003;
+                        pArr[ix] += vx * (1 + mid*5); pArr[iy] += vy * (1 + mid*5); pArr[iz] += vz * (1 + mid*5);
                     }
                 }
-                for (let i = 0; i < particlesPerGroup; i++) {
-                    let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
-                    pArr[ix] += vArr[ix]; pArr[iy] += vArr[iy]; pArr[iz] += vArr[iz];
-                    vArr[ix] *= 0.96; vArr[iy] *= 0.96; vArr[iz] *= 0.96;
-                    if(Math.abs(pArr[ix]) > 800 || Math.abs(pArr[iy]) > 800) {
-                        pArr[ix] = 0; pArr[iy] = 0; pArr[iz] = 0;
+                else if (currentMode === 'wormhole') {
+                    let speed = 8 + (bass * 30); 
+                    for (let i = 0; i < particlesPerGroup; i++) {
+                        let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
+                        pArr[iz] += speed;
+                        if (pArr[iz] > 300) pArr[iz] = -2000; 
+                        let angle = Math.atan2(oArr[iy], oArr[ix]);
+                        let r = Math.sqrt(oArr[ix]**2 + oArr[iy]**2);
+                        let targetR = r + (bass * 80);
+                        pArr[ix] += (Math.cos(angle) * targetR - pArr[ix]) * 0.1;
+                        pArr[iy] += (Math.sin(angle) * targetR - pArr[iy]) * 0.1;
                     }
                 }
-            } 
-            else if (currentMode === 'fluid') {
-                for (let i = 0; i < particlesPerGroup; i++) {
-                    let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
-                    let vx = Math.sin(pArr[iy] * 0.01 + time) * 2;
-                    let vy = Math.cos(pArr[iz] * 0.01 + time) * 2;
-                    let vz = Math.sin(pArr[ix] * 0.01 + time) * 2;
-                    
-                    vx -= pArr[ix] * 0.003; vy -= pArr[iy] * 0.003; vz -= pArr[iz] * 0.003;
-                    // 사용자가 커스텀한 유체 파장 강도 적용
-                    pArr[ix] += vx * fluidSpeedMult; 
-                    pArr[iy] += vy * fluidSpeedMult; 
-                    pArr[iz] += vz * fluidSpeedMult;
+                else if (currentMode === 'spiral') {
+                    for (let i = 0; i < particlesPerGroup; i++) {
+                        let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
+                        let angle = Math.atan2(oArr[iz], oArr[ix]) - (time * 0.2) - (mid * 0.1); 
+                        let r = Math.sqrt(oArr[ix]**2 + oArr[iz]**2);
+                        let targetR = r * (1 + bass * 0.6); 
+                        pArr[ix] += (Math.cos(angle) * targetR - pArr[ix]) * 0.1;
+                        pArr[iz] += (Math.sin(angle) * targetR - pArr[iz]) * 0.1;
+                        pArr[iy] += (oArr[iy] - pArr[iy]) * 0.1; 
+                    }
                 }
-            }
-            else if (currentMode === 'wormhole') {
-                let speed = 8 + (bass * 30); 
-                for (let i = 0; i < particlesPerGroup; i++) {
-                    let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
-                    pArr[iz] += speed;
-                    if (pArr[iz] > 300) pArr[iz] = -2000; 
-                    
-                    let angle = Math.atan2(oArr[iy], oArr[ix]);
-                    let r = Math.sqrt(oArr[ix]**2 + oArr[iy]**2);
-                    let targetR = r + (bass * 80);
-                    pArr[ix] += (Math.cos(angle) * targetR - pArr[ix]) * 0.1;
-                    pArr[iy] += (Math.sin(angle) * targetR - pArr[iy]) * 0.1;
-                }
-            }
-            else if (currentMode === 'spiral') {
-                for (let i = 0; i < particlesPerGroup; i++) {
-                    let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
-                    let angle = Math.atan2(oArr[iz], oArr[ix]) - (time * 0.2) - (mid * 0.1); // 회전 애니메이션
-                    let r = Math.sqrt(oArr[ix]**2 + oArr[iz]**2);
-                    let targetR = r * (1 + bass * 0.6); 
-                    
-                    pArr[ix] += (Math.cos(angle) * targetR - pArr[ix]) * 0.1;
-                    pArr[iz] += (Math.sin(angle) * targetR - pArr[iz]) * 0.1;
-                    pArr[iy] += (oArr[iy] - pArr[iy]) * 0.1; 
-                }
+                // 단일 모드일 때는 모든 파티클의 색상을 동일하게 통일
+                if (bass > 0.7) mats[g].color.setHSL(Math.random(), 1.0, 0.6); 
+                else mats[g].color.lerp(baseColor, 0.05);
             }
             
             geometries[g].attributes.position.needsUpdate = true;
-            
-            if (bass > 0.7) mats[g].color.setHSL(Math.random(), 1.0, 0.6); 
-            else mats[g].color.lerp(baseColor, 0.05);
         }
 
         renderer.render(scene, camera);
