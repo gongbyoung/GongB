@@ -2,60 +2,89 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GitHub Pages 오디오 반응형 파티클 시스템</title>
+    <title>Audio Reactive Particle Visualizer</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000; color: #fff; font-family: monospace; }
-        canvas { display: block; }
-        #ui-overlay {
-            position: absolute; top: 20px; left: 20px;
-            background: rgba(0,0,0,0.8); padding: 15px;
-            border: 1px solid #444; border-radius: 5px;
-            pointer-events: none; /* 클릭 방지 */
-        }
-        .ui-item { margin-bottom: 8px; }
-        .active-beat { color: #ff0055; text-shadow: 0 0 10px #ff0055; font-weight: bold; }
+        body { margin: 0; overflow: hidden; background-color: #000; color: #fff; font-family: sans-serif; }
+        #ui { position: absolute; top: 20px; left: 20px; z-index: 10; background: rgba(0,0,0,0.7); padding: 20px; border-radius: 10px; }
+        input { margin-bottom: 10px; display: block; }
     </style>
 </head>
 <body>
 
-<div id="ui-overlay">
-    <div class="ui-item">
-        <input type="file" id="audio-file" accept="audio/mp3">
-    </div>
-    <div class="ui-item">상태: <span id="status">파일을 선택해주세요</span></div>
-    <div class="ui-item">BPM: <span id="bpm">--</span></div>
+<div id="ui">
+    <h3>MP3 뮤직비디오 비주얼라이저</h3>
+    <input type="file" id="audio-file" accept="audio/mp3">
+    <div id="status">파일을 선택하면 재생됩니다.</div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-    // 오디오 파일 로딩 로직 추가
-    const audioInput = document.getElementById('audio-file');
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    let audioSource = null;
+    // 1. Three.js 기본 설정
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({antialias: true});
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+    camera.position.z = 200;
 
-    audioInput.onchange = function() {
+    // 2. 파티클 시스템 생성
+    const particles = new THREE.Geometry();
+    for (let i = 0; i < 8000; i++) {
+        let p = new THREE.Vector3(Math.random()*600-300, Math.random()*600-300, Math.random()*600-300);
+        p.velocity = new THREE.Vector3(0,0,0);
+        particles.vertices.push(p);
+    }
+    const mat = new THREE.PointsMaterial({color: 0x00ffcc, size: 2, blending: THREE.AdditiveBlending});
+    const particleSystem = new THREE.Points(particles, mat);
+    scene.add(particleSystem);
+
+    // 3. 오디오 분석 설정
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    let dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+    document.getElementById('audio-file').onchange = function() {
         const file = this.files[0];
         const reader = new FileReader();
-
         reader.onload = function(e) {
-            audioContext.decodeAudioData(e.target.result, function(buffer) {
-                if (audioSource) audioSource.stop(); // 이전 음악 정지
-                
-                audioSource = audioContext.createBufferSource();
-                audioSource.buffer = buffer;
-                
-                // 분석기 연결
-                audioSource.connect(audioAnalyzer);
-                audioAnalyzer.connect(audioContext.destination);
-                
-                audioSource.start(0);
+            audioCtx.decodeAudioData(e.target.result, buffer => {
+                const source = audioCtx.createBufferSource();
+                source.buffer = buffer;
+                source.connect(analyser);
+                analyser.connect(audioCtx.destination);
+                source.start(0);
                 document.getElementById('status').innerText = "재생 중: " + file.name;
             });
         };
         reader.readAsArrayBuffer(file);
     };
 
-    // (이후 기존의 animate() 루프는 그대로 사용하면 됩니다)
+    // 4. 애니메이션 루프
+    function animate() {
+        requestAnimationFrame(animate);
+        analyser.getByteFrequencyData(dataArray);
+
+        let bass = dataArray[2] / 255; // 저음역대 추출
+
+        particleSystem.rotation.y += 0.002 + (bass * 0.05);
+
+        particles.vertices.forEach(p => {
+            if (bass > 0.5) {
+                p.x += (Math.random() - 0.5) * bass * 10;
+                p.y += (Math.random() - 0.5) * bass * 10;
+            }
+        });
+        particles.verticesNeedUpdate = true;
+        renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+    });
 </script>
 </body>
 </html>
