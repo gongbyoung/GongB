@@ -2,10 +2,9 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>UAV_V004</title>
+    <title>UAV005</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; }
-        
         canvas { width: 100vw !important; height: 100vh !important; object-fit: contain; }
 
         #ui { 
@@ -87,10 +86,14 @@
         </select>
     </div>
 
-    <div class="section-title" style="color:#ff3366;">[포스트 프로세싱 (후처리)]</div>
+    <div class="section-title" style="color:#ff3366;">[프로덕션 모션 & 이펙트]</div>
     <div class="control-group">
         <label style="color: #ff88aa; font-weight:bold;">빛 번짐 강도 (Neon Bloom) <span id="val-bloom">1.5</span></label>
         <input type="range" id="ctrl-bloom" min="0" max="4" value="1.5" step="0.1">
+    </div>
+    <div class="control-group">
+        <label style="color: #00ffcc;">모션 부드러움 (Damping) <span id="val-smooth">0.85</span></label>
+        <input type="range" id="ctrl-smooth" min="0.1" max="0.99" value="0.85" step="0.01">
     </div>
 
     <div class="section-title">[카메라 구도 세팅]</div>
@@ -99,8 +102,8 @@
         <input type="range" id="ctrl-cam-x" min="-1000" max="1000" value="0" step="10">
     </div>
     <div class="control-group">
-        <label>카메라 Y (상하) <span id="val-cam-y">100</span></label>
-        <input type="range" id="ctrl-cam-y" min="-1000" max="1000" value="100" step="10">
+        <label>카메라 Y (상하) <span id="val-cam-y">150</span></label>
+        <input type="range" id="ctrl-cam-y" min="-1000" max="1000" value="150" step="10">
     </div>
     <div class="control-group">
         <label>카메라 Z (거리) <span id="val-cam-z">500</span></label>
@@ -146,38 +149,31 @@
 <script>
     // --- 1. Three.js 설정 및 Post-Processing(Bloom) 설정 ---
     const scene = new THREE.Scene();
-    // 블룸 효과가 돋보이도록 배경을 완전한 검은색이 아닌 미세한 암회색으로 설정
     scene.background = new THREE.Color(0x050505);
-    // 안개 효과를 주어 깊이감을 극대화
-    scene.fog = new THREE.FogExp2(0x050505, 0.001);
+    scene.fog = new THREE.FogExp2(0x050505, 0.0012);
 
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 4000);
     const renderer = new THREE.WebGLRenderer({antialias: true, preserveDrawingBuffer: true});
-    renderer.toneMapping = THREE.ReinhardToneMapping; // 네온 질감을 위한 톤매핑
+    renderer.toneMapping = THREE.ReinhardToneMapping; 
     document.body.appendChild(renderer.domElement);
 
-    // ★ 빛 번짐(Bloom) 엔진 셋업 ★
     const renderScene = new THREE.RenderPass(scene, camera);
     const bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
-    bloomPass.threshold = 0;
-    bloomPass.strength = 1.5; // 기본 번짐 강도
-    bloomPass.radius = 0.5;
+    bloomPass.threshold = 0; bloomPass.strength = 1.5; bloomPass.radius = 0.5;
 
     const composer = new THREE.EffectComposer(renderer);
-    composer.addPass(renderScene);
-    composer.addPass(bloomPass);
+    composer.addPass(renderScene); composer.addPass(bloomPass);
     
     // UI 바인딩
     const ctrlRatio = document.getElementById('ctrl-ratio');
     const ctrlFreqMode = document.getElementById('ctrl-freq-mode');
     const ctrlMode = document.getElementById('ctrl-mode');
-    
     const ctrlCamX = document.getElementById('ctrl-cam-x');
     const ctrlCamY = document.getElementById('ctrl-cam-y');
     const ctrlCamZ = document.getElementById('ctrl-cam-z');
-    
     const ctrlSize = document.getElementById('ctrl-size');
     const ctrlSens = document.getElementById('ctrl-sens');
+    const ctrlSmooth = document.getElementById('ctrl-smooth'); // 모션 스무딩
     const ctrlColor = document.getElementById('ctrl-color');
     const ctrlBloom = document.getElementById('ctrl-bloom');
     const updateUIVal = (id, val) => document.getElementById(id).innerText = val;
@@ -188,8 +184,7 @@
         if (val === '16:9') { w = 1920; h = 1080; }
         else if (val === '9:16') { w = 1080; h = 1920; }
         
-        renderer.setSize(w, h); 
-        composer.setSize(w, h); // 컴포저도 사이즈 리사이즈
+        renderer.setSize(w, h); composer.setSize(w, h); 
         camera.aspect = w / h; camera.updateProjectionMatrix();
     }
     ctrlRatio.onchange = updateAspectRatio;
@@ -200,16 +195,13 @@
     ctrlCamY.oninput = (e) => updateUIVal('val-cam-y', e.target.value);
     ctrlCamZ.oninput = (e) => updateUIVal('val-cam-z', e.target.value);
     ctrlSens.oninput = (e) => updateUIVal('val-sens', e.target.value);
-    
-    ctrlBloom.oninput = (e) => { 
-        bloomPass.strength = parseFloat(e.target.value);
-        updateUIVal('val-bloom', e.target.value); 
-    };
+    ctrlSmooth.oninput = (e) => updateUIVal('val-smooth', e.target.value);
+    ctrlBloom.oninput = (e) => { bloomPass.strength = parseFloat(e.target.value); updateUIVal('val-bloom', e.target.value); };
 
     let baseColor = new THREE.Color(ctrlColor.value);
     ctrlColor.oninput = (e) => baseColor.set(e.target.value);
 
-    // --- 코어 시스템 (스피어 & 로고) ---
+    // --- 코어 시스템 ---
     const coreGeometry = new THREE.IcosahedronGeometry(25, 1);
     const coreMaterial = new THREE.MeshBasicMaterial({color: 0x00ffcc, wireframe: true, transparent: true, opacity: 0.8});
     const coreMesh = new THREE.Mesh(coreGeometry, coreMaterial);
@@ -236,12 +228,12 @@
         reader.readAsDataURL(file);
     };
 
-    // --- 2. 시각 요소 그룹화 ---
+    // --- 2. 시각 요소 그룹화 및 초기화 ---
     const particleGroup = new THREE.Group(); scene.add(particleGroup);
     const circularBarsGroup = new THREE.Group(); scene.add(circularBarsGroup);
     const linearBarsGroup = new THREE.Group(); scene.add(linearBarsGroup);
 
-    // (A) 5-Band 파티클 생성
+    // (A) 파티클 생성
     const circleCanvas = document.createElement('canvas');
     circleCanvas.width = 64; circleCanvas.height = 64;
     const ctx = circleCanvas.getContext('2d');
@@ -258,60 +250,40 @@
         let v = new Float32Array(particlesPerGroup * 3);
         let o = new Float32Array(particlesPerGroup * 3);
         geo.setAttribute('position', new THREE.BufferAttribute(p, 3));
-        
-        let mat = new THREE.PointsMaterial({
-            color: baseColor, map: circleTexture, transparent: true, alphaTest: 0.1, blending: THREE.AdditiveBlending
-        });
-        
+        let mat = new THREE.PointsMaterial({ color: baseColor, map: circleTexture, transparent: true, alphaTest: 0.1, blending: THREE.AdditiveBlending });
         geometries.push(geo); posArrays.push(p); velArrays.push(v); origArrays.push(o); mats.push(mat);
         particleGroup.add(new THREE.Points(geo, mat));
     }
 
-    // (B) 원형 이퀄라이저 바 생성 (128개)
+    // (B, C) 이퀄라이저 막대 생성
     const numBars = 128;
-    const circularBars = [];
+    const circularBars = [], linearBars = [];
     const barGeo = new THREE.BoxGeometry(4, 1, 4);
     for(let i=0; i<numBars; i++) {
         let mat = new THREE.MeshBasicMaterial({ color: new THREE.Color().setHSL(i/numBars, 1.0, 0.5) });
-        let mesh = new THREE.Mesh(barGeo, mat);
+        // Circular
+        let cMesh = new THREE.Mesh(barGeo, mat);
         let angle = (i / numBars) * Math.PI * 2;
-        mesh.position.set(Math.cos(angle)*150, 0, Math.sin(angle)*150);
-        mesh.lookAt(0,0,0);
-        circularBarsGroup.add(mesh);
-        circularBars.push(mesh);
-    }
-
-    // (C) 평면 이퀄라이저 바 생성 (128개)
-    const linearBars = [];
-    for(let i=0; i<numBars; i++) {
-        let mat = new THREE.MeshBasicMaterial({ color: new THREE.Color().setHSL(i/numBars, 1.0, 0.5) });
-        let mesh = new THREE.Mesh(barGeo, mat);
-        mesh.position.set((i - 64) * 6, -100, 0); 
-        linearBarsGroup.add(mesh);
-        linearBars.push(mesh);
+        cMesh.position.set(Math.cos(angle)*150, 0, Math.sin(angle)*150); cMesh.lookAt(0,0,0);
+        circularBarsGroup.add(cMesh); circularBars.push(cMesh);
+        // Linear
+        let lMesh = new THREE.Mesh(barGeo, mat);
+        lMesh.position.set((i - 64) * 6, -100, 0); 
+        linearBarsGroup.add(lMesh); linearBars.push(lMesh);
     }
 
     let currentMode = ctrlMode.value;
 
     function resetParticles(mode) {
         currentMode = mode;
-        
-        // 그룹 가시성 토글
-        particleGroup.visible = false;
-        circularBarsGroup.visible = false;
-        linearBarsGroup.visible = false;
-        
+        particleGroup.visible = false; circularBarsGroup.visible = false; linearBarsGroup.visible = false;
         let showCore = true;
 
-        if (mode === 'circular_bars') {
-            circularBarsGroup.visible = true;
-        } else if (mode === 'linear_bars') {
-            linearBarsGroup.visible = true;
-        } else {
+        if (mode === 'circular_bars') circularBarsGroup.visible = true;
+        else if (mode === 'linear_bars') linearBarsGroup.visible = true;
+        else {
             particleGroup.visible = true;
             if(mode === 'fluid') showCore = false;
-            
-            // 파티클 재배치
             for (let g = 0; g < numGroups; g++) {
                 let pArr = posArrays[g], oArr = origArrays[g], vArr = velArrays[g];
                 for (let i = 0; i < particlesPerGroup; i++) {
@@ -339,10 +311,7 @@
                 geometries[g].attributes.position.needsUpdate = true;
             }
         }
-
-        // 로고(코어) 처리
-        if (coreSprite) { coreSprite.visible = showCore; coreMesh.visible = false; } 
-        else { coreMesh.visible = showCore; }
+        if (coreSprite) { coreSprite.visible = showCore; coreMesh.visible = false; } else { coreMesh.visible = showCore; }
     }
     resetParticles(currentMode);
     ctrlMode.onchange = (e) => resetParticles(e.target.value);
@@ -358,6 +327,9 @@
     const recordBtn = document.getElementById('record-btn');
     const statusEl = document.getElementById('status');
     let loadedFileName = "";
+
+    // ★ 모션 스무딩(Lerp)을 위한 배열 추가
+    let smoothedData = new Float32Array(512);
 
     initBtn.onclick = function() {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -420,17 +392,15 @@
     // --- 4. 렌더링 루프 ---
     let time = 0;
     let burstIndices = [0, 0, 0, 0, 0];
-    let camOrbitAngle = 0;
+    let baseFov = 75;
 
     function animate() {
         requestAnimationFrame(animate);
         time += 0.01;
         
-        // 카메라 제어
-        camera.position.set(parseFloat(ctrlCamX.value), parseFloat(ctrlCamY.value), parseFloat(ctrlCamZ.value));
-        camera.lookAt(0, 0, 0); 
-        
         let sensitivity = parseFloat(ctrlSens.value);
+        let smoothing = parseFloat(ctrlSmooth.value); // 0.1 ~ 0.99
+        let lerpFactor = 1.0 - smoothing; // 값이 작을수록 움직임이 부드럽고 무거워짐
         let freqMode = ctrlFreqMode.value; 
         
         let band1=0, band2=0, band3=0, band4=0, band5=0; 
@@ -439,12 +409,18 @@
         if (isPlaying && analyser) {
             analyser.getByteFrequencyData(dataArray);
             
+            // ★ 모션 스무딩 적용 (Lerp) ★
+            for(let i=0; i<dataArray.length; i++) {
+                smoothedData[i] += (dataArray[i] - smoothedData[i]) * lerpFactor;
+            }
+
             let b1Sum=0, b2Sum=0, b3Sum=0, b4Sum=0, b5Sum=0;
-            for(let i=0; i<10; i++) b1Sum += dataArray[i];      
-            for(let i=10; i<40; i++) b2Sum += dataArray[i];     
-            for(let i=40; i<100; i++) b3Sum += dataArray[i];    
-            for(let i=100; i<150; i++) b4Sum += dataArray[i];   
-            for(let i=150; i<200; i++) b5Sum += dataArray[i];   
+            // Raw data가 아닌 Smooth data 사용
+            for(let i=0; i<10; i++) b1Sum += smoothedData[i];      
+            for(let i=10; i<40; i++) b2Sum += smoothedData[i];     
+            for(let i=40; i<100; i++) b3Sum += smoothedData[i];    
+            for(let i=100; i<150; i++) b4Sum += smoothedData[i];   
+            for(let i=150; i<200; i++) b5Sum += smoothedData[i];   
             
             band1 = (b1Sum / 10 / 255) * sensitivity;
             band2 = (b2Sum / 30 / 255) * sensitivity;
@@ -455,11 +431,20 @@
             bass = band1; mid = (band2 + band3) / 2; treble = (band4 + band5) / 2;
         }
 
+        // ★ 카메라 비트 펌핑 (Camera FOV Pulse) ★
+        // 베이스가 강할 때 시야각이 좁아지며 확 당겨지는 역동적인 모션
+        let targetFov = baseFov - (bass * 15);
+        camera.fov += (targetFov - camera.fov) * 0.15;
+        camera.updateProjectionMatrix();
+
+        camera.position.set(parseFloat(ctrlCamX.value), parseFloat(ctrlCamY.value), parseFloat(ctrlCamZ.value));
+        camera.lookAt(0, 0, 0); 
+
         // 코어(로고) 리액션
         if(coreMesh.visible) {
             let scale = 1 + (bass * 3); coreMesh.scale.set(scale, scale, scale);
             coreMesh.rotation.x += 0.005 + (treble * 0.1); coreMesh.rotation.y += 0.005 + (mid * 0.05);
-            if (bass > 0.6) coreMaterial.color.setHSL(0.02, 1.0, 0.6); 
+            if (bass > 0.5) coreMaterial.color.setHSL(0.02, 1.0, 0.6); 
             else coreMaterial.color.setHex(0x00ffcc);
         }
         if(coreSprite && coreSprite.visible) {
@@ -472,20 +457,27 @@
             circularBarsGroup.rotation.y += 0.002;
             circularBarsGroup.rotation.x = 0.2;
             for(let i=0; i<numBars; i++) {
-                let val = dataArray ? (dataArray[i] / 255.0) : 0;
-                circularBars[i].scale.y = Math.max(1, val * 150 * sensitivity);
+                // 스무딩된 데이터 적용
+                let val = smoothedData[i] / 255.0;
+                circularBars[i].scale.y = Math.max(1, val * 200 * sensitivity);
                 circularBars[i].position.y = circularBars[i].scale.y / 2 - 20; 
+                
+                // 막대기 색상도 비트에 반응
+                if (val > 0.7) circularBars[i].material.color.setHex(0xffffff);
+                else circularBars[i].material.color.setHSL(i/numBars, 1.0, 0.5);
             }
         } 
         else if (currentMode === 'linear_bars') {
             for(let i=0; i<numBars; i++) {
-                let val = dataArray ? (dataArray[i] / 255.0) : 0;
-                linearBars[i].scale.y = Math.max(1, val * 250 * sensitivity);
+                let val = smoothedData[i] / 255.0;
+                linearBars[i].scale.y = Math.max(1, val * 350 * sensitivity);
                 linearBars[i].position.y = linearBars[i].scale.y / 2 - 100; 
             }
         } 
         else {
-            // 파티클 모드 로직 (이전과 동일하게 유지된 정밀 5-Band 연산)
+            // 그룹 전체에 대한 미세한 배경 회전 (우주가 멈춰있지 않고 도는 느낌)
+            particleGroup.rotation.y += 0.001;
+
             let baseS = parseFloat(ctrlSize.value);
             for (let g = 0; g < numGroups; g++) {
                 let pArr = posArrays[g], oArr = origArrays[g], vArr = velArrays[g];
@@ -501,7 +493,7 @@
                 else if (g === 1 || g === 2) mats[g].size = baseS * (1 + targetFreq);
                 else mats[g].size = Math.max(0.1, (baseS * 0.6) * (1 + targetFreq * 4));
 
-                if (targetFreq > 0.5) {
+                if (targetFreq > 0.4) {
                     if (freqMode === '5band') {
                         if (g===0) mats[g].color.setHSL(0.02, 1.0, 0.6); else if (g===1) mats[g].color.setHSL(0.15, 1.0, 0.6); else if (g===2) mats[g].color.lerp(new THREE.Color(0xffffff), 0.5); else if (g===3) mats[g].color.setHSL(0.6, 1.0, 0.7); else if (g===4) mats[g].color.setHex(0xffffff);
                     } else {
@@ -516,20 +508,22 @@
                         let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
                         let globalIdx = (g * particlesPerGroup) + i;
                         let fftIndex = (globalIdx % 110) * 2; 
-                        let freqData = (dataArray && dataArray[fftIndex] !== undefined) ? (dataArray[fftIndex] / 255) : 0;
+                        // 지형의 높낮이에도 스무딩된 데이터 적용
+                        let freqData = smoothedData[fftIndex] / 255.0;
                         let wave = Math.sin((oArr[ix] * 0.03) + time * (3 + targetFreq)) * (15 + targetFreq*20);
-                        pArr[iy] = oArr[iy] + (freqData * 200 * sensitivity) + wave;
+                        pArr[iy] += ((oArr[iy] + (freqData * 200 * sensitivity) + wave) - pArr[iy]) * 0.1; // 보간 이동
                     }
                 } 
                 else if (currentMode === 'explosion') {
-                    if (targetFreq > 0.6) {
-                        let burstAmount = (g === 0) ? 80 : 30; 
+                    if (targetFreq > 0.5) {
+                        let burstAmount = (g === 0) ? 100 : 30; 
                         for(let b=0; b<burstAmount; b++) {
                             let idx = (burstIndices[g] % particlesPerGroup) * 3;
                             pArr[idx] = 0; pArr[idx+1] = 0; pArr[idx+2] = 0; 
                             let u = Math.random(), v = Math.random();
                             let theta = u * 2.0 * Math.PI, phi = Math.acos(2.0 * v - 1.0);
-                            let speed = 5 + (targetFreq * 30) + (Math.random() * 10);
+                            // ★ 물리수정: 초기 폭발력을 엄청나게 높임
+                            let speed = 20 + (targetFreq * 80) + (Math.random() * 20);
                             vArr[idx] = Math.sin(phi) * Math.cos(theta) * speed;
                             vArr[idx+1] = Math.sin(phi) * Math.sin(theta) * speed;
                             vArr[idx+2] = Math.cos(phi) * speed;
@@ -539,12 +533,13 @@
                     for (let i = 0; i < particlesPerGroup; i++) {
                         let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
                         pArr[ix] += vArr[ix]; pArr[iy] += vArr[iy]; pArr[iz] += vArr[iz];
-                        vArr[ix] *= 0.95; vArr[iy] *= 0.95; vArr[iz] *= 0.95;
-                        if(Math.abs(pArr[ix]) > 1000) { pArr[ix] = 0; pArr[iy] = 0; pArr[iz] = 0; }
+                        // ★ 물리수정: 공기 저항(Drag)을 0.95 -> 0.85로 확 낮춰서 팡 쏘고 허공에 멈추게 함
+                        vArr[ix] *= 0.85; vArr[iy] *= 0.85; vArr[iz] *= 0.85;
+                        if(Math.abs(pArr[ix]) > 1500) { pArr[ix] = 0; pArr[iy] = 0; pArr[iz] = 0; }
                     }
                 } 
                 else if (currentMode === 'fluid') {
-                    let fluidSpeed = 1.0 + (targetFreq * 10); 
+                    let fluidSpeed = 1.0 + (targetFreq * 15); 
                     for (let i = 0; i < particlesPerGroup; i++) {
                         let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
                         let vx=0, vy=0, vz=0;
@@ -562,11 +557,15 @@
                     }
                 }
                 else if (currentMode === 'wormhole') {
-                    let speed = 2 + (targetFreq * 40); 
+                    // ★ 물리수정: 터널 자체가 비트에 맞춰 빙글빙글 돔
+                    particleGroup.rotation.z = time * 0.5 + (bass * 0.5);
+
+                    let speed = 2 + (targetFreq * 50); 
                     for (let i = 0; i < particlesPerGroup; i++) {
                         let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
                         pArr[iz] += speed;
                         if (pArr[iz] > 300) pArr[iz] = -2000; 
+                        
                         let angle = Math.atan2(oArr[iy], oArr[ix]);
                         let r = Math.sqrt(oArr[ix]**2 + oArr[iy]**2);
                         let targetR = r + (targetFreq * 100); 
@@ -589,7 +588,6 @@
             }
         }
 
-        // 일반 렌더러 대신, 빛 번짐(Bloom) 처리가 들어간 컴포저로 화면 출력
         composer.render();
     }
 
