@@ -6,14 +6,15 @@
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; color: #fff; font-family: sans-serif; }
         #ui { position: absolute; top: 20px; left: 20px; z-index: 10; background: rgba(0,0,0,0.7); padding: 20px; border-radius: 10px; }
-        input { margin-bottom: 10px; display: block; }
+        input { margin-bottom: 10px; display: block; color: white; }
+        #status { font-size: 14px; color: #00ffcc; margin-top: 10px; }
     </style>
 </head>
 <body>
 
 <div id="ui">
     <h3>MP3 뮤직비디오 비주얼라이저</h3>
-    <input type="file" id="audio-file" accept="audio/mp3">
+    <input type="file" id="audio-file" accept="audio/*">
     <div id="status">파일을 선택하면 재생됩니다.</div>
 </div>
 
@@ -27,10 +28,11 @@
     document.body.appendChild(renderer.domElement);
     camera.position.z = 200;
 
-    // 2. 파티클 시스템 생성
+    // 2. 파티클 시스템 생성 (원래 위치로 돌아오는 물리 적용)
     const particles = new THREE.Geometry();
     for (let i = 0; i < 8000; i++) {
         let p = new THREE.Vector3(Math.random()*600-300, Math.random()*600-300, Math.random()*600-300);
+        p.originalPos = p.clone(); // 원래 위치를 기억하게 함
         p.velocity = new THREE.Vector3(0,0,0);
         particles.vertices.push(p);
     }
@@ -38,48 +40,87 @@
     const particleSystem = new THREE.Points(particles, mat);
     scene.add(particleSystem);
 
-    // 3. 오디오 분석 설정
+    // 3. 오디오 엔진 설정
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const analyser = audioCtx.createAnalyser();
     analyser.fftSize = 256;
     let dataArray = new Uint8Array(analyser.frequencyBinCount);
+    let currentSource = null; // 현재 재생 중인 소스 추적
 
-    document.getElementById('audio-file').onchange = function() {
-        const file = this.files[0];
+    // 4. 파일 로딩 및 재생 로직
+    document.getElementById('audio-file').onchange = function(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        // [핵심 해결] 브라우저에 의해 일시정지된 오디오 컨텍스트를 강제로 깨웁니다.
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+
+        document.getElementById('status').innerText = "음원 분석 중... 잠시만 기다려주세요.";
+
         const reader = new FileReader();
         reader.onload = function(e) {
-            audioCtx.decodeAudioData(e.target.result, buffer => {
-                const source = audioCtx.createBufferSource();
-                source.buffer = buffer;
-                source.connect(analyser);
+            audioCtx.decodeAudioData(e.target.result, function(buffer) {
+                // 다른 곡을 선택하면 이전 곡 정지
+                if (currentSource) {
+                    currentSource.stop();
+                }
+
+                currentSource = audioCtx.createBufferSource();
+                currentSource.buffer = buffer;
+                currentSource.connect(analyser);
                 analyser.connect(audioCtx.destination);
-                source.start(0);
+                currentSource.start(0);
+
                 document.getElementById('status').innerText = "재생 중: " + file.name;
+            }, function(err) {
+                // 파일 형식 오류 처리
+                document.getElementById('status').innerText = "오류: 지원하지 않는 음악 파일입니다.";
+                console.error("Audio decoding failed: ", err);
             });
         };
         reader.readAsArrayBuffer(file);
     };
 
-    // 4. 애니메이션 루프
+    // 5. 애니메이션 및 물리 루프
     function animate() {
         requestAnimationFrame(animate);
+        
         analyser.getByteFrequencyData(dataArray);
+        let bass = dataArray[2] / 255; // 저음역대 추출 (0 ~ 1)
 
-        let bass = dataArray[2] / 255; // 저음역대 추출
-
+        // 전체 시스템 회전 속도를 비트에 연동
         particleSystem.rotation.y += 0.002 + (bass * 0.05);
 
         particles.vertices.forEach(p => {
-            if (bass > 0.5) {
-                p.x += (Math.random() - 0.5) * bass * 10;
-                p.y += (Math.random() - 0.5) * bass * 10;
+            if (bass > 0.6) { 
+                // 비트가 강할 때 파티클이 폭발하듯 튀어 오름
+                p.x += (Math.random() - 0.5) * bass * 20;
+                p.y += (Math.random() - 0.5) * bass * 20;
+                p.z += (Math.random() - 0.5) * bass * 20;
+            } else {
+                // 비트가 약할 때는 서서히 원래 위치로 복귀 (우주로 날아가는 것 방지)
+                p.x += (p.originalPos.x - p.x) * 0.05;
+                p.y += (p.originalPos.y - p.y) * 0.05;
+                p.z += (p.originalPos.z - p.z) * 0.05;
             }
         });
+        
+        // 강한 비트에서 색상이 무작위로 화려하게 변하도록 추가
+        if (bass > 0.85) {
+            mat.color.setHSL(Math.random(), 1.0, 0.6); 
+        } else {
+            // 평소엔 원래 색상(민트색)으로 천천히 복귀
+            mat.color.lerp(new THREE.Color(0x00ffcc), 0.1);
+        }
+
         particles.verticesNeedUpdate = true;
         renderer.render(scene, camera);
     }
     animate();
 
+    // 창 크기 조절 대응
     window.addEventListener('resize', () => {
         renderer.setSize(window.innerWidth, window.innerHeight);
         camera.aspect = window.innerWidth / window.innerHeight;
