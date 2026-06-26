@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Ultimate Audio Visualizer - Pro Studio</title>
+    <title>UAV_V002</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; }
         
@@ -37,9 +37,17 @@
             border-radius: 5px; cursor: pointer; color: black; font-weight: bold; font-size: 14px; transition: 0.2s;
         }
         .main-btn:hover { background-color: #00ccaa; }
+
+        .record-btn {
+            background-color: #ff3366; color: white; margin-top: 15px;
+            animation: pulse 2s infinite; display: none;
+        }
+        .record-btn:hover { background-color: #ff1144; }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255, 51, 102, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(255, 51, 102, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 51, 102, 0); } }
         
         #status { font-size: 12px; color: #aaa; margin-top: 10px; line-height: 1.4; word-break: break-all; text-align: center;}
         .recording-badge { color: #ff3366; font-weight: bold; animation: blink 1.5s infinite; }
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
         
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: #111; }
@@ -65,18 +73,28 @@
         <select id="ctrl-mode">
             <option value="multilayer" selected>★ 멀티 레이어 (저/중/고음 완전 분리)</option>
             <option value="fluid">단일: 유체 흐름 (Houdini Fluid)</option>
-            <option value="terrain">단일: 오디오 지형 (Orbit Terrain)</option>
+            <option value="terrain">단일: 오디오 지형 (Terrain)</option>
             <option value="explosion">단일: 비트 폭발 (Emitter)</option>
             <option value="wormhole">단일: 은하계 터널 (Wormhole)</option>
             <option value="spiral">단일: 나선 은하 (Spiral)</option>
         </select>
     </div>
 
-    <div class="section-title">[글로벌 비주얼 설정]</div>
+    <div class="section-title">[카메라 구도 세팅]</div>
     <div class="control-group">
-        <label>줌 인/아웃 (Camera) <span id="val-zoom">300</span></label>
-        <input type="range" id="ctrl-zoom" min="50" max="1000" value="300" step="10">
+        <label>카메라 X (좌우) <span id="val-cam-x">0</span></label>
+        <input type="range" id="ctrl-cam-x" min="-1000" max="1000" value="0" step="10">
     </div>
+    <div class="control-group">
+        <label>카메라 Y (상하) <span id="val-cam-y">0</span></label>
+        <input type="range" id="ctrl-cam-y" min="-1000" max="1000" value="0" step="10">
+    </div>
+    <div class="control-group">
+        <label>카메라 Z (거리) <span id="val-cam-z">300</span></label>
+        <input type="range" id="ctrl-cam-z" min="50" max="1500" value="300" step="10">
+    </div>
+
+    <div class="section-title">[글로벌 비주얼 설정]</div>
     <div class="control-group">
         <label>파티클 기본 크기 <span id="val-size">2.0</span></label>
         <input type="range" id="ctrl-size" min="0.5" max="10" value="2.0" step="0.1">
@@ -99,24 +117,31 @@
     </div>
 
     <div id="audio-input-area">
-        <button id="start-btn" class="main-btn">오디오 엔진 활성화</button>
+        <button id="init-btn" class="main-btn">오디오 시스템 초기화</button>
         <div id="file-select-box" style="display: none; margin-top:10px;">
             <input type="file" id="audio-file" accept="audio/*">
-            <div id="status">MP3를 선택하면 <strong>자동 녹화</strong>가 시작됩니다.</div>
+            <div id="status">MP3를 선택하고 구도를 세팅하세요.</div>
+            <button id="record-btn" class="main-btn record-btn">▶ 녹화 및 재생 시작</button>
         </div>
     </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
+    // --- 1. Three.js 기본 설정 ---
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 3000);
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 4000);
     const renderer = new THREE.WebGLRenderer({antialias: true, preserveDrawingBuffer: true});
     document.body.appendChild(renderer.domElement);
     
     const ctrlRatio = document.getElementById('ctrl-ratio');
     const ctrlMode = document.getElementById('ctrl-mode');
-    const ctrlZoom = document.getElementById('ctrl-zoom');
+    
+    // 카메라 컨트롤 UI 바인딩
+    const ctrlCamX = document.getElementById('ctrl-cam-x');
+    const ctrlCamY = document.getElementById('ctrl-cam-y');
+    const ctrlCamZ = document.getElementById('ctrl-cam-z');
+    
     const ctrlSize = document.getElementById('ctrl-size');
     const ctrlRandom = document.getElementById('ctrl-random');
     const ctrlSens = document.getElementById('ctrl-sens');
@@ -137,12 +162,14 @@
     window.addEventListener('resize', () => { if (ctrlRatio.value === 'fit') updateAspectRatio(); });
     updateAspectRatio(); 
 
-    ctrlZoom.oninput = (e) => updateUIVal('val-zoom', e.target.value);
+    ctrlCamX.oninput = (e) => updateUIVal('val-cam-x', e.target.value);
+    ctrlCamY.oninput = (e) => updateUIVal('val-cam-y', e.target.value);
+    ctrlCamZ.oninput = (e) => updateUIVal('val-cam-z', e.target.value);
     ctrlSens.oninput = (e) => updateUIVal('val-sens', e.target.value);
     let baseColor = new THREE.Color(ctrlColor.value);
     ctrlColor.oninput = (e) => baseColor.set(e.target.value);
 
-    // 코어 시스템
+    // --- 코어 시스템 ---
     const coreGeometry = new THREE.IcosahedronGeometry(25, 1);
     const coreMaterial = new THREE.MeshBasicMaterial({color: 0x00ffcc, wireframe: true, transparent: true, opacity: 0.8});
     const coreMesh = new THREE.Mesh(coreGeometry, coreMaterial);
@@ -173,7 +200,7 @@
         reader.readAsDataURL(file);
     };
 
-    // 파티클 시스템 (5개 그룹)
+    // --- 2. 파티클 시스템 ---
     const circleCanvas = document.createElement('canvas');
     circleCanvas.width = 64; circleCanvas.height = 64;
     const ctx = circleCanvas.getContext('2d');
@@ -265,86 +292,125 @@
     resetParticles(currentMode);
     ctrlMode.onchange = (e) => resetParticles(e.target.value);
 
-    // 오디오 및 녹화 시스템
+    // --- 3. 오디오 엔진 및 녹화 파이프라인 ---
     let audioCtx, analyser, dataArray, currentSource;
+    let decodedBuffer = null; // 디코딩된 음악 저장용
+    let isPlaying = false;    // 재생 상태 플래그
     let mediaRecorder, recordedChunks = [];
     
-    const startBtn = document.getElementById('start-btn');
+    const initBtn = document.getElementById('init-btn');
     const fileSelectBox = document.getElementById('file-select-box');
     const audioInput = document.getElementById('audio-file');
+    const recordBtn = document.getElementById('record-btn');
     const statusEl = document.getElementById('status');
+    let loadedFileName = "";
 
-    startBtn.onclick = function() {
+    // 1단계: 엔진 초기화
+    initBtn.onclick = function() {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         analyser = audioCtx.createAnalyser();
         analyser.fftSize = 512; 
         dataArray = new Uint8Array(analyser.frequencyBinCount);
 
-        startBtn.style.display = 'none';
+        initBtn.style.display = 'none';
         fileSelectBox.style.display = 'block';
     };
 
+    // 2단계: 파일 로드 및 디코딩 (대기 상태)
     audioInput.onchange = function(event) {
         const file = event.target.files[0];
         if (!file) return;
+        
+        loadedFileName = file.name;
         statusEl.innerText = "음원 디코딩 중... 잠시만 기다려주세요.";
+        recordBtn.style.display = 'none';
 
         const reader = new FileReader();
         reader.onload = function(e) {
             audioCtx.decodeAudioData(e.target.result, function(buffer) {
-                if (currentSource) currentSource.stop();
-                currentSource = audioCtx.createBufferSource();
-                currentSource.buffer = buffer;
-                currentSource.connect(analyser);
+                decodedBuffer = buffer;
                 
-                const audioDest = audioCtx.createMediaStreamDestination();
-                analyser.connect(audioCtx.destination);
-                analyser.connect(audioDest);
-                
-                const canvasStream = renderer.domElement.captureStream(60);
-                const combinedStream = new MediaStream([...canvasStream.getVideoTracks(), ...audioDest.stream.getAudioTracks()]);
-                
-                recordedChunks = [];
-                mediaRecorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm; codecs=vp9' });
-                mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
-                mediaRecorder.onstop = () => {
-                    const blob = new Blob(recordedChunks, { type: 'video/webm' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.style = 'display: none'; a.href = url;
-                    a.download = file.name.replace(/\.[^/.]+$/, "") + `_VFX_${ctrlRatio.value.replace(':','x')}.webm`;
-                    document.body.appendChild(a); a.click();
-                    window.URL.revokeObjectURL(url);
-                    statusEl.innerText = "녹화 완료! 지정하신 해상도로 저장되었습니다.";
-                    ctrlRatio.disabled = false;
-                };
-
-                currentSource.onended = () => { if(mediaRecorder.state === 'recording') mediaRecorder.stop(); };
-                currentSource.start(0);
-                mediaRecorder.start();
-                
-                ctrlRatio.disabled = true; 
-                statusEl.innerHTML = `<span class="recording-badge">● REC</span> 자동 녹화 중: ${file.name}`;
+                // 디코딩 성공, 구도 세팅 모드로 진입
+                statusEl.innerHTML = "<strong>준비 완료!</strong> 카메라 구도와 비율을 세팅한 후 아래 버튼을 누르세요.";
+                recordBtn.style.display = 'block';
             });
         };
         reader.readAsArrayBuffer(file);
     };
 
-    // 렌더링 루프
+    // 3단계: 시작 버튼 클릭 (재생 및 녹화)
+    recordBtn.onclick = function() {
+        if (!decodedBuffer) return;
+        
+        // 이전 소스 정리
+        if (currentSource) currentSource.stop();
+        
+        // 새로운 소스 노드 생성
+        currentSource = audioCtx.createBufferSource();
+        currentSource.buffer = decodedBuffer;
+        currentSource.connect(analyser);
+        
+        // 녹음용 노드 생성 및 연결
+        const audioDest = audioCtx.createMediaStreamDestination();
+        analyser.connect(audioCtx.destination); // 스피커로 출력
+        analyser.connect(audioDest);            // 녹화기로 출력
+        
+        // 화면 캡처 및 MediaRecorder 세팅
+        const canvasStream = renderer.domElement.captureStream(60);
+        const combinedStream = new MediaStream([...canvasStream.getVideoTracks(), ...audioDest.stream.getAudioTracks()]);
+        
+        recordedChunks = [];
+        mediaRecorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm; codecs=vp9' });
+        mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
+        mediaRecorder.onstop = () => {
+            const blob = new Blob(recordedChunks, { type: 'video/webm' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style = 'display: none'; a.href = url;
+            a.download = loadedFileName.replace(/\.[^/.]+$/, "") + `_VFX_${ctrlRatio.value.replace(':','x')}.webm`;
+            document.body.appendChild(a); a.click();
+            window.URL.revokeObjectURL(url);
+            
+            statusEl.innerText = "녹화 완료! 지정하신 해상도로 저장되었습니다.";
+            ctrlRatio.disabled = false;
+            isPlaying = false;
+            recordBtn.style.display = 'block'; // 다시 녹화할 수 있게 버튼 표시
+            recordBtn.innerText = "▶ 다시 녹화하기";
+        };
+
+        // 음악 종료 시 녹화 자동 종료
+        currentSource.onended = () => { 
+            if(mediaRecorder.state === 'recording') mediaRecorder.stop(); 
+        };
+
+        // 시작
+        currentSource.start(0);
+        mediaRecorder.start();
+        isPlaying = true;
+        
+        // UI 잠금 및 상태 변경
+        ctrlRatio.disabled = true; 
+        recordBtn.style.display = 'none';
+        statusEl.innerHTML = `<span class="recording-badge">● REC</span> 자동 녹화 중: ${loadedFileName}`;
+    };
+
+    // --- 4. 렌더링 루프 (대기 및 재생 상태 통합) ---
     let time = 0;
-    let terrainCameraAngle = 0; 
     let burstLocalIndex = 0;
 
     function animate() {
         requestAnimationFrame(animate);
         time += 0.01;
         
+        // 카메라 강제 배치 (사용자 입력 X,Y,Z 값 즉시 적용)
+        camera.position.set(parseFloat(ctrlCamX.value), parseFloat(ctrlCamY.value), parseFloat(ctrlCamZ.value));
+        camera.lookAt(0, 0, 0); 
+        
         let sensitivity = parseFloat(ctrlSens.value);
-        let zoomRadius = parseFloat(ctrlZoom.value);
         let bass = 0, mid = 0, treble = 0;
 
-        // 음악이 재생 중일 때만 데이터 업데이트
-        if (analyser) {
+        // 음악이 [재생 중일 때만] 오디오 데이터 업데이트
+        if (isPlaying && analyser) {
             analyser.getByteFrequencyData(dataArray);
             let bSum = 0, mSum = 0, tSum = 0;
             for(let i=0; i<10; i++) bSum += dataArray[i];
@@ -356,19 +422,7 @@
             treble = (tSum / 100 / 255) * sensitivity;
         }
 
-        // 카메라 워킹
-        if (currentMode === 'terrain') {
-            terrainCameraAngle += 0.002 + (bass * 0.015);
-            camera.position.x = Math.cos(terrainCameraAngle) * zoomRadius;
-            camera.position.z = Math.sin(terrainCameraAngle) * zoomRadius;
-            camera.position.y = zoomRadius * 0.4; 
-            camera.lookAt(0, 0, 0); 
-        } else {
-            camera.position.set(0, 0, zoomRadius);
-            camera.lookAt(0, 0, 0);
-        }
-
-        // 코어(스피어 or 로고) 리액션
+        // 코어 리액션
         if(coreMesh.visible) {
             let scale = 1 + (bass * 3);
             coreMesh.scale.set(scale, scale, scale);
@@ -382,7 +436,7 @@
             coreSprite.scale.set(imgScale, imgScale, 1);
         }
 
-        // --- 그룹별 독립 애니메이션 계산 ---
+        // 파티클 애니메이션
         for (let g = 0; g < numGroups; g++) {
             let pArr = posArrays[g], oArr = origArrays[g], vArr = velArrays[g];
             
@@ -482,7 +536,7 @@
                     }
                 }
                 else if (currentMode === 'wormhole') {
-                    let speed = 8 + (bass * 30); 
+                    let speed = 2 + (bass * 30); // 기본 속도 2 부여 (대기 상태에서도 비행)
                     for (let i = 0; i < particlesPerGroup; i++) {
                         let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
                         pArr[iz] += speed;
@@ -515,10 +569,7 @@
         renderer.render(scene, camera);
     }
 
-    // [해결의 핵심] 애니메이션 엔진 상시 가동!
-    // 파일 가장 마지막에 위치하여 페이지 로딩 즉시 3D 공간을 렌더링하기 시작합니다.
-    animate();
-    console.log("Animation Engine Started Successfully.");
+    animate(); // 페이지 로드 시 백그라운드 렌더링 시작
 </script>
 </body>
 </html>
