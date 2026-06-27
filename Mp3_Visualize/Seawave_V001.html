@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>CWSS_V001-Cinematic Wave & Subtitle Studio</title>
+    <title>Cinematic Wave & Smart Subtitle Studio</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #020205; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; }
         canvas { width: 100vw !important; height: 100vh !important; object-fit: contain; }
@@ -61,7 +61,7 @@
 <body>
 
 <div id="ui-left" class="ui-panel">
-    <h3>시네마틱 파도 & 자막 스튜디오</h3>
+    <h3>시네마틱 파도 & 스마트 자막</h3>
     
     <div class="section-title" style="color:#00ffcc;">[파일 업로드]</div>
     <div>
@@ -77,6 +77,14 @@
     <div class="control-group">
         <label>자막 상하 위치 (Y) <span id="val-sub-y">1300</span></label>
         <input type="range" id="ctrl-sub-y" min="200" max="1800" value="1300" step="10">
+    </div>
+    <div class="control-group">
+        <label style="color:#00ffcc;">자막 자동 줄바꿈 폭 (Max Width) <span id="val-sub-max-w">1600</span></label>
+        <input type="range" id="ctrl-sub-max-w" min="500" max="2000" value="1600" step="50">
+    </div>
+    <div class="control-group">
+        <label style="color:#00ffcc;">줄 간격 (Line Height) <span id="val-sub-lh">1.3</span></label>
+        <input type="range" id="ctrl-sub-lh" min="1.0" max="2.5" value="1.3" step="0.1">
     </div>
 
     <div class="section-title" style="color:#ff3366;">[자막 파도 타이밍 제어 (Sync)]</div>
@@ -103,7 +111,6 @@
         <input type="range" id="ctrl-wave-detail" min="0.5" max="5.0" value="2.0" step="0.1">
     </div>
 
-    <div class="section-title" style="color:#ffaa00;">[제너러티브 해안선]</div>
     <button id="btn-randomize" class="main-btn rand-btn">🎲 지형 무작위 섞기</button>
 
     <div class="section-title">[비디오 해상도]</div>
@@ -145,11 +152,11 @@
 
     <div class="section-title" style="color:#00ffcc;">[다이나믹 오디오 타격감]</div>
     <div class="control-group">
-        <label>저음 (Bass / 베이스 파장) <span id="val-react-bass">1.5</span></label>
+        <label>저음 파워 (Bass / 베이스 파장) <span id="val-react-bass">1.5</span></label>
         <input type="range" id="ctrl-react-bass" min="0.0" max="3.0" value="1.5" step="0.1">
     </div>
     <div class="control-group">
-        <label>고음 (Treble / 하이햇 교차 파동) <span id="val-react-treb">1.5</span></label>
+        <label>고음 파워 (Treble / 하이햇 교차 파동) <span id="val-react-treb">1.5</span></label>
         <input type="range" id="ctrl-react-treb" min="0.0" max="3.0" value="1.5" step="0.1">
     </div>
     <div class="control-group">
@@ -259,6 +266,8 @@
     
     const ctrlSubSize = document.getElementById('ctrl-sub-size');
     const ctrlSubY = document.getElementById('ctrl-sub-y');
+    const ctrlSubMaxW = document.getElementById('ctrl-sub-max-w');
+    const ctrlSubLh = document.getElementById('ctrl-sub-lh');
 
     document.getElementById('btn-randomize').onclick = () => { globalRandomSeed = Math.random() * 1000.0; };
 
@@ -269,7 +278,7 @@
     }
     ctrlRatio.onchange = updateAspectRatio; window.addEventListener('resize', () => { if(ctrlRatio.value==='fit') updateAspectRatio(); }); updateAspectRatio();
 
-    ['cam-x', 'cam-y', 'cam-z', 'react-bass', 'react-treb', 'smooth', 'bloom', 'grain', 'vignette', 'wave-angle', 'wave-detail', 'surge-speed', 'sub-size', 'sub-y'].forEach(id => {
+    ['cam-x', 'cam-y', 'cam-z', 'react-bass', 'react-treb', 'smooth', 'bloom', 'grain', 'vignette', 'wave-angle', 'wave-detail', 'surge-speed', 'sub-size', 'sub-y', 'sub-max-w', 'sub-lh'].forEach(id => {
         document.getElementById(`ctrl-${id}`).addEventListener('input', (e) => {
             let suffix = id==='wave-angle'?'°':'';
             updateUIVal(`val-${id}`, e.target.value, suffix);
@@ -277,15 +286,17 @@
             if(id === 'grain') artFilterPass.uniforms.uGrain.value = parseFloat(e.target.value);
             if(id === 'vignette') artFilterPass.uniforms.uVignette.value = parseFloat(e.target.value);
             
-            // 자막 크기나 위치 슬라이더를 조절하면 현재 자막을 즉시 재렌더링하여 보여줌
-            if(id === 'sub-size' || id === 'sub-y') updateSubtitleCanvas(currentSubtitle); 
+            // 자막 관련 슬라이더 조작 시 실시간 렌더링 업데이트
+            if(['sub-size', 'sub-y', 'sub-max-w', 'sub-lh'].includes(id)) {
+                updateSubtitleCanvas(currentSubtitle); 
+            }
         });
     });
 
     ctrlRevealTime.addEventListener('input', (e) => updateUIVal('val-reveal-time', e.target.value, '초 전'));
     ctrlCoverTime.addEventListener('input', (e) => updateUIVal('val-cover-time', e.target.value, '초 전'));
 
-    // --- 2. 동적 자막 캔버스 텍스처 (오토 스케일링 적용) ---
+    // --- 2. 스마트 자동 줄바꿈 자막 캔버스 엔진 (Word-Wrap) ---
     const textCanvas = document.createElement('canvas');
     textCanvas.width = 2048; textCanvas.height = 2048; 
     const textCtx = textCanvas.getContext('2d');
@@ -293,7 +304,7 @@
     textTex.generateMipmaps = false; textTex.minFilter = THREE.LinearFilter;
 
     let parsedSRT = [];
-    let currentSubtitle = "시네마틱 파도 스튜디오"; // 초기 대기용 텍스트
+    let currentSubtitle = "시네마틱 파도 스튜디오\n(테스트 자막입니다. 재생하면 사라집니다)"; 
 
     function parseSRTData(data) {
         const regex = /(?:\d+)\s+(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\s+([\s\S]*?)(?=(?:\s*\n\s*\n|$))/g;
@@ -308,49 +319,61 @@
         return (parseInt(p[0])*3600 + parseInt(p[1])*60 + parseInt(p[2]))*1000 + parseInt(p[3]);
     }
 
-    // ★ 오토 스케일링 렌더링 엔진
+    // ★ 스마트 줄바꿈(Word Wrap) 알고리즘
     function updateSubtitleCanvas(text) {
         textCtx.clearRect(0, 0, 2048, 2048);
-        if(text) {
-            let baseSize = parseInt(ctrlSubSize.value);
-            let baseY = parseInt(ctrlSubY.value);
-            let lines = text.split('\n');
-
-            textCtx.font = 'bold ' + baseSize + 'px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
-
-            // 1. 가장 긴 줄의 가로 폭(Width) 측정
-            let maxWidth = 0;
-            for(let i=0; i<lines.length; i++) {
-                let metrics = textCtx.measureText(lines[i]);
-                if(metrics.width > maxWidth) maxWidth = metrics.width;
-            }
-
-            // 2. 가로 폭이 1800px(안전 여백 포함)을 넘으면 폰트 크기 비율별 축소
-            let safeWidth = 1800;
-            if(maxWidth > safeWidth) {
-                let scale = safeWidth / maxWidth;
-                baseSize = Math.floor(baseSize * scale);
-                textCtx.font = 'bold ' + baseSize + 'px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
-            }
-
-            textCtx.fillStyle = 'rgba(255, 255, 255, 1.0)';
-            textCtx.textAlign = 'center';
-            textCtx.textBaseline = 'middle';
-            textCtx.shadowColor = 'rgba(255, 255, 255, 0.8)';
-            textCtx.shadowBlur = 10; 
-            
-            // 줄 수에 따라 세로 높이 중앙 정렬 재계산
-            let startY = baseY - ((lines.length - 1) * (baseSize * 0.6));
-            
-            for(let i=0; i<lines.length; i++) {
-                textCtx.fillText(lines[i], 1024, startY + (i * baseSize * 1.3));
-            }
+        if(!text) {
+            textTex.needsUpdate = true; return;
         }
+
+        let baseSize = parseInt(ctrlSubSize.value);
+        let baseY = parseInt(ctrlSubY.value);
+        let maxWidth = parseInt(ctrlSubMaxW.value); 
+        let lineHeightExt = parseFloat(ctrlSubLh.value); 
+
+        textCtx.font = 'bold ' + baseSize + 'px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
+        textCtx.fillStyle = 'rgba(255, 255, 255, 1.0)';
+        textCtx.textAlign = 'center';
+        textCtx.textBaseline = 'middle';
+        textCtx.shadowColor = 'rgba(255, 255, 255, 0.8)';
+        textCtx.shadowBlur = 10; 
+
+        // 1. 원본 텍스트를 엔터(\n) 단위로 먼저 쪼갬
+        let rawLines = text.split('\n');
+        let wrappedLines = [];
+
+        // 2. 단어(띄어쓰기) 단위로 쪼개서 가로 폭을 넘는지 검사하여 줄바꿈 처리
+        for(let i=0; i<rawLines.length; i++) {
+            let words = rawLines[i].split(' ');
+            let currentLine = words[0];
+
+            for(let j=1; j<words.length; j++) {
+                let word = words[j];
+                let testLine = currentLine + " " + word;
+                let metrics = textCtx.measureText(testLine);
+                
+                if(metrics.width < maxWidth) {
+                    currentLine = testLine; // 아직 폭이 남으면 단어를 이어붙임
+                } else {
+                    wrappedLines.push(currentLine); // 폭을 넘으면 기존 라인을 배열에 넣고
+                    currentLine = word; // 새로운 라인을 단어부터 다시 시작
+                }
+            }
+            wrappedLines.push(currentLine); // 마지막 남은 라인 추가
+        }
+
+        // 3. 쪼개진 줄(wrappedLines) 수에 맞춰 Y 좌표 중앙 정렬 계산
+        let totalHeight = (wrappedLines.length - 1) * (baseSize * lineHeightExt);
+        let startY = baseY - (totalHeight / 2); 
+        
+        for(let i=0; i<wrappedLines.length; i++) {
+            textCtx.fillText(wrappedLines[i], 1024, startY + (i * baseSize * lineHeightExt));
+        }
+
         textTex.needsUpdate = true;
     }
     
-    // 초기 로딩 시 기본 텍스트 한 번 뿌려주기
-    updateSubtitleCanvas(currentSubtitle);
+    updateSubtitleCanvas(currentSubtitle); // 초기 실행
 
     document.getElementById('srt-file').onchange = function(e) {
         const file = e.target.files[0]; if (!file) return;
@@ -427,6 +450,7 @@
                 vec3 finalColor;
                 vec3 baseSand = cSand;
                 if (distToWave > -0.06 && distToWave <= 0.0) baseSand *= 0.85; 
+                
                 baseSand = mix(baseSand, cSand * 0.3, textAlpha * 0.9);
 
                 if (distToWave < 0.0) { 
@@ -468,6 +492,7 @@
     waveMesh.rotation.x = -Math.PI / 2; 
     scene.add(waveMesh);
 
+    // 색상 이벤트
     ctrlColorStart.oninput = (e) => { waveShaderMat.uniforms.cShallow.value.set(e.target.value); };
     ctrlColorEnd.oninput = (e) => { waveShaderMat.uniforms.cDeep.value.set(e.target.value); };
     ctrlColorFoam.oninput = (e) => { waveShaderMat.uniforms.cFoam.value.set(e.target.value); }; 
@@ -549,7 +574,6 @@
             rawBass = (bSum / 10 / 255) * parseFloat(ctrlReactBass.value);
             rawTreble = (tSum / 120 / 255) * parseFloat(ctrlReactTreb.value);
             
-            // --- ★ SRT 자막 타이밍 및 파도 덮침(Surge) 로직 ---
             let elapsedMs = (audioCtx.currentTime - audioStartTime) * 1000;
             let targetSurge = 1.0; 
             let activeText = "";
