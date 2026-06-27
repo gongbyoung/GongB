@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>UAV_V002.03</title>
+    <title>Ultimate Audio Reactive Flower Studio</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; }
         canvas { width: 100vw !important; height: 100vh !important; object-fit: contain; }
@@ -229,16 +229,16 @@
     camera.position.set(0, 0, 1200); camera.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({antialias: true, preserveDrawingBuffer: true});
-    renderer.setPixelRatio(window.devicePixelRatio); // 해상도 향상
+    renderer.setPixelRatio(window.devicePixelRatio); 
     document.body.appendChild(renderer.domElement);
 
-    // --- ★ 커스텀 셰이더 (RGB Shift + Vignette + 필름 그레인 통합) ---
+    // --- 커스텀 셰이더 ---
     const CustomArtShader = {
         uniforms: {
             "tDiffuse": { value: null },
             "uTime": { value: 0.0 },
             "uGrain": { value: 0.08 },
-            "uRgbOffset": { value: 0.0 }, // 기본 선명하게(0) 세팅
+            "uRgbOffset": { value: 0.0 }, 
             "uVignette": { value: 1.0 }
         },
         vertexShader: `
@@ -253,25 +253,21 @@
             uniform float uVignette;
             varying vec2 vUv;
             
-            // 난수 생성 함수 (노이즈용)
             float rand(vec2 co){
                 return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
             }
 
             void main() {
-                // 1. 색수차 (RGB Shift)
                 vec4 cr = texture2D(tDiffuse, vUv + vec2(uRgbOffset, 0.0));
                 vec4 cg = texture2D(tDiffuse, vUv);
                 vec4 cb = texture2D(tDiffuse, vUv - vec2(uRgbOffset, 0.0));
                 vec4 color = vec4(cr.r, cg.g, cb.b, cg.a);
                 
-                // 2. 비네팅 (Vignette)
                 vec2 uv = vUv - 0.5;
                 float d = length(uv);
                 float vignette = smoothstep(0.9, 0.3, d * uVignette);
                 color.rgb *= vignette;
                 
-                // 3. 필름 그레인 (Film Noise)
                 float noise = (rand(vUv + uTime) - 0.5) * uGrain;
                 color.rgb += noise;
                 
@@ -329,7 +325,6 @@
     window.addEventListener('resize', () => { if (ctrlRatio.value === 'fit') updateAspectRatio(); });
     updateAspectRatio(); 
 
-    // UI 리스너
     ctrlScale.oninput = (e) => { updateUIVal('val-scale', e.target.value); buildFlowers(); };
     ctrlPetalCount.oninput = (e) => { updateUIVal('val-petal-count', e.target.value); buildFlowers(); };
     ctrlPetalW.oninput = (e) => { updateUIVal('val-petal-w', e.target.value); buildFlowers(); };
@@ -346,10 +341,8 @@
     ctrlGrain.oninput = (e) => { artFilterPass.uniforms.uGrain.value = parseFloat(e.target.value); updateUIVal('val-grain', e.target.value); };
     ctrlRgb.oninput = (e) => { artFilterPass.uniforms.uRgbOffset.value = parseFloat(e.target.value) * 0.001; updateUIVal('val-rgb', e.target.value); };
     ctrlVignette.oninput = (e) => { artFilterPass.uniforms.uVignette.value = parseFloat(e.target.value); updateUIVal('val-vignette', e.target.value); };
-
     ctrlOpacity.oninput = (e) => { updateUIVal('val-opacity', e.target.value); updateMaterialsOpacity(); };
     
-    // 색상 변수 파싱
     function getColorStart() { return new THREE.Color(ctrlColorStart.value); }
     function getColorEnd() { return new THREE.Color(ctrlColorEnd.value); }
 
@@ -367,7 +360,7 @@
         fluidPos[i*3] = (Math.random() - 0.5) * 4000;
         fluidPos[i*3+1] = (Math.random() - 0.5) * 4000;
         fluidPos[i*3+2] = (Math.random() - 0.5) * 1000 - 500; 
-        fluidColorSeeds[i] = Math.random(); // 0~1 사이 고유 시드 부여
+        fluidColorSeeds[i] = Math.random(); 
     }
     fluidGeo.setAttribute('position', new THREE.BufferAttribute(fluidPos, 3));
     fluidGeo.setAttribute('color', new THREE.BufferAttribute(fluidColors, 3));
@@ -399,7 +392,7 @@
         fluidGeo.attributes.color.needsUpdate = true;
     }
     ctrlFluidColorMode.onchange = updateFluidColors;
-    updateFluidColors(); // 초기 세팅
+    updateFluidColors(); 
 
     // --- 3. 16종 꽃잎 및 꽃술 생성 엔진 ---
     function getPetalGeometry(shapeType) {
@@ -477,7 +470,7 @@
         else if (count === 3) { createFlowerObj(0, 150, 0.7); createFlowerObj(-200, -100, 0.7); createFlowerObj(200, -100, 0.7); }
         else if (count === 5) { createFlowerObj(0, 0, 0.8); createFlowerObj(-250, 200, 0.4); createFlowerObj(250, 200, 0.4); createFlowerObj(-200, -200, 0.4); createFlowerObj(200, -200, 0.4); }
         else if (count === 9) { for(let x=-1; x<=1; x++) { for(let y=-1; y<=1; y++) { let s = (x===0 && y===0) ? 0.7 : 0.4; createFlowerObj(x*280, y*280, s); } } }
-        updateMaterialsColor(); // 재생성 후 초기 색상 할당
+        updateMaterialsColor(); 
     }
     
     function updateMaterialsOpacity() {
@@ -514,11 +507,10 @@
         reader.readAsDataURL(file);
     };
 
-    // --- 4. 오디오 엔진 및 파일 시스템 (★에러 완벽 수정부) ---
-    // currentSource를 최상단에 확실하게 선언하여 스코프 안전성 확보
+    // --- 4. 오디오 엔진 및 파일 시스템 (전역 스코프 동기화) ---
     let audioCtx, analyser, dataArray;
     let decodedBuffer = null; let isPlaying = false; 
-    let currentSource = null; // 수정: 초기값을 null로 전역 선언
+    let currentSource = null; // 인코딩 붕괴 버그 해결
     let mediaRecorder, recordedChunks = [];
     let smoothedData = new Float32Array(512);
     
@@ -537,7 +529,7 @@
 
     audioInput.onchange = function(event) {
         const file = event.target.files[0]; if (!file) return;
-        loadedFileName = file.name; statusEl.innerText = "음원 디코딩 중... 잠시만 기다려주세요."; recordBtn.style.display = 'none';
+        loadedFileName = file.name; statusEl.innerText = "음원 디코딩 중... 잠시만 기울여주세요."; recordBtn.style.display = 'none';
         const reader = new FileReader();
         reader.onload = function(e) {
             audioCtx.decodeAudioData(e.target.result, function(buffer) {
@@ -545,30 +537,40 @@
                 statusEl.innerHTML = "<strong>준비 완료!</strong> 셋팅을 맞추고 아래 버튼을 누르세요."; recordBtn.style.display = 'block';
             });
         };
-        reader.readAsArrayBuffer(file);
+        reader.readAsBuffer ? reader.readAsBuffer(file) : reader.readAsArrayBuffer(file);
     };
 
     recordBtn.onclick = function() {
         if (!decodedBuffer) return;
-        // 수정: currentSource가 존재하면 안전하게 중지
         if (currentSource) { try { currentSource.stop(); } catch(e) {} }
         
         currentSource = audioCtx.createBufferSource(); currentSource.buffer = decodedBuffer; currentSource.connect(analyser);
         const audioDest = audioCtx.createMediaStreamDestination(); analyser.connect(audioCtx.destination); analyser.connect(audioDest);            
         const canvasStream = renderer.domElement.captureStream(60); const combinedStream = new MediaStream([...canvasStream.getVideoTracks(), ...audioDest.stream.getAudioTracks()]);
         
-        recordedChunks = []; mediaRecorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm; codecs=vp9' });
+        // ★ MP4 인코딩 사양 강제 매핑 및 화질 락 해제
+        let options = { mimeType: 'video/mp4; codecs=avc1', videoBitsPerSecond: 8000000 };
+        let ext = 'mp4';
+        
+        if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+            options = { mimeType: 'video/mp4' };
+            if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                options = { mimeType: 'video/webm; codecs=vp9', videoBitsPerSecond: 8000000 };
+                ext = 'webm';
+            }
+        }
+        
+        recordedChunks = []; mediaRecorder = new MediaRecorder(combinedStream, options);
         mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
         mediaRecorder.onstop = () => {
-            const blob = new Blob(recordedChunks, { type: 'video/webm' }); const url = URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.style = 'display: none'; a.href = url; a.download = loadedFileName.replace(/\.[^/.]+$/, "") + `_FlowerArt_${ctrlRatio.value.replace(':','x')}.webm`;
-            document.body.appendChild(a); a.click(); window.URL.revokeObjectURL(url);
-            statusEl.innerText = "녹화 완료! 영상이 저장되었습니다."; ctrlRatio.disabled = false; isPlaying = false; recordBtn.style.display = 'block';
+            const blob = new Blob(recordedChunks, { type: options.mimeType }); const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.style = 'display: none'; a.href = url; a.download = loadedFileName.replace(/\.[^/.]+$/, "") + `_FlowerArt_${ctrlRatio.value.replace(':','x')}.${ext}`;
+            document.body.appendChild(a); a.click(); window.URL.revokeObjectURL(url); statusEl.innerText = `녹화 완료! MP4 포맷으로 최적화 저장되었습니다.`; ctrlRatio.disabled = false; isPlaying = false; recordBtn.style.display = 'block';
         };
         currentSource.onended = () => { if(mediaRecorder.state === 'recording') mediaRecorder.stop(); };
         currentSource.start(0); mediaRecorder.start(); isPlaying = true;
         ctrlRatio.disabled = true; recordBtn.style.display = 'none';
-        statusEl.innerHTML = `<span class="recording-badge">● REC</span> 자동 녹화 및 고화질 렌더링 중...`;
+        statusEl.innerHTML = `<span class="recording-badge">● REC</span> [.${ext}] 인코더 렌더링 파이프라인 구동 중...`;
     };
 
     // --- 5. 애니메이션 렌더링 루프 ---
@@ -577,7 +579,6 @@
         requestAnimationFrame(animate);
         time += 0.01;
         
-        // 셰이더(필름 노이즈)에 시간값 전달
         artFilterPass.uniforms.uTime.value = time;
 
         let sensitivity = parseFloat(ctrlSens.value);
@@ -623,7 +624,6 @@
             for(let p=0; p<pCount; p++) {
                 let petal = flowerObj.petals[p]; let targetRotX = (Math.PI / 2.2) - (motionPetal * (Math.PI / 2.2));
                 petal.rotation.x = Math.max(0.0, targetRotX); 
-                // ★ 사용자 지정 RGB 범위 + 사운드 밝기 가중치 적용
                 let baseCol = new THREE.Color().lerpColors(cStart, cEnd, p/pCount);
                 baseCol.lerp(new THREE.Color(0xffffff), motionPetal * 0.4);
                 petal.material.color.copy(baseCol);
