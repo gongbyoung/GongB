@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Nature Fluid Studio v6.2 - Ultimate Realism (Bug Fixed)</title>
+    <title>Nature Fluid Studio v6.3 - Audio Reactive Coastline</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #020205; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; }
         canvas { width: 100vw !important; height: 100vh !important; object-fit: contain; }
@@ -62,7 +62,7 @@
 <body>
 
 <div id="ui-left" class="ui-panel">
-    <h3>자연 유체 스튜디오 v6.2</h3>
+    <h3>자연 유체 스튜디오 v6.3</h3>
     
     <div class="section-title" style="color:#00ffcc;">[시각 효과 모드 선택]</div>
     <div class="control-group">
@@ -86,7 +86,7 @@
             <input type="range" id="ctrl-wave-angle" min="0" max="360" value="180" step="5">
         </div>
         <div class="control-group">
-            <label style="color:#00ccff;">파도 밀려오는 힘 <span id="val-wave-dist">0.5</span></label>
+            <label style="color:#00ccff;">파도 기본 도달 거리 <span id="val-wave-dist">0.5</span></label>
             <input type="range" id="ctrl-wave-dist" min="0.1" max="1.0" value="0.5" step="0.05">
         </div>
         <div class="control-group">
@@ -96,7 +96,7 @@
     </div>
 
     <div class="section-title" style="color:#ffaa00;">[제너러티브 엔진]</div>
-    <button id="btn-randomize" class="main-btn rand-btn">🎲 형태 및 위치 무작위 섞기</button>
+    <button id="btn-randomize" class="main-btn rand-btn">🎲 지형 & 노이즈 무작위 섞기</button>
 
     <div class="section-title">[비디오 해상도]</div>
     <div class="control-group">
@@ -121,7 +121,7 @@
         <button id="init-btn" class="main-btn">오디오 & 엔진 켜기</button>
         <div id="file-select-box" style="display: none; margin-top:10px;">
             <input type="file" id="audio-file" accept="audio/*">
-            <div id="status">모드를 변경하며 느낌을 확인하세요.</div>
+            <div id="status">모드를 변경하며 파동의 효과를 확인하세요.</div>
             <button id="record-btn" class="main-btn record-btn">▶ MP4 렌더링 녹화 시작</button>
         </div>
     </div>
@@ -146,12 +146,16 @@
 
     <div class="section-title" style="color:#00ffcc;">[다이나믹 오디오 타격감]</div>
     <div class="control-group">
-        <label>저음 파워 (Bass / 파도 밀림) <span id="val-react-bass">1.0</span></label>
-        <input type="range" id="ctrl-react-bass" min="0.0" max="3.0" value="1.0" step="0.1">
+        <label>저음 파워 (Bass / 파도, 물방울) <span id="val-react-bass">1.5</span></label>
+        <input type="range" id="ctrl-react-bass" min="0.0" max="3.0" value="1.5" step="0.1">
     </div>
     <div class="control-group">
         <label>중음 파워 (Mid / 흔들림) <span id="val-react-mid">1.0</span></label>
         <input type="range" id="ctrl-react-mid" min="0.0" max="3.0" value="1.0" step="0.1">
+    </div>
+    <div class="control-group">
+        <label>고음 파워 (Treble / 교차 파동) <span id="val-react-treb">1.5</span></label>
+        <input type="range" id="ctrl-react-treb" min="0.0" max="3.0" value="1.5" step="0.1">
     </div>
     <div class="control-group">
         <label style="color:#ffaa00;">물방울 타격 흔들림 (Shake) <span id="val-shake">50</span></label>
@@ -259,6 +263,7 @@
     
     const ctrlReactBass = document.getElementById('ctrl-react-bass');
     const ctrlReactMid = document.getElementById('ctrl-react-mid');
+    const ctrlReactTreb = document.getElementById('ctrl-react-treb'); // 고음 반응 파라미터 연동
     const ctrlShake = document.getElementById('ctrl-shake');
     const ctrlSmooth = document.getElementById('ctrl-smooth'); 
     
@@ -283,7 +288,7 @@
     }
     ctrlRatio.onchange = updateAspectRatio; window.addEventListener('resize', () => { if(ctrlRatio.value==='fit') updateAspectRatio(); }); updateAspectRatio();
 
-    ['pcount', 'base-y', 'cam-x', 'cam-y', 'cam-z', 'react-bass', 'react-mid', 'shake', 'smooth', 'bloom', 'grain', 'vignette', 'cluster', 'wave-angle', 'wave-dist', 'wave-detail'].forEach(id => {
+    ['pcount', 'base-y', 'cam-x', 'cam-y', 'cam-z', 'react-bass', 'react-mid', 'react-treb', 'shake', 'smooth', 'bloom', 'grain', 'vignette', 'cluster', 'wave-angle', 'wave-dist', 'wave-detail'].forEach(id => {
         document.getElementById(`ctrl-${id}`).addEventListener('input', (e) => {
             updateUIVal(`val-${id}`, e.target.value + (id==='wave-angle'?'°':''));
             if(id === 'bloom') bloomPass.strength = parseFloat(e.target.value);
@@ -310,12 +315,9 @@
         for(let i=0; i<maxParticles; i++) {
             if (countInGroup >= clusterSize) {
                 countInGroup = 0; groupIdx++;
-                cX = (Math.random() - 0.5) * 2000; 
-                cY = baseY + Math.random() * 1500; 
-                cZ = (Math.random() - 0.5) * 2000;
+                cX = (Math.random() - 0.5) * 2000; cY = baseY + Math.random() * 1500; cZ = (Math.random() - 0.5) * 2000;
             }
             pGroup[i] = groupIdx; pSeed[i] = Math.random(); 
-            
             pPos[i*3] = cX + (Math.random()-0.5)*40; pPos[i*3+1] = cY + (Math.random()-0.5)*40; pPos[i*3+2] = cZ + (Math.random()-0.5)*40;
             pBasePos[i*3] = pPos[i*3]; pBasePos[i*3+1] = pPos[i*3+1]; pBasePos[i*3+2] = pPos[i*3+2];
             countInGroup++;
@@ -350,11 +352,8 @@
             attribute float aSeed; varying vec3 vColor; varying float vOpacity;
             uniform vec3 cStart; uniform vec3 cEnd; uniform float uMode; uniform float uSize; uniform float uOpacity;
             void main() {
-                if (uMode == 2.0) { 
-                    vColor = mix(cStart, vec3(1.0, 1.0, 1.0), 0.7 + aSeed*0.3); 
-                } else {
-                    vColor = mix(cStart, cEnd, aSeed); 
-                }
+                if (uMode == 2.0) { vColor = mix(cStart, vec3(1.0, 1.0, 1.0), 0.7 + aSeed*0.3); } 
+                else { vColor = mix(cStart, cEnd, aSeed); }
                 vOpacity = uOpacity;
                 vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
                 gl_PointSize = uSize * (800.0 / -mvPosition.z);
@@ -363,23 +362,23 @@
         `,
         fragmentShader: `
             uniform sampler2D map; varying vec3 vColor; varying float vOpacity;
-            void main() {
-                vec4 texColor = texture2D(map, gl_PointCoord); gl_FragColor = vec4(vColor, texColor.a * vOpacity);
-            }
+            void main() { vec4 texColor = texture2D(map, gl_PointCoord); gl_FragColor = vec4(vColor, texColor.a * vOpacity); }
         `,
         transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
     });
-    
     const particleSystem = new THREE.Points(particleGeo, particleShaderMat);
-    // ★ 에러 원인 해결: 초기 렌더링 시 파도 모드일 경우 파티클 숨김 동기화
-    particleSystem.visible = (ctrlMode.value !== 'waves');
     scene.add(particleSystem);
 
-    // --- 2-B. 진짜 해변 파도 셰이더 ---
+    // --- 2-B. 진짜 해변 파도 셰이더 (Audio Staggering & Foaming Edge) ---
     const waveGeo = new THREE.PlaneGeometry(6000, 6000, 1, 1);
     const waveShaderMat = new THREE.ShaderMaterial({
         uniforms: {
-            uTime: { value: 0.0 }, uBass: { value: 0.0 }, uAngle: { value: 0.0 }, uDist: { value: 0.5 }, uSeed: { value: 0.0 },
+            uTime: { value: 0.0 }, 
+            uBass: { value: 0.0 }, 
+            uTreble: { value: 0.0 }, // ★ 고음 유니폼 추가
+            uAngle: { value: 0.0 }, 
+            uDist: { value: 0.5 }, 
+            uSeed: { value: 0.0 },
             uWaveDetail: { value: 1.5 }, 
             cSand: { value: new THREE.Color(0xd2b48c) }, 
             cShallow: { value: new THREE.Color(ctrlColorStart.value) }, 
@@ -388,7 +387,8 @@
         },
         vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
         fragmentShader: `
-            uniform float uTime; uniform float uBass; uniform float uAngle; uniform float uDist; uniform float uSeed; uniform float uWaveDetail;
+            uniform float uTime; uniform float uBass; uniform float uTreble; 
+            uniform float uAngle; uniform float uDist; uniform float uSeed; uniform float uWaveDetail;
             uniform vec3 cSand; uniform vec3 cShallow; uniform vec3 cDeep; uniform vec3 cFoam;
             varying vec2 vUv;
             
@@ -409,24 +409,49 @@
                 mat2 rot = mat2(c, -s, s, c);
                 vec2 rUv = rot * (vUv - 0.5) + 0.5 + vec2(uSeed * 0.1); 
                 
-                float wavePos = 0.5 + sin(uTime * 1.2) * 0.15 + (uBass * 0.15); 
+                // 기본 파동 사이클
+                float waveSine = sin(uTime * 1.2);
                 
-                float edgeNoise = noise(rUv * 15.0 * uWaveDetail + uTime*0.5) * (0.1 * uDist) + noise(rUv * 30.0 * uWaveDetail - uTime) * 0.05;
+                // ★ 피드백 1: 저음과 고음이 X좌표(해안선 가로축)를 따라 교차하며 파도 길이를 다르게 만듦
+                float audioReach = sin(rUv.x * 12.0 + uTime) * uBass * 0.15 
+                                 + cos(rUv.x * 20.0 - uTime) * uTreble * 0.15;
+                
+                float wavePos = 0.5 + waveSine * 0.15 + audioReach; 
+                
+                // 해안선 랜덤 노이즈
+                float edgeNoise = noise(rUv * 15.0 * uWaveDetail + uTime*0.5) * (0.1 * uDist) 
+                                + noise(rUv * 30.0 * uWaveDetail - uTime) * 0.05;
+                
                 float distToWave = rUv.y - (wavePos + edgeNoise);
+                
+                // 파도가 최정점에 도달했는지 확인하는 계수 (1.0 = 끝까지 도달함)
+                float peakFactor = smoothstep(0.5, 1.0, waveSine);
                 
                 vec3 finalColor;
                 if (distToWave < 0.0) {
                     finalColor = cSand; 
-                    if (distToWave > -0.04) finalColor *= 0.8; 
+                    if (distToWave > -0.06) finalColor *= 0.8; // 젖은 모래
+                    
+                    // ★ 피드백 2: 파도가 끝에 도달하고 사라질 때 쨍한 하얀색 찌꺼기(거품)를 남기며 사라짐
+                    float residue = smoothstep(-0.04, 0.0, distToWave) * peakFactor;
+                    float residueNoise = noise(rUv * 150.0 * uWaveDetail);
+                    if (residue * abs(residueNoise) > 0.1) {
+                        finalColor = mix(finalColor, cFoam, residue * 0.8);
+                    }
                 } else {
                     vec3 waterColor = mix(cShallow, cDeep, smoothstep(0.0, 0.4, distToWave));
-                    float foamBand = 0.02 + uBass * 0.03; 
+                    
+                    // 밀려오는 파도 선두의 거품띠 두께 (정점에서 폭발적으로 하얗게 변함)
+                    float foamBand = 0.015 + (uBass * 0.02) + (peakFactor * 0.03); 
                     float isFoam = 1.0 - smoothstep(0.0, foamBand, distToWave); 
+                    
+                    // 가장 뾰족한 끝단은 완전한 순백색으로 (Pure White Edge)
+                    float pureWhiteEdge = 1.0 - smoothstep(0.0, 0.005, distToWave);
                     
                     float foamNoise = noise(rUv * 80.0 * uWaveDetail + uTime * 3.0);
                     float finalFoam = isFoam * abs(foamNoise) * 2.0; 
                     
-                    finalColor = mix(waterColor, cFoam, clamp(finalFoam, 0.0, 1.0));
+                    finalColor = mix(waterColor, cFoam, clamp(finalFoam + pureWhiteEdge, 0.0, 1.0));
                 }
                 gl_FragColor = vec4(finalColor, 1.0);
             }
@@ -435,7 +460,7 @@
     });
     const waveMesh = new THREE.Mesh(waveGeo, waveShaderMat);
     waveMesh.rotation.x = -Math.PI / 2; 
-    waveMesh.visible = (ctrlMode.value === 'waves'); // ★ 초기 동기화
+    waveMesh.visible = (ctrlMode.value === 'waves'); 
     scene.add(waveMesh);
 
     // UI 이벤트 연동
@@ -450,12 +475,10 @@
         
         if (mode === 'waves') {
             particleSystem.visible = false; waveMesh.visible = true;
-            // 탑뷰 셋팅
             ctrlCamX.value = 0; ctrlCamY.value = 1500; ctrlCamZ.value = 0;
             updateUIVal('val-cam-x', 0); updateUIVal('val-cam-y', 1500); updateUIVal('val-cam-z', 0);
         } else {
             particleSystem.visible = true; waveMesh.visible = false;
-            // 탑뷰 해제
             if(ctrlCamY.value == 1500) { ctrlCamY.value = 0; ctrlCamZ.value = 800; updateUIVal('val-cam-y', 0); updateUIVal('val-cam-z', 800); }
             
             if (mode === 'bubbles') {
@@ -465,8 +488,6 @@
             }
         }
     };
-
-    // ★ 초기 렌더링 시 UI 동기화를 위해 이벤트 수동 발송
     ctrlMode.dispatchEvent(new Event('change'));
 
     ctrlCluster.oninput = (e) => { currentClusterSize = parseInt(e.target.value); if(ctrlMode.value === 'bubbles') resetParticles(currentClusterSize); };
@@ -529,19 +550,22 @@
         let cX = parseFloat(ctrlCamX.value); let cY = parseFloat(ctrlCamY.value); let cZ = parseFloat(ctrlCamZ.value);
         camera.position.set(cX, cY, cZ); camera.lookAt(0, 0, 0); 
 
-        let rawBass = 0, rawMid = 0;
+        let rawBass = 0, rawMid = 0, rawTreble = 0;
         let smoothFactor = 1.0 - parseFloat(ctrlSmooth.value);
 
         if (isPlaying && analyser) {
             analyser.getByteFrequencyData(dataArray);
             for(let i=0; i<dataArray.length; i++) smoothedData[i] += (dataArray[i] - smoothedData[i]) * smoothFactor;
             
-            let bSum=0, mSum=0;
+            let bSum=0, mSum=0, tSum=0;
             for(let i=0; i<10; i++) bSum += dataArray[i]; 
             for(let i=10; i<80; i++) mSum += dataArray[i];
+            for(let i=80; i<200; i++) tSum += dataArray[i]; 
             
             rawBass = (bSum / 10 / 255) * parseFloat(ctrlReactBass.value);
             rawMid = (mSum / 70 / 255) * parseFloat(ctrlReactMid.value); 
+            // ★ 고음 반응값 연동
+            rawTreble = (tSum / 120 / 255) * parseFloat(ctrlReactTreb.value);
         }
 
         let mode = ctrlMode.value;
@@ -550,9 +574,14 @@
         let shakeVal = parseFloat(ctrlShake.value);
 
         if (mode === 'waves') {
+            // [모드 2: 리얼 해변 파도] 
             waveShaderMat.uniforms.uTime.value = time;
             waveShaderMat.uniforms.uAngle.value = parseFloat(ctrlWaveAngle.value);
-            waveShaderMat.uniforms.uBass.value = rawBass;
+            
+            // 저음과 고음 파형을 동시에 셰이더로 넘겨줌
+            waveShaderMat.uniforms.uBass.value = rawBass * 2.0; 
+            waveShaderMat.uniforms.uTreble.value = rawTreble * 2.5;
+            
             waveShaderMat.uniforms.uDist.value = parseFloat(ctrlWaveDist.value);
             waveShaderMat.uniforms.uWaveDetail.value = parseFloat(ctrlWaveDetail.value); 
             waveShaderMat.uniforms.uSeed.value = globalRandomSeed; 
