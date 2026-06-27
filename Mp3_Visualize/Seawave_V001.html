@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>CWSS_V001_Cinematic Wave & Subtitle Studio</title>
+    <title>Cinematic Wave & Subtitle Studio</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #020205; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; }
         canvas { width: 100vw !important; height: 100vh !important; object-fit: contain; }
@@ -24,8 +24,8 @@
         .control-group label { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px; color: #ccc; }
         .control-group input[type="range"] { width: 100%; cursor: pointer; accent-color: #00e5ff; height: 4px;}
         .control-group input[type="color"] { width: 100%; height: 25px; border: none; cursor: pointer; background: none; }
-        .control-group select, .file-btn { 
-            width: 100%; padding: 8px; background: #112; color: #00ffcc; border: 1px solid #445; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight:bold;}
+        .control-group select, .file-btn, textarea { 
+            width: 100%; padding: 8px; background: #112; color: #00ffcc; border: 1px solid #445; border-radius: 4px; cursor: pointer; font-size: 11px; font-family: sans-serif;}
         
         #audio-input-area { margin-top: 15px; border-top: 2px solid #00e5ff; padding-top: 15px; }
         input[type="file"] { margin-bottom: 10px; display: block; color: white; width: 100%; font-size: 11px; border: 1px dashed #556; padding: 5px; background: rgba(0,0,0,0.5);}
@@ -85,11 +85,11 @@
 
     <div class="section-title" style="color:#aaff00;">[해변 파도 물리 제어]</div>
     <div class="control-group">
-        <label>파도 방향 각도 (Angle) <span id="val-wave-angle">180°</span></label>
-        <input type="range" id="ctrl-wave-angle" min="0" max="360" value="180" step="5">
+        <label style="color:#00ccff;">파도 방향 각도 (Angle) <span id="val-wave-angle">0°</span></label>
+        <input type="range" id="ctrl-wave-angle" min="0" max="360" value="0" step="5">
     </div>
     <div class="control-group">
-        <label>파도 쪼개짐 디테일 <span id="val-wave-detail">2.0</span></label>
+        <label style="color:#00ccff;">파도 쪼개짐 디테일 <span id="val-wave-detail">2.0</span></label>
         <input type="range" id="ctrl-wave-detail" min="0.5" max="5.0" value="2.0" step="0.1">
     </div>
 
@@ -244,6 +244,8 @@
     const ctrlColorStart = document.getElementById('ctrl-color-start');
     const ctrlColorEnd = document.getElementById('ctrl-color-end');
     const ctrlColorFoam = document.getElementById('ctrl-color-foam'); 
+    
+    const srtInput = document.getElementById('srt-file');
 
     document.getElementById('btn-randomize').onclick = () => { globalRandomSeed = Math.random() * 1000.0; };
 
@@ -264,7 +266,6 @@
         });
     });
 
-    // 타이밍 슬라이더 전용 UI 업데이트
     ctrlRevealTime.addEventListener('input', (e) => updateUIVal('val-reveal-time', e.target.value, '초 전'));
     ctrlCoverTime.addEventListener('input', (e) => updateUIVal('val-cover-time', e.target.value, '초 전'));
 
@@ -279,7 +280,6 @@
     let currentSubtitle = "";
 
     function parseSRTData(data) {
-        // 정규식 개선: \r\n 및 \n 완벽 대응
         const regex = /(?:\d+)\s+(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\s+([\s\S]*?)(?=(?:\s*\n\s*\n|$))/g;
         let match; const result = [];
         while ((match = regex.exec(data)) !== null) {
@@ -296,23 +296,22 @@
         textCtx.clearRect(0, 0, 2048, 2048);
         if(text) {
             textCtx.fillStyle = 'rgba(255, 255, 255, 1.0)';
-            textCtx.font = 'bold 100px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
+            textCtx.font = 'bold 120px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
             textCtx.textAlign = 'center';
             textCtx.textBaseline = 'middle';
             textCtx.shadowColor = 'rgba(255, 255, 255, 0.8)';
             textCtx.shadowBlur = 10; 
             
             let lines = text.split('\n');
-            // 화면 하단부(모래사장 영역)에 위치하도록 startY 설정
-            let startY = 1300 - ((lines.length - 1) * 60);
+            let startY = 1024 - ((lines.length - 1) * 60); // 화면 정중앙 배치
             for(let i=0; i<lines.length; i++) {
-                textCtx.fillText(lines[i], 1024, startY + (i * 120));
+                textCtx.fillText(lines[i], 1024, startY + (i * 140));
             }
         }
         textTex.needsUpdate = true;
     }
 
-    document.getElementById('srt-file').onchange = function(e) {
+    srtInput.onchange = function(e) {
         const file = e.target.files[0]; if (!file) return;
         const reader = new FileReader();
         reader.onload = function(event) {
@@ -332,8 +331,8 @@
             uAngle: { value: 0.0 }, 
             uSeed: { value: 0.0 },
             uWaveDetail: { value: 2.0 }, 
-            uSurge: { value: 1.0 }, // ★ 파도 덮침 계수 (0.0: 후퇴/자막열림, 1.0: 덮침/자막닫힘)
-            uSurgeVelocity: { value: 0.0 }, // 파도가 밀려오는 속도 (거품 폭발용)
+            uSurge: { value: 0.0 }, // ★ 기본값 0.0 (음악 재생 전: 얌전한 모래사장 노출)
+            uSurgeVelocity: { value: 0.0 }, 
             uTextMap: { value: textTex }, 
             cSand: { value: new THREE.Color(0xd2b48c) }, 
             cShallow: { value: new THREE.Color(ctrlColorStart.value) }, 
@@ -366,21 +365,21 @@
                 mat2 rot = mat2(c, -s, s, c);
                 vec2 rUv = rot * (vUv - 0.5) + 0.5 + vec2(uSeed * 0.1); 
                 
-                // 오디오 반응형 해안선 왜곡 로직
                 float waveSine = sin(uTime * 1.5);
                 
-                // uSurge(덮침계수)가 1.0 이면 베이스파동(audioReach)의 영향을 줄여 물결이 얌전해지게 함
+                // 오디오 타격이 파도의 굴곡을 다이나믹하게 왜곡 (uSurge가 높으면 왜곡을 살짝 억제)
                 float reachScale = 1.0 - (uSurge * 0.5);
                 float audioReach = (sin(rUv.x * 12.0 + uTime) * uBass * 0.15 + cos(rUv.x * 20.0 - uTime) * uTreble * 0.15) * reachScale;
                 
-                // ★ 핵심: uSurge가 0.0이면 wavePos = 0.6(후퇴), uSurge가 1.0이면 wavePos = -0.2(완전 덮침)
-                float targetWavePos = mix(0.55, -0.2, uSurge);
+                // ★ uSurge = 0.0 : 파도 후퇴 (자막 노출, wavePos = 0.75 - 모래사장이 많이 보임)
+                // ★ uSurge = 1.0 : 파도 덮침 (자막 덮임, wavePos = 0.25 - 바다가 많이 보임)
+                float targetWavePos = mix(0.75, 0.25, uSurge);
                 float wavePos = targetWavePos + (waveSine * 0.08 * (1.0 - uSurge)) + audioReach; 
                 
                 float edgeNoise = noise(rUv * 15.0 * uWaveDetail + uTime*0.5) * 0.08 + noise(rUv * 30.0 * uWaveDetail - uTime) * 0.04;
                 float distToWave = rUv.y - (wavePos + edgeNoise);
                 
-                // --- 자막 텍스처 매핑 (스케일 조절로 화면 중앙에 배치) ---
+                // --- 자막 텍스처 매핑 ---
                 vec2 textUv = (vUv - 0.5) * 1.5 + 0.5; 
                 float textAlpha = 0.0;
                 if(textUv.x >= 0.0 && textUv.x <= 1.0 && textUv.y >= 0.0 && textUv.y <= 1.0) {
@@ -389,26 +388,20 @@
 
                 vec3 finalColor;
                 
-                // 모래사장 베이스 + 자막 결합
                 vec3 baseSand = cSand;
-                if (distToWave > -0.06 && distToWave <= 0.0) baseSand *= 0.85; // 파도 앞 젖은 모래
+                if (distToWave > -0.06 && distToWave <= 0.0) baseSand *= 0.85; 
                 
                 // 자막은 젖은 모래에 깊게 패인 것처럼 아주 진하게 각인
-                baseSand = mix(baseSand, cSand * 0.25, textAlpha * 0.95);
+                baseSand = mix(baseSand, cSand * 0.3, textAlpha * 0.9);
 
                 if (distToWave < 0.0) { 
-                    // 물 밖의 해변
                     finalColor = baseSand; 
-                    
-                    // 파도 끝자락 소멸 시 거품 찌꺼기
                     float residue = smoothstep(-0.04, 0.0, distToWave);
                     float residueNoise = noise(rUv * 150.0 * uWaveDetail);
                     if (residue * abs(residueNoise) > 0.12) {
                         finalColor = mix(finalColor, cFoam, residue * 0.6);
                     }
-
                 } else { 
-                    // 물 속
                     vec3 waterColor = mix(cShallow, cDeep, smoothstep(0.0, 0.4, distToWave));
                     
                     // 얕은 물 속에 모래와 자막이 살짝 일렁이며 비치도록 처리
@@ -422,7 +415,7 @@
                     
                     waterColor = mix(distSand, waterColor, smoothstep(0.0, 0.15, distToWave));
 
-                    // ★ 파도가 전진/후퇴할 때(uSurgeVelocity가 클 때) 거품 폭발
+                    // 파도가 덮치고 빠질때(uSurgeVelocity) 거품 폭발
                     float surgeFoamPower = uSurgeVelocity * 10.0; 
                     float foamBand = 0.015 + (uBass * 0.02) + surgeFoamPower * 0.1; 
                     float isFoam = 1.0 - smoothstep(0.0, foamBand, distToWave); 
@@ -489,11 +482,11 @@
             const a = document.createElement('a'); a.style = 'display: none'; a.href = url; a.download = loadedFileName.replace(/\.[^/.]+$/, "") + `_WaveSubtitles.${ext}`;
             document.body.appendChild(a); a.click(); window.URL.revokeObjectURL(url); document.getElementById('status').innerText = `녹화 완료!`;
             ctrlRatio.disabled = false; isPlaying = false; document.getElementById('record-btn').style.display = 'block';
-            updateSubtitleCanvas(""); // 자막 리셋
+            updateSubtitleCanvas(""); 
         };
         currentSource.onended = () => { if(mediaRecorder.state === 'recording') mediaRecorder.stop(); };
         
-        audioStartTime = audioCtx.currentTime; // 자막 플레이 타임 동기화 시작점
+        audioStartTime = audioCtx.currentTime; 
         currentSource.start(0); mediaRecorder.start(); isPlaying = true;
         
         ctrlRatio.disabled = true; this.style.display = 'none';
@@ -507,7 +500,6 @@
         requestAnimationFrame(animate);
         time += 0.01;
 
-        // 카메라 고정 및 업데이트
         let cX = parseFloat(ctrlCamX.value); let cY = parseFloat(ctrlCamY.value); let cZ = parseFloat(ctrlCamZ.value);
         camera.position.set(cX, cY, cZ); camera.lookAt(cX, 0, cZ); 
 
@@ -525,45 +517,45 @@
             rawBass = (bSum / 10 / 255) * parseFloat(ctrlReactBass.value);
             rawTreble = (tSum / 120 / 255) * parseFloat(ctrlReactTreb.value);
             
-            // --- ★ SRT 자막 타이밍 및 파도 동기화 (Sync Engine) ---
+            // --- ★ SRT 자막 타이밍 및 파도 덮침(Surge) 로직 ---
             let elapsedMs = (audioCtx.currentTime - audioStartTime) * 1000;
-            let targetSurge = 1.0; // 기본값: 물에 잠겨있음
+            let targetSurge = 1.0; // 자막이 없을 땐 기본적으로 바다가 모래사장을 덮고 있음
             let activeText = "";
             
-            let revealOffset = parseFloat(ctrlRevealTime.value) * 1000;
-            let coverOffset = parseFloat(ctrlCoverTime.value) * 1000;
+            if (parsedSRT.length > 0) {
+                let revealOffset = parseFloat(ctrlRevealTime.value) * 1000;
+                let coverOffset = parseFloat(ctrlCoverTime.value) * 1000;
 
-            for (let i = 0; i < parsedSRT.length; i++) {
-                let sub = parsedSRT[i];
-                let revealTime = sub.start - revealOffset;
-                let coverTime = sub.end - coverOffset;
+                for (let i = 0; i < parsedSRT.length; i++) {
+                    let sub = parsedSRT[i];
+                    let revealTime = sub.start - revealOffset;
+                    let coverTime = sub.end - coverOffset;
 
-                if (elapsedMs >= revealTime && elapsedMs < coverTime) {
-                    targetSurge = 0.0; // 자막 시간대면 파도가 뒤로 물러감 (모래사장 노출)
-                    activeText = sub.text;
-                    break; 
-                } else if (elapsedMs >= coverTime && i < parsedSRT.length - 1 && elapsedMs < parsedSRT[i+1].start - revealOffset) {
-                     // 자막과 자막 사이 공백 구간은 물이 덮침
-                     targetSurge = 1.0;
-                     break;
+                    // 현재 재생 시간이 자막 노출 구간 안에 들어왔다면
+                    if (elapsedMs >= revealTime && elapsedMs < coverTime) {
+                        targetSurge = 0.0; // 파도가 싹 물러감 (모래사장과 자막 노출)
+                        activeText = sub.text;
+                        break; 
+                    } else if (elapsedMs >= coverTime && i < parsedSRT.length - 1 && elapsedMs < parsedSRT[i+1].start - revealOffset) {
+                         // 자막이 끝나고 다음 자막이 오기 전 공백 구간: 거대한 파도가 덮침
+                         targetSurge = 1.0;
+                         break;
+                    }
                 }
+            } else {
+                targetSurge = 0.0; // SRT 파일이 없을 때는 평화로운 해안선 유지
             }
 
-            // 자막 내용 텍스처 업데이트
             if (activeText !== currentSubtitle) {
                 currentSubtitle = activeText; updateSubtitleCanvas(activeText);
             }
 
-            // 파도 Surge 값 부드러운 보간 적용 (덮치고 빠지는 속도 제어)
             let prevSurge = waveShaderMat.uniforms.uSurge.value;
             let surgeSpd = parseFloat(ctrlSurgeSpeed.value);
             waveShaderMat.uniforms.uSurge.value += (targetSurge - waveShaderMat.uniforms.uSurge.value) * surgeSpd;
-            
-            // 파도가 밀려오는 속도를 계산해 거품(Foam)을 강하게 폭발시킴
             waveShaderMat.uniforms.uSurgeVelocity.value = Math.abs(waveShaderMat.uniforms.uSurge.value - prevSurge);
         }
 
-        // 셰이더 매핑 연동
         waveShaderMat.uniforms.uTime.value = time;
         waveShaderMat.uniforms.uAngle.value = parseFloat(ctrlWaveAngle.value);
         waveShaderMat.uniforms.uBass.value = rawBass * 2.0; 
