@@ -2,57 +2,52 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Generative Painter</title>
+    <title>Generative Painter - Advanced</title>
     <style>
-        body { 
-            font-family: sans-serif; 
-            background: #222; 
-            color: #fff; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            padding: 20px; 
-            margin: 0;
-        }
-        #controls { 
-            margin-bottom: 20px; 
-            padding: 15px;
-            background: #333;
-            border-radius: 8px;
-        }
-        canvas { 
-            background: #f4f4f0; /* 약간의 종이 질감 색상 */
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5); 
-            max-width: 100%; 
-        }
+        body { font-family: sans-serif; background: #222; color: #fff; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
+        #controls { margin-bottom: 20px; padding: 15px; background: #333; border-radius: 8px; display: flex; gap: 15px; align-items: center; }
+        canvas { background: #f4f4f0; box-shadow: 0 10px 30px rgba(0,0,0,0.5); max-width: 100%; }
+        input[type="number"] { width: 60px; padding: 5px; }
+        button { padding: 8px 15px; cursor: pointer; background: #4CAF50; color: white; border: none; border-radius: 4px; }
+        #status { margin-top: 10px; font-size: 0.9em; color: #aaa; }
     </style>
 </head>
 <body>
     <div id="controls">
-        <label for="imageLoader">그림 그릴 이미지 선택: </label>
         <input type="file" id="imageLoader" accept="image/*">
+        <div>
+            <label>전체 시간 (초): </label>
+            <input type="number" id="totalTime" value="30" min="5">
+        </div>
+        <button id="startBtn" disabled>그리기 시작</button>
     </div>
+    <div id="status">이미지를 선택해주세요. (완료 목표: 전체 시간의 85%)</div>
     <canvas id="canvas"></canvas>
 
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         let imgData, width, height;
+        
         let edgePoints = [];
         let colorPoints = [];
+        let allDrawSteps = []; // 전체 그리기 순서를 담을 배열
+        
         let isDrawing = false;
         let animationId;
+        let startTime;
+        let targetDurationMs;
 
         document.getElementById('imageLoader').addEventListener('change', handleImage);
+        document.getElementById('startBtn').addEventListener('click', startDrawing);
 
         function handleImage(e) {
-            if(animationId) cancelAnimationFrame(animationId);
             const reader = new FileReader();
             reader.onload = function(event) {
                 const img = new Image();
                 img.onload = function() {
-                    // 브라우저 과부하 방지를 위해 최대 800px로 리사이징
-                    const MAX_SIZE = 800;
+                    // 브라우저 멈춤 방지를 위해 연산용 크기 제한 (최대 400px 기준)
+                    const MAX_SIZE = 400; 
                     let scale = 1;
                     if(img.width > MAX_SIZE || img.height > MAX_SIZE) {
                         scale = Math.min(MAX_SIZE / img.width, MAX_SIZE / img.height);
@@ -60,7 +55,6 @@
                     width = canvas.width = Math.floor(img.width * scale);
                     height = canvas.height = Math.floor(img.height * scale);
 
-                    // 원본 픽셀 데이터를 분석하기 위해 임시 캔버스에 그리기
                     const offCanvas = document.createElement('canvas');
                     offCanvas.width = width;
                     offCanvas.height = height;
@@ -68,8 +62,14 @@
                     offCtx.drawImage(img, 0, 0, width, height);
                     imgData = offCtx.getImageData(0, 0, width, height);
 
-                    analyzePixels();
-                    startDrawing();
+                    document.getElementById('status').innerText = "이미지 분석 중... 잠시만 기다려주세요.";
+                    
+                    // 비동기로 분석하여 UI 멈춤 방지
+                    setTimeout(() => {
+                        analyzePixels();
+                        document.getElementById('status').innerText = "분석 완료! '그리기 시작'을 눌러주세요.";
+                        document.getElementById('startBtn').disabled = false;
+                    }, 50);
                 }
                 img.src = event.target.result;
             }
@@ -77,131 +77,192 @@
         }
 
         function analyzePixels() {
+            const data = imgData.data;
+            const threshold = 30;
+            const isEdgeMap = new Uint8Array(width * height);
             edgePoints = [];
             colorPoints = [];
-            const data = imgData.data;
-            const threshold = 25; // 윤곽선 감지 민감도
 
-            // 픽셀을 건너뛰며 샘플링 (거친 느낌을 위해 step을 2로 설정)
-            for(let y = 0; y < height; y += 2) {
-                for(let x = 0; x < width; x += 2) {
+            // 1. 윤곽선(Edge) 검출
+            for(let y = 0; y < height; y++) {
+                for(let x = 0; x < width; x++) {
                     const idx = (y * width + x) * 4;
                     const brightness = (data[idx] + data[idx+1] + data[idx+2]) / 3;
                     let isEdge = false;
 
-                    // 간단한 엣지(윤곽선) 디텍션 알고리즘
-                    if (x < width - 2 && y < height - 2) {
-                        const rightIdx = (y * width + (x+2)) * 4;
-                        const bottomIdx = ((y+2) * width + x) * 4;
-                        const rightB = (data[rightIdx] + data[rightIdx+1] + data[rightIdx+2]) / 3;
-                        const bottomB = (data[bottomIdx] + data[bottomIdx+1] + data[bottomIdx+2]) / 3;
-
+                    if (x < width - 1 && y < height - 1) {
+                        const rightB = (data[idx + 4] + data[idx + 5] + data[idx + 6]) / 3;
+                        const bottomB = (data[idx + width * 4] + data[idx + width * 4 + 1] + data[idx + width * 4 + 2]) / 3;
                         if (Math.abs(brightness - rightB) > threshold || Math.abs(brightness - bottomB) > threshold) {
                             isEdge = true;
                         }
                     }
 
                     const point = { x, y, r: data[idx], g: data[idx+1], b: data[idx+2] };
-                    if (isEdge) edgePoints.push(point);
-                    else colorPoints.push(point);
+                    
+                    if (isEdge) {
+                        isEdgeMap[y * width + x] = 1;
+                        edgePoints.push(point);
+                    } else {
+                        colorPoints.push(point);
+                    }
                 }
             }
-            // 랜덤한 순서로 그리도록 배열 섞기
-            edgePoints.sort(() => Math.random() - 0.5);
-            colorPoints.sort(() => Math.random() - 0.5);
+
+            // 2. 윤곽선으로부터의 거리 계산 (바깥으로 퍼져나가는 채색을 위함 - BFS)
+            const distances = new Int32Array(width * height).fill(999999);
+            let queue = [];
+            
+            // 모든 엣지를 큐에 넣고 거리 0으로 설정
+            for(let i=0; i<edgePoints.length; i++) {
+                const p = edgePoints[i];
+                const index = p.y * width + p.x;
+                distances[index] = 0;
+                queue.push(index);
+            }
+
+            // BFS 실행
+            let head = 0;
+            const dirs = [-1, 1, -width, width];
+            while(head < queue.length) {
+                const curr = queue[head++];
+                const cx = curr % width;
+                const cy = Math.floor(curr / width);
+                const currDist = distances[curr];
+
+                for(let i=0; i<4; i++) {
+                    const nx = cx + (i===0 ? -1 : i===1 ? 1 : 0);
+                    const ny = cy + (i===2 ? -1 : i===3 ? 1 : 0);
+                    
+                    if(nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                        const nIdx = ny * width + nx;
+                        if(distances[nIdx] > currDist + 1) {
+                            distances[nIdx] = currDist + 1;
+                            queue.push(nIdx);
+                        }
+                    }
+                }
+            }
+
+            // 색상 픽셀들을 거리에 따라 오름차순 정렬 (윤곽선과 가까운 곳부터 바깥으로)
+            colorPoints.forEach(p => {
+                p.distance = distances[p.y * width + p.x];
+            });
+            colorPoints.sort((a, b) => a.distance - b.distance);
+
+            // 3. 전체 그리기 시퀀스 생성
+            allDrawSteps = [];
+            
+            // Phase 1: 윤곽선만 검은색으로
+            let shuffledEdges1 = [...edgePoints].sort(() => Math.random() - 0.5);
+            shuffledEdges1.forEach(p => allDrawSteps.push({ ...p, type: 'BLACK_OUTLINE' }));
+
+            // Phase 2: 윤곽선 채색
+            let shuffledEdges2 = [...edgePoints].sort(() => Math.random() - 0.5);
+            shuffledEdges2.forEach(p => allDrawSteps.push({ ...p, type: 'COLOR_OUTLINE' }));
+
+            // Phase 3: 윤곽선 바깥으로 채색 (정렬된 순서대로 진행하되, 약간의 노이즈 섞기)
+            // 거리가 같은 그룹끼리만 섞어줍니다.
+            const chunkSize = 200; 
+            for (let i = 0; i < colorPoints.length; i += chunkSize) {
+                let chunk = colorPoints.slice(i, i + chunkSize).sort(() => Math.random() - 0.5);
+                chunk.forEach(p => allDrawSteps.push({ ...p, type: 'COLOR_OUTWARD' }));
+            }
         }
 
+        let currentIdx = 0;
         let currentPen = { x: 0, y: 0 };
-        let mode = 'OUTLINE'; 
-        let progressIdx = 0;
 
         function startDrawing() {
-            ctx.fillStyle = '#f4f4f0'; // 바탕색 초기화
+            if(animationId) cancelAnimationFrame(animationId);
+            
+            const totalTimeSec = parseFloat(document.getElementById('totalTime').value);
+            // 85% 시점에서 완성이어야 하므로 목표 시간을 조정
+            targetDurationMs = (totalTimeSec * 1000) * 0.85; 
+            
+            ctx.fillStyle = '#f4f4f0';
             ctx.fillRect(0, 0, width, height);
             
             isDrawing = true;
-            mode = 'OUTLINE';
-            progressIdx = 0;
-            currentPen = { x: width/2, y: height/2 }; // 화면 중앙 근처에서 펜 시작
+            currentIdx = 0;
+            currentPen = { x: width/2, y: height/2 }; // 중심부근에서 시작
             
+            startTime = performance.now();
             drawLoop();
         }
 
         function drawLoop() {
             if (!isDrawing) return;
 
-            if (mode === 'OUTLINE') {
-                // 연필 스케치 느낌의 색상 및 투명도
-                ctx.strokeStyle = 'rgba(30, 30, 40, 0.3)';
-                ctx.lineWidth = 0.8;
+            const now = performance.now();
+            const elapsed = now - startTime;
+            
+            // 시간에 따른 현재 진행 목표치 계산
+            let progressRatio = Math.min(elapsed / targetDurationMs, 1.0);
+            let targetIdx = Math.floor(progressRatio * allDrawSteps.length);
 
-                // 애니메이션 속도를 위해 한 프레임당 40번의 선 긋기
-                for(let i = 0; i < 40; i++) {
-                    if (progressIdx >= edgePoints.length) {
-                        mode = 'COLOR'; // 윤곽선이 끝나면 채색 모드로 전환
-                        progressIdx = 0;
-                        break;
-                    }
-
-                    let target = edgePoints[progressIdx];
-
-                    // 1. 노이즈 적용: 원래 위치에서 최대 12px 벗어나게 목표점 설정
-                    let destX = target.x + (Math.random() - 0.5) * 24;
-                    let destY = target.y + (Math.random() - 0.5) * 24;
-
-                    ctx.beginPath();
-                    
-                    // 2. 가끔씩 펜을 떼고 완전히 어긋난 새 위치에서 시작 (시작부분 벗어남 구현)
-                    if (progressIdx === 0 || Math.random() < 0.03) {
-                        currentPen.x = destX - (Math.random() - 0.5) * 40;
-                        currentPen.y = destY - (Math.random() - 0.5) * 40;
-                    }
-
-                    ctx.moveTo(currentPen.x, currentPen.y);
-                    
-                    // 3. 직선이 아닌 베지에 곡선을 이용해 삐뚤빼뚤한 노이즈 선 생성
-                    let cpX = (currentPen.x + destX) / 2 + (Math.random() - 0.5) * 15;
-                    let cpY = (currentPen.y + destY) / 2 + (Math.random() - 0.5) * 15;
-                    
-                    ctx.quadraticCurveTo(cpX, cpY, destX, destY);
-                    ctx.stroke();
-
-                    // 한붓그리기를 위해 현재 펜 위치를 방금 그린 끝점으로 업데이트
-                    currentPen.x = destX;
-                    currentPen.y = destY;
-
-                    progressIdx++;
-                }
-            } 
-            else if (mode === 'COLOR') {
-                // 물감이나 마커로 거칠게 칠하는 느낌
-                for(let i = 0; i < 150; i++) {
-                    if (progressIdx >= colorPoints.length) {
-                        isDrawing = false;
-                        break;
-                    }
-
-                    let p = colorPoints[progressIdx];
-                    
-                    // 색상에 투명도를 주어 겹쳐 칠해지는 효과
-                    ctx.fillStyle = `rgba(${p.r}, ${p.g}, ${p.b}, 0.15)`;
-                    ctx.beginPath();
-                    
-                    // 칠하는 위치와 크기에도 노이즈 부여
-                    let brushSize = Math.random() * 6 + 2;
-                    let offsetX = (Math.random() - 0.5) * 12;
-                    let offsetY = (Math.random() - 0.5) * 12;
-                    
-                    ctx.arc(p.x + offsetX, p.y + offsetY, brushSize, 0, Math.PI * 2);
-                    ctx.fill();
-
-                    progressIdx++;
-                }
+            // 한 프레임에 처리해야 할 타겟 인덱스까지 반복해서 그림
+            while (currentIdx < targetIdx && currentIdx < allDrawSteps.length) {
+                let step = allDrawSteps[currentIdx];
+                drawStep(step);
+                currentIdx++;
             }
 
-            if (isDrawing) {
+            document.getElementById('status').innerText = 
+                `진행률: ${(progressRatio * 100).toFixed(1)}% ` + 
+                `(목표: ${document.getElementById('totalTime').value}초의 85% 시점 완료)`;
+
+            if (currentIdx < allDrawSteps.length) {
                 animationId = requestAnimationFrame(drawLoop);
+            } else {
+                isDrawing = false;
+                document.getElementById('status').innerText = "그리기 완성!";
             }
+        }
+
+        function drawStep(target) {
+            // 요구사항: 시작과 끝이 빗나가고, 노이즈가 많은 한붓그리기
+            
+            // 목표점에서 약간 벗어난 실제 도달점 계산
+            let destX = target.x + (Math.random() - 0.5) * 15;
+            let destY = target.y + (Math.random() - 0.5) * 15;
+
+            ctx.beginPath();
+
+            // 가끔씩 펜을 떼고 의도적으로 중심 혹은 엉뚱한 곳에서 빗나가게 시작
+            if (currentIdx === 0 || Math.random() < 0.02) {
+                currentPen.x = destX - (Math.random() - 0.5) * 60;
+                currentPen.y = destY - (Math.random() - 0.5) * 60;
+            }
+
+            ctx.moveTo(currentPen.x, currentPen.y);
+            
+            let cpX = (currentPen.x + destX) / 2 + (Math.random() - 0.5) * 20;
+            let cpY = (currentPen.y + destY) / 2 + (Math.random() - 0.5) * 20;
+
+            if (target.type === 'BLACK_OUTLINE') {
+                ctx.strokeStyle = 'rgba(10, 10, 10, 0.4)';
+                ctx.lineWidth = 1;
+                ctx.quadraticCurveTo(cpX, cpY, destX, destY);
+                ctx.stroke();
+            } 
+            else if (target.type === 'COLOR_OUTLINE') {
+                ctx.strokeStyle = `rgba(${target.r}, ${target.g}, ${target.b}, 0.5)`;
+                ctx.lineWidth = 2;
+                ctx.quadraticCurveTo(cpX, cpY, destX, destY);
+                ctx.stroke();
+            } 
+            else if (target.type === 'COLOR_OUTWARD') {
+                // 면을 채우는 느낌을 위해 선의 두께를 키우고 알파값을 낮춤
+                ctx.strokeStyle = `rgba(${target.r}, ${target.g}, ${target.b}, 0.15)`;
+                ctx.lineWidth = Math.random() * 6 + 2;
+                ctx.quadraticCurveTo(cpX, cpY, destX, destY);
+                ctx.stroke();
+            }
+
+            // 다음 그리기 위해 현재 펜 위치 업데이트
+            currentPen.x = destX;
+            currentPen.y = destY;
         }
     </script>
 </body>
