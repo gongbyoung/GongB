@@ -2,22 +2,29 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Generative Painter - Advanced</title>
+    <title>Generative Painter - Sensitive</title>
     <style>
         body { font-family: sans-serif; background: #222; color: #fff; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
-        #controls { margin-bottom: 20px; padding: 15px; background: #333; border-radius: 8px; display: flex; gap: 15px; align-items: center; }
+        #controls { margin-bottom: 20px; padding: 15px; background: #333; border-radius: 8px; display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
         canvas { background: #f4f4f0; box-shadow: 0 10px 30px rgba(0,0,0,0.5); max-width: 100%; }
         input[type="number"] { width: 60px; padding: 5px; }
+        input[type="range"] { width: 150px; }
         button { padding: 8px 15px; cursor: pointer; background: #4CAF50; color: white; border: none; border-radius: 4px; }
         #status { margin-top: 10px; font-size: 0.9em; color: #aaa; }
+        .control-group { display: flex; align-items: center; gap: 5px; }
     </style>
 </head>
 <body>
     <div id="controls">
         <input type="file" id="imageLoader" accept="image/*">
-        <div>
+        <div class="control-group">
             <label>전체 시간 (초): </label>
             <input type="number" id="totalTime" value="30" min="5">
+        </div>
+        <div class="control-group">
+            <label>윤곽선 감도 (낮음-높음): </label>
+            <input type="range" id="sensitivitySlider" min="1" max="200" value="80">
+            <span id="sensitivityVal">80</span>
         </div>
         <button id="startBtn" disabled>그리기 시작</button>
     </div>
@@ -31,12 +38,25 @@
         
         let edgePoints = [];
         let colorPoints = [];
-        let allDrawSteps = []; // 전체 그리기 순서를 담을 배열
+        let allDrawSteps = []; 
         
         let isDrawing = false;
         let animationId;
         let startTime;
         let targetDurationMs;
+
+        const sensitivitySlider = document.getElementById('sensitivitySlider');
+        const sensitivityVal = document.getElementById('sensitivityVal');
+        sensitivitySlider.addEventListener('input', () => {
+            sensitivityVal.innerText = sensitivitySlider.value;
+            // 감도가 변경되면 이미지를 다시 로딩하여 분석을 다시 실행
+            if (canvas.width > 0 && isDrawing) {
+                document.getElementById('startBtn').click(); // 다시 그리기
+            } else if (canvas.width > 0) {
+                 analyzePixels(); // 분석만 다시
+                 document.getElementById('startBtn').disabled = false;
+            }
+        });
 
         document.getElementById('imageLoader').addEventListener('change', handleImage);
         document.getElementById('startBtn').addEventListener('click', startDrawing);
@@ -46,7 +66,6 @@
             reader.onload = function(event) {
                 const img = new Image();
                 img.onload = function() {
-                    // 브라우저 멈춤 방지를 위해 연산용 크기 제한 (최대 400px 기준)
                     const MAX_SIZE = 400; 
                     let scale = 1;
                     if(img.width > MAX_SIZE || img.height > MAX_SIZE) {
@@ -64,7 +83,6 @@
 
                     document.getElementById('status').innerText = "이미지 분석 중... 잠시만 기다려주세요.";
                     
-                    // 비동기로 분석하여 UI 멈춤 방지
                     setTimeout(() => {
                         analyzePixels();
                         document.getElementById('status').innerText = "분석 완료! '그리기 시작'을 눌러주세요.";
@@ -78,25 +96,30 @@
 
         function analyzePixels() {
             const data = imgData.data;
-            const threshold = 30;
+            const threshold = parseInt(sensitivitySlider.value); // 슬라이더 값을 임계값으로 사용
             const isEdgeMap = new Uint8Array(width * height);
             edgePoints = [];
             colorPoints = [];
 
-            // 1. 윤곽선(Edge) 검출
-            for(let y = 0; y < height; y++) {
-                for(let x = 0; x < width; x++) {
+            // 1. 윤곽선(Edge) 검출 개선: 더 높은 임계값과 Sobel 느낌의 간단한 차이 계산
+            for(let y = 1; y < height - 1; y++) {
+                for(let x = 1; x < width - 1; x++) {
                     const idx = (y * width + x) * 4;
                     const brightness = (data[idx] + data[idx+1] + data[idx+2]) / 3;
-                    let isEdge = false;
+                    
+                    const topIdx = ((y-1) * width + x) * 4;
+                    const bottomIdx = ((y+1) * width + x) * 4;
+                    const leftIdx = (y * width + (x-1)) * 4;
+                    const rightIdx = (y * width + (x+1)) * 4;
 
-                    if (x < width - 1 && y < height - 1) {
-                        const rightB = (data[idx + 4] + data[idx + 5] + data[idx + 6]) / 3;
-                        const bottomB = (data[idx + width * 4] + data[idx + width * 4 + 1] + data[idx + width * 4 + 2]) / 3;
-                        if (Math.abs(brightness - rightB) > threshold || Math.abs(brightness - bottomB) > threshold) {
-                            isEdge = true;
-                        }
-                    }
+                    const topB = (data[topIdx] + data[topIdx+1] + data[topIdx+2]) / 3;
+                    const bottomB = (data[bottomIdx] + data[bottomIdx+1] + data[bottomIdx+2]) / 3;
+                    const leftB = (data[leftIdx] + data[leftIdx+1] + data[leftIdx+2]) / 3;
+                    const rightB = (data[rightIdx] + data[rightIdx+1] + data[rightIdx+2]) / 3;
+
+                    // 상하, 좌우 차이의 합을 사용하여 임계값과 비교
+                    const edgeStrength = Math.abs(topB - bottomB) + Math.abs(leftB - rightB);
+                    let isEdge = edgeStrength > threshold;
 
                     const point = { x, y, r: data[idx], g: data[idx+1], b: data[idx+2] };
                     
@@ -109,19 +132,15 @@
                 }
             }
 
-            // 2. 윤곽선으로부터의 거리 계산 (바깥으로 퍼져나가는 채색을 위함 - BFS)
+            // 2. BFS 거리 계산 (이전 코드와 동일)
             const distances = new Int32Array(width * height).fill(999999);
             let queue = [];
-            
-            // 모든 엣지를 큐에 넣고 거리 0으로 설정
             for(let i=0; i<edgePoints.length; i++) {
                 const p = edgePoints[i];
                 const index = p.y * width + p.x;
                 distances[index] = 0;
                 queue.push(index);
             }
-
-            // BFS 실행
             let head = 0;
             const dirs = [-1, 1, -width, width];
             while(head < queue.length) {
@@ -129,11 +148,9 @@
                 const cx = curr % width;
                 const cy = Math.floor(curr / width);
                 const currDist = distances[curr];
-
                 for(let i=0; i<4; i++) {
                     const nx = cx + (i===0 ? -1 : i===1 ? 1 : 0);
                     const ny = cy + (i===2 ? -1 : i===3 ? 1 : 0);
-                    
                     if(nx >= 0 && nx < width && ny >= 0 && ny < height) {
                         const nIdx = ny * width + nx;
                         if(distances[nIdx] > currDist + 1) {
@@ -143,26 +160,15 @@
                     }
                 }
             }
-
-            // 색상 픽셀들을 거리에 따라 오름차순 정렬 (윤곽선과 가까운 곳부터 바깥으로)
-            colorPoints.forEach(p => {
-                p.distance = distances[p.y * width + p.x];
-            });
+            colorPoints.forEach(p => p.distance = distances[p.y * width + p.x]);
             colorPoints.sort((a, b) => a.distance - b.distance);
 
-            // 3. 전체 그리기 시퀀스 생성
+            // 3. 전체 그리기 시퀀스 생성 (이전 코드와 동일)
             allDrawSteps = [];
-            
-            // Phase 1: 윤곽선만 검은색으로
             let shuffledEdges1 = [...edgePoints].sort(() => Math.random() - 0.5);
             shuffledEdges1.forEach(p => allDrawSteps.push({ ...p, type: 'BLACK_OUTLINE' }));
-
-            // Phase 2: 윤곽선 채색
             let shuffledEdges2 = [...edgePoints].sort(() => Math.random() - 0.5);
             shuffledEdges2.forEach(p => allDrawSteps.push({ ...p, type: 'COLOR_OUTLINE' }));
-
-            // Phase 3: 윤곽선 바깥으로 채색 (정렬된 순서대로 진행하되, 약간의 노이즈 섞기)
-            // 거리가 같은 그룹끼리만 섞어줍니다.
             const chunkSize = 200; 
             for (let i = 0; i < colorPoints.length; i += chunkSize) {
                 let chunk = colorPoints.slice(i, i + chunkSize).sort(() => Math.random() - 0.5);
@@ -177,7 +183,6 @@
             if(animationId) cancelAnimationFrame(animationId);
             
             const totalTimeSec = parseFloat(document.getElementById('totalTime').value);
-            // 85% 시점에서 완성이어야 하므로 목표 시간을 조정
             targetDurationMs = (totalTimeSec * 1000) * 0.85; 
             
             ctx.fillStyle = '#f4f4f0';
@@ -185,7 +190,7 @@
             
             isDrawing = true;
             currentIdx = 0;
-            currentPen = { x: width/2, y: height/2 }; // 중심부근에서 시작
+            currentPen = { x: width/2, y: height/2 }; 
             
             startTime = performance.now();
             drawLoop();
@@ -193,50 +198,29 @@
 
         function drawLoop() {
             if (!isDrawing) return;
-
             const now = performance.now();
             const elapsed = now - startTime;
-            
-            // 시간에 따른 현재 진행 목표치 계산
             let progressRatio = Math.min(elapsed / targetDurationMs, 1.0);
             let targetIdx = Math.floor(progressRatio * allDrawSteps.length);
-
-            // 한 프레임에 처리해야 할 타겟 인덱스까지 반복해서 그림
             while (currentIdx < targetIdx && currentIdx < allDrawSteps.length) {
                 let step = allDrawSteps[currentIdx];
                 drawStep(step);
                 currentIdx++;
             }
-
-            document.getElementById('status').innerText = 
-                `진행률: ${(progressRatio * 100).toFixed(1)}% ` + 
-                `(목표: ${document.getElementById('totalTime').value}초의 85% 시점 완료)`;
-
-            if (currentIdx < allDrawSteps.length) {
-                animationId = requestAnimationFrame(drawLoop);
-            } else {
-                isDrawing = false;
-                document.getElementById('status').innerText = "그리기 완성!";
-            }
+            document.getElementById('status').innerText = `진행률: ${(progressRatio * 100).toFixed(1)}% (완료 목표: 85%)`;
+            if (currentIdx < allDrawSteps.length) animationId = requestAnimationFrame(drawLoop);
+            else { isDrawing = false; document.getElementById('status').innerText = "그리기 완성!"; }
         }
 
         function drawStep(target) {
-            // 요구사항: 시작과 끝이 빗나가고, 노이즈가 많은 한붓그리기
-            
-            // 목표점에서 약간 벗어난 실제 도달점 계산
             let destX = target.x + (Math.random() - 0.5) * 15;
             let destY = target.y + (Math.random() - 0.5) * 15;
-
             ctx.beginPath();
-
-            // 가끔씩 펜을 떼고 의도적으로 중심 혹은 엉뚱한 곳에서 빗나가게 시작
             if (currentIdx === 0 || Math.random() < 0.02) {
                 currentPen.x = destX - (Math.random() - 0.5) * 60;
                 currentPen.y = destY - (Math.random() - 0.5) * 60;
             }
-
             ctx.moveTo(currentPen.x, currentPen.y);
-            
             let cpX = (currentPen.x + destX) / 2 + (Math.random() - 0.5) * 20;
             let cpY = (currentPen.y + destY) / 2 + (Math.random() - 0.5) * 20;
 
@@ -245,24 +229,18 @@
                 ctx.lineWidth = 1;
                 ctx.quadraticCurveTo(cpX, cpY, destX, destY);
                 ctx.stroke();
-            } 
-            else if (target.type === 'COLOR_OUTLINE') {
+            } else if (target.type === 'COLOR_OUTLINE') {
                 ctx.strokeStyle = `rgba(${target.r}, ${target.g}, ${target.b}, 0.5)`;
                 ctx.lineWidth = 2;
                 ctx.quadraticCurveTo(cpX, cpY, destX, destY);
                 ctx.stroke();
-            } 
-            else if (target.type === 'COLOR_OUTWARD') {
-                // 면을 채우는 느낌을 위해 선의 두께를 키우고 알파값을 낮춤
+            } else if (target.type === 'COLOR_OUTWARD') {
                 ctx.strokeStyle = `rgba(${target.r}, ${target.g}, ${target.b}, 0.15)`;
                 ctx.lineWidth = Math.random() * 6 + 2;
                 ctx.quadraticCurveTo(cpX, cpY, destX, destY);
                 ctx.stroke();
             }
-
-            // 다음 그리기 위해 현재 펜 위치 업데이트
-            currentPen.x = destX;
-            currentPen.y = destY;
+            currentPen.x = destX; currentPen.y = destY;
         }
     </script>
 </body>
