@@ -163,6 +163,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
@@ -171,7 +172,6 @@
 <script>
     // --- 1. Three.js & Post-Processing Setup ---
     const scene = new THREE.Scene();
-    // 비오는 밤의 감성을 위해 어두운 남색 안개와 배경 세팅
     scene.background = new THREE.Color(0x010103); 
     scene.fog = new THREE.FogExp2(0x010103, 0.0015);
 
@@ -255,7 +255,6 @@
     ctrlVignette.oninput = (e) => { artFilterPass.uniforms.uVignette.value = parseFloat(e.target.value); updateUIVal('val-vignette', e.target.value); };
 
     // --- 2. 바닥면 (Ground) 설정 ---
-    // 비와 웅덩이가 잘 보이도록 어두운 평면 설치
     const groundGeo = new THREE.PlaneGeometry(4000, 4000);
     const groundMat = new THREE.MeshBasicMaterial({ color: 0x050508, transparent: true, opacity: 0.9, depthWrite: false });
     const ground = new THREE.Mesh(groundGeo, groundMat);
@@ -265,11 +264,11 @@
     // --- 3. 모닥불 (Fire) 시스템 ---
     const fireGroup = new THREE.Group(); scene.add(fireGroup);
     
-    // (A) Realistic Fire (입자 시뮬레이션)
+    // (A) Realistic Fire
     const fireParticleCount = 2500;
     const fGeo = new THREE.BufferGeometry();
     const fPos = new Float32Array(fireParticleCount * 3);
-    const fLife = new Float32Array(fireParticleCount); // 0.0 ~ 1.0 (죽음~생성)
+    const fLife = new Float32Array(fireParticleCount);
     const fVel = new Float32Array(fireParticleCount * 3);
 
     for(let i=0; i<fireParticleCount; i++) {
@@ -287,7 +286,6 @@
     ctx.fillStyle = grad; ctx.fill(); ctx.beginPath(); ctx.arc(16, 16, 16, 0, Math.PI * 2); ctx.fill();
     const fireTex = new THREE.CanvasTexture(circleCanvas);
 
-    // 셰이더로 불꽃 색상과 크기 그라데이션 자동화
     const fireShaderMat = new THREE.ShaderMaterial({
         uniforms: {
             uColor: { value: new THREE.Color(ctrlFireColor.value) },
@@ -298,7 +296,6 @@
             attribute float aLife; varying float vLife; uniform float uScale;
             void main() {
                 vLife = aLife;
-                // 위로 갈수록(수명이 다할수록) 작아짐
                 gl_PointSize = (15.0 * aLife * uScale) * (300.0 / -gl_Position.z);
                 gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
             }
@@ -307,7 +304,6 @@
             uniform vec3 uColor; uniform sampler2D map; varying float vLife;
             void main() {
                 vec4 texColor = texture2D(map, gl_PointCoord);
-                // 코어는 하얗게, 바깥은 uColor, 끝은 붉게 사라짐
                 vec3 finalColor = mix(vec3(1.0, 0.0, 0.0), uColor, vLife);
                 finalColor = mix(finalColor, vec3(1.0, 1.0, 1.0), pow(vLife, 3.0));
                 gl_FragColor = vec4(finalColor, texColor.a * vLife * 0.8);
@@ -318,12 +314,12 @@
     const fireRealistic = new THREE.Points(fGeo, fireShaderMat);
     fireGroup.add(fireRealistic);
 
-    // (B) Anime Stylized Fire (형태 메쉬 겹침)
+    // (B) Anime Stylized Fire
     const animeFireGroup = new THREE.Group();
     const animeFireCount = 15;
     const aCones = []; const aLives = [];
-    const coneGeo = new THREE.ConeGeometry(15, 60, 4); // 각진 불꽃 형태
-    coneGeo.translate(0, 30, 0); // 피벗 하단 고정
+    const coneGeo = new THREE.ConeGeometry(15, 60, 4); 
+    coneGeo.translate(0, 30, 0); 
     const aMat = new THREE.MeshBasicMaterial({ color: 0xff8800, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false });
 
     for(let i=0; i<animeFireCount; i++) {
@@ -333,7 +329,6 @@
     }
     fireGroup.add(animeFireGroup);
 
-    // 스타일 변경 토글
     function updateFireStyle() {
         let style = ctrlArtStyle.value;
         fireRealistic.visible = (style === 'realistic');
@@ -351,8 +346,7 @@
     const logMat = new THREE.MeshBasicMaterial({ color: 0x221105 });
     for(let i=0; i<3; i++) {
         let log = new THREE.Mesh(logGeo, logMat);
-        log.position.y = 2; log.rotation.z = Math.PI/2; log.rotation.y = (i * Math.PI) / 3;
-        log.rotation.x = Math.PI/8; scene.add(log);
+        log.position.y = 2; log.rotation.z = Math.PI/2; log.rotation.y = (i * Math.PI) / 3; log.rotation.x = Math.PI/8; scene.add(log);
     }
 
     // --- 4. 빗줄기 (Rain) 시스템 ---
@@ -367,37 +361,39 @@
     rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
     rainGeo.setDrawRange(0, parseInt(ctrlRainDensity.value));
 
-    // 비는 얇은 선 모양으로 떨어지도록 긴 직사각형 메쉬 느낌을 주는 material 사용
     const rainMat = new THREE.PointsMaterial({ color: 0x99ccff, size: 2.0, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending });
     const rainSystem = new THREE.Points(rainGeo, rainMat);
     scene.add(rainSystem);
 
-    // --- 5. 빗방울 리플 (Ripples on ground) 시스템 ---
-    // 바닥에 닿는 순간 물결 파장 생성 (InstancedMesh)
+    // --- 5. 빗방울 리플 (Ripples) 시스템 ---
     const maxRipples = 150;
     const rippleGeo = new THREE.RingGeometry(1, 1.2, 16);
-    rippleGeo.rotateX(-Math.PI / 2); // 바닥에 눕힘
-    const rippleMat = new THREE.MeshBasicMaterial({ color: 0x66aaff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false });
+    rippleGeo.rotateX(-Math.PI / 2); 
+    const rippleMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 1.0, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false });
     const rippleInst = new THREE.InstancedMesh(rippleGeo, rippleMat, maxRipples);
     rippleInst.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     scene.add(rippleInst);
 
-    const ripplesData = []; // { x, z, scale, life }
-    for(let i=0; i<maxRipples; i++) ripplesData.push({ x:0, z:0, scale:0, life:0 });
+    const ripplesData = []; 
+    for(let i=0; i<maxRipples; i++) {
+        ripplesData.push({ x:0, z:0, scale:0, life:0 });
+        rippleInst.setColorAt(i, new THREE.Color(0x000000)); // 초기 컬러 설정 필수
+    }
+    rippleInst.instanceColor.needsUpdate = true;
+
     let rippleIdx = 0;
     const dummyRipple = new THREE.Object3D();
 
     function spawnRipple(x, z) {
         let r = ripplesData[rippleIdx];
-        r.x = x; r.z = z; r.scale = 1.0; r.life = 1.0; // 생명력 1.0에서 시작하여 줄어듦
+        r.x = x; r.z = z; r.scale = 1.0; r.life = 1.0; 
         rippleIdx = (rippleIdx + 1) % maxRipples;
     }
 
     // --- 6. 번개 (Lightning) 시스템 ---
-    // 번개가 칠 때 하늘에서 가지치며 내려오는 선들
     const lightningGroup = new THREE.Group(); scene.add(lightningGroup);
     const lGeos = []; const lMeshes = [];
-    for(let i=0; i<3; i++) { // 최대 3가닥 동시 생성 가능
+    for(let i=0; i<3; i++) { 
         let lGeo = new THREE.BufferGeometry();
         lGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(50 * 3), 3));
         let lMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 });
@@ -408,16 +404,12 @@
 
     function triggerLightning() {
         lightningFlashIntensity = 1.0;
-        // 배경을 번쩍이게
         scene.background.setHSL(0.6, 0.2, 0.8);
-        
-        // 지그재그 번개 기하학 생성
         for(let j=0; j<3; j++) {
-            if(Math.random() > 0.5) continue; // 랜덤하게 일부 가닥만 생성
+            if(Math.random() > 0.5) continue; 
             let pos = lGeos[j].attributes.position.array;
             let startX = (Math.random()-0.5)*800; let startZ = (Math.random()-0.5)*800 - 300;
             let currentX = startX; let currentY = 1000; let currentZ = startZ;
-            
             for(let i=0; i<50; i++) {
                 pos[i*3] = currentX; pos[i*3+1] = currentY; pos[i*3+2] = currentZ;
                 currentX += (Math.random()-0.5)*80; currentY -= 25; currentZ += (Math.random()-0.5)*40;
@@ -466,7 +458,6 @@
         const audioDest = audioCtx.createMediaStreamDestination(); analyser.connect(audioCtx.destination); analyser.connect(audioDest);            
         const canvasStream = renderer.domElement.captureStream(60); const combinedStream = new MediaStream([...canvasStream.getVideoTracks(), ...audioDest.stream.getAudioTracks()]);
         
-        // MP4 (H264) 8Mbps 고화질 고정 로직
         let options = { mimeType: 'video/mp4; codecs=avc1', videoBitsPerSecond: 8000000 };
         let ext = 'mp4';
         if (!MediaRecorder.isTypeSupported(options.mimeType)) {
@@ -491,7 +482,7 @@
 
     // --- 8. 애니메이션 렌더링 루프 ---
     let time = 0;
-    let lightningCooldown = 0; // 번개 연속 발생 방지 쿨타임
+    let lightningCooldown = 0; 
 
     function animate() {
         requestAnimationFrame(animate);
@@ -507,13 +498,12 @@
         if (isPlaying && analyser) {
             analyser.getByteFrequencyData(dataArray);
             let bSum=0, tSum=0;
-            for(let i=0; i<15; i++) bSum += dataArray[i]; // 날것의 즉각적 타격감 사용 (Damping 제거)
+            for(let i=0; i<15; i++) bSum += dataArray[i]; 
             for(let i=100; i<200; i++) tSum += dataArray[i];        
             rawBass = (bSum / 15 / 255) * sensitivity;
             rawTreble = (tSum / 100 / 255) * sensitivity;
         }
 
-        // --- 모션 라우팅 값 할당 ---
         let fireBurst = 0.0;
         let rainRush = 0.0;
         let shouldLightning = false;
@@ -526,14 +516,9 @@
         else if (mapTreble.value === 'lightning' && rawTreble > 0.8) shouldLightning = true;
         else if (mapTreble.value === 'rain_rush') rainRush += rawTreble;
 
-        // 번개 트리거 (쿨타임 적용)
-        if (shouldLightning && lightningCooldown <= 0) {
-            triggerLightning();
-            lightningCooldown = 30; // 30프레임 대기
-        }
+        if (shouldLightning && lightningCooldown <= 0) { triggerLightning(); lightningCooldown = 30; }
         if (lightningCooldown > 0) lightningCooldown--;
 
-        // 번개 번쩍임 감소 및 하늘색 원상복구
         if (lightningFlashIntensity > 0) {
             lightningFlashIntensity -= 0.05;
             let bgL = Math.max(0.01, lightningFlashIntensity * 0.8);
@@ -541,21 +526,20 @@
             lMeshes.forEach(m => m.material.opacity = lightningFlashIntensity);
         }
 
-        // --- 불꽃 시뮬레이션 애니메이션 ---
+        // --- 불꽃 시뮬레이션 ---
         let baseFireScale = parseFloat(ctrlFireScale.value);
-        let dynamicFireScale = baseFireScale * (1.0 + fireBurst * 1.5); // 폭발 매핑 적용
+        let dynamicFireScale = baseFireScale * (1.0 + fireBurst * 1.5); 
         fireShaderMat.uniforms.uScale.value = dynamicFireScale;
 
         if (ctrlArtStyle.value === 'realistic') {
             for(let i=0; i<fireParticleCount; i++) {
-                fLife[i] -= 0.015; // 수명 감소
+                fLife[i] -= 0.015; 
                 if(fLife[i] < 0) {
                     fLife[i] = 1.0;
                     fPos[i*3] = (Math.random()-0.5)*30 * dynamicFireScale;
                     fPos[i*3+1] = 0;
                     fPos[i*3+2] = (Math.random()-0.5)*30 * dynamicFireScale;
                 }
-                // 불꽃의 상승 및 좌우 일렁임(Curl)
                 fPos[i*3] += Math.sin(time*2 + fPos[i*3+1]*0.1) * 0.5;
                 fPos[i*3+1] += fVel[i*3+1] * (0.5 + dynamicFireScale * 0.5);
                 fPos[i*3+2] += Math.cos(time*2 + fPos[i*3+1]*0.1) * 0.5;
@@ -563,7 +547,6 @@
             fGeo.attributes.position.needsUpdate = true;
             fGeo.attributes.aLife.needsUpdate = true;
         } else {
-            // 애니메이션 불꽃 (Anime)
             for(let i=0; i<animeFireCount; i++) {
                 aLives[i] -= 0.02;
                 let mesh = aCones[i];
@@ -572,26 +555,23 @@
                     mesh.position.set((Math.random()-0.5)*30 * dynamicFireScale, 0, (Math.random()-0.5)*30 * dynamicFireScale);
                     mesh.rotation.set((Math.random()-0.5)*0.5, Math.random()*Math.PI, (Math.random()-0.5)*0.5);
                 }
-                // 수명에 따라 Y축으로 커졌다가 줄어듦
                 let s = Math.sin(aLives[i] * Math.PI) * dynamicFireScale;
                 mesh.scale.set(s * 0.8, s * 1.5, s * 0.8);
                 mesh.position.y += 1.5 * dynamicFireScale;
-                mesh.material.color.setHSL(0.08 + (aLives[i]*0.05), 1.0, 0.5); // 노란색~빨간색 그라데이션
+                mesh.material.color.setHSL(0.08 + (aLives[i]*0.05), 1.0, 0.5); 
             }
         }
 
-        // --- 빗줄기 (Rain) 하강 애니메이션 ---
+        // --- 빗줄기 하강 ---
         let baseRainSpeed = 15;
-        let finalRainSpeed = baseRainSpeed + (rainRush * 40.0); // 빗줄기 몰아치기 매핑 적용
+        let finalRainSpeed = baseRainSpeed + (rainRush * 40.0); 
         let currentRainCount = parseInt(ctrlRainDensity.value);
         
         for(let i=0; i<currentRainCount; i++) {
-            rainPos[i*3+1] -= finalRainSpeed * (1.0 + Math.random()*0.5); // Y축 하강
+            rainPos[i*3+1] -= finalRainSpeed * (1.0 + Math.random()*0.5); 
             
-            // 바닥(y=0)에 닿으면 파티클 위로 리셋 및 파문(Ripple) 생성
             if (rainPos[i*3+1] < 0) {
                 rainPos[i*3+1] = 800 + Math.random()*200;
-                // 바닥 리플 스폰 (화면 앞쪽에 떨어지는 비만 생성하여 최적화)
                 if (Math.random() > 0.6 && rainPos[i*3+2] > -200 && rainPos[i*3+2] < 400 && rainPos[i*3] > -400 && rainPos[i*3] < 400) {
                     spawnRipple(rainPos[i*3], rainPos[i*3+2]);
                 }
@@ -599,25 +579,23 @@
         }
         rainGeo.attributes.position.needsUpdate = true;
 
-        // --- 바닥 빗방울 리플 (Ripples) 확장 애니메이션 ---
+        // --- 바닥 빗방울 리플 ---
         let baseRippleSize = parseFloat(ctrlRippleSize.value);
         for(let i=0; i<maxRipples; i++) {
             let r = ripplesData[i];
             if (r.life > 0) {
-                r.life -= 0.02; // 수명 감소 (투명해짐)
-                r.scale += 0.5; // 점점 퍼짐
+                r.life -= 0.02; 
+                r.scale += 0.5; 
                 
-                dummyRipple.position.set(r.x, 0.5, r.z); // 바닥보다 살짝 위
+                dummyRipple.position.set(r.x, 0.5, r.z); 
                 let finalScale = r.scale * baseRippleSize * 3.0;
                 dummyRipple.scale.set(finalScale, finalScale, 1);
                 dummyRipple.updateMatrix();
                 rippleInst.setMatrixAt(i, dummyRipple.matrix);
                 
-                // 수명에 비례해 투명도 적용 (InstancedMesh color alpha 트릭 대신 color 값 자체를 어둡게 처리하여 Additive blending에서 사라지게 함)
                 let intensity = Math.max(0, r.life);
                 rippleInst.setColorAt(i, new THREE.Color(0x66aaff).multiplyScalar(intensity * 0.5));
             } else {
-                // 수명이 다하면 화면 밖으로 치움
                 dummyRipple.position.set(0, -1000, 0); dummyRipple.scale.set(0,0,0);
                 dummyRipple.updateMatrix(); rippleInst.setMatrixAt(i, dummyRipple.matrix);
             }
