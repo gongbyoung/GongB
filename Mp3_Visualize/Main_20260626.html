@@ -2,12 +2,11 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Ultimate Audio Visualizer - Broadcast Studio</title>
+    <title>UAV_V001.01</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; color: #fff; font-family: sans-serif; }
         canvas { width: 100vw !important; height: 100vh !important; object-fit: contain; }
 
-        /* UI 분할 */
         .ui-panel { 
             position: absolute; top: 15px; z-index: 10; 
             background: rgba(10, 10, 10, 0.85); padding: 18px; 
@@ -62,9 +61,9 @@
     <div class="section-title">[비디오 해상도]</div>
     <div class="control-group">
         <select id="ctrl-ratio">
-            <option value="16:9">가로형 (1920x1080 - 유튜브)</option>
-            <option value="9:16">세로형 (1080x1920 - 쇼츠)</option>
-            <option value="fit" selected>화면 맞춤 (브라우저 꽉차게)</option>
+            <option value="16:9">가로형 (1920x1080)</option>
+            <option value="9:16">세로형 (1080x1920)</option>
+            <option value="fit" selected>화면 맞춤 (전체화면)</option>
         </select>
     </div>
 
@@ -84,7 +83,7 @@
         <input type="range" id="ctrl-sens" min="0.1" max="3" value="1.0" step="0.1">
     </div>
     <div class="control-group">
-        <label>입자 기본 크기 <span id="val-size">2.0</span></label>
+        <label>입자/선 굵기 <span id="val-size">2.0</span></label>
         <input type="range" id="ctrl-size" min="0.5" max="10" value="2.0" step="0.1">
     </div>
     <div class="control-group">
@@ -112,13 +111,13 @@
     <div class="section-title" style="color:#00ffcc;">[시각 효과 모드]</div>
     <div class="control-group">
         <select id="ctrl-mode">
-            <option value="fluid" selected>유체 흐름 (복합 다이나믹 모션)</option>
-            <option value="terrain">오디오 지형 (Random Scattered 3D)</option>
-            <option value="linear_bars">평면 이퀄라이저 (Linear)</option>
+            <option value="explosion">★ 방사형 파동 (1번 사진)</option>
+            <option value="terrain">★ 오디오 지형 (2번 사진)</option>
+            <option value="linear_bars">평면 이퀄라이저 (화면 하단 부착)</option>
             <option value="circular_bars">원형 이퀄라이저 (Ring)</option>
-            <option value="explosion">비트 폭발 (Constellation Web)</option>
-            <option value="wormhole">은하계 터널 (Wormhole)</option>
-            <option value="spiral">나선 은하 (Cross Spiral)</option>
+            <option value="fluid" selected>유체 흐름 (다이나믹 모션)</option>
+            <option value="wormhole">은하계 터널 (배경 별빛 10%)</option>
+            <option value="spiral">나선 은하 (배경 별빛 10%)</option>
         </select>
     </div>
     <div class="control-group">
@@ -129,11 +128,12 @@
     </div>
 
     <div id="ui-shape-settings" style="display:none;">
-        <div class="section-title" style="color:#aaff00;">[오브젝트 형태 제어 (통합 적용)]</div>
+        <div class="section-title" style="color:#aaff00;">[오브젝트 형태 제어]</div>
         <div class="control-group">
             <select id="ctrl-terrain-shape">
-                <option value="points">기본 파티클 (Points)</option>
-                <option value="cube" selected>정사각형 블록 (Cubes)</option>
+                <option value="wireframe" selected>스무스 와이어프레임 (2번 사진)</option>
+                <option value="points">기본 흩뿌려진 점 (Points)</option>
+                <option value="cube">정사각형 블록 (Cubes)</option>
                 <option value="piano">피아노 건반 (Piano Keys)</option>
                 <option value="knit">X자 엇갈림 (Knit Pattern)</option>
             </select>
@@ -155,8 +155,8 @@
         <input type="range" id="ctrl-cam-x" min="-1000" max="1000" value="0" step="10">
     </div>
     <div class="control-group">
-        <label>카메라 Y (상/하) <span id="val-cam-y">250</span></label>
-        <input type="range" id="ctrl-cam-y" min="-1000" max="1000" value="250" step="10">
+        <label>카메라 Y (상/하) <span id="val-cam-y">150</span></label>
+        <input type="range" id="ctrl-cam-y" min="-1000" max="1000" value="150" step="10">
     </div>
     <div class="control-group">
         <label>카메라 Z (줌 인/아웃) <span id="val-cam-z">600</span></label>
@@ -207,8 +207,11 @@
     const ctrlSens = document.getElementById('ctrl-sens');
     const ctrlSmooth = document.getElementById('ctrl-smooth');
     const ctrlColor = document.getElementById('ctrl-color');
+    const ctrlSize = document.getElementById('ctrl-size');
     const ctrlBloom = document.getElementById('ctrl-bloom');
     const updateUIVal = (id, val) => document.getElementById(id).innerText = val;
+
+    let visibleWidth = window.innerWidth, visibleHeight = window.innerHeight;
 
     function updateAspectRatio() {
         let val = ctrlRatio.value;
@@ -217,6 +220,7 @@
         else if (val === '9:16') { w = 1080; h = 1920; }
         renderer.setSize(w, h); composer.setSize(w, h); 
         camera.aspect = w / h; camera.updateProjectionMatrix();
+        visibleWidth = w; visibleHeight = h;
     }
     ctrlRatio.onchange = updateAspectRatio;
     window.addEventListener('resize', () => { if (ctrlRatio.value === 'fit') updateAspectRatio(); });
@@ -227,6 +231,7 @@
     ctrlCamZ.oninput = (e) => updateUIVal('val-cam-z', e.target.value);
     ctrlSens.oninput = (e) => updateUIVal('val-sens', e.target.value);
     ctrlSmooth.oninput = (e) => updateUIVal('val-smooth', e.target.value);
+    ctrlSize.oninput = (e) => updateUIVal('val-size', e.target.value);
     ctrlBloom.oninput = (e) => { bloomPass.strength = parseFloat(e.target.value); updateUIVal('val-bloom', e.target.value); };
     let baseColor = new THREE.Color(ctrlColor.value);
     ctrlColor.oninput = (e) => baseColor.set(e.target.value);
@@ -257,9 +262,12 @@
         reader.readAsDataURL(file);
     };
 
-    // --- 2. 시각 요소 그룹 & 메쉬 설정 ---
+    // --- 2. 시각 요소 그룹화 ---
     const particleGroup = new THREE.Group(); scene.add(particleGroup);
+    const circularBarsGroup = new THREE.Group(); scene.add(circularBarsGroup);
+    const linearBarsGroup = new THREE.Group(); scene.add(linearBarsGroup);
     
+    // (A) InstancedMesh (큐브, 피아노, 니트용)
     const instancedGroup = new THREE.Group(); scene.add(instancedGroup);
     const boxGeo = new THREE.BoxGeometry(1, 1, 1);
     const instMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
@@ -268,6 +276,27 @@
     instancedGroup.add(instMesh);
     const dummy = new THREE.Object3D();
 
+    // (B) 2번 사진: Continuous Wireframe Terrain
+    const wireframeGeo = new THREE.PlaneGeometry(2400, 2400, 80, 80);
+    const wireframeMat = new THREE.MeshBasicMaterial({ color: baseColor, wireframe: true, transparent: true, opacity: 0.7 });
+    const wireframeTerrain = new THREE.Mesh(wireframeGeo, wireframeMat);
+    wireframeTerrain.rotation.x = -Math.PI / 2;
+    wireframeTerrain.position.y = -200;
+    scene.add(wireframeTerrain);
+
+    // (C) 1번 사진: Radial Waveforms (비트 폭발 대체)
+    const radialWaveGroup = new THREE.Group(); scene.add(radialWaveGroup);
+    const radialLoops = [];
+    for(let i=0; i<5; i++) {
+        let rGeo = new THREE.BufferGeometry();
+        let rPts = new Float32Array(256 * 3);
+        rGeo.setAttribute('position', new THREE.BufferAttribute(rPts, 3));
+        let rMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, linewidth: 2 });
+        let loop = new THREE.LineLoop(rGeo, rMat);
+        radialWaveGroup.add(loop); radialLoops.push(loop);
+    }
+
+    // (D) 기존 파티클 시스템 (Fluid, Wormhole, Spiral)
     const circleCanvas = document.createElement('canvas');
     circleCanvas.width = 64; circleCanvas.height = 64;
     const ctx = circleCanvas.getContext('2d');
@@ -276,36 +305,36 @@
 
     const numGroups = 5;
     const particlesPerGroup = 2400; 
-    const totalParticles = numGroups * particlesPerGroup;
-    const geometries = [], posArrays = [], velArrays = [], origArrays = [], mats = [];
-    const lifeArrays = [], lineGeos = [], lineMeshes = [];
+    const geometries = [], posArrays = [], origArrays = [], mats = [];
 
+    // Terrain Point를 위한 무작위 그리드 셔플
     let shuffledGrid = [];
-    for(let i=0; i<totalParticles; i++){
-        shuffledGrid.push({ x: (i % 110) * 15 - 825, z: Math.floor(i / 110) * 15 - 825, origIndex: i });
-    }
-    for (let i = shuffledGrid.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [shuffledGrid[i], shuffledGrid[j]] = [shuffledGrid[j], shuffledGrid[i]];
-    }
+    for(let i=0; i<numGroups * particlesPerGroup; i++){ shuffledGrid.push({ x: (i % 110) * 15 - 825, z: Math.floor(i / 110) * 15 - 825, origIndex: i }); }
+    for (let i = shuffledGrid.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [shuffledGrid[i], shuffledGrid[j]] = [shuffledGrid[j], shuffledGrid[i]]; }
 
     for (let g = 0; g < numGroups; g++) {
         let geo = new THREE.BufferGeometry();
         let p = new Float32Array(particlesPerGroup * 3);
-        let v = new Float32Array(particlesPerGroup * 3);
         let o = new Float32Array(particlesPerGroup * 3);
         geo.setAttribute('position', new THREE.BufferAttribute(p, 3));
         let mat = new THREE.PointsMaterial({ color: baseColor, map: circleTexture, transparent: true, alphaTest: 0.1, blending: THREE.AdditiveBlending });
-        geometries.push(geo); posArrays.push(p); velArrays.push(v); origArrays.push(o); mats.push(mat);
+        geometries.push(geo); posArrays.push(p); origArrays.push(o); mats.push(mat);
         particleGroup.add(new THREE.Points(geo, mat));
+    }
 
-        lifeArrays.push(new Float32Array(particlesPerGroup)); 
-        let lGeo = new THREE.BufferGeometry();
-        lGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(particlesPerGroup * 6), 3));
-        let lMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending });
-        let lMesh = new THREE.LineSegments(lGeo, lMat);
-        lineGeos.push(lGeo); lineMeshes.push(lMesh);
-        particleGroup.add(lMesh);
+    // 이퀄라이저 막대 초기화
+    const numBars = 128;
+    const circularBars = [], linearBars = [];
+    const barGeoInstance = new THREE.BoxGeometry(4, 1, 4);
+    for(let i=0; i<numBars; i++) {
+        let mat = new THREE.MeshBasicMaterial({ color: new THREE.Color().setHSL(i/numBars, 1.0, 0.5) });
+        let cMesh = new THREE.Mesh(barGeoInstance, mat);
+        let angle = (i / numBars) * Math.PI * 2;
+        cMesh.position.set(Math.cos(angle)*150, 0, Math.sin(angle)*150); cMesh.lookAt(0,0,0);
+        circularBarsGroup.add(cMesh); circularBars.push(cMesh);
+        
+        let lMesh = new THREE.Mesh(barGeoInstance, mat);
+        linearBarsGroup.add(lMesh); linearBars.push(lMesh);
     }
 
     let currentMode = ctrlMode.value;
@@ -315,42 +344,63 @@
         currentMode = ctrlMode.value;
         terrainShape = ctrlTerrainShape.value;
 
+        // UI 토글 처리
         uiFluidSettings.style.display = (currentMode === 'fluid') ? 'block' : 'none';
         uiShapeSettings.style.display = (['terrain', 'linear_bars', 'circular_bars'].includes(currentMode)) ? 'block' : 'none';
 
-        particleGroup.visible = false; instancedGroup.visible = false;
+        // 모든 그룹 숨김
+        particleGroup.visible = false; instancedGroup.visible = false; 
+        circularBarsGroup.visible = false; linearBarsGroup.visible = false;
+        wireframeTerrain.visible = false; radialWaveGroup.visible = false;
+
         let showCore = true;
 
-        if (['terrain', 'linear_bars', 'circular_bars'].includes(currentMode) && terrainShape !== 'points') {
-            instancedGroup.visible = true;
-        } else {
+        if (currentMode === 'circular_bars') {
+            if(terrainShape === 'wireframe' || terrainShape === 'points') { circularBarsGroup.visible = true; } // 막대로 대체
+            else { instancedGroup.visible = true; }
+        } 
+        else if (currentMode === 'linear_bars') {
+            if(terrainShape === 'wireframe' || terrainShape === 'points') { linearBarsGroup.visible = true; }
+            else { instancedGroup.visible = true; }
+        } 
+        else if (currentMode === 'explosion') {
+            radialWaveGroup.visible = true;
+        }
+        else if (currentMode === 'terrain') {
+            if (terrainShape === 'wireframe') { wireframeTerrain.visible = true; }
+            else if (terrainShape === 'points') { particleGroup.visible = true; }
+            else { instancedGroup.visible = true; }
+        } 
+        else { // fluid, wormhole, spiral
             particleGroup.visible = true;
             if(currentMode === 'fluid') showCore = false;
-            
-            for(let g=0; g<numGroups; g++) { lifeArrays[g].fill(0); lineGeos[g].setDrawRange(0, 0); }
+        }
 
+        // 파티클 기본 배열 세팅
+        if (particleGroup.visible) {
             for (let g = 0; g < numGroups; g++) {
-                let pArr = posArrays[g], oArr = origArrays[g], vArr = velArrays[g];
+                let pArr = posArrays[g], oArr = origArrays[g];
                 for (let i = 0; i < particlesPerGroup; i++) {
                     let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
                     let globalIdx = (g * particlesPerGroup) + i;
                     
-                    if (['terrain', 'linear_bars', 'circular_bars'].includes(currentMode)) {
+                    if (currentMode === 'terrain' && terrainShape === 'points') {
                         pArr[ix] = shuffledGrid[globalIdx].x; pArr[iy] = -150; pArr[iz] = shuffledGrid[globalIdx].z;
-                    } else if (currentMode === 'explosion') {
-                        pArr[ix] = (Math.random() - 0.5) * 10; pArr[iy] = (Math.random() - 0.5) * 10; pArr[iz] = (Math.random() - 0.5) * 10;
-                        vArr[ix] = vArr[iy] = vArr[iz] = 0;
                     } else if (currentMode === 'fluid') {
-                        // ★ 변경: 화면에 꽉 차게 시작 범위를 800px로 축소 (초기 흩어짐 방지)
-                        pArr[ix] = (Math.random() - 0.5) * 800; pArr[iy] = (Math.random() - 0.5) * 800; pArr[iz] = (Math.random() - 0.5) * 800;
-                    } else if (currentMode === 'wormhole') {
-                        let angle = Math.random() * Math.PI * 2; let radius = 80 + Math.random() * 300;
-                        pArr[ix] = Math.cos(angle) * radius; pArr[iy] = Math.sin(angle) * radius; pArr[iz] = (Math.random() * 2000) - 1000;
-                    } else if (currentMode === 'spiral') {
-                        let arm = globalIdx % 4; let dir = (arm % 2 === 0) ? 1 : -1;
-                        let angle = (globalIdx / 12000) * Math.PI * 2 * 8 * dir + (arm * Math.PI / 2);
-                        let radius = (globalIdx / 12000) * 600 + (Math.random()*20);
-                        pArr[ix] = Math.cos(angle) * radius; pArr[iy] = (Math.random() - 0.5) * 60; pArr[iz] = Math.sin(angle) * radius;
+                        pArr[ix] = (Math.random() - 0.5) * 1500; pArr[iy] = (Math.random() - 0.5) * 1500; pArr[iz] = (Math.random() - 0.5) * 1500;
+                    } else if (currentMode === 'wormhole' || currentMode === 'spiral') {
+                        // ★ 10% 배경 별 분리
+                        if (i < particlesPerGroup * 0.1) {
+                            pArr[ix] = (Math.random() - 0.5) * 3000; pArr[iy] = (Math.random() - 0.5) * 3000; pArr[iz] = (Math.random() - 0.5) * 3000;
+                        } else {
+                            let angle = Math.random() * Math.PI * 2; let radius = 80 + Math.random() * 300;
+                            if (currentMode === 'spiral') {
+                                let arm = globalIdx % 4; let dir = (arm % 2 === 0) ? 1 : -1;
+                                angle = (globalIdx / 12000) * Math.PI * 2 * 8 * dir + (arm * Math.PI / 2);
+                                radius = (globalIdx / 12000) * 600 + (Math.random()*20);
+                            }
+                            pArr[ix] = Math.cos(angle) * radius; pArr[iy] = (currentMode==='spiral')? (Math.random()-0.5)*60 : Math.sin(angle)*radius; pArr[iz] = (currentMode==='spiral')? Math.sin(angle)*radius : (Math.random()*2000)-1000;
+                        }
                     }
                     oArr[ix] = pArr[ix]; oArr[iy] = pArr[iy]; oArr[iz] = pArr[iz];
                 }
@@ -421,7 +471,6 @@
             statusEl.innerText = "녹화 완료! 영상이 저장되었습니다.";
             ctrlRatio.disabled = false; isPlaying = false;
             recordBtn.style.display = 'block'; recordBtn.innerText = "▶ 다시 녹화하기";
-            for(let g=0; g<numGroups; g++) { lifeArrays[g].fill(0); lineGeos[g].setDrawRange(0, 0); }
         };
 
         currentSource.onended = () => { if(mediaRecorder.state === 'recording') mediaRecorder.stop(); };
@@ -432,7 +481,6 @@
 
     // --- 4. 메인 렌더링 루프 ---
     let time = 0;
-    let burstIndices = [0, 0, 0, 0, 0];
     let baseFov = 75;
 
     function animate() {
@@ -463,11 +511,17 @@
             bass = band1; mid = (band2 + band3) / 2; treble = (band4 + band5) / 2;
         }
 
-        let targetFov = baseFov - (bass * 15);
-        camera.fov += (targetFov - camera.fov) * 0.15; camera.updateProjectionMatrix();
-        camera.position.set(parseFloat(ctrlCamX.value), parseFloat(ctrlCamY.value), parseFloat(ctrlCamZ.value)); 
-        camera.lookAt(0, 0, 0); 
+        // [카메라 고정 제어 (Linear_Bars 예외처리)]
+        if (currentMode === 'linear_bars') {
+            camera.position.set(0, 0, parseFloat(ctrlCamZ.value)); camera.lookAt(0,0,0);
+        } else {
+            let targetFov = baseFov - (bass * 15);
+            camera.fov += (targetFov - camera.fov) * 0.15; camera.updateProjectionMatrix();
+            camera.position.set(parseFloat(ctrlCamX.value), parseFloat(ctrlCamY.value), parseFloat(ctrlCamZ.value)); 
+            camera.lookAt(0, 0, 0); 
+        }
 
+        // 코어(로고)
         if(coreMesh.visible) {
             let scale = 1 + (bass * 3); coreMesh.scale.set(scale, scale, scale);
             coreMesh.rotation.x += 0.005 + (treble * 0.1); coreMesh.rotation.y += 0.005 + (mid * 0.05);
@@ -477,8 +531,79 @@
             let imgScale = 100 * (1 + (bass * 1.0)); coreSprite.scale.set(imgScale, imgScale, 1);
         }
 
-        // --- 다이나믹 메쉬 렌더링 ---
-        if (['terrain', 'linear_bars', 'circular_bars'].includes(currentMode) && terrainShape !== 'points') {
+        // --- ★ 1번 사진 완벽 구현: 방사형 파동 (Radial Waveforms) ---
+        if (currentMode === 'explosion') {
+            for(let g=0; g<5; g++) {
+                let targetFreq = 0;
+                if(g===0) targetFreq=band1; else if(g===1) targetFreq=band2; else if(g===2) targetFreq=band3; else if(g===3) targetFreq=band4; else targetFreq=band5;
+                
+                let baseRadius = 80 + (g * 100);
+                let pos = radialLoops[g].geometry.attributes.position.array;
+                
+                for(let i=0; i<256; i++) {
+                    let angle = (i / 256) * Math.PI * 2;
+                    let fftIndex = (i % 128); 
+                    let freqData = smoothedData[fftIndex] / 255.0;
+                    
+                    // 베이스 비트에 전체가 팽창 + 자신의 주파수에 맞춰 뾰족해짐
+                    let radius = baseRadius + (bass * 50) + (freqData * 150 * sensitivity * (1 + targetFreq*2));
+                    
+                    pos[i*3] = Math.cos(angle) * radius;
+                    pos[i*3+1] = Math.sin(angle) * radius;
+                    pos[i*3+2] = 0;
+                }
+                radialLoops[g].geometry.attributes.position.needsUpdate = true;
+                
+                // 색상 적용
+                if (targetFreq > 0.4) {
+                    if(g===0) radialLoops[g].material.color.setHSL(0.02, 1.0, 0.6); else if(g===1) radialLoops[g].material.color.setHSL(0.15, 1.0, 0.6); else if(g===2) radialLoops[g].material.color.lerp(new THREE.Color(0xffffff), 0.5); else if(g===3) radialLoops[g].material.color.setHSL(0.6, 1.0, 0.7); else radialLoops[g].material.color.setHex(0xffffff);
+                } else {
+                    radialLoops[g].material.color.lerp(baseColor, 0.05);
+                }
+            }
+        }
+        // --- ★ 2번 사진 완벽 구현: 스무스 와이어프레임 지형 ---
+        else if (currentMode === 'terrain' && terrainShape === 'wireframe') {
+            wireframeMat.color.copy(baseColor);
+            if (bass > 0.6) wireframeMat.color.setHSL(0.02, 1.0, 0.6);
+            
+            let pos = wireframeTerrain.geometry.attributes.position.array;
+            for(let i=0; i<pos.length/3; i++) {
+                let x = pos[i*3]; let y = pos[i*3+1]; // Z는 평면상 Y
+                let fftIndex = Math.floor(Math.abs(x + y) * 0.05) % 128;
+                let freqData = smoothedData[fftIndex] / 255.0;
+                let wave = Math.sin((x * 0.01) + time * 3) * 20 + Math.cos((y * 0.01) + time * 3) * 20;
+                pos[i*3+2] = (freqData * 300 * sensitivity) + wave; // 높이 적용
+            }
+            wireframeTerrain.geometry.attributes.position.needsUpdate = true;
+        }
+        // --- 기본 평면/원형 이퀄라이저 (막대) ---
+        else if ((currentMode === 'circular_bars' || currentMode === 'linear_bars') && (terrainShape === 'points' || terrainShape === 'wireframe')) {
+            if (currentMode === 'circular_bars') {
+                circularBarsGroup.rotation.y += 0.002; circularBarsGroup.rotation.x = 0.2;
+                for(let i=0; i<numBars; i++) {
+                    let val = smoothedData[i] / 255.0;
+                    circularBars[i].scale.y = Math.max(1, val * 200 * sensitivity);
+                    circularBars[i].position.y = circularBars[i].scale.y / 2 - 20; 
+                    if (val > 0.7) circularBars[i].material.color.setHex(0xffffff); else circularBars[i].material.color.setHSL(i/numBars, 1.0, 0.5);
+                }
+            } else {
+                // 평면 이퀄라이저는 화면 하단에 카메라 뷰어 폭에 맞춰 자동 배치
+                let fovRadian = (camera.fov * Math.PI) / 180;
+                let vHeight = 2 * Math.tan(fovRadian / 2) * camera.position.z;
+                let vWidth = vHeight * camera.aspect;
+                
+                for(let i=0; i<numBars; i++) {
+                    let val = smoothedData[i] / 255.0;
+                    linearBars[i].scale.y = Math.max(1, val * 400 * sensitivity);
+                    let xPos = (i / numBars) * vWidth - (vWidth / 2);
+                    linearBars[i].position.set(xPos, -vHeight/2 + linearBars[i].scale.y/2, 0); 
+                    if (val > 0.7) linearBars[i].material.color.setHex(0xffffff); else linearBars[i].material.color.setHSL(i/numBars, 1.0, 0.5);
+                }
+            }
+        }
+        // --- 통합 다이나믹 메쉬 (큐브, 피아노, 니트) ---
+        else if (instancedGroup.visible) {
             let activeInstances = (currentMode === 'terrain') ? 12000 : 128;
             instMesh.count = activeInstances;
             
@@ -511,7 +636,12 @@
                     targetFreq = smoothedData[i] / 255.0;
                     if (currentMode === 'circular_bars') {
                         let angle = (i / 128) * Math.PI * 2; bx = Math.cos(angle)*150; bz = Math.sin(angle)*150; by = 0;
-                    } else { bx = (i - 64) * 8; bz = 0; by = -100; }
+                    } else { 
+                        let fovRadian = (camera.fov * Math.PI) / 180;
+                        let vHeight = 2 * Math.tan(fovRadian / 2) * camera.position.z;
+                        let vWidth = vHeight * camera.aspect;
+                        bx = (i / 128) * vWidth - (vWidth / 2); bz = 0; by = -vHeight/2; 
+                    }
                     if(targetFreq > 0.6) curColor.setHex(0xffffff); else curColor.setHSL((i%128)/128, 1.0, 0.5);
                 }
                 
@@ -521,12 +651,12 @@
                     let baseC = isBlackKey ? new THREE.Color(0x111111) : new THREE.Color(0xcccccc);
                     curColor.lerpColors(baseC, curColor, Math.min(1, targetFreq * 2.5));
                     
-                    if (isBlackKey) { bz -= (currentMode === 'circular_bars' ? 10 : 5); by += 2; dummy.scale.set(3, Math.max(1, targetFreq*200*sensitivity), 8); } 
+                    if (isBlackKey) { bz -= (currentMode === 'circular_bars' ? 10 : 5); by += 2; dummy.scale.set(4, Math.max(1, targetFreq*200*sensitivity), 8); } 
                     else { dummy.scale.set(6, Math.max(1, targetFreq*150*sensitivity), 15); }
                     dummy.rotation.set(0,0,0);
                 } 
                 else if (terrainShape === 'cube') {
-                    dummy.scale.set(10, Math.max(10, targetFreq*100), 10); dummy.rotation.set(0,0,0);
+                    dummy.scale.set(10, Math.max(10, targetFreq*100*sensitivity), 10); dummy.rotation.set(0,0,0);
                 } 
                 else if (terrainShape === 'knit') {
                     dummy.scale.set(16, 2, 16); dummy.rotation.set(0, (i % 2 === 0 ? Math.PI/4 : -Math.PI/4), 0);
@@ -546,11 +676,13 @@
             instMesh.instanceMatrix.needsUpdate = true;
             if(instMesh.instanceColor) instMesh.instanceColor.needsUpdate = true;
         }
-        // --- 파티클 시스템 ---
-        else {
+        // --- 파티클 모드 (Fluid, Wormhole, Spiral) ---
+        else if (particleGroup.visible) {
             particleGroup.rotation.y += 0.001;
+            let baseS = parseFloat(ctrlSize.value);
+
             for (let g = 0; g < numGroups; g++) {
-                let pArr = posArrays[g], oArr = origArrays[g], vArr = velArrays[g];
+                let pArr = posArrays[g], oArr = origArrays[g];
                 
                 let targetFreq = 0;
                 if (freqMode === '5band') {
@@ -559,8 +691,28 @@
                     if (g===0) targetFreq=bass; else if (g===1||g===2) targetFreq=mid; else targetFreq=treble;
                 }
 
-                // ★ 유체 흐름 (Fluid Flow) 구형 바운더리 및 모션 고도화 ★
-                if (currentMode === 'fluid') {
+                mats[g].size = baseS * (1 + targetFreq * 3);
+                
+                if (targetFreq > 0.4) {
+                    if (freqMode === '5band') {
+                        if(g===0) mats[g].color.setHSL(0.02, 1.0, 0.6); else if(g===1) mats[g].color.setHSL(0.15, 1.0, 0.6); else if(g===2) mats[g].color.lerp(new THREE.Color(0xffffff), 0.5); else if(g===3) mats[g].color.setHSL(0.6, 1.0, 0.7); else mats[g].color.setHex(0xffffff);
+                    } else {
+                        if(g===0) mats[g].color.setHSL(0.02, 1.0, 0.6); else if(g>2) mats[g].color.setHex(0xffffff); else mats[g].color.lerp(new THREE.Color(0xffffff), 0.3);
+                    }
+                } else { mats[g].color.lerp(baseColor, 0.05); }
+
+                if (currentMode === 'terrain') {
+                    for (let i = 0; i < particlesPerGroup; i++) {
+                        let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
+                        let globalIdx = (g * particlesPerGroup) + i;
+                        let fftIndex = (globalIdx % 110) * 2; 
+                        let freqData = smoothedData[fftIndex] / 255.0;
+                        let wave = Math.sin((oArr[ix] * 0.03) + time * (3 + targetFreq)) * (15 + targetFreq*20);
+                        pArr[iy] += ((oArr[iy] + (freqData * 200 * sensitivity) + wave) - pArr[iy]) * 0.1; 
+                    }
+                } 
+                else if (currentMode === 'fluid') {
+                    let fluidSpeed = 1.0 + (targetFreq * 15); 
                     let nType = document.getElementById('ctrl-noise-'+g).value;
                     let t = time * 2.0;
 
@@ -576,110 +728,48 @@
                         else if (nType === 'glitch') { vx=Math.round(Math.sin(py+t)); vy=Math.round(Math.cos(pz+t)); vz=Math.round(Math.sin(px+t)); }
                         vx*=2; vy*=2; vz*=2;
 
-                        // 대역별 액션 (과도한 이탈 방지)
-                        if (g === 0) { vz += targetFreq * 25.0; mats[g].size = 2.0 * (1 + targetFreq * 8); } 
-                        else if (g === 1) { vy += (Math.random() > 0.5 ? 1 : -1) * targetFreq * 15.0; mats[g].size = 2.0 * (1 + targetFreq); } 
-                        else if (g === 2) { if (targetFreq < 0.1) { vx*=0.1; vy*=0.1; vz*=0.1; } else { vx*=targetFreq*12; vy*=targetFreq*12; vz*=targetFreq*12; } mats[g].size = 2.0; } 
-                        else if (g === 3) { if(targetFreq>0.3){ vx+=(Math.random()>0.5?15:-15)*targetFreq; vy+=(Math.random()>0.5?15:-15)*targetFreq; } mats[g].size=1.5; } 
-                        else if (g === 4) { let d=Math.sqrt(pArr[ix]**2+pArr[iy]**2+pArr[iz]**2)+0.1; vx+=(pArr[ix]/d)*targetFreq*25; vy+=(pArr[iy]/d)*targetFreq*25; vz+=(pArr[iz]/d)*targetFreq*25; mats[g].size=2.0*(0.5+targetFreq*5); } 
+                        if (g === 0) { vz += targetFreq * 25.0; } 
+                        else if (g === 1) { vy += (Math.random() > 0.5 ? 1 : -1) * targetFreq * 15.0; } 
+                        else if (g === 2) { if (targetFreq < 0.1) { vx*=0.1; vy*=0.1; vz*=0.1; } else { vx*=targetFreq*12; vy*=targetFreq*12; vz*=targetFreq*12; } } 
+                        else if (g === 3) { if(targetFreq>0.3){ vx+=(Math.random()>0.5?15:-15)*targetFreq; vy+=(Math.random()>0.5?15:-15)*targetFreq; } } 
+                        else if (g === 4) { let d=Math.sqrt(pArr[ix]**2+pArr[iy]**2+pArr[iz]**2)+0.1; vx+=(pArr[ix]/d)*targetFreq*25; vy+=(pArr[iy]/d)*targetFreq*25; vz+=(pArr[iz]/d)*targetFreq*25; } 
 
-                        // ★ 구형 장벽 (Spherical Containment) 
                         let dist = Math.sqrt(pArr[ix]**2 + pArr[iy]**2 + pArr[iz]**2) + 0.1;
-                        if (dist > 500) {
-                            let pull = (dist - 500) * 0.015;
-                            vx -= (pArr[ix] / dist) * pull; vy -= (pArr[iy] / dist) * pull; vz -= (pArr[iz] / dist) * pull;
-                        }
+                        if (dist > 500) { let pull = (dist - 500) * 0.015; vx -= (pArr[ix] / dist) * pull; vy -= (pArr[iy] / dist) * pull; vz -= (pArr[iz] / dist) * pull; }
 
                         vx -= pArr[ix] * 0.0015; vy -= pArr[iy] * 0.0015; vz -= pArr[iz] * 0.0015;
                         pArr[ix] += vx; pArr[iy] += vy; pArr[iz] += vz;
                         
-                        // 하드 리미트
                         if(Math.abs(pArr[ix])>800) pArr[ix]*=0.8; if(Math.abs(pArr[iy])>800) pArr[iy]*=0.8; if(Math.abs(pArr[iz])>800) pArr[iz]*=0.8;
                     }
                 }
-                else if (currentMode === 'explosion') {
-                    let linePos = lineGeos[g].attributes.position.array;
-                    let lineIdx = 0;
+                else if (currentMode === 'wormhole' || currentMode === 'spiral') {
+                    if(currentMode === 'wormhole') particleGroup.rotation.z = time * 0.5 + (bass * 0.5);
+                    let speed = 2 + (targetFreq * 50); 
+                    
+                    for (let i = 0; i < particlesPerGroup; i++) {
+                        let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
+                        // 배경 별자리 유지 (10%)
+                        if (i < particlesPerGroup * 0.1) {
+                            pArr[ix] += Math.sin(time + oArr[ix]) * 0.5; pArr[iy] += Math.cos(time + oArr[iy]) * 0.5;
+                            continue;
+                        }
 
-                    if (targetFreq > 0.5) {
-                        let burstAmount = (g === 0) ? 60 : 20; 
-                        for(let b=0; b<burstAmount; b++) {
-                            let bIdx = burstIndices[g] % particlesPerGroup;
-                            let idx = bIdx * 3;
-                            pArr[idx] = 0; pArr[idx+1] = 0; pArr[idx+2] = 0; 
-                            let u = Math.random(), v = Math.random();
-                            let theta = u * 2.0 * Math.PI, phi = Math.acos(2.0 * v - 1.0);
-                            let speed = 25 + (targetFreq * 70) + (Math.random() * 20);
-                            vArr[idx] = Math.sin(phi) * Math.cos(theta) * speed;
-                            vArr[idx+1] = Math.sin(phi) * Math.sin(theta) * speed;
-                            vArr[idx+2] = Math.cos(phi) * speed;
-                            
-                            lifeArrays[g][bIdx] = 1.0; 
-                            burstIndices[g]++;
+                        let angle = Math.atan2(oArr[iy], oArr[ix]);
+                        let targetR = 0;
+
+                        if (currentMode === 'wormhole') {
+                            pArr[iz] += speed; if (pArr[iz] > 300) pArr[iz] = -2000; 
+                            let r = Math.sqrt(oArr[ix]**2 + oArr[iy]**2); targetR = r + (targetFreq * 100); 
+                            pArr[ix] += (Math.cos(angle) * targetR - pArr[ix]) * 0.1; pArr[iy] += (Math.sin(angle) * targetR - pArr[iy]) * 0.1;
+                        } else {
+                            let globalIdx = (g * particlesPerGroup) + i;
+                            let arm = globalIdx % 4; let dir = (arm % 2 === 0) ? 1 : -1; // 교차 회전 
+                            angle = Math.atan2(oArr[iz], oArr[ix]) + (time * 0.2 * dir) + (targetFreq * 0.2 * dir); 
+                            let r = Math.sqrt(oArr[ix]**2 + oArr[iz]**2); targetR = r * (1 + targetFreq * 0.8); 
+                            pArr[ix] += (Math.cos(angle) * targetR - pArr[ix]) * 0.1; pArr[iz] += (Math.sin(angle) * targetR - pArr[iz]) * 0.1; pArr[iy] += (oArr[iy] - pArr[iy]) * 0.1; 
                         }
                     }
-
-                    for (let i = 0; i < particlesPerGroup; i++) {
-                        let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
-                        if (lifeArrays[g][i] > 0) {
-                            lifeArrays[g][i] -= 0.012; 
-                            let life = lifeArrays[g][i];
-
-                            if (life > 0.6) {
-                                pArr[ix] += vArr[ix]; pArr[iy] += vArr[iy]; pArr[iz] += vArr[iz];
-                                vArr[ix] *= 0.85; vArr[iy] *= 0.85; vArr[iz] *= 0.85;
-                            } else if (life > 0.1) {
-                                let dist = Math.sqrt(pArr[ix]**2 + pArr[iy]**2 + pArr[iz]**2);
-                                if (dist > 500 && i > 0 && lifeArrays[g][i-1] > 0.1 && lifeArrays[g][i-1] <= 0.6) {
-                                    linePos[lineIdx++] = pArr[ix-3]; linePos[lineIdx++] = pArr[iy-3]; linePos[lineIdx++] = pArr[iz-3];
-                                    linePos[lineIdx++] = pArr[ix];   linePos[lineIdx++] = pArr[iy];   linePos[lineIdx++] = pArr[iz];
-                                }
-                            } else { pArr[ix] *= 0.8; pArr[iy] *= 0.8; pArr[iz] *= 0.8; }
-                        } else { pArr[ix] = 0; pArr[iy] = 0; pArr[iz] = 0; }
-                    }
-                    lineGeos[g].setDrawRange(0, lineIdx / 3);
-                    lineGeos[g].attributes.position.needsUpdate = true;
-                }
-                else if (currentMode === 'wormhole') {
-                    particleGroup.rotation.z = time * 0.5 + (bass * 0.5);
-                    let speed = 2 + (targetFreq * 50); 
-                    for (let i = 0; i < particlesPerGroup; i++) {
-                        let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
-                        pArr[iz] += speed; if (pArr[iz] > 300) pArr[iz] = -2000; 
-                        let angle = Math.atan2(oArr[iy], oArr[ix]); let r = Math.sqrt(oArr[ix]**2 + oArr[iy]**2);
-                        let targetR = r + (targetFreq * 100); 
-                        pArr[ix] += (Math.cos(angle) * targetR - pArr[ix]) * 0.1; pArr[iy] += (Math.sin(angle) * targetR - pArr[iy]) * 0.1;
-                    }
-                }
-                else if (currentMode === 'spiral') {
-                    for (let i = 0; i < particlesPerGroup; i++) {
-                        let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
-                        let globalIdx = (g * particlesPerGroup) + i;
-                        let arm = globalIdx % 4; let dir = (arm % 2 === 0) ? 1 : -1;
-                        let angle = Math.atan2(oArr[iz], oArr[ix]) + (time * 0.2 * dir) + (targetFreq * 0.2 * dir); 
-                        let r = Math.sqrt(oArr[ix]**2 + oArr[iz]**2); let targetR = r * (1 + targetFreq * 0.8); 
-                        pArr[ix] += (Math.cos(angle) * targetR - pArr[ix]) * 0.1; pArr[iz] += (Math.sin(angle) * targetR - pArr[iz]) * 0.1; pArr[iy] += (oArr[iy] - pArr[iy]) * 0.1; 
-                    }
-                }
-                else if (currentMode === 'terrain') {
-                    for (let i = 0; i < particlesPerGroup; i++) {
-                        let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
-                        let wave = Math.sin((oArr[ix] * 0.03) + time * (3 + targetFreq)) * (15 + targetFreq*20);
-                        pArr[iy] += ((oArr[iy] + (targetFreq * 200 * sensitivity) + wave) - pArr[iy]) * 0.1; 
-                    }
-                }
-
-                if (currentMode !== 'fluid') mats[g].size = 2.0 * (1 + targetFreq * 3);
-                
-                if (targetFreq > 0.4) {
-                    if (freqMode === '5band') {
-                        if(g===0) mats[g].color.setHSL(0.02, 1.0, 0.6); else if(g===1) mats[g].color.setHSL(0.15, 1.0, 0.6); else if(g===2) mats[g].color.lerp(new THREE.Color(0xffffff), 0.5); else if(g===3) mats[g].color.setHSL(0.6, 1.0, 0.7); else mats[g].color.setHex(0xffffff);
-                    } else {
-                        if(g===0) mats[g].color.setHSL(0.02, 1.0, 0.6); else if(g>2) mats[g].color.setHex(0xffffff); else mats[g].color.lerp(new THREE.Color(0xffffff), 0.3);
-                    }
-                    lineMeshes[g].material.color.copy(mats[g].color);
-                } else {
-                    mats[g].color.lerp(baseColor, 0.05); lineMeshes[g].material.color.lerp(baseColor, 0.05);
                 }
                 geometries[g].attributes.position.needsUpdate = true;
             }
