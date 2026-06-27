@@ -2,19 +2,21 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Generative Painter - Pro Edge Detection</title>
+    <title>Generative Painter - Sketch & UI Controls</title>
     <style>
         body { font-family: sans-serif; background: #222; color: #fff; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
-        #controls { margin-bottom: 20px; padding: 20px; background: #333; border-radius: 8px; display: flex; flex-direction: column; gap: 15px; width: 100%; max-width: 800px; }
-        .control-row { display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
+        #controls { margin-bottom: 20px; padding: 20px; background: #333; border-radius: 8px; display: flex; flex-direction: column; gap: 15px; width: 100%; max-width: 900px; }
+        .control-row { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; background: #2a2a2a; padding: 12px; border-radius: 6px; }
         canvas { background: #f4f4f0; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        #previewCanvas { background: #000; box-shadow: none; border: 1px solid #555; max-height: 150px; }
-        input[type="number"] { width: 60px; padding: 5px; }
-        input[type="range"] { width: 150px; }
+        #previewCanvas { background: #000; box-shadow: none; border: 1px solid #555; max-height: 120px; }
+        input[type="number"] { width: 60px; padding: 5px; background: #444; color: #fff; border: 1px solid #666; border-radius: 4px; }
+        input[type="range"] { width: 120px; accent-color: #4CAF50; }
         button { padding: 10px 20px; cursor: pointer; background: #4CAF50; color: white; border: none; border-radius: 4px; font-weight: bold; }
         button:disabled { background: #555; cursor: not-allowed; }
-        #status { font-size: 0.9em; color: #4db8ff; margin-bottom: 10px; }
-        .preview-container { display: flex; align-items: center; gap: 15px; background: #2a2a2a; padding: 10px; border-radius: 6px; }
+        #status { font-size: 0.95em; color: #4db8ff; margin-bottom: 10px; font-weight: bold; }
+        .preview-container { display: flex; align-items: center; gap: 15px; background: #222; padding: 10px; border-radius: 6px; width: 100%; box-sizing: border-box; }
+        .control-group { display: flex; align-items: center; gap: 8px; font-size: 0.85em; }
+        .section-title { font-size: 0.9em; color: #ffaa00; font-weight: bold; margin-bottom: -5px; }
     </style>
 </head>
 <body>
@@ -25,18 +27,39 @@
                 <label>전체 시간(초): </label>
                 <input type="number" id="totalTime" value="30" min="5">
             </div>
-            <div class="control-group">
-                <label>윤곽선 감도: </label>
-                <input type="range" id="sensitivitySlider" min="10" max="255" value="100">
-                <span id="sensitivityVal">100</span>
-            </div>
             <button id="startBtn" disabled>🎨 그리기 시작</button>
+        </div>
+        
+        <div class="notch-controls">
+            <div class="section-title">✏️ 소묘 및 윤곽선 설정</div>
+            <div class="control-row" style="margin-top:10px;">
+                <div class="control-group">
+                    <label>윤곽선 감도: </label>
+                    <input type="range" id="sensitivitySlider" min="10" max="255" value="100">
+                    <span id="sensitivityVal">100</span>
+                </div>
+                <div class="control-group">
+                    <label>선 두께: </label>
+                    <input type="range" id="lineWidthSlider" min="1" max="50" value="8">
+                    <span id="lineWidthVal">0.8</span>
+                </div>
+                <div class="control-group">
+                    <label>데생 덧칠 노이즈: </label>
+                    <input type="range" id="noiseSlider" min="0" max="30" value="8">
+                    <span id="noiseVal">8</span>
+                </div>
+                <div class="control-group">
+                    <label>배경 차단 임계값: </label>
+                    <input type="range" id="bgThresholdSlider" min="150" max="255" value="240">
+                    <span id="bgThresholdVal">240</span>
+                </div>
+            </div>
         </div>
         
         <div class="preview-container">
             <div>
                 <strong style="color:#ffaa00;">🔍 윤곽선 미리보기</strong><br>
-                <span style="font-size: 0.8em; color: #aaa;">위 슬라이더를 조절해 하얀 선이 깔끔하게 나올 때 그리기를 시작하세요.</span>
+                <span style="font-size: 0.8em; color: #aaa;">감도와 배경 차단 값을 조절하여 하얀 스케치 선을 확보하세요.</span>
             </div>
             <canvas id="previewCanvas"></canvas>
         </div>
@@ -61,16 +84,20 @@
         let startTime;
         let targetDurationMs;
 
+        // UI 요소 연결 및 이벤트 등록
         const sensitivitySlider = document.getElementById('sensitivitySlider');
         const sensitivityVal = document.getElementById('sensitivityVal');
+        const lineWidthSlider = document.getElementById('lineWidthSlider');
+        const lineWidthVal = document.getElementById('lineWidthVal');
+        const noiseSlider = document.getElementById('noiseSlider');
+        const noiseVal = document.getElementById('noiseVal');
+        const bgThresholdSlider = document.getElementById('bgThresholdSlider');
+        const bgThresholdVal = document.getElementById('bgThresholdVal');
 
-        // 슬라이더 조절 시 즉각적으로 미리보기 업데이트
-        sensitivitySlider.addEventListener('input', () => {
-            sensitivityVal.innerText = sensitivitySlider.value;
-            if (imgData) {
-                detectEdges(); 
-            }
-        });
+        sensitivitySlider.addEventListener('input', () => { sensitivityVal.innerText = sensitivitySlider.value; if (imgData) detectEdges(); });
+        bgThresholdSlider.addEventListener('input', () => { bgThresholdVal.innerText = bgThresholdSlider.value; if (imgData) detectEdges(); });
+        lineWidthSlider.addEventListener('input', () => { lineWidthVal.innerText = (lineWidthSlider.value / 10).toFixed(1); });
+        noiseSlider.addEventListener('input', () => { noiseVal.innerText = noiseSlider.value; });
 
         document.getElementById('imageLoader').addEventListener('change', handleImage);
         document.getElementById('startBtn').addEventListener('click', () => {
@@ -91,9 +118,8 @@
                     width = canvas.width = Math.floor(img.width * scale);
                     height = canvas.height = Math.floor(img.height * scale);
                     
-                    // 미리보기 캔버스 크기도 비례해서 설정
-                    previewCanvas.height = 100;
-                    previewCanvas.width = width * (100 / height);
+                    previewCanvas.height = 80;
+                    previewCanvas.width = width * (80 / height);
 
                     const offCanvas = document.createElement('canvas');
                     offCanvas.width = width;
@@ -104,34 +130,31 @@
 
                     detectEdges();
                     document.getElementById('startBtn').disabled = false;
-                    document.getElementById('status').innerText = "슬라이더로 윤곽선을 조절한 뒤 '그리기 시작'을 누르세요.";
+                    document.getElementById('status').innerText = "옵션을 조절한 뒤 '그리기 시작'을 누르세요.";
                 }
                 img.src = event.target.result;
             }
             if(e.target.files[0]) reader.readAsDataURL(e.target.files[0]);
         }
 
-        // Sobel 알고리즘을 사용한 강력한 윤곽선 추출
         function detectEdges() {
             const data = imgData.data;
             const threshold = parseInt(sensitivitySlider.value);
+            const bgLimit = parseInt(bgThresholdSlider.value);
             edgePoints = [];
             colorPoints = [];
             
             const gray = new Uint8Array(width * height);
             for(let i=0; i<data.length; i+=4) {
-                // 흑백 값으로 변환
                 gray[i/4] = 0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2];
             }
 
-            // 미리보기용 이미지 데이터
             const previewImgData = previewCtx.createImageData(width, height);
             
             for(let y = 1; y < height - 1; y++) {
                 for(let x = 1; x < width - 1; x++) {
                     const i = y * width + x;
                     
-                    // 소벨(Sobel) 마스크 적용
                     const tl = gray[(y-1)*width + (x-1)], tc = gray[(y-1)*width + x], tr = gray[(y-1)*width + (x+1)];
                     const ml = gray[y*width + (x-1)], mr = gray[y*width + (x+1)];
                     const bl = gray[(y+1)*width + (x-1)], bc = gray[(y+1)*width + x], br = gray[(y+1)*width + (x+1)];
@@ -142,7 +165,6 @@
 
                     const isEdge = magnitude > threshold;
                     
-                    // 미리보기 캔버스에 그리기 (흰색 선, 검은 배경)
                     const pIdx = i * 4;
                     previewImgData.data[pIdx] = isEdge ? 255 : 0;
                     previewImgData.data[pIdx+1] = isEdge ? 255 : 0;
@@ -157,15 +179,14 @@
                     if (isEdge) {
                         edgePoints.push({ x, y, r, g, b });
                     } else {
-                        // 배경 필터링: 색상이 너무 밝은(흰색에 가까운) 픽셀은 채색 목록에서 제외
-                        if (gray[i] < 240) {
+                        // 사용자가 지정한 배경 차단 임계값 적용
+                        if (gray[i] < bgLimit) {
                             colorPoints.push({ x, y, r, g, b });
                         }
                     }
                 }
             }
             
-            // 미리보기를 스케일링해서 렌더링
             const tempCanvas = document.createElement('canvas');
             tempCanvas.width = width; tempCanvas.height = height;
             tempCanvas.getContext('2d').putImageData(previewImgData, 0, 0);
@@ -173,9 +194,8 @@
             previewCtx.drawImage(tempCanvas, 0, 0, previewCanvas.width, previewCanvas.height);
         }
 
-        // 그리기 순서 계산 (BFS 거리 정렬)
         function prepareDrawingSteps() {
-            document.getElementById('status').innerText = "채색 경로 계산 중...";
+            document.getElementById('status').innerText = "소묘 스케치 궤적 및 채색 경로 계산 중...";
             const distances = new Int32Array(width * height).fill(999999);
             let queue = [];
             
@@ -205,21 +225,20 @@
                 }
             }
 
-            // 거리에 따라 채색 픽셀 정렬
             colorPoints.forEach(p => p.distance = distances[p.y * width + p.x]);
             colorPoints.sort((a, b) => a.distance - b.distance);
 
             allDrawSteps = [];
             
-            // 1. 검은 윤곽선 
+            // Phase 1: 연하고 선명하지 않은 소묘 느낌의 첫 번째 스케치 선
             let shuffledEdges1 = [...edgePoints].sort(() => Math.random() - 0.5);
             shuffledEdges1.forEach(p => allDrawSteps.push({ ...p, type: 'BLACK_OUTLINE' }));
             
-            // 2. 색상 윤곽선
+            // Phase 2: 소묘 선 위에 자연스럽게 겹치는 연한 색상 베이스 스케치 선
             let shuffledEdges2 = [...edgePoints].sort(() => Math.random() - 0.5);
             shuffledEdges2.forEach(p => allDrawSteps.push({ ...p, type: 'COLOR_OUTLINE' }));
             
-            // 3. 바깥 채색 (거리에 따라 덩어리 지어 그리기)
+            // Phase 3: 윤곽선에서 바깥으로 퍼져나가며 사사삭 연하게 채색
             const chunkSize = 300; 
             for (let i = 0; i < colorPoints.length; i += chunkSize) {
                 let chunk = colorPoints.slice(i, i + chunkSize).sort(() => Math.random() - 0.5);
@@ -270,35 +289,45 @@
         }
 
         function drawStep(target) {
-            // 노이즈 범위를 대폭 축소하여 화면 밖으로 선이 튀는 현상 방지
-            let destX = target.x + (Math.random() - 0.5) * 6;
-            let destY = target.y + (Math.random() - 0.5) * 6;
+            // UI로부터 노이즈 진폭(데생 덧칠 세기) 가져오기
+            const nRange = parseInt(noiseSlider.value);
+            const baseLineWidth = parseFloat(lineWidthSlider.value) / 10;
+            
+            // 사람이 손으로 사사삭 긋는 듯한 빗나감 연출
+            let destX = target.x + (Math.random() - 0.5) * nRange;
+            let destY = target.y + (Math.random() - 0.5) * nRange;
             
             ctx.beginPath();
             
-            // 가끔씩 펜을 떼고 의도적으로 살짝 빗나가게 시작
-            if (currentIdx === 0 || Math.random() < 0.01) {
-                currentPen.x = destX - (Math.random() - 0.5) * 30;
-                currentPen.y = destY - (Math.random() - 0.5) * 30;
+            // 기차 연결하듯이 짧게 한붓그리기를 반복하다가 거리가 nRange의 3배 이상 멀어지면 펜을 뗌
+            let dist = Math.hypot(destX - currentPen.x, destY - currentPen.y);
+            if (currentIdx === 0 || dist > nRange * 3 || Math.random() < 0.02) {
+                currentPen.x = destX - (Math.random() - 0.5) * (nRange * 2);
+                currentPen.y = destY - (Math.random() - 0.5) * (nRange * 2);
             }
             
             ctx.moveTo(currentPen.x, currentPen.y);
-            let cpX = (currentPen.x + destX) / 2 + (Math.random() - 0.5) * 8;
-            let cpY = (currentPen.y + destY) / 2 + (Math.random() - 0.5) * 8;
+            
+            // 꺾이는 지점을 제어하는 제어점(Control Point) 노이즈 적용
+            let cpX = (currentPen.x + destX) / 2 + (Math.random() - 0.5) * (nRange * 0.8);
+            let cpY = (currentPen.y + destY) / 2 + (Math.random() - 0.5) * (nRange * 0.8);
 
             if (target.type === 'BLACK_OUTLINE') {
-                ctx.strokeStyle = 'rgba(20, 20, 25, 0.5)';
-                ctx.lineWidth = 0.8;
+                // 진하지 않고 연하게 중첩되는 소묘 스케치선 질감 구현
+                ctx.strokeStyle = 'rgba(40, 40, 45, 0.25)';
+                ctx.lineWidth = baseLineWidth;
                 ctx.quadraticCurveTo(cpX, cpY, destX, destY);
                 ctx.stroke();
             } else if (target.type === 'COLOR_OUTLINE') {
-                ctx.strokeStyle = `rgba(${target.r}, ${target.g}, ${target.b}, 0.6)`;
-                ctx.lineWidth = 1.5;
+                // 선명함을 죽이고 스케치와 융화되는 유색 선
+                ctx.strokeStyle = `rgba(${target.r}, ${target.g}, ${target.b}, 0.35)`;
+                ctx.lineWidth = baseLineWidth * 1.5;
                 ctx.quadraticCurveTo(cpX, cpY, destX, destY);
                 ctx.stroke();
             } else if (target.type === 'COLOR_OUTWARD') {
-                ctx.strokeStyle = `rgba(${target.r}, ${target.g}, ${target.b}, 0.2)`;
-                ctx.lineWidth = Math.random() * 4 + 1;
+                // 사사삭 겹치며 바깥으로 칠해지는 밀도 조절용 브러시 선
+                ctx.strokeStyle = `rgba(${target.r}, ${target.g}, ${target.b}, 0.12)`;
+                ctx.lineWidth = baseLineWidth * (Math.random() * 4 + 2);
                 ctx.quadraticCurveTo(cpX, cpY, destX, destY);
                 ctx.stroke();
             }
