@@ -170,6 +170,10 @@
         <label>모션 부드러움 (Damping) <span id="val-smooth">0.85</span></label>
         <input type="range" id="ctrl-smooth" min="0.1" max="0.99" value="0.85" step="0.01">
     </div>
+    <div class="control-group">
+        <label>꽃송이 기본 회전 속도 <span id="val-rot">0.5</span></label>
+        <input type="range" id="ctrl-rot" min="0" max="5" value="0.5" step="0.1">
+    </div>
 
     <div class="section-title" style="color:#aaff00;">[배경 유체(Fluid) 환경 설정]</div>
     <div class="control-group">
@@ -208,7 +212,7 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 
 <script>
-    // --- 1. Three.js & Post-Processing (탑뷰 직교화 고정) ---
+    // --- 1. Three.js & Post-Processing ---
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x020205); 
     scene.fog = new THREE.FogExp2(0x020205, 0.001);
@@ -246,10 +250,11 @@
     const fluidSingleColorGroup = document.getElementById('fluid-single-color-group');
     const ctrlFluidSpeed = document.getElementById('ctrl-fluid-speed');
 
-    const ctrlCamX = { value: 0 }; const ctrlCamY = { value: 0 }; // 탑뷰 완전 고정을 위해 자동 제거
     const ctrlSens = document.getElementById('ctrl-sens');
     const ctrlSmooth = document.getElementById('ctrl-smooth');
+    const ctrlRot = document.getElementById('ctrl-rot'); // ★ 에러 원인 복구 완료
     const ctrlBloom = document.getElementById('ctrl-bloom');
+    
     const updateUIVal = (id, val) => document.getElementById(id).innerText = val;
 
     function updateAspectRatio() {
@@ -264,7 +269,6 @@
     window.addEventListener('resize', () => { if (ctrlRatio.value === 'fit') updateAspectRatio(); });
     updateAspectRatio(); 
 
-    // 실시간 빌드 트리거 슬라이더 연결
     ctrlScale.oninput = (e) => { updateUIVal('val-scale', e.target.value); buildFlowers(); };
     ctrlPetalW.oninput = (e) => { updateUIVal('val-petal-w', e.target.value); buildFlowers(); };
     ctrlPetalL.oninput = (e) => { updateUIVal('val-petal-l', e.target.value); buildFlowers(); };
@@ -273,28 +277,29 @@
 
     ctrlSens.oninput = (e) => updateUIVal('val-sens', e.target.value);
     ctrlSmooth.oninput = (e) => updateUIVal('val-smooth', e.target.value);
+    ctrlRot.oninput = (e) => updateUIVal('val-rot', e.target.value); // ★ 연결 완료
     ctrlFluidSpeed.oninput = (e) => updateUIVal('val-fluid-speed', e.target.value);
     ctrlBloom.oninput = (e) => { bloomPass.strength = parseFloat(e.target.value); updateUIVal('val-bloom', e.target.value); };
 
-    // --- 2. 고성능 배경 유체 (Fluid Flow) 시스템 제어반 ---
+    // --- 2. 배경 유체 (Fluid Flow) ---
     const maxFluidCount = 10000;
     const fluidGeo = new THREE.BufferGeometry();
     const fluidPos = new Float32Array(maxFluidCount * 3);
     const fluidColors = new Float32Array(maxFluidCount * 3);
-    const fluidColorSeeds = new Float32Array(maxFluidCount); // 랜덤 컬러 복원을 위한 색상 시드 배열
+    const fluidColorSeeds = new Float32Array(maxFluidCount);
 
     for(let i=0; i<maxFluidCount; i++) {
         fluidPos[i*3] = (Math.random() - 0.5) * 4000;
         fluidPos[i*3+1] = (Math.random() - 0.5) * 4000;
         fluidPos[i*3+2] = (Math.random() - 0.5) * 1000 - 500; 
 
-        fluidColorSeeds[i] = Math.random(); // 무작위 HSL Hue 각인
+        fluidColorSeeds[i] = Math.random(); 
         let c = new THREE.Color().setHSL(fluidColorSeeds[i], 0.9, 0.6);
         fluidColors[i*3] = c.r; fluidColors[i*3+1] = c.g; fluidColors[i*3+2] = c.b;
     }
     fluidGeo.setAttribute('position', new THREE.BufferAttribute(fluidPos, 3));
     fluidGeo.setAttribute('color', new THREE.BufferAttribute(fluidColors, 3));
-    fluidGeo.setDrawRange(0, parseInt(ctrlFluidCount.value)); // 초기 드로우 개수 지정
+    fluidGeo.setDrawRange(0, parseInt(ctrlFluidCount.value));
 
     const circleCanvas = document.createElement('canvas'); circleCanvas.width = 64; circleCanvas.height = 64;
     const ctx = circleCanvas.getContext('2d'); ctx.beginPath(); ctx.arc(32, 32, 30, 0, Math.PI * 2); ctx.fillStyle = "white"; ctx.fill();
@@ -306,13 +311,11 @@
     const fluidSystem = new THREE.Points(fluidGeo, fluidMat);
     scene.add(fluidSystem);
 
-    // 유체 개수 제어
     ctrlFluidCount.oninput = (e) => {
         updateUIVal('val-fluid-count', e.target.value);
         fluidGeo.setDrawRange(0, parseInt(e.target.value));
     };
 
-    // 유체 색상 모드 변환 및 단일색 업데이트 함수
     function updateFluidColors() {
         const colors = fluidGeo.attributes.color.array;
         const mode = ctrlFluidColorMode.value;
@@ -335,8 +338,7 @@
     };
     ctrlFluidColor.oninput = updateFluidColors;
 
-
-    // --- 3. 16종 꽃잎 쉐이프 베지에 곡선 제어반 ---
+    // --- 3. 16종 꽃잎 쉐이프 제너레이터 ---
     function getPetalGeometry(shapeType) {
         const s = new THREE.Shape(); s.moveTo(0, 0);
         switch(parseInt(shapeType)) {
@@ -365,22 +367,20 @@
 
     function createFlowerObj(x, y, scaleMult) {
         const flower = new THREE.Group(); flower.position.set(x, y, 0);
-        
         const globalScale = parseFloat(ctrlScale.value) * scaleMult * 3.5; 
         flower.scale.set(globalScale, globalScale, globalScale);
 
         const petals = []; const stamens = [];
         const customGeo = getPetalGeometry(ctrlPetalShape.value);
-        const stamenGeo = getPetalGeometry(7); // 꽃술은 바늘형태 유지
+        const stamenGeo = getPetalGeometry(7); 
 
-        // 실시간 꽃잎 비율(너비/길이) 변수 로딩
         let pW = parseFloat(ctrlPetalW.value);
         let pL = parseFloat(ctrlPetalL.value);
 
         const petalMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false });
         for(let i=0; i<16; i++) {
             let pMesh = new THREE.Mesh(customGeo, petalMat.clone());
-            pMesh.scale.set(0.6 * pW, 2.5 * pL, 1.0); // 너비와 길이 슬라이더 반영
+            pMesh.scale.set(0.6 * pW, 2.5 * pL, 1.0); 
             pMesh.rotation.z = -(i / 16) * Math.PI * 2; pMesh.rotation.x = Math.PI / 2.2; 
             flower.add(pMesh); petals.push(pMesh);
         }
@@ -388,7 +388,7 @@
         const stamenMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false });
         for(let i=0; i<16; i++) {
             let sMesh = new THREE.Mesh(stamenGeo, stamenMat.clone());
-            sMesh.scale.set(0.6 * pW * 0.5, 0.6 * pL, 1.0); // 꽃술 크기도 비례 연동
+            sMesh.scale.set(0.6 * pW * 0.5, 0.6 * pL, 1.0); 
             sMesh.rotation.z = -(i / 16) * Math.PI * 2 - (Math.PI / 32); sMesh.rotation.x = Math.PI / 3; 
             flower.add(sMesh); stamens.push(sMesh);
         }
@@ -415,9 +415,9 @@
     }
     buildFlowers();
 
-    // --- 4. 오디오 엔진 및 파일 시스템 ---
+    // --- 4. 오디오 엔진 ---
     let audioCtx, analyser, dataArray;
-    let decodedBuffer = null; let isPlaying = false;    
+    let decodedBuffer = null; let isPlaying = false, currentSource;    
     let mediaRecorder, recordedChunks = [];
     let smoothedData = new Float32Array(512);
     
@@ -477,11 +477,10 @@
         statusEl.innerHTML = `<span class="recording-badge">● REC</span> 자동 녹화 및 렌더링 중...`;
     };
 
-    // --- 5. 렌더링 루프 (★ 정밀 모션 매핑 이식 부) ---
+    // --- 5. 렌더링 루프 ---
     let time = 0;
-    let coreImageSprite = null; // 로고 교체용
+    let coreImageSprite = null; 
 
-    // 중앙 로고 교체 리스너
     document.getElementById('core-image-file').onchange = function(e) {
         const file = e.target.files[0]; if (!file) return;
         const reader = new FileReader();
@@ -515,9 +514,9 @@
             for(let i=0; i<dataArray.length; i++) smoothedData[i] += (dataArray[i] - smoothedData[i]) * lerpFactor;
             
             let bSum=0, mSum=0, tSum=0;
-            for(let i=0; i<15; i++) bSum += smoothedData[i];       // Bass
-            for(let i=15; i<90; i++) mSum += smoothedData[i];      // Mid
-            for(let i=90; i<200; i++) tSum += dataArray[i];        // Treble (타격감을 위해 가공 생데이터 혼합)
+            for(let i=0; i<15; i++) bSum += smoothedData[i];       
+            for(let i=15; i<90; i++) mSum += smoothedData[i];      
+            for(let i=90; i<200; i++) tSum += dataArray[i];        
             
             rawBass = (bSum / 15 / 255) * sensitivity;
             rawMid = (mSum / 75 / 255) * sensitivity;
@@ -526,10 +525,11 @@
 
         // --- 백그라운드 유체 모션 ---
         let fluidSpeed = parseFloat(ctrlFluidSpeed.value);
+        let currentFluidCount = parseInt(ctrlFluidCount.value);
         let fPos = fluidGeo.attributes.position.array;
         let t = time * 0.5;
 
-        for (let i = 0; i < maxFluidCount; i++) {
+        for (let i = 0; i < currentFluidCount; i++) {
             let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
             let px = fPos[ix] * 0.003, py = fPos[iy] * 0.003, pz = fPos[iz] * 0.003;
             
@@ -544,17 +544,10 @@
         }
         fluidGeo.attributes.position.needsUpdate = true;
 
+        // --- 모션 라우팅 ---
+        let motionPetal = 0, motionStamen = 0, motionCore = 0, motionRot = 0;
 
-        // --- ★ 핵심: 오디오 매핑 알고리즘 구동부 ---
-        let motionPetal = 0;
-        let motionStamen = 0;
-        let motionCore = 0;
-        let motionRot = 0;
-
-        // 사용자가 선택한 라우팅 맵 값 가져오기
-        const routeBass = mapBass.value;
-        const routeMid = mapMid.value;
-        const routeTreble = mapTreble.value;
+        const routeBass = mapBass.value; const routeMid = mapMid.value; const routeTreble = mapTreble.value;
 
         function distributeMotion(routeTarget, intensityValue) {
             if (routeTarget === 'petal') motionPetal += intensityValue;
@@ -567,40 +560,33 @@
         distributeMotion(routeMid, rawMid);
         distributeMotion(routeTreble, rawTreble);
 
-        // 로고 진동 핸들링
         if (coreImageSprite && coreImageSprite.visible) {
             let s = 100 * (1 + motionCore * 1.0); coreImageSprite.scale.set(s, s, 1);
         }
 
-        // 각 생성된 꽃송이마다 매핑된 데이터 주입 및 독립 구동
         let rotGlobalSpeed = parseFloat(ctrlRot.value);
 
         allFlowers.forEach((flowerObj, idx) => {
-            // 1. 회전 모션 가속 적용
-            flowerObj.group.rotation.z -= (0.005 + motionRot * 0.08) * rotGlobalSpeed * (idx % 2 === 0 ? 1 : -1); 
+            // 회전
+            flowerObj.group.rotation.z -= (0.002 * rotGlobalSpeed + motionRot * 0.08) * (idx % 2 === 0 ? 1 : -1); 
 
-            // 2. 중앙 코어 서브 스케일 적용
+            // 코어 스케일
             let cScale = 1 + (motionCore * 1.8);
             flowerObj.core.scale.set(cScale, cScale, 1);
 
-            // 3. 꽃잎 개폐 모션 (motionPetal 기반 제어)
+            // 꽃잎 개폐
             for(let p=0; p<16; p++) {
                 let petal = flowerObj.petals[p];
-                // 소리에 맞춰 x축 각도가 0도로 누우며 넓게 펴짐
                 let targetRotX = (Math.PI / 2.2) - (motionPetal * (Math.PI / 2.2));
                 petal.rotation.x = Math.max(0.0, targetRotX);
-                
-                // 역동적인 네온 광량 피드백 생성
                 petal.material.color.setHSL(((p/16) + time*0.08) % 1.0, 0.85, 0.22 + motionPetal * 0.6);
             }
 
-            // 4. 안쪽 꽃술 모션 (motionStamen 기반 제어)
+            // 꽃술 진동
             for(let s=0; s<16; s++) {
                 let stamen = flowerObj.stamens[s];
-                // 소리에 맞춰 안쪽 Z축 상단으로 바짝 수축/진동
                 let targetRotX = (Math.PI / 3) + (motionStamen * (Math.PI / 3.5));
                 stamen.rotation.x = Math.min(Math.PI / 1.4, targetRotX);
-                
                 stamen.material.color.setHSL(((s/16) - time*0.12) % 1.0, 1.0, 0.35 + motionStamen * 0.65);
             }
         });
