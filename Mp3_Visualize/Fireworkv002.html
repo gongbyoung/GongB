@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Nature Fluid Studio v5.0 - Realistic Waves & Bubbles</title>
+    <title>Nature Fluid Studio v6.0 - Ultimate Realism</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #020205; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; }
         canvas { width: 100vw !important; height: 100vh !important; object-fit: contain; }
@@ -36,6 +36,12 @@
         }
         .main-btn:hover { background-color: #00b3cc; }
 
+        .rand-btn {
+            background-color: #ffaa00; color: black; margin-top: 5px; font-size: 12px; padding: 10px; font-weight: bold;
+            box-shadow: 0 0 10px rgba(255, 170, 0, 0.4);
+        }
+        .rand-btn:hover { background-color: #ffcc00; box-shadow: 0 0 15px rgba(255, 170, 0, 0.7); }
+
         .record-btn { background-color: #ff3366; color: white; margin-top: 10px; display: none; box-shadow: 0 0 15px rgba(255, 51, 102, 0.6); }
         .record-btn:hover { background-color: #cc0044; }
 
@@ -51,14 +57,14 @@
 <body>
 
 <div id="ui-left" class="ui-panel">
-    <h3>자연 유체 스튜디오 v5.0</h3>
+    <h3>자연 유체 스튜디오 v6.0</h3>
     
     <div class="section-title" style="color:#00ffcc;">[시각 효과 모드 선택]</div>
     <div class="control-group">
         <select id="ctrl-mode">
             <option value="bubbles" selected>1. 뭉탱이 물방울 (Rising Bubbles)</option>
             <option value="waves">2. 리얼 해변 파도 (Realistic Waves)</option>
-            <option value="clouds">3. 워프 에어브러시 구름 (Warp Clouds)</option>
+            <option value="snow">3. 눈 내리는 풍경 (Falling Snow)</option>
         </select>
     </div>
 
@@ -75,10 +81,13 @@
             <input type="range" id="ctrl-wave-angle" min="0" max="360" value="0" step="5">
         </div>
         <div class="control-group">
-            <label style="color:#00ccff;">파도 밀려오는 거리 제한 <span id="val-wave-dist">0.5</span></label>
+            <label style="color:#00ccff;">파도 밀려오는 힘 <span id="val-wave-dist">0.5</span></label>
             <input type="range" id="ctrl-wave-dist" min="0.1" max="1.0" value="0.5" step="0.05">
         </div>
     </div>
+
+    <div class="section-title" style="color:#ffaa00;">[제너러티브 엔진]</div>
+    <button id="btn-randomize" class="main-btn rand-btn">🎲 형태 및 위치 무작위 섞기</button>
 
     <div class="section-title">[비디오 해상도]</div>
     <div class="control-group">
@@ -95,7 +104,7 @@
         <input type="range" id="ctrl-pcount" min="1000" max="30000" value="15000" step="1000">
     </div>
     <div class="control-group">
-        <label style="color:#ff3366;">물리적 시작 위치 (Base Y) <span id="val-base-y">-400</span></label>
+        <label style="color:#ff3366;">물리적 시작/바닥 위치 (Base Y) <span id="val-base-y">-400</span></label>
         <input type="range" id="ctrl-base-y" min="-1000" max="500" value="-400" step="10">
     </div>
 
@@ -112,7 +121,7 @@
 <div id="ui-right" class="ui-panel">
     <h3>오디오 & 카메라 정밀 튜닝</h3>
 
-    <div class="section-title" style="color:#ffaa00;">[카메라 구도]</div>
+    <div class="section-title" style="color:#ffaa00;">[자유 카메라 구도]</div>
     <div class="control-group">
         <label>카메라 X (좌우) <span id="val-cam-x">0</span></label>
         <input type="range" id="ctrl-cam-x" min="-1500" max="1500" value="0" step="10">
@@ -128,7 +137,7 @@
 
     <div class="section-title" style="color:#00ffcc;">[다이나믹 오디오 타격감]</div>
     <div class="control-group">
-        <label>저음 파워 (Bass / 파도 밀림) <span id="val-react-bass">1.0</span></label>
+        <label>저음 파워 (Bass / 파도, 눈보라) <span id="val-react-bass">1.0</span></label>
         <input type="range" id="ctrl-react-bass" min="0.0" max="3.0" value="1.0" step="0.1">
     </div>
     <div class="control-group">
@@ -140,11 +149,9 @@
         <input type="range" id="ctrl-shake" min="0" max="150" value="50" step="5">
     </div>
     
-    <div class="section-title" style="color:#ffaa00;">[글로벌 색상 범위 (RGB Range)]</div>
+    <div class="section-title" style="color:#ffaa00;">[글로벌 색상 (파도/물방울/눈)]</div>
     <div style="display: flex; justify-content: space-between; margin-bottom:10px;">
-        <input type="color" id="ctrl-color-start" value="#00ffcc" style="width: 48%;">
-        <input type="color" id="ctrl-color-end" value="#ff00cc" style="width: 48%;">
-    </div>
+        <input type="color" id="ctrl-color-start" value="#00ffff" style="width: 48%;"> <input type="color" id="ctrl-color-end" value="#0033ff" style="width: 48%;">   </div>
 
     <div class="section-title" style="color:#aaff00;">[아날로그 포스트 프로세싱]</div>
     <div class="control-group">
@@ -205,6 +212,9 @@
     const composer = new THREE.EffectComposer(renderer);
     composer.addPass(renderScene); composer.addPass(bloomPass); composer.addPass(artFilterPass);
 
+    // --- 글로벌 난수 (무작위 섞기 버튼용) ---
+    let globalRandomSeed = 0.0;
+
     // --- UI 바인딩 ---
     const updateUIVal = (id, val) => document.getElementById(id).innerText = val;
     const ctrlRatio = document.getElementById('ctrl-ratio');
@@ -233,6 +243,13 @@
     const ctrlGrain = document.getElementById('ctrl-grain');
     const ctrlVignette = document.getElementById('ctrl-vignette');
 
+    document.getElementById('btn-randomize').onclick = () => {
+        globalRandomSeed = Math.random() * 1000.0; // 랜덤 시드 완전히 변경
+        if (ctrlMode.value === 'bubbles' || ctrlMode.value === 'snow') {
+            resetParticles(parseInt(ctrlCluster.value)); // 위치 재배정
+        }
+    };
+
     function updateAspectRatio() {
         let val = ctrlRatio.value; let w = window.innerWidth, h = window.innerHeight;
         if (val === '16:9') { w = 1920; h = 1080; } else if (val === '9:16') { w = 1080; h = 1920; }
@@ -250,11 +267,11 @@
         });
     });
 
-    // --- 2-A. 파티클 엔진 (물방울 & 구름용) ---
+    // --- 2-A. 파티클 엔진 (물방울 & 눈내림) ---
     const maxParticles = 30000;
     const particleGeo = new THREE.BufferGeometry();
     const pPos = new Float32Array(maxParticles * 3);
-    const pBasePos = new Float32Array(maxParticles * 3); // 중심 유지/흔들림 복원용
+    const pBasePos = new Float32Array(maxParticles * 3); 
     const pGroup = new Float32Array(maxParticles); 
     const pSeed = new Float32Array(maxParticles); 
 
@@ -262,12 +279,17 @@
     
     function resetParticles(clusterSize) {
         let groupIdx = 0; let countInGroup = 0; let cX = 0, cY = 0, cZ = 0;
+        let baseY = parseFloat(ctrlBaseY.value);
+        
         for(let i=0; i<maxParticles; i++) {
             if (countInGroup >= clusterSize) {
                 countInGroup = 0; groupIdx++;
-                cX = (Math.random() - 0.5) * 2000; cY = (Math.random() - 0.5) * 2000; cZ = (Math.random() - 0.5) * 2000;
+                cX = (Math.random() - 0.5) * 2000; 
+                cY = baseY + Math.random() * 1500; // 넓게 분포
+                cZ = (Math.random() - 0.5) * 2000;
             }
             pGroup[i] = groupIdx; pSeed[i] = Math.random(); 
+            
             pPos[i*3] = cX + (Math.random()-0.5)*40; pPos[i*3+1] = cY + (Math.random()-0.5)*40; pPos[i*3+2] = cZ + (Math.random()-0.5)*40;
             pBasePos[i*3] = pPos[i*3]; pBasePos[i*3+1] = pPos[i*3+1]; pBasePos[i*3+2] = pPos[i*3+2];
             countInGroup++;
@@ -283,15 +305,16 @@
         if (type === 'ring') { 
             ctx.beginPath(); ctx.arc(64,64,50,0,Math.PI*2); ctx.lineWidth = 10; ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.stroke();
             ctx.beginPath(); ctx.arc(64,64,30,0,Math.PI*2); ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.fill();
-        } else if (type === 'airbrush') { 
+        } else if (type === 'snow') { 
+            // 눈송이를 위한 매우 부드러운 하얀 점
             let grad = ctx.createRadialGradient(64,64,0, 64,64,64);
-            grad.addColorStop(0, 'rgba(255,255,255,1.0)'); grad.addColorStop(0.3, 'rgba(255,255,255,0.5)'); grad.addColorStop(1, 'rgba(255,255,255,0)');
+            grad.addColorStop(0, 'rgba(255,255,255,1.0)'); grad.addColorStop(0.3, 'rgba(255,255,255,0.8)'); grad.addColorStop(1, 'rgba(255,255,255,0)');
             ctx.fillStyle = grad; ctx.fillRect(0,0,128,128);
         }
         return new THREE.CanvasTexture(c);
     }
     const texBubbles = createTexture('ring');
-    const texClouds = createTexture('airbrush');
+    const texSnow = createTexture('snow');
 
     const particleShaderMat = new THREE.ShaderMaterial({
         uniforms: {
@@ -302,10 +325,14 @@
             attribute float aSeed; varying vec3 vColor; varying float vOpacity;
             uniform vec3 cStart; uniform vec3 cEnd; uniform float uMode; uniform float uSize; uniform float uOpacity;
             void main() {
-                vColor = mix(cStart, cEnd, aSeed); vOpacity = uOpacity;
+                if (uMode == 2.0) { // Snow Mode (흰색에 가깝게)
+                    vColor = mix(cStart, vec3(1.0, 1.0, 1.0), 0.7); 
+                } else {
+                    vColor = mix(cStart, cEnd, aSeed); 
+                }
+                vOpacity = uOpacity;
                 vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-                if (uMode == 2.0) { gl_PointSize = 400.0 * (800.0 / -mvPosition.z); vOpacity = 0.08; } // 구름
-                else { gl_PointSize = uSize * (800.0 / -mvPosition.z); }
+                gl_PointSize = uSize * (800.0 / -mvPosition.z);
                 gl_Position = projectionMatrix * mvPosition;
             }
         `,
@@ -320,21 +347,19 @@
     const particleSystem = new THREE.Points(particleGeo, particleShaderMat);
     scene.add(particleSystem);
 
-    // --- 2-B. 진짜 해변 파도 셰이더 (Shader Plane) ---
-    // 첨부하신 사진처럼 해변 모래와 파도가 리얼하게 밀려오는 전용 평면 메쉬
+    // --- 2-B. 진짜 해변 파도 셰이더 (Shader Plane) 개선 ---
     const waveGeo = new THREE.PlaneGeometry(6000, 6000, 1, 1);
     const waveShaderMat = new THREE.ShaderMaterial({
         uniforms: {
-            uTime: { value: 0.0 }, uBass: { value: 0.0 }, uAngle: { value: 0.0 }, uDist: { value: 0.5 },
-            cSand: { value: new THREE.Color(0xd2b48c) }, cShallow: { value: new THREE.Color(0x20b2aa) }, cDeep: { value: new THREE.Color(0x005577) }, cFoam: { value: new THREE.Color(0xffffff) }
+            uTime: { value: 0.0 }, uBass: { value: 0.0 }, uAngle: { value: 0.0 }, uDist: { value: 0.5 }, uSeed: { value: 0.0 },
+            cSand: { value: new THREE.Color(0xd2b48c) }, cShallow: { value: new THREE.Color(ctrlColorStart.value) }, cDeep: { value: new THREE.Color(ctrlColorEnd.value) }, cFoam: { value: new THREE.Color(0xffffff) }
         },
         vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
         fragmentShader: `
-            uniform float uTime; uniform float uBass; uniform float uAngle; uniform float uDist;
+            uniform float uTime; uniform float uBass; uniform float uAngle; uniform float uDist; uniform float uSeed;
             uniform vec3 cSand; uniform vec3 cShallow; uniform vec3 cDeep; uniform vec3 cFoam;
             varying vec2 vUv;
             
-            // Simplex Noise 함수 (자연스러운 해안선과 거품 생성용)
             vec2 hash( vec2 p ) { p = vec2( dot(p,vec2(127.1,311.7)), dot(p,vec2(269.5,183.3)) ); return -1.0 + 2.0*fract(sin(p)*43758.5453123); }
             float noise( in vec2 p ) {
                 const float K1 = 0.366025404; const float K2 = 0.211324865;
@@ -347,14 +372,12 @@
             }
 
             void main() {
-                // 파도 각도 회전
                 float ang = radians(uAngle);
                 float c = cos(ang); float s = sin(ang);
                 mat2 rot = mat2(c, -s, s, c);
-                vec2 rUv = rot * (vUv - 0.5) + 0.5; 
+                // 랜덤 시드를 적용해 해안선이 완전히 바뀌도록 함
+                vec2 rUv = rot * (vUv - 0.5) + 0.5 + vec2(uSeed * 0.1); 
                 
-                // 파도 밀려오는 거리 (기본 사인파 + 오디오 베이스 + 랜덤 노이즈)
-                // uDist(0.1~1.0)에 따라 도달 거리가 랜덤하게 깨짐
                 float wavePos = 0.5 + sin(uTime * 1.2) * 0.15 + (uBass * 0.15); 
                 float edgeNoise = noise(rUv * 15.0 + uTime*0.5) * (0.1 * uDist) + noise(rUv * 30.0 - uTime) * 0.05;
                 
@@ -362,17 +385,19 @@
                 
                 vec3 finalColor;
                 if (distToWave < 0.0) {
-                    finalColor = cSand; // 모래사장
-                    if (distToWave > -0.03) finalColor *= 0.85; // 파도 닿기 직전 젖은 모래
+                    finalColor = cSand; 
+                    if (distToWave > -0.04) finalColor *= 0.8; // 젖은 모래
                 } else {
-                    // 바닷물 그라데이션
-                    finalColor = mix(cShallow, cDeep, smoothstep(0.0, 0.4, distToWave));
-                    // 하얀 거품 (Foam) 부서짐 연출
-                    float foamWidth = 0.02 + uBass * 0.04;
-                    float foamNoise = noise(rUv * 60.0 + uTime * 2.0);
-                    if (distToWave < foamWidth * abs(foamNoise)) {
-                        finalColor = cFoam;
-                    }
+                    // ★ 파도 개선: 앞부분 얇은 띠만 완벽하게 하얀 폼으로 처리, 그 외는 얕은물(StartColor)->깊은물(EndColor)
+                    float foamBand = 0.02 + uBass * 0.03; // 거품 두께
+                    float isFoam = 1.0 - smoothstep(0.0, foamBand, distToWave); // 0.0근처면 1(거품), 벗어나면 0
+                    
+                    vec3 waterColor = mix(cShallow, cDeep, smoothstep(0.0, 0.4, distToWave));
+                    // 폼 노이즈를 섞어서 자연스럽게 부서지도록
+                    float foamNoise = noise(rUv * 80.0 + uTime * 3.0);
+                    float finalFoam = isFoam * abs(foamNoise) * 2.0;
+                    
+                    finalColor = mix(waterColor, cFoam, clamp(finalFoam, 0.0, 1.0));
                 }
                 gl_FragColor = vec4(finalColor, 1.0);
             }
@@ -380,11 +405,11 @@
         side: THREE.DoubleSide
     });
     const waveMesh = new THREE.Mesh(waveGeo, waveShaderMat);
-    waveMesh.rotation.x = -Math.PI / 2; // 바닥에 눕힘
+    waveMesh.rotation.x = -Math.PI / 2; 
     waveMesh.visible = false;
     scene.add(waveMesh);
 
-    // --- UI 이벤트 연동 (컬러 및 모드) ---
+    // UI 이벤트 연동
     ctrlColorStart.oninput = (e) => { particleShaderMat.uniforms.cStart.value.set(e.target.value); waveShaderMat.uniforms.cShallow.value.set(e.target.value); };
     ctrlColorEnd.oninput = (e) => { particleShaderMat.uniforms.cEnd.value.set(e.target.value); waveShaderMat.uniforms.cDeep.value.set(e.target.value); };
 
@@ -395,21 +420,16 @@
         
         if (mode === 'waves') {
             particleSystem.visible = false; waveMesh.visible = true;
-            // 탑뷰 강제 고정 셋팅
             ctrlCamX.value = 0; ctrlCamY.value = 1500; ctrlCamZ.value = 0;
             updateUIVal('val-cam-x', 0); updateUIVal('val-cam-y', 1500); updateUIVal('val-cam-z', 0);
         } else {
             particleSystem.visible = true; waveMesh.visible = false;
-            // 탑뷰 풀기
             if(ctrlCamY.value == 1500) { ctrlCamY.value = 0; ctrlCamZ.value = 800; updateUIVal('val-cam-y', 0); updateUIVal('val-cam-z', 800); }
             
             if (mode === 'bubbles') {
-                particleShaderMat.uniforms.map.value = texBubbles; particleShaderMat.uniforms.uMode.value = 0.0;
-            } else if (mode === 'clouds') {
-                particleShaderMat.uniforms.map.value = texClouds; particleShaderMat.uniforms.uMode.value = 2.0;
-                for(let i=0; i<maxParticles; i++) {
-                    pBasePos[i*3] = (Math.random()-0.5)*100; pBasePos[i*3+1] = (Math.random()-0.5)*100; pBasePos[i*3+2] = (Math.random()-0.5)*100;
-                }
+                particleShaderMat.uniforms.map.value = texBubbles; particleShaderMat.uniforms.uMode.value = 0.0; particleShaderMat.uniforms.uSize.value = 25.0;
+            } else if (mode === 'snow') {
+                particleShaderMat.uniforms.map.value = texSnow; particleShaderMat.uniforms.uMode.value = 2.0; particleShaderMat.uniforms.uSize.value = 15.0;
             }
         }
     };
@@ -464,7 +484,7 @@
         document.getElementById('status').innerHTML = `<span class="recording-badge">● REC</span> 렌더링 중...`;
     };
 
-    // --- 4. 애니메이션 루프 ---
+    // --- 4. 애니메이션 루프 및 3가지 모드 물리 엔진 ---
     let time = 0;
     
     function animate() {
@@ -473,79 +493,92 @@
 
         let cX = parseFloat(ctrlCamX.value); let cY = parseFloat(ctrlCamY.value); let cZ = parseFloat(ctrlCamZ.value);
         camera.position.set(cX, cY, cZ);
-        camera.lookAt(0, 0, 0);
+        camera.lookAt(0, 0, 0); 
 
-        let rawBass = 0, rawMid = 0;
+        let rawBass = 0, rawMid = 0, rawTreble = 0;
+        let smoothFactor = 1.0 - parseFloat(ctrlSmooth.value);
+
         if (isPlaying && analyser) {
             analyser.getByteFrequencyData(dataArray);
-            let bSum=0, mSum=0;
-            for(let i=0; i<10; i++) bSum += dataArray[i];      
-            for(let i=10; i<80; i++) mSum += dataArray[i];      
+            for(let i=0; i<dataArray.length; i++) smoothedData[i] += (dataArray[i] - smoothedData[i]) * smoothFactor;
+            
+            let bSum=0, mSum=0, tSum=0;
+            for(let i=0; i<10; i++) bSum += dataArray[i]; 
+            for(let i=10; i<80; i++) mSum += dataArray[i];
+            for(let i=80; i<200; i++) tSum += dataArray[i];      
+            
             rawBass = (bSum / 10 / 255) * parseFloat(ctrlReactBass.value);
-            rawMid = (mSum / 70 / 255) * 1.5; // 중간 대역 증폭
+            rawMid = (mSum / 70 / 255); 
+            rawTreble = (tSum / 120 / 255);
         }
 
         let mode = ctrlMode.value;
         let baseY = parseFloat(ctrlBaseY.value);
         let activeCount = parseInt(ctrlPCount.value);
-        
         let shakeVal = parseFloat(ctrlShake.value);
 
         if (mode === 'waves') {
-            // [모드 2: 리얼 해변 파도] Shader 업데이트
+            // [모드 2: 리얼 해변 파도] 
             waveShaderMat.uniforms.uTime.value = time;
             waveShaderMat.uniforms.uAngle.value = parseFloat(ctrlWaveAngle.value);
             waveShaderMat.uniforms.uBass.value = rawBass;
             waveShaderMat.uniforms.uDist.value = parseFloat(ctrlWaveDist.value);
+            waveShaderMat.uniforms.uSeed.value = globalRandomSeed; // 랜덤 섞기 적용
             waveMesh.position.y = baseY; 
         } 
         else {
-            // 파티클 업데이트 (Bubbles / Clouds)
+            // 파티클 업데이트 (Bubbles / Snow)
             for (let i = 0; i < activeCount; i++) {
                 let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
                 
                 if (mode === 'bubbles') {
-                    // [모드 1: 물방울 뭉탱이] 
-                    // 계속해서 올라가되, 소리가 크면 좌우로 격렬하게 흔들림 (멈춤이 아님!)
-                    pBasePos[iy] += (1.5 + rawBass * 5.0); // Y축은 절대 멈추지 않음!
+                    // [모드 1: 물방울 뭉탱이 노이즈 상승]
+                    // 위로 올라가는 기본 속도
+                    pBasePos[iy] += (1.5 + rawBass * 5.0); 
                     
-                    // X, Z 축에 소리에 비례한 쉐이크(흔들림) 오프셋 추가
+                    // ★ 피드백 반영: 수직이 아니라 X, Z축으로 부드럽게 노이즈를 주며 드리프트
+                    let driftX = Math.sin(time*2.0 + pSeed[i]*10 + globalRandomSeed) * 20.0 + Math.sin(time*0.5 + pSeed[i]*5) * 30.0;
+                    let driftZ = Math.cos(time*1.5 + pSeed[i]*8 + globalRandomSeed) * 20.0 + Math.cos(time*0.7 + pSeed[i]*4) * 30.0;
+                    
+                    // 음악이 터질때 순간적인 거친 흔들림 (스톱모션 느낌 추가)
                     let dynamicShakeX = Math.sin(time*15 + pSeed[i]*10) * shakeVal * rawMid;
                     let dynamicShakeZ = Math.cos(time*12 + pSeed[i]*8) * shakeVal * rawMid;
 
-                    pPos[ix] = pBasePos[ix] + dynamicShakeX + Math.sin(time * 2.0 + pSeed[i]*10) * 10.0;
+                    pPos[ix] = pBasePos[ix] + driftX + dynamicShakeX;
                     pPos[iy] = pBasePos[iy];
-                    pPos[iz] = pBasePos[iz] + dynamicShakeZ + Math.cos(time * 1.5 + pSeed[i]*10) * 10.0;
+                    pPos[iz] = pBasePos[iz] + driftZ + dynamicShakeZ;
 
                     if (pBasePos[iy] > 1200) {
-                        let gSeed = pGroup[i] * 0.1; 
+                        let gSeed = pGroup[i] * 0.1 + globalRandomSeed; 
                         pBasePos[ix] = Math.sin(gSeed * 100) * 1500 + (Math.random()-0.5)*50;
                         pBasePos[iy] = baseY - Math.random() * 200;
                         pBasePos[iz] = Math.cos(gSeed * 100) * 1500 + (Math.random()-0.5)*50;
                     }
 
-                } else if (mode === 'clouds') {
-                    // [모드 3: 우주 워프 에어브러시 구름]
-                    let dist = Math.sqrt(pBasePos[ix]**2 + pBasePos[iy]**2 + pBasePos[iz]**2) + 0.1;
-                    let warpSpeed = (dist * 0.02) + (rawBass * 15.0); 
-
-                    // 구름도 거칠게 흔들리면서 퍼져나감
-                    let cShakeX = Math.sin(time*10 + pSeed[i]) * shakeVal * rawMid * 0.5;
-                    let cShakeY = Math.cos(time*11 + pSeed[i]) * shakeVal * rawMid * 0.5;
-                    let cShakeZ = Math.sin(time*12 + pSeed[i]) * shakeVal * rawMid * 0.5;
-
-                    pBasePos[ix] += (pBasePos[ix] / dist) * warpSpeed;
-                    pBasePos[iy] += (pBasePos[iy] / dist) * warpSpeed;
-                    pBasePos[iz] += (pBasePos[iz] / dist) * warpSpeed;
+                } else if (mode === 'snow') {
+                    // [모드 3: 눈 내리는 풍경]
+                    // 중력에 의해 하늘에서 바닥으로 떨어짐
+                    pBasePos[iy] -= (2.0 + rawTreble * 15.0); 
                     
-                    pPos[ix] = pBasePos[ix] + cShakeX; 
-                    pPos[iy] = pBasePos[iy] + cShakeY; 
-                    pPos[iz] = pBasePos[iz] + cShakeZ;
+                    // 베이스에 반응하는 바람(Wind) 효과 (X, Z축 쏠림)
+                    let windX = Math.sin(time*0.5 + globalRandomSeed) * 5.0 + Math.sin(time*1.5 + pSeed[i]*10) * (2.0 + rawBass*20.0);
+                    let windZ = Math.cos(time*0.4 + globalRandomSeed) * 5.0 + Math.cos(time*1.2 + pSeed[i]*10) * (2.0 + rawBass*20.0);
+                    
+                    pBasePos[ix] += windX;
+                    pBasePos[iz] += windZ;
 
-                    if (dist > 2000) {
-                        pBasePos[ix] = (Math.random() - 0.5) * 50; 
-                        pBasePos[iy] = (Math.random() - 0.5) * 50;
-                        pBasePos[iz] = (Math.random() - 0.5) * 50;
+                    // 음악 타격 시 눈보라 흔들림
+                    let sShake = (Math.random()-0.5) * shakeVal * rawMid;
+
+                    pPos[ix] = pBasePos[ix] + sShake;
+                    pPos[iy] = pBasePos[iy] + sShake;
+                    pPos[iz] = pBasePos[iz] + sShake;
+
+                    // 바닥(Base Y)보다 아래로 떨어지면 하늘 위로 재배치
+                    if (pBasePos[iy] < baseY) {
+                        pBasePos[iy] = baseY + 1500 + Math.random() * 500;
+                        pBasePos[ix] = (Math.random() - 0.5) * 3000;
+                        pBasePos[iz] = (Math.random() - 0.5) * 3000;
                     }
                 }
             }
