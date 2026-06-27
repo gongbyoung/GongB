@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Ultimate Audio Reactive Flower Studio</title>
+    <title>UAV_V002.03</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; }
         canvas { width: 100vw !important; height: 100vh !important; object-fit: contain; }
@@ -78,7 +78,7 @@
         </select>
     </div>
     
-    <div class="control-group">
+    <div class="control-group" style="margin-top:10px;">
         <label style="color:#00ffcc;">꽃잎 개수 (Petals) <span id="val-petal-count">16</span></label>
         <input type="range" id="ctrl-petal-count" min="4" max="64" value="16" step="1">
     </div>
@@ -153,6 +153,20 @@
     <div class="control-group flex-row"><label>중음 (Mid)</label><select id="map-mid"><option value="petal">외곽 꽃잎 개폐</option><option value="stamen">안쪽 꽃술 반응</option><option value="core" selected>중앙 코어 박동</option><option value="rotation">전체 회전 가속</option></select></div>
     <div class="control-group flex-row"><label>고음 (Treble)</label><select id="map-treble"><option value="petal">외곽 꽃잎 개폐</option><option value="stamen" selected>안쪽 꽃술 반응</option><option value="core">중앙 코어 박동</option><option value="rotation">전체 회전 가속</option></select></div>
 
+    <div class="section-title" style="color:#ffaa00;">[글로벌 색상 범위 (RGB Range)]</div>
+    <div class="control-group flex-row">
+        <label>시작 색상 (Color 1)</label>
+        <input type="color" id="ctrl-color-start" value="#ff0088">
+    </div>
+    <div class="control-group flex-row">
+        <label>끝 색상 (Color 2)</label>
+        <input type="color" id="ctrl-color-end" value="#00ffff">
+    </div>
+    <div class="control-group" style="margin-top:10px;">
+        <label>꽃잎 투명도 (Opacity) <span id="val-opacity">0.6</span></label>
+        <input type="range" id="ctrl-opacity" min="0.1" max="1.0" value="0.6" step="0.05">
+    </div>
+
     <div class="section-title" style="color:#ff88aa;">[다이나믹 오디오 감도]</div>
     <div class="control-group">
         <label>종합 반응 감도 <span id="val-sens">1.0</span></label>
@@ -173,29 +187,29 @@
         <input type="range" id="ctrl-fluid-count" min="0" max="10000" value="4000" step="100">
     </div>
     <div class="control-group">
-        <label>유체 색상 모드</label>
+        <label>유체 색상 톤</label>
         <select id="ctrl-fluid-color-mode">
-            <option value="random" selected>랜덤 멀티 컬러 (무지개)</option>
-            <option value="single">지정 단일 컬러 (Solid)</option>
+            <option value="range" selected>시작~끝 색상 그라데이션 매핑</option>
+            <option value="random">랜덤 멀티 컬러 (무지개)</option>
         </select>
-    </div>
-    <div class="control-group" id="fluid-single-color-group" style="display:none;">
-        <label>유체 지정 단일 색상</label>
-        <input type="color" id="ctrl-fluid-color" value="#00ffcc">
     </div>
     <div class="control-group">
         <label>유체 기본 이동 속도 <span id="val-fluid-speed">1.0</span></label>
         <input type="range" id="ctrl-fluid-speed" min="0" max="5" value="1.0" step="0.1">
     </div>
 
-    <div class="section-title" style="color:#ff3366;">[★ 시네마틱 아날로그 후처리 ★]</div>
+    <div class="section-title" style="color:#ff3366;">[시네마틱 필름 & 렌즈 필터]</div>
     <div class="control-group">
-        <label style="color:#ff55cc;">렌즈 색수차 왜곡 (RGB Shift) <span id="val-rgb">1.5</span></label>
-        <input type="range" id="ctrl-rgb" min="0" max="10" value="1.5" step="0.2">
+        <label style="color:#ffffff;">필름 노이즈/그레인 (Grain) <span id="val-grain">0.08</span></label>
+        <input type="range" id="ctrl-grain" min="0" max="0.5" value="0.08" step="0.01">
     </div>
     <div class="control-group">
-        <label style="color:#ff55cc;">외곽 어두움 (Vignette) <span id="val-vignette">1.2</span></label>
-        <input type="range" id="ctrl-vignette" min="0" max="3" value="1.2" step="0.1">
+        <label style="color:#ff55cc;">렌즈 색수차 왜곡 (RGB Shift) <span id="val-rgb">0.0</span></label>
+        <input type="range" id="ctrl-rgb" min="0" max="10" value="0.0" step="0.1">
+    </div>
+    <div class="control-group">
+        <label style="color:#ff55cc;">외곽 어두움 (Vignette) <span id="val-vignette">1.0</span></label>
+        <input type="range" id="ctrl-vignette" min="0" max="3" value="1.0" step="0.1">
     </div>
 </div>
 
@@ -206,7 +220,7 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
 
 <script>
-    // --- 1. Three.js 설정 (완벽한 탑뷰 직교화 고정) ---
+    // --- 1. Three.js 설정 (완벽한 탑뷰 고정) ---
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x020205); 
     scene.fog = new THREE.FogExp2(0x020205, 0.001);
@@ -215,14 +229,17 @@
     camera.position.set(0, 0, 1200); camera.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({antialias: true, preserveDrawingBuffer: true});
+    renderer.setPixelRatio(window.devicePixelRatio); // 해상도 향상
     document.body.appendChild(renderer.domElement);
 
-    // --- ★ Glow 제거 및 맞춤형 고급 아트 필터 셰이더 설계 ★ ---
+    // --- ★ 커스텀 셰이더 (RGB Shift + Vignette + 필름 그레인 통합) ---
     const CustomArtShader = {
         uniforms: {
             "tDiffuse": { value: null },
-            "uRgbOffset": { value: 0.0015 },
-            "uVignette": { value: 1.2 }
+            "uTime": { value: 0.0 },
+            "uGrain": { value: 0.08 },
+            "uRgbOffset": { value: 0.0 }, // 기본 선명하게(0) 세팅
+            "uVignette": { value: 1.0 }
         },
         vertexShader: `
             varying vec2 vUv;
@@ -230,21 +247,33 @@
         `,
         fragmentShader: `
             uniform sampler2D tDiffuse;
+            uniform float uTime;
+            uniform float uGrain;
             uniform float uRgbOffset;
             uniform float uVignette;
             varying vec2 vUv;
+            
+            // 난수 생성 함수 (노이즈용)
+            float rand(vec2 co){
+                return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
+            }
+
             void main() {
-                // 1. 색수차 (RGB Shift 왜곡) 연산
+                // 1. 색수차 (RGB Shift)
                 vec4 cr = texture2D(tDiffuse, vUv + vec2(uRgbOffset, 0.0));
                 vec4 cg = texture2D(tDiffuse, vUv);
                 vec4 cb = texture2D(tDiffuse, vUv - vec2(uRgbOffset, 0.0));
                 vec4 color = vec4(cr.r, cg.g, cb.b, cg.a);
                 
-                // 2. 시네마틱 비네팅 연산
+                // 2. 비네팅 (Vignette)
                 vec2 uv = vUv - 0.5;
                 float d = length(uv);
-                float vignette = smoothstep(0.8, 0.4, d * uVignette);
+                float vignette = smoothstep(0.9, 0.3, d * uVignette);
                 color.rgb *= vignette;
+                
+                // 3. 필름 그레인 (Film Noise)
+                float noise = (rand(vUv + uTime) - 0.5) * uGrain;
+                color.rgb += noise;
                 
                 gl_FragColor = color;
             }
@@ -271,15 +300,18 @@
     const mapMid = document.getElementById('map-mid');
     const mapTreble = document.getElementById('map-treble');
 
+    const ctrlColorStart = document.getElementById('ctrl-color-start');
+    const ctrlColorEnd = document.getElementById('ctrl-color-end');
+    const ctrlOpacity = document.getElementById('ctrl-opacity');
+
     const ctrlFluidCount = document.getElementById('ctrl-fluid-count');
     const ctrlFluidColorMode = document.getElementById('ctrl-fluid-color-mode');
-    const ctrlFluidColor = document.getElementById('ctrl-fluid-color');
-    const fluidSingleColorGroup = document.getElementById('fluid-single-color-group');
     const ctrlFluidSpeed = document.getElementById('ctrl-fluid-speed');
 
     const ctrlSens = document.getElementById('ctrl-sens');
     const ctrlSmooth = document.getElementById('ctrl-smooth');
     const ctrlRot = document.getElementById('ctrl-rot');
+    const ctrlGrain = document.getElementById('ctrl-grain');
     const ctrlRgb = document.getElementById('ctrl-rgb');
     const ctrlVignette = document.getElementById('ctrl-vignette');
     
@@ -297,6 +329,7 @@
     window.addEventListener('resize', () => { if (ctrlRatio.value === 'fit') updateAspectRatio(); });
     updateAspectRatio(); 
 
+    // UI 리스너
     ctrlScale.oninput = (e) => { updateUIVal('val-scale', e.target.value); buildFlowers(); };
     ctrlPetalCount.oninput = (e) => { updateUIVal('val-petal-count', e.target.value); buildFlowers(); };
     ctrlPetalW.oninput = (e) => { updateUIVal('val-petal-w', e.target.value); buildFlowers(); };
@@ -310,9 +343,18 @@
     ctrlRot.oninput = (e) => updateUIVal('val-rot', e.target.value);
     ctrlFluidSpeed.oninput = (e) => updateUIVal('val-fluid-speed', e.target.value);
     
-    // 필터 유니폼 변수 실시간 바인딩
+    ctrlGrain.oninput = (e) => { artFilterPass.uniforms.uGrain.value = parseFloat(e.target.value); updateUIVal('val-grain', e.target.value); };
     ctrlRgb.oninput = (e) => { artFilterPass.uniforms.uRgbOffset.value = parseFloat(e.target.value) * 0.001; updateUIVal('val-rgb', e.target.value); };
     ctrlVignette.oninput = (e) => { artFilterPass.uniforms.uVignette.value = parseFloat(e.target.value); updateUIVal('val-vignette', e.target.value); };
+
+    ctrlOpacity.oninput = (e) => { updateUIVal('val-opacity', e.target.value); updateMaterialsOpacity(); };
+    
+    // 색상 변수 파싱
+    function getColorStart() { return new THREE.Color(ctrlColorStart.value); }
+    function getColorEnd() { return new THREE.Color(ctrlColorEnd.value); }
+
+    ctrlColorStart.oninput = () => { updateMaterialsColor(); updateFluidColors(); };
+    ctrlColorEnd.oninput = () => { updateMaterialsColor(); updateFluidColors(); };
 
     // --- 2. 배경 유체 (Fluid Flow) ---
     const maxFluidCount = 10000;
@@ -325,9 +367,7 @@
         fluidPos[i*3] = (Math.random() - 0.5) * 4000;
         fluidPos[i*3+1] = (Math.random() - 0.5) * 4000;
         fluidPos[i*3+2] = (Math.random() - 0.5) * 1000 - 500; 
-        fluidColorSeeds[i] = Math.random(); 
-        let c = new THREE.Color().setHSL(fluidColorSeeds[i], 0.9, 0.6);
-        fluidColors[i*3] = c.r; fluidColors[i*3+1] = c.g; fluidColors[i*3+2] = c.b;
+        fluidColorSeeds[i] = Math.random(); // 0~1 사이 고유 시드 부여
     }
     fluidGeo.setAttribute('position', new THREE.BufferAttribute(fluidPos, 3));
     fluidGeo.setAttribute('color', new THREE.BufferAttribute(fluidColors, 3));
@@ -337,20 +377,29 @@
     const ctx = circleCanvas.getContext('2d'); ctx.beginPath(); ctx.arc(32, 32, 30, 0, Math.PI * 2); ctx.fillStyle = "white"; ctx.fill();
     const circleTex = new THREE.CanvasTexture(circleCanvas);
 
-    const fluidMat = new THREE.PointsMaterial({ size: 10, vertexColors: true, map: circleTex, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false });
+    const fluidMat = new THREE.PointsMaterial({ size: 10, vertexColors: true, map: circleTex, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false });
     const fluidSystem = new THREE.Points(fluidGeo, fluidMat); scene.add(fluidSystem);
 
     ctrlFluidCount.oninput = (e) => { updateUIVal('val-fluid-count', e.target.value); fluidGeo.setDrawRange(0, parseInt(e.target.value)); };
+    
     function updateFluidColors() {
-        const colors = fluidGeo.attributes.color.array; const mode = ctrlFluidColorMode.value; const singleC = new THREE.Color(ctrlFluidColor.value);
+        const colors = fluidGeo.attributes.color.array;
+        const mode = ctrlFluidColorMode.value;
+        const cStart = getColorStart(); const cEnd = getColorEnd();
+
         for(let i=0; i<maxFluidCount; i++) {
-            if (mode === 'random') { let c = new THREE.Color().setHSL(fluidColorSeeds[i], 0.9, 0.6); colors[i*3] = c.r; colors[i*3+1] = c.g; colors[i*3+2] = c.b; } 
-            else { colors[i*3] = singleC.r; colors[i*3+1] = singleC.g; colors[i*3+2] = singleC.b; }
+            if (mode === 'random') {
+                let c = new THREE.Color().setHSL(fluidColorSeeds[i], 0.9, 0.6);
+                colors[i*3] = c.r; colors[i*3+1] = c.g; colors[i*3+2] = c.b;
+            } else {
+                let c = new THREE.Color().lerpColors(cStart, cEnd, fluidColorSeeds[i]);
+                colors[i*3] = c.r; colors[i*3+1] = c.g; colors[i*3+2] = c.b;
+            }
         }
         fluidGeo.attributes.color.needsUpdate = true;
     }
-    ctrlFluidColorMode.onchange = (e) => { fluidSingleColorGroup.style.display = (e.target.value === 'single') ? 'block' : 'none'; updateFluidColors(); };
-    ctrlFluidColor.oninput = updateFluidColors;
+    ctrlFluidColorMode.onchange = updateFluidColors;
+    updateFluidColors(); // 초기 세팅
 
     // --- 3. 16종 꽃잎 및 꽃술 생성 엔진 ---
     function getPetalGeometry(shapeType) {
@@ -382,23 +431,25 @@
 
     function createFlowerObj(x, y, scaleMult) {
         const flower = new THREE.Group(); flower.position.set(x, y, 0);
-        const globalScale = parseFloat(ctrlScale.value) * scaleMult * 3.5; flower.scale.set(globalScale, globalScale, globalScale);
+        const globalScale = parseFloat(ctrlScale.value) * scaleMult * 3.5; 
+        flower.scale.set(globalScale, globalScale, globalScale);
 
         const petals = []; const stamens = [];
         const petalCount = parseInt(ctrlPetalCount.value);
         const stamenType = ctrlStamenType.value;
         const customGeo = getPetalGeometry(ctrlPetalShape.value);
-
         let pW = parseFloat(ctrlPetalW.value); let pL = parseFloat(ctrlPetalL.value);
+        let currentOpacity = parseFloat(ctrlOpacity.value);
 
-        const petalMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false });
+        const petalMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: currentOpacity, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false });
         for(let i=0; i<petalCount; i++) {
             let pMesh = new THREE.Mesh(customGeo, petalMat.clone());
-            pMesh.scale.set(0.6 * pW, 2.5 * pL, 1.0); pMesh.rotation.z = -(i / petalCount) * Math.PI * 2; pMesh.rotation.x = Math.PI / 2.2; 
+            pMesh.scale.set(0.6 * pW, 2.5 * pL, 1.0); 
+            pMesh.rotation.z = -(i / petalCount) * Math.PI * 2; pMesh.rotation.x = Math.PI / 2.2; 
             flower.add(pMesh); petals.push(pMesh);
         }
 
-        const stamenMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false });
+        const stamenMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: Math.min(1.0, currentOpacity + 0.2), blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false });
         if (stamenType === 'circle_large' || stamenType === 'circle_small') {
             let r = stamenType === 'circle_large' ? 12 : 6;
             let sMesh = new THREE.Mesh(new THREE.CircleGeometry(r, 32), stamenMat.clone()); sMesh.position.z = 4; flower.add(sMesh); stamens.push(sMesh);
@@ -415,7 +466,8 @@
         else { coreObj = new THREE.Mesh(new THREE.CircleGeometry(5 * pW, 32), new THREE.MeshBasicMaterial({color: 0xffffff, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending})); }
         coreObj.position.z = 8; flower.add(coreObj);
 
-        mainFlowerGroup.add(flower); allFlowers.push({ group: flower, petals, stamens, core: coreObj, stamenType });
+        mainFlowerGroup.add(flower);
+        allFlowers.push({ group: flower, petals, stamens, core: coreObj, stamenType });
     }
 
     function buildFlowers() {
@@ -425,7 +477,27 @@
         else if (count === 3) { createFlowerObj(0, 150, 0.7); createFlowerObj(-200, -100, 0.7); createFlowerObj(200, -100, 0.7); }
         else if (count === 5) { createFlowerObj(0, 0, 0.8); createFlowerObj(-250, 200, 0.4); createFlowerObj(250, 200, 0.4); createFlowerObj(-200, -200, 0.4); createFlowerObj(200, -200, 0.4); }
         else if (count === 9) { for(let x=-1; x<=1; x++) { for(let y=-1; y<=1; y++) { let s = (x===0 && y===0) ? 0.7 : 0.4; createFlowerObj(x*280, y*280, s); } } }
+        updateMaterialsColor(); // 재생성 후 초기 색상 할당
     }
+    
+    function updateMaterialsOpacity() {
+        let op = parseFloat(ctrlOpacity.value);
+        allFlowers.forEach(f => {
+            f.petals.forEach(p => p.material.opacity = op);
+            f.stamens.forEach(s => s.material.opacity = Math.min(1.0, op + 0.2));
+        });
+    }
+
+    function updateMaterialsColor() {
+        let cStart = getColorStart(); let cEnd = getColorEnd();
+        allFlowers.forEach(f => {
+            let pCount = f.petals.length;
+            for(let p=0; p<pCount; p++) { f.petals[p].material.color.lerpColors(cStart, cEnd, p/pCount); }
+            let sCount = f.stamens.length;
+            for(let s=0; s<sCount; s++) { f.stamens[s].material.color.lerpColors(cEnd, cStart, s/sCount); }
+        });
+    }
+
     buildFlowers();
 
     document.getElementById('core-image-file').onchange = function(e) {
@@ -442,9 +514,11 @@
         reader.readAsDataURL(file);
     };
 
-    // --- 4. 오디오 엔진 및 파일 로직 ---
+    // --- 4. 오디오 엔진 및 파일 시스템 (★에러 완벽 수정부) ---
+    // currentSource를 최상단에 확실하게 선언하여 스코프 안전성 확보
     let audioCtx, analyser, dataArray;
-    let decodedBuffer = null; let isPlaying = false;    
+    let decodedBuffer = null; let isPlaying = false; 
+    let currentSource = null; // 수정: 초기값을 null로 전역 선언
     let mediaRecorder, recordedChunks = [];
     let smoothedData = new Float32Array(512);
     
@@ -466,34 +540,46 @@
         loadedFileName = file.name; statusEl.innerText = "음원 디코딩 중... 잠시만 기다려주세요."; recordBtn.style.display = 'none';
         const reader = new FileReader();
         reader.onload = function(e) {
-            audioCtx.decodeAudioData(e.target.result, function(buffer) { decodedBuffer = buffer; statusEl.innerHTML = "<strong>준비 완료!</strong> 셋팅을 맞추고 아래 버튼을 누르세요."; recordBtn.style.display = 'block'; });
+            audioCtx.decodeAudioData(e.target.result, function(buffer) {
+                decodedBuffer = buffer;
+                statusEl.innerHTML = "<strong>준비 완료!</strong> 셋팅을 맞추고 아래 버튼을 누르세요."; recordBtn.style.display = 'block';
+            });
         };
         reader.readAsArrayBuffer(file);
     };
 
     recordBtn.onclick = function() {
-        if (!decodedBuffer) return; if (currentSource) currentSource.stop();
+        if (!decodedBuffer) return;
+        // 수정: currentSource가 존재하면 안전하게 중지
+        if (currentSource) { try { currentSource.stop(); } catch(e) {} }
+        
         currentSource = audioCtx.createBufferSource(); currentSource.buffer = decodedBuffer; currentSource.connect(analyser);
         const audioDest = audioCtx.createMediaStreamDestination(); analyser.connect(audioCtx.destination); analyser.connect(audioDest);            
         const canvasStream = renderer.domElement.captureStream(60); const combinedStream = new MediaStream([...canvasStream.getVideoTracks(), ...audioDest.stream.getAudioTracks()]);
+        
         recordedChunks = []; mediaRecorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm; codecs=vp9' });
         mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
         mediaRecorder.onstop = () => {
             const blob = new Blob(recordedChunks, { type: 'video/webm' }); const url = URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.style = 'display: none'; a.href = url; a.download = loadedFileName.replace(/\.[^/.]+$/, "") + `_CinemaFlower_${ctrlRatio.value.replace(':','x')}.webm`;
-            document.body.appendChild(a); a.click(); window.URL.revokeObjectURL(url); statusEl.innerText = "녹화 완료! 영상이 저장되었습니다."; ctrlRatio.disabled = false; isPlaying = false; recordBtn.style.display = 'block';
+            const a = document.createElement('a'); a.style = 'display: none'; a.href = url; a.download = loadedFileName.replace(/\.[^/.]+$/, "") + `_FlowerArt_${ctrlRatio.value.replace(':','x')}.webm`;
+            document.body.appendChild(a); a.click(); window.URL.revokeObjectURL(url);
+            statusEl.innerText = "녹화 완료! 영상이 저장되었습니다."; ctrlRatio.disabled = false; isPlaying = false; recordBtn.style.display = 'block';
         };
         currentSource.onended = () => { if(mediaRecorder.state === 'recording') mediaRecorder.stop(); };
-        currentSource.start(0); mediaRecorder.start(); isPlaying = true; ctrlRatio.disabled = true; recordBtn.style.display = 'none';
-        statusEl.innerHTML = `<span class="recording-badge">● REC</span> 자동 녹화 및 고화질 포스팅 중...`;
+        currentSource.start(0); mediaRecorder.start(); isPlaying = true;
+        ctrlRatio.disabled = true; recordBtn.style.display = 'none';
+        statusEl.innerHTML = `<span class="recording-badge">● REC</span> 자동 녹화 및 고화질 렌더링 중...`;
     };
 
-    // --- 5. 애니메이션 및 매핑 엔진 루프 ---
+    // --- 5. 애니메이션 렌더링 루프 ---
     let time = 0;
     function animate() {
         requestAnimationFrame(animate);
         time += 0.01;
         
+        // 셰이더(필름 노이즈)에 시간값 전달
+        artFilterPass.uniforms.uTime.value = time;
+
         let sensitivity = parseFloat(ctrlSens.value);
         let smoothing = parseFloat(ctrlSmooth.value); let lerpFactor = 1.0 - smoothing; 
         let rawBass = 0, rawMid = 0, rawTreble = 0;
@@ -508,7 +594,6 @@
             rawBass = (bSum / 15 / 255) * sensitivity; rawMid = (mSum / 75 / 255) * sensitivity; rawTreble = (tSum / 110 / 255) * sensitivity;
         }
 
-        // 백그라운드 유체 모션 (구형 유지)
         let fluidSpeed = parseFloat(ctrlFluidSpeed.value); let currentFluidCount = parseInt(ctrlFluidCount.value);
         let fPos = fluidGeo.attributes.position.array; let t = time * 0.5;
         for (let i = 0; i < currentFluidCount; i++) {
@@ -519,34 +604,42 @@
         }
         fluidGeo.attributes.position.needsUpdate = true;
 
-        // 동적 사운드 매핑 라우팅 
         let motionPetal = 0, motionStamen = 0, motionCore = 0, motionRot = 0;
         function distributeMotion(routeTarget, intensityValue) {
             if (routeTarget === 'petal') motionPetal += intensityValue; else if (routeTarget === 'stamen') motionStamen += intensityValue; else if (routeTarget === 'core') motionCore += intensityValue; else if (routeTarget === 'rotation') motionRot += intensityValue;
         }
         distributeMotion(mapBass.value, rawBass); distributeMotion(mapMid.value, rawMid); distributeMotion(mapTreble.value, rawTreble);
 
-        // 오브젝트 개별 매핑 모션 주입
         let rotGlobalSpeed = parseFloat(ctrlRot.value);
+        let cStart = getColorStart(); let cEnd = getColorEnd();
+
         allFlowers.forEach((flowerObj, idx) => {
             flowerObj.group.rotation.z -= (0.002 * rotGlobalSpeed + motionRot * 0.08) * (idx % 2 === 0 ? 1 : -1); 
+            
             let cScale = (coreImageSpriteMat ? 100 : 1) * (1 + motionCore * (coreImageSpriteMat ? 1.0 : 1.8)); flowerObj.core.scale.set(cScale, cScale, 1);
-            if (!coreImageSpriteMat) flowerObj.core.material.color.setHSL(0.02, 1.0, 0.5 + motionCore * 0.5);
+            if (!coreImageSpriteMat) flowerObj.core.material.color.lerpColors(cStart, new THREE.Color(0xffffff), motionCore * 0.8);
 
             let pCount = flowerObj.petals.length;
             for(let p=0; p<pCount; p++) {
                 let petal = flowerObj.petals[p]; let targetRotX = (Math.PI / 2.2) - (motionPetal * (Math.PI / 2.2));
-                petal.rotation.x = Math.max(0.0, targetRotX); petal.material.color.setHSL(((p/pCount) + time*0.08) % 1.0, 0.85, 0.22 + motionPetal * 0.6);
+                petal.rotation.x = Math.max(0.0, targetRotX); 
+                // ★ 사용자 지정 RGB 범위 + 사운드 밝기 가중치 적용
+                let baseCol = new THREE.Color().lerpColors(cStart, cEnd, p/pCount);
+                baseCol.lerp(new THREE.Color(0xffffff), motionPetal * 0.4);
+                petal.material.color.copy(baseCol);
             }
 
             if (flowerObj.stamenType === 'circle_large' || flowerObj.stamenType === 'circle_small') {
                 let st = flowerObj.stamens[0]; let sScale = 1 + (motionStamen * 2.0); st.scale.set(sScale, sScale, 1);
-                st.material.color.setHSL((time*0.1)%1.0, 1.0, 0.4 + motionStamen*0.5);
+                let baseCol = new THREE.Color().lerpColors(cEnd, cStart, 0.5); baseCol.lerp(new THREE.Color(0xffffff), motionStamen * 0.6);
+                st.material.color.copy(baseCol);
             } else if (flowerObj.stamenType !== 'none') {
                 let sCount = flowerObj.stamens.length;
                 for(let s=0; s<sCount; s++) {
                     let stamen = flowerObj.stamens[s]; let targetRotX = (Math.PI / 2.5) + (motionStamen * (Math.PI / 4));
-                    stamen.rotation.x = Math.min(Math.PI / 1.4, targetRotX); stamen.material.color.setHSL(((s/sCount) - time*0.12) % 1.0, 1.0, 0.35 + motionStamen * 0.65);
+                    stamen.rotation.x = Math.min(Math.PI / 1.4, targetRotX);
+                    let baseCol = new THREE.Color().lerpColors(cEnd, cStart, s/sCount); baseCol.lerp(new THREE.Color(0xffffff), motionStamen * 0.6);
+                    stamen.material.color.copy(baseCol);
                 }
             }
         });
