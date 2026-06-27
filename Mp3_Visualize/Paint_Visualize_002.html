@@ -2,651 +2,207 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Ultimate Audio Reactive Flower Studio</title>
+    <title>Generative Painter</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; }
-        canvas { width: 100vw !important; height: 100vh !important; object-fit: contain; }
-
-        .ui-panel { 
-            position: absolute; top: 15px; z-index: 10; 
-            background: rgba(15, 15, 15, 0.85); padding: 18px; 
-            border-radius: 8px; border: 1px solid #444;
-            width: 280px; max-height: 90vh; overflow-y: auto;
-            backdrop-filter: blur(15px); box-shadow: 0 10px 40px rgba(0,0,0,0.9);
+        body { 
+            font-family: sans-serif; 
+            background: #222; 
+            color: #fff; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            padding: 20px; 
+            margin: 0;
         }
-        #ui-left { left: 15px; }
-        #ui-right { right: 15px; }
-        
-        h3 { margin-top: 0; color: #ff33aa; border-bottom: 1px solid #444; padding-bottom: 10px; font-size: 15px; text-align: center;}
-        .section-title { font-size: 11px; color: #888; margin: 15px 0 5px 0; border-bottom: 1px dashed #333; padding-bottom: 3px;}
-        
-        .control-group { margin-bottom: 10px; }
-        .control-group label { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px; color: #ddd; }
-        .control-group input[type="range"] { width: 100%; cursor: pointer; accent-color: #ff33aa; height: 4px;}
-        .control-group input[type="color"] { width: 100%; height: 25px; border: none; cursor: pointer; background: none; }
-        .control-group select, .file-btn { 
-            width: 100%; padding: 6px; background: #222; color: #ff33aa; 
-            border: 1px solid #555; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: bold;
+        #controls { 
+            margin-bottom: 20px; 
+            padding: 15px;
+            background: #333;
+            border-radius: 8px;
         }
-        
-        .flex-row { display: flex; justify-content: space-between; align-items: center; }
-        .flex-row label { margin-bottom: 0; width: 40%; color: #aaa; font-weight: bold; }
-        .flex-row select { width: 60%; padding: 4px; color: #00ffcc; border-color: #444;}
-        
-        #audio-input-area { margin-top: 15px; border-top: 2px solid #ff33aa; padding-top: 15px; }
-        input[type="file"] { margin-bottom: 10px; display: block; color: white; width: 100%; font-size: 11px; }
-        
-        .main-btn { 
-            background-color: #ff33aa; border: none; padding: 10px; width: 100%;
-            border-radius: 5px; cursor: pointer; color: white; font-weight: bold; font-size: 13px; transition: 0.2s;
+        canvas { 
+            background: #f4f4f0; /* 약간의 종이 질감 색상 */
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5); 
+            max-width: 100%; 
         }
-        .main-btn:hover { background-color: #ff1188; }
-
-        .record-btn { background-color: #00ffcc; color: black; margin-top: 10px; display: none; box-shadow: 0 0 15px rgba(0, 255, 204, 0.6); }
-        .record-btn:hover { background-color: #00ccaa; }
-        
-        #status { font-size: 11px; color: #aaa; margin-top: 10px; line-height: 1.4; word-break: break-all; text-align: center;}
-        .recording-badge { color: #00ffcc; font-weight: bold; animation: blink 1.5s infinite; }
-        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
-        
-        ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-track { background: #111; }
-        ::-webkit-scrollbar-thumb { background: #444; border-radius: 2px; }
     </style>
 </head>
 <body>
+    <div id="controls">
+        <label for="imageLoader">그림 그릴 이미지 선택: </label>
+        <input type="file" id="imageLoader" accept="image/*">
+    </div>
+    <canvas id="canvas"></canvas>
 
-<div id="ui-left" class="ui-panel">
-    <h3>플라워 아트 스튜디오</h3>
-    <div class="section-title">[비디오 해상도]</div>
-    <div class="control-group">
-        <select id="ctrl-ratio">
-            <option value="16:9">가로형 (1920x1080 - 유튜브)</option>
-            <option value="9:16">세로형 (1080x1920 - 쇼츠)</option>
-            <option value="fit" selected>화면 맞춤 (전체화면)</option>
-        </select>
-    </div>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let imgData, width, height;
+        let edgePoints = [];
+        let colorPoints = [];
+        let isDrawing = false;
+        let animationId;
 
-    <div class="section-title" style="color:#ff33aa;">[플라워 생성 옵션]</div>
-    <div class="control-group">
-        <label>꽃송이 개수 배열</label>
-        <select id="ctrl-flower-count">
-            <option value="1" selected>1송이 (중앙 집중형)</option>
-            <option value="3">3송이 (트리오)</option>
-            <option value="5">5송이 (펜타그램)</option>
-            <option value="9">9송이 (3x3 그리드)</option>
-        </select>
-    </div>
-    
-    <div class="control-group" style="margin-top:10px;">
-        <label style="color:#00ffcc;">꽃잎 개수 (Petals) <span id="val-petal-count">16</span></label>
-        <input type="range" id="ctrl-petal-count" min="4" max="64" value="16" step="1">
-    </div>
+        document.getElementById('imageLoader').addEventListener('change', handleImage);
 
-    <div class="control-group">
-        <label>꽃잎 모양 (16종)</label>
-        <select id="ctrl-petal-shape">
-            <option value="1" selected>1. 기본 티어드롭 (Classic)</option>
-            <option value="2">2. 날카로운 창 (Spear)</option>
-            <option value="3">3. 하트 모양 (Heart)</option>
-            <option value="4">4. 튤립 형태 (Tulip)</option>
-            <option value="5">5. 마름모 (Diamond)</option>
-            <option value="6">6. 네잎 클로버 (Clover)</option>
-            <option value="7">7. 얇은 바늘 (Needle)</option>
-            <option value="8">8. 방패 모양 (Shield)</option>
-            <option value="9">9. 은행잎 (Ginkgo)</option>
-            <option value="10">10. 물결 잎 (Wavy Oak)</option>
-            <option value="11">11. 화살촉 (Arrowhead)</option>
-            <option value="12">12. 평평한 끝 (Flat Top)</option>
-            <option value="13">13. 왕관 모양 (Crown)</option>
-            <option value="14">14. 육각형 (Hexagon)</option>
-            <option value="15">15. 타오르는 불꽃 (Flame)</option>
-            <option value="16">16. 별/스파이크 (Spike)</option>
-        </select>
-    </div>
+        function handleImage(e) {
+            if(animationId) cancelAnimationFrame(animationId);
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = function() {
+                    // 브라우저 과부하 방지를 위해 최대 800px로 리사이징
+                    const MAX_SIZE = 800;
+                    let scale = 1;
+                    if(img.width > MAX_SIZE || img.height > MAX_SIZE) {
+                        scale = Math.min(MAX_SIZE / img.width, MAX_SIZE / img.height);
+                    }
+                    width = canvas.width = Math.floor(img.width * scale);
+                    height = canvas.height = Math.floor(img.height * scale);
 
-    <div class="control-group">
-        <label>꽃술 형태 지정</label>
-        <select id="ctrl-stamen-type">
-            <option value="strands_many" selected>가늘게 수십개 올라온 형태</option>
-            <option value="strands_9">가늘게 9개 올라온 형태</option>
-            <option value="circle_large">큰 원형 (Large Circle)</option>
-            <option value="circle_small">작은 원형 (Small Circle)</option>
-            <option value="none">가운데 없음 (Hidden)</option>
-        </select>
-    </div>
+                    // 원본 픽셀 데이터를 분석하기 위해 임시 캔버스에 그리기
+                    const offCanvas = document.createElement('canvas');
+                    offCanvas.width = width;
+                    offCanvas.height = height;
+                    const offCtx = offCanvas.getContext('2d');
+                    offCtx.drawImage(img, 0, 0, width, height);
+                    imgData = offCtx.getImageData(0, 0, width, height);
 
-    <div class="section-title" style="color:#00ffcc;">[크기 정밀 제어]</div>
-    <div class="control-group">
-        <label>꽃 전체 크기 <span id="val-scale">1.0</span></label>
-        <input type="range" id="ctrl-scale" min="0.3" max="3.0" value="1.0" step="0.1">
-    </div>
-    <div class="control-group">
-        <label>꽃잎 고유 너비 (Width) <span id="val-petal-w">1.0</span></label>
-        <input type="range" id="ctrl-petal-w" min="0.2" max="3.0" value="1.0" step="0.1">
-    </div>
-    <div class="control-group">
-        <label>꽃잎 고유 길이 (Length) <span id="val-petal-l">1.0</span></label>
-        <input type="range" id="ctrl-petal-l" min="0.2" max="4.0" value="1.0" step="0.1">
-    </div>
-
-    <div class="control-group" style="margin-top:15px;">
-        <label style="color: #ffaa00;">중앙 로고 교체 (PNG/JPG)</label>
-        <input type="file" id="core-image-file" class="file-btn" accept="image/png, image/jpeg">
-    </div>
-
-    <div id="audio-input-area">
-        <button id="init-btn" class="main-btn">오디오 & 렌더링 엔진 켜기</button>
-        <div id="file-select-box" style="display: none; margin-top:10px;">
-            <input type="file" id="audio-file" accept="audio/*">
-            <div id="status">음악 선택 후, 우측 패널에서 구도를 맞추세요.</div>
-            <button id="record-btn" class="main-btn record-btn">▶ 녹화 및 재생 시작</button>
-        </div>
-    </div>
-</div>
-
-<div id="ui-right" class="ui-panel">
-    <h3>오디오 매핑 & 이펙트</h3>
-
-    <div class="section-title" style="color:#00ffcc;">[사운드 파장별 모션 매핑]</div>
-    <div class="control-group flex-row"><label>저음 (Bass)</label><select id="map-bass"><option value="petal" selected>외곽 꽃잎 개폐</option><option value="stamen">안쪽 꽃술 반응</option><option value="core">중앙 코어 박동</option><option value="rotation">전체 회전 가속</option></select></div>
-    <div class="control-group flex-row"><label>중음 (Mid)</label><select id="map-mid"><option value="petal">외곽 꽃잎 개폐</option><option value="stamen">안쪽 꽃술 반응</option><option value="core" selected>중앙 코어 박동</option><option value="rotation">전체 회전 가속</option></select></div>
-    <div class="control-group flex-row"><label>고음 (Treble)</label><select id="map-treble"><option value="petal">외곽 꽃잎 개폐</option><option value="stamen" selected>안쪽 꽃술 반응</option><option value="core">중앙 코어 박동</option><option value="rotation">전체 회전 가속</option></select></div>
-
-    <div class="section-title" style="color:#ffaa00;">[글로벌 색상 범위 (RGB Range)]</div>
-    <div class="control-group flex-row">
-        <label>시작 색상 (Color 1)</label>
-        <input type="color" id="ctrl-color-start" value="#ff0088">
-    </div>
-    <div class="control-group flex-row">
-        <label>끝 색상 (Color 2)</label>
-        <input type="color" id="ctrl-color-end" value="#00ffff">
-    </div>
-    <div class="control-group" style="margin-top:10px;">
-        <label>꽃잎 투명도 (Opacity) <span id="val-opacity">0.6</span></label>
-        <input type="range" id="ctrl-opacity" min="0.1" max="1.0" value="0.6" step="0.05">
-    </div>
-
-    <div class="section-title" style="color:#ff88aa;">[다이나믹 오디오 감도]</div>
-    <div class="control-group">
-        <label>종합 반응 감도 <span id="val-sens">1.0</span></label>
-        <input type="range" id="ctrl-sens" min="0.1" max="3.0" value="1.0" step="0.1">
-    </div>
-    <div class="control-group">
-        <label>모션 부드러움 (Damping) <span id="val-smooth">0.85</span></label>
-        <input type="range" id="ctrl-smooth" min="0.1" max="0.99" value="0.85" step="0.01">
-    </div>
-    <div class="control-group">
-        <label>꽃송이 기본 회전 속도 <span id="val-rot">0.5</span></label>
-        <input type="range" id="ctrl-rot" min="0" max="5" value="0.5" step="0.1">
-    </div>
-
-    <div class="section-title" style="color:#aaff00;">[배경 유체(Fluid) 환경 설정]</div>
-    <div class="control-group">
-        <label>유체 입자 양 (Quantity) <span id="val-fluid-count">4000</span></label>
-        <input type="range" id="ctrl-fluid-count" min="0" max="10000" value="4000" step="100">
-    </div>
-    <div class="control-group">
-        <label>유체 색상 톤</label>
-        <select id="ctrl-fluid-color-mode">
-            <option value="range" selected>시작~끝 색상 그라데이션 매핑</option>
-            <option value="random">랜덤 멀티 컬러 (무지개)</option>
-        </select>
-    </div>
-    <div class="control-group">
-        <label>유체 기본 이동 속도 <span id="val-fluid-speed">1.0</span></label>
-        <input type="range" id="ctrl-fluid-speed" min="0" max="5" value="1.0" step="0.1">
-    </div>
-
-    <div class="section-title" style="color:#ff3366;">[시네마틱 필름 & 렌즈 필터]</div>
-    <div class="control-group">
-        <label style="color:#ffffff;">필름 노이즈/그레인 (Grain) <span id="val-grain">0.08</span></label>
-        <input type="range" id="ctrl-grain" min="0" max="0.5" value="0.08" step="0.01">
-    </div>
-    <div class="control-group">
-        <label style="color:#ff55cc;">렌즈 색수차 왜곡 (RGB Shift) <span id="val-rgb">0.0</span></label>
-        <input type="range" id="ctrl-rgb" min="0" max="10" value="0.0" step="0.1">
-    </div>
-    <div class="control-group">
-        <label style="color:#ff55cc;">외곽 어두움 (Vignette) <span id="val-vignette">1.0</span></label>
-        <input type="range" id="ctrl-vignette" min="0" max="3" value="1.0" step="0.1">
-    </div>
-</div>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
-
-<script>
-    // --- 1. Three.js 설정 (완벽한 탑뷰 고정) ---
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x020205); 
-    scene.fog = new THREE.FogExp2(0x020205, 0.001);
-
-    const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 4000);
-    camera.position.set(0, 0, 1200); camera.lookAt(0, 0, 0);
-
-    const renderer = new THREE.WebGLRenderer({antialias: true, preserveDrawingBuffer: true});
-    renderer.setPixelRatio(window.devicePixelRatio); 
-    document.body.appendChild(renderer.domElement);
-
-    // --- 커스텀 셰이더 ---
-    const CustomArtShader = {
-        uniforms: {
-            "tDiffuse": { value: null },
-            "uTime": { value: 0.0 },
-            "uGrain": { value: 0.08 },
-            "uRgbOffset": { value: 0.0 }, 
-            "uVignette": { value: 1.0 }
-        },
-        vertexShader: `
-            varying vec2 vUv;
-            void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
-        `,
-        fragmentShader: `
-            uniform sampler2D tDiffuse;
-            uniform float uTime;
-            uniform float uGrain;
-            uniform float uRgbOffset;
-            uniform float uVignette;
-            varying vec2 vUv;
-            
-            float rand(vec2 co){
-                return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
+                    analyzePixels();
+                    startDrawing();
+                }
+                img.src = event.target.result;
             }
-
-            void main() {
-                vec4 cr = texture2D(tDiffuse, vUv + vec2(uRgbOffset, 0.0));
-                vec4 cg = texture2D(tDiffuse, vUv);
-                vec4 cb = texture2D(tDiffuse, vUv - vec2(uRgbOffset, 0.0));
-                vec4 color = vec4(cr.r, cg.g, cb.b, cg.a);
-                
-                vec2 uv = vUv - 0.5;
-                float d = length(uv);
-                float vignette = smoothstep(0.9, 0.3, d * uVignette);
-                color.rgb *= vignette;
-                
-                float noise = (rand(vUv + uTime) - 0.5) * uGrain;
-                color.rgb += noise;
-                
-                gl_FragColor = color;
-            }
-        `
-    };
-
-    const renderScene = new THREE.RenderPass(scene, camera);
-    const artFilterPass = new THREE.ShaderPass(CustomArtShader);
-
-    const composer = new THREE.EffectComposer(renderer);
-    composer.addPass(renderScene); composer.addPass(artFilterPass);
-    
-    // UI 요소 바인딩
-    const ctrlRatio = document.getElementById('ctrl-ratio');
-    const ctrlFlowerCount = document.getElementById('ctrl-flower-count');
-    const ctrlPetalCount = document.getElementById('ctrl-petal-count');
-    const ctrlPetalShape = document.getElementById('ctrl-petal-shape');
-    const ctrlStamenType = document.getElementById('ctrl-stamen-type');
-    const ctrlScale = document.getElementById('ctrl-scale');
-    const ctrlPetalW = document.getElementById('ctrl-petal-w');
-    const ctrlPetalL = document.getElementById('ctrl-petal-l');
-    
-    const mapBass = document.getElementById('map-bass');
-    const mapMid = document.getElementById('map-mid');
-    const mapTreble = document.getElementById('map-treble');
-
-    const ctrlColorStart = document.getElementById('ctrl-color-start');
-    const ctrlColorEnd = document.getElementById('ctrl-color-end');
-    const ctrlOpacity = document.getElementById('ctrl-opacity');
-
-    const ctrlFluidCount = document.getElementById('ctrl-fluid-count');
-    const ctrlFluidColorMode = document.getElementById('ctrl-fluid-color-mode');
-    const ctrlFluidSpeed = document.getElementById('ctrl-fluid-speed');
-
-    const ctrlSens = document.getElementById('ctrl-sens');
-    const ctrlSmooth = document.getElementById('ctrl-smooth');
-    const ctrlRot = document.getElementById('ctrl-rot');
-    const ctrlGrain = document.getElementById('ctrl-grain');
-    const ctrlRgb = document.getElementById('ctrl-rgb');
-    const ctrlVignette = document.getElementById('ctrl-vignette');
-    
-    const updateUIVal = (id, val) => document.getElementById(id).innerText = val;
-
-    function updateAspectRatio() {
-        let val = ctrlRatio.value;
-        let w = window.innerWidth, h = window.innerHeight;
-        if (val === '16:9') { w = 1920; h = 1080; }
-        else if (val === '9:16') { w = 1080; h = 1920; }
-        renderer.setSize(w, h); composer.setSize(w, h); 
-        camera.aspect = w / h; camera.updateProjectionMatrix();
-    }
-    ctrlRatio.onchange = updateAspectRatio;
-    window.addEventListener('resize', () => { if (ctrlRatio.value === 'fit') updateAspectRatio(); });
-    updateAspectRatio(); 
-
-    ctrlScale.oninput = (e) => { updateUIVal('val-scale', e.target.value); buildFlowers(); };
-    ctrlPetalCount.oninput = (e) => { updateUIVal('val-petal-count', e.target.value); buildFlowers(); };
-    ctrlPetalW.oninput = (e) => { updateUIVal('val-petal-w', e.target.value); buildFlowers(); };
-    ctrlPetalL.oninput = (e) => { updateUIVal('val-petal-l', e.target.value); buildFlowers(); };
-    ctrlFlowerCount.onchange = () => buildFlowers();
-    ctrlPetalShape.onchange = () => buildFlowers();
-    ctrlStamenType.onchange = () => buildFlowers();
-
-    ctrlSens.oninput = (e) => updateUIVal('val-sens', e.target.value);
-    ctrlSmooth.oninput = (e) => updateUIVal('val-smooth', e.target.value);
-    ctrlRot.oninput = (e) => updateUIVal('val-rot', e.target.value);
-    ctrlFluidSpeed.oninput = (e) => updateUIVal('val-fluid-speed', e.target.value);
-    
-    ctrlGrain.oninput = (e) => { artFilterPass.uniforms.uGrain.value = parseFloat(e.target.value); updateUIVal('val-grain', e.target.value); };
-    ctrlRgb.oninput = (e) => { artFilterPass.uniforms.uRgbOffset.value = parseFloat(e.target.value) * 0.001; updateUIVal('val-rgb', e.target.value); };
-    ctrlVignette.oninput = (e) => { artFilterPass.uniforms.uVignette.value = parseFloat(e.target.value); updateUIVal('val-vignette', e.target.value); };
-    ctrlOpacity.oninput = (e) => { updateUIVal('val-opacity', e.target.value); updateMaterialsOpacity(); };
-    
-    function getColorStart() { return new THREE.Color(ctrlColorStart.value); }
-    function getColorEnd() { return new THREE.Color(ctrlColorEnd.value); }
-
-    ctrlColorStart.oninput = () => { updateMaterialsColor(); updateFluidColors(); };
-    ctrlColorEnd.oninput = () => { updateMaterialsColor(); updateFluidColors(); };
-
-    // --- 2. 배경 유체 (Fluid Flow) ---
-    const maxFluidCount = 10000;
-    const fluidGeo = new THREE.BufferGeometry();
-    const fluidPos = new Float32Array(maxFluidCount * 3);
-    const fluidColors = new Float32Array(maxFluidCount * 3);
-    const fluidColorSeeds = new Float32Array(maxFluidCount);
-
-    for(let i=0; i<maxFluidCount; i++) {
-        fluidPos[i*3] = (Math.random() - 0.5) * 4000;
-        fluidPos[i*3+1] = (Math.random() - 0.5) * 4000;
-        fluidPos[i*3+2] = (Math.random() - 0.5) * 1000 - 500; 
-        fluidColorSeeds[i] = Math.random(); 
-    }
-    fluidGeo.setAttribute('position', new THREE.BufferAttribute(fluidPos, 3));
-    fluidGeo.setAttribute('color', new THREE.BufferAttribute(fluidColors, 3));
-    fluidGeo.setDrawRange(0, parseInt(ctrlFluidCount.value));
-
-    const circleCanvas = document.createElement('canvas'); circleCanvas.width = 64; circleCanvas.height = 64;
-    const ctx = circleCanvas.getContext('2d'); ctx.beginPath(); ctx.arc(32, 32, 30, 0, Math.PI * 2); ctx.fillStyle = "white"; ctx.fill();
-    const circleTex = new THREE.CanvasTexture(circleCanvas);
-
-    const fluidMat = new THREE.PointsMaterial({ size: 10, vertexColors: true, map: circleTex, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false });
-    const fluidSystem = new THREE.Points(fluidGeo, fluidMat); scene.add(fluidSystem);
-
-    ctrlFluidCount.oninput = (e) => { updateUIVal('val-fluid-count', e.target.value); fluidGeo.setDrawRange(0, parseInt(e.target.value)); };
-    
-    function updateFluidColors() {
-        const colors = fluidGeo.attributes.color.array;
-        const mode = ctrlFluidColorMode.value;
-        const cStart = getColorStart(); const cEnd = getColorEnd();
-
-        for(let i=0; i<maxFluidCount; i++) {
-            if (mode === 'random') {
-                let c = new THREE.Color().setHSL(fluidColorSeeds[i], 0.9, 0.6);
-                colors[i*3] = c.r; colors[i*3+1] = c.g; colors[i*3+2] = c.b;
-            } else {
-                let c = new THREE.Color().lerpColors(cStart, cEnd, fluidColorSeeds[i]);
-                colors[i*3] = c.r; colors[i*3+1] = c.g; colors[i*3+2] = c.b;
-            }
-        }
-        fluidGeo.attributes.color.needsUpdate = true;
-    }
-    ctrlFluidColorMode.onchange = updateFluidColors;
-    updateFluidColors(); 
-
-    // --- 3. 16종 꽃잎 및 꽃술 생성 엔진 ---
-    function getPetalGeometry(shapeType) {
-        const s = new THREE.Shape(); s.moveTo(0, 0);
-        switch(parseInt(shapeType)) {
-            case 1: s.bezierCurveTo(15, 10, 15, 30, 0, 40); s.bezierCurveTo(-15, 30, -15, 10, 0, 0); break;
-            case 2: s.lineTo(10, 15); s.lineTo(0, 45); s.lineTo(-10, 15); s.lineTo(0, 0); break;
-            case 3: s.bezierCurveTo(25, 15, 20, 35, 0, 30); s.bezierCurveTo(-20, 35, -25, 15, 0, 0); break;
-            case 4: s.bezierCurveTo(15, 10, 20, 25, 15, 40); s.lineTo(7, 33); s.lineTo(0, 45); s.lineTo(-7, 33); s.lineTo(-15, 40); s.bezierCurveTo(-20, 25, -15, 10, 0, 0); break;
-            case 5: s.lineTo(15, 20); s.lineTo(0, 40); s.lineTo(-15, 20); s.lineTo(0, 0); break;
-            case 6: s.bezierCurveTo(30, 15, 15, 45, 0, 35); s.bezierCurveTo(-15, 45, -30, 15, 0, 0); break;
-            case 7: s.bezierCurveTo(2, 10, 2, 30, 0, 50); s.bezierCurveTo(-2, 30, -2, 10, 0, 0); break;
-            case 8: s.bezierCurveTo(20, 5, 20, 25, 0, 40); s.bezierCurveTo(-20, 25, -20, 5, 0, 0); break;
-            case 9: s.lineTo(20, 35); s.bezierCurveTo(10, 45, -10, 45, -20, 35); s.lineTo(0, 0); break;
-            case 10: s.bezierCurveTo(15, 5, 5, 15, 15, 25); s.bezierCurveTo(5, 35, 15, 40, 0, 45); s.bezierCurveTo(-15, 40, -5, 35, -15, 25); s.bezierCurveTo(-5, 15, -15, 5, 0, 0); break;
-            case 11: s.bezierCurveTo(10, 0, 20, 10, 25, 20); s.lineTo(0, 45); s.lineTo(-25, 20); s.bezierCurveTo(-20, 10, -10, 0, 0, 0); break;
-            case 12: s.bezierCurveTo(10, 10, 15, 30, 10, 35); s.lineTo(-10, 35); s.bezierCurveTo(-15, 30, -10, 10, 0, 0); break;
-            case 13: s.bezierCurveTo(15, 10, 25, 25, 30, 40); s.lineTo(10, 30); s.lineTo(0, 45); s.lineTo(-10, 30); s.lineTo(-30, 40); s.bezierCurveTo(-25, 25, -15, 10, 0, 0); break;
-            case 14: s.lineTo(10, 10); s.lineTo(15, 25); s.lineTo(0, 40); s.lineTo(-15, 25); s.lineTo(-10, 10); s.lineTo(0,0); break;
-            case 15: s.bezierCurveTo(15, 10, 25, 20, 10, 30); s.bezierCurveTo(20, 40, 0, 50, 0, 50); s.bezierCurveTo(-10, 40, -20, 30, -10, 20); s.bezierCurveTo(-25, 10, -15, 0, 0, 0); break;
-            case 16: s.lineTo(5, 15); s.lineTo(20, 20); s.lineTo(5, 25); s.lineTo(0, 45); s.lineTo(-5, 25); s.lineTo(-20, 20); s.lineTo(-5, 15); s.lineTo(0,0); break;
-        }
-        return new THREE.ShapeGeometry(s);
-    }
-
-    const mainFlowerGroup = new THREE.Group(); scene.add(mainFlowerGroup);
-    let allFlowers = [];
-    let coreImageSpriteMat = null;
-
-    function createFlowerObj(x, y, scaleMult) {
-        const flower = new THREE.Group(); flower.position.set(x, y, 0);
-        const globalScale = parseFloat(ctrlScale.value) * scaleMult * 3.5; 
-        flower.scale.set(globalScale, globalScale, globalScale);
-
-        const petals = []; const stamens = [];
-        const petalCount = parseInt(ctrlPetalCount.value);
-        const stamenType = ctrlStamenType.value;
-        const customGeo = getPetalGeometry(ctrlPetalShape.value);
-        let pW = parseFloat(ctrlPetalW.value); let pL = parseFloat(ctrlPetalL.value);
-        let currentOpacity = parseFloat(ctrlOpacity.value);
-
-        const petalMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: currentOpacity, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false });
-        for(let i=0; i<petalCount; i++) {
-            let pMesh = new THREE.Mesh(customGeo, petalMat.clone());
-            pMesh.scale.set(0.6 * pW, 2.5 * pL, 1.0); 
-            pMesh.rotation.z = -(i / petalCount) * Math.PI * 2; pMesh.rotation.x = Math.PI / 2.2; 
-            flower.add(pMesh); petals.push(pMesh);
+            reader.readAsDataURL(e.target.files[0]);
         }
 
-        const stamenMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: Math.min(1.0, currentOpacity + 0.2), blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false });
-        if (stamenType === 'circle_large' || stamenType === 'circle_small') {
-            let r = stamenType === 'circle_large' ? 12 : 6;
-            let sMesh = new THREE.Mesh(new THREE.CircleGeometry(r, 32), stamenMat.clone()); sMesh.position.z = 4; flower.add(sMesh); stamens.push(sMesh);
-        } else if (stamenType !== 'none') {
-            let sCount = stamenType === 'strands_many' ? 36 : 9; const needleGeo = getPetalGeometry(7); 
-            for(let i=0; i<sCount; i++) {
-                let sMesh = new THREE.Mesh(needleGeo, stamenMat.clone()); sMesh.scale.set((stamenType === 'strands_many' ? 0.15 : 0.4) * pW, 1.5 * pL, 1.0); 
-                sMesh.rotation.z = -(i / sCount) * Math.PI * 2 - (Math.PI / 32); sMesh.rotation.x = Math.PI / 2.5; flower.add(sMesh); stamens.push(sMesh);
-            }
-        }
+        function analyzePixels() {
+            edgePoints = [];
+            colorPoints = [];
+            const data = imgData.data;
+            const threshold = 25; // 윤곽선 감지 민감도
 
-        let coreObj;
-        if (coreImageSpriteMat) { coreObj = new THREE.Sprite(coreImageSpriteMat); coreObj.scale.set(30 * pW, 30 * pW, 1); } 
-        else { coreObj = new THREE.Mesh(new THREE.CircleGeometry(5 * pW, 32), new THREE.MeshBasicMaterial({color: 0xffffff, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending})); }
-        coreObj.position.z = 8; flower.add(coreObj);
+            // 픽셀을 건너뛰며 샘플링 (거친 느낌을 위해 step을 2로 설정)
+            for(let y = 0; y < height; y += 2) {
+                for(let x = 0; x < width; x += 2) {
+                    const idx = (y * width + x) * 4;
+                    const brightness = (data[idx] + data[idx+1] + data[idx+2]) / 3;
+                    let isEdge = false;
 
-        mainFlowerGroup.add(flower);
-        allFlowers.push({ group: flower, petals, stamens, core: coreObj, stamenType });
-    }
+                    // 간단한 엣지(윤곽선) 디텍션 알고리즘
+                    if (x < width - 2 && y < height - 2) {
+                        const rightIdx = (y * width + (x+2)) * 4;
+                        const bottomIdx = ((y+2) * width + x) * 4;
+                        const rightB = (data[rightIdx] + data[rightIdx+1] + data[rightIdx+2]) / 3;
+                        const bottomB = (data[bottomIdx] + data[bottomIdx+1] + data[bottomIdx+2]) / 3;
 
-    function buildFlowers() {
-        while(mainFlowerGroup.children.length > 0) mainFlowerGroup.remove(mainFlowerGroup.children[0]);
-        allFlowers = []; let count = parseInt(ctrlFlowerCount.value);
-        if (count === 1) createFlowerObj(0, 0, 1.0);
-        else if (count === 3) { createFlowerObj(0, 150, 0.7); createFlowerObj(-200, -100, 0.7); createFlowerObj(200, -100, 0.7); }
-        else if (count === 5) { createFlowerObj(0, 0, 0.8); createFlowerObj(-250, 200, 0.4); createFlowerObj(250, 200, 0.4); createFlowerObj(-200, -200, 0.4); createFlowerObj(200, -200, 0.4); }
-        else if (count === 9) { for(let x=-1; x<=1; x++) { for(let y=-1; y<=1; y++) { let s = (x===0 && y===0) ? 0.7 : 0.4; createFlowerObj(x*280, y*280, s); } } }
-        updateMaterialsColor(); 
-    }
-    
-    function updateMaterialsOpacity() {
-        let op = parseFloat(ctrlOpacity.value);
-        allFlowers.forEach(f => {
-            f.petals.forEach(p => p.material.opacity = op);
-            f.stamens.forEach(s => s.material.opacity = Math.min(1.0, op + 0.2));
-        });
-    }
+                        if (Math.abs(brightness - rightB) > threshold || Math.abs(brightness - bottomB) > threshold) {
+                            isEdge = true;
+                        }
+                    }
 
-    function updateMaterialsColor() {
-        let cStart = getColorStart(); let cEnd = getColorEnd();
-        allFlowers.forEach(f => {
-            let pCount = f.petals.length;
-            for(let p=0; p<pCount; p++) { f.petals[p].material.color.lerpColors(cStart, cEnd, p/pCount); }
-            let sCount = f.stamens.length;
-            for(let s=0; s<sCount; s++) { f.stamens[s].material.color.lerpColors(cEnd, cStart, s/sCount); }
-        });
-    }
-
-    buildFlowers();
-
-    document.getElementById('core-image-file').onchange = function(e) {
-        const file = e.target.files[0]; if (!file) return;
-        const reader = new FileReader();
-        reader.onload = function(event) {
-            const img = new Image();
-            img.onload = function() {
-                const tex = new THREE.Texture(img); tex.needsUpdate = true;
-                coreImageSpriteMat = new THREE.SpriteMaterial({ map: tex, transparent: true }); buildFlowers();
-            };
-            img.src = event.target.result;
-        };
-        reader.readAsDataURL(file);
-    };
-
-    // --- 4. 오디오 엔진 및 파일 시스템 (전역 스코프 동기화) ---
-    let audioCtx, analyser, dataArray;
-    let decodedBuffer = null; let isPlaying = false; 
-    let currentSource = null; // 인코딩 붕괴 버그 해결
-    let mediaRecorder, recordedChunks = [];
-    let smoothedData = new Float32Array(512);
-    
-    const initBtn = document.getElementById('init-btn');
-    const fileSelectBox = document.getElementById('file-select-box');
-    const audioInput = document.getElementById('audio-file');
-    const recordBtn = document.getElementById('record-btn');
-    const statusEl = document.getElementById('status');
-    let loadedFileName = "";
-
-    initBtn.onclick = function() {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        analyser = audioCtx.createAnalyser(); analyser.fftSize = 512; dataArray = new Uint8Array(analyser.frequencyBinCount);
-        initBtn.style.display = 'none'; fileSelectBox.style.display = 'block';
-    };
-
-    audioInput.onchange = function(event) {
-        const file = event.target.files[0]; if (!file) return;
-        loadedFileName = file.name; statusEl.innerText = "음원 디코딩 중... 잠시만 기울여주세요."; recordBtn.style.display = 'none';
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            audioCtx.decodeAudioData(e.target.result, function(buffer) {
-                decodedBuffer = buffer;
-                statusEl.innerHTML = "<strong>준비 완료!</strong> 셋팅을 맞추고 아래 버튼을 누르세요."; recordBtn.style.display = 'block';
-            });
-        };
-        reader.readAsBuffer ? reader.readAsBuffer(file) : reader.readAsArrayBuffer(file);
-    };
-
-    recordBtn.onclick = function() {
-        if (!decodedBuffer) return;
-        if (currentSource) { try { currentSource.stop(); } catch(e) {} }
-        
-        currentSource = audioCtx.createBufferSource(); currentSource.buffer = decodedBuffer; currentSource.connect(analyser);
-        const audioDest = audioCtx.createMediaStreamDestination(); analyser.connect(audioCtx.destination); analyser.connect(audioDest);            
-        const canvasStream = renderer.domElement.captureStream(60); const combinedStream = new MediaStream([...canvasStream.getVideoTracks(), ...audioDest.stream.getAudioTracks()]);
-        
-        // ★ MP4 인코딩 사양 강제 매핑 및 화질 락 해제
-        let options = { mimeType: 'video/mp4; codecs=avc1', videoBitsPerSecond: 8000000 };
-        let ext = 'mp4';
-        
-        if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-            options = { mimeType: 'video/mp4' };
-            if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-                options = { mimeType: 'video/webm; codecs=vp9', videoBitsPerSecond: 8000000 };
-                ext = 'webm';
-            }
-        }
-        
-        recordedChunks = []; mediaRecorder = new MediaRecorder(combinedStream, options);
-        mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
-        mediaRecorder.onstop = () => {
-            const blob = new Blob(recordedChunks, { type: options.mimeType }); const url = URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.style = 'display: none'; a.href = url; a.download = loadedFileName.replace(/\.[^/.]+$/, "") + `_FlowerArt_${ctrlRatio.value.replace(':','x')}.${ext}`;
-            document.body.appendChild(a); a.click(); window.URL.revokeObjectURL(url); statusEl.innerText = `녹화 완료! MP4 포맷으로 최적화 저장되었습니다.`; ctrlRatio.disabled = false; isPlaying = false; recordBtn.style.display = 'block';
-        };
-        currentSource.onended = () => { if(mediaRecorder.state === 'recording') mediaRecorder.stop(); };
-        currentSource.start(0); mediaRecorder.start(); isPlaying = true;
-        ctrlRatio.disabled = true; recordBtn.style.display = 'none';
-        statusEl.innerHTML = `<span class="recording-badge">● REC</span> [.${ext}] 인코더 렌더링 파이프라인 구동 중...`;
-    };
-
-    // --- 5. 애니메이션 렌더링 루프 ---
-    let time = 0;
-    function animate() {
-        requestAnimationFrame(animate);
-        time += 0.01;
-        
-        artFilterPass.uniforms.uTime.value = time;
-
-        let sensitivity = parseFloat(ctrlSens.value);
-        let smoothing = parseFloat(ctrlSmooth.value); let lerpFactor = 1.0 - smoothing; 
-        let rawBass = 0, rawMid = 0, rawTreble = 0;
-
-        if (isPlaying && analyser) {
-            analyser.getByteFrequencyData(dataArray);
-            for(let i=0; i<dataArray.length; i++) smoothedData[i] += (dataArray[i] - smoothedData[i]) * lerpFactor;
-            let bSum=0, mSum=0, tSum=0;
-            for(let i=0; i<15; i++) bSum += smoothedData[i];       
-            for(let i=15; i<90; i++) mSum += smoothedData[i];      
-            for(let i=90; i<200; i++) tSum += dataArray[i];        
-            rawBass = (bSum / 15 / 255) * sensitivity; rawMid = (mSum / 75 / 255) * sensitivity; rawTreble = (tSum / 110 / 255) * sensitivity;
-        }
-
-        let fluidSpeed = parseFloat(ctrlFluidSpeed.value); let currentFluidCount = parseInt(ctrlFluidCount.value);
-        let fPos = fluidGeo.attributes.position.array; let t = time * 0.5;
-        for (let i = 0; i < currentFluidCount; i++) {
-            let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2; let px = fPos[ix] * 0.003, py = fPos[iy] * 0.003, pz = fPos[iz] * 0.003;
-            let vx = Math.sin(py + t) + Math.sin(pz * 0.5), vy = Math.cos(px + t) + Math.cos(pz * 0.5), vz = Math.sin(px - t) + Math.cos(py - t);
-            vx -= fPos[ix] * 0.0005; vy -= fPos[iy] * 0.0005;
-            fPos[ix] += vx * fluidSpeed * (1 + rawBass * 1.5); fPos[iy] += vy * fluidSpeed * (1 + rawBass * 1.5); fPos[iz] += vz * fluidSpeed * (1 + rawBass * 1.5);
-        }
-        fluidGeo.attributes.position.needsUpdate = true;
-
-        let motionPetal = 0, motionStamen = 0, motionCore = 0, motionRot = 0;
-        function distributeMotion(routeTarget, intensityValue) {
-            if (routeTarget === 'petal') motionPetal += intensityValue; else if (routeTarget === 'stamen') motionStamen += intensityValue; else if (routeTarget === 'core') motionCore += intensityValue; else if (routeTarget === 'rotation') motionRot += intensityValue;
-        }
-        distributeMotion(mapBass.value, rawBass); distributeMotion(mapMid.value, rawMid); distributeMotion(mapTreble.value, rawTreble);
-
-        let rotGlobalSpeed = parseFloat(ctrlRot.value);
-        let cStart = getColorStart(); let cEnd = getColorEnd();
-
-        allFlowers.forEach((flowerObj, idx) => {
-            flowerObj.group.rotation.z -= (0.002 * rotGlobalSpeed + motionRot * 0.08) * (idx % 2 === 0 ? 1 : -1); 
-            
-            let cScale = (coreImageSpriteMat ? 100 : 1) * (1 + motionCore * (coreImageSpriteMat ? 1.0 : 1.8)); flowerObj.core.scale.set(cScale, cScale, 1);
-            if (!coreImageSpriteMat) flowerObj.core.material.color.lerpColors(cStart, new THREE.Color(0xffffff), motionCore * 0.8);
-
-            let pCount = flowerObj.petals.length;
-            for(let p=0; p<pCount; p++) {
-                let petal = flowerObj.petals[p]; let targetRotX = (Math.PI / 2.2) - (motionPetal * (Math.PI / 2.2));
-                petal.rotation.x = Math.max(0.0, targetRotX); 
-                let baseCol = new THREE.Color().lerpColors(cStart, cEnd, p/pCount);
-                baseCol.lerp(new THREE.Color(0xffffff), motionPetal * 0.4);
-                petal.material.color.copy(baseCol);
-            }
-
-            if (flowerObj.stamenType === 'circle_large' || flowerObj.stamenType === 'circle_small') {
-                let st = flowerObj.stamens[0]; let sScale = 1 + (motionStamen * 2.0); st.scale.set(sScale, sScale, 1);
-                let baseCol = new THREE.Color().lerpColors(cEnd, cStart, 0.5); baseCol.lerp(new THREE.Color(0xffffff), motionStamen * 0.6);
-                st.material.color.copy(baseCol);
-            } else if (flowerObj.stamenType !== 'none') {
-                let sCount = flowerObj.stamens.length;
-                for(let s=0; s<sCount; s++) {
-                    let stamen = flowerObj.stamens[s]; let targetRotX = (Math.PI / 2.5) + (motionStamen * (Math.PI / 4));
-                    stamen.rotation.x = Math.min(Math.PI / 1.4, targetRotX);
-                    let baseCol = new THREE.Color().lerpColors(cEnd, cStart, s/sCount); baseCol.lerp(new THREE.Color(0xffffff), motionStamen * 0.6);
-                    stamen.material.color.copy(baseCol);
+                    const point = { x, y, r: data[idx], g: data[idx+1], b: data[idx+2] };
+                    if (isEdge) edgePoints.push(point);
+                    else colorPoints.push(point);
                 }
             }
-        });
+            // 랜덤한 순서로 그리도록 배열 섞기
+            edgePoints.sort(() => Math.random() - 0.5);
+            colorPoints.sort(() => Math.random() - 0.5);
+        }
 
-        composer.render();
-    }
-    animate(); 
-</script>
+        let currentPen = { x: 0, y: 0 };
+        let mode = 'OUTLINE'; 
+        let progressIdx = 0;
+
+        function startDrawing() {
+            ctx.fillStyle = '#f4f4f0'; // 바탕색 초기화
+            ctx.fillRect(0, 0, width, height);
+            
+            isDrawing = true;
+            mode = 'OUTLINE';
+            progressIdx = 0;
+            currentPen = { x: width/2, y: height/2 }; // 화면 중앙 근처에서 펜 시작
+            
+            drawLoop();
+        }
+
+        function drawLoop() {
+            if (!isDrawing) return;
+
+            if (mode === 'OUTLINE') {
+                // 연필 스케치 느낌의 색상 및 투명도
+                ctx.strokeStyle = 'rgba(30, 30, 40, 0.3)';
+                ctx.lineWidth = 0.8;
+
+                // 애니메이션 속도를 위해 한 프레임당 40번의 선 긋기
+                for(let i = 0; i < 40; i++) {
+                    if (progressIdx >= edgePoints.length) {
+                        mode = 'COLOR'; // 윤곽선이 끝나면 채색 모드로 전환
+                        progressIdx = 0;
+                        break;
+                    }
+
+                    let target = edgePoints[progressIdx];
+
+                    // 1. 노이즈 적용: 원래 위치에서 최대 12px 벗어나게 목표점 설정
+                    let destX = target.x + (Math.random() - 0.5) * 24;
+                    let destY = target.y + (Math.random() - 0.5) * 24;
+
+                    ctx.beginPath();
+                    
+                    // 2. 가끔씩 펜을 떼고 완전히 어긋난 새 위치에서 시작 (시작부분 벗어남 구현)
+                    if (progressIdx === 0 || Math.random() < 0.03) {
+                        currentPen.x = destX - (Math.random() - 0.5) * 40;
+                        currentPen.y = destY - (Math.random() - 0.5) * 40;
+                    }
+
+                    ctx.moveTo(currentPen.x, currentPen.y);
+                    
+                    // 3. 직선이 아닌 베지에 곡선을 이용해 삐뚤빼뚤한 노이즈 선 생성
+                    let cpX = (currentPen.x + destX) / 2 + (Math.random() - 0.5) * 15;
+                    let cpY = (currentPen.y + destY) / 2 + (Math.random() - 0.5) * 15;
+                    
+                    ctx.quadraticCurveTo(cpX, cpY, destX, destY);
+                    ctx.stroke();
+
+                    // 한붓그리기를 위해 현재 펜 위치를 방금 그린 끝점으로 업데이트
+                    currentPen.x = destX;
+                    currentPen.y = destY;
+
+                    progressIdx++;
+                }
+            } 
+            else if (mode === 'COLOR') {
+                // 물감이나 마커로 거칠게 칠하는 느낌
+                for(let i = 0; i < 150; i++) {
+                    if (progressIdx >= colorPoints.length) {
+                        isDrawing = false;
+                        break;
+                    }
+
+                    let p = colorPoints[progressIdx];
+                    
+                    // 색상에 투명도를 주어 겹쳐 칠해지는 효과
+                    ctx.fillStyle = `rgba(${p.r}, ${p.g}, ${p.b}, 0.15)`;
+                    ctx.beginPath();
+                    
+                    // 칠하는 위치와 크기에도 노이즈 부여
+                    let brushSize = Math.random() * 6 + 2;
+                    let offsetX = (Math.random() - 0.5) * 12;
+                    let offsetY = (Math.random() - 0.5) * 12;
+                    
+                    ctx.arc(p.x + offsetX, p.y + offsetY, brushSize, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    progressIdx++;
+                }
+            }
+
+            if (isDrawing) {
+                animationId = requestAnimationFrame(drawLoop);
+            }
+        }
+    </script>
 </body>
 </html>
