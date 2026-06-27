@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Nature Fluid Studio v6.2 - Ultimate Realism</title>
+    <title>Nature Fluid Studio v6.2 - Ultimate Realism (Bug Fixed)</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #020205; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; }
         canvas { width: 100vw !important; height: 100vh !important; object-fit: contain; }
@@ -249,7 +249,7 @@
     const ctrlCluster = document.getElementById('ctrl-cluster');
     const ctrlWaveAngle = document.getElementById('ctrl-wave-angle');
     const ctrlWaveDist = document.getElementById('ctrl-wave-dist');
-    const ctrlWaveDetail = document.getElementById('ctrl-wave-detail'); // 신규 슬라이더
+    const ctrlWaveDetail = document.getElementById('ctrl-wave-detail');
     
     const ctrlPCount = document.getElementById('ctrl-pcount');
     const ctrlBaseY = document.getElementById('ctrl-base-y');
@@ -264,7 +264,7 @@
     
     const ctrlColorStart = document.getElementById('ctrl-color-start');
     const ctrlColorEnd = document.getElementById('ctrl-color-end');
-    const ctrlColorFoam = document.getElementById('ctrl-color-foam'); // 신규 컬러 피커
+    const ctrlColorFoam = document.getElementById('ctrl-color-foam'); 
     const ctrlBloom = document.getElementById('ctrl-bloom');
     const ctrlGrain = document.getElementById('ctrl-grain');
     const ctrlVignette = document.getElementById('ctrl-vignette');
@@ -310,9 +310,12 @@
         for(let i=0; i<maxParticles; i++) {
             if (countInGroup >= clusterSize) {
                 countInGroup = 0; groupIdx++;
-                cX = (Math.random() - 0.5) * 2000; cY = baseY + Math.random() * 1500; cZ = (Math.random() - 0.5) * 2000;
+                cX = (Math.random() - 0.5) * 2000; 
+                cY = baseY + Math.random() * 1500; 
+                cZ = (Math.random() - 0.5) * 2000;
             }
             pGroup[i] = groupIdx; pSeed[i] = Math.random(); 
+            
             pPos[i*3] = cX + (Math.random()-0.5)*40; pPos[i*3+1] = cY + (Math.random()-0.5)*40; pPos[i*3+2] = cZ + (Math.random()-0.5)*40;
             pBasePos[i*3] = pPos[i*3]; pBasePos[i*3+1] = pPos[i*3+1]; pBasePos[i*3+2] = pPos[i*3+2];
             countInGroup++;
@@ -347,8 +350,11 @@
             attribute float aSeed; varying vec3 vColor; varying float vOpacity;
             uniform vec3 cStart; uniform vec3 cEnd; uniform float uMode; uniform float uSize; uniform float uOpacity;
             void main() {
-                if (uMode == 2.0) { vColor = mix(cStart, vec3(1.0, 1.0, 1.0), 0.7 + aSeed*0.3); } 
-                else { vColor = mix(cStart, cEnd, aSeed); }
+                if (uMode == 2.0) { 
+                    vColor = mix(cStart, vec3(1.0, 1.0, 1.0), 0.7 + aSeed*0.3); 
+                } else {
+                    vColor = mix(cStart, cEnd, aSeed); 
+                }
                 vOpacity = uOpacity;
                 vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
                 gl_PointSize = uSize * (800.0 / -mvPosition.z);
@@ -357,23 +363,28 @@
         `,
         fragmentShader: `
             uniform sampler2D map; varying vec3 vColor; varying float vOpacity;
-            void main() { vec4 texColor = texture2D(map, gl_PointCoord); gl_FragColor = vec4(vColor, texColor.a * vOpacity); }
+            void main() {
+                vec4 texColor = texture2D(map, gl_PointCoord); gl_FragColor = vec4(vColor, texColor.a * vOpacity);
+            }
         `,
         transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
     });
+    
     const particleSystem = new THREE.Points(particleGeo, particleShaderMat);
+    // ★ 에러 원인 해결: 초기 렌더링 시 파도 모드일 경우 파티클 숨김 동기화
+    particleSystem.visible = (ctrlMode.value !== 'waves');
     scene.add(particleSystem);
 
-    // --- 2-B. 리얼 해변 파도 셰이더 ---
+    // --- 2-B. 진짜 해변 파도 셰이더 ---
     const waveGeo = new THREE.PlaneGeometry(6000, 6000, 1, 1);
     const waveShaderMat = new THREE.ShaderMaterial({
         uniforms: {
             uTime: { value: 0.0 }, uBass: { value: 0.0 }, uAngle: { value: 0.0 }, uDist: { value: 0.5 }, uSeed: { value: 0.0 },
-            uWaveDetail: { value: 1.5 }, // ★ 파도 쪼개짐 디테일 유니폼 추가
+            uWaveDetail: { value: 1.5 }, 
             cSand: { value: new THREE.Color(0xd2b48c) }, 
             cShallow: { value: new THREE.Color(ctrlColorStart.value) }, 
             cDeep: { value: new THREE.Color(ctrlColorEnd.value) }, 
-            cFoam: { value: new THREE.Color(ctrlColorFoam.value) } // ★ 거품 색상 유니폼 연동
+            cFoam: { value: new THREE.Color(ctrlColorFoam.value) } 
         },
         vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
         fragmentShader: `
@@ -400,7 +411,6 @@
                 
                 float wavePos = 0.5 + sin(uTime * 1.2) * 0.15 + (uBass * 0.15); 
                 
-                // ★ 해안선 디테일 증가 (uWaveDetail 곱 적용)
                 float edgeNoise = noise(rUv * 15.0 * uWaveDetail + uTime*0.5) * (0.1 * uDist) + noise(rUv * 30.0 * uWaveDetail - uTime) * 0.05;
                 float distToWave = rUv.y - (wavePos + edgeNoise);
                 
@@ -413,7 +423,6 @@
                     float foamBand = 0.02 + uBass * 0.03; 
                     float isFoam = 1.0 - smoothstep(0.0, foamBand, distToWave); 
                     
-                    // ★ 거품 부서짐 디테일 극대화 (uWaveDetail 곱 적용)
                     float foamNoise = noise(rUv * 80.0 * uWaveDetail + uTime * 3.0);
                     float finalFoam = isFoam * abs(foamNoise) * 2.0; 
                     
@@ -426,15 +435,13 @@
     });
     const waveMesh = new THREE.Mesh(waveGeo, waveShaderMat);
     waveMesh.rotation.x = -Math.PI / 2; 
-    
-    // 현재 선택된 모드가 파도일 때만 표시되도록 초기화
-    waveMesh.visible = (ctrlMode.value === 'waves');
+    waveMesh.visible = (ctrlMode.value === 'waves'); // ★ 초기 동기화
     scene.add(waveMesh);
 
-    // 컬러 피커 이벤트 연동
+    // UI 이벤트 연동
     ctrlColorStart.oninput = (e) => { particleShaderMat.uniforms.cStart.value.set(e.target.value); waveShaderMat.uniforms.cShallow.value.set(e.target.value); };
     ctrlColorEnd.oninput = (e) => { particleShaderMat.uniforms.cEnd.value.set(e.target.value); waveShaderMat.uniforms.cDeep.value.set(e.target.value); };
-    ctrlColorFoam.oninput = (e) => { waveShaderMat.uniforms.cFoam.value.set(e.target.value); }; // ★ 거품 색상 업데이트
+    ctrlColorFoam.oninput = (e) => { waveShaderMat.uniforms.cFoam.value.set(e.target.value); }; 
 
     ctrlMode.onchange = function(e) {
         let mode = e.target.value;
@@ -443,11 +450,12 @@
         
         if (mode === 'waves') {
             particleSystem.visible = false; waveMesh.visible = true;
-            // 탑뷰 강제 고정 셋팅
+            // 탑뷰 셋팅
             ctrlCamX.value = 0; ctrlCamY.value = 1500; ctrlCamZ.value = 0;
             updateUIVal('val-cam-x', 0); updateUIVal('val-cam-y', 1500); updateUIVal('val-cam-z', 0);
         } else {
             particleSystem.visible = true; waveMesh.visible = false;
+            // 탑뷰 해제
             if(ctrlCamY.value == 1500) { ctrlCamY.value = 0; ctrlCamZ.value = 800; updateUIVal('val-cam-y', 0); updateUIVal('val-cam-z', 800); }
             
             if (mode === 'bubbles') {
@@ -457,6 +465,9 @@
             }
         }
     };
+
+    // ★ 초기 렌더링 시 UI 동기화를 위해 이벤트 수동 발송
+    ctrlMode.dispatchEvent(new Event('change'));
 
     ctrlCluster.oninput = (e) => { currentClusterSize = parseInt(e.target.value); if(ctrlMode.value === 'bubbles') resetParticles(currentClusterSize); };
 
@@ -539,17 +550,15 @@
         let shakeVal = parseFloat(ctrlShake.value);
 
         if (mode === 'waves') {
-            // [모드 2: 리얼 해변 파도] 
             waveShaderMat.uniforms.uTime.value = time;
             waveShaderMat.uniforms.uAngle.value = parseFloat(ctrlWaveAngle.value);
             waveShaderMat.uniforms.uBass.value = rawBass;
             waveShaderMat.uniforms.uDist.value = parseFloat(ctrlWaveDist.value);
-            waveShaderMat.uniforms.uWaveDetail.value = parseFloat(ctrlWaveDetail.value); // ★ 디테일 실시간 적용
+            waveShaderMat.uniforms.uWaveDetail.value = parseFloat(ctrlWaveDetail.value); 
             waveShaderMat.uniforms.uSeed.value = globalRandomSeed; 
             waveMesh.position.y = baseY; 
         } 
         else {
-            // 파티클 업데이트 (Bubbles / Snow)
             for (let i = 0; i < activeCount; i++) {
                 let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
                 
