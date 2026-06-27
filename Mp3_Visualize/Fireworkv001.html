@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Audio Reactive Campfire Grid Studio - Ultimate Custom</title>
+    <title>Campfire Grid Studio - Ultimate Custom</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #020202; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; }
         canvas { width: 100vw !important; height: 100vh !important; object-fit: contain; }
@@ -222,19 +222,18 @@
             updateUIVal(`val-${id}`, e.target.value);
             if(id === 'bloom') bloomPass.strength = parseFloat(e.target.value);
             if(['cols', 'rows', 'space-x', 'space-z', 'base-y'].includes(id)) {
-                buildGrid(false); // 슬라이더 조절 시에는 랜덤 상수가 보존되거나 초기화된 기본형으로 재배치
+                buildGrid(false); 
             }
         });
     });
 
-    // 바닥면
     const groundGeo = new THREE.PlaneGeometry(8000, 8000);
     const groundMat = new THREE.MeshBasicMaterial({ color: 0x0a0a0a, depthWrite: false });
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.rotation.x = -Math.PI / 2;
     scene.add(ground);
 
-    // --- 2. 제너러티브 파티클 모닥불 엔진 시스템 ---
+    // --- 2. 동적 그리드 기반 파티클 모닥불 엔진 ---
     const maxParticles = 30000; 
     const logsGroup = new THREE.Group(); scene.add(logsGroup);
     
@@ -259,13 +258,13 @@
     ctx.fillStyle = grad; ctx.fill(); ctx.beginPath(); ctx.arc(32,32,32,0,Math.PI*2); ctx.fill();
     const fireTex = new THREE.CanvasTexture(cCanvas);
 
+    // ★ 투명도 연산을 컬러 매핑 안으로 넣어서 additive blending 만 남기도록 셰이더 단순화
     const fireShaderMat = new THREE.ShaderMaterial({
         uniforms: { map: { value: fireTex } },
         vertexShader: `
-            varying vec3 vColor; varying float vOpacity;
+            varying vec3 vColor;
             void main() {
                 vColor = color; 
-                vOpacity = smoothstep(1.0, 0.0, position.y / 700.0); 
                 vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
                 gl_PointSize = 25.0 * (800.0 / -mvPosition.z);
                 gl_Position = projectionMatrix * mvPosition;
@@ -286,8 +285,6 @@
 
     let fireCenters = [];
     let fireUniquePhases = []; 
-    
-    // ★ 런타임 독립 무작위 상수 저장 배열들
     let fireHeightMultipliers = [];
     let fireXOffsets = [];
     let fireZOffsets = [];
@@ -295,7 +292,6 @@
     const logGeoTemplate = new THREE.CylinderGeometry(3, 3, 50, 6);
     const logMatTemplate = new THREE.MeshBasicMaterial({ color: 0x1a0a00 });
 
-    // ★ 높이와 간격(위치)을 동시 무작위 매핑하는 통합 제어 로직
     function randomizeEverything() {
         let cols = parseInt(ctrlCols.value);
         let rows = parseInt(ctrlRows.value);
@@ -308,15 +304,11 @@
         fireZOffsets = [];
 
         for(let i=0; i<totalFires; i++) {
-            // 1. 최대 높이 무작위화 (0.35배 ~ 1.6배)
             fireHeightMultipliers.push(0.35 + Math.random() * 1.25);
-            
-            // 2. 가로/세로 간격 위치 무작위 오프셋 (현재 지정 간격의 최대 75%까지 자유 이탈)
             fireXOffsets.push((Math.random() - 0.5) * spX * 0.75);
             fireZOffsets.push((Math.random() - 0.5) * spZ * 0.75);
         }
-        
-        buildGrid(true); // 무작위 플래그 ON 상태로 그리드 갱신
+        buildGrid(true); 
     }
 
     document.getElementById('btn-random-everything').onclick = randomizeEverything;
@@ -329,14 +321,13 @@
         let baseY = parseFloat(ctrlBaseY.value);
         let totalFires = cols * rows;
 
-        // 슬라이더를 통해 임의 변경 시 랜덤 연산 초기화 (정렬 복귀 보호 장치)
         if (!isRandomTriggered) {
             fireHeightMultipliers = [];
             fireXOffsets = [];
             fireZOffsets = [];
             for(let i=0; i<totalFires; i++) {
-                fireHeightMultipliers.push(1.0); // 일률적 균일 높이
-                fireXOffsets.push(0);           // 오프셋 없음
+                fireHeightMultipliers.push(1.0); 
+                fireXOffsets.push(0);           
                 fireZOffsets.push(0);
             }
         }
@@ -349,7 +340,6 @@
         let idx = 0;
         for (let r = 0; r < rows; r++) {
             for (let c = 0; c < cols; c++) {
-                // 기본 정렬 격자에 주입된 무작위 간격 오프셋을 더함
                 let cx = (c - (cols-1)/2) * spX + fireXOffsets[idx];
                 let cz = (r - (rows-1)/2) * spZ + fireZOffsets[idx];
                 
@@ -430,22 +420,28 @@
         currentSource.onended = () => { if(mediaRecorder.state === 'recording') mediaRecorder.stop(); };
         currentSource.start(0); mediaRecorder.start(); isPlaying = true;
         ctrlRatio.disabled = true; this.style.display = 'none';
-        document.getElementById('status').innerHTML = `<span class="recording-badge">● REC</span> 제너러티브 무작위 그리드 녹화 인코딩 중...`;
+        document.getElementById('status').innerHTML = `<span class="recording-badge">● REC</span> 렌더링 중...`;
     };
 
-    function getThemeColor(theme, progress, trebleReact) {
+    // ★ 컬러 연산 함수 수정: Y축(progress) 종속이 아닌, colorNoise라는 동적 진동 난수를 받음
+    function getThemeColor(theme, colorVal, trebleReact) {
         let c = new THREE.Color();
         if (theme === 'classic') {
-            if (progress < 0.2) c.setHex(0xffffff); else if (progress < 0.5) c.setHex(0xffaa00); else c.setHex(0xff2200);
+            if (colorVal < 0.2) c.setHex(0xffffff); else if (colorVal < 0.5) c.setHex(0xffaa00); else c.setHex(0xff2200);
         } else if (theme === 'blue') {
-            if (progress < 0.2) c.setHex(0xffffff); else if (progress < 0.5) c.setHex(0x00ccff); else c.setHex(0x2200ff); 
+            if (colorVal < 0.2) c.setHex(0xffffff); else if (colorVal < 0.5) c.setHex(0x00ccff); else c.setHex(0x2200ff); 
         } else if (theme === 'magic') {
-            if (progress < 0.2) c.setHex(0xccffcc); else if (progress < 0.5) c.setHex(0x00ffaa); else c.setHex(0x005522); 
+            if (colorVal < 0.2) c.setHex(0xccffcc); else if (colorVal < 0.5) c.setHex(0x00ffaa); else c.setHex(0x005522); 
         } else if (theme === 'neon') {
-            if (progress < 0.3) c.setHex(0x00ffff); else c.setHex(0xff00ff); 
+            if (colorVal < 0.3) c.setHex(0x00ffff); else c.setHex(0xff00ff); 
         }
-        if (trebleReact > 0.3) c.lerp(new THREE.Color(0xffffff), Math.min(1.0, trebleReact * 0.5));
-        c.multiplyScalar(Math.max(0.0, 1.0 - progress));
+        
+        // 고음에 반응하여 색이 밝아지는 효과
+        if (trebleReact > 0.3) {
+            c.lerp(new THREE.Color(0xffffff), Math.min(1.0, trebleReact * 0.5));
+        }
+        
+        // 투명도는 이 함수에서 제외됨 (외부에서 곱함)
         return c;
     }
 
@@ -472,7 +468,6 @@
         let mReact = rawMid * parseFloat(ctrlReactMid.value);
         let tReact = rawTreble * parseFloat(ctrlReactTreb.value);
 
-        // 정적 수동 카메라 매핑 연동 (회전 완전 배제 및 Z축 시선 자동 정렬)
         let cX = parseFloat(ctrlCamX.value); let cY = parseFloat(ctrlCamY.value); let cZ = parseFloat(ctrlCamZ.value); let bY = parseFloat(ctrlBaseY.value);
         camera.position.set(cX, cY, cZ); camera.lookAt(cX, bY + 200, 0); 
 
@@ -491,7 +486,6 @@
             let myFireIdx = fFireIdx[i];
             let uniqueOffset = fireUniquePhases[myFireIdx];
 
-            // ★ 실시간 다이나믹 무작위 화염 높이 계수 라우팅 주입
             let myHeightMultiplier = fireHeightMultipliers[myFireIdx] || 1.0;
             let localMaxHeight = baseMaxHeight * myHeightMultiplier;
 
@@ -531,8 +525,16 @@
             positions[ix] += (baseX + nx * progress - positions[ix]) * 0.15;
             positions[iz] += (baseZ + nz * progress - positions[iz]) * 0.15;
 
-            let c = getThemeColor(theme, progress, tReact);
-            colors[ix] = c.r; colors[iy] = c.g; colors[iz] = c.b;
+            // ★ 색상 그라데이션 Y축 종속 제거 & 파티클 시드 기반의 랜덤 점멸(Flicker) 연산 적용
+            // fPhase[i]는 입자 고유 난수. 이 값으로 인해 입자마다 점멸 주기가 달라져 무작위성이 극대화됨.
+            let colorNoise = 0.5 + 0.5 * Math.sin(time * 12.0 + fPhase[i] * 5.0);
+            let c = getThemeColor(theme, colorNoise, tReact);
+            
+            // 투명도(Alpha)는 Y축에 비례하여 위로 올라갈수록 서서히 사라지도록 분리하여 곱해줌
+            let alpha = Math.max(0.0, 1.0 - progress);
+            colors[ix] = c.r * alpha;
+            colors[iy] = c.g * alpha;
+            colors[iz] = c.b * alpha;
         }
 
         fireGeo.attributes.position.needsUpdate = true;
