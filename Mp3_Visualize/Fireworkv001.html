@@ -2,225 +2,632 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>FIREWORK STUDIO V001.012</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
+    <title>Audio Reactive Bonfire & Rain Studio</title>
     <style>
-        :root { --accent: #00f2ff; --pink: #ff007b; --bg: #020205; --panel: #0d0d14; }
-        body { background: var(--bg); color: #fff; margin: 0; font-family: sans-serif; display: flex; overflow: hidden; height: 100vh; }
-        #ui-sidebar { width: 360px; height: 100vh; background: var(--panel); border-right: 1px solid #222; display: flex; flex-direction: column; z-index: 100; flex-shrink: 0; }
-        #canvas-viewport { flex: 1; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; overflow: hidden; position: relative; }
-        canvas { border: 1px solid var(--accent); margin-top: 30px; transform-origin: top center; box-shadow: 0 0 50px rgba(255, 100, 0, 0.2); }
-        .scroll-container { flex: 1; overflow-y: auto; padding: 20px; }
-        .card { background: rgba(255,255,255,0.03); border-radius: 8px; padding: 15px; margin-bottom: 15px; border: 1px solid #2a2a35; }
-        h3 { font-size: 11px; color: var(--accent); margin: 0 0 12px 0; text-transform: uppercase; letter-spacing: 1.5px; border-bottom: 1px solid #333; padding-bottom: 5px; }
-        .row { margin-bottom: 15px; }
-        label { display: flex; justify-content: space-between; font-size: 11px; color: #888; margin-bottom: 5px; }
-        label span { color: var(--accent); font-weight: bold; }
-        select, button, input[type=range] { width: 100%; background: #000; color: #fff; border: 1px solid #444; padding: 10px; border-radius: 4px; font-size: 12px; box-sizing: border-box; outline: none; }
-        input[type=range] { accent-color: var(--accent); cursor: pointer; height: 4px; }
-        .btn-primary { background: var(--accent); color: #000; font-weight: bold; border: none; cursor: pointer; }
-        .btn-rec { border-color: var(--pink); color: var(--pink); margin-top: 10px; font-weight: bold; cursor: pointer; }
-        #log-console { height: 80px; background: #050508; font-family: monospace; font-size: 10px; padding: 10px; color: #00ff00; border-top: 1px solid #222; overflow-y: auto; }
+        body { margin: 0; overflow: hidden; background-color: #000; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; }
+        canvas { width: 100vw !important; height: 100vh !important; object-fit: contain; }
+
+        .ui-panel { 
+            position: absolute; top: 15px; z-index: 10; 
+            background: rgba(10, 10, 10, 0.85); padding: 18px; 
+            border-radius: 8px; border: 1px solid #444;
+            width: 280px; max-height: 90vh; overflow-y: auto;
+            backdrop-filter: blur(15px); box-shadow: 0 10px 40px rgba(0,0,0,0.9);
+        }
+        #ui-left { left: 15px; }
+        #ui-right { right: 15px; }
+        
+        h3 { margin-top: 0; color: #ff5500; border-bottom: 1px solid #444; padding-bottom: 10px; font-size: 15px; text-align: center;}
+        .section-title { font-size: 11px; color: #888; margin: 15px 0 5px 0; border-bottom: 1px dashed #333; padding-bottom: 3px;}
+        
+        .control-group { margin-bottom: 10px; }
+        .control-group label { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px; color: #ddd; }
+        .control-group input[type="range"] { width: 100%; cursor: pointer; accent-color: #ff5500; height: 4px;}
+        .control-group input[type="color"] { width: 100%; height: 25px; border: none; cursor: pointer; background: none; }
+        .control-group select, .file-btn { 
+            width: 100%; padding: 6px; background: #222; color: #ffaa00; 
+            border: 1px solid #555; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: bold;
+        }
+        
+        .flex-row { display: flex; justify-content: space-between; align-items: center; }
+        .flex-row label { margin-bottom: 0; width: 40%; color: #aaa; font-weight: bold; }
+        .flex-row select { width: 60%; padding: 4px; color: #00ccff; border-color: #444;}
+        
+        #audio-input-area { margin-top: 15px; border-top: 2px solid #ff5500; padding-top: 15px; }
+        input[type="file"] { margin-bottom: 10px; display: block; color: white; width: 100%; font-size: 11px; }
+        
+        .main-btn { 
+            background-color: #ff5500; border: none; padding: 10px; width: 100%;
+            border-radius: 5px; cursor: pointer; color: white; font-weight: bold; font-size: 13px; transition: 0.2s;
+        }
+        .main-btn:hover { background-color: #ff3300; }
+
+        .record-btn { background-color: #00ffcc; color: black; margin-top: 10px; display: none; box-shadow: 0 0 15px rgba(0, 255, 204, 0.6); }
+        .record-btn:hover { background-color: #00ccaa; }
+        
+        #status { font-size: 11px; color: #aaa; margin-top: 10px; line-height: 1.4; word-break: break-all; text-align: center;}
+        .recording-badge { color: #00ffcc; font-weight: bold; animation: blink 1.5s infinite; }
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+        
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: #111; }
+        ::-webkit-scrollbar-thumb { background: #444; border-radius: 2px; }
     </style>
 </head>
 <body>
 
-<div id="ui-sidebar">
-    <div class="scroll-container">
-        <div class="card">
-            <h3>🔥 Realistic Campfire Master</h3>
-            <div class="row">
-                <label>Vocal Sync Gain <span id="v-gain">4.0</span>x</label>
-                <input type="range" id="vocalGain" min="1.0" max="15.0" step="0.5" value="4.0" oninput="updateUI('v-gain', this.value)">
-            </div>
-            <div class="row">
-                <label>Flame Density <span id="v-dense">8</span></label>
-                <input type="range" id="flameDensity" min="3" max="20" value="8" oninput="updateUI('v-dense', this.value)">
-            </div>
-            <div class="row">
-                <label>Ember (Spark) Amount <span id="v-spark">20</span></label>
-                <input type="range" id="sparkAmt" min="0" max="50" value="20" oninput="updateUI('v-spark', this.value)">
-            </div>
-        </div>
-        <div class="card">
-            <h3>⚡ Engine Control</h3>
-            <div class="row">
-                <label>Sens Threshold <span id="v-sens">90</span></label>
-                <input type="range" id="sens" min="10" max="255" value="90" oninput="updateUI('v-sens', this.value)">
-            </div>
-        </div>
-        <div class="card">
-            <h3>🎨 Media</h3>
-            <button class="btn-primary" onclick="document.getElementById('m-file').click()">🎵 LOAD MUSIC</button>
-            <input type="file" id="m-file" hidden accept="audio/*" onchange="handleAudio(this.files)">
-            <button class="btn-primary" style="background:#333; color:#fff; margin-top:8px;" onclick="document.getElementById('i-file').click()">🖼️ LOAD BG</button>
-            <input type="file" id="i-file" hidden accept="image/*" onchange="handleImage(this.files)">
-        </div>
+<div id="ui-left" class="ui-panel">
+    <h3>환경 & 스타일 설정</h3>
+    <div class="section-title">[비디오 해상도]</div>
+    <div class="control-group">
+        <select id="ctrl-ratio">
+            <option value="16:9">가로형 (1920x1080 - 유튜브)</option>
+            <option value="9:16">세로형 (1080x1920 - 쇼츠)</option>
+            <option value="fit" selected>화면 맞춤 (전체화면)</option>
+        </select>
     </div>
-    <div id="log-console">>> V001.012 Image-Ref Ready.</div>
-    <div style="padding: 20px;">
-        <button id="startBtn" class="btn-primary" onclick="startEngine()" disabled style="height:40px">ENGINE ACTIVE</button>
-        <button id="recBtn" class="btn-rec" onclick="toggleRecording()" disabled style="height:40px">🔴 START RECORDING</button>
+
+    <div class="section-title" style="color:#ffaa00;">[모닥불 아트 스타일]</div>
+    <div class="control-group">
+        <label>시각 렌더링 테마</label>
+        <select id="ctrl-art-style">
+            <option value="realistic" selected>4K 실사형 파티클 불꽃 (Realistic)</option>
+            <option value="anime">카툰/애니메이션 스타일 (Stylized)</option>
+        </select>
+    </div>
+    
+    <div class="control-group" style="margin-top:10px;">
+        <label>화염 기본 높이 <span id="val-fire-scale">1.0</span></label>
+        <input type="range" id="ctrl-fire-scale" min="0.5" max="3.0" value="1.0" step="0.1">
+    </div>
+    <div class="control-group">
+        <label>불꽃 핵심 색상 (Core Color)</label>
+        <input type="color" id="ctrl-fire-color" value="#ff5500">
+    </div>
+
+    <div class="section-title" style="color:#ff3366;">[카메라 뷰]</div>
+    <div class="control-group">
+        <label>카메라 거리 (Zoom) <span id="val-cam-z">600</span></label>
+        <input type="range" id="ctrl-cam-z" min="200" max="1500" value="600" step="10">
+    </div>
+    <div class="control-group">
+        <label>카메라 높이 (Height) <span id="val-cam-y">150</span></label>
+        <input type="range" id="ctrl-cam-y" min="0" max="800" value="150" step="10">
+    </div>
+
+    <div id="audio-input-area">
+        <button id="init-btn" class="main-btn">오디오 & 렌더링 엔진 켜기</button>
+        <div id="file-select-box" style="display: none; margin-top:10px;">
+            <input type="file" id="audio-file" accept="audio/*">
+            <div id="status">음악 선택 후, 우측 패널에서 연출을 세팅하세요.</div>
+            <button id="record-btn" class="main-btn record-btn">▶ 녹화 및 재생 시작 (MP4)</button>
+        </div>
     </div>
 </div>
 
-<div id="canvas-viewport"></div>
+<div id="ui-right" class="ui-panel">
+    <h3>웨더 & 오디오 매핑</h3>
+
+    <div class="section-title" style="color:#00ccff;">[기상 이펙트 (Rain & Lightning)]</div>
+    <div class="control-group">
+        <label>비 강수량 (Rain Density) <span id="val-rain-density">5000</span></label>
+        <input type="range" id="ctrl-rain-density" min="0" max="10000" value="5000" step="500">
+    </div>
+    <div class="control-group">
+        <label>빗방울 파문 크기 (Ripple) <span id="val-ripple-size">1.0</span></label>
+        <input type="range" id="ctrl-ripple-size" min="0.1" max="3.0" value="1.0" step="0.1">
+    </div>
+
+    <div class="section-title" style="color:#00ffcc;">[파장별 모션 매핑 라우팅]</div>
+    <div class="control-group flex-row">
+        <label>저음 (Bass)</label>
+        <select id="map-bass">
+            <option value="fire_burst" selected>화염 폭발 (커짐)</option>
+            <option value="lightning">번개 내리치기</option>
+            <option value="rain_rush">비 쏟아지기</option>
+        </select>
+    </div>
+    <div class="control-group flex-row">
+        <label>고음 (Treble)</label>
+        <select id="map-treble">
+            <option value="lightning" selected>번개 내리치기</option>
+            <option value="rain_rush">비 쏟아지기</option>
+            <option value="fire_burst">화염 폭발 (커짐)</option>
+        </select>
+    </div>
+
+    <div class="section-title" style="color:#ff88aa;">[오디오 감도]</div>
+    <div class="control-group">
+        <label>반응 감도 <span id="val-sens">1.0</span></label>
+        <input type="range" id="ctrl-sens" min="0.1" max="3.0" value="1.0" step="0.1">
+    </div>
+
+    <div class="section-title" style="color:#ff3366;">[시네마틱 아날로그 후처리]</div>
+    <div class="control-group">
+        <label style="color:#ffffff;">빛 번짐 (Bloom) <span id="val-bloom">1.5</span></label>
+        <input type="range" id="ctrl-bloom" min="0" max="4.0" value="1.5" step="0.1">
+    </div>
+    <div class="control-group">
+        <label style="color:#ffffff;">필름 노이즈/그레인 <span id="val-grain">0.1</span></label>
+        <input type="range" id="ctrl-grain" min="0" max="0.4" value="0.1" step="0.01">
+    </div>
+    <div class="control-group">
+        <label style="color:#ff55cc;">렌즈 왜곡 (RGB Shift) <span id="val-rgb">0.5</span></label>
+        <input type="range" id="ctrl-rgb" min="0" max="10" value="0.5" step="0.1">
+    </div>
+    <div class="control-group">
+        <label style="color:#ff55cc;">외곽 어두움 (Vignette) <span id="val-vignette">1.2</span></label>
+        <input type="range" id="ctrl-vignette" min="0" max="3" value="1.2" step="0.1">
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 
 <script>
-let audio, fft, bgImg, isStarted = false, isRecording = false;
-let activeFlames = [];
-let mainCanvas;
-let mediaRecorder, chunks = [];
+    // --- 1. Three.js & Post-Processing Setup ---
+    const scene = new THREE.Scene();
+    // 비오는 밤의 감성을 위해 어두운 남색 안개와 배경 세팅
+    scene.background = new THREE.Color(0x010103); 
+    scene.fog = new THREE.FogExp2(0x010103, 0.0015);
 
-function updateUI(id, val) { const el = document.getElementById(id); if(el) el.innerText = val; }
+    const camera = new THREE.PerspectiveCamera(50, window.innerWidth/window.innerHeight, 0.1, 4000);
+    camera.position.set(0, 150, 600); 
+    camera.lookAt(0, 50, 0);
 
-function setup() {
-    mainCanvas = createCanvas(1920, 1080);
-    mainCanvas.parent('canvas-viewport');
-    scaleViewport();
-    colorMode(HSB, 360, 100, 100, 100);
-}
+    const renderer = new THREE.WebGLRenderer({antialias: true, preserveDrawingBuffer: true});
+    renderer.setPixelRatio(window.devicePixelRatio); 
+    document.body.appendChild(renderer.domElement);
 
-function scaleViewport() {
-    let containerW = window.innerWidth - 360;
-    let containerH = window.innerHeight - 60; 
-    let scale = Math.min(containerW / width, containerH / height);
-    mainCanvas.elt.style.transform = `scale(${scale})`;
-}
-window.onresize = scaleViewport;
+    // 필름 노이즈 & RGB 렌즈 왜곡 커스텀 셰이더
+    const CustomArtShader = {
+        uniforms: {
+            "tDiffuse": { value: null }, "uTime": { value: 0.0 }, "uGrain": { value: 0.1 },
+            "uRgbOffset": { value: 0.0005 }, "uVignette": { value: 1.2 }
+        },
+        vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+        fragmentShader: `
+            uniform sampler2D tDiffuse; uniform float uTime; uniform float uGrain; uniform float uRgbOffset; uniform float uVignette;
+            varying vec2 vUv;
+            float rand(vec2 co){ return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453); }
+            void main() {
+                vec4 cr = texture2D(tDiffuse, vUv + vec2(uRgbOffset, 0.0));
+                vec4 cg = texture2D(tDiffuse, vUv);
+                vec4 cb = texture2D(tDiffuse, vUv - vec2(uRgbOffset, 0.0));
+                vec4 color = vec4(cr.r, cg.g, cb.b, cg.a);
+                vec2 uv = vUv - 0.5; float d = length(uv);
+                color.rgb *= smoothstep(0.9, 0.3, d * uVignette);
+                color.rgb += (rand(vUv + uTime) - 0.5) * uGrain;
+                gl_FragColor = color;
+            }
+        `
+    };
 
-function draw() {
-    background(0);
-    if (bgImg) { push(); tint(255, 100); image(bgImg, 0, 0, width, height); pop(); }
+    const renderScene = new THREE.RenderPass(scene, camera);
+    const bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+    const artFilterPass = new THREE.ShaderPass(CustomArtShader);
+
+    const composer = new THREE.EffectComposer(renderer);
+    composer.addPass(renderScene); composer.addPass(bloomPass); composer.addPass(artFilterPass);
     
-    // 부드러운 화염 질감을 위한 투명도 레이어
-    fill(0, 0, 0, 45);
-    rect(0, 0, width, height);
+    // UI 변수 바인딩
+    const ctrlRatio = document.getElementById('ctrl-ratio');
+    const ctrlArtStyle = document.getElementById('ctrl-art-style');
+    const ctrlFireScale = document.getElementById('ctrl-fire-scale');
+    const ctrlFireColor = document.getElementById('ctrl-fire-color');
+    const ctrlCamZ = document.getElementById('ctrl-cam-z');
+    const ctrlCamY = document.getElementById('ctrl-cam-y');
 
-    if (isStarted && audio && audio.isPlaying()) {
-        fft.analyze();
-        let vocal = fft.getEnergy(300, 3000);
-        let gain = parseFloat(document.getElementById('vocalGain').value);
-        let threshold = parseInt(document.getElementById('sens').value);
-        let boosted = vocal * gain;
+    const ctrlRainDensity = document.getElementById('ctrl-rain-density');
+    const ctrlRippleSize = document.getElementById('ctrl-ripple-size');
+    const mapBass = document.getElementById('map-bass');
+    const mapTreble = document.getElementById('map-treble');
 
-        if (boosted > threshold && random(1) < 0.3) {
-            let density = parseInt(document.getElementById('flameDensity').value);
-            activeFlames.push(new MasterCampfire(boosted, density));
-        }
+    const ctrlSens = document.getElementById('ctrl-sens');
+    const ctrlBloom = document.getElementById('ctrl-bloom');
+    const ctrlGrain = document.getElementById('ctrl-grain');
+    const ctrlRgb = document.getElementById('ctrl-rgb');
+    const ctrlVignette = document.getElementById('ctrl-vignette');
+    
+    const updateUIVal = (id, val) => document.getElementById(id).innerText = val;
+
+    function updateAspectRatio() {
+        let val = ctrlRatio.value; let w = window.innerWidth, h = window.innerHeight;
+        if (val === '16:9') { w = 1920; h = 1080; } else if (val === '9:16') { w = 1080; h = 1920; }
+        renderer.setSize(w, h); composer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
     }
+    ctrlRatio.onchange = updateAspectRatio; window.addEventListener('resize', () => { if (ctrlRatio.value === 'fit') updateAspectRatio(); }); updateAspectRatio(); 
 
-    for (let i = activeFlames.length - 1; i >= 0; i--) {
-        activeFlames[i].update();
-        activeFlames[i].show();
-        if (activeFlames[i].isDead()) activeFlames.splice(i, 1);
+    ctrlCamZ.oninput = (e) => updateUIVal('val-cam-z', e.target.value);
+    ctrlCamY.oninput = (e) => updateUIVal('val-cam-y', e.target.value);
+    ctrlFireScale.oninput = (e) => updateUIVal('val-fire-scale', e.target.value);
+    ctrlRainDensity.oninput = (e) => { updateUIVal('val-rain-density', e.target.value); rainGeo.setDrawRange(0, parseInt(e.target.value)); };
+    ctrlRippleSize.oninput = (e) => updateUIVal('val-ripple-size', e.target.value);
+
+    ctrlSens.oninput = (e) => updateUIVal('val-sens', e.target.value);
+    ctrlBloom.oninput = (e) => { bloomPass.strength = parseFloat(e.target.value); updateUIVal('val-bloom', e.target.value); };
+    ctrlGrain.oninput = (e) => { artFilterPass.uniforms.uGrain.value = parseFloat(e.target.value); updateUIVal('val-grain', e.target.value); };
+    ctrlRgb.oninput = (e) => { artFilterPass.uniforms.uRgbOffset.value = parseFloat(e.target.value) * 0.001; updateUIVal('val-rgb', e.target.value); };
+    ctrlVignette.oninput = (e) => { artFilterPass.uniforms.uVignette.value = parseFloat(e.target.value); updateUIVal('val-vignette', e.target.value); };
+
+    // --- 2. 바닥면 (Ground) 설정 ---
+    // 비와 웅덩이가 잘 보이도록 어두운 평면 설치
+    const groundGeo = new THREE.PlaneGeometry(4000, 4000);
+    const groundMat = new THREE.MeshBasicMaterial({ color: 0x050508, transparent: true, opacity: 0.9, depthWrite: false });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    scene.add(ground);
+
+    // --- 3. 모닥불 (Fire) 시스템 ---
+    const fireGroup = new THREE.Group(); scene.add(fireGroup);
+    
+    // (A) Realistic Fire (입자 시뮬레이션)
+    const fireParticleCount = 2500;
+    const fGeo = new THREE.BufferGeometry();
+    const fPos = new Float32Array(fireParticleCount * 3);
+    const fLife = new Float32Array(fireParticleCount); // 0.0 ~ 1.0 (죽음~생성)
+    const fVel = new Float32Array(fireParticleCount * 3);
+
+    for(let i=0; i<fireParticleCount; i++) {
+        fPos[i*3] = (Math.random()-0.5)*40; fPos[i*3+1] = Math.random()*100; fPos[i*3+2] = (Math.random()-0.5)*40;
+        fLife[i] = Math.random();
+        fVel[i*3] = (Math.random()-0.5)*2; fVel[i*3+1] = 2 + Math.random()*3; fVel[i*3+2] = (Math.random()-0.5)*2;
     }
-}
+    fGeo.setAttribute('position', new THREE.BufferAttribute(fPos, 3));
+    fGeo.setAttribute('aLife', new THREE.BufferAttribute(fLife, 1));
+    
+    const circleCanvas = document.createElement('canvas'); circleCanvas.width = 32; circleCanvas.height = 32;
+    const ctx = circleCanvas.getContext('2d');
+    let grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+    grad.addColorStop(0, 'rgba(255,255,255,1)'); grad.addColorStop(0.3, 'rgba(255,255,255,0.8)'); grad.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = grad; ctx.fill(); ctx.beginPath(); ctx.arc(16, 16, 16, 0, Math.PI * 2); ctx.fill();
+    const fireTex = new THREE.CanvasTexture(circleCanvas);
 
-class MasterCampfire {
-    constructor(energy, density) {
-        this.x = random(width * 0.35, width * 0.65);
-        this.y = height;
-        this.energy = energy;
-        this.life = 100;
-        this.density = density;
-        this.sparks = [];
-        this.seed = random(1000);
-        this.maxH = map(energy, 0, 255, height * 0.3, height * 0.8);
-    }
-
-    update() {
-        this.life -= 2.5;
-        // 이미지 참조: 주변에 튀는 불꽃 알갱이(Spark) 생성
-        let sAmt = parseInt(document.getElementById('sparkAmt').value);
-        if (random(100) < sAmt) {
-            this.sparks.push({
-                pos: createVector(this.x + random(-50, 50), this.y - random(100)),
-                vel: createVector(random(-2, 2), random(-5, -10)),
-                alpha: 255
-            });
-        }
-        for (let i = this.sparks.length - 1; i >= 0; i--) {
-            this.sparks[i].pos.add(this.sparks[i].vel);
-            this.sparks[i].alpha -= 10;
-            if (this.sparks[i].alpha <= 0) this.sparks.splice(i, 1);
-        }
-    }
-
-    show() {
-        push();
-        noFill();
-        
-        // 1. 이미지 기반 화염 묘사 (메인 코어)
-        for (let i = 0; i < this.density; i++) {
-            let hueBase = random(10, 45); // 주황~노랑
-            drawingContext.shadowBlur = map(this.life, 0, 100, 0, 50);
-            drawingContext.shadowColor = color(hueBase, 100, 100);
-            
-            let h = this.maxH * random(0.7, 1.3);
-            let xOff = map(i, 0, this.density, -60, 60);
-
-            strokeWeight(map(this.life, 0, 100, 1, 20));
-            stroke(hueBase, 80, 100, this.life);
-
-            beginShape();
-            let startX = this.x + xOff;
-            let startY = this.y;
-            
-            vertex(startX, startY);
-            // 베지어 곡선으로 이미지 특유의 '안쪽으로 말린 화염' 구현
-            let t = frameCount * 0.08;
-            let cp1x = startX + sin(t + i) * 100;
-            let cp1y = startY - h * 0.4;
-            let cp2x = startX - cos(t + i) * 150;
-            let cp2y = startY - h * 0.7;
-            let endX = startX + sin(t) * 80;
-            let endY = startY - h;
-            
-            bezierVertex(cp1x, cp1y, cp2x, cp2y, endX, endY);
-            endShape();
-        }
-
-        // 2. 스파크(Spark) 묘사
-        for (let s of this.sparks) {
-            noStroke();
-            fill(random(30, 60), 100, 100, s.alpha);
-            ellipse(s.pos.x, s.pos.y, random(2, 5));
-        }
-        pop();
-    }
-
-    isDead() { return this.life <= 0 && this.sparks.length === 0; }
-}
-
-function handleAudio(files) {
-    audio = loadSound(URL.createObjectURL(files[0]), () => {
-        fft = new p5.FFT(); document.getElementById('startBtn').disabled = false;
-        document.getElementById('log-console').innerText = ">> Mastering Ready.";
+    // 셰이더로 불꽃 색상과 크기 그라데이션 자동화
+    const fireShaderMat = new THREE.ShaderMaterial({
+        uniforms: {
+            uColor: { value: new THREE.Color(ctrlFireColor.value) },
+            map: { value: fireTex },
+            uScale: { value: 1.0 }
+        },
+        vertexShader: `
+            attribute float aLife; varying float vLife; uniform float uScale;
+            void main() {
+                vLife = aLife;
+                // 위로 갈수록(수명이 다할수록) 작아짐
+                gl_PointSize = (15.0 * aLife * uScale) * (300.0 / -gl_Position.z);
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            uniform vec3 uColor; uniform sampler2D map; varying float vLife;
+            void main() {
+                vec4 texColor = texture2D(map, gl_PointCoord);
+                // 코어는 하얗게, 바깥은 uColor, 끝은 붉게 사라짐
+                vec3 finalColor = mix(vec3(1.0, 0.0, 0.0), uColor, vLife);
+                finalColor = mix(finalColor, vec3(1.0, 1.0, 1.0), pow(vLife, 3.0));
+                gl_FragColor = vec4(finalColor, texColor.a * vLife * 0.8);
+            }
+        `,
+        transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
     });
-}
-function handleImage(files) { let reader = new FileReader(); reader.onload = (e) => { bgImg = loadImage(e.target.result); }; reader.readAsDataURL(files[0]); }
-function startEngine() { userStartAudio(); isStarted = true; document.getElementById('recBtn').disabled = false; }
-function toggleRecording() {
-    if (isRecording) {
-        mediaRecorder.stop(); audio.stop(); isRecording = false;
-        document.getElementById('recBtn').innerText = "🔴 START RECORDING";
-    } else {
-        chunks = []; let stream = mainCanvas.elt.captureStream(60);
-        let dest = p5.prototype.getAudioContext().createMediaStreamDestination();
-        audio.connect(dest); stream.addTrack(dest.stream.getAudioTracks()[0]);
-        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9', videoBitsPerSecond: 20000000 });
-        mediaRecorder.ondataavailable = e => chunks.push(e.data);
-        mediaRecorder.onstop = () => {
-            let blob = new Blob(chunks, { type: 'video/webm' });
-            let a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-            a.download = `Fire_V001.012.webm`; a.click();
-        };
-        mediaRecorder.start(); audio.play(); isRecording = true;
-        document.getElementById('recBtn').innerText = "⬛ STOP & SAVE";
+    const fireRealistic = new THREE.Points(fGeo, fireShaderMat);
+    fireGroup.add(fireRealistic);
+
+    // (B) Anime Stylized Fire (형태 메쉬 겹침)
+    const animeFireGroup = new THREE.Group();
+    const animeFireCount = 15;
+    const aCones = []; const aLives = [];
+    const coneGeo = new THREE.ConeGeometry(15, 60, 4); // 각진 불꽃 형태
+    coneGeo.translate(0, 30, 0); // 피벗 하단 고정
+    const aMat = new THREE.MeshBasicMaterial({ color: 0xff8800, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false });
+
+    for(let i=0; i<animeFireCount; i++) {
+        let mesh = new THREE.Mesh(coneGeo, aMat.clone());
+        mesh.position.set((Math.random()-0.5)*30, 0, (Math.random()-0.5)*30);
+        animeFireGroup.add(mesh); aCones.push(mesh); aLives.push(Math.random());
     }
-}
+    fireGroup.add(animeFireGroup);
+
+    // 스타일 변경 토글
+    function updateFireStyle() {
+        let style = ctrlArtStyle.value;
+        fireRealistic.visible = (style === 'realistic');
+        animeFireGroup.visible = (style === 'anime');
+    }
+    ctrlArtStyle.onchange = updateFireStyle; updateFireStyle();
+    ctrlFireColor.oninput = (e) => {
+        fireShaderMat.uniforms.uColor.value.set(e.target.value);
+        let hex = parseInt(e.target.value.replace('#', '0x'));
+        aCones.forEach(c => c.material.color.setHex(hex));
+    };
+
+    // 장작(Logs)
+    const logGeo = new THREE.CylinderGeometry(4, 4, 60, 8);
+    const logMat = new THREE.MeshBasicMaterial({ color: 0x221105 });
+    for(let i=0; i<3; i++) {
+        let log = new THREE.Mesh(logGeo, logMat);
+        log.position.y = 2; log.rotation.z = Math.PI/2; log.rotation.y = (i * Math.PI) / 3;
+        log.rotation.x = Math.PI/8; scene.add(log);
+    }
+
+    // --- 4. 빗줄기 (Rain) 시스템 ---
+    const maxRainCount = 10000;
+    const rainGeo = new THREE.BufferGeometry();
+    const rainPos = new Float32Array(maxRainCount * 3);
+    for(let i=0; i<maxRainCount; i++) {
+        rainPos[i*3] = (Math.random() - 0.5) * 1500;
+        rainPos[i*3+1] = Math.random() * 1000;
+        rainPos[i*3+2] = (Math.random() - 0.5) * 1500;
+    }
+    rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
+    rainGeo.setDrawRange(0, parseInt(ctrlRainDensity.value));
+
+    // 비는 얇은 선 모양으로 떨어지도록 긴 직사각형 메쉬 느낌을 주는 material 사용
+    const rainMat = new THREE.PointsMaterial({ color: 0x99ccff, size: 2.0, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending });
+    const rainSystem = new THREE.Points(rainGeo, rainMat);
+    scene.add(rainSystem);
+
+    // --- 5. 빗방울 리플 (Ripples on ground) 시스템 ---
+    // 바닥에 닿는 순간 물결 파장 생성 (InstancedMesh)
+    const maxRipples = 150;
+    const rippleGeo = new THREE.RingGeometry(1, 1.2, 16);
+    rippleGeo.rotateX(-Math.PI / 2); // 바닥에 눕힘
+    const rippleMat = new THREE.MeshBasicMaterial({ color: 0x66aaff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false });
+    const rippleInst = new THREE.InstancedMesh(rippleGeo, rippleMat, maxRipples);
+    rippleInst.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    scene.add(rippleInst);
+
+    const ripplesData = []; // { x, z, scale, life }
+    for(let i=0; i<maxRipples; i++) ripplesData.push({ x:0, z:0, scale:0, life:0 });
+    let rippleIdx = 0;
+    const dummyRipple = new THREE.Object3D();
+
+    function spawnRipple(x, z) {
+        let r = ripplesData[rippleIdx];
+        r.x = x; r.z = z; r.scale = 1.0; r.life = 1.0; // 생명력 1.0에서 시작하여 줄어듦
+        rippleIdx = (rippleIdx + 1) % maxRipples;
+    }
+
+    // --- 6. 번개 (Lightning) 시스템 ---
+    // 번개가 칠 때 하늘에서 가지치며 내려오는 선들
+    const lightningGroup = new THREE.Group(); scene.add(lightningGroup);
+    const lGeos = []; const lMeshes = [];
+    for(let i=0; i<3; i++) { // 최대 3가닥 동시 생성 가능
+        let lGeo = new THREE.BufferGeometry();
+        lGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(50 * 3), 3));
+        let lMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 });
+        let lMesh = new THREE.Line(lGeo, lMat);
+        lGeos.push(lGeo); lMeshes.push(lMesh); lightningGroup.add(lMesh);
+    }
+    let lightningFlashIntensity = 0.0;
+
+    function triggerLightning() {
+        lightningFlashIntensity = 1.0;
+        // 배경을 번쩍이게
+        scene.background.setHSL(0.6, 0.2, 0.8);
+        
+        // 지그재그 번개 기하학 생성
+        for(let j=0; j<3; j++) {
+            if(Math.random() > 0.5) continue; // 랜덤하게 일부 가닥만 생성
+            let pos = lGeos[j].attributes.position.array;
+            let startX = (Math.random()-0.5)*800; let startZ = (Math.random()-0.5)*800 - 300;
+            let currentX = startX; let currentY = 1000; let currentZ = startZ;
+            
+            for(let i=0; i<50; i++) {
+                pos[i*3] = currentX; pos[i*3+1] = currentY; pos[i*3+2] = currentZ;
+                currentX += (Math.random()-0.5)*80; currentY -= 25; currentZ += (Math.random()-0.5)*40;
+            }
+            lGeos[j].attributes.position.needsUpdate = true;
+            lMeshes[j].material.opacity = 1.0;
+        }
+    }
+
+    // --- 7. 오디오 엔진 및 레코더 ---
+    let audioCtx, analyser, dataArray;
+    let decodedBuffer = null; let isPlaying = false, currentSource = null;    
+    let mediaRecorder, recordedChunks = [];
+    
+    const initBtn = document.getElementById('init-btn');
+    const fileSelectBox = document.getElementById('file-select-box');
+    const audioInput = document.getElementById('audio-file');
+    const recordBtn = document.getElementById('record-btn');
+    const statusEl = document.getElementById('status');
+    let loadedFileName = "";
+
+    initBtn.onclick = function() {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioCtx.createAnalyser(); analyser.fftSize = 512; dataArray = new Uint8Array(analyser.frequencyBinCount);
+        initBtn.style.display = 'none'; fileSelectBox.style.display = 'block';
+    };
+
+    audioInput.onchange = function(event) {
+        const file = event.target.files[0]; if (!file) return;
+        loadedFileName = file.name; statusEl.innerText = "음원 디코딩 중... 잠시만 기다려주세요."; recordBtn.style.display = 'none';
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            audioCtx.decodeAudioData(e.target.result, function(buffer) {
+                decodedBuffer = buffer;
+                statusEl.innerHTML = "<strong>준비 완료!</strong> 셋팅을 맞추고 아래 버튼을 누르세요."; recordBtn.style.display = 'block';
+            });
+        };
+        reader.readAsBuffer ? reader.readAsBuffer(file) : reader.readAsArrayBuffer(file);
+    };
+
+    recordBtn.onclick = function() {
+        if (!decodedBuffer) return;
+        if (currentSource) { try { currentSource.stop(); } catch(e) {} }
+        
+        currentSource = audioCtx.createBufferSource(); currentSource.buffer = decodedBuffer; currentSource.connect(analyser);
+        const audioDest = audioCtx.createMediaStreamDestination(); analyser.connect(audioCtx.destination); analyser.connect(audioDest);            
+        const canvasStream = renderer.domElement.captureStream(60); const combinedStream = new MediaStream([...canvasStream.getVideoTracks(), ...audioDest.stream.getAudioTracks()]);
+        
+        // MP4 (H264) 8Mbps 고화질 고정 로직
+        let options = { mimeType: 'video/mp4; codecs=avc1', videoBitsPerSecond: 8000000 };
+        let ext = 'mp4';
+        if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+            options = { mimeType: 'video/mp4' };
+            if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                options = { mimeType: 'video/webm; codecs=vp9', videoBitsPerSecond: 8000000 }; ext = 'webm';
+            }
+        }
+        
+        recordedChunks = []; mediaRecorder = new MediaRecorder(combinedStream, options);
+        mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
+        mediaRecorder.onstop = () => {
+            const blob = new Blob(recordedChunks, { type: options.mimeType }); const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.style = 'display: none'; a.href = url; a.download = loadedFileName.replace(/\.[^/.]+$/, "") + `_CampfireStudio_${ctrlRatio.value.replace(':','x')}.${ext}`;
+            document.body.appendChild(a); a.click(); window.URL.revokeObjectURL(url); statusEl.innerText = `녹화 완료! ${ext.toUpperCase()} 포맷으로 고화질 저장되었습니다.`; ctrlRatio.disabled = false; isPlaying = false; recordBtn.style.display = 'block';
+        };
+        currentSource.onended = () => { if(mediaRecorder.state === 'recording') mediaRecorder.stop(); };
+        currentSource.start(0); mediaRecorder.start(); isPlaying = true;
+        ctrlRatio.disabled = true; recordBtn.style.display = 'none';
+        statusEl.innerHTML = `<span class="recording-badge">● REC</span> [.${ext}] 4K급 고화질 렌더링 파이프라인 구동 중...`;
+    };
+
+    // --- 8. 애니메이션 렌더링 루프 ---
+    let time = 0;
+    let lightningCooldown = 0; // 번개 연속 발생 방지 쿨타임
+
+    function animate() {
+        requestAnimationFrame(animate);
+        time += 0.01;
+        artFilterPass.uniforms.uTime.value = time;
+
+        camera.position.set(0, parseFloat(ctrlCamY.value), parseFloat(ctrlCamZ.value));
+        camera.lookAt(0, 50, 0);
+
+        let sensitivity = parseFloat(ctrlSens.value);
+        let rawBass = 0, rawTreble = 0;
+
+        if (isPlaying && analyser) {
+            analyser.getByteFrequencyData(dataArray);
+            let bSum=0, tSum=0;
+            for(let i=0; i<15; i++) bSum += dataArray[i]; // 날것의 즉각적 타격감 사용 (Damping 제거)
+            for(let i=100; i<200; i++) tSum += dataArray[i];        
+            rawBass = (bSum / 15 / 255) * sensitivity;
+            rawTreble = (tSum / 100 / 255) * sensitivity;
+        }
+
+        // --- 모션 라우팅 값 할당 ---
+        let fireBurst = 0.0;
+        let rainRush = 0.0;
+        let shouldLightning = false;
+
+        if (mapBass.value === 'fire_burst') fireBurst += rawBass;
+        else if (mapBass.value === 'lightning' && rawBass > 0.8) shouldLightning = true;
+        else if (mapBass.value === 'rain_rush') rainRush += rawBass;
+
+        if (mapTreble.value === 'fire_burst') fireBurst += rawTreble;
+        else if (mapTreble.value === 'lightning' && rawTreble > 0.8) shouldLightning = true;
+        else if (mapTreble.value === 'rain_rush') rainRush += rawTreble;
+
+        // 번개 트리거 (쿨타임 적용)
+        if (shouldLightning && lightningCooldown <= 0) {
+            triggerLightning();
+            lightningCooldown = 30; // 30프레임 대기
+        }
+        if (lightningCooldown > 0) lightningCooldown--;
+
+        // 번개 번쩍임 감소 및 하늘색 원상복구
+        if (lightningFlashIntensity > 0) {
+            lightningFlashIntensity -= 0.05;
+            let bgL = Math.max(0.01, lightningFlashIntensity * 0.8);
+            scene.background.setHSL(0.6, 0.2, bgL);
+            lMeshes.forEach(m => m.material.opacity = lightningFlashIntensity);
+        }
+
+        // --- 불꽃 시뮬레이션 애니메이션 ---
+        let baseFireScale = parseFloat(ctrlFireScale.value);
+        let dynamicFireScale = baseFireScale * (1.0 + fireBurst * 1.5); // 폭발 매핑 적용
+        fireShaderMat.uniforms.uScale.value = dynamicFireScale;
+
+        if (ctrlArtStyle.value === 'realistic') {
+            for(let i=0; i<fireParticleCount; i++) {
+                fLife[i] -= 0.015; // 수명 감소
+                if(fLife[i] < 0) {
+                    fLife[i] = 1.0;
+                    fPos[i*3] = (Math.random()-0.5)*30 * dynamicFireScale;
+                    fPos[i*3+1] = 0;
+                    fPos[i*3+2] = (Math.random()-0.5)*30 * dynamicFireScale;
+                }
+                // 불꽃의 상승 및 좌우 일렁임(Curl)
+                fPos[i*3] += Math.sin(time*2 + fPos[i*3+1]*0.1) * 0.5;
+                fPos[i*3+1] += fVel[i*3+1] * (0.5 + dynamicFireScale * 0.5);
+                fPos[i*3+2] += Math.cos(time*2 + fPos[i*3+1]*0.1) * 0.5;
+            }
+            fGeo.attributes.position.needsUpdate = true;
+            fGeo.attributes.aLife.needsUpdate = true;
+        } else {
+            // 애니메이션 불꽃 (Anime)
+            for(let i=0; i<animeFireCount; i++) {
+                aLives[i] -= 0.02;
+                let mesh = aCones[i];
+                if(aLives[i] < 0) {
+                    aLives[i] = 1.0;
+                    mesh.position.set((Math.random()-0.5)*30 * dynamicFireScale, 0, (Math.random()-0.5)*30 * dynamicFireScale);
+                    mesh.rotation.set((Math.random()-0.5)*0.5, Math.random()*Math.PI, (Math.random()-0.5)*0.5);
+                }
+                // 수명에 따라 Y축으로 커졌다가 줄어듦
+                let s = Math.sin(aLives[i] * Math.PI) * dynamicFireScale;
+                mesh.scale.set(s * 0.8, s * 1.5, s * 0.8);
+                mesh.position.y += 1.5 * dynamicFireScale;
+                mesh.material.color.setHSL(0.08 + (aLives[i]*0.05), 1.0, 0.5); // 노란색~빨간색 그라데이션
+            }
+        }
+
+        // --- 빗줄기 (Rain) 하강 애니메이션 ---
+        let baseRainSpeed = 15;
+        let finalRainSpeed = baseRainSpeed + (rainRush * 40.0); // 빗줄기 몰아치기 매핑 적용
+        let currentRainCount = parseInt(ctrlRainDensity.value);
+        
+        for(let i=0; i<currentRainCount; i++) {
+            rainPos[i*3+1] -= finalRainSpeed * (1.0 + Math.random()*0.5); // Y축 하강
+            
+            // 바닥(y=0)에 닿으면 파티클 위로 리셋 및 파문(Ripple) 생성
+            if (rainPos[i*3+1] < 0) {
+                rainPos[i*3+1] = 800 + Math.random()*200;
+                // 바닥 리플 스폰 (화면 앞쪽에 떨어지는 비만 생성하여 최적화)
+                if (Math.random() > 0.6 && rainPos[i*3+2] > -200 && rainPos[i*3+2] < 400 && rainPos[i*3] > -400 && rainPos[i*3] < 400) {
+                    spawnRipple(rainPos[i*3], rainPos[i*3+2]);
+                }
+            }
+        }
+        rainGeo.attributes.position.needsUpdate = true;
+
+        // --- 바닥 빗방울 리플 (Ripples) 확장 애니메이션 ---
+        let baseRippleSize = parseFloat(ctrlRippleSize.value);
+        for(let i=0; i<maxRipples; i++) {
+            let r = ripplesData[i];
+            if (r.life > 0) {
+                r.life -= 0.02; // 수명 감소 (투명해짐)
+                r.scale += 0.5; // 점점 퍼짐
+                
+                dummyRipple.position.set(r.x, 0.5, r.z); // 바닥보다 살짝 위
+                let finalScale = r.scale * baseRippleSize * 3.0;
+                dummyRipple.scale.set(finalScale, finalScale, 1);
+                dummyRipple.updateMatrix();
+                rippleInst.setMatrixAt(i, dummyRipple.matrix);
+                
+                // 수명에 비례해 투명도 적용 (InstancedMesh color alpha 트릭 대신 color 값 자체를 어둡게 처리하여 Additive blending에서 사라지게 함)
+                let intensity = Math.max(0, r.life);
+                rippleInst.setColorAt(i, new THREE.Color(0x66aaff).multiplyScalar(intensity * 0.5));
+            } else {
+                // 수명이 다하면 화면 밖으로 치움
+                dummyRipple.position.set(0, -1000, 0); dummyRipple.scale.set(0,0,0);
+                dummyRipple.updateMatrix(); rippleInst.setMatrixAt(i, dummyRipple.matrix);
+            }
+        }
+        rippleInst.instanceMatrix.needsUpdate = true;
+        if(rippleInst.instanceColor) rippleInst.instanceColor.needsUpdate = true;
+
+        composer.render();
+    }
+    animate(); 
 </script>
 </body>
 </html>
