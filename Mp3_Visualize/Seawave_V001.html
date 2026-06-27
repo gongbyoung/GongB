@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Cinematic Wave & Subtitle Studio</title>
+    <title>CWSS_V001-Cinematic Wave & Subtitle Studio</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #020205; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; }
         canvas { width: 100vw !important; height: 100vh !important; object-fit: contain; }
@@ -25,7 +25,7 @@
         .control-group input[type="range"] { width: 100%; cursor: pointer; accent-color: #00e5ff; height: 4px;}
         .control-group input[type="color"] { width: 100%; height: 25px; border: none; cursor: pointer; background: none; }
         .control-group select, .file-btn, textarea { 
-            width: 100%; padding: 8px; background: #112; color: #00ffcc; border: 1px solid #445; border-radius: 4px; cursor: pointer; font-size: 11px; font-family: sans-serif;}
+            width: 100%; padding: 8px; background: #112; color: #00ffcc; border: 1px solid #445; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight:bold;}
         
         #audio-input-area { margin-top: 15px; border-top: 2px solid #00e5ff; padding-top: 15px; }
         input[type="file"] { margin-bottom: 10px; display: block; color: white; width: 100%; font-size: 11px; border: 1px dashed #556; padding: 5px; background: rgba(0,0,0,0.5);}
@@ -69,6 +69,16 @@
         <input type="file" id="srt-file" accept=".srt">
     </div>
 
+    <div class="section-title" style="color:#ffaa00;">[자막 크기 & 위치 제어]</div>
+    <div class="control-group">
+        <label>자막 기본 크기 <span id="val-sub-size">120</span></label>
+        <input type="range" id="ctrl-sub-size" min="50" max="250" value="120" step="5">
+    </div>
+    <div class="control-group">
+        <label>자막 상하 위치 (Y) <span id="val-sub-y">1300</span></label>
+        <input type="range" id="ctrl-sub-y" min="200" max="1800" value="1300" step="10">
+    </div>
+
     <div class="section-title" style="color:#ff3366;">[자막 파도 타이밍 제어 (Sync)]</div>
     <div class="control-group">
         <label>자막 열림 (파도 후퇴) <span id="val-reveal-time">0.2초 전</span></label>
@@ -85,8 +95,8 @@
 
     <div class="section-title" style="color:#aaff00;">[해변 파도 물리 제어]</div>
     <div class="control-group">
-        <label style="color:#00ccff;">파도 방향 각도 (Angle) <span id="val-wave-angle">0°</span></label>
-        <input type="range" id="ctrl-wave-angle" min="0" max="360" value="0" step="5">
+        <label style="color:#00ccff;">파도 방향 각도 (Angle) <span id="val-wave-angle">180°</span></label>
+        <input type="range" id="ctrl-wave-angle" min="0" max="360" value="180" step="5">
     </div>
     <div class="control-group">
         <label style="color:#00ccff;">파도 쪼개짐 디테일 <span id="val-wave-detail">2.0</span></label>
@@ -246,6 +256,9 @@
     const ctrlColorFoam = document.getElementById('ctrl-color-foam'); 
     
     const srtInput = document.getElementById('srt-file');
+    
+    const ctrlSubSize = document.getElementById('ctrl-sub-size');
+    const ctrlSubY = document.getElementById('ctrl-sub-y');
 
     document.getElementById('btn-randomize').onclick = () => { globalRandomSeed = Math.random() * 1000.0; };
 
@@ -256,20 +269,23 @@
     }
     ctrlRatio.onchange = updateAspectRatio; window.addEventListener('resize', () => { if(ctrlRatio.value==='fit') updateAspectRatio(); }); updateAspectRatio();
 
-    ['cam-x', 'cam-y', 'cam-z', 'react-bass', 'react-treb', 'smooth', 'bloom', 'grain', 'vignette', 'wave-angle', 'wave-detail', 'surge-speed'].forEach(id => {
+    ['cam-x', 'cam-y', 'cam-z', 'react-bass', 'react-treb', 'smooth', 'bloom', 'grain', 'vignette', 'wave-angle', 'wave-detail', 'surge-speed', 'sub-size', 'sub-y'].forEach(id => {
         document.getElementById(`ctrl-${id}`).addEventListener('input', (e) => {
             let suffix = id==='wave-angle'?'°':'';
             updateUIVal(`val-${id}`, e.target.value, suffix);
             if(id === 'bloom') bloomPass.strength = parseFloat(e.target.value);
             if(id === 'grain') artFilterPass.uniforms.uGrain.value = parseFloat(e.target.value);
             if(id === 'vignette') artFilterPass.uniforms.uVignette.value = parseFloat(e.target.value);
+            
+            // 자막 크기나 위치 슬라이더를 조절하면 현재 자막을 즉시 재렌더링하여 보여줌
+            if(id === 'sub-size' || id === 'sub-y') updateSubtitleCanvas(currentSubtitle); 
         });
     });
 
     ctrlRevealTime.addEventListener('input', (e) => updateUIVal('val-reveal-time', e.target.value, '초 전'));
     ctrlCoverTime.addEventListener('input', (e) => updateUIVal('val-cover-time', e.target.value, '초 전'));
 
-    // --- 2. 동적 자막 캔버스 텍스처 (SRT 파싱 및 렌더링) ---
+    // --- 2. 동적 자막 캔버스 텍스처 (오토 스케일링 적용) ---
     const textCanvas = document.createElement('canvas');
     textCanvas.width = 2048; textCanvas.height = 2048; 
     const textCtx = textCanvas.getContext('2d');
@@ -277,7 +293,7 @@
     textTex.generateMipmaps = false; textTex.minFilter = THREE.LinearFilter;
 
     let parsedSRT = [];
-    let currentSubtitle = "";
+    let currentSubtitle = "시네마틱 파도 스튜디오"; // 초기 대기용 텍스트
 
     function parseSRTData(data) {
         const regex = /(?:\d+)\s+(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\s+([\s\S]*?)(?=(?:\s*\n\s*\n|$))/g;
@@ -292,31 +308,57 @@
         return (parseInt(p[0])*3600 + parseInt(p[1])*60 + parseInt(p[2]))*1000 + parseInt(p[3]);
     }
 
+    // ★ 오토 스케일링 렌더링 엔진
     function updateSubtitleCanvas(text) {
         textCtx.clearRect(0, 0, 2048, 2048);
         if(text) {
+            let baseSize = parseInt(ctrlSubSize.value);
+            let baseY = parseInt(ctrlSubY.value);
+            let lines = text.split('\n');
+
+            textCtx.font = 'bold ' + baseSize + 'px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
+
+            // 1. 가장 긴 줄의 가로 폭(Width) 측정
+            let maxWidth = 0;
+            for(let i=0; i<lines.length; i++) {
+                let metrics = textCtx.measureText(lines[i]);
+                if(metrics.width > maxWidth) maxWidth = metrics.width;
+            }
+
+            // 2. 가로 폭이 1800px(안전 여백 포함)을 넘으면 폰트 크기 비율별 축소
+            let safeWidth = 1800;
+            if(maxWidth > safeWidth) {
+                let scale = safeWidth / maxWidth;
+                baseSize = Math.floor(baseSize * scale);
+                textCtx.font = 'bold ' + baseSize + 'px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
+            }
+
             textCtx.fillStyle = 'rgba(255, 255, 255, 1.0)';
-            textCtx.font = 'bold 120px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
             textCtx.textAlign = 'center';
             textCtx.textBaseline = 'middle';
             textCtx.shadowColor = 'rgba(255, 255, 255, 0.8)';
             textCtx.shadowBlur = 10; 
             
-            let lines = text.split('\n');
-            let startY = 1024 - ((lines.length - 1) * 60); // 화면 정중앙 배치
+            // 줄 수에 따라 세로 높이 중앙 정렬 재계산
+            let startY = baseY - ((lines.length - 1) * (baseSize * 0.6));
+            
             for(let i=0; i<lines.length; i++) {
-                textCtx.fillText(lines[i], 1024, startY + (i * 140));
+                textCtx.fillText(lines[i], 1024, startY + (i * baseSize * 1.3));
             }
         }
         textTex.needsUpdate = true;
     }
+    
+    // 초기 로딩 시 기본 텍스트 한 번 뿌려주기
+    updateSubtitleCanvas(currentSubtitle);
 
-    srtInput.onchange = function(e) {
+    document.getElementById('srt-file').onchange = function(e) {
         const file = e.target.files[0]; if (!file) return;
         const reader = new FileReader();
         reader.onload = function(event) {
             parsedSRT = parseSRTData(event.target.result);
             document.getElementById('status').innerText = `SRT 자막 로드 완료 (${parsedSRT.length} 라인)`;
+            currentSubtitle = ""; updateSubtitleCanvas(""); // 음악 시작 전 화면 비우기
         };
         reader.readAsText(file);
     };
@@ -331,7 +373,7 @@
             uAngle: { value: 0.0 }, 
             uSeed: { value: 0.0 },
             uWaveDetail: { value: 2.0 }, 
-            uSurge: { value: 0.0 }, // ★ 기본값 0.0 (음악 재생 전: 얌전한 모래사장 노출)
+            uSurge: { value: 0.0 }, 
             uSurgeVelocity: { value: 0.0 }, 
             uTextMap: { value: textTex }, 
             cSand: { value: new THREE.Color(0xd2b48c) }, 
@@ -367,19 +409,15 @@
                 
                 float waveSine = sin(uTime * 1.5);
                 
-                // 오디오 타격이 파도의 굴곡을 다이나믹하게 왜곡 (uSurge가 높으면 왜곡을 살짝 억제)
                 float reachScale = 1.0 - (uSurge * 0.5);
                 float audioReach = (sin(rUv.x * 12.0 + uTime) * uBass * 0.15 + cos(rUv.x * 20.0 - uTime) * uTreble * 0.15) * reachScale;
                 
-                // ★ uSurge = 0.0 : 파도 후퇴 (자막 노출, wavePos = 0.75 - 모래사장이 많이 보임)
-                // ★ uSurge = 1.0 : 파도 덮침 (자막 덮임, wavePos = 0.25 - 바다가 많이 보임)
                 float targetWavePos = mix(0.75, 0.25, uSurge);
                 float wavePos = targetWavePos + (waveSine * 0.08 * (1.0 - uSurge)) + audioReach; 
                 
                 float edgeNoise = noise(rUv * 15.0 * uWaveDetail + uTime*0.5) * 0.08 + noise(rUv * 30.0 * uWaveDetail - uTime) * 0.04;
                 float distToWave = rUv.y - (wavePos + edgeNoise);
                 
-                // --- 자막 텍스처 매핑 ---
                 vec2 textUv = (vUv - 0.5) * 1.5 + 0.5; 
                 float textAlpha = 0.0;
                 if(textUv.x >= 0.0 && textUv.x <= 1.0 && textUv.y >= 0.0 && textUv.y <= 1.0) {
@@ -387,11 +425,8 @@
                 }
 
                 vec3 finalColor;
-                
                 vec3 baseSand = cSand;
                 if (distToWave > -0.06 && distToWave <= 0.0) baseSand *= 0.85; 
-                
-                // 자막은 젖은 모래에 깊게 패인 것처럼 아주 진하게 각인
                 baseSand = mix(baseSand, cSand * 0.3, textAlpha * 0.9);
 
                 if (distToWave < 0.0) { 
@@ -404,7 +439,6 @@
                 } else { 
                     vec3 waterColor = mix(cShallow, cDeep, smoothstep(0.0, 0.4, distToWave));
                     
-                    // 얕은 물 속에 모래와 자막이 살짝 일렁이며 비치도록 처리
                     float textDistortion = noise(rUv * 30.0 + uTime) * 0.02 * clamp(distToWave*5.0, 0.0, 1.0);
                     vec2 distTextUv = textUv + textDistortion;
                     float distTextAlpha = 0.0;
@@ -415,7 +449,6 @@
                     
                     waterColor = mix(distSand, waterColor, smoothstep(0.0, 0.15, distToWave));
 
-                    // 파도가 덮치고 빠질때(uSurgeVelocity) 거품 폭발
                     float surgeFoamPower = uSurgeVelocity * 10.0; 
                     float foamBand = 0.015 + (uBass * 0.02) + surgeFoamPower * 0.1; 
                     float isFoam = 1.0 - smoothstep(0.0, foamBand, distToWave); 
@@ -435,7 +468,6 @@
     waveMesh.rotation.x = -Math.PI / 2; 
     scene.add(waveMesh);
 
-    // 색상 이벤트
     ctrlColorStart.oninput = (e) => { waveShaderMat.uniforms.cShallow.value.set(e.target.value); };
     ctrlColorEnd.oninput = (e) => { waveShaderMat.uniforms.cDeep.value.set(e.target.value); };
     ctrlColorFoam.oninput = (e) => { waveShaderMat.uniforms.cFoam.value.set(e.target.value); }; 
@@ -519,7 +551,7 @@
             
             // --- ★ SRT 자막 타이밍 및 파도 덮침(Surge) 로직 ---
             let elapsedMs = (audioCtx.currentTime - audioStartTime) * 1000;
-            let targetSurge = 1.0; // 자막이 없을 땐 기본적으로 바다가 모래사장을 덮고 있음
+            let targetSurge = 1.0; 
             let activeText = "";
             
             if (parsedSRT.length > 0) {
@@ -531,19 +563,17 @@
                     let revealTime = sub.start - revealOffset;
                     let coverTime = sub.end - coverOffset;
 
-                    // 현재 재생 시간이 자막 노출 구간 안에 들어왔다면
                     if (elapsedMs >= revealTime && elapsedMs < coverTime) {
-                        targetSurge = 0.0; // 파도가 싹 물러감 (모래사장과 자막 노출)
+                        targetSurge = 0.0; 
                         activeText = sub.text;
                         break; 
                     } else if (elapsedMs >= coverTime && i < parsedSRT.length - 1 && elapsedMs < parsedSRT[i+1].start - revealOffset) {
-                         // 자막이 끝나고 다음 자막이 오기 전 공백 구간: 거대한 파도가 덮침
                          targetSurge = 1.0;
                          break;
                     }
                 }
             } else {
-                targetSurge = 0.0; // SRT 파일이 없을 때는 평화로운 해안선 유지
+                targetSurge = 0.0; 
             }
 
             if (activeText !== currentSubtitle) {
