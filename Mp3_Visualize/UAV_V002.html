@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Audio Reactive Flower - Broadcast Studio</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; }
+        canvas { width: 100vw !important; height: 100vh !important; object-fit: contain; }
+
+        .ui-panel { 
+            position: absolute; top: 15px; z-index: 10; 
+            background: rgba(15, 15, 15, 0.85); padding: 18px; 
+            border-radius: 8px; border: 1px solid #444;
+            width: 280px; max-height: 90vh; overflow-y: auto;
+            backdrop-filter: blur(15px); box-shadow: 0 10px 40px rgba(0,0,0,0.9);
+        }
+        #ui-left { left: 15px; }
+        #ui-right { right: 15px; }
+        
+        h3 { margin-top: 0; color: #ff33aa; border-bottom: 1px solid #444; padding-bottom: 10px; font-size: 15px; text-align: center;}
+        .section-title { font-size: 11px; color: #888; margin: 15px 0 5px 0; border-bottom: 1px dashed #333; padding-bottom: 3px;}
+        
+        .control-group { margin-bottom: 10px; }
+        .control-group label { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px; color: #ddd; }
+        .control-group input[type="range"] { width: 100%; cursor: pointer; accent-color: #ff33aa; height: 4px;}
+        .control-group input[type="color"] { width: 100%; height: 25px; border: none; cursor: pointer; background: none; }
+        .control-group select, .file-btn { 
+            width: 100%; padding: 6px; background: #222; color: #ff33aa; 
+            border: 1px solid #555; border-radius: 4px; cursor: pointer; font-size: 11px;
+        }
+        
+        #audio-input-area { margin-top: 15px; border-top: 2px solid #ff33aa; padding-top: 15px; }
+        input[type="file"] { margin-bottom: 10px; display: block; color: white; width: 100%; font-size: 11px; }
+        
+        .main-btn { 
+            background-color: #ff33aa; border: none; padding: 10px; width: 100%;
+            border-radius: 5px; cursor: pointer; color: white; font-weight: bold; font-size: 13px; transition: 0.2s;
+        }
+        .main-btn:hover { background-color: #ff1188; }
+
+        .record-btn { background-color: #00ffcc; color: black; margin-top: 10px; display: none; box-shadow: 0 0 15px rgba(0, 255, 204, 0.6); }
+        .record-btn:hover { background-color: #00ccaa; }
+        
+        #status { font-size: 11px; color: #aaa; margin-top: 10px; line-height: 1.4; word-break: break-all; text-align: center;}
+        .recording-badge { color: #00ffcc; font-weight: bold; animation: blink 1.5s infinite; }
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+        
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: #111; }
+        ::-webkit-scrollbar-thumb { background: #444; border-radius: 2px; }
+    </style>
+</head>
+<body>
+
+<div id="ui-left" class="ui-panel">
+    <h3>오디오 리액티브 플라워 아트</h3>
+    <div class="section-title">[비디오 해상도]</div>
+    <div class="control-group">
+        <select id="ctrl-ratio">
+            <option value="16:9">가로형 (1920x1080 - 유튜브)</option>
+            <option value="9:16">세로형 (1080x1920 - 쇼츠)</option>
+            <option value="fit" selected>화면 맞춤 (전체화면)</option>
+        </select>
+    </div>
+
+    <div class="section-title" style="color:#ff33aa;">[플라워 생성 컨트롤]</div>
+    <div class="control-group">
+        <label>꽃송이 개수 (Instances)</label>
+        <select id="ctrl-flower-count">
+            <option value="1" selected>1송이 (중앙 집중형)</option>
+            <option value="3">3송이 (트리오)</option>
+            <option value="5">5송이 (펜타그램)</option>
+            <option value="9">9송이 (그리드)</option>
+        </select>
+    </div>
+    <div class="control-group">
+        <label>전체 크기 (Scale) <span id="val-scale">1.0</span></label>
+        <input type="range" id="ctrl-scale" min="0.3" max="3.0" value="1.0" step="0.1">
+    </div>
+    
+    <div class="section-title">[글로벌 색상 셋팅]</div>
+    <div class="control-group">
+        <label>외곽 꽃잎 색상 (Petal)</label>
+        <input type="color" id="ctrl-color-petal" value="#ff33aa">
+    </div>
+    <div class="control-group">
+        <label>안쪽 꽃술 색상 (Stamen)</label>
+        <input type="color" id="ctrl-color-stamen" value="#ffaa00">
+    </div>
+
+    <div id="audio-input-area">
+        <button id="init-btn" class="main-btn">오디오 엔진 & 렌더러 켜기</button>
+        <div id="file-select-box" style="display: none; margin-top:10px;">
+            <input type="file" id="audio-file" accept="audio/*">
+            <div id="status">음악을 선택하고 셋팅을 조절하세요.</div>
+            <button id="record-btn" class="main-btn record-btn">▶ 녹화 및 재생 시작</button>
+        </div>
+    </div>
+</div>
+
+<div id="ui-right" class="ui-panel">
+    <h3>모션 & 이펙트 세부조정</h3>
+
+    <div class="section-title" style="color:#00ffcc;">[다이나믹 모션]</div>
+    <div class="control-group">
+        <label>꽃잎 반응 감도 <span id="val-sens">1.0</span></label>
+        <input type="range" id="ctrl-sens" min="0.1" max="3.0" value="1.0" step="0.1">
+    </div>
+    <div class="control-group">
+        <label>모션 부드러움 (Damping) <span id="val-smooth">0.85</span></label>
+        <input type="range" id="ctrl-smooth" min="0.1" max="0.99" value="0.85" step="0.01">
+    </div>
+    <div class="control-group">
+        <label>꽃송이 전체 회전 속도 <span id="val-rot">0.5</span></label>
+        <input type="range" id="ctrl-rot" min="0" max="3" value="0.5" step="0.1">
+    </div>
+
+    <div class="section-title" style="color:#aaff00;">[백그라운드 유체 (Fluid)]</div>
+    <div class="control-group">
+        <label>랜덤 컬러 유체 속도 <span id="val-fluid-speed">1.0</span></label>
+        <input type="range" id="ctrl-fluid-speed" min="0" max="5" value="1.0" step="0.1">
+    </div>
+
+    <div class="section-title" style="color:#ff3366;">[포스트 프로세싱 (Bloom)]</div>
+    <div class="control-group">
+        <label>빛 번짐 강도 (Strength) <span id="val-bloom">1.5</span></label>
+        <input type="range" id="ctrl-bloom" min="0" max="4" value="1.5" step="0.1">
+    </div>
+    <div class="control-group">
+        <label>빛 번짐 반경 (Radius) <span id="val-bloom-rad">0.5</span></label>
+        <input type="range" id="ctrl-bloom-rad" min="0" max="2" value="0.5" step="0.1">
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+
+<script>
+    // --- 1. Three.js & Post-Processing ---
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x020205); // 아주 어두운 남색 계열 우주 배경
+    scene.fog = new THREE.FogExp2(0x020205, 0.001);
+
+    // 카메라 탑뷰 완전 고정
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 4000);
+    camera.position.set(0, 0, 800); 
+    camera.lookAt(0, 0, 0);
+
+    const renderer = new THREE.WebGLRenderer({antialias: true, preserveDrawingBuffer: true});
+    renderer.toneMapping = THREE.ReinhardToneMapping; 
+    document.body.appendChild(renderer.domElement);
+
+    const renderScene = new THREE.RenderPass(scene, camera);
+    const bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.5, 0.85);
+    bloomPass.threshold = 0; 
+    
+    const composer = new THREE.EffectComposer(renderer);
+    composer.addPass(renderScene); composer.addPass(bloomPass);
+    
+    // UI 바인딩
+    const ctrlRatio = document.getElementById('ctrl-ratio');
+    const ctrlFlowerCount = document.getElementById('ctrl-flower-count');
+    const ctrlScale = document.getElementById('ctrl-scale');
+    const ctrlColorPetal = document.getElementById('ctrl-color-petal');
+    const ctrlColorStamen = document.getElementById('ctrl-color-stamen');
+    
+    const ctrlSens = document.getElementById('ctrl-sens');
+    const ctrlSmooth = document.getElementById('ctrl-smooth');
+    const ctrlRot = document.getElementById('ctrl-rot');
+    const ctrlFluidSpeed = document.getElementById('ctrl-fluid-speed');
+    const ctrlBloom = document.getElementById('ctrl-bloom');
+    const ctrlBloomRad = document.getElementById('ctrl-bloom-rad');
+    
+    const updateUIVal = (id, val) => document.getElementById(id).innerText = val;
+
+    function updateAspectRatio() {
+        let val = ctrlRatio.value;
+        let w = window.innerWidth, h = window.innerHeight;
+        if (val === '16:9') { w = 1920; h = 1080; }
+        else if (val === '9:16') { w = 1080; h = 1920; }
+        renderer.setSize(w, h); composer.setSize(w, h); 
+        camera.aspect = w / h; camera.updateProjectionMatrix();
+    }
+    ctrlRatio.onchange = updateAspectRatio;
+    window.addEventListener('resize', () => { if (ctrlRatio.value === 'fit') updateAspectRatio(); });
+    updateAspectRatio(); 
+
+    ctrlScale.oninput = (e) => { updateUIVal('val-scale', e.target.value); buildFlowers(); };
+    ctrlColorPetal.oninput = () => buildFlowers();
+    ctrlColorStamen.oninput = () => buildFlowers();
+    ctrlFlowerCount.onchange = () => buildFlowers();
+
+    ctrlSens.oninput = (e) => updateUIVal('val-sens', e.target.value);
+    ctrlSmooth.oninput = (e) => updateUIVal('val-smooth', e.target.value);
+    ctrlRot.oninput = (e) => updateUIVal('val-rot', e.target.value);
+    ctrlFluidSpeed.oninput = (e) => updateUIVal('val-fluid-speed', e.target.value);
+    
+    ctrlBloom.oninput = (e) => { bloomPass.strength = parseFloat(e.target.value); updateUIVal('val-bloom', e.target.value); };
+    ctrlBloomRad.oninput = (e) => { bloomPass.radius = parseFloat(e.target.value); updateUIVal('val-bloom-rad', e.target.value); };
+
+    // --- 2. 랜덤 컬러 백그라운드 유체 (Fluid Flow) ---
+    const fluidCount = 4000;
+    const fluidGeo = new THREE.BufferGeometry();
+    const fluidPos = new Float32Array(fluidCount * 3);
+    const fluidColors = new Float32Array(fluidCount * 3);
+
+    for(let i=0; i<fluidCount; i++) {
+        fluidPos[i*3] = (Math.random() - 0.5) * 3000;
+        fluidPos[i*3+1] = (Math.random() - 0.5) * 3000;
+        fluidPos[i*3+2] = (Math.random() - 0.5) * 800 - 300; // 꽃 뒤쪽에 깔리게 Z축 이동
+
+        // 완전 랜덤 색상 (무지개 톤)
+        let c = new THREE.Color().setHSL(Math.random(), 0.8, 0.6);
+        fluidColors[i*3] = c.r; fluidColors[i*3+1] = c.g; fluidColors[i*3+2] = c.b;
+    }
+    fluidGeo.setAttribute('position', new THREE.BufferAttribute(fluidPos, 3));
+    fluidGeo.setAttribute('color', new THREE.BufferAttribute(fluidColors, 3));
+
+    // 둥근 텍스처
+    const circleCanvas = document.createElement('canvas');
+    circleCanvas.width = 64; circleCanvas.height = 64;
+    const ctx = circleCanvas.getContext('2d');
+    ctx.beginPath(); ctx.arc(32, 32, 30, 0, Math.PI * 2); ctx.fillStyle = "white"; ctx.fill();
+    const circleTex = new THREE.CanvasTexture(circleCanvas);
+
+    const fluidMat = new THREE.PointsMaterial({
+        size: 8, vertexColors: true, map: circleTex, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false
+    });
+    const fluidSystem = new THREE.Points(fluidGeo, fluidMat);
+    scene.add(fluidSystem);
+
+
+    // --- 3. 오디오 리액티브 플라워 (Flower Art) ---
+    const mainFlowerGroup = new THREE.Group();
+    scene.add(mainFlowerGroup);
+    let allFlowers = [];
+
+    // 꽃잎 기본 형태 만들기 (타원형/물방울형)
+    const petalBaseGeo = new THREE.CircleGeometry(20, 32); // 기본 원형
+    petalBaseGeo.translate(0, 20, 0); // 피벗(중심축)을 원의 밑부분으로 이동 (꽃잎이 피어날 수 있게)
+
+    function createFlowerObj(x, y, scaleMult) {
+        const flower = new THREE.Group();
+        flower.position.set(x, y, 0);
+        
+        const globalScale = parseFloat(ctrlScale.value) * scaleMult;
+        flower.scale.set(globalScale, globalScale, globalScale);
+
+        const petals = [];
+        const stamens = [];
+
+        let cPetal = new THREE.Color(ctrlColorPetal.value);
+        let cStamen = new THREE.Color(ctrlColorStamen.value);
+
+        // A. 16개의 거대한 외곽 꽃잎 (Petals)
+        const petalMat = new THREE.MeshBasicMaterial({ 
+            color: cPetal, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false
+        });
+        
+        for(let i=0; i<16; i++) {
+            let pMesh = new THREE.Mesh(petalBaseGeo, petalMat);
+            pMesh.scale.set(0.6, 2.5, 1.0); // 길쭉한 타원형으로 변형
+            pMesh.rotation.z = -(i / 16) * Math.PI * 2; // 원형 배치
+            // 기본 상태: 카메라(Z축) 쪽으로 살짝 접혀있음 (오무린 상태)
+            pMesh.rotation.x = Math.PI / 2.5; 
+            
+            flower.add(pMesh);
+            petals.push(pMesh);
+        }
+
+        // B. 16개의 안쪽 꽃술 (Stamens)
+        const stamenMat = new THREE.MeshBasicMaterial({ 
+            color: cStamen, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false
+        });
+
+        for(let i=0; i<16; i++) {
+            let sMesh = new THREE.Mesh(petalBaseGeo, stamenMat);
+            sMesh.scale.set(0.2, 1.2, 1.0); // 얇고 짧게
+            // 꽃잎과 살짝 엇갈리게 배치
+            sMesh.rotation.z = -(i / 16) * Math.PI * 2 - (Math.PI / 32); 
+            sMesh.rotation.x = Math.PI / 3; // 꽃술도 살짝 접혀있음
+            
+            flower.add(sMesh);
+            stamens.push(sMesh);
+        }
+
+        // C. 중앙 발광 코어
+        const coreGeo = new THREE.CircleGeometry(12, 32);
+        const coreMat = new THREE.MeshBasicMaterial({color: 0xffffff, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending});
+        const core = new THREE.Mesh(coreGeo, coreMat);
+        core.position.z = 5; // 살짝 위로
+        flower.add(core);
+
+        mainFlowerGroup.add(flower);
+        allFlowers.push({ group: flower, petals, stamens, core });
+    }
+
+    function buildFlowers() {
+        // 기존 꽃 삭제
+        while(mainFlowerGroup.children.length > 0) {
+            mainFlowerGroup.remove(mainFlowerGroup.children[0]);
+        }
+        allFlowers = [];
+
+        let count = parseInt(ctrlFlowerCount.value);
+        if (count === 1) {
+            createFlowerObj(0, 0, 1.0);
+        } else if (count === 3) {
+            createFlowerObj(0, 120, 0.8);
+            createFlowerObj(-200, -100, 0.8);
+            createFlowerObj(200, -100, 0.8);
+        } else if (count === 5) {
+            createFlowerObj(0, 0, 0.8);
+            createFlowerObj(-250, 200, 0.5); createFlowerObj(250, 200, 0.5);
+            createFlowerObj(-200, -200, 0.5); createFlowerObj(200, -200, 0.5);
+        } else if (count === 9) {
+            for(let x=-1; x<=1; x++) {
+                for(let y=-1; y<=1; y++) {
+                    let s = (x===0 && y===0) ? 0.8 : 0.4;
+                    createFlowerObj(x*280, y*280, s);
+                }
+            }
+        }
+    }
+    buildFlowers(); // 초기 1번 실행
+
+    // --- 4. 오디오 엔진 및 녹화 시스템 ---
+    let audioCtx, analyser, dataArray, currentSource;
+    let decodedBuffer = null; let isPlaying = false;    
+    let mediaRecorder, recordedChunks = [];
+    let smoothedData = new Float32Array(512);
+    
+    const initBtn = document.getElementById('init-btn');
+    const fileSelectBox = document.getElementById('file-select-box');
+    const audioInput = document.getElementById('audio-file');
+    const recordBtn = document.getElementById('record-btn');
+    const statusEl = document.getElementById('status');
+    let loadedFileName = "";
+
+    initBtn.onclick = function() {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 512; dataArray = new Uint8Array(analyser.frequencyBinCount);
+        initBtn.style.display = 'none'; fileSelectBox.style.display = 'block';
+    };
+
+    audioInput.onchange = function(event) {
+        const file = event.target.files[0]; if (!file) return;
+        loadedFileName = file.name;
+        statusEl.innerText = "음원 디코딩 중... 잠시만 기다려주세요."; recordBtn.style.display = 'none';
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            audioCtx.decodeAudioData(e.target.result, function(buffer) {
+                decodedBuffer = buffer;
+                statusEl.innerHTML = "<strong>준비 완료!</strong> 셋팅을 마치고 재생버튼을 누르세요."; recordBtn.style.display = 'block';
+            });
+        };
+        reader.readAsArrayBuffer(file);
+    };
+
+    recordBtn.onclick = function() {
+        if (!decodedBuffer) return;
+        if (currentSource) currentSource.stop();
+        currentSource = audioCtx.createBufferSource(); currentSource.buffer = decodedBuffer; currentSource.connect(analyser);
+        
+        const audioDest = audioCtx.createMediaStreamDestination();
+        analyser.connect(audioCtx.destination); analyser.connect(audioDest);            
+        
+        const canvasStream = renderer.domElement.captureStream(60);
+        const combinedStream = new MediaStream([...canvasStream.getVideoTracks(), ...audioDest.stream.getAudioTracks()]);
+        
+        recordedChunks = [];
+        mediaRecorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm; codecs=vp9' });
+        mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
+        mediaRecorder.onstop = () => {
+            const blob = new Blob(recordedChunks, { type: 'video/webm' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.style = 'display: none'; a.href = url;
+            a.download = loadedFileName.replace(/\.[^/.]+$/, "") + `_FlowerArt_${ctrlRatio.value.replace(':','x')}.webm`;
+            document.body.appendChild(a); a.click(); window.URL.revokeObjectURL(url);
+            
+            statusEl.innerText = "녹화 완료! 영상이 저장되었습니다.";
+            ctrlRatio.disabled = false; isPlaying = false;
+            recordBtn.style.display = 'block'; recordBtn.innerText = "▶ 다시 녹화하기";
+        };
+
+        currentSource.onended = () => { if(mediaRecorder.state === 'recording') mediaRecorder.stop(); };
+        currentSource.start(0); mediaRecorder.start(); isPlaying = true;
+        ctrlRatio.disabled = true; recordBtn.style.display = 'none';
+        statusEl.innerHTML = `<span class="recording-badge">● REC</span> 자동 녹화 중: ${loadedFileName}`;
+    };
+
+    // --- 5. 렌더링 루프 (모션 애니메이션) ---
+    let time = 0;
+
+    function animate() {
+        requestAnimationFrame(animate);
+        time += 0.01;
+        
+        let sensitivity = parseFloat(ctrlSens.value);
+        let smoothing = parseFloat(ctrlSmooth.value); 
+        let lerpFactor = 1.0 - smoothing; 
+        
+        let bass = 0;
+
+        if (isPlaying && analyser) {
+            analyser.getByteFrequencyData(dataArray);
+            for(let i=0; i<dataArray.length; i++) {
+                smoothedData[i] += (dataArray[i] - smoothedData[i]) * lerpFactor;
+            }
+            // 베이스(전체 박동용) 추출
+            let bSum=0; for(let i=0; i<10; i++) bSum += smoothedData[i];
+            bass = (bSum / 10 / 255) * sensitivity;
+        }
+
+        // --- 백그라운드 유체 (Fluid) 노이즈 처리 ---
+        let fluidSpeed = parseFloat(ctrlFluidSpeed.value);
+        let fPos = fluidGeo.attributes.position.array;
+        let t = time * 0.5;
+
+        for (let i = 0; i < fluidCount; i++) {
+            let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
+            let px = fPos[ix] * 0.003, py = fPos[iy] * 0.003, pz = fPos[iz] * 0.003;
+            
+            // 몽환적인 스무스 난기류 (Perlin/Curl 혼합)
+            let vx = Math.sin(py + t) + Math.sin(pz * 0.5);
+            let vy = Math.cos(px + t) + Math.cos(pz * 0.5);
+            let vz = Math.sin(px - t) + Math.cos(py - t);
+
+            // 중심으로 살짝 모이는 중력
+            vx -= fPos[ix] * 0.0005; vy -= fPos[iy] * 0.0005;
+
+            // 베이스가 터질 때 유체가 강하게 진동
+            fPos[ix] += vx * fluidSpeed * (1 + bass * 2); 
+            fPos[iy] += vy * fluidSpeed * (1 + bass * 2); 
+            fPos[iz] += vz * fluidSpeed * (1 + bass * 2);
+        }
+        fluidGeo.attributes.position.needsUpdate = true;
+
+
+        // --- 오디오 리액티브 플라워 애니메이션 ---
+        let rotSpeed = parseFloat(ctrlRot.value);
+
+        allFlowers.forEach((flowerObj, idx) => {
+            // 꽃송이 전체 서서히 회전
+            flowerObj.group.rotation.z += 0.002 * rotSpeed * (idx % 2 === 0 ? 1 : -1); 
+
+            // 코어 심박동
+            let coreScale = 1 + (bass * 1.5);
+            flowerObj.core.scale.set(coreScale, coreScale, 1);
+
+            // 16개 꽃잎 (Outer Petals) 매핑
+            for(let p=0; p<16; p++) {
+                // 주파수 배열(0~150)에서 16개의 대표값을 뽑아 매핑
+                let fftIndex = p * 4; 
+                let freqVal = smoothedData[fftIndex] ? (smoothedData[fftIndex] / 255.0) * sensitivity : 0;
+                
+                let petal = flowerObj.petals[p];
+                // 기본 x회전: Math.PI / 2.5 (접혀있음)
+                // 소리가 커질수록 x회전이 0에 가까워짐 (평면으로 쫙 펴짐)
+                let targetRotX = (Math.PI / 2.5) - (freqVal * (Math.PI / 2.5));
+                petal.rotation.x = Math.max(0, targetRotX);
+            }
+
+            // 16개 꽃술 (Inner Stamens) 매핑 (고음역대에 반응)
+            for(let s=0; s<16; s++) {
+                let fftIndex = 60 + (s * 4); // 고음역대 매핑
+                let freqVal = smoothedData[fftIndex] ? (smoothedData[fftIndex] / 255.0) * sensitivity : 0;
+                
+                let stamen = flowerObj.stamens[s];
+                // 꽃술은 기본적으로 살짝 누워있다가(PI/3), 소리가 나면 더 바짝 오므라듦(PI/2에 가깝게 솟구침)
+                let targetRotX = (Math.PI / 3) + (freqVal * (Math.PI / 6));
+                stamen.rotation.x = targetRotX;
+            }
+        });
+
+        composer.render();
+    }
+    animate(); 
+</script>
+</body>
+</html>
