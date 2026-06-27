@@ -2,14 +2,14 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>21 Campfires - Particle Fluid Studio</title>
+    <title>Audio Reactive Campfire Grid Studio</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #020202; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; }
         canvas { width: 100vw !important; height: 100vh !important; object-fit: contain; }
 
         .ui-panel { 
             position: absolute; top: 15px; z-index: 10; 
-            background: rgba(10, 10, 10, 0.85); padding: 18px; 
+            background: rgba(10, 10, 10, 0.85); padding: 16px; 
             border-radius: 8px; border: 1px solid #333;
             width: 280px; max-height: 90vh; overflow-y: auto;
             backdrop-filter: blur(10px); box-shadow: 0 10px 30px rgba(0,0,0,0.8);
@@ -33,11 +33,13 @@
             border-radius: 5px; cursor: pointer; color: white; font-weight: bold; font-size: 13px; transition: 0.2s;
         }
         .main-btn:hover { background-color: #ff3300; }
-
+        
         .record-btn { background-color: #00ffcc; color: black; margin-top: 10px; display: none; box-shadow: 0 0 15px rgba(0, 255, 204, 0.6); }
         .record-btn:hover { background-color: #00ccaa; }
-        
+
         #status { font-size: 11px; color: #aaa; margin-top: 10px; line-height: 1.4; text-align: center;}
+        .recording-badge { color: #00ffcc; font-weight: bold; animation: blink 1.5s infinite; }
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
         
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: #111; }
@@ -47,7 +49,7 @@
 <body>
 
 <div id="ui-left" class="ui-panel">
-    <h3>3x7 모닥불 스튜디오</h3>
+    <h3>파티클 모닥불 스튜디오</h3>
     
     <div class="section-title">[비디오 해상도]</div>
     <div class="control-group">
@@ -58,21 +60,37 @@
         </select>
     </div>
 
-    <div class="section-title" style="color:#ffaa00;">[그리드 화염 제어]</div>
+    <div class="section-title" style="color:#ffaa00;">[모닥불 배치 제어 (Grid)]</div>
+    <div class="control-group">
+        <label>가로 개수 (Columns) <span id="val-cols">7</span></label>
+        <input type="range" id="ctrl-cols" min="1" max="10" value="7" step="1">
+    </div>
+    <div class="control-group">
+        <label>세로 개수 (Rows) <span id="val-rows">3</span></label>
+        <input type="range" id="ctrl-rows" min="1" max="5" value="3" step="1">
+    </div>
+    <div class="control-group">
+        <label>가로 간격 (Spacing X) <span id="val-space-x">250</span></label>
+        <input type="range" id="ctrl-space-x" min="50" max="800" value="250" step="10">
+    </div>
+    <div class="control-group">
+        <label>세로 간격 (Spacing Z) <span id="val-space-z">250</span></label>
+        <input type="range" id="ctrl-space-z" min="50" max="800" value="250" step="10">
+    </div>
+    <div class="control-group">
+        <label style="color:#00ffcc;">바닥 높이 (Base Y) <span id="val-base-y">-200</span></label>
+        <input type="range" id="ctrl-base-y" min="-800" max="500" value="-200" step="10">
+    </div>
+
+    <div class="section-title">[화염 디테일 & 테마]</div>
     <div class="control-group">
         <label>불기둥 기본 높이 <span id="val-height">1.0</span></label>
         <input type="range" id="ctrl-height" min="0.5" max="3.0" value="1.0" step="0.1">
     </div>
     <div class="control-group">
-        <label>하단부 퍼짐 (Spread) <span id="val-spread">1.0</span></label>
+        <label>하단부 넓이 (Spread) <span id="val-spread">1.0</span></label>
         <input type="range" id="ctrl-spread" min="0.2" max="3.0" value="1.0" step="0.1">
     </div>
-    <div class="control-group">
-        <label>불꽃 상승 속도 <span id="val-speed">1.0</span></label>
-        <input type="range" id="ctrl-speed" min="0.1" max="3.0" value="1.0" step="0.1">
-    </div>
-
-    <div class="section-title">[컬러 테마]</div>
     <div class="control-group">
         <select id="ctrl-color-theme">
             <option value="classic" selected>클래식 (주황/빨강)</option>
@@ -86,7 +104,7 @@
         <button id="init-btn" class="main-btn">오디오 & 엔진 켜기</button>
         <div id="file-select-box" style="display: none; margin-top:10px;">
             <input type="file" id="audio-file" accept="audio/*">
-            <div id="status">음원 선택 시 바로 시작됩니다.</div>
+            <div id="status">구도를 맞추고 재생을 시작하세요.</div>
             <button id="record-btn" class="main-btn record-btn">▶ 녹화 및 재생 시작 (MP4)</button>
         </div>
     </div>
@@ -95,32 +113,36 @@
 <div id="ui-right" class="ui-panel">
     <h3>오디오 반응 & 카메라</h3>
 
+    <div class="section-title" style="color:#ff3366;">[자유 카메라 구도]</div>
+    <div class="control-group">
+        <label>카메라 X (좌우 이동) <span id="val-cam-x">0</span></label>
+        <input type="range" id="ctrl-cam-x" min="-1500" max="1500" value="0" step="10">
+    </div>
+    <div class="control-group">
+        <label>카메라 Y (상하 시야) <span id="val-cam-y">100</span></label>
+        <input type="range" id="ctrl-cam-y" min="-500" max="1500" value="100" step="10">
+    </div>
+    <div class="control-group">
+        <label>카메라 Z (줌 인/아웃) <span id="val-cam-z">1200</span></label>
+        <input type="range" id="ctrl-cam-z" min="200" max="3000" value="1200" step="10">
+    </div>
+
     <div class="section-title" style="color:#00ffcc;">[5종 노이즈 오디오 다이나믹스]</div>
     <div class="control-group">
-        <label>저음 반응 (불기둥 펌핑) <span id="val-react-bass">1.0</span></label>
+        <label>저음 (불기둥 펌핑) <span id="val-react-bass">1.0</span></label>
         <input type="range" id="ctrl-react-bass" min="0.0" max="3.0" value="1.0" step="0.1">
     </div>
     <div class="control-group">
-        <label>중음 반응 (노이즈 요동침) <span id="val-react-mid">1.0</span></label>
+        <label>중음 (노이즈 요동침) <span id="val-react-mid">1.0</span></label>
         <input type="range" id="ctrl-react-mid" min="0.0" max="3.0" value="1.0" step="0.1">
     </div>
     <div class="control-group">
-        <label>고음 반응 (스파크 온도/밝기) <span id="val-react-treb">1.0</span></label>
+        <label>고음 (스파크 온도 상승) <span id="val-react-treb">1.0</span></label>
         <input type="range" id="ctrl-react-treb" min="0.0" max="3.0" value="1.0" step="0.1">
     </div>
-
-    <div class="section-title" style="color:#ff3366;">[카메라 구도]</div>
     <div class="control-group">
-        <label>카메라 거리 (Zoom) <span id="val-cam-z">1200</span></label>
-        <input type="range" id="ctrl-cam-z" min="300" max="2500" value="1200" step="10">
-    </div>
-    <div class="control-group">
-        <label>카메라 높이 (Height) <span id="val-cam-y">600</span></label>
-        <input type="range" id="ctrl-cam-y" min="0" max="1500" value="600" step="10">
-    </div>
-    <div class="control-group">
-        <label>카메라 자동 회전 (Turn) <span id="val-cam-rot">0.2</span></label>
-        <input type="range" id="ctrl-cam-rot" min="-2.0" max="2.0" value="0.2" step="0.1">
+        <label>모션 부드러움 (Damping) <span id="val-smooth">0.8</span></label>
+        <input type="range" id="ctrl-smooth" min="0.1" max="0.99" value="0.8" step="0.01">
     </div>
 
     <div class="section-title" style="color:#aaff00;">[포스트 프로세싱]</div>
@@ -139,7 +161,7 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 
 <script>
-    // --- 1. Three.js 환경 세팅 ---
+    // --- 1. Three.js 기본 환경 ---
     const scene = new THREE.Scene();
     scene.fog = new THREE.FogExp2(0x020202, 0.0005); 
 
@@ -158,18 +180,27 @@
     // --- UI 연동 ---
     const updateUIVal = (id, val) => document.getElementById(id).innerText = val;
     const ctrlRatio = document.getElementById('ctrl-ratio');
+    
+    // 그리드 제어
+    const ctrlCols = document.getElementById('ctrl-cols');
+    const ctrlRows = document.getElementById('ctrl-rows');
+    const ctrlSpaceX = document.getElementById('ctrl-space-x');
+    const ctrlSpaceZ = document.getElementById('ctrl-space-z');
+    const ctrlBaseY = document.getElementById('ctrl-base-y');
+    
     const ctrlHeight = document.getElementById('ctrl-height');
     const ctrlSpread = document.getElementById('ctrl-spread');
-    const ctrlSpeed = document.getElementById('ctrl-speed');
     const ctrlColorTheme = document.getElementById('ctrl-color-theme');
     
+    // 오디오 & 카메라 제어
     const ctrlReactBass = document.getElementById('ctrl-react-bass');
     const ctrlReactMid = document.getElementById('ctrl-react-mid');
     const ctrlReactTreb = document.getElementById('ctrl-react-treb');
+    const ctrlSmooth = document.getElementById('ctrl-smooth');
 
-    const ctrlCamZ = document.getElementById('ctrl-cam-z');
+    const ctrlCamX = document.getElementById('ctrl-cam-x');
     const ctrlCamY = document.getElementById('ctrl-cam-y');
-    const ctrlCamRot = document.getElementById('ctrl-cam-rot');
+    const ctrlCamZ = document.getElementById('ctrl-cam-z');
     const ctrlBloom = document.getElementById('ctrl-bloom');
 
     function updateAspectRatio() {
@@ -179,73 +210,37 @@
     }
     ctrlRatio.onchange = updateAspectRatio; window.addEventListener('resize', () => { if(ctrlRatio.value==='fit') updateAspectRatio(); }); updateAspectRatio();
 
-    ['height', 'spread', 'speed', 'react-bass', 'react-mid', 'react-treb', 'cam-z', 'cam-y', 'cam-rot', 'bloom'].forEach(id => {
+    ['cols', 'rows', 'space-x', 'space-z', 'base-y', 'height', 'spread', 'react-bass', 'react-mid', 'react-treb', 'smooth', 'cam-x', 'cam-y', 'cam-z', 'bloom'].forEach(id => {
         document.getElementById(`ctrl-${id}`).addEventListener('input', (e) => {
             updateUIVal(`val-${id}`, e.target.value);
             if(id === 'bloom') bloomPass.strength = parseFloat(e.target.value);
+            if(['cols', 'rows', 'space-x', 'space-z', 'base-y'].includes(id)) {
+                buildGrid(); // 그리드 변경 시 즉시 재배치
+            }
         });
     });
 
-    // --- 2. 3x7 모닥불 그리드(21개) 코어 시스템 ---
-    const cols = 7;
-    const rows = 3;
-    const spacingX = 250;
-    const spacingZ = 250;
-    const fireCenters = [];
+    // 바닥면
+    const groundGeo = new THREE.PlaneGeometry(8000, 8000);
+    const groundMat = new THREE.MeshBasicMaterial({ color: 0x0a0a0a, depthWrite: false });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    scene.add(ground);
 
-    // 장작 및 불꽃 중심 좌표 생성
-    const logGeo = new THREE.CylinderGeometry(3, 3, 50, 6);
-    const logMat = new THREE.MeshBasicMaterial({ color: 0x110800 });
-
-    for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-            let cx = (c - (cols-1)/2) * spacingX;
-            let cz = (r - (rows-1)/2) * spacingZ;
-            fireCenters.push({x: cx, z: cz});
-            
-            // 각 중심에 장작 3개씩 교차 배치
-            for(let j=0; j<3; j++) {
-                let log = new THREE.Mesh(logGeo, logMat);
-                log.position.set(cx, 2, cz);
-                log.rotation.z = Math.PI/2; 
-                log.rotation.y = (j * Math.PI) / 3;
-                log.rotation.x = Math.PI/8; 
-                scene.add(log);
-            }
-        }
-    }
-
-    const totalFires = cols * rows; // 21
-    const particlesPerFire = 1000;
-    const maxParticles = totalFires * particlesPerFire; // 21000
-
+    // --- 2. 동적 그리드 기반 파티클 모닥불 엔진 ---
+    const maxParticles = 30000; // 최대 3만 개 파티클 버퍼 확보
+    const logsGroup = new THREE.Group(); scene.add(logsGroup);
+    
     const fireGeo = new THREE.BufferGeometry();
     const fPos = new Float32Array(maxParticles * 3);
-    const fCenter = new Float32Array(maxParticles * 3); // 파티클이 소속된 캠프파이어 중심 좌표
-    const fLife = new Float32Array(maxParticles); // 수명
-    const fPhase = new Float32Array(maxParticles); // 노이즈용 랜덤 페이즈
-    const fNoiseType = new Float32Array(maxParticles); // 0~4번 노이즈 할당
-    const fAngle = new Float32Array(maxParticles); // 원형 확산 각도
-    const fDist = new Float32Array(maxParticles);  // 확산 반경
+    const fCenter = new Float32Array(maxParticles * 3); // 소속 모닥불의 X, Y, Z
+    const fLife = new Float32Array(maxParticles); 
+    const fPhase = new Float32Array(maxParticles); 
+    const fNoiseType = new Float32Array(maxParticles); 
+    const fAngle = new Float32Array(maxParticles); 
+    const fDist = new Float32Array(maxParticles);  
+    const fFireIdx = new Float32Array(maxParticles); // 자신이 속한 모닥불 번호
     const fColor = new Float32Array(maxParticles * 3);
-
-    for(let i=0; i<maxParticles; i++) {
-        let fireIdx = i % totalFires; // 0 ~ 20
-        let center = fireCenters[fireIdx];
-        
-        fCenter[i*3] = center.x;
-        fCenter[i*3+1] = 0;
-        fCenter[i*3+2] = center.z;
-
-        fPos[i*3] = center.x; fPos[i*3+1] = 0; fPos[i*3+2] = center.z;
-        fLife[i] = Math.random(); 
-        fPhase[i] = Math.random() * Math.PI * 2;
-        fAngle[i] = Math.random() * Math.PI * 2;
-        fDist[i] = Math.random();
-        
-        // 핵심: 입자마다 5종류의 노이즈 중 하나를 할당
-        fNoiseType[i] = i % 5; 
-    }
 
     fireGeo.setAttribute('position', new THREE.BufferAttribute(fPos, 3));
     fireGeo.setAttribute('color', new THREE.BufferAttribute(fColor, 3));
@@ -254,7 +249,7 @@
     const cCanvas = document.createElement('canvas'); cCanvas.width = 64; cCanvas.height = 64;
     const ctx = cCanvas.getContext('2d');
     let grad = ctx.createRadialGradient(32,32,0, 32,32,32);
-    grad.addColorStop(0, 'rgba(255,255,255,1)'); grad.addColorStop(0.3, 'rgba(255,255,255,0.7)'); grad.addColorStop(1, 'rgba(255,255,255,0)');
+    grad.addColorStop(0, 'rgba(255,255,255,1)'); grad.addColorStop(0.2, 'rgba(255,255,255,0.8)'); grad.addColorStop(1, 'rgba(255,255,255,0)');
     ctx.fillStyle = grad; ctx.fill(); ctx.beginPath(); ctx.arc(32,32,32,0,Math.PI*2); ctx.fill();
     const fireTex = new THREE.CanvasTexture(cCanvas);
 
@@ -264,17 +259,18 @@
             varying vec3 vColor; varying float vOpacity;
             void main() {
                 vColor = color; 
-                // Y 위치가 아니라 로컬 수명이나 높이를 기준으로 해야하지만 계산 단순화를 위해 절대 Y값 이용
-                vOpacity = smoothstep(1.0, 0.0, position.y / 700.0); 
-                gl_PointSize = (25.0 * vOpacity) * (600.0 / - (modelViewMatrix * vec4(position, 1.0)).z);
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                // Y축 위치 기반 자연스러운 페이드아웃 (카메라 투영 연산 최적화)
+                vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                // 거리에 따른 파티클 크기
+                gl_PointSize = 25.0 * (800.0 / -mvPosition.z);
+                gl_Position = projectionMatrix * mvPosition;
             }
         `,
         fragmentShader: `
-            uniform sampler2D map; varying vec3 vColor; varying float vOpacity;
+            uniform sampler2D map; varying vec3 vColor;
             void main() {
                 vec4 texColor = texture2D(map, gl_PointCoord);
-                gl_FragColor = vec4(vColor, texColor.a * vOpacity);
+                gl_FragColor = vec4(vColor, texColor.a);
             }
         `,
         transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, vertexColors: true
@@ -283,18 +279,80 @@
     const fireSystem = new THREE.Points(fireGeo, fireShaderMat);
     scene.add(fireSystem);
 
-    // --- 바닥면 ---
-    const groundGeo = new THREE.PlaneGeometry(8000, 8000);
-    const groundMat = new THREE.MeshBasicMaterial({ color: 0x050505, depthWrite: false });
-    const ground = new THREE.Mesh(groundGeo, groundMat);
-    ground.rotation.x = -Math.PI / 2;
-    scene.add(ground);
+    let fireCenters = [];
+    let fireUniquePhases = []; // 모닥불마다 고유한 바람(노이즈) 방향 부여
+
+    const logGeoTemplate = new THREE.CylinderGeometry(3, 3, 50, 6);
+    const logMatTemplate = new THREE.MeshBasicMaterial({ color: 0x1a0a00 });
+
+    // 그리드 생성 및 입자 재할당 함수
+    function buildGrid() {
+        let cols = parseInt(ctrlCols.value);
+        let rows = parseInt(ctrlRows.value);
+        let spX = parseFloat(ctrlSpaceX.value);
+        let spZ = parseFloat(ctrlSpaceZ.value);
+        let baseY = parseFloat(ctrlBaseY.value);
+
+        fireCenters = [];
+        fireUniquePhases = [];
+        
+        // 기존 장작 삭제
+        while(logsGroup.children.length > 0) { logsGroup.remove(logsGroup.children[0]); }
+        ground.position.y = baseY;
+
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                let cx = (c - (cols-1)/2) * spX;
+                let cz = (r - (rows-1)/2) * spZ;
+                fireCenters.push({x: cx, y: baseY, z: cz});
+                
+                // 각 모닥불마다 완전히 독립적인 랜덤 노이즈 시드값 부여
+                fireUniquePhases.push(Math.random() * Math.PI * 10); 
+                
+                // 장작 배치
+                for(let j=0; j<3; j++) {
+                    let log = new THREE.Mesh(logGeoTemplate, logMatTemplate);
+                    log.position.set(cx, baseY + 2, cz);
+                    log.rotation.z = Math.PI/2; 
+                    log.rotation.y = (j * Math.PI) / 3;
+                    log.rotation.x = Math.PI/8; 
+                    logsGroup.add(log);
+                }
+            }
+        }
+
+        let totalFires = cols * rows;
+        let activeParticles = Math.min(maxParticles, totalFires * 1000); // 캠프파이어당 최대 1000개 입자 할당
+        fireGeo.setDrawRange(0, activeParticles);
+
+        for(let i=0; i<maxParticles; i++) {
+            if (i >= activeParticles) break;
+            
+            let fireIdx = i % totalFires;
+            let center = fireCenters[fireIdx];
+            
+            fCenter[i*3] = center.x;
+            fCenter[i*3+1] = center.y;
+            fCenter[i*3+2] = center.z;
+
+            fFireIdx[i] = fireIdx; // 소속 기록
+
+            fPos[i*3] = center.x; fPos[i*3+1] = center.y; fPos[i*3+2] = center.z;
+            fLife[i] = Math.random(); 
+            fPhase[i] = Math.random() * Math.PI * 2;
+            fAngle[i] = Math.random() * Math.PI * 2;
+            fDist[i] = Math.random();
+            fNoiseType[i] = i % 5; 
+        }
+    }
+    buildGrid(); // 초기 실행
 
     // --- 3. 오디오 & MP4 녹화 엔진 ---
     let audioCtx, analyser, dataArray;
     let decodedBuffer = null; let isPlaying = false, currentSource = null;
     let smoothedData = new Float32Array(512);
     let mediaRecorder, recordedChunks = [];
+    let loadedFileName = "";
     
     document.getElementById('init-btn').onclick = function() {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -309,7 +367,7 @@
         const reader = new FileReader();
         reader.onload = function(event) {
             audioCtx.decodeAudioData(event.target.result, function(buffer) {
-                decodedBuffer = buffer; document.getElementById('status').innerText = "준비 완료! 아래 버튼으로 시작하세요.";
+                decodedBuffer = buffer; document.getElementById('status').innerText = "준비 완료! 녹화버튼을 눌러 렌더링하세요.";
                 document.getElementById('record-btn').style.display = 'block';
             });
         };
@@ -333,7 +391,7 @@
         mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
         mediaRecorder.onstop = () => {
             const blob = new Blob(recordedChunks, { type: options.mimeType }); const url = URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.style = 'display: none'; a.href = url; a.download = loadedFileName.replace(/\.[^/.]+$/, "") + `_21Campfires.${ext}`;
+            const a = document.createElement('a'); a.style = 'display: none'; a.href = url; a.download = loadedFileName.replace(/\.[^/.]+$/, "") + `_CampfireGrid.${ext}`;
             document.body.appendChild(a); a.click(); window.URL.revokeObjectURL(url); document.getElementById('status').innerText = `녹화 완료!`;
             ctrlRatio.disabled = false; isPlaying = false; document.getElementById('record-btn').style.display = 'block';
         };
@@ -343,7 +401,7 @@
         document.getElementById('status').innerHTML = `<span class="recording-badge">● REC</span> 모닥불 렌더링 중...`;
     };
 
-    // 테마 컬러 계산 함수
+    // 테마 컬러 계산
     function getThemeColor(theme, progress, trebleReact) {
         let c = new THREE.Color();
         if (theme === 'classic') {
@@ -355,15 +413,16 @@
         } else if (theme === 'neon') {
             if (progress < 0.3) c.setHex(0x00ffff); else c.setHex(0xff00ff); 
         }
-        
-        // 고음이 터지면 입자가 순백색에 가깝게 폭발적으로 밝아짐
         if (trebleReact > 0.3) c.lerp(new THREE.Color(0xffffff), Math.min(1.0, trebleReact * 0.5));
+        
+        // 투명도 수동 적용 (Shader에서 aLife 기반 처리도 하지만 직접 Color를 깎아줌)
+        let alpha = Math.max(0.0, 1.0 - progress);
+        c.multiplyScalar(alpha);
         return c;
     }
 
-    // --- 5. 애니메이션 시뮬레이션 루프 ---
+    // --- 4. 애니메이션 시뮬레이션 루프 ---
     let time = 0;
-    let camAngle = 0;
 
     function animate() {
         requestAnimationFrame(animate);
@@ -371,9 +430,11 @@
 
         // --- 오디오 데이터 파싱 ---
         let rawBass = 0, rawMid = 0, rawTreble = 0;
+        let smoothFactor = 1.0 - parseFloat(ctrlSmooth.value); // 부드러움 적용
+
         if (isPlaying && analyser) {
             analyser.getByteFrequencyData(dataArray);
-            for(let i=0; i<dataArray.length; i++) smoothedData[i] += (dataArray[i] - smoothedData[i]) * 0.15;
+            for(let i=0; i<dataArray.length; i++) smoothedData[i] += (dataArray[i] - smoothedData[i]) * smoothFactor;
             
             let bSum=0, mSum=0, tSum=0;
             for(let i=0; i<10; i++) bSum += smoothedData[i];       // Bass
@@ -389,80 +450,79 @@
         let mReact = rawMid * parseFloat(ctrlReactMid.value);
         let tReact = rawTreble * parseFloat(ctrlReactTreb.value);
 
-        // --- 카메라 제어 ---
-        let cRotSpeed = parseFloat(ctrlCamRot.value);
-        camAngle += 0.005 * cRotSpeed;
-        let cZ = parseFloat(ctrlCamZ.value);
+        // --- 수동 카메라 제어 ---
+        let cX = parseFloat(ctrlCamX.value);
         let cY = parseFloat(ctrlCamY.value);
+        let cZ = parseFloat(ctrlCamZ.value);
+        let bY = parseFloat(ctrlBaseY.value);
         
-        camera.position.x = Math.cos(camAngle) * cZ;
-        camera.position.z = Math.sin(camAngle) * cZ;
-        camera.position.y = cY;
-        camera.lookAt(0, cY * 0.4, 0); 
+        camera.position.set(cX, cY, cZ);
+        // 바닥(Base Y)에서 살짝 위쪽을 바라보도록 설정
+        camera.lookAt(cX, bY + 200, 0); 
 
-        // --- 21개 모닥불 파티클 시뮬레이션 (5가지 노이즈 결합) ---
+        // --- 파티클 역학 시뮬레이션 ---
         let bHeight = parseFloat(ctrlHeight.value);
         let bSpread = parseFloat(ctrlSpread.value);
-        let bSpeed = parseFloat(ctrlSpeed.value);
         let theme = ctrlColorTheme.value;
 
-        let maxHeight = 500 * bHeight + (bReact * 400); // 베이스에 의한 기둥 펌핑
+        let maxHeight = 500 * bHeight + (bReact * 400); 
         let positions = fireGeo.attributes.position.array;
         let colors = fireGeo.attributes.color.array;
+        
+        let activeLimit = fireGeo.drawRange.count;
 
-        for (let i = 0; i < maxParticles; i++) {
+        for (let i = 0; i < activeLimit; i++) {
             let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
-            let cx = fCenter[ix], cz = fCenter[iz];
             
-            // 수명 진행
-            fLife[i] -= 0.008 * bSpeed * (1.0 + Math.random()*0.5);
+            let cx = fCenter[ix];
+            let cy = fCenter[iy];
+            let cz = fCenter[iz];
+            let myFireIdx = fFireIdx[i];
             
-            // 수명이 다하면 각자의 캠프파이어 중심으로 리셋
+            // ★ 핵심: 모닥불마다 고유한 난수(시드)를 더해 완전히 다르게 흩날리도록 함
+            let uniqueOffset = fireUniquePhases[myFireIdx];
+
+            fLife[i] -= 0.01 * (1.0 + Math.random()*0.5);
+            
             if (fLife[i] < 0) {
                 fLife[i] = 1.0;
-                positions[ix] = cx; positions[iy] = 0; positions[iz] = cz;
-                fAngle[i] = Math.random() * Math.PI * 2;
-                fDist[i] = Math.random();
+                let r = Math.random() * 40 * bSpread;
+                positions[ix] = cx + Math.cos(fAngle[i]) * r;
+                positions[iy] = cy;
+                positions[iz] = cz + Math.sin(fAngle[i]) * r;
             }
 
-            let progress = 1.0 - fLife[i]; // 0.0 (바닥) -> 1.0 (꼭대기)
+            let progress = 1.0 - fLife[i]; 
             
-            // Y축 상승 곡선 (위로 갈수록 살짝 가속)
-            positions[iy] = progress * maxHeight * (0.3 + progress * 0.7);
+            // Y축 상승
+            positions[iy] = cy + (progress * maxHeight * (0.3 + progress * 0.7));
 
-            // X, Z 방향 5가지 독립 노이즈 역학 적용
+            // 5가지 독립 노이즈 역학 적용 + 고유 오프셋(uniqueOffset)
             let nt = fNoiseType[i];
             let nx = 0, nz = 0;
-            let t = time * 2.0;
+            let t = (time * 2.0) + uniqueOffset; // 모닥불마다 다른 시간축/바람 영향을 받음
 
             if (nt === 0) { 
-                // Curl (부드러운 소용돌이)
                 nx = Math.sin(progress * 10 + fPhase[i] + t) * (20 + mReact*40);
                 nz = Math.cos(progress * 12 + fPhase[i] + t) * (20 + mReact*40);
             } else if (nt === 1) { 
-                // Perlin (바람결에 날림)
                 nx = (Math.sin(progress * 5 + t) + Math.cos(fPhase[i])) * (30 + mReact*50);
                 nz = (Math.sin(progress * 7 - t) + Math.cos(fPhase[i]*2)) * (15 + mReact*30);
             } else if (nt === 2) { 
-                // Turbulence (격렬한 난기류)
                 nx = Math.sin(progress * 25 + t*3) * 15 * (1 + mReact*3);
                 nz = Math.cos(progress * 28 + t*3.5) * 15 * (1 + mReact*3);
             } else if (nt === 3) { 
-                // Cellular (각지게 꺾임)
                 nx = (Math.abs(Math.sin(progress * 15 + t)) - 0.5) * 45;
                 nz = (Math.abs(Math.cos(progress * 15 + t)) - 0.5) * 45;
             } else if (nt === 4) { 
-                // Zigzag (빠른 스파크)
                 nx = Math.round(Math.sin(progress * 8 + t)) * 30;
                 nz = Math.round(Math.cos(progress * 8 + t)) * 30;
             }
 
-            // 하단부 퍼짐(Spread) 계산 (바닥에서 가장 넓고 위로 갈수록 좁아지는 원뿔 형태)
             let radius = (1.0 - progress) * 35 * bSpread * fDist[i];
             let baseX = cx + Math.cos(fAngle[i]) * radius;
             let baseZ = cz + Math.sin(fAngle[i]) * radius;
 
-            // 최종 위치에 보간 적용 (부드러운 움직임)
             positions[ix] += (baseX + nx * progress - positions[ix]) * 0.15;
             positions[iz] += (baseZ + nz * progress - positions[iz]) * 0.15;
 
