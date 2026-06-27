@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Cinematic Wave & Subtitle Studio</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #020205; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; }
+        canvas { width: 100vw !important; height: 100vh !important; object-fit: contain; }
+
+        .ui-panel { 
+            position: absolute; top: 15px; z-index: 10; 
+            background: rgba(10, 15, 20, 0.85); padding: 16px; 
+            border-radius: 8px; border: 1px solid #334;
+            width: 280px; max-height: 90vh; overflow-y: auto;
+            backdrop-filter: blur(10px); box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+        }
+        #ui-left { left: 15px; }
+        #ui-right { right: 15px; }
+        
+        h3 { margin-top: 0; color: #00e5ff; border-bottom: 1px solid #445; padding-bottom: 10px; font-size: 15px; text-align: center;}
+        .section-title { font-size: 11px; color: #aaa; margin: 15px 0 5px 0; border-bottom: 1px dashed #334; padding-bottom: 3px; font-weight: bold;}
+        
+        .control-group { margin-bottom: 12px; }
+        .control-group label { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px; color: #ccc; }
+        .control-group input[type="range"] { width: 100%; cursor: pointer; accent-color: #00e5ff; height: 4px;}
+        .control-group input[type="color"] { width: 100%; height: 25px; border: none; cursor: pointer; background: none; }
+        .control-group select, .file-btn, textarea { 
+            width: 100%; padding: 6px; background: #112; color: #00ffcc; border: 1px solid #445; border-radius: 4px; cursor: pointer; font-size: 11px; font-family: sans-serif;}
+        
+        #audio-input-area { margin-top: 15px; border-top: 2px solid #00e5ff; padding-top: 15px; }
+        input[type="file"] { margin-bottom: 10px; display: block; color: white; width: 100%; font-size: 11px; }
+        
+        .main-btn { 
+            background-color: #00e5ff; border: none; padding: 10px; width: 100%;
+            border-radius: 5px; cursor: pointer; color: black; font-weight: bold; font-size: 13px; transition: 0.2s;
+        }
+        .main-btn:hover { background-color: #00b3cc; }
+
+        .rand-btn {
+            background-color: #ffaa00; color: black; margin-top: 5px; font-size: 12px; padding: 10px; font-weight: bold;
+            box-shadow: 0 0 10px rgba(255, 170, 0, 0.4);
+        }
+        .rand-btn:hover { background-color: #ffcc00; box-shadow: 0 0 15px rgba(255, 170, 0, 0.7); }
+
+        .record-btn { background-color: #ff3366; color: white; margin-top: 10px; display: none; box-shadow: 0 0 15px rgba(255, 51, 102, 0.6); }
+        .record-btn:hover { background-color: #cc0044; }
+
+        #status { font-size: 11px; color: #aaa; margin-top: 10px; line-height: 1.4; text-align: center;}
+        .recording-badge { color: #ff3366; font-weight: bold; animation: blink 1.5s infinite; }
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+        
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: #111; }
+        ::-webkit-scrollbar-thumb { background: #555; border-radius: 2px; }
+        
+        .color-grid { display: flex; justify-content: space-between; margin-bottom:10px; }
+        .color-col { width: 31%; display: flex; flex-direction: column; align-items: center; }
+        .color-col label { font-size: 9px; margin-bottom: 2px; color: #fff; }
+        .color-col input { width: 100%; }
+    </style>
+</head>
+<body>
+
+<div id="ui-left" class="ui-panel">
+    <h3>파도 & 자막 스튜디오</h3>
+    
+    <div class="section-title" style="color:#00ffcc;">[비디오 해상도]</div>
+    <div class="control-group">
+        <select id="ctrl-ratio">
+            <option value="16:9">가로형 (1920x1080)</option>
+            <option value="9:16">세로형 (1080x1920)</option>
+            <option value="fit" selected>화면 맞춤 (전체화면)</option>
+        </select>
+    </div>
+
+    <div class="section-title" style="color:#aaff00;">[해변 파도 물리 제어]</div>
+    <div class="control-group">
+        <label style="color:#00ccff;">파도 방향 각도 (Angle) <span id="val-wave-angle">180°</span></label>
+        <input type="range" id="ctrl-wave-angle" min="0" max="360" value="180" step="5">
+    </div>
+    <div class="control-group">
+        <label style="color:#00ccff;">파도 기본 도달 거리 <span id="val-wave-dist">0.6</span></label>
+        <input type="range" id="ctrl-wave-dist" min="0.1" max="1.0" value="0.6" step="0.05">
+    </div>
+    <div class="control-group">
+        <label style="color:#00ccff;">파도 쪼개짐 디테일 <span id="val-wave-detail">1.5</span></label>
+        <input type="range" id="ctrl-wave-detail" min="0.5" max="4.0" value="1.5" step="0.1">
+    </div>
+
+    <div class="section-title" style="color:#ffaa00;">[제너러티브 해안선]</div>
+    <button id="btn-randomize" class="main-btn rand-btn">🎲 지형 & 노이즈 무작위 섞기</button>
+
+    <div class="section-title" style="color:#ff3366;">[젖은 모래 자막 (SRT)]</div>
+    <div class="control-group">
+        <textarea id="srt-input" rows="8" placeholder="여기에 SRT 포맷을 입력하세요...">1
+00:00:01,000 --> 00:00:05,000
+푸른 파도가 밀려오는
+
+2
+00:00:05,500 --> 00:00:10,000
+이 모래사장 위에서
+
+3
+00:00:10,500 --> 00:00:15,000
+음악의 숨결을 느껴봐</textarea>
+    </div>
+
+    <div id="audio-input-area">
+        <button id="init-btn" class="main-btn">오디오 & 엔진 켜기</button>
+        <div id="file-select-box" style="display: none; margin-top:10px;">
+            <input type="file" id="audio-file" accept="audio/*">
+            <div id="status">음원 재생 시 자막 타이밍이 연동됩니다.</div>
+            <button id="record-btn" class="main-btn record-btn">▶ MP4 렌더링 녹화 시작</button>
+        </div>
+    </div>
+</div>
+
+<div id="ui-right" class="ui-panel">
+    <h3>오디오 & 카메라 정밀 튜닝</h3>
+
+    <div class="section-title" style="color:#ffaa00;">[자유 카메라 구도]</div>
+    <div class="control-group">
+        <label>카메라 X (좌우) <span id="val-cam-x">0</span></label>
+        <input type="range" id="ctrl-cam-x" min="-1500" max="1500" value="0" step="10">
+    </div>
+    <div class="control-group">
+        <label>카메라 Y (상하 탑뷰) <span id="val-cam-y">1500</span></label>
+        <input type="range" id="ctrl-cam-y" min="200" max="2500" value="1500" step="10">
+    </div>
+    <div class="control-group">
+        <label>카메라 Z (줌 인/아웃) <span id="val-cam-z">0</span></label>
+        <input type="range" id="ctrl-cam-z" min="-1500" max="1500" value="0" step="10">
+    </div>
+
+    <div class="section-title" style="color:#00ffcc;">[다이나믹 오디오 타격감]</div>
+    <div class="control-group">
+        <label>저음 파워 (Bass / 파도 전진) <span id="val-react-bass">1.5</span></label>
+        <input type="range" id="ctrl-react-bass" min="0.0" max="3.0" value="1.5" step="0.1">
+    </div>
+    <div class="control-group">
+        <label>고음 파워 (Treble / 교차 파동) <span id="val-react-treb">1.5</span></label>
+        <input type="range" id="ctrl-react-treb" min="0.0" max="3.0" value="1.5" step="0.1">
+    </div>
+    <div class="control-group">
+        <label>모션 부드러움 (Damping) <span id="val-smooth">0.8</span></label>
+        <input type="range" id="ctrl-smooth" min="0.1" max="0.99" value="0.8" step="0.01">
+    </div>
+    
+    <div class="section-title" style="color:#ffaa00;">[글로벌 색상 설정]</div>
+    <div class="color-grid">
+        <div class="color-col">
+            <label>얕은 물/시작</label>
+            <input type="color" id="ctrl-color-start" value="#20b2aa">
+        </div>
+        <div class="color-col">
+            <label>깊은 바다/끝</label>
+            <input type="color" id="ctrl-color-end" value="#005577">
+        </div>
+        <div class="color-col">
+            <label>거품 (Foam)</label>
+            <input type="color" id="ctrl-color-foam" value="#ffffff">
+        </div>
+    </div>
+
+    <div class="section-title" style="color:#aaff00;">[아날로그 포스트 프로세싱]</div>
+    <div class="control-group">
+        <label>빛 번짐 (Bloom) <span id="val-bloom">1.0</span></label>
+        <input type="range" id="ctrl-bloom" min="0" max="4.0" value="1.0" step="0.1">
+    </div>
+    <div class="control-group">
+        <label>필름 노이즈/그레인 <span id="val-grain">0.10</span></label>
+        <input type="range" id="ctrl-grain" min="0" max="0.4" value="0.10" step="0.01">
+    </div>
+    <div class="control-group">
+        <label>외곽 어두움 (Vignette) <span id="val-vignette">1.5</span></label>
+        <input type="range" id="ctrl-vignette" min="0" max="3" value="1.5" step="0.1">
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+
+<script>
+    // --- 1. 기본 환경 세팅 ---
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x020205); 
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 8000);
+    const renderer = new THREE.WebGLRenderer({antialias: true, preserveDrawingBuffer: true});
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.toneMapping = THREE.ReinhardToneMapping;
+    document.body.appendChild(renderer.domElement);
+
+    const CustomArtShader = {
+        uniforms: { "tDiffuse": { value: null }, "uTime": { value: 0.0 }, "uGrain": { value: 0.10 }, "uVignette": { value: 1.5 } },
+        vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+        fragmentShader: `
+            uniform sampler2D tDiffuse; uniform float uTime; uniform float uGrain; uniform float uVignette; varying vec2 vUv;
+            float rand(vec2 co){ return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453); }
+            void main() {
+                vec4 color = texture2D(tDiffuse, vUv);
+                vec2 uv = vUv - 0.5; float d = length(uv);
+                color.rgb *= smoothstep(0.9, 0.3, d * uVignette);
+                color.rgb += (rand(vUv + uTime) - 0.5) * uGrain;
+                gl_FragColor = color;
+            }
+        `
+    };
+
+    const renderScene = new THREE.RenderPass(scene, camera);
+    const bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.0, 0.4, 0.85);
+    bloomPass.threshold = 0;
+    const artFilterPass = new THREE.ShaderPass(CustomArtShader);
+
+    const composer = new THREE.EffectComposer(renderer);
+    composer.addPass(renderScene); composer.addPass(bloomPass); composer.addPass(artFilterPass);
+
+    let globalRandomSeed = 0.0; 
+
+    // --- UI 연동 ---
+    const updateUIVal = (id, val) => document.getElementById(id).innerText = val;
+    const ctrlRatio = document.getElementById('ctrl-ratio');
+    
+    const ctrlWaveAngle = document.getElementById('ctrl-wave-angle');
+    const ctrlWaveDist = document.getElementById('ctrl-wave-dist');
+    const ctrlWaveDetail = document.getElementById('ctrl-wave-detail');
+    
+    const ctrlCamX = document.getElementById('ctrl-cam-x');
+    const ctrlCamY = document.getElementById('ctrl-cam-y');
+    const ctrlCamZ = document.getElementById('ctrl-cam-z');
+    
+    const ctrlReactBass = document.getElementById('ctrl-react-bass');
+    const ctrlReactTreb = document.getElementById('ctrl-react-treb');
+    const ctrlSmooth = document.getElementById('ctrl-smooth'); 
+    
+    const ctrlColorStart = document.getElementById('ctrl-color-start');
+    const ctrlColorEnd = document.getElementById('ctrl-color-end');
+    const ctrlColorFoam = document.getElementById('ctrl-color-foam'); 
+    
+    const srtInput = document.getElementById('srt-input');
+
+    document.getElementById('btn-randomize').onclick = () => { globalRandomSeed = Math.random() * 1000.0; };
+
+    function updateAspectRatio() {
+        let val = ctrlRatio.value; let w = window.innerWidth, h = window.innerHeight;
+        if (val === '16:9') { w = 1920; h = 1080; } else if (val === '9:16') { w = 1080; h = 1920; }
+        renderer.setSize(w, h); composer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
+    }
+    ctrlRatio.onchange = updateAspectRatio; window.addEventListener('resize', () => { if(ctrlRatio.value==='fit') updateAspectRatio(); }); updateAspectRatio();
+
+    ['cam-x', 'cam-y', 'cam-z', 'react-bass', 'react-treb', 'smooth', 'bloom', 'grain', 'vignette', 'wave-angle', 'wave-dist', 'wave-detail'].forEach(id => {
+        document.getElementById(`ctrl-${id}`).addEventListener('input', (e) => {
+            updateUIVal(`val-${id}`, e.target.value + (id==='wave-angle'?'°':''));
+            if(id === 'bloom') bloomPass.strength = parseFloat(e.target.value);
+            if(id === 'grain') artFilterPass.uniforms.uGrain.value = parseFloat(e.target.value);
+            if(id === 'vignette') artFilterPass.uniforms.uVignette.value = parseFloat(e.target.value);
+        });
+    });
+
+    // --- 2. 동적 자막 캔버스 텍스처 (SRT) ---
+    const textCanvas = document.createElement('canvas');
+    textCanvas.width = 2048; textCanvas.height = 2048; // 고해상도 매핑용
+    const textCtx = textCanvas.getContext('2d');
+    const textTex = new THREE.CanvasTexture(textCanvas);
+    textTex.generateMipmaps = false; textTex.minFilter = THREE.LinearFilter;
+
+    let parsedSRT = [];
+    let currentSubtitle = "";
+
+    function parseSRTData(data) {
+        const regex = /(?:\d+)\n(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\n([\s\S]*?)(?=(?:\n\n|\r\n\r\n|$))/g;
+        let match; const result = [];
+        while ((match = regex.exec(data)) !== null) {
+            result.push({ start: timeMs(match[1]), end: timeMs(match[2]), text: match[3].trim() });
+        }
+        return result;
+    }
+    function timeMs(val) {
+        const p = val.split(/[:,]/);
+        return (parseInt(p[0])*3600 + parseInt(p[1])*60 + parseInt(p[2]))*1000 + parseInt(p[3]);
+    }
+
+    function updateSubtitleCanvas(text) {
+        textCtx.clearRect(0, 0, 2048, 2048);
+        if(text) {
+            textCtx.fillStyle = 'rgba(255, 255, 255, 1.0)';
+            textCtx.font = 'bold 120px "Malgun Gothic", sans-serif';
+            textCtx.textAlign = 'center';
+            textCtx.textBaseline = 'middle';
+            textCtx.shadowColor = 'rgba(255, 255, 255, 0.8)';
+            textCtx.shadowBlur = 15; // 알파 마스킹을 위한 테두리 강조
+            
+            let lines = text.split('\n');
+            let startY = 1024 - ((lines.length - 1) * 70);
+            for(let i=0; i<lines.length; i++) {
+                textCtx.fillText(lines[i], 1024, startY + (i * 140));
+            }
+        }
+        textTex.needsUpdate = true;
+    }
+    
+    srtInput.addEventListener('input', () => { parsedSRT = parseSRTData(srtInput.value); });
+    parsedSRT = parseSRTData(srtInput.value); // 초기 파싱
+
+    // --- 3. 오디오 연동 시네마틱 해변 셰이더 ---
+    const waveGeo = new THREE.PlaneGeometry(6000, 6000, 1, 1);
+    const waveShaderMat = new THREE.ShaderMaterial({
+        uniforms: {
+            uTime: { value: 0.0 }, 
+            uBass: { value: 0.0 }, 
+            uTreble: { value: 0.0 },
+            uAngle: { value: 0.0 }, 
+            uDist: { value: 0.5 }, 
+            uSeed: { value: 0.0 },
+            uWaveDetail: { value: 1.5 }, 
+            uTextMap: { value: textTex }, // ★ 자막 텍스처 삽입
+            cSand: { value: new THREE.Color(0xd2b48c) }, 
+            cShallow: { value: new THREE.Color(ctrlColorStart.value) }, 
+            cDeep: { value: new THREE.Color(ctrlColorEnd.value) }, 
+            cFoam: { value: new THREE.Color(ctrlColorFoam.value) } 
+        },
+        vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+        fragmentShader: `
+            uniform float uTime; uniform float uBass; uniform float uTreble; 
+            uniform float uAngle; uniform float uDist; uniform float uSeed; uniform float uWaveDetail;
+            uniform sampler2D uTextMap;
+            uniform vec3 cSand; uniform vec3 cShallow; uniform vec3 cDeep; uniform vec3 cFoam;
+            varying vec2 vUv;
+            
+            vec2 hash( vec2 p ) { p = vec2( dot(p,vec2(127.1,311.7)), dot(p,vec2(269.5,183.3)) ); return -1.0 + 2.0*fract(sin(p)*43758.5453123); }
+            float noise( in vec2 p ) {
+                const float K1 = 0.366025404; const float K2 = 0.211324865;
+                vec2 i = floor( p + (p.x+p.y)*K1 ); vec2 a = p - i + (i.x+i.y)*K2;
+                vec2 o = (a.x>a.y) ? vec2(1.0,0.0) : vec2(0.0,1.0);
+                vec2 b = a - o + K2; vec2 c = a - 1.0 + 2.0*K2;
+                vec3 h = max( 0.5-vec3(dot(a,a), dot(b,b), dot(c,c) ), 0.0 );
+                vec3 n = h*h*h*h*vec3( dot(a,hash(i+0.0)), dot(b,hash(i+o)), dot(c,hash(i+1.0)));
+                return dot( n, vec3(70.0) );
+            }
+
+            void main() {
+                float ang = radians(uAngle);
+                float c = cos(ang); float s = sin(ang);
+                mat2 rot = mat2(c, -s, s, c);
+                vec2 rUv = rot * (vUv - 0.5) + 0.5 + vec2(uSeed * 0.1); 
+                
+                // 오디오 반응형 해안선 왜곡 로직
+                float waveSine = sin(uTime * 1.2);
+                float audioReach = sin(rUv.x * 12.0 + uTime) * uBass * 0.15 + cos(rUv.x * 20.0 - uTime) * uTreble * 0.15;
+                float wavePos = 0.5 + waveSine * 0.15 + audioReach; 
+                
+                float edgeNoise = noise(rUv * 15.0 * uWaveDetail + uTime*0.5) * (0.1 * uDist) + noise(rUv * 30.0 * uWaveDetail - uTime) * 0.05;
+                float distToWave = rUv.y - (wavePos + edgeNoise);
+                float peakFactor = smoothstep(0.5, 1.0, waveSine);
+                
+                // --- ★ 자막 텍스처 파싱 ---
+                // 중앙에 크게 자막이 보이도록 UV 스케일링
+                vec2 textUv = (vUv - 0.5) * 2.5 + 0.5; 
+                float textAlpha = 0.0;
+                if(textUv.x >= 0.0 && textUv.x <= 1.0 && textUv.y >= 0.0 && textUv.y <= 1.0) {
+                    textAlpha = texture2D(uTextMap, textUv).a;
+                }
+
+                vec3 finalColor;
+                
+                // 1. 모래사장 + 자막 결합
+                vec3 baseSand = cSand;
+                if (distToWave > -0.06 && distToWave <= 0.0) baseSand *= 0.8; // 파도 앞 젖은 모래
+                
+                // 자막은 모래가 물에 젖었을 때처럼 훨씬 진하게 새겨짐
+                baseSand = mix(baseSand, cSand * 0.5, textAlpha * 0.8);
+
+                if (distToWave < 0.0) { // 물 밖의 해변
+                    finalColor = baseSand; 
+                    
+                    // 파도 끝자락 소멸 찌꺼기
+                    float residue = smoothstep(-0.04, 0.0, distToWave) * peakFactor;
+                    float residueNoise = noise(rUv * 150.0 * uWaveDetail);
+                    if (residue * abs(residueNoise) > 0.1) finalColor = mix(finalColor, cFoam, residue * 0.8);
+
+                } else { // 물 속
+                    vec3 waterColor = mix(cShallow, cDeep, smoothstep(0.0, 0.4, distToWave));
+                    
+                    // 얕은 물 속에 모래(및 자막)이 비치도록 자연스럽게 블렌딩
+                    waterColor = mix(baseSand, waterColor, smoothstep(0.0, 0.15, distToWave));
+
+                    float foamBand = 0.015 + (uBass * 0.02) + (peakFactor * 0.03); 
+                    float isFoam = 1.0 - smoothstep(0.0, foamBand, distToWave); 
+                    float pureWhiteEdge = 1.0 - smoothstep(0.0, 0.005, distToWave);
+                    
+                    float foamNoise = noise(rUv * 80.0 * uWaveDetail + uTime * 3.0);
+                    float finalFoam = isFoam * abs(foamNoise) * 2.0; 
+                    
+                    finalColor = mix(waterColor, cFoam, clamp(finalFoam + pureWhiteEdge, 0.0, 1.0));
+                }
+                gl_FragColor = vec4(finalColor, 1.0);
+            }
+        `,
+        side: THREE.DoubleSide
+    });
+    const waveMesh = new THREE.Mesh(waveGeo, waveShaderMat);
+    waveMesh.rotation.x = -Math.PI / 2; 
+    scene.add(waveMesh);
+
+    // 색상 이벤트
+    ctrlColorStart.oninput = (e) => { waveShaderMat.uniforms.cShallow.value.set(e.target.value); };
+    ctrlColorEnd.oninput = (e) => { waveShaderMat.uniforms.cDeep.value.set(e.target.value); };
+    ctrlColorFoam.oninput = (e) => { waveShaderMat.uniforms.cFoam.value.set(e.target.value); }; 
+
+    // --- 4. 오디오 & 녹화 시스템 ---
+    let audioCtx, analyser, dataArray;
+    let decodedBuffer = null; let isPlaying = false, currentSource = null;
+    let smoothedData = new Float32Array(512);
+    let mediaRecorder, recordedChunks = []; let loadedFileName = "";
+    let audioStartTime = 0; // 자막 동기화용 타임스탬프
+    
+    document.getElementById('init-btn').onclick = function() {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioCtx.createAnalyser(); analyser.fftSize = 512; dataArray = new Uint8Array(analyser.frequencyBinCount);
+        this.style.display = 'none'; document.getElementById('file-select-box').style.display = 'block';
+    };
+
+    document.getElementById('audio-file').onchange = function(e) {
+        const file = e.target.files[0]; if (!file) return;
+        document.getElementById('status').innerText = "디코딩 중..."; loadedFileName = file.name;
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            audioCtx.decodeAudioData(event.target.result, function(buffer) {
+                decodedBuffer = buffer; document.getElementById('status').innerText = "준비 완료! MP4 렌더링을 시작하세요.";
+                document.getElementById('record-btn').style.display = 'block';
+            });
+        };
+        reader.readAsArrayBuffer(file);
+    };
+
+    document.getElementById('record-btn').onclick = function() {
+        if (!decodedBuffer) return; if (currentSource) { try { currentSource.stop(); } catch(e) {} }
+        currentSource = audioCtx.createBufferSource(); currentSource.buffer = decodedBuffer; currentSource.connect(analyser);
+        const audioDest = audioCtx.createMediaStreamDestination(); analyser.connect(audioCtx.destination); analyser.connect(audioDest);            
+        const canvasStream = renderer.domElement.captureStream(60); const combinedStream = new MediaStream([...canvasStream.getVideoTracks(), ...audioDest.stream.getAudioTracks()]);
+        
+        let options = { mimeType: 'video/mp4; codecs=avc1', videoBitsPerSecond: 8000000 }; let ext = 'mp4';
+        if (!MediaRecorder.isTypeSupported(options.mimeType)) { options = { mimeType: 'video/webm; codecs=vp9', videoBitsPerSecond: 8000000 }; ext = 'webm'; }
+        
+        recordedChunks = []; mediaRecorder = new MediaRecorder(combinedStream, options);
+        mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
+        mediaRecorder.onstop = () => {
+            const blob = new Blob(recordedChunks, { type: options.mimeType }); const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.style = 'display: none'; a.href = url; a.download = loadedFileName.replace(/\.[^/.]+$/, "") + `_WaveSubtitles.${ext}`;
+            document.body.appendChild(a); a.click(); window.URL.revokeObjectURL(url); document.getElementById('status').innerText = `녹화 완료!`;
+            ctrlRatio.disabled = false; isPlaying = false; document.getElementById('record-btn').style.display = 'block';
+            updateSubtitleCanvas(""); // 자막 리셋
+        };
+        currentSource.onended = () => { if(mediaRecorder.state === 'recording') mediaRecorder.stop(); };
+        
+        audioStartTime = audioCtx.currentTime; // 자막 플레이 타임 동기화 시작점
+        currentSource.start(0); mediaRecorder.start(); isPlaying = true;
+        
+        ctrlRatio.disabled = true; this.style.display = 'none';
+        document.getElementById('status').innerHTML = `<span class="recording-badge">● REC</span> 자막 연동 렌더링 중...`;
+    };
+
+    // --- 5. 렌더링 애니메이션 루프 ---
+    let time = 0;
+    
+    function animate() {
+        requestAnimationFrame(animate);
+        time += 0.01;
+
+        // 카메라 고정 및 업데이트
+        let cX = parseFloat(ctrlCamX.value); let cY = parseFloat(ctrlCamY.value); let cZ = parseFloat(ctrlCamZ.value);
+        camera.position.set(cX, cY, cZ); camera.lookAt(0, 0, 0); 
+
+        let rawBass = 0, rawTreble = 0;
+        let smoothFactor = 1.0 - parseFloat(ctrlSmooth.value);
+
+        if (isPlaying && analyser) {
+            analyser.getByteFrequencyData(dataArray);
+            for(let i=0; i<dataArray.length; i++) smoothedData[i] += (dataArray[i] - smoothedData[i]) * smoothFactor;
+            
+            let bSum=0, tSum=0;
+            for(let i=0; i<10; i++) bSum += dataArray[i]; 
+            for(let i=80; i<200; i++) tSum += dataArray[i]; 
+            
+            rawBass = (bSum / 10 / 255) * parseFloat(ctrlReactBass.value);
+            rawTreble = (tSum / 120 / 255) * parseFloat(ctrlReactTreb.value);
+            
+            // ★ SRT 자막 추적 및 업데이트
+            let elapsedMs = (audioCtx.currentTime - audioStartTime) * 1000;
+            let activeText = "";
+            for(let i=0; i<parsedSRT.length; i++) {
+                if (elapsedMs >= parsedSRT[i].start && elapsedMs <= parsedSRT[i].end) {
+                    activeText = parsedSRT[i].text; break;
+                }
+            }
+            if (activeText !== currentSubtitle) {
+                currentSubtitle = activeText; updateSubtitleCanvas(activeText);
+            }
+        }
+
+        // 셰이더 매핑 연동
+        waveShaderMat.uniforms.uTime.value = time;
+        waveShaderMat.uniforms.uAngle.value = parseFloat(ctrlWaveAngle.value);
+        waveShaderMat.uniforms.uBass.value = rawBass * 2.0; 
+        waveShaderMat.uniforms.uTreble.value = rawTreble * 2.5;
+        waveShaderMat.uniforms.uDist.value = parseFloat(ctrlWaveDist.value);
+        waveShaderMat.uniforms.uWaveDetail.value = parseFloat(ctrlWaveDetail.value); 
+        waveShaderMat.uniforms.uSeed.value = globalRandomSeed; 
+
+        composer.render();
+    }
+    animate(); 
+</script>
+</body>
+</html>
