@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>CWSSS_V8.2-Cinematic Wave & Smart Subtitle Studio v8.2 (Bug Fix)</title>
+    <title>Cinematic Wave & Smart Subtitle Studio v8.3</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #020205; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; }
         canvas { width: 100vw !important; height: 100vh !important; object-fit: contain; }
@@ -75,8 +75,8 @@
         <input type="range" id="ctrl-sub-size" min="40" max="250" value="90" step="2">
     </div>
     <div class="control-group">
-        <label>자막 상하 위치 (Y) <span id="val-sub-y">1024</span></label>
-        <input type="range" id="ctrl-sub-y" min="200" max="3500" value="1024" step="10">
+        <label>자막 상하 위치 (Y) <span id="val-sub-y">1800</span></label>
+        <input type="range" id="ctrl-sub-y" min="200" max="3500" value="1800" step="10">
     </div>
     <div class="control-group">
         <label style="color:#00ffcc;">자막 가로 허용 폭 (Max Width) <span id="val-sub-max-w">1400</span></label>
@@ -134,8 +134,8 @@
             <div id="status">오디오 로드 후 미리보기 타임라인이 활성화됩니다.</div>
             
             <div class="control-group" id="preview-box" style="display:none; margin-top:15px; border-top:1px dashed #445; padding-top:10px;">
-                <label style="color:#ffaa00;">미리보기 스크러빙 <span id="val-preview-time">0.0s</span></label>
-                <input type="range" id="ctrl-preview-time" min="0" max="100" value="0" step="0.05">
+                <label style="color:#ffaa00;">미리보기 타임라인 <span id="val-preview-time">0.0s</span></label>
+                <input type="range" id="ctrl-preview-time" min="0" max="100" value="0" step="0.1">
             </div>
 
             <button id="record-btn" class="main-btn record-btn">▶ 영상 렌더링 녹화 시작 (MP4)</button>
@@ -204,7 +204,7 @@
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x020205); 
     
-    // 시네마틱 풀스크린 탑뷰 (카메라 고정)
+    // 카메라 위치 고정 (UI 의존성 없음)
     const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 8000);
     camera.position.set(0, 1500, 0); 
     camera.lookAt(0, 0, 0);
@@ -244,7 +244,6 @@
     const updateUIVal = (id, val, suffix='') => document.getElementById(id).innerText = val + suffix;
     const ctrlRatio = document.getElementById('ctrl-ratio');
     const ctrlRevealTime = document.getElementById('ctrl-reveal-time');
-    const ctrlCoverTime = document.getElementById('ctrl-cover-time');
     const ctrlWaveCoverPos = document.getElementById('ctrl-wave-cover-pos');
     const ctrlWaveRevealPos = document.getElementById('ctrl-wave-reveal-pos');
     const ctrlSurgeSpeed = document.getElementById('ctrl-surge-speed');
@@ -263,12 +262,13 @@
     const ctrlSubLh = document.getElementById('ctrl-sub-lh');
     const ctrlPreviewTime = document.getElementById('ctrl-preview-time');
 
+    // 지형 무작위 섞기 버튼 로직
     document.getElementById('btn-randomize').onclick = () => { 
         globalRandomSeed = Math.random() * 50.0; 
         if(!isPlaying) renderFrame(manualTimeSec, true);
     };
 
-    // ★ 버그 픽스 1: 렌더링 해상도를 반드시 짝수로 맞춤 (MP4 인코더 크래시 방지)
+    // 캔버스 해상도를 화면 비율에 맞춰 동적 조절 (잘림 방지 및 짝수 픽셀 보장)
     let textCanvasWidth = 2048;
     let textCanvasHeight = 2048;
 
@@ -291,14 +291,20 @@
     }
     ctrlRatio.onchange = updateAspectRatio; window.addEventListener('resize', () => { if(ctrlRatio.value==='fit') updateAspectRatio(); }); 
 
-    const validUIInputs = ['react-bass', 'react-treb', 'smooth', 'bloom', 'grain', 'vignette', 'wave-angle', 'wave-detail', 'surge-speed', 'sub-size', 'sub-y', 'sub-max-w', 'sub-lh', 'wave-cover-pos', 'wave-reveal-pos'];
+    // ★ 버그 픽스: HTML에 100% 존재하는 ID만 배열에 등록하여 안전하게 매핑
+    const validUIInputs = [
+        'react-bass', 'react-treb', 'smooth', 'bloom', 'grain', 'vignette', 
+        'wave-angle', 'wave-detail', 'surge-speed', 'sub-size', 'sub-y', 
+        'sub-max-w', 'sub-lh', 'wave-cover-pos', 'wave-reveal-pos', 'reveal-time'
+    ];
     
     validUIInputs.forEach(id => {
         let element = document.getElementById(`ctrl-${id}`);
         if(element) {
             element.addEventListener('input', (e) => {
-                let suffix = id==='wave-angle'?'°':'';
+                let suffix = id==='wave-angle' ? '°' : (id==='reveal-time' ? '초 전' : '');
                 updateUIVal(`val-${id}`, e.target.value, suffix);
+                
                 if(id === 'bloom') bloomPass.strength = parseFloat(e.target.value);
                 if(id === 'grain') artFilterPass.uniforms.uGrain.value = parseFloat(e.target.value);
                 if(id === 'vignette') artFilterPass.uniforms.uVignette.value = parseFloat(e.target.value);
@@ -311,9 +317,6 @@
             });
         }
     });
-
-    ctrlRevealTime.addEventListener('input', (e) => { updateUIVal('val-reveal-time', e.target.value, '초 전'); if(!isPlaying) renderFrame(manualTimeSec, true); });
-    ctrlCoverTime.addEventListener('input', (e) => { updateUIVal('val-cover-time', e.target.value, '초 전'); if(!isPlaying) renderFrame(manualTimeSec, true); });
 
     // --- 2. 스마트 줄바꿈 자막 캔버스 엔진 ---
     const textCanvas = document.createElement('canvas');
@@ -407,7 +410,7 @@
     const waveShaderMat = new THREE.ShaderMaterial({
         uniforms: {
             uTime: { value: 0.0 }, uBass: { value: 0.0 }, uTreble: { value: 0.0 }, uAngle: { value: 0.0 }, uSeed: { value: 0.0 },
-            uWaveDetail: { value: 2.0 }, uSurge: { value: 0.25 }, uSurgeVelocity: { value: 0.0 }, 
+            uWaveDetail: { value: 2.0 }, uDist: { value: 0.6 }, uSurge: { value: 0.25 }, uSurgeVelocity: { value: 0.0 }, 
             uTextMap: { value: textTex }, uTextScale: { value: new THREE.Vector2(1.0, 1.0) },
             cSand: { value: new THREE.Color(0xd2b48c) }, cShallow: { value: new THREE.Color(ctrlColorStart.value) }, 
             cDeep: { value: new THREE.Color(ctrlColorEnd.value) }, cFoam: { value: new THREE.Color(ctrlColorFoam.value) } 
@@ -415,7 +418,7 @@
         vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
         fragmentShader: `
             uniform float uTime; uniform float uBass; uniform float uTreble; 
-            uniform float uAngle; uniform float uSeed; uniform float uWaveDetail;
+            uniform float uAngle; uniform float uSeed; uniform float uWaveDetail; uniform float uDist;
             uniform float uSurge; uniform float uSurgeVelocity;
             uniform sampler2D uTextMap; uniform vec2 uTextScale;
             uniform vec3 cSand; uniform vec3 cShallow; uniform vec3 cDeep; uniform vec3 cFoam;
@@ -443,8 +446,7 @@
                 float audioReach = (sin(rUv.x * 12.0 + uTime) * uBass * 0.15 + cos(rUv.x * 20.0 - uTime) * uTreble * 0.15) * reachScale;
                 
                 float wavePos = uSurge + (waveSine * 0.08) + audioReach; 
-                
-                float edgeNoise = noise(rUv * 15.0 * uWaveDetail + uTime*0.5) * 0.08 + noise(rUv * 30.0 * uWaveDetail - uTime) * 0.04;
+                float edgeNoise = noise(rUv * 15.0 * uWaveDetail + uTime*0.5) * (0.1 * uDist) + noise(rUv * 30.0 * uWaveDetail - uTime) * 0.04;
                 float distToWave = rUv.y - (wavePos + edgeNoise);
                 
                 vec2 textUv = (vUv - 0.5) * uTextScale + 0.5; 
@@ -465,6 +467,7 @@
                 } else { 
                     vec3 waterColor = mix(cShallow, cDeep, smoothstep(0.0, 0.4, distToWave));
                     
+                    // 파도 밑에서는 글씨가 물리적으로 가려짐 (80% 가림)
                     float textDistortion = noise(rUv * 30.0 + uTime) * 0.02 * clamp(distToWave*5.0, 0.0, 1.0);
                     vec2 distTextUv = textUv + textDistortion;
                     vec4 distTextData = vec4(0.0);
@@ -491,6 +494,8 @@
     });
     const waveMesh = new THREE.Mesh(waveGeo, waveShaderMat);
     waveMesh.rotation.x = -Math.PI / 2; 
+    // 하드코딩된 위치 고정
+    waveMesh.position.y = 0; 
     scene.add(waveMesh);
 
     updateAspectRatio(); 
@@ -499,7 +504,7 @@
     ctrlColorEnd.oninput = (e) => { waveShaderMat.uniforms.cDeep.value.set(e.target.value); if(!isPlaying) renderFrame(manualTimeSec, true); };
     ctrlColorFoam.oninput = (e) => { waveShaderMat.uniforms.cFoam.value.set(e.target.value); if(!isPlaying) renderFrame(manualTimeSec, true); }; 
 
-    // --- 4. 오디오 & 타임라인 & 녹화 시스템 ---
+    // --- 4. 오디오 & 타임라인 미리보기 ---
     let audioCtx, analyser, dataArray;
     let decodedBuffer = null; let isPlaying = false, currentSource = null;
     let smoothedData = new Float32Array(512);
@@ -560,12 +565,12 @@
         
         audioStartTime = audioCtx.currentTime; 
         
-        // ★ 버그 픽스 2: 플래그 설정 후 즉시 애니메이션 루프 재점화!
+        // 재생 플래그 설정 및 애니메이션 즉시 호출
         isPlaying = true;
         animate(); 
 
         currentSource.start(0); 
-        try { mediaRecorder.start(); } catch(err) { console.error(err); alert("녹화 에러 발생"); }
+        try { mediaRecorder.start(); } catch(err) { console.error(err); alert("녹화 시작 중 에러 발생"); }
         
         ctrlRatio.disabled = true; ctrlPreviewTime.disabled = true; this.style.display = 'none';
         document.getElementById('status').innerHTML = `<span class="recording-badge">● REC</span> 자막 연동 렌더링 중...`;
@@ -593,23 +598,22 @@
         let elapsedMs = targetTimeSec * 1000;
         let coverPos = parseFloat(ctrlWaveCoverPos.value);
         let revealPos = parseFloat(ctrlWaveRevealPos.value);
-        let targetSurge = coverPos; 
+        let targetSurge = coverPos; // 대기상태엔 기본으로 덮여있게 설정
         let activeText = "";
         
         if (parsedSRT.length > 0) {
-            let revealOffset = parseFloat(ctrlRevealTime.value) * 1000;
-            let coverOffset = parseFloat(ctrlCoverTime.value) * 1000;
+            let offsetTime = parseFloat(ctrlRevealTime.value) * 1000; // 단일 슬라이더(오프셋)로 앞뒤 타이밍 조절
 
             for (let i = 0; i < parsedSRT.length; i++) {
                 let sub = parsedSRT[i];
-                let revealTime = sub.start - revealOffset;
-                let coverTime = sub.end - coverOffset;
+                let revealTime = sub.start - offsetTime;
+                let coverTime = sub.end - offsetTime;
 
                 if (elapsedMs >= revealTime && elapsedMs < coverTime) {
                     targetSurge = revealPos; 
                     activeText = sub.text;
                     break; 
-                } else if (elapsedMs >= coverTime && i < parsedSRT.length - 1 && elapsedMs < parsedSRT[i+1].start - revealOffset) {
+                } else if (elapsedMs >= coverTime && i < parsedSRT.length - 1 && elapsedMs < parsedSRT[i+1].start - offsetTime) {
                     targetSurge = coverPos;
                     break;
                 }
