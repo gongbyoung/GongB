@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Cinematic Wave & Smart Subtitle Studio v8.5 (Master Fix)</title>
+    <title>Cinematic Wave & Smart Subtitle Studio v8.6 (Clean Fix)</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #020205; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; }
         canvas { width: 100vw !important; height: 100vh !important; object-fit: contain; }
@@ -201,7 +201,7 @@
 
 <script>
     // =========================================================
-    // 1. 상태 및 전역 변수 (TDZ 에러 원천 차단)
+    // 1. 상태 및 전역 변수
     // =========================================================
     let isPlaying = false;
     let manualTimeSec = 0;
@@ -227,7 +227,6 @@
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x020205); 
     
-    // 시네마틱 탑뷰 카메라 고정
     const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 8000);
     camera.position.set(0, 1500, 0); 
     camera.lookAt(0, 0, 0);
@@ -272,10 +271,9 @@
     const textTex = new THREE.CanvasTexture(textCanvas);
     textTex.generateMipmaps = false; textTex.minFilter = THREE.LinearFilter;
 
-    // DOM UI Elements Fetching (안전한 매핑을 위해 선언)
+    // DOM UI Elements Fetching
     const ctrlRatio = document.getElementById('ctrl-ratio');
     const ctrlRevealTime = document.getElementById('ctrl-reveal-time');
-    const ctrlCoverTime = document.getElementById('ctrl-cover-time');
     const ctrlWaveCoverPos = document.getElementById('ctrl-wave-cover-pos');
     const ctrlWaveRevealPos = document.getElementById('ctrl-wave-reveal-pos');
     const ctrlSurgeSpeed = document.getElementById('ctrl-surge-speed');
@@ -317,7 +315,6 @@
         let rawLines = text.split('\n');
         let wrappedLines = [];
 
-        // 줄바꿈 로직
         for(let i=0; i<rawLines.length; i++) {
             let words = rawLines[i].split(' ');
             let currentLine = words[0];
@@ -348,7 +345,7 @@
     }
 
     // =========================================================
-    // 5. 해변 파도 셰이더 매터리얼 (Wave Shader Material)
+    // 5. 해변 파도 셰이더 매터리얼
     // =========================================================
     const waveGeo = new THREE.PlaneGeometry(6000, 6000, 1, 1);
     const waveShaderMat = new THREE.ShaderMaterial({
@@ -389,7 +386,6 @@
                 float reachScale = 1.0 - (uSurge * 0.5);
                 float audioReach = (sin(rUv.x * 12.0 + uTime) * uBass * 0.15 + cos(rUv.x * 20.0 - uTime) * uTreble * 0.15) * reachScale;
                 
-                // 타겟 위치로 파도 전진/후퇴
                 float wavePos = uSurge + (waveSine * 0.08) + audioReach; 
                 float edgeNoise = noise(rUv * 15.0 * uWaveDetail + uTime*0.5) * 0.08 + noise(rUv * 30.0 * uWaveDetail - uTime) * 0.04;
                 float distToWave = rUv.y - (wavePos + edgeNoise);
@@ -412,7 +408,6 @@
                 } else { 
                     vec3 waterColor = mix(cShallow, cDeep, smoothstep(0.0, 0.4, distToWave));
                     
-                    // 파도 밑에서는 자막이 물리적으로 일그러짐
                     float textDistortion = noise(rUv * 30.0 + uTime) * 0.02 * clamp(distToWave*5.0, 0.0, 1.0);
                     vec2 distTextUv = textUv + textDistortion;
                     vec4 distTextData = vec4(0.0);
@@ -442,13 +437,12 @@
     scene.add(waveMesh);
 
     // =========================================================
-    // 6. 해상도 및 이벤트 연동 (안전한 스코프)
+    // 6. 해상도 및 이벤트 연동
     // =========================================================
     function updateAspectRatio() {
         let val = ctrlRatio.value; let w = window.innerWidth, h = window.innerHeight;
         if (val === '16:9') { w = 1920; h = 1080; } else if (val === '9:16') { w = 1080; h = 1920; }
         
-        // MP4 렌더링 에러(0 Bytes)를 막는 마법의 코드: 해상도를 짝수로 강제
         w = Math.floor(w / 2) * 2;
         h = Math.floor(h / 2) * 2;
         
@@ -463,7 +457,6 @@
         if(!isPlaying) renderFrame(manualTimeSec, true);
     }
     
-    // UI 업데이트 유틸리티
     const updateUIVal = (id, val, suffix='') => {
         let el = document.getElementById(id);
         if(el) el.innerText = val + suffix;
@@ -477,8 +470,8 @@
         if(!isPlaying) renderFrame(manualTimeSec, true);
     };
 
-    // 살아남은 슬라이더들의 이벤트 바인딩 (에러 원천 차단)
-    const validUIInputs = ['react-bass', 'react-treb', 'smooth', 'bloom', 'grain', 'vignette', 'wave-angle', 'wave-detail', 'surge-speed', 'sub-size', 'sub-y', 'sub-max-w', 'sub-lh', 'wave-cover-pos', 'wave-reveal-pos', 'reveal-time', 'cover-time'];
+    // UI 이벤트 리스너 바인딩 (안전하게)
+    const validUIInputs = ['react-bass', 'react-treb', 'smooth', 'bloom', 'grain', 'vignette', 'wave-angle', 'wave-detail', 'surge-speed', 'sub-size', 'sub-y', 'sub-max-w', 'sub-lh', 'wave-cover-pos', 'wave-reveal-pos', 'reveal-time'];
     
     validUIInputs.forEach(id => {
         let element = document.getElementById(`ctrl-${id}`);
@@ -504,7 +497,6 @@
     ctrlColorEnd.oninput = (e) => { waveShaderMat.uniforms.cDeep.value.set(e.target.value); if(!isPlaying) renderFrame(manualTimeSec, true); };
     ctrlColorFoam.oninput = (e) => { waveShaderMat.uniforms.cFoam.value.set(e.target.value); if(!isPlaying) renderFrame(manualTimeSec, true); }; 
 
-    // 초기 종횡비 세팅
     updateAspectRatio();
 
     // =========================================================
@@ -547,7 +539,7 @@
         const reader = new FileReader();
         reader.onload = function(event) {
             audioCtx.decodeAudioData(event.target.result, function(buffer) {
-                if (buffer) { // ★ 초강력 방어 코드: 버퍼 내용물이 있는지 검증
+                if (buffer) {
                     decodedBuffer = buffer; 
                     document.getElementById('status').innerText = "준비 완료! 아래 슬라이더로 타이밍을 미리보세요.";
                     document.getElementById('record-btn').style.display = 'block';
@@ -557,10 +549,10 @@
                     
                     if(!isPlaying) renderFrame(manualTimeSec, true);
                 } else {
-                    document.getElementById('status').innerText = "에러: 오디오 파일에 데이터가 없습니다.";
+                    document.getElementById('status').innerText = "에러: 오디오 데이터 확인 불가.";
                 }
             }, function(err) {
-                document.getElementById('status').innerText = "에러: 오디오 디코딩에 실패했습니다.";
+                document.getElementById('status').innerText = "에러: 오디오 디코딩 실패.";
             });
         };
         reader.readAsArrayBuffer(file);
@@ -634,19 +626,18 @@
         let activeText = "";
         
         if (parsedSRT.length > 0) {
-            let revealOffset = parseFloat(ctrlRevealTime.value) * 1000;
-            let coverOffset = parseFloat(ctrlCoverTime.value) * 1000; // 커버 시간 오프셋 적용
+            let offsetTime = parseFloat(ctrlRevealTime.value) * 1000; 
 
             for (let i = 0; i < parsedSRT.length; i++) {
                 let sub = parsedSRT[i];
-                let revealTime = sub.start - revealOffset;
-                let coverTime = sub.end - coverOffset;
+                let revealTime = sub.start - offsetTime;
+                let coverTime = sub.end - offsetTime;
 
                 if (elapsedMs >= revealTime && elapsedMs < coverTime) {
                     targetSurge = revealPos; 
                     activeText = sub.text;
                     break; 
-                } else if (elapsedMs >= coverTime && i < parsedSRT.length - 1 && elapsedMs < parsedSRT[i+1].start - revealOffset) {
+                } else if (elapsedMs >= coverTime && i < parsedSRT.length - 1 && elapsedMs < parsedSRT[i+1].start - offsetTime) {
                     targetSurge = coverPos;
                     break;
                 }
@@ -690,7 +681,6 @@
         }
     }
     
-    // 초기 로딩 렌더링
     setTimeout(() => { renderFrame(0, true); }, 500);
 </script>
 </body>
