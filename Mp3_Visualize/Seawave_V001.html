@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Cinematic Wave & Smart Subtitle Studio v8.1</title>
+    <title>CWSSS_V8.2-Cinematic Wave & Smart Subtitle Studio v8.2 (Bug Fix)</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #020205; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; }
         canvas { width: 100vw !important; height: 100vh !important; object-fit: contain; }
@@ -11,7 +11,7 @@
             position: absolute; top: 15px; z-index: 10; 
             background: rgba(10, 15, 20, 0.85); padding: 18px; 
             border-radius: 8px; border: 1px solid #334;
-            width: 300px; max-height: 90vh; overflow-y: auto;
+            width: 310px; max-height: 90vh; overflow-y: auto;
             backdrop-filter: blur(10px); box-shadow: 0 10px 30px rgba(0,0,0,0.8);
         }
         #ui-left { left: 15px; }
@@ -61,7 +61,7 @@
 <body>
 
 <div id="ui-left" class="ui-panel">
-    <h3>시네마틱 파도 & 자막 스튜디오</h3>
+    <h3>시네마틱 파도 & 스마트 자막</h3>
     
     <div class="section-title" style="color:#00ffcc;">[파일 업로드]</div>
     <div>
@@ -76,7 +76,7 @@
     </div>
     <div class="control-group">
         <label>자막 상하 위치 (Y) <span id="val-sub-y">1024</span></label>
-        <input type="range" id="ctrl-sub-y" min="200" max="2048" value="1024" step="10">
+        <input type="range" id="ctrl-sub-y" min="200" max="3500" value="1024" step="10">
     </div>
     <div class="control-group">
         <label style="color:#00ffcc;">자막 가로 허용 폭 (Max Width) <span id="val-sub-max-w">1400</span></label>
@@ -89,12 +89,16 @@
 
     <div class="section-title" style="color:#ff3366;">[자막 ↔ 파도 타이밍 동기화]</div>
     <div class="control-group">
-        <label>자막 열림 (파도 후퇴) <span id="val-reveal-time">0.2초 전</span></label>
-        <input type="range" id="ctrl-reveal-time" min="0.0" max="2.0" value="0.2" step="0.1">
+        <label>파도 위치 (자막 닫힘 / 덮침) <span id="val-wave-cover-pos">0.25</span></label>
+        <input type="range" id="ctrl-wave-cover-pos" min="0.0" max="1.0" value="0.25" step="0.05">
     </div>
     <div class="control-group">
-        <label>자막 덮임 (파도 덮침) <span id="val-cover-time">0.2초 전</span></label>
-        <input type="range" id="ctrl-cover-time" min="0.0" max="2.0" value="0.2" step="0.1">
+        <label>파도 위치 (자막 열림 / 후퇴) <span id="val-wave-reveal-pos">0.75</span></label>
+        <input type="range" id="ctrl-wave-reveal-pos" min="0.0" max="1.0" value="0.75" step="0.05">
+    </div>
+    <div class="control-group">
+        <label>자막 노출 시간 오프셋 <span id="val-reveal-time">0.2초 전</span></label>
+        <input type="range" id="ctrl-reveal-time" min="0.0" max="2.0" value="0.2" step="0.1">
     </div>
     <div class="control-group">
         <label>파도 덮침 속도 (Surge Speed) <span id="val-surge-speed">0.05</span></label>
@@ -130,8 +134,8 @@
             <div id="status">오디오 로드 후 미리보기 타임라인이 활성화됩니다.</div>
             
             <div class="control-group" id="preview-box" style="display:none; margin-top:15px; border-top:1px dashed #445; padding-top:10px;">
-                <label style="color:#ffaa00;">미리보기 타임라인 <span id="val-preview-time">0.0s</span></label>
-                <input type="range" id="ctrl-preview-time" min="0" max="100" value="0" step="0.1">
+                <label style="color:#ffaa00;">미리보기 스크러빙 <span id="val-preview-time">0.0s</span></label>
+                <input type="range" id="ctrl-preview-time" min="0" max="100" value="0" step="0.05">
             </div>
 
             <button id="record-btn" class="main-btn record-btn">▶ 영상 렌더링 녹화 시작 (MP4)</button>
@@ -196,11 +200,11 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 
 <script>
-    // --- 1. 기본 환경 세팅 (카메라 탑뷰 완벽 고정) ---
+    // --- 1. 기본 환경 세팅 (카메라 하드코딩) ---
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x020205); 
     
-    // 시네마틱 풀스크린 탑뷰를 위한 카메라 하드코딩
+    // 시네마틱 풀스크린 탑뷰 (카메라 고정)
     const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 8000);
     camera.position.set(0, 1500, 0); 
     camera.lookAt(0, 0, 0);
@@ -241,6 +245,8 @@
     const ctrlRatio = document.getElementById('ctrl-ratio');
     const ctrlRevealTime = document.getElementById('ctrl-reveal-time');
     const ctrlCoverTime = document.getElementById('ctrl-cover-time');
+    const ctrlWaveCoverPos = document.getElementById('ctrl-wave-cover-pos');
+    const ctrlWaveRevealPos = document.getElementById('ctrl-wave-reveal-pos');
     const ctrlSurgeSpeed = document.getElementById('ctrl-surge-speed');
     const ctrlWaveAngle = document.getElementById('ctrl-wave-angle');
     const ctrlWaveDetail = document.getElementById('ctrl-wave-detail');
@@ -250,6 +256,7 @@
     const ctrlColorStart = document.getElementById('ctrl-color-start');
     const ctrlColorEnd = document.getElementById('ctrl-color-end');
     const ctrlColorFoam = document.getElementById('ctrl-color-foam'); 
+    const srtInput = document.getElementById('srt-file');
     const ctrlSubSize = document.getElementById('ctrl-sub-size');
     const ctrlSubY = document.getElementById('ctrl-sub-y');
     const ctrlSubMaxW = document.getElementById('ctrl-sub-max-w');
@@ -257,16 +264,21 @@
     const ctrlPreviewTime = document.getElementById('ctrl-preview-time');
 
     document.getElementById('btn-randomize').onclick = () => { 
-        globalRandomSeed = Math.random() * 50.0; // 너무 큰 폭의 도약 방지
+        globalRandomSeed = Math.random() * 50.0; 
+        if(!isPlaying) renderFrame(manualTimeSec, true);
     };
 
-    // 캔버스 해상도를 화면 비율에 맞춰 동적 조절 (잘림 방지)
+    // ★ 버그 픽스 1: 렌더링 해상도를 반드시 짝수로 맞춤 (MP4 인코더 크래시 방지)
     let textCanvasWidth = 2048;
     let textCanvasHeight = 2048;
 
     function updateAspectRatio() {
         let val = ctrlRatio.value; let w = window.innerWidth, h = window.innerHeight;
         if (val === '16:9') { w = 1920; h = 1080; } else if (val === '9:16') { w = 1080; h = 1920; }
+        
+        w = Math.floor(w / 2) * 2;
+        h = Math.floor(h / 2) * 2;
+        
         renderer.setSize(w, h); composer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
         
         textCanvasHeight = Math.floor(textCanvasWidth / camera.aspect);
@@ -274,11 +286,12 @@
         textCanvas.height = textCanvasHeight;
         ctrlSubY.max = textCanvasHeight; 
         updateSubtitleCanvas(currentSubtitle); 
+        
+        if(!isPlaying) renderFrame(manualTimeSec, true);
     }
     ctrlRatio.onchange = updateAspectRatio; window.addEventListener('resize', () => { if(ctrlRatio.value==='fit') updateAspectRatio(); }); 
 
-    // ★ 버그 픽스: 실제로 존재하는 UI ID만 배열에 등록하여 안전하게 매핑 (cam-x,y,z 제거 완료)
-    const validUIInputs = ['react-bass', 'react-treb', 'smooth', 'bloom', 'grain', 'vignette', 'wave-angle', 'wave-detail', 'surge-speed', 'sub-size', 'sub-y', 'sub-max-w', 'sub-lh'];
+    const validUIInputs = ['react-bass', 'react-treb', 'smooth', 'bloom', 'grain', 'vignette', 'wave-angle', 'wave-detail', 'surge-speed', 'sub-size', 'sub-y', 'sub-max-w', 'sub-lh', 'wave-cover-pos', 'wave-reveal-pos'];
     
     validUIInputs.forEach(id => {
         let element = document.getElementById(`ctrl-${id}`);
@@ -293,21 +306,23 @@
                 if(['sub-size', 'sub-y', 'sub-max-w', 'sub-lh'].includes(id)) {
                     updateSubtitleCanvas(currentSubtitle); 
                 }
+                
+                if(!isPlaying) renderFrame(manualTimeSec, true);
             });
         }
     });
 
-    ctrlRevealTime.addEventListener('input', (e) => updateUIVal('val-reveal-time', e.target.value, '초 전'));
-    ctrlCoverTime.addEventListener('input', (e) => updateUIVal('val-cover-time', e.target.value, '초 전'));
+    ctrlRevealTime.addEventListener('input', (e) => { updateUIVal('val-reveal-time', e.target.value, '초 전'); if(!isPlaying) renderFrame(manualTimeSec, true); });
+    ctrlCoverTime.addEventListener('input', (e) => { updateUIVal('val-cover-time', e.target.value, '초 전'); if(!isPlaying) renderFrame(manualTimeSec, true); });
 
-    // --- 2. 스마트 자동 줄바꿈 자막 캔버스 엔진 (White text + Black outline) ---
+    // --- 2. 스마트 줄바꿈 자막 캔버스 엔진 ---
     const textCanvas = document.createElement('canvas');
     const textCtx = textCanvas.getContext('2d');
     const textTex = new THREE.CanvasTexture(textCanvas);
     textTex.generateMipmaps = false; textTex.minFilter = THREE.LinearFilter;
 
     let parsedSRT = [];
-    let currentSubtitle = "시네마틱 해변 파도 스튜디오\n(아래 미리보기 슬라이더를 움직여 자막을 확인하세요)"; 
+    let currentSubtitle = "미리보기 슬라이더를 드래그하여\n자막의 크기와 여백을\n실시간으로 확인하세요."; 
 
     function parseSRTData(data) {
         const regex = /(?:\d+)\s+(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\s+([\s\S]*?)(?=(?:\s*\n\s*\n|$))/g;
@@ -334,18 +349,18 @@
         textCtx.font = 'bold ' + baseSize + 'px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
         textCtx.fillStyle = 'rgba(255, 255, 255, 1.0)';
         textCtx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
-        textCtx.lineWidth = baseSize * 0.05;
+        textCtx.lineWidth = baseSize * 0.06;
         textCtx.lineJoin = 'round';
         textCtx.textAlign = 'center';
         textCtx.textBaseline = 'middle';
         textCtx.shadowColor = 'rgba(0, 0, 0, 0.6)';
         textCtx.shadowBlur = 15; 
-        textCtx.shadowOffsetX = 5; textCtx.shadowOffsetY = 5;
+        textCtx.shadowOffsetX = 4; textCtx.shadowOffsetY = 4;
 
         let rawLines = text.split('\n');
         let wrappedLines = [];
 
-        // 스마트 줄바꿈 처리
+        // 스마트 줄바꿈
         for(let i=0; i<rawLines.length; i++) {
             let words = rawLines[i].split(' ');
             let currentLine = words[0];
@@ -374,7 +389,7 @@
         }
         textTex.needsUpdate = true;
     }
-    
+
     document.getElementById('srt-file').onchange = function(e) {
         const file = e.target.files[0]; if (!file) return;
         const reader = new FileReader();
@@ -382,6 +397,7 @@
             parsedSRT = parseSRTData(event.target.result);
             document.getElementById('status').innerText = `SRT 로드 완료! 미리보기 슬라이더를 움직여보세요.`;
             currentSubtitle = ""; updateSubtitleCanvas(""); 
+            if(!isPlaying) renderFrame(manualTimeSec, true);
         };
         reader.readAsText(file);
     };
@@ -391,7 +407,7 @@
     const waveShaderMat = new THREE.ShaderMaterial({
         uniforms: {
             uTime: { value: 0.0 }, uBass: { value: 0.0 }, uTreble: { value: 0.0 }, uAngle: { value: 0.0 }, uSeed: { value: 0.0 },
-            uWaveDetail: { value: 2.0 }, uSurge: { value: 1.0 }, uSurgeVelocity: { value: 0.0 }, 
+            uWaveDetail: { value: 2.0 }, uSurge: { value: 0.25 }, uSurgeVelocity: { value: 0.0 }, 
             uTextMap: { value: textTex }, uTextScale: { value: new THREE.Vector2(1.0, 1.0) },
             cSand: { value: new THREE.Color(0xd2b48c) }, cShallow: { value: new THREE.Color(ctrlColorStart.value) }, 
             cDeep: { value: new THREE.Color(ctrlColorEnd.value) }, cFoam: { value: new THREE.Color(ctrlColorFoam.value) } 
@@ -426,14 +442,11 @@
                 float reachScale = 1.0 - (uSurge * 0.5);
                 float audioReach = (sin(rUv.x * 12.0 + uTime) * uBass * 0.15 + cos(rUv.x * 20.0 - uTime) * uTreble * 0.15) * reachScale;
                 
-                // uSurge = 0일때 모래사장(0.75), 1일때 바다가 덮침(0.25)
-                float targetWavePos = mix(0.75, 0.25, uSurge);
-                float wavePos = targetWavePos + (waveSine * 0.08 * (1.0 - uSurge)) + audioReach; 
+                float wavePos = uSurge + (waveSine * 0.08) + audioReach; 
                 
                 float edgeNoise = noise(rUv * 15.0 * uWaveDetail + uTime*0.5) * 0.08 + noise(rUv * 30.0 * uWaveDetail - uTime) * 0.04;
                 float distToWave = rUv.y - (wavePos + edgeNoise);
                 
-                // 화면 폭에 1:1 매칭
                 vec2 textUv = (vUv - 0.5) * uTextScale + 0.5; 
                 vec4 textData = vec4(0.0);
                 if(textUv.x >= 0.0 && textUv.x <= 1.0 && textUv.y >= 0.0 && textUv.y <= 1.0) {
@@ -444,7 +457,7 @@
                 if (distToWave < 0.0) { 
                     vec3 baseSand = cSand;
                     if (distToWave > -0.06 && distToWave <= 0.0) baseSand *= 0.85; 
-                    finalColor = mix(baseSand, textData.rgb, textData.a); // 선명한 자막
+                    finalColor = mix(baseSand, textData.rgb, textData.a); 
                     
                     float residue = smoothstep(-0.04, 0.0, distToWave);
                     float residueNoise = noise(rUv * 150.0 * uWaveDetail);
@@ -452,7 +465,6 @@
                 } else { 
                     vec3 waterColor = mix(cShallow, cDeep, smoothstep(0.0, 0.4, distToWave));
                     
-                    // 파도 밑에서는 글씨가 물리적으로 일그러지며 80% 가려짐
                     float textDistortion = noise(rUv * 30.0 + uTime) * 0.02 * clamp(distToWave*5.0, 0.0, 1.0);
                     vec2 distTextUv = textUv + textDistortion;
                     vec4 distTextData = vec4(0.0);
@@ -481,14 +493,13 @@
     waveMesh.rotation.x = -Math.PI / 2; 
     scene.add(waveMesh);
 
-    ctrlColorStart.oninput = (e) => { waveShaderMat.uniforms.cShallow.value.set(e.target.value); };
-    ctrlColorEnd.oninput = (e) => { waveShaderMat.uniforms.cDeep.value.set(e.target.value); };
-    ctrlColorFoam.oninput = (e) => { waveShaderMat.uniforms.cFoam.value.set(e.target.value); }; 
-
-    // 초기 업데이트
     updateAspectRatio(); 
 
-    // --- 4. 오디오 & 타임라인 미리보기 ---
+    ctrlColorStart.oninput = (e) => { waveShaderMat.uniforms.cShallow.value.set(e.target.value); if(!isPlaying) renderFrame(manualTimeSec, true); };
+    ctrlColorEnd.oninput = (e) => { waveShaderMat.uniforms.cDeep.value.set(e.target.value); if(!isPlaying) renderFrame(manualTimeSec, true); };
+    ctrlColorFoam.oninput = (e) => { waveShaderMat.uniforms.cFoam.value.set(e.target.value); if(!isPlaying) renderFrame(manualTimeSec, true); }; 
+
+    // --- 4. 오디오 & 타임라인 & 녹화 시스템 ---
     let audioCtx, analyser, dataArray;
     let decodedBuffer = null; let isPlaying = false, currentSource = null;
     let smoothedData = new Float32Array(512);
@@ -511,7 +522,6 @@
                 decodedBuffer = buffer; 
                 document.getElementById('status').innerText = "준비 완료! 아래 슬라이더로 타이밍을 미리보세요.";
                 document.getElementById('record-btn').style.display = 'block';
-                
                 document.getElementById('preview-box').style.display = 'block';
                 ctrlPreviewTime.max = decodedBuffer.duration;
             });
@@ -523,6 +533,7 @@
         if (!isPlaying) {
             manualTimeSec = parseFloat(e.target.value);
             updateUIVal('val-preview-time', manualTimeSec.toFixed(1), 's');
+            renderFrame(manualTimeSec, true); 
         }
     });
 
@@ -530,7 +541,8 @@
         if (!decodedBuffer) return; if (currentSource) { try { currentSource.stop(); } catch(e) {} }
         currentSource = audioCtx.createBufferSource(); currentSource.buffer = decodedBuffer; currentSource.connect(analyser);
         const audioDest = audioCtx.createMediaStreamDestination(); analyser.connect(audioCtx.destination); analyser.connect(audioDest);            
-        const canvasStream = renderer.domElement.captureStream(60); const combinedStream = new MediaStream([...canvasStream.getVideoTracks(), ...audioDest.stream.getAudioTracks()]);
+        const canvasStream = renderer.domElement.captureStream(60); 
+        const combinedStream = new MediaStream([...canvasStream.getVideoTracks(), ...audioDest.stream.getAudioTracks()]);
         
         let options = { mimeType: 'video/mp4; codecs=avc1', videoBitsPerSecond: 8000000 }; let ext = 'mp4';
         if (!MediaRecorder.isTypeSupported(options.mimeType)) { options = { mimeType: 'video/webm; codecs=vp9', videoBitsPerSecond: 8000000 }; ext = 'webm'; }
@@ -542,31 +554,32 @@
             const a = document.createElement('a'); a.style = 'display: none'; a.href = url; a.download = loadedFileName.replace(/\.[^/.]+$/, "") + `_WaveSubtitles_Final.${ext}`;
             document.body.appendChild(a); a.click(); window.URL.revokeObjectURL(url); document.getElementById('status').innerText = `녹화 완료!`;
             ctrlRatio.disabled = false; ctrlPreviewTime.disabled = false; isPlaying = false; document.getElementById('record-btn').style.display = 'block';
-            updateSubtitleCanvas(""); 
+            updateSubtitleCanvas(""); renderFrame(0, true);
         };
         currentSource.onended = () => { if(mediaRecorder.state === 'recording') mediaRecorder.stop(); };
         
         audioStartTime = audioCtx.currentTime; 
-        currentSource.start(0); mediaRecorder.start(); isPlaying = true;
+        
+        // ★ 버그 픽스 2: 플래그 설정 후 즉시 애니메이션 루프 재점화!
+        isPlaying = true;
+        animate(); 
+
+        currentSource.start(0); 
+        try { mediaRecorder.start(); } catch(err) { console.error(err); alert("녹화 에러 발생"); }
         
         ctrlRatio.disabled = true; ctrlPreviewTime.disabled = true; this.style.display = 'none';
         document.getElementById('status').innerHTML = `<span class="recording-badge">● REC</span> 자막 연동 렌더링 중...`;
     };
 
-    // --- 5. 애니메이션 렌더링 루프 ---
-    let time = 0;
-    
-    function animate() {
-        requestAnimationFrame(animate);
-        time += 0.01;
-
+    // --- 5. 마스터 렌더링 엔진 (미리보기 & 녹화 겸용) ---
+    function renderFrame(targetTimeSec, isPreview = false) {
         let fovRad = 45 * Math.PI / 180;
         let visibleHeight = 2 * Math.tan(fovRad / 2) * 1500; 
         let visibleWidth = visibleHeight * camera.aspect;
         waveShaderMat.uniforms.uTextScale.value.set(6000.0 / visibleWidth, 6000.0 / visibleHeight);
 
         let rawBass = 0, rawTreble = 0;
-        if (isPlaying && analyser) {
+        if (isPlaying && analyser && !isPreview) {
             let smoothFactor = 1.0 - parseFloat(ctrlSmooth.value);
             analyser.getByteFrequencyData(dataArray);
             for(let i=0; i<dataArray.length; i++) smoothedData[i] += (dataArray[i] - smoothedData[i]) * smoothFactor;
@@ -577,14 +590,10 @@
             rawTreble = (tSum / 120 / 255) * parseFloat(ctrlReactTreb.value);
         }
 
-        let currentAudioTimeSec = isPlaying ? (audioCtx.currentTime - audioStartTime) : manualTimeSec;
-        if (isPlaying) {
-            ctrlPreviewTime.value = currentAudioTimeSec;
-            updateUIVal('val-preview-time', currentAudioTimeSec.toFixed(1), 's');
-        }
-        
-        let elapsedMs = currentAudioTimeSec * 1000;
-        let targetSurge = 1.0; 
+        let elapsedMs = targetTimeSec * 1000;
+        let coverPos = parseFloat(ctrlWaveCoverPos.value);
+        let revealPos = parseFloat(ctrlWaveRevealPos.value);
+        let targetSurge = coverPos; 
         let activeText = "";
         
         if (parsedSRT.length > 0) {
@@ -597,16 +606,16 @@
                 let coverTime = sub.end - coverOffset;
 
                 if (elapsedMs >= revealTime && elapsedMs < coverTime) {
-                    targetSurge = 0.0; 
+                    targetSurge = revealPos; 
                     activeText = sub.text;
                     break; 
                 } else if (elapsedMs >= coverTime && i < parsedSRT.length - 1 && elapsedMs < parsedSRT[i+1].start - revealOffset) {
-                     targetSurge = 1.0;
-                     break;
+                    targetSurge = coverPos;
+                    break;
                 }
             }
         } else {
-            targetSurge = 0.0; 
+            targetSurge = revealPos; 
             if(!isPlaying) activeText = currentSubtitle;
         }
 
@@ -614,12 +623,17 @@
             currentSubtitle = activeText; updateSubtitleCanvas(activeText);
         }
 
-        let prevSurge = waveShaderMat.uniforms.uSurge.value;
-        let surgeSpd = isPlaying ? parseFloat(ctrlSurgeSpeed.value) : 0.2; 
-        waveShaderMat.uniforms.uSurge.value += (targetSurge - waveShaderMat.uniforms.uSurge.value) * surgeSpd;
-        waveShaderMat.uniforms.uSurgeVelocity.value = Math.abs(waveShaderMat.uniforms.uSurge.value - prevSurge);
+        if (isPreview) {
+            waveShaderMat.uniforms.uSurge.value = targetSurge;
+            waveShaderMat.uniforms.uSurgeVelocity.value = 0.0;
+        } else {
+            let prevSurge = waveShaderMat.uniforms.uSurge.value;
+            let surgeSpd = parseFloat(ctrlSurgeSpeed.value);
+            waveShaderMat.uniforms.uSurge.value += (targetSurge - waveShaderMat.uniforms.uSurge.value) * surgeSpd;
+            waveShaderMat.uniforms.uSurgeVelocity.value = Math.abs(waveShaderMat.uniforms.uSurge.value - prevSurge);
+        }
 
-        waveShaderMat.uniforms.uTime.value = time;
+        waveShaderMat.uniforms.uTime.value = targetTimeSec;
         waveShaderMat.uniforms.uAngle.value = parseFloat(ctrlWaveAngle.value);
         waveShaderMat.uniforms.uBass.value = rawBass * 2.0; 
         waveShaderMat.uniforms.uTreble.value = rawTreble * 2.5;
@@ -628,7 +642,19 @@
 
         composer.render();
     }
-    animate(); 
+
+    function animate() {
+        if(isPlaying) {
+            requestAnimationFrame(animate);
+            let currentAudioTimeSec = audioCtx.currentTime - audioStartTime;
+            ctrlPreviewTime.value = currentAudioTimeSec;
+            updateUIVal('val-preview-time', currentAudioTimeSec.toFixed(1), 's');
+            renderFrame(currentAudioTimeSec, false);
+        }
+    }
+    
+    // 초기 로딩 렌더링
+    setTimeout(() => { renderFrame(0, true); }, 500);
 </script>
 </body>
 </html>
