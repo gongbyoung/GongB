@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Cinematic Wave & Smart Subtitle Studio v9.1 (Optimized)</title>
+    <title>Cinematic Wave & Smart Subtitle Studio v9.2 (Final)</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #020205; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; }
         canvas { width: 100vw !important; height: 100vh !important; object-fit: contain; }
@@ -201,14 +201,13 @@
 
 <script>
     // =========================================================
-    // 1. 상태 및 전역 변수 (안전 스코프)
+    // 1. 상태 및 전역 변수
     // =========================================================
     let isPlaying = false;
     let manualTimeSec = 0;
     let globalRandomSeed = 0.0;
     let audioStartTime = 0;
     
-    // ★ 피드백 반영: 가성비 최적화를 위해 자막 연산 가로폭을 명시적 1920 기본축으로 다운사이징 고정
     let textCanvasWidth = 1920; 
     let textCanvasHeight = 1920;
     
@@ -223,7 +222,7 @@
     let loadedFileName = "";
     
     // =========================================================
-    // 2. Three.js 기본 환경 설정 (카메라 탑뷰 완벽 고정)
+    // 2. Three.js 기본 환경 설정
     // =========================================================
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x020205); 
@@ -238,7 +237,7 @@
     document.body.appendChild(renderer.domElement);
 
     // =========================================================
-    // 3. 포스트 프로세싱 (아날로그 효과)
+    // 3. 포스트 프로세싱
     // =========================================================
     const CustomArtShader = {
         uniforms: { "tDiffuse": { value: null }, "uTime": { value: 0.0 }, "uGrain": { value: 0.10 }, "uVignette": { value: 1.5 } },
@@ -272,28 +271,6 @@
     const textTex = new THREE.CanvasTexture(textCanvas);
     textTex.generateMipmaps = false; textTex.minFilter = THREE.LinearFilter;
 
-    // DOM UI Elements Fetching
-    const ctrlRatio = document.getElementById('ctrl-ratio');
-    const ctrlRevealTime = document.getElementById('ctrl-reveal-time');
-    const ctrlWaveCoverPos = document.getElementById('ctrl-wave-cover-pos');
-    const ctrlWaveRevealPos = document.getElementById('ctrl-wave-reveal-pos');
-    const ctrlSurgeSpeed = document.getElementById('ctrl-surge-speed');
-    const ctrlWaveAngle = document.getElementById('ctrl-wave-angle');
-    const ctrlWaveDetail = document.getElementById('ctrl-wave-detail');
-    const ctrlReactBass = document.getElementById('ctrl-react-bass');
-    const ctrlReactTreb = document.getElementById('ctrl-react-treb');
-    const ctrlSmooth = document.getElementById('ctrl-smooth'); 
-    const ctrlColorStart = document.getElementById('ctrl-color-start');
-    const ctrlColorEnd = document.getElementById('ctrl-color-end');
-    const ctrlColorFoam = document.getElementById('ctrl-color-foam'); 
-    const ctrlSubSize = document.getElementById('ctrl-sub-size');
-    const ctrlSubY = document.getElementById('ctrl-sub-y');
-    const ctrlSubMaxW = document.getElementById('ctrl-sub-max-w');
-    const ctrlSubLh = document.getElementById('ctrl-sub-lh');
-    const ctrlPreviewTime = document.getElementById('ctrl-preview-time');
-    const srtInput = document.getElementById('srt-file');
-
-    // ★ 안전하게 UI 값을 가져오는 결함 차단용 방어 함수
     function getUIVal(id, defaultVal) {
         let el = document.getElementById(id);
         return el ? parseFloat(el.value) : defaultVal;
@@ -322,7 +299,6 @@
         let rawLines = text.split('\n');
         let wrappedLines = [];
 
-        // 스마트 줄바꿈
         for(let i=0; i<rawLines.length; i++) {
             let words = rawLines[i].split(' ');
             let currentLine = words[0];
@@ -353,9 +329,8 @@
     }
 
     // =========================================================
-    // 5. 해변 파도 셰이더 매터리얼 (불필요 영역 차단 최적화)
+    // 5. 해변 파도 셰이더 매터리얼
     // =========================================================
-    // ★ 피드백 반영: 화면 밖의 불필요한 사각지대를 다 렌더링하지 않도록 메쉬 지형 크기를 6000에서 2500으로 정밀 압축!
     const waveGeo = new THREE.PlaneGeometry(2500, 2500, 1, 1);
     const waveShaderMat = new THREE.ShaderMaterial({
         uniforms: {
@@ -388,7 +363,6 @@
             }
 
             void main() {
-                // ★ 6000 짜리 지형 크기에 파도가 종속되던 공식을 화면 스크린 비율(uTextScale) 기반 계산으로 완전히 분리!
                 vec2 screenUv = (vUv - 0.5) * uTextScale + 0.5; 
 
                 float ang = radians(uAngle);
@@ -400,10 +374,8 @@
                 float reachScale = 1.0 - (uSurge * 0.5);
                 float audioReach = (sin(rUv.x * 12.0 + uTime) * uBass * 0.15 + cos(rUv.x * 20.0 - uTime) * uTreble * 0.15) * reachScale;
                 
-                // 슬라이더 포지션 수치 그대로 화면 픽셀 매핑 연동 (파란화면 멈춤 버그 완전 해결)
                 float wavePos = uSurge + (waveSine * 0.08) + audioReach; 
                 
-                // 지형이 튀는 것을 막기 위해 오프셋 노이즈 스케일 다운
                 vec2 noiseUv = rUv + vec2(uSeed * 0.02);
                 float edgeNoise = noise(noiseUv * 15.0 * uWaveDetail + uTime*0.5) * 0.08 + noise(noiseUv * 30.0 * uWaveDetail - uTime) * 0.04;
                 float distToWave = rUv.y - (wavePos + edgeNoise);
@@ -454,8 +426,10 @@
     scene.add(waveMesh);
 
     // =========================================================
-    // 6. 해상도 및 이벤트 연동
+    // 6. 해상도 및 UI 안전 동기화
     // =========================================================
+    const ctrlRatio = document.getElementById('ctrl-ratio');
+
     function updateAspectRatio() {
         if(!ctrlRatio) return;
         let val = ctrlRatio.value; let w = window.innerWidth, h = window.innerHeight;
@@ -476,14 +450,22 @@
         updateSubtitleCanvas(currentSubtitle); 
         if(!isPlaying) renderFrame(manualTimeSec, true);
     }
-
+    
     if(ctrlRatio) ctrlRatio.onchange = updateAspectRatio; 
     window.addEventListener('resize', () => { if(ctrlRatio && ctrlRatio.value==='fit') updateAspectRatio(); }); 
 
-    document.getElementById('btn-randomize').onclick = () => { 
-        globalRandomSeed = Math.random() * 50.0; 
-        if(!isPlaying) renderFrame(manualTimeSec, true);
+    const updateUIVal = (id, val, suffix='') => {
+        let el = document.getElementById(`val-${id}`);
+        if(el) el.innerText = val + suffix;
     };
+
+    let btnRand = document.getElementById('btn-randomize');
+    if(btnRand) {
+        btnRand.onclick = () => { 
+            globalRandomSeed = Math.random() * 50.0; 
+            if(!isPlaying) renderFrame(manualTimeSec, true);
+        };
+    }
 
     const validUIInputs = ['react-bass', 'react-treb', 'smooth', 'bloom', 'grain', 'vignette', 'wave-angle', 'wave-detail', 'surge-speed', 'sub-size', 'sub-y', 'sub-max-w', 'sub-lh', 'wave-cover-pos', 'wave-reveal-pos', 'reveal-time'];
     
@@ -491,7 +473,7 @@
         let element = document.getElementById(`ctrl-${id}`);
         if(element) {
             element.addEventListener('input', (e) => {
-                let suffix = id==='wave-angle' ? '°' : (id==='reveal-time' ? '초 전' : '');
+                let suffix = id==='wave-angle' ? '°' : (id.includes('time') ? '초 전' : '');
                 updateUIVal(id, e.target.value, suffix);
                 
                 if(id === 'bloom') bloomPass.strength = parseFloat(e.target.value);
@@ -501,6 +483,7 @@
                 if(['sub-size', 'sub-y', 'sub-max-w', 'sub-lh'].includes(id)) {
                     updateSubtitleCanvas(currentSubtitle); 
                 }
+                
                 if(!isPlaying) renderFrame(manualTimeSec, true);
             });
         }
@@ -513,14 +496,14 @@
     if(cStart) {
         cStart.oninput = (e) => { 
             waveShaderMat.uniforms.cShallow.value.set(e.target.value); 
-            waveShaderMat.uniforms.cSand.value.set(e.target.value).multiplyScalar(1.2); // 모래색 자동 반영
+            waveShaderMat.uniforms.cSand.value.set(e.target.value).multiplyScalar(1.2); 
             if(!isPlaying) renderFrame(manualTimeSec, true); 
         };
     }
     if(cEnd) cEnd.oninput = (e) => { waveShaderMat.uniforms.cDeep.value.set(e.target.value); if(!isPlaying) renderFrame(manualTimeSec, true); };
     if(cFoam) cFoam.oninput = (e) => { waveShaderMat.uniforms.cFoam.value.set(e.target.value); if(!isPlaying) renderFrame(manualTimeSec, true); }; 
 
-    // 초기 컬러 바인딩 강제 주입 (널 크래시 에러 방어)
+    // 초기 컬러 바인딩 강제 주입
     if(cStart) { waveShaderMat.uniforms.cShallow.value.set(cStart.value); waveShaderMat.uniforms.cSand.value.set(cStart.value).multiplyScalar(1.2); }
     if(cEnd) waveShaderMat.uniforms.cDeep.value.set(cEnd.value);
     if(cFoam) waveShaderMat.uniforms.cFoam.value.set(cFoam.value);
@@ -528,15 +511,33 @@
     updateAspectRatio();
 
     // =========================================================
-    // 7. 데이터 파싱 및 오디오 파일 로더
+    // 7. 데이터 파싱 및 오디오 파일 로더 (복구 완료!)
     // =========================================================
+    // ★ 에러의 원인이었던 파싱 함수 2개를 완벽하게 복구했습니다.
+    function parseSRTData(data) {
+        const normalizedData = data.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+        const regex = /(?:\d+)\n(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\n([\s\S]*?)(?=(?:\n\n|$))/g;
+        let match; const result = [];
+        while ((match = regex.exec(normalizedData)) !== null) {
+            result.push({ start: timeMs(match[1]), end: timeMs(match[2]), text: match[3].trim() });
+        }
+        return result;
+    }
+
+    function timeMs(val) {
+        const p = val.split(/[:,]/);
+        return (parseInt(p[0])*3600 + parseInt(p[1])*60 + parseInt(p[2]))*1000 + parseInt(p[3]);
+    }
+
+    let srtInput = document.getElementById('srt-file');
     if(srtInput) {
         srtInput.onchange = function(e) {
             const file = e.target.files[0]; if (!file) return;
             const reader = new FileReader();
             reader.onload = function(event) {
+                // 이제 parseSRTData 함수가 정상적으로 실행됩니다.
                 parsedSRT = parseSRTData(event.target.result);
-                document.getElementById('status').innerText = `SRT 로드 완료! 미리보기 슬라이더를 움직여보세요.`;
+                document.getElementById('status').innerText = `SRT 자막 로드 완료! (${parsedSRT.length} 줄)`;
                 currentSubtitle = ""; updateSubtitleCanvas(""); 
                 if(!isPlaying) renderFrame(manualTimeSec, true);
             };
@@ -562,6 +563,7 @@
                     document.getElementById('record-btn').style.display = 'block';
                     
                     document.getElementById('preview-box').style.display = 'block';
+                    let ctrlPreviewTime = document.getElementById('ctrl-preview-time');
                     if(ctrlPreviewTime) ctrlPreviewTime.max = buffer.duration; 
                     
                     if(!isPlaying) renderFrame(manualTimeSec, true);
@@ -575,8 +577,19 @@
         reader.readAsArrayBuffer(file);
     };
 
+    let ctrlPreviewTime = document.getElementById('ctrl-preview-time');
+    if(ctrlPreviewTime) {
+        ctrlPreviewTime.addEventListener('input', (e) => {
+            if (!isPlaying) {
+                manualTimeSec = parseFloat(e.target.value);
+                updateUIVal('preview-time', manualTimeSec.toFixed(1), 's');
+                renderFrame(manualTimeSec, true); 
+            }
+        });
+    }
+
     // =========================================================
-    // 8. 렌더링 & 녹화 시스템 (Damping 및 0바이트 튕김 원천 봉쇄)
+    // 8. 렌더링 & 녹화 시스템 
     // =========================================================
     document.getElementById('record-btn').onclick = function() {
         if (!decodedBuffer) return; 
@@ -586,7 +599,6 @@
             try { currentSource.stop(); } catch(e) {} 
         }
 
-        // ★ 버그 픽스 2: 오디오 컨텍스트가 정지 상태일 수 있으므로 강제 resume 후 녹화 실행 (0B 크래시 완벽 치료)
         audioCtx.resume().then(() => {
             currentSource = audioCtx.createBufferSource(); 
             currentSource.buffer = decodedBuffer; 
@@ -606,17 +618,25 @@
             mediaRecorder = new MediaRecorder(combinedStream, options);
             mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
             mediaRecorder.onstop = () => {
-                const blob = new Blob(recordedChunks, { type: options.mimeType }); const url = URL.createObjectURL(blob);
-                const a = document.createElement('a'); a.style = 'display: none'; a.href = url; a.download = loadedFileName.replace(/\.[^/.]+$/, "") + `_WaveSubtitles_v9.${ext}`;
-                document.body.appendChild(a); a.click(); window.URL.revokeObjectURL(url); document.getElementById('status').innerText = `녹화 완료!`;
-                ctrlRatio.disabled = false; if(ctrlPreviewTime) ctrlPreviewTime.disabled = false; isPlaying = false; document.getElementById('record-btn').style.display = 'block';
+                const blob = new Blob(recordedChunks, { type: options.mimeType }); 
+                if (blob.size === 0) {
+                    alert("녹화된 데이터가 없습니다. 화면 렌더링 상태를 확인해주세요.");
+                } else {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a'); a.style = 'display: none'; a.href = url; a.download = loadedFileName.replace(/\.[^/.]+$/, "") + `_WaveSubtitles_Final.${ext}`;
+                    document.body.appendChild(a); a.click(); window.URL.revokeObjectURL(url); 
+                }
+                document.getElementById('status').innerText = `녹화 완료!`;
+                if(ctrlRatio) ctrlRatio.disabled = false; 
+                if(ctrlPreviewTime) ctrlPreviewTime.disabled = false; 
+                isPlaying = false; document.getElementById('record-btn').style.display = 'block';
                 updateSubtitleCanvas(""); renderFrame(0, true);
             };
             currentSource.onended = () => { if(mediaRecorder.state === 'recording') mediaRecorder.stop(); };
             
             audioStartTime = audioCtx.currentTime; 
             isPlaying = true;
-            animate(); // 프레임 드랍을 막기 위해 렌더링 즉시 기동
+            animate(); 
 
             currentSource.start(0); 
             mediaRecorder.start();
@@ -624,7 +644,7 @@
             if(ctrlRatio) ctrlRatio.disabled = true; 
             if(ctrlPreviewTime) ctrlPreviewTime.disabled = true; 
             document.getElementById('record-btn').style.display = 'none';
-            document.getElementById('status').innerHTML = `<span class="recording-badge">● REC</span> 1920 가성비 최적화 인코딩 중...`;
+            document.getElementById('status').innerHTML = `<span class="recording-badge">● REC</span> 시네마틱 렌더링 중...`;
         });
     };
 
@@ -632,8 +652,6 @@
         let fovRad = 45 * Math.PI / 180;
         let visibleHeight = 2 * Math.tan(fovRad / 2) * 1500; 
         let visibleWidth = visibleHeight * camera.aspect;
-        
-        // 메쉬의 해상도 축약 비율을 셰이더로 정밀 전송 (2500 고정 스케일 매핑)
         waveShaderMat.uniforms.uTextScale.value.set(2500.0 / visibleWidth, 2500.0 / visibleHeight);
 
         let rawBass = 0, rawTreble = 0;
@@ -655,18 +673,18 @@
         let activeText = "";
         
         if (parsedSRT.length > 0) {
-            let revealOffset = getUIVal('ctrl-reveal-time', 0.2) * 1000;
+            let offsetTime = getUIVal('ctrl-reveal-time', 0.2) * 1000; 
 
             for (let i = 0; i < parsedSRT.length; i++) {
                 let sub = parsedSRT[i];
-                let revealTime = sub.start - revealOffset;
-                let coverTime = sub.end - revealOffset;
+                let revealTime = sub.start - offsetTime;
+                let coverTime = sub.end - offsetTime;
 
                 if (elapsedMs >= revealTime && elapsedMs < coverTime) {
                     targetSurge = revealPos; 
                     activeText = sub.text;
                     break; 
-                } else if (elapsedMs >= coverTime && i < parsedSRT.length - 1 && elapsedMs < parsedSRT[i+1].start - revealOffset) {
+                } else if (elapsedMs >= coverTime && i < parsedSRT.length - 1 && elapsedMs < parsedSRT[i+1].start - offsetTime) {
                     targetSurge = coverPos;
                     break;
                 }
@@ -711,6 +729,9 @@
             renderFrame(currentAudioTimeSec, false);
         }
     }
+    
+    // 초기 로딩
+    setTimeout(() => { renderFrame(0, true); }, 500);
 </script>
 </body>
 </html>
