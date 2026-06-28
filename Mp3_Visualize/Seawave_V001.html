@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Cinematic Wave & Smart Subtitle Studio v8.6 (Clean Fix)</title>
+    <title>Cinematic Wave & Smart Subtitle Studio v8.7 (Final Master Fix)</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #020205; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; }
         canvas { width: 100vw !important; height: 100vh !important; object-fit: contain; }
@@ -134,8 +134,8 @@
             <div id="status">오디오 로드 후 미리보기 타임라인이 활성화됩니다.</div>
             
             <div class="control-group" id="preview-box" style="display:none; margin-top:15px; border-top:1px dashed #445; padding-top:10px;">
-                <label style="color:#ffaa00;">미리보기 타임라인 <span id="val-preview-time">0.0s</span></label>
-                <input type="range" id="ctrl-preview-time" min="0" max="100" value="0" step="0.1">
+                <label style="color:#ffaa00;">미리보기 스크러빙 <span id="val-preview-time">0.0s</span></label>
+                <input type="range" id="ctrl-preview-time" min="0" max="100" value="0" step="0.05">
             </div>
 
             <button id="record-btn" class="main-btn record-btn">▶ 영상 렌더링 녹화 시작 (MP4)</button>
@@ -201,7 +201,7 @@
 
 <script>
     // =========================================================
-    // 1. 상태 및 전역 변수
+    // 1. 상태 및 전역 변수 (안전한 스코프)
     // =========================================================
     let isPlaying = false;
     let manualTimeSec = 0;
@@ -237,7 +237,7 @@
     document.body.appendChild(renderer.domElement);
 
     // =========================================================
-    // 3. 포스트 프로세싱 (아날로그 효과)
+    // 3. 포스트 프로세싱
     // =========================================================
     const CustomArtShader = {
         uniforms: { "tDiffuse": { value: null }, "uTime": { value: 0.0 }, "uGrain": { value: 0.10 }, "uVignette": { value: 1.5 } },
@@ -271,7 +271,7 @@
     const textTex = new THREE.CanvasTexture(textCanvas);
     textTex.generateMipmaps = false; textTex.minFilter = THREE.LinearFilter;
 
-    // DOM UI Elements Fetching
+    // DOM UI Elements
     const ctrlRatio = document.getElementById('ctrl-ratio');
     const ctrlRevealTime = document.getElementById('ctrl-reveal-time');
     const ctrlWaveCoverPos = document.getElementById('ctrl-wave-cover-pos');
@@ -296,10 +296,10 @@
         textCtx.clearRect(0, 0, textCanvasWidth, textCanvasHeight);
         if(!text) { textTex.needsUpdate = true; return; }
 
-        let baseSize = parseInt(ctrlSubSize.value);
-        let baseY = parseInt(ctrlSubY.value);
-        let maxWidth = parseInt(ctrlSubMaxW.value); 
-        let lineHeightExt = parseFloat(ctrlSubLh.value); 
+        let baseSize = parseInt(ctrlSubSize.value) || 90;
+        let baseY = parseInt(ctrlSubY.value) || 1024;
+        let maxWidth = parseInt(ctrlSubMaxW.value) || 1400; 
+        let lineHeightExt = parseFloat(ctrlSubLh.value) || 1.4; 
 
         textCtx.font = 'bold ' + baseSize + 'px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
         textCtx.fillStyle = 'rgba(255, 255, 255, 1.0)';
@@ -437,7 +437,7 @@
     scene.add(waveMesh);
 
     // =========================================================
-    // 6. 해상도 및 이벤트 연동
+    // 6. 해상도 및 이벤트 연동 (안전한 스코프)
     // =========================================================
     function updateAspectRatio() {
         let val = ctrlRatio.value; let w = window.innerWidth, h = window.innerHeight;
@@ -451,7 +451,7 @@
         textCanvasHeight = Math.floor(textCanvasWidth / camera.aspect);
         textCanvas.width = textCanvasWidth;
         textCanvas.height = textCanvasHeight;
-        ctrlSubY.max = textCanvasHeight; 
+        if(ctrlSubY) ctrlSubY.max = textCanvasHeight; 
         updateSubtitleCanvas(currentSubtitle); 
         
         if(!isPlaying) renderFrame(manualTimeSec, true);
@@ -462,22 +462,22 @@
         if(el) el.innerText = val + suffix;
     };
 
-    ctrlRatio.onchange = updateAspectRatio; 
-    window.addEventListener('resize', () => { if(ctrlRatio.value==='fit') updateAspectRatio(); }); 
+    if(ctrlRatio) ctrlRatio.onchange = updateAspectRatio; 
+    window.addEventListener('resize', () => { if(ctrlRatio && ctrlRatio.value==='fit') updateAspectRatio(); }); 
 
     document.getElementById('btn-randomize').onclick = () => { 
         globalRandomSeed = Math.random() * 50.0; 
         if(!isPlaying) renderFrame(manualTimeSec, true);
     };
 
-    // UI 이벤트 리스너 바인딩 (안전하게)
+    // ★ 버그 원천 차단: 존재하는 UI만 정확하게 바인딩
     const validUIInputs = ['react-bass', 'react-treb', 'smooth', 'bloom', 'grain', 'vignette', 'wave-angle', 'wave-detail', 'surge-speed', 'sub-size', 'sub-y', 'sub-max-w', 'sub-lh', 'wave-cover-pos', 'wave-reveal-pos', 'reveal-time'];
     
     validUIInputs.forEach(id => {
         let element = document.getElementById(`ctrl-${id}`);
         if(element) {
             element.addEventListener('input', (e) => {
-                let suffix = id==='wave-angle' ? '°' : (id.includes('time') ? '초 전' : '');
+                let suffix = id==='wave-angle' ? '°' : (id==='reveal-time' ? '초 전' : '');
                 updateUIVal(`val-${id}`, e.target.value, suffix);
                 
                 if(id === 'bloom') bloomPass.strength = parseFloat(e.target.value);
@@ -493,9 +493,9 @@
         }
     });
 
-    ctrlColorStart.oninput = (e) => { waveShaderMat.uniforms.cShallow.value.set(e.target.value); if(!isPlaying) renderFrame(manualTimeSec, true); };
-    ctrlColorEnd.oninput = (e) => { waveShaderMat.uniforms.cDeep.value.set(e.target.value); if(!isPlaying) renderFrame(manualTimeSec, true); };
-    ctrlColorFoam.oninput = (e) => { waveShaderMat.uniforms.cFoam.value.set(e.target.value); if(!isPlaying) renderFrame(manualTimeSec, true); }; 
+    if(ctrlColorStart) ctrlColorStart.oninput = (e) => { waveShaderMat.uniforms.cShallow.value.set(e.target.value); if(!isPlaying) renderFrame(manualTimeSec, true); };
+    if(ctrlColorEnd) ctrlColorEnd.oninput = (e) => { waveShaderMat.uniforms.cDeep.value.set(e.target.value); if(!isPlaying) renderFrame(manualTimeSec, true); };
+    if(ctrlColorFoam) ctrlColorFoam.oninput = (e) => { waveShaderMat.uniforms.cFoam.value.set(e.target.value); if(!isPlaying) renderFrame(manualTimeSec, true); }; 
 
     updateAspectRatio();
 
@@ -515,17 +515,19 @@
         return (parseInt(p[0])*3600 + parseInt(p[1])*60 + parseInt(p[2]))*1000 + parseInt(p[3]);
     }
 
-    srtInput.onchange = function(e) {
-        const file = e.target.files[0]; if (!file) return;
-        const reader = new FileReader();
-        reader.onload = function(event) {
-            parsedSRT = parseSRTData(event.target.result);
-            document.getElementById('status').innerText = `SRT 로드 완료! 미리보기 슬라이더를 움직여보세요.`;
-            currentSubtitle = ""; updateSubtitleCanvas(""); 
-            if(!isPlaying) renderFrame(manualTimeSec, true);
+    if(srtInput) {
+        srtInput.onchange = function(e) {
+            const file = e.target.files[0]; if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                parsedSRT = parseSRTData(event.target.result);
+                document.getElementById('status').innerText = `SRT 로드 완료! 미리보기 슬라이더를 움직여보세요.`;
+                currentSubtitle = ""; updateSubtitleCanvas(""); 
+                if(!isPlaying) renderFrame(manualTimeSec, true);
+            };
+            reader.readAsText(file);
         };
-        reader.readAsText(file);
-    };
+    }
 
     document.getElementById('init-btn').onclick = function() {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -539,7 +541,8 @@
         const reader = new FileReader();
         reader.onload = function(event) {
             audioCtx.decodeAudioData(event.target.result, function(buffer) {
-                if (buffer) {
+                // ★ 완벽 방어: 유효한 버퍼인지 최종 확인
+                if (buffer && buffer.duration) {
                     decodedBuffer = buffer; 
                     document.getElementById('status').innerText = "준비 완료! 아래 슬라이더로 타이밍을 미리보세요.";
                     document.getElementById('record-btn').style.display = 'block';
@@ -549,28 +552,37 @@
                     
                     if(!isPlaying) renderFrame(manualTimeSec, true);
                 } else {
-                    document.getElementById('status').innerText = "에러: 오디오 데이터 확인 불가.";
+                    document.getElementById('status').innerText = "에러: 오디오 파일 형식을 인식할 수 없습니다.";
                 }
             }, function(err) {
-                document.getElementById('status').innerText = "에러: 오디오 디코딩 실패.";
+                document.getElementById('status').innerText = "에러: 오디오 디코딩에 실패했습니다.";
             });
         };
         reader.readAsArrayBuffer(file);
     };
 
-    ctrlPreviewTime.addEventListener('input', (e) => {
-        if (!isPlaying) {
-            manualTimeSec = parseFloat(e.target.value);
-            updateUIVal('val-preview-time', manualTimeSec.toFixed(1), 's');
-            renderFrame(manualTimeSec, true); 
-        }
-    });
+    if(ctrlPreviewTime) {
+        ctrlPreviewTime.addEventListener('input', (e) => {
+            if (!isPlaying) {
+                manualTimeSec = parseFloat(e.target.value);
+                updateUIVal('val-preview-time', manualTimeSec.toFixed(1), 's');
+                renderFrame(manualTimeSec, true); 
+            }
+        });
+    }
 
     // =========================================================
-    // 8. 렌더링 & 녹화 시스템
+    // 8. 렌더링 & 녹화 시스템 (Race Condition 해결)
     // =========================================================
     document.getElementById('record-btn').onclick = function() {
-        if (!decodedBuffer) return; if (currentSource) { try { currentSource.stop(); } catch(e) {} }
+        if (!decodedBuffer) return; 
+        
+        // ★ 기존 소스 정리 시 레이스 컨디션(0바이트 종료) 원천 차단
+        if (currentSource) { 
+            currentSource.onended = null; 
+            try { currentSource.stop(); } catch(e) {} 
+        }
+
         currentSource = audioCtx.createBufferSource(); currentSource.buffer = decodedBuffer; currentSource.connect(analyser);
         const audioDest = audioCtx.createMediaStreamDestination(); analyser.connect(audioCtx.destination); analyser.connect(audioDest);            
         const canvasStream = renderer.domElement.captureStream(60); 
@@ -592,7 +604,7 @@
         
         audioStartTime = audioCtx.currentTime; 
         isPlaying = true;
-        animate(); 
+        animate(); // 애니메이션 루프 강제 시동
 
         currentSource.start(0); 
         try { mediaRecorder.start(); } catch(err) { console.error(err); alert("녹화 시작 중 에러 발생"); }
