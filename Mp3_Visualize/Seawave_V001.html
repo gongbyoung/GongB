@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Cinematic Wave & Smart Subtitle Studio v10 (Master)</title>
+    <title>Cinematic Wave & Smart Subtitle Studio v11 (Master)</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #020205; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; }
         canvas { width: 100vw !important; height: 100vh !important; object-fit: contain; }
@@ -76,7 +76,7 @@
             <input type="checkbox" id="ctrl-toggle-subtitle" checked>
             자막 및 파도 연동 켜기
         </label>
-        <div style="font-size: 9px; color: #888; margin-top: 4px; margin-left: 24px;">체크 해제 시 자막이 숨겨지며, 파도가 타이밍 연동 없이 지정된 위치에서만 움직입니다.</div>
+        <div style="font-size: 9px; color: #888; margin-top: 4px; margin-left: 24px;">체크 해제 시 자막이 숨겨지며, 파도가 지정된 위치에서만 자연스럽게 출렁입니다.</div>
     </div>
 
     <div class="section-title" style="color:#ffaa00;">[자막 크기 & 위치 제어]</div>
@@ -236,8 +236,8 @@
     let textCanvasHeight = 2048;
     
     let parsedSRT = [];
-    let currentSubtitle = "시네마틱 해변 파도 스튜디오\n(안정화 완료: 자유롭게 조작해 보세요)"; 
-    let showSubtitles = true; // 자막 토글 상태
+    let currentSubtitle = "시네마틱 해변 파도 스튜디오\n(버그 픽스 및 카메라 원상 복구 완료)"; 
+    let showSubtitles = true; 
 
     let audioCtx, analyser, dataArray;
     let decodedBuffer = null; 
@@ -247,7 +247,7 @@
     let loadedFileName = "";
     
     // =========================================================
-    // 2. Three.js 기본 환경 설정 (카메라 복구)
+    // 2. Three.js 기본 환경 설정
     // =========================================================
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x020205); 
@@ -286,7 +286,7 @@
     composer.addPass(renderScene); composer.addPass(bloomPass); composer.addPass(artFilterPass);
 
     // =========================================================
-    // 3. 자막 캔버스 엔진 (스마트 줄바꿈 + 체크박스 토글 지원)
+    // 3. 자막 캔버스 엔진 (스마트 줄바꿈 + 체크박스 토글)
     // =========================================================
     const textCanvas = document.createElement('canvas');
     const textCtx = textCanvas.getContext('2d');
@@ -301,7 +301,7 @@
     function updateSubtitleCanvas(text) {
         textCtx.clearRect(0, 0, textCanvasWidth, textCanvasHeight);
         
-        // ★ 자막 끄기 기능: 체크 해제되어 있거나 텍스트가 없으면 화면 지우고 리턴
+        // 자막 끄기 기능
         if(!showSubtitles || !text) { 
             textTex.needsUpdate = true; 
             return; 
@@ -390,7 +390,7 @@
             }
 
             void main() {
-                // 자유 구도 카메라를 위한 일반 UV 맵핑 (카메라 X, Y, Z 조작 완벽 지원)
+                // 일반 UV 맵핑 (카메라 X, Y, Z 조작 완벽 지원)
                 float ang = radians(uAngle);
                 float c = cos(ang); float s = sin(ang);
                 mat2 rot = mat2(c, -s, s, c);
@@ -400,12 +400,10 @@
                 float reachScale = 1.0 - (uSurge * 0.5);
                 float audioReach = (sin(rUv.x * 12.0 + uTime) * uBass * 0.15 + cos(rUv.x * 20.0 - uTime) * uTreble * 0.15) * reachScale;
                 
-                // 파도 덮침 (Surge) 로직
                 float wavePos = uSurge + (waveSine * 0.08) + audioReach; 
                 float edgeNoise = noise(rUv * 15.0 * uWaveDetail + uTime*0.5) * 0.08 + noise(rUv * 30.0 * uWaveDetail - uTime) * 0.04;
                 float distToWave = rUv.y - (wavePos + edgeNoise);
                 
-                // 자막은 화면 중앙(0.5, 0.5) 근처에 안정적으로 매핑 (스케일 조정)
                 vec2 textUv = (vUv - 0.5) * 1.5 + 0.5; 
                 vec4 textData = vec4(0.0);
                 if(textUv.x >= 0.0 && textUv.x <= 1.0 && textUv.y >= 0.0 && textUv.y <= 1.0) {
@@ -414,7 +412,6 @@
 
                 vec3 finalColor;
                 if (distToWave < 0.0) { 
-                    // 모래 구간
                     vec3 baseSand = cSand;
                     if (distToWave > -0.06 && distToWave <= 0.0) baseSand *= 0.85; 
                     finalColor = mix(baseSand, textData.rgb, textData.a); 
@@ -423,7 +420,6 @@
                     float residueNoise = noise(rUv * 150.0 * uWaveDetail);
                     if (residue * abs(residueNoise) > 0.12) { finalColor = mix(finalColor, cFoam, residue * 0.6); }
                 } else { 
-                    // 바다 구간
                     vec3 waterColor = mix(cShallow, cDeep, smoothstep(0.0, 0.4, distToWave));
                     
                     float textDistortion = noise(rUv * 30.0 + uTime) * 0.02 * clamp(distToWave*5.0, 0.0, 1.0);
@@ -455,7 +451,7 @@
     scene.add(waveMesh);
 
     // =========================================================
-    // 6. UI 이벤트 (자막 온오프 토글 추가)
+    // 6. UI 및 해상도 연동 
     // =========================================================
     const ctrlRatio = document.getElementById('ctrl-ratio');
 
@@ -464,7 +460,7 @@
         let val = ctrlRatio.value; let w = window.innerWidth, h = window.innerHeight;
         if (val === '16:9') { w = 1920; h = 1080; } else if (val === '9:16') { w = 1080; h = 1920; }
         
-        // 짝수 픽셀 보정 (0바이트 녹화 에러 방지)
+        // 짝수 픽셀 보정 (0바이트 녹화 튕김 에러 완전 방지)
         w = Math.floor(w / 2) * 2;
         h = Math.floor(h / 2) * 2;
         
@@ -489,7 +485,7 @@
         if(el) el.innerText = val + suffix;
     };
 
-    // ★ 자막 온/오프 체크박스 기능 연동
+    // ★ 자막 온/오프 체크박스
     let toggleSub = document.getElementById('ctrl-toggle-subtitle');
     if(toggleSub) {
         toggleSub.addEventListener('change', (e) => {
@@ -507,7 +503,6 @@
         };
     }
 
-    // 카메라 조작 슬라이더가 추가된 배열
     const validUIInputs = ['cam-x', 'cam-y', 'cam-z', 'react-bass', 'react-treb', 'smooth', 'bloom', 'grain', 'vignette', 'wave-angle', 'wave-detail', 'surge-speed', 'sub-size', 'sub-y', 'sub-max-w', 'sub-lh', 'wave-cover-pos', 'wave-reveal-pos', 'reveal-time'];
     
     validUIInputs.forEach(id => {
@@ -597,8 +592,8 @@
                     decodedBuffer = buffer; 
                     document.getElementById('status').innerText = "준비 완료! 아래 슬라이더로 타이밍을 미리보세요.";
                     document.getElementById('record-btn').style.display = 'block';
-                    document.getElementById('preview-box').style.display = 'block';
                     
+                    document.getElementById('preview-box').style.display = 'block';
                     let ctrlPreviewTime = document.getElementById('ctrl-preview-time');
                     if(ctrlPreviewTime) ctrlPreviewTime.max = buffer.duration; 
                     
@@ -625,28 +620,20 @@
     }
 
     // =========================================================
-    // 8. 렌더링 & 녹화 시스템 (0B 버그 해결 완료)
+    // 8. 렌더링 & 녹화 시스템 (안전 캡처 & 즉시 종료 버그 봉쇄)
     // =========================================================
     document.getElementById('record-btn').onclick = function() {
         if (!decodedBuffer) return; 
         
-        // ★ 버튼 비활성화 (중복 클릭 및 즉시 종료 버그 방지)
-        this.disabled = true;
-        this.innerText = '🔴 녹화 진행 중... (음악이 끝나면 자동 저장됩니다)';
+        // ★ 버튼 비활성화 (팝업 Alert 절대 없음! 화면만 변경)
+        let recBtn = document.getElementById('record-btn');
+        recBtn.disabled = true;
+        recBtn.innerText = '🔴 녹화 준비 중...';
+        document.getElementById('status').innerHTML = `<span class="recording-badge">● REC</span> 렌더링 엔진 가동 중...`;
         
         if (currentSource) { 
             currentSource.onended = null; 
             try { currentSource.stop(); } catch(e) {} 
-        }
-
-        // 안정적인 녹화를 위해 .webm을 기본 코덱으로 사용 (호환성 및 0B 튕김 방지)
-        let options = { mimeType: 'video/webm; codecs=vp9', videoBitsPerSecond: 8000000 }; 
-        let ext = 'webm';
-        
-        // MP4를 선호하는 환경이 지원되면 시도
-        if (MediaRecorder.isTypeSupported('video/mp4; codecs=avc1')) { 
-            options = { mimeType: 'video/mp4; codecs=avc1', videoBitsPerSecond: 8000000 }; 
-            ext = 'mp4'; 
         }
 
         audioCtx.resume().then(() => {
@@ -661,14 +648,23 @@
             const canvasStream = renderer.domElement.captureStream(60); 
             const combinedStream = new MediaStream([...canvasStream.getVideoTracks(), ...audioDest.stream.getAudioTracks()]);
             
+            let options = { mimeType: 'video/webm; codecs=vp9', videoBitsPerSecond: 8000000 }; 
+            let ext = 'webm';
+            if (MediaRecorder.isTypeSupported('video/mp4; codecs=avc1')) { 
+                options = { mimeType: 'video/mp4; codecs=avc1', videoBitsPerSecond: 8000000 }; 
+                ext = 'mp4'; 
+            }
+            
             recordedChunks = []; 
             mediaRecorder = new MediaRecorder(combinedStream, options);
-            mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
+            mediaRecorder.ondataavailable = (e) => { 
+                if (e.data && e.data.size > 0) recordedChunks.push(e.data); 
+            };
             
             mediaRecorder.onstop = () => {
                 const blob = new Blob(recordedChunks, { type: options.mimeType }); 
                 if (blob.size === 0) {
-                    alert("녹화 에러: 화면이 정지되었습니다. 브라우저 탭을 백그라운드로 이동하지 마세요.");
+                    alert("녹화 에러: 화면이 정지되었습니다. 브라우저 탭을 백그라운드로 숨기지 마세요.");
                 } else {
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a'); a.style = 'display: none'; a.href = url; a.download = loadedFileName.replace(/\.[^/.]+$/, "") + `_Wave_Studio.${ext}`;
@@ -680,8 +676,6 @@
                 if(ctrlPreviewTime) ctrlPreviewTime.disabled = false; 
                 isPlaying = false; 
                 
-                // 녹화 버튼 복구
-                let recBtn = document.getElementById('record-btn');
                 recBtn.style.display = 'block';
                 recBtn.disabled = false;
                 recBtn.innerText = '▶ 영상 렌더링 녹화 시작 (MP4/WebM)';
@@ -689,31 +683,42 @@
                 updateSubtitleCanvas(""); renderFrame(0, true);
             };
             
-            currentSource.onended = () => { if(mediaRecorder.state === 'recording') mediaRecorder.stop(); };
+            currentSource.onended = () => { 
+                if(mediaRecorder.state !== 'inactive') mediaRecorder.stop(); 
+            };
             
             audioStartTime = audioCtx.currentTime; 
             isPlaying = true;
 
-            // ★ 애니메이션 루프를 먼저 가동시킨 후, 0.1초 뒤에 녹화를 시작시켜 프레임 지연 방지
+            // ★ 애니메이션을 먼저 실행하여 캔버스에 프레임이 돌기 시작한 뒤에 녹화기 작동 (0B 튕김 원천 차단)
             animate(); 
-            currentSource.start(0); 
             
             setTimeout(() => {
+                currentSource.start(0); 
                 try { 
-                    mediaRecorder.start(); 
+                    // 1초(1000ms) 단위로 데이터 청크를 강제로 밀어넣어 유실 방지
+                    mediaRecorder.start(1000); 
+                    recBtn.innerText = '🔴 녹화 진행 중... (다른 탭으로 이동 금지!)';
+                    document.getElementById('status').innerHTML = `<span class="recording-badge">● REC</span> 화면 렌더링 중...`;
                 } catch(err) { 
-                    alert("녹화 시작 에러"); 
+                    console.error(err); 
+                    alert("녹화 시작 중 에러 발생: 브라우저가 화면 녹화를 지원하지 않습니다."); 
+                    recBtn.disabled = false;
+                    recBtn.innerText = '▶ 영상 렌더링 녹화 시작 (MP4/WebM)';
                 }
             }, 100);
             
             if(ctrlRatio) ctrlRatio.disabled = true; 
             if(ctrlPreviewTime) ctrlPreviewTime.disabled = true; 
-            document.getElementById('status').innerHTML = `<span class="recording-badge">● REC</span> 렌더링 중... (다른 탭으로 이동하면 녹화가 중단됩니다!)`;
+        }).catch(err => {
+            alert("오디오 엔진을 켤 수 없습니다. 페이지를 새로고침 해주세요.");
+            recBtn.disabled = false;
+            recBtn.innerText = '▶ 영상 렌더링 녹화 시작 (MP4/WebM)';
         });
     };
 
     function renderFrame(targetTimeSec, isPreview = false) {
-        // ★ 자유 카메라 X, Y, Z 세팅 로직 복원
+        // 카메라 컨트롤 반영
         let cX = getUIVal('ctrl-cam-x', 0);
         let cY = getUIVal('ctrl-cam-y', 1500);
         let cZ = getUIVal('ctrl-cam-z', 0);
@@ -735,8 +740,6 @@
         let elapsedMs = targetTimeSec * 1000;
         let coverPos = getUIVal('ctrl-wave-cover-pos', 0.25);
         let revealPos = getUIVal('ctrl-wave-reveal-pos', 0.75);
-        
-        // 자막 기능이 꺼져있으면 무조건 모래사장(revealPos) 위치로 고정
         let targetSurge = revealPos; 
         let activeText = "";
         
@@ -758,7 +761,7 @@
                 }
             }
         } else {
-            // 자막을 끈 경우 오직 텍스트만 비움, 파도는 베이스라인 유지
+            // 자막을 끈 경우 오직 텍스트만 비우고 파도는 고정 위치에서 출렁임
             if(!isPlaying) activeText = showSubtitles ? currentSubtitle : "";
         }
 
@@ -798,7 +801,7 @@
         }
     }
     
-    // 초기 로딩 (화면 첫 렌더링)
+    // 초기 로딩용 화면 첫 렌더링
     setTimeout(() => { renderFrame(0, true); }, 500);
 </script>
 </body>
