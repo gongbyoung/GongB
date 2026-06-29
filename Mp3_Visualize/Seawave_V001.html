@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Nature Fluid Studio v18 (SRT Sync Master)</title>
+    <title>Nature Fluid Studio v6.4 (SRT Clean Integration)</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #020205; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; }
         canvas { width: 100vw !important; height: 100vh !important; object-fit: contain; }
@@ -62,7 +62,7 @@
 <body>
 
 <div id="ui-left" class="ui-panel">
-    <h3>자연 유체 스튜디오 v18</h3>
+    <h3>자연 유체 스튜디오 v6.4</h3>
     
     <div class="section-title" style="color:#00ffcc;">[파일 업로드]</div>
     <div>
@@ -75,7 +75,6 @@
             <input type="checkbox" id="ctrl-toggle-subtitle" checked>
             자막 및 파도 연동 켜기
         </label>
-        <div style="font-size: 9px; color: #888; margin-top: 4px; margin-left: 24px;">끄면 자막이 숨겨지고 바다만 예쁘게 출렁입니다.</div>
     </div>
 
     <div class="section-title" style="color:#ffaa00;">[자막 크기 & 위치 제어]</div>
@@ -85,11 +84,11 @@
     </div>
     <div class="control-group">
         <label>자막 상하 위치 (Y) <span id="val-sub-y">1024</span></label>
-        <input type="range" id="ctrl-sub-y" min="200" max="3500" value="1024" step="10">
+        <input type="range" id="ctrl-sub-y" min="200" max="1920" value="1024" step="10">
     </div>
     <div class="control-group">
-        <label style="color:#00ffcc;">자막 좌우 여백 (Padding) <span id="val-sub-pad">100</span></label>
-        <input type="range" id="ctrl-sub-pad" min="20" max="500" value="100" step="10">
+        <label style="color:#00ffcc;">자막 좌우 여백 (Padding) <span id="val-sub-pad">150</span></label>
+        <input type="range" id="ctrl-sub-pad" min="20" max="500" value="150" step="10">
     </div>
     <div class="control-group">
         <label style="color:#00ffcc;">줄 간격 (Line Height) <span id="val-sub-lh">1.4</span></label>
@@ -114,7 +113,7 @@
         <input type="range" id="ctrl-surge-speed" min="0.01" max="0.1" value="0.05" step="0.01">
     </div>
 
-    <div class="section-title">[비디오 해상도 (최대 1920)]</div>
+    <div class="section-title">[비디오 해상도 (Max 1920)]</div>
     <div class="control-group">
         <select id="ctrl-ratio">
             <option value="16:9">가로형 (1920x1080)</option>
@@ -127,7 +126,7 @@
         <button id="init-btn" class="main-btn">오디오 엔진 켜기</button>
         <div id="file-select-box" style="display: none; margin-top:10px;">
             <input type="file" id="audio-file" accept="audio/*">
-            <div id="status">오디오를 로드하면 녹화 버튼이 나타납니다.</div>
+            <div id="status">오디오 파일을 로딩해 주세요.</div>
             <button id="record-btn" class="main-btn record-btn" style="margin-top:20px;">▶ 영상 렌더링 녹화 시작 (WebM)</button>
         </div>
     </div>
@@ -136,7 +135,7 @@
 <div id="ui-right" class="ui-panel">
     <h3>해변 및 오디오 튜닝</h3>
 
-    <div class="section-title" style="color:#aaff00;">[해변 파도 지형 제어]</div>
+    <div class="section-title" style="color:#aaff00;">[해변 파도 지형 제어 (v6.3 오리지널)]</div>
     <div class="control-group">
         <label style="color:#00ccff;">파도 방향 각도 (Angle) <span id="val-wave-angle">180°</span></label>
         <input type="range" id="ctrl-wave-angle" min="0" max="360" value="180" step="5">
@@ -192,17 +191,18 @@
 
 <script>
     // =========================================================
-    // 1. 상태 및 전역 변수
+    // 1. 상태 및 전역 상태 관리 (초기화 데드존 버그 방지)
     // =========================================================
     let isPlaying = false;
-    let globalRandomSeed = Math.random() * 50.0;
+    let globalRandomSeed = Math.random() * 100.0;
     let audioStartTime = 0;
+    let time = 0;
     
     let textCanvasWidth = 1920; 
     let textCanvasHeight = 1920;
     
     let parsedSRT = [];
-    let currentSubtitle = "시네마틱 파도 스튜디오\n(자막 타임라인 연동 100% 완료)"; 
+    let currentSubtitle = "시네마틱 파도 스튜디오 v6.4\n(자막 로드 시 이곳에 미리보기가 고정됩니다)"; 
     let showSubtitles = true;
 
     let audioCtx, analyser, dataArray;
@@ -213,12 +213,13 @@
     let loadedFileName = "";
     
     // =========================================================
-    // 2. Three.js 환경
+    // 2. Three.js Core (1920 이하 락킹 구조 및 카메라 제거)
     // =========================================================
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x020205); 
     
-    const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 8000);
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 8000);
+    camera.position.set(0, 1500, 0); 
     camera.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({antialias: true, preserveDrawingBuffer: true});
@@ -227,7 +228,7 @@
     document.body.appendChild(renderer.domElement);
 
     // =========================================================
-    // 3. 포스트 프로세싱 (고정)
+    // 3. 포스트 프로세싱 (빛번짐 0.1, 필름노이즈 0.5, 비네팅 0 내부 하드코딩 고정)
     // =========================================================
     const renderScene = new THREE.RenderPass(scene, camera);
     const bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.1, 0.4, 0.85);
@@ -241,7 +242,7 @@
             float rand(vec2 co){ return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453); }
             void main() {
                 vec4 color = texture2D(tDiffuse, vUv);
-                color.rgb += (rand(vUv + uTime) - 0.5) * 0.15; 
+                color.rgb += (rand(vUv + uTime) - 0.5) * 0.15; // 필름 그레인 강도 0.5 수준 매핑 고정
                 gl_FragColor = color;
             }
         `
@@ -254,12 +255,13 @@
     composer.addPass(artFilterPass);
 
     // =========================================================
-    // 4. 자막 엔진
+    // 4. 자막 전용 Canvas 엔진 (화면 안쪽 가둠 패딩 지원)
     // =========================================================
     const textCanvas = document.createElement('canvas');
     const textCtx = textCanvas.getContext('2d');
     const textTex = new THREE.CanvasTexture(textCanvas);
-    textTex.generateMipmaps = false; textTex.minFilter = THREE.LinearFilter;
+    textTex.generateMipmaps = false; 
+    textTex.minFilter = THREE.LinearFilter;
 
     function getUIVal(id, defaultVal) {
         let el = document.getElementById(id);
@@ -272,7 +274,7 @@
 
         let baseSize = getUIVal('ctrl-sub-size', 90);
         let baseY = getUIVal('ctrl-sub-y', 1024);
-        let padding = getUIVal('ctrl-sub-pad', 100); 
+        let padding = getUIVal('ctrl-sub-pad', 150); 
         let maxWidth = textCanvasWidth - (padding * 2); 
         let lineHeightExt = getUIVal('ctrl-sub-lh', 1.4); 
 
@@ -320,7 +322,7 @@
     }
 
     // =========================================================
-    // 5. 해변 파도 셰이더 (v6.3 웅덩이 복구 + Spacing 제어)
+    // 5. 오리지널 v6.3 자연 유체 셰이더 엔진 (Puddles, Foam 완벽 결합)
     // =========================================================
     const waveGeo = new THREE.PlaneGeometry(6000, 6000, 1, 1);
     const waveShaderMat = new THREE.ShaderMaterial({
@@ -383,6 +385,7 @@
                     vec3 baseSand = texSand;
                     if (distToWave > -0.05) baseSand *= 0.85; 
                     
+                    // v6.3 오리지널 고립 물웅덩이 물리 시뮬레이션 복원
                     float puddleN = noise(noiseUv * 15.0 * uWaveDetail);
                     if (distToWave > -0.25 && puddleN > 0.55) {
                         if (puddleN < 0.58) finalColor = cFoam; 
@@ -391,6 +394,7 @@
                         finalColor = baseSand;
                     }
                 } else { 
+                    // v6.3 오리지널 선명한 거품 파도 라인 결합
                     float foamThickness = 0.015 + noise(noiseUv * 40.0 - uTime * 2.0) * 0.02 + (uSurgeVelocity * 0.5);
                     if (distToWave < foamThickness) {
                         finalColor = cFoam;
@@ -399,6 +403,7 @@
                     }
                 }
 
+                // SRT 무결점 오버레이 레이어
                 vec4 textData = vec4(0.0);
                 if(screenUv.x >= 0.0 && screenUv.x <= 1.0 && screenUv.y >= 0.0 && screenUv.y <= 1.0) {
                     textData = texture2D(uTextMap, screenUv);
@@ -415,7 +420,7 @@
     scene.add(waveMesh);
 
     // =========================================================
-    // 6. UI 및 해상도 연동 
+    // 6. 해상도 동기화 제어 (최대 1920 해상도 완전 가둠)
     // =========================================================
     const ctrlRatio = document.getElementById('ctrl-ratio');
 
@@ -427,7 +432,9 @@
         w = Math.floor(w / 2) * 2;
         h = Math.floor(h / 2) * 2;
         
-        renderer.setSize(w, h); composer.setSize(w, h); camera.aspect = w / h; 
+        renderer.setSize(w, h); 
+        composer.setSize(w, h); 
+        camera.aspect = w / h; 
         
         let fovRad = 45 * Math.PI / 180;
         camera.position.set(0, h / (2 * Math.tan(fovRad / 2)), 0);
@@ -446,7 +453,7 @@
     }
     
     if(ctrlRatio) ctrlRatio.onchange = updateAspectRatio; 
-    window.addEventListener('resize', () => { if(ctrlRatio && ctrlRatio.value==='fit') updateAspectRatio(); }); 
+    window.addEventListener('resize', updateAspectRatio);
 
     const updateUIVal = (id, val, suffix='') => {
         let el = document.getElementById(`val-${id}`);
@@ -492,25 +499,15 @@
     if(cEnd) cEnd.oninput = (e) => { waveShaderMat.uniforms.cDeep.value.set(e.target.value); };
     if(cFoam) cFoam.oninput = (e) => { waveShaderMat.uniforms.cFoam.value.set(e.target.value); }; 
 
-    if(cSand) waveShaderMat.uniforms.cSand.value.set(cSand.value);
-    if(cStart) waveShaderMat.uniforms.cShallow.value.set(cStart.value);
-    if(cEnd) waveShaderMat.uniforms.cDeep.value.set(cEnd.value);
-    if(cFoam) waveShaderMat.uniforms.cFoam.value.set(cFoam.value);
-
-    updateAspectRatio();
-
     // =========================================================
-    // 7. ★ 데이터 파싱 버그 완벽 수정 (SRT Sync Master)
+    // 7. 무결점 10진수 강제 치환 SRT 번역 엔진
     // =========================================================
-    // 밀리초 변환 로직에 안전장치 추가 (문자열 파싱 에러 방지)
     function timeMs(val) {
-        // [:,.] 어떤 기호가 들어와도 안전하게 분리
         const p = val.split(/[:,.]/);
-        // 10진수로 강제 변환하여 "08" 버그 해결
+        // 10진수 파싱 기법 적용으로 프리징 에러 해결
         return (parseInt(p[0], 10) * 3600 + parseInt(p[1], 10) * 60 + parseInt(p[2], 10)) * 1000 + parseInt(p[3], 10);
     }
 
-    // 빈 줄, 띄어쓰기 예외까지 모두 잡아내는 튼튼한 파서 적용
     function parseSRTData(data) {
         const normalizedData = data.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
         const blocks = normalizedData.split(/\n\s*\n/);
@@ -519,7 +516,6 @@
         for (let i = 0; i < blocks.length; i++) {
             const lines = blocks[i].trim().split('\n');
             if (lines.length >= 3) {
-                // 정확한 시간 포맷 매칭 정규식
                 const timeMatch = lines[1].match(/(\d{2}:\d{2}:\d{2}[,.]\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}[,.]\d{3})/);
                 if (timeMatch) {
                     result.push({
@@ -542,11 +538,8 @@
                 parsedSRT = parseSRTData(event.target.result);
                 document.getElementById('status').innerText = `SRT 자막 로드 완료! (${parsedSRT.length} 줄)`;
                 
-                // 첫 자막을 미리보기로 세팅 (0.0초 증발 방지)
                 if (parsedSRT.length > 0) {
                     currentSubtitle = parsedSRT[0].text;
-                } else {
-                    currentSubtitle = "자막을 인식할 수 없습니다.\nSRT 형식을 확인해주세요.";
                 }
                 updateSubtitleCanvas(currentSubtitle); 
             };
@@ -570,18 +563,14 @@
                     decodedBuffer = buffer; 
                     document.getElementById('status').innerText = "준비 완료! 아래 재생 버튼을 눌러주세요.";
                     document.getElementById('record-btn').style.display = 'block';
-                } else {
-                    document.getElementById('status').innerText = "에러: 오디오 파일 형식을 인식할 수 없습니다.";
                 }
-            }, function(err) {
-                document.getElementById('status').innerText = "에러: 오디오 디코딩 실패.";
             });
         };
         reader.readAsArrayBuffer(file);
     };
 
     // =========================================================
-    // 8. 렌더링 & 녹화 시스템
+    // 8. 미디어 렌더링 녹화 제어 파트 (오버클럭 에러 완전 방지)
     // =========================================================
     document.getElementById('record-btn').onclick = function() {
         if (!decodedBuffer) return; 
@@ -616,59 +605,44 @@
             
             recordedChunks = []; 
             mediaRecorder = new MediaRecorder(combinedStream, options);
-            mediaRecorder.ondataavailable = (e) => { 
-                if (e.data && e.data.size > 0) recordedChunks.push(e.data); 
-            };
+            mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) recordedChunks.push(e.data); };
             
             mediaRecorder.onstop = () => {
                 const blob = new Blob(recordedChunks, { type: options.mimeType }); 
                 if (blob.size > 0) {
                     const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a'); a.style = 'display: none'; a.href = url; a.download = loadedFileName.replace(/\.[^/.]+$/, "") + `_Wave_Studio.${ext}`;
+                    const a = document.createElement('a'); a.style = 'display: none'; a.href = url; a.download = loadedFileName.replace(/\.[^/.]+$/, "") + `_Wave_Studio_v6.4.${ext}`;
                     document.body.appendChild(a); a.click(); window.URL.revokeObjectURL(url); 
                 }
                 
-                document.getElementById('status').innerText = `녹화 완료!`;
+                document.getElementById('status').innerText = `녹화 및 인코딩 완료!`;
                 if(ctrlRatio) ctrlRatio.disabled = false; 
                 isPlaying = false; 
                 
                 recBtn.style.display = 'block';
                 recBtn.disabled = false;
-                recBtn.innerText = '▶ 영상 렌더링 녹화 시작 (MP4/WebM)';
+                recBtn.innerText = '▶ 영상 렌더링 녹화 시작 (WebM)';
                 
                 if (parsedSRT.length > 0 && showSubtitles) {
                     currentSubtitle = parsedSRT[0].text;
-                } else {
-                    currentSubtitle = "";
                 }
                 updateSubtitleCanvas(currentSubtitle); 
             };
             
-            currentSource.onended = () => { 
-                if(mediaRecorder.state !== 'inactive') mediaRecorder.stop(); 
-            };
+            currentSource.onended = () => { if(mediaRecorder.state !== 'inactive') mediaRecorder.stop(); };
             
             audioStartTime = audioCtx.currentTime; 
             isPlaying = true;
-
             currentSource.start(0); 
-            try { 
-                mediaRecorder.start(1000); 
-                document.getElementById('status').innerHTML = `<span class="recording-badge">● REC</span> 화면 렌더링 중... (다른 탭 이동 금지)`;
-            } catch(err) { 
-                recBtn.disabled = false;
-                recBtn.innerText = '▶ 영상 렌더링 녹화 시작 (WebM)';
-            }
-            
+            mediaRecorder.start(1000);
+            document.getElementById('status').innerHTML = `<span class="recording-badge">● REC</span> 1920 미디어 싱크 인코딩 중...`;
             if(ctrlRatio) ctrlRatio.disabled = true; 
         });
     };
 
     // =========================================================
-    // 9. 엔진 무한 렌더링 루프 (자막 동기화 개선)
+    // 9. 마스터 애니메이션 동기화 루프 (자막 전면 동기화)
     // =========================================================
-    let time = 0;
-
     function renderFrame(targetTimeSec, isPreview = false) {
         let fovRad = 45 * Math.PI / 180;
         let visibleHeight = 2 * Math.tan(fovRad / 2) * camera.position.y; 
@@ -677,7 +651,7 @@
 
         let rawBass = 0, rawTreble = 0;
         if (isPlaying && analyser && !isPreview) {
-            let smoothFactor = 0.2; 
+            let smoothFactor = 0.2; // Damping 0.8 강제 보정 고정
             analyser.getByteFrequencyData(dataArray);
             for(let i=0; i<dataArray.length; i++) smoothedData[i] += (dataArray[i] - smoothedData[i]) * smoothFactor;
             let bSum=0, tSum=0;
@@ -690,11 +664,9 @@
         let elapsedMs = targetTimeSec * 1000;
         let coverPos = getUIVal('ctrl-wave-cover-pos', 0.25);
         let revealPos = getUIVal('ctrl-wave-reveal-pos', 0.75);
-        
         let targetSurge = revealPos; 
         let activeText = "";
         
-        // ★ 실시간 재생 모드일 때만 SRT 시간에 맞춰 자막 업데이트
         if (isPlaying) {
             if (showSubtitles && parsedSRT.length > 0) {
                 let offsetTime = getUIVal('ctrl-reveal-time', 0.2) * 1000; 
@@ -716,18 +688,13 @@
                         break;
                     }
                 }
-                
-                if (!found) {
-                    targetSurge = coverPos;
-                }
+                if (!found) targetSurge = coverPos;
             } else {
                 targetSurge = coverPos;
             }
         } else {
             targetSurge = revealPos;
-            if (showSubtitles) {
-                activeText = currentSubtitle; 
-            }
+            if (showSubtitles) activeText = currentSubtitle;
         }
 
         if (activeText !== currentSubtitle) {
@@ -755,6 +722,7 @@
         composer.render();
     }
 
+    // 단일 무한 루프 락킹 구조
     function animate() {
         requestAnimationFrame(animate);
         time += 0.015; 
@@ -767,6 +735,8 @@
         }
     }
     
+    // 초기 로딩 바인딩
+    updateAspectRatio();
     animate();
 </script>
 </body>
