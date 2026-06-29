@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Nature Fluid Studio v13 (Classic 6.3 Restored)</title>
+    <title>Nature Fluid Studio v14 (Wave Spacing Control)</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #020205; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; }
         canvas { width: 100vw !important; height: 100vh !important; object-fit: contain; }
@@ -62,7 +62,7 @@
 <body>
 
 <div id="ui-left" class="ui-panel">
-    <h3>자연 유체 스튜디오 v13 (1920)</h3>
+    <h3>자연 유체 스튜디오 v14 (1920)</h3>
     
     <div class="section-title" style="color:#00ffcc;">[파일 업로드]</div>
     <div>
@@ -142,10 +142,14 @@
 <div id="ui-right" class="ui-panel">
     <h3>해변 및 오디오 튜닝</h3>
 
-    <div class="section-title" style="color:#aaff00;">[해변 파도 지형 제어 (v6.3 오리지널)]</div>
+    <div class="section-title" style="color:#aaff00;">[해변 파도 지형 제어]</div>
     <div class="control-group">
         <label style="color:#00ccff;">파도 방향 각도 (Angle) <span id="val-wave-angle">180°</span></label>
         <input type="range" id="ctrl-wave-angle" min="0" max="360" value="180" step="5">
+    </div>
+    <div class="control-group" style="padding: 5px; border-radius: 4px; background: rgba(0, 204, 255, 0.1);">
+        <label style="color:#00ccff;">파도 가로 간격 (Spacing) <span id="val-wave-spacing">0.2</span></label>
+        <input type="range" id="ctrl-wave-spacing" min="0.0" max="1.0" value="0.2" step="0.05">
     </div>
     <div class="control-group">
         <label style="color:#00ccff;">파도 쪼개짐 디테일 <span id="val-wave-detail">1.5</span></label>
@@ -201,12 +205,11 @@
     let globalRandomSeed = Math.random() * 50.0;
     let audioStartTime = 0;
     
-    // 해상도는 1920 이내로 자동 조절됨
     let textCanvasWidth = 1920; 
     let textCanvasHeight = 1920;
     
     let parsedSRT = [];
-    let currentSubtitle = "자연 유체 스튜디오 v13\n(오류 없이 안정화 되었습니다)"; 
+    let currentSubtitle = "시네마틱 파도 스튜디오\n(파도 간격 조절 기능이 추가되었습니다)"; 
     let showSubtitles = true;
 
     let audioCtx, analyser, dataArray;
@@ -217,12 +220,11 @@
     let loadedFileName = "";
     
     // =========================================================
-    // 2. Three.js 환경 (카메라 자동 맞춤 고정)
+    // 2. Three.js 환경 
     // =========================================================
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x020205); 
     
-    // 카메라는 화면 꽉 차게 계산되므로 조작 불가
     const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 8000);
     camera.lookAt(0, 0, 0);
 
@@ -232,15 +234,12 @@
     document.body.appendChild(renderer.domElement);
 
     // =========================================================
-    // 3. 포스트 프로세싱 (내부 고정값 적용 완료)
+    // 3. 포스트 프로세싱 (내부 고정값 적용)
     // =========================================================
     const renderScene = new THREE.RenderPass(scene, camera);
-    
-    // 빛번짐(Bloom) 0.1 고정
     const bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.1, 0.4, 0.85);
     bloomPass.threshold = 0;
 
-    // 필름 노이즈 0.5, 비네팅 0 고정
     const CustomArtShader = {
         uniforms: { "tDiffuse": { value: null }, "uTime": { value: 0.0 } },
         vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
@@ -249,7 +248,7 @@
             float rand(vec2 co){ return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453); }
             void main() {
                 vec4 color = texture2D(tDiffuse, vUv);
-                color.rgb += (rand(vUv + uTime) - 0.5) * 0.15; // 필름 노이즈
+                color.rgb += (rand(vUv + uTime) - 0.5) * 0.15; 
                 gl_FragColor = color;
             }
         `
@@ -262,7 +261,7 @@
     composer.addPass(artFilterPass);
 
     // =========================================================
-    // 4. 자막 엔진 (화면 잘림 방지 Padding 적용)
+    // 4. 자막 엔진
     // =========================================================
     const textCanvas = document.createElement('canvas');
     const textCtx = textCanvas.getContext('2d');
@@ -281,7 +280,7 @@
         let baseSize = getUIVal('ctrl-sub-size', 90);
         let baseY = getUIVal('ctrl-sub-y', 1024);
         let padding = getUIVal('ctrl-sub-pad', 100); 
-        let maxWidth = textCanvasWidth - (padding * 2); // 글씨 절대 안잘림
+        let maxWidth = textCanvasWidth - (padding * 2); 
         let lineHeightExt = getUIVal('ctrl-sub-lh', 1.4); 
 
         textCtx.font = 'bold ' + baseSize + 'px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
@@ -328,13 +327,14 @@
     }
 
     // =========================================================
-    // 5. 해변 파도 셰이더 (v6.3 웅덩이 완벽 복구본)
+    // 5. 해변 파도 셰이더 (Spacing 조절 기능 추가)
     // =========================================================
     const waveGeo = new THREE.PlaneGeometry(6000, 6000, 1, 1);
     const waveShaderMat = new THREE.ShaderMaterial({
         uniforms: {
             uTime: { value: 0.0 }, uBass: { value: 0.0 }, uTreble: { value: 0.0 }, uAngle: { value: 0.0 }, uSeed: { value: 0.0 },
-            uWaveDetail: { value: 1.5 }, uSurge: { value: 0.25 }, uSurgeVelocity: { value: 0.0 }, 
+            uWaveDetail: { value: 1.5 }, uSurge: { value: 0.25 }, uSurgeVelocity: { value: 0.0 },
+            uWaveSpacing: { value: 0.2 }, // ★ 신규: 파도 간격 (0.0 ~ 1.0)
             uTextMap: { value: textTex }, uTextScale: { value: new THREE.Vector2(1.0, 1.0) },
             cSand: { value: new THREE.Color('#d2b48c') }, 
             cShallow: { value: new THREE.Color('#16a0b5') }, 
@@ -346,6 +346,7 @@
             uniform float uTime; uniform float uBass; uniform float uTreble; 
             uniform float uAngle; uniform float uSeed; uniform float uWaveDetail;
             uniform float uSurge; uniform float uSurgeVelocity;
+            uniform float uWaveSpacing;
             uniform sampler2D uTextMap; uniform vec2 uTextScale;
             uniform vec3 cSand; uniform vec3 cShallow; uniform vec3 cDeep; uniform vec3 cFoam;
             varying vec2 vUv;
@@ -362,36 +363,36 @@
             }
 
             void main() {
-                // 화면 1:1 매핑으로 파도가 화면을 절대 이탈하지 않음
                 vec2 screenUv = (vUv - 0.5) * uTextScale + 0.5; 
 
                 float ang = radians(uAngle);
                 float c = cos(ang); float s = sin(ang);
-                mat2 rot = mat2(c, -s, s, c);
+                mat2 matRot = mat2(c, -s, s, c);
                 
-                vec2 rUv = rot * (screenUv - 0.5) + 0.5; 
-                
-                // 노이즈 지형
+                vec2 rUv = matRot * (screenUv - 0.5) + 0.5; 
                 vec2 noiseUv = rUv + vec2(uSeed * 0.1); 
                 
+                // ★ 핵심: Spacing 슬라이더 값(0~1)을 주파수 변환 곡선(4.0 ~ 40.0)으로 맵핑
+                float freq = mix(4.0, 40.0, uWaveSpacing);
+                
                 float waveSine = sin(uTime * 1.5);
-                float audioReach = (sin(rUv.x * 12.0 + uTime) * uBass * 0.15 + cos(rUv.x * 20.0 - uTime) * uTreble * 0.15);
+                // freq를 이용해 파도의 간격(밀도)를 동적으로 변경합니다.
+                float audioReach = (sin(rUv.x * freq + uTime) * uBass * 0.15 + cos(rUv.x * (freq * 1.66) - uTime) * uTreble * 0.15);
+                
                 float wavePos = uSurge + (waveSine * 0.06) + audioReach; 
                 
                 float n1 = noise(noiseUv * 8.0 * uWaveDetail + uTime * 0.2);
                 float n2 = noise(noiseUv * 20.0 * uWaveDetail - uTime * 0.1);
                 float distToWave = rUv.y - wavePos + (n1 * 0.15) + (n2 * 0.05);
                 
-                // 모래 질감 생성
                 float sandN = noise(noiseUv * 150.0);
                 vec3 texSand = cSand * (0.9 + sandN * 0.15);
 
                 vec3 finalColor;
                 if (distToWave < 0.0) { 
                     vec3 baseSand = texSand;
-                    if (distToWave > -0.05) baseSand *= 0.85; // 젖은 모래
+                    if (distToWave > -0.05) baseSand *= 0.85; 
                     
-                    // v6.3: 고립된 물웅덩이 효과 완벽 복구
                     float puddleN = noise(noiseUv * 15.0 * uWaveDetail);
                     if (distToWave > -0.25 && puddleN > 0.55) {
                         if (puddleN < 0.58) finalColor = cFoam; 
@@ -400,7 +401,6 @@
                         finalColor = baseSand;
                     }
                 } else { 
-                    // v6.3: 선명한 거품 라인
                     float foamThickness = 0.015 + noise(noiseUv * 40.0 - uTime * 2.0) * 0.02 + (uSurgeVelocity * 0.5);
                     if (distToWave < foamThickness) {
                         finalColor = cFoam;
@@ -409,7 +409,6 @@
                     }
                 }
 
-                // 자막 오버레이 (물 밑 일그러짐 제거하고 위에 깔끔하게 뿌리기)
                 vec4 textData = vec4(0.0);
                 if(screenUv.x >= 0.0 && screenUv.x <= 1.0 && screenUv.y >= 0.0 && screenUv.y <= 1.0) {
                     textData = texture2D(uTextMap, screenUv);
@@ -426,7 +425,7 @@
     scene.add(waveMesh);
 
     // =========================================================
-    // 6. UI 및 해상도 연동 (1920 꽉 찬 화면 유지)
+    // 6. UI 및 해상도 연동 
     // =========================================================
     const ctrlRatio = document.getElementById('ctrl-ratio');
 
@@ -435,13 +434,11 @@
         let val = ctrlRatio.value; let w = 1920; let h = 1080;
         if (val === '9:16') { w = 1080; h = 1920; }
         
-        // 0바이트 에러 방지를 위한 짝수 보정
         w = Math.floor(w / 2) * 2;
         h = Math.floor(h / 2) * 2;
         
         renderer.setSize(w, h); composer.setSize(w, h); camera.aspect = w / h; 
         
-        // FOV에 맞춰 카메라 높이를 동적으로 자동 조절 (화면 꽉 차게 고정)
         let fovRad = 45 * Math.PI / 180;
         camera.position.y = h / (2 * Math.tan(fovRad / 2));
         camera.updateProjectionMatrix();
@@ -478,7 +475,8 @@
         btnRand.onclick = () => { globalRandomSeed = Math.random() * 50.0; };
     }
 
-    const validUIInputs = ['react-bass', 'react-treb', 'wave-angle', 'wave-detail', 'surge-speed', 'sub-size', 'sub-y', 'sub-pad', 'sub-lh', 'wave-cover-pos', 'wave-reveal-pos', 'reveal-time'];
+    // ★ 추가된 wave-spacing 슬라이더 이벤트 맵핑
+    const validUIInputs = ['react-bass', 'react-treb', 'wave-angle', 'wave-spacing', 'wave-detail', 'surge-speed', 'sub-size', 'sub-y', 'sub-pad', 'sub-lh', 'wave-cover-pos', 'wave-reveal-pos', 'reveal-time'];
     
     validUIInputs.forEach(id => {
         let element = document.getElementById(`ctrl-${id}`);
@@ -499,7 +497,6 @@
     let cEnd = document.getElementById('ctrl-color-end');
     let cFoam = document.getElementById('ctrl-color-foam');
 
-    // ★ 치명적 오타 수정: cSand.value 에 shallow 값을 넣던 버그를 완전히 지웠습니다.
     if(cSand) cSand.oninput = (e) => { waveShaderMat.uniforms.cSand.value.set(e.target.value); };
     if(cStart) cStart.oninput = (e) => { waveShaderMat.uniforms.cShallow.value.set(e.target.value); };
     if(cEnd) cEnd.oninput = (e) => { waveShaderMat.uniforms.cDeep.value.set(e.target.value); };
@@ -585,7 +582,7 @@
     }
 
     // =========================================================
-    // 8. 렌더링 & 녹화 시스템 (알럿 창 완전 제거로 0B 튕김 차단)
+    // 8. 렌더링 & 녹화 시스템
     // =========================================================
     document.getElementById('record-btn').onclick = function() {
         if (!decodedBuffer) return; 
@@ -611,7 +608,6 @@
             const canvasStream = renderer.domElement.captureStream(60); 
             const combinedStream = new MediaStream([...canvasStream.getVideoTracks(), ...audioDest.stream.getAudioTracks()]);
             
-            // 안정적인 WebM 코덱 고정 (에러 튕김 방지)
             let options = { mimeType: 'video/webm; codecs=vp9', videoBitsPerSecond: 8000000 }; 
             let ext = 'webm';
             if (MediaRecorder.isTypeSupported('video/mp4; codecs=avc1')) { 
@@ -625,7 +621,6 @@
                 if (e.data && e.data.size > 0) recordedChunks.push(e.data); 
             };
             
-            // 녹화 종료 시 군더더기 없이 자동 다운로드
             mediaRecorder.onstop = () => {
                 const blob = new Blob(recordedChunks, { type: options.mimeType }); 
                 if (blob.size > 0) {
@@ -654,8 +649,8 @@
             isPlaying = true;
 
             currentSource.start(0); 
-            mediaRecorder.start(1000); // 1초마다 데이터 안전 전송
-            document.getElementById('status').innerHTML = `<span class="recording-badge">● REC</span> 화면 렌더링 중...`;
+            mediaRecorder.start(1000);
+            document.getElementById('status').innerHTML = `<span class="recording-badge">● REC</span> 화면 렌더링 중... (다른 창 이동 금지)`;
             
             if(ctrlRatio) ctrlRatio.disabled = true; 
             if(ctrlPreviewTime) ctrlPreviewTime.disabled = true; 
@@ -663,7 +658,7 @@
     };
 
     // =========================================================
-    // 9. 엔진 무한 렌더링 루프 (파도 멈춤 방지)
+    // 9. 엔진 무한 렌더링 루프
     // =========================================================
     let time = 0;
 
@@ -675,7 +670,7 @@
 
         let rawBass = 0, rawTreble = 0;
         if (isPlaying && analyser && !isPreview) {
-            let smoothFactor = 0.2; // 댐핑 0.8 고정 (1.0 - 0.8)
+            let smoothFactor = 0.2; 
             analyser.getByteFrequencyData(dataArray);
             for(let i=0; i<dataArray.length; i++) smoothedData[i] += (dataArray[i] - smoothedData[i]) * smoothFactor;
             let bSum=0, tSum=0;
@@ -728,6 +723,10 @@
 
         waveShaderMat.uniforms.uTime.value = time;
         waveShaderMat.uniforms.uAngle.value = getUIVal('ctrl-wave-angle', 180.0);
+        
+        // ★ 파도 가로 간격(Spacing)을 Uniform으로 전송
+        waveShaderMat.uniforms.uWaveSpacing.value = getUIVal('ctrl-wave-spacing', 0.2);
+        
         waveShaderMat.uniforms.uBass.value = rawBass * 2.0; 
         waveShaderMat.uniforms.uTreble.value = rawTreble * 2.5;
         waveShaderMat.uniforms.uWaveDetail.value = getUIVal('ctrl-wave-detail', 1.5);
@@ -738,7 +737,7 @@
 
     function animate() {
         requestAnimationFrame(animate);
-        time += 0.015; // 파도가 무조건 부드럽게 흐르도록 시간 증가
+        time += 0.015; 
 
         if(isPlaying) {
             let currentAudioTimeSec = audioCtx.currentTime - audioStartTime;
@@ -752,7 +751,6 @@
         }
     }
     
-    // 엔진 가동!
     animate();
 </script>
 </body>
