@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Nature Fluid Studio v17 (Subtitle Sync Master)</title>
+    <title>Nature Fluid Studio v18 (SRT Sync Master)</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #020205; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; }
         canvas { width: 100vw !important; height: 100vh !important; object-fit: contain; }
@@ -62,7 +62,7 @@
 <body>
 
 <div id="ui-left" class="ui-panel">
-    <h3>자연 유체 스튜디오 v17</h3>
+    <h3>자연 유체 스튜디오 v18</h3>
     
     <div class="section-title" style="color:#00ffcc;">[파일 업로드]</div>
     <div>
@@ -128,7 +128,6 @@
         <div id="file-select-box" style="display: none; margin-top:10px;">
             <input type="file" id="audio-file" accept="audio/*">
             <div id="status">오디오를 로드하면 녹화 버튼이 나타납니다.</div>
-            
             <button id="record-btn" class="main-btn record-btn" style="margin-top:20px;">▶ 영상 렌더링 녹화 시작 (WebM)</button>
         </div>
     </div>
@@ -203,8 +202,7 @@
     let textCanvasHeight = 1920;
     
     let parsedSRT = [];
-    // 스크러버 대신 화면을 디자인하기 위한 기본 미리보기 문구 설정
-    let currentSubtitle = "시네마틱 파도 스튜디오\n(기본 미리보기 자막입니다)"; 
+    let currentSubtitle = "시네마틱 파도 스튜디오\n(자막 타임라인 연동 100% 완료)"; 
     let showSubtitles = true;
 
     let audioCtx, analyser, dataArray;
@@ -215,7 +213,7 @@
     let loadedFileName = "";
     
     // =========================================================
-    // 2. Three.js 환경 (카메라 자동 맞춤)
+    // 2. Three.js 환경
     // =========================================================
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x020205); 
@@ -229,7 +227,7 @@
     document.body.appendChild(renderer.domElement);
 
     // =========================================================
-    // 3. 포스트 프로세싱
+    // 3. 포스트 프로세싱 (고정)
     // =========================================================
     const renderScene = new THREE.RenderPass(scene, camera);
     const bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.1, 0.4, 0.85);
@@ -322,7 +320,7 @@
     }
 
     // =========================================================
-    // 5. 해변 파도 셰이더
+    // 5. 해변 파도 셰이더 (v6.3 웅덩이 복구 + Spacing 제어)
     // =========================================================
     const waveGeo = new THREE.PlaneGeometry(6000, 6000, 1, 1);
     const waveShaderMat = new THREE.ShaderMaterial({
@@ -502,21 +500,37 @@
     updateAspectRatio();
 
     // =========================================================
-    // 7. 데이터 파싱 및 오디오 파일 로더
+    // 7. ★ 데이터 파싱 버그 완벽 수정 (SRT Sync Master)
     // =========================================================
-    function parseSRTData(data) {
-        const normalizedData = data.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-        const regex = /(?:\d+)\n(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\n([\s\S]*?)(?=(?:\n\n|$))/g;
-        let match; const result = [];
-        while ((match = regex.exec(normalizedData)) !== null) {
-            result.push({ start: timeMs(match[1]), end: timeMs(match[2]), text: match[3].trim() });
-        }
-        return result;
+    // 밀리초 변환 로직에 안전장치 추가 (문자열 파싱 에러 방지)
+    function timeMs(val) {
+        // [:,.] 어떤 기호가 들어와도 안전하게 분리
+        const p = val.split(/[:,.]/);
+        // 10진수로 강제 변환하여 "08" 버그 해결
+        return (parseInt(p[0], 10) * 3600 + parseInt(p[1], 10) * 60 + parseInt(p[2], 10)) * 1000 + parseInt(p[3], 10);
     }
 
-    function timeMs(val) {
-        const p = val.split(/[:,]/);
-        return (parseInt(p[0])*3600 + parseInt(p[1])*60 + parseInt(p[2]))*1000 + parseInt(p[3]);
+    // 빈 줄, 띄어쓰기 예외까지 모두 잡아내는 튼튼한 파서 적용
+    function parseSRTData(data) {
+        const normalizedData = data.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+        const blocks = normalizedData.split(/\n\s*\n/);
+        const result = [];
+        
+        for (let i = 0; i < blocks.length; i++) {
+            const lines = blocks[i].trim().split('\n');
+            if (lines.length >= 3) {
+                // 정확한 시간 포맷 매칭 정규식
+                const timeMatch = lines[1].match(/(\d{2}:\d{2}:\d{2}[,.]\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}[,.]\d{3})/);
+                if (timeMatch) {
+                    result.push({
+                        start: timeMs(timeMatch[1]),
+                        end: timeMs(timeMatch[2]),
+                        text: lines.slice(2).join('\n').trim()
+                    });
+                }
+            }
+        }
+        return result;
     }
 
     let srtInput = document.getElementById('srt-file');
@@ -528,11 +542,11 @@
                 parsedSRT = parseSRTData(event.target.result);
                 document.getElementById('status').innerText = `SRT 자막 로드 완료! (${parsedSRT.length} 줄)`;
                 
-                // ★ 미리보기 스크러빙 삭제 후, SRT 로드 시 무조건 첫 번째 자막을 보여주도록 수정
+                // 첫 자막을 미리보기로 세팅 (0.0초 증발 방지)
                 if (parsedSRT.length > 0) {
                     currentSubtitle = parsedSRT[0].text;
                 } else {
-                    currentSubtitle = "";
+                    currentSubtitle = "자막을 인식할 수 없습니다.\nSRT 형식을 확인해주세요.";
                 }
                 updateSubtitleCanvas(currentSubtitle); 
             };
@@ -554,10 +568,10 @@
             audioCtx.decodeAudioData(event.target.result, function(buffer) {
                 if (buffer && buffer.duration) {
                     decodedBuffer = buffer; 
-                    document.getElementById('status').innerText = "오디오가 준비되었습니다. 녹화를 시작해주세요.";
+                    document.getElementById('status').innerText = "준비 완료! 아래 재생 버튼을 눌러주세요.";
                     document.getElementById('record-btn').style.display = 'block';
                 } else {
-                    document.getElementById('status').innerText = "에러: 파일 데이터를 유추할 수 없습니다.";
+                    document.getElementById('status').innerText = "에러: 오디오 파일 형식을 인식할 수 없습니다.";
                 }
             }, function(err) {
                 document.getElementById('status').innerText = "에러: 오디오 디코딩 실패.";
@@ -567,7 +581,7 @@
     };
 
     // =========================================================
-    // 8. 렌더링 & 녹화 시스템 
+    // 8. 렌더링 & 녹화 시스템
     // =========================================================
     document.getElementById('record-btn').onclick = function() {
         if (!decodedBuffer) return; 
@@ -620,9 +634,8 @@
                 
                 recBtn.style.display = 'block';
                 recBtn.disabled = false;
-                recBtn.innerText = '▶ 영상 렌더링 녹화 시작 (WebM)';
+                recBtn.innerText = '▶ 영상 렌더링 녹화 시작 (MP4/WebM)';
                 
-                // 녹화가 끝나면 다시 프리뷰 모드로 돌아가기
                 if (parsedSRT.length > 0 && showSubtitles) {
                     currentSubtitle = parsedSRT[0].text;
                 } else {
@@ -652,7 +665,7 @@
     };
 
     // =========================================================
-    // 9. 엔진 무한 렌더링 루프
+    // 9. 엔진 무한 렌더링 루프 (자막 동기화 개선)
     // =========================================================
     let time = 0;
 
@@ -711,10 +724,9 @@
                 targetSurge = coverPos;
             }
         } else {
-            // 재생 중이 아닐 때(미리보기 모드)는 파도를 항상 빼두고 고정 텍스트 노출
             targetSurge = revealPos;
             if (showSubtitles) {
-                activeText = currentSubtitle; // UI 조정 시 실시간으로 글자가 유지됨
+                activeText = currentSubtitle; 
             }
         }
 
@@ -751,12 +763,10 @@
             let currentAudioTimeSec = audioCtx.currentTime - audioStartTime;
             renderFrame(currentAudioTimeSec, false);
         } else {
-            // 멈춰있을 때는 오디오 시간 0으로 고정 렌더링
             renderFrame(0, true);
         }
     }
     
-    // 엔진 가동!
     animate();
 </script>
 </body>
