@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Nature Fluid Studio v0.004 (Treble Physics Fix)</title>
+    <title>Nature Fluid Studio v0.005 (Underwater Subtitles)</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #020205; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; }
         canvas { width: 100vw !important; height: 100vh !important; object-fit: contain; }
@@ -90,7 +90,7 @@
 </div>
 
 <div id="ui-left" class="ui-panel">
-    <h3>자연 유체 스튜디오 v0.004</h3>
+    <h3>자연 유체 스튜디오 v0.005</h3>
     
     <div class="section-title" style="color:#00ffcc;">[파일 업로드]</div>
     <div>
@@ -125,12 +125,12 @@
 
     <div class="section-title" style="color:#ff3366;">[자막 ↔ 파도 타이밍 동기화]</div>
     <div class="control-group">
-        <label>파도 위치 (자막 닫힘 / 물 덮침) <span id="val-wave-cover-pos">0.25</span></label>
-        <input type="range" id="ctrl-wave-cover-pos" min="0.0" max="1.0" value="0.25" step="0.05">
+        <label>파도 덮침 (대사 쉴 때 풀커버) <span id="val-wave-cover-pos">0.05</span></label>
+        <input type="range" id="ctrl-wave-cover-pos" min="-0.5" max="1.0" value="0.05" step="0.05">
     </div>
     <div class="control-group">
-        <label>파도 위치 (자막 열림 / 물 빠짐) <span id="val-wave-reveal-pos">0.75</span></label>
-        <input type="range" id="ctrl-wave-reveal-pos" min="0.0" max="1.0" value="0.75" step="0.05">
+        <label>파도 빠짐 (자막 열림 노출) <span id="val-wave-reveal-pos">0.85</span></label>
+        <input type="range" id="ctrl-wave-reveal-pos" min="0.0" max="1.5" value="0.85" step="0.05">
     </div>
     <div class="control-group">
         <label>자막 노출 시간 오프셋 <span id="val-reveal-time">0.2초 전</span></label>
@@ -181,11 +181,11 @@
 
     <div class="section-title" style="color:#00ffcc; margin-top: 20px;">[다이나믹 오디오 타격감]</div>
     <div class="control-group">
-        <label>저음 (Bass / 파도 밀림) <span id="val-react-bass">1.5</span></label>
+        <label>저음 (Bass) <span id="val-react-bass">1.5</span></label>
         <input type="range" id="ctrl-react-bass" min="0.0" max="3.0" value="1.5" step="0.1">
     </div>
     <div class="control-group">
-        <label>고음 (Treble / 왜곡 및 거품 폭발) <span id="val-react-treb">1.0</span></label>
+        <label>고음 (Treble) <span id="val-react-treb">1.0</span></label>
         <input type="range" id="ctrl-react-treb" min="0.0" max="3.0" value="1.0" step="0.1">
     </div>
     
@@ -236,7 +236,7 @@
     let textCanvasHeight = 1920;
     
     let parsedSRT = [];
-    let previewText = "자연 유체 스튜디오 v0.004\n(대기 중)"; 
+    let previewText = "자연 유체 스튜디오 v0.005\n(수중 자막 효과 테스트)"; 
     let currentSubtitle = previewText; 
     let showSubtitles = true;
 
@@ -296,15 +296,16 @@
         let maxWidth = textCanvasWidth - (padding * 2); 
         let lineHeightExt = getUIVal('ctrl-sub-lh', 1.4); 
 
+        // 자막 렌더링 (그림자는 모래 위에 인쇄되도록 얕게 설정)
         textCtx.font = 'bold ' + baseSize + 'px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
         textCtx.fillStyle = 'rgba(255, 255, 255, 1.0)';
-        textCtx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+        textCtx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
         textCtx.lineWidth = baseSize * 0.05;
         textCtx.lineJoin = 'round';
         textCtx.textAlign = 'center';
         textCtx.textBaseline = 'middle';
-        textCtx.shadowColor = 'rgba(0, 0, 0, 0.6)';
-        textCtx.shadowBlur = 15; textCtx.shadowOffsetX = 5; textCtx.shadowOffsetY = 5;
+        textCtx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+        textCtx.shadowBlur = 10; textCtx.shadowOffsetX = 3; textCtx.shadowOffsetY = 3;
 
         let rawLines = text.split('\n'); let wrappedLines = [];
         for(let i=0; i<rawLines.length; i++) {
@@ -326,6 +327,9 @@
         textTex.needsUpdate = true;
     }
 
+    // =========================================================
+    // 5. 해변 파도 셰이더 (★ V0.005 수중 자막 레이어링 적용)
+    // =========================================================
     const waveGeo = new THREE.PlaneGeometry(6000, 6000, 1, 1);
     const waveShaderMat = new THREE.ShaderMaterial({
         uniforms: {
@@ -359,33 +363,74 @@
                 
                 float freq = mix(4.0, 40.0, uWaveSpacing);
                 float waveSine = sin(uTime * 1.5);
-                
-                // ★ V0.004 수정: 고음(Treble)은 거리를 밀어내는 대신, 진동수를 높이고 진폭을 줄여 자글거리는 물결로 만듭니다.
                 float bassReach = sin(rUv.x * freq + uTime) * uBass * 0.15;
                 float trebleReach = cos(rUv.x * (freq * 2.5) - uTime * 2.0) * uTreble * 0.03; 
                 
                 float wavePos = uSurge + (waveSine * 0.06) + bassReach + trebleReach; 
                 
-                // ★ V0.004 수정: 고음이 노이즈 왜곡(파도 찢어짐)에 영향을 주어 자연스럽게 만듭니다.
                 float n1 = noise(noiseUv * 8.0 * uWaveDetail + uTime * 0.2 + (uTreble * 0.1)); 
                 float n2 = noise(noiseUv * 20.0 * uWaveDetail - uTime * 0.1);
                 float distToWave = rUv.y - wavePos + (n1 * 0.15) + (n2 * 0.05);
                 
                 float sandN = noise(noiseUv * 150.0); vec3 texSand = cSand * (0.9 + sandN * 0.15);
+                
+                // 기본 자막 텍스처
+                vec4 textData = vec4(0.0);
+                if(screenUv.x >= 0.0 && screenUv.x <= 1.0 && screenUv.y >= 0.0 && screenUv.y <= 1.0) { 
+                    textData = texture2D(uTextMap, screenUv); 
+                }
+
                 vec3 finalColor;
+
                 if (distToWave < 0.0) { 
-                    vec3 baseSand = texSand; if (distToWave > -0.05) baseSand *= 0.85; 
+                    // ★ 1. 모래사장 (Sand Region)
+                    vec3 baseSand = texSand; 
+                    if (distToWave > -0.05) baseSand *= 0.85; // 젖은 모래
+                    
+                    // 모래 위에 자막 인쇄
+                    vec3 sandWithText = mix(baseSand, textData.rgb, textData.a);
+
                     float puddleN = noise(noiseUv * 15.0 * uWaveDetail);
-                    if (distToWave > -0.25 && puddleN > 0.55) { if (puddleN < 0.58) finalColor = cFoam; else finalColor = cShallow; } else { finalColor = baseSand; }
+                    if (distToWave > -0.25 && puddleN > 0.55) { 
+                        if (puddleN < 0.58) {
+                            finalColor = cFoam; // 웅덩이 거품 띠
+                        } else { 
+                            // 웅덩이 물속에 잠긴 텍스트 왜곡 (살짝 일그러짐)
+                            vec2 distTextUv = screenUv + vec2(sin(uTime*3.0 + screenUv.y*50.0)*0.005);
+                            vec4 distTextData = texture2D(uTextMap, distTextUv);
+                            vec3 puddleTextSand = mix(baseSand, distTextData.rgb, distTextData.a * 0.7);
+                            finalColor = mix(puddleTextSand, cShallow, 0.4); 
+                        } 
+                    } else { 
+                        finalColor = sandWithText; 
+                    }
                 } else { 
-                    // ★ V0.004 수정: 고음이 폭발할 때 거품(Foam) 영역이 더 두꺼워지며 튀어오르는 효과 추가
+                    // ★ 2. 바다 덮침 (Water Region - 수중 효과)
+                    
+                    // 수심에 따른 자막 심한 왜곡
+                    float textDistortion = noise(rUv * 30.0 + uTime) * 0.02 * clamp(distToWave*5.0, 0.0, 1.0);
+                    vec2 distTextUv = screenUv + textDistortion;
+                    vec4 distTextData = vec4(0.0);
+                    if(distTextUv.x >= 0.0 && distTextUv.x <= 1.0 && distTextUv.y >= 0.0 && distTextUv.y <= 1.0) { 
+                        distTextData = texture2D(uTextMap, distTextUv); 
+                    }
+                    
+                    // 물 밑에 깔린 흐릿한 자막
+                    vec3 underwaterFloor = mix(texSand * 0.7, distTextData.rgb, distTextData.a * 0.3);
+                    
+                    vec3 waterColor = mix(cShallow, cDeep, smoothstep(0.0, 0.4, distToWave));
+                    // 바닥과 수심 합성
+                    waterColor = mix(underwaterFloor, waterColor, smoothstep(0.0, 0.15, distToWave));
+
                     float foamThickness = 0.015 + noise(noiseUv * 40.0 - uTime * 2.0) * 0.02 + (uSurgeVelocity * 0.5) + (uTreble * 0.01);
-                    if (distToWave < foamThickness) { finalColor = cFoam; } else { finalColor = mix(cShallow, cDeep, smoothstep(0.0, 0.4, distToWave)); }
+                    if (distToWave < foamThickness) { 
+                        finalColor = cFoam; 
+                    } else { 
+                        finalColor = waterColor; 
+                    }
                 }
                 
-                vec4 textData = vec4(0.0);
-                if(screenUv.x >= 0.0 && screenUv.x <= 1.0 && screenUv.y >= 0.0 && screenUv.y <= 1.0) { textData = texture2D(uTextMap, screenUv); }
-                finalColor = mix(finalColor, textData.rgb, textData.a); gl_FragColor = vec4(finalColor, 1.0);
+                gl_FragColor = vec4(finalColor, 1.0);
             }
         `,
         side: THREE.DoubleSide
@@ -468,7 +513,6 @@
             reader.onload = function(event) {
                 parsedSRT = parseSRTData(event.target.result);
                 document.getElementById('dbg-srt-count').innerText = parsedSRT.length;
-                
                 if (parsedSRT.length > 0) {
                     dbgLog(`✅ 파싱 성공: 총 ${parsedSRT.length}줄`);
                     previewText = parsedSRT[0].text;
@@ -582,7 +626,7 @@
             mediaRecorder.onstop = () => {
                 const blob = new Blob(recordedChunks, { type: options.mimeType }); 
                 if (blob.size > 0) {
-                    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.style = 'display: none'; a.href = url; a.download = loadedFileName.replace(/\.[^/.]+$/, "") + `_Wave_Studio_v004.${ext}`;
+                    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.style = 'display: none'; a.href = url; a.download = loadedFileName.replace(/\.[^/.]+$/, "") + `_Wave_Studio_v005.${ext}`;
                     document.body.appendChild(a); a.click(); window.URL.revokeObjectURL(url); 
                 }
                 
@@ -632,8 +676,8 @@
         document.getElementById('dbg-time').innerText = targetTimeSec.toFixed(3);
         document.getElementById('dbg-ms').innerText = elapsedMs;
 
-        let coverPos = getUIVal('ctrl-wave-cover-pos', 0.25);
-        let revealPos = getUIVal('ctrl-wave-reveal-pos', 0.75);
+        let coverPos = getUIVal('ctrl-wave-cover-pos', 0.05);
+        let revealPos = getUIVal('ctrl-wave-reveal-pos', 0.85);
         let targetSurge = revealPos; 
         let activeText = "";
         
