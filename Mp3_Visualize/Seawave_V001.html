@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Nature Fluid Studio v14 (Wave Spacing Control)</title>
+    <title>Nature Fluid Studio v15 (Spacing Control & Bug Fix)</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #020205; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; }
         canvas { width: 100vw !important; height: 100vh !important; object-fit: contain; }
@@ -62,7 +62,7 @@
 <body>
 
 <div id="ui-left" class="ui-panel">
-    <h3>자연 유체 스튜디오 v14 (1920)</h3>
+    <h3>자연 유체 스튜디오 v15 (1920)</h3>
     
     <div class="section-title" style="color:#00ffcc;">[파일 업로드]</div>
     <div>
@@ -134,7 +134,7 @@
                 <input type="range" id="ctrl-preview-time" min="0" max="100" value="0" step="0.05">
             </div>
 
-            <button id="record-btn" class="main-btn record-btn">▶ 영상 렌더링 녹화 시작 (MP4)</button>
+            <button id="record-btn" class="main-btn record-btn">▶ 영상 렌더링 녹화 시작 (WebM)</button>
         </div>
     </div>
 </div>
@@ -209,7 +209,7 @@
     let textCanvasHeight = 1920;
     
     let parsedSRT = [];
-    let currentSubtitle = "시네마틱 파도 스튜디오\n(파도 간격 조절 기능이 추가되었습니다)"; 
+    let currentSubtitle = "시네마틱 파도 스튜디오\n(블랙스크린 복구 완료)"; 
     let showSubtitles = true;
 
     let audioCtx, analyser, dataArray;
@@ -220,12 +220,14 @@
     let loadedFileName = "";
     
     // =========================================================
-    // 2. Three.js 환경 
+    // 2. Three.js 환경 (★ 블랙스크린 원인 카메라 복구 완료)
     // =========================================================
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x020205); 
     
     const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 8000);
+    // [중요 버그 픽스] 카메라를 기본 높이(1500)로 세팅해야 바닥을 쳐다볼 수 있습니다.
+    camera.position.set(0, 1500, 0); 
     camera.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({antialias: true, preserveDrawingBuffer: true});
@@ -234,7 +236,7 @@
     document.body.appendChild(renderer.domElement);
 
     // =========================================================
-    // 3. 포스트 프로세싱 (내부 고정값 적용)
+    // 3. 포스트 프로세싱
     // =========================================================
     const renderScene = new THREE.RenderPass(scene, camera);
     const bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.1, 0.4, 0.85);
@@ -327,14 +329,14 @@
     }
 
     // =========================================================
-    // 5. 해변 파도 셰이더 (Spacing 조절 기능 추가)
+    // 5. 해변 파도 셰이더 (Spacing 조절 기능 완벽 탑재)
     // =========================================================
     const waveGeo = new THREE.PlaneGeometry(6000, 6000, 1, 1);
     const waveShaderMat = new THREE.ShaderMaterial({
         uniforms: {
             uTime: { value: 0.0 }, uBass: { value: 0.0 }, uTreble: { value: 0.0 }, uAngle: { value: 0.0 }, uSeed: { value: 0.0 },
             uWaveDetail: { value: 1.5 }, uSurge: { value: 0.25 }, uSurgeVelocity: { value: 0.0 },
-            uWaveSpacing: { value: 0.2 }, // ★ 신규: 파도 간격 (0.0 ~ 1.0)
+            uWaveSpacing: { value: 0.2 }, // 파도 간격 제어
             uTextMap: { value: textTex }, uTextScale: { value: new THREE.Vector2(1.0, 1.0) },
             cSand: { value: new THREE.Color('#d2b48c') }, 
             cShallow: { value: new THREE.Color('#16a0b5') }, 
@@ -372,11 +374,10 @@
                 vec2 rUv = matRot * (screenUv - 0.5) + 0.5; 
                 vec2 noiseUv = rUv + vec2(uSeed * 0.1); 
                 
-                // ★ 핵심: Spacing 슬라이더 값(0~1)을 주파수 변환 곡선(4.0 ~ 40.0)으로 맵핑
+                // ★ 슬라이더 값(0~1)을 주파수 변환 곡선(4.0 ~ 40.0)으로 맵핑하여 파도 가로 간격을 결정합니다.
                 float freq = mix(4.0, 40.0, uWaveSpacing);
                 
                 float waveSine = sin(uTime * 1.5);
-                // freq를 이용해 파도의 간격(밀도)를 동적으로 변경합니다.
                 float audioReach = (sin(rUv.x * freq + uTime) * uBass * 0.15 + cos(rUv.x * (freq * 1.66) - uTime) * uTreble * 0.15);
                 
                 float wavePos = uSurge + (waveSine * 0.06) + audioReach; 
@@ -439,8 +440,10 @@
         
         renderer.setSize(w, h); composer.setSize(w, h); camera.aspect = w / h; 
         
+        // [중요 버그 픽스] Y값을 변경한 뒤 반드시 lookAt을 다시 호출해야 카메라 행렬이 부서지지 않습니다.
         let fovRad = 45 * Math.PI / 180;
-        camera.position.y = h / (2 * Math.tan(fovRad / 2));
+        camera.position.set(0, h / (2 * Math.tan(fovRad / 2)), 0);
+        camera.lookAt(0, 0, 0);
         camera.updateProjectionMatrix();
         
         textCanvasWidth = w;
@@ -475,7 +478,6 @@
         btnRand.onclick = () => { globalRandomSeed = Math.random() * 50.0; };
     }
 
-    // ★ 추가된 wave-spacing 슬라이더 이벤트 맵핑
     const validUIInputs = ['react-bass', 'react-treb', 'wave-angle', 'wave-spacing', 'wave-detail', 'surge-speed', 'sub-size', 'sub-y', 'sub-pad', 'sub-lh', 'wave-cover-pos', 'wave-reveal-pos', 'reveal-time'];
     
     validUIInputs.forEach(id => {
@@ -650,7 +652,7 @@
 
             currentSource.start(0); 
             mediaRecorder.start(1000);
-            document.getElementById('status').innerHTML = `<span class="recording-badge">● REC</span> 화면 렌더링 중... (다른 창 이동 금지)`;
+            document.getElementById('status').innerHTML = `<span class="recording-badge">● REC</span> 화면 렌더링 중... (다른 탭 이동 금지)`;
             
             if(ctrlRatio) ctrlRatio.disabled = true; 
             if(ctrlPreviewTime) ctrlPreviewTime.disabled = true; 
@@ -723,10 +725,7 @@
 
         waveShaderMat.uniforms.uTime.value = time;
         waveShaderMat.uniforms.uAngle.value = getUIVal('ctrl-wave-angle', 180.0);
-        
-        // ★ 파도 가로 간격(Spacing)을 Uniform으로 전송
-        waveShaderMat.uniforms.uWaveSpacing.value = getUIVal('ctrl-wave-spacing', 0.2);
-        
+        waveShaderMat.uniforms.uWaveSpacing.value = getUIVal('ctrl-wave-spacing', 0.2); // Spacing 슬라이더 값 전송
         waveShaderMat.uniforms.uBass.value = rawBass * 2.0; 
         waveShaderMat.uniforms.uTreble.value = rawTreble * 2.5;
         waveShaderMat.uniforms.uWaveDetail.value = getUIVal('ctrl-wave-detail', 1.5);
