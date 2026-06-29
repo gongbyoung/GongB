@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Nature Fluid Studio v0.005 (Underwater Subtitles)</title>
+    <title>Nature Fluid Studio v0.006 (Audio Sync & Foam Control)</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #020205; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; }
         canvas { width: 100vw !important; height: 100vh !important; object-fit: contain; }
@@ -53,6 +53,9 @@
         .record-btn { background-color: #ff3366; color: white; margin-top: 10px; box-shadow: 0 0 15px rgba(255, 51, 102, 0.6); }
         .record-btn:disabled { background-color: #555 !important; color: #ccc !important; box-shadow: none !important; cursor: not-allowed; }
         
+        #stop-record-btn { display: none; background-color: #ff3366; color: white; margin-top: 10px; border: 2px solid #fff; }
+        #stop-record-btn:hover { background-color: #cc0044; }
+
         #preview-btn { background-color: #aaff00; display: none; }
         #preview-btn:hover { background-color: #99e600; }
 
@@ -90,7 +93,7 @@
 </div>
 
 <div id="ui-left" class="ui-panel">
-    <h3>자연 유체 스튜디오 v0.005</h3>
+    <h3>자연 유체 스튜디오 v0.006</h3>
     
     <div class="section-title" style="color:#00ffcc;">[파일 업로드]</div>
     <div>
@@ -158,6 +161,7 @@
             
             <button id="preview-btn" class="main-btn" style="margin-top:15px;">▶ 화면 미리보기 재생 (녹화X)</button>
             <button id="record-btn" class="main-btn record-btn" style="display:none;">🔴 영상 렌더링 녹화 시작 (WebM)</button>
+            <button id="stop-record-btn" class="main-btn">⏹ 녹화 강제 종료 및 즉시 저장</button>
         </div>
     </div>
 </div>
@@ -181,15 +185,26 @@
 
     <div class="section-title" style="color:#00ffcc; margin-top: 20px;">[다이나믹 오디오 타격감]</div>
     <div class="control-group">
-        <label>저음 (Bass) <span id="val-react-bass">1.5</span></label>
+        <label style="color:#00ccff;">오디오 파도 반응 모드</label>
+        <select id="ctrl-audio-dir">
+            <option value="0" selected>기본 (저음/고음 모두 물을 덮침)</option>
+            <option value="1">분리형 (고음:물 덮침 / 저음:물 빠짐)</option>
+        </select>
+    </div>
+    <div class="control-group">
+        <label>저음 파워 (Bass) <span id="val-react-bass">1.5</span></label>
         <input type="range" id="ctrl-react-bass" min="0.0" max="3.0" value="1.5" step="0.1">
     </div>
     <div class="control-group">
-        <label>고음 (Treble) <span id="val-react-treb">1.0</span></label>
+        <label>고음 파워 (Treble) <span id="val-react-treb">1.0</span></label>
         <input type="range" id="ctrl-react-treb" min="0.0" max="3.0" value="1.0" step="0.1">
     </div>
     
-    <div class="section-title" style="color:#ffaa00; margin-top: 20px;">[글로벌 색상 설정]</div>
+    <div class="section-title" style="color:#ffaa00; margin-top: 20px;">[거품 & 글로벌 색상 설정]</div>
+    <div class="control-group" style="padding: 5px; border-radius: 4px; background: rgba(255, 255, 255, 0.1);">
+        <label>거품(Foam) 두께 비율 <span id="val-foam-size">15%</span></label>
+        <input type="range" id="ctrl-foam-size" min="0.0" max="1.0" value="0.15" step="0.01">
+    </div>
     <div class="control-group">
         <label style="color:#ccc;">순수 모래 색상 설정</label>
         <input type="color" id="ctrl-color-sand" value="#d2b48c" style="width:100%; height:25px; border:none; background:none; cursor:pointer;">
@@ -236,7 +251,7 @@
     let textCanvasHeight = 1920;
     
     let parsedSRT = [];
-    let previewText = "자연 유체 스튜디오 v0.005\n(수중 자막 효과 테스트)"; 
+    let previewText = "자연 유체 스튜디오 v0.006\n(대기 중)"; 
     let currentSubtitle = previewText; 
     let showSubtitles = true;
 
@@ -296,7 +311,6 @@
         let maxWidth = textCanvasWidth - (padding * 2); 
         let lineHeightExt = getUIVal('ctrl-sub-lh', 1.4); 
 
-        // 자막 렌더링 (그림자는 모래 위에 인쇄되도록 얕게 설정)
         textCtx.font = 'bold ' + baseSize + 'px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
         textCtx.fillStyle = 'rgba(255, 255, 255, 1.0)';
         textCtx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
@@ -327,14 +341,12 @@
         textTex.needsUpdate = true;
     }
 
-    // =========================================================
-    // 5. 해변 파도 셰이더 (★ V0.005 수중 자막 레이어링 적용)
-    // =========================================================
     const waveGeo = new THREE.PlaneGeometry(6000, 6000, 1, 1);
     const waveShaderMat = new THREE.ShaderMaterial({
         uniforms: {
             uTime: { value: 0.0 }, uBass: { value: 0.0 }, uTreble: { value: 0.0 }, uAngle: { value: 0.0 }, uSeed: { value: 0.0 },
             uWaveDetail: { value: 1.5 }, uSurge: { value: 0.25 }, uSurgeVelocity: { value: 0.0 }, uWaveSpacing: { value: 0.2 },
+            uFoamSize: { value: 0.15 }, uAudioDirMode: { value: 0.0 }, // 신규 Uniforms
             uTextMap: { value: textTex }, uTextScale: { value: new THREE.Vector2(1.0, 1.0) },
             cSand: { value: new THREE.Color('#d2b48c') }, cShallow: { value: new THREE.Color('#16a0b5') }, cDeep: { value: new THREE.Color('#063b4c') }, cFoam: { value: new THREE.Color('#ffffff') } 
         },
@@ -342,6 +354,7 @@
         fragmentShader: `
             uniform float uTime; uniform float uBass; uniform float uTreble; 
             uniform float uAngle; uniform float uSeed; uniform float uWaveDetail; uniform float uSurge; uniform float uSurgeVelocity; uniform float uWaveSpacing;
+            uniform float uFoamSize; uniform float uAudioDirMode;
             uniform sampler2D uTextMap; uniform vec2 uTextScale;
             uniform vec3 cSand; uniform vec3 cShallow; uniform vec3 cDeep; uniform vec3 cFoam;
             varying vec2 vUv;
@@ -363,7 +376,11 @@
                 
                 float freq = mix(4.0, 40.0, uWaveSpacing);
                 float waveSine = sin(uTime * 1.5);
-                float bassReach = sin(rUv.x * freq + uTime) * uBass * 0.15;
+                
+                // ★ V0.006 수정: 오디오 반응 방향 제어
+                float bassDir = (uAudioDirMode > 0.5) ? -1.0 : 1.0; // 1.0 모드일 때 저음은 파도를 물러나게(내림) 함
+                
+                float bassReach = sin(rUv.x * freq + uTime) * uBass * 0.15 * bassDir;
                 float trebleReach = cos(rUv.x * (freq * 2.5) - uTime * 2.0) * uTreble * 0.03; 
                 
                 float wavePos = uSurge + (waveSine * 0.06) + bassReach + trebleReach; 
@@ -374,7 +391,6 @@
                 
                 float sandN = noise(noiseUv * 150.0); vec3 texSand = cSand * (0.9 + sandN * 0.15);
                 
-                // 기본 자막 텍스처
                 vec4 textData = vec4(0.0);
                 if(screenUv.x >= 0.0 && screenUv.x <= 1.0 && screenUv.y >= 0.0 && screenUv.y <= 1.0) { 
                     textData = texture2D(uTextMap, screenUv); 
@@ -383,19 +399,16 @@
                 vec3 finalColor;
 
                 if (distToWave < 0.0) { 
-                    // ★ 1. 모래사장 (Sand Region)
                     vec3 baseSand = texSand; 
-                    if (distToWave > -0.05) baseSand *= 0.85; // 젖은 모래
+                    if (distToWave > -0.05) baseSand *= 0.85; 
                     
-                    // 모래 위에 자막 인쇄
                     vec3 sandWithText = mix(baseSand, textData.rgb, textData.a);
 
                     float puddleN = noise(noiseUv * 15.0 * uWaveDetail);
                     if (distToWave > -0.25 && puddleN > 0.55) { 
                         if (puddleN < 0.58) {
-                            finalColor = cFoam; // 웅덩이 거품 띠
+                            finalColor = cFoam; 
                         } else { 
-                            // 웅덩이 물속에 잠긴 텍스트 왜곡 (살짝 일그러짐)
                             vec2 distTextUv = screenUv + vec2(sin(uTime*3.0 + screenUv.y*50.0)*0.005);
                             vec4 distTextData = texture2D(uTextMap, distTextUv);
                             vec3 puddleTextSand = mix(baseSand, distTextData.rgb, distTextData.a * 0.7);
@@ -405,9 +418,6 @@
                         finalColor = sandWithText; 
                     }
                 } else { 
-                    // ★ 2. 바다 덮침 (Water Region - 수중 효과)
-                    
-                    // 수심에 따른 자막 심한 왜곡
                     float textDistortion = noise(rUv * 30.0 + uTime) * 0.02 * clamp(distToWave*5.0, 0.0, 1.0);
                     vec2 distTextUv = screenUv + textDistortion;
                     vec4 distTextData = vec4(0.0);
@@ -415,14 +425,13 @@
                         distTextData = texture2D(uTextMap, distTextUv); 
                     }
                     
-                    // 물 밑에 깔린 흐릿한 자막
                     vec3 underwaterFloor = mix(texSand * 0.7, distTextData.rgb, distTextData.a * 0.3);
-                    
                     vec3 waterColor = mix(cShallow, cDeep, smoothstep(0.0, 0.4, distToWave));
-                    // 바닥과 수심 합성
                     waterColor = mix(underwaterFloor, waterColor, smoothstep(0.0, 0.15, distToWave));
 
-                    float foamThickness = 0.015 + noise(noiseUv * 40.0 - uTime * 2.0) * 0.02 + (uSurgeVelocity * 0.5) + (uTreble * 0.01);
+                    // ★ V0.006 수정: 사용자가 조절하는 거품 두께 적용
+                    float baseFoam = uFoamSize * 0.1;
+                    float foamThickness = baseFoam + noise(noiseUv * 40.0 - uTime * 2.0) * 0.02 + (uSurgeVelocity * 0.5) + (uTreble * 0.01);
                     if (distToWave < foamThickness) { 
                         finalColor = cFoam; 
                     } else { 
@@ -461,12 +470,14 @@
 
     let btnRand = document.getElementById('btn-randomize'); if(btnRand) btnRand.onclick = () => { globalRandomSeed = Math.random() * 50.0; dbgLog("지형 시드 무작위 변경됨"); };
 
-    const validUIInputs = ['react-bass', 'react-treb', 'wave-angle', 'wave-spacing', 'wave-detail', 'surge-speed', 'sub-size', 'sub-y', 'sub-pad', 'sub-lh', 'wave-cover-pos', 'wave-reveal-pos', 'reveal-time'];
+    const validUIInputs = ['react-bass', 'react-treb', 'wave-angle', 'wave-spacing', 'wave-detail', 'surge-speed', 'sub-size', 'sub-y', 'sub-pad', 'sub-lh', 'wave-cover-pos', 'wave-reveal-pos', 'reveal-time', 'foam-size'];
     validUIInputs.forEach(id => {
         let element = document.getElementById(`ctrl-${id}`);
         if(element) {
             element.addEventListener('input', (e) => {
-                let suffix = id==='wave-angle' ? '°' : (id.includes('time') ? '초 전' : ''); updateUIVal(id, e.target.value, suffix);
+                let suffix = id==='wave-angle' ? '°' : (id.includes('time') ? '초 전' : (id.includes('size')&&id!=='sub-size' ? '%' : '')); 
+                let val = id.includes('foam-size') ? Math.floor(e.target.value * 100) : e.target.value;
+                updateUIVal(id, val, suffix);
                 if(['sub-size', 'sub-y', 'sub-pad', 'sub-lh'].includes(id)) { updateSubtitleCanvas(currentSubtitle); }
             });
         }
@@ -597,15 +608,29 @@
         }
     };
 
+    // ★ 녹화 강제 종료 버튼 이벤트
+    document.getElementById('stop-record-btn').onclick = function() {
+        dbgLog("사용자에 의한 녹화 강제 종료 요청");
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            mediaRecorder.stop();
+        }
+        if (currentSource) { 
+            currentSource.onended = null; 
+            try { currentSource.stop(); } catch(e) {} 
+        }
+    };
+
     document.getElementById('record-btn').onclick = function() {
         if (isPlaying || isRecording) return; 
         if (!decodedBuffer) return; 
         
         let recBtn = this;
         let previewBtn = document.getElementById('preview-btn');
+        let forceStopBtn = document.getElementById('stop-record-btn');
         
-        recBtn.disabled = true; recBtn.innerText = '🔴 녹화 진행 중... (음악이 끝나면 자동 저장)';
+        recBtn.disabled = true; recBtn.innerText = '🔴 녹화 진행 중... (끝나면 자동 저장)';
         previewBtn.disabled = true;
+        forceStopBtn.style.display = 'block'; // 강제 종료 버튼 표시
         
         audioCtx.resume().then(() => {
             currentSource = audioCtx.createBufferSource(); currentSource.buffer = decodedBuffer; currentSource.connect(analyser);
@@ -617,8 +642,9 @@
             const canvasStream = renderer.domElement.captureStream(60); 
             const combinedStream = new MediaStream([...canvasStream.getVideoTracks(), ...audioDest.stream.getAudioTracks()]);
             
-            let options = { mimeType: 'video/webm; codecs=vp9', videoBitsPerSecond: 8000000 }; let ext = 'webm';
-            if (MediaRecorder.isTypeSupported('video/mp4; codecs=avc1')) { options = { mimeType: 'video/mp4; codecs=avc1', videoBitsPerSecond: 8000000 }; ext = 'mp4'; }
+            // 완전 안전한 기본 WebM 코덱 고정
+            let options = { mimeType: 'video/webm; codecs=vp9', videoBitsPerSecond: 8000000 }; 
+            let ext = 'webm';
             
             recordedChunks = []; mediaRecorder = new MediaRecorder(combinedStream, options);
             mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) recordedChunks.push(e.data); };
@@ -626,7 +652,7 @@
             mediaRecorder.onstop = () => {
                 const blob = new Blob(recordedChunks, { type: options.mimeType }); 
                 if (blob.size > 0) {
-                    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.style = 'display: none'; a.href = url; a.download = loadedFileName.replace(/\.[^/.]+$/, "") + `_Wave_Studio_v005.${ext}`;
+                    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.style = 'display: none'; a.href = url; a.download = loadedFileName.replace(/\.[^/.]+$/, "") + `_Wave_Studio_v006.${ext}`;
                     document.body.appendChild(a); a.click(); window.URL.revokeObjectURL(url); 
                 }
                 
@@ -638,6 +664,7 @@
                 
                 recBtn.style.display = 'block'; recBtn.disabled = false; recBtn.innerText = '▶ 영상 렌더링 녹화 시작 (WebM)';
                 previewBtn.disabled = false;
+                forceStopBtn.style.display = 'none'; // 강제 종료 버튼 숨김
                 
                 if (parsedSRT.length > 0 && showSubtitles) currentSubtitle = parsedSRT[0].text;
                 updateSubtitleCanvas(currentSubtitle); 
@@ -734,9 +761,12 @@
             waveShaderMat.uniforms.uSurgeVelocity.value = Math.abs(waveShaderMat.uniforms.uSurge.value - prevSurge);
         }
 
+        // 유니폼 변수 전달 (거품 크기 및 오디오 반응 방향 추가)
         waveShaderMat.uniforms.uTime.value = time;
         waveShaderMat.uniforms.uAngle.value = getUIVal('ctrl-wave-angle', 180.0);
         waveShaderMat.uniforms.uWaveSpacing.value = getUIVal('ctrl-wave-spacing', 0.2); 
+        waveShaderMat.uniforms.uAudioDirMode.value = parseFloat(document.getElementById('ctrl-audio-dir').value);
+        waveShaderMat.uniforms.uFoamSize.value = getUIVal('ctrl-foam-size', 0.15);
         waveShaderMat.uniforms.uBass.value = rawBass * 2.0; 
         waveShaderMat.uniforms.uTreble.value = rawTreble * 2.5;
         waveShaderMat.uniforms.uWaveDetail.value = getUIVal('ctrl-wave-detail', 1.5);
