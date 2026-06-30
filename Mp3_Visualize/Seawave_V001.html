@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Nature Fluid Studio v0.007 (True Visualizer)</title>
+    <title>Nature Fluid Studio v0.008 (Custom Sand Image)</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #020205; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; }
         canvas { width: 100vw !important; height: 100vh !important; object-fit: contain; }
@@ -88,11 +88,11 @@
         [현재 매칭된 자막]<br>
         <span id="dbg-active-text" style="color:#ffcc00; font-size:12px; line-height:1.5;">(없음)</span>
     </div>
-    <div id="dbg-events">시스템 초기화 완료. 자막을 업로드하세요.</div>
+    <div id="dbg-events">시스템 초기화 완료. 파일들을 업로드하세요.</div>
 </div>
 
 <div id="ui-left" class="ui-panel">
-    <h3>자연 유체 스튜디오 v0.007</h3>
+    <h3>자연 유체 스튜디오 v0.008</h3>
     
     <div class="section-title" style="color:#00ffcc;">[파일 업로드]</div>
     <div>
@@ -100,7 +100,12 @@
         <input type="file" id="srt-file" accept=".srt">
     </div>
 
-    <div class="control-group" style="margin-top: 10px; padding: 8px; background: rgba(255, 51, 102, 0.1); border: 1px solid rgba(255, 51, 102, 0.4); border-radius: 4px;">
+    <div style="margin-top: 10px;">
+        <span class="file-label" style="color:#aaff00;">2. 모래사장 배경 이미지 (JPG/PNG) 선택</span>
+        <input type="file" id="sand-img-file" accept="image/*">
+    </div>
+
+    <div class="control-group" style="margin-top: 15px; padding: 8px; background: rgba(255, 51, 102, 0.1); border: 1px solid rgba(255, 51, 102, 0.4); border-radius: 4px;">
         <label style="color:#ff3366; margin: 0; justify-content: flex-start; font-size: 12px; font-weight: bold;">
             <input type="checkbox" id="ctrl-toggle-subtitle" checked>
             자막 및 파도 연동 켜기
@@ -126,12 +131,10 @@
     </div>
 
     <div class="section-title" style="color:#ff3366;">[자막 ↔ 파도 타이밍 동기화]</div>
-    
     <div class="control-group" style="padding: 5px; border-radius: 4px; background: rgba(255, 51, 102, 0.2);">
         <label style="color:#fff;">자막 전환 시 파도 덮침 강도 <span id="val-splash-power">0.8</span></label>
         <input type="range" id="ctrl-splash-power" min="0.0" max="2.0" value="0.8" step="0.1">
     </div>
-
     <div class="control-group">
         <label>기본 덮침 (대사 쉴 때) <span id="val-wave-cover-pos">0.05</span></label>
         <input type="range" id="ctrl-wave-cover-pos" min="-0.5" max="1.0" value="0.05" step="0.05">
@@ -158,7 +161,7 @@
     </div>
 
     <div id="audio-input-area">
-        <span class="file-label">2. 오디오 파일 (MP3/WAV) 선택</span>
+        <span class="file-label" style="color:#ffaa00;">3. 오디오 파일 (MP3/WAV) 선택</span>
         <button id="init-btn" class="main-btn">오디오 엔진 켜기</button>
         <div id="file-select-box" style="display: none; margin-top:10px;">
             <input type="file" id="audio-file" accept="audio/*">
@@ -211,7 +214,7 @@
         <input type="range" id="ctrl-foam-size" min="0.0" max="1.0" value="0.15" step="0.01">
     </div>
     <div class="control-group">
-        <label style="color:#ccc;">순수 모래 색상 설정</label>
+        <label style="color:#ccc;">순수 모래 색상 설정 (이미지 없을 때 적용)</label>
         <input type="color" id="ctrl-color-sand" value="#d2b48c" style="width:100%; height:25px; border:none; background:none; cursor:pointer;">
     </div>
     <div class="color-grid">
@@ -239,20 +242,15 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 
 <script>
-    function dbgLog(msg) {
-        const eventsDiv = document.getElementById('dbg-events');
-        const timeStr = new Date().toLocaleTimeString().split(' ')[1];
-        eventsDiv.innerHTML += `\n[${timeStr}] ${msg}`;
-        eventsDiv.scrollTop = eventsDiv.scrollHeight;
-    }
-
+    // =========================================================
+    // 1. 상태 및 전역 변수 설정 (v0.008)
+    // =========================================================
     let isPlaying = false;
     let isRecording = false; 
     let globalRandomSeed = Math.random() * 100.0;
     let audioStartTime = 0;
     let time = 0;
     
-    // ★ 추가된 로직 상태 변수
     let baseSurge = 0.75; 
     let splashTimer = 0.0; 
     
@@ -260,7 +258,7 @@
     let textCanvasHeight = 1920;
     
     let parsedSRT = [];
-    let previewText = "자연 유체 스튜디오 v0.007\n(완벽 동기화 완료)"; 
+    let previewText = "자연 유체 스튜디오 v0.008\n(모래사장 커스텀 이미지 탑재)"; 
     let currentSubtitle = previewText; 
     let showSubtitles = true;
 
@@ -271,6 +269,9 @@
     let mediaRecorder, recordedChunks = []; 
     let loadedFileName = "";
     
+    // =========================================================
+    // 2. Three.js 기본 환경 설정
+    // =========================================================
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x020205); 
     const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 8000);
@@ -303,10 +304,17 @@
     const composer = new THREE.EffectComposer(renderer);
     composer.addPass(renderScene); composer.addPass(bloomPass); composer.addPass(artFilterPass);
 
+    // 자막용 캔버스 텍스처
     const textCanvas = document.createElement('canvas');
     const textCtx = textCanvas.getContext('2d');
     const textTex = new THREE.CanvasTexture(textCanvas);
     textTex.generateMipmaps = false; textTex.minFilter = THREE.LinearFilter;
+
+    // ★ 신규: 모래사장 커스텀 이미지 더미 텍스처 생성 (업로드 전에는 빈 투명 캔버스 상태)
+    const sandCanvas = document.createElement('canvas');
+    sandCanvas.width = 2; sandCanvas.height = 2;
+    const sandTex = new THREE.CanvasTexture(sandCanvas);
+    sandTex.minFilter = THREE.LinearFilter;
 
     function getUIVal(id, defaultVal) { let el = document.getElementById(id); return el ? parseFloat(el.value) : defaultVal; }
 
@@ -320,7 +328,6 @@
         let maxWidth = textCanvasWidth - (padding * 2); 
         let lineHeightExt = getUIVal('ctrl-sub-lh', 1.4); 
 
-        // 자막 렌더링 스타일
         textCtx.font = 'bold ' + baseSize + 'px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
         textCtx.fillStyle = 'rgba(255, 255, 255, 1.0)';
         textCtx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
@@ -352,15 +359,16 @@
     }
 
     // =========================================================
-    // 5. 해변 파도 셰이더 (★ 완벽 수중 자막 & 분리형 오디오 적용)
+    // 5. 해변 파도 셰이더 (★ uSandMap 및 uUseSandMap 추가)
     // =========================================================
     const waveGeo = new THREE.PlaneGeometry(6000, 6000, 1, 1);
     const waveShaderMat = new THREE.ShaderMaterial({
         uniforms: {
             uTime: { value: 0.0 }, uBass: { value: 0.0 }, uTreble: { value: 0.0 }, uAngle: { value: 0.0 }, uSeed: { value: 0.0 },
             uWaveDetail: { value: 1.5 }, uSurge: { value: 0.25 }, uSurgeVelocity: { value: 0.0 }, uWaveSpacing: { value: 0.2 },
-            uFoamSize: { value: 0.15 }, uAudioDirMode: { value: 1.0 }, // 1.0 = 분리형
+            uFoamSize: { value: 0.15 }, uAudioDirMode: { value: 1.0 },
             uTextMap: { value: textTex }, uTextScale: { value: new THREE.Vector2(1.0, 1.0) },
+            uSandMap: { value: sandTex }, uUseSandMap: { value: 0.0 }, // ★ 커스텀 이미지 제어 플래그 추가
             cSand: { value: new THREE.Color('#d2b48c') }, cShallow: { value: new THREE.Color('#16a0b5') }, cDeep: { value: new THREE.Color('#063b4c') }, cFoam: { value: new THREE.Color('#ffffff') } 
         },
         vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
@@ -368,7 +376,8 @@
             uniform float uTime; uniform float uBass; uniform float uTreble; 
             uniform float uAngle; uniform float uSeed; uniform float uWaveDetail; uniform float uSurge; uniform float uSurgeVelocity; uniform float uWaveSpacing;
             uniform float uFoamSize; uniform float uAudioDirMode;
-            uniform sampler2D uTextMap; uniform vec2 uTextScale;
+            uniform sampler2D uTextMap; sampler2D uTextScale;
+            uniform sampler2D uSandMap; uniform float uUseSandMap; // 이미지 Uniform 슬롯 추가
             uniform vec3 cSand; uniform vec3 cShallow; uniform vec3 cDeep; uniform vec3 cFoam;
             varying vec2 vUv;
             
@@ -385,33 +394,30 @@
             void main() {
                 vec2 screenUv = (vUv - 0.5) * uTextScale + 0.5; 
                 float ang = radians(uAngle); float c = cos(ang); float s = sin(ang); mat2 matRot = mat2(c, -s, s, c);
+                
                 vec2 rUv = matRot * (screenUv - 0.5) + 0.5; vec2 noiseUv = rUv + vec2(uSeed * 0.1); 
                 
                 float freq = mix(4.0, 40.0, uWaveSpacing);
                 float waveSine = sin(uTime * 1.5);
                 
-                // ★ 1. 오디오 방향성 완벽 제어
-                float audioLevelOffset = 0.0;
-                if (uAudioDirMode > 0.5) {
-                    // 분리형: 저음(Bass)은 전체 수위를 낮추고(밀어냄+), 고음(Treble)은 전체 수위를 높임(덮침-)
-                    audioLevelOffset = (uBass * 0.15) - (uTreble * 0.15);
-                } else {
-                    // 기본형: 둘 다 수위를 높임(-)
-                    audioLevelOffset = -(uBass * 0.05) - (uTreble * 0.05);
-                }
-                
+                float audioLevelOffset = (uAudioDirMode > 0.5) ? ((uBass * 0.15) - (uTreble * 0.15)) : (-(uBass * 0.05) - (uTreble * 0.05));
                 float audioRipple = sin(rUv.x * freq + uTime) * uBass * 0.1;
                 
-                // 최종 파도 기준선 계산 (Surge + 오디오 오프셋 + 자연 파도 + 주파수 리플)
                 float wavePos = uSurge + audioLevelOffset + (waveSine * 0.06) + audioRipple; 
                 
                 float n1 = noise(noiseUv * 8.0 * uWaveDetail + uTime * 0.2 + (uTreble * 0.1)); 
                 float n2 = noise(noiseUv * 20.0 * uWaveDetail - uTime * 0.1);
                 float distToWave = rUv.y - wavePos + (n1 * 0.15) + (n2 * 0.05);
                 
-                float sandN = noise(noiseUv * 150.0); vec3 texSand = cSand * (0.9 + sandN * 0.15);
+                // ★ V0.008 핵심 로직: 플래그가 1.0이면 이미지 픽셀 색상 채택, 0.0이면 수식 기반 컬러 채택
+                vec3 texSand = cSand;
+                if (uUseSandMap > 0.5) {
+                    texSand = texture2D(uSandMap, screenUv).rgb;
+                } else {
+                    float sandN = noise(noiseUv * 150.0);
+                    texSand = cSand * (0.9 + sandN * 0.15);
+                }
                 
-                // 자막 텍스처 로드
                 vec4 textData = vec4(0.0);
                 if(screenUv.x >= 0.0 && screenUv.x <= 1.0 && screenUv.y >= 0.0 && screenUv.y <= 1.0) { 
                     textData = texture2D(uTextMap, screenUv); 
@@ -420,11 +426,9 @@
                 vec3 finalColor;
 
                 if (distToWave < 0.0) { 
-                    // ★ 2. 모래사장 및 노출된 자막
                     vec3 baseSand = texSand; 
                     if (distToWave > -0.05) baseSand *= 0.85; 
                     
-                    // 자막을 모래 위에 혼합 (글씨가 모래에 박힌 형태)
                     vec3 sandWithText = mix(baseSand, textData.rgb, textData.a);
 
                     float puddleN = noise(noiseUv * 15.0 * uWaveDetail);
@@ -432,7 +436,6 @@
                         if (puddleN < 0.58) {
                             finalColor = cFoam; 
                         } else { 
-                            // 웅덩이에 잠긴 자막 왜곡 처리
                             vec2 distTextUv = screenUv + vec2(sin(uTime*3.0 + screenUv.y*50.0)*0.005);
                             vec4 distTextData = texture2D(uTextMap, distTextUv);
                             vec3 puddleTextSand = mix(baseSand, distTextData.rgb, distTextData.a * 0.7);
@@ -442,7 +445,6 @@
                         finalColor = sandWithText; 
                     }
                 } else { 
-                    // ★ 3. 바다에 덮친 자막 (왜곡 & 물색 틴트 효과)
                     float textDistortion = noise(rUv * 30.0 + uTime) * 0.02 * clamp(distToWave*5.0, 0.0, 1.0);
                     vec2 distTextUv = screenUv + textDistortion;
                     vec4 distTextData = vec4(0.0);
@@ -450,14 +452,12 @@
                         distTextData = texture2D(uTextMap, distTextUv); 
                     }
                     
-                    // 물 밑으로 가라앉아 흐려진 자막
                     vec3 underwaterText = mix(texSand, distTextData.rgb, distTextData.a * 0.8);
                     vec3 underwaterFloor = mix(underwaterText, cShallow, 0.5); 
                     
                     vec3 waterColor = mix(cShallow, cDeep, smoothstep(0.0, 0.4, distToWave));
                     waterColor = mix(underwaterFloor, waterColor, smoothstep(0.0, 0.2, distToWave));
 
-                    // 거품 처리
                     float baseFoam = uFoamSize * 0.1;
                     float foamThickness = baseFoam + noise(noiseUv * 40.0 - uTime * 2.0) * 0.02 + (uSurgeVelocity * 0.5) + (uTreble * 0.01);
                     if (distToWave < foamThickness) { 
@@ -515,11 +515,30 @@
     if(cSand) cSand.oninput = (e) => { waveShaderMat.uniforms.cSand.value.set(e.target.value); }; if(cStart) cStart.oninput = (e) => { waveShaderMat.uniforms.cShallow.value.set(e.target.value); };
     if(cEnd) cEnd.oninput = (e) => { waveShaderMat.uniforms.cDeep.value.set(e.target.value); }; if(cFoam) cFoam.oninput = (e) => { waveShaderMat.uniforms.cFoam.value.set(e.target.value); }; 
 
+    // ★ 신규: 모래사장 커스텀 이미지 파일 처리 엔진 탑재
+    let sandImgInput = document.getElementById('sand-img-file');
+    if (sandImgInput) {
+        sandImgInput.onchange = function(e) {
+            const file = e.target.files[0]; if(!file) return;
+            dbgLog(`[업로드] 모래사장 이미지 감지됨: ${file.name}`);
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = function() {
+                    sandTex.image = img;
+                    sandTex.needsUpdate = true;
+                    waveShaderMat.uniforms.uUseSandMap.value = 1.0; // 이미지 활성화 플래그 On
+                    dbgLog(`✅ 모래사장 이미지 엔진 매핑 성공!`);
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        };
+    }
+
     function timeMs(val) {
         const p = val.split(/[:,.]/);
-        let ms = (parseInt(p[0], 10) * 3600 + parseInt(p[1], 10) * 60 + parseInt(p[2], 10)) * 1000 + parseInt(p[3], 10);
-        if (isNaN(ms)) dbgLog(`[에러] 시간 변환 실패: 원본="${val}"`);
-        return ms;
+        return (parseInt(p[0], 10) * 3600 + parseInt(p[1], 10) * 60 + parseInt(p[2], 10)) * 1000 + parseInt(p[3], 10);
     }
 
     function parseSRTData(data) {
@@ -672,7 +691,7 @@
             mediaRecorder.onstop = () => {
                 const blob = new Blob(recordedChunks, { type: options.mimeType }); 
                 if (blob.size > 0) {
-                    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.style = 'display: none'; a.href = url; a.download = loadedFileName.replace(/\.[^/.]+$/, "") + `_Wave_Studio_v007.${ext}`;
+                    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.style = 'display: none'; a.href = url; a.download = loadedFileName.replace(/\.[^/.]+$/, "") + `_Wave_Studio_v0.008.${ext}`;
                     document.body.appendChild(a); a.click(); window.URL.revokeObjectURL(url); 
                 }
                 
@@ -701,9 +720,6 @@
         });
     };
 
-    // =========================================================
-    // 9. 마스터 애니메이션 동기화 루프 (★ 강제 덮침 효과 로직 탑재)
-    // =========================================================
     function renderFrame(targetTimeSec, isPreview = false) {
         let fovRad = 45 * Math.PI / 180;
         let visibleHeight = 2 * Math.tan(fovRad / 2) * camera.position.y; 
@@ -761,7 +777,6 @@
             if (showSubtitles) activeText = previewText;
         }
 
-        // ★ 자막이 바뀌는 순간 강제 파도 덮침(Splash) 트리거 발생
         if (activeText !== currentSubtitle) {
             if (isPlaying && currentSubtitle !== previewText && currentSubtitle !== "") {
                 splashTimer = 1.0; 
@@ -779,15 +794,13 @@
             dbgTextEl.style.color = "#ffcc00";
         }
 
-        // 강제 덮침 타이머 처리
         if (splashTimer > 0) {
-            splashTimer -= 0.03; // 약 0.5초 동안 파도가 올라갔다 내려옴
+            splashTimer -= 0.03; 
             if (splashTimer < 0) splashTimer = 0;
         }
 
-        // 덮침 강도 슬라이더 값 적용
         let splashPower = getUIVal('ctrl-splash-power', 0.8);
-        let splashOffset = Math.sin(splashTimer * Math.PI) * -splashPower; // 마이너스 값이 파도를 덮치게 함
+        let splashOffset = Math.sin(splashTimer * Math.PI) * -splashPower; 
 
         if (isPreview) {
             baseSurge = targetSurge;
@@ -798,10 +811,8 @@
             waveShaderMat.uniforms.uSurgeVelocity.value = Math.abs(targetSurge - baseSurge);
         }
 
-        // 최종 수위 = (자연 수위) + (자막 전환 강제 덮침 효과)
         waveShaderMat.uniforms.uSurge.value = baseSurge + splashOffset;
 
-        // 기타 유니폼 업데이트
         waveShaderMat.uniforms.uTime.value = time;
         waveShaderMat.uniforms.uAngle.value = getUIVal('ctrl-wave-angle', 180.0);
         waveShaderMat.uniforms.uWaveSpacing.value = getUIVal('ctrl-wave-spacing', 0.2); 
