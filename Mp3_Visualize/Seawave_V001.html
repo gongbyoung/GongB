@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Nature Fluid Studio v0.008 (Custom Sand Image)</title>
+    <title>Nature Fluid Studio v0.009 (UI Visibility Fix)</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #020205; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; }
         canvas { width: 100vw !important; height: 100vh !important; object-fit: contain; }
@@ -50,14 +50,15 @@
         .rand-btn { background-color: #ffaa00; color: black; margin-top: 5px; font-size: 12px; padding: 10px; font-weight: bold; box-shadow: 0 0 10px rgba(255, 170, 0, 0.4); }
         .rand-btn:hover { background-color: #ffcc00; box-shadow: 0 0 15px rgba(255, 170, 0, 0.7); }
 
-        .record-btn { background-color: #ff3366; color: white; margin-top: 10px; box-shadow: 0 0 15px rgba(255, 51, 102, 0.6); }
-        .record-btn:disabled { background-color: #555 !important; color: #ccc !important; box-shadow: none !important; cursor: not-allowed; }
+        /* 버튼 숨김 처리 완전 삭제 */
+        .record-btn { margin-top: 10px; }
+        #preview-btn { margin-top: 15px; }
         
+        .record-btn:disabled { background-color: #444 !important; color: #888 !important; box-shadow: none !important; cursor: not-allowed; }
+        #preview-btn:disabled { background-color: #444 !important; color: #888 !important; box-shadow: none !important; cursor: not-allowed; }
+
         #stop-record-btn { display: none; background-color: #ff3366; color: white; margin-top: 10px; border: 2px solid #fff; }
         #stop-record-btn:hover { background-color: #cc0044; }
-
-        #preview-btn { background-color: #aaff00; display: none; }
-        #preview-btn:hover { background-color: #99e600; }
 
         #status { font-size: 12px; color: #ffcc00; margin-top: 10px; line-height: 1.4; text-align: center; font-weight: bold;}
         .recording-badge { color: #ff3366; font-weight: bold; animation: blink 1.5s infinite; }
@@ -92,14 +93,13 @@
 </div>
 
 <div id="ui-left" class="ui-panel">
-    <h3>자연 유체 스튜디오 v0.008</h3>
+    <h3>자연 유체 스튜디오 v0.009</h3>
     
     <div class="section-title" style="color:#00ffcc;">[파일 업로드]</div>
     <div>
         <span class="file-label">1. 자막 파일 (SRT) 선택</span>
         <input type="file" id="srt-file" accept=".srt">
     </div>
-
     <div style="margin-top: 10px;">
         <span class="file-label" style="color:#aaff00;">2. 모래사장 배경 이미지 (JPG/PNG) 선택</span>
         <input type="file" id="sand-img-file" accept="image/*">
@@ -162,13 +162,13 @@
 
     <div id="audio-input-area">
         <span class="file-label" style="color:#ffaa00;">3. 오디오 파일 (MP3/WAV) 선택</span>
-        <button id="init-btn" class="main-btn">오디오 엔진 켜기</button>
+        <button id="init-btn" class="main-btn">🔊 오디오 엔진 켜기 (필수)</button>
         <div id="file-select-box" style="display: none; margin-top:10px;">
             <input type="file" id="audio-file" accept="audio/*">
             <div id="status">오디오 파일을 로딩해 주세요.</div>
             
-            <button id="preview-btn" class="main-btn" style="margin-top:15px;">▶ 화면 미리보기 재생 (녹화X)</button>
-            <button id="record-btn" class="main-btn record-btn" style="display:none;">🔴 영상 렌더링 녹화 시작 (WebM)</button>
+            <button id="preview-btn" class="main-btn" disabled>▶ 화면 미리보기 재생 (대기중)</button>
+            <button id="record-btn" class="main-btn record-btn" disabled>🔴 영상 렌더링 녹화 시작 (대기중)</button>
             <button id="stop-record-btn" class="main-btn">⏹ 녹화 강제 종료 및 즉시 저장</button>
         </div>
     </div>
@@ -211,7 +211,7 @@
     <div class="section-title" style="color:#ffaa00; margin-top: 20px;">[거품 & 글로벌 색상 설정]</div>
     <div class="control-group" style="padding: 5px; border-radius: 4px; background: rgba(255, 255, 255, 0.1);">
         <label>거품(Foam) 두께 비율 <span id="val-foam-size">15%</span></label>
-        <input type="range" id="ctrl-foam-size" min="0.0" max="2.0" value="0.5" step="0.01">
+        <input type="range" id="ctrl-foam-size" min="0.0" max="1.0" value="0.15" step="0.01">
     </div>
     <div class="control-group">
         <label style="color:#ccc;">순수 모래 색상 설정 (이미지 없을 때 적용)</label>
@@ -242,9 +242,13 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 
 <script>
-    // =========================================================
-    // 1. 상태 및 전역 변수 설정 (v0.008)
-    // =========================================================
+    function dbgLog(msg) {
+        const eventsDiv = document.getElementById('dbg-events');
+        const timeStr = new Date().toLocaleTimeString().split(' ')[1];
+        eventsDiv.innerHTML += `\n[${timeStr}] ${msg}`;
+        eventsDiv.scrollTop = eventsDiv.scrollHeight;
+    }
+
     let isPlaying = false;
     let isRecording = false; 
     let globalRandomSeed = Math.random() * 100.0;
@@ -258,7 +262,7 @@
     let textCanvasHeight = 1920;
     
     let parsedSRT = [];
-    let previewText = "자연 유체 스튜디오 v0.008\n(모래사장 커스텀 이미지 탑재)"; 
+    let previewText = "자연 유체 스튜디오 v0.009\n(UI 항시 노출 업데이트)"; 
     let currentSubtitle = previewText; 
     let showSubtitles = true;
 
@@ -269,9 +273,6 @@
     let mediaRecorder, recordedChunks = []; 
     let loadedFileName = "";
     
-    // =========================================================
-    // 2. Three.js 기본 환경 설정
-    // =========================================================
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x020205); 
     const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 8000);
@@ -304,13 +305,11 @@
     const composer = new THREE.EffectComposer(renderer);
     composer.addPass(renderScene); composer.addPass(bloomPass); composer.addPass(artFilterPass);
 
-    // 자막용 캔버스 텍스처
     const textCanvas = document.createElement('canvas');
     const textCtx = textCanvas.getContext('2d');
     const textTex = new THREE.CanvasTexture(textCanvas);
     textTex.generateMipmaps = false; textTex.minFilter = THREE.LinearFilter;
 
-    // ★ 신규: 모래사장 커스텀 이미지 더미 텍스처 생성 (업로드 전에는 빈 투명 캔버스 상태)
     const sandCanvas = document.createElement('canvas');
     sandCanvas.width = 2; sandCanvas.height = 2;
     const sandTex = new THREE.CanvasTexture(sandCanvas);
@@ -358,17 +357,14 @@
         textTex.needsUpdate = true;
     }
 
-    // =========================================================
-    // 5. 해변 파도 셰이더 (★ uSandMap 및 uUseSandMap 추가)
-    // =========================================================
     const waveGeo = new THREE.PlaneGeometry(6000, 6000, 1, 1);
     const waveShaderMat = new THREE.ShaderMaterial({
         uniforms: {
             uTime: { value: 0.0 }, uBass: { value: 0.0 }, uTreble: { value: 0.0 }, uAngle: { value: 0.0 }, uSeed: { value: 0.0 },
             uWaveDetail: { value: 1.5 }, uSurge: { value: 0.25 }, uSurgeVelocity: { value: 0.0 }, uWaveSpacing: { value: 0.2 },
-            uFoamSize: { value: 0.15 }, uAudioDirMode: { value: 1.0 },
+            uFoamSize: { value: 0.15 }, uAudioDirMode: { value: 1.0 }, 
             uTextMap: { value: textTex }, uTextScale: { value: new THREE.Vector2(1.0, 1.0) },
-            uSandMap: { value: sandTex }, uUseSandMap: { value: 0.0 }, // ★ 커스텀 이미지 제어 플래그 추가
+            uSandMap: { value: sandTex }, uUseSandMap: { value: 0.0 }, 
             cSand: { value: new THREE.Color('#d2b48c') }, cShallow: { value: new THREE.Color('#16a0b5') }, cDeep: { value: new THREE.Color('#063b4c') }, cFoam: { value: new THREE.Color('#ffffff') } 
         },
         vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
@@ -376,8 +372,8 @@
             uniform float uTime; uniform float uBass; uniform float uTreble; 
             uniform float uAngle; uniform float uSeed; uniform float uWaveDetail; uniform float uSurge; uniform float uSurgeVelocity; uniform float uWaveSpacing;
             uniform float uFoamSize; uniform float uAudioDirMode;
-            uniform sampler2D uTextMap; sampler2D uTextScale;
-            uniform sampler2D uSandMap; uniform float uUseSandMap; // 이미지 Uniform 슬롯 추가
+            uniform sampler2D uTextMap; uniform vec2 uTextScale;
+            uniform sampler2D uSandMap; uniform float uUseSandMap; 
             uniform vec3 cSand; uniform vec3 cShallow; uniform vec3 cDeep; uniform vec3 cFoam;
             varying vec2 vUv;
             
@@ -409,7 +405,6 @@
                 float n2 = noise(noiseUv * 20.0 * uWaveDetail - uTime * 0.1);
                 float distToWave = rUv.y - wavePos + (n1 * 0.15) + (n2 * 0.05);
                 
-                // ★ V0.008 핵심 로직: 플래그가 1.0이면 이미지 픽셀 색상 채택, 0.0이면 수식 기반 컬러 채택
                 vec3 texSand = cSand;
                 if (uUseSandMap > 0.5) {
                     texSand = texture2D(uSandMap, screenUv).rgb;
@@ -515,7 +510,6 @@
     if(cSand) cSand.oninput = (e) => { waveShaderMat.uniforms.cSand.value.set(e.target.value); }; if(cStart) cStart.oninput = (e) => { waveShaderMat.uniforms.cShallow.value.set(e.target.value); };
     if(cEnd) cEnd.oninput = (e) => { waveShaderMat.uniforms.cDeep.value.set(e.target.value); }; if(cFoam) cFoam.oninput = (e) => { waveShaderMat.uniforms.cFoam.value.set(e.target.value); }; 
 
-    // ★ 신규: 모래사장 커스텀 이미지 파일 처리 엔진 탑재
     let sandImgInput = document.getElementById('sand-img-file');
     if (sandImgInput) {
         sandImgInput.onchange = function(e) {
@@ -527,7 +521,7 @@
                 img.onload = function() {
                     sandTex.image = img;
                     sandTex.needsUpdate = true;
-                    waveShaderMat.uniforms.uUseSandMap.value = 1.0; // 이미지 활성화 플래그 On
+                    waveShaderMat.uniforms.uUseSandMap.value = 1.0; 
                     dbgLog(`✅ 모래사장 이미지 엔진 매핑 성공!`);
                 };
                 img.src = event.target.result;
@@ -601,8 +595,21 @@
                 if (buffer && buffer.duration) {
                     decodedBuffer = buffer; 
                     dbgLog(`✅ 디코딩 성공: 총 길이 ${buffer.duration.toFixed(1)}초`);
-                    document.getElementById('preview-btn').style.display = 'block';
-                    document.getElementById('record-btn').style.display = 'block';
+                    
+                    // ★ V0.009 수정: 버튼을 띄우는 게 아니라, 이미 띄워진 버튼의 disabled 속성을 제거하여 활성화
+                    let pBtn = document.getElementById('preview-btn');
+                    pBtn.disabled = false;
+                    pBtn.style.backgroundColor = '#aaff00';
+                    pBtn.style.color = 'black';
+                    pBtn.innerText = '▶ 화면 미리보기 재생 (녹화X)';
+                    
+                    let rBtn = document.getElementById('record-btn');
+                    rBtn.disabled = false;
+                    rBtn.style.backgroundColor = '#ff3366';
+                    rBtn.style.color = 'white';
+                    rBtn.style.boxShadow = '0 0 15px rgba(255, 51, 102, 0.6)';
+                    rBtn.innerText = '🔴 영상 렌더링 녹화 시작 (WebM)';
+
                     document.getElementById('status').innerText = "오디오 준비 완료!";
                 }
             });
@@ -691,7 +698,7 @@
             mediaRecorder.onstop = () => {
                 const blob = new Blob(recordedChunks, { type: options.mimeType }); 
                 if (blob.size > 0) {
-                    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.style = 'display: none'; a.href = url; a.download = loadedFileName.replace(/\.[^/.]+$/, "") + `_Wave_Studio_v0.008.${ext}`;
+                    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.style = 'display: none'; a.href = url; a.download = loadedFileName.replace(/\.[^/.]+$/, "") + `_Wave_Studio_v009.${ext}`;
                     document.body.appendChild(a); a.click(); window.URL.revokeObjectURL(url); 
                 }
                 
