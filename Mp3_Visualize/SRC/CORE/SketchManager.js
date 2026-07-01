@@ -25,8 +25,10 @@ export class SketchManager {
     try {
       // 3. Dynamic Import를 이용해 sketches 폴더 안의 모듈을 실시간으로 가져옴
       // Webpack/Vite 환경 또는 순수 ESM 파싱 규칙에 맞게 경로 세팅
-      const modulePath = `../sketches/${sketchFileName}`;
-      const sketchModule = await import(modulePath);
+      // 변경 후 (main.js에서 완성된 경로를 던져주므로 그대로 import)
+       const sketchModule = await import(sketchFileName);
+
+
       
       // 4. 모듈 내부의 기본 export 클래스를 인스턴스화 (규격화된 인터페이스 가정)
       // 모든 스케치는 규칙상 'export default class ...' 형태로 작성되어야 함
