@@ -21,8 +21,9 @@ sketchItems.forEach(item => {
         e.currentTarget.classList.add('active');
 
         // 선택된 스케치 파일명 획득 후 매니저에게 스위칭 명령
-        const sketchFile = e.currentTarget.getAttribute('data-sketch');
-        await manager.switchSketch(sketchFile, analyzer);
+const sketchFile = e.currentTarget.getAttribute('data-sketch');
+// main.js와 sketches 폴더는 같은 src 폴더 안에 있으므로 ./sketches/ 가 맞습니다.
+await manager.switchSketch(`./sketches/${sketchFile}`, analyzer);
     });
 });
 
@@ -34,3 +35,4 @@ manager.switchSketch(defaultSketch, analyzer);
 window.addEventListener('resize', () => {
     manager.resize(window.innerWidth, window.innerHeight);
 });
+
