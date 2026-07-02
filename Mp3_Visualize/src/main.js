@@ -2,7 +2,7 @@
  * src/main.js
  * 미디어 리소스 업로드, 오디오 튜닝, 스케치 매니저 및 
  * 우측 Cosmic Studio 패널 데이터 실시간 동기화 마스터 스크립트
- * (core/ 폴더 주소 임포트 경로 정상화 버전)
+ * (정밀 주소 타게팅 보완 버젼)
  */
 
 import { AudioAnalyzer } from './core/AudioAnalyzer.js';
