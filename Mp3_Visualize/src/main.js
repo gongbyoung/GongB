@@ -90,52 +90,77 @@ imageInput.addEventListener('change', (e) => {
 
 // src/main.js 내부 - 6번 Cosmic Studio Tuning 동기화 파트 전면 개조
 
+// src/main.js 내부 - 우측 Cosmic Studio Tuning 패널 데이터 수혈 동기화 파트
+
 const cosmicSliders = {
     seed: document.getElementById('slide-cosmic-seed'),
+    scatter: document.getElementById('slide-cosmic-scatter'), // 💡 분산 범위 추가
     color: document.getElementById('select-cosmic-color'),
     glow: document.getElementById('slide-cosmic-glow'),
-    gain: document.getElementById('slide-cosmic-gain')
+    gain: document.getElementById('slide-cosmic-gain'),
+    // 수동 컬러 컬러 픽커 세트
+    pickGas1: document.getElementById('picker-gas1'),
+    pickGas2: document.getElementById('picker-gas2'),
+    pickStar: document.getElementById('picker-star')
 };
 
 const cosmicDisplays = {
     seed: document.getElementById('val-cosmic-seed'),
+    scatter: document.getElementById('val-cosmic-scatter'),
     glow: document.getElementById('val-cosmic-glow'),
     gain: document.getElementById('val-cosmic-gain')
 };
 
 function syncCosmicControls() {
     const seedVal = parseInt(cosmicSliders.seed.value);
+    const scatterVal = parseFloat(cosmicSliders.scatter.value) / 10; // 0.5 ~ 5.0 스케일 스케일 변환
     const colorVal = cosmicSliders.color.value;
     const glowVal = parseFloat(cosmicSliders.glow.value) / 100;
     const gainVal = parseFloat(cosmicSliders.gain.value) / 100;
 
+    // 수동 색상 문자열 캡처
+    const cGas1 = cosmicSliders.pickGas1.value;
+    const cGas2 = cosmicSliders.pickGas2.value;
+    const cStar = cosmicSliders.pickStar.value;
+
     cosmicDisplays.seed.innerText = seedVal;
+    cosmicDisplays.scatter.innerText = scatterVal.toFixed(1);
     cosmicDisplays.glow.innerText = glowVal.toFixed(2);
     cosmicDisplays.gain.innerText = gainVal.toFixed(1);
 
-    // 💡 [안전 플러그인 전역 창 바인딩]
-    // 변수 전역 스코프(window)에 실시간으로 상태를 공유하여, 
-    // 007번 스케치가 무한 렌더링 루프 중에서 단 1프레임의 오차도 없이 즉시 수치를 채집해 가도록 설계합니다.
+    // 전역 안전 캐시 창고 데이터 업데이트
     window.cosmicEngineSettings = {
         seed: seedVal,
+        scatterExponent: scatterVal, // 💥 밀집 완화 지수 전송
         colorStyle: colorVal,
         glowIntensity: glowVal,
-        audioGain: gainVal
+        audioGain: gainVal,
+        customColors: { gas1: cGas1, gas2: cGas2, star: cStar }
     };
 
-    // 만약 현재 켜져 있는 스케치가 007번이고, 유저가 씨드 슬라이더를 직접 탁 움직였다면 
-    // 우주 성단의 성좌 좌표계를 즉시 실시간으로 재구조화 트리거를 당겨줍니다.
+    // 현재 구동중인 스케치가 007번일 때 실시간 동적 재정렬 가동
     if (manager.currentFile === '007_three_cosmic_nebula.js' && manager.currentSketch) {
-        if (manager.currentSketch.loadedSeed !== seedVal && typeof manager.currentSketch.buildCosmos === 'function') {
-            manager.currentSketch.buildCosmos();
+        const sk = manager.currentSketch;
+        
+        // 씨드, 흩어짐 반경, 색상 채널이 바뀌면 즉시 성운 지형 재연산 트리거 호출
+        const isTopologyChanged = (sk.loadedSeed !== seedVal || sk.loadedScatter !== scatterVal || sk.loadedColorStyle !== colorVal);
+        
+        if (isTopologyChanged && typeof sk.buildCosmos === 'function') {
+            sk.buildCosmos();
         }
     }
 }
 
-// 실시간 슬라이더 이동 입력 이벤트 결합
+// 모든 우주 패널 제어 장치에 전역 이벤트 결합
 Object.values(cosmicSliders).forEach(el => {
     el.addEventListener('input', syncCosmicControls);
     el.addEventListener('change', syncCosmicControls);
+});
+
+// 수동 컬러 픽커들은 클릭 후 색을 고르고 뗄 때 부드럽게 갱신되도록 별도 트리거 유지
+cosmicSliders.pickGas1.addEventListener('change', syncCosmicControls);
+cosmicSliders.pickGas2.addEventListener('change', syncCosmicControls);
+cosmicSliders.pickStar.addEventListener('change', syncCosmicControls);
 });
 
 // 스케치 전환 마스터 인터랙션에 007번 동기화 필터 보완
