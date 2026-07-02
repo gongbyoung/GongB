@@ -1,6 +1,7 @@
 /**
  * 007_three_cosmic_nebula.js
  * 중앙 빛 분산 지수 조절 제어 및 커스텀 수동/랜덤 컬러 시스템 결합 성운 무대
+ * (GPU 색상 버퍼 실시간 리프레시 버그 완전 패치본)
  */
 export default class ThreeRealNebula {
   constructor(container) {
@@ -68,7 +69,7 @@ export default class ThreeRealNebula {
     // 전역 동기화 수치 스캔
     if (window.cosmicEngineSettings) {
       this.currentSeed = window.cosmicEngineSettings.seed;
-      this.scatterExponent = window.cosmicEngineSettings.scatterExponent; // 💡 분산 지수 확보 (0.5 ~ 5.0)
+      this.scatterExponent = window.cosmicEngineSettings.scatterExponent; 
       this.colorStyle = window.cosmicEngineSettings.colorStyle;
       this.customColors = window.cosmicEngineSettings.customColors;
     } else {
@@ -82,12 +83,6 @@ export default class ThreeRealNebula {
     this.loadedSeed = this.currentSeed;
     this.loadedScatter = this.scatterExponent;
     this.loadedColorStyle = this.colorStyle;
-
-    if (this.points) {
-      this.scene.remove(this.points);
-      this.geometry.dispose();
-      this.material.dispose();
-    }
 
     this.geometry = new THREE.BufferGeometry();
     const positions = new Float32Array(this.particleCount * 3);
@@ -105,10 +100,6 @@ export default class ThreeRealNebula {
       const rand4 = this.seededRandom(sRandom + 4);
 
       const angle = rand1 * Math.PI * 2;
-      
-      // 💡 [빛의 분산 핵심 수식 개조] 
-      // 기존 하드코딩된 거듭제곱 밀집 상수 2.2 대신 유저가 조작한 `this.scatterExponent`를 대입합니다!
-      // 이 지수가 낮아지면(예: 0.8) 중심에 안 뭉치고 성운이 옅고 광활하게 온 화면으로 부드럽게 번지게 됩니다.
       const radius = Math.pow(rand2, this.scatterExponent) * 9.5 + 0.1;
 
       const x = Math.cos(angle) * radius;
@@ -132,14 +123,12 @@ export default class ThreeRealNebula {
         pSize = 0.012 + rand1 * 0.012;
       }
 
-      // 🎨 [색조합 옵션 전면 확장]
+      // 색조합 옵션 변환 매핑
       if (this.colorStyle === 'full-random') {
-        // 🎲 1. 완전 퓨어 랜덤 컬러 조합 모드 (입자 고유의 무작위 성운 색채 색채)
         if (starType === 'star') color.setHSL(rand1, 0.3, 0.95);
         else color.setHSL(rand1, 0.85, 0.5);
       } 
       else if (window.cosmicEngineSettings) {
-        // 🛠️ 2. 유저가 화면 우측 픽커로 고른 실시간 수동 지정 커스텀 컬러 모드 연동
         const cc = this.customColors;
         if (starType === 'star') {
           color.set(cc.star);
@@ -150,7 +139,6 @@ export default class ThreeRealNebula {
         }
       } 
       else {
-        // 디폴트 흑백/청록 모드 가드
         color.setHSL(0.52 + rand2 * 0.06, 0.9, 0.45);
       }
 
@@ -170,38 +158,47 @@ export default class ThreeRealNebula {
 
     this.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     this.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-
-    this.material = new THREE.PointsMaterial({
-      size: 1.0,
-      map: this.createGlowTexture(),
-      vertexColors: true,
-      transparent: true,
-      opacity: 0.85,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false
-    });
-
-    this.material.onBeforeCompile = (shader) => {
-      shader.vertexShader = shader.vertexShader.replace(
-        'void main() {',
-        `attribute float pSize;
-         void main() {`
-      );
-      shader.vertexShader = shader.vertexShader.replace(
-        'gl_PointSize = size;',
-        'gl_PointSize = size * pSize;'
-      );
-    };
-
     this.geometry.setAttribute('pSize', new THREE.BufferAttribute(sizes, 1));
-    this.points = new THREE.Points(this.geometry, this.material);
-    this.scene.add(this.points);
+
+    // 💡 [버그 완벽 수정 마법] 
+    // 기존 시스템에 장착되어 있으면 파괴하지 않고 내부에 덮어씌운 뒤, GPU에게 즉시 강제 갱신 통보를 내립니다.
+    if (this.points) {
+      this.points.geometry.attributes.position.needsUpdate = true;
+      this.points.geometry.attributes.color.needsUpdate = true; // 💥 실시간 색상 교환 실현
+      this.points.geometry.attributes.pSize.needsUpdate = true;
+    } else {
+      this.material = new THREE.PointsMaterial({
+        size: 1.0,
+        map: this.createGlowTexture(),
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.85,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+
+      this.material.onBeforeCompile = (shader) => {
+        shader.vertexShader = shader.vertexShader.replace(
+          'void main() {',
+          `attribute float pSize;
+           void main() {`
+        );
+        shader.vertexShader = shader.vertexShader.replace(
+          'gl_PointSize = size;',
+          'gl_PointSize = size * pSize;'
+        );
+      };
+
+      this.points = new THREE.Points(this.geometry, this.material);
+      this.scene.add(this.points);
+    }
   }
 
   update(audioData) {
     if (!this.renderer || !this.scene || !this.camera || !this.points) return;
 
     if (window.cosmicEngineSettings) {
+      this.colorStyle = window.cosmicEngineSettings.colorStyle;
       this.material.opacity = window.cosmicEngineSettings.glowIntensity;
       this.audioGain = window.cosmicEngineSettings.audioGain;
     }
