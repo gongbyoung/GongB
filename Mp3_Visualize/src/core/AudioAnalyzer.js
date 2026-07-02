@@ -1,3 +1,7 @@
+/**
+ * AudioAnalyzer.js
+ * 주파수 분석 및 가변 범위 그룹핑, 오디오 소스 중복 연결 방지 로직 탑재
+ */
 export class AudioAnalyzer {
   constructor(fftSize = 2048) {
     this.audioContext = null;
@@ -5,8 +9,11 @@ export class AudioAnalyzer {
     this.source = null;
     this.dataArray = null;
     this.fftSize = fftSize;
+    
+    // 💡 [중복 연결 방지] 어떤 오디오 엘리먼트가 이미 연결되었는지 기록할 플래그
+    this.isConnected = false;
 
-    // 💡 동적 튜닝을 위한 상태 변수 기본값 선언
+    // 동적 튜닝을 위한 상태 변수
     this.bounds = {
       bassLow: 20,     bassHigh: 250,
       midLow: 250,     midHigh: 4000,
@@ -30,12 +37,24 @@ export class AudioAnalyzer {
 
   connectAudioElement(audioElement) {
     this.init();
-    if (this.source) {
-      this.source.disconnect();
+    
+    // 💡 [핵심 가드 로직] 이미 한 번이라도 노드가 생성/연결되었다면 프로세스를 패스합니다.
+    // 플레이어 소스(src)가 바뀌어도 기존 파이프라인 줄기는 그대로 재사용이 가능하기 때문입니다.
+    if (this.isConnected) {
+      // 오디오 컨텍스트가 브라우저 보안 정책으로 정지되어 있다면 깨워만 줍니다.
+      if (this.audioContext && this.audioContext.state === 'suspended') {
+        this.audioContext.resume();
+      }
+      return;
     }
+
+    // 최초 1회만 노드 생성 및 브라우저 하드웨어 아웃풋 연결
     this.source = this.audioContext.createMediaElementSource(audioElement);
     this.source.connect(this.analyser);
     this.analyser.connect(this.audioContext.destination);
+    
+    this.isConnected = true; // 💥 연결 완료 낙인 찍기
+    console.log('[🎯 Analyzer] 오디오 파이프라인 최초 연결 완료');
   }
 
   getAverageVolumeInRange(lowFreq, highFreq) {
@@ -61,9 +80,6 @@ export class AudioAnalyzer {
     return count > 0 ? (sum / count) / 255 : 0;
   }
 
-  /**
-   * 💡 외부 슬라이더 조작 값을 분석기에 실시간 주입하는 메소드
-   */
   updateBounds(newBounds) {
     this.bounds = { ...this.bounds, ...newBounds };
   }
@@ -81,7 +97,6 @@ export class AudioAnalyzer {
     }
     const volume = (totalSum / this.dataArray.length) / 255;
 
-    // 💡 고정 값이 아닌, 실시간 변형되는 this.bounds 값을 타도록 매핑 변경
     const subBass = this.getAverageVolumeInRange(20, 60);     
     const bass = this.getAverageVolumeInRange(this.bounds.bassLow, this.bounds.bassHigh);       
     const mid = this.getAverageVolumeInRange(this.bounds.midLow, this.bounds.midHigh);      
