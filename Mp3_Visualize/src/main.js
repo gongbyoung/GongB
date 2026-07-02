@@ -1,227 +1,53 @@
-import { AudioAnalyzer } from './core/AudioAnalyzer.js';
-import { SketchManager } from './core/SketchManager.js';
-import { VideoRecorder } from './core/VideoRecorder.js';
+// 📝 [src/main.js 내부 - 자막 파서 및 싱크 엔진 교정]
 
-// 1. 코어 엔진 인스턴스 초기화
-const analyzer = new AudioAnalyzer();
-const manager = new SketchManager('canvas-stage');
-const recorder = new VideoRecorder('canvas-stage');
-
-const audioPlayer = document.getElementById('audio-player');
-const sketchItems = document.querySelectorAll('#sketch-list li');
-const stageWrapper = document.getElementById('stage-wrapper');
-
-// 파일 인풋 엘리먼트 캡처
-const audioInput = document.getElementById('file-audio');
-const srtInput = document.getElementById('file-srt');
-const imageInput = document.getElementById('file-image');
-
-// 전역 자원 상태 관리 객체
-let parsedSubtitles = [];
-let currentUploadedImageElement = null; // 3D 텍스처나 배경으로 즉시 사용될 이미지 엘리먼트 객체
-
-// 2. [확장] 오디오 가동 및 실시간 업로드 스위칭 파트
-audioPlayer.addEventListener('play', () => {
-    analyzer.connectAudioElement(audioPlayer);
-});
-
-audioInput.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    // 기존 재생 중인 스트림 일시 정지 및 가상 주소(Blob URL) 바인딩
-    audioPlayer.pause();
-    const audioURL = URL.createObjectURL(file);
-    audioPlayer.src = audioURL;
-    
-    // 분석 엔진에 새 오디오 수혈 통보 및 자동 재생
-    console.log(`[🎵 Audio] 새로운 음악으로 교체 완료: ${file.name}`);
-    audioPlayer.load();
-    audioPlayer.play();
-});
-
-// 3. [SRT 자막 파싱 및 싱크 로직]
 function parseSRT(data) {
-    const regex = /(\d+)\r?\n(\d\d:\d\d:\d\d,\d\d\d) --> (\d\d:\d\d:\d\d,\d\d\d)\r?\n([\s\S]*?)(?=\r?\n\r?\n|\r?\n*$)/g;
-    let matches;
+    // 공백 및 줄바꿈 문자를 정규화하여 파서 오작동 원천 차단
+    const cleanData = data.replace(/\r/g, '').trim();
+    
+    // 더 유연하게 시간대와 텍스트 블록을 분리하는 느슨한 정규식 체계 도입
+    const blocks = cleanData.split('\n\n');
     const subs = [];
+
     function timeToSeconds(t) {
-        const parts = t.split(':');
+        if (!t) return 0;
+        const parts = t.trim().split(':');
+        if (parts.length < 3) return 0;
         const secs = parts[2].split(',');
-        return parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(secs[0]) + parseInt(secs[1]) / 1000;
+        return parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(secs[0]) + (parseInt(secs[1]) || 0) / 1000;
     }
-    while ((matches = regex.exec(data)) !== null) {
-        subs.push({
-            start: timeToSeconds(matches[2]),
-            end: timeToSeconds(matches[3]),
-            text: matches[4].replace(/\r?\n/g, ' ')
-        });
-    }
+
+    blocks.forEach(block => {
+        const lines = block.split('\n');
+        if (lines.length >= 3) {
+            // 두 번째 줄에서 시간대 매칭 ( --> 패턴 추출)
+            const timeLine = lines[1];
+            if (timeLine && timeLine.includes('-->')) {
+                const times = timeLine.split('-->');
+                // 시간 이후에 나오는 모든 줄을 하나의 자막 텍스트로 합치기
+                const textLines = lines.slice(2).join(' ').trim();
+                
+                subs.push({
+                    start: timeToSeconds(times[0]),
+                    end: timeToSeconds(times[1]),
+                    text: textLines
+                });
+            }
+        }
+    });
+
     return subs;
 }
 
-srtInput.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-        parsedSubtitles = parseSRT(event.target.result);
-        console.log(`[📝 SRT] 커스텀 자막 로드 성공: ${parsedSubtitles.length}문장`);
-    };
-    reader.readAsText(file);
-});
-
 function getCurrentSubtitle() {
     if (parsedSubtitles.length === 0) return "";
+    
+    // 오디오의 실시간 재생 시간 타임스탬프 획득
     const currentTime = audioPlayer.currentTime;
+    
+    // 현재 시간에 걸쳐 있는 자막 블록 탐색
     const currentSub = parsedSubtitles.find(sub => currentTime >= sub.start && currentTime <= sub.end);
+    
+    // 자막이 없는 구간일 때는 빈 문자열 대신 음악 감상 중 텍스트를 리턴하여 
+    // 기존의 고정 디폴트 문구(MUSIC VISUAL STAGE)를 지워버리도록 처리
     return currentSub ? currentSub.text : "";
 }
-
-// 4. [🖼️ 이미지 실시간 업로드 및 HTML 텍스처 엘리먼트 가공]
-imageInput.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const imgURL = URL.createObjectURL(file);
-    const img = new Image();
-    img.src = imgURL;
-    img.onload = () => {
-        currentUploadedImageElement = img; // 로딩이 완료되면 즉시 전역 버퍼 객체로 등록
-        console.log(`[🖼️ Image] 가상 텍스처 엘리먼트 빌드 완료: ${file.name}`);
-    };
-});
-
-// 💡 [초강력 파이프라인 개조] 
-// 매 프레임 음악 주파수 수치뿐만 아니라, 실시간 자막(text)과 업로드 이미지(image)를 
-// 단 하나의 거대한 배달 가방(Data Object)으로 패킹하여 스케치로 동시 사출합니다.
-const originalGetAudioData = analyzer.getAudioData;
-analyzer.getAudioData = function() {
-    const data = originalGetAudioData.call(analyzer);
-    data.text = getCurrentSubtitle();
-    data.image = currentUploadedImageElement; // 💥 현재 업로드된 이미지 객체를 그대로 스케치에 패스!
-    return data;
-};
-
-// 5. 스케치 전환 이벤트 매핑
-sketchItems.forEach(item => {
-    item.addEventListener('click', async (e) => {
-        sketchItems.forEach(li => li.classList.remove('active'));
-        e.currentTarget.classList.add('active');
-        const sketchFile = e.currentTarget.getAttribute('data-sketch');
-        await manager.switchSketch(sketchFile, analyzer);
-    });
-});
-
-// 6. 화면 비율 스위칭 인터랙션
-const ratioButtons = {
-    full: document.getElementById('btn-ratio-full'),
-    i169: document.getElementById('btn-ratio-169'),
-    i916: document.getElementById('btn-ratio-916')
-};
-
-Object.keys(ratioButtons).forEach(key => {
-    ratioButtons[key].addEventListener('click', (e) => {
-        Object.values(ratioButtons).forEach(btn => btn.classList.remove('active'));
-        e.currentTarget.classList.add('active');
-        stageWrapper.className = '';
-        if (key === 'full') stageWrapper.classList.add('ratio-full');
-        if (key === 'i169') stageWrapper.classList.add('ratio-169');
-        if (key === 'i916') stageWrapper.classList.add('ratio-916');
-        setTimeout(() => {
-            manager.resize(stageWrapper.clientWidth, stageWrapper.clientHeight);
-        }, 320);
-    });
-});
-
-// 7. MP4 레코더 버튼 제어
-const recordBtn = document.getElementById('btn-record');
-let isRecording = false;
-recordBtn.addEventListener('click', async () => {
-    if (!isRecording) {
-        isRecording = true;
-        recordBtn.innerText = '⏹️ 녹화 중지 및 MP4 저장';
-        recordBtn.classList.add('recording');
-        await recorder.start();
-    } else {
-        isRecording = false;
-        recordBtn.innerText = '🔴 녹화 시작 (Record)';
-        recordBtn.classList.remove('recording');
-        await recorder.stop();
-    }
-});
-
-// 8. 주파수 튜닝 슬라이더 이벤트 링킹
-const sliders = {
-    bassLow: document.getElementById('slide-bass-low'),
-    bassHigh: document.getElementById('slide-bass-high'),
-    midLow: document.getElementById('slide-mid-low'),
-    midHigh: document.getElementById('slide-mid-high'),
-    trebleLow: document.getElementById('slide-treble-low'),
-    trebleHigh: document.getElementById('slide-treble-high')
-};
-const valueDisplays = {
-    bass: document.getElementById('val-bass'),
-    mid: document.getElementById('val-mid'),
-    treble: document.getElementById('val-treble')
-};
-function handleSliderChange() {
-    const bL = parseInt(sliders.bassLow.value); const bH = parseInt(sliders.bassHigh.value);
-    const mL = parseInt(sliders.midLow.value);  const mH = parseInt(sliders.midHigh.value);
-    const tL = parseInt(sliders.trebleLow.value);const tH = parseInt(sliders.trebleHigh.value);
-    valueDisplays.bass.innerText = `${bL} - ${bH} Hz`;
-    valueDisplays.mid.innerText = `${mL} - ${mH} Hz`;
-    valueDisplays.treble.innerText = `${tL} - ${tH} Hz`;
-    analyzer.updateBounds({ bassLow: bL, bassHigh: bH, midLow: mL, midHigh: mH, trebleLow: tL, trebleHigh: tH });
-}
-Object.values(sliders).forEach(slider => slider.addEventListener('input', handleSliderChange));
-
-// 9. 프리셋 저장 및 로딩 시스템
-const savePresetBtn = document.getElementById('btn-save-preset');
-const loadPresetBtn = document.getElementById('btn-load-preset');
-const presetStatus = document.getElementById('preset-status');
-
-if (localStorage.getItem('gongb_visual_preset')) {
-    presetStatus.innerText = '✅ 최근 저장된 설정을 불러올 수 있습니다.';
-    presetStatus.style.color = '#00ffcc';
-}
-savePresetBtn.addEventListener('click', () => {
-    const activeSketch = document.querySelector('#sketch-list li.active').getAttribute('data-sketch');
-    const activeRatio = stageWrapper.className;
-    const currentSettings = {
-        sketch: activeSketch, ratio: activeRatio,
-        sliders: {
-            bassLow: sliders.bassLow.value, bassHigh: sliders.bassHigh.value,
-            midLow: sliders.midLow.value, midHigh: sliders.midHigh.value,
-            trebleLow: sliders.trebleLow.value, trebleHigh: sliders.trebleHigh.value
-        }
-    };
-    localStorage.setItem('gongb_visual_preset', JSON.stringify(currentSettings));
-    presetStatus.innerText = '💾 성공적으로 저장되었습니다!';
-    presetStatus.style.color = '#00ffcc';
-    setTimeout(() => { presetStatus.innerText = '✅ 최근 저장된 설정을 불러올 수 있습니다.'; }, 2000);
-});
-loadPresetBtn.addEventListener('click', async () => {
-    const savedData = localStorage.getItem('gongb_visual_preset');
-    if (!savedData) { presetStatus.innerText = '❌ 불러올 프리셋 데이터가 없습니다.'; presetStatus.style.color = '#ff0055'; return; }
-    const config = JSON.parse(savedData);
-    sliders.bassLow.value = config.sliders.bassLow; sliders.bassHigh.value = config.sliders.bassHigh;
-    sliders.midLow.value = config.sliders.midLow; sliders.midHigh.value = config.sliders.midHigh;
-    sliders.trebleLow.value = config.sliders.trebleLow; sliders.trebleHigh.value = config.sliders.trebleHigh;
-    handleSliderChange();
-    stageWrapper.className = config.ratio;
-    Object.values(ratioButtons).forEach(btn => btn.classList.remove('active'));
-    if (config.ratio.includes('ratio-full')) ratioButtons.full.classList.add('active');
-    if (config.ratio.includes('ratio-169')) ratioButtons.i169.classList.add('active');
-    if (config.ratio.includes('ratio-916')) ratioButtons.i916.classList.add('active');
-    manager.resize(stageWrapper.clientWidth, stageWrapper.clientHeight);
-    sketchItems.forEach(li => { li.classList.remove('active'); if (li.getAttribute('data-sketch') === config.sketch) li.classList.add('active'); });
-    await manager.switchSketch(config.sketch, analyzer);
-    presetStatus.innerText = '📂 프리셋 로딩 완수!';
-    presetStatus.style.color = '#0077ff';
-});
-
-// 10. 초기 구동 및 브라우저 크기 조정 연동
-const defaultSketch = document.querySelector('#sketch-list li.active').getAttribute('data-sketch');
-manager.switchSketch(defaultSketch, analyzer);
-window.addEventListener('resize', () => { manager.resize(stageWrapper.clientWidth, stageWrapper.clientHeight); });
