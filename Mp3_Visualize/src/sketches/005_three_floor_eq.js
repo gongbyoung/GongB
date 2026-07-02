@@ -1,6 +1,6 @@
 /**
  * 005_three_floor_eq.js
- * 모든 주파수 대역과 연동되어 바닥에서 솟구치는 3D 격자 이퀄라이저 스테이지
+ * 브라우저 화면(Viewport) 최하단에 칼같이 고정되어 작동하는 주파수 분리 이퀄라이저
  */
 export default class ThreeFloorEqualizer {
   constructor(container) {
@@ -8,10 +8,10 @@ export default class ThreeFloorEqualizer {
     this.scene = null;
     this.camera = null;
     this.renderer = null;
-    this.eqBars = []; // 바닥에 깔릴 막대들의 배열
+    this.eqBars = [];
     
-    this.gridSizeX = 12; // 가로 막대 개수
-    this.gridSizeZ = 4;  // 세로 막대 개수 (4개 대역: Sub-Bass, Bass, Mid, Treble에 매핑)
+    // 주파수 데이터를 정밀하게 쪼갤 가로 막대 총 개수
+    this.barCount = 32; 
   }
 
   init() {
@@ -19,98 +19,99 @@ export default class ThreeFloorEqualizer {
     const height = this.container.clientHeight;
 
     this.scene = new THREE.Scene();
-    // 깊이감과 사이버펑크 무드를 극대화하는 안개 효과 추가
-    this.scene.fog = new THREE.FogExp2(0x050508, 0.08);
 
-    // 무대를 위에서 비스듬히 내려다보는 시네마틱 카메라 뷰 각도 세팅
-    this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
-    this.camera.position.set(0, 5, 8);
-    this.camera.lookAt(0, 1, 0);
+    // 💡 [화면 고정 핵심 1] 
+    // 원근감이 없는 정면 직교 카메라(OrthographicCamera) 스타일로 시점 고정
+    // 화면 크기를 기준으로 좌, 우, 상, 하 경계를 픽셀 감각으로 매핑합니다.
+    this.camera = new THREE.OrthographicCamera(-width / 2, width / 2, height / 2, -height / 2, 0.1, 1000);
+    this.camera.position.z = 10;
 
-    // 레코더 엔진 우회 캡처용 옵션 활성화
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, alpha: true });
     this.renderer.setSize(width, height);
-    this.renderer.setClearColor(0x050508);
+    // 배경을 투명하거나 아주 어둡게 처리하여 화면 하단 연출 극대화
+    this.renderer.setClearColor(0x000000, 0.0); 
     this.container.appendChild(this.renderer.domElement);
 
-    // 은은한 전체 조명과 포인트 라이트 배치
-    this.scene.add(new THREE.AmbientLight(0xffffff, 0.1));
-    const stageLight = new THREE.PointLight(0x00ffff, 1.5, 50);
-    stageLight.position.set(0, 8, 2);
-    this.scene.add(stageLight);
+    this.scene.add(new THREE.AmbientLight(0xffffff, 1.0));
 
-    // 💡 [바닥 고정 핵심 테크닉]
-    // 박스 Geometry를 만든 후, 기준점(Pivot)을 정중앙(0,0,0)에서 바닥면(Y = -0.5)으로 이동시킵니다.
-    // 이렇게 해야 나중에 scale.y를 키울 때 공중에 뜨지 않고 바닥에 붙은 채 위로만 솟아오릅니다.
-    const geometry = new THREE.BoxGeometry(0.4, 1, 0.4);
-    geometry.translate(0, 0.5, 0); 
+    // 💡 [화면 고정 핵심 2] 축 정렬
+    // 막대가 위로만 자라나도록 기준점을 Box의 맨 아래(Y = -0.5)로 이동
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    geometry.translate(0, 0.5, 0);
 
-    // 주파수 4대역별 네온 컬러 레이어 매칭 (Sub-Bass: 핫핑크, Bass: 네온민트, Mid: 사이언블루, Treble: 라임그린)
-    const bandColors = [0xff0055, 0x00ffcc, 0x0077ff, 0xaaff00];
+    // 주파수 영역별 시각적 구분을 위한 색상 그라데이션 배열 생성 생성 (SubBass -> Bass -> Mid -> Treble)
+    this.buildBars(width, height, geometry);
+  }
 
-    // 격자 형태로 바닥 막대 군단 배치
-    for (let z = 0; z < this.gridSizeZ; z++) {
-      for (let x = 0; x < this.gridSizeX; x++) {
-        
-        const material = new THREE.MeshStandardMaterial({
-          color: bandColors[z],
-          roughness: 0.1,
-          metalness: 0.7,
-          emissive: bandColors[z],
-          emissiveIntensity: 0.1
-        });
+  /**
+   * 화면 크기에 맞춰 하단에 막대들을 균등 배치하는 함수
+   */
+  buildBars(width, height, geometry) {
+    // 기존 막대가 있다면 씬에서 제거
+    this.eqBars.forEach(bar => this.scene.add ? this.scene.remove(bar) : null);
+    this.eqBars = [];
 
-        const bar = new THREE.Mesh(geometry, material);
-        
-        // 무대 중앙을 기준으로 가로(X), 세로(Z) 바닥 좌표 정렬 배치
-        bar.position.x = (x - (this.gridSizeX - 1) / 2) * 0.6;
-        bar.position.y = 0; // 💥 바닥에 정확히 밀착
-        bar.position.z = (z - (this.gridSizeZ - 1) / 2) * 0.8 - 2;
+    const barWidth = (width / this.barCount) * 0.85; // 막대 사이 여백을 둔 가로폭
+    const startX = -width / 2 + barWidth / 2 + (width / this.barCount) * 0.075;
+    const bottomY = -height / 2; // 💥 화면 최하단 Y 좌표
 
-        // 애니메이션 연산을 위해 좌표 정보 및 주파수 소속 라인(z) 저장
-        bar.userData = { bandIndex: z, waveOffset: x * 0.2 };
+    for (let i = 0; i < this.barCount; i++) {
+      // 인덱스 위치에 따라 색상을 네온 핑크 -> 블루 -> 시안 -> 그린으로 전환
+      let colorHex = 0x00ffcc;
+      if (i < this.barCount * 0.15) colorHex = 0xff0055;      // Sub-Bass Zone
+      else if (i < this.barCount * 0.4) colorHex = 0x00ffcc;  // Bass Zone
+      else if (i < this.barCount * 0.75) colorHex = 0x0077ff; // Mid Zone
+      else colorHex = 0xaaff00;                               // Treble Zone
 
-        this.scene.add(bar);
-        this.eqBars.push(bar);
-      }
+      const material = new THREE.MeshBasicMaterial({
+        color: colorHex,
+        transparent: true,
+        opacity: 0.85
+      });
+
+      const bar = new THREE.Mesh(geometry, material);
+      
+      // 두께와 가로폭 세팅
+      bar.scale.x = barWidth;
+      bar.scale.z = 1;
+      
+      // 💥 위치를 화면 맨 밑바닥(bottomY)에 칼같이 고정
+      bar.position.x = startX + i * (width / this.barCount);
+      bar.position.y = bottomY; 
+      bar.position.z = 0;
+
+      // 오디오 분석 데이터의 주파수 인덱스 매핑을 위한 메타데이터 저장
+      bar.userData = {
+        sampleIndex: Math.floor((i / this.barCount) * 256) //전체 주파수 대역 매핑
+      };
+
+      this.scene.add(bar);
+      this.eqBars.push(bar);
     }
   }
 
   update(audioData) {
     if (!this.renderer || !this.scene || !this.camera) return;
 
-    if (audioData) {
-      // 💡 주파수 분리된 모든 데이터 파이프라인 배열화
-      const bands = [
-        audioData.subBass,
-        audioData.bass,
-        audioData.mid,
-        audioData.treble
-      ];
-
-      const time = Date.now() * 0.003;
+    if (audioData && audioData.raw && audioData.raw.length > 0) {
+      const heightFactor = this.container.clientHeight * 0.8; // 최대 솟구칠 높이 한도 (화면 높이의 80%)
 
       this.eqBars.forEach(bar => {
-        const { bandIndex, waveOffset } = bar.userData;
+        const { sampleIndex } = bar.userData;
         
-        // 해당 막대가 속한 대역의 소리 세기 가져오기
-        const targetAudioValue = bands[bandIndex];
+        // 오디오 주파수 원본 배열(raw)에서 내 위치의 주파수 파워 추출 (0 ~ 255 수치를 0.0 ~ 1.0으로 규격화)
+        const rawValue = (audioData.raw[sampleIndex] || 0) / 255;
 
-        // 💥 [전체 연결 연산] 
-        // 1. 내 대역 주파수 파워에 비례해 높이 계산
-        // 2. 가로축(waveOffset)에 흐르는 사인파 노이즈를 믹스하여 전체 볼륨(volume) 강도에 따라 부드러운 물결 효과 연출
-        const waveEffect = Math.sin(time + waveOffset) * (audioData.volume * 1.2);
-        const targetHeight = 0.05 + (targetAudioValue * 7.0) + Math.max(0, waveEffect);
+        // 대역별 파워 보정 (고음역대로 갈수록 감도가 낮아지므로 스케일 보정치 적용)
+        let boost = 1.0;
+        if (sampleIndex > 150) boost = 2.2;
+        else if (sampleIndex > 80) boost = 1.6;
 
-        // Lerp를 통해 뚝뚝 끊기지 않고 바닥에서 솟구치듯 부드럽게 스케일링
-        bar.scale.y = THREE.MathUtils.lerp(bar.scale.y, targetHeight, 0.2);
+        const targetHeight = 5 + (rawValue * heightFactor * boost);
 
-        // 비트 세기에 맞춰 발광(Emissive) 밀도 동적 증폭
-        bar.material.emissiveIntensity = targetAudioValue * 2.5 + (audioData.volume * 0.5);
+        // 바닥에 고정된 채 위로만 스무스하게 솟구치도록 연산
+        bar.scale.y = THREE.MathUtils.lerp(bar.scale.y, targetHeight, 0.25);
       });
-
-      // 전체 무대를 음악 볼륨 세기에 따라 카메라가 미세하게 회전하며 공간감 극대화
-      this.scene.rotation.y = Math.sin(time * 0.1) * 0.15 + (audioData.volume * 0.05);
     }
 
     this.renderer.render(this.scene, this.camera);
@@ -118,18 +119,26 @@ export default class ThreeFloorEqualizer {
 
   resize(w, h) {
     if (this.camera && this.renderer) {
-      this.camera.aspect = w / h;
+      // 💡 화면 크기가 리사이즈되어도 바닥 좌표계를 다시 계산하여 완벽 밀착 유지
+      this.camera.left = -w / 2;
+      this.camera.right = w / 2;
+      this.camera.top = h / 2;
+      this.camera.bottom = -h / 2;
       this.camera.updateProjectionMatrix();
       this.renderer.setSize(w, h);
+
+      // 박스 기하학 재정렬용 임시 생성
+      const geometry = new THREE.BoxGeometry(1, 1, 1);
+      geometry.translate(0, 0.5, 0);
+      this.buildBars(w, h, geometry);
     }
   }
 
   destroy() {
     if (!this.scene) return;
-    this.scene.traverse((object) => {
-      if (!object.isMesh) return;
-      object.geometry.dispose();
-      object.material.dispose();
+    this.eqBars.forEach(bar => {
+      bar.geometry.dispose();
+      bar.material.dispose();
     });
     if (this.renderer) {
       this.container.removeChild(this.renderer.domElement);
