@@ -161,7 +161,7 @@ Object.values(cosmicSliders).forEach(el => {
 cosmicSliders.pickGas1.addEventListener('change', syncCosmicControls);
 cosmicSliders.pickGas2.addEventListener('change', syncCosmicControls);
 cosmicSliders.pickStar.addEventListener('change', syncCosmicControls);
-
+}
 
 // 스케치 전환 마스터 인터랙션에 007번 동기화 필터 보완
 const originalSwitch = manager.switchSketch;
