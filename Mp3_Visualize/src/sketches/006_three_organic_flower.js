@@ -1,6 +1,6 @@
 /**
  * 006_three_organic_flower.js
- * 3중 중복 노이즈 가스 구름 + 독립적 크기/밝기를 가진 성단 및 실시간 랜덤 씨드 UI 연동 시스템
+ * 3중 노이즈 성운 가스 + 랜덤 씨드 재배치 + 컬러 프리셋 스위처 + 글로우 및 Gain 수동 인터랙션 제어형 스튜디오 스케치
  */
 export default class ThreeCosmicNebula {
   constructor(container) {
@@ -9,17 +9,17 @@ export default class ThreeCosmicNebula {
     this.camera = null;
     this.renderer = null;
     
-    // 우주 가스 및 별들을 이룰 입자 시스템 변수
-    this.particleCount = 15000; 
+    this.particleCount = 20000; // 입자 수 증량으로 화려함 업그레이드
     this.geometry = null;
     this.material = null;
     this.points = null;
-
-    // 파티클 각각의 독립적인 물리 속성을 보관할 내부 배열
     this.particleData = [];
 
-    // 💡 UI와 동적으로 연동될 로컬 제어 변수 기본값 설정
-    this.currentSeed = 42; 
+    // 💡 관제탑(main.js) 슬라이더와 실시간 양방향 매핑될 커스텀 변수 공간 정의
+    this.currentSeed = 42;
+    this.colorStyle = 'monochrome';
+    this.glowIntensity = 0.85;
+    this.audioGain = 1.0;
   }
 
   init() {
@@ -27,11 +27,8 @@ export default class ThreeCosmicNebula {
     const height = this.container.clientHeight;
 
     this.scene = new THREE.Scene();
-    
-    // 심연의 깊이감을 위한 딥 스페이스 안개 배치
     this.scene.fog = new THREE.FogExp2(0x010103, 0.03);
 
-    // 탑뷰(Top-view) 시네마틱 앵글 고정
     this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
     this.camera.position.set(0, 12, 0);
     this.camera.lookAt(0, 0, 0);
@@ -41,24 +38,20 @@ export default class ThreeCosmicNebula {
     this.renderer.setClearColor(0x010103);
     this.container.appendChild(this.renderer.domElement);
 
-    // 전역 공간 조명 밸런싱
     this.scene.add(new THREE.AmbientLight(0x222233, 0.5));
 
-    // 💡 메인 우주 성단 및 가스 파티클 빌드 가동
     this.buildCosmos();
   }
 
-  /**
-   * 의사 난수(Pseudo-random) 생성기 함수
-   * 입력된 씨드값(Seed)에 따라 항상 규칙적이면서도 불규칙한 천체 좌표를 수학적으로 보장합니다.
-   */
   seededRandom(seed) {
     const x = Math.sin(seed) * 10000;
     return x - Math.floor(x);
   }
 
+  /**
+   * 💡 씨드 슬라이더 조작 시 실시간 호출되어 우주 지형을 무작위로 전면 리모델링하는 핵심 메커니즘
+   */
   buildCosmos() {
-    // 리사이즈 및 씨드 변경 시 기존 오브젝트 자원 수거
     if (this.points) {
       this.scene.remove(this.points);
       this.geometry.dispose();
@@ -74,41 +67,56 @@ export default class ThreeCosmicNebula {
     let sRandom = this.currentSeed;
 
     for (let i = 0; i < this.particleCount; i++) {
-      // 씨드 기반 난수 추출 순현
       sRandom = this.seededRandom(sRandom) * 1000;
       const rand1 = this.seededRandom(sRandom + 1);
       const rand2 = this.seededRandom(sRandom + 2);
       const rand3 = this.seededRandom(sRandom + 3);
       const rand4 = this.seededRandom(sRandom + 4);
 
-      // 1. 🌌 극좌표 기반 소용돌이 형태의 초기 은하 분포 생성
+      // 극좌표 은하 소용돌이 성운 분포 연산
       const angle = rand1 * Math.PI * 2;
-      const radius = Math.pow(rand2, 2.0) * 8.0 + 0.1; // 중심부에 더 밀집되도록 설정
+      const radius = Math.pow(rand2, 1.8) * 8.5 + 0.1;
 
       const x = Math.cos(angle) * radius;
-      const y = (rand3 - 0.5) * 0.4; // 납작한 원반 형태의 탑뷰 두께감
+      const y = (rand3 - 0.5) * 0.35;
       const z = Math.sin(angle) * radius;
 
       positions[i * 3] = x;
       positions[i * 3 + 1] = y;
       positions[i * 3 + 2] = z;
 
-      // 2. 🌟 크기와 밝기가 다른 별들의 현실감 분배 (대소/명암의 대비)
-      let pSize = 0.015; // 기본 마이크로 가스 입자 크기
+      // 🎨 [스타일 가변 매핑 옵션 구역]
+      let pSize = 0.015;
       let color = new THREE.Color();
+      let starFlag = 'gas';
 
+      // 7%는 현실적인 대형 항성별 분배
       if (rand4 < 0.07) {
-        // 상위 7%는 눈부시게 빛나는 거대 거성/항성 레이어
-        pSize = 0.08 + rand1 * 0.14; 
-        color.setHSL(0.55 + rand2 * 0.1, 0.9, 0.85); // 오리온 성운풍 신비로운 사이언/화이트 톤
+        pSize = 0.07 + rand1 * 0.15;
+        starFlag = 'star';
       } else if (rand4 < 0.35) {
-        // 중간 성단 레이어
-        pSize = 0.03 + rand1 * 0.04;
-        color.setHSL(0.92 + rand2 * 0.05, 0.8, 0.65); // 몽환적인 바이올렛/네온 핑크 톤
+        pSize = 0.025 + rand1 * 0.035;
       } else {
-        // 배경을 채우는 기본 미세 우주 먼지 가스 구름
-        pSize = 0.01 + rand1 * 0.012;
-        color.setHSL(0.60 + rand2 * 0.08, 0.7, 0.45); // 딥스페이스 블루 톤
+        pSize = 0.01 + rand1 * 0.01;
+      }
+
+      // UI 컬러 스타일 셀렉터 상태에 따른 실시간 테마 색상 셋업
+      if (this.colorStyle === 'neon') {
+        // 핫핑크 & 민트의 사이버펑크 네온 스타일 테마 테마
+        if (starFlag === 'star') color.setHSL(0.95 + rand2 * 0.05, 1.0, 0.85);
+        else if (i % 2 === 0) color.setHSL(0.92 + rand2 * 0.04, 0.9, 0.6); // 네온 핑크
+        else color.setHSL(0.48 + rand2 * 0.04, 1.0, 0.55); // 네온 민트
+      } 
+      else if (this.colorStyle === 'pastel') {
+        // 은은한 골드 & 연보랏빛 신비로운 파스텔 우주 테마
+        if (starFlag === 'star') color.setHSL(0.12 + rand2 * 0.05, 0.8, 0.8); // 소프트 골드
+        else if (i % 2 === 0) color.setHSL(0.75 + rand2 * 0.05, 0.5, 0.7); // 파스텔 바이올렛
+        else color.setHSL(0.08 + rand2 * 0.04, 0.6, 0.75); // 은은한 살구 크림
+      } 
+      else {
+        // Monochrome Cyan: 깔끔한 단색 네온 기반 주파수 스펙트럼
+        if (starFlag === 'star') color.setHex(0xffffff);
+        else color.setHSL(0.50 + rand2 * 0.08, 0.9, 0.5); // 청록 네온
       }
 
       colors[i * 3] = color.r;
@@ -116,16 +124,11 @@ export default class ThreeCosmicNebula {
       colors[i * 3 + 2] = color.b;
       sizes[i] = pSize;
 
-      // 애니메이션 연산용 개별 물리 데이터 팩 저장
       this.particleData.push({
-        baseX: x,
-        baseY: y,
-        baseZ: z,
-        radius: radius,
-        angle: angle,
+        baseX: x, baseY: y, baseZ: z, radius: radius, angle: angle,
         speed: 0.1 + rand1 * 0.4,
         twinkleSpeed: 2.0 + rand2 * 8.0,
-        type: rand4 < 0.07 ? 'star' : 'gas', // 항성과 가스 구름 분리
+        type: starFlag,
         baseSize: pSize
       });
     }
@@ -133,18 +136,15 @@ export default class ThreeCosmicNebula {
     this.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     this.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
-    // 💡 [WebGL 하이엔드 테크닉] 파티클별 고유 크기 처리를 위해 셰이더 확장 꼼수 적용
-    // 텍스처를 쓰지 않고 기본 원형 점 형태로 깔끔하게 떨어지도록 매테리얼 셋업
     this.material = new THREE.PointsMaterial({
       size: 1.0,
       vertexColors: true,
       transparent: true,
-      opacity: 0.85,
-      blending: THREE.AdditiveBlending, // 빛이 겹칠수록 눈부시게 폭발하는 연출
+      opacity: 0.9,
+      blending: THREE.AdditiveBlending, // 글로우 연출의 핵심 (빛 겹침 축적)
       depthWrite: false
     });
 
-    // 버텍스별 가변 크기를 런타임에 직접 밀어넣기 위한 전처리 적용
     this.material.onBeforeCompile = (shader) => {
       shader.vertexShader = shader.vertexShader.replace(
         'void main() {',
@@ -170,50 +170,45 @@ export default class ThreeCosmicNebula {
     const positions = this.geometry.attributes.position.array;
     const sizes = this.geometry.attributes.pSize.array;
 
-    // 실시간 오디오 4대역 주파수 매핑 가중치 추출
-    const subBass = audioData ? audioData.subBass : 0;
-    const bass = audioData ? audioData.bass : 0;
-    const mid = audioData ? audioData.mid : 0;
-    const treble = audioData ? audioData.treble : 0;
-    const volume = audioData ? audioData.volume : 0;
+    // 💡 [수동 강도 제어] 오디오 수치 전체에 마스터 승수(audioGain)를 결합하여 움직이는 강도를 수동 제어합니다.
+    const gain = this.audioGain;
+    const subBass = audioData ? audioData.subBass * gain : 0;
+    const bass    = audioData ? audioData.bass * gain : 0;
+    const mid     = audioData ? audioData.mid * gain : 0;
+    const treble  = audioData ? audioData.treble * gain : 0;
+    const volume  = audioData ? audioData.volume * gain : 0;
+
+    // 💡 [Glow 강도 조절] 슬라이더 수치를 입자들의 전역 투명도 마스터 스펙에 즉시 주입
+    this.material.opacity = this.glowIntensity;
 
     for (let i = 0; i < this.particleCount; i++) {
       const data = this.particleData[i];
 
-      // 💡 [3중 중복 수학적 노이즈 흐름 연산 구현]
-      // 노이즈 1 (거대한 우주 거시 기류): 시간의 흐름에 따라 은하계 전체가 은은하게 자전
-      let currentAngle = data.angle + time * 0.015 * data.speed;
-
-      // 노이즈 2 (중간 소용돌이 줄기): Bass/Mid 주파수 파워에 비례해 반경 중심축이 비틀어지며 꼬임
-      const noise2 = Math.sin(data.radius * 1.5 - time * 2.0) * (bass * 0.4 + mid * 0.2);
+      // 3중 중복 노이즈 가스 구름 연산 가동
+      let currentAngle = data.angle + time * 0.012 * data.speed;
+      const noise2 = Math.sin(data.radius * 1.4 - time * 2.2) * (bass * 0.45 + mid * 0.22);
       currentAngle += noise2 / data.radius;
 
-      // 노이즈 3 (마이크로 가스 구름 파르르 떨림): Treble(고음)에 연동해 외곽 궤도가 자잘하게 진동
-      const noise3 = Math.cos(time * data.twinkleSpeed) * (treble * 0.15);
+      const noise3 = Math.cos(time * data.twinkleSpeed) * (treble * 0.18);
+      const finalRadius = data.radius + noise3 + (subBass * 0.35);
 
-      // 최종 계산된 3중 필터링 좌표계를 포지션 버퍼에 다이렉트 이식
-      const finalRadius = data.radius + noise3 + (subBass * 0.3); // 저음에 맞춰 전체 팽창
-      
       positions[i * 3] = Math.cos(currentAngle) * finalRadius;
-      positions[i * 3 + 1] = data.baseY + Math.sin(time * data.speed + data.radius) * (mid * 0.15);
+      positions[i * 3 + 1] = data.baseY + Math.sin(time * data.speed + data.radius) * (mid * 0.18);
       positions[i * 3 + 2] = Math.sin(currentAngle) * finalRadius;
 
-      // 3. ✨ 크고 밝은 항성별들의 독립적 반짝임 인터랙션
+      // 크고 밝은 별과 가스의 독립적 오디오 펄스 반응
       if (data.type === 'star') {
-        // Sub-Bass 드럼 타격 시 순간적으로 항성의 크기가 강렬하게 증폭
-        sizes[i] = data.baseSize * (1.0 + subBass * 2.5 + Math.sin(time * data.twinkleSpeed) * 0.25);
+        sizes[i] = data.baseSize * (1.0 + subBass * 2.8 + Math.sin(time * data.twinkleSpeed) * 0.3);
       } else {
-        // 일반 가스 입자는 고음 주파수 리듬에 따라 은은하게 페이드
-        sizes[i] = data.baseSize * (1.0 + treble * 1.2);
+        sizes[i] = data.baseSize * (1.0 + treble * 1.5);
       }
     }
 
-    // GPU에게 데이터가 실시간으로 변경되었음을 전송하여 동기화 가동
     this.geometry.attributes.position.needsUpdate = true;
     this.geometry.attributes.pSize.needsUpdate = true;
 
-    // 우주 전체 공간을 마스터 음악 볼륨 세기에 따라 아주 몽환적으로 자전 슬로우 틸트 처리
-    this.points.rotation.y = time * 0.01 + (volume * 0.04);
+    // 전체 마스터 회전 효과
+    this.points.rotation.y = time * 0.008 + (volume * 0.05);
 
     this.renderer.render(this.scene, this.camera);
   }
