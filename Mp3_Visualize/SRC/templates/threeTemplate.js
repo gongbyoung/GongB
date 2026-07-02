@@ -4,7 +4,7 @@
  */
 export default class ThreeTemplate {
   constructor(container) {
-    this.container = container;
+    this.container = container; 
     this.scene = null;
     this.camera = null;
     this.renderer = null;

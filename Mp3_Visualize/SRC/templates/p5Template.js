@@ -2,7 +2,7 @@
  * p5Template.js
  * 새로운 p5.js 기반 미디어 아트를 만들 때 복사해서 쓸 기본 거푸집
  */
-export default class P5Template {
+export default class P5Template { 
   constructor(container) {
     this.container = container;
     this.p5Instance = null;

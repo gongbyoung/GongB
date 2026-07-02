@@ -2,7 +2,7 @@ import { AudioAnalyzer } from './core/AudioAnalyzer.js';
 import { SketchManager } from './core/SketchManager.js';
 
 // 1. 인스턴스 초기화
-const analyzer = new AudioAnalyzer();
+const analyzer = new AudioAnalyzer(); 
 const manager = new SketchManager('canvas-stage'); // index.html의 스테이지 ID 바인딩
 
 const audioPlayer = document.getElementById('audio-player');

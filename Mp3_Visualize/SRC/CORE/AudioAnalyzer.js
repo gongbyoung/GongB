@@ -2,7 +2,7 @@
  * AudioAnalyzer.js
  * 공장형 미디어 아트를 위한 오디오 분석 코어 모듈
  */
-export class AudioAnalyzer {
+export class AudioAnalyzer { 
   constructor(fftSize = 2048) {
     this.audioContext = null;
     this.analyser = null;

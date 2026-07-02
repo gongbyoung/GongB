@@ -5,7 +5,7 @@
 export default class ThreeCube {
   constructor(container) {
     this.container = container;
-    this.scene = null;
+    this.scene = null; 
     this.camera = null;
     this.renderer = null;
     this.cubes = []; // 생성된 큐브들을 담을 배열

@@ -2,7 +2,7 @@
  * 001_p5_wave.js
  * p5.js 기반 원형 주파수 파형 비주얼라이저
  */
-export default class P5Wave {
+export default class P5Wave { 
   constructor(container) {
     this.container = container;
     this.p5Instance = null;

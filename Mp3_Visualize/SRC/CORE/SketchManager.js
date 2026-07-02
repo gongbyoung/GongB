@@ -1,7 +1,7 @@
 /**
  * SketchManager.js
  * 스케치 동적 로딩 및 메모리 해제(가비지 컬렉션)를 총괄하는 관리자 모듈
- */
+ */ 
 export class SketchManager {
   constructor(canvasContainerId) {
     this.container = document.getElementById(canvasContainerId); // 캔버스가 삽입될 HTML 엘리먼트
