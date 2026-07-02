@@ -84,9 +84,11 @@ export class AudioAnalyzer {
     this.bounds = { ...this.bounds, ...newBounds };
   }
 
+// src/core/AudioAnalyzer.js 내부의 getAudioData 함수 구역 교체
+
   getAudioData() {
     if (!this.analyser) {
-      return { volume: 0, bass: 0, mid: 0, treble: 0, subBass: 0, raw: [] };
+      return { volume: 0, bass: 0, mid: 0, treble: 0, subBass: 0, raw: [], text: "", image: null };
     }
 
     this.analyser.getByteFrequencyData(this.dataArray);
@@ -102,13 +104,17 @@ export class AudioAnalyzer {
     const mid = this.getAverageVolumeInRange(this.bounds.midLow, this.bounds.midHigh);      
     const treble = this.getAverageVolumeInRange(this.bounds.trebleLow, this.bounds.trebleHigh);  
 
+    // 💡 [정식 이식] window 전역에 안전하게 보관된 실시간 자막과 이미지 객체를 
+    // 분석 데이터 팩에 안전하게 탑승시켜 배달합니다.
     return {
       volume: volume,
       subBass: subBass,
       bass: bass,
       mid: mid,
       treble: treble,
-      raw: Array.from(this.dataArray)
+      raw: Array.from(this.dataArray),
+      text: window.currentSubtitleText || "",
+      image: window.currentUploadedImageElement || null
     };
   }
 }
