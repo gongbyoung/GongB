@@ -6,16 +6,24 @@ export class SketchManager {
     this.currentSketchId = null;     
   }
 
-  async switchSketch(sketchFileName, audioAnalyzerInstance) {
+async switchSketch(sketchFileName, audioAnalyzerInstance) {
     if (this.currentSketchId === sketchFileName) return;
 
-    // 이전 스케치 메모리 파괴 및 청소
+    // 1. 이전 스케치 메모리 파괴 및 청소
     this.cleanup();
 
     try {
-      // 💡 [경로 수정 완료] core 폴더 바깥의 sketches 폴더로 향하도록 명시적 상대 경로 지정
-      const sketchModule = await import(`../sketches/${sketchFileName}`);
+      // 💡 [핵심 교정] 
+      // 만약 sketchFileName에 이미 경로 기호가 섞여 들어오는 변수를 방지하기 위해,
+      // 오직 순수한 파일 이름만 남긴 뒤 확실하게 '../sketches/'를 강제로 붙여줍니다.
+      const pureFileName = sketchFileName.replace(/^.*[\\\/]/, ''); 
+      const modulePath = `../sketches/${pureFileName}`;
       
+      console.log(`[🔍 Debug] 로드 시도 경로: ${modulePath}`); // 경로 확인용 로그 추가
+      
+      const sketchModule = await import(modulePath);
+      
+      // 2. 모듈 내부의 기본 export 클래스를 인스턴스화
       this.currentSketch = new sketchModule.default(this.container);
       this.currentSketchId = sketchFileName;
 
