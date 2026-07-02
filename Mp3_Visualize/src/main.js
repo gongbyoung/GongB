@@ -75,3 +75,46 @@ manager.switchSketch(defaultSketch, analyzer);
 window.addEventListener('resize', () => {
     manager.resize(stageWrapper.clientWidth, stageWrapper.clientHeight);
 });
+
+// 🎛️ [주파수 튜닝 슬라이더 이벤트 링킹 파트]
+const sliders = {
+    bassLow: document.getElementById('slide-bass-low'),
+    bassHigh: document.getElementById('slide-bass-high'),
+    midLow: document.getElementById('slide-mid-low'),
+    midHigh: document.getElementById('slide-mid-high'),
+    trebleLow: document.getElementById('slide-treble-low'),
+    trebleHigh: document.getElementById('slide-treble-high')
+};
+
+const valueDisplays = {
+    bass: document.getElementById('val-bass'),
+    mid: document.getElementById('val-mid'),
+    treble: document.getElementById('val-treble')
+};
+
+function handleSliderChange() {
+    // 1. 값 추출
+    const bL = parseInt(sliders.bassLow.value);
+    const bH = parseInt(sliders.bassHigh.value);
+    const mL = parseInt(sliders.midLow.value);
+    const mH = parseInt(sliders.midHigh.value);
+    const tL = parseInt(sliders.trebleLow.value);
+    const tH = parseInt(sliders.trebleHigh.value);
+
+    // 2. UI 텍스트 업데이트
+    valueDisplays.bass.innerText = `${bL} - ${bH} Hz`;
+    valueDisplays.mid.innerText = `${mL} - ${mH} Hz`;
+    valueDisplays.treble.innerText = `${tL} - ${tH} Hz`;
+
+    // 3. 분석기 엔진에 실시간 동적 주입
+    analyzer.updateBounds({
+        bassLow: bL,     bassHigh: bH,
+        midLow: mL,      midHigh: mH,
+        trebleLow: tL,   trebleHigh: tH
+    });
+}
+
+// 모든 슬라이더에 입력 탐지 이벤트 일괄 매핑
+Object.values(sliders).forEach(slider => {
+    slider.addEventListener('input', handleSliderChange);
+});
