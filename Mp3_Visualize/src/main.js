@@ -88,7 +88,8 @@ imageInput.addEventListener('change', (e) => {
     };
 });
 
-// 💥 [추가] 6호 우주 엔진 실시간 슬라이더 컨트롤러 이벤트 묶기
+// src/main.js 내부 - 6번 Cosmic Studio Tuning 동기화 파트 전면 개조
+
 const cosmicSliders = {
     seed: document.getElementById('slide-cosmic-seed'),
     color: document.getElementById('select-cosmic-color'),
@@ -112,33 +113,37 @@ function syncCosmicControls() {
     cosmicDisplays.glow.innerText = glowVal.toFixed(2);
     cosmicDisplays.gain.innerText = gainVal.toFixed(1);
 
-    // 💡 현재 켜져 있는 스케치가 6호라면 슬라이더 물리 수치들을 직접 강제 주입
-    if (manager.currentFile === '006_three_organic_flower.js' && manager.currentSketch) {
-        let isSeedChanged = (manager.currentSketch.currentSeed !== seedVal);
-        
-        manager.currentSketch.currentSeed = seedVal;
-        manager.currentSketch.colorStyle = colorVal;
-        manager.currentSketch.glowIntensity = glowVal;
-        manager.currentSketch.audioGain = gainVal;
+    // 💡 [안전 플러그인 전역 창 바인딩]
+    // 변수 전역 스코프(window)에 실시간으로 상태를 공유하여, 
+    // 007번 스케치가 무한 렌더링 루프 중에서 단 1프레임의 오차도 없이 즉시 수치를 채집해 가도록 설계합니다.
+    window.cosmicEngineSettings = {
+        seed: seedVal,
+        colorStyle: colorVal,
+        glowIntensity: glowVal,
+        audioGain: gainVal
+    };
 
-        // 씨드가 직접 바뀌었을 때만 우주 공간 파티클 재배치 메커니즘을 트리거
-        if (isSeedChanged && typeof manager.currentSketch.buildCosmos === 'function') {
+    // 만약 현재 켜져 있는 스케치가 007번이고, 유저가 씨드 슬라이더를 직접 탁 움직였다면 
+    // 우주 성단의 성좌 좌표계를 즉시 실시간으로 재구조화 트리거를 당겨줍니다.
+    if (manager.currentFile === '007_three_cosmic_nebula.js' && manager.currentSketch) {
+        if (manager.currentSketch.loadedSeed !== seedVal && typeof manager.currentSketch.buildCosmos === 'function') {
             manager.currentSketch.buildCosmos();
         }
     }
 }
 
+// 실시간 슬라이더 이동 입력 이벤트 결합
 Object.values(cosmicSliders).forEach(el => {
     el.addEventListener('input', syncCosmicControls);
     el.addEventListener('change', syncCosmicControls);
 });
 
-// 💡 매니저 인스턴스가 로드 성공한 직후 수치를 주입받을 수 있도록 구조 패치 전개
+// 스케치 전환 마스터 인터랙션에 007번 동기화 필터 보완
 const originalSwitch = manager.switchSketch;
 manager.switchSketch = async function(fileName, analyzerInstance) {
-    manager.currentFile = fileName; // 현재 구동중인 파일명 추적 기록용 필드 확보
+    manager.currentFile = fileName; 
     await originalSwitch.call(manager, fileName, analyzerInstance);
-    syncCosmicControls(); // 스케치가 켜지자마자 현재 슬라이더 셋업값 강제 인젝션
+    syncCosmicControls(); // 스케치가 바뀌자마자 현재 슬라이더 셋업 수치 바로 주입
 };
 
 sketchItems.forEach(item => {
