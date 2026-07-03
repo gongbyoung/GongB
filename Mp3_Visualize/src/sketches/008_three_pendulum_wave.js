@@ -1,6 +1,6 @@
 /**
  * 008_three_pendulum_wave.js
- * 고정된 4x4 그리드, 비트 타격(Spike) 감지형 카오스 진자 물리 엔진 및 100% 개별 랜덤 컬러 시스템
+ * 주파수 상승/하강 흐름 추적형 1:1 관절 교대 제어 2중 진자 시스템
  */
 export default class ThreePendulumWave {
   constructor(container) {
@@ -9,7 +9,7 @@ export default class ThreePendulumWave {
     this.camera = null;
     this.renderer = null;
 
-    this.numPendulums = 16; // 4x4 그리드
+    this.numPendulums = 16; // 4x4 그리드 화면 전체 배치
     
     this.a1 = new Float32Array(this.numPendulums);
     this.a2 = new Float32Array(this.numPendulums);
@@ -18,10 +18,10 @@ export default class ThreePendulumWave {
     this.x0 = new Float32Array(this.numPendulums);
     this.y0 = new Float32Array(this.numPendulums);
 
-    // 💡 비트 타격 감지를 위한 이전 프레임 주파수 스무딩 배열 추가
-    this.smoothedFreq = new Float32Array(this.numPendulums);
+    // 💡 [실시간 흐름 추적기] 각 대역의 직전 프레임 주파수 값을 기억하는 메모리 버퍼
+    this.prevFreqBins = new Float32Array(this.numPendulums);
 
-    // 진자 기준 스펙 (Center Scatter 에 의해 크기만 런타임 증폭됨)
+    // 진자 기본 물리 상수 세팅
     this.baseL1 = 0.9;
     this.baseL2 = 0.8;
     this.m1 = 1.2;
@@ -75,7 +75,7 @@ export default class ThreePendulumWave {
       this.a2[i] = Math.PI - (i * 0.02);
       this.a1_v[i] = 0;
       this.a2_v[i] = 0;
-      this.smoothedFreq[i] = 0; // 스무딩 초기화
+      this.prevFreqBins[i] = 0;
     }
 
     this.linesGeo = new THREE.BufferGeometry();
@@ -153,18 +153,19 @@ export default class ThreePendulumWave {
     this.linesMesh.material.opacity = Math.min(1.0, glow * 0.8);
 
     const aspect = this.camera.aspect;
-
-    // 💡 [그리드 위치 완전 고정] 뷰포트 크기에 맞춰 간격만 고정 계산 (scatter 제외)
     const viewHeight = Math.tan(THREE.MathUtils.degToRad(50 / 2)) * 9 * 2; 
     const viewWidth = viewHeight * aspect;
+    
+    // 💡 [위치 완전 고정] 간격 연산에 분산 범위(scatter) 변수를 완전히 제거하여 위치 박제
     const stepX = (viewWidth / 4);
     const stepY = (viewHeight / 4);
 
-    // 💡 [크기만 조절] 분산 범위 슬라이더는 진자의 팔 길이만 줌인/줌아웃 하듯 조절
+    // 💡 [크기만 조절] 분산 범위 슬라이더 수치를 오직 팔 길이에만 매핑
     const scatterScale = scatter / 2.2;
     const curL1 = this.baseL1 * scatterScale;
     const curL2 = this.baseL2 * scatterScale;
 
+    // 16개 주파수 채널 그라데이션 추출
     const freqBins = new Float32Array(this.numPendulums);
     if (audioData) {
       for (let i = 0; i < this.numPendulums; i++) {
@@ -173,7 +174,7 @@ export default class ThreePendulumWave {
         else if (factor < 0.75) freqBins[i] = THREE.MathUtils.lerp(audioData.bass, audioData.mid, (factor - 0.25) * 2.0);
         else freqBins[i] = THREE.MathUtils.lerp(audioData.mid, audioData.treble, (factor - 0.75) * 4.0);
         
-        freqBins[i] *= gain * 4.0;
+        freqBins[i] *= gain; // 마스터 폭발력 반영
       }
     }
 
@@ -192,28 +193,31 @@ export default class ThreePendulumWave {
 
       const targetBinIdx = this.invertFrequency ? (this.numPendulums - 1 - i) : i;
       const currentFreqForce = freqBins[targetBinIdx];
-      const prevFreq = this.smoothedFreq[i];
-
-      // 💡 [비트 타격 감지 엔진] 소리가 전 프레임 대비 급격히 튀어오를 때(Spike)만 계산
-      let impulse = 0;
-      if (currentFreqForce > prevFreq + 0.02) { 
-        impulse = (currentFreqForce - prevFreq); 
-      }
       
-      // 스무딩 변수 업데이트 (부드러운 하강선을 위해 lerp 적용)
-      this.smoothedFreq[i] += (currentFreqForce - this.smoothedFreq[i]) * 0.2;
-
-      // 💡 [랜덤 타격력 주입] 주파수가 튈 때만 1, 2관절에 각기 다른 방향과 세기로 힘을 때려 넣음
-      if (impulse > 0) {
-        // 매번 무작위 방향(정방향/역방향)으로 쳐서 선풍기처럼 도는 현상 방지
-        const randDir1 = Math.random() > 0.5 ? 1 : -1;
-        const randDir2 = Math.random() > 0.5 ? 1 : -1;
+      // 💡 [실시간 흐름 미분 엔진] 현재 값과 직전 프레임 값의 차이 계산
+      const delta = currentFreqForce - this.prevFreqBins[i];
+      
+      if (delta > 0.005) {
+        // 📈 A. 주파수 볼륨이 올라갈 때 -> 첫 번째 진자(a1)를 신호 크기만큼 강하게 회전
+        const randDir = this.seededRandom(seed + i) > 0.5 ? 1 : -1;
+        this.a1_v[i] += delta * 4.5 * randDir;
         
-        // 관절마다 다른 비율의 힘을 가해 카오스 움직임을 극대화
-        this.a1_v[i] += impulse * 0.15 * randDir1;
-        this.a2_v[i] += impulse * 0.20 * randDir2;
+        // 이때 두 번째 진자는 팽글팽글 돌지 못하도록 브레이크 댐핑 체결
+        this.a2_v[i] *= 0.5;
+      } 
+      else if (delta < -0.005) {
+        // 📉 B. 주파수 볼륨이 내려갈 때 -> 첫 번째 진자는 강제 정지 브레이크
+        this.a1_v[i] *= 0.3;
+        
+        // 두 번째 진자(a2)를 하강 압력 세기만큼 약하게 툭 쳐서 출렁이게 유도
+        const randDir = this.seededRandom(seed + i + 50) > 0.5 ? 1 : -1;
+        this.a2_v[i] += Math.abs(delta) * 1.5 * randDir;
       }
 
+      // 다음 프레임 비교를 위해 메모리에 저장
+      this.prevFreqBins[i] = currentFreqForce;
+
+      // 2중 진자 물리 표준 방정식 구동
       const dAngle = this.a1[i] - this.a2[i];
       
       const num1 = this.g * (Math.sin(this.a2[i]) * Math.cos(dAngle) - mu * Math.sin(this.a1[i])) - 
@@ -231,9 +235,9 @@ export default class ThreePendulumWave {
       this.a1[i] += this.a1_v[i] * 0.1;
       this.a2[i] += this.a2_v[i] * 0.1;
 
-      // 💡 [급정거 브레이크 마찰력] 기존 0.985 -> 0.94로 대폭 낮춰서 타격 후 금방 진정되게 만듦
-      this.a1_v[i] *= 0.94;
-      this.a2_v[i] *= 0.94;
+      // 💡 [관성 제거 마찰력] 무한 회전을 막기 위한 마찰계수 최적화 (기존 0.985 -> 0.880)
+      this.a1_v[i] *= 0.88;
+      this.a2_v[i] *= 0.88;
 
       const px1 = bx + curL1 * Math.sin(this.a1[i]);
       const py1 = by - curL1 * Math.cos(this.a1[i]);
@@ -270,11 +274,6 @@ export default class ThreePendulumWave {
         c1.setHex(0x00ffcc);
         c2.setHex(0xffffff);
       }
-
-      const kineticEnergy = Math.abs(this.a1_v[i]) + Math.abs(this.a2_v[i]);
-      const glowBoost = Math.min(1.0, kineticEnergy * 0.15);
-      
-      c2.lerp(new THREE.Color(0xffffff), glowBoost * 0.5);
 
       lCol[lIdx] = c1.r; lCol[lIdx+1] = c1.g; lCol[lIdx+2] = c1.b;
       lCol[lIdx+3] = c1.r; lCol[lIdx+4] = c1.g; lCol[lIdx+5] = c1.b;
