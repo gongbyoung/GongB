@@ -1,6 +1,6 @@
 /**
  * 009_three_fireworks.js
- * 12가지 고유한 모양(하트, 버들가지, 별 등)과 화면 경계 제한이 적용된 불꽃놀이 렌더러
+ * 12가지 테마, 부채꼴 발사 각도, 관성 물리 및 크기 최적화가 적용된 리얼 불꽃놀이
  */
 export default class ThreeFireworksStage {
   constructor(container) {
@@ -89,10 +89,11 @@ export default class ThreeFireworksStage {
         vel: vel,
         state: 'idle',
         x: 0, y: -5, z: 0,
-        vy: 0, targetY: 0,
+        vx: 0, vy: 0, vz: 0, // 💡 발사 시 가로(vx), 깊이(vz) 각도 추가
+        targetY: 0,
         age: 0, maxAge: 0,
         baseHue: (i / this.numBands),
-        type: i // 💡 0~11번까지 12가지 고유 모양 인덱스
+        type: i 
       });
     }
   }
@@ -115,22 +116,26 @@ export default class ThreeFireworksStage {
     const fw = this.fireworks[index];
     fw.state = 'launch';
     fw.age = 0;
-    fw.maxAge = 40 + Math.random() * 40; 
+    fw.maxAge = 40 + Math.random() * 30; 
     
-    // 💡 [화면 비율(Bounds) 역계산] 카메라 밖으로 절대 안 나가게 가두리 양식
     const viewHeight = Math.tan(THREE.MathUtils.degToRad(55 / 2)) * 20 * 2; 
     const viewWidth = viewHeight * this.camera.aspect;
     
-    // X축 가두리 (화면 끝에서 2씩 여백)
-    const usableWidth = (viewWidth - 4) * (scatter / 2.2); 
-    fw.x = - (usableWidth / 2) + (index / (this.numBands - 1)) * usableWidth;
+    // 💡 사선으로 날아갈 공간을 위해 발사 지점(usableWidth)을 조금 더 중앙으로 모음
+    const usableWidth = (viewWidth - 8) * (scatter / 2.2); 
+    const normalizedPos = index / (this.numBands - 1); // 0.0 ~ 1.0
     
-    // Y축 가두리 (화면 상단 절반 안에서만 터지도록)
-    fw.y = - (viewHeight / 2) + 2; // 바닥에서 출발
-    fw.targetY = 2 + (Math.random() * (viewHeight / 2 - 4)); // 상공 목표점
-    fw.z = (this.seededRandom(seed + index) - 0.5) * 4; 
+    fw.x = - (usableWidth / 2) + normalizedPos * usableWidth;
+    fw.y = - (viewHeight / 2); // 바닥 출발
+    fw.z = (this.seededRandom(seed + index) - 0.5) * 6; // 깊이감 무작위
     
-    fw.vy = 0.35 + Math.random() * 0.15; 
+    // 💡 [부채꼴 발사 각도 적용] 가장자리에 있을수록 바깥쪽으로 향하는 X축 속도 부여
+    const fanAngle = (normalizedPos - 0.5) * 0.15; 
+    fw.vx = fanAngle + (Math.random() - 0.5) * 0.05; // 부채꼴 + 약간의 무작위 바람
+    fw.vy = 0.28 + Math.random() * 0.1; // 전체적인 상승 속도 살짝 다운
+    fw.vz = (Math.random() - 0.5) * 0.05; 
+
+    fw.targetY = -2 + (Math.random() * (viewHeight / 2 - 2)); 
 
     const pos = fw.geo.attributes.position.array;
     const col = fw.geo.attributes.color.array;
@@ -139,7 +144,7 @@ export default class ThreeFireworksStage {
     for (let j = 0; j < this.particlesPerFirework; j++) {
       pos[j*3] = fw.x; pos[j*3+1] = fw.y; pos[j*3+2] = fw.z;
       col[j*3] = 1.0; col[j*3+1] = 0.9; col[j*3+2] = 0.6; 
-      siz[j] = j === 0 ? 3.0 : 0.0;
+      siz[j] = j === 0 ? 2.0 : 0.0; // 심지 크기 축소
       fw.vel[j*3] = 0; fw.vel[j*3+1] = 0; fw.vel[j*3+2] = 0;
     }
 
@@ -149,7 +154,6 @@ export default class ThreeFireworksStage {
     fw.geo.attributes.pSize.needsUpdate = true;
   }
 
-  // 💡 12가지 모양을 수학적으로 그리는 핵심 엔진
   triggerExplode(index, force, customColors, seed) {
     const fw = this.fireworks[index];
     fw.state = 'explode';
@@ -173,44 +177,45 @@ export default class ThreeFireworksStage {
       }
 
       if (Math.random() < 0.1) c.setHex(0xffffff);
-
       col[j*3] = c.r; col[j*3+1] = c.g; col[j*3+2] = c.b;
-      siz[j] = Math.random() * 1.5 + 0.5;
+      
+      // 💡 파티클 기본 크기 축소 (기존 절반 수준)
+      siz[j] = Math.random() * 0.8 + 0.3;
 
-      const speed = (Math.random() * 0.2 + 0.05) * (1.0 + force * 15.0); 
+      // 💡 폭발 속도(크기) 대폭 축소 (force 스케일 조절)
+      const speed = (Math.random() * 0.1 + 0.05) * (1.0 + force * 6.0); 
       let vx = 0, vy = 0, vz = 0;
       const t = Math.random() * Math.PI * 2;
 
-      // 💡 [12가지 불꽃놀이 모양 수학적 스위칭]
       switch(fw.type) {
-        case 0: // 0: 기본 구형 (Peony)
+        case 0: 
           const phi0 = Math.acos(-1 + (2 * j) / this.particlesPerFirework);
           const theta0 = Math.sqrt(this.particlesPerFirework * Math.PI) * phi0;
           vx = Math.cos(theta0) * Math.sin(phi0);
           vy = Math.sin(theta0) * Math.sin(phi0);
           vz = Math.cos(phi0);
           break;
-        case 1: // 1: 하트 (Heart)
+        case 1: 
           vx = Math.pow(Math.sin(t), 3);
           vy = (13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t)) / 16;
           vz = (Math.random() - 0.5) * 0.2;
           break;
-        case 2: // 2: 버들가지 (Willow - 무겁게 아래로 처짐)
+        case 2: 
           const phi2 = Math.acos(-1 + (2 * j) / this.particlesPerFirework);
           const theta2 = Math.sqrt(this.particlesPerFirework * Math.PI) * phi2;
           vx = Math.cos(theta2) * Math.sin(phi2) * 0.8;
-          vy = Math.sin(theta2) * Math.sin(phi2) * 0.5 + 0.5; // 위로 솟았다가
+          vy = Math.sin(theta2) * Math.sin(phi2) * 0.5 + 0.5; 
           vz = Math.cos(phi2) * 0.8;
           break;
-        case 3: // 3: 이중 고리 (Double Ring)
+        case 3: 
           const r3 = j % 2 === 0 ? 1 : 0.4;
           vx = r3 * Math.cos(t); vy = r3 * Math.sin(t); vz = (Math.random()-0.5)*0.1;
           break;
-        case 4: // 4: 별 모양 (Star)
+        case 4: 
           const r4 = 1 - Math.abs(Math.sin(t * 2.5)) * 0.6;
           vx = r4 * Math.cos(t); vy = r4 * Math.sin(t); vz = (Math.random()-0.5)*0.1;
           break;
-        case 5: // 5: 다중 폭발 (Multi-burst)
+        case 5: 
           const cluster = j % 4;
           const cx = [1, -1, 0, 0][cluster];
           const cy = [0, 0, 1, -1][cluster];
@@ -218,18 +223,18 @@ export default class ThreeFireworksStage {
           vy = (Math.random() - 0.5) + cy * 2;
           vz = (Math.random() - 0.5);
           break;
-        case 6: // 6: 위로 솟는 분수 (Fountain)
+        case 6: 
           vx = (Math.random() - 0.5) * 0.4;
           vy = Math.random() * 1.5;
           vz = (Math.random() - 0.5) * 0.4;
           break;
-        case 7: // 7: 십자형 (Cross)
+        case 7: 
           const axis = j % 3;
           if (axis === 0) { vx = (Math.random()-0.5)*2; vy=0; vz=0; }
           else if (axis === 1) { vx = 0; vy = (Math.random()-0.5)*2; vz=0; }
           else { vx = 0; vy = 0; vz = (Math.random()-0.5)*2; }
           break;
-        case 8: // 8: 토성 (Saturn - 구형 + 링)
+        case 8: 
           if (j < 200) {
             vx = Math.cos(t)*1.5; vy = (Math.random()-0.5)*0.1; vz = Math.sin(t)*1.5;
           } else {
@@ -238,25 +243,26 @@ export default class ThreeFireworksStage {
             vx = Math.cos(theta8)*Math.sin(phi8); vy = Math.sin(theta8)*Math.sin(phi8); vz = Math.cos(phi8);
           }
           break;
-        case 9: // 9: 나선형 (Spiral)
+        case 9: 
           const r9 = j / this.particlesPerFirework;
           vx = r9 * Math.cos(j * 0.1); vy = r9 * Math.sin(j * 0.1); vz = (Math.random()-0.5)*0.2;
           break;
-        case 10: // 10: 납작한 디스크 (Flat Disc)
+        case 10: 
           vx = Math.cos(t); vy = Math.sin(t); vz = 0;
           break;
-        case 11: // 11: 혼돈 (Random Chaos)
+        case 11: 
           vx = (Math.random() - 0.5) * 2;
           vy = (Math.random() - 0.5) * 2;
           vz = (Math.random() - 0.5) * 2;
           break;
       }
 
-      // 벡터 정규화 및 속도 적용
       const len = Math.sqrt(vx*vx + vy*vy + vz*vz) || 1;
-      fw.vel[j*3] = (vx / len) * speed;
-      fw.vel[j*3+1] = (vy / len) * speed;
-      fw.vel[j*3+2] = (vz / len) * speed;
+      
+      // 💡 [관성 물리 적용] 발사체가 날아오르던 사선 속도(fw.vx, fw.vy, fw.vz)를 폭발 시점에 흡수하여 현실감 부여
+      fw.vel[j*3] = (vx / len) * speed + (fw.vx * 0.7);
+      fw.vel[j*3+1] = (vy / len) * speed + (fw.vy * 0.3); // 위로 치솟는 힘은 살짝만 전달
+      fw.vel[j*3+2] = (vz / len) * speed + (fw.vz * 0.7);
     }
 
     fw.mesh.material.opacity = 1.0;
@@ -305,11 +311,18 @@ export default class ThreeFireworksStage {
       const siz = fw.geo.attributes.pSize.array;
 
       if (fw.state === 'launch') {
+        // 💡 x, y, z 모든 축으로 이동 (사선 비행)
+        fw.x += fw.vx;
         fw.y += fw.vy;
-        fw.vy *= 0.98;
+        fw.z += fw.vz;
+        fw.vy *= 0.98; // 중력/저항으로 점점 느려짐
         fw.age++;
 
-        for (let j = 0; j < this.particlesPerFirework; j++) pos[j*3+1] = fw.y;
+        for (let j = 0; j < this.particlesPerFirework; j++) {
+          pos[j*3] = fw.x;
+          pos[j*3+1] = fw.y;
+          pos[j*3+2] = fw.z;
+        }
         fw.geo.attributes.position.needsUpdate = true;
 
         if (delta > 0.06 && fw.vy < 0.15) {
@@ -320,10 +333,9 @@ export default class ThreeFireworksStage {
         }
       } 
       else if (fw.state === 'explode') {
-        // 💡 12가지 테마별 물리 특성 적용 (버들가지(2번)는 중력이 세고 오래 남음)
-        let g = fw.type === 2 ? 0.012 : 0.006; 
-        let drag = fw.type === 6 ? 0.92 : 0.95; // 분수는 금방 느려짐
-        let fadeOut = fw.type === 2 ? 0.005 : 0.015; // 버들가지는 잔상이 길게
+        let g = fw.type === 2 ? 0.010 : 0.005; 
+        let drag = fw.type === 6 ? 0.94 : 0.96; 
+        let fadeOut = fw.type === 2 ? 0.006 : 0.015; 
 
         for (let j = 0; j < this.particlesPerFirework; j++) {
           fw.vel[j*3] *= drag;
@@ -346,12 +358,13 @@ export default class ThreeFireworksStage {
       }
       
       if (fw.state === 'explode') {
-         fw.mesh.material.size = Math.max(0.5, glow * 1.5);
+         // 발광 크기도 적절히 축소 조정
+         fw.mesh.material.size = Math.max(0.3, glow * 0.9);
       }
     }
 
     const time = Date.now() * 0.001;
-    this.scene.rotation.y = Math.sin(time * 0.1) * 0.05; // 잔잔한 회전
+    this.scene.rotation.y = Math.sin(time * 0.1) * 0.05;
 
     this.renderer.render(this.scene, this.camera);
   }
