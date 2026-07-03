@@ -1,16 +1,15 @@
 /**
  * 008_three_pendulum_wave.js
- * 화면 전체(16:9, 9:16)를 덮는 4x4 진자 그리드, 스케터/크기 동기화 및 100% 개별 랜덤 컬러 시스템
+ * 고정된 4x4 그리드, 비트 타격(Spike) 감지형 카오스 진자 물리 엔진 및 100% 개별 랜덤 컬러 시스템
  */
 export default class ThreePendulumWave {
   constructor(container) {
     this.container = container;
     this.scene = null;
-    this.camera = null; 
+    this.camera = null;
     this.renderer = null;
 
-    // 16개의 주파수 대역 = 16개의 진자 (4x4 그리드 배치)
-    this.numPendulums = 16;
+    this.numPendulums = 16; // 4x4 그리드
     
     this.a1 = new Float32Array(this.numPendulums);
     this.a2 = new Float32Array(this.numPendulums);
@@ -19,7 +18,10 @@ export default class ThreePendulumWave {
     this.x0 = new Float32Array(this.numPendulums);
     this.y0 = new Float32Array(this.numPendulums);
 
-    // 진자 기준 스펙 (Center Scatter 에 의해 런타임 증폭됨)
+    // 💡 비트 타격 감지를 위한 이전 프레임 주파수 스무딩 배열 추가
+    this.smoothedFreq = new Float32Array(this.numPendulums);
+
+    // 진자 기준 스펙 (Center Scatter 에 의해 크기만 런타임 증폭됨)
     this.baseL1 = 0.9;
     this.baseL2 = 0.8;
     this.m1 = 1.2;
@@ -43,7 +45,6 @@ export default class ThreePendulumWave {
     this.scene = new THREE.Scene();
     this.scene.fog = new THREE.FogExp2(0x010103, 0.04);
 
-    // Z축 9의 위치에서 화면을 바라보는 카메라
     this.camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 1000);
     this.camera.position.set(0, 0, 9);
     this.camera.lookAt(0, 0, 0);
@@ -65,8 +66,7 @@ export default class ThreePendulumWave {
 
   buildPendulumGrid() {
     const linePositions = new Float32Array(this.numPendulums * 4 * 3);
-    const lineColors = new Float32Array(this.numPendulums * 4 * 3); // 💡 줄기(선) 색상 개별화용 버퍼 추가
-
+    const lineColors = new Float32Array(this.numPendulums * 4 * 3); 
     const pointPositions = new Float32Array(this.numPendulums * 2 * 3);
     const pointColors = new Float32Array(this.numPendulums * 2 * 3);
 
@@ -75,17 +75,17 @@ export default class ThreePendulumWave {
       this.a2[i] = Math.PI - (i * 0.02);
       this.a1_v[i] = 0;
       this.a2_v[i] = 0;
+      this.smoothedFreq[i] = 0; // 스무딩 초기화
     }
 
     this.linesGeo = new THREE.BufferGeometry();
     this.linesGeo.setAttribute('position', new THREE.BufferAttribute(linePositions, 3));
-    this.linesGeo.setAttribute('color', new THREE.BufferAttribute(lineColors, 3)); // 💡 줄기 랜덤 컬러 매핑
+    this.linesGeo.setAttribute('color', new THREE.BufferAttribute(lineColors, 3)); 
 
     this.pointsGeo = new THREE.BufferGeometry();
     this.pointsGeo.setAttribute('position', new THREE.BufferAttribute(pointPositions, 3));
     this.pointsGeo.setAttribute('color', new THREE.BufferAttribute(pointColors, 3));
 
-    // 💡 단색 선이 아닌 버텍스 컬러를 지원하는 선 매테리얼로 전격 교체
     const lineMat = new THREE.LineBasicMaterial({ 
       vertexColors: true, 
       transparent: true, 
@@ -152,24 +152,19 @@ export default class ThreePendulumWave {
     this.pointsMesh.material.opacity = Math.min(1.0, glow);
     this.linesMesh.material.opacity = Math.min(1.0, glow * 0.8);
 
-    const time = Date.now() * 0.002;
     const aspect = this.camera.aspect;
 
-    // 💡 [화면 비율 16:9, 9:16 완벽 대응 & Scatter 크기 조정 알고리즘]
-    // Z=9 거리에서 카메라 뷰포트의 실제 폭(W)과 높이(H)를 삼각함수로 역계산
+    // 💡 [그리드 위치 완전 고정] 뷰포트 크기에 맞춰 간격만 고정 계산 (scatter 제외)
     const viewHeight = Math.tan(THREE.MathUtils.degToRad(50 / 2)) * 9 * 2; 
     const viewWidth = viewHeight * aspect;
+    const stepX = (viewWidth / 4);
+    const stepY = (viewHeight / 4);
 
-    // 4x4 그리드의 간격을 화면 비율에 맞추고, 슬라이더(scatter)로 전체 비율 스케일링
+    // 💡 [크기만 조절] 분산 범위 슬라이더는 진자의 팔 길이만 줌인/줌아웃 하듯 조절
     const scatterScale = scatter / 2.2;
-    const stepX = (viewWidth / 4) * scatterScale;
-    const stepY = (viewHeight / 4) * scatterScale;
-
-    // 슬라이더 조작 시 진자의 길이도 비율에 맞게 같이 커짐
     const curL1 = this.baseL1 * scatterScale;
     const curL2 = this.baseL2 * scatterScale;
 
-    // 16개 주파수 대역 생성
     const freqBins = new Float32Array(this.numPendulums);
     if (audioData) {
       for (let i = 0; i < this.numPendulums; i++) {
@@ -178,7 +173,7 @@ export default class ThreePendulumWave {
         else if (factor < 0.75) freqBins[i] = THREE.MathUtils.lerp(audioData.bass, audioData.mid, (factor - 0.25) * 2.0);
         else freqBins[i] = THREE.MathUtils.lerp(audioData.mid, audioData.treble, (factor - 0.75) * 4.0);
         
-        freqBins[i] *= gain * 4.5;
+        freqBins[i] *= gain * 4.0;
       }
     }
 
@@ -189,7 +184,6 @@ export default class ThreePendulumWave {
     const mu = 1 + this.m1 / this.m2;
 
     for (let i = 0; i < this.numPendulums; i++) {
-      // 💡 [화면 가득 채우기 4x4 그리드 배치]
       const col = i % 4;
       const row = Math.floor(i / 4);
       
@@ -197,15 +191,31 @@ export default class ThreePendulumWave {
       const by = (1.5 - row) * stepY;
 
       const targetBinIdx = this.invertFrequency ? (this.numPendulums - 1 - i) : i;
-      let currentFreqForce = freqBins[targetBinIdx];
+      const currentFreqForce = freqBins[targetBinIdx];
+      const prevFreq = this.smoothedFreq[i];
 
-      // 주파수 동력 주입
-      this.a1_v[i] += currentFreqForce * 0.04;
-      this.a2_v[i] += currentFreqForce * 0.04;
+      // 💡 [비트 타격 감지 엔진] 소리가 전 프레임 대비 급격히 튀어오를 때(Spike)만 계산
+      let impulse = 0;
+      if (currentFreqForce > prevFreq + 0.02) { 
+        impulse = (currentFreqForce - prevFreq); 
+      }
+      
+      // 스무딩 변수 업데이트 (부드러운 하강선을 위해 lerp 적용)
+      this.smoothedFreq[i] += (currentFreqForce - this.smoothedFreq[i]) * 0.2;
+
+      // 💡 [랜덤 타격력 주입] 주파수가 튈 때만 1, 2관절에 각기 다른 방향과 세기로 힘을 때려 넣음
+      if (impulse > 0) {
+        // 매번 무작위 방향(정방향/역방향)으로 쳐서 선풍기처럼 도는 현상 방지
+        const randDir1 = Math.random() > 0.5 ? 1 : -1;
+        const randDir2 = Math.random() > 0.5 ? 1 : -1;
+        
+        // 관절마다 다른 비율의 힘을 가해 카오스 움직임을 극대화
+        this.a1_v[i] += impulse * 0.15 * randDir1;
+        this.a2_v[i] += impulse * 0.20 * randDir2;
+      }
 
       const dAngle = this.a1[i] - this.a2[i];
       
-      // Euler-Lagrange 수학 연산에 런타임 진자 길이(curL1, curL2) 대입
       const num1 = this.g * (Math.sin(this.a2[i]) * Math.cos(dAngle) - mu * Math.sin(this.a1[i])) - 
                   (curL2 * this.a2_v[i] * this.a2_v[i] + curL1 * this.a1_v[i] * this.a1_v[i] * Math.cos(dAngle)) * Math.sin(dAngle);
       const den1 = curL1 * (mu - Math.cos(dAngle) * Math.cos(dAngle));
@@ -221,32 +231,29 @@ export default class ThreePendulumWave {
       this.a1[i] += this.a1_v[i] * 0.1;
       this.a2[i] += this.a2_v[i] * 0.1;
 
-      this.a1_v[i] *= 0.985;
-      this.a2_v[i] *= 0.985;
+      // 💡 [급정거 브레이크 마찰력] 기존 0.985 -> 0.94로 대폭 낮춰서 타격 후 금방 진정되게 만듦
+      this.a1_v[i] *= 0.94;
+      this.a2_v[i] *= 0.94;
 
       const px1 = bx + curL1 * Math.sin(this.a1[i]);
       const py1 = by - curL1 * Math.cos(this.a1[i]);
       const px2 = px1 + curL2 * Math.sin(this.a2[i]);
       const py2 = py1 - curL2 * Math.cos(this.a2[i]);
 
-      // 라인 좌표 매핑
       const lIdx = i * 12;
       lPos[lIdx] = bx;   lPos[lIdx+1] = by;   lPos[lIdx+2] = 0;
       lPos[lIdx+3] = px1; lPos[lIdx+4] = py1; lPos[lIdx+5] = 0;
       lPos[lIdx+6] = px1; lPos[lIdx+7] = py1; lPos[lIdx+8] = 0;
       lPos[lIdx+9] = px2; lPos[lIdx+10] = py2; lPos[lIdx+11] = 0;
 
-      // 발광체 점 좌표 매핑
       const pIdx = i * 6;
       pPos[pIdx] = px1;   pPos[pIdx+1] = py1;   pPos[pIdx+2] = 0.01;
       pPos[pIdx+3] = px2; pPos[pIdx+4] = py2; pPos[pIdx+5] = 0.02;
 
-      // 🎨 [완벽 개별 색상 연산] 각 진자의 중심축부터 말단부까지 100% 개별 테마 적용
       let c1 = new THREE.Color();
       let c2 = new THREE.Color();
 
       if (this.colorStyle === 'full-random') {
-        // 🎲 진자마다 완전히 독립적인 랜덤 Hue(색상)를 고정 추출하여 베이스부터 팁까지 그라데이션
         const uniqueHue = this.seededRandom(seed + i * 123);
         c1.setHSL(uniqueHue, 0.8, 0.5);
         c2.setHSL((uniqueHue + 0.15) % 1.0, 1.0, 0.7);
@@ -267,16 +274,13 @@ export default class ThreePendulumWave {
       const kineticEnergy = Math.abs(this.a1_v[i]) + Math.abs(this.a2_v[i]);
       const glowBoost = Math.min(1.0, kineticEnergy * 0.15);
       
-      // 폭발 시 말단부 색상이 하얗게 섬광처럼 튀는 연산 결합
       c2.lerp(new THREE.Color(0xffffff), glowBoost * 0.5);
 
-      // 줄기(선) 색상 도포 (베이스 -> 중앙 -> 말단)
       lCol[lIdx] = c1.r; lCol[lIdx+1] = c1.g; lCol[lIdx+2] = c1.b;
       lCol[lIdx+3] = c1.r; lCol[lIdx+4] = c1.g; lCol[lIdx+5] = c1.b;
       lCol[lIdx+6] = c1.r; lCol[lIdx+7] = c1.g; lCol[lIdx+8] = c1.b;
       lCol[lIdx+9] = c2.r; lCol[lIdx+10] = c2.g; lCol[lIdx+11] = c2.b;
 
-      // 발광체(점) 색상 도포
       pCol[pIdx] = c1.r; pCol[pIdx+1] = c1.g; pCol[pIdx+2] = c1.b;
       pCol[pIdx+3] = c2.r; pCol[pIdx+4] = c2.g; pCol[pIdx+5] = c2.b;
     }
