@@ -1,23 +1,29 @@
 /**
- * 009_three_fireworks.js
- * 실시간 주파수 피크(Peak) 추적 폭발 및 화면 경계가 제한된 12종 리얼 불꽃놀이
+ * 009_three_fireworks.js (Repurposed)
+ * 36분할(6x6) 그리드 매트릭스와 빛의 파장(Gradient Ripple)을 이용한 고성능 오디오 비주얼라이저
  */
-export default class ThreeFireworksStage {
+export default class ThreeGridGlowStage {
   constructor(container) {
     this.container = container;
     this.scene = null;
     this.camera = null;
     this.renderer = null;
 
-    this.numBands = 12; // 12개 주파수 채널
-    this.particlesPerFirework = 600; 
+    // 💡 6x6 그리드 = 36분할
+    this.cols = 6;
+    this.rows = 6;
+    this.numCells = this.cols * this.rows; 
     
-    this.fireworks = []; 
-    // 💡 주파수의 꺾임(Peak)을 감지하기 위한 이전 프레임 버퍼
-    this.prevFreqBins = new Float32Array(this.numBands); 
+    this.prevFreqBins = new Float32Array(this.numCells); 
+    this.explosions = []; // 파장이 퍼져나가는 진원지 데이터
+
+    this.pointsGeo = null;
+    this.pointsMesh = null;
+    this.gridLines = null;
 
     this.loadedSeed = -1;
     this.colorStyle = '';
+    this.shuffleMap = Array.from({length: this.numCells}, (_, i) => i);
   }
 
   init() {
@@ -28,17 +34,17 @@ export default class ThreeFireworksStage {
     this.scene.fog = new THREE.FogExp2(0x010103, 0.02);
 
     this.camera = new THREE.PerspectiveCamera(55, width / height, 0.1, 1000);
-    this.camera.position.set(0, 5, 20); 
-    this.camera.lookAt(0, 5, 0);
+    this.camera.position.set(0, 0, 15); 
+    this.camera.lookAt(0, 0, 0);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     this.renderer.setSize(width, height);
     this.renderer.setClearColor(0x010103);
     this.container.appendChild(this.renderer.domElement);
 
-    this.scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+    this.scene.add(new THREE.AmbientLight(0xffffff, 0.5));
 
-    this.buildFireworks();
+    this.buildMatrixGrid();
   }
 
   seededRandom(seed) {
@@ -46,200 +52,93 @@ export default class ThreeFireworksStage {
     return x - Math.floor(x);
   }
 
-  buildFireworks() {
-    const tex = this.createGlowTexture();
-
-    for (let i = 0; i < this.numBands; i++) {
-      const geo = new THREE.BufferGeometry();
-      const pos = new Float32Array(this.particlesPerFirework * 3);
-      const col = new Float32Array(this.particlesPerFirework * 3);
-      const siz = new Float32Array(this.particlesPerFirework);
-      const vel = new Float32Array(this.particlesPerFirework * 3);
-
-      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-      geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-      geo.setAttribute('pSize', new THREE.BufferAttribute(siz, 1));
-
-      const mat = new THREE.PointsMaterial({
-        size: 1.0,
-        map: tex,
-        vertexColors: true,
-        transparent: true,
-        opacity: 0.0, 
-        blending: THREE.AdditiveBlending,
-        depthWrite: false
-      });
-
-      mat.onBeforeCompile = (shader) => {
-        shader.vertexShader = shader.vertexShader.replace(
-          'void main() {',
-          `attribute float pSize;\nvoid main() {`
-        );
-        shader.vertexShader = shader.vertexShader.replace(
-          'gl_PointSize = size;',
-          'gl_PointSize = size * pSize;'
-        );
-      };
-
-      const mesh = new THREE.Points(geo, mat);
-      this.scene.add(mesh);
-
-      this.fireworks.push({
-        mesh: mesh,
-        geo: geo,
-        vel: vel,
-        state: 'idle',
-        x: 0, y: -5, z: 0,
-        peakFreq: 0, 
-        baseHue: (i / this.numBands),
-        type: i 
-      });
-    }
-  }
-
-  createGlowTexture() {
+  // 💡 부드러운 그라데이션 텍스처 (중앙은 밝고 외곽은 투명하게 사라짐)
+  createRadialGradient() {
     const canvas = document.createElement('canvas');
-    canvas.width = 64; canvas.height = 64;
+    canvas.width = 128; canvas.height = 128;
     const ctx = canvas.getContext('2d');
-    const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-    gradient.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
-    gradient.addColorStop(0.2, 'rgba(255, 255, 255, 0.8)');
-    gradient.addColorStop(0.6, 'rgba(255, 255, 255, 0.2)');
-    gradient.addColorStop(1.0, 'rgba(255, 255, 255, 0.0)');
+    const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 1.0)'); // 중심부 폭발광
+    gradient.addColorStop(0.3, 'rgba(255, 255, 255, 0.6)');
+    gradient.addColorStop(1.0, 'rgba(255, 255, 255, 0.0)'); // 외곽 자연스러운 페이드아웃
     ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, 64, 64);
+    ctx.fillRect(0, 0, 128, 128);
     return new THREE.CanvasTexture(canvas);
   }
 
-  triggerLaunch(index, currentFreq, scatter, seed) {
-    const fw = this.fireworks[index];
-    fw.state = 'launch';
-    fw.peakFreq = currentFreq;
-    
-    const viewHeight = Math.tan(THREE.MathUtils.degToRad(55 / 2)) * 20 * 2; 
+  buildMatrixGrid() {
+    // 💡 화면 36분할 영역(Bounds) 가이드라인 그리기 (시각적 고급스러움 추가)
+    const viewHeight = Math.tan(THREE.MathUtils.degToRad(55 / 2)) * 15 * 2; 
     const viewWidth = viewHeight * this.camera.aspect;
     
-    const maxUsableWidth = viewWidth - 6;
-    const scatterScale = Math.min(1.0, scatter / 4.0);
-    const span = maxUsableWidth * scatterScale;
-    const normalizedPos = index / (this.numBands - 1); 
+    const stepX = viewWidth / this.cols;
+    const stepY = viewHeight / this.rows;
+
+    const lineGeo = new THREE.BufferGeometry();
+    const linePos = [];
     
-    fw.x = - (span / 2) + normalizedPos * span;
-    fw.z = (this.seededRandom(seed + index) - 0.5) * 3; 
-    fw.y = -5;
+    // 세로선
+    for(let i = 0; i <= this.cols; i++) {
+      let x = (i - this.cols / 2) * stepX;
+      linePos.push(x, viewHeight / 2, 0, x, -viewHeight / 2, 0);
+    }
+    // 가로선
+    for(let i = 0; i <= this.rows; i++) {
+      let y = (i - this.rows / 2) * stepY;
+      linePos.push(viewWidth / 2, y, 0, -viewWidth / 2, y, 0);
+    }
+    lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(linePos, 3));
+    this.gridLines = new THREE.LineSegments(lineGeo, new THREE.LineBasicMaterial({
+      color: 0x334455, transparent: true, opacity: 0.15 
+    }));
+    this.scene.add(this.gridLines);
 
-    const pos = fw.geo.attributes.position.array;
-    const col = fw.geo.attributes.color.array;
-    const siz = fw.geo.attributes.pSize.array;
+    // 💡 36개 그리드 셀의 그라데이션 발광체(Points) 셋업
+    this.pointsGeo = new THREE.BufferGeometry();
+    const pos = new Float32Array(this.numCells * 3);
+    const col = new Float32Array(this.numCells * 3);
+    const siz = new Float32Array(this.numCells);
 
-    for (let j = 0; j < this.particlesPerFirework; j++) {
-      pos[j*3] = fw.x; pos[j*3+1] = fw.y; pos[j*3+2] = fw.z;
-      col[j*3] = 1.0; col[j*3+1] = 0.9; col[j*3+2] = 0.6; 
-      siz[j] = j === 0 ? 3.0 : 0.0; 
-      fw.vel[j*3] = 0; fw.vel[j*3+1] = 0; fw.vel[j*3+2] = 0;
+    for (let i = 0; i < this.numCells; i++) {
+      let c = i % this.cols;
+      let r = Math.floor(i / this.cols);
+      
+      pos[i*3] = (c - this.cols / 2 + 0.5) * stepX;
+      pos[i*3+1] = (this.rows / 2 - r - 0.5) * stepY;
+      pos[i*3+2] = 0.1; // 선보다 살짝 앞으로
+
+      col[i*3] = 1; col[i*3+1] = 1; col[i*3+2] = 1;
+      siz[i] = 1.0;
+      this.prevFreqBins[i] = 0;
     }
 
-    fw.mesh.material.opacity = 1.0;
-    fw.geo.attributes.position.needsUpdate = true;
-    fw.geo.attributes.color.needsUpdate = true;
-    fw.geo.attributes.pSize.needsUpdate = true;
-  }
+    this.pointsGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    this.pointsGeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    this.pointsGeo.setAttribute('pSize', new THREE.BufferAttribute(siz, 1));
 
-  triggerExplode(index, burstForce, customColors, seed) {
-    const fw = this.fireworks[index];
-    fw.state = 'explode';
-    
-    const col = fw.geo.attributes.color.array;
-    const siz = fw.geo.attributes.pSize.array;
-    const c = new THREE.Color();
+    const mat = new THREE.PointsMaterial({
+      size: 1.0,
+      map: this.createRadialGradient(),
+      vertexColors: true,
+      transparent: true,
+      opacity: 1.0,
+      blending: THREE.AdditiveBlending, // 겹칠 때 빛이 폭발적으로 밝아짐
+      depthWrite: false
+    });
 
-    for (let j = 0; j < this.particlesPerFirework; j++) {
-      if (this.colorStyle === 'full-random') {
-        c.setHSL((fw.baseHue + Math.random() * 0.1) % 1.0, 0.9, 0.6);
-      } else if (this.colorStyle === 'neon') {
-        c.setHSL(index % 2 === 0 ? 0.93 : 0.48, 1.0, 0.6);
-      } else if (this.colorStyle === 'pastel') {
-        c.setHSL(index % 2 === 0 ? 0.74 : 0.10, 0.8, 0.7);
-      } else if (this.colorStyle === 'custom') {
-        c.set(index % 2 === 0 ? customColors.gas1 : customColors.gas2);
-      } else {
-        c.setHSL(index / this.numBands, 0.9, 0.5);
-      }
+    mat.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader.replace(
+        'void main() {',
+        `attribute float pSize;\nvoid main() {`
+      );
+      shader.vertexShader = shader.vertexShader.replace(
+        'gl_PointSize = size;',
+        'gl_PointSize = size * pSize;'
+      );
+    };
 
-      if (Math.random() < 0.1) c.setHex(0xffffff); 
-      col[j*3] = c.r; col[j*3+1] = c.g; col[j*3+2] = c.b;
-      siz[j] = Math.random() * 0.7 + 0.3; 
-
-      const power = Math.min(1.0, burstForce * 1.5); 
-      const speed = (Math.random() * 0.1 + 0.05) * (1.0 + power * 4.0); 
-      
-      let vx = 0, vy = 0, vz = 0;
-      const t = Math.random() * Math.PI * 2;
-
-      switch(fw.type) {
-        case 0: // 구형
-          const phi0 = Math.acos(-1 + (2 * j) / this.particlesPerFirework);
-          const theta0 = Math.sqrt(this.particlesPerFirework * Math.PI) * phi0;
-          vx = Math.cos(theta0) * Math.sin(phi0); vy = Math.sin(theta0) * Math.sin(phi0); vz = Math.cos(phi0); break;
-        
-        case 1: // 흩뿌려진 하트
-          vx = Math.pow(Math.sin(t), 3); vy = (13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t)) / 16; vz = (Math.random() - 0.5) * 0.2; break;
-        
-        case 2: // 버들가지 (무겁게 흘러내림)
-          const phi2 = Math.acos(-1 + (2 * j) / this.particlesPerFirework); const theta2 = Math.sqrt(this.particlesPerFirework * Math.PI) * phi2;
-          vx = Math.cos(theta2) * Math.sin(phi2) * 0.8; vy = Math.sin(theta2) * Math.sin(phi2) * 0.5 + 0.5; vz = Math.cos(phi2) * 0.8; break;
-        
-        case 3: // 이중 고리
-          const r3 = j % 2 === 0 ? 1 : 0.4; vx = r3 * Math.cos(t); vy = r3 * Math.sin(t); vz = (Math.random()-0.5)*0.1; break;
-        
-        case 4: // 별모양
-          const r4 = 1 - 0.5 * Math.abs(Math.sin(t * 2.5)); vx = r4 * Math.cos(t); vy = r4 * Math.sin(t); vz = (Math.random()-0.5)*0.1; break;
-        
-        case 5: // 💡 [수정] 십자가 폭발 제거 -> 데이지 꽃모양(Flower)으로 변경
-          const petals = 6;
-          const radius = 1.0 + 0.5 * Math.sin(petals * t);
-          vx = radius * Math.cos(t) * 1.2; vy = radius * Math.sin(t) * 1.2; vz = (Math.random() - 0.5) * 0.1; break;
-        
-        case 6: // 분수
-          vx = (Math.random() - 0.5) * 0.4; vy = Math.random() * 1.5; vz = (Math.random() - 0.5) * 0.4; break;
-        
-        case 7: // 💡 [수정] 속이 빈 거대 하트 (Hollow Heart - 외곽선만 뚜렷하게 발광)
-          const t7 = (j / this.particlesPerFirework) * Math.PI * 2; // 선을 이어 그리기 위한 균등 분배
-          const hx = Math.pow(Math.sin(t7), 3);
-          const hy = (13 * Math.cos(t7) - 5 * Math.cos(2*t7) - 2 * Math.cos(3*t7) - Math.cos(4*t7)) / 16;
-          // 선명한 외곽선에 미세한 두께(0.05)만 추가, 크기는 1.5배로 크게
-          vx = hx * 1.5 + (Math.random() - 0.5) * 0.05; 
-          vy = hy * 1.5 + (Math.random() - 0.5) * 0.05; 
-          vz = (Math.random() - 0.5) * 0.05; 
-          break;
-        
-        case 8: // 토성
-          if (j < 200) { vx = Math.cos(t)*1.5; vy = (Math.random()-0.5)*0.1; vz = Math.sin(t)*1.5; } 
-          else { const phi8 = Math.acos(-1 + (2 * j) / 400); const theta8 = Math.sqrt(400 * Math.PI) * phi8;
-            vx = Math.cos(theta8)*Math.sin(phi8); vy = Math.sin(theta8)*Math.sin(phi8); vz = Math.cos(phi8); } break;
-        
-        case 9: // 나선형
-          const r9 = j / this.particlesPerFirework; vx = r9 * Math.cos(j * 0.1); vy = r9 * Math.sin(j * 0.1); vz = (Math.random()-0.5)*0.2; break;
-        
-        case 10: // 원반
-          vx = Math.cos(t) * Math.random(); vy = Math.sin(t) * Math.random(); vz = 0; break;
-        
-        case 11: // 브로케이드 (거대 팽창)
-          const phi11 = Math.acos(-1 + (2 * j) / this.particlesPerFirework);
-          const theta11 = Math.sqrt(this.particlesPerFirework * Math.PI) * phi11;
-          vx = Math.cos(theta11)*Math.sin(phi11)*1.5; vy = Math.sin(theta11)*Math.sin(phi11)*1.5; vz = Math.cos(phi11)*1.5; break;
-      }
-
-      const len = Math.sqrt(vx*vx + vy*vy + vz*vz) || 1;
-      
-      fw.vel[j*3] = (vx / len) * speed;
-      fw.vel[j*3+1] = (vy / len) * speed;
-      fw.vel[j*3+2] = (vz / len) * speed;
-    }
-
-    fw.mesh.material.opacity = 1.0;
-    fw.geo.attributes.color.needsUpdate = true;
-    fw.geo.attributes.pSize.needsUpdate = true;
+    this.pointsMesh = new THREE.Points(this.pointsGeo, mat);
+    this.scene.add(this.pointsMesh);
   }
 
   update(audioData) {
@@ -257,79 +156,98 @@ export default class ThreeFireworksStage {
       this.colorStyle = window.cosmicEngineSettings.colorStyle;
     }
 
-    const currentFreqBins = new Float32Array(this.numBands);
+    // Seed 변경 시 36개 그리드의 주파수 배치 순서 무작위 셔플
+    if (this.loadedSeed !== seed) {
+      this.loadedSeed = seed;
+      this.shuffleMap = Array.from({length: this.numCells}, (_, i) => i).sort(() => this.seededRandom(seed++) - 0.5);
+    }
+
+    // 💡 오디오 데이터를 36개의 촘촘한 채널로 분해
+    const currentFreqBins = new Float32Array(this.numCells);
     if (audioData) {
-      for (let i = 0; i < this.numBands; i++) {
-        let factor = i / (this.numBands - 1);
+      for (let i = 0; i < this.numCells; i++) {
+        let factor = i / (this.numCells - 1);
         if (factor < 0.25) currentFreqBins[i] = THREE.MathUtils.lerp(audioData.subBass, audioData.bass, factor * 4.0);
         else if (factor < 0.75) currentFreqBins[i] = THREE.MathUtils.lerp(audioData.bass, audioData.mid, (factor - 0.25) * 2.0);
         else currentFreqBins[i] = THREE.MathUtils.lerp(audioData.mid, audioData.treble, (factor - 0.75) * 4.0);
-        currentFreqBins[i] *= gain;
+        currentFreqBins[i] *= gain * 1.5;
       }
     }
 
-    for (let i = 0; i < this.numBands; i++) {
-      const fw = this.fireworks[i];
-      const currentFreq = currentFreqBins[i];
+    // 시간 경과에 따른 진원지(폭발) 생명주기 관리
+    this.explosions.forEach(exp => exp.age += 0.05);
+    this.explosions = this.explosions.filter(exp => exp.age < 1.0);
+
+    const colAttr = this.pointsGeo.attributes.color.array;
+    const sizAttr = this.pointsGeo.attributes.pSize.array;
+    
+    const viewHeight = Math.tan(THREE.MathUtils.degToRad(55 / 2)) * 15 * 2; 
+    const viewWidth = viewHeight * this.camera.aspect;
+    const maxCellSize = (viewWidth / this.cols) * 2.5; // 발광 최대 크기 (이웃 셀까지 침범)
+
+    for (let i = 0; i < this.numCells; i++) {
+      let c = i % this.cols;
+      let r = Math.floor(i / this.cols);
       
-      const delta = currentFreq - this.prevFreqBins[i];
-      this.prevFreqBins[i] = currentFreq; 
+      const targetFreq = currentFreqBins[this.shuffleMap[i]];
+      const delta = targetFreq - this.prevFreqBins[i];
+      this.prevFreqBins[i] += (targetFreq - this.prevFreqBins[i]) * 0.3; // 스무딩
 
-      if (fw.state === 'idle') {
-        if (currentFreq > 0.1 && delta > 0.02) {
-          if (this.colorStyle === 'full-random') fw.baseHue = this.seededRandom(seed + i * 99 + Date.now() % 100);
-          this.triggerLaunch(i, currentFreq, scatter, seed);
-        }
-      } 
-      else if (fw.state === 'launch') {
-        if (currentFreq > fw.peakFreq) {
-          fw.peakFreq = currentFreq;
-          fw.y = -5 + (currentFreq * 16); 
-        } 
-        else if (delta < -0.01 || currentFreq < 0.05) {
-          this.triggerExplode(i, fw.peakFreq, customColors, seed);
-        }
-
-        const pos = fw.geo.attributes.position.array;
-        for (let j = 0; j < this.particlesPerFirework; j++) pos[j*3+1] = fw.y;
-        fw.geo.attributes.position.needsUpdate = true;
-      } 
-      else if (fw.state === 'explode') {
-        let g = (fw.type === 2 || fw.type === 11) ? 0.012 : 0.005; 
-        let drag = (fw.type === 6) ? 0.90 : 0.96; 
-        let fadeOut = (fw.type === 2 || fw.type === 11) ? 0.006 : 0.015; 
-
-        const pos = fw.geo.attributes.position.array;
-        const siz = fw.geo.attributes.pSize.array;
-
-        for (let j = 0; j < this.particlesPerFirework; j++) {
-          fw.vel[j*3] *= drag;
-          fw.vel[j*3+1] -= g; 
-          fw.vel[j*3+1] *= drag;
-          fw.vel[j*3+2] *= drag;
-
-          pos[j*3] += fw.vel[j*3];
-          pos[j*3+1] += fw.vel[j*3+1];
-          pos[j*3+2] += fw.vel[j*3+2];
-          
-          siz[j] *= 0.97;
-        }
-
-        fw.mesh.material.opacity -= fadeOut;
-        if (fw.mesh.material.opacity <= 0) fw.state = 'idle'; 
-
-        fw.geo.attributes.position.needsUpdate = true;
-        fw.geo.attributes.pSize.needsUpdate = true;
+      // 💡 [그리드 폭발 감지] 해당 셀의 주파수가 강하게 튈 때 파장(Explosion) 생성
+      if (delta > 0.08) {
+        this.explosions.push({ c: c, r: r, force: delta, age: 0 });
       }
+
+      // 💡 [거리 기반 파장 연산] 내 주변에서 터진 폭발이 나에게 미치는 빛의 밝기 계산
+      let totalGlow = targetFreq * 0.2; // 기본 음압에 의한 미세한 떨림
       
-      if (fw.state === 'explode') {
-         fw.mesh.material.size = Math.max(0.2, glow * 0.8);
+      for (let exp of this.explosions) {
+        // 진원지와의 그리드 거리 계산
+        const dist = Math.sqrt(Math.pow(c - exp.c, 2) + Math.pow(r - exp.r, 2));
+        
+        // 분산 범위(Scatter)를 높이면 파장이 화면 전체로 멀리까지 퍼짐
+        const reach = (scatter / 2.2) * 1.5; 
+        
+        // 거리가 가까울수록 강하게, 멀어질수록 약하게 도달
+        let impact = (exp.force * 2.5) / (dist * reach + 1.0);
+        
+        // 시간이 지날수록 페이드아웃
+        impact *= (1.0 - exp.age); 
+        
+        totalGlow += Math.max(0, impact);
       }
+
+      totalGlow = Math.min(1.0, totalGlow); // 최대치 제한
+
+      // 💡 1. 밝기(Glow)에 따라 그라데이션 반경(크기) 팽창
+      // 폭발의 중심은 이웃 셀을 덮어버릴 만큼 커지고, 멀어질수록 작아짐
+      sizAttr[i] = (maxCellSize * 0.2) + (maxCellSize * totalGlow * glow * 1.5);
+
+      // 💡 2. 밝기(Glow)에 따른 완벽한 색상 전이 (Base Color -> Intense White)
+      let baseColor = new THREE.Color();
+      if (this.colorStyle === 'full-random') {
+        baseColor.setHSL(this.seededRandom(seed + i * 99), 0.9, 0.4);
+      } else if (this.colorStyle === 'neon') {
+        baseColor.setHSL(i % 2 === 0 ? 0.93 : 0.48, 1.0, 0.4);
+      } else if (this.colorStyle === 'pastel') {
+        baseColor.setHSL(i % 2 === 0 ? 0.74 : 0.10, 0.8, 0.5);
+      } else if (this.colorStyle === 'custom') {
+        baseColor.set(i % 2 === 0 ? customColors.gas1 : customColors.gas2);
+      } else {
+        baseColor.setHSL(i / this.numCells, 0.9, 0.4); // 기본 무지개 
+      }
+
+      // 터지는 중심(totalGlow가 1에 가까운 곳)은 밝은 흰색/노란색으로 타오름
+      baseColor.lerp(new THREE.Color(0xffffee), totalGlow);
+      
+      // 멀어질수록(totalGlow가 0에 가까운 곳) 원래 색상으로 돌아가며 어두워짐
+      colAttr[i*3] = baseColor.r * (0.1 + totalGlow * 0.9);
+      colAttr[i*3+1] = baseColor.g * (0.1 + totalGlow * 0.9);
+      colAttr[i*3+2] = baseColor.b * (0.1 + totalGlow * 0.9);
     }
 
-    const time = Date.now() * 0.001;
-    this.scene.rotation.y = Math.sin(time * 0.1) * 0.02;
-
+    this.pointsGeo.attributes.color.needsUpdate = true;
+    this.pointsGeo.attributes.pSize.needsUpdate = true;
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -337,17 +255,30 @@ export default class ThreeFireworksStage {
     if (this.camera && this.renderer) {
       this.camera.aspect = w / h;
       this.camera.updateProjectionMatrix();
+      
+      // 화면 비율이 바뀔 때 그리드 좌표 재계산
+      this.scene.remove(this.gridLines);
+      this.scene.remove(this.pointsMesh);
+      if(this.gridLines) this.gridLines.geometry.dispose();
+      if(this.pointsGeo) this.pointsGeo.dispose();
+      this.buildMatrixGrid();
+      
       this.renderer.setSize(w, h);
     }
   }
 
   destroy() {
     if (!this.scene) return;
-    this.fireworks.forEach(fw => {
-      fw.geo.dispose();
-      fw.mesh.material.dispose();
-      this.scene.remove(fw.mesh);
-    });
+    if (this.gridLines) {
+      this.gridLines.geometry.dispose();
+      this.gridLines.material.dispose();
+      this.scene.remove(this.gridLines);
+    }
+    if (this.pointsMesh) {
+      this.pointsGeo.dispose();
+      this.pointsMesh.material.dispose();
+      this.scene.remove(this.pointsMesh);
+    }
     if (this.renderer) {
       this.container.removeChild(this.renderer.domElement);
       this.renderer.dispose();
@@ -355,6 +286,6 @@ export default class ThreeFireworksStage {
     this.scene = null;
     this.camera = null;
     this.renderer = null;
-    this.fireworks = [];
+    this.explosions = [];
   }
 }
