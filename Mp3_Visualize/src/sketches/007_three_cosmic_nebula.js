@@ -1,7 +1,6 @@
 /**
  * 007_three_cosmic_nebula.js
- * 중앙 빛 분산 지수 조절 제어 및 커스텀 수동/랜덤 컬러 시스템 결합 성운 무대
- * (GPU 색상 버퍼 실시간 리프레시 버그 완전 패치본)
+ * 극단적으로 시각적 피드백이 강력해진 하드코어 성운 렌더러 (컬러/씨드/Gain 완벽 동기화)
  */
 export default class ThreeRealNebula {
   constructor(container) {
@@ -16,10 +15,9 @@ export default class ThreeRealNebula {
     this.points = null;
     this.particleData = [];
 
-    // 상태 역동성 추적 변수
-    this.loadedSeed = 42;
-    this.loadedScatter = 2.2;
-    this.loadedColorStyle = 'monochrome';
+    this.loadedSeed = -1;
+    this.loadedScatter = -1;
+    this.loadedColorStyle = '';
   }
 
   init() {
@@ -50,8 +48,8 @@ export default class ThreeRealNebula {
     const ctx = canvas.getContext('2d');
     const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
     gradient.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
-    gradient.addColorStop(0.2, 'rgba(255, 255, 255, 0.45)');
-    gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.12)');
+    gradient.addColorStop(0.2, 'rgba(255, 255, 255, 0.5)');
+    gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.15)');
     gradient.addColorStop(1.0, 'rgba(255, 255, 255, 0.0)');
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, 64, 64);
@@ -66,7 +64,6 @@ export default class ThreeRealNebula {
   }
 
   buildCosmos() {
-    // 전역 동기화 수치 스캔
     if (window.cosmicEngineSettings) {
       this.currentSeed = window.cosmicEngineSettings.seed;
       this.scatterExponent = window.cosmicEngineSettings.scatterExponent; 
@@ -79,7 +76,6 @@ export default class ThreeRealNebula {
       this.customColors = { gas1: '#ff0055', gas2: '#00ffcc', star: '#ffffff' };
     }
 
-    // 다음 프레임 비교를 위해 상태 낙인
     this.loadedSeed = this.currentSeed;
     this.loadedScatter = this.scatterExponent;
     this.loadedColorStyle = this.colorStyle;
@@ -92,6 +88,10 @@ export default class ThreeRealNebula {
     this.particleData = [];
     let sRandom = this.currentSeed;
 
+    // 💥 Seed가 바뀌면 나선팔(Spiral Arms) 개수와 비틀림 방향이 완전히 다르게 변하도록 지형 파괴 연산
+    const spiralArms = (this.currentSeed % 4) + 2; 
+    const swirlDirection = (this.currentSeed % 2 === 0) ? 1 : -1;
+
     for (let i = 0; i < this.particleCount; i++) {
       sRandom = this.seededRandom(sRandom) * 1000;
       const rand1 = this.seededRandom(sRandom + 1);
@@ -99,8 +99,12 @@ export default class ThreeRealNebula {
       const rand3 = this.seededRandom(sRandom + 3);
       const rand4 = this.seededRandom(sRandom + 4);
 
-      const angle = rand1 * Math.PI * 2;
-      const radius = Math.pow(rand2, this.scatterExponent) * 9.5 + 0.1;
+      // 나선 팔 지형 수학적 배치
+      const armOffset = Math.floor(rand1 * spiralArms) * ((Math.PI * 2) / spiralArms);
+      const radius = Math.pow(rand2, this.scatterExponent) * 11.0 + 0.1;
+      
+      // 거리에 따라 나선이 감기는 형태 (Seed 연동)
+      const angle = armOffset + (radius * 0.4 * swirlDirection) + (rand3 * 0.8);
 
       const x = Math.cos(angle) * radius;
       const y = (rand3 - 0.5) * 0.5;
@@ -115,31 +119,41 @@ export default class ThreeRealNebula {
       let starType = 'gas';
 
       if (rand4 < 0.06) {
-        pSize = 0.14 + rand1 * 0.22; 
+        pSize = 0.16 + rand1 * 0.25; 
         starType = 'star';
       } else if (rand4 < 0.30) {
         pSize = 0.04 + rand1 * 0.04;
       } else {
-        pSize = 0.012 + rand1 * 0.012;
+        pSize = 0.015 + rand1 * 0.015;
       }
 
-      // 색조합 옵션 변환 매핑
-      if (this.colorStyle === 'full-random') {
-        if (starType === 'star') color.setHSL(rand1, 0.3, 0.95);
-        else color.setHSL(rand1, 0.85, 0.5);
+      // 🎨 [버그 해결] 드롭다운 메뉴별 명확한 분기 처리 복구 완료!
+      if (this.colorStyle === 'neon') {
+        if (starType === 'star') color.setHSL(0.55 + rand2 * 0.05, 1.0, 0.9);
+        else if (i % 2 === 0) color.setHSL(0.93 + rand2 * 0.03, 0.9, 0.55); // Pink
+        else color.setHSL(0.48 + rand2 * 0.04, 1.0, 0.45); // Mint
       } 
-      else if (window.cosmicEngineSettings) {
+      else if (this.colorStyle === 'pastel') {
+        if (starType === 'star') color.setHSL(0.10 + rand2 * 0.04, 0.9, 0.85); // Gold
+        else if (i % 2 === 0) color.setHSL(0.74 + rand2 * 0.06, 0.4, 0.65); // Violet
+        else color.setHSL(0.06 + rand2 * 0.04, 0.5, 0.7);  // Peach
+      }
+      else if (this.colorStyle === 'full-random') {
+        // 완전 무작위 스펙트럼
+        if (starType === 'star') color.setHSL(rand1, 0.4, 0.9);
+        else color.setHSL(rand1, 0.8, 0.5);
+      } 
+      else if (this.colorStyle === 'custom') {
+        // 픽커를 조작한 수동 컬러
         const cc = this.customColors;
-        if (starType === 'star') {
-          color.set(cc.star);
-        } else if (i % 2 === 0) {
-          color.set(cc.gas1);
-        } else {
-          color.set(cc.gas2);
-        }
+        if (starType === 'star') color.set(cc.star);
+        else if (i % 2 === 0) color.set(cc.gas1);
+        else color.set(cc.gas2);
       } 
       else {
-        color.setHSL(0.52 + rand2 * 0.06, 0.9, 0.45);
+        // 기본 Monochrome Cyan
+        if (starType === 'star') color.setHex(0xffffff);
+        else color.setHSL(0.52 + rand2 * 0.06, 0.9, 0.45);
       }
 
       colors[i * 3] = color.r;
@@ -160,11 +174,9 @@ export default class ThreeRealNebula {
     this.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     this.geometry.setAttribute('pSize', new THREE.BufferAttribute(sizes, 1));
 
-    // 💡 [버그 완벽 수정 마법] 
-    // 기존 시스템에 장착되어 있으면 파괴하지 않고 내부에 덮어씌운 뒤, GPU에게 즉시 강제 갱신 통보를 내립니다.
     if (this.points) {
       this.points.geometry.attributes.position.needsUpdate = true;
-      this.points.geometry.attributes.color.needsUpdate = true; // 💥 실시간 색상 교환 실현
+      this.points.geometry.attributes.color.needsUpdate = true; 
       this.points.geometry.attributes.pSize.needsUpdate = true;
     } else {
       this.material = new THREE.PointsMaterial({
@@ -199,46 +211,56 @@ export default class ThreeRealNebula {
 
     if (window.cosmicEngineSettings) {
       this.colorStyle = window.cosmicEngineSettings.colorStyle;
-      this.material.opacity = window.cosmicEngineSettings.glowIntensity;
       this.audioGain = window.cosmicEngineSettings.audioGain;
+      
+      // 💥 Glow 슬라이더 하나로 불투명도(Opacity)와 입자 크기(Size)를 동시에 뻥튀기하여 빛 번짐 극대화
+      const glow = window.cosmicEngineSettings.glowIntensity;
+      this.material.opacity = Math.min(1.0, glow); 
+      this.material.size = Math.max(0.5, glow * 1.8); 
     }
 
     const time = Date.now() * 0.001;
     const positions = this.geometry.attributes.position.array;
     const sizes = this.geometry.attributes.pSize.array;
 
+    // 💥 오디오 게인(폭발력)을 곱해주는 배율을 엄청나게 높였습니다. 슬라이더를 올리면 폭주합니다.
     const gain = this.audioGain;
-    const subBass = audioData ? audioData.subBass * gain : 0;
-    const bass    = audioData ? audioData.bass * gain : 0;
-    const mid     = audioData ? audioData.mid * gain : 0;
-    const treble  = audioData ? audioData.treble * gain : 0;
-    const volume  = audioData ? audioData.volume * gain : 0;
+    const subBass = audioData ? audioData.subBass * gain * 2.0 : 0;
+    const bass    = audioData ? audioData.bass * gain * 1.5 : 0;
+    const mid     = audioData ? audioData.mid * gain * 1.2 : 0;
+    const treble  = audioData ? audioData.treble * gain * 1.5 : 0;
+    const volume  = audioData ? audioData.volume * gain * 2.0 : 0;
 
     for (let i = 0; i < this.particleCount; i++) {
       const data = this.particleData[i];
 
       let currentAngle = data.angle + time * 0.008 * data.speed;
-      const noise2 = Math.sin(data.radius * 1.3 - time * 2.0) * (bass * 0.5 + mid * 0.25);
+      
+      // 중간 줄기의 소용돌이 움직임 폭발적 증가
+      const noise2 = Math.sin(data.radius * 1.3 - time * 2.0) * (bass * 1.5 + mid * 0.8);
       currentAngle += noise2 / data.radius;
 
-      const noise3 = Math.cos(time * data.twinkleSpeed) * (treble * 0.16);
-      const finalRadius = data.radius + noise3 + (subBass * 0.35);
+      const noise3 = Math.cos(time * data.twinkleSpeed) * (treble * 0.5);
+      const finalRadius = data.radius + noise3 + (subBass * 0.8); 
 
       positions[i * 3] = Math.cos(currentAngle) * finalRadius;
-      positions[i * 3 + 1] = data.baseY + Math.sin(time * data.speed + data.radius) * (mid * 0.16);
+      // y축 높낮이도 비트에 맞춰 크게 울렁이도록 폭폭 증가
+      positions[i * 3 + 1] = data.baseY + Math.sin(time * data.speed + data.radius) * (mid * 0.8);
       positions[i * 3 + 2] = Math.sin(currentAngle) * finalRadius;
 
       if (data.type === 'star') {
-        sizes[i] = data.baseSize * (1.2 + subBass * 3.2 + Math.sin(time * data.twinkleSpeed) * 0.35);
+        sizes[i] = data.baseSize * (1.0 + subBass * 4.0 + Math.sin(time * data.twinkleSpeed) * 0.5);
       } else {
-        sizes[i] = data.baseSize * (1.0 + treble * 1.5);
+        sizes[i] = data.baseSize * (1.0 + treble * 3.0);
       }
     }
 
     this.geometry.attributes.position.needsUpdate = true;
     this.geometry.attributes.pSize.needsUpdate = true;
 
-    this.points.rotation.y = time * 0.006 + (volume * 0.04);
+    // 전체 카메라 앵글 회전 속도도 볼륨에 맞춰 드라마틱하게 가속
+    this.points.rotation.y = time * 0.006 + (volume * 0.15);
+    this.points.rotation.x = Math.sin(time * 0.005) * 0.1;
 
     this.renderer.render(this.scene, this.camera);
   }
