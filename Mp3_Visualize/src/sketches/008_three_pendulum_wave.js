@@ -6,7 +6,7 @@ export default class ThreePendulumWave {
   constructor(container) {
     this.container = container;
     this.scene = null;
-    this.camera = null;
+    this.camera = null; 
     this.renderer = null;
 
     // 16개의 주파수 대역 = 16개의 진자 (4x4 그리드 배치)
