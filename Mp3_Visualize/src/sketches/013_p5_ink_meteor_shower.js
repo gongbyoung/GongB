@@ -1,9 +1,9 @@
 /**
- * 013_p5_meteor_shower.js
- * 화면 하단 1/3에 절차적 지형(산맥)을 렌더링하고,
- * 오디오 주파수 스파이크에 반응하여 하늘에서 유성우가 쏟아지는 시네마틱 미디어 아트
+ * 013_p5_ink_meteor_shower.js
+ * 화면 하단 1/3에 조선 시대 수묵 점묘화 기법으로 지형(산맥)을 렌더링하고,
+ * 오디오 주파수 스파이크에 반응하여 하늘에서 흑백 점묘 유성우가 쏟아지는 시네마틱 미디어 아트
  */
-export default class P5MeteorShowerStage {
+export default class P5InkMeteorShowerStage {
   constructor(container) {
     this.container = container;
     this.p5Instance = null;
@@ -96,7 +96,7 @@ export default class P5MeteorShowerStage {
             mtnFill = p.color(10, 10, 15);
             mtnStroke = p.color(customColors.gas1);
             meteorColor = p.color(customColors.gas2);
-        } else {
+        } else { // 흑백 (Monochrome) - 기본 설정
             skyTop = p.color('#000000');
             skyMid = p.color('#051020');
             mtnFill = p.color('#010205');
@@ -128,12 +128,11 @@ export default class P5MeteorShowerStage {
 
         const time = Date.now() * 0.001;
 
-        // 💡 3. 잔잔한 배경 별 렌더링 (음악 볼륨에 맞춰 반짝임 증가)
+        // 💡 3. 잔잔한 배경 별 렌더링 (수묵 점묘 기법 적용)
         p.noStroke();
         ctx.shadowBlur = 0;
         for(let s of this.stars) {
             let twinkle = p.sin(time * s.twinkleSpeed * 100) * 0.5 + 0.5;
-            // 음악 볼륨(frameAverage)이 크면 별이 더 밝게 빛남
             let alpha = (twinkle * 100) + (frameAverage * 150);
             let starC = p.color(255, 255, 255);
             starC.setAlpha(alpha);
@@ -141,7 +140,7 @@ export default class P5MeteorShowerStage {
             p.circle(s.x, s.y, s.size);
         }
 
-        // 💡 4. 유성우 (Meteor Shower) 스폰 및 렌더링
+        // 💡 4. 유성우 (Meteor Shower) 스폰 및 렌더링 (흑백 점묘 기법 적용)
         for (let i = 0; i < this.numBands; i++) {
           let rawVal = 0;
           if (this.currentAudioData.raw && this.currentAudioData.raw.length > 0) {
@@ -186,15 +185,13 @@ export default class P5MeteorShowerStage {
             m.y += m.vy;
             m.life -= 4; 
 
-            // 💡 [핵심] Scatter(분산 범위) 슬라이더가 유성의 꼬리 길이를 결정!
-            // scatter 0.0 이면 꼬리 없이 점처럼 보이고, 5.0이면 화면을 긋는 거대한 빛줄기가 됨
+            // 꼬리 길이 (Center Scatter) 슬라이더 연동
             let tailMultiplier = Math.max(0.1, scatter); 
             let tailLengthX = m.vx * tailMultiplier * 3;
             let tailLengthY = m.vy * tailMultiplier * 3;
 
             ctx.shadowColor = m.color.toString();
             
-            // 유성의 그라데이션 꼬리 그리기
             let strokeC = p.color(m.color);
             strokeC.setAlpha(m.life);
             p.stroke(strokeC);
@@ -208,17 +205,15 @@ export default class P5MeteorShowerStage {
             }
         }
 
-        // 💡 5. 절차적 지형 (Mountain) 렌더링
-        // Seed가 변경되면 산맥의 모양이 즉시 재배치됨
+        // 💡 5. 조선 수묵 점묘화 지형 (Mountain) 렌더링
         p.noiseSeed(seed);
-        p.noiseDetail(4, 0.5); // 산맥처럼 거칠고 자연스러운 노이즈 디테일
+        p.noiseDetail(4, 0.5); 
 
         ctx.shadowBlur = 20 * glow;
         ctx.shadowColor = mtnStroke.toString();
         p.stroke(mtnStroke);
         p.strokeWeight(2);
         
-        // 산의 배경을 채움
         p.fill(mtnFill);
 
         p.beginShape();
@@ -226,13 +221,8 @@ export default class P5MeteorShowerStage {
         
         // 화면 하단 1/3 높이에 산맥을 생성 (y = height * 0.66 기준)
         for (let x = 0; x <= width; x += 10) {
-            // x 좌표와 seed를 섞어서 산의 능선을 계산
             let n = p.noise(x * 0.002, seed * 0.01); 
-            
-            // 산의 기본 높이 (화면의 60% ~ 90% 지점 사이를 오르내림)
             let mountainHeight = height * 0.6 + (n * height * 0.3);
-            
-            // 베이스 드럼(frameAverage)이 칠 때 산맥 자체가 미세하게 진동
             let bassVibration = frameAverage * 15 * p.sin(x * 0.1 + time * 10);
             
             p.vertex(x, mountainHeight + bassVibration);
@@ -240,10 +230,43 @@ export default class P5MeteorShowerStage {
         
         p.vertex(width, height);
         p.endShape(p.CLOSE);
+
+        // 산 위에 소나무 등 수묵 점묘 디테일 추가
+        p.noStroke();
+        ctx.shadowBlur = 0;
+        p.noiseSeed(seed + 100);
+        for(let x = 0; x <= width; x += 30) {
+            let n = p.noise(x * 0.005, seed * 0.01);
+            if(n > 0.6) {
+                let mountainHeight = height * 0.6 + (p.noise(x * 0.002, seed * 0.01) * height * 0.3);
+                this.drawPineTree(p, x, mountainHeight, p.random(30, 60), mtnStroke);
+            }
+        }
       };
     };
 
     this.p5Instance = new window.p5(sketch, this.container);
+  }
+
+  // 수묵 점묘 소나무 그리기 함수
+  drawPineTree(p, x, y, h, c) {
+      p.push();
+      p.translate(x, y);
+      
+      // 트렁크
+      p.stroke(c);
+      p.strokeWeight(2);
+      p.line(0, 0, 0, -h);
+      
+      // 나뭇잎 (점묘 기법)
+      p.noStroke();
+      p.fill(c);
+      for(let i = 0; i < 3; i++) {
+          let levelY = -h * (0.3 + i * 0.3);
+          let levelW = h * (0.5 - i * 0.1);
+          p.ellipse(0, levelY, levelW, levelW * 0.6);
+      }
+      p.pop();
   }
 
   update(audioData) {
