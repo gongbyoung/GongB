@@ -1,6 +1,6 @@
 /**
- * 009_three_fireworks.js (Repurposed)
- * 36분할(6x6) 그리드 매트릭스와 빛의 파장(Gradient Ripple)을 이용한 고성능 오디오 비주얼라이저
+ * 009_three_fireworks.js
+ * 512개 Raw FFT 데이터를 36개로 쪼개어 완벽히 독립적으로 반응하는 6x6 오디오 매트릭스
  */
 export default class ThreeGridGlowStage {
   constructor(container) {
@@ -9,13 +9,12 @@ export default class ThreeGridGlowStage {
     this.camera = null;
     this.renderer = null;
 
-    // 💡 6x6 그리드 = 36분할
     this.cols = 6;
     this.rows = 6;
-    this.numCells = this.cols * this.rows; 
+    this.numCells = this.cols * this.rows; // 36분할
     
     this.prevFreqBins = new Float32Array(this.numCells); 
-    this.explosions = []; // 파장이 퍼져나가는 진원지 데이터
+    this.explosions = []; 
 
     this.pointsGeo = null;
     this.pointsMesh = null;
@@ -52,22 +51,20 @@ export default class ThreeGridGlowStage {
     return x - Math.floor(x);
   }
 
-  // 💡 부드러운 그라데이션 텍스처 (중앙은 밝고 외곽은 투명하게 사라짐)
   createRadialGradient() {
     const canvas = document.createElement('canvas');
     canvas.width = 128; canvas.height = 128;
     const ctx = canvas.getContext('2d');
     const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-    gradient.addColorStop(0, 'rgba(255, 255, 255, 1.0)'); // 중심부 폭발광
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 1.0)'); 
     gradient.addColorStop(0.3, 'rgba(255, 255, 255, 0.6)');
-    gradient.addColorStop(1.0, 'rgba(255, 255, 255, 0.0)'); // 외곽 자연스러운 페이드아웃
+    gradient.addColorStop(1.0, 'rgba(255, 255, 255, 0.0)'); 
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, 128, 128);
     return new THREE.CanvasTexture(canvas);
   }
 
   buildMatrixGrid() {
-    // 💡 화면 36분할 영역(Bounds) 가이드라인 그리기 (시각적 고급스러움 추가)
     const viewHeight = Math.tan(THREE.MathUtils.degToRad(55 / 2)) * 15 * 2; 
     const viewWidth = viewHeight * this.camera.aspect;
     
@@ -77,12 +74,10 @@ export default class ThreeGridGlowStage {
     const lineGeo = new THREE.BufferGeometry();
     const linePos = [];
     
-    // 세로선
     for(let i = 0; i <= this.cols; i++) {
       let x = (i - this.cols / 2) * stepX;
       linePos.push(x, viewHeight / 2, 0, x, -viewHeight / 2, 0);
     }
-    // 가로선
     for(let i = 0; i <= this.rows; i++) {
       let y = (i - this.rows / 2) * stepY;
       linePos.push(viewWidth / 2, y, 0, -viewWidth / 2, y, 0);
@@ -93,7 +88,6 @@ export default class ThreeGridGlowStage {
     }));
     this.scene.add(this.gridLines);
 
-    // 💡 36개 그리드 셀의 그라데이션 발광체(Points) 셋업
     this.pointsGeo = new THREE.BufferGeometry();
     const pos = new Float32Array(this.numCells * 3);
     const col = new Float32Array(this.numCells * 3);
@@ -105,7 +99,7 @@ export default class ThreeGridGlowStage {
       
       pos[i*3] = (c - this.cols / 2 + 0.5) * stepX;
       pos[i*3+1] = (this.rows / 2 - r - 0.5) * stepY;
-      pos[i*3+2] = 0.1; // 선보다 살짝 앞으로
+      pos[i*3+2] = 0.1; 
 
       col[i*3] = 1; col[i*3+1] = 1; col[i*3+2] = 1;
       siz[i] = 1.0;
@@ -122,7 +116,7 @@ export default class ThreeGridGlowStage {
       vertexColors: true,
       transparent: true,
       opacity: 1.0,
-      blending: THREE.AdditiveBlending, // 겹칠 때 빛이 폭발적으로 밝아짐
+      blending: THREE.AdditiveBlending, 
       depthWrite: false
     });
 
@@ -156,15 +150,31 @@ export default class ThreeGridGlowStage {
       this.colorStyle = window.cosmicEngineSettings.colorStyle;
     }
 
-    // Seed 변경 시 36개 그리드의 주파수 배치 순서 무작위 셔플
     if (this.loadedSeed !== seed) {
       this.loadedSeed = seed;
       this.shuffleMap = Array.from({length: this.numCells}, (_, i) => i).sort(() => this.seededRandom(seed++) - 0.5);
     }
 
-    // 💡 오디오 데이터를 36개의 촘촘한 채널로 분해
     const currentFreqBins = new Float32Array(this.numCells);
-    if (audioData) {
+    
+    // 💡 [핵심 기술 변경] 날것의 512개 Raw FFT 데이터를 36개 구간으로 정밀하게 잘라냅니다.
+    if (audioData && audioData.raw && audioData.raw.length > 0) {
+      // 대역폭 중 의미 있는 소리가 가장 많은 앞부분(0~180)을 36개로 분할
+      const binsPerCell = Math.floor(180 / this.numCells); 
+
+      for (let i = 0; i < this.numCells; i++) {
+        let sum = 0;
+        for (let j = 0; j < binsPerCell; j++) {
+          sum += audioData.raw[i * binsPerCell + j] || 0;
+        }
+        // 0~255 수치를 0.0 ~ 1.0으로 정규화하고 폭발력(gain)을 곱함
+        let avgRaw = (sum / binsPerCell) / 255.0;
+        
+        // 날것의 데이터는 너무 자잘해서 시각적으로 잘 보이게 곡선(제곱) 스케일링 처리
+        currentFreqBins[i] = Math.pow(avgRaw, 1.2) * gain * 2.0;
+      }
+    } else if (audioData) {
+      // 혹시라도 구버전 엔진이라 raw가 없을 때를 대비한 안전 장치 (Fall-back)
       for (let i = 0; i < this.numCells; i++) {
         let factor = i / (this.numCells - 1);
         if (factor < 0.25) currentFreqBins[i] = THREE.MathUtils.lerp(audioData.subBass, audioData.bass, factor * 4.0);
@@ -174,7 +184,6 @@ export default class ThreeGridGlowStage {
       }
     }
 
-    // 시간 경과에 따른 진원지(폭발) 생명주기 관리
     this.explosions.forEach(exp => exp.age += 0.05);
     this.explosions = this.explosions.filter(exp => exp.age < 1.0);
 
@@ -183,7 +192,7 @@ export default class ThreeGridGlowStage {
     
     const viewHeight = Math.tan(THREE.MathUtils.degToRad(55 / 2)) * 15 * 2; 
     const viewWidth = viewHeight * this.camera.aspect;
-    const maxCellSize = (viewWidth / this.cols) * 2.5; // 발광 최대 크기 (이웃 셀까지 침범)
+    const maxCellSize = (viewWidth / this.cols) * 2.5; 
 
     for (let i = 0; i < this.numCells; i++) {
       let c = i % this.cols;
@@ -191,39 +200,29 @@ export default class ThreeGridGlowStage {
       
       const targetFreq = currentFreqBins[this.shuffleMap[i]];
       const delta = targetFreq - this.prevFreqBins[i];
-      this.prevFreqBins[i] += (targetFreq - this.prevFreqBins[i]) * 0.3; // 스무딩
+      
+      // 스무딩 최적화: 날것의 데이터는 너무 빨리 식으므로 내려갈 땐 천천히 식게 만듦
+      this.prevFreqBins[i] += (targetFreq - this.prevFreqBins[i]) * (targetFreq > this.prevFreqBins[i] ? 0.6 : 0.1); 
 
-      // 💡 [그리드 폭발 감지] 해당 셀의 주파수가 강하게 튈 때 파장(Explosion) 생성
+      // 💡 [독립 스파크 감지] 개별 채널의 주파수가 튈 때만 정확히 폭발 파장 생성
       if (delta > 0.08) {
         this.explosions.push({ c: c, r: r, force: delta, age: 0 });
       }
 
-      // 💡 [거리 기반 파장 연산] 내 주변에서 터진 폭발이 나에게 미치는 빛의 밝기 계산
-      let totalGlow = targetFreq * 0.2; // 기본 음압에 의한 미세한 떨림
+      let totalGlow = targetFreq * 0.2; 
       
       for (let exp of this.explosions) {
-        // 진원지와의 그리드 거리 계산
         const dist = Math.sqrt(Math.pow(c - exp.c, 2) + Math.pow(r - exp.r, 2));
-        
-        // 분산 범위(Scatter)를 높이면 파장이 화면 전체로 멀리까지 퍼짐
         const reach = (scatter / 2.2) * 1.5; 
-        
-        // 거리가 가까울수록 강하게, 멀어질수록 약하게 도달
         let impact = (exp.force * 2.5) / (dist * reach + 1.0);
-        
-        // 시간이 지날수록 페이드아웃
         impact *= (1.0 - exp.age); 
-        
         totalGlow += Math.max(0, impact);
       }
 
-      totalGlow = Math.min(1.0, totalGlow); // 최대치 제한
+      totalGlow = Math.min(1.0, totalGlow); 
 
-      // 💡 1. 밝기(Glow)에 따라 그라데이션 반경(크기) 팽창
-      // 폭발의 중심은 이웃 셀을 덮어버릴 만큼 커지고, 멀어질수록 작아짐
-      sizAttr[i] = (maxCellSize * 0.2) + (maxCellSize * totalGlow * glow * 1.5);
+      sizAttr[i] = (maxCellSize * 0.15) + (maxCellSize * totalGlow * glow * 1.5);
 
-      // 💡 2. 밝기(Glow)에 따른 완벽한 색상 전이 (Base Color -> Intense White)
       let baseColor = new THREE.Color();
       if (this.colorStyle === 'full-random') {
         baseColor.setHSL(this.seededRandom(seed + i * 99), 0.9, 0.4);
@@ -234,16 +233,14 @@ export default class ThreeGridGlowStage {
       } else if (this.colorStyle === 'custom') {
         baseColor.set(i % 2 === 0 ? customColors.gas1 : customColors.gas2);
       } else {
-        baseColor.setHSL(i / this.numCells, 0.9, 0.4); // 기본 무지개 
+        baseColor.setHSL(i / this.numCells, 0.9, 0.4); 
       }
 
-      // 터지는 중심(totalGlow가 1에 가까운 곳)은 밝은 흰색/노란색으로 타오름
       baseColor.lerp(new THREE.Color(0xffffee), totalGlow);
       
-      // 멀어질수록(totalGlow가 0에 가까운 곳) 원래 색상으로 돌아가며 어두워짐
-      colAttr[i*3] = baseColor.r * (0.1 + totalGlow * 0.9);
-      colAttr[i*3+1] = baseColor.g * (0.1 + totalGlow * 0.9);
-      colAttr[i*3+2] = baseColor.b * (0.1 + totalGlow * 0.9);
+      colAttr[i*3] = baseColor.r * (0.05 + totalGlow * 0.95);
+      colAttr[i*3+1] = baseColor.g * (0.05 + totalGlow * 0.95);
+      colAttr[i*3+2] = baseColor.b * (0.05 + totalGlow * 0.95);
     }
 
     this.pointsGeo.attributes.color.needsUpdate = true;
@@ -256,7 +253,6 @@ export default class ThreeGridGlowStage {
       this.camera.aspect = w / h;
       this.camera.updateProjectionMatrix();
       
-      // 화면 비율이 바뀔 때 그리드 좌표 재계산
       this.scene.remove(this.gridLines);
       this.scene.remove(this.pointsMesh);
       if(this.gridLines) this.gridLines.geometry.dispose();
