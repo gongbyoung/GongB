@@ -1,7 +1,7 @@
 /**
- * 009_three_fireworks.js (12-Channel Waveform Overlay Edition)
- * 이미지는 100% 원본 상태로 고정(Static)하고, 
- * 정확히 12분할된 주파수 대역에 1:1로 매칭되는 12개의 독립 파형(Waveform)을 오버레이하는 미디어 아트
+ * 009_three_fireworks.js (12-Channel Raw FFT Waveform Edition)
+ * 3개의 매크로 대역을 버리고, 512개의 Raw 데이터를 12구간으로 완벽하게 독립 분할하여
+ * 12개의 파형이 각자 다른 악기(주파수)에만 반응하도록 만든 미디어 아트
  */
 import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
 
@@ -12,13 +12,13 @@ export default class ThreeMediaArtWall {
     this.camera = null;
     this.renderer = null;
 
-    this.numBands = 12; // 정확히 12개의 주파수 대역
-    this.cols = 4; // 가로 4칸
-    this.rows = 3; // 세로 3칸 (4x3 = 12)
+    this.numBands = 12; // 정확히 12채널 독립 분할
+    this.cols = 4; 
+    this.rows = 3; 
     
-    this.bgPlane = null; // 고정된 배경 이미지
-    this.waveforms = []; // 12개의 파형 라인 객체
-    this.pointsPerWave = 60; // 파형 하나당 꺾이는 점의 개수
+    this.bgPlane = null; 
+    this.waveforms = []; 
+    this.pointsPerWave = 60; 
     
     this.prevFreqBins = new Float32Array(this.numBands); 
 
@@ -33,7 +33,7 @@ export default class ThreeMediaArtWall {
     this.scene = new THREE.Scene();
 
     this.camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 1000);
-    this.camera.position.set(0, 0, 15); // 카메라도 고정
+    this.camera.position.set(0, 0, 15); 
     this.camera.lookAt(0, 0, 0);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -41,7 +41,6 @@ export default class ThreeMediaArtWall {
     this.renderer.setClearColor(0x000000);
     this.container.appendChild(this.renderer.domElement);
 
-    // 원본 색상을 그대로 보여주기 위한 기본 조명
     this.scene.add(new THREE.AmbientLight(0xffffff, 1.0));
 
     this.buildStaticBackground();
@@ -64,7 +63,6 @@ export default class ThreeMediaArtWall {
     return new THREE.CanvasTexture(canvas);
   }
 
-  // 💡 1. 배경 이미지는 절대 움직이거나 빛나지 않는 평면(Plane)으로 박제
   buildStaticBackground() {
     const viewHeight = Math.tan(THREE.MathUtils.degToRad(50 / 2)) * 15 * 2; 
     const viewWidth = viewHeight * this.camera.aspect;
@@ -77,19 +75,17 @@ export default class ThreeMediaArtWall {
         this.baseTexture = this.createFallbackTexture();
     }
 
-    // 화면을 꽉 채우는 하나의 거대한 판
     const geo = new THREE.PlaneGeometry(viewWidth, viewHeight); 
     const mat = new THREE.MeshBasicMaterial({ 
         map: this.baseTexture,
-        color: 0xffffff // 원본 색상 유지
+        color: 0xffffff 
     });
 
     this.bgPlane = new THREE.Mesh(geo, mat);
-    this.bgPlane.position.set(0, 0, -1); // 파형보다 살짝 뒤에 배치
+    this.bgPlane.position.set(0, 0, -1); 
     this.scene.add(this.bgPlane);
   }
 
-  // 💡 2. 화면을 12분할하여 각각의 구역에 파형(선)을 생성
   buildWaveformGrid() {
     const viewHeight = Math.tan(THREE.MathUtils.degToRad(50 / 2)) * 15 * 2; 
     const viewWidth = viewHeight * this.camera.aspect;
@@ -104,13 +100,10 @@ export default class ThreeMediaArtWall {
       const originX = (c - this.cols / 2 + 0.5) * cellWidth;
       const originY = (this.rows / 2 - r - 0.5) * cellHeight;
 
-      // 파형을 그릴 선(Line) 생성
       const geo = new THREE.BufferGeometry();
       const positions = new Float32Array(this.pointsPerWave * 3);
       
-      // 초기 상태는 일직선
       for (let j = 0; j < this.pointsPerWave; j++) {
-        // 셀 너비의 80%만큼 선을 그림
         const px = originX - (cellWidth * 0.4) + (j / (this.pointsPerWave - 1)) * (cellWidth * 0.8);
         positions[j*3] = px;
         positions[j*3+1] = originY; 
@@ -119,7 +112,6 @@ export default class ThreeMediaArtWall {
       
       geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 
-      // 부드럽게 빛나는 네온 선 재질
       const mat = new THREE.LineBasicMaterial({ 
           color: 0xffffff, 
           transparent: true,
@@ -142,7 +134,6 @@ export default class ThreeMediaArtWall {
   update(audioData) {
     if (!this.renderer || !this.scene || !this.camera) return;
 
-    // 실시간 이미지 교체
     if (this.currentImageEl !== window.currentUploadedImageElement) {
         this.currentImageEl = window.currentUploadedImageElement;
         if (this.currentImageEl) {
@@ -167,22 +158,43 @@ export default class ThreeMediaArtWall {
 
     const currentFreqBins = new Float32Array(this.numBands);
     
-    // 💡 [초정밀 12분할 엔진] Raw 데이터를 정확히 12구역으로 분리
+    // 💡 [초정밀 12분할 엔진] 가짜 3대역이 아닌, 512개 Raw 데이터를 진짜 12구간으로 자릅니다!
     if (audioData && audioData.raw && audioData.raw.length > 0) {
-      // 12가지 악기 소리가 분포하는 2~120 인덱스 사이를 정밀하게 12등분
+      // 512개 중 의미 있는 소리가 몰려있는 0~200 인덱스 사이를 로그 스케일로 분할
+      const maxActiveBin = 200;
+      
       for (let i = 0; i < this.numBands; i++) {
-        // 저음부터 고음까지 지수 형태로 밴드 할당 (악기 소리 분리 목적)
-        const t = i / (this.numBands - 1);
-        const binIndex = Math.floor(2 + Math.pow(t, 1.5) * 118); 
+        // 저음은 촘촘하게, 고음은 넓게 잡아서 악기별 배정 확률을 높임 (Logarithmic scale)
+        let startBin = Math.floor(Math.pow(i / this.numBands, 1.5) * maxActiveBin);
+        let endBin = Math.floor(Math.pow((i + 1) / this.numBands, 1.5) * maxActiveBin);
+        if (endBin <= startBin) endBin = startBin + 1;
+
+        let sum = 0;
+        let count = 0;
+        for (let j = startBin; j < endBin; j++) {
+            sum += audioData.raw[j];
+            count++;
+        }
         
-        let val = audioData.raw[binIndex] || 0;
-        let normalized = val / 255.0;
+        let avgRaw = (sum / count) / 255.0; // 0.0 ~ 1.0 정규화
         
-        // 특정 임계치(Threshold)를 넘지 못하는 잡음은 완전히 차단(0)
-        if (normalized < 0.15) normalized = 0;
+        // 💡 [잡음 완벽 차단] 특정 데시벨 이하는 아예 0으로 날려버림 (노이즈 게이트)
+        if (avgRaw < 0.12) avgRaw = 0;
         
-        // 날카로운 음만 반응하도록 대비 부여
-        currentFreqBins[i] = Math.pow(normalized, 2.0) * gain * 3.0;
+        // 고음부 볼륨 보정 (고음은 원래 데시벨이 낮으므로 증폭시켜줌)
+        let trebleBoost = 1.0 + (i / this.numBands) * 1.5;
+
+        // 제곱을 줘서 튀는 소리만 강하게 반응하도록 설정
+        currentFreqBins[i] = Math.pow(avgRaw, 1.8) * gain * trebleBoost * 3.5;
+      }
+    } else if (audioData) {
+      // raw 데이터가 완전히 끊겼을 때만 최후의 수단으로 3대역 보간법 사용
+      for (let i = 0; i < this.numBands; i++) {
+        let factor = i / (this.numBands - 1);
+        if (factor < 0.25) currentFreqBins[i] = THREE.MathUtils.lerp(audioData.subBass, audioData.bass, factor * 4.0);
+        else if (factor < 0.75) currentFreqBins[i] = THREE.MathUtils.lerp(audioData.bass, audioData.mid, (factor - 0.25) * 2.0);
+        else currentFreqBins[i] = THREE.MathUtils.lerp(audioData.mid, audioData.treble, (factor - 0.75) * 4.0);
+        currentFreqBins[i] *= gain * 1.5;
       }
     }
 
@@ -192,30 +204,27 @@ export default class ThreeMediaArtWall {
       const wf = this.waveforms[i];
       const targetFreq = currentFreqBins[i];
       
-      // 스무딩 (부드러운 파형 애니메이션을 위해)
-      this.prevFreqBins[i] += (targetFreq - this.prevFreqBins[i]) * 0.2; 
+      // 파형 스무딩
+      this.prevFreqBins[i] += (targetFreq - this.prevFreqBins[i]) * 0.25; 
       const smoothFreq = this.prevFreqBins[i];
 
       const pos = wf.mesh.geometry.attributes.position.array;
-      
-      // 💡 [파형 요동 로직] 해당 주파수가 들어왔을 때만 위아래로 출렁임
-      const amplitude = smoothFreq * (scatter / 2.2) * 2.0; 
+      const amplitude = smoothFreq * Math.max(1.0, scatter / 2.0) * 1.5; 
 
       for (let j = 0; j < this.pointsPerWave; j++) {
-        // 양 끝은 고정(0)되고, 가운데로 갈수록 진폭이 커지는 Envelope 적용
+        // 양 끝은 얌전하게 0으로 모이고, 중간에서 파동이 크게 치도록 봉투(Envelope) 씌움
         const envelope = Math.sin((j / (this.pointsPerWave - 1)) * Math.PI);
         
-        // 사인파(Sine Wave)와 노이즈를 섞어 실제 오디오 파형 느낌 구현
-        const wave1 = Math.sin(j * 0.5 - time) * amplitude;
-        const wave2 = Math.cos(j * 0.8 + time * 1.5) * (amplitude * 0.5);
+        // 2개의 주파수를 섞어 진짜 오디오 파형처럼 복잡하게 꼬이도록 연출
+        const wave1 = Math.sin(j * 0.6 - time * 1.5) * amplitude;
+        const wave2 = Math.cos(j * 1.2 + time * 2.0) * (amplitude * 0.4);
         
-        // Y축 위아래 진동 적용
         pos[j*3+1] = wf.originY + (wave1 + wave2) * envelope;
       }
       
       wf.mesh.geometry.attributes.position.needsUpdate = true;
 
-      // 💡 12개 채널별 고유 색상 매핑
+      // 12구역 독립 색상
       let c = new THREE.Color();
       if (colorStyle === 'neon') {
         c.setHSL((i / this.numBands) * 0.8, 1.0, 0.6);
@@ -227,9 +236,9 @@ export default class ThreeMediaArtWall {
         c.setHex(0xffffff);
       }
 
-      // 소리가 날 때만 선명해지고 조용할 땐 반투명해짐
+      // 소리가 아예 없을 때는 0.1(거의 안 보임), 소리가 튈 때만 네온사인처럼 밝아짐
       wf.mesh.material.color = c;
-      wf.mesh.material.opacity = 0.2 + Math.min(0.8, smoothFreq * glow * 2.0);
+      wf.mesh.material.opacity = 0.1 + Math.min(0.9, smoothFreq * glow * 2.0);
     }
 
     this.renderer.render(this.scene, this.camera);
@@ -240,7 +249,6 @@ export default class ThreeMediaArtWall {
       this.camera.aspect = w / h;
       this.camera.updateProjectionMatrix();
       
-      // 창 크기 변경 시 배경 크기 재조정
       const viewHeight = Math.tan(THREE.MathUtils.degToRad(50 / 2)) * 15 * 2; 
       const viewWidth = viewHeight * this.camera.aspect;
       
@@ -249,7 +257,6 @@ export default class ThreeMediaArtWall {
           this.bgPlane.geometry = new THREE.PlaneGeometry(viewWidth, viewHeight);
       }
 
-      // 파형 위치 재조정
       const cellWidth = viewWidth / this.cols;
       const cellHeight = viewHeight / this.rows;
 
