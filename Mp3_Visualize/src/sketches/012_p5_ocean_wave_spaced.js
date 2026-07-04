@@ -1,7 +1,8 @@
 /**
  * 012_p5_ocean_wave_spaced.js
  * 6겹의 바다 레이어 간격을 %로 엄격히 통제하며,
- * 비정상적인 오디오 데이터 입력 시 발생하는 NaN 연산 에러를 원천 차단한 무결점 버전
+ * 비정상적인 오디오 데이터 입력 시 발생하는 NaN 연산 에러를 원천 차단하고
+ * 색상 스타일(Neon/Pastel/Custom)의 백색 혼합 비율(Glow %) 연산을 적용한 무결점 버전
  */
 export default class P5OceanWaveSpaced {
   constructor(container) {
@@ -56,12 +57,15 @@ export default class P5OceanWaveSpaced {
         // 💡 [에러 방어 1] UI 슬라이더 값이 undefined나 NaN으로 들어올 경우를 대비한 안전 할당
         let scatter = 2.2, gain = 1.0, glow = 0.85, seed = 42;
         let colorStyle = 'neon';
+        let customColors = { gas1: '#ff0055', gas2: '#00ffcc', star: '#ffffff' };
+
         if (window.cosmicEngineSettings) {
           scatter = Number.isFinite(window.cosmicEngineSettings.scatterExponent) ? window.cosmicEngineSettings.scatterExponent : 2.2;
           gain = Number.isFinite(window.cosmicEngineSettings.audioGain) ? window.cosmicEngineSettings.audioGain : 1.0;
           glow = Number.isFinite(window.cosmicEngineSettings.glowIntensity) ? window.cosmicEngineSettings.glowIntensity : 0.85;
           seed = Number.isFinite(window.cosmicEngineSettings.seed) ? window.cosmicEngineSettings.seed : 42;
           colorStyle = window.cosmicEngineSettings.colorStyle || 'neon';
+          customColors = window.cosmicEngineSettings.customColors || { gas1: '#ff0055', gas2: '#00ffcc', star: '#ffffff' };
         }
 
         if (this.loadedSeed !== seed) {
@@ -75,7 +79,6 @@ export default class P5OceanWaveSpaced {
         if (this.currentAudioData.raw && this.currentAudioData.raw.length > 0) {
             let sum = 0;
             let count = 0;
-            // 배열이 150개보다 짧을 수 있으므로 Math.min으로 안전하게 순회 길이 제한
             let maxLen = Math.min(150, this.currentAudioData.raw.length);
             for(let i = 0; i < maxLen; i++) {
                 sum += this.currentAudioData.raw[i] || 0;
@@ -89,7 +92,6 @@ export default class P5OceanWaveSpaced {
           let rawVal = 0;
           if (this.currentAudioData.raw && this.currentAudioData.raw.length > 0) {
             const binIndex = Math.floor(2 + Math.pow(i / 5, 1.5) * 100);
-            // 인덱스가 배열 범위를 벗어나도 0으로 대체되도록 안전장치
             if (binIndex < this.currentAudioData.raw.length) {
               rawVal = this.currentAudioData.raw[binIndex] || 0;
             }
@@ -100,7 +102,6 @@ export default class P5OceanWaveSpaced {
           
           targetHeights[i] = Math.pow(isolated, 1.8) * gain * 240; 
           
-          // 만약 수학 계산이 실패해서 NaN이 발생해도 0으로 강제 복원
           if (!Number.isFinite(targetHeights[i])) targetHeights[i] = 0;
 
           this.prevHeights[i] = this.currentHeights[i];
@@ -122,6 +123,32 @@ export default class P5OceanWaveSpaced {
           bottomY = p.map(scatter, 2.2, 5.0, height * 0.8, height * 0.8); 
         }
 
+        // 💡 [에러 방어 3] 좌표값이 NaN으로 createLinearGradient에 들어가지 않도록 최종 필터링 및 색상 스타일 정의
+        let baseOceanColor;
+        let deepOceanColor = p.color('#020b1a');
+        let particleShadowColor;
+
+        if (colorStyle === 'neon') {
+            baseOceanColor = p.color('#10a5e5'); // Bright cyan
+            particleShadowColor = '#00ffcc';
+        } else if (colorStyle === 'pastel') {
+            baseOceanColor = p.color('#2b5d8c'); // Softer blue
+            particleShadowColor = '#88ccff';
+        } else if (colorStyle === 'custom') {
+            baseOceanColor = p.color(customColors.gas1);
+            particleShadowColor = customColors.gas2;
+        } else { // Default/monochrome
+            baseOceanColor = p.color('#0f5e9c');
+            particleShadowColor = '#88ccff';
+        }
+
+        // Glow 슬라이더(0.0~5.0)를 %비율로 환산하여, 파도 꼭대기에 하얀색이 얼마나 섞일지 결정 (0~100%)
+        let whiteMixRatio = Math.min(1.0, Math.max(0, (glow / 2.0))); 
+        if (!Number.isFinite(whiteMixRatio)) whiteMixRatio = 0.5;
+
+        // 최종 파도 거품(Crest) 색상: 바다색에서 하얀색으로 블렌딩
+        let crestColor = p.lerpColor(baseOceanColor, p.color(255, 255, 255), whiteMixRatio);
+
         for (let idx = 0; idx < this.numBands; idx++) {
           let freqIdx = this.shuffleMap[idx];
           let amplitude = this.currentHeights[freqIdx] + 15; 
@@ -129,19 +156,9 @@ export default class P5OceanWaveSpaced {
 
           let baseY = topY === bottomY ? topY : p.map(idx, 0, 5, topY, bottomY);
 
-          // 💡 [에러 방어 3] createLinearGradient에 들어가는 좌표값이 무조건 정상적인 숫자가 되도록 최종 필터링
           let safeBaseY = Number.isFinite(baseY) ? baseY : height / 2;
           let safeAmplitude = Number.isFinite(amplitude) ? amplitude : 15;
 
-          let baseOceanColor = colorStyle === 'pastel' ? p.color('#2b5d8c') : p.color('#0f5e9c');
-          let deepOceanColor = p.color('#020b1a');
-          
-          let whiteMixRatio = Math.min(1.0, Math.max(0, (glow / 2.0))); 
-          if (!Number.isFinite(whiteMixRatio)) whiteMixRatio = 0.5;
-
-          let crestColor = p.lerpColor(baseOceanColor, p.color(255, 255, 255), whiteMixRatio);
-
-          // 여기서 TypeError 발생하던 부분을 안전한 변수로 교체
           const fillGrad = ctx.createLinearGradient(0, safeBaseY - safeAmplitude, 0, safeBaseY + height*0.3);
           fillGrad.addColorStop(0, p.lerpColor(deepOceanColor, crestColor, 0.6).toString()); 
           fillGrad.addColorStop(1, deepOceanColor.toString());
@@ -175,7 +192,7 @@ export default class P5OceanWaveSpaced {
                       vy: -p.random(2, 6) - (delta * 0.15), 
                       life: 255,
                       size: p.random(1.5, 4.0),
-                      color: crestColor 
+                      color: crestColor // 파티클 색상도 백색 혼합 비율을 따름
                   });
               }
             }
@@ -188,7 +205,7 @@ export default class P5OceanWaveSpaced {
 
         p.noStroke();
         ctx.shadowBlur = 8 * (glow / 2.0);
-        ctx.shadowColor = '#ffffff';
+        ctx.shadowColor = particleShadowColor; // 파티클 발광색도 스타일에 따라 변경
 
         for (let i = this.particles.length - 1; i >= 0; i--) {
             let pt = this.particles[i];
