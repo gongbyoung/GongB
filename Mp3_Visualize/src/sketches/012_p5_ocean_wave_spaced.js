@@ -1,7 +1,7 @@
 /**
  * 012_p5_ocean_wave_spaced.js
- * 6겹의 바다 레이어 간격을 %로 엄격히 통제하며,
- * Neon, Pastel, Custom 색상 테마에 따라 바다 본연의 색이 다이나믹하게 변형되는 미디어 아트
+ * particleShadowColor 변수 스코프 에러(ReferenceError) 완벽 해결 및
+ * 6겹의 바다 레이어 색상 테마가 동적으로 변형되는 무결점 미디어 아트
  */
 export default class P5OceanWaveSpaced {
   constructor(container) {
@@ -44,14 +44,12 @@ export default class P5OceanWaveSpaced {
         const ctx = p.drawingContext;
 
         if (!this.currentAudioData) {
-            // 기본 검은 화면 처리
             p.clear();
             ctx.fillStyle = '#000000';
             ctx.fillRect(0, 0, width, height);
             return;
         }
 
-        // 💡 1. UI 슬라이더 설정값 리딩 (안전 할당)
         let scatter = 2.2, gain = 1.0, glow = 0.85, seed = 42;
         let colorStyle = 'neon';
         let customColors = { gas1: '#ff0055', gas2: '#00ffcc', star: '#ffffff' };
@@ -71,19 +69,24 @@ export default class P5OceanWaveSpaced {
             this.shuffleMap = [0, 1, 2, 3, 4, 5].sort(() => p.random() - 0.5);
         }
 
-        // 💡 2. 색상 스타일에 따른 배경색 변형
+        // 💡 [버그 수정] 파티클 그림자 색상 변수를 루프 바깥으로 분리 (ReferenceError 해결)
+        let particleShadowColor = '#88ccff';
+        if (colorStyle === 'neon') particleShadowColor = '#00ffff';
+        else if (colorStyle === 'pastel') particleShadowColor = '#ffffff';
+        else if (colorStyle === 'custom') particleShadowColor = customColors.gas2;
+
         let bgTop, bgMid;
         if (colorStyle === 'neon') {
-            bgTop = p.color('#0b001a'); // 짙은 보라빛 밤하늘
+            bgTop = p.color('#0b001a'); 
             bgMid = p.color('#100020');
         } else if (colorStyle === 'pastel') {
-            bgTop = p.color('#2a1b24'); // 따뜻한 노을빛 밤하늘
+            bgTop = p.color('#2a1b24'); 
             bgMid = p.color('#201825');
         } else if (colorStyle === 'custom') {
-            bgTop = p.lerpColor(p.color(customColors.gas1), p.color(0), 0.85); // 사용자가 고른 색을 어둡게
+            bgTop = p.lerpColor(p.color(customColors.gas1), p.color(0), 0.85); 
             bgMid = p.lerpColor(p.color(customColors.gas2), p.color(0), 0.80);
         } else {
-            bgTop = p.color('#02040a'); // 기본 심해 블루
+            bgTop = p.color('#02040a'); 
             bgMid = p.color('#051020');
         }
 
@@ -95,7 +98,6 @@ export default class P5OceanWaveSpaced {
         ctx.fillStyle = bgGrad;
         ctx.fillRect(0, 0, width, height);
 
-        // 💡 3. 오디오 데이터 처리 및 높이 연산
         let frameAverage = 0;
         if (this.currentAudioData.raw && this.currentAudioData.raw.length > 0) {
             let sum = 0;
@@ -135,7 +137,6 @@ export default class P5OceanWaveSpaced {
 
         const time = Date.now() * 0.001;
 
-        // 💡 4. 파도 간격 (Scatter) 연산
         let topY, bottomY;
         if (scatter <= 2.2) {
           topY = p.map(scatter, 0, 2.2, height * 0.7, height * 0.4);
@@ -145,7 +146,6 @@ export default class P5OceanWaveSpaced {
           bottomY = p.map(scatter, 2.2, 5.0, height * 0.8, height * 0.8); 
         }
 
-        // 💡 5. 6겹 파도 그리기
         for (let idx = 0; idx < this.numBands; idx++) {
           let freqIdx = this.shuffleMap[idx];
           let amplitude = this.currentHeights[freqIdx] + 15; 
@@ -156,32 +156,23 @@ export default class P5OceanWaveSpaced {
           let safeBaseY = Number.isFinite(baseY) ? baseY : height / 2;
           let safeAmplitude = Number.isFinite(amplitude) ? amplitude : 15;
 
-          // 🎨 [핵심] 6겹 파도의 깊이에 따른 드라마틱한 색상 변화
-          let layerRatio = idx / 5.0; // 0.0(맨 뒤) ~ 1.0(맨 앞)
+          let layerRatio = idx / 5.0; 
           let baseOceanColor;
           let deepOceanColor;
-          let particleShadowColor;
 
+          // 💡 스코프 오류가 났던 파티클 색상 정의부는 위로 올리고 파도 색상만 유지
           if (colorStyle === 'neon') {
-              // 마젠타(뒤) -> 시안(앞) 사이버펑크 바다
               baseOceanColor = p.lerpColor(p.color('#e000ff'), p.color('#00ffff'), layerRatio);
               deepOceanColor = p.color('#050011');
-              particleShadowColor = '#00ffff';
           } else if (colorStyle === 'pastel') {
-              // 핑크(뒤) -> 민트(앞) 솜사탕 바다
               baseOceanColor = p.lerpColor(p.color('#ffb3ba'), p.color('#bae1ff'), layerRatio);
               deepOceanColor = p.color('#2a2030');
-              particleShadowColor = '#ffffff';
           } else if (colorStyle === 'custom') {
-              // Gas1 -> Gas2 커스텀 색상 매핑
               baseOceanColor = p.lerpColor(p.color(customColors.gas1), p.color(customColors.gas2), layerRatio);
-              deepOceanColor = p.lerpColor(baseOceanColor, p.color(0), 0.85); // 85% 어둡게
-              particleShadowColor = customColors.gas2;
+              deepOceanColor = p.lerpColor(baseOceanColor, p.color(0), 0.85); 
           } else {
-              // 기본 심해 블루 바다
               baseOceanColor = p.lerpColor(p.color('#0f5e9c'), p.color('#2389da'), layerRatio);
               deepOceanColor = p.color('#020b1a');
-              particleShadowColor = '#88ccff';
           }
           
           let whiteMixRatio = Math.min(1.0, Math.max(0, (glow / 2.0))); 
@@ -233,7 +224,7 @@ export default class P5OceanWaveSpaced {
           p.endShape(p.CLOSE);
         }
 
-        // 💡 6. 물방울 렌더링 (스타일에 따른 발광색 적용)
+        // 정상적으로 외부에서 참조 가능해진 particleShadowColor 적용
         p.noStroke();
         ctx.shadowBlur = 8 * (glow / 2.0);
         ctx.shadowColor = particleShadowColor; 
