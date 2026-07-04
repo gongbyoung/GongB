@@ -1,7 +1,7 @@
 /**
  * 012_p5_ocean_wave_spaced.js
  * 6겹의 바다 레이어 간격을 %로 엄격히 통제하며,
- * 분산 범위 슬라이더에 따라 (최소 30% 모임 ~ 기본 20-60% ~ 최대 20-80%) 넓게 펼쳐지는 미디어 아트
+ * 비정상적인 오디오 데이터 입력 시 발생하는 NaN 연산 에러를 원천 차단한 무결점 버전
  */
 export default class P5OceanWaveSpaced {
   constructor(container) {
@@ -53,14 +53,15 @@ export default class P5OceanWaveSpaced {
 
         if (!this.currentAudioData) return;
 
+        // 💡 [에러 방어 1] UI 슬라이더 값이 undefined나 NaN으로 들어올 경우를 대비한 안전 할당
         let scatter = 2.2, gain = 1.0, glow = 0.85, seed = 42;
         let colorStyle = 'neon';
         if (window.cosmicEngineSettings) {
-          scatter = window.cosmicEngineSettings.scatterExponent; 
-          gain = window.cosmicEngineSettings.audioGain;          
-          glow = window.cosmicEngineSettings.glowIntensity;
-          seed = window.cosmicEngineSettings.seed;
-          colorStyle = window.cosmicEngineSettings.colorStyle;
+          scatter = Number.isFinite(window.cosmicEngineSettings.scatterExponent) ? window.cosmicEngineSettings.scatterExponent : 2.2;
+          gain = Number.isFinite(window.cosmicEngineSettings.audioGain) ? window.cosmicEngineSettings.audioGain : 1.0;
+          glow = Number.isFinite(window.cosmicEngineSettings.glowIntensity) ? window.cosmicEngineSettings.glowIntensity : 0.85;
+          seed = Number.isFinite(window.cosmicEngineSettings.seed) ? window.cosmicEngineSettings.seed : 42;
+          colorStyle = window.cosmicEngineSettings.colorStyle || 'neon';
         }
 
         if (this.loadedSeed !== seed) {
@@ -69,26 +70,38 @@ export default class P5OceanWaveSpaced {
             this.shuffleMap = [0, 1, 2, 3, 4, 5].sort(() => p.random() - 0.5);
         }
 
+        // 💡 [에러 방어 2] 오디오 데이터 배열 길이가 짧거나 값이 없을 때 NaN이 되는 현상 원천 차단
         let frameAverage = 0;
-        if (this.currentAudioData.raw) {
+        if (this.currentAudioData.raw && this.currentAudioData.raw.length > 0) {
             let sum = 0;
-            for(let i=0; i<150; i++) sum += this.currentAudioData.raw[i];
-            frameAverage = (sum / 150) / 255.0;
+            let count = 0;
+            // 배열이 150개보다 짧을 수 있으므로 Math.min으로 안전하게 순회 길이 제한
+            let maxLen = Math.min(150, this.currentAudioData.raw.length);
+            for(let i = 0; i < maxLen; i++) {
+                sum += this.currentAudioData.raw[i] || 0;
+                count++;
+            }
+            if (count > 0) frameAverage = (sum / count) / 255.0;
         }
 
         const targetHeights = new Float32Array(this.numBands);
         for (let i = 0; i < this.numBands; i++) {
           let rawVal = 0;
-          if (this.currentAudioData.raw) {
-            const binIndex = Math.floor(2 + Math.pow(i / 5, 1.5) * 100); 
-            rawVal = this.currentAudioData.raw[binIndex] || 0;
+          if (this.currentAudioData.raw && this.currentAudioData.raw.length > 0) {
+            const binIndex = Math.floor(2 + Math.pow(i / 5, 1.5) * 100);
+            // 인덱스가 배열 범위를 벗어나도 0으로 대체되도록 안전장치
+            if (binIndex < this.currentAudioData.raw.length) {
+              rawVal = this.currentAudioData.raw[binIndex] || 0;
+            }
           }
 
           let normalized = rawVal / 255.0;
           let isolated = Math.max(0, normalized - (frameAverage * 0.8));
           
-          // 파도들이 너무 겹치지 않게 기본 증폭률을 살짝 다듬음 (300 -> 240)
           targetHeights[i] = Math.pow(isolated, 1.8) * gain * 240; 
+          
+          // 만약 수학 계산이 실패해서 NaN이 발생해도 0으로 강제 복원
+          if (!Number.isFinite(targetHeights[i])) targetHeights[i] = 0;
 
           this.prevHeights[i] = this.currentHeights[i];
           if (targetHeights[i] > this.currentHeights[i]) {
@@ -100,13 +113,7 @@ export default class P5OceanWaveSpaced {
 
         const time = Date.now() * 0.001;
 
-        // 💡 [배치 간격 % 정밀 연산 로직]
         let topY, bottomY;
-        
-        // Scatter(0~5.0) 값에 따라 화면 높이(height)를 기준으로 맵핑
-        // 0.0일 때: 모두 하단 30%(height * 0.7)에 모임
-        // 2.2일 때: 60% ~ 20% (height * 0.4 ~ height * 0.8) 기본 배치
-        // 5.0일 때: 80% ~ 20% (height * 0.2 ~ height * 0.8) 넓게 펼쳐짐
         if (scatter <= 2.2) {
           topY = p.map(scatter, 0, 2.2, height * 0.7, height * 0.4);
           bottomY = p.map(scatter, 0, 2.2, height * 0.7, height * 0.8);
@@ -120,20 +127,26 @@ export default class P5OceanWaveSpaced {
           let amplitude = this.currentHeights[freqIdx] + 15; 
           let delta = this.currentHeights[freqIdx] - this.prevHeights[freqIdx];
 
-          // idx 0이 가장 뒤쪽(상단 topY), idx 5가 가장 앞쪽(하단 bottomY)
           let baseY = topY === bottomY ? topY : p.map(idx, 0, 5, topY, bottomY);
+
+          // 💡 [에러 방어 3] createLinearGradient에 들어가는 좌표값이 무조건 정상적인 숫자가 되도록 최종 필터링
+          let safeBaseY = Number.isFinite(baseY) ? baseY : height / 2;
+          let safeAmplitude = Number.isFinite(amplitude) ? amplitude : 15;
 
           let baseOceanColor = colorStyle === 'pastel' ? p.color('#2b5d8c') : p.color('#0f5e9c');
           let deepOceanColor = p.color('#020b1a');
           
-          let whiteMixRatio = Math.min(1.0, (glow / 2.0)); 
+          let whiteMixRatio = Math.min(1.0, Math.max(0, (glow / 2.0))); 
+          if (!Number.isFinite(whiteMixRatio)) whiteMixRatio = 0.5;
+
           let crestColor = p.lerpColor(baseOceanColor, p.color(255, 255, 255), whiteMixRatio);
 
-          const fillGrad = ctx.createLinearGradient(0, baseY - amplitude, 0, baseY + height*0.3);
+          // 여기서 TypeError 발생하던 부분을 안전한 변수로 교체
+          const fillGrad = ctx.createLinearGradient(0, safeBaseY - safeAmplitude, 0, safeBaseY + height*0.3);
           fillGrad.addColorStop(0, p.lerpColor(deepOceanColor, crestColor, 0.6).toString()); 
           fillGrad.addColorStop(1, deepOceanColor.toString());
           
-          const strokeGrad = ctx.createLinearGradient(0, baseY - amplitude * 1.5, 0, baseY);
+          const strokeGrad = ctx.createLinearGradient(0, safeBaseY - safeAmplitude * 1.5, 0, safeBaseY);
           strokeGrad.addColorStop(0, crestColor.toString()); 
           strokeGrad.addColorStop(1, baseOceanColor.toString());
 
@@ -143,13 +156,13 @@ export default class P5OceanWaveSpaced {
 
           p.beginShape();
           p.vertex(-100, height + 100); 
-          p.curveVertex(-100, baseY);
+          p.curveVertex(-100, safeBaseY);
 
           for (let x = -50; x <= width + 50; x += 40) {
             let noiseVal = p.noise(x * 0.003 - time * (0.2 + idx*0.05), idx * 10 + time * 0.1);
             let waveOffset = p.sin(x * 0.01 + time + idx) * 0.5 + 0.5; 
             
-            let y = baseY - (noiseVal * waveOffset) * amplitude * 2.0;
+            let y = safeBaseY - (noiseVal * waveOffset) * safeAmplitude * 2.0;
             p.curveVertex(x, y);
 
             if (delta > 5.0 && noiseVal > 0.5 && p.random() < 0.2) {
@@ -168,7 +181,7 @@ export default class P5OceanWaveSpaced {
             }
           }
 
-          p.curveVertex(width + 100, baseY);
+          p.curveVertex(width + 100, safeBaseY);
           p.vertex(width + 100, height + 100);
           p.endShape(p.CLOSE);
         }
