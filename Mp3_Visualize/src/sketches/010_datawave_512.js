@@ -1,292 +1,193 @@
 /**
- * 009_three_fireworks.js (512-Channel Data Wave Ocean Edition)
- * 512개의 모든 원본 주파수(Raw FFT) 데이터를 단 하나의 웅장한 데이터 네온 파도로 연결하여
- * 악기별 고유 선율과 잔음을 실시간 레이저 형태로 시각화하는 고성능 스테이지
+ * 010_p5_datawave_512.js
+ * p5.js 라이브러리의 2D Canvas 렌더링 성능과 shadowBlur를 극대화하여 
+ * 512개의 원본 주파수를 아날로그 레이저(Oscilloscope) 느낌의 파도로 시각화하는 스테이지
  */
-import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
-
-export default class ThreeDataWaveOcean {
+export default class P5DataWave512 {
   constructor(container) {
     this.container = container;
-    this.scene = null;
-    this.camera = null;
-    this.renderer = null;
-
-    // 💡 오디오 분석기 원본 출력 해상도인 512 채널 전원 투입
-    this.numBands = 512; 
+    this.p5Instance = null;
     
-    this.bgPlane = null; // 고정 배경 이미지 패널
-    this.waveLine = null; // 512 포인트를 연결한 메인 데이터 파도 선
-    this.wavePoints = null; // 파도의 정점마다 빛나는 미세 광원들
-    
-    this.smoothedFreq = new Float32Array(this.numBands); // 부드러운 파형 유지용 버퍼
+    this.numBands = 512;
+    this.smoothedFreq = new Float32Array(this.numBands);
+    this.currentAudioData = null;
 
-    this.currentImageEl = null; 
-    this.baseTexture = null;
+    // 배경 이미지 처리를 위한 HTML 엘리먼트
+    this.bgImageEl = null;
+    this.currentImageSrc = null;
   }
 
-  init() {
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
-
-    this.scene = new THREE.Scene();
-
-    this.camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 1000);
-    this.camera.position.set(0, 0, 14); 
-    this.camera.lookAt(0, 0, 0);
-
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
-    this.renderer.setSize(width, height);
-    this.renderer.setClearColor(0x000000);
-    this.container.appendChild(this.renderer.domElement);
-
-    this.scene.add(new THREE.AmbientLight(0xffffff, 1.0));
-
-    this.buildStaticBackground();
-    this.buildDataWaveGeometry();
-  }
-
-  createFallbackTexture() {
-    const canvas = document.createElement('canvas');
-    canvas.width = 1024; canvas.height = 1024;
-    const ctx = canvas.getContext('2d');
-    const gradient = ctx.createLinearGradient(0, 0, 1024, 1024);
-    gradient.addColorStop(0, '#05050a');
-    gradient.addColorStop(1, '#11111a');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, 1024, 1024);
-    ctx.fillStyle = 'rgba(255,255,255,0.2)';
-    ctx.font = '40px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('좌측 메뉴에서 이미지를 업로드하세요.', 512, 512);
-    return new THREE.CanvasTexture(canvas);
-  }
-
-  buildStaticBackground() {
-    const viewHeight = Math.tan(THREE.MathUtils.degToRad(50 / 2)) * 14 * 2; 
-    const viewWidth = viewHeight * this.camera.aspect;
-
-    this.currentImageEl = window.currentUploadedImageElement || null;
-    if (this.currentImageEl) {
-        this.baseTexture = new THREE.Texture(this.currentImageEl);
-        this.baseTexture.needsUpdate = true;
-    } else {
-        this.baseTexture = this.createFallbackTexture();
+  async init() {
+    // 1. p5.js 라이브러리가 로드되지 않았다면 동적으로 가져오기
+    if (!window.p5) {
+      await new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
     }
 
-    const geo = new THREE.PlaneGeometry(viewWidth, viewHeight); 
-    const mat = new THREE.MeshBasicMaterial({ 
-        map: this.baseTexture,
-        color: 0xffffff 
-    });
+    // 2. 캔버스 뒤에 깔릴 고해상도 배경 이미지 세팅 (Canvas 렌더링 부하 최소화)
+    this.bgImageEl = document.createElement('img');
+    this.bgImageEl.style.position = 'absolute';
+    this.bgImageEl.style.top = '0';
+    this.bgImageEl.style.left = '0';
+    this.bgImageEl.style.width = '100%';
+    this.bgImageEl.style.height = '100%';
+    this.bgImageEl.style.objectFit = 'cover';
+    this.bgImageEl.style.opacity = '0.4'; // 파도가 잘 보이도록 살짝 어둡게
+    this.bgImageEl.style.zIndex = '0';
+    this.container.appendChild(this.bgImageEl);
 
-    this.bgPlane = new THREE.Mesh(geo, mat);
-    this.bgPlane.position.set(0, 0, -1); // 파도 뒤에 배치
-    this.scene.add(this.bgPlane);
-  }
+    // 3. p5.js 인스턴스 모드 초기화 (기존 시스템 아키텍처와 호환되도록 구성)
+    const sketch = (p) => {
+      p.setup = () => {
+        const canvas = p.createCanvas(this.container.clientWidth, this.container.clientHeight);
+        canvas.style('position', 'absolute');
+        canvas.style('z-index', '1');
+        
+        // p5 자체 루프는 끄고, 메인 시스템의 update()에서 redraw()를 호출하도록 설정
+        p.noLoop(); 
+      };
 
-  // 💡 512개의 점을 단 하나의 연속 버퍼 구조로 빌드 (CPU 부하 0% 지향)
-  buildDataWaveGeometry() {
-    const viewHeight = Math.tan(THREE.MathUtils.degToRad(50 / 2)) * 14 * 2; 
-    const viewWidth = viewHeight * this.camera.aspect;
+      p.draw = () => {
+        // 배경을 투명하게 지워서 뒤에 깔린 img 엘리먼트가 보이게 함
+        p.clear();
 
-    const geo = new THREE.BufferGeometry();
-    const positions = new Float32Array(this.numBands * 3);
-    const colors = new Float32Array(this.numBands * 3);
+        if (!this.currentAudioData) return;
 
-    // 가로 화면을 512칸으로 정밀 분할하여 초기 일직선 좌표 생성
-    for (let i = 0; i < this.numBands; i++) {
-      const t = i / (this.numBands - 1);
-      // 화면 좌측 끝(-width/2)부터 우측 끝(width/2)까지 정렬
-      positions[i * 3] = - (viewWidth / 2) + t * viewWidth;
-      positions[i * 3 + 1] = -1.5; // 하단부 기본 베이스라인 높이
-      positions[i * 3 + 2] = 0;
+        // UI 설정값 리딩
+        let scatter = 2.2, gain = 1.0, glow = 0.85;
+        let customColors = { gas1: '#ff0055', gas2: '#00ffcc', star: '#ffffff' };
+        let colorStyle = 'neon';
 
-      // 기본 주파수 그라데이션 컬러 버퍼 세팅
-      colors[i * 3] = 1; colors[i * 3 + 1] = 1; colors[i * 3 + 2] = 1;
-      this.smoothedFreq[i] = 0;
-    }
+        if (window.cosmicEngineSettings) {
+          scatter = window.cosmicEngineSettings.scatterExponent; 
+          gain = window.cosmicEngineSettings.audioGain;          
+          glow = window.cosmicEngineSettings.glowIntensity;
+          customColors = window.cosmicEngineSettings.customColors;
+          colorStyle = window.cosmicEngineSettings.colorStyle;
+        }
 
-    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        const width = p.width;
+        const height = p.height;
+        const baselineY = height * 0.75; // 화면 75% 높이를 기준선으로 설정
 
-    // 1. 🌊 파도의 줄기를 그릴 선 메테리얼 (버텍스 컬러 연동)
-    const lineMat = new THREE.LineBasicMaterial({
-      vertexColors: true,
-      transparent: true,
-      opacity: 0.8,
-      linewidth: 3 // 브라우저 지원 사양에 따라 두께 표현
-    });
-    this.waveLine = new THREE.Line(geo, lineMat);
-    this.scene.add(this.waveLine);
+        // 💡 [Canvas API 선형 그라데이션 셋업] p5.js의 장점: 부드러운 그라데이션 선 그리기 가능
+        const ctx = p.drawingContext;
+        const gradient = ctx.createLinearGradient(0, 0, width, 0);
+        
+        if (colorStyle === 'neon') {
+            gradient.addColorStop(0, '#ff0055'); // 저음 (Red)
+            gradient.addColorStop(0.5, '#00ffcc'); // 중음 (Cyan)
+            gradient.addColorStop(1, '#6600ff'); // 고음 (Purple)
+        } else if (colorStyle === 'pastel') {
+            gradient.addColorStop(0, '#ffb3ba');
+            gradient.addColorStop(1, '#bae1ff');
+        } else if (colorStyle === 'custom') {
+            gradient.addColorStop(0, customColors.gas1);
+            gradient.addColorStop(1, customColors.gas2);
+        } else {
+            gradient.addColorStop(0, '#ffffff');
+            gradient.addColorStop(1, '#ffffff');
+        }
 
-    // 2. ✨ 파도의 정점마다 박힐 네온 입자 시스템 추가 연동
-    const pointMat = new THREE.PointsMaterial({
-      size: 0.15,
-      vertexColors: true,
-      transparent: true,
-      opacity: 0.9,
-      blending: THREE.AdditiveBlending
-    });
-    this.wavePoints = new THREE.Points(geo, pointMat);
-    this.scene.add(this.wavePoints);
+        ctx.strokeStyle = gradient;
+
+        // 💡 [512 채널 데이터 스무딩 및 스케일링]
+        const hasRawData = this.currentAudioData.raw && this.currentAudioData.raw.length > 0;
+
+        for (let i = 0; i < this.numBands; i++) {
+          let rawVal = 0;
+          if (hasRawData) {
+            rawVal = this.currentAudioData.raw[i] || 0;
+          } else {
+            // 백업용 3밴드 페이크 데이터
+            let f = i / this.numBands;
+            if (f < 0.25) rawVal = p.lerp(this.currentAudioData.subBass, this.currentAudioData.bass, f * 4.0) * 255;
+            else if (f < 0.75) rawVal = p.lerp(this.currentAudioData.bass, this.currentAudioData.mid, (f - 0.25) * 2.0) * 255;
+            else rawVal = p.lerp(this.currentAudioData.mid, this.currentAudioData.treble, (f - 0.75) * 4.0) * 255;
+          }
+
+          let normalized = rawVal / 255.0;
+          if (normalized < 0.05) normalized = 0; // 노이즈 게이트
+
+          let boost = 1.0 + (i / this.numBands) * 2.0; // 고음역대 부스트
+          let targetFreq = Math.pow(normalized, 1.8) * gain * boost * 200; // 픽셀 단위 증폭
+
+          // 바이올린 지속음 부드러운 스무딩 적용
+          if (targetFreq > this.smoothedFreq[i]) {
+            this.smoothedFreq[i] = targetFreq;
+          } else {
+            this.smoothedFreq[i] += (targetFreq - this.smoothedFreq[i]) * 0.15;
+          }
+        }
+
+        // 💡 [그리기 레이어 1: 빛 번짐(Glow) 효과] p5.js의 필살기 shadowBlur 활용
+        ctx.shadowBlur = 30 * glow;
+        ctx.shadowColor = colorStyle === 'custom' ? customColors.gas2 : '#00ffcc';
+        p.strokeWeight(3 + glow * 2);
+        p.noFill();
+        p.beginShape();
+        for (let i = 0; i < this.numBands; i++) {
+          let x = p.map(i, 0, this.numBands - 1, 0, width);
+          // Scatter 슬라이더로 물결의 진폭 스케일 조절
+          let y = baselineY - (this.smoothedFreq[i] * (scatter / 2.2));
+          p.vertex(x, y); // p5의 vertex를 사용해 512포인트를 한 선으로 이음
+        }
+        p.endShape();
+
+        // 💡 [그리기 레이어 2: 선명한 코어(Core) 라인] 가운데 흰색 심지를 그려 리얼리티 강조
+        ctx.shadowBlur = 0; // 코어는 빛 번짐 없음
+        p.strokeWeight(1.5);
+        p.stroke(255, 255, 255, 200); // 반투명 흰색
+        p.beginShape();
+        for (let i = 0; i < this.numBands; i++) {
+          let x = p.map(i, 0, this.numBands - 1, 0, width);
+          let y = baselineY - (this.smoothedFreq[i] * (scatter / 2.2));
+          p.vertex(x, y);
+        }
+        p.endShape();
+      };
+    };
+
+    // p5.js 인스턴스 캔버스를 컨테이너에 부착
+    this.p5Instance = new window.p5(sketch, this.container);
   }
 
   update(audioData) {
-    if (!this.renderer || !this.scene || !this.camera) return;
+    if (!this.p5Instance) return;
+    this.currentAudioData = audioData;
 
-    // 실시간 이미지 업데이트 감지 및 반영
-    if (this.currentImageEl !== window.currentUploadedImageElement) {
-        this.currentImageEl = window.currentUploadedImageElement;
-        if (this.currentImageEl) {
-            this.baseTexture = new THREE.Texture(this.currentImageEl);
-            this.baseTexture.needsUpdate = true;
-            this.bgPlane.material.map = this.baseTexture;
-            this.bgPlane.material.needsUpdate = true;
+    // 💡 배경 이미지 실시간 갱신 로직 (HTML img 태그 src 변경)
+    if (window.currentUploadedImageElement) {
+        if (this.currentImageSrc !== window.currentUploadedImageElement.src) {
+            this.currentImageSrc = window.currentUploadedImageElement.src;
+            this.bgImageEl.src = this.currentImageSrc;
         }
     }
 
-    let scatter = 2.2, gain = 1.0, glow = 0.85;
-    let customColors = { gas1: '#ff0055', gas2: '#00ffcc', star: '#ffffff' };
-    let colorStyle = 'neon';
-
-    if (window.cosmicEngineSettings) {
-      scatter = window.cosmicEngineSettings.scatterExponent; 
-      gain = window.cosmicEngineSettings.audioGain;          
-      glow = window.cosmicEngineSettings.glowIntensity;
-      customColors = window.cosmicEngineSettings.customColors;
-      colorStyle = window.cosmicEngineSettings.colorStyle;
-    }
-
-    const linePos = this.waveLine.geometry.attributes.position.array;
-    const lineCol = this.waveLine.geometry.attributes.color.array;
-
-    // 💡 [초고해상도 512채널 런타임 매핑] 
-    const hasRawData = audioData && audioData.raw && audioData.raw.length > 0;
-    
-    // 악기 고유의 배음 구조를 살리는 색상 매트릭스
-    const cMat = new THREE.Color();
-
-    for (let i = 0; i < this.numBands; i++) {
-      let rawVal = 0;
-      
-      if (hasRawData) {
-        // 512개 오디오 데이터를 가공 없이 1대1 다이렉트 바인딩
-        rawVal = audioData.raw[i] || 0;
-      } else if (audioData) {
-        // 백업용 의사 주파수 그라데이션 유도
-        let f = i / this.numBands;
-        if (f < 0.25) rawVal = THREE.MathUtils.lerp(audioData.subBass, audioData.bass, f * 4.0) * 255;
-        else if (f < 0.75) rawVal = THREE.MathUtils.lerp(audioData.bass, audioData.mid, (f - 0.25) * 2.0) * 255;
-        else rawVal = THREE.MathUtils.lerp(audioData.mid, audioData.treble, (f - 0.75) * 4.0) * 255;
-      }
-
-      let normalized = rawVal / 255.0;
-      
-      // 미세 노이즈 제거용 게이트 필터
-      if (normalized < 0.08) normalized = 0;
-
-      // 💡 바이올린/오케스트라 고음역대 활성화를 위한 고주파수 보정 가중치
-      let freqFactor = i / this.numBands;
-      let boost = 1.0 + freqFactor * 2.5; 
-      
-      // 대비 스케일링을 통해 악기 고유의 파동 텍스처 강조
-      let finalForce = Math.pow(normalized, 1.6) * gain * boost * 4.5;
-
-      // 💡 [현악기 서스테인 특화 스무딩] 피크 도달은 광속, 하강 릴리즈는 극도로 부드럽게 유지
-      if (finalForce > this.smoothedFreq[i]) {
-        this.smoothedFreq[i] = finalForce; // 소리가 커질 땐 즉시 반응
-      } else {
-        this.smoothedFreq[i] += (finalForce - this.smoothedFreq[i]) * 0.12; // 현악기 여운 표현
-      }
-
-      const activeHeight = this.smoothedFreq[i];
-
-      // 🌊 512개의 버텍스 Y축 고도 실시간 변조 (기본 높이 -1.5에서 위로 솟구침)
-      // Scatter(분산 범위) 슬라이더를 올리면 물결 파동의 도약 높이가 더 웅장해집니다.
-      linePos[i * 3 + 1] = -1.5 + (activeHeight * (scatter / 2.2));
-
-      // 🎨 [스타일별 네온 컬러 실시간 그라데이션 도포]
-      if (colorStyle === 'neon') {
-        // 저음(레드/마젠타) -> 중음(그린/사이언) -> 고음(블루/바이올렛)으로 이어지는 무지개 파도
-        cMat.setHSL(freqFactor * 0.85, 1.0, 0.55);
-      } else if (colorStyle === 'pastel') {
-        cMat.setHSL(freqFactor * 0.85, 0.6, 0.7);
-      } else if (colorStyle === 'custom') {
-        // 사용자가 지정한 가스1, 가스2 색상 사이를 512개 조각으로 부드럽게 보간(Lerp)
-        cMat.set(customColors.gas1).lerp(new THREE.Color(customColors.gas2), freqFactor);
-      } else {
-        cMat.setHex(0xffffff);
-      }
-
-      // 소리 강도에 비례해 타오르는 섬광 보정 (피크점은 하얗게)
-      cMat.lerp(new THREE.Color(0xffffee), Math.min(1.0, activeHeight * 0.15));
-
-      lineCol[i * 3] = cMat.r;
-      lineCol[i * 3 + 1] = cMat.g;
-      lineCol[i * 3 + 2] = cMat.b;
-    }
-
-    // 데이터 변경 사항 GPU 메모리에 즉시 전송 명령
-    this.waveLine.geometry.attributes.position.needsUpdate = true;
-    this.waveLine.geometry.attributes.color.needsUpdate = true;
-    this.wavePoints.geometry.attributes.position.needsUpdate = true;
-    this.wavePoints.geometry.attributes.color.needsUpdate = true;
-
-    // 입자 발광 크기 UI 연동
-    this.wavePoints.material.size = Math.max(0.05, glow * 0.16);
-    this.waveLine.material.opacity = Math.min(1.0, glow * 0.9);
-
-    this.renderer.render(this.scene, this.camera);
+    // 메인 루프에서 p5.js의 draw() 함수를 1프레임 강제 실행
+    this.p5Instance.redraw();
   }
 
   resize(w, h) {
-    if (this.camera && this.renderer) {
-      this.camera.aspect = w / h;
-      this.camera.updateProjectionMatrix();
-      
-      const viewHeight = Math.tan(THREE.MathUtils.degToRad(50 / 2)) * 14 * 2; 
-      const viewWidth = viewHeight * this.camera.aspect;
-      
-      if(this.bgPlane) {
-          this.bgPlane.geometry.dispose();
-          this.bgPlane.geometry = new THREE.PlaneGeometry(viewWidth, viewHeight);
-      }
-
-      // 리사이즈 시 512개 격자 가로폭 전면 재조정
-      const linePos = this.waveLine.geometry.attributes.position.array;
-      for (let i = 0; i < this.numBands; i++) {
-        const t = i / (this.numBands - 1);
-        linePos[i * 3] = - (viewWidth / 2) + t * viewWidth;
-      }
-      this.waveLine.geometry.attributes.position.needsUpdate = true;
-      
-      this.renderer.setSize(w, h);
+    if (this.p5Instance) {
+      this.p5Instance.resizeCanvas(w, h);
     }
   }
 
   destroy() {
-    if (!this.scene) return;
-    if (this.bgPlane) {
-        this.bgPlane.geometry.dispose();
-        this.bgPlane.material.dispose();
+    if (this.p5Instance) {
+      this.p5Instance.remove();
+      this.p5Instance = null;
     }
-    if (this.waveLine) {
-      this.waveLine.geometry.dispose();
-      this.waveLine.material.dispose();
-      this.scene.remove(this.waveLine);
+    if (this.bgImageEl) {
+      this.container.removeChild(this.bgImageEl);
+      this.bgImageEl = null;
     }
-    if (this.wavePoints) {
-      this.wavePoints.geometry.dispose();
-      this.wavePoints.material.dispose();
-      this.scene.remove(this.wavePoints);
-    }
-    if (this.renderer) {
-      this.container.removeChild(this.renderer.domElement);
-      this.renderer.dispose();
-    }
-    this.scene = null;
-    this.camera = null;
-    this.renderer = null;
+    this.currentAudioData = null;
   }
 }
