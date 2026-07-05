@@ -1,7 +1,7 @@
 /**
  * 013_p5_ink_meteor_shower.js
  * 조선시대 풍경화의 공기원근법(먹의 농담)과 무작위 층 배치를 적용하여 4겹의 고정된 산맥을 중첩해 그리고,
- * 오디오 주파수에 반응하여 하늘에서 흑백 점묘 유성우가 쏟아지는 시네마틱 미디어 아트
+ * 오디오 주파수에 반응하여 하늘에서 흑백 점묘 유성우가 쏟아지는 시네마틱 미디어 아트 (에러 픽스 완료)
  */
 export default class P5InkMeteorShowerSpaced {
   constructor(container) {
@@ -19,7 +19,7 @@ export default class P5InkMeteorShowerSpaced {
     this.loadedSeed = -1;
     this.shuffleMap = [0, 1, 2, 3];
     
-    // 💡 [에러 방어] 레이어별 무작위 Y 오프셋 저장용
+    // 레이어별 무작위 Y 오프셋 저장용
     this.layerBaseY = new Float32Array(4);
   }
 
@@ -82,25 +82,22 @@ export default class P5InkMeteorShowerSpaced {
             p.randomSeed(seed);
             this.shuffleMap = [0, 1, 2, 3].sort(() => p.random() - 0.5);
             
-            // 💡 [배치 및 에러 방어] 레이어별 무작위 Y 오프셋 초기화
+            // 💡 [배치] 레이어별 무작위 Y 오프셋 초기화
             for (let i = 0; i < 4; i++) {
-                // 하단 20%(height*0.8) ~ 60%(height*0.4) 사이 공간 활용
-                // 사용자 요청: 1/3 위로 안 올라가게 (height * 0.33 아래로)
+                // 사용자 요청: 산이 1/3 위로 안 올라가게 (height * 0.33 아래로만 배치)
                 const topBoundary = height * 0.33;
                 const bottomBoundary = height * 0.9;
                 
-                // scatter(분산범위) 슬라이더로 상하 간격을 넓히거나 좁힘 (0 모임 ~ 5 펼침)
                 const spacingScale = scatter / 2.2; 
                 const spread = (bottomBoundary - topBoundary) * spacingScale;
                 const midPoint = (topBoundary + bottomBoundary) / 2;
                 
-                // 각 레이어의 무작위 Y 오프셋을 scatter 범위 내에서 생성
-                // NaN 에러 방어: height가 유효할 때만 계산
                 if (Number.isFinite(height)) {
+                    // 일정한 간격의 층이 아닌, 범위 내에서 랜덤하게 배치하여 겹치게 만듦
                     const layerY = midPoint - (spread / 2) + p.random() * spread;
                     this.layerBaseY[i] = Math.max(topBoundary, Math.min(bottomBoundary, layerY));
                 } else {
-                    this.layerBaseY[i] = 0.5 * height; // height가 비정상적일 때의 대체값
+                    this.layerBaseY[i] = 0.5 * height; 
                 }
             }
         }
@@ -179,7 +176,7 @@ export default class P5InkMeteorShowerSpaced {
                   vy: p.random(10, 20) + (delta * 0.1), 
                   life: 255,
                   weight: p.random(1.5, 3.5),
-                  color: p.lerpColor(p.color(255), p.color(255), p.random(0, 0.5)) // 유성은 백색
+                  color: p.lerpColor(p.color(255), p.color(255), p.random(0, 0.5)) // 유성은 백색으로
               });
           }
         }
@@ -210,31 +207,24 @@ export default class P5InkMeteorShowerSpaced {
         // 💡 5. 수묵 풍경화: 공기원근법을 적용한 다중 중첩 산맥 (4 Layers)
         const numLayers = 4;
         p.noiseDetail(4, 0.5); 
-        ctx.shadowBlur = 0; // 수묵화의 묵직함을 위해 산 자체의 네온 글로우는 최소화
+        ctx.shadowBlur = 0; 
 
         for (let l = numLayers - 1; l >= 0; l--) {
             let depthFactor = l / (numLayers - 1); 
             
-            // 🎨 [핵심] 먹의 농담 조절 (Atmospheric Perspective)
-            let layerFill = p.lerpColor(p.color('#03050a'), skyMid, depthFactor * 0.85);
-            let layerStroke = p.lerpColor(p.color('#557799'), skyMid, depthFactor * 0.7);
+            // 🎨 [에러 수정 완료] bgMid 변수를 정상적으로 참조하여 먹의 농담 조절
+            let layerFill = p.lerpColor(p.color('#03050a'), bgMid, depthFactor * 0.85);
+            let layerStroke = p.lerpColor(p.color('#557799'), bgMid, depthFactor * 0.7);
 
             p.stroke(layerStroke);
             p.strokeWeight(1.5 + (1 - depthFactor) * 1.5); 
             p.fill(layerFill);
 
-            // 💡 [배치 및 에러 방어] scatter에 따라 60% ~ 20% (height * 0.4 ~ height * 0.8) 기본 배치
-            // 사용자 요청: 1/3 위로 안 올라가게 (height * 0.33 아래로)
-            const topBoundary = height * 0.33;
-            const bottomBoundary = height * 0.9;
-            
-            // 💡 [핵심 - 무작위 배치] 4개 레이어에 무작위 Y 오프셋 할당
-            // shuffleMap에 따라 4개 레이어의 무작위 Y좌표를 매핑
+            // 💡 [배치] shuffleMap에 따라 4개 레이어의 '랜덤 생성된' Y좌표를 매핑하여 자연스럽게 중첩
             let layerYIndex = this.shuffleMap[l];
             let baseY = this.layerBaseY[layerYIndex];
             let amplitude = height * (0.35 - (1 - depthFactor) * 0.15); 
             
-            // NaN 에러 방어
             let safeBaseY = Number.isFinite(baseY) ? baseY : height * 0.5;
             let safeAmplitude = Number.isFinite(amplitude) ? amplitude : 15;
 
@@ -242,20 +232,18 @@ export default class P5InkMeteorShowerSpaced {
             p.vertex(-100, height + 100); 
             p.curveVertex(-100, safeBaseY);
 
-            p.noiseSeed(seed + l * 100); // 레이어마다 다른 형태의 산맥 생성
+            p.noiseSeed(seed + l * 100); 
             for (let x = -50; x <= width + 50; x += 10) {
-                // x 좌표와 seed를 섞어서 산의 능선을 계산
                 let noiseVal = p.noise(x * 0.003 - time * (0.2 + l*0.05), l * 10 + time * 0.1);
-                let waveOffset = p.sin(x * 0.01 + time + l) * 0.5 + 0.5; 
                 
-                // 사용자 요청: 산이 계속 움직이지는 않게 (진동 제거)
-                let y = safeBaseY - (noiseVal * waveOffset) * safeAmplitude * 2.0;
+                // 사용자 요청: 산은 계속 움직이지 않고 고정되도록 진동 오프셋 완전 제거
+                let y = safeBaseY - (noiseVal) * safeAmplitude * 2.0;
                 p.curveVertex(x, y);
 
-                // 💡 [수묵 점묘법(Mi Dots) 연산] 능선 위에 먹 점(나무, 바위) 찍기
-                // l이 3(맨 뒤)일수록 점이 거의 없고(듬성듬성), 앞산은 빽빽함
+                // 💡 [수묵 점묘법(Mi Dots) 연산] 능선 위에 먹 점(바위/질감) 찍기
                 let dotDensity = p.map(depthFactor, 0, 1, 20, 80); 
-                let dotColor = p.lerpColor(p.color('#557799'), skyMid, depthFactor * 0.5);
+                // 에러 수정 완료: bgMid 참조
+                let dotColor = p.lerpColor(p.color('#557799'), bgMid, depthFactor * 0.5);
 
                 p.noiseSeed(seed + l * 200);
                 for(let ptX = -50; ptX <= width + 50; ptX += dotDensity) {
@@ -265,9 +253,7 @@ export default class P5InkMeteorShowerSpaced {
                         let dotNoiseScale = 0.002 + (1 - depthFactor) * 0.0015;
                         let mtnY = safeBaseY - (p.noise(ptX * dotNoiseScale, seed * 0.01 + l * 50) * safeAmplitude);
                         
-                        // 앞산의 먹 점이 더 크고 또렷함
                         let dotSize = p.random(15, 35) * (1 - depthFactor * 0.4);
-                        // 나무 그릴 필요 없다고 했으므로, Mi Dots만 찍음
                         this.drawInkDot(p, ptX, mtnY, dotSize, dotColor);
                     }
                 }
@@ -282,22 +268,20 @@ export default class P5InkMeteorShowerSpaced {
     this.p5Instance = new window.p5(sketch, this.container);
   }
 
-  // 🖌️ 수묵화 특유의 먹 번짐(수채화) 느낌을 살린 Mi Dot 그리기 함수
+  // 🖌️ 수묵화 특유의 먹 번짐(수채화) 느낌을 살린 Mi Dot 그리기 함수 (나무 제외, 순수 점묘)
   drawInkDot(p, x, y, h, c) {
       p.push();
       p.translate(x, y);
       
-      // 나뭇잎/바위를 반투명한 타원(먹물 번짐) 여러 개를 겹쳐서 표현
       p.noStroke();
       let inkColor = p.color(c);
-      inkColor.setAlpha(180); // 반투명 겹침 효과
+      inkColor.setAlpha(180); 
       p.fill(inkColor);
       
       for(let i = 0; i < 4; i++) {
           let levelY = -h * (0.2 + i * 0.25);
           let levelW = h * (0.6 - i * 0.15);
           
-          // 약간 찌그러진 타원으로 자연스러운 붓터치 느낌 강조
           p.ellipse(p.random(-2, 2), levelY, levelW + p.random(-3, 3), levelW * 0.7);
       }
       p.pop();
