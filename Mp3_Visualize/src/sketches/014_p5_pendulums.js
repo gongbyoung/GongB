@@ -1,7 +1,8 @@
 /**
  * 014_p5_pendulums.js
- * 화면 중앙 상단의 줄에 매달린 5개의 물리 진자가
- * 왼쪽(저음)부터 오른쪽(고음)까지 5개의 독립된 주파수에 타격을 받아 흔들리는 미디어 아트
+ * 5개의 물리 진자가 딱 붙어있는 '뉴턴의 요람(Newton's Cradle)' 구조.
+ * 실시간 오디오 스파이크에 의해 타격을 받으면 충돌 시 에너지를 교환하여 
+ * 반대편 진자가 튀어 오르는 완벽한 물리 연쇄 작용을 시뮬레이션하는 미디어 아트.
  */
 export default class P5PendulumStage {
   constructor(container) {
@@ -11,7 +12,6 @@ export default class P5PendulumStage {
     this.numPendulums = 5; 
     this.pendulums = [];
     
-    // 오디오 타격량 계산용 버퍼
     this.currentHeights = new Float32Array(this.numPendulums);
     this.prevHeights = new Float32Array(this.numPendulums);
     
@@ -32,67 +32,47 @@ export default class P5PendulumStage {
     }
 
     const sketch = (p) => {
-      // 💡 진자(Pendulum) 클래스 내부 정의 (물리 엔진)
+      // 💡 뉴턴의 요람 진자 클래스
       class Pendulum {
-        constructor(x, y, len, radius, colorHex) {
-          this.origin = p.createVector(x, y); // 매달린 고정점
-          this.position = p.createVector();   // 현재 추의 위치
-          this.r = len;                       // 줄의 길이
-          this.angle = 0;                     // 현재 각도 (0이면 정중앙 아래)
-          this.aVelocity = 0.0;               // 각속도
-          this.aAcceleration = 0.0;           // 각가속도
+        constructor() {
+          this.origin = p.createVector(0, 0); 
+          this.position = p.createVector();   
+          this.r = 250;                       
+          this.angle = 0;                     
+          this.aVelocity = 0.0;               
+          this.aAcceleration = 0.0;           
           
-          this.damping = 0.985;               // 공기 저항 (마찰력 - 서서히 멈춤)
-          this.ballRadius = radius;           // 추의 크기
-          this.colorHex = colorHex;           // 추의 색상
-          
-          // 꼬리(Trail) 효과를 위한 이전 위치 저장 배열
+          this.damping = 0.995; // 뉴턴의 요람은 에너지가 오래 보존되어야 하므로 마찰력을 최소화
+          this.ballRadius = 20;           
           this.trail = [];
         }
 
-        // 💡 물리 연산 업데이트
-        update(force) {
-          // 1. 중력에 의한 진자 운동 공식 (a = -g/L * sin(theta))
-          const gravity = 0.6; // 중력 상수
+        update() {
+          const gravity = 0.8; 
           this.aAcceleration = (-1 * gravity / this.r) * p.sin(this.angle);
 
-          // 2. 오디오 타격(Force) 적용
-          // 소리가 튈 때, 진자가 현재 향하고 있는 방향으로 가속도를 팍 밀어줍니다.
-          if (force > 0) {
-              let pushDir = (this.angle < 0) ? -1 : 1; 
-              // 각도가 0(정지상태)일 때는 랜덤한 방향으로 튕김
-              if (Math.abs(this.angle) < 0.05) pushDir = p.random() > 0.5 ? 1 : -1;
-              
-              this.aVelocity += pushDir * force * 0.05; 
-          }
-
-          // 3. 속도와 각도 업데이트
           this.aVelocity += this.aAcceleration;
-          this.aVelocity *= this.damping; // 마찰력 적용
+          this.aVelocity *= this.damping; 
           this.angle += this.aVelocity;
 
-          // 극단적인 회전(360도 뺑뺑이) 방지 리미트
-          this.angle = p.constrain(this.angle, -p.PI / 1.5, p.PI / 1.5);
+          this.angle = p.constrain(this.angle, -p.PI / 2.5, p.PI / 2.5);
         }
 
-        // 💡 화면에 그리기
         display(ctx, glowAmount, pColor) {
-          // 현재 위치 삼각함수로 계산
-          this.position.x = this.r * p.sin(this.angle);
-          this.position.y = this.r * p.cos(this.angle);
-          this.position.add(this.origin);
+          this.position.x = this.origin.x + this.r * p.sin(this.angle);
+          this.position.y = this.origin.y + this.r * p.cos(this.angle);
 
-          // 꼬리(Trail) 저장
+          // 꼬리(Trail) 효과
           this.trail.push(p.createVector(this.position.x, this.position.y));
-          if (this.trail.length > 25) this.trail.shift();
+          if (this.trail.length > 20) this.trail.shift();
 
-          // 1. 줄 그리기
-          p.stroke(255, 255, 255, 80);
-          p.strokeWeight(2);
+          // 줄 그리기
+          p.stroke(255, 255, 255, 100);
+          p.strokeWeight(1.5);
           ctx.shadowBlur = 0;
           p.line(this.origin.x, this.origin.y, this.position.x, this.position.y);
 
-          // 2. 꼬리 그리기
+          // 꼬리 렌더링
           p.noFill();
           ctx.shadowBlur = 15 * glowAmount;
           ctx.shadowColor = pColor.toString();
@@ -103,19 +83,18 @@ export default class P5PendulumStage {
               let trailC = p.color(pColor);
               trailC.setAlpha(alpha);
               p.stroke(trailC);
-              p.strokeWeight(this.ballRadius * 0.5 * (i / this.trail.length));
+              p.strokeWeight(this.ballRadius * 0.8 * (i / this.trail.length));
               p.vertex(this.trail[i].x, this.trail[i].y);
           }
           p.endShape();
 
-          // 3. 빛나는 추(Bob) 그리기
+          // 추 렌더링
           p.noStroke();
           p.fill(pColor);
           ctx.shadowBlur = 30 * glowAmount;
           ctx.shadowColor = pColor.toString();
           p.circle(this.position.x, this.position.y, this.ballRadius * 2);
           
-          // 추 중심의 코어(하얀 점)
           p.fill(255);
           ctx.shadowBlur = 0;
           p.circle(this.position.x, this.position.y, this.ballRadius * 0.5);
@@ -127,9 +106,8 @@ export default class P5PendulumStage {
         canvas.style('position', 'absolute');
         canvas.style('z-index', '1');
         
-        // 5개의 진자 초기 생성 (임시 위치, resize/draw에서 재배치)
         for (let i = 0; i < this.numPendulums; i++) {
-            this.pendulums.push(new Pendulum(0, 0, 100, 12, '#ffffff'));
+            this.pendulums.push(new Pendulum());
         }
         
         p.noLoop(); 
@@ -140,7 +118,6 @@ export default class P5PendulumStage {
         const height = p.height;
         const ctx = p.drawingContext;
         
-        // 배경 그리기
         p.clear();
         let bgGrad = ctx.createLinearGradient(0, 0, 0, height);
         bgGrad.addColorStop(0, '#050a15'); 
@@ -150,7 +127,6 @@ export default class P5PendulumStage {
 
         if (!this.currentAudioData) return;
 
-        // UI 설정
         let scatter = 2.2, gain = 1.0, glow = 0.85, seed = 42;
         let colorStyle = 'neon';
         let customColors = { gas1: '#ff0055', gas2: '#00ffcc', star: '#ffffff' };
@@ -170,7 +146,6 @@ export default class P5PendulumStage {
             this.shuffleMap = [0, 1, 2, 3, 4].sort(() => p.random() - 0.5);
         }
 
-        // 전체 볼륨 무시 (오토 게인)
         let frameAverage = 0;
         if (this.currentAudioData.raw && this.currentAudioData.raw.length > 0) {
             let sum = 0, count = 0;
@@ -182,22 +157,22 @@ export default class P5PendulumStage {
             if (count > 0) frameAverage = (sum / count) / 255.0;
         }
 
-        // 💡 중앙 상단 수평 줄(Bar) 그리기
-        const barWidth = width * Math.min(0.8, scatter / 2.0); // scatter로 간격 조절
-        const startX = (width - barWidth) / 2;
-        const originY = height * 0.15; // 상단에서 15% 내려온 곳
+        // 💡 중앙 고정 바 및 진자 세팅
+        const originY = height * 0.2; 
+        const ballRadius = 25 + (glow * 5); // 공의 크기
+        const spacing = ballRadius * 2; // 공이 서로 정확히 맞닿도록 지름만큼 간격 설정
+        const startX = (width / 2) - (spacing * 2); // 5개 공의 맨 왼쪽 시작점
         
         ctx.shadowBlur = 10;
         ctx.shadowColor = '#ffffff';
         p.stroke(255, 255, 255, 150);
         p.strokeWeight(4);
-        p.line(startX - 20, originY, startX + barWidth + 20, originY);
+        p.line(startX - 20, originY, startX + (spacing * 4) + 20, originY);
 
-        // 5개 진자 오디오 타격 및 렌더링
+        // 💡 1. 오디오 데이터에 의한 타격 (Impulse) 연산
         for (let i = 0; i < this.numPendulums; i++) {
           let rawVal = 0;
           if (this.currentAudioData.raw && this.currentAudioData.raw.length > 0) {
-            // 5개 밴드로 분리
             const binIndex = Math.floor(2 + Math.pow(i / 4, 1.5) * 100);
             if (binIndex < this.currentAudioData.raw.length) {
               rawVal = this.currentAudioData.raw[binIndex] || 0;
@@ -213,41 +188,77 @@ export default class P5PendulumStage {
           this.prevHeights[i] = this.currentHeights[i];
           this.currentHeights[i] = finalForce;
           
-          // 타격(Spike) 감지
           let delta = this.currentHeights[i] - this.prevHeights[i];
-          let impactForce = 0;
-          if (delta > 2.0) impactForce = delta; // 뾰족한 소리가 날 때만 힘 발생
-
-          // 🎨 색상 테마 계산
-          let cRatio = i / 4.0; // 0.0 ~ 1.0
-          let pColor;
-          if (colorStyle === 'neon') {
-              pColor = p.lerpColor(p.color('#ff0055'), p.color('#00ffcc'), cRatio);
-          } else if (colorStyle === 'pastel') {
-              pColor = p.lerpColor(p.color('#ffb3ba'), p.color('#bae1ff'), cRatio);
-          } else if (colorStyle === 'custom') {
-              pColor = p.lerpColor(p.color(customColors.gas1), p.color(customColors.gas2), cRatio);
-          } else {
-              pColor = p.color(255);
-          }
-
-          // 물리 진자 업데이트 및 그리기
+          
           let pend = this.pendulums[i];
           
-          // UI 조작에 실시간 반응하도록 위치/길이 세팅
-          pend.origin.x = startX + (i * (barWidth / 4));
+          // 위치 세팅 (완벽하게 맞닿음)
+          pend.origin.x = startX + (i * spacing);
           pend.origin.y = originY;
-          // Scatter 슬라이더가 진자의 길이를 조절함 (기본 height * 0.45)
+          // Scatter 슬라이더가 진자 줄 길이를 담당
           pend.r = (height * 0.3) + (scatter * height * 0.08); 
-          pend.ballRadius = 10 + (glow * 5);
+          pend.ballRadius = ballRadius;
 
-          // 섞인 순서(shuffleMap)에 따라 타격 전달
-          let freqIdx = this.shuffleMap[i];
-          let actualImpact = (i === freqIdx) ? impactForce : 0; 
-          
-          // 각 진자에 매핑된 오디오 임팩트 적용
-          pend.update(impactForce); 
-          pend.display(ctx, glow, pColor);
+          // 💥 소리가 터질 때 물리적 타격 가하기
+          if (delta > 3.0) {
+              let force = delta * 0.0015; // 타격량 스케일링
+              
+              // 0번, 1번(저음)은 왼쪽으로 치고, 3번, 4번(고음)은 오른쪽으로 쳐서 뉴턴의 요람 효과 극대화
+              if (i < 2) {
+                  pend.aVelocity -= force; // 왼쪽 밖으로 밀어냄
+              } else if (i > 2) {
+                  pend.aVelocity += force; // 오른쪽 밖으로 밀어냄
+              } else {
+                  // 가운데(2번)는 번갈아가며 침
+                  pend.aVelocity += (p.random() > 0.5 ? force : -force);
+              }
+          }
+        }
+
+        // 💡 2. 위치 업데이트
+        for (let i = 0; i < this.numPendulums; i++) {
+            this.pendulums[i].update();
+        }
+
+        // 💡 3. 뉴턴의 요람 충돌(Collision) 해결 연산 (가장 핵심 엔진)
+        // 충돌 안정성을 위해 한 프레임에 연산을 3번 반복(Iteration)
+        for (let iter = 0; iter < 3; iter++) {
+            for (let i = 0; i < this.numPendulums - 1; i++) {
+                let pLeft = this.pendulums[i];
+                let pRight = this.pendulums[i+1];
+                
+                // 줄 길이가 같고, 기둥 간격이 지름과 같으므로, 왼쪽 각도가 오른쪽 각도보다 크면 무조건 공이 파고든 것(충돌)
+                if (pLeft.angle > pRight.angle) {
+                    // 강제 겹침 해결 (각도를 중간값으로 맞춰버림)
+                    let avgAngle = (pLeft.angle + pRight.angle) / 2.0;
+                    pLeft.angle = avgAngle;
+                    pRight.angle = avgAngle;
+                    
+                    // 💥 완벽한 탄성 충돌: 두 공의 속도(에너지)를 맞바꿈! (운동량 보존)
+                    let v1 = pLeft.aVelocity;
+                    let v2 = pRight.aVelocity;
+                    
+                    let restitution = 0.99; // 충돌 시 아주 미세한 에너지 손실
+                    pLeft.aVelocity = v2 * restitution;
+                    pRight.aVelocity = v1 * restitution;
+                }
+            }
+        }
+
+        // 💡 4. 색상 입히고 화면에 렌더링
+        for (let i = 0; i < this.numPendulums; i++) {
+            let cRatio = i / 4.0; 
+            let pColor;
+            if (colorStyle === 'neon') {
+                pColor = p.lerpColor(p.color('#ff0055'), p.color('#00ffcc'), cRatio);
+            } else if (colorStyle === 'pastel') {
+                pColor = p.lerpColor(p.color('#ffb3ba'), p.color('#bae1ff'), cRatio);
+            } else if (colorStyle === 'custom') {
+                pColor = p.lerpColor(p.color(customColors.gas1), p.color(customColors.gas2), cRatio);
+            } else {
+                pColor = p.color(255);
+            }
+            this.pendulums[i].display(ctx, glow, pColor);
         }
       };
     };
