@@ -1,8 +1,7 @@
 /**
  * src/sketches/016_p5_stylized_painter.js
- * - [통합 완결판] 단 한 줄의 생략도 없는 전체 코드
+ * - [버그 픽스] pixelDensity(1) 및 img.resize 적용으로 블랙스크린 해결
  * - 3단계 페인팅: 윤곽선(30%) -> 면 채우기(60%) -> 정밀 묘사(80%)
- * - UI 슬라이더 실시간 연동 (분산, 크기/발광, 폭발력, 시드)
  * - 정지 시 즉시 100% 완성본 렌더링 (미리보기 모드)
  */
 export default class P5StylizedArtPainter {
@@ -12,8 +11,8 @@ export default class P5StylizedArtPainter {
     this.sourceImg = null;
     this.pg = null; 
     
-    this.edgeData = []; // 전처리된 픽셀 데이터 보관소
-    this.points = [];   // 실제로 그릴 큐(Queue)
+    this.edgeData = []; 
+    this.points = [];   
     this.totalPoints = 0;
     this.drawnCount = 0;
     
@@ -44,7 +43,11 @@ export default class P5StylizedArtPainter {
         canvas.style('position', 'absolute');
         canvas.style('z-index', '1');
         
+        // 💡 [핵심 픽스 1] 픽셀 연산 엉킴 방지를 위해 밀도를 1로 강제 고정
+        p.pixelDensity(1);
+        
         this.pg = p.createGraphics(p.width, p.height);
+        this.pg.pixelDensity(1);
         this.pg.background(15, 18, 25); 
         p.noLoop(); 
       };
@@ -71,23 +74,26 @@ export default class P5StylizedArtPainter {
   }
 
   prepareCanvas(img, p) {
+    // 💡 [핵심 픽스 2] 원본 이미지를 캔버스 크기에 딱 맞게 리사이징 (화면 이탈 방지)
+    img.resize(p.width, p.height);
+      
     this.sourceImg = img;
     this.sourceImg.loadPixels();
     
-    // 💡 1. 흑백 사본을 만들어 윤곽선(Edge) 추출
+    // 흑백 사본 만들어 윤곽선 추출
     let grayImg = p.createImage(img.width, img.height);
     grayImg.copy(img, 0, 0, img.width, img.height, 0, 0, img.width, img.height);
     grayImg.filter(p.GRAY);
     grayImg.loadPixels();
 
     this.edgeData = [];
-    let step = 4; // 붓터치 샘플링 간격
+    let step = 4; 
     
     for (let y = 1; y < img.height - 1; y += step) {
       for (let x = 1; x < img.width - 1; x += step) {
         let idx = (y * img.width + x) * 4;
         
-        // 미분(밝기 차이)을 통해 윤곽선 강도 계산
+        // 미분(밝기 차이) 윤곽선 검출
         let diffX = Math.abs(grayImg.pixels[idx] - grayImg.pixels[idx + 4]);
         let diffY = Math.abs(grayImg.pixels[idx] - grayImg.pixels[idx + img.width * 4]);
         let edgeStrength = diffX + diffY;
@@ -105,17 +111,15 @@ export default class P5StylizedArtPainter {
     
     this.isImageLoaded = true;
     this.currentSettings = this.getUIParams();
-    this.resetCanvas(p, true); // 로드 즉시 미리보기 생성
+    this.resetCanvas(p, true); 
   }
 
   resetCanvas(p, isPreview = false) {
     if(!this.pg) return;
     this.pg.background(15, 18, 25);
     
-    // 원본 데이터를 복사하여 큐에 장전
     this.points = [...this.edgeData];
     
-    // 지형변경(Seed) 슬라이더 연동
     p.randomSeed(this.currentSettings.seed);
     p.noiseSeed(this.currentSettings.seed);
     
@@ -124,10 +128,8 @@ export default class P5StylizedArtPainter {
     this.drawnCount = 0;
     this.isPreviewMode = isPreview;
 
-    // 💡 2. 미리보기 모드일 경우 즉시 100% 렌더링
     if (isPreview && this.isImageLoaded) {
        for(let i=0; i < this.points.length; i++) {
-           // 0~1 사이의 가상 진행률을 부여하여 3단계 화풍을 모두 캔버스에 찍음
            let simProg = i / this.points.length; 
            this.paintStepByStep(this.points[i], simProg, this.currentSettings, p);
        }
@@ -144,7 +146,6 @@ export default class P5StylizedArtPainter {
     if (!this.p5Instance || !this.isImageLoaded) return;
     let p = this.p5Instance;
     
-    // 💡 3. UI 슬라이더 변경 감지
     const ui = this.getUIParams();
     let settingsChanged = (
         this.currentSettings.style !== ui.style ||
@@ -159,14 +160,13 @@ export default class P5StylizedArtPainter {
     
     if (settingsChanged) {
         this.currentSettings = ui;
-        this.resetCanvas(p, !isPlaying); // 정지 중이면 미리보기 갱신
+        this.resetCanvas(p, !isPlaying);
     }
 
     if (isPlaying && this.isPreviewMode) {
-        this.resetCanvas(p, false); // 재생 시 캔버스 지우기
+        this.resetCanvas(p, false); 
     }
 
-    // 💡 4. 진행률 계산 (80% 지점에서 100% 완성)
     let progress = 0;
     if (audioEl && audioEl.duration) {
         progress = audioEl.currentTime / audioEl.duration;
@@ -175,7 +175,6 @@ export default class P5StylizedArtPainter {
         progress = this.simulatedProgress;
     }
 
-    // 음악 되감기 감지 시 캔버스 리셋
     if (progress < this.lastProgress) {
         this.resetCanvas(p, !isPlaying);
     }
@@ -185,8 +184,6 @@ export default class P5StylizedArtPainter {
     
     if (!this.isPreviewMode) {
         let targetCount = Math.floor(this.totalPoints * normalizedProgress);
-        
-        // 폭발력(Burst) 슬라이더 연동: 한 프레임에 그릴 최대 획 개수 한계치 설정
         let baseRate = Math.floor(this.totalPoints * 0.02 * ui.burst);
         let drawBudget = Math.min(targetCount - this.drawnCount, baseRate);
         drawBudget = Math.max(0, drawBudget);
@@ -198,19 +195,17 @@ export default class P5StylizedArtPainter {
             this.paintStepByStep(pt, normalizedProgress, ui, p);
         }
 
-        // 완성 후 고음역대 라이브 이펙트 (음악이 터질 때 빈 공간에 반짝임)
         if (this.points.length === 0 && audioData && progress >= 0.8) {
            let high = (audioData.raw[60] + audioData.raw[61]) / 510;
            if (high > 0.15) {
                for(let i=0; i < 5; i++) {
                    let pt = this.edgeData[Math.floor(p.random(this.edgeData.length))];
-                   this.paintStepByStep(pt, 1.0, ui, p, high); // 강제로 3단계 정밀 묘사 출력
+                   this.paintStepByStep(pt, 1.0, ui, p, high); 
                }
            }
         }
     }
 
-    // 인상파(Custom) 스타일 - 오래된 사진 효과
     if (ui.style === 'custom' && progress >= 0.8 && !this.isPreviewMode) {
         this.drawOldPhotoEffect(p);
     }
@@ -218,23 +213,22 @@ export default class P5StylizedArtPainter {
     p.redraw();
   }
 
-  // 💡 5. 3단계 화가 엔진 로직
   paintStepByStep(pt, progress, ui, p, highFreq = 0) {
-    let alpha = 200 * ui.glow; // 발광/크기 슬라이더 -> 투명도 연동
-    let scatterOffset = (p.random(-1, 1) * 10 * ui.scatter) + (highFreq * 20); // 분산 범위 연동
+    let alpha = 200 * ui.glow; 
+    let scatterOffset = (p.random(-1, 1) * 10 * ui.scatter) + (highFreq * 20); 
     
     this.pg.push();
     this.pg.translate(pt.x + scatterOffset, pt.y + scatterOffset);
     
     if (progress < 0.3) {
-        // [1단계: 0~30%] 윤곽선 스케치
+        // [1단계] 거친 윤곽선 스케치
         if (pt.edge) {
             this.pg.stroke(255, 150 * ui.glow);
             this.pg.strokeWeight(p.random(0.5, 1.5) * (ui.glow * 2));
             this.pg.point(0, 0);
         }
     } else if (progress < 0.6) {
-        // [2단계: 30~60%] 윤곽선 안쪽 면 채우기
+        // [2단계] 면 채우기 (채색)
         if (!pt.edge) {
             this.pg.noStroke();
             this.pg.fill(pt.r, pt.g, pt.b, alpha);
@@ -242,7 +236,7 @@ export default class P5StylizedArtPainter {
             this.pg.rect(0, 0, rectSize, rectSize);
         }
     } else {
-        // [3단계: 60~80%] 전체 정밀 묘사 덧칠
+        // [3단계] 정밀 묘사
         this.pg.noStroke();
         this.pg.fill(pt.r, pt.g, pt.b, alpha);
         let ellipseSize = 2 * ui.glow;
@@ -299,6 +293,7 @@ export default class P5StylizedArtPainter {
       this.p5Instance.resizeCanvas(w, h);
       if (this.pg) {
           this.pg = this.p5Instance.createGraphics(w, h);
+          this.pg.pixelDensity(1); // 리사이즈 시에도 밀도 1 유지
           this.resetCanvas(this.p5Instance, this.isPreviewMode);
       }
     }
