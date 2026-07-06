@@ -1,7 +1,7 @@
 /**
  * src/sketches/016_p5_stylized_painter.js
- * - [버그 픽스] this.sourceImg.remove() 오류 해결 (null 처리로 메모리 해제)
- * - ImageAnalyzer 코어 모듈 연동 및 3단계 큐(Queue) 레이어 시스템
+ * - 무작위 섞기(Shuffle) 제거 및 공간 정렬(Sorting) 도입
+ * - 스케치 선이 사물의 윤곽 방향(Angle)을 따라가도록 물리 엔진 수정
  */
 import ImageAnalyzer from '../core/ImageAnalyzer.js'; 
 
@@ -18,8 +18,9 @@ export default class P5StylizedArtPainter {
     
     this.q1 = []; this.q2 = []; this.q3 = [];
     
-    this.totalPoints = 0;
-    this.drawnCount = 0;
+    this.drawn1 = 0;
+    this.drawn2 = 0;
+    this.drawn3 = 0;
     
     this.isImageLoaded = false;
     this.isPreviewMode = true;
@@ -53,10 +54,6 @@ export default class P5StylizedArtPainter {
         this.pg.pixelDensity(1);
         this.pg.background(15, 18, 25); 
         p.noLoop(); 
-        
-        p.loadImage('https://picsum.photos/seed/cosmic/800/600', (img) => {
-            if(!this.isImageLoaded) this.prepareCanvas(img, p);
-        });
       };
 
       p.draw = () => {
@@ -84,7 +81,8 @@ export default class P5StylizedArtPainter {
     img.resize(p.width, p.height);
     this.sourceImg = img;
     
-    let rawData = ImageAnalyzer.extractFeatures(img, p, 4, 30);
+    // 코어 모듈에서 각도와 정렬 키까지 받아옵니다
+    let rawData = ImageAnalyzer.extractFeatures(img, p, 4, 20);
     
     this.layer1 = []; this.layer2 = []; this.layer3 = [];
     
@@ -94,11 +92,12 @@ export default class P5StylizedArtPainter {
         this.layer3.push(pt);               
     }
     
-    p.shuffle(this.layer1, true);
-    p.shuffle(this.layer2, true);
-    p.shuffle(this.layer3, true);
+    // 💡 [핵심 교정] 무작위 셔플 대신, 사람이 그리듯 좌상단 -> 우하단으로 정렬합니다.
+    // 배열에서 pop()으로 꺼내므로, 내림차순 정렬해야 값이 작은 좌측상단부터 그려집니다.
+    this.layer1.sort((a, b) => b.sortKey - a.sortKey);
+    this.layer2.sort((a, b) => b.sortKey - a.sortKey);
+    this.layer3.sort((a, b) => b.sortKey - a.sortKey);
     
-    this.totalPoints = this.layer1.length + this.layer2.length + this.layer3.length;
     this.isImageLoaded = true;
     this.currentSettings = this.getUIParams();
     this.resetCanvas(p, true); 
@@ -115,7 +114,7 @@ export default class P5StylizedArtPainter {
     p.randomSeed(this.currentSettings.seed);
     p.noiseSeed(this.currentSettings.seed);
     
-    this.drawnCount = 0;
+    this.drawn1 = 0; this.drawn2 = 0; this.drawn3 = 0;
     this.isPreviewMode = isPreview;
 
     if (isPreview && this.isImageLoaded) {
@@ -123,7 +122,6 @@ export default class P5StylizedArtPainter {
        while(this.q2.length > 0) this.paintStep(this.q2.pop(), 2, this.currentSettings, p);
        while(this.q3.length > 0) this.paintStep(this.q3.pop(), 3, this.currentSettings, p);
        
-       this.drawnCount = this.totalPoints;
        if (this.currentSettings.style === 'custom') this.drawOldPhotoEffect(p);
     }
   }
@@ -167,27 +165,29 @@ export default class P5StylizedArtPainter {
     if (progress < this.lastProgress) this.resetCanvas(p, !isPlaying);
     this.lastProgress = progress;
 
-    let normalizedProgress = Math.min(progress / 0.8, 1.0);
-    
     if (!this.isPreviewMode) {
-        let targetCount = Math.floor(this.totalPoints * normalizedProgress);
-        let baseRate = Math.floor(this.totalPoints * 0.02 * ui.burst);
-        let drawBudget = Math.min(targetCount - this.drawnCount, baseRate);
-        drawBudget = Math.max(0, drawBudget);
-
         let highFreq = audioData ? (audioData.raw[60] + audioData.raw[61]) / 510 : 0;
+        
+        let p1 = Math.min(progress / 0.3, 1.0); 
+        let p2 = progress > 0.3 ? Math.min((progress - 0.3) / 0.3, 1.0) : 0; 
+        let p3 = progress > 0.6 ? Math.min((progress - 0.6) / 0.2, 1.0) : 0; 
 
-        for (let i = 0; i < drawBudget; i++) {
-            if (this.q1.length > 0) {
-                this.paintStep(this.q1.pop(), 1, ui, p, highFreq);
-            } else if (this.q2.length > 0) {
-                this.paintStep(this.q2.pop(), 2, ui, p, highFreq);
-            } else if (this.q3.length > 0) {
-                this.paintStep(this.q3.pop(), 3, ui, p, highFreq);
-            } else {
-                break;
-            }
-            this.drawnCount++;
+        let target1 = Math.floor(this.layer1.length * p1);
+        let target2 = Math.floor(this.layer2.length * p2);
+        let target3 = Math.floor(this.layer3.length * p3);
+
+        let budget1 = Math.max(0, target1 - this.drawn1);
+        let budget2 = Math.max(0, target2 - this.drawn2);
+        let budget3 = Math.max(0, target3 - this.drawn3);
+
+        for (let i = 0; i < budget1; i++) {
+            if (this.q1.length > 0) { this.paintStep(this.q1.pop(), 1, ui, p, highFreq); this.drawn1++; }
+        }
+        for (let i = 0; i < budget2; i++) {
+            if (this.q2.length > 0) { this.paintStep(this.q2.pop(), 2, ui, p, highFreq); this.drawn2++; }
+        }
+        for (let i = 0; i < budget3; i++) {
+            if (this.q3.length > 0) { this.paintStep(this.q3.pop(), 3, ui, p, highFreq); this.drawn3++; }
         }
     }
 
@@ -206,18 +206,24 @@ export default class P5StylizedArtPainter {
     this.pg.translate(pt.x + scatterOffset, pt.y + scatterOffset);
     
     if (layerNum === 1) {
-        this.pg.stroke(255, 150 * ui.glow);
-        this.pg.strokeWeight(p.random(0.5, 1.5) * (ui.glow * 2));
-        this.pg.point(0, 0);
+        this.pg.stroke(220, 220, 220, 180 * ui.glow); 
+        this.pg.strokeWeight(p.random(1, 2) * ui.glow);
+        let len = p.random(5, 15) * ui.glow;
+        
+        // 💡 [핵심 교정] 무작위 빗금이 아니라, 사물의 결(Angle)을 감싸듯 선을 긋습니다.
+        this.pg.rotate(pt.angle + p.random(-0.15, 0.15)); 
+        this.pg.line(-len/2, 0, len/2, 0); 
+        
     } else if (layerNum === 2) {
         this.pg.noStroke();
         this.pg.fill(pt.r, pt.g, pt.b, alpha);
-        let rectSize = 6 * ui.glow * (ui.scatter > 0 ? ui.scatter : 1);
+        this.pg.rectMode(p.CENTER);
+        let rectSize = 8 * ui.glow * (ui.scatter > 0 ? ui.scatter : 1);
         this.pg.rect(0, 0, rectSize, rectSize);
     } else if (layerNum === 3) {
         this.pg.noStroke();
         this.pg.fill(pt.r, pt.g, pt.b, alpha);
-        let ellipseSize = 2 * ui.glow;
+        let ellipseSize = 3 * ui.glow;
         this.pg.ellipse(0, 0, ellipseSize, ellipseSize);
     }
     
@@ -258,9 +264,7 @@ export default class P5StylizedArtPainter {
     if (file && file.type.startsWith('image/')) {
       const url = URL.createObjectURL(file);
       if (this.p5Instance) {
-        // 💡 [버그 픽스] remove() 대신 안전하게 null로 초기화합니다.
         this.sourceImg = null; 
-        
         this.p5Instance.loadImage(url, (img) => {
           this.prepareCanvas(img, this.p5Instance); 
         });
@@ -283,7 +287,6 @@ export default class P5StylizedArtPainter {
     this.container.removeEventListener('dragover', this.handleDragOver);
     this.container.removeEventListener('drop', this.handleDrop);
     if (this.p5Instance) this.p5Instance.remove();
-    // 💡 [버그 픽스] 스케치 소멸 시에도 안전하게 null로 비웁니다.
     this.sourceImg = null; 
   }
 }
