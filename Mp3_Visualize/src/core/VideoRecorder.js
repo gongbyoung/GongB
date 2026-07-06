@@ -1,15 +1,17 @@
 /**
  * src/core/VideoRecorder.js
- * (Canvas 요소 자동 탐색 및 양방향 Export 만능 호환판)
+ * 4K급 초고해상도 에러 무한 지원 및 오디오 자동 동기화/녹음 엔진 탑재
+ * (export 문법 및 자동 재생 교정판)
  */
-class VideoRecorder { // 💡 여기서 export 키워드를 뺍니다.
-  constructor(containerOrCanvas, fps = 30) {
-    this.targetElement = containerOrCanvas; 
+class VideoRecorder { 
+  constructor(canvas, fps = 30) {
+    this.canvas = canvas;
     this.fps = fps;
     this.mediaRecorder = null;
     this.recordedChunks = [];
     this.isRecording = false;
     
+    // 오디오 컨텍스트 (영상에 음악을 함께 녹음하기 위함)
     this.audioCtx = null;
     this.audioSource = null;
     this.audioDest = null;
@@ -19,21 +21,13 @@ class VideoRecorder { // 💡 여기서 export 키워드를 뺍니다.
     if (this.isRecording) return;
     this.recordedChunks = [];
 
-    let actualCanvas = this.targetElement;
-    if (actualCanvas && actualCanvas.tagName !== 'CANVAS') {
-        actualCanvas = actualCanvas.querySelector('canvas');
-    }
+    console.log(`[🎥 Recorder] 녹화 시작: ${this.canvas.width}x${this.canvas.height} (${this.fps}fps)`);
 
-    if (!actualCanvas) {
-        console.error("❌ [Recorder Error] 녹화할 캔버스(Canvas) 요소를 찾을 수 없습니다.");
-        return;
-    }
-
-    console.log(`[🎥 Recorder] 녹화 시작: ${actualCanvas.width}x${actualCanvas.height} (${this.fps}fps)`);
-
-    const videoStream = actualCanvas.captureStream(this.fps);
+    // 1. 캔버스 비디오 스트림 캡처
+    const videoStream = this.canvas.captureStream(this.fps);
     const combinedStream = new MediaStream(videoStream.getVideoTracks());
 
+    // 2. 오디오 스트림 캡처 및 병합 (영상 파일에 음악 포함)
     const audioEl = document.querySelector('audio');
     if (audioEl) {
         try {
@@ -41,9 +35,11 @@ class VideoRecorder { // 💡 여기서 export 키워드를 뺍니다.
                 this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             }
             if (!this.audioSource) {
+                // 한 번만 소스 연결
                 this.audioSource = this.audioCtx.createMediaElementSource(audioEl);
                 this.audioDest = this.audioCtx.createMediaStreamDestination();
                 
+                // 오디오를 녹음기와 스피커 양쪽으로 동시 출력
                 this.audioSource.connect(this.audioDest);
                 this.audioSource.connect(this.audioCtx.destination);
             }
@@ -56,15 +52,18 @@ class VideoRecorder { // 💡 여기서 export 키워드를 뺍니다.
             console.warn("오디오 캡처 우회 (영상만 녹화됩니다):", err);
         }
 
+        // 💡 [동기화 추가] 음악 0초로 강제 되감기 후 재생
         audioEl.currentTime = 0;
         audioEl.play();
 
+        // 💡 [자동 종료 추가] 음악이 끝나면 자동으로 녹화 종료
         audioEl.onended = () => {
             console.log("🎵 음악 종료: 녹화를 자동으로 완료하고 저장합니다.");
             this.stop();
         };
     }
 
+    // 3. MediaRecorder 설정 (고화질 WebM/VP9 코덱 사용)
     let options = { mimeType: 'video/webm; codecs=vp9', videoBitsPerSecond: 8000000 };
     if (!MediaRecorder.isTypeSupported(options.mimeType)) {
         options = { mimeType: 'video/webm; codecs=vp8', videoBitsPerSecond: 8000000 };
@@ -87,6 +86,7 @@ class VideoRecorder { // 💡 여기서 export 키워드를 뺍니다.
         this.saveVideo();
     };
 
+    // 4. 녹화 시작
     this.mediaRecorder.start();
     this.isRecording = true;
   }
@@ -100,7 +100,7 @@ class VideoRecorder { // 💡 여기서 export 키워드를 뺍니다.
     const audioEl = document.querySelector('audio');
     if (audioEl) {
         audioEl.pause();
-        audioEl.onended = null; 
+        audioEl.onended = null; // 이벤트 해제
     }
     
     console.log("⏹️ 녹화 종료 처리 중...");
@@ -129,6 +129,5 @@ class VideoRecorder { // 💡 여기서 export 키워드를 뺍니다.
   }
 }
 
-// 💡 [가장 핵심 포인트] main.js가 어떤 이름표를 요구하든 다 받아주도록 두 가지 방식을 모두 열어둡니다!
-export default VideoRecorder;         // 'import VideoRecorder from ...' 일 때 작동
-export { VideoRecorder };             // 'import { VideoRecorder } from ...' 일 때 작동
+// 💡 [수정] main.js와 짝을 맞추기 위해 export default를 사용합니다.
+export default VideoRecorder;
