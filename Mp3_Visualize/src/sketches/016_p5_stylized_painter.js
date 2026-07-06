@@ -1,7 +1,8 @@
 /**
  * src/sketches/016_p5_stylized_painter.js
- * 로딩된 이미지를 음악의 주파수(저/중/고음) 물리 법칙에 따라
- * 4가지 화풍(스케치, 수채화, 야수파, 인상파+오래된사진)으로 실시간으로 그려나가는 엔진
+ * - 블랙스크린 버그 해결 및 loadPixels 최적화 유지
+ * - [교정] 양파링 비네팅 -> 부드러운 진짜 그라데이션 비네팅으로 변경
+ * - [교정] 모니터 깨짐 세로선 -> 미세하고 자연스러운 필름 스크래치로 변경
  */
 export default class P5StylizedArtPainter {
   constructor(container) {
@@ -14,12 +15,16 @@ export default class P5StylizedArtPainter {
     this.smoothHigh = 0;
     
     this.sourceImg = null;
+    this.pg = null; 
     this.chunkIndices = [];
+    this.totalChunks = 0; 
     this.drawnCount = 0;
     this.isImageLoaded = false;
     
     this.simulatedProgress = 0; 
     this.currentStyle = '';
+    
+    this.lastProgress = 0; 
   }
 
   async init() {
@@ -37,18 +42,16 @@ export default class P5StylizedArtPainter {
     this.container.addEventListener('drop', this.handleDrop.bind(this));
 
     const sketch = (p) => {
-      let pg; 
-
       p.setup = () => {
         const canvas = p.createCanvas(this.container.clientWidth, this.container.clientHeight);
         canvas.style('position', 'absolute');
         canvas.style('z-index', '1');
         
-        pg = p.createGraphics(p.width, p.height);
-        pg.background(15, 18, 25); 
+        this.pg = p.createGraphics(p.width, p.height);
+        this.pg.background(15, 18, 25); 
         
         p.loadImage('https://picsum.photos/seed/cosmic/800/600', (img) => {
-            if(!this.isImageLoaded) this.prepareCanvas(img, p, pg);
+            if(!this.isImageLoaded) this.prepareCanvas(img, p);
         });
         
         p.noLoop(); 
@@ -56,7 +59,7 @@ export default class P5StylizedArtPainter {
 
       p.draw = () => {
         p.clear();
-        p.image(pg, 0, 0);
+        if (this.pg) p.image(this.pg, 0, 0); 
 
         if (!this.currentAudioData || !this.isImageLoaded) {
             this.drawDropUI(p);
@@ -66,14 +69,14 @@ export default class P5StylizedArtPainter {
         let scatter = 2.2, gain = 1.0;
         let colorStyle = 'neon';
         if (window.cosmicEngineSettings) {
-          scatter = Number.isFinite(window.cosmicEngineSettings.scatterExponent) ? window.cosmicEngineSettings.scatterExponent : 2.2;
-          gain = Number.isFinite(window.cosmicEngineSettings.audioGain) ? window.cosmicEngineSettings.audioGain : 1.0;
+          scatter = window.cosmicEngineSettings.scatterExponent || 2.2;
+          gain = window.cosmicEngineSettings.audioGain || 1.0;
           colorStyle = window.cosmicEngineSettings.colorStyle || 'neon';
         }
 
         if (this.currentStyle !== colorStyle) {
             this.currentStyle = colorStyle;
-            this.resetCanvas(p, pg); 
+            this.resetCanvas(p); 
         }
 
         let lowSum = 0, midSum = 0, highSum = 0;
@@ -100,7 +103,12 @@ export default class P5StylizedArtPainter {
             progress = this.simulatedProgress;
         }
 
-        let targetCount = Math.floor(this.chunkIndices.length * Math.min(1.0, progress / 0.8));
+        if (progress < this.lastProgress) {
+            this.resetCanvas(p);
+        }
+        this.lastProgress = progress;
+
+        let targetCount = Math.floor(this.totalChunks * Math.min(1.0, progress / 0.8));
         let strokesToDraw = targetCount - this.drawnCount;
         
         let burstStrokes = Math.floor(this.smoothMid * 150 * scatter); 
@@ -116,23 +124,34 @@ export default class P5StylizedArtPainter {
             let x = (idx % Math.floor(p.width / step)) * step;
             let y = Math.floor(idx / Math.floor(p.width / step)) * step;
 
-            let imgX = Math.floor(p.map(x, 0, p.width, 0, this.sourceImg.width));
-            let imgY = Math.floor(p.map(y, 0, p.height, 0, this.sourceImg.height));
-            let c = this.sourceImg.get(imgX, imgY);
+            let imgX = Math.floor(p.map(x, 0, p.width, 0, this.sourceImg.width - 1));
+            let imgY = Math.floor(p.map(y, 0, p.height, 0, this.sourceImg.height - 1));
             
-            this.drawStylizedStroke(pg, p, x, y, c, colorStyle);
+            let pIndex = (imgY * this.sourceImg.width + imgX) * 4;
+            let r = this.sourceImg.pixels[pIndex];
+            let g = this.sourceImg.pixels[pIndex + 1];
+            let b = this.sourceImg.pixels[pIndex + 2];
+            
+            this.drawStylizedStroke(p, x, y, r, g, b, colorStyle);
         }
 
         if (this.chunkIndices.length === 0 && this.smoothHigh > 0.1) {
             for(let i=0; i < 20; i++) {
                 let x = p.random(p.width);
                 let y = p.random(p.height);
-                let imgX = Math.floor(p.map(x, 0, p.width, 0, this.sourceImg.width));
-                let imgY = Math.floor(p.map(y, 0, p.height, 0, this.sourceImg.height));
-                this.drawStylizedStroke(pg, p, x, y, this.sourceImg.get(imgX, imgY), colorStyle);
+                let imgX = Math.floor(p.map(x, 0, p.width, 0, this.sourceImg.width - 1));
+                let imgY = Math.floor(p.map(y, 0, p.height, 0, this.sourceImg.height - 1));
+                
+                let pIndex = (imgY * this.sourceImg.width + imgX) * 4;
+                let r = this.sourceImg.pixels[pIndex];
+                let g = this.sourceImg.pixels[pIndex + 1];
+                let b = this.sourceImg.pixels[pIndex + 2];
+
+                this.drawStylizedStroke(p, x, y, r, g, b, colorStyle);
             }
         }
 
+        // 💡 80% 진행 시 오래된 사진 필터 발동
         if (colorStyle === 'custom' && progress >= 0.8) {
             this.drawOldPhotoEffect(p);
         }
@@ -142,84 +161,91 @@ export default class P5StylizedArtPainter {
     this.p5Instance = new window.p5(sketch, this.container);
   }
 
-  drawStylizedStroke(pg, p, x, y, c, style) {
-      let r = p.red(c);
-      let g = p.green(c);
-      let b = p.blue(c);
+  drawStylizedStroke(p, x, y, r, g, b, style) {
+      if (!this.pg) return;
       let brightness = (r + g + b) / 3;
 
-      pg.push();
-      pg.translate(x, y);
+      this.pg.push();
+      this.pg.translate(x, y);
 
       let jitter = (p.random(-1, 1) * this.smoothHigh * 20);
-      pg.translate(jitter, jitter);
+      this.pg.translate(jitter, jitter);
 
       if (style === 'monochrome') {
-          pg.stroke(brightness + p.random(-20, 20)); 
+          this.pg.stroke(brightness + p.random(-20, 20)); 
           let weight = 0.5 + (this.smoothLow * 5); 
-          pg.strokeWeight(weight);
-          pg.noFill();
-          
+          this.pg.strokeWeight(weight);
+          this.pg.noFill();
           let angle = p.noise(x * 0.01, y * 0.01) * p.PI * 2 + (this.smoothHigh * p.PI);
+          this.pg.rotate(angle);
           let len = p.map(brightness, 0, 255, 15, 2) + (this.smoothLow * 10);
-          pg.line(-len/2, -len/2, len/2, len/2);
+          this.pg.line(-len/2, 0, len/2, 0);
           
       } else if (style === 'pastel') {
-          pg.noStroke();
-          pg.fill(r, g, b, 30 + this.smoothHigh * 50); 
-          
+          this.pg.noStroke();
+          this.pg.fill(r, g, b, 30 + this.smoothHigh * 50); 
           let radius = 8 + (this.smoothLow * 30); 
-          pg.circle(p.random(-5, 5), p.random(-5, 5), radius);
-          pg.circle(p.random(-2, 2), p.random(-2, 2), radius * 0.5);
+          this.pg.circle(p.random(-5, 5), p.random(-5, 5), radius);
+          this.pg.circle(p.random(-2, 2), p.random(-2, 2), radius * 0.5);
 
       } else if (style === 'neon') {
-          pg.noStroke();
+          this.pg.noStroke();
           let maxColor = Math.max(r, g, b);
           let nr = r === maxColor ? 255 : r * 0.4;
           let ng = g === maxColor ? 255 : g * 0.4;
           let nb = b === maxColor ? 255 : b * 0.4;
-          pg.fill(nr, ng, nb, 220);
-          
+          this.pg.fill(nr, ng, nb, 220);
           let w = 15 + (this.smoothLow * 25);
           let h = 5 + (this.smoothHigh * 10);
-          pg.rotate(p.random(p.PI));
-          pg.rectMode(p.CENTER);
-          pg.rect(0, 0, w, h);
+          this.pg.rotate(p.random(p.PI));
+          this.pg.rectMode(p.CENTER);
+          this.pg.rect(0, 0, w, h);
 
       } else if (style === 'custom') {
-          pg.noStroke();
-          pg.fill(r, g, b, 200);
-          
+          this.pg.noStroke();
+          this.pg.fill(r, g, b, 200);
           let angle = p.map(brightness, 0, 255, 0, p.PI);
-          pg.rotate(angle);
-          
+          this.pg.rotate(angle);
           let thick = 4 + (this.smoothLow * 12);
           let len = 12 + (this.smoothHigh * 15);
-          pg.ellipse(0, 0, len, thick);
+          this.pg.ellipse(0, 0, len, thick);
       }
       
-      pg.pop();
+      this.pg.pop();
   }
 
+  // 💡 [수정됨] 오래된 사진 필터 그리기
   drawOldPhotoEffect(p) {
+      // 1. 전체적으로 빛바랜 따뜻한 세피아 톤 베이스를 아주 옅게 깝니다.
       p.noStroke();
-      p.fill(60, 40, 20, 30); 
+      p.fill(60, 40, 20, 20); 
       p.rect(0, 0, p.width, p.height);
 
-      p.noFill();
-      for(let i=0; i<50; i++) {
-          p.stroke(0, 0, 0, i * 2);
-          p.strokeWeight(5);
-          let r = p.max(p.width, p.height) * 1.5 - (i * 15);
-          if(r > 0) p.circle(p.width/2, p.height/2, r);
-      }
+      // 2. 부드러운 방사형(Radial) 그라데이션 비네팅 (양파링 제거)
+      let cx = p.width / 2;
+      let cy = p.height / 2;
+      let maxRadius = p.max(p.width, p.height);
 
-      if (this.smoothHigh > 0.2) {
-          p.stroke(255, 255, 255, 100);
-          p.strokeWeight(1);
-          for(let i=0; i<10; i++) {
+      let gradient = p.drawingContext.createRadialGradient(cx, cy, maxRadius * 0.3, cx, cy, maxRadius * 0.8);
+      gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');     // 렌즈 중앙은 완전 투명
+      gradient.addColorStop(1, 'rgba(0, 0, 0, 0.7)');   // 가장자리로 갈수록 부드러운 검은 그림자
+
+      p.drawingContext.fillStyle = gradient;
+      p.noStroke();
+      p.rect(0, 0, p.width, p.height);
+
+      // 3. 미세하고 짧은 빈티지 필름 스크래치 (모니터 깨짐 제거)
+      if (this.smoothHigh > 0.15) {
+          // 한 프레임당 2~5개 정도의 얇고 투명한 스크래치만 무작위 생성
+          let scratchCount = Math.floor(p.random(2, 6));
+          p.stroke(255, 255, 255, 30 + (this.smoothHigh * 50)); 
+          p.strokeWeight(p.random(0.5, 1.5));
+
+          for (let i = 0; i < scratchCount; i++) {
               let nx = p.random(p.width);
-              p.line(nx, 0, nx, p.height);
+              let ny = p.random(p.height);
+              let len = p.random(20, 100); // 쫙쫙 긋지 않고 짧은 선으로 제한
+              p.line(nx, ny, nx, ny + len);
           }
       }
   }
@@ -234,9 +260,7 @@ export default class P5StylizedArtPainter {
       p.pop();
   }
 
-  handleDragOver(e) {
-      e.preventDefault();
-  }
+  handleDragOver(e) { e.preventDefault(); }
 
   handleDrop(e) {
       e.preventDefault();
@@ -245,22 +269,23 @@ export default class P5StylizedArtPainter {
           const url = URL.createObjectURL(file);
           if (this.p5Instance) {
               this.p5Instance.loadImage(url, (img) => {
-                  this.prepareCanvas(img, this.p5Instance, this.p5Instance._setupDone ? this.p5Instance._elements[0] : null); 
+                  this.prepareCanvas(img, this.p5Instance); 
                   this.simulatedProgress = 0; 
               });
           }
       }
   }
 
-  prepareCanvas(img, p, pg) {
+  prepareCanvas(img, p) {
       this.sourceImg = img;
+      this.sourceImg.loadPixels(); 
       this.isImageLoaded = true;
-      this.resetCanvas(p, pg);
+      this.resetCanvas(p);
   }
 
-  resetCanvas(p, pg) {
-      if(!pg) return;
-      pg.background(15, 18, 25);
+  resetCanvas(p) {
+      if(!this.pg) return;
+      this.pg.background(15, 18, 25);
       
       this.chunkIndices = [];
       let step = 6;
@@ -276,6 +301,7 @@ export default class P5StylizedArtPainter {
           [this.chunkIndices[i], this.chunkIndices[j]] = [this.chunkIndices[j], this.chunkIndices[i]];
       }
       
+      this.totalChunks = this.chunkIndices.length; 
       this.drawnCount = 0;
   }
 
@@ -288,7 +314,10 @@ export default class P5StylizedArtPainter {
   resize(w, h) {
     if (this.p5Instance) {
       this.p5Instance.resizeCanvas(w, h);
-      this.isImageLoaded = false; 
+      if (this.pg) {
+          this.pg = this.p5Instance.createGraphics(w, h);
+          this.resetCanvas(this.p5Instance);
+      }
     }
   }
 
