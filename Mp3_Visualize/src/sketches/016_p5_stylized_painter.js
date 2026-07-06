@@ -1,10 +1,9 @@
 /**
  * src/sketches/016_p5_stylized_painter.js
- * - [리팩토링] ImageAnalyzer 코어 모듈 연동으로 구조 최적화
- * - 3단계 페인팅: 윤곽선(30%) -> 면 채우기(60%) -> 정밀 묘사(80%)
- * - UI 슬라이더 실시간 연동 및 미리보기 모드 지원
+ * - [핵심] ImageAnalyzer 코어 모듈 연동 및 3단계 큐(Queue) 레이어 시스템 도입
+ * - 블랙스크린 버그 완벽 해결
  */
-import ImageAnalyzer from '../core/ImageAnalyzer.js'; // 💡 분리된 코어 모듈을 불러옵니다!
+import ImageAnalyzer from '../core/ImageAnalyzer.js'; 
 
 export default class P5StylizedArtPainter {
   constructor(container) {
@@ -13,8 +12,14 @@ export default class P5StylizedArtPainter {
     this.sourceImg = null;
     this.pg = null; 
     
-    this.edgeData = []; 
-    this.points = [];   
+    // 💡 3단계 레이어 큐(Queue)
+    this.layer1 = []; // 윤곽선
+    this.layer2 = []; // 면 채우기(밑색)
+    this.layer3 = []; // 디테일 덧칠
+    
+    // 복원용 원본 큐
+    this.q1 = []; this.q2 = []; this.q3 = [];
+    
     this.totalPoints = 0;
     this.drawnCount = 0;
     
@@ -46,11 +51,15 @@ export default class P5StylizedArtPainter {
         canvas.style('z-index', '1');
         
         p.pixelDensity(1);
-        
         this.pg = p.createGraphics(p.width, p.height);
         this.pg.pixelDensity(1);
         this.pg.background(15, 18, 25); 
         p.noLoop(); 
+        
+        // 💡 초기 블랙스크린 방지용 임시 샘플 로드
+        p.loadImage('https://picsum.photos/seed/cosmic/800/600', (img) => {
+            if(!this.isImageLoaded) this.prepareCanvas(img, p);
+        });
       };
 
       p.draw = () => {
@@ -78,9 +87,23 @@ export default class P5StylizedArtPainter {
     img.resize(p.width, p.height);
     this.sourceImg = img;
     
-    // 💡 무거운 계산을 ImageAnalyzer로 위임! (코드가 엄청 깔끔해졌습니다)
-    this.edgeData = ImageAnalyzer.extractFeatures(img, p, 4, 50);
+    // 💡 코어 모듈 호출! 데이터가 쏟아져 나옵니다.
+    let rawData = ImageAnalyzer.extractFeatures(img, p, 4, 30);
     
+    this.layer1 = []; this.layer2 = []; this.layer3 = [];
+    
+    // 💡 용도에 맞게 3개의 레이어 바구니에 정확히 분류
+    for(let pt of rawData) {
+        if (pt.edge) this.layer1.push(pt);  // 윤곽선 바구니
+        else this.layer2.push(pt);          // 면 채우기 바구니
+        this.layer3.push(pt);               // 덧칠 바구니 (전체)
+    }
+    
+    p.shuffle(this.layer1, true);
+    p.shuffle(this.layer2, true);
+    p.shuffle(this.layer3, true);
+    
+    this.totalPoints = this.layer1.length + this.layer2.length + this.layer3.length;
     this.isImageLoaded = true;
     this.currentSettings = this.getUIParams();
     this.resetCanvas(p, true); 
@@ -90,33 +113,37 @@ export default class P5StylizedArtPainter {
     if(!this.pg) return;
     this.pg.background(15, 18, 25);
     
-    this.points = [...this.edgeData];
+    // 재생을 위해 큐(Queue) 복원
+    this.q1 = [...this.layer1];
+    this.q2 = [...this.layer2];
+    this.q3 = [...this.layer3];
     
     p.randomSeed(this.currentSettings.seed);
     p.noiseSeed(this.currentSettings.seed);
     
-    p.shuffle(this.points, true);
-    this.totalPoints = this.points.length;
     this.drawnCount = 0;
     this.isPreviewMode = isPreview;
 
+    // 💡 미리보기: 3개의 레이어를 순서대로 한 방에 캔버스에 붓습니다.
     if (isPreview && this.isImageLoaded) {
-       for(let i=0; i < this.points.length; i++) {
-           let simProg = i / this.points.length; 
-           this.paintStepByStep(this.points[i], simProg, this.currentSettings, p);
-       }
-       this.points = [];
-       this.drawnCount = this.totalPoints;
+       while(this.q1.length > 0) this.paintStep(this.q1.pop(), 1, this.currentSettings, p);
+       while(this.q2.length > 0) this.paintStep(this.q2.pop(), 2, this.currentSettings, p);
+       while(this.q3.length > 0) this.paintStep(this.q3.pop(), 3, this.currentSettings, p);
        
-       if (this.currentSettings.style === 'custom') {
-           this.drawOldPhotoEffect(p);
-       }
+       this.drawnCount = this.totalPoints;
+       if (this.currentSettings.style === 'custom') this.drawOldPhotoEffect(p);
     }
   }
 
   update(audioData) {
-    if (!this.p5Instance || !this.isImageLoaded) return;
+    if (!this.p5Instance) return;
     let p = this.p5Instance;
+    
+    // 이미지가 아직 없으면 글씨가 깜빡이도록 redraw만 호출
+    if (!this.isImageLoaded) {
+        p.redraw();
+        return;
+    }
     
     const ui = this.getUIParams();
     let settingsChanged = (
@@ -135,9 +162,7 @@ export default class P5StylizedArtPainter {
         this.resetCanvas(p, !isPlaying);
     }
 
-    if (isPlaying && this.isPreviewMode) {
-        this.resetCanvas(p, false); 
-    }
+    if (isPlaying && this.isPreviewMode) this.resetCanvas(p, false); 
 
     let progress = 0;
     if (audioEl && audioEl.duration) {
@@ -147,9 +172,7 @@ export default class P5StylizedArtPainter {
         progress = this.simulatedProgress;
     }
 
-    if (progress < this.lastProgress) {
-        this.resetCanvas(p, !isPlaying);
-    }
+    if (progress < this.lastProgress) this.resetCanvas(p, !isPlaying);
     this.lastProgress = progress;
 
     let normalizedProgress = Math.min(progress / 0.8, 1.0);
@@ -160,21 +183,20 @@ export default class P5StylizedArtPainter {
         let drawBudget = Math.min(targetCount - this.drawnCount, baseRate);
         drawBudget = Math.max(0, drawBudget);
 
-        for (let i = 0; i < drawBudget; i++) {
-            if (this.points.length === 0) break;
-            let pt = this.points.pop();
-            this.drawnCount++;
-            this.paintStepByStep(pt, normalizedProgress, ui, p);
-        }
+        let highFreq = audioData ? (audioData.raw[60] + audioData.raw[61]) / 510 : 0;
 
-        if (this.points.length === 0 && audioData && progress >= 0.8) {
-           let high = (audioData.raw[60] + audioData.raw[61]) / 510;
-           if (high > 0.15) {
-               for(let i=0; i < 5; i++) {
-                   let pt = this.edgeData[Math.floor(p.random(this.edgeData.length))];
-                   this.paintStepByStep(pt, 1.0, ui, p, high); 
-               }
-           }
+        // 💡 예산(Budget)만큼 그릴 때 1번 레이어부터 순차적으로 소진시킵니다.
+        for (let i = 0; i < drawBudget; i++) {
+            if (this.q1.length > 0) {
+                this.paintStep(this.q1.pop(), 1, ui, p, highFreq);
+            } else if (this.q2.length > 0) {
+                this.paintStep(this.q2.pop(), 2, ui, p, highFreq);
+            } else if (this.q3.length > 0) {
+                this.paintStep(this.q3.pop(), 3, ui, p, highFreq);
+            } else {
+                break;
+            }
+            this.drawnCount++;
         }
     }
 
@@ -185,27 +207,27 @@ export default class P5StylizedArtPainter {
     p.redraw();
   }
 
-  paintStepByStep(pt, progress, ui, p, highFreq = 0) {
+  // 💡 레이어 번호(layerNum)에 따라 붓의 종류를 명확히 구분
+  paintStep(pt, layerNum, ui, p, highFreq = 0) {
     let alpha = 200 * ui.glow; 
     let scatterOffset = (p.random(-1, 1) * 10 * ui.scatter) + (highFreq * 20); 
     
     this.pg.push();
     this.pg.translate(pt.x + scatterOffset, pt.y + scatterOffset);
     
-    if (progress < 0.3) {
-        if (pt.edge) {
-            this.pg.stroke(255, 150 * ui.glow);
-            this.pg.strokeWeight(p.random(0.5, 1.5) * (ui.glow * 2));
-            this.pg.point(0, 0);
-        }
-    } else if (progress < 0.6) {
-        if (!pt.edge) {
-            this.pg.noStroke();
-            this.pg.fill(pt.r, pt.g, pt.b, alpha);
-            let rectSize = 6 * ui.glow * (ui.scatter > 0 ? ui.scatter : 1);
-            this.pg.rect(0, 0, rectSize, rectSize);
-        }
-    } else {
+    if (layerNum === 1) {
+        // [1단계 레이어] 윤곽선 스케치
+        this.pg.stroke(255, 150 * ui.glow);
+        this.pg.strokeWeight(p.random(0.5, 1.5) * (ui.glow * 2));
+        this.pg.point(0, 0);
+    } else if (layerNum === 2) {
+        // [2단계 레이어] 면 채우기 (밑색)
+        this.pg.noStroke();
+        this.pg.fill(pt.r, pt.g, pt.b, alpha);
+        let rectSize = 6 * ui.glow * (ui.scatter > 0 ? ui.scatter : 1);
+        this.pg.rect(0, 0, rectSize, rectSize);
+    } else if (layerNum === 3) {
+        // [3단계 레이어] 정밀 묘사 덧칠
         this.pg.noStroke();
         this.pg.fill(pt.r, pt.g, pt.b, alpha);
         let ellipseSize = 2 * ui.glow;
