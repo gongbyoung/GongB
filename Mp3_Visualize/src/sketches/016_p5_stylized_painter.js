@@ -1,7 +1,7 @@
 /**
  * src/sketches/016_p5_stylized_painter.js
- * - [핵심] ImageAnalyzer 코어 모듈 연동 및 3단계 큐(Queue) 레이어 시스템 도입
- * - 블랙스크린 버그 완벽 해결
+ * - [버그 픽스] this.sourceImg.remove() 오류 해결 (null 처리로 메모리 해제)
+ * - ImageAnalyzer 코어 모듈 연동 및 3단계 큐(Queue) 레이어 시스템
  */
 import ImageAnalyzer from '../core/ImageAnalyzer.js'; 
 
@@ -12,12 +12,10 @@ export default class P5StylizedArtPainter {
     this.sourceImg = null;
     this.pg = null; 
     
-    // 💡 3단계 레이어 큐(Queue)
-    this.layer1 = []; // 윤곽선
-    this.layer2 = []; // 면 채우기(밑색)
-    this.layer3 = []; // 디테일 덧칠
+    this.layer1 = []; 
+    this.layer2 = []; 
+    this.layer3 = []; 
     
-    // 복원용 원본 큐
     this.q1 = []; this.q2 = []; this.q3 = [];
     
     this.totalPoints = 0;
@@ -56,7 +54,6 @@ export default class P5StylizedArtPainter {
         this.pg.background(15, 18, 25); 
         p.noLoop(); 
         
-        // 💡 초기 블랙스크린 방지용 임시 샘플 로드
         p.loadImage('https://picsum.photos/seed/cosmic/800/600', (img) => {
             if(!this.isImageLoaded) this.prepareCanvas(img, p);
         });
@@ -87,16 +84,14 @@ export default class P5StylizedArtPainter {
     img.resize(p.width, p.height);
     this.sourceImg = img;
     
-    // 💡 코어 모듈 호출! 데이터가 쏟아져 나옵니다.
     let rawData = ImageAnalyzer.extractFeatures(img, p, 4, 30);
     
     this.layer1 = []; this.layer2 = []; this.layer3 = [];
     
-    // 💡 용도에 맞게 3개의 레이어 바구니에 정확히 분류
     for(let pt of rawData) {
-        if (pt.edge) this.layer1.push(pt);  // 윤곽선 바구니
-        else this.layer2.push(pt);          // 면 채우기 바구니
-        this.layer3.push(pt);               // 덧칠 바구니 (전체)
+        if (pt.edge) this.layer1.push(pt);  
+        else this.layer2.push(pt);          
+        this.layer3.push(pt);               
     }
     
     p.shuffle(this.layer1, true);
@@ -113,7 +108,6 @@ export default class P5StylizedArtPainter {
     if(!this.pg) return;
     this.pg.background(15, 18, 25);
     
-    // 재생을 위해 큐(Queue) 복원
     this.q1 = [...this.layer1];
     this.q2 = [...this.layer2];
     this.q3 = [...this.layer3];
@@ -124,7 +118,6 @@ export default class P5StylizedArtPainter {
     this.drawnCount = 0;
     this.isPreviewMode = isPreview;
 
-    // 💡 미리보기: 3개의 레이어를 순서대로 한 방에 캔버스에 붓습니다.
     if (isPreview && this.isImageLoaded) {
        while(this.q1.length > 0) this.paintStep(this.q1.pop(), 1, this.currentSettings, p);
        while(this.q2.length > 0) this.paintStep(this.q2.pop(), 2, this.currentSettings, p);
@@ -139,7 +132,6 @@ export default class P5StylizedArtPainter {
     if (!this.p5Instance) return;
     let p = this.p5Instance;
     
-    // 이미지가 아직 없으면 글씨가 깜빡이도록 redraw만 호출
     if (!this.isImageLoaded) {
         p.redraw();
         return;
@@ -185,7 +177,6 @@ export default class P5StylizedArtPainter {
 
         let highFreq = audioData ? (audioData.raw[60] + audioData.raw[61]) / 510 : 0;
 
-        // 💡 예산(Budget)만큼 그릴 때 1번 레이어부터 순차적으로 소진시킵니다.
         for (let i = 0; i < drawBudget; i++) {
             if (this.q1.length > 0) {
                 this.paintStep(this.q1.pop(), 1, ui, p, highFreq);
@@ -207,7 +198,6 @@ export default class P5StylizedArtPainter {
     p.redraw();
   }
 
-  // 💡 레이어 번호(layerNum)에 따라 붓의 종류를 명확히 구분
   paintStep(pt, layerNum, ui, p, highFreq = 0) {
     let alpha = 200 * ui.glow; 
     let scatterOffset = (p.random(-1, 1) * 10 * ui.scatter) + (highFreq * 20); 
@@ -216,18 +206,15 @@ export default class P5StylizedArtPainter {
     this.pg.translate(pt.x + scatterOffset, pt.y + scatterOffset);
     
     if (layerNum === 1) {
-        // [1단계 레이어] 윤곽선 스케치
         this.pg.stroke(255, 150 * ui.glow);
         this.pg.strokeWeight(p.random(0.5, 1.5) * (ui.glow * 2));
         this.pg.point(0, 0);
     } else if (layerNum === 2) {
-        // [2단계 레이어] 면 채우기 (밑색)
         this.pg.noStroke();
         this.pg.fill(pt.r, pt.g, pt.b, alpha);
         let rectSize = 6 * ui.glow * (ui.scatter > 0 ? ui.scatter : 1);
         this.pg.rect(0, 0, rectSize, rectSize);
     } else if (layerNum === 3) {
-        // [3단계 레이어] 정밀 묘사 덧칠
         this.pg.noStroke();
         this.pg.fill(pt.r, pt.g, pt.b, alpha);
         let ellipseSize = 2 * ui.glow;
@@ -271,7 +258,9 @@ export default class P5StylizedArtPainter {
     if (file && file.type.startsWith('image/')) {
       const url = URL.createObjectURL(file);
       if (this.p5Instance) {
-        if(this.sourceImg) this.sourceImg.remove();
+        // 💡 [버그 픽스] remove() 대신 안전하게 null로 초기화합니다.
+        this.sourceImg = null; 
+        
         this.p5Instance.loadImage(url, (img) => {
           this.prepareCanvas(img, this.p5Instance); 
         });
@@ -294,6 +283,7 @@ export default class P5StylizedArtPainter {
     this.container.removeEventListener('dragover', this.handleDragOver);
     this.container.removeEventListener('drop', this.handleDrop);
     if (this.p5Instance) this.p5Instance.remove();
-    if (this.sourceImg) this.sourceImg.remove();
+    // 💡 [버그 픽스] 스케치 소멸 시에도 안전하게 null로 비웁니다.
+    this.sourceImg = null; 
   }
 }
