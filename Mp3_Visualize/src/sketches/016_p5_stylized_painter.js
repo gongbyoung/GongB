@@ -1,20 +1,31 @@
 /**
  * src/sketches/016_p5_stylized_painter.js
+ * - [통합 완결판] 단 한 줄의 생략도 없는 전체 코드
  * - 3단계 페인팅: 윤곽선(30%) -> 면 채우기(60%) -> 정밀 묘사(80%)
+ * - UI 슬라이더 실시간 연동 (분산, 크기/발광, 폭발력, 시드)
+ * - 정지 시 즉시 100% 완성본 렌더링 (미리보기 모드)
  */
 export default class P5StylizedArtPainter {
   constructor(container) {
     this.container = container;
     this.p5Instance = null;
     this.sourceImg = null;
-    this.pg = null; // 오프스크린 그래픽 버퍼
-    this.points = []; // 픽셀 기반 붓터치 위치 데이터
+    this.pg = null; 
+    
+    this.edgeData = []; // 전처리된 픽셀 데이터 보관소
+    this.points = [];   // 실제로 그릴 큐(Queue)
+    this.totalPoints = 0;
+    this.drawnCount = 0;
+    
     this.isImageLoaded = false;
-    this.step = 4; // 픽셀 샘플링 간격 (값이 클수록 더 거친 스케치)
+    this.isPreviewMode = true;
+    this.simulatedProgress = 0;
+    this.lastProgress = 0;
+    
+    this.currentSettings = { style: 'neon', scatter: 2.2, gain: 1.0, seed: 42, glow: 0.25 };
   }
 
   async init() {
-    // p5.js가 로드되어 있는지 확인
     if (!window.p5) {
       await new Promise((resolve) => {
         const script = document.createElement('script');
@@ -24,7 +35,6 @@ export default class P5StylizedArtPainter {
       });
     }
 
-    // 드래그 앤 드롭 이벤트 리스너 등록
     this.container.addEventListener('dragover', this.handleDragOver.bind(this));
     this.container.addEventListener('drop', this.handleDrop.bind(this));
 
@@ -34,39 +44,241 @@ export default class P5StylizedArtPainter {
         canvas.style('position', 'absolute');
         canvas.style('z-index', '1');
         
-        // 그림을 그릴 그래픽 버퍼 생성
         this.pg = p.createGraphics(p.width, p.height);
-        this.pg.background(15, 18, 25); // 어두운 배경
-        
-        p.noLoop(); // draw()를 수동으로 호출
+        this.pg.background(15, 18, 25); 
+        p.noLoop(); 
       };
 
       p.draw = () => {
         p.clear();
-        if (this.pg) {
-          p.image(this.pg, 0, 0); // 버퍼의 내용을 화면에 그림
-        } else {
-          this.drawDropUI(p); // 이미지 없을 때 가이드 표시
-        }
+        if (this.pg) p.image(this.pg, 0, 0); 
+        if (!this.isImageLoaded) this.drawDropUI(p);
       };
     };
 
     this.p5Instance = new window.p5(sketch, this.container);
   }
 
+  getUIParams() {
+      const settings = window.cosmicEngineSettings || {};
+      return {
+          scatter: settings.scatterExponent ?? 2.2,
+          glow: settings.glowAmount ?? (settings.size ?? 0.25),
+          burst: settings.audioGain ?? 1.0,
+          seed: settings.seed ?? 42,
+          style: settings.colorStyle ?? 'neon'
+      };
+  }
+
+  prepareCanvas(img, p) {
+    this.sourceImg = img;
+    this.sourceImg.loadPixels();
+    
+    // 💡 1. 흑백 사본을 만들어 윤곽선(Edge) 추출
+    let grayImg = p.createImage(img.width, img.height);
+    grayImg.copy(img, 0, 0, img.width, img.height, 0, 0, img.width, img.height);
+    grayImg.filter(p.GRAY);
+    grayImg.loadPixels();
+
+    this.edgeData = [];
+    let step = 4; // 붓터치 샘플링 간격
+    
+    for (let y = 1; y < img.height - 1; y += step) {
+      for (let x = 1; x < img.width - 1; x += step) {
+        let idx = (y * img.width + x) * 4;
+        
+        // 미분(밝기 차이)을 통해 윤곽선 강도 계산
+        let diffX = Math.abs(grayImg.pixels[idx] - grayImg.pixels[idx + 4]);
+        let diffY = Math.abs(grayImg.pixels[idx] - grayImg.pixels[idx + img.width * 4]);
+        let edgeStrength = diffX + diffY;
+        
+        this.edgeData.push({
+          x: x, 
+          y: y,
+          r: img.pixels[idx], 
+          g: img.pixels[idx+1], 
+          b: img.pixels[idx+2],
+          edge: edgeStrength > 50 ? 1 : 0
+        });
+      }
+    }
+    
+    this.isImageLoaded = true;
+    this.currentSettings = this.getUIParams();
+    this.resetCanvas(p, true); // 로드 즉시 미리보기 생성
+  }
+
+  resetCanvas(p, isPreview = false) {
+    if(!this.pg) return;
+    this.pg.background(15, 18, 25);
+    
+    // 원본 데이터를 복사하여 큐에 장전
+    this.points = [...this.edgeData];
+    
+    // 지형변경(Seed) 슬라이더 연동
+    p.randomSeed(this.currentSettings.seed);
+    p.noiseSeed(this.currentSettings.seed);
+    
+    p.shuffle(this.points, true);
+    this.totalPoints = this.points.length;
+    this.drawnCount = 0;
+    this.isPreviewMode = isPreview;
+
+    // 💡 2. 미리보기 모드일 경우 즉시 100% 렌더링
+    if (isPreview && this.isImageLoaded) {
+       for(let i=0; i < this.points.length; i++) {
+           // 0~1 사이의 가상 진행률을 부여하여 3단계 화풍을 모두 캔버스에 찍음
+           let simProg = i / this.points.length; 
+           this.paintStepByStep(this.points[i], simProg, this.currentSettings, p);
+       }
+       this.points = [];
+       this.drawnCount = this.totalPoints;
+       
+       if (this.currentSettings.style === 'custom') {
+           this.drawOldPhotoEffect(p);
+       }
+    }
+  }
+
+  update(audioData) {
+    if (!this.p5Instance || !this.isImageLoaded) return;
+    let p = this.p5Instance;
+    
+    // 💡 3. UI 슬라이더 변경 감지
+    const ui = this.getUIParams();
+    let settingsChanged = (
+        this.currentSettings.style !== ui.style ||
+        this.currentSettings.scatter !== ui.scatter ||
+        this.currentSettings.burst !== ui.burst ||
+        this.currentSettings.seed !== ui.seed ||
+        this.currentSettings.glow !== ui.glow
+    );
+
+    const audioEl = document.querySelector('audio');
+    let isPlaying = audioEl && !audioEl.paused;
+    
+    if (settingsChanged) {
+        this.currentSettings = ui;
+        this.resetCanvas(p, !isPlaying); // 정지 중이면 미리보기 갱신
+    }
+
+    if (isPlaying && this.isPreviewMode) {
+        this.resetCanvas(p, false); // 재생 시 캔버스 지우기
+    }
+
+    // 💡 4. 진행률 계산 (80% 지점에서 100% 완성)
+    let progress = 0;
+    if (audioEl && audioEl.duration) {
+        progress = audioEl.currentTime / audioEl.duration;
+    } else {
+        if (isPlaying) this.simulatedProgress += 0.016 / 180.0;
+        progress = this.simulatedProgress;
+    }
+
+    // 음악 되감기 감지 시 캔버스 리셋
+    if (progress < this.lastProgress) {
+        this.resetCanvas(p, !isPlaying);
+    }
+    this.lastProgress = progress;
+
+    let normalizedProgress = Math.min(progress / 0.8, 1.0);
+    
+    if (!this.isPreviewMode) {
+        let targetCount = Math.floor(this.totalPoints * normalizedProgress);
+        
+        // 폭발력(Burst) 슬라이더 연동: 한 프레임에 그릴 최대 획 개수 한계치 설정
+        let baseRate = Math.floor(this.totalPoints * 0.02 * ui.burst);
+        let drawBudget = Math.min(targetCount - this.drawnCount, baseRate);
+        drawBudget = Math.max(0, drawBudget);
+
+        for (let i = 0; i < drawBudget; i++) {
+            if (this.points.length === 0) break;
+            let pt = this.points.pop();
+            this.drawnCount++;
+            this.paintStepByStep(pt, normalizedProgress, ui, p);
+        }
+
+        // 완성 후 고음역대 라이브 이펙트 (음악이 터질 때 빈 공간에 반짝임)
+        if (this.points.length === 0 && audioData && progress >= 0.8) {
+           let high = (audioData.raw[60] + audioData.raw[61]) / 510;
+           if (high > 0.15) {
+               for(let i=0; i < 5; i++) {
+                   let pt = this.edgeData[Math.floor(p.random(this.edgeData.length))];
+                   this.paintStepByStep(pt, 1.0, ui, p, high); // 강제로 3단계 정밀 묘사 출력
+               }
+           }
+        }
+    }
+
+    // 인상파(Custom) 스타일 - 오래된 사진 효과
+    if (ui.style === 'custom' && progress >= 0.8 && !this.isPreviewMode) {
+        this.drawOldPhotoEffect(p);
+    }
+
+    p.redraw();
+  }
+
+  // 💡 5. 3단계 화가 엔진 로직
+  paintStepByStep(pt, progress, ui, p, highFreq = 0) {
+    let alpha = 200 * ui.glow; // 발광/크기 슬라이더 -> 투명도 연동
+    let scatterOffset = (p.random(-1, 1) * 10 * ui.scatter) + (highFreq * 20); // 분산 범위 연동
+    
+    this.pg.push();
+    this.pg.translate(pt.x + scatterOffset, pt.y + scatterOffset);
+    
+    if (progress < 0.3) {
+        // [1단계: 0~30%] 윤곽선 스케치
+        if (pt.edge) {
+            this.pg.stroke(255, 150 * ui.glow);
+            this.pg.strokeWeight(p.random(0.5, 1.5) * (ui.glow * 2));
+            this.pg.point(0, 0);
+        }
+    } else if (progress < 0.6) {
+        // [2단계: 30~60%] 윤곽선 안쪽 면 채우기
+        if (!pt.edge) {
+            this.pg.noStroke();
+            this.pg.fill(pt.r, pt.g, pt.b, alpha);
+            let rectSize = 6 * ui.glow * (ui.scatter > 0 ? ui.scatter : 1);
+            this.pg.rect(0, 0, rectSize, rectSize);
+        }
+    } else {
+        // [3단계: 60~80%] 전체 정밀 묘사 덧칠
+        this.pg.noStroke();
+        this.pg.fill(pt.r, pt.g, pt.b, alpha);
+        let ellipseSize = 2 * ui.glow;
+        this.pg.ellipse(0, 0, ellipseSize, ellipseSize);
+    }
+    
+    this.pg.pop();
+  }
+
+  drawOldPhotoEffect(p) {
+    p.noStroke();
+    p.fill(60, 40, 20, 5); 
+    p.rect(0, 0, p.width, p.height);
+
+    let cx = p.width / 2;
+    let cy = p.height / 2;
+    let maxRadius = p.max(p.width, p.height);
+    let gradient = p.drawingContext.createRadialGradient(cx, cy, maxRadius * 0.3, cx, cy, maxRadius * 0.8);
+    gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');     
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0.1)');   
+    p.drawingContext.fillStyle = gradient;
+    p.noStroke();
+    p.rect(0, 0, p.width, p.height);
+  }
+
   drawDropUI(p) {
     p.push();
-    p.fill(200);
+    p.fill(255, 255, 255, 100 + p.sin(p.millis() * 0.005) * 50);
     p.noStroke();
     p.textSize(24);
     p.textAlign(p.CENTER, p.CENTER);
-    p.text("이미지를 드래그하여 드롭하세요", p.width/2, p.height/2);
+    p.text("원하는 이미지를 드래그 & 드롭하여 캔버스에 올려주세요", p.width/2, p.height/2);
     p.pop();
   }
 
-  handleDragOver(e) {
-    e.preventDefault();
-  }
+  handleDragOver(e) { e.preventDefault(); }
 
   handleDrop(e) {
     e.preventDefault();
@@ -74,151 +286,28 @@ export default class P5StylizedArtPainter {
     if (file && file.type.startsWith('image/')) {
       const url = URL.createObjectURL(file);
       if (this.p5Instance) {
-        // 기존 이미지가 있다면 정리
-        if(this.sourceImg) {
-          this.sourceImg.remove();
-        }
+        if(this.sourceImg) this.sourceImg.remove();
         this.p5Instance.loadImage(url, (img) => {
-          this.prepareCanvas(img, this.p5Instance);
+          this.prepareCanvas(img, this.p5Instance); 
         });
       }
-    }
-  }
-
-  prepareCanvas(img, p) {
-    // 원본 이미지 설정 및 전처리
-    this.sourceImg = img;
-    // 이미지를 Grayscale(흑백)으로 변환하여 윤곽선 추출 준비
-    this.sourceImg.filter(p.GRAY); 
-    this.sourceImg.loadPixels();
-    
-    // 그래픽 버퍼 초기화
-    this.pg.clear();
-    this.pg.background(15, 18, 25);
-    
-    // 💡 이미지의 픽셀 데이터를 순회하며 점(포인트) 데이터 생성
-    this.points = [];
-    // 이미지 경계선을 제외하고 샘플링
-    for (let y = 1; y < img.height - 1; y += this.step) {
-      for (let x = 1; x < img.width - 1; x += this.step) {
-        let idx = (y * img.width + x) * 4;
-        
-        // 간단한 Sobel-like 윤곽선 검출 (밝기 차이 계산)
-        // 오른쪽 픽셀과의 차이
-        let diffX = Math.abs(img.pixels[idx] - img.pixels[idx + 4]);
-        // 아래쪽 픽셀과의 차이
-        let diffY = Math.abs(img.pixels[idx] - img.pixels[idx + img.width * 4]);
-        
-        let edgeStrength = diffX + diffY;
-        
-        // 포인트 데이터 저장 (좌표, 원본 RGB, 윤곽선 여부)
-        this.points.push({
-          x: x,
-          y: y,
-          r: img.pixels[idx],     // 원본 R값
-          g: img.pixels[idx + 1], // 원본 G값
-          b: img.pixels[idx + 2], // 원본 B값
-          // 임계값(50)보다 크면 윤곽선으로 간주
-          edge: edgeStrength > 50 ? 1 : 0
-        });
-      }
-    }
-    
-    // 💡 중요: 그리는 순서를 무작위로 섞어서 체계적이지 않은 거친 느낌 부여
-    p.shuffle(this.points, true);
-    
-    this.isImageLoaded = true;
-    console.log(`[3-Step Painter] 준비 완료: ${this.points.length} 포인트 생성`);
-    this.p5Instance.redraw(); // 화면 갱신
-  }
-
-  update() {
-    if (!this.p5Instance || !this.isImageLoaded || this.points.length === 0) return;
-
-    const audioEl = document.querySelector('audio');
-    // 오디오가 없으면 진행 불가
-    if (!audioEl || !audioEl.duration) return;
-
-    // 💡 [핵심] 진행률 계산 (전체 시간의 80%를 100% 완료로 설정)
-    const progress = Math.min(audioEl.currentTime / (audioEl.duration * 0.8), 1.0);
-    
-    // 💡 [최적화] 프레임당 그릴 포인트 수 계산 (남은 포인트의 5%)
-    let budget = Math.max(10, Math.floor(this.points.length * 0.05)); 
-    
-    this.pg.push();
-    // 캔버스 좌표를 이미지 크기에 맞게 조정 (이미지가 캔버스보다 작을 경우 중앙 정렬 등 고려 가능)
-    // 여기서는 간단하게 원본 비율로 매핑한다고 가정
-    
-    for(let i = 0; i < budget; i++) {
-      if(this.points.length === 0) break;
-      let pt = this.points.pop();
-      this.paintStepByStep(pt, progress);
-    }
-    this.pg.pop();
-    
-    this.p5Instance.redraw(); // 변경된 그래픽 버퍼를 화면에 그림
-  }
-
-  paintStepByStep(pt, progress) {
-    // 그래픽 버퍼 좌표계 보정 (p5 인스턴스 기준)
-    // prepareCanvas에서 이미 스케일이 적용되었으므로 여기서는 1:1 매핑
-    
-    let targetX = pt.x;
-    let targetY = pt.y;
-
-    // 💡 시간대별 엔진 분기
-    if (progress < 0.3) {
-      // 1단계 (0~30%): 윤곽선 위주로 거친 스케치 (연필/목탄 느낌)
-      if (pt.edge) {
-        this.pg.stroke(255, 150); // 흰색, 반투명
-        this.pg.strokeWeight(p.random(0.5, 1.5)); // 랜덤한 굵기
-        this.pg.point(targetX, targetY);
-      }
-    } else if (progress < 0.6) {
-      // 2단계 (30~60%): 윤곽선 안쪽 면 채우기 (Blocking - 과감한 붓터치)
-      // 윤곽선이 아닌 점들에 대해서만 실행
-      if (!pt.edge) {
-        this.pg.noStroke();
-        this.pg.fill(pt.r, pt.g, pt.b); // 원본 색상
-        // 사각형으로 과감하게 채우기
-        let rectSize = this.step * 1.5;
-        this.pg.rect(targetX, targetY, rectSize, rectSize);
-      }
-    } else {
-      // 3단계 (60~80%): 섬세한 덧칠 (Refining - 디테일과 명암 보강)
-      // 모든 점을 사용하여 묘사
-      this.pg.noStroke();
-      // 색상에 약간의 변화를 주어 깊이감 생성
-      this.pg.fill(pt.r, pt.g, pt.b, 200);
-      // 작은 원형으로 섬세하게 묘사
-      let ellipseSize = this.step * 0.5;
-      this.pg.ellipse(targetX, targetY, ellipseSize, ellipseSize);
     }
   }
 
   resize(w, h) {
     if (this.p5Instance) {
       this.p5Instance.resizeCanvas(w, h);
-      // 리사이즈 시 그래픽 버퍼도 함께 재생성
-      this.pg = this.p5Instance.createGraphics(w, h);
-      // 이미지가 로드된 상태라면 다시 준비
-      if (this.sourceImg) {
-        this.prepareCanvas(this.sourceImg, this.p5Instance);
-      } else {
-        this.pg.background(15, 18, 25);
+      if (this.pg) {
+          this.pg = this.p5Instance.createGraphics(w, h);
+          this.resetCanvas(this.p5Instance, this.isPreviewMode);
       }
     }
   }
 
   destroy() {
-    // 이벤트 리스너 제거
     this.container.removeEventListener('dragover', this.handleDragOver);
     this.container.removeEventListener('drop', this.handleDrop);
-    if (this.p5Instance) {
-      this.p5Instance.remove();
-    }
-    if (this.sourceImg) {
-      this.sourceImg.remove();
-    }
+    if (this.p5Instance) this.p5Instance.remove();
+    if (this.sourceImg) this.sourceImg.remove();
   }
 }
