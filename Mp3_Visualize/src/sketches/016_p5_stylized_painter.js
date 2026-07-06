@@ -1,7 +1,8 @@
 /**
  * src/sketches/016_p5_stylized_painter.js
- * - 무작위 섞기(Shuffle) 제거 및 공간 정렬(Sorting) 도입
- * - 스케치 선이 사물의 윤곽 방향(Angle)을 따라가도록 물리 엔진 수정
+ * - [수정1] 분산범위(Scatter): 붓 크기 스케일 대비 조절 (저음은 더 크게, 고음은 더 작게)
+ * - [수정2] 발광/크기(Glow): 이미지 밝기(Brightness) 및 섬세함(Detail) 조절
+ * - [수정3] 지형변경(Seed): 칠해지는 순서(Shuffle) 무작위 재배치
  */
 import ImageAnalyzer from '../core/ImageAnalyzer.js'; 
 
@@ -73,7 +74,7 @@ export default class P5StylizedArtPainter {
           glow: settings.glowAmount ?? (settings.size ?? 0.25),
           burst: settings.audioGain ?? 1.0,
           seed: settings.seed ?? 42,
-          style: settings.colorStyle ?? 'neon'
+          style: (settings.colorStyle || 'neon').toLowerCase() 
       };
   }
 
@@ -81,7 +82,6 @@ export default class P5StylizedArtPainter {
     img.resize(p.width, p.height);
     this.sourceImg = img;
     
-    // 코어 모듈에서 각도와 정렬 키까지 받아옵니다
     let rawData = ImageAnalyzer.extractFeatures(img, p, 4, 20);
     
     this.layer1 = []; this.layer2 = []; this.layer3 = [];
@@ -92,12 +92,6 @@ export default class P5StylizedArtPainter {
         this.layer3.push(pt);               
     }
     
-    // 💡 [핵심 교정] 무작위 셔플 대신, 사람이 그리듯 좌상단 -> 우하단으로 정렬합니다.
-    // 배열에서 pop()으로 꺼내므로, 내림차순 정렬해야 값이 작은 좌측상단부터 그려집니다.
-    this.layer1.sort((a, b) => b.sortKey - a.sortKey);
-    this.layer2.sort((a, b) => b.sortKey - a.sortKey);
-    this.layer3.sort((a, b) => b.sortKey - a.sortKey);
-    
     this.isImageLoaded = true;
     this.currentSettings = this.getUIParams();
     this.resetCanvas(p, true); 
@@ -107,22 +101,22 @@ export default class P5StylizedArtPainter {
     if(!this.pg) return;
     this.pg.background(15, 18, 25);
     
-    this.q1 = [...this.layer1];
-    this.q2 = [...this.layer2];
-    this.q3 = [...this.layer3];
-    
+    // 💡 [수정3] 지형변경(Seed) - 슬라이더를 움직일 때마다 칠해지는 '순서'를 새롭게 섞습니다.
     p.randomSeed(this.currentSettings.seed);
-    p.noiseSeed(this.currentSettings.seed);
+    
+    this.q1 = p.shuffle([...this.layer1]);
+    this.q2 = p.shuffle([...this.layer2]);
+    this.q3 = p.shuffle([...this.layer3]);
     
     this.drawn1 = 0; this.drawn2 = 0; this.drawn3 = 0;
     this.isPreviewMode = isPreview;
 
     if (isPreview && this.isImageLoaded) {
-       while(this.q1.length > 0) this.paintStep(this.q1.pop(), 1, this.currentSettings, p);
-       while(this.q2.length > 0) this.paintStep(this.q2.pop(), 2, this.currentSettings, p);
-       while(this.q3.length > 0) this.paintStep(this.q3.pop(), 3, this.currentSettings, p);
+       while(this.q1.length > 0) this.paintStep(this.q1.pop(), 1, this.currentSettings, p, 0.5, 0.5, 0.5);
+       while(this.q2.length > 0) this.paintStep(this.q2.pop(), 2, this.currentSettings, p, 0.5, 0.5, 0.5);
+       while(this.q3.length > 0) this.paintStep(this.q3.pop(), 3, this.currentSettings, p, 0.5, 0.5, 0.5);
        
-       if (this.currentSettings.style === 'custom') this.drawOldPhotoEffect(p);
+       if (this.currentSettings.style.includes('custom')) this.drawOldPhotoEffect(p);
     }
   }
 
@@ -166,7 +160,10 @@ export default class P5StylizedArtPainter {
     this.lastProgress = progress;
 
     if (!this.isPreviewMode) {
-        let highFreq = audioData ? (audioData.raw[60] + audioData.raw[61]) / 510 : 0;
+        // 주파수 대역별 강도 분리
+        let low = audioData ? (audioData.raw[2] + audioData.raw[3]) / 510 : 0.5;
+        let mid = audioData ? (audioData.raw[20] + audioData.raw[21]) / 510 : 0.5;
+        let high = audioData ? (audioData.raw[60] + audioData.raw[61]) / 510 : 0.5;
         
         let p1 = Math.min(progress / 0.3, 1.0); 
         let p2 = progress > 0.3 ? Math.min((progress - 0.3) / 0.3, 1.0) : 0; 
@@ -181,50 +178,69 @@ export default class P5StylizedArtPainter {
         let budget3 = Math.max(0, target3 - this.drawn3);
 
         for (let i = 0; i < budget1; i++) {
-            if (this.q1.length > 0) { this.paintStep(this.q1.pop(), 1, ui, p, highFreq); this.drawn1++; }
+            if (this.q1.length > 0) { this.paintStep(this.q1.pop(), 1, ui, p, low, mid, high); this.drawn1++; }
         }
         for (let i = 0; i < budget2; i++) {
-            if (this.q2.length > 0) { this.paintStep(this.q2.pop(), 2, ui, p, highFreq); this.drawn2++; }
+            if (this.q2.length > 0) { this.paintStep(this.q2.pop(), 2, ui, p, low, mid, high); this.drawn2++; }
         }
         for (let i = 0; i < budget3; i++) {
-            if (this.q3.length > 0) { this.paintStep(this.q3.pop(), 3, ui, p, highFreq); this.drawn3++; }
+            if (this.q3.length > 0) { this.paintStep(this.q3.pop(), 3, ui, p, low, mid, high); this.drawn3++; }
         }
     }
 
-    if (ui.style === 'custom' && progress >= 0.8 && !this.isPreviewMode) {
+    if (ui.style.includes('custom') && progress >= 0.8 && !this.isPreviewMode) {
         this.drawOldPhotoEffect(p);
     }
 
     p.redraw();
   }
 
-  paintStep(pt, layerNum, ui, p, highFreq = 0) {
-    let alpha = 200 * ui.glow; 
-    let scatterOffset = (p.random(-1, 1) * 10 * ui.scatter) + (highFreq * 20); 
-    
+  paintStep(pt, layerNum, ui, p, low, mid, high) {
+    // 💡 [수정2] 발광/크기 (Glow & Size) = 밝기 & 섬세함
+    let brightnessMod = ui.glow; // 값이 클수록 밝아짐
+    let detailMod = Math.max(0.2, ui.glow); // 값이 클수록 붓이 작아져 원본과 비슷해짐
+
+    let r = Math.min(255, pt.r * brightnessMod);
+    let g = Math.min(255, pt.g * brightnessMod);
+    let b = Math.min(255, pt.b * brightnessMod);
+
+    if (ui.style.includes('monochrome')) {
+        let lum = (r + g + b) / 3;
+        r = lum; g = lum; b = lum;
+    } else if (ui.style.includes('pastel')) {
+        r = Math.min(255, r + 50); g = Math.min(255, g + 50); b = Math.min(255, b + 50);
+    } else if (ui.style.includes('neon')) {
+        let maxC = Math.max(r, g, b);
+        r = r === maxC ? 255 : r * 0.5; g = g === maxC ? 255 : g * 0.5; b = b === maxC ? 255 : b * 0.5;
+    }
+
     this.pg.push();
-    this.pg.translate(pt.x + scatterOffset, pt.y + scatterOffset);
-    
+    this.pg.translate(pt.x, pt.y); // 위치 어긋남(모자이크 현상) 완전 제거
+    if (pt.angle !== undefined) {
+        this.pg.rotate(pt.angle + p.random(-0.1, 0.1)); // 사물의 결(각도) 유지
+    }
+
+    // 💡 [수정1] 분산범위 (Scatter) = 붓 크기 대비(Contrast) 조절
+    let scatterMod = ui.scatter;
+
     if (layerNum === 1) {
-        this.pg.stroke(220, 220, 220, 180 * ui.glow); 
-        this.pg.strokeWeight(p.random(1, 2) * ui.glow);
-        let len = p.random(5, 15) * ui.glow;
-        
-        // 💡 [핵심 교정] 무작위 빗금이 아니라, 사물의 결(Angle)을 감싸듯 선을 긋습니다.
-        this.pg.rotate(pt.angle + p.random(-0.15, 0.15)); 
-        this.pg.line(-len/2, 0, len/2, 0); 
-        
+        // 1단계(윤곽선 스케치) - 저음에 반응하여 더 거대해지는 선
+        let size = (10 + (low * 20)) * scatterMod / detailMod;
+        this.pg.stroke(r, g, b, 150); 
+        this.pg.strokeWeight(p.random(1, 2) / detailMod);
+        this.pg.line(-size/2, 0, size/2, 0); 
     } else if (layerNum === 2) {
+        // 2단계(밑색 채우기) - 중음에 반응하는 중간 타원
+        let size = (6 + (mid * 10)) / detailMod;
         this.pg.noStroke();
-        this.pg.fill(pt.r, pt.g, pt.b, alpha);
-        this.pg.rectMode(p.CENTER);
-        let rectSize = 8 * ui.glow * (ui.scatter > 0 ? ui.scatter : 1);
-        this.pg.rect(0, 0, rectSize, rectSize);
+        this.pg.fill(r, g, b, 200);
+        this.pg.ellipse(0, 0, size, size * 0.8);
     } else if (layerNum === 3) {
+        // 3단계(정밀 묘사) - 고음에 반응하며 Scatter에 반비례하여 더 미세해지는 붓
+        let size = (3 + (high * 8)) / (scatterMod * detailMod);
         this.pg.noStroke();
-        this.pg.fill(pt.r, pt.g, pt.b, alpha);
-        let ellipseSize = 3 * ui.glow;
-        this.pg.ellipse(0, 0, ellipseSize, ellipseSize);
+        this.pg.fill(r, g, b, 230);
+        this.pg.ellipse(0, 0, size, size * 0.5);
     }
     
     this.pg.pop();
