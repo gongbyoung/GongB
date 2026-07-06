@@ -1,7 +1,7 @@
 /**
  * src/sketches/016_p5_stylized_painter.js
- * - [Fix] 그리기 속도 교정: 정확히 곡의 80% 길이에 맞춰서 그림이 완성되도록 보정
- * - [Feature] 미리보기 모드 탑재: 음악 정지 중 이미지 로드/스타일 변경 시 완성본 즉시 렌더링
+ * - UI 슬라이더(Seed, Scatter, Size, Gain) 조작 시 미리보기 캔버스 실시간 즉각 갱신
+ * - 각 슬라이더의 값을 화풍별 브러시 물리 엔진에 완벽하게 매핑
  */
 export default class P5StylizedArtPainter {
   constructor(container) {
@@ -21,10 +21,17 @@ export default class P5StylizedArtPainter {
     this.isImageLoaded = false;
     
     this.simulatedProgress = 0; 
-    this.currentStyle = 'neon';
-    
     this.lastProgress = 0; 
-    this.isPreviewMode = true; // 💡 미리보기 모드 상태값 추가
+    this.isPreviewMode = true; 
+
+    // 💡 UI 상태 변화를 추적하기 위한 캐시 변수
+    this.currentSettings = {
+        style: 'neon',
+        scatter: 2.2,
+        gain: 1.0,
+        seed: 42,
+        glow: 0.25
+    };
   }
 
   async init() {
@@ -66,18 +73,38 @@ export default class P5StylizedArtPainter {
             return;
         }
 
-        let scatter = 2.2, gain = 1.0;
-        let colorStyle = 'neon';
-        if (window.cosmicEngineSettings) {
-          scatter = window.cosmicEngineSettings.scatterExponent || 2.2;
-          gain = window.cosmicEngineSettings.audioGain || 1.0;
-          colorStyle = window.cosmicEngineSettings.colorStyle || 'neon';
-        }
+        // 1. 전역 UI 세팅값 로드
+        let s_scatter = window.cosmicEngineSettings?.scatterExponent ?? 2.2;
+        let s_gain = window.cosmicEngineSettings?.audioGain ?? 1.0;
+        let s_seed = window.cosmicEngineSettings?.seed ?? 42;
+        let s_glow = window.cosmicEngineSettings?.glowAmount ?? (window.cosmicEngineSettings?.size ?? 0.25);
+        let s_style = window.cosmicEngineSettings?.colorStyle ?? 'neon';
 
         const audioEl = document.querySelector('audio');
         let isPlaying = audioEl && !audioEl.paused;
-        let progress = 0;
         
+        // 💡 2. UI 슬라이더가 단 하나라도 변경되었는지 감지
+        let settingsChanged = (
+            this.currentSettings.style !== s_style ||
+            this.currentSettings.scatter !== s_scatter ||
+            this.currentSettings.gain !== s_gain ||
+            this.currentSettings.seed !== s_seed ||
+            this.currentSettings.glow !== s_glow
+        );
+
+        if (settingsChanged) {
+            this.currentSettings = { style: s_style, scatter: s_scatter, gain: s_gain, seed: s_seed, glow: s_glow };
+            
+            if (!isPlaying) {
+                // 음악 정지 상태에서 슬라이더를 만지면 즉시 미리보기 갱신
+                this.resetCanvas(p, true);
+            } else if (this.currentSettings.style !== s_style) {
+                // 재생 중에는 다른 건 놔두고 '스타일'이 바뀔 때만 리셋
+                this.resetCanvas(p, false);
+            }
+        }
+
+        let progress = 0;
         if (audioEl && audioEl.duration) {
             progress = audioEl.currentTime / audioEl.duration;
         } else {
@@ -85,19 +112,10 @@ export default class P5StylizedArtPainter {
             progress = this.simulatedProgress;
         }
 
-        // 💡 1. 스타일이 변경되었을 때 처리
-        if (this.currentStyle !== colorStyle) {
-            this.currentStyle = colorStyle;
-            // 음악이 정지되어 있다면 새 스타일의 '미리보기'를, 재생 중이면 캔버스만 리셋
-            this.resetCanvas(p, !isPlaying); 
-        }
-
-        // 💡 2. 정지(미리보기) 상태에서 음악 재생을 시작한 순간 -> 캔버스를 싹 지우고 그리기 모드로 전환
         if (isPlaying && this.isPreviewMode) {
-            this.resetCanvas(p, false);
+            this.resetCanvas(p, false); // 재생 버튼 누르는 순간 지우고 그리기 시작
         }
 
-        // 💡 3. 음악이 되감기(녹화 시작 등) 되었을 때 캔버스 리셋
         if (progress < this.lastProgress) {
             this.resetCanvas(p, !isPlaying);
         }
@@ -114,12 +132,10 @@ export default class P5StylizedArtPainter {
         let targetMid = midCount > 0 ? Math.pow((midSum / midCount) / 255.0, 1.5) : 0;
         let targetHigh = highCount > 0 ? Math.pow((highSum / highCount) / 255.0, 1.5) : 0;
 
-        this.smoothLow += (targetLow * gain - this.smoothLow) * 0.2;
-        this.smoothMid += (targetMid * gain - this.smoothMid) * 0.2;
-        this.smoothHigh += (targetHigh * gain - this.smoothHigh) * 0.2;
+        this.smoothLow += (targetLow * s_gain - this.smoothLow) * 0.2;
+        this.smoothMid += (targetMid * s_gain - this.smoothMid) * 0.2;
+        this.smoothHigh += (targetHigh * s_gain - this.smoothHigh) * 0.2;
 
-        // 💡 [버그 픽스] 10초 만에 완성되는 현상 방지
-        // 목표 진행률에 도달한 개수만큼만 그릴 수 있도록 제한(가속 Burst에 의한 초과 드로잉 삭제)
         if (!this.isPreviewMode) {
             let targetCount = Math.floor(this.totalChunks * Math.min(1.0, progress / 0.8));
             let strokesToDraw = Math.max(0, targetCount - this.drawnCount);
@@ -142,10 +158,9 @@ export default class P5StylizedArtPainter {
                 let g = this.sourceImg.pixels[pIndex + 1];
                 let b = this.sourceImg.pixels[pIndex + 2];
                 
-                this.drawStylizedStroke(p, x, y, r, g, b, colorStyle);
+                this.drawStylizedStroke(p, x, y, r, g, b, s_style);
             }
 
-            // 그림이 다 그려진 후에도 빈 공간에 고음(High) 비트에 맞춰 살짝씩 덧칠하는 생명력 효과
             if (this.chunkIndices.length === 0 && this.smoothHigh > 0.1) {
                 for(let i=0; i < 20; i++) {
                     let x = p.random(p.width);
@@ -158,13 +173,12 @@ export default class P5StylizedArtPainter {
                     let g = this.sourceImg.pixels[pIndex + 1];
                     let b = this.sourceImg.pixels[pIndex + 2];
 
-                    this.drawStylizedStroke(p, x, y, r, g, b, colorStyle);
+                    this.drawStylizedStroke(p, x, y, r, g, b, s_style);
                 }
             }
         }
 
-        // Custom 스타일 시 곡의 80% 이상이거나 미리보기 모드일 때 빈티지 필터 발동
-        if (colorStyle === 'custom' && (progress >= 0.8 || this.isPreviewMode)) {
+        if (s_style === 'custom' && (progress >= 0.8 || this.isPreviewMode)) {
             this.drawOldPhotoEffect(p);
         }
       };
@@ -173,30 +187,36 @@ export default class P5StylizedArtPainter {
     this.p5Instance = new window.p5(sketch, this.container);
   }
 
+  // 💡 [핵심] 브러시 물리 엔진에 슬라이더 값 매핑
   drawStylizedStroke(p, x, y, r, g, b, style) {
       if (!this.pg) return;
       let brightness = (r + g + b) / 3;
 
+      let scatterMod = this.currentSettings.scatter / 2.2;
+      let sizeMod = Math.max(0.1, this.currentSettings.glow * 4.0); // Size 조절비율
+
       this.pg.push();
       this.pg.translate(x, y);
 
-      let jitter = (p.random(-1, 1) * this.smoothHigh * 20);
+      // 분산범위(Scatter)가 높을수록 붓터치가 원래 위치에서 더 많이 어긋남
+      let jitter = (p.random(-1, 1) * this.smoothHigh * 20 * scatterMod);
       this.pg.translate(jitter, jitter);
 
       if (style === 'monochrome') {
           this.pg.stroke(brightness + p.random(-20, 20)); 
-          let weight = 0.5 + (this.smoothLow * 5); 
+          let weight = (0.5 + (this.smoothLow * 5)) * sizeMod; 
           this.pg.strokeWeight(weight);
           this.pg.noFill();
           let angle = p.noise(x * 0.01, y * 0.01) * p.PI * 2 + (this.smoothHigh * p.PI);
           this.pg.rotate(angle);
-          let len = p.map(brightness, 0, 255, 15, 2) + (this.smoothLow * 10);
+          
+          let len = (p.map(brightness, 0, 255, 15, 2) + (this.smoothLow * 10)) * scatterMod;
           this.pg.line(-len/2, 0, len/2, 0);
           
       } else if (style === 'pastel') {
           this.pg.noStroke();
           this.pg.fill(r, g, b, 30 + this.smoothHigh * 50); 
-          let radius = 8 + (this.smoothLow * 30); 
+          let radius = (8 + (this.smoothLow * 30)) * sizeMod; 
           this.pg.circle(p.random(-5, 5), p.random(-5, 5), radius);
           this.pg.circle(p.random(-2, 2), p.random(-2, 2), radius * 0.5);
 
@@ -207,8 +227,9 @@ export default class P5StylizedArtPainter {
           let ng = g === maxColor ? 255 : g * 0.4;
           let nb = b === maxColor ? 255 : b * 0.4;
           this.pg.fill(nr, ng, nb, 220);
-          let w = 15 + (this.smoothLow * 25);
-          let h = 5 + (this.smoothHigh * 10);
+          
+          let w = (15 + (this.smoothLow * 25)) * sizeMod;
+          let h = (5 + (this.smoothHigh * 10)) * sizeMod;
           this.pg.rotate(p.random(p.PI));
           this.pg.rectMode(p.CENTER);
           this.pg.rect(0, 0, w, h);
@@ -218,8 +239,8 @@ export default class P5StylizedArtPainter {
           this.pg.fill(r, g, b, 200);
           let angle = p.map(brightness, 0, 255, 0, p.PI);
           this.pg.rotate(angle);
-          let thick = 4 + (this.smoothLow * 12);
-          let len = 12 + (this.smoothHigh * 15);
+          let thick = (4 + (this.smoothLow * 12)) * sizeMod;
+          let len = (12 + (this.smoothHigh * 15)) * scatterMod;
           this.pg.ellipse(0, 0, len, thick);
       }
       
@@ -287,13 +308,9 @@ export default class P5StylizedArtPainter {
       this.sourceImg = img;
       this.sourceImg.loadPixels(); 
       this.isImageLoaded = true;
-      this.currentStyle = window.cosmicEngineSettings ? window.cosmicEngineSettings.colorStyle : 'neon';
-      
-      // 이미지가 처음 로드되면 무조건 '미리보기' 모드로 캔버스 세팅
       this.resetCanvas(p, true);
   }
 
-  // 💡 [핵심 구현] 캔버스 리셋 시 isPreview가 true면 즉석에서 100% 렌더링
   resetCanvas(p, isPreview = false) {
       if(!this.pg) return;
       this.pg.background(15, 18, 25);
@@ -316,11 +333,18 @@ export default class P5StylizedArtPainter {
       this.drawnCount = 0;
       this.isPreviewMode = isPreview;
 
-      // 💡 미리보기 모드: 음악과 상관없이 현재 배열된 조각들을 한 번에 캔버스에 찍어냅니다.
+      // 💡 미리보기 모드일 때 전체 그림 한 번에 렌더링
       if (isPreview && this.sourceImg) {
-          // 미리보기가 예쁘게 나오도록 가상의 오디오 파워를 임의로 부여
+          // 지형변경(Seed) 연동: p5 난수 엔진 초기화
+          p.randomSeed(this.currentSettings.seed);
+          p.noiseSeed(this.currentSettings.seed);
+
           let tempLow = this.smoothLow, tempMid = this.smoothMid, tempHigh = this.smoothHigh;
-          this.smoothLow = 0.5; this.smoothMid = 0.5; this.smoothHigh = 0.5;
+          
+          // 폭발력(Gain) 연동: 미리보기 시 음악이 최대로 터진 것처럼 가상 주파수 주입
+          this.smoothLow = 0.5 * this.currentSettings.gain; 
+          this.smoothMid = 0.5 * this.currentSettings.gain; 
+          this.smoothHigh = 0.5 * this.currentSettings.gain;
 
           while (this.chunkIndices.length > 0) {
               let idx = this.chunkIndices.pop();
@@ -336,7 +360,7 @@ export default class P5StylizedArtPainter {
               let g = this.sourceImg.pixels[pIndex + 1];
               let b = this.sourceImg.pixels[pIndex + 2];
               
-              this.drawStylizedStroke(p, x, y, r, g, b, this.currentStyle);
+              this.drawStylizedStroke(p, x, y, r, g, b, this.currentSettings.style);
           }
           
           this.smoothLow = tempLow; this.smoothMid = tempMid; this.smoothHigh = tempHigh;
