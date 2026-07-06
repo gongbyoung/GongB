@@ -1,47 +1,42 @@
 /**
  * src/core/ImageAnalyzer.js
- * - 이미지를 분석하여 픽셀별 색상 및 윤곽선(Edge) 데이터를 추출하는 코어 모듈
+ * - 이미지를 분석하여 픽셀별 색상 및 윤곽선(Edge) 데이터를 추출하는 초고속 코어 모듈
  */
 class ImageAnalyzer {
-    /**
-     * 이미지를 분석하여 특징점(Features) 배열을 반환합니다.
-     * @param {Object} img - p5.js 이미지 객체
-     * @param {Object} p - p5.js 인스턴스
-     * @param {number} step - 샘플링 간격 (기본값 4)
-     * @param {number} threshold - 윤곽선 민감도 임계값 (기본값 50)
-     * @returns {Array} 픽셀 데이터 배열 [{x, y, r, g, b, edge}]
-     */
-    static extractFeatures(img, p, step = 4, threshold = 50) {
+    static extractFeatures(img, p, step = 4, threshold = 30) {
         img.loadPixels();
-        
-        // 윤곽선 추출을 위한 흑백 사본 생성
-        let grayImg = p.createImage(img.width, img.height);
-        grayImg.copy(img, 0, 0, img.width, img.height, 0, 0, img.width, img.height);
-        grayImg.filter(p.GRAY);
-        grayImg.loadPixels();
-
         let points = [];
+        let w = img.width;
+        let h = img.height;
+        let px = img.pixels;
         
-        for (let y = 1; y < img.height - 1; y += step) {
-            for (let x = 1; x < img.width - 1; x += step) {
-                let idx = (y * img.width + x) * 4;
+        for (let y = 1; y < h - 1; y += step) {
+            for (let x = 1; x < w - 1; x += step) {
+                let idx = (y * w + x) * 4;
+                let r = px[idx], g = px[idx+1], b = px[idx+2];
                 
-                // Sobel 알고리즘 기반 미분(밝기 차이) 계산
-                let diffX = Math.abs(grayImg.pixels[idx] - grayImg.pixels[idx + 4]);
-                let diffY = Math.abs(grayImg.pixels[idx] - grayImg.pixels[idx + img.width * 4]);
-                let edgeStrength = diffX + diffY;
+                // 수학적 밝기(Luminance) 계산
+                let lum = r*0.3 + g*0.59 + b*0.11;
+                
+                // 우측 및 하단 픽셀과의 밝기 차이로 윤곽선(Edge) 검출 (Sobel 방식 응용)
+                let idxR = (y * w + (x + 1)) * 4;
+                let lumR = px[idxR]*0.3 + px[idxR+1]*0.59 + px[idxR+2]*0.11;
+                
+                let idxD = ((y + 1) * w + x) * 4;
+                let lumD = px[idxD]*0.3 + px[idxD+1]*0.59 + px[idxD+2]*0.11;
+                
+                let edgeStrength = Math.abs(lum - lumR) + Math.abs(lum - lumD);
                 
                 points.push({
                     x: x, 
                     y: y,
-                    r: img.pixels[idx], 
-                    g: img.pixels[idx+1], 
-                    b: img.pixels[idx+2],
+                    r: r, 
+                    g: g, 
+                    b: b,
                     edge: edgeStrength > threshold ? 1 : 0
                 });
             }
         }
-        
         return points;
     }
 }
