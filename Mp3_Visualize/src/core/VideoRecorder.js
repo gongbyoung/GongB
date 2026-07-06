@@ -2,7 +2,7 @@
  * src/utils/VideoRecorder.js
  * 4K급 초고해상도 에러 무한 지원 및 오디오 자동 동기화/녹음 엔진 탑재
  */
-export default class VideoRecorder {
+export class VideoRecorder {
   constructor(canvas, fps = 30) {
     this.canvas = canvas;
     this.fps = fps;
