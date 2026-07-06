@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LED VISUALIZER v10.5 — Export MP4</title>
+<title>LED VISUALIZER v10.5 — Export WebM</title>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
 :root{
@@ -50,7 +50,7 @@ canvas{background:#000;box-shadow:0 0 50px rgba(0,0,0,0.5);border-radius:8px;}
 
 <div class="topbar">
   <span class="logo">SPECTRUM ART LAB v10.5</span>
-  <span style="margin-left:auto; font-size:9px; color:var(--muted);">MP4 VIDEO EXPORT READY</span>
+  <span style="margin-left:auto; font-size:9px; color:var(--muted);">WEBM VIDEO EXPORT</span>
 </div>
 
 <div class="main">
@@ -83,7 +83,7 @@ canvas{background:#000;box-shadow:0 0 50px rgba(0,0,0,0.5);border-radius:8px;}
 // --- STATE ---
 let aspect = '16:9';
 let audioCtx, analyser, source, audioBuffer, isPlaying = false, startTime = 0, pauseOffset = 0;
-let duration = 0; // 💡 [수정] 노래 총 재생 시간을 저장할 전역 변수 추가
+let duration = 0; // 💡 duration 변수 선언 안전장치 추가
 let srtCues = [], activeCueIdx = -1, lineHistory = [], flyingChars = [], pressedKeys = {};
 let charSpawnQueue = [], lastCharSpawnTime = 0, currentTargetDelay = 0.1;
 
@@ -140,7 +140,7 @@ function handleMusic(files) {
   const reader = new FileReader();
   reader.onload = e => audioCtx.decodeAudioData(e.target.result, buf => { 
     audioBuffer = buf; 
-    duration = buf.duration; // 💡 [수정] 음악 데이터를 디코딩한 후 곡의 전체 길이를 duration 변수에 저장
+    duration = buf.duration; // 음악 재생 시간 저장
     document.getElementById('mBox').classList.add('loaded');
   });
   reader.readAsArrayBuffer(files[0]);
@@ -164,7 +164,7 @@ function handleSRT(files) {
 }
 function toSec(s){ const m = s.match(/(\d+):(\d+):(\d+),(\d+)/); return +m[1]*3600 + +m[2]*60 + +m[3] + +m[4]/1000; }
 
-// --- RECORDING ENGINE ---
+// --- RECORDING ENGINE (순수 WebM 세팅) ---
 function toggleRecord() {
     if(!audioBuffer || srtCues.length === 0) return alert("파일을 먼저 로드하세요.");
     if(isRecording) {
@@ -190,25 +190,22 @@ async function startRecording() {
         ...audioStreamDest.stream.getAudioTracks()
     ]);
 
-    // 💡 [수정] MP4 저장 및 호환성을 위해 코덱 설정을 'video/webm;codecs=h264,opus'로 변경
-    // (브라우저 환경에 따라 h264 미지원 시 일반 webm 백업 적용)
-    let options = { mimeType: 'video/webm;codecs=h264,opus' };
-    if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-        options = { mimeType: 'video/webm;codecs=vp8,opus' };
-    }
-
-    mediaRecorder = new MediaRecorder(combinedStream, options);
+    // 브라우저 친화적인 WebM 기본 설정
+    mediaRecorder = new MediaRecorder(combinedStream, {
+        mimeType: 'video/webm;codecs=vp9,opus'
+    });
 
     mediaRecorder.ondataavailable = (e) => {
         if(e.data.size > 0) recordedChunks.push(e.data);
     };
 
     mediaRecorder.onstop = () => {
-        const blob = new Blob(recordedChunks, { type: 'video/mp4' });
+        // 💡 확장자를 완전한 webm으로 처리
+        const blob = new Blob(recordedChunks, { type: 'video/webm' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `Performance_${new Date().getTime()}.mp4`;
+        a.download = `Performance_${new Date().getTime()}.webm`;
         a.click();
         window.URL.revokeObjectURL(url);
     };
@@ -334,8 +331,8 @@ function animate() {
 
   document.getElementById('timeCode').textContent = new Date(now*1000).toISOString().substr(14, 8);
   
-  // 노래가 완전히 끝나면 자동 녹화 중지
-  if(now >= duration && isRecording) stopRecording();
+  // 💡 duration이 정상 로드되었을 때만 작동하여 에러 원천 차단
+  if(duration && now >= duration && isRecording) stopRecording();
 }
 
 function resetAll() {
