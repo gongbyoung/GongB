@@ -1,8 +1,8 @@
 /**
  * src/sketches/016_p5_stylized_painter.js
- * - [수정1] 분산범위(Scatter): 붓 크기 스케일 대비 조절 (저음은 더 크게, 고음은 더 작게)
- * - [수정2] 발광/크기(Glow): 이미지 밝기(Brightness) 및 섬세함(Detail) 조절
- * - [수정3] 지형변경(Seed): 칠해지는 순서(Shuffle) 무작위 재배치
+ * - [화풍 수정] 긴 막대기(line) 제거 -> 다중 타원(ellipse)과 노이즈를 결합한 납작 붓 텍스처 적용
+ * - [로직 수정] 저음(큰 붓/비윤곽선) -> 중음(중간 붓/비윤곽선) -> 고음(미세 붓/윤곽선) 완벽 매핑
+ * - [UI 수정] 발광/크기 슬라이더: 밝기 증가 및 붓 크기 축소(섬세함 증가)
  */
 import ImageAnalyzer from '../core/ImageAnalyzer.js'; 
 
@@ -13,15 +13,12 @@ export default class P5StylizedArtPainter {
     this.sourceImg = null;
     this.pg = null; 
     
-    this.layer1 = []; 
-    this.layer2 = []; 
-    this.layer3 = []; 
+    this.layer1 = []; // 저음용 (비윤곽선, 큰 붓)
+    this.layer2 = []; // 중음용 (비윤곽선, 중간 붓)
+    this.layer3 = []; // 고음용 (윤곽선, 미세 붓)
     
     this.q1 = []; this.q2 = []; this.q3 = [];
-    
-    this.drawn1 = 0;
-    this.drawn2 = 0;
-    this.drawn3 = 0;
+    this.drawn1 = 0; this.drawn2 = 0; this.drawn3 = 0;
     
     this.isImageLoaded = false;
     this.isPreviewMode = true;
@@ -82,14 +79,20 @@ export default class P5StylizedArtPainter {
     img.resize(p.width, p.height);
     this.sourceImg = img;
     
-    let rawData = ImageAnalyzer.extractFeatures(img, p, 4, 20);
+    let rawData = ImageAnalyzer.extractFeatures(img, p, 4, 30);
     
     this.layer1 = []; this.layer2 = []; this.layer3 = [];
     
+    // 💡 [핵심] 윤곽선 유무에 따라 데이터를 분리합니다.
     for(let pt of rawData) {
-        if (pt.edge) this.layer1.push(pt);  
-        else this.layer2.push(pt);          
-        this.layer3.push(pt);               
+        if (pt.edge) {
+            // 윤곽선은 무조건 3단계(고음, 미세 붓)로 배정
+            this.layer3.push(pt);  
+        } else {
+            // 윤곽선이 없는 면은 1단계(저음)와 2단계(중음)로 반반 나눕니다.
+            if (p.random() > 0.5) this.layer1.push(pt);
+            else this.layer2.push(pt);
+        }
     }
     
     this.isImageLoaded = true;
@@ -101,9 +104,9 @@ export default class P5StylizedArtPainter {
     if(!this.pg) return;
     this.pg.background(15, 18, 25);
     
-    // 💡 [수정3] 지형변경(Seed) - 슬라이더를 움직일 때마다 칠해지는 '순서'를 새롭게 섞습니다.
     p.randomSeed(this.currentSettings.seed);
     
+    // 지형변경: 그리는 순서를 완전히 섞습니다.
     this.q1 = p.shuffle([...this.layer1]);
     this.q2 = p.shuffle([...this.layer2]);
     this.q3 = p.shuffle([...this.layer3]);
@@ -112,9 +115,9 @@ export default class P5StylizedArtPainter {
     this.isPreviewMode = isPreview;
 
     if (isPreview && this.isImageLoaded) {
-       while(this.q1.length > 0) this.paintStep(this.q1.pop(), 1, this.currentSettings, p, 0.5, 0.5, 0.5);
-       while(this.q2.length > 0) this.paintStep(this.q2.pop(), 2, this.currentSettings, p, 0.5, 0.5, 0.5);
-       while(this.q3.length > 0) this.paintStep(this.q3.pop(), 3, this.currentSettings, p, 0.5, 0.5, 0.5);
+       while(this.q1.length > 0) this.paintBrush(this.q1.pop(), 1, this.currentSettings, p, 0.5);
+       while(this.q2.length > 0) this.paintBrush(this.q2.pop(), 2, this.currentSettings, p, 0.5);
+       while(this.q3.length > 0) this.paintBrush(this.q3.pop(), 3, this.currentSettings, p, 0.5);
        
        if (this.currentSettings.style.includes('custom')) this.drawOldPhotoEffect(p);
     }
@@ -160,10 +163,10 @@ export default class P5StylizedArtPainter {
     this.lastProgress = progress;
 
     if (!this.isPreviewMode) {
-        // 주파수 대역별 강도 분리
-        let low = audioData ? (audioData.raw[2] + audioData.raw[3]) / 510 : 0.5;
-        let mid = audioData ? (audioData.raw[20] + audioData.raw[21]) / 510 : 0.5;
-        let high = audioData ? (audioData.raw[60] + audioData.raw[61]) / 510 : 0.5;
+        // 💡 주파수 대역 분리 (각각의 붓 크기와 활성화에 영향)
+        let low = audioData ? (audioData.raw[2] + audioData.raw[3]) / 510 : 0;
+        let mid = audioData ? (audioData.raw[20] + audioData.raw[21]) / 510 : 0;
+        let high = audioData ? (audioData.raw[60] + audioData.raw[61]) / 510 : 0;
         
         let p1 = Math.min(progress / 0.3, 1.0); 
         let p2 = progress > 0.3 ? Math.min((progress - 0.3) / 0.3, 1.0) : 0; 
@@ -177,14 +180,15 @@ export default class P5StylizedArtPainter {
         let budget2 = Math.max(0, target2 - this.drawn2);
         let budget3 = Math.max(0, target3 - this.drawn3);
 
+        // 레이어별로 할당된 주파수(low, mid, high)를 붓 크기 엔진으로 넘깁니다.
         for (let i = 0; i < budget1; i++) {
-            if (this.q1.length > 0) { this.paintStep(this.q1.pop(), 1, ui, p, low, mid, high); this.drawn1++; }
+            if (this.q1.length > 0) { this.paintBrush(this.q1.pop(), 1, ui, p, low); this.drawn1++; }
         }
         for (let i = 0; i < budget2; i++) {
-            if (this.q2.length > 0) { this.paintStep(this.q2.pop(), 2, ui, p, low, mid, high); this.drawn2++; }
+            if (this.q2.length > 0) { this.paintBrush(this.q2.pop(), 2, ui, p, mid); this.drawn2++; }
         }
         for (let i = 0; i < budget3; i++) {
-            if (this.q3.length > 0) { this.paintStep(this.q3.pop(), 3, ui, p, low, mid, high); this.drawn3++; }
+            if (this.q3.length > 0) { this.paintBrush(this.q3.pop(), 3, ui, p, high); this.drawn3++; }
         }
     }
 
@@ -195,10 +199,10 @@ export default class P5StylizedArtPainter {
     p.redraw();
   }
 
-  paintStep(pt, layerNum, ui, p, low, mid, high) {
-    // 💡 [수정2] 발광/크기 (Glow & Size) = 밝기 & 섬세함
-    let brightnessMod = ui.glow; // 값이 클수록 밝아짐
-    let detailMod = Math.max(0.2, ui.glow); // 값이 클수록 붓이 작아져 원본과 비슷해짐
+  paintBrush(pt, layerNum, ui, p, audioValue) {
+    // 💡 [수정2] 발광/크기 (Glow) = 밝기 증폭 및 섬세함 조절
+    let brightnessMod = 1.0 + (ui.glow * 1.5); // 밝게
+    let detailMod = Math.max(0.3, ui.glow * 2.0); // 높을수록 붓이 작아짐(섬세해짐)
 
     let r = Math.min(255, pt.r * brightnessMod);
     let g = Math.min(255, pt.g * brightnessMod);
@@ -208,39 +212,57 @@ export default class P5StylizedArtPainter {
         let lum = (r + g + b) / 3;
         r = lum; g = lum; b = lum;
     } else if (ui.style.includes('pastel')) {
-        r = Math.min(255, r + 50); g = Math.min(255, g + 50); b = Math.min(255, b + 50);
+        r = Math.min(255, r + 40); g = Math.min(255, g + 40); b = Math.min(255, b + 40);
     } else if (ui.style.includes('neon')) {
         let maxC = Math.max(r, g, b);
-        r = r === maxC ? 255 : r * 0.5; g = g === maxC ? 255 : g * 0.5; b = b === maxC ? 255 : b * 0.5;
+        r = r === maxC ? 255 : r * 0.4; g = g === maxC ? 255 : g * 0.4; b = b === maxC ? 255 : b * 0.4;
     }
+
+    // 💡 [수정1] 분산범위 (Scatter) = 붓 크기 격차(Contrast) 
+    let scatterMod = Math.max(0.5, ui.scatter);
+    
+    // 오디오 진폭에 따른 붓 크기 펌핑 효과
+    let audioBump = audioValue * 2.0; 
+    let baseSize = 0;
+    let opacity = 180;
+
+    // 레이어별 붓 크기 철저히 분리
+    if (layerNum === 1) {
+        // 저음 (배경): 아주 거대하고 듬성듬성한 붓
+        baseSize = (20 + (20 * audioBump)) * scatterMod;
+        opacity = 120; // 옅게 깔림
+    } else if (layerNum === 2) {
+        // 중음 (형태): 중간 크기의 붓
+        baseSize = (10 + (10 * audioBump));
+        opacity = 180;
+    } else if (layerNum === 3) {
+        // 고음 (윤곽선 디테일): 아주 작고 뾰족한 붓
+        baseSize = (3 + (5 * audioBump)) / scatterMod; 
+        opacity = 220; // 진하게 묘사
+    }
+
+    let finalSize = baseSize / detailMod; 
 
     this.pg.push();
-    this.pg.translate(pt.x, pt.y); // 위치 어긋남(모자이크 현상) 완전 제거
+    this.pg.translate(pt.x, pt.y);
+    
+    // 사물의 굴곡을 따라 붓의 방향을 돌립니다.
     if (pt.angle !== undefined) {
-        this.pg.rotate(pt.angle + p.random(-0.1, 0.1)); // 사물의 결(각도) 유지
+        this.pg.rotate(pt.angle + p.random(-0.1, 0.1)); 
     }
 
-    // 💡 [수정1] 분산범위 (Scatter) = 붓 크기 대비(Contrast) 조절
-    let scatterMod = ui.scatter;
+    this.pg.noStroke();
+    this.pg.fill(r, g, b, opacity);
 
-    if (layerNum === 1) {
-        // 1단계(윤곽선 스케치) - 저음에 반응하여 더 거대해지는 선
-        let size = (10 + (low * 20)) * scatterMod / detailMod;
-        this.pg.stroke(r, g, b, 150); 
-        this.pg.strokeWeight(p.random(1, 2) / detailMod);
-        this.pg.line(-size/2, 0, size/2, 0); 
-    } else if (layerNum === 2) {
-        // 2단계(밑색 채우기) - 중음에 반응하는 중간 타원
-        let size = (6 + (mid * 10)) / detailMod;
-        this.pg.noStroke();
-        this.pg.fill(r, g, b, 200);
-        this.pg.ellipse(0, 0, size, size * 0.8);
-    } else if (layerNum === 3) {
-        // 3단계(정밀 묘사) - 고음에 반응하며 Scatter에 반비례하여 더 미세해지는 붓
-        let size = (3 + (high * 8)) / (scatterMod * detailMod);
-        this.pg.noStroke();
-        this.pg.fill(r, g, b, 230);
-        this.pg.ellipse(0, 0, size, size * 0.5);
+    // 💡 [핵심] 진짜 붓터치 느낌을 내기 위해 노이즈를 섞어 다중 타원을 그립니다 (긴 막대기 폐기)
+    let brushTouches = Math.floor(p.random(2, 4));
+    for (let i = 0; i < brushTouches; i++) {
+        // 붓결이 살짝 흩어지게 하는 미세 노이즈
+        let nx = p.random(-finalSize * 0.2, finalSize * 0.2);
+        let ny = p.random(-finalSize * 0.1, finalSize * 0.1);
+        
+        // 납작 붓 (가로는 길고 세로는 얇은 타원)
+        this.pg.ellipse(nx, ny, finalSize, finalSize * 0.4); 
     }
     
     this.pg.pop();
