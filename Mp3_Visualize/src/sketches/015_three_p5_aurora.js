@@ -1,8 +1,9 @@
 /**
  * 015_three_p5_aurora.js
- * (화면 깨짐 및 바둑판 에러 완벽 복구판)
- * 처음에 완성했던 가장 아름다운 '비선형 오로라 유체'의 원래 형태를 100% 복구하고, 
- * 오로라의 밝기에 비례해 점/사각형/스피어의 크기가 변하며 가장자리에서 완벽히 사라지는 셰이더 미디어 아트
+ * 회원님의 완벽한 물리 반응 설계 반영:
+ * - 저음(Low): 오로라 스케일(크기) 팽창/수축
+ * - 중음(Mid): 유체의 흐름 속도(Speed) 가속/감속
+ * - 고음(High): 내부 빛 번짐 및 색상 확산(Diffusion)
  */
 import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
 
@@ -21,6 +22,9 @@ export default class ThreeAuroraFluidStage {
     this.smoothMid = 0;
     this.smoothHigh = 0;
     
+    // 💡 중음(Mid)에 의한 시간 가속을 위해 누적 타임 변수 독립 생성
+    this.accumulatedTime = 0.0;
+    
     this.currentAudioData = null;
   }
 
@@ -30,7 +34,7 @@ export default class ThreeAuroraFluidStage {
 
     this.scene = new THREE.Scene();
     
-    // 💡 화면이 깨지지 않고 1:1로 꽉 차도록 Orthographic(평면) 카메라로 롤백!
+    // 2D 평면 마스킹 및 오리지널 쉐이프 유지를 위한 Orthographic 카메라
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
     this.camera.position.z = 1;
 
@@ -41,15 +45,14 @@ export default class ThreeAuroraFluidStage {
     this.renderer.domElement.style.left = '0';
     this.container.appendChild(this.renderer.domElement);
 
-    // 💡 [핵심] 오리지널 오로라 형태 복구 및 입자 필터 적용 GLSL
+    // 💡 GLSL 셰이더 코드 (물리 엔진 적용)
     this.uniforms = {
         uTime: { value: 0.0 },
-        uAudioLow: { value: 0.0 },
-        uAudioMid: { value: 0.0 },
-        uAudioHigh: { value: 0.0 },
-        uColor1: { value: new THREE.Color(0xff0055) }, // 저음: 마젠타
-        uColor2: { value: new THREE.Color(0x00ffcc) }, // 중음: 시안
-        uColor3: { value: new THREE.Color(0xffcc00) }, // 고음: 골드
+        uAudioLow: { value: 0.0 },   // 스케일 제어용
+        uAudioHigh: { value: 0.0 },  // 색상 확산 제어용
+        uColor1: { value: new THREE.Color(0xff0055) }, 
+        uColor2: { value: new THREE.Color(0x00ffcc) }, 
+        uColor3: { value: new THREE.Color(0xffcc00) }, 
         uSize: { value: 2.2 },
         uSeed: { value: 42.0 },
         uShapeMode: { value: 0 },
@@ -67,7 +70,6 @@ export default class ThreeAuroraFluidStage {
     const fragmentShader = `
         uniform float uTime;
         uniform float uAudioLow;
-        uniform float uAudioMid;
         uniform float uAudioHigh;
         uniform vec3 uColor1;
         uniform vec3 uColor2;
@@ -104,61 +106,75 @@ export default class ThreeAuroraFluidStage {
             return 130.0 * dot(m, g);
         }
 
-        // 💡 극찬하셨던 오리지널 유체(Fluid) 궤적 공식 100% 복구
-        float aurora(vec2 p, float audio, float seed, float offset) {
-            float t = uTime * 0.15 + seed * 2.0;
-            float scale = 3.0 / max(0.5, uSize); 
-            vec2 q = p * scale;
+        // 💡 3겹의 오로라를 그리는 함수 (저음과 고음 물리 엔진 적용)
+        float aurora(vec2 p, float seed, float offset) {
+            float t = uTime + seed * 2.0;
+            
+            // 1. [저음 반응] 스케일 팽창/수축
+            // uAudioLow가 커지면 scale이 작아지며 화면에 오로라가 거대하게 줌인(Zoom-in) 됨
+            float baseScale = 3.0 / max(0.5, uSize); 
+            float currentScale = max(0.5, baseScale - (uAudioLow * 1.5)); 
+            
+            vec2 q = p * currentScale;
             q.y += offset; 
 
-            float n1 = snoise(q + vec2(t, t*0.5));
-            float n2 = snoise(q * 1.5 - vec2(t*1.2, -t*0.8) + n1);
+            float n1 = snoise(q + vec2(t * 0.5, t * 0.2));
+            float n2 = snoise(q * 1.5 - vec2(t * 0.8, -t * 0.6) + n1);
             
-            float wave = sin(q.x * 2.0 + n2 * 2.5 + t * 1.5);
-            float dist = abs(q.y - wave * 0.4);
+            // 저음이 터질 때 위아래 출렁이는 폭(진폭)도 커짐
+            float waveAmp = 0.4 + (uAudioLow * 0.2);
+            float wave = sin(q.x * 2.0 + n2 * 2.5 + t) * waveAmp;
+            float dist = abs(q.y - wave);
             
-            float glow = 0.05 / (dist + 0.015);
-            glow *= (0.4 + audio * 3.0); 
+            // 2. [고음 반응] 내부 색상 확산 및 빛 번짐 (Diffusion)
+            // uAudioHigh가 커지면 빛의 두께가 넓어지고 부드럽게 퍼짐
+            float diffusion = 0.012 + (uAudioHigh * 0.06); 
+            float glow = diffusion / (dist + 0.005);
+            
+            glow *= 0.6; // 기본 밝기 밸런스
             return glow;
         }
 
         void main() {
-            // 화면 비율을 완벽히 맞추어 동그라미가 타원이 되지 않게 교정
             vec2 st = vUv - 0.5; 
             st.x *= uResolution.x / uResolution.y; 
 
             vec3 finalColor = vec3(0.0);
 
+            // 고음(High)에 의한 3겹 색상 강제 섞임 (Color Bleeding)
+            float mixFactor = uAudioHigh * 0.4;
+            vec3 c1 = mix(uColor1, uColor2, mixFactor);
+            vec3 c2 = mix(uColor2, uColor3, mixFactor);
+            vec3 c3 = mix(uColor3, uColor1, mixFactor);
+
             if (uShapeMode == 0) {
-                // 모드 0: 원본 오로라 유체 (선명하고 몽환적인 3겹)
-                float a1 = aurora(st, uAudioLow, uSeed, 0.2);
-                float a2 = aurora(st, uAudioMid, uSeed + 10.0, 0.0);
-                float a3 = aurora(st, uAudioHigh, uSeed + 20.0, -0.2);
+                // 모드 0: 희미하고 선명한 3겹 유체
+                float a1 = aurora(st, uSeed, 0.2);
+                float a2 = aurora(st, uSeed + 10.0, 0.0);
+                float a3 = aurora(st, uSeed + 20.0, -0.2);
                 
-                finalColor = uColor1 * a1 + uColor2 * a2 + uColor3 * a3;
+                finalColor = c1 * a1 + c2 * a2 + c3 * a3;
                 
-                // 오로라가 전혀 없는 까만 바탕은 완벽히 제거
+                // 고음 확산 폭발 효과 추가
+                finalColor *= (1.0 + uAudioHigh * 1.5);
+                
                 if ((a1 + a2 + a3) < 0.05) discard; 
                 
             } else {
-                // 모드 1, 2, 3: 오리지널 오로라 위에 점/사각형/스피어 필터 적용
-                float cells = 70.0; // 입자 밀도
-                
-                // 그리드 셀 좌표 계산
+                // 모드 1, 2, 3: 점/사각형/스피어 마스킹 처리
+                float cells = 70.0; 
                 vec2 gridUv = fract(st * cells);
                 vec2 cellSt = floor(st * cells) / cells; 
 
-                // 화면 전체가 아닌 "해당 셀의 중심"에서 오로라 에너지를 측정
-                float a1 = aurora(cellSt, uAudioLow, uSeed, 0.2);
-                float a2 = aurora(cellSt, uAudioMid, uSeed + 10.0, 0.0);
-                float a3 = aurora(cellSt, uAudioHigh, uSeed + 20.0, -0.2);
+                float a1 = aurora(cellSt, uSeed, 0.2);
+                float a2 = aurora(cellSt, uSeed + 10.0, 0.0);
+                float a3 = aurora(cellSt, uSeed + 20.0, -0.2);
                 
-                vec3 cellColor = uColor1 * a1 + uColor2 * a2 + uColor3 * a3;
+                vec3 cellColor = c1 * a1 + c2 * a2 + c3 * a3;
                 float intensity = a1 + a2 + a3; 
 
-                // 💡 [핵심] 오로라 에너지가 강할수록 반지름이 커짐. 
-                // 에너지가 없는 곳(반지름 < 0.05)은 아예 그리지 않음 (모기장 에러 해결!)
-                float radius = clamp(intensity * 0.15, 0.0, 0.45); 
+                // 고음(High)이 입자의 크기를 직접적으로 키워 서로 뭉치게 만듦 (확산)
+                float radius = clamp(intensity * 0.15 + (uAudioHigh * 0.15), 0.0, 0.45); 
                 
                 if (radius < 0.05) discard; 
 
@@ -166,25 +182,22 @@ export default class ThreeAuroraFluidStage {
                 float d = length(gridUv - vec2(0.5));
 
                 if (uShapeMode == 1) { 
-                    // 점 (Dots)
                     shapeAlpha = 1.0 - smoothstep(radius - 0.05, radius, d);
                 } else if (uShapeMode == 2) { 
-                    // 사각형 (Squares)
                     vec2 box = abs(gridUv - vec2(0.5));
                     float maxD = max(box.x, box.y);
                     shapeAlpha = 1.0 - smoothstep(radius - 0.05, radius, maxD);
                 } else if (uShapeMode == 3) { 
-                    // 3D 스피어 (Spheres)
                     if (d > radius) discard;
                     float z = sqrt(radius * radius - d * d) / radius; 
-                    shapeAlpha = 0.3 + z * 0.7; // 구슬의 입체 조명
+                    shapeAlpha = 0.3 + z * 0.7; 
                 }
                 
                 finalColor = cellColor * shapeAlpha;
                 if (shapeAlpha < 0.01) discard;
             }
 
-            vec3 bg = vec3(0.02, 0.03, 0.08); // 어두운 우주 배경
+            vec3 bg = vec3(0.02, 0.03, 0.08); 
             gl_FragColor = vec4(bg + finalColor, 1.0);
         }
     `;
@@ -228,25 +241,31 @@ export default class ThreeAuroraFluidStage {
     let targetMid = midCount > 0 ? Math.pow((midSum / midCount) / 255.0, 1.8) : 0;
     let targetHigh = highCount > 0 ? Math.pow((highSum / highCount) / 255.0, 1.8) : 0;
 
+    // 부드러운 반응을 위한 스무딩 보간
     this.smoothLow += (targetLow * gain - this.smoothLow) * 0.15;
     this.smoothMid += (targetMid * gain - this.smoothMid) * 0.15;
     this.smoothHigh += (targetHigh * gain - this.smoothHigh) * 0.15;
 
-    // UI 스타일 -> 쉐이프 매핑
-    let shapeMode = 0; 
-    if (colorStyle === 'pastel') shapeMode = 1; // 점
-    else if (colorStyle === 'custom') shapeMode = 2; // 사각형
-    else if (colorStyle === 'monochrome') shapeMode = 3; // 스피어
+    // 💡 [중음 반응] 유체의 속도(Speed) 조절 연산
+    // 음악이 조용할 때는 기본 속도(0.002)로 잔잔하게 흐르다가, 보컬/기타(중음)가 터지면 속도가 최대 25배(0.05) 급가속!
+    let baseSpeed = 0.002;
+    let speedBoost = this.smoothMid * 0.05; 
+    this.accumulatedTime += (baseSpeed + speedBoost);
 
-    // 셰이더 Uniform 전송
-    this.uniforms.uTime.value += 0.01;
+    // UI 스타일 매핑
+    let shapeMode = 0; 
+    if (colorStyle === 'pastel') shapeMode = 1; 
+    else if (colorStyle === 'custom') shapeMode = 2; 
+    else if (colorStyle === 'monochrome') shapeMode = 3; 
+
+    // 셰이더로 연산 결과 전송
+    this.uniforms.uTime.value = this.accumulatedTime;
     this.uniforms.uAudioLow.value = this.smoothLow;
-    this.uniforms.uAudioMid.value = this.smoothMid;
     this.uniforms.uAudioHigh.value = this.smoothHigh;
     
-    this.uniforms.uSize.value = scatter; // 오로라 크기 줌아웃
-    this.uniforms.uSeed.value = seed;    // 오로라 지형 변형
-    this.uniforms.uShapeMode.value = shapeMode; // 입자 형태 변경
+    this.uniforms.uSize.value = scatter; 
+    this.uniforms.uSeed.value = seed;    
+    this.uniforms.uShapeMode.value = shapeMode; 
 
     this.renderer.render(this.scene, this.camera);
   }
@@ -254,7 +273,7 @@ export default class ThreeAuroraFluidStage {
   resize(w, h) {
     if (this.renderer) {
       this.renderer.setSize(w, h);
-      this.uniforms.uResolution.value.set(w, h); // 화면 비율 실시간 교정
+      this.uniforms.uResolution.value.set(w, h); 
     }
   }
 
