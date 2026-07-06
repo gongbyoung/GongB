@@ -1,9 +1,11 @@
 /**
  * src/sketches/016_p5_stylized_painter.js
- * - [버그 픽스] pixelDensity(1) 및 img.resize 적용으로 블랙스크린 해결
+ * - [리팩토링] ImageAnalyzer 코어 모듈 연동으로 구조 최적화
  * - 3단계 페인팅: 윤곽선(30%) -> 면 채우기(60%) -> 정밀 묘사(80%)
- * - 정지 시 즉시 100% 완성본 렌더링 (미리보기 모드)
+ * - UI 슬라이더 실시간 연동 및 미리보기 모드 지원
  */
+import ImageAnalyzer from '../core/ImageAnalyzer.js'; // 💡 분리된 코어 모듈을 불러옵니다!
+
 export default class P5StylizedArtPainter {
   constructor(container) {
     this.container = container;
@@ -43,7 +45,6 @@ export default class P5StylizedArtPainter {
         canvas.style('position', 'absolute');
         canvas.style('z-index', '1');
         
-        // 💡 [핵심 픽스 1] 픽셀 연산 엉킴 방지를 위해 밀도를 1로 강제 고정
         p.pixelDensity(1);
         
         this.pg = p.createGraphics(p.width, p.height);
@@ -74,40 +75,11 @@ export default class P5StylizedArtPainter {
   }
 
   prepareCanvas(img, p) {
-    // 💡 [핵심 픽스 2] 원본 이미지를 캔버스 크기에 딱 맞게 리사이징 (화면 이탈 방지)
     img.resize(p.width, p.height);
-      
     this.sourceImg = img;
-    this.sourceImg.loadPixels();
     
-    // 흑백 사본 만들어 윤곽선 추출
-    let grayImg = p.createImage(img.width, img.height);
-    grayImg.copy(img, 0, 0, img.width, img.height, 0, 0, img.width, img.height);
-    grayImg.filter(p.GRAY);
-    grayImg.loadPixels();
-
-    this.edgeData = [];
-    let step = 4; 
-    
-    for (let y = 1; y < img.height - 1; y += step) {
-      for (let x = 1; x < img.width - 1; x += step) {
-        let idx = (y * img.width + x) * 4;
-        
-        // 미분(밝기 차이) 윤곽선 검출
-        let diffX = Math.abs(grayImg.pixels[idx] - grayImg.pixels[idx + 4]);
-        let diffY = Math.abs(grayImg.pixels[idx] - grayImg.pixels[idx + img.width * 4]);
-        let edgeStrength = diffX + diffY;
-        
-        this.edgeData.push({
-          x: x, 
-          y: y,
-          r: img.pixels[idx], 
-          g: img.pixels[idx+1], 
-          b: img.pixels[idx+2],
-          edge: edgeStrength > 50 ? 1 : 0
-        });
-      }
-    }
+    // 💡 무거운 계산을 ImageAnalyzer로 위임! (코드가 엄청 깔끔해졌습니다)
+    this.edgeData = ImageAnalyzer.extractFeatures(img, p, 4, 50);
     
     this.isImageLoaded = true;
     this.currentSettings = this.getUIParams();
@@ -221,14 +193,12 @@ export default class P5StylizedArtPainter {
     this.pg.translate(pt.x + scatterOffset, pt.y + scatterOffset);
     
     if (progress < 0.3) {
-        // [1단계] 거친 윤곽선 스케치
         if (pt.edge) {
             this.pg.stroke(255, 150 * ui.glow);
             this.pg.strokeWeight(p.random(0.5, 1.5) * (ui.glow * 2));
             this.pg.point(0, 0);
         }
     } else if (progress < 0.6) {
-        // [2단계] 면 채우기 (채색)
         if (!pt.edge) {
             this.pg.noStroke();
             this.pg.fill(pt.r, pt.g, pt.b, alpha);
@@ -236,7 +206,6 @@ export default class P5StylizedArtPainter {
             this.pg.rect(0, 0, rectSize, rectSize);
         }
     } else {
-        // [3단계] 정밀 묘사
         this.pg.noStroke();
         this.pg.fill(pt.r, pt.g, pt.b, alpha);
         let ellipseSize = 2 * ui.glow;
@@ -293,7 +262,7 @@ export default class P5StylizedArtPainter {
       this.p5Instance.resizeCanvas(w, h);
       if (this.pg) {
           this.pg = this.p5Instance.createGraphics(w, h);
-          this.pg.pixelDensity(1); // 리사이즈 시에도 밀도 1 유지
+          this.pg.pixelDensity(1); 
           this.resetCanvas(this.p5Instance, this.isPreviewMode);
       }
     }
