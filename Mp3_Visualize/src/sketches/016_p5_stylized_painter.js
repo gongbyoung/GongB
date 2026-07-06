@@ -1,87 +1,77 @@
 /**
  * src/sketches/016_p5_stylized_painter.js
- * - 분산범위: 저/중/고음 획 크기 대비(Contrast) 조절
- * - 발광/크기: 획의 절대 두께 및 색상 농도(Saturation/Opacity)
- * - 폭발력: 음악 비트에 따라 터져 나오는 획의 개수(Strokes per Frame)
+ * - 3단계 페인팅: 윤곽선(30%) -> 면 채우기(60%) -> 정밀 묘사(80%)
  */
 export default class P5StylizedArtPainter {
   constructor(container) {
     this.container = container;
     this.p5Instance = null;
-    this.currentAudioData = null;
-    
-    this.largeStrokes = [];
-    this.mediumStrokes = [];
-    this.fineStrokes = [];
-    
+    this.sourceImg = null;
     this.pg = null; 
-    this.isImageLoaded = false;
+    this.points = []; // 픽셀 기반 붓터치 위치
     this.drawnCount = 0;
-    this.totalStrokes = 0;
+    this.isImageLoaded = false;
   }
 
   // ... (init, handleDragOver, handleDrop 동일)
-  
-  // 💡 [핵심] UI 설정값을 붓 엔진에 1:1 직결
-  getUIParams() {
-      const settings = window.cosmicEngineSettings || {};
-      return {
-          scatter: settings.scatterExponent ?? 2.2, // 획 크기 대비
-          glow: settings.glowAmount ?? 0.25,        // 색상 농도 및 절대 크기
-          burst: settings.audioGain ?? 1.0,         // 폭발력 (주파수 반응 개수)
-          style: settings.colorStyle ?? 'neon'
-      };
+
+  prepareCanvas(img, p) {
+    this.sourceImg = img;
+    this.sourceImg.filter(p.GRAY); // 윤곽선 추출을 위한 전처리
+    this.sourceImg.loadPixels();
+    this.pg.background(15, 18, 25);
+    
+    // 💡 이미지의 윤곽선 데이터(Edge)와 면 데이터(Area)를 분리하여 큐에 담음
+    this.points = [];
+    let step = 4;
+    for (let y = 1; y < p.height - 1; y += step) {
+        for (let x = 1; x < p.width - 1; x += step) {
+            let idx = (y * img.width + x) * 4;
+            // 미분(밝기 차이)을 통해 윤곽선 강도 계산
+            let edge = Math.abs(img.pixels[idx] - img.pixels[idx + 4]) + 
+                       Math.abs(img.pixels[idx] - img.pixels[idx + img.width * 4]);
+            this.points.push({x, y, edge: edge > 50 ? 1 : 0});
+        }
+    }
+    p.shuffle(this.points, true);
+    this.isImageLoaded = true;
   }
 
   update(audioData) {
     if (!this.p5Instance || !this.isImageLoaded) return;
-    this.currentAudioData = audioData;
-    const ui = this.getUIParams();
-
-    const audioEl = document.querySelector('audio');
-    let progress = audioEl ? (audioEl.currentTime / (audioEl.duration * 0.8)) : 0;
-    progress = Math.min(progress, 1.0);
-
-    // 음악 주파수
-    let low = (audioData.raw[2] + audioData.raw[3]) / 510;
-    let mid = (audioData.raw[20] + audioData.raw[21]) / 510;
-    let high = (audioData.raw[60] + audioData.raw[61]) / 510;
-
-    // 💡 폭발력 적용: 획의 숫자를 Burst(audioGain)에 비례해서 증가
-    let baseRate = Math.floor(20 * ui.burst); 
-    let targetDrawn = Math.floor(this.totalStrokes * progress);
-    let drawBudget = Math.min(targetDrawn - this.drawnCount, baseRate);
-
-    // 💡 분산범위(Scatter) 적용: 저/중/고음의 획 크기 대비 조정
-    let scatterMod = ui.scatter; // 높을수록 고음은 작게, 저음은 크게
-    let sizeBase = ui.glow * 10; // 절대 크기 조절
-
-    this.executeDrawing(drawBudget, low, mid, high, scatterMod, sizeBase);
-    this.drawnCount += drawBudget;
+    const progress = Math.min(document.querySelector('audio').currentTime / (document.querySelector('audio').duration * 0.8), 1.0);
+    
+    let budget = Math.floor(this.points.length * 0.05); // 프레임당 예산
+    
+    for(let i = 0; i < budget; i++) {
+        if(this.points.length === 0) break;
+        let pt = this.points.pop();
+        this.paintStepByStep(pt, progress);
+    }
     this.p5Instance.redraw();
   }
 
-  executeDrawing(budget, l, m, h, sMod, sBase) {
-    // 💡 분산 범위(sMod)를 적용한 계산식
-    let largeSize = (l * 20 + 10) * sBase * sMod; 
-    let midSize = (m * 10 + 5) * sBase;
-    let fineSize = (h * 2 + 1) * sBase / sMod;
-
-    while(budget > 0 && this.largeStrokes.length > 0) { this.paint(this.largeStrokes.pop(), largeSize, 'large'); budget--; }
-    while(budget > 0 && this.mediumStrokes.length > 0) { this.paint(this.mediumStrokes.pop(), midSize, 'medium'); budget--; }
-    while(budget > 0 && this.fineStrokes.length > 0) { this.paint(this.fineStrokes.pop(), fineSize, 'fine'); budget--; }
-  }
-
-  paint(pos, size, type) {
+  paintStepByStep(pt, progress) {
     let p = this.p5Instance;
-    let c = this.sourceImg.get(pos.x, pos.y);
-    // 💡 발광/크기(ui.glow) 슬라이더에 따른 색상 농도 반영
-    let alpha = 200 * this.getUIParams().glow; 
-    this.pg.fill(p.red(c), p.green(c), p.blue(c), alpha);
-    this.pg.noStroke();
+    let c = this.sourceImg.get(pt.x, pt.y);
     
-    if(type === 'large') this.pg.ellipse(pos.x, pos.y, size, size/2);
-    else if(type === 'medium') this.pg.circle(pos.x, pos.y, size);
-    else this.pg.rect(pos.x, pos.y, size, size);
+    // 💡 시간대별 엔진 분기
+    if (progress < 0.3) {
+        // 1단계: 윤곽선 위주로 거친 스케치
+        if (pt.edge) {
+            this.pg.stroke(255, 150);
+            this.pg.strokeWeight(1);
+            this.pg.point(pt.x, pt.y);
+        }
+    } else if (progress < 0.6) {
+        // 2단계: 면 채우기 (Blocking)
+        this.pg.noStroke();
+        this.pg.fill(c);
+        this.pg.rect(pt.x, pt.y, 6, 6);
+    } else {
+        // 3단계: 정밀 묘사 (Details)
+        this.pg.fill(c);
+        this.pg.ellipse(pt.x, pt.y, 2, 2);
+    }
   }
 }
