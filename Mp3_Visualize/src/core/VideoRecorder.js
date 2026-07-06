@@ -1,8 +1,9 @@
 /**
- * src/utils/VideoRecorder.js
+ * src/core/VideoRecorder.js
  * 4K급 초고해상도 에러 무한 지원 및 오디오 자동 동기화/녹음 엔진 탑재
+ * (export 문법 에러 완벽 해결판)
  */
-export class VideoRecorder {
+export class VideoRecorder { // 💡 default를 빼서 main.js와 완벽하게 짝을 맞췄습니다!
   constructor(canvas, fps = 30) {
     this.canvas = canvas;
     this.fps = fps;
@@ -33,12 +34,10 @@ export class VideoRecorder {
             if (!this.audioCtx) {
                 this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             }
-            // 중복 연결 에러를 방지하기 위해 한 번만 연결
             if (!this.audioSource) {
                 this.audioSource = this.audioCtx.createMediaElementSource(audioEl);
                 this.audioDest = this.audioCtx.createMediaStreamDestination();
                 
-                // 오디오를 녹음기와 실제 스피커 양쪽으로 동시 출력
                 this.audioSource.connect(this.audioDest);
                 this.audioSource.connect(this.audioCtx.destination);
             }
@@ -55,7 +54,7 @@ export class VideoRecorder {
         audioEl.currentTime = 0;
         audioEl.play();
 
-        // 💡 음악이 끝나면 자동으로 녹화 종료 이벤트 트리거
+        // 💡 음악이 끝나면 자동으로 녹화 종료
         audioEl.onended = () => {
             console.log("🎵 음악 종료: 녹화를 자동으로 완료하고 저장합니다.");
             this.stop();
@@ -114,7 +113,6 @@ export class VideoRecorder {
     a.style.display = 'none';
     a.href = url;
     
-    // 파일명에 저장 시간 추가
     const date = new Date();
     const timeStr = `${date.getHours()}${date.getMinutes()}${date.getSeconds()}`;
     a.download = `Cosmic_Studio_Art_${timeStr}.webm`;
