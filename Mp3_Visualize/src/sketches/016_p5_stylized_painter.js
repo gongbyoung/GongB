@@ -293,7 +293,7 @@ export default class P5StylizedArtPainter {
     p.noStroke();
     p.textSize(24);
     p.textAlign(p.CENTER, p.CENTER);
-    p.text("원하는 이미지를 드래그 & 드롭하여 캔버스에 올려주세요", p.width/2, p.height/2);
+    p.text("원하는 이미지를 드래그 & 드롭하여 캔버스에 올려주세요 TEXTURE에 붓모양을 로딩하세요", p.width/2, p.height/2);
     p.pop();
   }
 
