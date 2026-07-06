@@ -1,7 +1,8 @@
 /**
  * 015_three_p5_aurora.js
- * 3D 파티클(Points) 시스템을 활용하여 완벽한 Z-Depth(깊이감)를 가진 3겹의 오로라 렌더링.
- * 2D 평면 느낌을 완벽히 탈피하고, 파티클들이 모여 유체를 이루며 가장자리로 흩어지는 물리적 미디어 아트.
+ * (바둑판 에러 완벽 수정판)
+ * 3차원 공간에 3겹의 물결치는 3D 곡면(Mesh)을 띄우고, 
+ * 셰이더를 통해 오로라의 중심은 뭉치고 경계선으로 갈수록 점/사각형/구슬로 흩어지도록 만든 리얼 3D 유체 엔진
  */
 import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
 
@@ -13,7 +14,7 @@ export default class ThreeAuroraFluidStage {
     this.camera = null;
     this.renderer = null;
     
-    this.layers = []; // 3겹의 오로라 레이어 관리
+    this.layers = []; // 3겹의 3D 오로라 레이어
 
     this.smoothLow = 0;
     this.smoothMid = 0;
@@ -28,47 +29,46 @@ export default class ThreeAuroraFluidStage {
 
     this.scene = new THREE.Scene();
     
-    // 💡 평면 느낌(Orthographic)을 버리고, 입체감을 살리는 원근(Perspective) 카메라 사용
+    // 💡 2D 평면 느낌을 없애기 위해 입체 원근(Perspective) 카메라 사용
     this.camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
-    this.camera.position.z = 4;
+    this.camera.position.z = 2.5;
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     this.renderer.setSize(width, height);
     this.renderer.domElement.style.position = 'absolute';
     this.renderer.domElement.style.top = '0';
     this.renderer.domElement.style.left = '0';
-    // 블렌딩 최적화를 위한 설정
-    this.renderer.setClearColor(0x020308, 1.0); 
+    this.renderer.setClearColor(0x020308, 1.0); // 우주 심연의 배경색
     this.container.appendChild(this.renderer.domElement);
 
-    // 💡 [핵심] 3겹의 레이어 생성 (저음, 중음, 고음)
-    // 0: 뒤쪽(마젠타), 1: 중간(시안), 2: 앞쪽(옐로우)
-    this.layers.push(this.createAuroraLayer(0xff0055, -0.6, 0.3));  
-    this.layers.push(this.createAuroraLayer(0x00ffcc, 0.0, 0.0));   
-    this.layers.push(this.createAuroraLayer(0xffcc00, 0.6, -0.3));  
+    // 💡 3겹의 오로라 레이어 생성 (Color, Z위치, Y오프셋)
+    // 뒤에서부터 저음(마젠타), 중음(시안), 고음(옐로우) 배치
+    this.layers.push(this.createAuroraMesh(0xff0055, -0.5, -0.25)); 
+    this.layers.push(this.createAuroraMesh(0x00ffcc, 0.0, 0.0));    
+    this.layers.push(this.createAuroraMesh(0xffcc00, 0.5, 0.25));   
   }
 
-  // 💡 파티클 기반 오로라 레이어 생성기
-  createAuroraLayer(colorHex, zIndex, yOffset) {
+  // 💡 리얼 3D 오로라 곡면 생성 함수
+  createAuroraMesh(colorHex, zOffset, yOffset) {
     const uniforms = {
         uTime: { value: 0.0 },
         uAudio: { value: 0.0 },
         uColor: { value: new THREE.Color(colorHex) },
-        uScatter: { value: 2.2 }, // 오로라 크기/분산
-        uSeed: { value: 42.0 },   // 오로라 지형
-        uShapeMode: { value: 0 }  // 입자 쉐이프
+        uScatter: { value: 2.2 },
+        uSeed: { value: 42.0 },
+        uShapeMode: { value: 0 },
+        uYOffset: { value: yOffset }
     };
 
+    // Vertex Shader: 평면을 3D로 구불구불하게 왜곡시켜 리얼한 입체감을 줌
     const vertexShader = `
+        varying vec2 vUv;
+        varying float vNoise;
         uniform float uTime;
-        uniform float uAudio;
-        uniform float uScatter;
         uniform float uSeed;
-        
-        varying float vAlpha;
-        varying vec3 vColor;
+        uniform float uScatter;
 
-        // 3D Simplex Noise
+        // 3D Noise
         vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
         vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
         vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
@@ -113,75 +113,82 @@ export default class ThreeAuroraFluidStage {
         }
 
         void main() {
+            vUv = uv;
             vec3 pos = position;
-            float t = uTime * 0.3 + uSeed;
             
-            // 💡 3D 노이즈를 이용해 유체의 굴곡(Z, Y) 생성
-            // uScatter(분산 범위)가 클수록 오로라가 위아래로 더 넓게 흩뿌려짐
-            float noiseX = pos.x * 0.8;
-            float noiseY = pos.y * (1.0 + uScatter * 0.5);
+            // Scatter 슬라이더로 입체 파동의 크기를 제어
+            float noiseZ = snoise(vec3(pos.x * 1.5, pos.y * 1.5, uTime * 0.2 + uSeed));
+            pos.z += noiseZ * (0.1 + uScatter * 0.1); 
             
-            float n1 = snoise(vec3(noiseX, noiseY, t));
-            float n2 = snoise(vec3(noiseX * 2.0 + t, noiseY * 2.0, -t));
-            
-            // 오디오 볼륨이 클수록 입자들이 Z축(앞뒤)과 Y축(상하)으로 격렬하게 요동침
-            pos.z += n1 * 0.5 * (1.0 + uAudio * 2.0);
-            pos.y += n2 * 0.3 * (1.0 + uAudio * 1.5);
-
-            // 💡 [핵심] 가장자리 소멸 렌더링 (경계선 흐리기)
-            // Y축 가장자리로 갈수록 vAlpha값이 0에 가까워짐
-            float edgeFade = 1.0 - smoothstep(0.3, 1.0, abs(position.y));
-            // 노이즈를 섞어 입자들이 불규칙하게 소멸되도록 유도
-            vAlpha = edgeFade * smoothstep(-0.3, 0.8, snoise(vec3(pos.x*3.0, pos.y*3.0, t)));
-            
-            // 오디오가 튈 때 번쩍임 효과
-            vAlpha *= (0.3 + uAudio * 2.5);
-
-            vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
-            gl_Position = projectionMatrix * mvPosition;
-            
-            // 카메라와 가까울수록 입자가 커지고, 오디오가 클수록 커짐
-            float baseSize = 30.0 + (uAudio * 100.0);
-            gl_PointSize = baseSize * (1.0 / -mvPosition.z);
+            vNoise = noiseZ;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
         }
     `;
 
+    // Fragment Shader: 오로라 빛의 렌더링 및 입자(경계선 흩어짐) 효과 적용
     const fragmentShader = `
+        uniform float uTime;
+        uniform float uAudio;
         uniform vec3 uColor;
+        uniform float uScatter;
+        uniform float uSeed;
         uniform int uShapeMode;
+        uniform float uYOffset;
         
-        varying float vAlpha;
+        varying vec2 vUv;
+        varying float vNoise;
 
         void main() {
-            // 입자의 중심(0.5, 0.5)으로부터의 거리
-            vec2 pt = gl_PointCoord - vec2(0.5);
-            float d = length(pt);
+            vec2 uv = vUv;
             
-            float alpha = vAlpha;
-            vec3 color = uColor;
+            // 💡 오로라의 흐르는 궤적 계산
+            float t = uTime * 0.2 + uSeed;
+            float waveY = 0.5 + uYOffset + (vNoise * 0.2 * uScatter); 
+            
+            // 궤적으로부터의 거리 (거리가 가까울수록 중심부)
+            float dist = abs(uv.y - waveY);
+            
+            // 💡 오로라 빛의 강도 (가운데는 엄청 밝고, 멀어지면 어두워짐)
+            float intensity = 0.015 / (dist + 0.005);
+            intensity *= (0.5 + uAudio * 2.5); // 주파수 터질 때 밝기 폭발
 
-            // 💡 UI 스타일에 따른 입자 쉐이프(모양) 결정
-            if (uShapeMode == 0) {
-                // 모드 0: 희미한 깃털 (입자들이 뭉쳐 부드러운 유체를 만듦)
-                alpha *= smoothstep(0.5, 0.0, d);
-            } else if (uShapeMode == 1) {
-                // 모드 1: 선명한 점 (Dots)
-                if (d > 0.45) discard; // 원형 밖은 잘라냄
-            } else if (uShapeMode == 2) {
-                // 모드 2: 사각형 (Squares)
-                // gl_PointCoord 전체 영역을 칠함 (자르지 않음)
-            } else if (uShapeMode == 3) {
-                // 모드 3: 입체 스피어 (Spheres)
-                if (d > 0.45) discard;
-                float z = sqrt(0.25 - d * d) / 0.5; // 구면의 높이 계산
-                color *= (0.3 + z * 1.5); // 입체 명암 부여
+            float alpha = smoothstep(0.4, 0.0, dist);
+            vec3 finalColor = uColor * intensity;
+
+            // 💡 [핵심] 쉐이프 모드 적용 (경계선 소멸 입자 효과)
+            if (uShapeMode > 0) {
+                float cells = 60.0;
+                vec2 grid = fract(uv * cells);
+                
+                // 오로라 에너지가 쎈 곳(중심)은 반지름이 크고, 약한 곳(가장자리)은 0으로 줄어듦
+                float maxRadius = clamp(intensity * 0.15, 0.0, 0.45);
+                float shapeAlpha = 0.0;
+                
+                if (maxRadius > 0.01) {
+                    float d = length(grid - vec2(0.5));
+                    
+                    if (uShapeMode == 1) { // 1. 점 (Dots)
+                        shapeAlpha = 1.0 - smoothstep(maxRadius - 0.05, maxRadius, d);
+                    } else if (uShapeMode == 2) { // 2. 사각형 (Squares)
+                        vec2 box = abs(grid - vec2(0.5));
+                        float md = max(box.x, box.y);
+                        shapeAlpha = 1.0 - smoothstep(maxRadius - 0.05, maxRadius, md);
+                    } else if (uShapeMode == 3) { // 3. 입체 구슬 (Spheres)
+                        if (d < maxRadius) {
+                            float z = sqrt(maxRadius * maxRadius - d * d) / maxRadius;
+                            shapeAlpha = 0.3 + z * 0.7; // 입체 명암
+                        }
+                    }
+                }
+                alpha *= shapeAlpha;
+                // 입자 모드일 때 색상 보정
+                finalColor = uColor * (0.5 + intensity * 0.8); 
             }
 
-            // 완전 투명한 찌꺼기 제거
             if (alpha < 0.01) discard;
 
-            // Additive Blending을 위한 Premultiplied Alpha
-            gl_FragColor = vec4(color * alpha, alpha);
+            // 겹칠수록 빛나는 Additive Blending 렌더링
+            gl_FragColor = vec4(finalColor * alpha, alpha);
         }
     `;
 
@@ -190,20 +197,18 @@ export default class ThreeAuroraFluidStage {
         fragmentShader,
         uniforms,
         transparent: true,
-        blending: THREE.AdditiveBlending, // 겹칠수록 빛이 강해지는 블렌딩
-        depthWrite: false // 파티클 겹침 에러 방지
+        blending: THREE.AdditiveBlending,
+        depthWrite: false, // 3겹이 겹칠 때 검은 테두리 생기는 현상 방지
+        side: THREE.DoubleSide
     });
 
-    // 💡 평면이 아니라 한 겹당 16,000개(200x80)의 점(Points)으로 구성
-    const geometry = new THREE.PlaneGeometry(6, 2, 200, 80);
-    const points = new THREE.Points(geometry, material);
+    // 해상도가 높은 평면 생성 (왜곡을 부드럽게 하기 위해 분할 수를 64x64로 높임)
+    const geometry = new THREE.PlaneGeometry(6, 4, 64, 64);
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.z = zOffset; // 3겹 깊이감
     
-    // 레이어별 위치 조정 (Z-Depth 적용)
-    points.position.z = zIndex;
-    points.position.y = yOffset;
-    
-    this.scene.add(points);
-    return { points, uniforms };
+    this.scene.add(mesh);
+    return { mesh, uniforms };
   }
 
   update(audioData) {
@@ -220,7 +225,7 @@ export default class ThreeAuroraFluidStage {
       colorStyle = window.cosmicEngineSettings.colorStyle || 'neon';
     }
 
-    // 주파수 3분할 추출 (Bass, Mid, Treble)
+    // 주파수 3분할 추출 (저음, 중음, 고음)
     let lowSum = 0, midSum = 0, highSum = 0;
     let lowCount = 0, midCount = 0, highCount = 0;
 
@@ -238,18 +243,18 @@ export default class ThreeAuroraFluidStage {
     this.smoothMid += (targetMid * gain - this.smoothMid) * 0.15;
     this.smoothHigh += (targetHigh * gain - this.smoothHigh) * 0.15;
 
-    // UI 스타일 -> 파티클 쉐이프 매핑
+    // UI 스타일 -> 쉐이프 매핑
     let shapeMode = 0; 
     if (colorStyle === 'pastel') shapeMode = 1; // 점
     else if (colorStyle === 'custom') shapeMode = 2; // 사각형
     else if (colorStyle === 'monochrome') shapeMode = 3; // 스피어
 
-    // 시간 및 카메라 회전 (입체감 부여)
+    // 카메라 및 씬 회전 (리얼 3D 입체감 부여)
     const time = Date.now() * 0.001;
-    this.scene.rotation.y = Math.sin(time * 0.5) * 0.15; // 좌우로 부드럽게 흔들림
-    this.scene.rotation.x = Math.cos(time * 0.3) * 0.05; // 상하로 부드럽게 흔들림
+    this.scene.rotation.y = Math.sin(time * 0.3) * 0.15; // 좌우 끄덕임
+    this.scene.rotation.x = Math.cos(time * 0.2) * 0.05; // 상하 끄덕임
 
-    // 각 레이어(3겹)에 독립적인 주파수와 옵션 주입
+    // 3겹의 레이어에 각각 독립된 주파수 값 주입
     const audios = [this.smoothLow, this.smoothMid, this.smoothHigh];
     
     for (let i = 0; i < 3; i++) {
@@ -279,8 +284,8 @@ export default class ThreeAuroraFluidStage {
       this.renderer = null;
     }
     this.layers.forEach(layer => {
-        layer.points.geometry.dispose();
-        layer.points.material.dispose();
+        layer.mesh.geometry.dispose();
+        layer.mesh.material.dispose();
     });
     this.layers = [];
     this.scene = null;
