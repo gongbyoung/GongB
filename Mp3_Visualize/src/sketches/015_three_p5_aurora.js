@@ -1,8 +1,8 @@
 /**
  * 015_three_p5_aurora.js
  * 3겹의 비선형 오로라 유체가 저음, 중음, 고음 주파수에 각각 독립적으로 반응하며,
- * UI 스타일(Neon/Pastel/Custom/Monochrome)에 따라 점, 사각형, 스피어 형태로 경계선이 실시간 변환되는 
- * 100% WebGL 셰이더 기반 미디어 아트
+ * UI 스타일(Neon/Pastel/Custom/Monochrome)에 따라 오로라 자체와 그 경계선이 
+ * 희미한 유체, 점, 사각형, 스피어 형태로 다이나믹하게 변환되는 100% WebGL 셰이더 미디어 아트
  */
 import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
 
@@ -41,7 +41,7 @@ export default class ThreeAuroraFluidStage {
     this.renderer.domElement.style.left = '0';
     this.container.appendChild(this.renderer.domElement);
 
-    // 💡 [핵심] 3겹 오로라 및 쉐이프 변환 GLSL 셰이더 코드
+    // 💡 [핵심] 3겹 오로라 및 입자 쉐이프 변환 GLSL 셰이더 코드
     this.uniforms = {
         uTime: { value: 0.0 },
         uAudioLow: { value: 0.0 },
@@ -111,7 +111,7 @@ export default class ThreeAuroraFluidStage {
             // uSize(분산범위)를 통해 오로라의 크기를 제어
             float scale = 3.0 / max(0.5, uSize); 
             vec2 q = p * scale;
-            q.y += offset; // 레이어별 높이 차이
+            q.y += offset; 
 
             float n1 = snoise(q + vec2(t, t*0.5));
             float n2 = snoise(q * 1.5 - vec2(t*1.2, -t*0.8) + n1);
@@ -120,55 +120,67 @@ export default class ThreeAuroraFluidStage {
             float dist = abs(q.y - wave * 0.4);
             
             float glow = 0.05 / (dist + 0.02);
-            // 주파수가 터질 때 해당 오로라가 폭발적으로 밝아짐
             glow *= (0.2 + audio * 3.5); 
             return glow;
         }
 
         void main() {
             vec2 st = vUv;
-            st.y -= 0.5; // 화면 중앙 정렬
-            st.x *= uResolution.x / uResolution.y; // 화면 비율 보정
+            st.y -= 0.5; 
+            st.x *= uResolution.x / uResolution.y; 
 
-            vec2 cellSt = st;
-            float shapeMask = 1.0;
-            float cells = 50.0; // 쉐이프(점/사각형/스피어)의 밀도
+            vec3 finalColor = vec3(0.0);
 
-            // 💡 [쉐이프 모드] 선택된 스타일에 따라 오로라를 구성하는 입자 모양 변경
-            if (uShapeMode == 1) { 
-                // 모드 1: 점 (Dots)
-                vec2 gridUv = fract(st * cells);
-                cellSt = floor(st * cells) / cells;
-                float d = length(gridUv - vec2(0.5));
-                shapeMask = smoothstep(0.45, 0.35, d);
-            } else if (uShapeMode == 2) { 
-                // 모드 2: 사각형 (Squares)
-                vec2 gridUv = fract(st * cells);
-                cellSt = floor(st * cells) / cells;
-                float margin = smoothstep(0.0, 0.08, gridUv.x) * smoothstep(1.0, 0.92, gridUv.x) *
-                               smoothstep(0.0, 0.08, gridUv.y) * smoothstep(1.0, 0.92, gridUv.y);
-                shapeMask = margin;
-            } else if (uShapeMode == 3) { 
-                // 모드 3: 3D 스피어 (Spheres)
-                vec2 gridUv = fract(st * cells);
-                cellSt = floor(st * cells) / cells;
-                float d = length(gridUv - vec2(0.5));
-                float z = sqrt(max(0.0, 0.25 - d*d)); // 구체의 입체감(Depth)
-                float light = 0.4 + z * 2.0; // 입체 조명 효과
-                shapeMask = smoothstep(0.5, 0.45, d) * light;
+            if (uShapeMode == 0) {
+                // 💡 모드 0: 희미한 유체 (부드러운 오리지널 오로라)
+                float a1 = aurora(st, uAudioLow, uSeed, 0.2);
+                float a2 = aurora(st, uAudioMid, uSeed + 10.0, 0.0);
+                float a3 = aurora(st, uAudioHigh, uSeed + 20.0, -0.2);
+                finalColor = uColor1 * a1 + uColor2 * a2 + uColor3 * a3;
+            } else {
+                // 💡 모드 1, 2, 3: 오로라 자체를 입자로 구성 (가장자리로 갈수록 소멸)
+                float cells = 60.0; 
+                vec2 gridUv = fract(st * cells); // 각 셀 내부의 지역 좌표 (0.0 ~ 1.0)
+                vec2 cellSt = floor(st * cells) / cells; // 각 셀의 중앙 좌표
+
+                // 전체 화면이 아닌 "각 셀의 중앙"을 기준으로 오로라가 지나가는지 강도를 측정
+                float a1 = aurora(cellSt, uAudioLow, uSeed, 0.2);
+                float a2 = aurora(cellSt, uAudioMid, uSeed + 10.0, 0.0);
+                float a3 = aurora(cellSt, uAudioHigh, uSeed + 20.0, -0.2);
+                
+                vec3 cellColor = uColor1 * a1 + uColor2 * a2 + uColor3 * a3;
+                float intensity = (a1 + a2 + a3) / 3.0; // 현재 셀의 오로라 평균 에너지
+
+                // [핵심] 오로라의 에너지가 강할수록 입자 크기가 커지고, 경계선으로 갈수록 입자가 작아져 사라짐
+                float radiusMod = clamp(intensity * 10.0, 0.0, 1.0); 
+                float maxRadius = 0.45 * radiusMod; // 입자의 최대 크기 제한
+                float shapeAlpha = 0.0;
+
+                if (maxRadius > 0.01) { // 오로라 에너지가 있는 곳에서만 렌더링
+                    if (uShapeMode == 1) { 
+                        // 모드 1: 점 (Dots)
+                        float d = length(gridUv - vec2(0.5));
+                        shapeAlpha = 1.0 - smoothstep(max(0.0, maxRadius - 0.05), maxRadius, d);
+                    } else if (uShapeMode == 2) { 
+                        // 모드 2: 사각형 (Squares)
+                        vec2 dist = abs(gridUv - vec2(0.5));
+                        float maxD = max(dist.x, dist.y);
+                        shapeAlpha = 1.0 - smoothstep(max(0.0, maxRadius - 0.05), maxRadius, maxD);
+                    } else if (uShapeMode == 3) { 
+                        // 모드 3: 3D 스피어 (Spheres)
+                        float d = length(gridUv - vec2(0.5));
+                        if (d < maxRadius) {
+                            float z = sqrt(maxRadius * maxRadius - d * d) / maxRadius; // 구체의 입체감
+                            float light = 0.3 + z * 1.5; 
+                            shapeAlpha = (1.0 - smoothstep(max(0.0, maxRadius - 0.05), maxRadius, d)) * light;
+                        }
+                    }
+                }
+                finalColor = cellColor * shapeAlpha;
             }
-            // uShapeMode == 0 (희미하게) 일 때는 cellSt = st (부드러운 유체) 유지
-
-            // 3겹의 주파수 독립 오로라 렌더링
-            float a1 = aurora(cellSt, uAudioLow, uSeed, 0.2);   // 저음 (위)
-            float a2 = aurora(cellSt, uAudioMid, uSeed + 10.0, 0.0); // 중음 (중앙)
-            float a3 = aurora(cellSt, uAudioHigh, uSeed + 20.0, -0.2); // 고음 (아래)
-
-            vec3 color = uColor1 * a1 + uColor2 * a2 + uColor3 * a3;
-            color *= shapeMask; // 선택된 쉐이프 마스크 적용
 
             vec3 bg = vec3(0.02, 0.03, 0.08); // 우주 다크 블루 배경
-            gl_FragColor = vec4(bg + color, 1.0);
+            gl_FragColor = vec4(bg + finalColor, 1.0);
         }
     `;
 
@@ -202,11 +214,11 @@ export default class ThreeAuroraFluidStage {
     let lowCount = 0, midCount = 0, highCount = 0;
 
     if (audioData.raw && audioData.raw.length > 0) {
-        // 저음 (Bass) - 킥 드럼 등
+        // 저음 (Bass)
         for(let i = 2; i < 12; i++) { lowSum += audioData.raw[i] || 0; lowCount++; }
-        // 중음 (Mid) - 보컬, 기타 등
+        // 중음 (Mid)
         for(let i = 12; i < 35; i++) { midSum += audioData.raw[i] || 0; midCount++; }
-        // 고음 (Treble) - 하이햇, 바이올린 등
+        // 고음 (Treble)
         for(let i = 35; i < 90; i++) { highSum += audioData.raw[i] || 0; highCount++; }
     }
 
@@ -219,21 +231,21 @@ export default class ThreeAuroraFluidStage {
     this.smoothMid += (targetMid * gain - this.smoothMid) * 0.15;
     this.smoothHigh += (targetHigh * gain - this.smoothHigh) * 0.15;
 
-    // 💡 [스타일 -> 쉐이프 매핑] UI 이름은 그대로 두고, 셰이더 내부 렌더링 방식을 교체!
+    // 💡 [스타일 매핑] UI에 맞춰 셰이더 모드를 변경합니다.
     let shapeMode = 0; // 희미하게 (Smooth Fluid)
     if (colorStyle === 'pastel') shapeMode = 1; // 점 (Dots)
     else if (colorStyle === 'custom') shapeMode = 2; // 사각형 (Squares)
     else if (colorStyle === 'monochrome') shapeMode = 3; // 스피어 (Spheres)
 
-    // 셰이더 Uniform 변수 전송
+    // 셰이더 Uniform 전송
     this.uniforms.uTime.value += 0.01;
     this.uniforms.uAudioLow.value = this.smoothLow;
     this.uniforms.uAudioMid.value = this.smoothMid;
     this.uniforms.uAudioHigh.value = this.smoothHigh;
     
-    this.uniforms.uSize.value = scatter; // 오로라 크기
-    this.uniforms.uSeed.value = seed;    // 오로라 모양 (지형 변경)
-    this.uniforms.uShapeMode.value = shapeMode; // 오로라 입자 쉐이프
+    this.uniforms.uSize.value = scatter; // 오로라 크기 조정
+    this.uniforms.uSeed.value = seed;    // 오로라 지형 변형
+    this.uniforms.uShapeMode.value = shapeMode; // 입자 형태 변경
 
     this.renderer.render(this.scene, this.camera);
   }
