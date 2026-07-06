@@ -1,6 +1,7 @@
 /**
  * src/core/VideoRecorder.js
- * (중복 저장 방지 및 딱 한 번만 깔끔하게 떨어지도록 설계된 단발성 엔진)
+ * - 설정 통합 및 4K/고해상도 자동 대응
+ * - 단발성 녹화 및 오디오 동기화 엔진
  */
 class VideoRecorder { 
   constructor(containerOrCanvas, fps = 30) {
@@ -9,12 +10,10 @@ class VideoRecorder {
     this.mediaRecorder = null;
     this.recordedChunks = [];
     this.isRecording = false;
-    // 이벤트 리스너 해제를 위한 바인딩
     this.onAudioEnded = this.handleAudioEnded.bind(this);
   }
 
   start() {
-    // 💡 이미 녹화 중이면 중복 클릭 방어
     if (this.isRecording) return;
     
     let actualCanvas = document.querySelector('canvas');
@@ -27,94 +26,78 @@ class VideoRecorder {
     this.recordedChunks = [];
     console.log(`[🎥 Recorder] 녹화 시작: ${actualCanvas.width}x${actualCanvas.height} (${this.fps}fps)`);
 
+    // 영상 스트림 캡처
     const videoStream = actualCanvas.captureStream(this.fps);
     const combinedStream = new MediaStream(videoStream.getVideoTracks());
 
+    // 오디오 스트림 병합
     const audioEl = document.querySelector('audio');
     if (audioEl) {
-        let audioStream;
-        if (audioEl.captureStream) audioStream = audioEl.captureStream();
-        else if (audioEl.mozCaptureStream) audioStream = audioEl.mozCaptureStream(); 
+        let audioStream = audioEl.captureStream ? audioEl.captureStream() : 
+                          (audioEl.mozCaptureStream ? audioEl.mozCaptureStream() : null);
 
-        if (audioStream) {
-            const audioTracks = audioStream.getAudioTracks();
-            if (audioTracks.length > 0) combinedStream.addTrack(audioTracks[0]); 
+        if (audioStream && audioStream.getAudioTracks().length > 0) {
+            combinedStream.addTrack(audioStream.getAudioTracks()[0]); 
         }
 
-        // 💡 1번만 실행되는(단발성) 이벤트 리스너 부착
         audioEl.addEventListener('ended', this.onAudioEnded, { once: true });
-        
-        // 오디오를 0초로 돌리고 재생
         audioEl.currentTime = 0;
         audioEl.play().catch(e => console.warn("오디오 재생 실패:", e));
     }
 
-    let options = { mimeType: 'video/webm; codecs=vp9', videoBitsPerSecond: 8000000 };
-    if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-        options = { mimeType: 'video/webm; codecs=vp8', videoBitsPerSecond: 8000000 };
-    }
+    // 💡 설정 통합: 브라우저가 지원하는 최고의 코덱을 자동으로 선택
+    const mimeTypes = [
+        'video/webm; codecs=vp9,opus',
+        'video/webm; codecs=vp8,opus',
+        'video/webm'
+    ];
+    const mimeType = mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || '';
 
     try {
-        this.mediaRecorder = new MediaRecorder(combinedStream, options);
+        this.mediaRecorder = new MediaRecorder(combinedStream, {
+            mimeType: mimeType,
+            videoBitsPerSecond: 8000000 // 8Mbps 고화질 설정
+        });
     } catch (e) {
+        console.warn("코덱 설정 실패, 기본 인코더 사용");
         this.mediaRecorder = new MediaRecorder(combinedStream);
     }
 
-    this.mediaRecorder.ondataavailable = (event) => {
-        if (event.data && event.data.size > 0) {
-            this.recordedChunks.push(event.data);
-        }
+    this.mediaRecorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) this.recordedChunks.push(e.data);
     };
 
-    this.mediaRecorder.onstop = () => {
-        this.saveVideo();
-    };
-
+    this.mediaRecorder.onstop = () => this.saveVideo();
     this.mediaRecorder.start();
   }
 
   handleAudioEnded() {
-      console.log("🎵 음악 종료: 단 1번만 녹화를 종료하고 저장합니다.");
+      console.log("🎵 음악 종료: 녹화 저장 실행.");
       this.stop();
   }
 
   stop() {
     if (!this.isRecording || !this.mediaRecorder) return;
-    
-    // 💡 녹화기 안전 종료
-    if (this.mediaRecorder.state !== 'inactive') {
-        this.mediaRecorder.stop();
-    }
+    if (this.mediaRecorder.state !== 'inactive') this.mediaRecorder.stop();
     this.isRecording = false;
 
-    // 만약을 대비한 이벤트 리스너 수동 제거
     const audioEl = document.querySelector('audio');
-    if (audioEl) {
-        audioEl.removeEventListener('ended', this.onAudioEnded);
-    }
-    
+    if (audioEl) audioEl.removeEventListener('ended', this.onAudioEnded);
     console.log("⏹️ 녹화 종료 처리 중...");
   }
 
   saveVideo() {
     const blob = new Blob(this.recordedChunks, { type: 'video/webm' });
     const url = URL.createObjectURL(blob);
-    
     const a = document.createElement('a');
     a.style.display = 'none';
     a.href = url;
-    
-    const date = new Date();
-    const timeStr = `${date.getHours()}${date.getMinutes()}${date.getSeconds()}`;
-    a.download = `Cosmic_Studio_Art_${timeStr}.webm`;
-    
+    a.download = `Cosmic_Studio_Art_${new Date().toLocaleTimeString()}.webm`;
     document.body.appendChild(a);
     a.click();
-    
     setTimeout(() => {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        console.log("💾 영상 파일 다운로드 완료!");
     }, 100);
   }
 }
