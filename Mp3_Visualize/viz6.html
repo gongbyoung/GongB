@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SRT Typer</title>
+<title>LED VISUALIZER v10.5 — Export WebM (Fixed)</title>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
 :root{
@@ -83,7 +83,7 @@ canvas{background:#000;box-shadow:0 0 50px rgba(0,0,0,0.5);border-radius:8px;}
 // --- STATE ---
 let aspect = '16:9';
 let audioCtx, analyser, source, audioBuffer, isPlaying = false, startTime = 0, pauseOffset = 0;
-let duration = 0; // 💡 duration 변수 선언 안전장치 추가
+let duration = 0; // 💡 안전하게 초기값 0으로 글로벌 선언되도록 셋팅
 let srtCues = [], activeCueIdx = -1, lineHistory = [], flyingChars = [], pressedKeys = {};
 let charSpawnQueue = [], lastCharSpawnTime = 0, currentTargetDelay = 0.1;
 
@@ -140,7 +140,7 @@ function handleMusic(files) {
   const reader = new FileReader();
   reader.onload = e => audioCtx.decodeAudioData(e.target.result, buf => { 
     audioBuffer = buf; 
-    duration = buf.duration; // 음악 재생 시간 저장
+    duration = buf.duration || 0; // 디코딩된 오디오 재생 시간 저장
     document.getElementById('mBox').classList.add('loaded');
   });
   reader.readAsArrayBuffer(files[0]);
@@ -164,9 +164,9 @@ function handleSRT(files) {
 }
 function toSec(s){ const m = s.match(/(\d+):(\d+):(\d+),(\d+)/); return +m[1]*3600 + +m[2]*60 + +m[3] + +m[4]/1000; }
 
-// --- RECORDING ENGINE (순수 WebM 세팅) ---
+// --- RECORDING ENGINE ---
 function toggleRecord() {
-    if(!audioBuffer || srtCues.length === 0) return alert("파일을 먼저 로드하세요.");
+    if(!audioBuffer || srtCues.length === 0) return alert("MP3 파일과 SRT 파일을 먼저 로드하세요.");
     if(isRecording) {
         stopRecording();
     } else {
@@ -183,14 +183,13 @@ async function startRecording() {
 
     const canvasStream = canvas.captureStream(30); 
     const audioStreamDest = audioCtx.createMediaStreamDestination();
-    source.connect(audioStreamDest); 
+    if(source) source.connect(audioStreamDest); 
     
     const combinedStream = new MediaStream([
         ...canvasStream.getVideoTracks(),
         ...audioStreamDest.stream.getAudioTracks()
     ]);
 
-    // 브라우저 친화적인 WebM 기본 설정
     mediaRecorder = new MediaRecorder(combinedStream, {
         mimeType: 'video/webm;codecs=vp9,opus'
     });
@@ -200,7 +199,6 @@ async function startRecording() {
     };
 
     mediaRecorder.onstop = () => {
-        // 💡 확장자를 완전한 webm으로 처리
         const blob = new Blob(recordedChunks, { type: 'video/webm' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -232,7 +230,8 @@ async function togglePlay() {
   if(audioCtx.state === 'suspended') await audioCtx.resume();
   if(isPlaying) {
     pauseOffset = audioCtx.currentTime - startTime;
-    source.stop(); isPlaying = false;
+    if(source) source.stop(); 
+    isPlaying = false;
     if(isRecording) stopRecording(); 
   } else {
     source = audioCtx.createBufferSource(); source.buffer = audioBuffer;
@@ -331,12 +330,14 @@ function animate() {
 
   document.getElementById('timeCode').textContent = new Date(now*1000).toISOString().substr(14, 8);
   
-  // 💡 duration이 정상 로드되었을 때만 작동하여 에러 원천 차단
-  if(duration && now >= duration && isRecording) stopRecording();
+  // 💡 [핵심 수정] 만약 duration 변수가 어떤 이유로든 undefined 상태(체크실패)여도 에러가 안 터지게 typeof 검증 추가
+  if(typeof duration !== 'undefined' && duration > 0 && now >= duration && isRecording) {
+      stopRecording();
+  }
 }
 
 function resetAll() {
-    if(source) source.stop();
+    if(source) { try { source.stop(); } catch(e){} }
     isPlaying = false; pauseOffset = 0; activeCueIdx = -1; lineHistory = []; flyingChars = [];
     document.getElementById('startBtn').textContent = "START PERFORMANCE";
     ctx.clearRect(0,0,canvas.width,canvas.height);
