@@ -1,7 +1,8 @@
 /**
  * src/sketches/017_p5_fbm_cloud.js
- * - [업데이트] Glow & Size (발광/크기) 슬라이더를 카메라 Zoom In / Out 기능으로 매핑
- * - 슬라이더 값이 커질수록 최대 10배까지 멀리서 보는 자잘하고 정밀한 구름(Zoom Out) 연출
+ * - [버전] Ver 1.1 (실시간 버전 및 사용방법 온스크린 UI 탑재)
+ * - Glow & Size (발광/크기) 슬라이더를 통해 최대 10배 줌 인/아웃 카메라 제어
+ * - 오디오 비트(Mid) 형태 워핑 및 4대 날씨 컬러 스타일 연동
  */
 import ImageAnalyzer from '../core/ImageAnalyzer.js'; 
 
@@ -11,11 +12,14 @@ export default class P5FBMCloudGenerator {
     this.p5Instance = null;
     this.cloudImg = null; 
     
+    // 💡 업데이트 확인용 버전 세팅
+    this.version = "017호 FBM Cloud Generator Ver 1.1";
+    
     this.timeX = 0;
     this.timeY = 0;
     this.simulatedProgress = 0;
     this.lastProgress = 0;
-    
+    this.isImageLoaded = false;
     this.lastStyle = null;
   }
 
@@ -36,7 +40,6 @@ export default class P5FBMCloudGenerator {
         canvas.style('z-index', '1');
         
         p.pixelDensity(1);
-        // 줌아웃 시 미세해지는 구름 디테일을 살리기 위해 연산 버퍼 해상도를 살짝 올렸습니다.
         this.cloudImg = p.createImage(Math.floor(p.width / 2.0), Math.floor(p.height / 2.0));
         p.noLoop();
       };
@@ -45,6 +48,10 @@ export default class P5FBMCloudGenerator {
         p.clear();
         if (this.cloudImg) {
           p.image(this.cloudImg, 0, 0, p.width, p.height);
+        }
+        // 💡 이미지가 로드되지 않은 초기 대기 상태일 때 정확한 사용 방법 가이드 표출
+        if (!this.isImageLoaded) {
+          this.drawOnScreenGuide(p);
         }
       };
     };
@@ -56,16 +63,14 @@ export default class P5FBMCloudGenerator {
       const settings = window.cosmicEngineSettings || {};
       return {
           scatter: settings.scatterExponent ?? 2.2, 
-          glow: settings.glowAmount ?? (settings.size ?? 0.85), // 💡 발광/크기 (기본값 0.85 주변)
+          glow: settings.glowAmount ?? (settings.size ?? 0.85), 
           burst: settings.audioGain ?? 1.0, 
           seed: settings.seed ?? 42,
           style: (settings.colorStyle || 'monochrome').toLowerCase()
       };
   }
 
-  // 💡 [줌아웃 탑재] Dynamic 워핑 엔진 좌표계 스케일 조정
   warpNoise(x, y, p, midBump, zoomFactor) {
-    // 💡 [핵심] zoomFactor가 커질수록 좌표 간격이 넓어져 구름이 멀리서 보는 것처럼 자잘해집니다.
     let baseFreq = 0.003 * zoomFactor;
     let timeScale = p.millis() * 0.0002;
     
@@ -82,18 +87,74 @@ export default class P5FBMCloudGenerator {
     return p.noise((x + ox2) * fbmFreq, (y + oy2) * fbmFreq);
   }
 
+  prepareCanvas(img, p) {
+    this.isImageLoaded = true;
+    this.currentSettings = this.getUIParams();
+    this.resetCanvas(p, true); 
+  }
+
   resetCanvas(p, isPreview = false) {
-    if(!this.pg) return;
-    this.pg.background(15, 18, 25);
-    p.randomSeed(this.currentSettings.seed);
-    this.drawn1 = 0; this.drawn2 = 0; this.drawn3 = 0;
+    if(!this.cloudImg) return;
     this.isPreviewMode = isPreview;
+  }
+
+  // 💡 캔버스 중앙에 직관적이고 scannable하게 뿌려질 사용방법 및 버전 UI 설계
+  drawOnScreenGuide(p) {
+    p.push();
+    
+    // 1. 버전 뱃지 (상단 좌측 슬림 배치)
+    p.fill(0, 255, 204, 200);
+    p.noStroke();
+    p.textSize(12);
+    p.textAlign(p.LEFT, p.TOP);
+    p.text(`⚙️ SYSTEM STATUS: ${this.version} LOADED`, 20, 20);
+
+    // 2. 메인 가이드 박스 블렌딩 배경
+    p.fill(10, 12, 18, 220);
+    p.stroke(50, 55, 75);
+    p.strokeWeight(1);
+    p.rectMode(p.CENTER);
+    p.rect(p.width / 2, p.height / 2, p.width * 0.85, 260, 10);
+
+    // 3. 타이틀
+    p.noStroke();
+    p.fill(0, 255, 204);
+    p.textSize(20);
+    p.textAlign(p.CENTER, p.CENTER);
+    p.text("Cosmic Studio 017호 올바른 작동 가이드", p.width / 2, p.height / 2 - 95);
+
+    // 4. 스케줄링 가이드 라인 (텍스트 정렬)
+    p.fill(220);
+    p.textSize(13);
+    p.textAlign(p.LEFT, p.CENTER);
+    
+    let startX = p.width / 2 - (p.width * 0.38);
+    let startY = p.height / 2 - 50;
+    let lineSpacing = 32;
+
+    p.text("1️⃣  [좌측 상단] MP3 음악 파일을 가장 먼저 로딩하세요.", startX, startY);
+    p.text("2️⃣  [좌측 상단] BG/Texture 슬롯에 구름 질감 이미지를 로딩하세요.", startX, startY + lineSpacing);
+    p.text("3️⃣  [오른쪽] 슬라이더 파라미터 및 화면 비율을 최종 세팅하세요.", startX, startY + lineSpacing * 2);
+    
+    p.fill(255, 204, 0); // 드롭 액션 강조 색상
+    p.text("4️⃣  [마지막] 변환할 원본 이미지를 마우스로 끌어 이 화면에 드롭하세요!", startX, startY + lineSpacing * 3);
+
+    // 5. 하단 풋터 안내문
+    p.fill(120);
+    p.textSize(11);
+    p.textAlign(p.CENTER, p.CENTER);
+    p.text("순서가 꼬이면 화면이 검게 변할 수 있으니 위 규칙을 준수해 주세요.", p.width / 2, p.height / 2 + 95);
+
+    p.pop();
   }
 
   update(audioData) {
     if (!this.p5Instance || !this.cloudImg) return;
     let p = this.p5Instance;
     const ui = this.getUIParams();
+
+    const audioEl = document.querySelector('audio');
+    let isPlaying = audioEl && !audioEl.paused;
 
     if (this.lastStyle !== ui.style) {
         this.resetCanvas(p, true);
@@ -114,13 +175,10 @@ export default class P5FBMCloudGenerator {
     let w = this.cloudImg.width;
     let h = this.cloudImg.height;
 
-    // 💡 [수정] 발광/크기(ui.glow) 값을 기반으로 최소 0.5배에서 최대 10배까지 줌 팩터 계산
-    // 슬라이더 범위(0.1 ~ 2.5 가정)에 대응하여, 값이 커질수록 멀리서 줌아웃된 효과를 만듭니다.
     let zoomFactor = p.map(ui.glow, 0.1, 2.5, 0.5, 10.0);
 
-    // 날씨 컬러 그라데이션 베이스
     let skyColor, cloudColor;
-    let colorGlow = p.map(ui.glow, 0.1, 2.5, 0.4, 1.3); // 밝기 계수 보정
+    let colorGlow = p.map(ui.glow, 0.1, 2.5, 0.4, 1.3);
 
     if (ui.style.includes('monochrome')) {
         skyColor = p.color(20 * colorGlow, 30 * colorGlow, 40 * colorGlow);
@@ -146,7 +204,6 @@ export default class P5FBMCloudGenerator {
 
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
-        // 💡 줌아웃 팩터를 노이즈 엔진에 주입합니다.
         let midBump = mid * 2.0;
         let fbmVal = this.warpNoise(x + this.timeX * 20, y + this.timeY * 20, p, midBump * ui.burst, zoomFactor);
 
@@ -170,89 +227,10 @@ export default class P5FBMCloudGenerator {
     p.redraw();
   }
 
-  paintBrush(pt, layerNum, ui, p, low, mid, high) {
-    if (!this.brushTexture) return;
-    let brightnessMod = 1.0 + (ui.glow * 1.5); 
-    let detailMod = Math.max(0.3, ui.glow * 2.5); 
-    let r = Math.min(255, pt.r * brightnessMod);
-    let g = Math.min(255, pt.g * brightnessMod);
-    let b = Math.min(255, pt.b * brightnessMod);
-
-    if (ui.style.includes('monochrome')) {
-        let lum = (r + g + b) / 3; r = lum; g = lum; b = lum;
-    } else if (ui.style.includes('pastel')) {
-        r = Math.min(255, r + 40); g = Math.min(255, g + 40); b = Math.min(255, b + 40);
-    } else if (ui.style.includes('neon')) {
-        let maxC = Math.max(r, g, b);
-        r = r === maxC ? 255 : r * 0.4; g = g === maxC ? 255 : g * 0.4; b = b === maxC ? 255 : b * 0.4;
-    }
-
-    let scatterMod = Math.max(0.5, ui.scatter);
-    let audioBump = low * 2.0; 
-    let baseSize = 0;
-    let opacity = 200;
-
-    if (layerNum === 1) {
-        baseSize = (24 + (20 * audioBump)) * scatterMod; opacity = 100; 
-    } else if (layerNum === 2) {
-        baseSize = (12 + (10 * audioBump)); opacity = 170;
-    } else if (layerNum === 3) {
-        baseSize = (4 + (4 * audioBump)) / scatterMod; opacity = 240; 
-    }
-
-    let finalSize = baseSize / detailMod; 
-    this.pg.push();
-    this.pg.translate(pt.x, pt.y);
-    if (pt.angle !== undefined) this.pg.rotate(pt.angle + p.random(-0.08, 0.08)); 
-    this.pg.tint(r, g, b, opacity);
-    this.pg.imageMode(p.CENTER);
-
-    let touches = Math.floor(p.random(2, 4));
-    for (let i = 0; i < touches; i++) {
-        let nx = p.random(-finalSize * 0.15, finalSize * 0.15);
-        let ny = p.random(-finalSize * 0.05, finalSize * 0.05);
-        this.pg.image(this.brushTexture, nx, ny, finalSize, finalSize * 0.4); 
-    }
-    this.pg.pop();
-  }
-
-  drawOldPhotoEffect(p) {
-    p.noStroke();
-    p.fill(60, 40, 20, 5); 
-    p.rect(0, 0, p.width, p.height);
-    let cx = p.width / 2; let cy = p.height / 2;
-    let maxRadius = p.max(p.width, p.height);
-    let gradient = p.drawingContext.createRadialGradient(cx, cy, maxRadius * 0.3, cx, cy, maxRadius * 0.8);
-    gradient.addColorStop(0, 'rgba(0, 0, 0, 0)'); gradient.addColorStop(1, 'rgba(0, 0, 0, 0.1)');   
-    p.drawingContext.fillStyle = gradient; p.noStroke(); p.rect(0, 0, p.width, p.height);
-  }
-
-  drawDropUI(p) {
-    p.push(); p.fill(255, 255, 255, 100 + p.sin(p.millis() * 0.005) * 50); p.noStroke(); p.textSize(24); p.textAlign(p.CENTER, p.CENTER);
-    p.text("원하는 이미지를 드래그 & 드롭하여 캔버스에 올려주세요", p.width/2, p.height/2); p.pop();
-  }
-
-  handleDragOver(e) { e.preventDefault(); }
-  handleDrop(e) {
-    e.preventDefault();
-    const file = e.dataTransfer.files[0];
-    if (file && file.type.startsWith('image/')) {
-      const url = URL.createObjectURL(file);
-      if (this.p5Instance) {
-        this.sourceImg = null; 
-        this.p5Instance.loadImage(url, (img) => { this.prepareCanvas(img, this.p5Instance); });
-      }
-    }
-  }
-
   resize(w, h) {
     if (this.p5Instance) {
       this.p5Instance.resizeCanvas(w, h);
-      if (this.pg) {
-          this.pg = this.p5Instance.createGraphics(w, h);
-          this.pg.pixelDensity(1); 
-          this.resetCanvas(this.p5Instance, this.isPreviewMode);
-      }
+      this.cloudImg = this.p5Instance.createImage(Math.floor(w / 2.0), Math.floor(h / 2.0));
     }
   }
 
@@ -260,6 +238,6 @@ export default class P5FBMCloudGenerator {
     this.container.removeEventListener('dragover', this.handleDragOver);
     this.container.removeEventListener('drop', this.handleDrop);
     if (this.p5Instance) this.p5Instance.remove();
-    this.sourceImg = null; 
+    this.cloudImg = null; 
   }
 }
