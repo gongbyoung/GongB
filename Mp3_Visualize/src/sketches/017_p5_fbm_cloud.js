@@ -1,8 +1,7 @@
 /**
  * src/sketches/017_p5_fbm_cloud.js
- * - [버전] Ver 1.9 (둔탁한 p.map 비례식을 다이렉트 승산 수식으로 오버홀, 크기 변화 작동 완료)
- * - Glow & Size 슬라이더 제어 시 구름 입자 크기가 수십 배 스케일로 실시간 폭발 변형 보장
- * - 격자 가속화 루프 유지 및 날씨 그라데이션 팔레트 연동 완결판
+ * - [버전] Ver 2.0 (Glow/Size 슬라이더 수치 제한 전면 해제 및 파이프라인 개방)
+ * - 슬라이더 입력 값을 매핑 없이 노이즈 공간 주파수에 직통으로 전달하여 실시간 크기 변경 구현
  */
 import ImageAnalyzer from '../core/ImageAnalyzer.js'; 
 
@@ -13,7 +12,7 @@ export default class P5FBMCloudGenerator {
     this.cloudImg = null; 
     
     // 💡 업데이트 확인용 버전 세팅
-    this.version = "017호 FBM Cloud Generator Ver 1.9";
+    this.version = "017호 FBM Cloud Generator Ver 2.0";
     
     this.timeX = 0;
     this.timeY = 0;
@@ -61,14 +60,14 @@ export default class P5FBMCloudGenerator {
       const settings = window.cosmicEngineSettings || {};
       return {
           scatter: settings.scatterExponent ?? 2.2, 
-          glow: settings.glowAmount ?? (settings.size ?? 0.85), // UI 연동 범위: 0.1 ~ 2.5
+          glow: settings.glowAmount ?? (settings.size ?? 1.0), // UI 슬라이더 입력값 그대로 획득
           burst: settings.audioGain ?? 1.0, 
           seed: settings.seed ?? 42,
           style: (settings.colorStyle || 'monochrome').toLowerCase()
       };
   }
 
-  // 💡 [크기 튜닝 핵심 교정] zoomFactor 배율 축을 공간 좌표에 직접 승산하여 크기 가시성 극대화
+  // 💡 입력된 주파수 계수(zoomFactor)를 좌표에 직접 승산
   warpNoise(x, y, p, midBump, zoomFactor, cx, cy) {
     let nx = (x - cx) * zoomFactor;
     let ny = (y - cy) * zoomFactor;
@@ -76,11 +75,9 @@ export default class P5FBMCloudGenerator {
     let tx = this.timeX * 0.4;
     let ty = this.timeY * 0.4;
     
-    // 1차 기본 윤곽 왜곡
     let ox = p.noise(nx + tx, ny + 11.3) * 2.0;
     let oy = p.noise(nx + 7.1, ny + ty) * 2.0;
 
-    // 2차 음악 반응형 형태 워핑
     let warpStr = 1.0 + (midBump * 3.0);
     let ox2 = p.noise(nx + ox + tx, ny + oy + 42.1) * warpStr;
     let oy2 = p.noise(nx + ox + 17.8, ny + oy + ty) * warpStr;
@@ -179,25 +176,25 @@ export default class P5FBMCloudGenerator {
     let centerX = w / 2;
     let centerY = h / 2;
 
-    // 💡 [수식 개정] 타겟 비례 맵대신 다이렉트 역비례 상수를 주입하여 크기 스케일을 폭발적으로 확장합니다.
-    // ui.glow가 0.1일 때 zoomFactor는 0.004(매우 거대한 구름 줌인), 2.5일 때 0.08(매우 조밀한 구름 줌아웃)
-    let zoomFactor = 0.004 + (ui.glow * 0.03); 
+    // 💡 [핵심 해제] 슬라이더의 물리 수치를 주파수 스케일에 변조 없이 직통 연결합니다.
+    // 수치가 작아지면 구름이 거대해지고, 수치가 커지면 구름 입자가 미세해집니다.
+    let zoomFactor = ui.glow * 0.02; 
 
     // 날씨 컬러 매핑
     let skyColor, cloudColor;
-    let colorGlow = p.map(ui.glow, 0.1, 2.5, 0.7, 1.2);
+    let colorGlow = 1.0;
 
     if (ui.style.includes('monochrome')) {
-        skyColor = p.color(20 * colorGlow, 30 * colorGlow, 45 * colorGlow);
+        skyColor = p.color(20, 30, 45);
         cloudColor = p.color(130, 135, 145); 
     } else if (ui.style.includes('neon')) {
-        let topH = p.color(15 * colorGlow, 85 * colorGlow, 180 * colorGlow);
-        let botH = p.color(80 * colorGlow, 150 * colorGlow, 235 * colorGlow);
+        let topH = p.color(15, 85, 180);
+        let botH = p.color(80, 150, 235);
         skyColor = p.lerpColor(topH, botH, low);
         cloudColor = p.color(250, 252, 255); 
     } else if (ui.style.includes('pastel')) {
-        let dawnTop = p.color(55 * colorGlow, 20 * colorGlow, 105 * colorGlow);
-        let dawnBot = p.color(235 * colorGlow, 90 * colorGlow, 40 * colorGlow);
+        let dawnTop = p.color(55, 20, 105);
+        let dawnBot = p.color(235, 90, 40);
         skyColor = p.lerpColor(dawnTop, dawnBot, low * 1.1);
         cloudColor = p.color(255, 220, 185); 
     } else if (ui.style.includes('full-random')) {
@@ -205,7 +202,7 @@ export default class P5FBMCloudGenerator {
         skyColor = p.color(p.random(10, 70), p.random(20, 70), p.random(130, 210));
         cloudColor = p.color(p.random(190, 255), p.random(190, 255), p.random(190, 255));
     } else {
-        skyColor = p.color(15 * colorGlow, 18 * colorGlow, 25 * colorGlow);
+        skyColor = p.color(15, 18, 25);
         cloudColor = p.color(0, 230, 255);
     }
 
