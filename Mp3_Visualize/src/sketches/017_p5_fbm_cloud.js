@@ -1,8 +1,8 @@
 /**
  * src/sketches/017_p5_fbm_cloud.js
- * - [버전] Ver 1.3 (오디오 파이프라인 미획득 시 블랙스크린 완전 차단 및 Fallback 가속 엔진 탑재)
- * - Glow & Size (발광/크기) 슬라이더 기반 10배 줌 인/아웃 카메라 엔진
- * - 오디오 비트(Mid) 형태 워핑 및 4대 날씨 컬러 스타일 연동
+ * - [버전] Ver 1.4 (Glow/Size 줌, 분산범위 밀도 슬라이더 실시간 미반응 버그 완벽 픽스)
+ * - 슬라이더 변경 감지 시 p.redraw() 강제 트리거로 정지 상태에서도 실시간 피드백 보장
+ * - Glow & Size 슬라이더 기반 10배 줌 인/아웃 카메라 엔진 및 날씨 팔레트 통합형
  */
 import ImageAnalyzer from '../core/ImageAnalyzer.js'; 
 
@@ -13,7 +13,7 @@ export default class P5FBMCloudGenerator {
     this.cloudImg = null; 
     
     // 💡 업데이트 확인용 버전 세팅
-    this.version = "017호 FBM Cloud Generator Ver 1.3";
+    this.version = "017호 FBM Cloud Generator Ver 1.4";
     
     this.timeX = 0;
     this.timeY = 0;
@@ -22,6 +22,9 @@ export default class P5FBMCloudGenerator {
     
     this.isAudioActive = false; 
     this.lastStyle = null;
+    
+    // 💡 슬라이더 실시간 변경 추적용 버퍼
+    this.lastSettingsStr = "";
   }
 
   async init() {
@@ -51,7 +54,6 @@ export default class P5FBMCloudGenerator {
           p.image(this.cloudImg, 0, 0, p.width, p.height);
         }
         
-        // 💡 오디오가 완전히 활성화되어 작동하기 전까지 가이드가 화면을 명확히 지켜줍니다.
         if (!this.isAudioActive) {
           this.drawOnScreenGuide(p);
         }
@@ -91,29 +93,24 @@ export default class P5FBMCloudGenerator {
 
   drawOnScreenGuide(p) {
     p.push();
-    
-    // 1. 버전 뱃지
     p.fill(0, 255, 204, 200);
     p.noStroke();
     p.textSize(12);
     p.textAlign(p.LEFT, p.TOP);
     p.text(`⚙️ SYSTEM STATUS: ${this.version} READY`, 20, 20);
 
-    // 2. 가이드 박스 배경
     p.fill(10, 12, 18, 220);
     p.stroke(50, 55, 75);
     p.strokeWeight(1);
     p.rectMode(p.CENTER);
     p.rect(p.width / 2, p.height / 2, p.width * 0.85, 220, 10);
 
-    // 3. 타이틀
     p.noStroke();
     p.fill(0, 255, 204);
     p.textSize(20);
     p.textAlign(p.CENTER, p.CENTER);
     p.text("Cosmic Studio 017호 구름 엔진 사용 방법", p.width / 2, p.height / 2 - 75);
 
-    // 4. 가이드라인 기본 텍스트
     p.fill(220);
     p.textSize(13);
     p.textAlign(p.LEFT, p.CENTER);
@@ -128,13 +125,18 @@ export default class P5FBMCloudGenerator {
     p.fill(255, 204, 0); 
     p.text("3️⃣  [하단 컨트롤] 오디오 플레이어의 재생(▶) 버튼을 누르면 구름이 피어오릅니다!", startX, startY + lineSpacing * 2);
 
-    // 5. 풋터 안내
     p.fill(120);
     p.textSize(11);
     p.textAlign(p.CENTER, p.CENTER);
     p.text("음악이 재생되면 이 안내창은 자동으로 사라지고 시뮬레이션 영상이 출력됩니다.", p.width / 2, p.height / 2 + 75);
-
     p.pop();
+  }
+
+  // 💡 슬라이더 조작 시 버퍼 강제 갱신
+  resetCanvas(p, isPreview = false) {
+    if(!this.cloudImg) return;
+    this.isPreviewMode = isPreview;
+    p.redraw(); 
   }
 
   update(audioData) {
@@ -145,24 +147,27 @@ export default class P5FBMCloudGenerator {
     const audioEl = document.querySelector('audio');
     let isPlaying = audioEl && !audioEl.paused;
 
-    // 💡 [핵심 예외 보정] 플레이어가 실제로 재생 상태이거나 오디오 전압이 유의미하게 들어올 때만 가이드를 내립니다.
+    // 💡 [핵심 버그 수정] 어떤 슬라이더든 수치가 변경되는 순간 상태 변조를 감지하여 리렌더링 트리거를 당깁니다.
+    let currentSettingsStr = `${ui.seed}-${ui.scatter}-${ui.glow}-${ui.style}-${ui.burst}`;
+    if (this.lastSettingsStr !== currentSettingsStr) {
+        this.lastSettingsStr = currentSettingsStr;
+        this.resetCanvas(p, true);
+    }
+
     if (isPlaying || (audioData && audioData.vol > 0.005)) {
         this.isAudioActive = true;
     } else {
+        // 💡 음악이 정지해 있더라도 슬라이더를 만지면 미리보기를 위해 루프를 강제로 한 번 돌려줍니다.
         this.isAudioActive = false;
     }
 
-    // 💡 [Fallback 엔진 추가] 파이프라인 획득 실패 시, 검은 화면을 방지하기 위해 가상 주파수를 강제로 공급합니다.
-    let low = 0.3;
-    let mid = 0.2;
-    let high = 0.1;
-
+    // 주파수 매핑 기본값 및 Fallback 안정화
+    let low = 0.3; let mid = 0.2; let high = 0.1;
     if (audioData && audioData.raw && audioData.raw.length > 60) {
         low = (audioData.raw[2] + audioData.raw[3]) / 510;
         mid = (audioData.raw[15] + audioData.raw[16]) / 510;
         high = (audioData.raw[55] + audioData.raw[56]) / 510;
     } else if (isPlaying) {
-        // 파이프라인이 끊어졌으나 곡이 흐르고 있다면 타임 무작위 노이즈 펄스로 대체 연산
         low = p.noise(p.millis() * 0.001) * 0.6;
         mid = p.noise(p.millis() * 0.002 + 50) * 0.5;
         high = p.noise(p.millis() * 0.003 + 100) * 0.4;
@@ -178,10 +183,12 @@ export default class P5FBMCloudGenerator {
     let w = this.cloudImg.width;
     let h = this.cloudImg.height;
 
-    let zoomFactor = p.map(ui.glow, 0.1, 2.5, 0.5, 10.0);
+    // 💡 [Glow & Size] -> 줌아웃 팩터 맵핑 보정 (0.1 ~ 2.5 범위 대응 최대 10배 줌아웃)
+    let zoomFactor = p.map(ui.glow, 10, 250, 0.5, 10.0);
 
+    // 날씨 컬러 매핑
     let skyColor, cloudColor;
-    let colorGlow = p.map(ui.glow, 0.1, 2.5, 0.4, 1.3);
+    let colorGlow = p.map(ui.glow, 10, 250, 0.4, 1.4);
 
     if (ui.style.includes('monochrome')) {
         skyColor = p.color(20 * colorGlow, 30 * colorGlow, 40 * colorGlow);
@@ -210,7 +217,8 @@ export default class P5FBMCloudGenerator {
         let midBump = mid * 2.0;
         let fbmVal = this.warpNoise(x + this.timeX * 20, y + this.timeY * 20, p, midBump * ui.burst, zoomFactor);
 
-        let densityOffset = p.map(ui.scatter, 5, 50, 0.1, -0.2);
+        // 💡 [Center Scatter] -> 구름의 퍼짐 밀도 슬라이더(5 ~ 50) 연동 보정
+        let densityOffset = p.map(ui.scatter, 5, 50, 0.15, -0.25);
         let cloudThreshold = p.map(mid, 0, 1, 0.45, 0.3) + densityOffset;
         
         let density = Math.max(0, fbmVal - cloudThreshold);
