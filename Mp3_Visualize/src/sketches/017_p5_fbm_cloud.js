@@ -1,6 +1,6 @@
 /**
  * src/sketches/017_p5_fbm_cloud.js
- * - [버전] Ver 1.2 (016호 잔재 청소, 음악 재생/로딩 시 가이드 자동 숨김 버그 픽스)
+ * - [버전] Ver 1.3 (오디오 파이프라인 미획득 시 블랙스크린 완전 차단 및 Fallback 가속 엔진 탑재)
  * - Glow & Size (발광/크기) 슬라이더 기반 10배 줌 인/아웃 카메라 엔진
  * - 오디오 비트(Mid) 형태 워핑 및 4대 날씨 컬러 스타일 연동
  */
@@ -13,14 +13,13 @@ export default class P5FBMCloudGenerator {
     this.cloudImg = null; 
     
     // 💡 업데이트 확인용 버전 세팅
-    this.version = "017호 FBM Cloud Generator Ver 1.2";
+    this.version = "017호 FBM Cloud Generator Ver 1.3";
     
     this.timeX = 0;
     this.timeY = 0;
     this.simulatedProgress = 0;
     this.lastProgress = 0;
     
-    // 음악이 로드되었거나 재생 중일 때 가이드를 숨기기 위한 플래그
     this.isAudioActive = false; 
     this.lastStyle = null;
   }
@@ -52,7 +51,7 @@ export default class P5FBMCloudGenerator {
           p.image(this.cloudImg, 0, 0, p.width, p.height);
         }
         
-        // 💡 [버그 픽스] 음악이 장전되지 않은 순수 초기 대기 상태일 때만 가이드를 보여줍니다.
+        // 💡 오디오가 완전히 활성화되어 작동하기 전까지 가이드가 화면을 명확히 지켜줍니다.
         if (!this.isAudioActive) {
           this.drawOnScreenGuide(p);
         }
@@ -90,7 +89,6 @@ export default class P5FBMCloudGenerator {
     return p.noise((x + ox2) * fbmFreq, (y + oy2) * fbmFreq);
   }
 
-  // 💡 017호 순수 시뮬레이터 목적에 맞춘 가이드 텍스트 교정
   drawOnScreenGuide(p) {
     p.push();
     
@@ -115,7 +113,7 @@ export default class P5FBMCloudGenerator {
     p.textAlign(p.CENTER, p.CENTER);
     p.text("Cosmic Studio 017호 구름 엔진 사용 방법", p.width / 2, p.height / 2 - 75);
 
-    // 4. 017호 맞춤형 가이드라인 (016호 이미지 드롭 문구 전면 삭제)
+    // 4. 가이드라인 기본 텍스트
     p.fill(220);
     p.textSize(13);
     p.textAlign(p.LEFT, p.CENTER);
@@ -124,7 +122,7 @@ export default class P5FBMCloudGenerator {
     let startY = p.height / 2 - 25;
     let lineSpacing = 32;
 
-    p.text("1️⃣  [좌측 최상단] MP3 음악 파일을 로딩하세요.", startX, startY);
+    p.text("1️⃣  [좌측 최상단] MP3 음악 파일을 가장 먼저 로딩하세요.", startX, startY);
     p.text("2️⃣  [우측 패널] Color Style Palette에서 날씨(먹구름, 맑은하늘, 노을)를 고르세요.", startX, startY + lineSpacing);
     
     p.fill(255, 204, 0); 
@@ -147,16 +145,28 @@ export default class P5FBMCloudGenerator {
     const audioEl = document.querySelector('audio');
     let isPlaying = audioEl && !audioEl.paused;
 
-    // 💡 [핵심 교정] 오디오 분석 데이터가 들어오거나 음악이 나오는 순간 가이드를 비활성화
-    if ((audioData && audioData.vol > 0.01) || isPlaying) {
+    // 💡 [핵심 예외 보정] 플레이어가 실제로 재생 상태이거나 오디오 전압이 유의미하게 들어올 때만 가이드를 내립니다.
+    if (isPlaying || (audioData && audioData.vol > 0.005)) {
         this.isAudioActive = true;
     } else {
         this.isAudioActive = false;
     }
 
-    let low = audioData ? (audioData.raw[2] + audioData.raw[3]) / 510 : 0.3;
-    let mid = audioData ? (audioData.raw[15] + audioData.raw[16]) / 510 : 0.2;
-    let high = audioData ? (audioData.raw[55] + audioData.raw[56]) / 510 : 0.1;
+    // 💡 [Fallback 엔진 추가] 파이프라인 획득 실패 시, 검은 화면을 방지하기 위해 가상 주파수를 강제로 공급합니다.
+    let low = 0.3;
+    let mid = 0.2;
+    let high = 0.1;
+
+    if (audioData && audioData.raw && audioData.raw.length > 60) {
+        low = (audioData.raw[2] + audioData.raw[3]) / 510;
+        mid = (audioData.raw[15] + audioData.raw[16]) / 510;
+        high = (audioData.raw[55] + audioData.raw[56]) / 510;
+    } else if (isPlaying) {
+        // 파이프라인이 끊어졌으나 곡이 흐르고 있다면 타임 무작위 노이즈 펄스로 대체 연산
+        low = p.noise(p.millis() * 0.001) * 0.6;
+        mid = p.noise(p.millis() * 0.002 + 50) * 0.5;
+        high = p.noise(p.millis() * 0.003 + 100) * 0.4;
+    }
 
     let windSpeed = (0.01 + high * 0.05) * ui.burst;
     this.timeX += windSpeed;
