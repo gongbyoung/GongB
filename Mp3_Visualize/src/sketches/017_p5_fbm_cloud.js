@@ -1,7 +1,7 @@
 /**
  * src/sketches/017_p5_fbm_cloud.js
- * - [버전] Ver 1.1 (실시간 버전 및 사용방법 온스크린 UI 탑재)
- * - Glow & Size (발광/크기) 슬라이더를 통해 최대 10배 줌 인/아웃 카메라 제어
+ * - [버전] Ver 1.2 (016호 잔재 청소, 음악 재생/로딩 시 가이드 자동 숨김 버그 픽스)
+ * - Glow & Size (발광/크기) 슬라이더 기반 10배 줌 인/아웃 카메라 엔진
  * - 오디오 비트(Mid) 형태 워핑 및 4대 날씨 컬러 스타일 연동
  */
 import ImageAnalyzer from '../core/ImageAnalyzer.js'; 
@@ -13,13 +13,15 @@ export default class P5FBMCloudGenerator {
     this.cloudImg = null; 
     
     // 💡 업데이트 확인용 버전 세팅
-    this.version = "017호 FBM Cloud Generator Ver 1.1";
+    this.version = "017호 FBM Cloud Generator Ver 1.2";
     
     this.timeX = 0;
     this.timeY = 0;
     this.simulatedProgress = 0;
     this.lastProgress = 0;
-    this.isImageLoaded = false;
+    
+    // 음악이 로드되었거나 재생 중일 때 가이드를 숨기기 위한 플래그
+    this.isAudioActive = false; 
     this.lastStyle = null;
   }
 
@@ -49,8 +51,9 @@ export default class P5FBMCloudGenerator {
         if (this.cloudImg) {
           p.image(this.cloudImg, 0, 0, p.width, p.height);
         }
-        // 💡 이미지가 로드되지 않은 초기 대기 상태일 때 정확한 사용 방법 가이드 표출
-        if (!this.isImageLoaded) {
+        
+        // 💡 [버그 픽스] 음악이 장전되지 않은 순수 초기 대기 상태일 때만 가이드를 보여줍니다.
+        if (!this.isAudioActive) {
           this.drawOnScreenGuide(p);
         }
       };
@@ -87,63 +90,51 @@ export default class P5FBMCloudGenerator {
     return p.noise((x + ox2) * fbmFreq, (y + oy2) * fbmFreq);
   }
 
-  prepareCanvas(img, p) {
-    this.isImageLoaded = true;
-    this.currentSettings = this.getUIParams();
-    this.resetCanvas(p, true); 
-  }
-
-  resetCanvas(p, isPreview = false) {
-    if(!this.cloudImg) return;
-    this.isPreviewMode = isPreview;
-  }
-
-  // 💡 캔버스 중앙에 직관적이고 scannable하게 뿌려질 사용방법 및 버전 UI 설계
+  // 💡 017호 순수 시뮬레이터 목적에 맞춘 가이드 텍스트 교정
   drawOnScreenGuide(p) {
     p.push();
     
-    // 1. 버전 뱃지 (상단 좌측 슬림 배치)
+    // 1. 버전 뱃지
     p.fill(0, 255, 204, 200);
     p.noStroke();
     p.textSize(12);
     p.textAlign(p.LEFT, p.TOP);
-    p.text(`⚙️ SYSTEM STATUS: ${this.version} LOADED`, 20, 20);
+    p.text(`⚙️ SYSTEM STATUS: ${this.version} READY`, 20, 20);
 
-    // 2. 메인 가이드 박스 블렌딩 배경
+    // 2. 가이드 박스 배경
     p.fill(10, 12, 18, 220);
     p.stroke(50, 55, 75);
     p.strokeWeight(1);
     p.rectMode(p.CENTER);
-    p.rect(p.width / 2, p.height / 2, p.width * 0.85, 260, 10);
+    p.rect(p.width / 2, p.height / 2, p.width * 0.85, 220, 10);
 
     // 3. 타이틀
     p.noStroke();
     p.fill(0, 255, 204);
     p.textSize(20);
     p.textAlign(p.CENTER, p.CENTER);
-    p.text("Cosmic Studio 017호 올바른 작동 가이드", p.width / 2, p.height / 2 - 95);
+    p.text("Cosmic Studio 017호 구름 엔진 사용 방법", p.width / 2, p.height / 2 - 75);
 
-    // 4. 스케줄링 가이드 라인 (텍스트 정렬)
+    // 4. 017호 맞춤형 가이드라인 (016호 이미지 드롭 문구 전면 삭제)
     p.fill(220);
     p.textSize(13);
     p.textAlign(p.LEFT, p.CENTER);
     
     let startX = p.width / 2 - (p.width * 0.38);
-    let startY = p.height / 2 - 50;
+    let startY = p.height / 2 - 25;
     let lineSpacing = 32;
 
-    p.text("1️⃣  [좌측 상단] MP3 음악 파일을 가장 먼저 로딩하세요.", startX, startY);
-    p.text("2️⃣  [좌측 상단] BG/Texture 슬롯에 구름 질감 이미지를 로딩하세요.", startX, startY + lineSpacing);
-    p.text("3️⃣  [오른쪽] 슬라이더 파라미터 및 화면 비율을 최종 세팅하세요.", startX, startY + lineSpacing * 2);
+    p.text("1️⃣  [좌측 최상단] MP3 음악 파일을 로딩하세요.", startX, startY);
+    p.text("2️⃣  [우측 패널] Color Style Palette에서 날씨(먹구름, 맑은하늘, 노을)를 고르세요.", startX, startY + lineSpacing);
     
-    p.fill(255, 204, 0); // 드롭 액션 강조 색상
-    p.text("4️⃣  [마지막] 변환할 원본 이미지를 마우스로 끌어 이 화면에 드롭하세요!", startX, startY + lineSpacing * 3);
+    p.fill(255, 204, 0); 
+    p.text("3️⃣  [하단 컨트롤] 오디오 플레이어의 재생(▶) 버튼을 누르면 구름이 피어오릅니다!", startX, startY + lineSpacing * 2);
 
-    // 5. 하단 풋터 안내문
+    // 5. 풋터 안내
     p.fill(120);
     p.textSize(11);
     p.textAlign(p.CENTER, p.CENTER);
-    p.text("순서가 꼬이면 화면이 검게 변할 수 있으니 위 규칙을 준수해 주세요.", p.width / 2, p.height / 2 + 95);
+    p.text("음악이 재생되면 이 안내창은 자동으로 사라지고 시뮬레이션 영상이 출력됩니다.", p.width / 2, p.height / 2 + 75);
 
     p.pop();
   }
@@ -156,9 +147,11 @@ export default class P5FBMCloudGenerator {
     const audioEl = document.querySelector('audio');
     let isPlaying = audioEl && !audioEl.paused;
 
-    if (this.lastStyle !== ui.style) {
-        this.resetCanvas(p, true);
-        this.lastStyle = ui.style;
+    // 💡 [핵심 교정] 오디오 분석 데이터가 들어오거나 음악이 나오는 순간 가이드를 비활성화
+    if ((audioData && audioData.vol > 0.01) || isPlaying) {
+        this.isAudioActive = true;
+    } else {
+        this.isAudioActive = false;
     }
 
     let low = audioData ? (audioData.raw[2] + audioData.raw[3]) / 510 : 0.3;
@@ -235,8 +228,6 @@ export default class P5FBMCloudGenerator {
   }
 
   destroy() {
-    this.container.removeEventListener('dragover', this.handleDragOver);
-    this.container.removeEventListener('drop', this.handleDrop);
     if (this.p5Instance) this.p5Instance.remove();
     this.cloudImg = null; 
   }
