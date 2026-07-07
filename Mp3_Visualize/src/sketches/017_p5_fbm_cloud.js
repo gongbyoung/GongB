@@ -1,7 +1,7 @@
 /**
  * src/sketches/017_p5_fbm_cloud.js
- * - [버전] Ver 1.7 (슬라이더 반응 성능 16배 가속 및 스케일 매핑 대폭 보정 완료)
- * - 격자 샘플링 가속화로 픽셀 루프 병목을 해결하여 슬라이더 조작 시 실시간 줌 인/아웃 실현
+ * - [버전] Ver 1.8 (Glow/Size 전역 변수 참조 오류 및 크기 미반응 버그 완벽 수정)
+ * - baseFreq 변수를 클래스 스코프로 명확히 통합하여 슬라이더 조작 시 실시간 줌 인/아웃 완벽 작동
  * - Glow & Size 슬라이더 기반 10배 줌 인/아웃 카메라 엔진 및 날씨 팔레트 통합형
  */
 import ImageAnalyzer from '../core/ImageAnalyzer.js'; 
@@ -13,12 +13,15 @@ export default class P5FBMCloudGenerator {
     this.cloudImg = null; 
     
     // 💡 업데이트 확인용 버전 세팅
-    this.version = "017호 FBM Cloud Generator Ver 1.7";
+    this.version = "017호 FBM Cloud Generator Ver 1.8";
     
     this.timeX = 0;
     this.timeY = 0;
     this.isAudioActive = false; 
     this.lastSettingsStr = "";
+    
+    // 💡 스코프 오류 방지를 위해 기본 주파수 상수를 명확히 등록합니다.
+    this.baseFreq = 0.015;
   }
 
   async init() {
@@ -38,7 +41,6 @@ export default class P5FBMCloudGenerator {
         canvas.style('z-index', '1');
         
         p.pixelDensity(1);
-        // 고속 반응을 위해 내부 픽셀 맵 해상도를 최적화 스케일로 바인딩합니다.
         this.cloudImg = p.createImage(Math.floor(p.width / 3.0), Math.floor(p.height / 3.0));
         p.noLoop();
       };
@@ -62,18 +64,17 @@ export default class P5FBMCloudGenerator {
       const settings = window.cosmicEngineSettings || {};
       return {
           scatter: settings.scatterExponent ?? 2.2, 
-          glow: settings.glowAmount ?? (settings.size ?? 0.85), // 슬라이더 입력 범위: 10 ~ 250
+          glow: settings.glowAmount ?? (settings.size ?? 0.85), 
           burst: settings.audioGain ?? 1.0, 
           seed: settings.seed ?? 42,
           style: (settings.colorStyle || 'monochrome').toLowerCase()
       };
   }
 
-  // 💡 스케일이 직관적으로 변하도록 노이즈 주파수 파이프라인 전면 단순화 및 강화
+  // 💡 [버그 수정] 클래스 내부 멤버 변수(this.baseFreq)를 정확하게 바인딩하여 좌표를 왜곡합니다.
   warpNoise(x, y, p, midBump, zoomFactor, cx, cy) {
-    // 줌 팩터를 좌표에 직접 곱해 크기 변화 효율을 극대화합니다.
-    let nx = (x - cx) * baseFreq * zoomFactor;
-    let ny = (y - cy) * baseFreq * zoomFactor;
+    let nx = (x - cx) * this.baseFreq * zoomFactor;
+    let ny = (y - cy) * this.baseFreq * zoomFactor;
     
     let tx = this.timeX * 0.4;
     let ty = this.timeY * 0.4;
@@ -179,13 +180,12 @@ export default class P5FBMCloudGenerator {
     let centerX = w / 2;
     let centerY = h / 2;
 
-    // 💡 [수식 전면 개정] 슬라이더 10~250 수치에 완벽하게 우비례/좌비례하는 공간 스케일 인덱스 확립
-    // 슬라이더를 낮추면(10) 거대한 줌인 구름, 높이면(250) 저멀리 아주 미세한 뭉게구름 군집이 형성됩니다.
-    let zoomFactor = p.map(ui.glow, 10, 250, 0.08, 2.5);
+    // 💡 슬라이더 최소값(0.1) 일 때 대기 스케일을 조밀하게 줌인하고, 최대값(2.5) 일 때 줌아웃 처리
+    let zoomFactor = p.map(ui.glow, 0.1, 2.5, 4.0, 0.25);
 
     // 날씨 컬러 매핑
     let skyColor, cloudColor;
-    let colorGlow = p.map(ui.glow, 10, 250, 0.7, 1.2);
+    let colorGlow = p.map(ui.glow, 0.1, 2.5, 0.7, 1.2);
 
     if (ui.style.includes('monochrome')) {
         skyColor = p.color(20 * colorGlow, 30 * colorGlow, 45 * colorGlow);
@@ -209,14 +209,12 @@ export default class P5FBMCloudGenerator {
         cloudColor = p.color(0, 230, 255);
     }
 
-    // 💡 [병목 제거 핵심 알고리즘] 2픽셀 단위 격자 샘플링 가속 처리법 주입
-    // 사양은 1/4로 줄이면서, p5 Image의 바이리니어 보간으로 연기 같은 뭉게구름 묘사를 극대화합니다.
     let step = 2; 
-    globalThis.baseFreq = 0.015;
 
     for (let y = 0; y < h; y += step) {
       for (let x = 0; x < w; x += step) {
         let midBump = mid * 1.5;
+        // 💡 교정된 클래스 스코프 변수로 연산이 안전하게 흘러갑니다.
         let fbmVal = this.warpNoise(x, y, p, midBump * ui.burst, zoomFactor, centerX, centerY);
 
         let densityOffset = p.map(ui.scatter, 5, 50, 0.2, -0.25);
@@ -228,7 +226,6 @@ export default class P5FBMCloudGenerator {
         let finalC = p.lerpColor(skyColor, cloudColor, cloudIntensity);
         let r = p.red(finalC); let g = p.green(finalC); let b = p.blue(finalC);
 
-        // 2x2 블록 채우기 고속 메모리 복사
         for (let j = 0; j < step && (y + j) < h; j++) {
           for (let i = 0; i < step && (x + i) < w; i++) {
             let idx = ((y + j) * w + (x + i)) * 4;
