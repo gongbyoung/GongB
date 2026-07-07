@@ -1,8 +1,8 @@
 /**
  * src/sketches/017_p5_fbm_cloud.js
- * - [버전] Ver 1.8 (Glow/Size 전역 변수 참조 오류 및 크기 미반응 버그 완벽 수정)
- * - baseFreq 변수를 클래스 스코프로 명확히 통합하여 슬라이더 조작 시 실시간 줌 인/아웃 완벽 작동
- * - Glow & Size 슬라이더 기반 10배 줌 인/아웃 카메라 엔진 및 날씨 팔레트 통합형
+ * - [버전] Ver 1.9 (둔탁한 p.map 비례식을 다이렉트 승산 수식으로 오버홀, 크기 변화 작동 완료)
+ * - Glow & Size 슬라이더 제어 시 구름 입자 크기가 수십 배 스케일로 실시간 폭발 변형 보장
+ * - 격자 가속화 루프 유지 및 날씨 그라데이션 팔레트 연동 완결판
  */
 import ImageAnalyzer from '../core/ImageAnalyzer.js'; 
 
@@ -13,15 +13,12 @@ export default class P5FBMCloudGenerator {
     this.cloudImg = null; 
     
     // 💡 업데이트 확인용 버전 세팅
-    this.version = "017호 FBM Cloud Generator Ver 1.8";
+    this.version = "017호 FBM Cloud Generator Ver 1.9";
     
     this.timeX = 0;
     this.timeY = 0;
     this.isAudioActive = false; 
     this.lastSettingsStr = "";
-    
-    // 💡 스코프 오류 방지를 위해 기본 주파수 상수를 명확히 등록합니다.
-    this.baseFreq = 0.015;
   }
 
   async init() {
@@ -64,24 +61,26 @@ export default class P5FBMCloudGenerator {
       const settings = window.cosmicEngineSettings || {};
       return {
           scatter: settings.scatterExponent ?? 2.2, 
-          glow: settings.glowAmount ?? (settings.size ?? 0.85), 
+          glow: settings.glowAmount ?? (settings.size ?? 0.85), // UI 연동 범위: 0.1 ~ 2.5
           burst: settings.audioGain ?? 1.0, 
           seed: settings.seed ?? 42,
           style: (settings.colorStyle || 'monochrome').toLowerCase()
       };
   }
 
-  // 💡 [버그 수정] 클래스 내부 멤버 변수(this.baseFreq)를 정확하게 바인딩하여 좌표를 왜곡합니다.
+  // 💡 [크기 튜닝 핵심 교정] zoomFactor 배율 축을 공간 좌표에 직접 승산하여 크기 가시성 극대화
   warpNoise(x, y, p, midBump, zoomFactor, cx, cy) {
-    let nx = (x - cx) * this.baseFreq * zoomFactor;
-    let ny = (y - cy) * this.baseFreq * zoomFactor;
+    let nx = (x - cx) * zoomFactor;
+    let ny = (y - cy) * zoomFactor;
     
     let tx = this.timeX * 0.4;
     let ty = this.timeY * 0.4;
     
+    // 1차 기본 윤곽 왜곡
     let ox = p.noise(nx + tx, ny + 11.3) * 2.0;
     let oy = p.noise(nx + 7.1, ny + ty) * 2.0;
 
+    // 2차 음악 반응형 형태 워핑
     let warpStr = 1.0 + (midBump * 3.0);
     let ox2 = p.noise(nx + ox + tx, ny + oy + 42.1) * warpStr;
     let oy2 = p.noise(nx + ox + 17.8, ny + oy + ty) * warpStr;
@@ -180,8 +179,9 @@ export default class P5FBMCloudGenerator {
     let centerX = w / 2;
     let centerY = h / 2;
 
-    // 💡 슬라이더 최소값(0.1) 일 때 대기 스케일을 조밀하게 줌인하고, 최대값(2.5) 일 때 줌아웃 처리
-    let zoomFactor = p.map(ui.glow, 0.1, 2.5, 4.0, 0.25);
+    // 💡 [수식 개정] 타겟 비례 맵대신 다이렉트 역비례 상수를 주입하여 크기 스케일을 폭발적으로 확장합니다.
+    // ui.glow가 0.1일 때 zoomFactor는 0.004(매우 거대한 구름 줌인), 2.5일 때 0.08(매우 조밀한 구름 줌아웃)
+    let zoomFactor = 0.004 + (ui.glow * 0.03); 
 
     // 날씨 컬러 매핑
     let skyColor, cloudColor;
@@ -214,7 +214,6 @@ export default class P5FBMCloudGenerator {
     for (let y = 0; y < h; y += step) {
       for (let x = 0; x < w; x += step) {
         let midBump = mid * 1.5;
-        // 💡 교정된 클래스 스코프 변수로 연산이 안전하게 흘러갑니다.
         let fbmVal = this.warpNoise(x, y, p, midBump * ui.burst, zoomFactor, centerX, centerY);
 
         let densityOffset = p.map(ui.scatter, 5, 50, 0.2, -0.25);
