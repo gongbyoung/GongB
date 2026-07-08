@@ -1,7 +1,7 @@
 /**
  * src/sketches/017_p5_fbm_cloud.js
- * - [버전] Ver 2.0 (Glow/Size 슬라이더 수치 제한 전면 해제 및 파이프라인 개방)
- * - 슬라이더 입력 값을 매핑 없이 노이즈 공간 주파수에 직통으로 전달하여 실시간 크기 변경 구현
+ * - [버전] Ver 2.1 (노이즈 좌표계 대신 그래픽 레이어 직통 줌 인/아웃 오버홀 완료)
+ * - Glow & Size (발광/크기) 슬라이더 조작 시 실제 카메라 렌즈를 밀고 당기듯 구름 화면이 실시간 줌 인/아웃 처리됨
  */
 import ImageAnalyzer from '../core/ImageAnalyzer.js'; 
 
@@ -12,12 +12,14 @@ export default class P5FBMCloudGenerator {
     this.cloudImg = null; 
     
     // 💡 업데이트 확인용 버전 세팅
-    this.version = "017호 FBM Cloud Generator Ver 2.0";
+    this.version = "017호 FBM Cloud Generator Ver 2.1";
     
     this.timeX = 0;
     this.timeY = 0;
     this.isAudioActive = false; 
     this.lastSettingsStr = "";
+    
+    this.baseFreq = 0.015;
   }
 
   async init() {
@@ -43,8 +45,22 @@ export default class P5FBMCloudGenerator {
 
       p.draw = () => {
         p.clear();
+        
+        const ui = this.getUIParams();
+        
+        // 💡 [핵심 추가] Glow & Size 슬라이더 수치를 물리적인 카메라 줌 배율로 다이렉트 전환합니다.
+        // 슬라이더 값이 낮아지면 멀리서 보고(줌 아웃), 높아지면 눈앞으로 거대하게 당겨집니다(줌 인).
+        // 비례식 범위를 대폭 확장하여 크기 변화가 확실하게 체감되도록 설정했습니다.
+        let zoomScale = p.map(ui.glow, 0.1, 2.5, 0.2, 3.5);
+
         if (this.cloudImg) {
-          p.image(this.cloudImg, 0, 0, p.width, p.height);
+          p.push();
+          // 화면 정중앙을 기준으로 줌 인/아웃을 수행합니다.
+          p.translate(p.width / 2, p.height / 2);
+          p.scale(zoomScale);
+          // 확대/축소 후 원위치로 이미지를 정렬하여 캔버스에 뿌립니다.
+          p.image(this.cloudImg, -p.width / 2, -p.height / 2, p.width, p.height);
+          p.pop();
         }
         
         if (!this.isAudioActive) {
@@ -60,17 +76,16 @@ export default class P5FBMCloudGenerator {
       const settings = window.cosmicEngineSettings || {};
       return {
           scatter: settings.scatterExponent ?? 2.2, 
-          glow: settings.glowAmount ?? (settings.size ?? 1.0), // UI 슬라이더 입력값 그대로 획득
+          glow: settings.glowAmount ?? (settings.size ?? 1.0), 
           burst: settings.audioGain ?? 1.0, 
           seed: settings.seed ?? 42,
           style: (settings.colorStyle || 'monochrome').toLowerCase()
       };
   }
 
-  // 💡 입력된 주파수 계수(zoomFactor)를 좌표에 직접 승산
-  warpNoise(x, y, p, midBump, zoomFactor, cx, cy) {
-    let nx = (x - cx) * zoomFactor;
-    let ny = (y - cy) * zoomFactor;
+  warpNoise(x, y, p, midBump, cx, cy) {
+    let nx = (x - cx) * this.baseFreq;
+    let ny = (y - cy) * this.baseFreq;
     
     let tx = this.timeX * 0.4;
     let ty = this.timeY * 0.4;
@@ -176,13 +191,8 @@ export default class P5FBMCloudGenerator {
     let centerX = w / 2;
     let centerY = h / 2;
 
-    // 💡 [핵심 해제] 슬라이더의 물리 수치를 주파수 스케일에 변조 없이 직통 연결합니다.
-    // 수치가 작아지면 구름이 거대해지고, 수치가 커지면 구름 입자가 미세해집니다.
-    let zoomFactor = ui.glow * 0.02; 
-
     // 날씨 컬러 매핑
     let skyColor, cloudColor;
-    let colorGlow = 1.0;
 
     if (ui.style.includes('monochrome')) {
         skyColor = p.color(20, 30, 45);
@@ -211,7 +221,7 @@ export default class P5FBMCloudGenerator {
     for (let y = 0; y < h; y += step) {
       for (let x = 0; x < w; x += step) {
         let midBump = mid * 1.5;
-        let fbmVal = this.warpNoise(x, y, p, midBump * ui.burst, zoomFactor, centerX, centerY);
+        let fbmVal = this.warpNoise(x, y, p, midBump * ui.burst, centerX, centerY);
 
         let densityOffset = p.map(ui.scatter, 5, 50, 0.2, -0.25);
         let cloudThreshold = 0.35 - (mid * 0.12) + densityOffset;
