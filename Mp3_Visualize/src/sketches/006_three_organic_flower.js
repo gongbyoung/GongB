@@ -1,9 +1,9 @@
 /**
  * src/sketches/006_three_organic_flower.js
- * - [버전] Ver 3.5 (꽃잎 2파장 독립 주파수 분할 및 베지에 끝부분 흐느적 살랑임 엔진 완결판)
- * - 저음(Bass) ➡️ 중앙 꽃술, 중음(Mid) ➡️ 홀수 꽃잎 1세트, 고음(Treble) ➡️ 짝수 꽃잎 2세트 교차 분리 매핑 완료
- * - 단순 크기 진동을 전면 금지하고, 꽃잎 기둥은 고정된 채 끝부분(Tip)만 시간에 따라 좌우로 흐느적 곡선 변형
- * - 3중 커스텀 컬러 피커, 발광크기(Glow) 기반 중앙부 이격 거리 확장 및 HTML 가이드 페이드아웃 규격 유지
+ * - [버전] Ver 3.6 (3번 스타일 ➡️ 자연계 꽃잎 질감 리얼 그라데이션 엔진 오버홀 완결판)
+ * - 3번 스타일 선택 시 꽃술 쪽(어두운 원색)부터 바깥 끝쪽(밝고 화사한 원색)으로 부드럽게 퍼지는 입체적 그라데이션 구현
+ * - 저음/중음/고음 3축 파장 분할 및 베지에 끝부분(Tip) 흐느적 살랑임 물리 파이프라인 유지
+ * - HTML 가이드 패널 및 특수문자 파일명 우회 BG/Texture 이미지 배경 합성 규격 유지
  */
 
 export default class ThreeCosmicNebula {
@@ -12,7 +12,7 @@ export default class ThreeCosmicNebula {
     this.p5Instance = null;
     this.guiOverlay = null; 
     
-    this.version = "006호 Organic Flower Engine Ver 3.5";
+    this.version = "006호 Organic Flower Engine Ver 3.6";
     this.isAudioActive = false;
     this.lastSettingsStr = "";
 
@@ -75,9 +75,9 @@ export default class ThreeCosmicNebula {
         006호 오가닉 플라워 사용 방법
       </h3>
       <div style="font-size: 12.5px; text-align: left; line-height: 1.75; color: #dddddd;">
-        <p style="margin: 6px 0;">🌬️ <strong style="color: #ff6699;">[흐느적 살랑임]</strong> 진동이 아니라 바람 기류를 타고 꽃잎의 끝부분만 유연하게 휘어지는 물리 공식이 작동합니다.</p>
-        <p style="margin: 6px 0;">🎹 <strong style="color: #ffffff;">[3축 파장 분할]</strong> 저음은 꽃술 코어를, 중음은 홀수 잎사귀를, 고음은 짝수 잎사귀를 따로 교차 제어합니다.</p>
-        <p style="margin: 6px 0;">✨ <strong style="color: #ffffff;">[발광 크기]</strong> 꽃잎 두께와 함께 중앙 격리 거리가 멀어지며 광활하게 만개합니다.</p>
+        <p style="margin: 6px 0;">🌸 <strong style="color: #ff6699;">[3번 그라데이션]</strong> Custom 선택 시 꽃잎 안쪽(어두운 원색)에서 바깥쪽(밝은 원색)으로 리얼하게 뻗어 나갑니다.</p>
+        <p style="margin: 6px 0;">🌬️ <strong style="color: #ffffff;">[흐느적 살랑임]</strong> 꽃잎 기둥은 고정된 채 끝자락만 유연한 베지에 곡선 기류를 타고 흐느적거립니다.</p>
+        <p style="margin: 6px 0;">🎹 <strong style="color: #ffffff;">[파장 분할]</strong> 저음은 꽃술 코어, 중음은 홀수 잎사귀, 고음은 짝수 잎사귀를 따로 분리 제어합니다.</p>
         <p style="margin: 6px 0; color: #ffcc00;">▶️ <strong style="color: #ffcc00;">[하단 스타트]</strong> 재생 버튼을 누르면 이 가이드창이 페이드아웃 되며 영상이 시작됩니다!</p>
       </div>
       <div style="color: #777777; font-size: 10.5px; margin-top: 16px; border-top: 1px solid #222530; padding-top: 10px;">
@@ -131,7 +131,8 @@ export default class ThreeCosmicNebula {
         angleOffset: 0, 
         lengthScale: 1.0, 
         colorShift: p5.prototype.random(-25, 25),
-        swayPhase: p5.prototype.random(p5.prototype.TWO_PI) // 잎사귀마다 불규칙한 살랑임 위상 분산 시드
+        swayPhase: p5.prototype.random(p5.prototype.TWO_PI),
+        individualHue: Math.floor(p5.prototype.random(360)) // 3번 모드용 개별 랜덤 원색 허브 시드
       });
     }
   }
@@ -187,43 +188,89 @@ export default class ThreeCosmicNebula {
     p.redraw(); 
   }
 
-  // 💡 [흐느적 물리 핵심 공식 이식] 
-  // 기둥 시작부는 고정하고, 오디오 파장 세기(bendForce)를 받아 베지에 제어점과 최외곽 끝 정점(Tip)만 유기적으로 휘어지게 그리는 구조
-  drawFlexiblePetalShape(p, baseLength, thickness, type, bendForce) {
-    p.beginShape();
+  // 💡 [그라데이션 연산 적용 패스 엔진] 
+  // 내부 면 채우기(fill) 단계를 세밀한 비율(pct)로 슬라이싱 루프 처리하여 진짜 꽃잎 그라데이션 질감을 구현합니다.
+  drawFlexiblePetalShape(p, baseLength, thickness, type, bendForce, useNaturalGradient, gradHue, fillAlpha) {
     
-    // 좌우로 유연하게 흐느적거리는 팁 정점 오프셋 연산
     let tipX = bendForce * (baseLength * 0.35);
 
-    if (type === 'sharp-ellipse') {
-      p.vertex(0, 0);
-      // 베지에 곡선의 중간 및 끝 핸들을 변형해 낭창낭창하게 휘어지는 선을 만듭니다.
-      p.bezierVertex(-thickness * 0.6, -baseLength * 0.4, -thickness * 0.6 + tipX * 0.5, -baseLength * 0.8, tipX, -baseLength);
-      p.bezierVertex(thickness * 0.6 + tipX * 0.5, -baseLength * 0.8, thickness * 0.6, -baseLength * 0.4, 0, 0);
-    } 
-    else if (type === 'ellipse') {
-      // 일반 에클립스도 유연한 뼈대 처리를 위해 베지에 외곽 패스로 리빌딩 수혈 완료
-      p.vertex(0, 0);
-      p.bezierVertex(-thickness * 0.65, -baseLength * 0.25, -thickness * 0.65 + tipX, -baseLength * 0.75, tipX, -baseLength);
-      p.bezierVertex(thickness * 0.65 + tipX, -baseLength * 0.75, thickness * 0.65, -baseLength * 0.25, 0, 0);
-    } 
-    else if (type === 'heart') {
-      p.vertex(0, 0);
-      p.bezierVertex(-thickness * 1.4, -baseLength * 0.25, -thickness * 1.2 + tipX * 0.4, -baseLength * 0.85, tipX, -baseLength * 0.95);
-      p.bezierVertex(thickness * 1.2 + tipX * 0.4, -baseLength * 0.85, thickness * 1.4, -baseLength * 0.25, 0, 0);
-    } 
-    else if (type === 'narrow') {
-      p.vertex(0, 0);
-      p.bezierVertex(-thickness * 0.25, -baseLength * 0.5, -thickness * 0.25 + tipX * 0.7, -baseLength * 0.9, tipX, -baseLength);
-      p.bezierVertex(thickness * 0.25 + tipX * 0.7, -baseLength * 0.9, thickness * 0.25, -baseLength * 0.5, 0, 0);
-    } 
-    else {
-      // teardrop 눈물방울형 흐느적 오버홀
-      p.vertex(0, 0);
-      p.bezierVertex(-thickness * 0.1, -baseLength * 0.2, -thickness * 1.3 + tipX, -baseLength * 0.7, tipX, -baseLength);
-      p.bezierVertex(thickness * 1.3 + tipX, -baseLength * 0.7, thickness * 0.1, -baseLength * 0.2, 0, 0);
+    // 💡 3번 모드 전용 리얼 내추럴 그라데이션 다층 스캔 렌더링
+    if (useNaturalGradient) {
+      p.noStroke();
+      // 10단계 쉐이딩 슬라이스 루프로 안쪽(어둡고 진함) -> 바깥쪽(밝고 화사함) 그라데이션 구현
+      let steps = 12;
+      for (let s = 0; s < steps; s++) {
+        let pct = s / (steps - 1);
+        
+        // 💡 [핵심 수식] 안쪽은 채도 높고 명도 낮은 어두운 원색 ➡️ 바깥 끝은 명도 높고 화사한 투명 원색으로 보간
+        let currentSat = p.map(pct, 0.0, 1.0, 95, 75);
+        let currentBri = p.map(pct, 0.0, 1.0, 50, 98); // 50(어두움)에서 시작해 98(매우 밝음)로 도달
+        let currentAlpha = p.map(pct, 0.0, 1.0, fillAlpha, fillAlpha * 0.45);
+        
+        p.fill(gradHue, currentSat, currentBri, currentAlpha);
+
+        // 현재 비율 단계에 맞는 길이와 두께 상자 축소 연산
+        let currentLen = baseLength * pct;
+        let currentThick = thickness * p.lerp(0.2, 1.0, p.sin(pct * p.HALF_PI));
+
+        p.beginShape();
+        if (type === 'sharp-ellipse') {
+          p.vertex(0, 0);
+          p.bezierVertex(-currentThick * 0.6, -currentLen * 0.4, -currentThick * 0.6 + tipX * pct * 0.5, -currentLen * 0.8, tipX * pct, -currentLen);
+          p.bezierVertex(currentThick * 0.6 + tipX * pct * 0.5, -currentLen * 0.8, currentThick * 0.6, -currentLen * 0.4, 0, 0);
+        } 
+        else if (type === 'ellipse') {
+          p.vertex(0, 0);
+          p.bezierVertex(-currentThick * 0.65, -currentLen * 0.25, -currentThick * 0.65 + tipX * pct, -currentLen * 0.75, tipX * pct, -currentLen);
+          p.bezierVertex(currentThick * 0.65 + tipX * pct, -currentLen * 0.75, currentThick * 0.65, -currentLen * 0.25, 0, 0);
+        } 
+        else if (type === 'heart') {
+          p.vertex(0, 0);
+          p.bezierVertex(-currentThick * 1.4, -currentLen * 0.25, -currentThick * 1.2 + tipX * pct * 0.4, -currentLen * 0.85, tipX * pct, -currentLen * 0.95);
+          p.bezierVertex(currentThick * 1.2 + tipX * pct * 0.4, -currentLen * 0.85, currentThick * 1.4, -currentLen * 0.25, 0, 0);
+        } 
+        else if (type === 'narrow') {
+          p.vertex(0, 0);
+          p.bezierVertex(-currentThick * 0.25, -currentLen * 0.5, -currentThick * 0.25 + tipX * pct * 0.7, -currentLen * 0.9, tipX * pct, -currentLen);
+          p.bezierVertex(currentThick * 0.25 + tipX * pct * 0.7, -currentLen * 0.9, currentThick * 0.25, -currentLen * 0.5, 0, 0);
+        } 
+        else { // teardrop
+          p.vertex(0, 0);
+          p.bezierVertex(-currentThick * 0.1, -currentLen * 0.2, -currentThick * 1.3 + tipX * pct, -currentLen * 0.7, tipX * pct, -currentLen);
+          p.bezierVertex(currentThick * 1.3 + tipX * pct, -currentLen * 0.7, currentThick * 0.1, -currentLen * 0.2, 0, 0);
+        }
+        p.endShape(p.CLOSE);
+      }
+    } else {
+      // 일반 단색 테마 모드 드로잉 패스
+      p.beginShape();
+      if (type === 'sharp-ellipse') {
+        p.vertex(0, 0);
+        p.bezierVertex(-thickness * 0.6, -baseLength * 0.4, -thickness * 0.6 + tipX * 0.5, -baseLength * 0.8, tipX, -baseLength);
+        p.bezierVertex(thickness * 0.6 + tipX * 0.5, -baseLength * 0.8, thickness * 0.6, -baseLength * 0.4, 0, 0);
+      } 
+      else if (type === 'ellipse') {
+        p.vertex(0, 0);
+        p.bezierVertex(-thickness * 0.65, -baseLength * 0.25, -thickness * 0.65 + tipX, -baseLength * 0.75, tipX, -baseLength);
+        p.bezierVertex(thickness * 0.65 + tipX, -baseLength * 0.75, thickness * 0.65, -baseLength * 0.25, 0, 0);
+      } 
+      else if (type === 'heart') {
+        p.vertex(0, 0);
+        p.bezierVertex(-thickness * 1.4, -baseLength * 0.25, -thickness * 1.2 + tipX * 0.4, -baseLength * 0.85, tipX, -baseLength * 0.95);
+        p.bezierVertex(thickness * 1.2 + tipX * 0.4, -baseLength * 0.85, thickness * 1.4, -baseLength * 0.25, 0, 0);
+      } 
+      else if (type === 'narrow') {
+        p.vertex(0, 0);
+        p.bezierVertex(-thickness * 0.25, -baseLength * 0.5, -thickness * 0.25 + tipX * 0.7, -baseLength * 0.9, tipX, -baseLength);
+        p.bezierVertex(thickness * 0.25 + tipX * 0.7, -baseLength * 0.9, thickness * 0.25, -baseLength * 0.5, 0, 0);
+      } 
+      else {
+        p.vertex(0, 0);
+        p.bezierVertex(-thickness * 0.1, -baseLength * 0.2, -thickness * 1.3 + tipX, -baseLength * 0.7, tipX, -baseLength);
+        p.bezierVertex(thickness * 1.3 + tipX, -baseLength * 0.7, thickness * 0.1, -baseLength * 0.2, 0, 0);
+      }
+      p.endShape(p.CLOSE);
     }
-    p.endShape(p.CLOSE);
   }
 
   update(audioData) {
@@ -258,118 +305,109 @@ export default class ThreeCosmicNebula {
         this.updateFlowerShapeBySeed(ui.seed);
     }
 
-    // 💡 [오가닉 기류 칼분할] 오디오 FFT 채널 분석 고속 분리 가동
     let vol = audioData ? audioData.vol : p.noise(this.time) * 0.3;
     let bass = audioData ? (audioData.raw ? (audioData.raw[1] + audioData.raw[2] + audioData.raw[3])/765 : vol) : vol;
     let mid = audioData ? (audioData.raw ? (audioData.raw[15] + audioData.raw[16] + audioData.raw[17])/765 : vol) : vol;
     let treble = audioData ? (audioData.raw ? (audioData.raw[50] + audioData.raw[52] + audioData.raw[55])/765 : vol) : vol;
 
-    // 감도 배율 주입
     vol *= ui.burst;
     bass *= ui.burst;
     mid *= ui.burst;
     treble *= ui.burst;
 
-    // 하단 슬라이더 연동 실시간 개수 가변 마스터 채널
     this.petalCount = Math.floor(p.map(ui.burst, 1.0, 5.0, 8, 45));
 
     let cx = p.width / 2;
     let cy = p.height / 2;
 
-    // 분산범위 슬라이더 기반 마스터 스케일 박스
     let masterScale = p.map(ui.scatter, 5, 50, 0.4, 2.2);
-    
-    // 발광크기 슬라이더 ➡️ 두께 및 센터 크기 매핑 균형
     let petalThickness = p.map(ui.glow, 10, 150, 8, 85);
-    // 💡 [저음 독립 바인딩] 가운데 꽃술 코어는 오직 묵직한 베이스(bass) 주파수 충격에만 원형 반응 팽창하도록 격리
     let pistilCenterSize = p.map(ui.glow, 10, 150, 15, 110) * (1.0 + bass * 0.3);
 
-    // 발광크기에 비례한 중앙부 이격 배치 레이아웃 거리
     let centralOffsetDistance = p.map(ui.glow, 10, 150, 0, 55);
 
-    // 🌸 1단계: 유기적 2파장 분할 꽃잎 렌더 루프
+    // 🌸 1단계: 유기적 꽃잎 렌더 루프
     p.push();
     p.translate(cx, cy);
     p.scale(masterScale);
-    
-    // 전체 무대 상시 기류 관성 미동 회전 효과
     p.rotate(this.time * 0.08 + mid * 0.06);
 
     let angleStep = p.TWO_PI / this.petalCount;
 
     for (let i = 0; i < this.petalCount; i++) {
-      let seedInfo = this.petalNoiseSeeds[i] || { angleOffset: 0, lengthScale: 1, colorShift: 0, swayPhase: 0 };
+      let seedInfo = this.petalNoiseSeeds[i] || { angleOffset: 0, lengthScale: 1, colorShift: 0, swayPhase: 0, individualHue: 0 };
       
       p.push();
       p.rotate(i * angleStep);
 
-      // 💡 [2파장 주파수 독립 매핑 및 흐느적 곡선 힘 도출]
       let bendForce = 0;
       if (i % 2 === 0) {
-        // A세트 (짝수 꽃잎): 고음(treble) 주파수 연동 및 전용 살랑임 물리 파동 계산
         let windSway = Math.sin(this.time * 4.0 + seedInfo.swayPhase) * 0.18;
         bendForce = windSway + (treble * 0.45);
       } else {
-        // B세트 (홀수 꽃잎): 중음(mid) 주파수 연동 및 전용 살랑임 물리 파동 계산
         let windSway = Math.cos(this.time * 3.2 + seedInfo.swayPhase) * 0.18;
         bendForce = windSway + (mid * 0.42);
       }
 
-      // 발광 크기 기반 평행 이격 배치
       p.translate(0, -centralOffsetDistance);
 
       let baseLength = 110; 
       let hueVal = 15; let satVal = 80; let briVal = 95;
       let strokeHue = 30; let strokeSat = 90; let strokeAlpha = 200;
       let fillAlpha = 160 + vol * 70;
+      
+      let useNaturalGradient = false;
 
-      // 3중 멀티 컬러 스펙트럼 피커 연동 파이프라인
       if (ui.style.includes('neon')) {
+        // 1️⃣ 스타일: 지금 색 유지
         hueVal = (330 + seedInfo.colorShift + p.map(i, 0, this.petalCount, 0, 30)) % 360; 
         satVal = 90;
         strokeHue = (hueVal + 15) % 360;
       } 
       else if (ui.style.includes('pastel')) {
+        // 2️⃣ 스타일: 모든 꽃잎 동일 파스텔 톤 랜덤 부여
         hueVal = this.pastelThemeHue; 
-        satVal = 45; 
-        briVal = 93;
-        strokeHue = hueVal;
-        strokeSat = 65;
+        satVal = 45; briVal = 93;
+        strokeHue = hueVal; strokeSat = 65;
       } 
       else if (ui.style.includes('custom-color') || ui.style.includes('custom')) {
-        let c1 = p.color(ui.gas1Hex);
-        hueVal = p.hue(c1); satVal = p.saturation(c1); briVal = p.brightness(c1);
-        
-        let c2 = p.color(ui.gas2Hex);
-        strokeHue = p.hue(c2); strokeSat = p.saturation(c2);
+        // 3️⃣ 스타일: [오버홀 완료] 꽃술 쪽부터 바깥쪽으로 무작위 원색 리얼 그라데이션 엔진 가동!
+        useNaturalGradient = true;
+        // 지형변경 시 정해진 개별 고유 원색 허브 주입
+        hueVal = (seedInfo.individualHue + (i * 10)) % 360; 
       } 
       else if (ui.style.includes('full-random') || ui.style.includes('gradient')) {
+        // 4️⃣ 스타일: 지속 가변 그라데이션
         hueVal = (p.sin(this.time * 0.4 + i * 0.1) * 180 + 180) % 360;
-        satVal = 85;
-        briVal = 98;
+        satVal = 85; briVal = 98;
         strokeHue = (hueVal + 180) % 360; 
       } 
       else {
+        // 5️⃣ 스타일: 테두리만 색 랜덤
         hueVal = (seedInfo.colorShift * 15 + i * 20) % 360;
-        satVal = 90;
-        briVal = 95;
+        satVal = 90; briVal = 95;
         fillAlpha = 15; 
-        strokeHue = hueVal;
-        strokeSat = 95;
-        strokeAlpha = 240; 
+        strokeHue = hueVal; strokeSat = 95; strokeAlpha = 240; 
       }
 
-      p.fill(hueVal, satVal, briVal, fillAlpha);
-      p.stroke(strokeHue, strokeSat, briVal - 10, strokeAlpha);
-      p.strokeWeight(ui.style.includes('full-random') ? 2.5 : 1.2); 
+      // 그라데이션 모드가 아닐 때만 표준 단색 처리 적용
+      if (!useNaturalGradient) {
+        p.fill(hueVal, satVal, briVal, fillAlpha);
+        p.stroke(strokeHue, strokeSat, briVal - 10, strokeAlpha);
+        p.strokeWeight(ui.style.includes('full-random') ? 2.5 : 1.2); 
+      } else {
+        // 그라데이션 모드일 때 테두리 라인을 한층 부드럽게 마감
+        p.stroke(hueVal, 95, 40, strokeAlpha * 0.3);
+        p.strokeWeight(0.5);
+      }
 
-      // 💡 [유연 흐느적 렌더팩 작동] 연산된 독립 주파수 힘을 주입하여 끝부분만 낭창하게 드로잉
-      this.drawFlexiblePetalShape(p, baseLength, petalThickness, this.flowerShapeType, bendForce);
+      // 제너레이티브 패스 드로잉 가동
+      this.drawFlexiblePetalShape(p, baseLength, petalThickness, this.flowerShapeType, bendForce, useNaturalGradient, hueVal, fillAlpha);
       p.pop();
     }
     p.pop();
 
-    // 🌸 2단계: 중앙 원형 꽃술 코어 드로잉 (베이스 연동 전용)
+    // 🌸 2단계: 중앙 원형 꽃술 코어 드로잉
     p.push();
     p.translate(cx, cy);
     p.scale(masterScale);
@@ -378,8 +416,8 @@ export default class ThreeCosmicNebula {
     let coreHue = 45; let coreSat = 85; let coreBri = 98;
 
     if (ui.style.includes('custom-color') || ui.style.includes('custom')) {
-      let c3 = p.color(ui.starHex);
-      coreHue = p.hue(c3); coreSat = p.saturation(c3); coreBri = p.brightness(c3);
+      // 그라데이션 테마에 맞춰 꽃술도 유기적인 고유 원색 매칭
+      coreHue = (this.pastelThemeHue + 120) % 360;
     } else if (ui.style.includes('full-random')) {
       coreHue = (this.time * 30) % 360;
     }
