@@ -1,8 +1,8 @@
 /**
  * src/sketches/018_glsl_noise.js
- * - [버전] Ver 1.8 (오일 질감 제거 및 6중 프랙탈 뭉게구름 엔진 오버홀)
- * - 액체 왜곡(Domain Warping) 수식을 완전히 걷어내고, 순수 6단계 FBM 프랙탈 레이어 중첩 적용
- * - 분산범위(ui.scatter) 슬라이더 조작 시 017호와 동일한 레이어 중첩 충돌 필터 메커니즘 가동
+ * - [버전] Ver 1.9 (BG/Texture 이미지 배경 합성 파이프라인 추가 완료)
+ * - 좌측 패널에서 BG/Texture 이미지를 로딩하면 셰이더 내부 skyColor 대신 커스텀 배경으로 실시간 합성
+ * - 6중 프랙탈 FBM 뭉게구름 질감 유지 및 60FPS GPU 렌더 가속
  */
 
 export default class GLSLNoiseShaderStage {
@@ -13,10 +13,14 @@ export default class GLSLNoiseShaderStage {
     this.guiOverlay = null; 
     
     // 💡 업데이트 세팅 마커
-    this.version = "018호 FBM Cloud Shader Ver 1.8";
+    this.version = "018호 FBM Cloud Shader Ver 1.9";
     this.time = 0;
     this.isAudioActive = false;
     this.lastSettingsStr = "";
+    
+    // 텍스처 로딩 상태 관리용
+    this.bgTextureElement = null;
+    this.lastBgSrc = "";
   }
 
   getVertexShader() {
@@ -45,14 +49,16 @@ export default class GLSLNoiseShaderStage {
       uniform float u_glow;
       uniform int u_style;
 
-      // GPU 가속 난수 생성기
+      // 💡 외부에서 주입되는 BG 텍스처 및 로딩 상태 플래그
+      uniform sampler2D u_bgTexture;
+      uniform bool u_useBgTexture;
+
       float hash(vec2 p) {
         p = fract(p * vec2(123.34, 456.21));
         p += dot(p, p + 45.32);
         return fract(p.x * p.y);
       }
 
-      // 2D 밸런스 노이즈
       float noise(vec2 p) {
         vec2 i = floor(p);
         vec2 f = fract(p);
@@ -61,15 +67,12 @@ export default class GLSLNoiseShaderStage {
                    mix(hash(i + vec2(0.0,1.0)), hash(i + vec2(1.0,1.0)), u.x), u.y);
       }
 
-      // 💡 [오일 질감 완전 제거] 6단계 독립 옥타브 FBM 구름 묘사 엔진
-      // 주파수를 배수로 쪼개어 겹치면서 보송보송하고 불규칙한 자연계 구름 입자를 형성합니다.
       float cloudFBM(vec2 p, float seedShift) {
         float value = 0.0;
         float amplitude = 1.0;
         float frequency = 1.0;
         float maxValue = 0.0;
 
-        // 음악 주파수 및 시간 흐름 기류 주입
         vec2 shift = vec2(u_time * 0.05, u_time * 0.02) + vec2(seedShift);
 
         for (int i = 0; i < 6; i++) {
@@ -82,10 +85,7 @@ export default class GLSLNoiseShaderStage {
       }
 
       void main() {
-        // 정밀 가상 렌즈 중심점 설정
         vec2 st = vTexCoord - 0.5;
-        
-        // Glow & Size 슬라이더 기반 카메라 공간 줌 아웃 매핑 밸런스 조정
         float zoom = 2.0 / (0.1 + u_glow * 0.015);
         st *= zoom;
 
@@ -93,18 +93,15 @@ export default class GLSLNoiseShaderStage {
         float mid = u_audio.y;
         float high = u_audio.z;
 
-        // 6중 중첩 프랙탈 노이즈 가동
         float fbmVal = cloudFBM(st * 2.5, u_seed * 12.3);
 
-        // 💡 [회원님 기획안 이식] 분산범위(u_scatter)를 레이어 중첩 충돌 필터 커트라인으로 오버홀
-        // 우측으로 밀수록 레이어가 여러 개 강력하게 충돌한 묵직하고 리얼한 구름 산맥 위주로 필터링됩니다.
         float densityOffset = (u_scatter - 22.0) * 0.006;
         float threshold = 0.38 + densityOffset - (mid * 0.12);
         
         float density = max(0.0, fbmVal - threshold);
         float cloudIntensity = clamp(density * 7.0, 0.0, 1.0);
 
-        // 화풍 컬러 매핑
+        // 기본 배경색 파이프라인
         vec3 skyColor = vec3(0.0);
         vec3 cloudColor = vec3(0.0);
 
@@ -124,6 +121,13 @@ export default class GLSLNoiseShaderStage {
         } else { 
             skyColor = vec3(0.05, 0.08, 0.12);
             cloudColor = vec3(0.0, 0.92, 1.0);
+        }
+
+        // 💡 [배경 합성 오버홀] 만약 사용자가 이미지를 업로드했다면 skyColor 대신 텍스처 픽셀 샘플링을 적용합니다.
+        if (u_useBgTexture) {
+            // Y축 뒤집힘을 방지하기 위해 vTexCoord.y를 보정하여 픽셀을 추출합니다.
+            vec4 texColor = texture2D(u_bgTexture, vec2(vTexCoord.x, 1.0 - vTexCoord.y));
+            skyColor = texColor.rgb;
         }
 
         vec3 finalColor = mix(skyColor, cloudColor, cloudIntensity);
@@ -176,7 +180,7 @@ export default class GLSLNoiseShaderStage {
         Cosmic Studio 018호 셰이더 무대 가이드
       </h3>
       <div style="font-size: 12.5px; text-align: left; line-height: 1.7; color: #dddddd;">
-        <p style="margin: 6px 0;">1️⃣ <strong style="color: #ffffff;">[좌측 최상단]</strong> MP3 음악 파일을 로딩해 주세요.</p>
+        <p style="margin: 6px 0;">1️⃣ <strong style="color: #ffffff;">[좌측 최상단]</strong> MP3 음악 및 배경 텍스처 이미지를 로딩하세요.</p>
         <p style="margin: 6px 0;">2️⃣ <strong style="color: #ffffff;">[우측 패널]</strong> 슬라이더 제어 시 렉 없이 실시간 왜곡 연동됩니다.</p>
         <p style="margin: 6px 0; color: #ffcc00;">3️⃣ <strong style="color: #ffcc00;">[하단 컨트롤]</strong> 재생(▶) 단추를 누르면 GPU 셰이더가 폭발합니다!</p>
       </div>
@@ -220,6 +224,21 @@ export default class GLSLNoiseShaderStage {
 
           if (!this.isAudioActive) {
             this.shaderProgram.setUniform('u_audio', [0.4, 0.3, 0.2]);
+          }
+
+          // 💡 [배경 이미지 셰이더 바인딩 연동 스캔]
+          // 메인 DOM의 텍스처 패널 이미지 태그에서 src 경로 변화를 실시간 감지하여 가속 업로드합니다.
+          const imgEl = document.querySelector('.media-panel img') || document.getElementById('bg-texture-preview');
+          if (imgEl && imgEl.src && imgEl.src !== this.lastBgSrc && !imgEl.src.includes('blob:')) {
+              this.lastBgSrc = imgEl.src;
+              this.bgTextureElement = p.loadImage(imgEl.src, () => { p.redraw(); });
+          }
+
+          if (this.bgTextureElement && this.bgTextureElement.width > 2) {
+              this.shaderProgram.setUniform('u_bgTexture', this.bgTextureElement);
+              this.shaderProgram.setUniform('u_useBgTexture', true);
+          } else {
+              this.shaderProgram.setUniform('u_useBgTexture', false);
           }
 
           p.noStroke();
