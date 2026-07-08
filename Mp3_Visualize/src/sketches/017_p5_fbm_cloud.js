@@ -1,7 +1,8 @@
 /**
  * src/sketches/017_p5_fbm_cloud.js
- * - [버전] Ver 2.2 (중간 바인딩 오류 원천 차단, HTML 슬라이더 DOM 다이렉트 추적 엔진 탑재)
- * - 외부 객체 렉을 우회하기 위해 #slide-cosmic-glow 엘리먼트의 value를 직접 수집하여 줌 인/아웃 반영
+ * - [버전] Ver 2.3 (화면 비율 고정, 순수 구름 입자 스케일 공간 줌 인/아웃 변환 버그 완전 해결)
+ * - 캔버스 크기를 줄이던 하위 레이어 스케일 방식 완전 폐기
+ * - Glow & Size 슬라이더 제어 시 9:16 프레임은 꽉 찬 상태를 유지하며 내부 구름 주파수만 멀리서 보듯 미세화 처리
  */
 import ImageAnalyzer from '../core/ImageAnalyzer.js'; 
 
@@ -12,13 +13,14 @@ export default class P5FBMCloudGenerator {
     this.cloudImg = null; 
     
     // 💡 업데이트 확인용 버전 세팅
-    this.version = "017호 FBM Cloud Generator Ver 2.2";
+    this.version = "017호 FBM Cloud Generator Ver 2.3";
     
     this.timeX = 0;
     this.timeY = 0;
     this.isAudioActive = false; 
     this.lastSettingsStr = "";
     
+    // 기본 해상도 주파수 베이스
     this.baseFreq = 0.015;
   }
 
@@ -39,25 +41,16 @@ export default class P5FBMCloudGenerator {
         canvas.style('z-index', '1');
         
         p.pixelDensity(1);
-        this.cloudImg = p.createImage(Math.floor(p.width / 3.0), Math.floor(p.height / 3.0));
+        // 고해상도 구름 묘사를 위해 버퍼 밀도를 확보합니다.
+        this.cloudImg = p.createImage(Math.floor(p.width / 2.0), Math.floor(p.height / 2.0));
         p.noLoop();
       };
 
       p.draw = () => {
         p.clear();
-        
-        const ui = this.getUIParams();
-        
-        // 💡 [오버홀] 수치 전달 오류를 부수고 진짜 화면 픽셀 자체를 밀고 당기는 스케일 줌 가동
-        // 슬라이더의 날것의 데이터(10 ~ 250)를 직관적인 배율(0.15배 ~ 4.5배)로 다이렉트 맵 시킵니다.
-        let zoomScale = p.map(ui.glow, 10, 250, 0.15, 4.5);
-
+        // 💡 [의도 교정] 무대 크기는 100% 꽉 채운 상태를 언제나 고정 유지합니다.
         if (this.cloudImg) {
-          p.push();
-          p.translate(p.width / 2, p.height / 2);
-          p.scale(zoomScale);
-          p.image(this.cloudImg, -p.width / 2, -p.height / 2, p.width, p.height);
-          p.pop();
+          p.image(this.cloudImg, 0, 0, p.width, p.height);
         }
         
         if (!this.isAudioActive) {
@@ -69,11 +62,9 @@ export default class P5FBMCloudGenerator {
     this.p5Instance = new window.p5(sketch, this.container);
   }
 
-  // 💡 [핵심 교정] 외부 바인딩을 신뢰하지 않고, DOM 엘리먼트에서 실시간으로 값을 직접 뜯어옵니다.
   getUIParams() {
       const settings = window.cosmicEngineSettings || {};
       
-      // HTML 슬라이더 실시간 다이렉트 스캔
       const seedSlider = document.getElementById('slide-cosmic-seed');
       const scatterSlider = document.getElementById('slide-cosmic-scatter');
       const glowSlider = document.getElementById('slide-cosmic-glow');
@@ -82,24 +73,26 @@ export default class P5FBMCloudGenerator {
 
       return {
           scatter: scatterSlider ? parseFloat(scatterSlider.value) : (settings.scatterExponent ?? 22), 
-          glow: glowSlider ? parseFloat(glowSlider.value) : 85, // 💡 무조건 HTML 슬라이더의 날값(10~250) 획득
+          glow: glowSlider ? parseFloat(glowSlider.value) : 85, // 10 ~ 250 날 데이터 추적
           burst: gainSlider ? parseFloat(gainSlider.value) / 100 : 1.0, 
           seed: seedSlider ? parseInt(seedSlider.value) : 42,
           style: colorSelect ? colorSelect.value.toLowerCase() : 'neon'
       };
   }
 
-  warpNoise(x, y, p, midBump, cx, cy) {
-    let nx = (x - cx) * this.baseFreq;
-    let ny = (y - cy) * this.baseFreq;
+  // 💡 [공간 주파수 줌 변환 메커니즘 개정] 
+  // zoomFactor가 커질수록 구름 수학 패턴이 정밀하게 쪼개져 멀리서 보는 효과를 냅니다.
+  warpNoise(x, y, p, midBump, zoomFactor, cx, cy) {
+    let nx = (x - cx) * this.baseFreq * zoomFactor;
+    let ny = (y - cy) * this.baseFreq * zoomFactor;
     
-    let tx = this.timeX * 0.4;
-    let ty = this.timeY * 0.4;
+    let tx = this.timeX * 0.3;
+    let ty = this.timeY * 0.3;
     
-    let ox = p.noise(nx + tx, ny + 11.3) * 2.0;
-    let oy = p.noise(nx + 7.1, ny + ty) * 2.0;
+    let ox = p.noise(nx + tx, ny + 11.3) * 2.5;
+    let oy = p.noise(nx + 7.1, ny + ty) * 2.5;
 
-    let warpStr = 1.0 + (midBump * 3.0);
+    let warpStr = 1.2 + (midBump * 3.5);
     let ox2 = p.noise(nx + ox + tx, ny + oy + 42.1) * warpStr;
     let oy2 = p.noise(nx + ox + 17.8, ny + oy + ty) * warpStr;
     
@@ -197,6 +190,11 @@ export default class P5FBMCloudGenerator {
     let centerX = w / 2;
     let centerY = h / 2;
 
+    // 💡 [수식 전면 개정] 슬라이더 수치에 따라 순수 공간의 배율 주파수 계수를 설계합니다.
+    // 10일 때는 0.2배 크기로 패턴이 뭉뚱그려져 커지고(줌인), 250일 때는 4.0배 크기로 촘촘하게 쪼개집니다(줌아웃).
+    let zoomFactor = p.map(ui.glow, 10, 250, 0.2, 4.0);
+
+    // 날씨 컬러 매핑
     let skyColor, cloudColor;
 
     if (ui.style.includes('monochrome')) {
@@ -226,9 +224,9 @@ export default class P5FBMCloudGenerator {
     for (let y = 0; y < h; y += step) {
       for (let x = 0; x < w; x += step) {
         let midBump = mid * 1.5;
-        let fbmVal = this.warpNoise(x, y, p, midBump * ui.burst, centerX, centerY);
+        // 💡 줌 팩터를 노이즈 매개변수로 명확하게 이식하여 해상도는 고정한 채 구름의 정밀도만 조절합니다.
+        let fbmVal = this.warpNoise(x, y, p, midBump * ui.burst, zoomFactor, centerX, centerY);
 
-        // 분산 범위 슬라이더 연동 강도 최적화
         let densityOffset = p.map(ui.scatter, 5, 50, 0.2, -0.25);
         let cloudThreshold = 0.35 - (mid * 0.12) + densityOffset;
         
@@ -257,7 +255,7 @@ export default class P5FBMCloudGenerator {
   resize(w, h) {
     if (this.p5Instance) {
       this.p5Instance.resizeCanvas(w, h);
-      this.cloudImg = this.p5Instance.createImage(Math.floor(w / 3.0), Math.floor(h / 3.0));
+      this.cloudImg = this.p5Instance.createImage(Math.floor(w / 2.0), Math.floor(h / 2.0));
     }
   }
 
