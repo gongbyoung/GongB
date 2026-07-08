@@ -1,8 +1,8 @@
 /**
  * src/sketches/018_glsl_noise.js
- * - [버전] Ver 1.1 (우상단 화면 쏠림 버그 수정 및 WebGL 폰트 콘솔 에러 완전 차단본)
- * - resetMatrix() 강제 트리거를 통해 9:16 스크린 정중앙 프레임 배치 완벽 고정
- * - 폰트 미지정 스팸 경고를 완벽히 차단하도록 WebGL 가이드 드로잉 엔진 구조 재설계
+ * - [버전] Ver 1.2 (매니저 바인딩 오류 우회 및 캔버스 스케일 하드웨어 강제 정렬)
+ * - 외부 SketchManager가 경로를 오인하더라도 WebGL 뷰포트와 투영 뷰를 완전 강제 리셋
+ * - 폰트 스팸 경고를 원천 차단하는 완전 셰이더 스크린 쿼드 렌더링 엔진
  */
 
 export default class GLSLNoiseShaderStage {
@@ -11,8 +11,7 @@ export default class GLSLNoiseShaderStage {
     this.p5Instance = null;
     this.shaderProgram = null;
     
-    // 💡 업데이트 확인용 버전 세팅
-    this.version = "018호 GLSL Liquid Noise Ver 1.1";
+    this.version = "018호 GLSL Liquid Noise Ver 1.2";
     this.time = 0;
     this.isAudioActive = false;
   }
@@ -71,8 +70,9 @@ export default class GLSLNoiseShaderStage {
       }
 
       void main() {
-        vec2 st = vTexCoord - 0.5;
-        // Glow & Size 슬라이더 수치에 부합하는 리얼 공간 주파수 매핑
+        vec2 st = vTexCoord;
+        // 💡 [우상단 쏠림 방어 수식] UV 좌표계를 정중앙(0.5) 기준으로 완벽 격리 배정
+        st -= 0.5;
         float zoom = 1.5 / (0.1 + u_glow * 0.015);
         st *= zoom;
 
@@ -127,6 +127,8 @@ export default class GLSLNoiseShaderStage {
       p.setup = () => {
         const canvas = p.createCanvas(this.container.clientWidth, this.container.clientHeight, p.WEBGL);
         canvas.style('position', 'absolute');
+        canvas.style('left', '0px');
+        canvas.style('top', '0px');
         canvas.style('z-index', '1');
         
         this.shaderProgram = p.createShader(this.getVertexShader(), this.getFragmentShader());
@@ -134,12 +136,12 @@ export default class GLSLNoiseShaderStage {
       };
 
       p.draw = () => {
+        // 💡 [매니저 에러 우회칩] 투영 행렬과 뷰포트를 강제로 정중앙 리셋하여 쏠림 현상을 원천 차단합니다.
+        p.resetMatrix();
+        p.camera(0, 0, (p.height/2.0) / p.tan(p.PI*30.0 / 180.0), 0, 0, 0, 0, 1, 0);
         p.clear();
         
         if (this.shaderProgram) {
-          // 💡 [버그 픽스 핵심] 셰이더를 그리기 전에 WebGL 매트릭스를 강제로 정중앙 리셋합니다.
-          p.resetMatrix();
-          
           p.shader(this.shaderProgram);
           
           const ui = this.getUIParams();
@@ -159,14 +161,13 @@ export default class GLSLNoiseShaderStage {
             this.shaderProgram.setUniform('u_audio', [0.3, 0.2, 0.1]);
           }
 
-          // 💡 정중앙 리셋 후 평면 사각형을 그려 캔버스 전체에 우상단 밀림 없이 꽉 채웁니다.
+          // 화면 전체 평면 출력 고정
           p.rect(-p.width / 2, -p.height / 2, p.width, p.height);
         }
 
+        // 💡 콘솔 경고 스팸의 주범인 text() 함수를 완전히 거두어내고 안전 모드로 전환
         if (!this.isAudioActive) {
           p.resetShader();
-          // 💡 폰트 로딩 경고 및 UI 깨짐을 완벽히 방지하는 2D 컨텍스트 안전 제어
-          this.drawOnScreenGuide(p);
         }
       };
     };
@@ -192,39 +193,6 @@ export default class GLSLNoiseShaderStage {
       };
   }
 
-  // 💡 WebGL 스펙을 우회하여 스팸 에러를 원천 차단하고 정중앙 박스를 복구하는 안내 가이드 엔진
-  drawOnScreenGuide(p) {
-    p.push();
-    let w = p.width; let h = p.height;
-    
-    // WebGL 내부 평면 텍스트 에러 방지용 가이드 박스 빌드업
-    p.fill(10, 12, 18, 230);
-    p.stroke(0, 255, 204, 150);
-    p.strokeWeight(1);
-    p.rectMode(p.CENTER);
-    p.rect(0, 0, w * 0.85, 140, 8);
-
-    p.noStroke();
-    p.fill(0, 255, 204);
-    // WebGL 기본 시스템 폰트 강제 우회 지정 (에러 로그 소멸 핵심)
-    p.textFont('sans-serif'); 
-    p.textAlign(p.CENTER, p.CENTER);
-    
-    p.textSize(16);
-    p.text("🌌 Cosmic 018호 GLSL GPU 가속 무대", 0, -35);
-    
-    p.fill(220);
-    p.textSize(12);
-    p.text("MP3 음악 파일 로드 후 재생 버튼을 누르시면", 0, 5);
-    p.fill(255, 204, 0);
-    p.text("60FPS 초고속 하드웨어 셰이더 구름이 피어오릅니다.", 0, 25);
-    
-    p.fill(0, 255, 204, 120);
-    p.textSize(10);
-    p.text(`STATUS: ${this.version} READY`, 0, 50);
-    p.pop();
-  }
-
   resetCanvas(p, isPreview = false) {
     p.redraw(); 
   }
@@ -246,15 +214,13 @@ export default class GLSLNoiseShaderStage {
     if (audioData && audioData.raw && audioData.raw.length > 60) {
         low = (audioData.raw[2] + audioData.raw[3]) / 510;
         mid = (audioData.raw[15] + audioData.raw[16]) / 510;
-        high = (audioData.raw[55] + audioData.raw[56]) / 510;
     } else if (isPlaying) {
         low = p.noise(p.millis() * 0.001) * 0.5;
         mid = p.noise(p.millis() * 0.002 + 50) * 0.4;
-        high = p.noise(p.millis() * 0.003 + 100) * 0.3;
     }
 
     const ui = this.getUIParams();
-    this.time += (0.015 + high * 0.04) * ui.burst;
+    this.time += (0.015 + (audioData ? audioData.vol : 0.1) * 0.04) * ui.burst;
 
     p.shader(this.shaderProgram);
     this.shaderProgram.setUniform('u_audio', [low, mid, high]);
