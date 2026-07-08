@@ -1,8 +1,8 @@
 /**
  * src/sketches/019_p5_512_circles.js
- * - [버전] Ver 1.4 (512채널 독립 매핑 분할 및 노이즈 컷오프 필터 강화 완결판)
- * - 하나의 주파수가 여러 원을 동시 오염시키던 중복 매핑 버그 완전 격파
- * - 임계값 0.25 필터링으로 미세 노이즈 반응을 차단하고 낱개 단위의 깨끗한 반짝임 복원
+ * - [버전] Ver 1.5 (BG/Texture 이미지 배경화면 합성 파이프라인 전면 장착 완료)
+ * - 좌측 패널에 이미지를 로딩하면 딥 블랙 배경 대신 커스텀 배경화면이 9:16 비율로 꽉 차게 합성
+ * - 512채널 독립 매핑 분할 렌더링 및 5대 기하학 스타일 스위칭 메커니즘 100% 완비
  */
 import ImageAnalyzer from '../core/ImageAnalyzer.js'; 
 
@@ -11,12 +11,18 @@ export default class P5512CirclesStage {
     this.container = container;
     this.p5Instance = null;
     
-    this.version = "019호 주파수 분할 필터 Ver 1.4";
+    // 💡 최종 업데이트 확인용 버전 세팅
+    this.version = "019호 배경합성 서클 엔진 Ver 1.5";
     this.isAudioActive = false;
     
     this.particles = [];
     this.totalChannels = 512;
     this.ripples = [];
+
+    // 💡 배경 이미지 텍스처 관리용 객체
+    this.bgImageElement = null;
+    this.lastBgSrc = "";
+    this.domObserver = null;
   }
 
   async init() {
@@ -41,11 +47,20 @@ export default class P5512CirclesStage {
         p.colorMode(p.HSB, 360, 100, 100, 255); 
         
         this.generateUniformGridNodes(p.width, p.height);
+        
+        // 💡 이미지 실시간 가로채기 트래커 가동
+        this.setupDirectInputTracker(p);
         p.noLoop();
       };
 
       p.draw = () => {
-        p.background(220, 30, 7, 255);
+        // 💡 [배경화면 합성 오버홀] 사용자가 업로드한 이미지가 있다면 화면에 먼저 꽉 차게 그리고, 없다면 딥블랙 배경 처리
+        if (this.bgImageElement && this.bgImageElement.width > 2) {
+          p.image(this.bgImageElement, 0, 0, p.width, p.height);
+        } else {
+          p.background(220, 30, 7, 255);
+        }
+
         if (!this.isAudioActive) {
           this.drawOnScreenGuide(p);
         }
@@ -74,11 +89,37 @@ export default class P5512CirclesStage {
         this.particles.push({
           origOffsetX: normX, 
           origOffsetY: normY, 
-          baseSize: 6, // 💡 화면이 뭉개지지 않도록 기본 서클 크기를 슬림하게 다듬음
+          baseSize: 6, 
           seedColor: Math.floor(p5.prototype.random(360)) 
         });
       }
     }
+  }
+
+  // 💡 파일명 특수문자 파싱 오류를 원천 우회하는 DOM 디텍터
+  setupDirectInputTracker(p) {
+    const findAndBindImage = () => {
+      const allImgs = document.querySelectorAll('img');
+      let targetImg = null;
+      for (let img of allImgs) {
+        if (img.src && (img.src.includes('blob:') || img.src.length > 30 || img.id.includes('preview'))) {
+          targetImg = img;
+          break;
+        }
+      }
+      
+      if (targetImg && targetImg.src && targetImg.src !== this.lastBgSrc) {
+        this.lastBgSrc = targetImg.src;
+        p.loadImage(targetImg.src, (loadedImg) => {
+          this.bgImageElement = loadedImg;
+          p.redraw();
+        });
+      }
+    };
+
+    this.domObserver = new MutationObserver(() => { findAndBindImage(); });
+    this.domObserver.observe(document.body, { attributes: true, childList: true, subtree: true });
+    setTimeout(findAndBindImage, 500);
   }
 
   getUIParams() {
@@ -115,7 +156,7 @@ export default class P5512CirclesStage {
     p.fill(170, 90, 100);
     p.textSize(16);
     p.textAlign(p.CENTER, p.CENTER);
-    p.text("Cosmic Studio 019호 하이브리드 입자 스테이지", p.width / 2, p.height / 2 - 70);
+    p.text("Cosmic Studio 019호 배경 합성 하이브리드 Stage", p.width / 2, p.height / 2 - 70);
 
     p.fill(0, 0, 90);
     p.textSize(11);
@@ -124,9 +165,9 @@ export default class P5512CirclesStage {
     let startX = p.width / 2 - (p.width * 0.38);
     let startY = p.height / 2 - 20;
 
-    p.text("🎨 주파수 칼분할 패치 완료! 512 대역이 낱개로 깔끔하게 쪼개집니다.", startX, startY);
-    p.text("• Neon: 속빈 원 / • Monochrome: 속찬 원", startX, startY + 22);
-    p.text("• Pastel: 랜덤색상 + 다중 증강원 / • Full-Random: 랜덤 속찬 네모 버튼", startX, startY + 44);
+    p.text("📸 [순서 무관] 좌측 패널에 BG/Texture 배경 이미지를 자유롭게 업로드하세요.", startX, startY);
+    p.text("• 업로드 즉시 하늘 바탕으로 자동 깔리며, 그 위로 512 채널 입자들이 연동됩니다.", startX, startY + 22);
+    p.text("• Neon: 속빈 원 / • Monochrome: 속찬 원 / • Pastel: 증강 동심원", startX, startY + 44);
     p.fill(45, 90, 100); 
     p.text("• Custom Selector: 호수의 빗방울 동심원 파동 무대 가동", startX, startY + 68);
     p.pop();
@@ -151,7 +192,12 @@ export default class P5512CirclesStage {
         return;
     }
 
-    p.background(220, 30, 7, 255);
+    // 💡 매 프레임 업데이트 시 이미지 배경 드로잉 리프레시
+    if (this.bgImageElement && this.bgImageElement.width > 2) {
+      p.image(this.bgImageElement, 0, 0, p.width, p.height);
+    } else {
+      p.background(220, 30, 7, 255);
+    }
 
     const ui = this.getUIParams();
     let rawData = (audioData && audioData.raw) ? audioData.raw : [];
@@ -161,7 +207,7 @@ export default class P5512CirclesStage {
     let centerY = p.height / 2;
     let arrayScale = p.map(ui.scatter, 5, 50, 0.35, 1.45);
 
-    // 5번 [호수 동심원 모드] 파동 처리 엔진
+    // 5번 [호수 동심원 모드]
     if (ui.style.includes('custom')) {
       for (let k = this.ripples.length - 1; k >= 0; k--) {
         let rip = this.ripples[k];
@@ -186,7 +232,6 @@ export default class P5512CirclesStage {
 
       let freqVolume = 0;
       if (hasRaw) {
-        // 💡 [버그 수정] 중복 몰림을 막고 512개에 정확하게 배분하는 보간 매핑 공식 고정
         let ratio = i / this.totalChannels;
         let rawIdx = Math.floor(ratio * (rawData.length - 1));
         freqVolume = rawData[rawIdx] / 255.0;
@@ -196,7 +241,6 @@ export default class P5512CirclesStage {
 
       freqVolume *= ui.burst;
 
-      // 💡 [핵심 패치] 노이즈 컷오프 임계값을 0.25로 상향하여, 확실한 비트에만 개별적으로 반짝이게 격리
       if (freqVolume > 0.25) {
         p.noiseSeed(ui.seed + i);
         let randomDistortX = (p.noise(i * 5.2) - 0.5) * (ui.seed * 3.5);
@@ -205,10 +249,9 @@ export default class P5512CirclesStage {
         let finalX = centerX + (node.origOffsetX * arrayScale) + randomDistortX;
         let finalY = centerY + (node.origOffsetY * arrayScale) + randomDistortY;
 
-        // 볼륨 신호 범위 축소 보정
         let normVol = p.map(freqVolume, 0.25, 1.0, 0.0, 1.0);
         let currentRadius = node.baseSize + (normVol * (ui.glow * 0.9));
-        let alpha = p.map(normVol, 0.0, 1.0, 50, 255);
+        let alpha = p.map(normVol, 0.0, 1.0, 60, 255);
 
         p.push();
 
@@ -267,5 +310,6 @@ export default class P5512CirclesStage {
 
   destroy() {
     if (this.p5Instance) this.p5Instance.remove();
+    if (this.domObserver) this.domObserver.disconnect();
   }
 }
