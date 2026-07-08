@@ -1,9 +1,9 @@
 /**
  * src/sketches/006_three_organic_flower.js
- * - [버전] Ver 3.4 (3중 커스텀 컬러 피커 연동 및 발광크기 ➡️ 꽃잎 중앙부 거리 확장 제어판)
- * - Custom Color 모드 시 [가스1: 꽃잎면, 가스2: 꽃잎테두리, 대형별: 중앙꽃술] 3축 피커 독립 바인딩 완벽 처리
- * - 발광/크기(ui.glow) 슬라이더 조작 시 꽃잎의 두께뿐만 아니라, 중앙부 핵과의 거리(Distance Offset)까지 연동 확장
- * - 로딩 시 HTML DOM 사용 설명 가이드창 고정 및 재생 시 자동 페이드아웃 표준 규격 유지
+ * - [버전] Ver 3.5 (꽃잎 2파장 독립 주파수 분할 및 베지에 끝부분 흐느적 살랑임 엔진 완결판)
+ * - 저음(Bass) ➡️ 중앙 꽃술, 중음(Mid) ➡️ 홀수 꽃잎 1세트, 고음(Treble) ➡️ 짝수 꽃잎 2세트 교차 분리 매핑 완료
+ * - 단순 크기 진동을 전면 금지하고, 꽃잎 기둥은 고정된 채 끝부분(Tip)만 시간에 따라 좌우로 흐느적 곡선 변형
+ * - 3중 커스텀 컬러 피커, 발광크기(Glow) 기반 중앙부 이격 거리 확장 및 HTML 가이드 페이드아웃 규격 유지
  */
 
 export default class ThreeCosmicNebula {
@@ -12,7 +12,7 @@ export default class ThreeCosmicNebula {
     this.p5Instance = null;
     this.guiOverlay = null; 
     
-    this.version = "006호 Organic Flower Engine Ver 3.4";
+    this.version = "006호 Organic Flower Engine Ver 3.5";
     this.isAudioActive = false;
     this.lastSettingsStr = "";
 
@@ -75,9 +75,9 @@ export default class ThreeCosmicNebula {
         006호 오가닉 플라워 사용 방법
       </h3>
       <div style="font-size: 12.5px; text-align: left; line-height: 1.75; color: #dddddd;">
-        <p style="margin: 6px 0;">✨ <strong style="color: #ff6699;">[발광 크기]</strong> 슬라이더를 높이면 꽃잎 두께와 함께 중앙부 핵과의 거리도 멀어져 시원하게 확장됩니다.</p>
-        <p style="margin: 6px 0;">🎨 <strong style="color: #ffffff;">[3중 컬러 피커]</strong> Custom Color 선택 시 하단의 가스1(잎사귀), 가스2(잎테두리), 대형별(꽃술) 피커 색상이 100% 동기화됩니다.</p>
-        <p style="margin: 6px 0;">💥 <strong style="color: #ffffff;">[꽃잎 개수]</strong> 하단 폭발력 슬라이더를 통해 꽃잎의 총 밀도 개수를 실시간 제어하세요.</p>
+        <p style="margin: 6px 0;">🌬️ <strong style="color: #ff6699;">[흐느적 살랑임]</strong> 진동이 아니라 바람 기류를 타고 꽃잎의 끝부분만 유연하게 휘어지는 물리 공식이 작동합니다.</p>
+        <p style="margin: 6px 0;">🎹 <strong style="color: #ffffff;">[3축 파장 분할]</strong> 저음은 꽃술 코어를, 중음은 홀수 잎사귀를, 고음은 짝수 잎사귀를 따로 교차 제어합니다.</p>
+        <p style="margin: 6px 0;">✨ <strong style="color: #ffffff;">[발광 크기]</strong> 꽃잎 두께와 함께 중앙 격리 거리가 멀어지며 광활하게 만개합니다.</p>
         <p style="margin: 6px 0; color: #ffcc00;">▶️ <strong style="color: #ffcc00;">[하단 스타트]</strong> 재생 버튼을 누르면 이 가이드창이 페이드아웃 되며 영상이 시작됩니다!</p>
       </div>
       <div style="color: #777777; font-size: 10.5px; margin-top: 16px; border-top: 1px solid #222530; padding-top: 10px;">
@@ -130,7 +130,8 @@ export default class ThreeCosmicNebula {
       this.petalNoiseSeeds.push({
         angleOffset: 0, 
         lengthScale: 1.0, 
-        colorShift: p5.prototype.random(-25, 25)
+        colorShift: p5.prototype.random(-25, 25),
+        swayPhase: p5.prototype.random(p5.prototype.TWO_PI) // 잎사귀마다 불규칙한 살랑임 위상 분산 시드
       });
     }
   }
@@ -165,7 +166,6 @@ export default class ThreeCosmicNebula {
       const colorSelect = document.getElementById('select-cosmic-color');
       const gainSlider = document.getElementById('slide-cosmic-gain');
 
-      // 💡 [개조 피드백 적용] 가스1, 가스2, 대형별 3대 매트릭스 피커 엘리먼트 순차적 전수 검출
       const p1 = document.getElementById('picker-cosmic-color1') || document.getElementById('color1') || document.querySelector('.color-pickers input:nth-of-type(1)');
       const p2 = document.getElementById('picker-cosmic-color2') || document.getElementById('color2') || document.querySelector('.color-pickers input:nth-of-type(2)');
       const p3 = document.getElementById('picker-cosmic-color3') || document.getElementById('color3') || document.querySelector('.color-pickers input:nth-of-type(3)');
@@ -177,7 +177,6 @@ export default class ThreeCosmicNebula {
           seed: seedSlider ? parseInt(seedSlider.value) : 42,            
           style: colorSelect ? colorSelect.value.toLowerCase() : 'neon',
           
-          // 가스1, 가스2, 대형별 전용 Hex 덤프 수집 및 예외 대비 기본값 수혈
           gas1Hex: (p1 && p1.value) ? p1.value : '#5a4a1a',
           gas2Hex: (p2 && p2.value) ? p2.value : '#e2ecea',
           starHex: (p3 && p3.value) ? p3.value : '#d1e61c'
@@ -188,31 +187,41 @@ export default class ThreeCosmicNebula {
     p.redraw(); 
   }
 
-  drawPetalShape(p, baseLength, thickness, type) {
+  // 💡 [흐느적 물리 핵심 공식 이식] 
+  // 기둥 시작부는 고정하고, 오디오 파장 세기(bendForce)를 받아 베지에 제어점과 최외곽 끝 정점(Tip)만 유기적으로 휘어지게 그리는 구조
+  drawFlexiblePetalShape(p, baseLength, thickness, type, bendForce) {
     p.beginShape();
+    
+    // 좌우로 유연하게 흐느적거리는 팁 정점 오프셋 연산
+    let tipX = bendForce * (baseLength * 0.35);
+
     if (type === 'sharp-ellipse') {
       p.vertex(0, 0);
-      p.bezierVertex(-thickness * 0.6, -baseLength * 0.4, -thickness * 0.6, -baseLength * 0.8, 0, -baseLength);
-      p.bezierVertex(thickness * 0.6, -baseLength * 0.8, thickness * 0.6, -baseLength * 0.4, 0, 0);
+      // 베지에 곡선의 중간 및 끝 핸들을 변형해 낭창낭창하게 휘어지는 선을 만듭니다.
+      p.bezierVertex(-thickness * 0.6, -baseLength * 0.4, -thickness * 0.6 + tipX * 0.5, -baseLength * 0.8, tipX, -baseLength);
+      p.bezierVertex(thickness * 0.6 + tipX * 0.5, -baseLength * 0.8, thickness * 0.6, -baseLength * 0.4, 0, 0);
     } 
     else if (type === 'ellipse') {
-      p.ellipseMode(p.CENTER);
-      p.ellipse(0, -baseLength * 0.5, thickness * 1.2, baseLength);
+      // 일반 에클립스도 유연한 뼈대 처리를 위해 베지에 외곽 패스로 리빌딩 수혈 완료
+      p.vertex(0, 0);
+      p.bezierVertex(-thickness * 0.65, -baseLength * 0.25, -thickness * 0.65 + tipX, -baseLength * 0.75, tipX, -baseLength);
+      p.bezierVertex(thickness * 0.65 + tipX, -baseLength * 0.75, thickness * 0.65, -baseLength * 0.25, 0, 0);
     } 
     else if (type === 'heart') {
       p.vertex(0, 0);
-      p.bezierVertex(-thickness * 1.4, -baseLength * 0.25, -thickness * 1.2, -baseLength * 0.85, 0, -baseLength * 0.95);
-      p.bezierVertex(thickness * 1.2, -baseLength * 0.85, thickness * 1.4, -baseLength * 0.25, 0, 0);
+      p.bezierVertex(-thickness * 1.4, -baseLength * 0.25, -thickness * 1.2 + tipX * 0.4, -baseLength * 0.85, tipX, -baseLength * 0.95);
+      p.bezierVertex(thickness * 1.2 + tipX * 0.4, -baseLength * 0.85, thickness * 1.4, -baseLength * 0.25, 0, 0);
     } 
     else if (type === 'narrow') {
       p.vertex(0, 0);
-      p.bezierVertex(-thickness * 0.25, -baseLength * 0.5, -thickness * 0.25, -baseLength * 0.9, 0, -baseLength);
-      p.bezierVertex(thickness * 0.25, -baseLength * 0.9, thickness * 0.25, -baseLength * 0.5, 0, 0);
+      p.bezierVertex(-thickness * 0.25, -baseLength * 0.5, -thickness * 0.25 + tipX * 0.7, -baseLength * 0.9, tipX, -baseLength);
+      p.bezierVertex(thickness * 0.25 + tipX * 0.7, -baseLength * 0.9, thickness * 0.25, -baseLength * 0.5, 0, 0);
     } 
     else {
+      // teardrop 눈물방울형 흐느적 오버홀
       p.vertex(0, 0);
-      p.bezierVertex(-thickness * 0.1, -baseLength * 0.2, -thickness * 1.3, -baseLength * 0.7, 0, -baseLength);
-      p.bezierVertex(thickness * 1.3, -baseLength * 0.7, thickness * 0.1, -baseLength * 0.2, 0, 0);
+      p.bezierVertex(-thickness * 0.1, -baseLength * 0.2, -thickness * 1.3 + tipX, -baseLength * 0.7, tipX, -baseLength);
+      p.bezierVertex(thickness * 1.3 + tipX, -baseLength * 0.7, thickness * 0.1, -baseLength * 0.2, 0, 0);
     }
     p.endShape(p.CLOSE);
   }
@@ -249,47 +258,64 @@ export default class ThreeCosmicNebula {
         this.updateFlowerShapeBySeed(ui.seed);
     }
 
+    // 💡 [오가닉 기류 칼분할] 오디오 FFT 채널 분석 고속 분리 가동
     let vol = audioData ? audioData.vol : p.noise(this.time) * 0.3;
-    let bass = audioData ? (audioData.raw ? audioData.raw[2]/255 : vol) : vol;
-    let treble = audioData ? (audioData.raw ? audioData.raw[60]/255 : vol) : vol;
+    let bass = audioData ? (audioData.raw ? (audioData.raw[1] + audioData.raw[2] + audioData.raw[3])/765 : vol) : vol;
+    let mid = audioData ? (audioData.raw ? (audioData.raw[15] + audioData.raw[16] + audioData.raw[17])/765 : vol) : vol;
+    let treble = audioData ? (audioData.raw ? (audioData.raw[50] + audioData.raw[52] + audioData.raw[55])/765 : vol) : vol;
 
+    // 감도 배율 주입
     vol *= ui.burst;
     bass *= ui.burst;
+    mid *= ui.burst;
     treble *= ui.burst;
 
+    // 하단 슬라이더 연동 실시간 개수 가변 마스터 채널
     this.petalCount = Math.floor(p.map(ui.burst, 1.0, 5.0, 8, 45));
 
     let cx = p.width / 2;
     let cy = p.height / 2;
 
-    // 전체 스케일 제어
-    let masterScale = p.map(ui.scatter, 5, 50, 0.4, 2.2) * (1.0 + bass * 0.12);
+    // 분산범위 슬라이더 기반 마스터 스케일 박스
+    let masterScale = p.map(ui.scatter, 5, 50, 0.4, 2.2);
     
-    // 슬라이더 기반 물리 매핑 설계
-    let petalThickness = p.map(ui.glow, 10, 150, 8, 85) * (1.0 + treble * 0.18);
-    let pistilCenterSize = p.map(ui.glow, 10, 150, 15, 110) * (1.0 + bass * 0.22);
+    // 발광크기 슬라이더 ➡️ 두께 및 센터 크기 매핑 균형
+    let petalThickness = p.map(ui.glow, 10, 150, 8, 85);
+    // 💡 [저음 독립 바인딩] 가운데 꽃술 코어는 오직 묵직한 베이스(bass) 주파수 충격에만 원형 반응 팽창하도록 격리
+    let pistilCenterSize = p.map(ui.glow, 10, 150, 15, 110) * (1.0 + bass * 0.3);
 
-    // 💡 [기획 의도 구현] 발광크기(ui.glow)에 비례하여 꽃잎과 중앙점 사이의 이격 거리(Distance Shift)를 밀어냅니다.
+    // 발광크기에 비례한 중앙부 이격 배치 레이아웃 거리
     let centralOffsetDistance = p.map(ui.glow, 10, 150, 0, 55);
 
-    // 🌸 1단계: 꽃잎 렌더링
+    // 🌸 1단계: 유기적 2파장 분할 꽃잎 렌더 루프
     p.push();
     p.translate(cx, cy);
     p.scale(masterScale);
-    p.rotate(this.time * 0.12 + vol * 0.15);
+    
+    // 전체 무대 상시 기류 관성 미동 회전 효과
+    p.rotate(this.time * 0.08 + mid * 0.06);
 
     let angleStep = p.TWO_PI / this.petalCount;
 
     for (let i = 0; i < this.petalCount; i++) {
-      let seedInfo = this.petalNoiseSeeds[i] || { angleOffset: 0, lengthScale: 1, colorShift: 0 };
+      let seedInfo = this.petalNoiseSeeds[i] || { angleOffset: 0, lengthScale: 1, colorShift: 0, swayPhase: 0 };
       
       p.push();
       p.rotate(i * angleStep);
 
-      let sway = Math.sin(this.time * 2.5 + i) * 0.02 * (1.0 + treble);
-      p.rotate(sway);
+      // 💡 [2파장 주파수 독립 매핑 및 흐느적 곡선 힘 도출]
+      let bendForce = 0;
+      if (i % 2 === 0) {
+        // A세트 (짝수 꽃잎): 고음(treble) 주파수 연동 및 전용 살랑임 물리 파동 계산
+        let windSway = Math.sin(this.time * 4.0 + seedInfo.swayPhase) * 0.18;
+        bendForce = windSway + (treble * 0.45);
+      } else {
+        // B세트 (홀수 꽃잎): 중음(mid) 주파수 연동 및 전용 살랑임 물리 파동 계산
+        let windSway = Math.cos(this.time * 3.2 + seedInfo.swayPhase) * 0.18;
+        bendForce = windSway + (mid * 0.42);
+      }
 
-      // 💡 [이격 거리 연동] 잎사귀 드로잉 시작 전, 연산된 변위만큼 Y축 마이너스 방향(바깥)으로 좌표계를 평행 이동시킵니다.
+      // 발광 크기 기반 평행 이격 배치
       p.translate(0, -centralOffsetDistance);
 
       let baseLength = 110; 
@@ -297,7 +323,7 @@ export default class ThreeCosmicNebula {
       let strokeHue = 30; let strokeSat = 90; let strokeAlpha = 200;
       let fillAlpha = 160 + vol * 70;
 
-      // 💡 [3중 멀티 컬러 피커 파이프라인 정밀 주입 연동 완료]
+      // 3중 멀티 컬러 스펙트럼 피커 연동 파이프라인
       if (ui.style.includes('neon')) {
         hueVal = (330 + seedInfo.colorShift + p.map(i, 0, this.petalCount, 0, 30)) % 360; 
         satVal = 90;
@@ -311,16 +337,14 @@ export default class ThreeCosmicNebula {
         strokeSat = 65;
       } 
       else if (ui.style.includes('custom-color') || ui.style.includes('custom')) {
-        // 💡 1. [가스 1] 피커 복조 ➡️ 꽃잎 면 전면 바인딩
         let c1 = p.color(ui.gas1Hex);
         hueVal = p.hue(c1); satVal = p.saturation(c1); briVal = p.brightness(c1);
         
-        // 💡 2. [가스 2] 피커 복조 ➡️ 꽃잎 테두리 선 단독 바인딩
         let c2 = p.color(ui.gas2Hex);
         strokeHue = p.hue(c2); strokeSat = p.saturation(c2);
       } 
       else if (ui.style.includes('full-random') || ui.style.includes('gradient')) {
-        hueVal = (p.sin(this.time * 0.5 + i * 0.1) * 180 + 180) % 360;
+        hueVal = (p.sin(this.time * 0.4 + i * 0.1) * 180 + 180) % 360;
         satVal = 85;
         briVal = 98;
         strokeHue = (hueVal + 180) % 360; 
@@ -339,23 +363,21 @@ export default class ThreeCosmicNebula {
       p.stroke(strokeHue, strokeSat, briVal - 10, strokeAlpha);
       p.strokeWeight(ui.style.includes('full-random') ? 2.5 : 1.2); 
 
-      this.drawPetalShape(p, baseLength, petalThickness, this.flowerShapeType);
+      // 💡 [유연 흐느적 렌더팩 작동] 연산된 독립 주파수 힘을 주입하여 끝부분만 낭창하게 드로잉
+      this.drawFlexiblePetalShape(p, baseLength, petalThickness, this.flowerShapeType, bendForce);
       p.pop();
     }
     p.pop();
 
-    // 🌸 2단계: 중앙 원형 꽃술 코어 드로잉
+    // 🌸 2단계: 중앙 원형 꽃술 코어 드로잉 (베이스 연동 전용)
     p.push();
     p.translate(cx, cy);
     p.scale(masterScale);
     
     p.noStroke();
-    let coreHue = 45; 
-    let coreSat = 85;
-    let coreBri = 98;
+    let coreHue = 45; let coreSat = 85; let coreBri = 98;
 
     if (ui.style.includes('custom-color') || ui.style.includes('custom')) {
-      // 💡 3. [대형 별] 피커 복조 ➡️ 중앙 원형 꽃술 코어에 단독 주입
       let c3 = p.color(ui.starHex);
       coreHue = p.hue(c3); coreSat = p.saturation(c3); coreBri = p.brightness(c3);
     } else if (ui.style.includes('full-random')) {
