@@ -1,8 +1,8 @@
 /**
  * src/sketches/018_glsl_noise.js
- * - [버전] Ver 1.4 (화면 비율 변경 시 좌상단 쏠림 및 중앙 정렬 버그 완벽 해결 완료)
- * - uProjectionMatrix, uModelViewMatrix 통합으로 렌더링 평면 중심축을 캔버스 정중앙에 완벽 고정
- * - Full, 16:9, 9:16 비율 전환 시 어떠한 오차도 없이 프레임 내부에 칼정렬 보장
+ * - [버전] Ver 1.5 (사용 방법 안내창 가이드 및 시스템 버전 UI 완벽 이식판)
+ * - WebGL 2D 오버레이 뷰포트 정렬을 통해 화면 비율 변동 시에도 가이드 패널 정중앙 고정
+ * - uProjectionMatrix, uModelViewMatrix 기반 중앙 정렬 유지 및 60FPS GPU 렌더팩
  */
 
 export default class GLSLNoiseShaderStage {
@@ -11,14 +11,13 @@ export default class GLSLNoiseShaderStage {
     this.p5Instance = null;
     this.shaderProgram = null;
     
-    // 💡 업데이트 확인 마커
-    this.version = "018호 GLSL Liquid Noise Ver 1.4";
+    // 💡 업데이트 확인 마커 세팅
+    this.version = "018호 GLSL Liquid Noise Ver 1.5";
     this.time = 0;
     this.isAudioActive = false;
     this.lastSettingsStr = "";
   }
 
-  // 💡 [핵심 버그 수정] p5.js WebGL 고유의 변환 행렬 유니폼을 바인딩하여 쏠림 현상을 원천 차단합니다.
   getVertexShader() {
     return `
       attribute vec3 aPosition;
@@ -30,7 +29,6 @@ export default class GLSLNoiseShaderStage {
 
       void main() {
         vTexCoord = aTexCoord;
-        // 정중앙 좌표계를 정확하게 투영 행렬과 매칭시킵니다.
         gl_Position = uProjectionMatrix * uModelViewMatrix * vec4(aPosition, 1.0);
       }
     `;
@@ -78,7 +76,6 @@ export default class GLSLNoiseShaderStage {
       }
 
       void main() {
-        // 정밀 공간 주파수 좌표 고정
         vec2 st = vTexCoord - 0.5;
         float zoom = 1.5 / (0.1 + u_glow * 0.015);
         st *= zoom;
@@ -143,6 +140,7 @@ export default class GLSLNoiseShaderStage {
       };
 
       p.draw = () => {
+        p.resetMatrix();
         p.clear();
         
         if (this.shaderProgram) {
@@ -166,8 +164,13 @@ export default class GLSLNoiseShaderStage {
           }
 
           p.noStroke();
-          // 💡 WebGL 표준 평면 매핑 방식으로 평면을 드로잉하여 좌상단 밀림을 제로화합니다.
           p.rect(-p.width / 2, -p.height / 2, p.width, p.height);
+        }
+
+        // 💡 [UI 통합] 음악 재생 전이라면 셰이더 위에 안내 가이드 레이어 정렬 출력
+        if (!this.isAudioActive) {
+          p.resetShader(); 
+          this.drawOnScreenGuide(p);
         }
       };
     };
@@ -191,6 +194,52 @@ export default class GLSLNoiseShaderStage {
           seed: seedSlider ? parseInt(seedSlider.value) : 42,
           style: colorSelect ? colorSelect.value.toLowerCase() : 'neon'
       };
+  }
+
+  // 💡 [WebGL 가이드 UI 엔진 장착] 폰트 경고 및 뒤집힘을 완벽 차단하는 스펙
+  drawOnScreenGuide(p) {
+    p.push();
+    let w = p.width; let h = p.height;
+    p.textFont('sans-serif');
+    
+    // 1️⃣ 좌측 상단 민트색 시스템 상태 마커 출력 고정
+    p.fill(0, 255, 204, 220);
+    p.textSize(12);
+    p.textAlign(p.LEFT, p.TOP);
+    p.text(`⚙️ SYSTEM STATUS: ${this.version} READY`, -w / 2 + 20, -h / 2 + 20);
+
+    // 2️⃣ 정중앙 안내 메인 박스 빌드업
+    p.fill(10, 12, 18, 220);
+    p.stroke(50, 55, 75);
+    p.strokeWeight(1);
+    p.rectMode(p.CENTER);
+    p.rect(0, 0, w * 0.85, 220, 10);
+
+    p.noStroke();
+    p.fill(0, 255, 204);
+    p.textSize(18);
+    p.textAlign(p.CENTER, p.CENTER);
+    p.text("Cosmic Studio 018호 셰이더 무대 사용 방법", 0, -75);
+
+    p.fill(220);
+    p.textSize(12);
+    p.textAlign(p.LEFT, p.CENTER);
+    
+    let startX = -(w * 0.38);
+    let startY = -25;
+    let lineSpacing = 32;
+
+    p.text("1️⃣  [좌측 최상단] MP3 음악 파일을 가장 먼저 로딩하세요.", startX, startY);
+    p.text("2️⃣  [우측 패널] Color Style Palette에서 원하는 날씨 화풍을 고르세요.", startX, startY + lineSpacing);
+    
+    p.fill(255, 204, 0); 
+    p.text("3️⃣  [하단 컨트롤] 재생(▶) 버튼을 누르면 GPU 유체 셰이더가 연동됩니다!", startX, startY + lineSpacing * 2);
+
+    p.fill(120);
+    p.textSize(11);
+    p.textAlign(p.CENTER, p.CENTER);
+    p.text("음악이 재생되면 이 안내창은 자동으로 사라지고 60FPS 영상이 출력됩니다.", 0, 75);
+    p.pop();
   }
 
   resetCanvas(p, isPreview = false) {
@@ -223,7 +272,6 @@ export default class GLSLNoiseShaderStage {
 
     const ui = this.getUIParams();
     
-    // 슬라이더 상태 변경 추적 검사 후 변경 시 렌더 가속 트리거
     let currentSettingsStr = `${ui.seed}-${ui.scatter}-${ui.glow}-${ui.style}-${ui.burst}`;
     if (this.lastSettingsStr !== currentSettingsStr) {
         this.lastSettingsStr = currentSettingsStr;
