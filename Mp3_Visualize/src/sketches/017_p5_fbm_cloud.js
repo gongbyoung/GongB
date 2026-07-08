@@ -1,7 +1,7 @@
 /**
  * src/sketches/017_p5_fbm_cloud.js
- * - [버전] Ver 2.1 (노이즈 좌표계 대신 그래픽 레이어 직통 줌 인/아웃 오버홀 완료)
- * - Glow & Size (발광/크기) 슬라이더 조작 시 실제 카메라 렌즈를 밀고 당기듯 구름 화면이 실시간 줌 인/아웃 처리됨
+ * - [버전] Ver 2.2 (중간 바인딩 오류 원천 차단, HTML 슬라이더 DOM 다이렉트 추적 엔진 탑재)
+ * - 외부 객체 렉을 우회하기 위해 #slide-cosmic-glow 엘리먼트의 value를 직접 수집하여 줌 인/아웃 반영
  */
 import ImageAnalyzer from '../core/ImageAnalyzer.js'; 
 
@@ -12,7 +12,7 @@ export default class P5FBMCloudGenerator {
     this.cloudImg = null; 
     
     // 💡 업데이트 확인용 버전 세팅
-    this.version = "017호 FBM Cloud Generator Ver 2.1";
+    this.version = "017호 FBM Cloud Generator Ver 2.2";
     
     this.timeX = 0;
     this.timeY = 0;
@@ -48,17 +48,14 @@ export default class P5FBMCloudGenerator {
         
         const ui = this.getUIParams();
         
-        // 💡 [핵심 추가] Glow & Size 슬라이더 수치를 물리적인 카메라 줌 배율로 다이렉트 전환합니다.
-        // 슬라이더 값이 낮아지면 멀리서 보고(줌 아웃), 높아지면 눈앞으로 거대하게 당겨집니다(줌 인).
-        // 비례식 범위를 대폭 확장하여 크기 변화가 확실하게 체감되도록 설정했습니다.
-        let zoomScale = p.map(ui.glow, 0.1, 2.5, 0.2, 3.5);
+        // 💡 [오버홀] 수치 전달 오류를 부수고 진짜 화면 픽셀 자체를 밀고 당기는 스케일 줌 가동
+        // 슬라이더의 날것의 데이터(10 ~ 250)를 직관적인 배율(0.15배 ~ 4.5배)로 다이렉트 맵 시킵니다.
+        let zoomScale = p.map(ui.glow, 10, 250, 0.15, 4.5);
 
         if (this.cloudImg) {
           p.push();
-          // 화면 정중앙을 기준으로 줌 인/아웃을 수행합니다.
           p.translate(p.width / 2, p.height / 2);
           p.scale(zoomScale);
-          // 확대/축소 후 원위치로 이미지를 정렬하여 캔버스에 뿌립니다.
           p.image(this.cloudImg, -p.width / 2, -p.height / 2, p.width, p.height);
           p.pop();
         }
@@ -72,14 +69,23 @@ export default class P5FBMCloudGenerator {
     this.p5Instance = new window.p5(sketch, this.container);
   }
 
+  // 💡 [핵심 교정] 외부 바인딩을 신뢰하지 않고, DOM 엘리먼트에서 실시간으로 값을 직접 뜯어옵니다.
   getUIParams() {
       const settings = window.cosmicEngineSettings || {};
+      
+      // HTML 슬라이더 실시간 다이렉트 스캔
+      const seedSlider = document.getElementById('slide-cosmic-seed');
+      const scatterSlider = document.getElementById('slide-cosmic-scatter');
+      const glowSlider = document.getElementById('slide-cosmic-glow');
+      const colorSelect = document.getElementById('select-cosmic-color');
+      const gainSlider = document.getElementById('slide-cosmic-gain');
+
       return {
-          scatter: settings.scatterExponent ?? 2.2, 
-          glow: settings.glowAmount ?? (settings.size ?? 1.0), 
-          burst: settings.audioGain ?? 1.0, 
-          seed: settings.seed ?? 42,
-          style: (settings.colorStyle || 'monochrome').toLowerCase()
+          scatter: scatterSlider ? parseFloat(scatterSlider.value) : (settings.scatterExponent ?? 22), 
+          glow: glowSlider ? parseFloat(glowSlider.value) : 85, // 💡 무조건 HTML 슬라이더의 날값(10~250) 획득
+          burst: gainSlider ? parseFloat(gainSlider.value) / 100 : 1.0, 
+          seed: seedSlider ? parseInt(seedSlider.value) : 42,
+          style: colorSelect ? colorSelect.value.toLowerCase() : 'neon'
       };
   }
 
@@ -191,7 +197,6 @@ export default class P5FBMCloudGenerator {
     let centerX = w / 2;
     let centerY = h / 2;
 
-    // 날씨 컬러 매핑
     let skyColor, cloudColor;
 
     if (ui.style.includes('monochrome')) {
@@ -223,6 +228,7 @@ export default class P5FBMCloudGenerator {
         let midBump = mid * 1.5;
         let fbmVal = this.warpNoise(x, y, p, midBump * ui.burst, centerX, centerY);
 
+        // 분산 범위 슬라이더 연동 강도 최적화
         let densityOffset = p.map(ui.scatter, 5, 50, 0.2, -0.25);
         let cloudThreshold = 0.35 - (mid * 0.12) + densityOffset;
         
