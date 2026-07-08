@@ -1,24 +1,24 @@
 /**
  * src/sketches/006_three_organic_flower.js
- * - [버전] Ver 3.1 (로딩 시 사용 설명 레이어 활성화 및 스타트 재생 시 자동 페이드아웃 규격 탑재판)
- * - 이미지 로딩 순서 제약 해제 및 특수문자 파일명 우회 직통 DOM 이미지 캡처 트래커 유지
- * - 5대 잎사귀 기하학 형태 변이 메커니즘 및 발광크기(Glow) ➡️ 원형 꽃술 스케일 제어 링크 완비
+ * - [버전] Ver 3.2 (지형변경 슬라이더 ➡️ 5대 꽃잎 모양 구간 다이렉트 변형 매퍼 완결판)
+ * - 슬라이더(1~100) 수치 구간을 5등분하여 사용자가 원하는 형태학 모양을 직관적으로 조절 및 고정 가능
+ * - 스케일이나 위치 간섭을 완벽히 배제하고 오직 순수한 잎사귀 패스 형태만 변형 처리
+ * - 로딩 시 HTML DOM 사용 설명 가이드창 고정 및 재생 시 자동 페이드아웃 표준 규격 유지
  */
 
 export default class ThreeCosmicNebula {
   constructor(container) {
     this.container = container;
     this.p5Instance = null;
-    this.guiOverlay = null; // 💡 앞으로 모든 코드에 공통 탑재될 사용 설명 UI 레이어
+    this.guiOverlay = null; 
     
-    // 💡 업데이트 마커 세팅
-    this.version = "006호 Organic Flower Engine Ver 3.1";
+    this.version = "006호 Organic Flower Engine Ver 3.2";
     this.isAudioActive = false;
     this.lastSettingsStr = "";
 
-    // 꽃 형태학 변수 구조체
+    // 꽃 형태학 가변 제어 구조체
     this.flowerShapeType = 'teardrop'; 
-    this.petalCount = 12;
+    this.petalCount = 16; // 낱개 렌더링이 가장 아름다운 기본 16개 고정
     this.petalNoiseSeeds = [];
 
     // 배경 이미지 트래커 속성
@@ -37,14 +37,12 @@ export default class ThreeCosmicNebula {
       });
     }
 
-    // 💡 [공통 표준 규격] 기존에 혹시 남아있을 수 있는 가이드 HTML UI 엘리먼트 엘리먼트 청소 후 재생성
     const oldOverlay = this.container.querySelector('.cosmic-shader-guide');
     if (oldOverlay) oldOverlay.remove();
 
     this.guiOverlay = document.createElement('div');
     this.guiOverlay.className = 'cosmic-shader-guide';
     
-    // 모바일 및 웹 화면 9:16 프레임 정중앙 자석 배치를 위한 초정밀 인라인 CSS 스타일 시공
     Object.assign(this.guiOverlay.style, {
       position: 'absolute',
       top: '50%',
@@ -53,7 +51,7 @@ export default class ThreeCosmicNebula {
       width: '85%',
       maxWidth: '420px',
       backgroundColor: 'rgba(10, 12, 18, 0.93)',
-      border: '1px solid rgba(255, 102, 153, 0.6)', // 꽃 무대에 어울리는 화사한 엣지 코팅
+      border: '1px solid rgba(255, 102, 153, 0.6)', 
       borderRadius: '12px',
       padding: '22px',
       color: '#ffffff',
@@ -62,11 +60,10 @@ export default class ThreeCosmicNebula {
       boxShadow: '0 6px 25px rgba(0,0,0,0.6)',
       boxSizing: 'border-box',
       textAlign: 'center',
-      pointerEvents: 'none', // 뒤쪽 컨트롤러 클릭 레이어 간섭 차단
-      transition: 'opacity 0.45s cubic-bezier(0.25, 1, 0.5, 1)' // 사르르 사라지는 고밀도 페이드아웃 연출
+      pointerEvents: 'none', 
+      transition: 'opacity 0.45s cubic-bezier(0.25, 1, 0.5, 1)' 
     });
 
-    // 💡 [공통 표준 규격] 사용설명 로딩 화면 텍스트 주입
     this.guiOverlay.innerHTML = `
       <div style="color: #ff6699; font-size: 11px; text-align: left; margin-bottom: 14px; font-weight: bold; letter-spacing: 0.5px;">
         ⚙️ STAGE STATUS: ${this.version} READY
@@ -75,10 +72,10 @@ export default class ThreeCosmicNebula {
         006호 오가닉 플라워 사용 방법
       </h3>
       <div style="font-size: 12.5px; text-align: left; line-height: 1.75; color: #dddddd;">
-        <p style="margin: 6px 0;">📸 <strong style="color: #ff6699;">[배경 로딩]</strong> BG/Texture 이미지를 자유롭게 업로드하여 꽃 뒤의 바탕 화면으로 배치하세요.</p>
-        <p style="margin: 6px 0;">🌱 <strong style="color: #ffffff;">[지형 변경]</strong> 무작위 슬라이더 작동 시 하트잎, 눈물방울잎 등 5대 꽃 모양과 잎 개수가 랜덤 스위칭됩니다.</p>
-        <p style="margin: 6px 0;">📏 <strong style="color: #ffffff;">[분산 범위]</strong> 꽃 전체의 스케일 레이아웃 크기를 조절합니다.</p>
-        <p style="margin: 6px 0; color: #ffcc00;">▶️ <strong style="color: #ffcc00;">[하단 스타트]</strong> 재생 버튼을 누르면 이 가이드창이 자동으로 사라지며 영상이 실시간 가동됩니다!</p>
+        <p style="margin: 6px 0;">🌱 <strong style="color: #ff6699;">[지형 변경]</strong> 슬라이더를 밀면 위치 변동 없이 꽃잎 모양(타원, 하트, 눈물방울 등)만 단계별로 칼 변형됩니다.</p>
+        <p style="margin: 6px 0;">📏 <strong style="color: #ffffff;">[분산 범위]</strong> 꽃 전체 레이아웃 크기 스케일을 조절합니다.</p>
+        <p style="margin: 6px 0;">✨ <strong style="color: #ffffff;">[발광 크기]</strong> 꽃잎의 두께감과 중앙 노란 꽃술 원의 지름 크기만 단독 조절합니다.</p>
+        <p style="margin: 6px 0; color: #ffcc00;">▶️ <strong style="color: #ffcc00;">[하단 스타트]</strong> 재생 버튼을 누르면 이 가이드창이 페이드아웃 되며 영상이 시작됩니다!</p>
       </div>
       <div style="color: #777777; font-size: 10.5px; margin-top: 16px; border-top: 1px solid #222530; padding-top: 10px;">
         음악이 정지되면 안내 설명창이 다시 활성화됩니다.
@@ -97,7 +94,8 @@ export default class ThreeCosmicNebula {
         p.pixelDensity(1);
         p.colorMode(p.HSB, 360, 100, 100, 255);
         
-        this.mutateFlowerTopology(this.getUIParams().seed);
+        // 초기 잎사귀 위상 구조 정의
+        this.updateFlowerShapeBySeed(this.getUIParams().seed);
         this.setupDirectInputTracker(p);
         p.noLoop();
       };
@@ -108,25 +106,35 @@ export default class ThreeCosmicNebula {
         } else {
           p.background(220, 35, 8, 255);
         }
-        // 가이드 패널이 p5 text() 함수 바깥의 순수 HTML DOM레이어로 독립 배치되므로 드로우는 배경만 렌더링 유지
       };
     };
 
     this.p5Instance = new window.p5(sketch, this.container);
   }
 
-  mutateFlowerTopology(seedValue) {
-    p5.prototype.randomSeed(seedValue);
-    const shapes = ['sharp-ellipse', 'ellipse', 'heart', 'teardrop', 'narrow'];
-    this.flowerShapeType = shapes[Math.floor(p5.prototype.random(shapes.length))];
-    this.petalCount = Math.floor(p5.prototype.random(8, 28));
-    
+  // 💡 [핵심 교정 알고리즘] 슬라이더의 무수한 숫자를 5대 잎사귀 패스 형태학으로 다이렉트 1:1 매핑 변형
+  updateFlowerShapeBySeed(seedValue) {
+    // 1. 숫자가 아무리 많아도 5개 등분 구간으로 완벽하게 분할 정렬
+    if (seedValue <= 20) {
+      this.flowerShapeType = 'sharp-ellipse'; // 1구간: 뾰족한 타원형
+    } else if (seedValue <= 40) {
+      this.flowerShapeType = 'ellipse';       // 2구간: 부드러운 이클립스
+    } else if (seedValue <= 60) {
+      this.flowerShapeType = 'heart';         // 3구간: 사랑스러운 하트모양
+    } else if (seedValue <= 80) {
+      this.flowerShapeType = 'teardrop';      // 4구간: 한쪽은 뾰족 한쪽은 동그란 눈물방울
+    } else {
+      this.flowerShapeType = 'narrow';        // 5구간: 슬림 코스모스형
+    }
+
+    // 2. 위치나 스케일이 요동치지 않도록, 잎사귀별 고유 각도 오프셋과 길이 가중치를 깔끔하게 고정 격리
+    p5.prototype.randomSeed(999); // 고정형 시드로 난수 오염 차단
     this.petalNoiseSeeds = [];
     for (let i = 0; i < this.petalCount; i++) {
       this.petalNoiseSeeds.push({
-        angleOffset: p5.prototype.random(-0.08, 0.08),
-        lengthScale: p5.prototype.random(0.85, 1.25),
-        colorShift: p5.prototype.random(-25, 25)
+        angleOffset: 0, // 위치 이탈 방지를 위해 제로 셋업
+        lengthScale: 1.0, // 스케일 흔들림 차단을 위해 정배율 셋업
+        colorShift: p5.prototype.random(-20, 20)
       });
     }
   }
@@ -174,6 +182,7 @@ export default class ThreeCosmicNebula {
     p.redraw(); 
   }
 
+  // 잎사귀 기하학 베지에 수식 드로잉 매퍼
   drawPetalShape(p, baseLength, thickness, type) {
     p.beginShape();
     if (type === 'sharp-ellipse') {
@@ -183,12 +192,12 @@ export default class ThreeCosmicNebula {
     } 
     else if (type === 'ellipse') {
       p.ellipseMode(p.CENTER);
-      p.ellipse(0, -baseLength * 0.5, thickness * 1.1, baseLength);
+      p.ellipse(0, -baseLength * 0.5, thickness * 1.2, baseLength);
     } 
     else if (type === 'heart') {
       p.vertex(0, 0);
-      p.bezierVertex(-thickness * 1.3, -baseLength * 0.3, -thickness * 1.1, -baseLength * 0.9, 0, -baseLength * 0.95);
-      p.bezierVertex(thickness * 1.1, -baseLength * 0.9, thickness * 1.3, -baseLength * 0.3, 0, 0);
+      p.bezierVertex(-thickness * 1.4, -baseLength * 0.25, -thickness * 1.2, -baseLength * 0.85, 0, -baseLength * 0.95);
+      p.bezierVertex(thickness * 1.2, -baseLength * 0.85, thickness * 1.4, -baseLength * 0.25, 0, 0);
     } 
     else if (type === 'narrow') {
       p.vertex(0, 0);
@@ -196,14 +205,14 @@ export default class ThreeCosmicNebula {
       p.bezierVertex(thickness * 0.25, -baseLength * 0.9, thickness * 0.25, -baseLength * 0.5, 0, 0);
     } 
     else {
+      // teardrop
       p.vertex(0, 0);
-      p.bezierVertex(-thickness * 0.1, -baseLength * 0.2, -thickness * 1.2, -baseLength * 0.7, 0, -baseLength);
-      p.bezierVertex(thickness * 1.2, -baseLength * 0.7, thickness * 0.1, -baseLength * 0.2, 0, 0);
+      p.bezierVertex(-thickness * 0.1, -baseLength * 0.2, -thickness * 1.3, -baseLength * 0.7, 0, -baseLength);
+      p.bezierVertex(thickness * 1.3, -baseLength * 0.7, thickness * 0.1, -baseLength * 0.2, 0, 0);
     }
     p.endShape(p.CLOSE);
   }
 
-  // 💡 [실시간 프레임 코어] 애니메이션 연동 및 재생 감지 감쇠 레이어 처리
   update(audioData) {
     if (!this.p5Instance) return;
     let p = this.p5Instance;
@@ -211,13 +220,12 @@ export default class ThreeCosmicNebula {
     const audioEl = document.querySelector('audio');
     let isPlaying = audioEl && !audioEl.paused;
 
-    // 💡 [공통 표준 규격 작동 단추] 스타트 클릭 시 가이드를 부드럽게 숨기고 정지 시 다시 표시
     if (isPlaying || (audioData && audioData.vol > 0.005)) {
         this.isAudioActive = true;
-        if (this.guiOverlay) this.guiOverlay.style.opacity = '0'; // 영상 시작되면서 깔끔하게 페이드아웃 소멸
+        if (this.guiOverlay) this.guiOverlay.style.opacity = '0'; 
     } else {
         this.isAudioActive = false;
-        if (this.guiOverlay) this.guiOverlay.style.opacity = '1'; // 정지 시 가이드 복귀
+        if (this.guiOverlay) this.guiOverlay.style.opacity = '1'; 
         p.redraw();
         return;
     }
@@ -231,10 +239,11 @@ export default class ThreeCosmicNebula {
     const ui = this.getUIParams();
     this.time = p.millis() * 0.001;
 
+    // 💡 슬라이더 조작 감지 즉시 위치 왜곡 없이 오직 '순수 모양(Shape)'만 스위칭 변경
     let currentSettingsStr = `${ui.seed}`;
     if (this.lastSettingsStr !== currentSettingsStr) {
         this.lastSettingsStr = currentSettingsStr;
-        this.mutateFlowerTopology(ui.seed);
+        this.updateFlowerShapeBySeed(ui.seed);
     }
 
     let vol = audioData ? audioData.vol : p.noise(this.time) * 0.3;
@@ -252,11 +261,11 @@ export default class ThreeCosmicNebula {
     let petalThickness = p.map(ui.glow, 10, 150, 8, 85) * (1.0 + treble * 0.2);
     let pistilCenterSize = p.map(ui.glow, 10, 150, 15, 110) * (1.0 + bass * 0.25);
 
-    // 🌸 1단계: 유기적 꽃잎 렌더 루프
+    // 🌸 1단계: 꽃잎 정밀 정렬 렌더링
     p.push();
     p.translate(cx, cy);
     p.scale(masterScale);
-    p.rotate(this.time * 0.15 + vol * 0.2);
+    p.rotate(this.time * 0.12 + vol * 0.15);
 
     let angleStep = p.TWO_PI / this.petalCount;
 
@@ -264,17 +273,17 @@ export default class ThreeCosmicNebula {
       let seedInfo = this.petalNoiseSeeds[i] || { angleOffset: 0, lengthScale: 1, colorShift: 0 };
       
       p.push();
-      let currentPetalAngle = i * angleStep + seedInfo.angleOffset;
-      p.rotate(currentPetalAngle);
+      p.rotate(i * angleStep);
 
-      let sway = Math.sin(this.time * 2.0 + i) * 0.03 * (1.0 + treble);
+      // 음악 고음 성분에 따른 부드러운 오가닉 스웨이
+      let sway = Math.sin(this.time * 2.5 + i) * 0.02 * (1.0 + treble);
       p.rotate(sway);
 
-      let baseLength = 110 * seedInfo.lengthScale;
+      let baseLength = 110; 
       let hueVal = 15; let satVal = 80; let briVal = 95;
 
       if (ui.style.includes('neon')) {
-        hueVal = (330 + seedInfo.colorShift + p.map(i, 0, this.petalCount, 0, 40)) % 360; 
+        hueVal = (330 + seedInfo.colorShift + p.map(i, 0, this.petalCount, 0, 30)) % 360; 
         satVal = 90;
       } else if (ui.style.includes('pastel')) {
         hueVal = (45 + seedInfo.colorShift) % 360; 
@@ -283,19 +292,20 @@ export default class ThreeCosmicNebula {
         hueVal = 175; 
         satVal = 85;
       } else {
-        hueVal = (i * 25) % 360;
+        hueVal = (i * 22) % 360;
       }
 
       p.fill(hueVal, satVal, briVal, 160 + vol * 70);
-      p.stroke((hueVal + 20) % 360, satVal + 10, briVal - 10, 200);
+      p.stroke((hueVal + 15) % 360, satVal + 10, briVal - 10, 200);
       p.strokeWeight(1.2);
 
+      // 💡 [형태 변형 스위치 실행]
       this.drawPetalShape(p, baseLength, petalThickness, this.flowerShapeType);
       p.pop();
     }
     p.pop();
 
-    // 🌸 2단계: 중앙 원형 꽃술 코어 드로잉
+    // 🌸 2단계: 노란색 원형 꽃술 코어 드로잉
     p.push();
     p.translate(cx, cy);
     p.scale(masterScale);
@@ -329,7 +339,7 @@ export default class ThreeCosmicNebula {
 
   destroy() {
     if (this.p5Instance) this.p5Instance.remove();
-    if (this.guiOverlay) this.guiOverlay.remove(); // 종료 시 생성한 설명창 소멸 보장
+    if (this.guiOverlay) this.guiOverlay.remove();
     if (this.domObserver) this.domObserver.disconnect();
   }
 }
