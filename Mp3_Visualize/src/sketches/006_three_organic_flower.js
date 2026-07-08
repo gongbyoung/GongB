@@ -1,9 +1,9 @@
 /**
  * src/sketches/006_three_organic_flower.js
- * - [버전] Ver 3.3 (폭발력 슬라이더 ➡️ 꽃잎 개수 실시간 제어 스케일 연동 완료)
- * - 하단 폭발력(Audio Motion Master) 조작 시 꽃잎 개수가 6개에서 45개까지 조밀하게 실시간 가변 제어
- * - Color Style 5대 스펙트럼 (1:기존색, 2:모든잎 동일 파스텔랜덤, 3:커스텀지정, 4:지속가변 그라데이션, 5:테두리만 랜덤) 완벽 구현
- * - HTML 가이드 패널 및 특수문자 파일명 우회 BG/Texture 이미지 배경 합성 파이프라인 유지
+ * - [버전] Ver 3.4 (3중 커스텀 컬러 피커 연동 및 발광크기 ➡️ 꽃잎 중앙부 거리 확장 제어판)
+ * - Custom Color 모드 시 [가스1: 꽃잎면, 가스2: 꽃잎테두리, 대형별: 중앙꽃술] 3축 피커 독립 바인딩 완벽 처리
+ * - 발광/크기(ui.glow) 슬라이더 조작 시 꽃잎의 두께뿐만 아니라, 중앙부 핵과의 거리(Distance Offset)까지 연동 확장
+ * - 로딩 시 HTML DOM 사용 설명 가이드창 고정 및 재생 시 자동 페이드아웃 표준 규격 유지
  */
 
 export default class ThreeCosmicNebula {
@@ -12,7 +12,7 @@ export default class ThreeCosmicNebula {
     this.p5Instance = null;
     this.guiOverlay = null; 
     
-    this.version = "006호 Organic Flower Engine Ver 3.3";
+    this.version = "006호 Organic Flower Engine Ver 3.4";
     this.isAudioActive = false;
     this.lastSettingsStr = "";
 
@@ -21,7 +21,7 @@ export default class ThreeCosmicNebula {
     this.petalCount = 16; 
     this.petalNoiseSeeds = [];
 
-    // 💡 2번 스타일(단일 파스텔 랜덤) 전용 고정 컬러 저장소
+    // 2번 스타일(단일 파스텔 랜덤) 전용 고정 컬러 저장소
     this.pastelThemeHue = 45;
 
     // 배경 이미지 트래커 속성
@@ -75,9 +75,9 @@ export default class ThreeCosmicNebula {
         006호 오가닉 플라워 사용 방법
       </h3>
       <div style="font-size: 12.5px; text-align: left; line-height: 1.75; color: #dddddd;">
-        <p style="margin: 6px 0;">💥 <strong style="color: #ff6699;">[꽃잎 개수]</strong> 하단 폭발력 슬라이더를 밀면 꽃잎의 총 개수가 실시간으로 증감 제어됩니다.</p>
-        <p style="margin: 6px 0;">🌱 <strong style="color: #ffffff;">[지형 변경]</strong> 슬라이더 이동 구간별로 꽃잎 모양 5단계 패스가 직관적으로 스위칭됩니다.</p>
-        <p style="margin: 6px 0;">🎨 <strong style="color: #ffffff;">[스타일 파레트]</strong> 단일 파스텔, 커스텀 지정 피커, 지속 가변 그라데이션, 테두리 라인 아트를 골라보세요.</p>
+        <p style="margin: 6px 0;">✨ <strong style="color: #ff6699;">[발광 크기]</strong> 슬라이더를 높이면 꽃잎 두께와 함께 중앙부 핵과의 거리도 멀어져 시원하게 확장됩니다.</p>
+        <p style="margin: 6px 0;">🎨 <strong style="color: #ffffff;">[3중 컬러 피커]</strong> Custom Color 선택 시 하단의 가스1(잎사귀), 가스2(잎테두리), 대형별(꽃술) 피커 색상이 100% 동기화됩니다.</p>
+        <p style="margin: 6px 0;">💥 <strong style="color: #ffffff;">[꽃잎 개수]</strong> 하단 폭발력 슬라이더를 통해 꽃잎의 총 밀도 개수를 실시간 제어하세요.</p>
         <p style="margin: 6px 0; color: #ffcc00;">▶️ <strong style="color: #ffcc00;">[하단 스타트]</strong> 재생 버튼을 누르면 이 가이드창이 페이드아웃 되며 영상이 시작됩니다!</p>
       </div>
       <div style="color: #777777; font-size: 10.5px; margin-top: 16px; border-top: 1px solid #222530; padding-top: 10px;">
@@ -123,12 +123,9 @@ export default class ThreeCosmicNebula {
     else this.flowerShapeType = 'narrow';        
 
     p5.prototype.randomSeed(seedValue * 7); 
-    
-    // 💡 2번 스타일용 테마 파스텔 색상 시드 믹싱 고정
     this.pastelThemeHue = Math.floor(p5.prototype.random(360));
 
     this.petalNoiseSeeds = [];
-    // 미리 여유롭게 60개 분량의 무작위 컬러 편차 레이어 생성
     for (let i = 0; i < 60; i++) {
       this.petalNoiseSeeds.push({
         angleOffset: 0, 
@@ -168,8 +165,10 @@ export default class ThreeCosmicNebula {
       const colorSelect = document.getElementById('select-cosmic-color');
       const gainSlider = document.getElementById('slide-cosmic-gain');
 
-      // 💡 메인 돔의 커스텀 컬러 패널 데이터 검출 장치 안전 바인딩
-      const customPicker1 = document.getElementById('picker-cosmic-color1') || document.getElementById('color1');
+      // 💡 [개조 피드백 적용] 가스1, 가스2, 대형별 3대 매트릭스 피커 엘리먼트 순차적 전수 검출
+      const p1 = document.getElementById('picker-cosmic-color1') || document.getElementById('color1') || document.querySelector('.color-pickers input:nth-of-type(1)');
+      const p2 = document.getElementById('picker-cosmic-color2') || document.getElementById('color2') || document.querySelector('.color-pickers input:nth-of-type(2)');
+      const p3 = document.getElementById('picker-cosmic-color3') || document.getElementById('color3') || document.querySelector('.color-pickers input:nth-of-type(3)');
 
       return {
           scatter: scatterSlider ? parseFloat(scatterSlider.value) : 22, 
@@ -177,7 +176,11 @@ export default class ThreeCosmicNebula {
           burst: gainSlider ? parseFloat(gainSlider.value) / 100 : 1.0, 
           seed: seedSlider ? parseInt(seedSlider.value) : 42,            
           style: colorSelect ? colorSelect.value.toLowerCase() : 'neon',
-          customHex: customPicker1 ? customPicker1.value : '#00ffcc'
+          
+          // 가스1, 가스2, 대형별 전용 Hex 덤프 수집 및 예외 대비 기본값 수혈
+          gas1Hex: (p1 && p1.value) ? p1.value : '#5a4a1a',
+          gas2Hex: (p2 && p2.value) ? p2.value : '#e2ecea',
+          starHex: (p3 && p3.value) ? p3.value : '#d1e61c'
       };
   }
 
@@ -250,19 +253,26 @@ export default class ThreeCosmicNebula {
     let bass = audioData ? (audioData.raw ? audioData.raw[2]/255 : vol) : vol;
     let treble = audioData ? (audioData.raw ? audioData.raw[60]/255 : vol) : vol;
 
-    // 💡 [개조 통합] 하단 폭발력(ui.burst) 슬라이더 수치를 꽃잎의 실시간 개수 제어로 다이렉트 매핑 링크!
-    // 수치가 최하(1.0)이면 8개 조각, 최대(5.0)로 밀면 42개 조각으로 밀도가 격렬하게 증감 제어됩니다.
+    vol *= ui.burst;
+    bass *= ui.burst;
+    treble *= ui.burst;
+
     this.petalCount = Math.floor(p.map(ui.burst, 1.0, 5.0, 8, 45));
 
     let cx = p.width / 2;
     let cy = p.height / 2;
 
-    // 전체 레이아웃 크기 제어 (분산범위 사용)
+    // 전체 스케일 제어
     let masterScale = p.map(ui.scatter, 5, 50, 0.4, 2.2) * (1.0 + bass * 0.12);
+    
+    // 슬라이더 기반 물리 매핑 설계
     let petalThickness = p.map(ui.glow, 10, 150, 8, 85) * (1.0 + treble * 0.18);
     let pistilCenterSize = p.map(ui.glow, 10, 150, 15, 110) * (1.0 + bass * 0.22);
 
-    // 🌸 1단계: 5대 가변 꽃잎 루프 가동
+    // 💡 [기획 의도 구현] 발광크기(ui.glow)에 비례하여 꽃잎과 중앙점 사이의 이격 거리(Distance Shift)를 밀어냅니다.
+    let centralOffsetDistance = p.map(ui.glow, 10, 150, 0, 55);
+
+    // 🌸 1단계: 꽃잎 렌더링
     p.push();
     p.translate(cx, cy);
     p.scale(masterScale);
@@ -279,58 +289,55 @@ export default class ThreeCosmicNebula {
       let sway = Math.sin(this.time * 2.5 + i) * 0.02 * (1.0 + treble);
       p.rotate(sway);
 
+      // 💡 [이격 거리 연동] 잎사귀 드로잉 시작 전, 연산된 변위만큼 Y축 마이너스 방향(바깥)으로 좌표계를 평행 이동시킵니다.
+      p.translate(0, -centralOffsetDistance);
+
       let baseLength = 110; 
-      
-      // 색상 제어 셋업 변수
       let hueVal = 15; let satVal = 80; let briVal = 95;
       let strokeHue = 30; let strokeSat = 90; let strokeAlpha = 200;
       let fillAlpha = 160 + vol * 70;
 
-      // 💡 [회원님 기획안 기반 5대 컬러 파레트 대개조]
+      // 💡 [3중 멀티 컬러 피커 파이프라인 정밀 주입 연동 완료]
       if (ui.style.includes('neon')) {
-        // 1️⃣ 스타일: 지금 색 유지 (화사한 네온 그라데이션)
         hueVal = (330 + seedInfo.colorShift + p.map(i, 0, this.petalCount, 0, 30)) % 360; 
         satVal = 90;
         strokeHue = (hueVal + 15) % 360;
       } 
       else if (ui.style.includes('pastel')) {
-        // 2️⃣ 스타일: 파스텔톤으로 모든 꽃잎 동일하게 랜덤 부여 (지형변경 동기화)
         hueVal = this.pastelThemeHue; 
-        satVal = 45; // 부드러운 파스텔 농도 고정
+        satVal = 45; 
         briVal = 93;
         strokeHue = hueVal;
         strokeSat = 65;
       } 
       else if (ui.style.includes('custom-color') || ui.style.includes('custom')) {
-        // 3️⃣ 스타일: Custom Color 지정 피커 동적 디코딩 샘플링
-        let c = p.color(ui.customHex);
-        hueVal = p.hue(c);
-        satVal = p.saturation(c);
-        briVal = p.brightness(c);
-        strokeHue = (hueVal + 20) % 360;
+        // 💡 1. [가스 1] 피커 복조 ➡️ 꽃잎 면 전면 바인딩
+        let c1 = p.color(ui.gas1Hex);
+        hueVal = p.hue(c1); satVal = p.saturation(c1); briVal = p.brightness(c1);
+        
+        // 💡 2. [가스 2] 피커 복조 ➡️ 꽃잎 테두리 선 단독 바인딩
+        let c2 = p.color(ui.gas2Hex);
+        strokeHue = p.hue(c2); strokeSat = p.saturation(c2);
       } 
       else if (ui.style.includes('full-random') || ui.style.includes('gradient')) {
-        // 4️⃣ 스타일: 지속 가변 그라데이션으로 흐르며 절대 중복되지 않게 랜덤 변경
         hueVal = (p.sin(this.time * 0.5 + i * 0.1) * 180 + 180) % 360;
         satVal = 85;
         briVal = 98;
-        strokeHue = (hueVal + 180) % 360; // 보색 스트로크 반짝임
+        strokeHue = (hueVal + 180) % 360; 
       } 
       else {
-        // 5️⃣ 스타일: 테두리만 색 랜덤 (Border 라인 아트 팩)
         hueVal = (seedInfo.colorShift * 15 + i * 20) % 360;
         satVal = 90;
         briVal = 95;
-        
-        fillAlpha = 15; // 💡 면 색상은 투명하게 강제 다운
+        fillAlpha = 15; 
         strokeHue = hueVal;
         strokeSat = 95;
-        strokeAlpha = 240; // 테두리 선만 강력 강조
+        strokeAlpha = 240; 
       }
 
       p.fill(hueVal, satVal, briVal, fillAlpha);
       p.stroke(strokeHue, strokeSat, briVal - 10, strokeAlpha);
-      p.strokeWeight(ui.style.includes('full-random') ? 2.5 : 1.2); // 테두리 모드일 때 선을 조금 더 에지있게 두껍게 처리
+      p.strokeWeight(ui.style.includes('full-random') ? 2.5 : 1.2); 
 
       this.drawPetalShape(p, baseLength, petalThickness, this.flowerShapeType);
       p.pop();
@@ -343,26 +350,30 @@ export default class ThreeCosmicNebula {
     p.scale(masterScale);
     
     p.noStroke();
-    let coreHue = 45; // 골드 옐로우 기본값
+    let coreHue = 45; 
+    let coreSat = 85;
+    let coreBri = 98;
+
     if (ui.style.includes('custom-color') || ui.style.includes('custom')) {
-      let c = p.color(ui.customHex);
-      coreHue = (p.hue(c) + 180) % 360; // 커스텀 모드일 땐 세련된 보색 코어 셋업
+      // 💡 3. [대형 별] 피커 복조 ➡️ 중앙 원형 꽃술 코어에 단독 주입
+      let c3 = p.color(ui.starHex);
+      coreHue = p.hue(c3); coreSat = p.saturation(c3); coreBri = p.brightness(c3);
     } else if (ui.style.includes('full-random')) {
       coreHue = (this.time * 30) % 360;
     }
 
     for(let r = 3; r > 0; r--) {
-      p.fill(coreHue, 90, 100, 45 / r);
+      p.fill(coreHue, coreSat, coreBri, 45 / r);
       p.circle(0, 0, pistilCenterSize + (r * 12));
     }
     
     p.stroke(0, 0, 100, 180);
     p.strokeWeight(1.5);
-    p.fill(coreHue, 85, 98, 255); 
+    p.fill(coreHue, coreSat, coreBri, 255); 
     p.circle(0, 0, pistilCenterSize);
 
     p.noStroke();
-    p.fill((coreHue + 30) % 360, 95, 90, 200);
+    p.fill((coreHue + 30) % 360, Math.min(100, coreSat + 10), Math.max(0, coreBri - 10), 200);
     for(let a = 0; a < p.TWO_PI; a += p.PI/4) {
        let rx = Math.cos(a) * (pistilCenterSize * 0.25);
        let ry = Math.sin(a) * (pistilCenterSize * 0.25);
