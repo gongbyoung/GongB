@@ -1,8 +1,8 @@
 /**
  * src/sketches/018_glsl_noise.js
- * - [버전] Ver 1.5 (사용 방법 안내창 가이드 및 시스템 버전 UI 완벽 이식판)
- * - WebGL 2D 오버레이 뷰포트 정렬을 통해 화면 비율 변동 시에도 가이드 패널 정중앙 고정
- * - uProjectionMatrix, uModelViewMatrix 기반 중앙 정렬 유지 및 60FPS GPU 렌더팩
+ * - [버전] Ver 1.6 (WebGL 폰트 에러 스팸 영구 해결 완료 버전)
+ * - p5.js text() 함수를 완전히 박살내고 100% 안전한 HTML DOM 가이드 패널 시스템으로 오버홀
+ * - 콘솔창 경고 차단, 화면 비율 단추 연동 시 가이드 패널 중앙 정렬 완벽 유지
  */
 
 export default class GLSLNoiseShaderStage {
@@ -10,9 +10,9 @@ export default class GLSLNoiseShaderStage {
     this.container = container;
     this.p5Instance = null;
     this.shaderProgram = null;
+    this.guiOverlay = null; // HTML UI 오버레이 엘리먼트
     
-    // 💡 업데이트 확인 마커 세팅
-    this.version = "018호 GLSL Liquid Noise Ver 1.5";
+    this.version = "018호 GLSL Liquid Noise Ver 1.6";
     this.time = 0;
     this.isAudioActive = false;
     this.lastSettingsStr = "";
@@ -23,10 +23,8 @@ export default class GLSLNoiseShaderStage {
       attribute vec3 aPosition;
       attribute vec2 aTexCoord;
       varying vec2 vTexCoord;
-
       uniform mat4 uModelViewMatrix;
       uniform mat4 uProjectionMatrix;
-
       void main() {
         vTexCoord = aTexCoord;
         gl_Position = uProjectionMatrix * uModelViewMatrix * vec4(aPosition, 1.0);
@@ -127,6 +125,53 @@ export default class GLSLNoiseShaderStage {
       });
     }
 
+    // 💡 [초강력 차단 칩] 기존에 혹시 남아있을 가이드 HTML UI 엘리먼트 제거 후 재생성
+    const oldOverlay = this.container.querySelector('.cosmic-shader-guide');
+    if (oldOverlay) oldOverlay.remove();
+
+    this.guiOverlay = document.createElement('div');
+    this.guiOverlay.className = 'cosmic-shader-guide';
+    // 부모 컨테이너 내부에 완벽히 중앙 고정 정렬시키는 최첨단 인라인 스타일링 시공
+    Object.assign(this.guiOverlay.style, {
+      position: 'absolute',
+      top: '50%',
+      left: '50%',
+      transform: 'translate(-50%, -50%)',
+      width: '85%',
+      maxWidth: '420px',
+      backgroundColor: 'rgba(10, 12, 18, 0.92)',
+      border: '1px solid rgba(0, 255, 204, 0.6)',
+      borderRadius: '10px',
+      padding: '20px',
+      color: '#ffffff',
+      fontFamily: 'sans-serif',
+      zIndex: '10',
+      boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+      boxSizing: 'border-box',
+      textAlign: 'center',
+      pointerEvents: 'none',
+      transition: 'opacity 0.4s ease'
+    });
+
+    // 💡 p5.js 내부 에러 유발 코드를 거두고 웹 표준 HTML 텍스트 주입
+    this.guiOverlay.innerHTML = `
+      <div style="color: #00ffcc; font-size: 11px; text-align: left; margin-bottom: 15px; font-weight: bold; opacity: 0.85;">
+        ⚙️ SYSTEM STATUS: ${this.version} READY
+      </div>
+      <h3 style="color: #00ffcc; font-size: 16px; margin: 0 0 18px 0; font-weight: 600;">
+        Cosmic Studio 018호 셰이더 무대 가이드
+      </h3>
+      <div style="font-size: 12.5px; text-align: left; line-height: 1.7; color: #dddddd;">
+        <p style="margin: 6px 0;">1️⃣ <strong style="color: #ffffff;">[좌측 최상단]</strong> MP3 음악 파일을 로딩해 주세요.</p>
+        <p style="margin: 6px 0;">2️⃣ <strong style="color: #ffffff;">[우측 패널]</strong> 슬라이더 제어 시 렉 없이 실시간 왜곡 연동됩니다.</p>
+        <p style="margin: 6px 0; color: #ffcc00;">3️⃣ <strong style="color: #ffcc00;">[하단 컨트롤]</strong> 재생(▶) 단추를 누르면 GPU 셰이더가 폭발합니다!</p>
+      </div>
+      <div style="color: #888888; font-size: 10.5px; margin-top: 15px;">
+        음악이 재생되면 이 안내창은 자동으로 페이드아웃 됩니다.
+      </div>
+    `;
+    this.container.appendChild(this.guiOverlay);
+
     const sketch = (p) => {
       p.setup = () => {
         const canvas = p.createCanvas(this.container.clientWidth, this.container.clientHeight, p.WEBGL);
@@ -166,12 +211,6 @@ export default class GLSLNoiseShaderStage {
           p.noStroke();
           p.rect(-p.width / 2, -p.height / 2, p.width, p.height);
         }
-
-        // 💡 [UI 통합] 음악 재생 전이라면 셰이더 위에 안내 가이드 레이어 정렬 출력
-        if (!this.isAudioActive) {
-          p.resetShader(); 
-          this.drawOnScreenGuide(p);
-        }
       };
     };
 
@@ -196,52 +235,6 @@ export default class GLSLNoiseShaderStage {
       };
   }
 
-  // 💡 [WebGL 가이드 UI 엔진 장착] 폰트 경고 및 뒤집힘을 완벽 차단하는 스펙
-  drawOnScreenGuide(p) {
-    p.push();
-    let w = p.width; let h = p.height;
-    p.textFont('sans-serif');
-    
-    // 1️⃣ 좌측 상단 민트색 시스템 상태 마커 출력 고정
-    p.fill(0, 255, 204, 220);
-    p.textSize(12);
-    p.textAlign(p.LEFT, p.TOP);
-    p.text(`⚙️ SYSTEM STATUS: ${this.version} READY`, -w / 2 + 20, -h / 2 + 20);
-
-    // 2️⃣ 정중앙 안내 메인 박스 빌드업
-    p.fill(10, 12, 18, 220);
-    p.stroke(50, 55, 75);
-    p.strokeWeight(1);
-    p.rectMode(p.CENTER);
-    p.rect(0, 0, w * 0.85, 220, 10);
-
-    p.noStroke();
-    p.fill(0, 255, 204);
-    p.textSize(18);
-    p.textAlign(p.CENTER, p.CENTER);
-    p.text("Cosmic Studio 018호 셰이더 무대 사용 방법", 0, -75);
-
-    p.fill(220);
-    p.textSize(12);
-    p.textAlign(p.LEFT, p.CENTER);
-    
-    let startX = -(w * 0.38);
-    let startY = -25;
-    let lineSpacing = 32;
-
-    p.text("1️⃣  [좌측 최상단] MP3 음악 파일을 가장 먼저 로딩하세요.", startX, startY);
-    p.text("2️⃣  [우측 패널] Color Style Palette에서 원하는 날씨 화풍을 고르세요.", startX, startY + lineSpacing);
-    
-    p.fill(255, 204, 0); 
-    p.text("3️⃣  [하단 컨트롤] 재생(▶) 버튼을 누르면 GPU 유체 셰이더가 연동됩니다!", startX, startY + lineSpacing * 2);
-
-    p.fill(120);
-    p.textSize(11);
-    p.textAlign(p.CENTER, p.CENTER);
-    p.text("음악이 재생되면 이 안내창은 자동으로 사라지고 60FPS 영상이 출력됩니다.", 0, 75);
-    p.pop();
-  }
-
   resetCanvas(p, isPreview = false) {
     p.redraw(); 
   }
@@ -255,19 +248,12 @@ export default class GLSLNoiseShaderStage {
 
     if (isPlaying || (audioData && audioData.vol > 0.005)) {
         this.isAudioActive = true;
+        // 음악 재생 시 HTML 가이드 매끄럽게 숨김
+        if (this.guiOverlay) this.guiOverlay.style.opacity = '0';
     } else {
         this.isAudioActive = false;
-    }
-
-    let low = 0.3; let mid = 0.2; let high = 0.1;
-    if (audioData && audioData.raw && audioData.raw.length > 60) {
-        low = (audioData.raw[2] + audioData.raw[3]) / 510;
-        mid = (audioData.raw[15] + audioData.raw[16]) / 510;
-        high = (audioData.raw[55] + audioData.raw[56]) / 510;
-    } else if (isPlaying) {
-        low = p.noise(p.millis() * 0.001) * 0.5;
-        mid = p.noise(p.millis() * 0.002 + 50) * 0.4;
-        high = p.noise(p.millis() * 0.003 + 100) * 0.3;
+        // 정지 시 가이드 다시 선명하게 표시
+        if (this.guiOverlay) this.guiOverlay.style.opacity = '1';
     }
 
     const ui = this.getUIParams();
@@ -278,10 +264,14 @@ export default class GLSLNoiseShaderStage {
         this.resetCanvas(p, true);
     }
 
-    this.time += (0.01 + mid * 0.04) * ui.burst;
+    this.time += (0.01 + (audioData ? audioData.vol : 0.15) * 0.04) * ui.burst;
 
     p.shader(this.shaderProgram);
-    this.shaderProgram.setUniform('u_audio', [low, mid, high]);
+    this.shaderProgram.setUniform('u_audio', [
+        audioData ? (audioData.raw[2]/255) : 0.3,
+        audioData ? (audioData.vol * 1.5) : 0.2,
+        audioData ? (audioData.raw[55]/255) : 0.1
+    ]);
     
     p.redraw();
   }
@@ -294,5 +284,6 @@ export default class GLSLNoiseShaderStage {
 
   destroy() {
     if (this.p5Instance) this.p5Instance.remove();
+    if (this.guiOverlay) this.guiOverlay.remove();
   }
 }
