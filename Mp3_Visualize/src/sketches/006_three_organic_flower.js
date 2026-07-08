@@ -1,8 +1,8 @@
 /**
  * src/sketches/006_three_organic_flower.js
- * - [버전] Ver 3.6 (3번 스타일 ➡️ 자연계 꽃잎 질감 리얼 그라데이션 엔진 오버홀 완결판)
- * - 3번 스타일 선택 시 꽃술 쪽(어두운 원색)부터 바깥 끝쪽(밝고 화사한 원색)으로 부드럽게 퍼지는 입체적 그라데이션 구현
- * - 저음/중음/고음 3축 파장 분할 및 베지에 끝부분(Tip) 흐느적 살랑임 물리 파이프라인 유지
+ * - [버전] Ver 3.7 (3번 스타일 Deep Space Pastel 드롭다운 조건문 우선순위 버그 및 꽃잎 하얀색 떡짐 현상 완벽 버그픽스)
+ * - 드롭다운 매핑 판정을 완전히 분리하여 3번 선택 시 각 잎사귀마다 안쪽(어두운 원색) -> 바깥쪽(밝은 원색) 그라데이션이 중복 없이 랜덤 전개
+ * - 저음/중음/고음 3축 파장 분할 및 베지에 끝부분(Tip) 흐느적 살랑임 물리 엔진 유지
  * - HTML 가이드 패널 및 특수문자 파일명 우회 BG/Texture 이미지 배경 합성 규격 유지
  */
 
@@ -12,7 +12,7 @@ export default class ThreeCosmicNebula {
     this.p5Instance = null;
     this.guiOverlay = null; 
     
-    this.version = "006호 Organic Flower Engine Ver 3.6";
+    this.version = "006호 Organic Flower Engine Ver 3.7";
     this.isAudioActive = false;
     this.lastSettingsStr = "";
 
@@ -75,8 +75,8 @@ export default class ThreeCosmicNebula {
         006호 오가닉 플라워 사용 방법
       </h3>
       <div style="font-size: 12.5px; text-align: left; line-height: 1.75; color: #dddddd;">
-        <p style="margin: 6px 0;">🌸 <strong style="color: #ff6699;">[3번 그라데이션]</strong> Custom 선택 시 꽃잎 안쪽(어두운 원색)에서 바깥쪽(밝은 원색)으로 리얼하게 뻗어 나갑니다.</p>
-        <p style="margin: 6px 0;">🌬️ <strong style="color: #ffffff;">[흐느적 살랑임]</strong> 꽃잎 기둥은 고정된 채 끝자락만 유연한 베지에 곡선 기류를 타고 흐느적거립니다.</p>
+        <p style="margin: 6px 0;">🌸 <strong style="color: #ff6699;">[3번 무작위 그라데이션]</strong> 꽃잎 안쪽(진하고 어두운 원색)에서 바깥쪽(화사하고 선명한 원색)으로 완벽 분할 정렬됩니다.</p>
+        <p style="margin: 6px 0;">🌬️ <strong style="color: #ffffff;">[흐느적 살랑임]</strong> 꽃잎 대대는 고정된 채 끝자락만 유연한 베지에 곡선 기류를 타고 흐느적거립니다.</p>
         <p style="margin: 6px 0;">🎹 <strong style="color: #ffffff;">[파장 분할]</strong> 저음은 꽃술 코어, 중음은 홀수 잎사귀, 고음은 짝수 잎사귀를 따로 분리 제어합니다.</p>
         <p style="margin: 6px 0; color: #ffcc00;">▶️ <strong style="color: #ffcc00;">[하단 스타트]</strong> 재생 버튼을 누르면 이 가이드창이 페이드아웃 되며 영상이 시작됩니다!</p>
       </div>
@@ -132,7 +132,7 @@ export default class ThreeCosmicNebula {
         lengthScale: 1.0, 
         colorShift: p5.prototype.random(-25, 25),
         swayPhase: p5.prototype.random(p5.prototype.TWO_PI),
-        individualHue: Math.floor(p5.prototype.random(360)) // 3번 모드용 개별 랜덤 원색 허브 시드
+        individualHue: Math.floor(p5.prototype.random(360)) // 3번 모드용 완전 개별 원색 무작위 시드
       });
     }
   }
@@ -188,30 +188,26 @@ export default class ThreeCosmicNebula {
     p.redraw(); 
   }
 
-  // 💡 [그라데이션 연산 적용 패스 엔진] 
-  // 내부 면 채우기(fill) 단계를 세밀한 비율(pct)로 슬라이싱 루프 처리하여 진짜 꽃잎 그라데이션 질감을 구현합니다.
+  // 💡 [그라데이션 드로잉 엔진 핵심 수정] 하얗게 날아가던 백화 버그를 잡고 선명한 입체 그라데이션 복원
   drawFlexiblePetalShape(p, baseLength, thickness, type, bendForce, useNaturalGradient, gradHue, fillAlpha) {
-    
     let tipX = bendForce * (baseLength * 0.35);
 
-    // 💡 3번 모드 전용 리얼 내추럴 그라데이션 다층 스캔 렌더링
     if (useNaturalGradient) {
       p.noStroke();
-      // 10단계 쉐이딩 슬라이스 루프로 안쪽(어둡고 진함) -> 바깥쪽(밝고 화사함) 그라데이션 구현
-      let steps = 12;
+      let steps = 15; // 해상도 슬라이스 증가
       for (let s = 0; s < steps; s++) {
         let pct = s / (steps - 1);
         
-        // 💡 [핵심 수식] 안쪽은 채도 높고 명도 낮은 어두운 원색 ➡️ 바깥 끝은 명도 높고 화사한 투명 원색으로 보간
-        let currentSat = p.map(pct, 0.0, 1.0, 95, 75);
-        let currentBri = p.map(pct, 0.0, 1.0, 50, 98); // 50(어두움)에서 시작해 98(매우 밝음)로 도달
-        let currentAlpha = p.map(pct, 0.0, 1.0, fillAlpha, fillAlpha * 0.45);
+        // 💡 [백화 버그 완전 차단 수식] 안쪽은 원색 고농도 어둠(Bri 35~50) -> 바깥쪽은 가장 눈부신 선명 원색(Bri 95)
+        let currentSat = p.map(pct, 0.0, 1.0, 100, 85); 
+        let currentBri = p.map(pct, 0.0, 1.0, 40, 95); 
+        let currentAlpha = p.map(pct, 0.0, 1.0, fillAlpha, fillAlpha * 0.35);
         
         p.fill(gradHue, currentSat, currentBri, currentAlpha);
 
-        // 현재 비율 단계에 맞는 길이와 두께 상자 축소 연산
         let currentLen = baseLength * pct;
-        let currentThick = thickness * p.lerp(0.2, 1.0, p.sin(pct * p.HALF_PI));
+        // 잎사귀 단면이 어색하게 끊기지 않도록 매끄러운 곡선 보간 결합
+        let currentThick = thickness * p.sin(p.map(pct, 0, 1, 0.1, p.HALF_PI));
 
         p.beginShape();
         if (type === 'sharp-ellipse') {
@@ -234,7 +230,7 @@ export default class ThreeCosmicNebula {
           p.bezierVertex(-currentThick * 0.25, -currentLen * 0.5, -currentThick * 0.25 + tipX * pct * 0.7, -currentLen * 0.9, tipX * pct, -currentLen);
           p.bezierVertex(currentThick * 0.25 + tipX * pct * 0.7, -currentLen * 0.9, currentThick * 0.25, -currentLen * 0.5, 0, 0);
         } 
-        else { // teardrop
+        else { 
           p.vertex(0, 0);
           p.bezierVertex(-currentThick * 0.1, -currentLen * 0.2, -currentThick * 1.3 + tipX * pct, -currentLen * 0.7, tipX * pct, -currentLen);
           p.bezierVertex(currentThick * 1.3 + tipX * pct, -currentLen * 0.7, currentThick * 0.1, -currentLen * 0.2, 0, 0);
@@ -242,7 +238,7 @@ export default class ThreeCosmicNebula {
         p.endShape(p.CLOSE);
       }
     } else {
-      // 일반 단색 테마 모드 드로잉 패스
+      let tipX = bendForce * (baseLength * 0.35);
       p.beginShape();
       if (type === 'sharp-ellipse') {
         p.vertex(0, 0);
@@ -326,7 +322,7 @@ export default class ThreeCosmicNebula {
 
     let centralOffsetDistance = p.map(ui.glow, 10, 150, 0, 55);
 
-    // 🌸 1단계: 유기적 꽃잎 렌더 루프
+    // 🌸 1단계: 꽃잎 렌더 루프
     p.push();
     p.translate(cx, cy);
     p.scale(masterScale);
@@ -356,52 +352,52 @@ export default class ThreeCosmicNebula {
       let strokeHue = 30; let strokeSat = 90; let strokeAlpha = 200;
       let fillAlpha = 160 + vol * 70;
       
+      // 💡 [버그 픽스 판정 구역] 조건문 1순위로 승격하여 드롭다운 필터 가로채기 차단
       let useNaturalGradient = false;
 
-      if (ui.style.includes('neon')) {
-        // 1️⃣ 스타일: 지금 색 유지
+      if (ui.style.includes('pastel')) {
+        // 💡 3번 스타일 (피커 드롭다운 명칭 Deep Space Pastel 연동 검출구) ➡️ 리얼 낱개 잎사귀 랜덤 그라데이션 가동
+        useNaturalGradient = true;
+        hueVal = (seedInfo.individualHue + (i * 12)) % 360; 
+      } 
+      else if (ui.style.includes('neon')) {
+        // 1번 스타일
         hueVal = (330 + seedInfo.colorShift + p.map(i, 0, this.petalCount, 0, 30)) % 360; 
         satVal = 90;
         strokeHue = (hueVal + 15) % 360;
       } 
-      else if (ui.style.includes('pastel')) {
-        // 2️⃣ 스타일: 모든 꽃잎 동일 파스텔 톤 랜덤 부여
-        hueVal = this.pastelThemeHue; 
-        satVal = 45; briVal = 93;
-        strokeHue = hueVal; strokeSat = 65;
-      } 
       else if (ui.style.includes('custom-color') || ui.style.includes('custom')) {
-        // 3️⃣ 스타일: [오버홀 완료] 꽃술 쪽부터 바깥쪽으로 무작위 원색 리얼 그라데이션 엔진 가동!
-        useNaturalGradient = true;
-        // 지형변경 시 정해진 개별 고유 원색 허브 주입
-        hueVal = (seedInfo.individualHue + (i * 10)) % 360; 
+        // 2번 스타일 (단일 고정 및 3중 피커 링크)
+        let c1 = p.color(ui.gas1Hex);
+        hueVal = p.hue(c1); satVal = p.saturation(c1); briVal = p.brightness(c1);
+        
+        let c2 = p.color(ui.gas2Hex);
+        strokeHue = p.hue(c2); strokeSat = p.saturation(c2);
       } 
       else if (ui.style.includes('full-random') || ui.style.includes('gradient')) {
-        // 4️⃣ 스타일: 지속 가변 그라데이션
+        // 4번 스타일: 지속 가변 그라데이션
         hueVal = (p.sin(this.time * 0.4 + i * 0.1) * 180 + 180) % 360;
         satVal = 85; briVal = 98;
         strokeHue = (hueVal + 180) % 360; 
       } 
       else {
-        // 5️⃣ 스타일: 테두리만 색 랜덤
+        // 5번 스타일: 테두리만 색 랜덤
         hueVal = (seedInfo.colorShift * 15 + i * 20) % 360;
         satVal = 90; briVal = 95;
         fillAlpha = 15; 
         strokeHue = hueVal; strokeSat = 95; strokeAlpha = 240; 
       }
 
-      // 그라데이션 모드가 아닐 때만 표준 단색 처리 적용
       if (!useNaturalGradient) {
         p.fill(hueVal, satVal, briVal, fillAlpha);
         p.stroke(strokeHue, strokeSat, briVal - 10, strokeAlpha);
         p.strokeWeight(ui.style.includes('full-random') ? 2.5 : 1.2); 
       } else {
-        // 그라데이션 모드일 때 테두리 라인을 한층 부드럽게 마감
-        p.stroke(hueVal, 95, 40, strokeAlpha * 0.3);
-        p.strokeWeight(0.5);
+        // 3번 모드일 때 테두리 라인이 내부 원색을 침범하지 않게 은은하게 마감
+        p.stroke(hueVal, 95, 30, 45);
+        p.strokeWeight(0.6);
       }
 
-      // 제너레이티브 패스 드로잉 가동
       this.drawFlexiblePetalShape(p, baseLength, petalThickness, this.flowerShapeType, bendForce, useNaturalGradient, hueVal, fillAlpha);
       p.pop();
     }
@@ -416,8 +412,11 @@ export default class ThreeCosmicNebula {
     let coreHue = 45; let coreSat = 85; let coreBri = 98;
 
     if (ui.style.includes('custom-color') || ui.style.includes('custom')) {
-      // 그라데이션 테마에 맞춰 꽃술도 유기적인 고유 원색 매칭
-      coreHue = (this.pastelThemeHue + 120) % 360;
+      let c3 = p.color(ui.starHex);
+      coreHue = p.hue(c3); coreSat = p.saturation(c3); coreBri = p.brightness(c3);
+    } else if (ui.style.includes('pastel')) {
+      // 3번 그라데이션 모드일 땐 중앙 꽃술도 맑은 보색 골드로 대조 셋업
+      coreHue = 42; coreSat = 90; coreBri = 95;
     } else if (ui.style.includes('full-random')) {
       coreHue = (this.time * 30) % 360;
     }
@@ -444,6 +443,7 @@ export default class ThreeCosmicNebula {
 
   resize(w, h) {
     if (this.p5Instance) {
+      
       this.p5Instance.resizeCanvas(w, h);
     }
   }
