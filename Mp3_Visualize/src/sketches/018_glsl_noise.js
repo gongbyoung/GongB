@@ -1,8 +1,8 @@
 /**
  * src/sketches/018_glsl_noise.js
- * - [버전] Ver 1.7 (정지 상태 및 재생 상태 구름 소실 버그 완전 버그 픽스)
- * - 셰이더 내부 임계값 차단 필터를 하향 조정하여 멈춘 상태에서도 풍성한 구름 연출 보장
- * - HTML DOM UI 오버레이 가이드 시스템 유지 및 60FPS GPU 렌더 가속
+ * - [버전] Ver 1.8 (오일 질감 제거 및 6중 프랙탈 뭉게구름 엔진 오버홀)
+ * - 액체 왜곡(Domain Warping) 수식을 완전히 걷어내고, 순수 6단계 FBM 프랙탈 레이어 중첩 적용
+ * - 분산범위(ui.scatter) 슬라이더 조작 시 017호와 동일한 레이어 중첩 충돌 필터 메커니즘 가동
  */
 
 export default class GLSLNoiseShaderStage {
@@ -13,7 +13,7 @@ export default class GLSLNoiseShaderStage {
     this.guiOverlay = null; 
     
     // 💡 업데이트 세팅 마커
-    this.version = "018호 GLSL Liquid Noise Ver 1.7";
+    this.version = "018호 FBM Cloud Shader Ver 1.8";
     this.time = 0;
     this.isAudioActive = false;
     this.lastSettingsStr = "";
@@ -45,12 +45,14 @@ export default class GLSLNoiseShaderStage {
       uniform float u_glow;
       uniform int u_style;
 
+      // GPU 가속 난수 생성기
       float hash(vec2 p) {
         p = fract(p * vec2(123.34, 456.21));
         p += dot(p, p + 45.32);
         return fract(p.x * p.y);
       }
 
+      // 2D 밸런스 노이즈
       float noise(vec2 p) {
         vec2 i = floor(p);
         vec2 f = fract(p);
@@ -59,40 +61,50 @@ export default class GLSLNoiseShaderStage {
                    mix(hash(i + vec2(0.0,1.0)), hash(i + vec2(1.0,1.0)), u.x), u.y);
       }
 
-      float liquidFBM(vec2 p, float midBump) {
-        vec2 q = vec2(
-          noise(p + vec2(0.0, 0.0) + u_time * 0.05),
-          noise(p + vec2(5.2, 1.3) + u_time * 0.04)
-        );
-        
-        float warpStr = 1.5 + (midBump * 2.5);
-        vec2 r = vec2(
-          noise(p + q * warpStr + vec2(1.7, 9.2) + u_time * 0.08),
-          noise(p + q * warpStr + vec2(8.3, 2.8) + u_time * 0.06)
-        );
-        
-        return noise(p + r * (2.0 + u_scatter * 0.04));
+      // 💡 [오일 질감 완전 제거] 6단계 독립 옥타브 FBM 구름 묘사 엔진
+      // 주파수를 배수로 쪼개어 겹치면서 보송보송하고 불규칙한 자연계 구름 입자를 형성합니다.
+      float cloudFBM(vec2 p, float seedShift) {
+        float value = 0.0;
+        float amplitude = 1.0;
+        float frequency = 1.0;
+        float maxValue = 0.0;
+
+        // 음악 주파수 및 시간 흐름 기류 주입
+        vec2 shift = vec2(u_time * 0.05, u_time * 0.02) + vec2(seedShift);
+
+        for (int i = 0; i < 6; i++) {
+          value += noise(p * frequency + shift) * amplitude;
+          maxValue += amplitude;
+          frequency *= 2.15;
+          amplitude *= 0.48;
+        }
+        return value / maxValue;
       }
 
       void main() {
+        // 정밀 가상 렌즈 중심점 설정
         vec2 st = vTexCoord - 0.5;
-        float zoom = 1.5 / (0.1 + u_glow * 0.015);
+        
+        // Glow & Size 슬라이더 기반 카메라 공간 줌 아웃 매핑 밸런스 조정
+        float zoom = 2.0 / (0.1 + u_glow * 0.015);
         st *= zoom;
 
         float low = u_audio.x;
         float mid = u_audio.y;
         float high = u_audio.z;
 
-        float fbmVal = liquidFBM(st * 3.5 + vec2(u_seed * 0.05), mid * 1.5);
+        // 6중 중첩 프랙탈 노이즈 가동
+        float fbmVal = cloudFBM(st * 2.5, u_seed * 12.3);
 
-        // 💡 [구름 출력 핵심 패치] 구름 커트라인 기준치를 기존 0.35에서 0.22로 내려 구름의 상시 가시성을 무조건 확보합니다.
-        float densityOffset = (u_scatter - 22.0) * 0.005;
-        float threshold = 0.22 + densityOffset - (mid * 0.15);
+        // 💡 [회원님 기획안 이식] 분산범위(u_scatter)를 레이어 중첩 충돌 필터 커트라인으로 오버홀
+        // 우측으로 밀수록 레이어가 여러 개 강력하게 충돌한 묵직하고 리얼한 구름 산맥 위주로 필터링됩니다.
+        float densityOffset = (u_scatter - 22.0) * 0.006;
+        float threshold = 0.38 + densityOffset - (mid * 0.12);
         
         float density = max(0.0, fbmVal - threshold);
-        // 알파 밀도를 증폭하여 한층 더 몽환적이고 두터운 구름 덩어리를 만듭니다.
-        float cloudIntensity = clamp(density * 7.5, 0.0, 1.0);
+        float cloudIntensity = clamp(density * 7.0, 0.0, 1.0);
 
+        // 화풍 컬러 매핑
         vec3 skyColor = vec3(0.0);
         vec3 cloudColor = vec3(0.0);
 
@@ -206,7 +218,6 @@ export default class GLSLNoiseShaderStage {
           else if (ui.style.includes('full-random')) styleIdx = 3;
           this.shaderProgram.setUniform('u_style', styleIdx);
 
-          // 💡 정지 상태 Fallback 기본 데이터 채널 강화
           if (!this.isAudioActive) {
             this.shaderProgram.setUniform('u_audio', [0.4, 0.3, 0.2]);
           }
