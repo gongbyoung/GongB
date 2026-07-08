@@ -1,8 +1,7 @@
 /**
  * src/sketches/018_glsl_noise.js
- * - [버전] Ver 1.2 (매니저 바인딩 오류 우회 및 캔버스 스케일 하드웨어 강제 정렬)
- * - 외부 SketchManager가 경로를 오인하더라도 WebGL 뷰포트와 투영 뷰를 완전 강제 리셋
- * - 폰트 스팸 경고를 원천 차단하는 완전 셰이더 스크린 쿼드 렌더링 엔진
+ * - [버전] Ver 1.3 (WebGL 재질/조명 간섭 제거 및 셰이더 픽셀 다이렉트 출력 패치 완결판)
+ * - p.noStroke() 및 셰이더 바인딩 완전 보정으로 조명 없는 어두운 화면 버그 차단 완료
  */
 
 export default class GLSLNoiseShaderStage {
@@ -11,7 +10,8 @@ export default class GLSLNoiseShaderStage {
     this.p5Instance = null;
     this.shaderProgram = null;
     
-    this.version = "018호 GLSL Liquid Noise Ver 1.2";
+    // 💡 업데이트 세팅 마커
+    this.version = "018호 GLSL Liquid Noise Ver 1.3";
     this.time = 0;
     this.isAudioActive = false;
   }
@@ -56,23 +56,22 @@ export default class GLSLNoiseShaderStage {
 
       float liquidFBM(vec2 p, float midBump) {
         vec2 q = vec2(
-          noise(p + vec2(0.0, 0.0) + u_time * 0.08),
-          noise(p + vec2(5.2, 1.3) + u_time * 0.06)
+          noise(p + vec2(0.0, 0.0) + u_time * 0.06),
+          noise(p + vec2(5.2, 1.3) + u_time * 0.05)
         );
         
         float warpStr = 1.5 + (midBump * 3.0);
         vec2 r = vec2(
-          noise(p + q * warpStr + vec2(1.7, 9.2) + u_time * 0.12),
-          noise(p + q * warpStr + vec2(8.3, 2.8) + u_time * 0.09)
+          noise(p + q * warpStr + vec2(1.7, 9.2) + u_time * 0.1),
+          noise(p + q * warpStr + vec2(8.3, 2.8) + u_time * 0.08)
         );
         
         return noise(p + r * (2.0 + u_scatter * 0.05));
       }
 
       void main() {
-        vec2 st = vTexCoord;
-        // 💡 [우상단 쏠림 방어 수식] UV 좌표계를 정중앙(0.5) 기준으로 완벽 격리 배정
-        st -= 0.5;
+        // 💡 프래그먼트 셰이더 전체 프레임 좌표계 매핑 완벽 고정
+        vec2 st = vTexCoord - 0.5;
         float zoom = 1.5 / (0.1 + u_glow * 0.015);
         st *= zoom;
 
@@ -136,9 +135,7 @@ export default class GLSLNoiseShaderStage {
       };
 
       p.draw = () => {
-        // 💡 [매니저 에러 우회칩] 투영 행렬과 뷰포트를 강제로 정중앙 리셋하여 쏠림 현상을 원천 차단합니다.
         p.resetMatrix();
-        p.camera(0, 0, (p.height/2.0) / p.tan(p.PI*30.0 / 180.0), 0, 0, 0, 0, 1, 0);
         p.clear();
         
         if (this.shaderProgram) {
@@ -161,13 +158,9 @@ export default class GLSLNoiseShaderStage {
             this.shaderProgram.setUniform('u_audio', [0.3, 0.2, 0.1]);
           }
 
-          // 화면 전체 평면 출력 고정
+          // 💡 [버그 수정] WebGL 기본 스트로크 선과 어두운 재질 속성을 지워 강제 픽셀 출력 가속
+          p.noStroke();
           p.rect(-p.width / 2, -p.height / 2, p.width, p.height);
-        }
-
-        // 💡 콘솔 경고 스팸의 주범인 text() 함수를 완전히 거두어내고 안전 모드로 전환
-        if (!this.isAudioActive) {
-          p.resetShader();
         }
       };
     };
@@ -214,13 +207,15 @@ export default class GLSLNoiseShaderStage {
     if (audioData && audioData.raw && audioData.raw.length > 60) {
         low = (audioData.raw[2] + audioData.raw[3]) / 510;
         mid = (audioData.raw[15] + audioData.raw[16]) / 510;
+        high = (audioData.raw[55] + audioData.raw[56]) / 510;
     } else if (isPlaying) {
         low = p.noise(p.millis() * 0.001) * 0.5;
         mid = p.noise(p.millis() * 0.002 + 50) * 0.4;
+        high = p.noise(p.millis() * 0.003 + 100) * 0.3;
     }
 
     const ui = this.getUIParams();
-    this.time += (0.015 + (audioData ? audioData.vol : 0.1) * 0.04) * ui.burst;
+    this.time += (0.01 + mid * 0.04) * ui.burst;
 
     p.shader(this.shaderProgram);
     this.shaderProgram.setUniform('u_audio', [low, mid, high]);
