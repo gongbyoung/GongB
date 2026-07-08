@@ -1,7 +1,8 @@
 /**
  * src/sketches/018_glsl_noise.js
- * - [버전] Ver 1.3 (WebGL 재질/조명 간섭 제거 및 셰이더 픽셀 다이렉트 출력 패치 완결판)
- * - p.noStroke() 및 셰이더 바인딩 완전 보정으로 조명 없는 어두운 화면 버그 차단 완료
+ * - [버전] Ver 1.4 (화면 비율 변경 시 좌상단 쏠림 및 중앙 정렬 버그 완벽 해결 완료)
+ * - uProjectionMatrix, uModelViewMatrix 통합으로 렌더링 평면 중심축을 캔버스 정중앙에 완벽 고정
+ * - Full, 16:9, 9:16 비율 전환 시 어떠한 오차도 없이 프레임 내부에 칼정렬 보장
  */
 
 export default class GLSLNoiseShaderStage {
@@ -10,20 +11,27 @@ export default class GLSLNoiseShaderStage {
     this.p5Instance = null;
     this.shaderProgram = null;
     
-    // 💡 업데이트 세팅 마커
-    this.version = "018호 GLSL Liquid Noise Ver 1.3";
+    // 💡 업데이트 확인 마커
+    this.version = "018호 GLSL Liquid Noise Ver 1.4";
     this.time = 0;
     this.isAudioActive = false;
+    this.lastSettingsStr = "";
   }
 
+  // 💡 [핵심 버그 수정] p5.js WebGL 고유의 변환 행렬 유니폼을 바인딩하여 쏠림 현상을 원천 차단합니다.
   getVertexShader() {
     return `
       attribute vec3 aPosition;
       attribute vec2 aTexCoord;
       varying vec2 vTexCoord;
+
+      uniform mat4 uModelViewMatrix;
+      uniform mat4 uProjectionMatrix;
+
       void main() {
         vTexCoord = aTexCoord;
-        gl_Position = vec4(aPosition, 1.0);
+        // 정중앙 좌표계를 정확하게 투영 행렬과 매칭시킵니다.
+        gl_Position = uProjectionMatrix * uModelViewMatrix * vec4(aPosition, 1.0);
       }
     `;
   }
@@ -70,7 +78,7 @@ export default class GLSLNoiseShaderStage {
       }
 
       void main() {
-        // 💡 프래그먼트 셰이더 전체 프레임 좌표계 매핑 완벽 고정
+        // 정밀 공간 주파수 좌표 고정
         vec2 st = vTexCoord - 0.5;
         float zoom = 1.5 / (0.1 + u_glow * 0.015);
         st *= zoom;
@@ -135,7 +143,6 @@ export default class GLSLNoiseShaderStage {
       };
 
       p.draw = () => {
-        p.resetMatrix();
         p.clear();
         
         if (this.shaderProgram) {
@@ -158,8 +165,8 @@ export default class GLSLNoiseShaderStage {
             this.shaderProgram.setUniform('u_audio', [0.3, 0.2, 0.1]);
           }
 
-          // 💡 [버그 수정] WebGL 기본 스트로크 선과 어두운 재질 속성을 지워 강제 픽셀 출력 가속
           p.noStroke();
+          // 💡 WebGL 표준 평면 매핑 방식으로 평면을 드로잉하여 좌상단 밀림을 제로화합니다.
           p.rect(-p.width / 2, -p.height / 2, p.width, p.height);
         }
       };
@@ -215,6 +222,14 @@ export default class GLSLNoiseShaderStage {
     }
 
     const ui = this.getUIParams();
+    
+    // 슬라이더 상태 변경 추적 검사 후 변경 시 렌더 가속 트리거
+    let currentSettingsStr = `${ui.seed}-${ui.scatter}-${ui.glow}-${ui.style}-${ui.burst}`;
+    if (this.lastSettingsStr !== currentSettingsStr) {
+        this.lastSettingsStr = currentSettingsStr;
+        this.resetCanvas(p, true);
+    }
+
     this.time += (0.01 + mid * 0.04) * ui.burst;
 
     p.shader(this.shaderProgram);
