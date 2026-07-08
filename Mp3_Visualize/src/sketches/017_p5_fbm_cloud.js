@@ -1,8 +1,8 @@
 /**
  * src/sketches/017_p5_fbm_cloud.js
- * - [버전] Ver 2.3 (화면 비율 고정, 순수 구름 입자 스케일 공간 줌 인/아웃 변환 버그 완전 해결)
- * - 캔버스 크기를 줄이던 하위 레이어 스케일 방식 완전 폐기
- * - Glow & Size 슬라이더 제어 시 9:16 프레임은 꽉 찬 상태를 유지하며 내부 구름 주파수만 멀리서 보듯 미세화 처리
+ * - [버전] Ver 2.4 (격자 반복 무늬 해결 및 8중 노이즈 레이어 중첩 충돌 필터 엔진 탑재)
+ * - 대칭/반복 좌표계를 완전히 제거하고 독립된 8단계 주파수(Octaves) FBM 레이어 합성
+ * - 지형변경(ui.seed) 시 전체 난수 흐름 재배치, 분산범위(ui.scatter) 조작 시 중첩 충돌 임계값 필터링 구현
  */
 import ImageAnalyzer from '../core/ImageAnalyzer.js'; 
 
@@ -13,15 +13,12 @@ export default class P5FBMCloudGenerator {
     this.cloudImg = null; 
     
     // 💡 업데이트 확인용 버전 세팅
-    this.version = "017호 FBM Cloud Generator Ver 2.3";
+    this.version = "017호 FBM Cloud Generator Ver 2.4";
     
     this.timeX = 0;
     this.timeY = 0;
     this.isAudioActive = false; 
     this.lastSettingsStr = "";
-    
-    // 기본 해상도 주파수 베이스
-    this.baseFreq = 0.015;
   }
 
   async init() {
@@ -41,14 +38,12 @@ export default class P5FBMCloudGenerator {
         canvas.style('z-index', '1');
         
         p.pixelDensity(1);
-        // 고해상도 구름 묘사를 위해 버퍼 밀도를 확보합니다.
-        this.cloudImg = p.createImage(Math.floor(p.width / 2.0), Math.floor(p.height / 2.0));
+        this.cloudImg = p.createImage(Math.floor(p.width / 2.5), Math.floor(p.height / 2.5));
         p.noLoop();
       };
 
       p.draw = () => {
         p.clear();
-        // 💡 [의도 교정] 무대 크기는 100% 꽉 채운 상태를 언제나 고정 유지합니다.
         if (this.cloudImg) {
           p.image(this.cloudImg, 0, 0, p.width, p.height);
         }
@@ -72,31 +67,45 @@ export default class P5FBMCloudGenerator {
       const gainSlider = document.getElementById('slide-cosmic-gain');
 
       return {
-          scatter: scatterSlider ? parseFloat(scatterSlider.value) : (settings.scatterExponent ?? 22), 
-          glow: glowSlider ? parseFloat(glowSlider.value) : 85, // 10 ~ 250 날 데이터 추적
+          scatter: scatterSlider ? parseFloat(scatterSlider.value) : 22, // 5 ~ 50 범위
+          glow: glowSlider ? parseFloat(glowSlider.value) : 85, // 10 ~ 250 범위
           burst: gainSlider ? parseFloat(gainSlider.value) / 100 : 1.0, 
           seed: seedSlider ? parseInt(seedSlider.value) : 42,
           style: colorSelect ? colorSelect.value.toLowerCase() : 'neon'
       };
   }
 
-  // 💡 [공간 주파수 줌 변환 메커니즘 개정] 
-  // zoomFactor가 커질수록 구름 수학 패턴이 정밀하게 쪼개져 멀리서 보는 효과를 냅니다.
-  warpNoise(x, y, p, midBump, zoomFactor, cx, cy) {
-    let nx = (x - cx) * this.baseFreq * zoomFactor;
-    let ny = (y - cy) * this.baseFreq * zoomFactor;
+  // 💡 [핵심 개조] 인위적인 반복을 완전히 깨부수는 8단계 멀티 중첩(8-Octave) 프랙탈 노이즈 수식
+  get8LayerNoise(x, y, p, midBump, zoomFactor, seed) {
+    let totalNoise = 0;
+    let amplitude = 1.0;
+    let frequency = 0.006 * zoomFactor;
+    let maxValue = 0; 
     
-    let tx = this.timeX * 0.3;
-    let ty = this.timeY * 0.3;
-    
-    let ox = p.noise(nx + tx, ny + 11.3) * 2.5;
-    let oy = p.noise(nx + 7.1, ny + ty) * 2.5;
+    // 음악 비트에 따른 가변 기류 속도 매핑
+    let flowX = this.timeX * 0.2;
+    let flowY = this.timeY * 0.1;
 
-    let warpStr = 1.2 + (midBump * 3.5);
-    let ox2 = p.noise(nx + ox + tx, ny + oy + 42.1) * warpStr;
-    let oy2 = p.noise(nx + ox + 17.8, ny + oy + ty) * warpStr;
-    
-    return p.noise(nx + ox2, ny + oy2);
+    // 💡 8개의 레이어를 고유 가중치와 위상 오프셋으로 중첩 연산 (회원님 기획 내용 주입)
+    for (let i = 0; i < 8; i++) {
+      // 레이어마다 임의의 무작위 궤적 시드를 부여해 대칭/격자 현상을 소멸시킵니다.
+      let offsetX = p.noise(i * 15.7 + seed) * 1000;
+      let offsetY = p.noise(i * 23.4 - seed) * 1000;
+      
+      let n = p.noise(
+        x * frequency + flowX + offsetX, 
+        y * frequency + flowY + offsetY
+      );
+      
+      totalNoise += n * amplitude;
+      maxValue += amplitude;
+      
+      frequency *= 2.13; // 주파수를 잘게 쪼개어 미세한 털구름 질감 유도
+      amplitude *= 0.47; // 고주파 레이어일수록 영향력을 약화시켜 밸런스 유지
+    }
+
+    // 0.0 ~ 1.0 범위로 정규화 반환
+    return totalNoise / maxValue;
   }
 
   drawOnScreenGuide(p) {
@@ -177,45 +186,42 @@ export default class P5FBMCloudGenerator {
         high = p.noise(p.millis() * 0.003 + 100) * 0.3;
     }
 
-    let windSpeed = (0.003 + high * 0.015) * ui.burst;
+    // 자연 기류 난류 시뮬레이션 속도 가동
+    let windSpeed = (0.0015 + high * 0.01) * ui.burst;
     this.timeX += windSpeed;
-    this.timeY += windSpeed * 0.3;
+    this.timeY += windSpeed * 0.25;
 
     p.noiseSeed(ui.seed);
 
     this.cloudImg.loadPixels();
     let w = this.cloudImg.width;
     let h = this.cloudImg.height;
-    
-    let centerX = w / 2;
-    let centerY = h / 2;
 
-    // 💡 [수식 전면 개정] 슬라이더 수치에 따라 순수 공간의 배율 주파수 계수를 설계합니다.
-    // 10일 때는 0.2배 크기로 패턴이 뭉뚱그려져 커지고(줌인), 250일 때는 4.0배 크기로 촘촘하게 쪼개집니다(줌아웃).
-    let zoomFactor = p.map(ui.glow, 10, 250, 0.2, 4.0);
+    // Glow & Size 슬라이더 기반 카메라 공간 줌 아웃 매핑 밸런스 패치
+    let zoomFactor = p.map(ui.glow, 10, 250, 0.3, 3.5);
 
     // 날씨 컬러 매핑
     let skyColor, cloudColor;
 
     if (ui.style.includes('monochrome')) {
-        skyColor = p.color(20, 30, 45);
-        cloudColor = p.color(130, 135, 145); 
+        skyColor = p.color(18, 26, 38);
+        cloudColor = p.color(125, 130, 140); 
     } else if (ui.style.includes('neon')) {
-        let topH = p.color(15, 85, 180);
-        let botH = p.color(80, 150, 235);
+        let topH = p.color(15, 80, 175);
+        let botH = p.color(75, 145, 230);
         skyColor = p.lerpColor(topH, botH, low);
-        cloudColor = p.color(250, 252, 255); 
+        cloudColor = p.color(252, 253, 255); 
     } else if (ui.style.includes('pastel')) {
-        let dawnTop = p.color(55, 20, 105);
-        let dawnBot = p.color(235, 90, 40);
+        let dawnTop = p.color(50, 18, 100);
+        let dawnBot = p.color(230, 85, 35);
         skyColor = p.lerpColor(dawnTop, dawnBot, low * 1.1);
-        cloudColor = p.color(255, 220, 185); 
+        cloudColor = p.color(255, 225, 190); 
     } else if (ui.style.includes('full-random')) {
-        p.randomSeed(ui.seed * 15);
-        skyColor = p.color(p.random(10, 70), p.random(20, 70), p.random(130, 210));
-        cloudColor = p.color(p.random(190, 255), p.random(190, 255), p.random(190, 255));
+        p.randomSeed(ui.seed * 20);
+        skyColor = p.color(p.random(10, 60), p.random(20, 60), p.random(120, 190));
+        cloudColor = p.color(p.random(200, 255), p.random(200, 255), p.random(200, 255));
     } else {
-        skyColor = p.color(15, 18, 25);
+        skyColor = p.color(12, 16, 22);
         cloudColor = p.color(0, 230, 255);
     }
 
@@ -224,14 +230,16 @@ export default class P5FBMCloudGenerator {
     for (let y = 0; y < h; y += step) {
       for (let x = 0; x < w; x += step) {
         let midBump = mid * 1.5;
-        // 💡 줌 팩터를 노이즈 매개변수로 명확하게 이식하여 해상도는 고정한 채 구름의 정밀도만 조절합니다.
-        let fbmVal = this.warpNoise(x, y, p, midBump * ui.burst, zoomFactor, centerX, centerY);
-
-        let densityOffset = p.map(ui.scatter, 5, 50, 0.2, -0.25);
-        let cloudThreshold = 0.35 - (mid * 0.12) + densityOffset;
         
-        let density = Math.max(0, fbmVal - cloudThreshold);
-        let cloudIntensity = Math.min(1.0, density * 5.0); 
+        // 💡 8중 옥타브 연산 호출
+        let fbmVal = this.get8LayerNoise(x, y, p, midBump * ui.burst, zoomFactor, ui.seed);
+
+        // 💡 [회원님 기획안 완벽 연동] Center Scatter(5 ~ 50) 슬라이더를 겹친 레이어의 '중복 충돌 허용 임계 커트라인'으로 개조
+        // 슬라이더가 우측으로 갈수록 다중 중복 영역만 타격되어 구름 묘사가 아주 선명하고 날카로워집니다.
+        let densityThreshold = p.map(ui.scatter, 5, 50, 0.38, 0.62) - (mid * 0.08);
+        
+        let density = Math.max(0, fbmVal - densityThreshold);
+        let cloudIntensity = Math.min(1.0, density * 6.5); // 알파 레이어 혼합 부드러움 증폭
 
         let finalC = p.lerpColor(skyColor, cloudColor, cloudIntensity);
         let r = p.red(finalC); let g = p.green(finalC); let b = p.blue(finalC);
@@ -255,7 +263,7 @@ export default class P5FBMCloudGenerator {
   resize(w, h) {
     if (this.p5Instance) {
       this.p5Instance.resizeCanvas(w, h);
-      this.cloudImg = this.p5Instance.createImage(Math.floor(w / 2.0), Math.floor(h / 2.0));
+      this.cloudImg = this.p5Instance.createImage(Math.floor(w / 2.5), Math.floor(h / 2.5));
     }
   }
 
