@@ -1,8 +1,8 @@
 /**
  * src/sketches/018_glsl_noise.js
- * - [버전] Ver 1.9 (BG/Texture 이미지 배경 합성 파이프라인 추가 완료)
- * - 좌측 패널에서 BG/Texture 이미지를 로딩하면 셰이더 내부 skyColor 대신 커스텀 배경으로 실시간 합성
- * - 6중 프랙탈 FBM 뭉게구름 질감 유지 및 60FPS GPU 렌더 가속
+ * - [버전] Ver 2.0 (로딩 순서 제약 전면 해제 및 Blob 이미지 파이프라인 100% 개방)
+ * - 배경을 먼저 넣든 음악을 먼저 트든 순서 상관없이 변화 감지 즉시 WebGL 텍스트 바인딩 가속
+ * - 6중 프랙탈 FBM 구름 무대 최종 안정화 완결판
  */
 
 export default class GLSLNoiseShaderStage {
@@ -12,13 +12,12 @@ export default class GLSLNoiseShaderStage {
     this.shaderProgram = null;
     this.guiOverlay = null; 
     
-    // 💡 업데이트 세팅 마커
-    this.version = "018호 FBM Cloud Shader Ver 1.9";
+    // 💡 최종 버전 업데이트 마커
+    this.version = "018호 FBM Cloud Shader Ver 2.0";
     this.time = 0;
     this.isAudioActive = false;
     this.lastSettingsStr = "";
     
-    // 텍스처 로딩 상태 관리용
     this.bgTextureElement = null;
     this.lastBgSrc = "";
   }
@@ -49,7 +48,6 @@ export default class GLSLNoiseShaderStage {
       uniform float u_glow;
       uniform int u_style;
 
-      // 💡 외부에서 주입되는 BG 텍스처 및 로딩 상태 플래그
       uniform sampler2D u_bgTexture;
       uniform bool u_useBgTexture;
 
@@ -101,7 +99,6 @@ export default class GLSLNoiseShaderStage {
         float density = max(0.0, fbmVal - threshold);
         float cloudIntensity = clamp(density * 7.0, 0.0, 1.0);
 
-        // 기본 배경색 파이프라인
         vec3 skyColor = vec3(0.0);
         vec3 cloudColor = vec3(0.0);
 
@@ -123,9 +120,8 @@ export default class GLSLNoiseShaderStage {
             cloudColor = vec3(0.0, 0.92, 1.0);
         }
 
-        // 💡 [배경 합성 오버홀] 만약 사용자가 이미지를 업로드했다면 skyColor 대신 텍스처 픽셀 샘플링을 적용합니다.
+        // 💡 텍스처 합성 적용
         if (u_useBgTexture) {
-            // Y축 뒤집힘을 방지하기 위해 vTexCoord.y를 보정하여 픽셀을 추출합니다.
             vec4 texColor = texture2D(u_bgTexture, vec2(vTexCoord.x, 1.0 - vTexCoord.y));
             skyColor = texColor.rgb;
         }
@@ -180,7 +176,7 @@ export default class GLSLNoiseShaderStage {
         Cosmic Studio 018호 셰이더 무대 가이드
       </h3>
       <div style="font-size: 12.5px; text-align: left; line-height: 1.7; color: #dddddd;">
-        <p style="margin: 6px 0;">1️⃣ <strong style="color: #ffffff;">[좌측 최상단]</strong> MP3 음악 및 배경 텍스처 이미지를 로딩하세요.</p>
+        <p style="margin: 6px 0;">✨ <strong style="color: #ffffff;">[순서 무관]</strong> 배경 이미지와 MP3 음악을 자유롭게 로딩하세요.</p>
         <p style="margin: 6px 0;">2️⃣ <strong style="color: #ffffff;">[우측 패널]</strong> 슬라이더 제어 시 렉 없이 실시간 왜곡 연동됩니다.</p>
         <p style="margin: 6px 0; color: #ffcc00;">3️⃣ <strong style="color: #ffcc00;">[하단 컨트롤]</strong> 재생(▶) 단추를 누르면 GPU 셰이더가 폭발합니다!</p>
       </div>
@@ -226,11 +222,11 @@ export default class GLSLNoiseShaderStage {
             this.shaderProgram.setUniform('u_audio', [0.4, 0.3, 0.2]);
           }
 
-          // 💡 [배경 이미지 셰이더 바인딩 연동 스캔]
-          // 메인 DOM의 텍스처 패널 이미지 태그에서 src 경로 변화를 실시간 감지하여 가속 업로드합니다.
-          const imgEl = document.querySelector('.media-panel img') || document.getElementById('bg-texture-preview');
-          if (imgEl && imgEl.src && imgEl.src !== this.lastBgSrc && !imgEl.src.includes('blob:')) {
+          // 💡 [핵심 검사 칩 개조] Blob 보안 경로 누락 필터를 해제하여 파일 순서 제약을 완벽 타파합니다.
+          const imgEl = document.querySelector('.media-panel img') || document.getElementById('bg-texture-preview') || document.querySelector('img[src^="blob:"]');
+          if (imgEl && imgEl.src && imgEl.src !== this.lastBgSrc) {
               this.lastBgSrc = imgEl.src;
+              // 데이터 동기 가속 바인딩
               this.bgTextureElement = p.loadImage(imgEl.src, () => { p.redraw(); });
           }
 
