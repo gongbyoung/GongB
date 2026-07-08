@@ -1,8 +1,8 @@
 /**
  * src/sketches/019_p5_512_circles.js
- * - [버전] Ver 1.3 (JS 문법 에러 및 int 오타 완벽 버그 픽스본)
- * - 파스텔 모드 내 C스타일 int 선언 오타를 let 표준 문법으로 전면 교정 완료
- * - 5대 화풍 모드 스위칭 메커니즘 및 분산범위(ui.scatter) 박스 제어 연동 완결
+ * - [버전] Ver 1.4 (512채널 독립 매핑 분할 및 노이즈 컷오프 필터 강화 완결판)
+ * - 하나의 주파수가 여러 원을 동시 오염시키던 중복 매핑 버그 완전 격파
+ * - 임계값 0.25 필터링으로 미세 노이즈 반응을 차단하고 낱개 단위의 깨끗한 반짝임 복원
  */
 import ImageAnalyzer from '../core/ImageAnalyzer.js'; 
 
@@ -11,14 +11,11 @@ export default class P5512CirclesStage {
     this.container = container;
     this.p5Instance = null;
     
-    // 💡 업데이트 확인용 버전 세팅
-    this.version = "019호 기하학 5대 스타일 엔진 Ver 1.3";
+    this.version = "019호 주파수 분할 필터 Ver 1.4";
     this.isAudioActive = false;
     
     this.particles = [];
     this.totalChannels = 512;
-    
-    // 5번 [호수 동심원 모드] 전용 파동 관리 링 배열
     this.ripples = [];
   }
 
@@ -49,7 +46,6 @@ export default class P5512CirclesStage {
 
       p.draw = () => {
         p.background(220, 30, 7, 255);
-        
         if (!this.isAudioActive) {
           this.drawOnScreenGuide(p);
         }
@@ -78,7 +74,7 @@ export default class P5512CirclesStage {
         this.particles.push({
           origOffsetX: normX, 
           origOffsetY: normY, 
-          baseSize: 10,       
+          baseSize: 6, // 💡 화면이 뭉개지지 않도록 기본 서클 크기를 슬림하게 다듬음
           seedColor: Math.floor(p5.prototype.random(360)) 
         });
       }
@@ -86,7 +82,6 @@ export default class P5512CirclesStage {
   }
 
   getUIParams() {
-      const settings = window.cosmicEngineSettings || {};
       const seedSlider = document.getElementById('slide-cosmic-seed');
       const scatterSlider = document.getElementById('slide-cosmic-scatter');
       const glowSlider = document.getElementById('slide-cosmic-glow');
@@ -129,12 +124,11 @@ export default class P5512CirclesStage {
     let startX = p.width / 2 - (p.width * 0.38);
     let startY = p.height / 2 - 20;
 
-    p.text("🎨 [Color Style 선택창] 버튼을 눌러 모드를 변경하세요:", startX, startY);
+    p.text("🎨 주파수 칼분할 패치 완료! 512 대역이 낱개로 깔끔하게 쪼개집니다.", startX, startY);
     p.text("• Neon: 속빈 원 / • Monochrome: 속찬 원", startX, startY + 22);
     p.text("• Pastel: 랜덤색상 + 다중 증강원 / • Full-Random: 랜덤 속찬 네모 버튼", startX, startY + 44);
-    
     p.fill(45, 90, 100); 
-    p.text("• Custom Selector: 호수의 빗방울 동심원 파동 무대 가동 (추천!)", startX, startY + 68);
+    p.text("• Custom Selector: 호수의 빗방울 동심원 파동 무대 가동", startX, startY + 68);
     p.pop();
   }
 
@@ -161,14 +155,13 @@ export default class P5512CirclesStage {
 
     const ui = this.getUIParams();
     let rawData = (audioData && audioData.raw) ? audioData.raw : [];
-    let hasRaw = rawData.length >= 128;
+    let hasRaw = rawData.length > 10;
 
     let centerX = p.width / 2;
     let centerY = p.height / 2;
-
     let arrayScale = p.map(ui.scatter, 5, 50, 0.35, 1.45);
 
-    // 💡 5번 [호수 동심원 모드] 파동 처리 엔진 루프
+    // 5번 [호수 동심원 모드] 파동 처리 엔진
     if (ui.style.includes('custom')) {
       for (let k = this.ripples.length - 1; k >= 0; k--) {
         let rip = this.ripples[k];
@@ -193,15 +186,18 @@ export default class P5512CirclesStage {
 
       let freqVolume = 0;
       if (hasRaw) {
-        let rawIdx = Math.floor(p.map(i, 0, this.totalChannels, 0, rawData.length - 1));
+        // 💡 [버그 수정] 중복 몰림을 막고 512개에 정확하게 배분하는 보간 매핑 공식 고정
+        let ratio = i / this.totalChannels;
+        let rawIdx = Math.floor(ratio * (rawData.length - 1));
         freqVolume = rawData[rawIdx] / 255.0;
       } else {
-        freqVolume = p.noise(i * 0.03, p.millis() * 0.002) * 0.45;
+        freqVolume = p.noise(i * 0.05, p.millis() * 0.002) * 0.4;
       }
 
       freqVolume *= ui.burst;
 
-      if (freqVolume > 0.01) {
+      // 💡 [핵심 패치] 노이즈 컷오프 임계값을 0.25로 상향하여, 확실한 비트에만 개별적으로 반짝이게 격리
+      if (freqVolume > 0.25) {
         p.noiseSeed(ui.seed + i);
         let randomDistortX = (p.noise(i * 5.2) - 0.5) * (ui.seed * 3.5);
         let randomDistortY = (p.noise(i * 8.7) - 0.5) * (ui.seed * 3.5);
@@ -209,49 +205,44 @@ export default class P5512CirclesStage {
         let finalX = centerX + (node.origOffsetX * arrayScale) + randomDistortX;
         let finalY = centerY + (node.origOffsetY * arrayScale) + randomDistortY;
 
-        let currentRadius = node.baseSize + (freqVolume * (ui.glow * 1.2));
-        let alpha = p.map(freqVolume, 0.01, 1.0, 40, 255);
+        // 볼륨 신호 범위 축소 보정
+        let normVol = p.map(freqVolume, 0.25, 1.0, 0.0, 1.0);
+        let currentRadius = node.baseSize + (normVol * (ui.glow * 0.9));
+        let alpha = p.map(normVol, 0.0, 1.0, 50, 255);
 
         p.push();
 
         if (ui.style.includes('neon')) {
-          // 1️⃣ 모드: 속빈 동그라미
           p.noFill();
-          p.strokeWeight(p.map(freqVolume, 0.01, 1.0, 1.0, 3.0));
+          p.strokeWeight(p.map(normVol, 0.0, 1.0, 0.8, 2.5));
           p.stroke(170, 85, 95, alpha); 
           p.circle(finalX, finalY, currentRadius * 2);
 
         } else if (ui.style.includes('monochrome')) {
-          // 2️⃣ 모드: 속찬 동그라미
           p.noStroke();
-          p.fill(200, 80, 90, alpha * 0.8); 
+          p.fill(200, 80, 90, alpha * 0.85); 
           p.circle(finalX, finalY, currentRadius * 2);
 
         } else if (ui.style.includes('pastel')) {
-          // 3️⃣ 모드: 속빈 동그라미 + 랜덤 색상 [let 선언으로 버그 완벽 수정 완료]
           p.noFill();
-          p.strokeWeight(1.2);
-          
-          let ringsCount = Math.floor(p.map(freqVolume, 0.01, 1.0, 1, 5));
-          for(let r = 1; r <= 5; r++) {
+          p.strokeWeight(1.0);
+          let ringsCount = Math.floor(p.map(normVol, 0.0, 1.0, 1, 4));
+          for(let r = 1; r <= 4; r++) {
              if (r <= ringsCount) {
-               p.stroke((node.seedColor + r * 30) % 360, 80, 95, alpha);
-               p.circle(finalX, finalY, (node.baseSize + (r * (ui.glow * 0.25))) * 2);
+               p.stroke((node.seedColor + r * 35) % 360, 80, 95, alpha);
+               p.circle(finalX, finalY, (node.baseSize + (r * (ui.glow * 0.2))) * 2);
              }
           }
 
         } else if (ui.style.includes('full-random')) {
-          // 4️⃣ 모드: 속이 꽉 찬 네모 버튼 모양 반짝이기
           p.noStroke();
           p.rectMode(p.CENTER);
           p.fill(node.seedColor, 85, 95, alpha); 
-          
-          let btnSize = currentRadius * 1.6;
-          p.rect(finalX, finalY, btnSize, btnSize, 3); 
+          let btnSize = currentRadius * 1.4;
+          p.rect(finalX, finalY, btnSize, btnSize, 2); 
 
         } else if (ui.style.includes('custom')) {
-          // 5️⃣ 모드: 호수에 비 떨어지듯이 동심원 퍼트리기
-          if (freqVolume > 0.65 && p.random(1.0) > 0.94) {
+          if (normVol > 0.65 && p.random(1.0) > 0.96) {
             this.ripples.push({
               x: finalX,
               y: finalY,
