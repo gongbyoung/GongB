@@ -1,8 +1,8 @@
 /**
  * src/sketches/018_glsl_noise.js
- * - [버전] Ver 1.6 (WebGL 폰트 에러 스팸 영구 해결 완료 버전)
- * - p5.js text() 함수를 완전히 박살내고 100% 안전한 HTML DOM 가이드 패널 시스템으로 오버홀
- * - 콘솔창 경고 차단, 화면 비율 단추 연동 시 가이드 패널 중앙 정렬 완벽 유지
+ * - [버전] Ver 1.7 (정지 상태 및 재생 상태 구름 소실 버그 완전 버그 픽스)
+ * - 셰이더 내부 임계값 차단 필터를 하향 조정하여 멈춘 상태에서도 풍성한 구름 연출 보장
+ * - HTML DOM UI 오버레이 가이드 시스템 유지 및 60FPS GPU 렌더 가속
  */
 
 export default class GLSLNoiseShaderStage {
@@ -10,9 +10,10 @@ export default class GLSLNoiseShaderStage {
     this.container = container;
     this.p5Instance = null;
     this.shaderProgram = null;
-    this.guiOverlay = null; // HTML UI 오버레이 엘리먼트
+    this.guiOverlay = null; 
     
-    this.version = "018호 GLSL Liquid Noise Ver 1.6";
+    // 💡 업데이트 세팅 마커
+    this.version = "018호 GLSL Liquid Noise Ver 1.7";
     this.time = 0;
     this.isAudioActive = false;
     this.lastSettingsStr = "";
@@ -60,17 +61,17 @@ export default class GLSLNoiseShaderStage {
 
       float liquidFBM(vec2 p, float midBump) {
         vec2 q = vec2(
-          noise(p + vec2(0.0, 0.0) + u_time * 0.06),
-          noise(p + vec2(5.2, 1.3) + u_time * 0.05)
+          noise(p + vec2(0.0, 0.0) + u_time * 0.05),
+          noise(p + vec2(5.2, 1.3) + u_time * 0.04)
         );
         
-        float warpStr = 1.5 + (midBump * 3.0);
+        float warpStr = 1.5 + (midBump * 2.5);
         vec2 r = vec2(
-          noise(p + q * warpStr + vec2(1.7, 9.2) + u_time * 0.1),
-          noise(p + q * warpStr + vec2(8.3, 2.8) + u_time * 0.08)
+          noise(p + q * warpStr + vec2(1.7, 9.2) + u_time * 0.08),
+          noise(p + q * warpStr + vec2(8.3, 2.8) + u_time * 0.06)
         );
         
-        return noise(p + r * (2.0 + u_scatter * 0.05));
+        return noise(p + r * (2.0 + u_scatter * 0.04));
       }
 
       void main() {
@@ -82,31 +83,35 @@ export default class GLSLNoiseShaderStage {
         float mid = u_audio.y;
         float high = u_audio.z;
 
-        float fbmVal = liquidFBM(st * 3.0 + vec2(u_seed * 0.1), mid * 2.0);
+        float fbmVal = liquidFBM(st * 3.5 + vec2(u_seed * 0.05), mid * 1.5);
 
-        float threshold = 0.35 + (u_scatter / 200.0) - (mid * 0.1);
+        // 💡 [구름 출력 핵심 패치] 구름 커트라인 기준치를 기존 0.35에서 0.22로 내려 구름의 상시 가시성을 무조건 확보합니다.
+        float densityOffset = (u_scatter - 22.0) * 0.005;
+        float threshold = 0.22 + densityOffset - (mid * 0.15);
+        
         float density = max(0.0, fbmVal - threshold);
-        float cloudIntensity = clamp(density * 6.5, 0.0, 1.0);
+        // 알파 밀도를 증폭하여 한층 더 몽환적이고 두터운 구름 덩어리를 만듭니다.
+        float cloudIntensity = clamp(density * 7.5, 0.0, 1.0);
 
         vec3 skyColor = vec3(0.0);
         vec3 cloudColor = vec3(0.0);
 
         if (u_style == 0) { 
             skyColor = vec3(0.08, 0.11, 0.16);
-            cloudColor = vec3(0.48, 0.50, 0.54);
+            cloudColor = vec3(0.55, 0.57, 0.60);
         } else if (u_style == 1) { 
-            vec3 topH = vec3(0.05, 0.31, 0.68);
-            vec3 botH = vec3(0.31, 0.58, 0.92);
+            vec3 topH = vec3(0.05, 0.35, 0.72);
+            vec3 botH = vec3(0.35, 0.62, 0.95);
             skyColor = mix(topH, botH, low);
             cloudColor = vec3(0.98, 0.99, 1.0);
         } else if (u_style == 2) { 
-            vec3 dawnTop = vec3(0.21, 0.07, 0.41);
-            vec3 dawnBot = vec3(0.92, 0.37, 0.15);
+            vec3 dawnTop = vec3(0.25, 0.08, 0.45);
+            vec3 dawnBot = vec3(0.95, 0.40, 0.18);
             skyColor = mix(dawnTop, dawnBot, low * 1.2);
-            cloudColor = vec3(1.0, 0.86, 0.72);
+            cloudColor = vec3(1.0, 0.88, 0.75);
         } else { 
-            skyColor = vec3(0.05, 0.07, 0.1);
-            cloudColor = vec3(0.0, 0.9, 1.0);
+            skyColor = vec3(0.05, 0.08, 0.12);
+            cloudColor = vec3(0.0, 0.92, 1.0);
         }
 
         vec3 finalColor = mix(skyColor, cloudColor, cloudIntensity);
@@ -125,13 +130,11 @@ export default class GLSLNoiseShaderStage {
       });
     }
 
-    // 💡 [초강력 차단 칩] 기존에 혹시 남아있을 가이드 HTML UI 엘리먼트 제거 후 재생성
     const oldOverlay = this.container.querySelector('.cosmic-shader-guide');
     if (oldOverlay) oldOverlay.remove();
 
     this.guiOverlay = document.createElement('div');
     this.guiOverlay.className = 'cosmic-shader-guide';
-    // 부모 컨테이너 내부에 완벽히 중앙 고정 정렬시키는 최첨단 인라인 스타일링 시공
     Object.assign(this.guiOverlay.style, {
       position: 'absolute',
       top: '50%',
@@ -153,7 +156,6 @@ export default class GLSLNoiseShaderStage {
       transition: 'opacity 0.4s ease'
     });
 
-    // 💡 p5.js 내부 에러 유발 코드를 거두고 웹 표준 HTML 텍스트 주입
     this.guiOverlay.innerHTML = `
       <div style="color: #00ffcc; font-size: 11px; text-align: left; margin-bottom: 15px; font-weight: bold; opacity: 0.85;">
         ⚙️ SYSTEM STATUS: ${this.version} READY
@@ -204,8 +206,9 @@ export default class GLSLNoiseShaderStage {
           else if (ui.style.includes('full-random')) styleIdx = 3;
           this.shaderProgram.setUniform('u_style', styleIdx);
 
+          // 💡 정지 상태 Fallback 기본 데이터 채널 강화
           if (!this.isAudioActive) {
-            this.shaderProgram.setUniform('u_audio', [0.3, 0.2, 0.1]);
+            this.shaderProgram.setUniform('u_audio', [0.4, 0.3, 0.2]);
           }
 
           p.noStroke();
@@ -248,11 +251,9 @@ export default class GLSLNoiseShaderStage {
 
     if (isPlaying || (audioData && audioData.vol > 0.005)) {
         this.isAudioActive = true;
-        // 음악 재생 시 HTML 가이드 매끄럽게 숨김
         if (this.guiOverlay) this.guiOverlay.style.opacity = '0';
     } else {
         this.isAudioActive = false;
-        // 정지 시 가이드 다시 선명하게 표시
         if (this.guiOverlay) this.guiOverlay.style.opacity = '1';
     }
 
@@ -264,14 +265,17 @@ export default class GLSLNoiseShaderStage {
         this.resetCanvas(p, true);
     }
 
-    this.time += (0.01 + (audioData ? audioData.vol : 0.15) * 0.04) * ui.burst;
+    let low = 0.4; let mid = 0.3; let high = 0.2;
+    if (audioData && audioData.raw && audioData.raw.length > 60) {
+        low = (audioData.raw[2] + audioData.raw[3]) / 510;
+        mid = (audioData.raw[15] + audioData.raw[16]) / 510;
+        high = (audioData.raw[55] + audioData.raw[56]) / 510;
+    }
+
+    this.time += (0.01 + mid * 0.04) * ui.burst;
 
     p.shader(this.shaderProgram);
-    this.shaderProgram.setUniform('u_audio', [
-        audioData ? (audioData.raw[2]/255) : 0.3,
-        audioData ? (audioData.vol * 1.5) : 0.2,
-        audioData ? (audioData.raw[55]/255) : 0.1
-    ]);
+    this.shaderProgram.setUniform('u_audio', [low, mid, high]);
     
     p.redraw();
   }
