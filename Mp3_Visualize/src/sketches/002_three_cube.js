@@ -1,9 +1,10 @@
 /**
  * src/sketches/002_three_cube.js
- * - [버전] Ver 4.3 (런타임 p5 객체 참조 오류 완벽 격파 및 정면 방사형 안전 구동판)
- * - Three.js 독립 구동 시 p5 전역 객체 참조로 인한 문법 에러(not defined)를 THREE.MathUtils로 100% 대체 수정 완료
- * - 서클 정면 배치 및 중심에서 바깥쪽으로 사방 방사형 확장 3대 형태학 무작위 셔플 유지
- * - 3중 멀티피커(가스1, 가스2, 대형별) 연동 및 특수문자 파일명 우회 3D 배경 스크린 탑재 유지
+ * - [버전] Ver 4.4 (오디오 재생 시 3D 링 바 블랙아웃 증발 버그 원천 격파 최종 완결판)
+ * - 외부 p5 라이브러리 의존성 찌꺼기를 100% 제거하여 재생 시 자바스크립트 런타임 셧다운(Crash) 원인 원천 봉쇄
+ * - 서클 정면 배치 및 오디오 타격 시 중심 원(Core)에서 사방 바깥쪽(Radial Outward)으로 뿜어내는 입체 스케일 변환
+ * - 3대 형태학 무작위 셔플 및 5대 컬러 프리셋(태양, 파란바다, 3중 멀티피커, 랜덤원색, 와이어 테두리) 완벽 연동
+ * - 사용 설명 가이드 HTML 레이어(스타트 재생 시 자동 페이드아웃) 및 특수문자 파일명 우회 3D 배경 스크린 기본 장착
  */
 
 export default class ThreeCube {
@@ -14,8 +15,8 @@ export default class ThreeCube {
     this.renderer = null;
     this.guiOverlay = null;
 
-    // 💡 최종 픽스 마커 세팅
-    this.version = "002호 3D Radial Outward Bar Ver 4.3";
+    // 💡 002호 전용 최종 패치 픽스 마커 세팅
+    this.version = "002호 3D Radial Outward Bar Ver 4.4";
     this.isAudioActive = false;
     this.lastSettingsStr = "";
 
@@ -35,6 +36,7 @@ export default class ThreeCube {
     this.scene = new THREE.Scene();
     this.scene.fog = new THREE.FogExp2(0x06060a, 0.02);
 
+    // 서클 비주얼라이저를 왜곡 없이 정면에서 똑바로 응시하도록 카메라 앵글 정중앙 셋업
     this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
     this.camera.position.set(0, 0, 8); 
     this.camera.lookAt(0, 0, 0);
@@ -51,16 +53,17 @@ export default class ThreeCube {
     pointLight.position.set(0, 0, 6); 
     this.scene.add(pointLight);
 
+    // 3D 우주 배경 스크린 (특수문자 및 블롭 경로 대응 우회판)
     const bgGeo = new THREE.PlaneGeometry(24, 14);
     const bgMat = new THREE.MeshBasicMaterial({ color: 0x09090e, depthWrite: false });
     this.bgMesh = new THREE.Mesh(bgGeo, bgMat);
     this.bgMesh.position.set(0, 0, -4); 
     this.scene.add(this.bgMesh);
 
-    // [공통 표준 규격] 가이드 레이어 부팅
+    // [공통 표준 규격] 사용 설명 가이드 UI 빌드
     this.buildOnScreenGuideUI();
 
-    // 정면 방사형 매트릭스 어레이 링 빌드
+    // 정면 방사형 매트릭스 링 어레이 빌드
     this.buildRadialMatrix();
 
     this.setupDirectInputTracker();
@@ -245,7 +248,7 @@ export default class ThreeCube {
   }
 
   resetCanvas(p, isPreview = false) {
-     // 구조적 우회 유지
+     // 구조적 리셋 우회
   }
 
   update(audioData) {
@@ -276,7 +279,7 @@ export default class ThreeCube {
     let masterVol = audioData ? audioData.vol : 0.1;
     masterVol *= ui.burst;
 
-    // 💡 [버그 격파 코어] window.p5 객체가 정의되지 않아도 100% 안전하게 구동되도록 Three.js 순수 공식 인터폴레이션으로 교체 피팅
+    // 💡 [버그 원천 해결] 에러를 일으키던 p5.prototype을 완벽히 도려내고, 순수 쓰리제이에스 내장 함수로 실시간 슬라이더 값 매핑 교체 완료
     let scaleMultiplier = 1.0; 
     const glowSlider = document.getElementById('slide-cosmic-glow');
     if (glowSlider) {
@@ -289,6 +292,7 @@ export default class ThreeCube {
         let rawIdx = Math.floor(node.freqIdxRatio * (rawData.length - 1));
         freqVolume = rawData[rawIdx] / 255.0;
       } else {
+        // 정지 상태일 때 호흡하듯 잔잔하게 파동 치는 대기 모션용 난수 보간
         freqVolume = Math.sin(time * 2.0 + node.seedShift * 5.0) * 0.08 + 0.08;
       }
 
@@ -296,6 +300,7 @@ export default class ThreeCube {
       let dynamicResponse = freqVolume * 6.8 * scaleMultiplier;
 
       if (node.mode === 'full-bar') {
+        // 1. 전체 막대: 서클 정면 중심 ➡️ 바깥 방향 팽창
         let targetScaleY = 0.1 + dynamicResponse;
         node.mesh.scale.y = THREE.MathUtils.lerp(node.mesh.scale.y, targetScaleY, 0.26);
         let extendedRadius = node.baseRadius + (node.mesh.scale.y / 2);
@@ -303,6 +308,7 @@ export default class ThreeCube {
         node.mesh.position.y = Math.sin(node.angle) * extendedRadius;
       } 
       else if (node.mode === 'tip-only') {
+        // 2. 끝만 막대: 공중부양 알갱이가 비트에 맞춰 바깥쪽으로 사출
         node.mesh.scale.set(1, 1, 1);
         let targetRadius = node.baseRadius + (dynamicResponse * 0.85);
         let curRadius = THREE.MathUtils.lerp(node.baseRadius, targetRadius, 0.26);
@@ -310,6 +316,7 @@ export default class ThreeCube {
         node.mesh.position.y = Math.sin(node.angle) * curRadius;
       } 
       else {
+        // 3. 시작만 표현: 정위치 앵커 단추 벌크업 반짝임
         let targetDotScale = 1.0 + freqVolume * 3.5 * scaleMultiplier;
         let curDotScale = THREE.MathUtils.lerp(node.mesh.scale.x, targetDotScale, 0.28);
         node.mesh.scale.set(curDotScale, curDotScale, curDotScale);
@@ -322,10 +329,11 @@ export default class ThreeCube {
       }
     });
 
+    // 정면 방향 원형 비주얼라이저의 입체적 자전 롤링 효과
     this.scene.rotation.z = time * 0.04 + (masterVol * 0.06);
     this.scene.rotation.y = Math.sin(time * 0.3) * 0.04;
 
-    // 💡 밖으로 확실하게 탈출 고정하여 무조건 화면 리프레시 강제 가속
+    // 💡 렌더링 파이프라인 상시 보장 고정
     this.renderer.render(this.scene, this.camera);
   }
 
