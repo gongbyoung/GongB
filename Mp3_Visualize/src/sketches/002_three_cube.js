@@ -1,10 +1,10 @@
 /**
  * src/sketches/002_three_cube.js
- * - [버전] Ver 4.10 (분산범위 크기 제어 축 50% 추가 컴팩트 슬림 압축판)
- * - Center Scatter 슬라이더의 기본 반경 배율을 현재 스펙보다 50% 더 아담하게 축소 조율 완료
- * - 슬라이더를 최대로 올려도 9:16 모바일 화면을 절대 이탈하지 않고 중앙 정렬 안착 방어
- * - 점 모드 0 나누기 오류 우회 및 지형변경 슬라이더 구간별 6대 기하학 형태 변형 완결판 유지
- * - 3대 형태학 무작위 셔플 및 5대 컬러 스타일 프리셋, 특수문자 우회 3D 배경 스크린 탑재 유지
+ * - [버전] Ver 4.11 (비동기 텍스처 이미지 로딩 needsUpdate 누락 및 안개 Fog 가림 현상 버그 100% 완전 해결판)
+ * - TextureLoader 비동기 완료 시점에 material.needsUpdate = true 강제 칩을 주입하여 실시간 렌더링 세대교체 보장
+ * - 배경 메쉬만 안개 효과(fog: false)의 간섭을 차단하여 이미지가 뒤에 온전하고 꽉 차게 방출되도록 공학 설계
+ * - 분산범위(Center Scatter) 기반 50% 슬림 콤팩트 스케일링 및 지형변경 슬라이더 6대 기하학 레이아웃 매퍼 유지
+ * - 점 모드 0나누기 NaN 좌표 깨짐 방어 및 3대 형태학 무작위 셔플, 5대 컬러 프리셋 완벽 유지
  */
 
 export default class ThreeCube {
@@ -15,8 +15,8 @@ export default class ThreeCube {
     this.renderer = null;
     this.guiOverlay = null;
 
-    // 💡 002호 최종 분산범위 압축 픽스 마커 세팅
-    this.version = "002호 3D Radial Outward Bar Ver 4.10";
+    // 💡 최종 미디어 융합 완결판 마커 세팅
+    this.version = "002호 3D Radial Outward Bar Ver 4.11";
     this.isAudioActive = false;
     this.lastSettingsStr = "";
 
@@ -45,15 +45,16 @@ export default class ThreeCube {
     this.renderer.setClearColor(0x06060a);
     this.container.appendChild(this.renderer.domElement);
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.22);
     this.scene.add(ambientLight);
 
     const pointLight = new THREE.PointLight(0xffffff, 1.5, 100);
     pointLight.position.set(0, 0, 6); 
     this.scene.add(pointLight);
 
+    // 💡 [배경판 생성 부근 개조] 안개(fog: false)의 간섭을 완전히 찢어버려 까맣게 탈색되는 버그를 무력화
     const bgGeo = new THREE.PlaneGeometry(24, 14);
-    const bgMat = new THREE.MeshBasicMaterial({ color: 0x09090e, depthWrite: false });
+    const bgMat = new THREE.MeshBasicMaterial({ color: 0x09090e, depthWrite: false, fog: false });
     this.bgMesh = new THREE.Mesh(bgGeo, bgMat);
     this.bgMesh.position.set(0, 0, -4); 
     this.scene.add(this.bgMesh);
@@ -99,9 +100,9 @@ export default class ThreeCube {
         002호 정면 방사형 비주얼라이저 가이드
       </h3>
       <div style="font-size: 12.5px; text-align: left; line-height: 1.75; color: #dddddd;">
-        <p style="margin: 6px 0;">📏 <strong style="color: #00ffcc;">[분산범위 50% 다운]</strong> 분산범위 슬라이더의 크기 확장 상한선을 전면 절반으로 압축 완료했습니다.</p>
+        <p style="margin: 6px 0;">🖼️ <strong style="color: #00ffcc;">[배경 이미지 리얼 타임 맵]</strong> 비동기 로딩 텍스처 업데이트 락 해제로 이미지가 칼같이 투사됩니다.</p>
         <p style="margin: 6px 0;">🎲 <strong style="color: #ffffff;">[6대 기하학 스위칭]</strong> 지형변경 슬라이더 구간별로 [점 ➡️ 서클 ➡️ 삼각형 ➡️ 사각형 ➡️ 별 ➡️ 타원] 형태 변형 완료!</p>
-        <p style="margin: 6px 0;">🎡 <strong style="color: #ffffff;">[안전 구동 보장]</strong> 점 모드 0나누기 오동작을 완벽 차단하여 재생 시 블랙아웃 현상을 무결하게 격파합니다.</p>
+        <p style="margin: 6px 0;">📏 <strong style="color: #ffffff;">[분산범위 크기 조절]</strong> 분산범위 수치를 밀고 당겨 9:16 모바일 뷰에 안착하는 컴팩트 마스터 반경을 조절하세요.</p>
         <p style="margin: 6px 0; color: #ffcc00;">▶️ <strong style="color: #ffcc00;">[하단 스타트]</strong> 재생 버튼을 누르면 이 가이드창이 투명하게 사라지며 영상이 시작됩니다!</p>
       </div>
       <div style="color: #777777; font-size: 10.5px; margin-top: 16px; border-top: 1px solid #222530; padding-top: 10px;">
@@ -118,8 +119,7 @@ export default class ThreeCube {
     const baseBoxGeometry = new THREE.BoxGeometry(0.12, 1, 0.12);
     const ui = this.getUIParams();
 
-    // 💡 [핵심 교정 축] 분산범위(ui.scatter) 배율의 기초 폭을 기존보다 50% 추가 압축!
-    // 기존 0.4 ~ 2.5 범위에서 -> 0.2 ~ 1.25 범위로 완벽하게 하향 시공하여 가변 폭을 조밀하게 맞췄습니다.
+    // 분산범위 기반 50% 콤팩트 축소 마스터 기본 반경
     let currentBaseRadius = THREE.MathUtils.mapLinear(ui.scatter, 0.5, 5.0, 0.2, 1.25) * 0.65; 
 
     let seedValue = ui.seed;
@@ -240,6 +240,7 @@ export default class ThreeCube {
     }
   }
 
+  // 💡 [배경 주입 옵저버 전면 개조] needsUpdate 기폭 장치 수혈 탑재
   setupDirectInputTracker() {
     const loader = new THREE.TextureLoader();
     const findAndBindImage = () => {
@@ -253,11 +254,14 @@ export default class ThreeCube {
       }
       if (targetImg && targetImg.src && targetImg.src !== this.lastBgSrc) {
         this.lastBgSrc = targetImg.src;
+        
         loader.load(targetImg.src, (tex) => {
           this.bgTexture = tex;
           if (this.bgMesh) {
             this.bgMesh.material.dispose();
-            this.bgMesh.material = new THREE.MeshBasicMaterial({ map: this.bgTexture, depthWrite: false });
+            // 💡 안개 차단형 재질 재생성 및needsUpdate 선언 완벽 조립
+            this.bgMesh.material = new THREE.MeshBasicMaterial({ map: this.bgTexture, depthWrite: false, fog: false });
+            this.bgMesh.material.needsUpdate = true; 
           }
         });
       }
