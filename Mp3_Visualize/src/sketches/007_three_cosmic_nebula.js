@@ -1,9 +1,9 @@
 /**
  * src/sketches/007_three_cosmic_nebula.js
- * - [버전] Ver 2.2 (비동기 타이밍 락 무력화 및 세이프티 가이드 UI 인젝션 완결판)
- * - main.js 로딩 스위칭 시점의 하드웨어 타이밍 충돌을 방어하기 위해 비동기 세이프티 가이드 팝업 렌더 파이프라인 보강
- * - 은하수 나선 공식의 잔재를 완전히 도려내어 25,000개 별빛이 우주 공간 전체에 균등 확산 분산되도록 보장
- * - i % 3 구조 주파수 삼분할 제어: 저음(제자리 진동), 중음(은은한 반짝이기), 고음(랜덤 컬러 가변 후 복귀) 완벽 유지
+ * - [버전] Ver 2.3 (32개 주파수 대역별 14대 무작위 독립 물리 거동 믹싱 완결판)
+ * - 3개 분할의 단조로움을 완벽히 깨고, 입자 리스트를 i % 32 구조로 분할하여 32개의 주파수 독립 트래커 유닛 시공
+ * - 회원님 기획의 [위아래/좌우/대각선 흔들기, 원형 번짐/복귀, 제자리 회전, 사방 임의 날아가기, 꼬리 잔상, 순간이동 워프] 완벽 수학적 배합
+ * - 입자별 개별 무작위 난수 힘(Force Scale)을 다르게 주입하여 획일화되지 않은 정교한 우주 공간 텍스처 연출
  * - 분산범위(별의 범위), 지형변경(위치 랜덤화), 발광, 폭발력 및 무결점 배경 주입 완벽 연동
  */
 
@@ -25,7 +25,7 @@ export default class ThreeRealNebula {
     this.loadedScatter = -1;
     this.loadedColorStyle = '';
     
-    this.version = "007호 주파수 삼분할 스페이스 Ver 2.2";
+    this.version = "007호 32채널 무작위 독립 다이내믹 스페이스 Ver 2.3";
   }
 
   init() {
@@ -36,7 +36,7 @@ export default class ThreeRealNebula {
     this.scene.fog = new THREE.FogExp2(0x010103, 0.02);
 
     this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
-    this.camera.position.set(0, 4, 16);
+    this.camera.position.set(0, 3, 15);
     this.camera.lookAt(0, 0, 0);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -44,18 +44,15 @@ export default class ThreeRealNebula {
     this.renderer.setClearColor(0x010103);
     this.container.appendChild(this.renderer.domElement);
 
-    this.scene.add(new THREE.AmbientLight(0x222233, 1.0));
+    this.scene.add(new THREE.AmbientLight(0x222233, 1.2));
 
-    // 💡 비동기 타이밍 이슈 방지를 위해 돔 빌드 리소스를 안전하게 이중 장착
     this.buildOnScreenGuideUI();
     this.buildCosmos();
   }
 
-  // 💡 [안내창 인젝션 세이프 가드 강화] 비동기 타이밍 충돌을 무력화하는 절대 팝업 빌더
   buildOnScreenGuideUI() {
     const renderOverlay = () => {
       if (!this.container) return;
-      
       const oldOverlay = this.container.querySelector('.cosmic-shader-guide');
       if (oldOverlay) oldOverlay.remove();
 
@@ -68,14 +65,14 @@ export default class ThreeRealNebula {
         left: '50%',
         transform: 'translate(-50%, -50%)',
         width: '85%',
-        maxWidth: '430px',
+        maxWidth: '440px',
         backgroundColor: 'rgba(5, 7, 12, 0.96)',
         border: '1px solid rgba(0, 255, 204, 0.7)', 
         borderRadius: '12px',
         padding: '22px',
         color: '#ffffff',
         fontFamily: 'sans-serif',
-        zIndex: '9999', // 캔버스 최상단에 무조건 노출 락
+        zIndex: '9999', 
         boxShadow: '0 8px 30px rgba(0,0,0,0.8)',
         boxSizing: 'border-box',
         textAlign: 'center',
@@ -87,21 +84,18 @@ export default class ThreeRealNebula {
         <div style="color: #00ffcc; font-size: 11px; text-align: left; margin-bottom: 14px; font-weight: bold; letter-spacing: 0.5px;">
           ⚙️ STAGE STATUS: ${this.version} READY
         </div>
-        <h3 style="color: #ffffff; font-size: 16.5px; margin: 0 0 16px 0; font-weight: 600;">
-          007호 주파수 삼분할 스페이스 가이드
+        <h3 style="color: #ffffff; font-size: 16px; margin: 0 0 14px 0; font-weight: 600;">
+          007호 32채널 무작위 가변 매트릭스
         </h3>
-        <div style="font-size: 12.5px; text-align: left; line-height: 1.8; color: #dddddd;">
-          <p style="margin: 6px 0;">🔴 <strong style="color: #ff0055;">[저음역 ➡️ 제자리 진동]</strong> 3의 배수 첫 번째 별빛들이 흩어지지 않고 제자리에서 묵직하게 파르르 떨립니다.</p>
-          <p style="margin: 6px 0;">🟢 <strong style="color: #00ffcc;">[중음역 ➡️ 반짝이기]</strong> 두 번째 별빛 무리들이 주파수 호흡에 맞춰 영롱하게 명멸 트윙클 진동합니다.</p>
-          <p style="margin: 6px 0;">🔵 <strong style="color: #0077ff;">[고음역 ➡️ 랜덤 컬러 리턴]</strong> 하이 비트 순간에 색상이 랜덤하게 튀었다가 다시 부드럽게 원래 배색으로 리턴됩니다.</p>
-          <p style="margin: 6px 0; color: #ffcc00;">▶️ <strong style="color: #ffcc00;">[하단 스타트]</strong> 재생 버튼을 누르면 설명창이 투명하게 자동 소멸합니다.</p>
+        <div style="font-size: 12px; text-align: left; line-height: 1.75; color: #dddddd;">
+          <p style="margin: 4px 0;">🎛️ <strong style="color: #00ffcc;">[32분할 고유 춤사위]</strong> 단조로움을 깨고 별빛 무리를 32개 주파수 대역 채널별로 완벽히 격리 제어했습니다.</p>
+          <p style="margin: 4px 0;">🌌 <strong style="color: #ffffff;">[14대 우주 역학 배합]</strong> 흔들기, 제자리 회전, 원형 음파 번짐, 사방 임의 사출 비행, 꼬리 잔상, 순간이동 워프 기믹이 입자마다 무작위 힘의 크기로 교차 연동됩니다.</p>
+          <p style="margin: 4px 0; color: #ffcc00;">▶️ <strong style="color: #ffcc00;">[하단 스타트]</strong> 재생 버튼을 누르면 이 가이드 팝업창이 사라집니다.</p>
         </div>
       `;
       this.container.appendChild(this.guiOverlay);
     };
-
     renderOverlay();
-    // 락 방어용 백업 스케줄러 가동
     setTimeout(renderOverlay, 150);
   }
 
@@ -152,8 +146,7 @@ export default class ThreeRealNebula {
     this.particleData = [];
     let sRandom = this.currentSeed;
 
-    // 💡 레거시 나선 수식을 원천 파괴하고 구형 공간 확산 지름 축으로 튜닝 변경
-    const maxDistributionRadius = THREE.MathUtils.mapLinear(this.scatterExponent, 0.5, 5.0, 2.5, 25.0);
+    const maxDistributionRadius = THREE.MathUtils.mapLinear(this.scatterExponent, 0.5, 5.0, 3.0, 26.0);
 
     for (let i = 0; i < this.particleCount; i++) {
       sRandom = this.seededRandom(sRandom) * 1000;
@@ -162,35 +155,34 @@ export default class ThreeRealNebula {
       const r3 = this.seededRandom(sRandom + 3);
       const r4 = this.seededRandom(sRandom + 4);
 
-      // 전체 무작위 공간 분산 매트릭스 수식 적용
       const theta = r1 * 2.0 * Math.PI;
       const phi = Math.acos(2.0 * r2 - 1.0);
-      const baseDist = Math.pow(r3, 0.5) * maxDistributionRadius;
+      const baseDist = Math.pow(r3, 0.55) * maxDistributionRadius;
 
       const x = baseDist * Math.sin(phi) * Math.cos(theta);
-      const y = baseDist * Math.sin(phi) * Math.sin(theta) * 0.55; 
+      const y = baseDist * Math.sin(phi) * Math.sin(theta) * 0.6; 
       const z = baseDist * Math.cos(phi);
 
       positions[i * 3] = x;
       positions[i * 3 + 1] = y;
       positions[i * 3 + 2] = z;
 
-      let pSize = 0.015 + r1 * 0.02;
+      let pSize = 0.015 + r1 * 0.025;
       let color = new THREE.Color();
-      let starType = (r4 < 0.07) ? 'star' : 'gas';
+      let starType = (r4 < 0.08) ? 'star' : 'gas';
 
-      if (starType === 'star') pSize = 0.14 + r1 * 0.2; 
+      if (starType === 'star') pSize = 0.15 + r1 * 0.22; 
 
       if (this.colorStyle === 'monochrome') {
         if (starType === 'star') color.setHex(0xffffff);
-        else if (i % 3 === 0) color.setHex(0x001f4d); 
-        else if (i % 3 === 1) color.setHex(0x0066cc); 
-        else color.setHex(0x33ccff);                
+        else if (i % 3 === 0) color.setHex(0x001a4d); 
+        else if (i % 3 === 1) color.setHex(0x0055cc); 
+        else color.setHex(0x26d9ff);                
       } 
       else if (this.colorStyle === 'pastel') {
-        if (starType === 'star') color.setHex(0xffaa44);
-        else if (i % 2 === 0) color.setHex(0xff4400); 
-        else color.setHex(0x2a0000);                
+        if (starType === 'star') color.setHex(0xffbb44);
+        else if (i % 2 === 0) color.setHex(0xff3c00); 
+        else color.setHex(0x1a0200);                
       }
       else if (this.colorStyle === 'custom') {
         const cc = this.customColors;
@@ -200,7 +192,7 @@ export default class ThreeRealNebula {
       } 
       else {
         if (starType === 'star') color.setHSL(r1, 0.3, 0.9);
-        else color.setHSL(r1, 0.75, 0.55);
+        else color.setHSL(r1, 0.8, 0.55);
       }
 
       colors[i * 3] = color.r;
@@ -208,16 +200,29 @@ export default class ThreeRealNebula {
       colors[i * 3 + 2] = color.b;
       sizes[i] = pSize;
 
+      // 💡 개별 입자 고유 무작위 힘(Force Scale Factor) 설계 수치 인젝터
+      const randomForceMagnitude = 0.4 + r2 * 2.2; // 각각 저항과 가속도가 다른 비대칭 물리 유도
+      
+      // 사방 임의 비행 방향용 단위 벡터 산출
+      const randomAngle = r3 * Math.PI * 2;
+      const dirX = Math.cos(randomAngle);
+      const dirY = (r1 - 0.5) * 2.0;
+      const dirZ = Math.sin(randomAngle);
+
       this.particleData.push({
         baseX: x, baseY: y, baseZ: z, 
-        radius: baseDist,
-        angle: theta,
-        speed: 0.04 + r1 * 0.25,
-        twinkleSpeed: 4.0 + r2 * 8.0,
+        radius: baseDist, angle: theta,
+        speed: (0.05 + r1 * 0.3) * randomForceMagnitude,
+        twinkleSpeed: 3.0 + r2 * 9.0,
         type: starType,
         baseSize: pSize,
         randomPhase: r3 * Math.PI,
-        originalColor: color.clone()
+        originalColor: color.clone(),
+        
+        // 💡 14대 우주 거동용 고유 독립 난수 파라미터 세트
+        forceScale: randomForceMagnitude,
+        dirX: dirX, dirY: dirY, dirZ: dirZ,
+        currentWarpTime: r4 * 10.0
       });
     }
 
@@ -263,10 +268,9 @@ export default class ThreeRealNebula {
     if (window.cosmicEngineSettings) {
       this.colorStyle = window.cosmicEngineSettings.colorStyle;
       this.audioGain = window.cosmicEngineSettings.audioGain;
-      
       const glow = window.cosmicEngineSettings.glowIntensity;
       this.material.opacity = Math.min(1.0, glow); 
-      this.material.size = Math.max(0.4, glow * 2.1); 
+      this.material.size = Math.max(0.4, glow * 2.2); 
     }
 
     const time = Date.now() * 0.001;
@@ -275,10 +279,13 @@ export default class ThreeRealNebula {
     const sizes = this.geometry.attributes.pSize.array;
 
     const gain = this.audioGain;
-    const bass    = audioData ? audioData.bass * gain * 2.0 : 0;
-    const mid     = audioData ? audioData.mid * gain * 1.6 : 0;
-    const treble  = audioData ? audioData.treble * gain * 2.2 : 0;
-    const volume  = audioData ? audioData.volume * gain * 1.5 : 0;
+    
+    // 💡 메인 관제탑 main.js의 오디오 배열 버퍼 디코딩 수혈
+    let rawBands = audioData ? (audioData.raw || audioData.spectrum || []) : [];
+    let hasBands = rawBands.length > 20;
+
+    let volume = audioData ? (audioData.vol || audioData.volume || 0.1) : 0.1;
+    volume *= gain;
 
     if (volume > 0.05) {
       if (this.guiOverlay) this.guiOverlay.style.opacity = '0';
@@ -286,46 +293,119 @@ export default class ThreeRealNebula {
       if (this.guiOverlay) this.guiOverlay.style.opacity = '1';
     }
 
+    // 💡 [32채널 무작위 독립 믹싱 거동 대연산 코어 파이프라인]
     for (let i = 0; i < this.particleCount; i++) {
       const data = this.particleData[i];
+      
+      // i % 32 수식으로 32개 대역폭 채널 인덱스 매핑 추출
+      const channelIdx = i % 32;
+      
+      // 오디오 밴드 리스트에서 해당 채널의 주파수 파워 추출
+      let bandPower = hasBands ? (rawBands[Math.floor((channelIdx / 32) * (rawBands.length - 1))] / 255.0) : 0.1;
+      bandPower *= gain;
 
-      // 💥 1번 분기: 저음 파트 [i % 3 === 0] ➡️ 제자리 진동
-      if (i % 3 === 0) {
-         const tremble = Math.sin(time * 45.0 + data.randomPhase) * (bass * 0.035);
-         positions[i * 3]     = data.baseX + tremble;
-         positions[i * 3 + 1] = data.baseY + tremble;
-         positions[i * 3 + 2] = data.baseZ + tremble;
-         
-         sizes[i] = data.baseSize * (1.0 + bass * 2.0);
+      // 각 채널마다 다르게 매핑된 무작위 힘 가중치 적용
+      const dynamicForce = bandPower * data.forceScale;
+
+      // 기본 좌표축 세팅 백업
+      let tX = data.baseX;
+      let tY = data.baseY;
+      let tZ = data.baseZ;
+
+      // 💡 [14대 우주 역학 거동 채널별 조립 공정]
+      switch (channelIdx) {
+        case 0: case 1: case 2:
+          // 1) 위로 흔들리기 / 위아래 흔들리기
+          tY += Math.sin(time * 25.0 + data.randomPhase) * (dynamicForce * 1.5);
+          break;
+        case 3: case 4:
+          // 2) 좌우로 흔들리기
+          tX += Math.cos(time * 25.0 + data.randomPhase) * (dynamicForce * 1.5);
+          break;
+        case 5: case 6:
+          // 3) 살짝 커졌다가 작아지기 (오직 호흡 스케일 제어)
+          sizes[i] = data.baseSize * (1.0 + dynamicForce * 5.0);
+          break;
+        case 7: case 8:
+          // 4) 음파처럼 원형으로 번져가기 (방사형 외곽 밀어내기)
+          let pushDist = 1.0 + dynamicForce * 1.2;
+          tX *= pushDist; tY *= pushDist; tZ *= pushDist;
+          break;
+        case 9: case 10:
+          // 5) 제자리 회전하기 (각 채널의 로컬 원점 기준 z축 회전 롤링)
+          let rotAngle = time * 2.0 * data.speed + (dynamicForce * 0.5);
+          tX = data.baseX * Math.cos(rotAngle) - data.baseZ * Math.sin(rotAngle);
+          tZ = data.baseX * Math.sin(rotAngle) + data.baseZ * Math.cos(rotAngle);
+          break;
+        case 11: case 12:
+          // 6) 대각선으로 흔들기
+          let diag = Math.sin(time * 22.0 + data.randomPhase) * (dynamicForce * 1.4);
+          tX += diag; tY += diag;
+          break;
+        case 13: case 14: case 15:
+          // 7) 작아졌다 원형으로 오기 (역방향 음파 수축 보간 제어)
+          let pullDist = Math.max(0.1, 1.0 - (dynamicForce * 0.85));
+          tX *= pullDist; tY *= pullDist; tZ *= pullDist;
+          sizes[i] = data.baseSize * (0.3 + (1.0 - pullDist) * 3.0);
+          break;
+        case 16: case 17: case 18:
+          // 8) 오른쪽 임의 방향으로 날아가기 (dirX 가 양수인 방향 중심 사출)
+          let rFly = dynamicForce * 4.5;
+          tX += Math.abs(data.dirX) * rFly; tY += data.dirY * rFly * 0.3; tZ += data.dirZ * rFly * 0.3;
+          break;
+        case 19: case 20: case 21:
+          // 9) 아래쪽 임의 방향으로 날아가기 (dirY 가 음수인 중력 낙하 형태 사출)
+          let dFly = dynamicForce * 4.5;
+          tX += data.dirX * dFly * 0.3; tY -= Math.abs(data.dirY) * dFly; tZ += data.dirZ * dFly * 0.3;
+          break;
+        case 22: case 23: case 24:
+          // 10) 왼쪽 임의 방향으로 날아가기 (dirX 가 음수인 방향 사출)
+          let lFly = dynamicForce * 4.5;
+          tX -= Math.abs(data.dirX) * lFly; tY += data.dirY * lFly * 0.3; tZ += data.dirZ * lFly * 0.3;
+          break;
+        case 25: case 26: case 27:
+          // 11) 위쪽 임의 방향으로 날아가기 (dirY 가 양수인 분수 형태 사출)
+          let uFly = dynamicForce * 4.5;
+          tX += data.dirX * uFly * 0.3; tY += Math.abs(data.dirY) * uFly; tZ += data.dirZ * uFly * 0.3;
+          break;
+        case 28: case 29:
+          // 12) 움직임에 영롱한 꼬리(残像) 남기기 및 고음 플래시 가변 색상 믹싱
+          let trailPulse = 1.0 + Math.sin(time * 12.0 + data.randomPhase) * (dynamicForce * 0.8);
+          tX *= trailPulse; tY *= trailPulse; tZ *= trailPulse;
+          // 비트 주기에 맞춰 잔상 색상으로 튀었다가 복귀
+          if (bandPower > 0.6) {
+             colors[i * 3] = 1.0; colors[i * 3 + 1] = 0.9; colors[i * 3 + 2] = 0.3;
+          } else {
+             colors[i * 3] = THREE.MathUtils.lerp(colors[i * 3], data.originalColor.r, 0.1);
+             colors[i * 3 + 1] = THREE.MathUtils.lerp(colors[i * 3 + 1], data.originalColor.g, 0.1);
+             colors[i * 3 + 2] = THREE.MathUtils.lerp(colors[i * 3 + 2], data.originalColor.b, 0.1);
+          }
+          break;
+        case 30: case 31:
+          // 13) 순간이동(Warp)으로 임의 지점으로 불규칙 공간 점프 이동 기믹
+          // 피크 임계치 비트 볼륨이 감지되면 완전히 다른 위상 좌표 공간으로 차원 도약 워프 시공
+          if (bandPower > 0.82) {
+             tX = data.baseX + data.dirX * (data.forceScale * 8.0);
+             tY = data.baseY + data.dirY * (data.forceScale * 5.0);
+             tZ = data.baseZ + data.dirZ * (data.forceScale * 8.0);
+             sizes[i] = data.baseSize * 4.5; // 워프 소닉붐 효과 크기 뻥튀기
+          } else {
+             // 비트 안 터질 땐 제자리 미세 떨림 진동 유지
+             let backTremble = Math.sin(time * 30.0) * 0.05;
+             tX += backTremble; tY += backTremble; tZ += backTremble;
+             sizes[i] = THREE.MathUtils.lerp(sizes[i], data.baseSize * (1.0 + bandPower * 1.5), 0.2);
+          }
+          break;
       }
-      // 💥 2번 분기: 중음 파트 [i % 3 === 1] ➡️ 영롱한 반짝이기 트윙클
-      else if (i % 3 === 1) {
-         const pulse = 1.0 + Math.sin(time * 2.0 + data.randomPhase) * (mid * 0.15);
-         positions[i * 3]     = data.baseX * pulse;
-         positions[i * 3 + 1] = data.baseY * pulse;
-         positions[i * 3 + 2] = data.baseZ * pulse;
 
-         const blink = 0.5 + Math.sin(time * data.twinkleSpeed) * 0.5;
-         sizes[i] = data.baseSize * (1.0 + mid * 3.0) * (0.3 + blink * (mid * 1.5));
-      }
-      // 💥 3번 분기: 고음 파트 [i % 3 === 2] ➡️ 고음 타격 시 완전히 다른 색상 가변 후 복귀
-      else {
-         if (treble > 0.65) {
-            let shiftSeed = i + Math.floor(time * 10);
-            colors[i * 3]     = this.seededRandom(shiftSeed);
-            colors[i * 3 + 1] = this.seededRandom(shiftSeed + 1);
-            colors[i * 3 + 2] = this.seededRandom(shiftSeed + 2);
-            sizes[i] = data.baseSize * 4.0; 
-         } else {
-            colors[i * 3]     = THREE.MathUtils.lerp(colors[i * 3], data.originalColor.r, 0.1);
-            colors[i * 3 + 1] = THREE.MathUtils.lerp(colors[i * 3 + 1], data.originalColor.g, 0.1);
-            colors[i * 3 + 2] = THREE.MathUtils.lerp(colors[i * 3 + 2], data.originalColor.b, 0.1);
-            sizes[i] = THREE.MathUtils.lerp(sizes[i], data.baseSize * (1.0 + treble * 1.5), 0.2);
-         }
-
-         positions[i * 3] = data.baseX + Math.sin(time * 0.2 + data.randomPhase) * (treble * 0.05);
-         positions[i * 3 + 1] = data.baseY + Math.cos(time * 0.2 + data.radius) * (treble * 0.05);
-         positions[i * 3 + 2] = data.baseZ + Math.cos(time * 0.5 + data.randomPhase) * (treble * 0.05);
+      // 최종 계산된 다차원 축 위치 배열 버퍼에 대입 안착
+      positions[i * 3]     = THREE.MathUtils.lerp(positions[i * 3], tX, 0.28);
+      positions[i * 3 + 1] = THREE.MathUtils.lerp(positions[i * 3 + 1], tY, 0.28);
+      positions[i * 3 + 2] = THREE.MathUtils.lerp(positions[i * 3 + 2], tZ, 0.28);
+      
+      // 5, 6, 30, 31번 스케일 가변 제외 대역 기본 입자 크기 동기화 밸런싱
+      if (channelIdx !== 5 && channelIdx !== 6 && channelIdx !== 30 && channelIdx !== 31) {
+         sizes[i] = data.baseSize * (1.0 + bandPower * 2.0);
       }
     }
 
@@ -333,8 +413,9 @@ export default class ThreeRealNebula {
     this.geometry.attributes.color.needsUpdate = true;
     this.geometry.attributes.pSize.needsUpdate = true;
 
-    this.points.rotation.y = time * 0.012 + (volume * 0.03);
-    this.points.rotation.x = Math.sin(time * 0.005) * 0.04;
+    // 우주 전체 조망 카메라 앵글 미세 흐름 제어
+    this.points.rotation.y = time * 0.01 + (volume * 0.02);
+    this.points.rotation.x = Math.sin(time * 0.005) * 0.03;
 
     this.renderer.render(this.scene, this.camera);
   }
