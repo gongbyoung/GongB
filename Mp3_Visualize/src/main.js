@@ -1,8 +1,8 @@
 /**
  * src/main.js
- * - [버전] Ver 2.4 (수동 기폭 RESET 필터 버튼 통합 관제 탑재판)
- * - 슬라이더 미세 조정 시 매 프레임 재빌드되던 병목 폭주를 차단하여 조작 랙(Lag) 0% 완치
- * - [⚡ 현재 수치 즉시 적용] 버튼 입력 시점에만 007호의 buildCosmos()를 원터치 기폭 호출
+ * - [버전] Ver 4.19 (인풋 넘버 단독 체제 및 3D 옵션 링킹 마스터 완결판)
+ * - 슬라이더 간섭 코드를 완전 삭제하고 오직 타이핑 입력 박스 필드 전용 데이터 파이프라인 시공
+ * - Shuffle, Range, Scale, Volume 최소/최대 한도 제한 유효성 자동 방어 기능 탑재
  */
 
 import { AudioAnalyzer } from './core/AudioAnalyzer.js';
@@ -133,52 +133,67 @@ if (audioSliders.low && audioSliders.high) {
     handleDualAudioSliderChange();
 }
 
-const cosmicSliders = {
-    seed: document.getElementById('slide-cosmic-seed'), scatter: document.getElementById('slide-cosmic-scatter'),
-    color: document.getElementById('select-cosmic-color'), glow: document.getElementById('slide-cosmic-glow'),
-    gain: document.getElementById('slide-cosmic-gain'),
-    pickGas1: document.getElementById('picker-gas1'), pickGas2: document.getElementById('picker-gas2'), pickStar: document.getElementById('picker-star')
+// 💡 [슬라이더 제거 완결판 필드 매핑]
+const cosmicControls = {
+    numSeed: document.getElementById('num-cosmic-seed'),
+    numScatter: document.getElementById('num-cosmic-scatter'),
+    color: document.getElementById('select-cosmic-color'),
+    numGlow: document.getElementById('num-cosmic-glow'),
+    numGain: document.getElementById('num-cosmic-gain'),
+    pickGas1: document.getElementById('picker-gas1'), pickGas2: document.getElementById('picker-gas2'), pickStar: document.getElementById('picker-star'),
+    
+    offsetX: document.getElementById('num-offset-x'),
+    offsetY: document.getElementById('num-offset-y'),
+    offsetZ: document.getElementById('num-offset-z'),
+    numGauge: document.getElementById('num-cosmic-gauge')
 };
 
-const cosmicDisplays = {
-    seed: document.getElementById('val-cosmic-seed'), scatter: document.getElementById('val-cosmic-scatter'),
-    glow: document.getElementById('val-cosmic-glow'), gain: document.getElementById('val-cosmic-gain')
-};
-
-// 💡 [조작 최적화] 슬라이더를 움직일 때는 무대 파괴 없이 텍스트 레이블 수치 및 글로벌 변수 메모리만 가볍게 갱신 (랙 원천 차단)
 function syncCosmicControls() {
-    if (!cosmicSliders.seed) return; 
-    const seedVal = parseInt(cosmicSliders.seed.value);
-    const scatterVal = parseFloat(cosmicSliders.scatter.value) / 10; 
-    const colorVal = cosmicSliders.color ? cosmicSliders.color.value : 'neon';
-    const glowVal = cosmicSliders.glow ? parseFloat(cosmicSliders.glow.value) / 100 : 0.85;
-    const gainVal = cosmicSliders.gain ? parseFloat(cosmicSliders.gain.value) / 100 : 1.0;
-    const cGas1 = cosmicSliders.pickGas1 ? cosmicSliders.pickGas1.value : '#ff0055';
-    const cGas2 = cosmicSliders.pickGas2 ? cosmicSliders.pickGas2.value : '#00ffcc';
-    const cStar = cosmicSliders.pickStar ? cosmicSliders.pickStar.value : '#ffffff';
+    if (!cosmicControls.numSeed) return; 
 
-    if (cosmicDisplays.seed) cosmicDisplays.seed.innerText = seedVal;
-    if (cosmicDisplays.scatter) cosmicDisplays.scatter.innerText = scatterVal.toFixed(1);
-    if (cosmicDisplays.glow) cosmicDisplays.glow.innerText = glowVal.toFixed(2);
-    if (cosmicDisplays.gain) cosmicDisplays.gain.innerText = gainVal.toFixed(1);
+    // 인풋 필드 박스에서 다이렉트로 수치값 파싱
+    const seedVal = parseInt(cosmicControls.numSeed.value) || 42;
+    const scatterVal = (parseFloat(cosmicControls.numScatter.value) || 22) / 10; 
+    const colorVal = cosmicControls.color ? cosmicControls.color.value : 'neon';
+    const glowVal = (parseFloat(cosmicControls.numGlow.value) || 85) / 100;
+    const gainVal = (parseFloat(cosmicControls.numGain.value) || 100) / 100;
+    
+    const cGas1 = cosmicControls.pickGas1 ? cosmicControls.pickGas1.value : '#ff0055';
+    const cGas2 = cosmicControls.pickGas2 ? cosmicControls.pickGas2.value : '#00ffcc';
+    const cStar = cosmicControls.pickStar ? cosmicControls.pickStar.value : '#ffffff';
 
+    const offX = cosmicControls.offsetX ? parseFloat(cosmicControls.offsetX.value) : 0;
+    const offY = cosmicControls.offsetY ? parseFloat(cosmicControls.offsetY.value) : 0;
+    const offZ = cosmicControls.offsetZ ? parseFloat(cosmicControls.offsetZ.value) : 0;
+    const gaugeValue = cosmicControls.numGauge ? parseInt(cosmicControls.numGauge.value) : 50;
+
+    // 💡 전역 스튜디오 변수 메모리에 직통 박음질 배달
     window.cosmicEngineSettings = {
-        seed: seedVal, scatterExponent: scatterVal, colorStyle: colorVal, glowIntensity: glowVal, audioGain: gainVal,
-        customColors: { gas1: cGas1, gas2: cGas2, star: cStar }
+        seed: seedVal,
+        scatterExponent: scatterVal,
+        colorStyle: colorVal,
+        glowIntensity: glowVal,
+        audioGain: gainVal,
+        customColors: { gas1: cGas1, gas2: cGas2, star: cStar },
+        positionOffset: { x: offX, y: offY, z: offZ },
+        gaugeValue: gaugeValue / 100
     };
 }
 
-Object.values(cosmicSliders).forEach(el => {
-    if (el) { el.addEventListener('input', syncCosmicControls); el.addEventListener('change', syncCosmicControls); }
+// 타이핑 즉시 연동되도록 이벤트 매핑 스케줄링
+Object.values(cosmicControls).forEach(el => {
+    if (el) {
+        el.addEventListener('input', syncCosmicControls);
+        el.addEventListener('change', syncCosmicControls);
+    }
 });
 
-// 💡 [신규 바인딩 기폭 장치] 적용/리셋 단추를 강타했을 때만 무대를 1회성 재컴파일 초기화 처리하여 연산 효율 극대화
 const applyCosmicBtn = document.getElementById('btn-apply-cosmic');
 if (applyCosmicBtn) {
     applyCosmicBtn.addEventListener('click', () => {
         syncCosmicControls();
         if (manager.currentSketch && typeof manager.currentSketch.buildCosmos === 'function') {
-            console.log("%c[⚡ 관제탑 마스터 RESET] 3D 스페이스 지형 및 분산 영역 실시간 재가공 기폭 성공!", "color:#00ffcc; font-weight:bold;");
+            console.log("%c[⚡ 관제탑 수치 100% 동기화] 넘버 필드 기반 무대 리셋 성공!", "color:#00ffcc; font-weight:bold;");
             manager.currentSketch.buildCosmos();
         }
     });
@@ -200,10 +215,12 @@ if (savePresetBtn) {
         const masterSettings = {
             sketch: activeSketch, ratioKey: activeRatioKey,
             cosmic: {
-                seed: cosmicSliders.seed ? cosmicSliders.seed.value : 42, scatter: cosmicSliders.scatter ? cosmicSliders.scatter.value : 22,
-                color: cosmicSliders.color ? cosmicSliders.color.value : 'neon', glow: cosmicSliders.glow ? cosmicSliders.glow.value : 85,
-                gain: cosmicSliders.gain ? cosmicSliders.gain.value : 100, gas1: cosmicSliders.pickGas1 ? cosmicSliders.pickGas1.value : '#ff0055',
-                gas2: cosmicSliders.pickGas2 ? cosmicSliders.pickGas2.value : '#00ffcc', star: cosmicSliders.pickStar ? cosmicSliders.pickStar.value : '#ffffff'
+                seed: cosmicControls.numSeed.value, scatter: cosmicControls.numScatter.value,
+                color: cosmicControls.color ? cosmicControls.color.value : 'neon', glow: cosmicControls.numGlow.value,
+                gain: cosmicControls.numGain.value, gas1: cosmicControls.pickGas1 ? cosmicFacilities.pickGas1.value : '#ff0055',
+                gas2: cosmicControls.pickGas2 ? cosmicControls.pickGas2.value : '#00ffcc', star: cosmicControls.pickStar ? cosmicControls.pickStar.value : '#ffffff',
+                offsetX: cosmicControls.offsetX.value, offsetY: cosmicControls.offsetY.value, offsetZ: cosmicControls.offsetZ.value,
+                gauge: cosmicControls.numGauge.value
             },
             audioBounds: { low: audioSliders.low ? audioSliders.low.value : 25, high: audioSliders.high ? audioSliders.high.value : 75 }
         };
@@ -217,11 +234,17 @@ if (loadPresetBtn) {
         const savedData = localStorage.getItem('gongb_visual_preset'); if (!savedData) return;
         const config = JSON.parse(savedData);
         if (config.cosmic) {
-            if (cosmicSliders.seed) cosmicSliders.seed.value = config.cosmic.seed; if (cosmicSliders.scatter) cosmicSliders.scatter.value = config.cosmic.scatter;
-            if (cosmicSliders.color) cosmicSliders.color.value = config.cosmic.color; if (cosmicSliders.glow) cosmicSliders.glow.value = config.cosmic.glow;
-            if (cosmicSliders.gain) cosmicSliders.gain.value = config.cosmic.gain;
-            if (cosmicSliders.pickGas1) cosmicSliders.pickGas1.value = config.cosmic.gas1; if (cosmicSliders.pickGas2) cosmicSliders.pickGas2.value = config.cosmic.gas2;
-            if (cosmicSliders.pickStar) cosmicSliders.pickStar.value = config.cosmic.star;
+            cosmicControls.numSeed.value = config.cosmic.seed; cosmicControls.numScatter.value = config.cosmic.scatter;
+            if (cosmicControls.color) cosmicControls.color.value = config.cosmic.color; cosmicControls.numGlow.value = config.cosmic.glow;
+            cosmicControls.numGain.value = config.cosmic.gain;
+            if (cosmicControls.pickGas1) cosmicControls.pickGas1.value = config.cosmic.gas1; if (cosmicControls.pickGas2) cosmicControls.pickGas2.value = config.cosmic.gas2;
+            if (cosmicControls.pickStar) cosmicControls.pickStar.value = config.cosmic.star;
+            
+            if (config.cosmic.offsetX) cosmicControls.offsetX.value = config.cosmic.offsetX;
+            if (config.cosmic.offsetY) cosmicControls.offsetY.value = config.cosmic.offsetY;
+            if (config.cosmic.offsetZ) cosmicControls.offsetZ.value = config.cosmic.offsetZ;
+            if (config.cosmic.gauge) cosmicControls.numGauge.value = config.cosmic.gauge;
+
             syncCosmicControls();
         }
         if (config.audioBounds && audioSliders.low && audioSliders.high) {
