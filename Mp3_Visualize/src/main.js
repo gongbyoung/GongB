@@ -1,8 +1,7 @@
 /**
  * src/main.js
- * - [버전] Ver 4.19 (인풋 넘버 단독 체제 및 3D 옵션 링킹 마스터 완결판)
- * - 슬라이더 간섭 코드를 완전 삭제하고 오직 타이핑 입력 박스 필드 전용 데이터 파이프라인 시공
- * - Shuffle, Range, Scale, Volume 최소/최대 한도 제한 유효성 자동 방어 기능 탑재
+ * - [버전] Ver 5.0 (로컬 탐색창 기반 .json 프리셋 파일 다운로드/오픈 전면 탑재판)
+ * - 각 스케치명에 최적화된 이름 자동 조립 프리셋 다운로드 파일 시스템 시공 완료
  */
 
 import { AudioAnalyzer } from './core/AudioAnalyzer.js';
@@ -133,136 +132,144 @@ if (audioSliders.low && audioSliders.high) {
     handleDualAudioSliderChange();
 }
 
-// 💡 [슬라이더 제거 완결판 필드 매핑]
 const cosmicControls = {
-    numSeed: document.getElementById('num-cosmic-seed'),
-    numScatter: document.getElementById('num-cosmic-scatter'),
-    color: document.getElementById('select-cosmic-color'),
-    numGlow: document.getElementById('num-cosmic-glow'),
+    numSeed: document.getElementById('num-cosmic-seed'), numScatter: document.getElementById('num-cosmic-scatter'),
+    color: document.getElementById('select-cosmic-color'), numGlow: document.getElementById('num-cosmic-glow'),
     numGain: document.getElementById('num-cosmic-gain'),
     pickGas1: document.getElementById('picker-gas1'), pickGas2: document.getElementById('picker-gas2'), pickStar: document.getElementById('picker-star'),
-    
-    offsetX: document.getElementById('num-offset-x'),
-    offsetY: document.getElementById('num-offset-y'),
-    offsetZ: document.getElementById('num-offset-z'),
+    offsetX: document.getElementById('num-offset-x'), offsetY: document.getElementById('num-offset-y'), offsetZ: document.getElementById('num-offset-z'),
     numGauge: document.getElementById('num-cosmic-gauge')
 };
 
 function syncCosmicControls() {
     if (!cosmicControls.numSeed) return; 
-
-    // 인풋 필드 박스에서 다이렉트로 수치값 파싱
-    const seedVal = parseInt(cosmicControls.numSeed.value) || 42;
-    const scatterVal = (parseFloat(cosmicControls.numScatter.value) || 22) / 10; 
-    const colorVal = cosmicControls.color ? cosmicControls.color.value : 'neon';
-    const glowVal = (parseFloat(cosmicControls.numGlow.value) || 85) / 100;
+    const seedVal = parseInt(cosmicControls.numSeed.value) || 42; const scatterVal = (parseFloat(cosmicControls.numScatter.value) || 22) / 10; 
+    const colorVal = cosmicControls.color ? cosmicControls.color.value : 'neon'; const glowVal = (parseFloat(cosmicControls.numGlow.value) || 85) / 100;
     const gainVal = (parseFloat(cosmicControls.numGain.value) || 100) / 100;
-    
-    const cGas1 = cosmicControls.pickGas1 ? cosmicControls.pickGas1.value : '#ff0055';
-    const cGas2 = cosmicControls.pickGas2 ? cosmicControls.pickGas2.value : '#00ffcc';
-    const cStar = cosmicControls.pickStar ? cosmicControls.pickStar.value : '#ffffff';
-
-    const offX = cosmicControls.offsetX ? parseFloat(cosmicControls.offsetX.value) : 0;
-    const offY = cosmicControls.offsetY ? parseFloat(cosmicControls.offsetY.value) : 0;
-    const offZ = cosmicControls.offsetZ ? parseFloat(cosmicControls.offsetZ.value) : 0;
+    const cGas1 = cosmicControls.pickGas1 ? cosmicControls.pickGas1.value : '#ff0055'; const cGas2 = cosmicControls.pickGas2 ? cosmicControls.pickGas2.value : '#00ffcc'; const cStar = cosmicControls.pickStar ? cosmicSliders.pickStar.value : '#ffffff';
+    const offX = cosmicControls.offsetX ? parseFloat(cosmicControls.offsetX.value) : 0; const offY = cosmicControls.offsetY ? parseFloat(cosmicControls.offsetY.value) : 0; const offZ = cosmicControls.offsetZ ? parseFloat(cosmicControls.offsetZ.value) : 0;
     const gaugeValue = cosmicControls.numGauge ? parseInt(cosmicControls.numGauge.value) : 50;
 
-    // 💡 전역 스튜디오 변수 메모리에 직통 박음질 배달
     window.cosmicEngineSettings = {
-        seed: seedVal,
-        scatterExponent: scatterVal,
-        colorStyle: colorVal,
-        glowIntensity: glowVal,
-        audioGain: gainVal,
-        customColors: { gas1: cGas1, gas2: cGas2, star: cStar },
-        positionOffset: { x: offX, y: offY, z: offZ },
-        gaugeValue: gaugeValue / 100
+        seed: seedVal, scatterExponent: scatterVal, colorStyle: colorVal, glowIntensity: glowVal, audioGain: gainVal,
+        customColors: { gas1: cGas1, gas2: cGas2, star: cStar }, positionOffset: { x: offX, y: offY, z: offZ }, gaugeValue: gaugeValue / 100
     };
 }
 
-// 타이핑 즉시 연동되도록 이벤트 매핑 스케줄링
 Object.values(cosmicControls).forEach(el => {
-    if (el) {
-        el.addEventListener('input', syncCosmicControls);
-        el.addEventListener('change', syncCosmicControls);
-    }
+    if (el) { el.addEventListener('input', syncCosmicControls); el.addEventListener('change', syncCosmicControls); }
 });
 
 const applyCosmicBtn = document.getElementById('btn-apply-cosmic');
 if (applyCosmicBtn) {
     applyCosmicBtn.addEventListener('click', () => {
         syncCosmicControls();
-        if (manager.currentSketch && typeof manager.currentSketch.buildCosmos === 'function') {
-            console.log("%c[⚡ 관제탑 수치 100% 동기화] 넘버 필드 기반 무대 리셋 성공!", "color:#00ffcc; font-weight:bold;");
-            manager.currentSketch.buildCosmos();
-        }
+        if (manager.currentSketch && typeof manager.currentSketch.buildCosmos === 'function') { manager.currentSketch.buildCosmos(); }
     });
 }
 
+// ==========================================================================
+// 💡 [대수술 완료] 로컬 탐색창 허브 연동 오버홀 파트 (.json 다이렉트 파일 입출력)
+// ==========================================================================
 const savePresetBtn = document.getElementById('btn-save-preset');
 const loadPresetBtn = document.getElementById('btn-load-preset');
+const hiddenPresetInput = document.getElementById('hidden-preset-file-input');
 const presetStatus = document.getElementById('preset-status');
-
-if (localStorage.getItem('gongb_visual_preset')) {
-    if (presetStatus) { presetStatus.innerText = '✅ 최근 저장된 설정을 불러올 수 있습니다.'; presetStatus.style.color = '#00ffcc'; }
-}
 
 if (savePresetBtn) {
     savePresetBtn.addEventListener('click', () => {
-        const activeLi = document.querySelector('#sketch-list li.active'); const activeSketch = activeLi ? activeLi.getAttribute('data-sketch') : '002_three_cube.js';
-        let activeRatioKey = 'full'; if (stageWrapper.classList.contains('ratio-169')) activeRatioKey = 'i169'; if (stageWrapper.classList.contains('ratio-916')) activeRatioKey = 'i916';
+        const activeLi = document.querySelector('#sketch-list li.active');
+        const activeSketch = activeLi ? activeLi.getAttribute('data-sketch') : '002_three_cube.js';
+        let activeRatioKey = 'full';
+        if (stageWrapper.classList.contains('ratio-169')) activeRatioKey = 'i169';
+        if (stageWrapper.classList.contains('ratio-916')) activeRatioKey = 'i916';
 
-        const masterSettings = {
-            sketch: activeSketch, ratioKey: activeRatioKey,
+        // 파일 내부에 바인딩할 통합 데이터 오브젝트 빌드
+        const exportData = {
+            factoryMeta: "GongB Visualizer Preset",
+            sketch: activeSketch,
+            ratioKey: activeRatioKey,
             cosmic: {
                 seed: cosmicControls.numSeed.value, scatter: cosmicControls.numScatter.value,
                 color: cosmicControls.color ? cosmicControls.color.value : 'neon', glow: cosmicControls.numGlow.value,
-                gain: cosmicControls.numGain.value, gas1: cosmicControls.pickGas1 ? cosmicFacilities.pickGas1.value : '#ff0055',
-                gas2: cosmicControls.pickGas2 ? cosmicControls.pickGas2.value : '#00ffcc', star: cosmicControls.pickStar ? cosmicControls.pickStar.value : '#ffffff',
+                gain: cosmicControls.numGain.value, gas1: cosmicControls.pickGas1.value, gas2: cosmicControls.pickGas2.value, star: cosmicControls.pickStar.value,
                 offsetX: cosmicControls.offsetX.value, offsetY: cosmicControls.offsetY.value, offsetZ: cosmicControls.offsetZ.value,
                 gauge: cosmicControls.numGauge.value
             },
-            audioBounds: { low: audioSliders.low ? audioSliders.low.value : 25, high: audioSliders.high ? audioSliders.high.value : 75 }
+            audioBounds: { low: audioSliders.low.value, high: audioSliders.high.value }
         };
-        localStorage.setItem('gongb_visual_preset', JSON.stringify(masterSettings));
-        if (presetStatus) { presetStatus.innerText = '💾 스튜디오 마스터 프리셋 저장 완수!'; presetStatus.style.color = '#00ffcc'; }
+
+        // 가상 앵커를 활용한 탐색창 기반 파일 즉시 추출 다운로드 트리거
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        
+        // 파일명을 스케치 이름 접두사와 결합하여 직관적으로 자동 설정 (예: 007_nebula_preset.json)
+        const cleanName = activeSketch.split('.')[0];
+        a.href = url;
+        a.download = `${cleanName}_preset.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        if (presetStatus) { presetStatus.innerText = "💾 로컬 탐색창으로 파일 추출 완수!"; presetStatus.style.color = "#00ffcc"; }
     });
 }
 
-if (loadPresetBtn) {
-    loadPresetBtn.addEventListener('click', async () => {
-        const savedData = localStorage.getItem('gongb_visual_preset'); if (!savedData) return;
-        const config = JSON.parse(savedData);
-        if (config.cosmic) {
-            cosmicControls.numSeed.value = config.cosmic.seed; cosmicControls.numScatter.value = config.cosmic.scatter;
-            if (cosmicControls.color) cosmicControls.color.value = config.cosmic.color; cosmicControls.numGlow.value = config.cosmic.glow;
-            cosmicControls.numGain.value = config.cosmic.gain;
-            if (cosmicControls.pickGas1) cosmicControls.pickGas1.value = config.cosmic.gas1; if (cosmicControls.pickGas2) cosmicControls.pickGas2.value = config.cosmic.gas2;
-            if (cosmicControls.pickStar) cosmicControls.pickStar.value = config.cosmic.star;
-            
-            if (config.cosmic.offsetX) cosmicControls.offsetX.value = config.cosmic.offsetX;
-            if (config.cosmic.offsetY) cosmicControls.offsetY.value = config.cosmic.offsetY;
-            if (config.cosmic.offsetZ) cosmicControls.offsetZ.value = config.cosmic.offsetZ;
-            if (config.cosmic.gauge) cosmicControls.numGauge.value = config.cosmic.gauge;
+// 불러오기 클릭 시 하드웨어 인풋 이벤트를 토글 개방
+if (loadPresetBtn && hiddenPresetInput) {
+    loadPresetBtn.addEventListener('click', () => { hiddenPresetInput.click(); });
+    
+    hiddenPresetInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
 
-            syncCosmicControls();
-        }
-        if (config.audioBounds && audioSliders.low && audioSliders.high) {
-            audioSliders.low.value = config.audioBounds.low; audioSliders.high.value = config.audioBounds.high; handleDualAudioSliderChange();
-        }
-        const targetRatioKey = config.ratioKey || 'full';
-        Object.keys(ratioButtons).forEach(key => {
-            if (ratioButtons[key]) { if (key === targetRatioKey) ratioButtons[key].classList.add('active'); else ratioButtons[key].classList.remove('active'); }
-        });
-        stageWrapper.className = '';
-        if (targetRatioKey === 'full') stageWrapper.className = 'ratio-full'; if (targetRatioKey === 'i169') stageWrapper.className = 'ratio-169'; if (targetRatioKey === 'i916') stageWrapper.className = 'ratio-916';
-        
-        setTimeout(() => { manager.resize(stageWrapper.clientWidth, stageWrapper.clientHeight); }, 150);
-        if (config.sketch) {
-            sketchItems.forEach(li => { li.classList.remove('active'); if (li.getAttribute('data-sketch') === config.sketch) li.classList.add('active'); });
-            await manager.switchSketch(config.sketch, analyzer);
-        }
-        if (presetStatus) { presetStatus.innerText = '📂 마스터 프리셋 로딩 완수!'; presetStatus.style.color = '#0077ff'; }
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            try {
+                const config = JSON.parse(event.target.result);
+                
+                // 1. 넘버링 수치 하드웨어 인젝션 복원
+                if (config.cosmic) {
+                    cosmicControls.numSeed.value = config.cosmic.seed; cosmicControls.numScatter.value = config.cosmic.scatter;
+                    if (cosmicControls.color) cosmicControls.color.value = config.cosmic.color; cosmicControls.numGlow.value = config.cosmic.glow;
+                    cosmicControls.numGain.value = config.cosmic.gain; cosmicControls.pickGas1.value = config.cosmic.gas1;
+                    cosmicControls.pickGas2.value = config.cosmic.gas2; cosmicControls.pickStar.value = config.cosmic.star;
+                    cosmicControls.offsetX.value = config.cosmic.offsetX || 0; cosmicControls.offsetY.value = config.cosmic.offsetY || 0;
+                    cosmicControls.offsetZ.value = config.cosmic.offsetZ || 0; cosmicControls.numGauge.value = config.cosmic.gauge || 50;
+                    syncCosmicControls();
+                }
+                // 2. 하단 주파수 슬라이더 복원
+                if (config.audioBounds && audioSliders.low && audioSliders.high) {
+                    audioSliders.low.value = config.audioBounds.low; audioSliders.high.value = config.audioBounds.high; handleDualAudioSliderChange();
+                }
+                // 3. 화면 비율 노드 복원
+                const targetRatioKey = config.ratioKey || 'full';
+                Object.keys(ratioButtons).forEach(key => {
+                    if (ratioButtons[key]) { if (key === targetRatioKey) ratioButtons[key].classList.add('active'); else ratioButtons[key].classList.remove('active'); }
+                });
+                stageWrapper.className = '';
+                if (targetRatioKey === 'full') stageWrapper.className = 'ratio-full';
+                if (targetRatioKey === 'i169') stageWrapper.className = 'ratio-169';
+                if (targetRatioKey === 'i916') stageWrapper.className = 'ratio-916';
+                
+                setTimeout(() => { manager.resize(stageWrapper.clientWidth, stageWrapper.clientHeight); }, 150);
+
+                // 4. 스케치 자동 타게팅 교체 복원
+                if (config.sketch) {
+                    sketchItems.forEach(li => { li.classList.remove('active'); if (li.getAttribute('data-sketch') === config.sketch) li.classList.add('active'); });
+                    await manager.switchSketch(config.sketch, analyzer);
+                }
+
+                if (presetStatus) { presetStatus.innerText = `📂 로드 완수: ${file.name}`; presetStatus.style.color = "#0077ff"; }
+            } catch (err) {
+                if (presetStatus) { presetStatus.innerText = "❌ 파싱 실패: 손상된 파일"; presetStatus.style.color = "#ff0055"; }
+            }
+        };
+        reader.readAsText(file);
+        // 연속 바인딩을 위해 인풋 버퍼 클리어
+        e.target.value = "";
     });
 }
 
