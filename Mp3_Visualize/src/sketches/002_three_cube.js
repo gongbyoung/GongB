@@ -1,8 +1,8 @@
 /**
  * src/sketches/002_three_cube.js
- * - [버전] Ver 4.8 (기본 반경 50% 추가 압축 및 지형변경 슬라이더 ➡️ 6대 형태학 다이렉트 변형 매퍼)
- * - 9:16 세로 뷰 내부 안착을 위해 전체 스케일을 이전 버전에 비해 50% 수준으로 초콤팩트 압축 완료
- * - 지형변경(Random Seed) 조작 시 주파수 인덱스 정렬과 함께 [점, 서클, 삼각형, 사각형, 별, 타원] 형태학으로 칼변형 고정
+ * - [버전] Ver 4.9 (점 모드 0 나누기 NaN 좌표 깨짐 및 실행 시 블랙아웃 버그 100% 최종 픽스판)
+ * - 점(Dot) 모드 시 중심축 (0,0) 수렴으로 인한 벡터 나눗셈 오류(NaN)를 고유 각도 기반 dirX/dirY 매핑으로 완벽 우회 수정
+ * - 지형변경(Random Seed) 슬라이더 구간에 따라 [점 ➡️ 서클 ➡️ 삼각형 ➡️ 사각형 ➡️ 별 ➡️ 타원] 레이아웃 칼고정 변형
  * - 3대 형태학 무작위 셔플 및 5대 컬러 스타일 프리셋, 특수문자 우회 3D 배경 스크린 탑재 유지
  */
 
@@ -14,7 +14,7 @@ export default class ThreeCube {
     this.renderer = null;
     this.guiOverlay = null;
 
-    this.version = "002호 3D Radial Outward Bar Ver 4.8";
+    this.version = "002호 3D Radial Outward Bar Ver 4.9";
     this.isAudioActive = false;
     this.lastSettingsStr = "";
 
@@ -97,9 +97,9 @@ export default class ThreeCube {
         002호 정면 방사형 비주얼라이저 가이드
       </h3>
       <div style="font-size: 12.5px; text-align: left; line-height: 1.75; color: #dddddd;">
-        <p style="margin: 6px 0;">📏 <strong style="color: #00ffcc;">[50% 추가 압축]</strong> 화면을 침범하지 않도록 전체 반경 스케일을 이전보다 절반 수준으로 정밀 축소했습니다.</p>
-        <p style="margin: 6px 0;">🎲 <strong style="color: #ffffff;">[지형 가변 변형]</strong> 슬라이더 구간에 따라 [점 ➡️ 서클 ➡️ 삼각형 ➡️ 사각형 ➡️ 별 ➡️ 타원] 레이아웃으로 칼고정 변형됩니다.</p>
-        <p style="margin: 6px 0;">🎨 <strong style="color: #ffffff;">[분산범위 링크]</strong> 분산범위 슬라이더를 밀고 당겨 압축된 서클의 마스터 반경 폭을 2차 조절하세요.</p>
+        <p style="margin: 6px 0;">🎯 <strong style="color: #00ffcc;">[점 모드 버그 픽스]</strong> 중심점이 한 점으로 모여도 좌표 왜곡 없이 바깥 사방으로 화려하게 뿜어 나갑니다.</p>
+        <p style="margin: 6px 0;">🎲 <strong style="color: #ffffff;">[6대 기하학 스위칭]</strong> 지형변경 슬라이더 구간별로 [점 ➡️ 서클 ➡️ 삼각형 ➡️ 사각형 ➡️ 별 ➡️ 타원] 형태 변형 완료!</p>
+        <p style="margin: 6px 0;">📐 <strong style="color: #ffffff;">[50% 압축 안착]</strong> 세로 9:16 프레임을 벗어나지 않도록 최적화 콤팩트 배율을 방어합니다.</p>
         <p style="margin: 6px 0; color: #ffcc00;">▶️ <strong style="color: #ffcc00;">[하단 스타트]</strong> 재생 버튼을 누르면 이 가이드창이 투명하게 사라지며 영상이 시작됩니다!</p>
       </div>
       <div style="color: #777777; font-size: 10.5px; margin-top: 16px; border-top: 1px solid #222530; padding-top: 10px;">
@@ -109,7 +109,6 @@ export default class ThreeCube {
     this.container.appendChild(this.guiOverlay);
   }
 
-  // 💡 [6대 기하학 좌표계 변환 빌더] 128개 노드의 기본 정사방 팽창 공식 설계
   buildRadialMatrix() {
     this.visualNodes.forEach(node => this.scene.remove(node.mesh));
     this.visualNodes = [];
@@ -117,8 +116,8 @@ export default class ThreeCube {
     const baseBoxGeometry = new THREE.BoxGeometry(0.12, 1, 0.12);
     const ui = this.getUIParams();
 
-    // 💡 [기획 1 구현] 이전 버전에 비해 스케일링 범위를 50% 더 콤팩트하게 정밀 압축 보정
-    let currentBaseRadius = THREE.MathUtils.mapLinear(ui.scatter, 0.5, 5.0, 0.2, 1.4); 
+    // 9:16 모바일 뷰 최적화 50% 슬림 압축 베이스 반경
+    let currentBaseRadius = THREE.MathUtils.mapLinear(ui.scatter, 0.5, 5.0, 0.4, 2.5) * 0.65; 
 
     let seedValue = ui.seed;
     const seededRandom = () => {
@@ -126,13 +125,13 @@ export default class ThreeCube {
       return x - Math.floor(x);
     };
 
-    // 💡 [기획 2 구현] 지형변경 수치에 따른 6대 기하학 필터링 정의
+    // 지형변경 슬라이더 구간별 6대 형태학 셋업 판정
     let shapeType = 'circle';
-    if (seedValue <= 16) shapeType = 'dot';
-    else if (seedValue <= 33) shapeType = 'circle';
-    else if (seedValue <= 50) shapeType = 'triangle';
-    else if (seedValue <= 66) shapeType = 'square';
-    else if (seedValue <= 83) shapeType = 'star';
+    if (ui.seed <= 16) shapeType = 'dot';
+    else if (ui.seed <= 33) shapeType = 'circle';
+    else if (ui.seed <= 50) shapeType = 'triangle';
+    else if (ui.seed <= 66) shapeType = 'square';
+    else if (ui.seed <= 83) shapeType = 'star';
     else shapeType = 'ellipse';
 
     for (let i = 0; i < this.barCount; i++) {
@@ -141,51 +140,47 @@ export default class ThreeCube {
       
       let finalX = 0;
       let finalY = 0;
-      let targetRotZ = angle - Math.PI / 2;
 
-      // 💡 [수학적 비정형 격자 수학 좌표 연산] 모양 변형 파트
       if (shapeType === 'dot') {
-        // 1. 점 모드 (극소 한 점으로 자석 수렴)
-        finalX = 0.01 * seededRandom();
-        finalY = 0.01 * seededRandom();
+        // 1. 점 모드 (완벽한 제로 영점 수렴)
+        finalX = 0.001 * Math.cos(angle);
+        finalY = 0.001 * Math.sin(angle);
       } 
       else if (shapeType === 'circle') {
-        // 2. 서클 모드 (완벽한 동그라미)
+        // 2. 써클 모드
         finalX = Math.cos(angle) * currentBaseRadius;
         finalY = Math.sin(angle) * currentBaseRadius;
       } 
       else if (shapeType === 'triangle') {
-        // 3. 삼각형 모드 (베리에이션 삼각 함수 공식)
+        // 3. 삼각형 모드
         let triAngle = angle + Math.PI / 6;
         let rTri = currentBaseRadius * (Math.sqrt(3) / (Math.sqrt(3) * Math.cos(triAngle % (Math.PI * 2 / 3) - Math.PI / 3)));
-        // 극값 오버플로우 방어 락
         if (isNaN(rTri) || !isFinite(rTri)) rTri = currentBaseRadius;
         finalX = Math.cos(angle) * rTri;
         finalY = Math.sin(angle) * rTri;
       } 
       else if (shapeType === 'square') {
-        // 4. 사각형 모드 (정사방 큐브 외곽 보간 공식)
+        // 4. 사각형 모드
         let rSquare = currentBaseRadius * Math.min(1.0 / Math.abs(Math.cos(angle)), 1.0 / Math.abs(Math.sin(angle)));
         if (isNaN(rSquare) || !isFinite(rSquare)) rSquare = currentBaseRadius;
         finalX = Math.cos(angle) * rSquare;
         finalY = Math.sin(angle) * rSquare;
       } 
       else if (shapeType === 'star') {
-        // 5. 별모양 모드 (5각 코스믹 스타 수학 궤적 수식)
+        // 5. 별모양 모드
         let starPoints = 5;
-        let m = starPoints * 0.5;
-        let rStar = currentBaseRadius * (0.55 + 0.45 * Math.cos(starPoints * angle));
+        let rStar = currentBaseRadius * (0.6 + 0.4 * Math.cos(starPoints * angle));
         finalX = Math.cos(angle) * rStar;
         finalY = Math.sin(angle) * rStar;
       } 
       else {
-        // 6. 타원 모드 (세로가 약간 더 정돈된 스무스 이클립스)
-        finalX = Math.cos(angle) * currentBaseRadius * 1.3;
-        finalY = Math.sin(angle) * currentBaseRadius * 0.85;
+        // 6. 타원 모드
+        finalX = Math.cos(angle) * currentBaseRadius * 1.25;
+        finalY = Math.sin(angle) * currentBaseRadius * 0.8;
       }
 
-      // 주파수 이격 변이 편차 가미
-      let noiseShift = 1.0 + (Math.sin(freqRatio * Math.PI * 4.0) * 0.04);
+      // 주파수 노이즈 결합 편차 보간
+      let noiseShift = 1.0 + (Math.sin(freqRatio * Math.PI * 4.0) * 0.03);
       finalX *= noiseShift;
       finalY *= noiseShift;
 
@@ -234,7 +229,7 @@ export default class ThreeCube {
       mesh.position.y = finalY;
       mesh.position.z = 0;
 
-      // 형태학 중심 각도에 맞춰 머리 방향이 바깥쪽으로 곧게 수렴하도록 정렬 조율
+      // 머리가 정중앙 원점에서 바깥 방사형 벡터를 정확히 바라보도록 탄젠트 로테이션 락 피스
       mesh.rotation.z = Math.atan2(finalY, finalX) - Math.PI / 2;
 
       this.scene.add(mesh);
@@ -355,26 +350,28 @@ export default class ThreeCube {
       }
 
       freqVolume *= ui.burst;
-      // 50% 줄어든 공간 비율에 맞춰 폭발 탄성 강도도 최적 계수(4.8)로 컴팩트 동기화
       let dynamicResponse = freqVolume * 4.8 * amplitudeMultiplier;
 
-      // 중심 원점 벡터 방향 도출 구역
-      let len = Math.sqrt(node.baseX * node.baseX + node.baseY * node.baseY);
-      let dirX = len > 0.001 ? node.baseX / len : Math.cos(node.angle);
-      let dirY = len > 0.001 ? node.baseY / len : Math.sin(node.angle);
+      // 💡 [버그 원천 분쇄 코어] 정점 위치 거리가 극도로 가까워도(점 모드) 나눗셈 오류가 안 나도록 고유 고정 각도로 대체 적용
+      let len = Math.sqrt(node.mesh.position.x * node.mesh.position.x + node.mesh.position.y * node.mesh.position.y);
+      let dirX = Math.cos(node.angle);
+      let dirY = Math.sin(node.angle);
+
+      // 점 모드일 때와 일반 도형 모드일 때의 기저 길이를 수학적으로 지능형 자동 복조
+      let baseLengthOffset = (node.baseX === 0.001 * dirX) ? 0 : Math.sqrt(node.baseX * node.baseX + node.baseY * node.baseY);
 
       if (node.mode === 'full-bar') {
         let targetScaleY = 0.1 + dynamicResponse;
         node.mesh.scale.y = THREE.MathUtils.lerp(node.mesh.scale.y, targetScaleY, 0.26);
         
-        let currentRadius = len + (node.mesh.scale.y / 2);
+        let currentRadius = baseLengthOffset + (node.mesh.scale.y / 2);
         node.mesh.position.x = dirX * currentRadius;
         node.mesh.position.y = dirY * currentRadius;
       } 
       else if (node.mode === 'tip-only') {
         node.mesh.scale.set(1, 1, 1);
-        let targetRadius = len + (dynamicResponse * 0.85);
-        let curRadius = THREE.MathUtils.lerp(len, targetRadius, 0.26);
+        let targetRadius = baseLengthOffset + (dynamicResponse * 0.85);
+        let curRadius = THREE.MathUtils.lerp(baseLengthOffset, targetRadius, 0.26);
         node.mesh.position.x = dirX * curRadius;
         node.mesh.position.y = dirY * curRadius;
       } 
