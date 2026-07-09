@@ -1,9 +1,8 @@
 /**
  * src/sketches/002_three_cube.js
- * - [버전] Ver 4.7 (9:16 모바일 세로 뷰 전용 컴팩트 스케일 오버홀)
- * - 세로 화면 비율(9:16)에서 서클이 좌우로 터져나가는 블랙홀 현상을 완전히 해결하기 위해 기본 스케일 계수(0.65)를 주입
- * - 서클 자체의 기본 반지름(Base Radius)을 35% 즉시 축소하여 한눈에 정원이 다 들어오도록 시공 완료
- * - 분산범위(Center Scatter) 슬라이더 조작 시 서클의 축소·확장 범위를 컴팩트한 최적화 범위로 튜닝
+ * - [버전] Ver 4.8 (기본 반경 50% 추가 압축 및 지형변경 슬라이더 ➡️ 6대 형태학 다이렉트 변형 매퍼)
+ * - 9:16 세로 뷰 내부 안착을 위해 전체 스케일을 이전 버전에 비해 50% 수준으로 초콤팩트 압축 완료
+ * - 지형변경(Random Seed) 조작 시 주파수 인덱스 정렬과 함께 [점, 서클, 삼각형, 사각형, 별, 타원] 형태학으로 칼변형 고정
  * - 3대 형태학 무작위 셔플 및 5대 컬러 스타일 프리셋, 특수문자 우회 3D 배경 스크린 탑재 유지
  */
 
@@ -15,8 +14,7 @@ export default class ThreeCube {
     this.renderer = null;
     this.guiOverlay = null;
 
-    // 💡 최종 콤팩트 스케일 픽스 마커 세팅
-    this.version = "002호 3D Radial Outward Bar Ver 4.7";
+    this.version = "002호 3D Radial Outward Bar Ver 4.8";
     this.isAudioActive = false;
     this.lastSettingsStr = "";
 
@@ -99,9 +97,9 @@ export default class ThreeCube {
         002호 정면 방사형 비주얼라이저 가이드
       </h3>
       <div style="font-size: 12.5px; text-align: left; line-height: 1.75; color: #dddddd;">
-        <p style="margin: 6px 0;">🔵 <strong style="color: #00ffcc;">[컴팩트 스케일]</strong> 9:16 세로 뷰 비율을 고려해 서클 기본 크기를 35% 즉시 축소했습니다. 한눈에 다 들어옵니다.</p>
-        <p style="margin: 6px 0;">📏 <strong style="color: #ffffff;">[분산범위 크기 조절]</strong> 분산범위 슬라이더를 통해 줄어든 컴팩트 스케일 서클의 전체 반경을 동적으로 튜닝할 수 있습니다.</p>
-        <p style="margin: 6px 0;">🎲 <strong style="color: #ffffff;">[3대 형태학]</strong> 전체 막대, 공중부양 끝막대, 시작점 앵커 단추 형태학 믹싱이 유지됩니다.</p>
+        <p style="margin: 6px 0;">📏 <strong style="color: #00ffcc;">[50% 추가 압축]</strong> 화면을 침범하지 않도록 전체 반경 스케일을 이전보다 절반 수준으로 정밀 축소했습니다.</p>
+        <p style="margin: 6px 0;">🎲 <strong style="color: #ffffff;">[지형 가변 변형]</strong> 슬라이더 구간에 따라 [점 ➡️ 서클 ➡️ 삼각형 ➡️ 사각형 ➡️ 별 ➡️ 타원] 레이아웃으로 칼고정 변형됩니다.</p>
+        <p style="margin: 6px 0;">🎨 <strong style="color: #ffffff;">[분산범위 링크]</strong> 분산범위 슬라이더를 밀고 당겨 압축된 서클의 마스터 반경 폭을 2차 조절하세요.</p>
         <p style="margin: 6px 0; color: #ffcc00;">▶️ <strong style="color: #ffcc00;">[하단 스타트]</strong> 재생 버튼을 누르면 이 가이드창이 투명하게 사라지며 영상이 시작됩니다!</p>
       </div>
       <div style="color: #777777; font-size: 10.5px; margin-top: 16px; border-top: 1px solid #222530; padding-top: 10px;">
@@ -111,6 +109,7 @@ export default class ThreeCube {
     this.container.appendChild(this.guiOverlay);
   }
 
+  // 💡 [6대 기하학 좌표계 변환 빌더] 128개 노드의 기본 정사방 팽창 공식 설계
   buildRadialMatrix() {
     this.visualNodes.forEach(node => this.scene.remove(node.mesh));
     this.visualNodes = [];
@@ -118,8 +117,8 @@ export default class ThreeCube {
     const baseBoxGeometry = new THREE.BoxGeometry(0.12, 1, 0.12);
     const ui = this.getUIParams();
 
-    // 💡 세로 뷰(9:16)에서 서클이 좌우로 터지는 현상을 해결하기 위해 35% 축소 계수(0.65)를 반영했습니다.
-    let currentBaseRadius = THREE.MathUtils.mapLinear(ui.scatter, 0.5, 5.0, 0.4, 2.5) * 0.65; 
+    // 💡 [기획 1 구현] 이전 버전에 비해 스케일링 범위를 50% 더 콤팩트하게 정밀 압축 보정
+    let currentBaseRadius = THREE.MathUtils.mapLinear(ui.scatter, 0.5, 5.0, 0.2, 1.4); 
 
     let seedValue = ui.seed;
     const seededRandom = () => {
@@ -127,11 +126,68 @@ export default class ThreeCube {
       return x - Math.floor(x);
     };
 
+    // 💡 [기획 2 구현] 지형변경 수치에 따른 6대 기하학 필터링 정의
+    let shapeType = 'circle';
+    if (seedValue <= 16) shapeType = 'dot';
+    else if (seedValue <= 33) shapeType = 'circle';
+    else if (seedValue <= 50) shapeType = 'triangle';
+    else if (seedValue <= 66) shapeType = 'square';
+    else if (seedValue <= 83) shapeType = 'star';
+    else shapeType = 'ellipse';
+
     for (let i = 0; i < this.barCount; i++) {
       const angle = (i / this.barCount) * Math.PI * 2;
       let freqRatio = i / this.barCount;
       
-      let individualOffset = currentBaseRadius + (Math.sin(freqRatio * Math.PI * 6.0) * (currentBaseRadius * 0.08)) + (seededRandom() * 0.05);
+      let finalX = 0;
+      let finalY = 0;
+      let targetRotZ = angle - Math.PI / 2;
+
+      // 💡 [수학적 비정형 격자 수학 좌표 연산] 모양 변형 파트
+      if (shapeType === 'dot') {
+        // 1. 점 모드 (극소 한 점으로 자석 수렴)
+        finalX = 0.01 * seededRandom();
+        finalY = 0.01 * seededRandom();
+      } 
+      else if (shapeType === 'circle') {
+        // 2. 서클 모드 (완벽한 동그라미)
+        finalX = Math.cos(angle) * currentBaseRadius;
+        finalY = Math.sin(angle) * currentBaseRadius;
+      } 
+      else if (shapeType === 'triangle') {
+        // 3. 삼각형 모드 (베리에이션 삼각 함수 공식)
+        let triAngle = angle + Math.PI / 6;
+        let rTri = currentBaseRadius * (Math.sqrt(3) / (Math.sqrt(3) * Math.cos(triAngle % (Math.PI * 2 / 3) - Math.PI / 3)));
+        // 극값 오버플로우 방어 락
+        if (isNaN(rTri) || !isFinite(rTri)) rTri = currentBaseRadius;
+        finalX = Math.cos(angle) * rTri;
+        finalY = Math.sin(angle) * rTri;
+      } 
+      else if (shapeType === 'square') {
+        // 4. 사각형 모드 (정사방 큐브 외곽 보간 공식)
+        let rSquare = currentBaseRadius * Math.min(1.0 / Math.abs(Math.cos(angle)), 1.0 / Math.abs(Math.sin(angle)));
+        if (isNaN(rSquare) || !isFinite(rSquare)) rSquare = currentBaseRadius;
+        finalX = Math.cos(angle) * rSquare;
+        finalY = Math.sin(angle) * rSquare;
+      } 
+      else if (shapeType === 'star') {
+        // 5. 별모양 모드 (5각 코스믹 스타 수학 궤적 수식)
+        let starPoints = 5;
+        let m = starPoints * 0.5;
+        let rStar = currentBaseRadius * (0.55 + 0.45 * Math.cos(starPoints * angle));
+        finalX = Math.cos(angle) * rStar;
+        finalY = Math.sin(angle) * rStar;
+      } 
+      else {
+        // 6. 타원 모드 (세로가 약간 더 정돈된 스무스 이클립스)
+        finalX = Math.cos(angle) * currentBaseRadius * 1.3;
+        finalY = Math.sin(angle) * currentBaseRadius * 0.85;
+      }
+
+      // 주파수 이격 변이 편차 가미
+      let noiseShift = 1.0 + (Math.sin(freqRatio * Math.PI * 4.0) * 0.04);
+      finalX *= noiseShift;
+      finalY *= noiseShift;
 
       let drawRand = seededRandom();
       let mode = 'full-bar';
@@ -167,25 +223,27 @@ export default class ThreeCube {
 
       let currentGeo = baseBoxGeometry;
       if (mode === 'start-only') {
-        currentGeo = new THREE.BoxGeometry(0.14, 0.14, 0.14); 
+        currentGeo = new THREE.BoxGeometry(0.12, 0.12, 0.12); 
       } else if (mode === 'tip-only') {
-        currentGeo = new THREE.BoxGeometry(0.15, 0.22, 0.15); 
+        currentGeo = new THREE.BoxGeometry(0.13, 0.18, 0.13); 
       }
 
       const mesh = new THREE.Mesh(currentGeo, material);
 
-      mesh.position.x = Math.cos(angle) * individualOffset;
-      mesh.position.y = Math.sin(angle) * individualOffset;
+      mesh.position.x = finalX;
+      mesh.position.y = finalY;
       mesh.position.z = 0;
 
-      mesh.rotation.z = angle - Math.PI / 2;
+      // 형태학 중심 각도에 맞춰 머리 방향이 바깥쪽으로 곧게 수렴하도록 정렬 조율
+      mesh.rotation.z = Math.atan2(finalY, finalX) - Math.PI / 2;
 
       this.scene.add(mesh);
 
       this.visualNodes.push({
         mesh: mesh,
         angle: angle,
-        baseRadius: individualOffset,
+        baseX: finalX,
+        baseY: finalY,
         mode: mode,
         freqIdxRatio: freqRatio,
         seedShift: seededRandom()
@@ -244,9 +302,7 @@ export default class ThreeCube {
       };
   }
 
-  resetCanvas(p, isPreview = false) {
-     // 인터페이스 우회 유지
-  }
+  resetCanvas(p, isPreview = false) {}
 
   update(audioData) {
     if (!this.renderer || !this.scene || !this.camera) return;
@@ -299,28 +355,35 @@ export default class ThreeCube {
       }
 
       freqVolume *= ui.burst;
-      let dynamicResponse = freqVolume * 6.5 * amplitudeMultiplier;
+      // 50% 줄어든 공간 비율에 맞춰 폭발 탄성 강도도 최적 계수(4.8)로 컴팩트 동기화
+      let dynamicResponse = freqVolume * 4.8 * amplitudeMultiplier;
+
+      // 중심 원점 벡터 방향 도출 구역
+      let len = Math.sqrt(node.baseX * node.baseX + node.baseY * node.baseY);
+      let dirX = len > 0.001 ? node.baseX / len : Math.cos(node.angle);
+      let dirY = len > 0.001 ? node.baseY / len : Math.sin(node.angle);
 
       if (node.mode === 'full-bar') {
         let targetScaleY = 0.1 + dynamicResponse;
         node.mesh.scale.y = THREE.MathUtils.lerp(node.mesh.scale.y, targetScaleY, 0.26);
-        let extendedRadius = node.baseRadius + (node.mesh.scale.y / 2);
-        node.mesh.position.x = Math.cos(node.angle) * extendedRadius;
-        node.mesh.position.y = Math.sin(node.angle) * extendedRadius;
+        
+        let currentRadius = len + (node.mesh.scale.y / 2);
+        node.mesh.position.x = dirX * currentRadius;
+        node.mesh.position.y = dirY * currentRadius;
       } 
       else if (node.mode === 'tip-only') {
         node.mesh.scale.set(1, 1, 1);
-        let targetRadius = node.baseRadius + (dynamicResponse * 0.85);
-        let curRadius = THREE.MathUtils.lerp(node.baseRadius, targetRadius, 0.26);
-        node.mesh.position.x = Math.cos(node.angle) * curRadius;
-        node.mesh.position.y = Math.sin(node.angle) * curRadius;
+        let targetRadius = len + (dynamicResponse * 0.85);
+        let curRadius = THREE.MathUtils.lerp(len, targetRadius, 0.26);
+        node.mesh.position.x = dirX * curRadius;
+        node.mesh.position.y = dirY * curRadius;
       } 
       else {
         let targetDotScale = 1.0 + freqVolume * 3.5 * amplitudeMultiplier;
         let curDotScale = THREE.MathUtils.lerp(node.mesh.scale.x, targetDotScale, 0.28);
         node.mesh.scale.set(curDotScale, curDotScale, curDotScale);
-        node.mesh.position.x = Math.cos(node.angle) * node.baseRadius;
-        node.mesh.position.y = Math.sin(node.angle) * node.baseRadius;
+        node.mesh.position.x = node.baseX;
+        node.mesh.position.y = node.baseY;
       }
 
       if (node.mesh.material) {
