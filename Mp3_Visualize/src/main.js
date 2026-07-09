@@ -1,8 +1,8 @@
 /**
  * src/main.js
- * - [버전] Ver 4.16 (Null 참조 addEventListener 에러 원천 격파 방어막 탑재판)
- * - Cosmic Studio Tuning 슬라이더 바인딩 시 특정 엘리먼트가 null 이라도 스크립트가 멈추지 않도록 안전 필터링 완비
- * - 듀얼 핸들 오디오 필터 통합 동기화 및 3D 배경 안정화 완벽 유지
+ * - [버전] Ver 4.17 (지형변경 ~ 폭발력 및 출력 비율 전수 통합 마스터 프리셋 완결판)
+ * - 저장 버튼 클릭 시 Cosmic Studio 슬라이더 및 컬러 세팅, 출력 비율 버튼 상태까지 전체 바인딩 아카이빙
+ * - 불러오기 시 슬라이더 핸들의 하드웨어 위치와 출력 비율 레이아웃 패널 상태를 100% 실시간 복조 동기화
  */
 
 import { AudioAnalyzer } from './core/AudioAnalyzer.js';
@@ -126,38 +126,42 @@ const ratioButtons = {
 };
 
 Object.keys(ratioButtons).forEach(key => {
-    ratioButtons[key].addEventListener('click', (e) => {
-        Object.values(ratioButtons).forEach(btn => btn.classList.remove('active'));
-        e.currentTarget.classList.add('active');
-        
-        stageWrapper.className = '';
-        if (key === 'full') stageWrapper.className = 'ratio-full';
-        if (key === 'i169') stageWrapper.className = 'ratio-169';
-        if (key === 'i916') stageWrapper.className = 'ratio-916';
-        
-        setTimeout(() => {
-            manager.resize(stageWrapper.clientWidth, stageWrapper.clientHeight);
-        }, 320);
-    });
+    if (ratioButtons[key]) {
+        ratioButtons[key].addEventListener('click', (e) => {
+            Object.values(ratioButtons).forEach(btn => { if(btn) btn.classList.remove('active'); });
+            e.currentTarget.classList.add('active');
+            
+            stageWrapper.className = '';
+            if (key === 'full') stageWrapper.className = 'ratio-full';
+            if (key === 'i169') stageWrapper.className = 'ratio-169';
+            if (key === 'i916') stageWrapper.className = 'ratio-916';
+            
+            setTimeout(() => {
+                manager.resize(stageWrapper.clientWidth, stageWrapper.clientHeight);
+            }, 320);
+        });
+    }
 });
 
 // 7. MP4 레코더 버튼 제어 파트
 const recordBtn = document.getElementById('btn-record');
 let isRecording = false;
 
-recordBtn.addEventListener('click', async () => {
-    if (!isRecording) {
-        isRecording = true;
-        recordBtn.innerText = '⏹️ 녹화 중지 및 MP4 저장';
-        recordBtn.classList.add('recording');
-        await recorder.start();
-    } else {
-        isRecording = false;
-        recordBtn.innerText = '🔴 녹화 시작 (Record)';
-        recordBtn.classList.remove('recording');
-        await recorder.stop();
-    }
-});
+if (recordBtn) {
+    recordBtn.addEventListener('click', async () => {
+        if (!isRecording) {
+            isRecording = true;
+            recordBtn.innerText = '⏹️ 녹화 중지 및 MP4 저장';
+            recordBtn.classList.add('recording');
+            await recorder.start();
+        } else {
+            isRecording = false;
+            recordBtn.innerText = '🔴 녹화 시작 (Record)';
+            recordBtn.classList.remove('recording');
+            await recorder.stop();
+        }
+    });
+}
 
 // 8. 듀얼 핸들 멀티 레인지 제어 관제 결합 로직
 const audioSliders = {
@@ -208,7 +212,6 @@ if (audioSliders.low && audioSliders.high) {
 }
 
 // 9. 🌌 Cosmic Studio Tuning 제어 데이터 동기화 파이프라인 파트
-// 💡 index.html의 실제 ID 프리셋 구조를 고려하여 유연하게 타게팅 매핑
 const cosmicSliders = {
     seed: document.getElementById('slide-cosmic-seed'),
     scatter: document.getElementById('slide-cosmic-scatter'),
@@ -262,7 +265,6 @@ function syncCosmicControls() {
     }
 }
 
-// 💡 [버그 격파 코어] 특정 엘리먼트가 존재하지 않더라도 에러를 무조건 비껴가도록 안전장치 구축
 Object.values(cosmicSliders).forEach(el => {
     if (el) {
         el.addEventListener('input', syncCosmicControls);
@@ -270,7 +272,7 @@ Object.values(cosmicSliders).forEach(el => {
     }
 });
 
-// 10. 프리셋 저장 및 로딩 시스템 파트
+// 10. 프리셋 저장 및 로딩 시스템 파트 (전수 통합 스토리지 대개조)
 const savePresetBtn = document.getElementById('btn-save-preset');
 const loadPresetBtn = document.getElementById('btn-load-preset');
 const presetStatus = document.getElementById('preset-status');
@@ -284,18 +286,37 @@ if (localStorage.getItem('gongb_visual_preset')) {
 
 if (savePresetBtn) {
     savePresetBtn.addEventListener('click', () => {
-        const activeSketch = document.querySelector('#sketch-list li.active').getAttribute('data-sketch');
-        const activeRatio = stageWrapper.className;
-        const currentSettings = {
-            sketch: activeSketch, ratio: activeRatio,
+        const activeLi = document.querySelector('#sketch-list li.active');
+        const activeSketch = activeLi ? activeLi.getAttribute('data-sketch') : '002_three_cube.js';
+        
+        // 현재 선택되어 작동 중인 화면 뷰 비율 키값 역산 가공
+        let activeRatioKey = 'full';
+        if (stageWrapper.classList.contains('ratio-169')) activeRatioKey = 'i169';
+        if (stageWrapper.classList.contains('ratio-916')) activeRatioKey = 'i916';
+
+        // 💡 [기획 수정] 지형변경부터 폭발력, 컬러 메트릭스, 출력 비율까지 통째로 묶어 오브젝트 팩 빌드
+        const masterSettings = {
+            sketch: activeSketch,
+            ratioKey: activeRatioKey,
+            cosmic: {
+                seed: cosmicSliders.seed ? cosmicSliders.seed.value : 42,
+                scatter: cosmicSliders.scatter ? cosmicSliders.scatter.value : 22,
+                color: cosmicSliders.color ? cosmicSliders.color.value : 'neon',
+                glow: cosmicSliders.glow ? cosmicSliders.glow.value : 85,
+                gain: cosmicSliders.gain ? cosmicSliders.gain.value : 100,
+                gas1: cosmicSliders.pickGas1 ? cosmicSliders.pickGas1.value : '#ff0055',
+                gas2: cosmicSliders.pickGas2 ? cosmicSliders.pickGas2.value : '#00ffcc',
+                star: cosmicSliders.pickStar ? cosmicSliders.pickStar.value : '#ffffff'
+            },
             audioBounds: {
                 low: audioSliders.low ? audioSliders.low.value : 25,
                 high: audioSliders.high ? audioSliders.high.value : 75
             }
         };
-        localStorage.setItem('gongb_visual_preset', JSON.stringify(currentSettings));
+
+        localStorage.setItem('gongb_visual_preset', JSON.stringify(masterSettings));
         if (presetStatus) {
-            presetStatus.innerText = '💾 성공적으로 저장되었습니다!';
+            presetStatus.innerText = '💾 스튜디오 마스터 프리셋 저장 완수!';
             presetStatus.style.color = '#00ffcc';
             setTimeout(() => { presetStatus.innerText = '✅ 최근 저장된 설정을 불러올 수 있습니다.'; }, 2000);
         }
@@ -305,23 +326,65 @@ if (savePresetBtn) {
 if (loadPresetBtn) {
     loadPresetBtn.addEventListener('click', async () => {
         const savedData = localStorage.getItem('gongb_visual_preset');
-        if (!savedData) { if (presetStatus) { presetStatus.innerText = '❌ 불러올 프리셋 데이터가 없습니다.'; presetStatus.style.color = '#ff0055'; } return; }
+        if (!savedData) { 
+            if (presetStatus) { presetStatus.innerText = '❌ 불러올 프리셋 데이터가 없습니다.'; presetStatus.style.color = '#ff0055'; } 
+            return; 
+        }
         
         const config = JSON.parse(savedData);
-        if(config.audioBounds && audioSliders.low && audioSliders.high) {
+        
+        // 💡 1. [상단 Cosmic Studio 패널 하드웨어 포인터 완벽 복조 복원]
+        if (config.cosmic) {
+            if (cosmicSliders.seed) cosmicSliders.seed.value = config.cosmic.seed;
+            if (cosmicSliders.scatter) cosmicSliders.scatter.value = config.cosmic.scatter;
+            if (cosmicSliders.color) cosmicSliders.color.value = config.cosmic.color;
+            if (cosmicSliders.glow) cosmicSliders.glow.value = config.cosmic.glow;
+            if (cosmicSliders.gain) cosmicSliders.gain.value = config.cosmic.gain;
+            if (cosmicSliders.pickGas1) cosmicSliders.pickGas1.value = config.cosmic.gas1;
+            if (cosmicSliders.pickGas2) cosmicSliders.pickGas2.value = config.cosmic.gas2;
+            if (cosmicSliders.pickStar) cosmicSliders.pickStar.value = config.cosmic.star;
+            
+            // 수치 변경 사항 강제 적용 리프레시 동기화
+            syncCosmicControls();
+        }
+
+        // 💡 2. [하단 오디오 슬라이더 대역폭 복조 복원]
+        if (config.audioBounds && audioSliders.low && audioSliders.high) {
             audioSliders.low.value = config.audioBounds.low;
             audioSliders.high.value = config.audioBounds.high;
             handleDualAudioSliderChange();
         }
         
-        stageWrapper.className = config.ratio;
-        manager.resize(stageWrapper.clientWidth, stageWrapper.clientHeight);
+        // 💡 3. [출력 화면 비율 레이아웃 버튼 상태 완벽 복조 복원]
+        const targetRatioKey = config.ratioKey || 'full';
+        Object.keys(ratioButtons).forEach(key => {
+            if (ratioButtons[key]) {
+                if (key === targetRatioKey) ratioButtons[key].classList.add('active');
+                else ratioButtons[key].classList.remove('active');
+            }
+        });
+
+        stageWrapper.className = '';
+        if (targetRatioKey === 'full') stageWrapper.className = 'ratio-full';
+        if (targetRatioKey === 'i169') stageWrapper.className = 'ratio-169';
+        if (targetRatioKey === 'i916') stageWrapper.className = 'ratio-916';
         
-        sketchItems.forEach(li => { li.classList.remove('active'); if (li.getAttribute('data-sketch') === config.sketch) li.classList.add('active'); });
-        await manager.switchSketch(config.sketch, analyzer);
+        // 캔버스 사이즈 리컴파일 재정렬
+        setTimeout(() => {
+            manager.resize(stageWrapper.clientWidth, stageWrapper.clientHeight);
+        }, 150);
+        
+        // 💡 4. 활성화 스케치 액티브 라벨 복원
+        if (config.sketch) {
+            sketchItems.forEach(li => { 
+                li.classList.remove('active'); 
+                if (li.getAttribute('data-sketch') === config.sketch) li.classList.add('active'); 
+            });
+            await manager.switchSketch(config.sketch, analyzer);
+        }
         
         if (presetStatus) {
-            presetStatus.innerText = '📂 프리셋 로딩 완수!';
+            presetStatus.innerText = '📂 마스터 프리셋 로딩 완수!';
             presetStatus.style.color = '#0077ff';
         }
     });
