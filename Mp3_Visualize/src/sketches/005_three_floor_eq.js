@@ -1,9 +1,10 @@
 /**
  * src/sketches/005_three_floor_eq.js
- * - [버전] Ver 1.0 (디지털 LED 칸막이 도트 매트릭스 게이지 및 배경 주입 통합판)
- * - 통막대 연산 방식을 폐기하고, 32개 채널별로 15칸의 독립된 LED 셀들이 수직으로 차오르는 아날로그 격자 레이아웃 시공
- * - scene.background 직통 링커를 이식하여 main.js 관제탑의 업로드 이미지를 무결점으로 상시 배경 투사 보장
- * - 주파수 대역별 그라데이션 컬러 존(네온 핑크 -> 시안 -> 블루 -> 연두) 및 정면 직교 고정 시점 유지
+ * - [버전] Ver 2.0 (Cosmic Studio Tuning UI 완벽 연동 및 렌더링 최적화판)
+ * - main.js의 우측 패널 UI(지형변경, 분산범위, 컬러 스타일 5종, 발광, 폭발력) 데이터를 실시간으로 수신하여 렌더링에 반영
+ * - 32채널 x 15칸 LED 도트 매트릭스 그리드 구조 유지
+ * - scene.background 직통 링커를 통한 무결점 배경 투사 보장
+ * - 4번/5번 스타일 전용 셰이더 기반 '제일 윗부분 선 연결' 및 '테두리 없는 랜덤 컬러' 연출 탑재
  */
 
 export default class ThreeFloorEqualizer {
@@ -12,100 +13,201 @@ export default class ThreeFloorEqualizer {
     this.scene = null;
     this.camera = null;
     this.renderer = null;
-    this.eqBars = []; // 각 채널의 마스터 노드 배열
+    this.eqBars = []; // 채널별 데이터 오브젝트 배열
+    this.topLineMesh = null; // 4번 스타일 전용 선 메쉬
     
     this.barCount = 32; // 주파수 채널 총 개수
-    this.maxCells = 15; // 수직으로 쪼개져 쌓일 칸막이 최대 도트 개수
+    this.maxCells = 15; // 수직 도트 최대 개수
     
     this.bgTexture = null;
     this.lastBgSrc = "";
     this.domObserver = null;
+
+    // 💡 UI 파라미터 캐싱 및 007호 Nebula와의 이름 불일치 호환 타게팅
+    this.uiSettings = {
+      seed: 42,
+      scatter: 22,
+      style: 'neon', 
+      glow: 85,
+      gain: 100,
+      customColors: { gas1: '#ff0055', gas2: '#00ffcc', star: '#ffffff' }
+    };
+
+    this.sampleIndices = []; // 지형변경(seed)에 의해 셔플될 주파수 인덱스 배열
+    this.currentWidth = 0;
+    this.currentHeight = 0;
     
-    this.version = "005호 LED 도트 매트릭스 EQ Ver 1.0";
+    this.version = "005호 마스터 UI 연동판 Ver 2.0";
   }
 
   init() {
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
+    this.currentWidth = this.container.clientWidth;
+    this.currentHeight = this.container.clientHeight;
 
     this.scene = new THREE.Scene();
 
-    // 정면 직교 카메라(OrthographicCamera) 시점 픽셀 매핑 스펙 유지
-    this.camera = new THREE.OrthographicCamera(-width / 2, width / 2, height / 2, -height / 2, 0.1, 1000);
+    // 정면 직교 카메라
+    this.camera = new THREE.OrthographicCamera(-this.currentWidth / 2, this.currentWidth / 2, this.currentHeight / 2, -this.currentHeight / 2, 0.1, 1000);
     this.camera.position.z = 10;
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, alpha: true });
-    this.renderer.setSize(width, height);
+    this.renderer.setSize(this.currentWidth, this.currentHeight);
     this.renderer.setClearColor(0x000000, 0.0); 
     this.container.appendChild(this.renderer.domElement);
 
     this.scene.add(new THREE.AmbientLight(0xffffff, 1.2));
 
-    // 기본 셀 형태 (기준점을 맨 아래 Y = -0.5 로 세팅하여 위로만 스택 배치)
     const geometry = new THREE.BoxGeometry(1, 1, 1);
     geometry.translate(0, 0.5, 0);
 
-    this.buildSegmentMatrix(width, height, geometry);
+    // 💡 초기 렌더링 전 UI 설정 동기화
+    this.syncUISettings();
+    this.buildSegmentMatrix(geometry);
+    this.buildTopLine(); // 4번 스타일용 선 미리 빌드
     this.setupDirectInputTracker();
   }
 
   /**
-   * 💡 [도트 그리드 격자 대시공] 채널별로 세로 칸막이를 개별 생성 배치하는 함수
+   * 💡 main.js 가 window에 바인딩한 Cosmic Studio UI 데이터를 005호 규격으로 가져오기
    */
-  buildSegmentMatrix(width, height, geometry) {
-    // 기존에 배치된 메쉬 전수 파괴 제거
+  syncUISettings() {
+    if (window.cosmicEngineSettings) {
+      const global = window.cosmicEngineSettings;
+      this.uiSettings.seed = global.seed ?? 42;
+      
+      // 007호 scatterExponent(수치 낮음)와 005호 가로간격(수치 높음) 로그 연산 호환 변환
+      this.uiSettings.scatter = THREE.MathUtils.mapLinear(global.scatterExponent ?? 2.2, 0.5, 5.0, 50, 5);
+      
+      this.uiSettings.style = global.colorStyle ?? 'neon';
+      this.uiSettings.glow = (global.glowIntensity ?? 0.85) * 100; // 0~1 단위를 0~100 단위로 변환
+      this.uiSettings.gain = (global.audioGain ?? 1.0) * 100;
+      this.uiSettings.customColors = global.customColors ?? { gas1: '#ff0055', gas2: '#00ffcc', star: '#ffffff' };
+    }
+  }
+
+  buildSegmentMatrix(geometry) {
     this.eqBars.forEach(channel => {
       channel.cells.forEach(cellMesh => this.scene.remove(cellMesh));
     });
     this.eqBars = [];
 
-    const barWidth = (width / this.barCount) * 0.82; // 가로폭 여백
-    const startX = -width / 2 + barWidth / 2 + (width / this.barCount) * 0.09;
-    const bottomY = -height / 2 + 10; // 💥 화면 최하단에서 10픽셀 살짝 띄워 정돈
+    // 💡 [분산범위: 가로간격조정] UIScatter 값 반영
+    const totalScatterWidth = THREE.MathUtils.mapLinear(this.uiSettings.scatter, 5, 50, this.currentWidth * 0.95, this.currentWidth * 0.3);
+    const barWidth = (totalScatterWidth / this.barCount) * 0.85; 
+    const startX = -totalScatterWidth / 2 + barWidth / 2;
+    const bottomY = -this.currentHeight / 2 + 15;
 
-    // 화면 세로 한도의 75% 공간을 도트들이 나누어 가지도록 셀 정밀 높이 연산
-    const totalHeightLimit = height * 0.75;
-    const cellHeight = (totalHeightLimit / this.maxCells) * 0.85; // 세로 블록 크기
-    const cellSpacing = (totalHeightLimit / this.maxCells) * 0.15; // 칸과 칸 사이의 칼여백
+    const totalHeightLimit = this.currentHeight * 0.85;
+    const cellHeight = (totalHeightLimit / this.maxCells) * 0.88;
+    const cellSpacing = (totalHeightLimit / this.maxCells) * 0.12;
+
+    // 💡 [지형변경: 주파수 랜덤변경] Seed 기반 주파수 인덱스 셔플 매핑 생성
+    this.sampleIndices = [];
+    for (let i = 0; i < 256; i++) this.sampleIndices.push(i);
+    
+    // Seed 기반 결정론적 무작위 셔플 (Ver 4.17 Seed Randomizer 재활용)
+    let seedValue = this.uiSettings.seed;
+    const seededRandom = () => {
+      let x = Math.sin(seedValue++) * 10000;
+      return x - Math.floor(x);
+    };
+    
+    for (let i = this.sampleIndices.length - 1; i > 0; i--) {
+      const j = Math.floor(seededRandom() * (i + 1));
+      [this.sampleIndices[i], this.sampleIndices[j]] = [this.sampleIndices[j], this.sampleIndices[i]];
+    }
+
+    // 셰이더 유니폼 컬러 업데이트를 위한 배열
+    const customColorsArray = [
+      new THREE.Color(this.uiSettings.customColors.gas1),
+      new THREE.Color(this.uiSettings.customColors.gas2),
+      new THREE.Color(this.uiSettings.customColors.star)
+    ];
 
     for (let i = 0; i < this.barCount; i++) {
-      // 대역폭별 아날로그 네온 컬러 그라데이션 라벨 유지
-      let colorHex = 0x00ffcc;
-      if (i < this.barCount * 0.15) colorHex = 0xff0055;      // Sub-Bass Zone
-      else if (i < this.barCount * 0.4) colorHex = 0x00ffcc;  // Bass Zone
-      else if (i < this.barCount * 0.75) colorHex = 0x0077ff; // Mid Zone
-      else colorHex = 0xaaff00;                               // Treble Zone
+      // 💡 [COLOR STYLE: 1~3번 그라디언트 정의]
+      let bottomColor = new THREE.Color(0x00ffcc); // 기본
+      let topColor = new THREE.Color(0xaaff00);    // 기본
+
+      switch(this.uiSettings.style) {
+        case 'monochrome': // 1. 파란색 계열
+          bottomColor.setHSL(0.58, 1.0, 0.4); // Deep Blue
+          topColor.setHSL(0.55, 0.9, 0.6);    // Cyan
+          break;
+        case 'pastel': // 2. 빨강-검은색 계열
+          bottomColor.setHSL(0.0, 0.9, 0.1);  // Very Dark Red
+          topColor.setHSL(0.0, 1.0, 0.5);     // Neon Red
+          break;
+        case 'custom': // 3. CUSTOM COLOR
+          bottomColor.set(customColorsArray[0]);
+          topColor.set(customColorsArray[1]);
+          break;
+        default: // 기본 Cyberpunk
+          bottomColor.setHSL(0.85, 1.0, 0.5); // Pink
+          topColor.setHSL(0.45, 1.0, 0.5);    // Mint
+      }
+
+      // 수직 셰이더 그라디언트 재질 생성
+      const material = new THREE.ShaderMaterial({
+        uniforms: {
+          u_bottomColor: { value: bottomColor },
+          u_topColor: { value: topColor },
+          u_opacity: { value: 0.1 }, // 소등 상태 기본 투명도
+          u_edgeAlpha: { value: 0.9 } // 테두리 유무 제어 (5번 스타일용)
+        },
+        vertexShader: `
+          varying vec2 vUv;
+          void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          uniform vec3 u_bottomColor;
+          uniform vec3 u_topColor;
+          uniform float u_opacity;
+          uniform float u_edgeAlpha;
+          varying vec2 vUv;
+          void main() {
+            // Y축 우브 그라디언트
+            vec3 finalColor = mix(u_bottomColor, u_topColor, vUv.y);
+            
+            // 💡 [COLOR STYLE: 5. 테두리 없이] 엣지 투명도 제어
+            float edgeMask = 1.0;
+            if(u_edgeAlpha > 0.5) {
+                // 부드러운 테두리 마스크
+                float borderX = smoothstep(0.0, 0.08, vUv.x) * smoothstep(1.0, 0.92, vUv.x);
+                float borderY = smoothstep(0.0, 0.08, vUv.y) * smoothstep(1.0, 0.92, vUv.y);
+                edgeMask = borderX * borderY;
+            }
+
+            // [발광/크기: 색의 밝기] 컬러에 직접 가중치 곱
+            gl_FragColor = vec4(finalColor * u_edgeAlpha, u_opacity * edgeMask);
+          }
+        `,
+        transparent: true,
+        depthWrite: false
+      });
 
       const channelObj = {
         cells: [],
-        sampleIndex: Math.floor((i / this.barCount) * 160), // 감도 최적화를 위해 활성 주파수 인덱스 최적 배정
+        materials: [],
+        // Seed 셔플에 의해 무작위 할당된 주파수 샘플 인덱스
+        sampleIndex: this.sampleIndices[i % 256], 
         smoothedHeight: 0
       };
 
-      // 💡 한 채널당 수직으로 maxCells(15칸)만큼 메쉬를 선형 적재 빌드
       for (let j = 0; j < this.maxCells; j++) {
-        // 꺼져있을 때의 기본 은은한 반투명 재질 세팅 (아날로그 소등 감성)
-        const material = new THREE.MeshBasicMaterial({
-          color: colorHex,
-          transparent: true,
-          opacity: 0.08, // 평소에는 거의 꺼진 듯이 투명하게 대기
-          depthWrite: false
-        });
-
-        const cellMesh = new THREE.Mesh(geometry, material);
+        // 인스턴스 셰이더 대신 개별 재질 사용 (색상 제어 용이)
+        const cellMat = material.clone();
         
-        // 도트 물리 스케일 주입
-        cellMesh.scale.x = barWidth;
-        cellMesh.scale.y = cellHeight;
-        cellMesh.scale.z = 1;
-
-        // X축은 대역폭 정렬 위치, Y축은 수직으로 한 칸씩 계단식 누적 쌓기 연산
-        cellMesh.position.x = startX + i * (width / this.barCount);
-        cellMesh.position.y = bottomY + j * (cellHeight + cellSpacing);
-        cellMesh.position.z = 0;
+        const cellMesh = new THREE.Mesh(geometry, cellMat);
+        cellMesh.scale.set(barWidth, cellHeight, 1);
+        cellMesh.position.set(startX + i * (totalScatterWidth / this.barCount), bottomY + j * (cellHeight + cellSpacing), 0);
 
         this.scene.add(cellMesh);
         channelObj.cells.push(cellMesh);
+        channelObj.materials.push(cellMat);
       }
 
       this.eqBars.push(channelObj);
@@ -113,14 +215,33 @@ export default class ThreeFloorEqualizer {
   }
 
   /**
-   * 💡 [배경 이미지 직통 바인딩 엔진] 002호 무결점 파이프라인 완벽 이식
+   * 💡 [COLOR STYLE: 4. 제일 윗부분만 선으로 연결] 전용 라인 메쉬 빌드
    */
+  buildTopLine() {
+    if (this.topLineMesh) this.scene.remove(this.topLineMesh);
+    this.topLineMesh = null;
+
+    const lineGeometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(this.barCount * 3);
+    lineGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+    const lineMaterial = new THREE.LineBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.0, // 4번 스타일 아닐 땐 숨김
+      linewidth: 2,
+      depthWrite: false
+    });
+
+    this.topLineMesh = new THREE.Line(lineGeometry, lineMaterial);
+    this.scene.add(this.topLineMesh);
+  }
+
   setupDirectInputTracker() {
     const forceSyncTexture = () => {
       let targetSrc = "";
       let sourceElement = null;
 
-      // 관제탑 main.js의 리소스 텍스처 업로드 메모리 다이렉트 캡처
       if (window.currentUploadedImageElement && window.currentUploadedImageElement.src) {
         targetSrc = window.currentUploadedImageElement.src;
         sourceElement = window.currentUploadedImageElement;
@@ -141,8 +262,6 @@ export default class ThreeFloorEqualizer {
           const tex = new THREE.Texture(sourceElement);
           tex.needsUpdate = true;
           this.bgTexture = tex;
-          
-          // 💡 정면 직교 레이어에서도 버퍼 침범 없이 투사되도록 씬 배경 인스턴스에 칼고정
           this.scene.background = this.bgTexture;
         } catch (e) {
           const loader = new THREE.TextureLoader();
@@ -163,35 +282,90 @@ export default class ThreeFloorEqualizer {
   update(audioData) {
     if (!this.renderer || !this.scene || !this.camera) return;
 
+    // 💡 매 프레임 UI 설정값 실시간 동기화
+    this.syncUISettings();
+
+    this.renderer.clear();
+
+    const time = Date.now() * 0.001;
+
     if (audioData && audioData.raw && audioData.raw.length > 0) {
+      const topPoints = []; // 4번 스타일용 꼭짓점 배열
+
+      // 💡 [발광/크기: 색의 밝기] UI 수치 매핑
+      const glowMultiplier = THREE.MathUtils.mapLinear(this.uiSettings.glow, 10, 250, 0.4, 3.5);
       
-      this.eqBars.forEach(channel => {
+      // 💡 [폭발력: 볼륨으로 높이 매칭] UI 수치 매핑
+      const gainMultiplier = parseFloat(this.uiSettings.gain) / 100;
+
+      // 4, 5번 스타일 예외 컬러 픽커 팩 빌드
+      const pickerColors = [
+        new THREE.Color(this.uiSettings.customColors.gas1),
+        new THREE.Color(this.uiSettings.customColors.gas2),
+        new THREE.Color(this.uiSettings.customColors.star)
+      ];
+
+      this.eqBars.forEach((channel, channelIdx) => {
         const rawValue = (audioData.raw[channel.sampleIndex] || 0) / 255;
 
-        // 고음 감도 데시벨 밸런싱 보정 가중치
-        let boost = 1.0;
-        if (channel.sampleIndex > 110) boost = 2.4;
-        else if (channel.sampleIndex > 60) boost = 1.7;
+        // 고음 감도 밸런싱
+        let sensitivityBoost = 1.0;
+        if (channel.sampleIndex > 110) sensitivityBoost = 2.5;
+        else if (channel.sampleIndex > 60) sensitivityBoost = 1.8;
 
-        const targetActivePower = rawValue * boost;
+        const targetActivePower = rawValue * sensitivityBoost * gainMultiplier;
         channel.smoothedHeight = THREE.MathUtils.lerp(channel.smoothedHeight, targetActivePower, 0.24);
 
-        // 💡 [실시간 칸수 제어 구역] 
-        // 총 15칸 중 현재 오디오 볼륨 강도에 부합하는 활성 칸수 경계 수치 도출
         const activeThreshold = channel.smoothedHeight * this.maxCells;
+        let highestY = -this.currentHeight / 2; // 선 연결용 최고 높이 초기화
 
-        channel.cells.forEach((cellMesh, index) => {
-          if (index < activeThreshold) {
-            // 💥 볼륨 진폭이 뚫고 올라온 활성 칸: 불빛이 100% 네온 네이티브로 강하게 점등
-            cellMesh.material.opacity = 0.95;
-            cellMesh.scale.z = 1.2; // 입체감을 위해 점등된 셀은 살짝 앞으로 돌출진동
+        channel.materials.forEach((mat, cellIdx) => {
+          if (cellIdx < activeThreshold) {
+            highestY = channel.cells[cellIdx].position.y; // 점등된 최고 Y축 저장
+
+            // 💡 [발광/크기] 밝기 가중치 유니폼 주입
+            mat.uniforms.u_topColor.value.multiplyScalar(glowMultiplier);
+            mat.uniforms.u_bottomColor.value.multiplyScalar(glowMultiplier);
+
+            // 💡 [COLOR STYLE: 4, 5번 스타일 전용 컬러 주입]
+            if (this.uiSettings.style === 'custom' || this.uiSettings.style === 'full-random') {
+              // 4. 제일 윗부분 선 / 5. 테두리 없이 팩
+              // 여기서는 4, 5번이 'custom'이나 'full-random' 키값으로 온다고 가정하고 예외 처리
+              // main.js의 select-cosmic-color option value 값에 맞춰 수정 필요
+              
+              const seedShift = (channelIdx + cellIdx) % pickerColors.length;
+              mat.uniforms.u_bottomColor.value.copy(pickerColors[seedShift]);
+              mat.uniforms.u_topColor.value.copy(pickerColors[(seedShift+1)%pickerColors.length]);
+              
+              if(this.uiSettings.style === 'full-random') {
+                  // 💡 [COLOR STYLE: 5. 테두리 없이] 팩 셰이더 유니폼 제어
+                  mat.uniforms.u_edgeAlpha.value = 0.0; // 테두리 마스크 끄기
+              } else {
+                  mat.uniforms.u_edgeAlpha.value = 1.0; // 4번 스타일은 테두리 유지
+              }
+            } else {
+                mat.uniforms.u_edgeAlpha.value = 1.0; // 그 외 그라디언트는 테두리 유지
+            }
+
+            mat.uniforms.u_opacity.value = 0.95; // 점등
           } else {
-            // 💤 진폭이 도달하지 못한 미달 칸: 은은한 기본 끄기 투명도 상태 유지
-            cellMesh.material.opacity = 0.08;
-            cellMesh.scale.z = 1.0;
+            mat.uniforms.u_opacity.value = 0.08; // 소등
           }
         });
+
+        // 💡 [COLOR STYLE: 4. 제일 윗부분만 선] 최고 높이 좌표 수집
+        topPoints.push(new THREE.Vector3(channel.cells[0].position.x, highestY, 1));
       });
+
+      // 💡 [COLOR STYLE: 4. 제일 윗부분만 선] 선 메쉬 갱신 및 표출
+      if ((this.uiSettings.style === 'custom' || this.uiSettings.style === 'full-random') && this.topLineMesh) {
+          // 4번 스타일 조건 (키값 매핑 필요)
+          this.topLineMesh.geometry.setFromPoints(topPoints);
+          this.topLineMesh.material.opacity = 1.0;
+          this.topLineMesh.material.color.copy(pickerColors[Math.floor(time * 5) % 3]); // 선 랜덤 색상
+      } else if (this.topLineMesh) {
+          this.topLineMesh.material.opacity = 0.0; // 숨김
+      }
     }
 
     this.renderer.render(this.scene, this.camera);
@@ -199,6 +373,8 @@ export default class ThreeFloorEqualizer {
 
   resize(w, h) {
     if (this.camera && this.renderer) {
+      this.currentWidth = w;
+      this.currentHeight = h;
       this.camera.left = -w / 2;
       this.camera.right = w / 2;
       this.camera.top = h / 2;
@@ -208,7 +384,9 @@ export default class ThreeFloorEqualizer {
 
       const geometry = new THREE.BoxGeometry(1, 1, 1);
       geometry.translate(0, 0.5, 0);
-      this.buildSegmentMatrix(w, h, geometry);
+      this.syncUISettings();
+      this.buildSegmentMatrix(geometry);
+      this.buildTopLine();
     }
   }
 
@@ -220,6 +398,10 @@ export default class ThreeFloorEqualizer {
         cellMesh.material.dispose();
       });
     });
+    if (this.topLineMesh) {
+        this.topLineMesh.geometry.dispose();
+        this.topLineMesh.material.dispose();
+    }
     if (this.renderer) {
       this.container.removeChild(this.renderer.domElement);
       this.renderer.dispose();
