@@ -1,11 +1,9 @@
 /**
  * src/sketches/007_three_cosmic_nebula.js
- * - [버전] Ver 2.1 (스케치 설명 HUD 안내창 및 주파수 3분할 성운 독립 제어 완결판)
- * - 초기 구동 시 화면 정중앙에 텔레메트리 설명 팝업 가이드 레이어를 출력하여 가독성 확보
- * - 은하수 별빛 25,000개를 i % 3 수식 구조로 칼분할하여 저음, 중음, 고음별로 완전히 독립된 춤사위 하이재킹
- *   1) 저음 파트 (3의 배수): 사방 확장 없이 자신의 우주 공간 좌표를 고수하며 '제자리 진동' 구현
- *   2) 중음 파트 (3의 배수 + 1): 트래킹 주기에 맞춰 은은하게 호흡하며 영롱하게 '반짝이기(Twinkle)' 구현
- *   3) 고음 파트 (3의 배수 + 2): 비트 타격 시 다른 랜덤 색상으로 순식간에 가변되었다가 베이스로 '부드럽게 복귀' 구현
+ * - [버전] Ver 2.2 (비동기 타이밍 락 무력화 및 세이프티 가이드 UI 인젝션 완결판)
+ * - main.js 로딩 스위칭 시점의 하드웨어 타이밍 충돌을 방어하기 위해 비동기 세이프티 가이드 팝업 렌더 파이프라인 보강
+ * - 은하수 나선 공식의 잔재를 완전히 도려내어 25,000개 별빛이 우주 공간 전체에 균등 확산 분산되도록 보장
+ * - i % 3 구조 주파수 삼분할 제어: 저음(제자리 진동), 중음(은은한 반짝이기), 고음(랜덤 컬러 가변 후 복귀) 완벽 유지
  * - 분산범위(별의 범위), 지형변경(위치 랜덤화), 발광, 폭발력 및 무결점 배경 주입 완벽 연동
  */
 
@@ -15,7 +13,7 @@ export default class ThreeRealNebula {
     this.scene = null;
     this.camera = null;
     this.renderer = null;
-    this.guiOverlay = null; // 설명 및 메시지 안내창 돔 레이어
+    this.guiOverlay = null; 
     
     this.particleCount = 25000;
     this.geometry = null;
@@ -27,7 +25,7 @@ export default class ThreeRealNebula {
     this.loadedScatter = -1;
     this.loadedColorStyle = '';
     
-    this.version = "007호 주파수 삼분할 스페이스 Ver 2.1";
+    this.version = "007호 주파수 삼분할 스페이스 Ver 2.2";
   }
 
   init() {
@@ -48,55 +46,63 @@ export default class ThreeRealNebula {
 
     this.scene.add(new THREE.AmbientLight(0x222233, 1.0));
 
-    // 💡 [추가 사항] 부팅 시 설명 메시지 가이드 주입 시공
+    // 💡 비동기 타이밍 이슈 방지를 위해 돔 빌드 리소스를 안전하게 이중 장착
     this.buildOnScreenGuideUI();
     this.buildCosmos();
   }
 
-  // 💡 다른 버전 스케치 규격과 일치시킨 전역 UI 설명 모듈 알림창
+  // 💡 [안내창 인젝션 세이프 가드 강화] 비동기 타이밍 충돌을 무력화하는 절대 팝업 빌더
   buildOnScreenGuideUI() {
-    const oldOverlay = this.container.querySelector('.cosmic-shader-guide');
-    if (oldOverlay) oldOverlay.remove();
+    const renderOverlay = () => {
+      if (!this.container) return;
+      
+      const oldOverlay = this.container.querySelector('.cosmic-shader-guide');
+      if (oldOverlay) oldOverlay.remove();
 
-    this.guiOverlay = document.createElement('div');
-    this.guiOverlay.className = 'cosmic-shader-guide';
-    
-    Object.assign(this.guiOverlay.style, {
-      position: 'absolute',
-      top: '50%',
-      left: '50%',
-      transform: 'translate(-50%, -50%)',
-      width: '85%',
-      maxWidth: '430px',
-      backgroundColor: 'rgba(5, 7, 12, 0.95)',
-      border: '1px solid rgba(0, 255, 204, 0.6)', 
-      borderRadius: '12px',
-      padding: '22px',
-      color: '#ffffff',
-      fontFamily: 'sans-serif',
-      zIndex: '20',
-      boxShadow: '0 8px 30px rgba(0,0,0,0.7)',
-      boxSizing: 'border-box',
-      textAlign: 'center',
-      pointerEvents: 'none',
-      transition: 'opacity 0.45s cubic-bezier(0.25, 1, 0.5, 1)'
-    });
+      this.guiOverlay = document.createElement('div');
+      this.guiOverlay.className = 'cosmic-shader-guide';
+      
+      Object.assign(this.guiOverlay.style, {
+        position: 'absolute',
+        top: '50%',
+        left: '50%',
+        transform: 'translate(-50%, -50%)',
+        width: '85%',
+        maxWidth: '430px',
+        backgroundColor: 'rgba(5, 7, 12, 0.96)',
+        border: '1px solid rgba(0, 255, 204, 0.7)', 
+        borderRadius: '12px',
+        padding: '22px',
+        color: '#ffffff',
+        fontFamily: 'sans-serif',
+        zIndex: '9999', // 캔버스 최상단에 무조건 노출 락
+        boxShadow: '0 8px 30px rgba(0,0,0,0.8)',
+        boxSizing: 'border-box',
+        textAlign: 'center',
+        pointerEvents: 'none',
+        transition: 'opacity 0.45s cubic-bezier(0.25, 1, 0.5, 1)'
+      });
 
-    this.guiOverlay.innerHTML = `
-      <div style="color: #00ffcc; font-size: 11px; text-align: left; margin-bottom: 14px; font-weight: bold; letter-spacing: 0.5px;">
-        ⚙️ STAGE STATUS: ${this.version} READY
-      </div>
-      <h3 style="color: #ffffff; font-size: 16.5px; margin: 0 0 16px 0; font-weight: 600;">
-        007호 주파수 삼분할 스페이스 가이드
-      </h3>
-      <div style="font-size: 12.5px; text-align: left; line-height: 1.8; color: #dddddd;">
-        <p style="margin: 6px 0;">🔴 <strong style="color: #ff0055;">[저음역 ➡️ 제자리 진동]</strong> 3의 배수 첫 번째 별빛들이 흩어지지 않고 제자리에서 묵직하게 파르르 떨립니다.</p>
-        <p style="margin: 6px 0;">🟢 <strong style="color: #00ffcc;">[중음역 ➡️ 반짝이기]</strong> 두 번째 별빛 무리들이 주파수 호흡에 맞춰 영롱하게 명멸 트윙클 진동합니다.</p>
-        <p style="margin: 6px 0;">🔵 <strong style="color: #0077ff;">[고음역 ➡️ 랜덤 컬러 리턴]</strong> 하이 비트 순간에 색상이 랜덤하게 튀었다가 다시 부드럽게 원래 배색으로 리턴됩니다.</p>
-        <p style="margin: 6px 0; color: #ffcc00;">▶️ <strong style="color: #ffcc00;">[하단 스타트]</strong> 재생 버튼을 누르면 설명창이 투명하게 자동 소멸합니다.</p>
-      </div>
-    `;
-    this.container.appendChild(this.guiOverlay);
+      this.guiOverlay.innerHTML = `
+        <div style="color: #00ffcc; font-size: 11px; text-align: left; margin-bottom: 14px; font-weight: bold; letter-spacing: 0.5px;">
+          ⚙️ STAGE STATUS: ${this.version} READY
+        </div>
+        <h3 style="color: #ffffff; font-size: 16.5px; margin: 0 0 16px 0; font-weight: 600;">
+          007호 주파수 삼분할 스페이스 가이드
+        </h3>
+        <div style="font-size: 12.5px; text-align: left; line-height: 1.8; color: #dddddd;">
+          <p style="margin: 6px 0;">🔴 <strong style="color: #ff0055;">[저음역 ➡️ 제자리 진동]</strong> 3의 배수 첫 번째 별빛들이 흩어지지 않고 제자리에서 묵직하게 파르르 떨립니다.</p>
+          <p style="margin: 6px 0;">🟢 <strong style="color: #00ffcc;">[중음역 ➡️ 반짝이기]</strong> 두 번째 별빛 무리들이 주파수 호흡에 맞춰 영롱하게 명멸 트윙클 진동합니다.</p>
+          <p style="margin: 6px 0;">🔵 <strong style="color: #0077ff;">[고음역 ➡️ 랜덤 컬러 리턴]</strong> 하이 비트 순간에 색상이 랜덤하게 튀었다가 다시 부드럽게 원래 배색으로 리턴됩니다.</p>
+          <p style="margin: 6px 0; color: #ffcc00;">▶️ <strong style="color: #ffcc00;">[하단 스타트]</strong> 재생 버튼을 누르면 설명창이 투명하게 자동 소멸합니다.</p>
+        </div>
+      `;
+      this.container.appendChild(this.guiOverlay);
+    };
+
+    renderOverlay();
+    // 락 방어용 백업 스케줄러 가동
+    setTimeout(renderOverlay, 150);
   }
 
   createGlowTexture() {
@@ -146,18 +152,17 @@ export default class ThreeRealNebula {
     this.particleData = [];
     let sRandom = this.currentSeed;
 
-    // 💡 [분산 범위 스케일 타게팅 개조]
+    // 💡 레거시 나선 수식을 원천 파괴하고 구형 공간 확산 지름 축으로 튜닝 변경
     const maxDistributionRadius = THREE.MathUtils.mapLinear(this.scatterExponent, 0.5, 5.0, 2.5, 25.0);
 
     for (let i = 0; i < this.particleCount; i++) {
-      // 💡 [지형 변경 씨드 포지션 매핑 개조]
       sRandom = this.seededRandom(sRandom) * 1000;
       const r1 = this.seededRandom(sRandom + 1);
       const r2 = this.seededRandom(sRandom + 2);
       const r3 = this.seededRandom(sRandom + 3);
       const r4 = this.seededRandom(sRandom + 4);
 
-      // 구형 랜덤 배분 벡터 공식 활용 (우주 전역에 고르게 상주 분포)
+      // 전체 무작위 공간 분산 매트릭스 수식 적용
       const theta = r1 * 2.0 * Math.PI;
       const phi = Math.acos(2.0 * r2 - 1.0);
       const baseDist = Math.pow(r3, 0.5) * maxDistributionRadius;
@@ -176,17 +181,16 @@ export default class ThreeRealNebula {
 
       if (starType === 'star') pSize = 0.14 + r1 * 0.2; 
 
-      // 오리지널 지정 스타일 1번, 2번 컬러 배색 가이드라인 고수
       if (this.colorStyle === 'monochrome') {
         if (starType === 'star') color.setHex(0xffffff);
-        else if (i % 3 === 0) color.setHex(0x001f4d); // 바다 딥블루
-        else if (i % 3 === 1) color.setHex(0x0066cc); // 미드 아쿠아 블루
-        else color.setHex(0x33ccff);                // 시안 라이트블루
+        else if (i % 3 === 0) color.setHex(0x001f4d); 
+        else if (i % 3 === 1) color.setHex(0x0066cc); 
+        else color.setHex(0x33ccff);                
       } 
       else if (this.colorStyle === 'pastel') {
         if (starType === 'star') color.setHex(0xffaa44);
-        else if (i % 2 === 0) color.setHex(0xff4400); // 파이어 오렌지
-        else color.setHex(0x2a0000);                // 다크 블러드 크림슨
+        else if (i % 2 === 0) color.setHex(0xff4400); 
+        else color.setHex(0x2a0000);                
       }
       else if (this.colorStyle === 'custom') {
         const cc = this.customColors;
@@ -213,7 +217,6 @@ export default class ThreeRealNebula {
         type: starType,
         baseSize: pSize,
         randomPhase: r3 * Math.PI,
-        // 💡 고음역 복귀를 위한 원본 컬러 백업 보관
         originalColor: color.clone()
       });
     }
@@ -277,18 +280,16 @@ export default class ThreeRealNebula {
     const treble  = audioData ? audioData.treble * gain * 2.2 : 0;
     const volume  = audioData ? audioData.volume * gain * 1.5 : 0;
 
-    // 가이드 레이어 자동 오퍼시티 소멸 제어 인터랙션
     if (volume > 0.05) {
       if (this.guiOverlay) this.guiOverlay.style.opacity = '0';
     } else {
       if (this.guiOverlay) this.guiOverlay.style.opacity = '1';
     }
 
-    // 💡 [대대적 개조 핵심 축 루프] 3의 배수 삼분할 분기 링킹 가동
     for (let i = 0; i < this.particleCount; i++) {
       const data = this.particleData[i];
 
-      // 💥 1번 분기: 저음 파트 [i % 3 === 0] ➡️ 사방 이동 없이 제자리 진동
+      // 💥 1번 분기: 저음 파트 [i % 3 === 0] ➡️ 제자리 진동
       if (i % 3 === 0) {
          const tremble = Math.sin(time * 45.0 + data.randomPhase) * (bass * 0.035);
          positions[i * 3]     = data.baseX + tremble;
@@ -297,36 +298,31 @@ export default class ThreeRealNebula {
          
          sizes[i] = data.baseSize * (1.0 + bass * 2.0);
       }
-      // 💥 2번 분기: 중음 파트 [i % 3 === 1] ➡️ 영롱한 반짝이기 트윙클 및 호흡 팽창
+      // 💥 2번 분기: 중음 파트 [i % 3 === 1] ➡️ 영롱한 반짝이기 트윙클
       else if (i % 3 === 1) {
          const pulse = 1.0 + Math.sin(time * 2.0 + data.randomPhase) * (mid * 0.15);
          positions[i * 3]     = data.baseX * pulse;
          positions[i * 3 + 1] = data.baseY * pulse;
          positions[i * 3 + 2] = data.baseZ * pulse;
 
-         // 반짝이는 광량 오퍼시티 대입 트윙클 맵 가변
          const blink = 0.5 + Math.sin(time * data.twinkleSpeed) * 0.5;
          sizes[i] = data.baseSize * (1.0 + mid * 3.0) * (0.3 + blink * (mid * 1.5));
       }
-      // 💥 3번 분기: 고음 파트 [i % 3 === 2] ➡️ 고음 타격 시 완전히 다른 색상 튀었다가 복귀
+      // 💥 3번 분기: 고음 파트 [i % 3 === 2] ➡️ 고음 타격 시 완전히 다른 색상 가변 후 복귀
       else {
-         // 고음 역치 도출에 따른 랜덤 색상 실시간 피드백
          if (treble > 0.65) {
-            // 주파수가 요동치는 찰나의 순간 완전히 이질적인 무작위 네온 네이티브 색상 하이재킹 투입
             let shiftSeed = i + Math.floor(time * 10);
             colors[i * 3]     = this.seededRandom(shiftSeed);
             colors[i * 3 + 1] = this.seededRandom(shiftSeed + 1);
             colors[i * 3 + 2] = this.seededRandom(shiftSeed + 2);
-            sizes[i] = data.baseSize * 4.0; // 튀는 순간 크기도 벌크업 시각화
+            sizes[i] = data.baseSize * 4.0; 
          } else {
-            // 고음 비트가 내려앉으면 원본 복귀(Lerp 보간을 적용하여 부드럽고 영롱하게 원위치 백)
             colors[i * 3]     = THREE.MathUtils.lerp(colors[i * 3], data.originalColor.r, 0.1);
             colors[i * 3 + 1] = THREE.MathUtils.lerp(colors[i * 3 + 1], data.originalColor.g, 0.1);
             colors[i * 3 + 2] = THREE.MathUtils.lerp(colors[i * 3 + 2], data.originalColor.b, 0.1);
             sizes[i] = THREE.MathUtils.lerp(sizes[i], data.baseSize * (1.0 + treble * 1.5), 0.2);
          }
 
-         // 기본 위치 유연 운동
          positions[i * 3] = data.baseX + Math.sin(time * 0.2 + data.randomPhase) * (treble * 0.05);
          positions[i * 3 + 1] = data.baseY + Math.cos(time * 0.2 + data.radius) * (treble * 0.05);
          positions[i * 3 + 2] = data.baseZ + Math.cos(time * 0.5 + data.randomPhase) * (treble * 0.05);
@@ -337,7 +333,6 @@ export default class ThreeRealNebula {
     this.geometry.attributes.color.needsUpdate = true;
     this.geometry.attributes.pSize.needsUpdate = true;
 
-    // 전체 조망 카메라 앵글 회전 가속 연동 유지
     this.points.rotation.y = time * 0.012 + (volume * 0.03);
     this.points.rotation.x = Math.sin(time * 0.005) * 0.04;
 
