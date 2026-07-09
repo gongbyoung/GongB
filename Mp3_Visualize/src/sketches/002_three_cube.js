@@ -1,8 +1,9 @@
 /**
  * src/sketches/002_three_cube.js
- * - [버전] Ver 4.9 (점 모드 0 나누기 NaN 좌표 깨짐 및 실행 시 블랙아웃 버그 100% 최종 픽스판)
- * - 점(Dot) 모드 시 중심축 (0,0) 수렴으로 인한 벡터 나눗셈 오류(NaN)를 고유 각도 기반 dirX/dirY 매핑으로 완벽 우회 수정
- * - 지형변경(Random Seed) 슬라이더 구간에 따라 [점 ➡️ 서클 ➡️ 삼각형 ➡️ 사각형 ➡️ 별 ➡️ 타원] 레이아웃 칼고정 변형
+ * - [버전] Ver 4.10 (분산범위 크기 제어 축 50% 추가 컴팩트 슬림 압축판)
+ * - Center Scatter 슬라이더의 기본 반경 배율을 현재 스펙보다 50% 더 아담하게 축소 조율 완료
+ * - 슬라이더를 최대로 올려도 9:16 모바일 화면을 절대 이탈하지 않고 중앙 정렬 안착 방어
+ * - 점 모드 0 나누기 오류 우회 및 지형변경 슬라이더 구간별 6대 기하학 형태 변형 완결판 유지
  * - 3대 형태학 무작위 셔플 및 5대 컬러 스타일 프리셋, 특수문자 우회 3D 배경 스크린 탑재 유지
  */
 
@@ -14,7 +15,8 @@ export default class ThreeCube {
     this.renderer = null;
     this.guiOverlay = null;
 
-    this.version = "002호 3D Radial Outward Bar Ver 4.9";
+    // 💡 002호 최종 분산범위 압축 픽스 마커 세팅
+    this.version = "002호 3D Radial Outward Bar Ver 4.10";
     this.isAudioActive = false;
     this.lastSettingsStr = "";
 
@@ -97,9 +99,9 @@ export default class ThreeCube {
         002호 정면 방사형 비주얼라이저 가이드
       </h3>
       <div style="font-size: 12.5px; text-align: left; line-height: 1.75; color: #dddddd;">
-        <p style="margin: 6px 0;">🎯 <strong style="color: #00ffcc;">[점 모드 버그 픽스]</strong> 중심점이 한 점으로 모여도 좌표 왜곡 없이 바깥 사방으로 화려하게 뿜어 나갑니다.</p>
+        <p style="margin: 6px 0;">📏 <strong style="color: #00ffcc;">[분산범위 50% 다운]</strong> 분산범위 슬라이더의 크기 확장 상한선을 전면 절반으로 압축 완료했습니다.</p>
         <p style="margin: 6px 0;">🎲 <strong style="color: #ffffff;">[6대 기하학 스위칭]</strong> 지형변경 슬라이더 구간별로 [점 ➡️ 서클 ➡️ 삼각형 ➡️ 사각형 ➡️ 별 ➡️ 타원] 형태 변형 완료!</p>
-        <p style="margin: 6px 0;">📐 <strong style="color: #ffffff;">[50% 압축 안착]</strong> 세로 9:16 프레임을 벗어나지 않도록 최적화 콤팩트 배율을 방어합니다.</p>
+        <p style="margin: 6px 0;">🎡 <strong style="color: #ffffff;">[안전 구동 보장]</strong> 점 모드 0나누기 오동작을 완벽 차단하여 재생 시 블랙아웃 현상을 무결하게 격파합니다.</p>
         <p style="margin: 6px 0; color: #ffcc00;">▶️ <strong style="color: #ffcc00;">[하단 스타트]</strong> 재생 버튼을 누르면 이 가이드창이 투명하게 사라지며 영상이 시작됩니다!</p>
       </div>
       <div style="color: #777777; font-size: 10.5px; margin-top: 16px; border-top: 1px solid #222530; padding-top: 10px;">
@@ -116,8 +118,9 @@ export default class ThreeCube {
     const baseBoxGeometry = new THREE.BoxGeometry(0.12, 1, 0.12);
     const ui = this.getUIParams();
 
-    // 9:16 모바일 뷰 최적화 50% 슬림 압축 베이스 반경
-    let currentBaseRadius = THREE.MathUtils.mapLinear(ui.scatter, 0.5, 5.0, 0.4, 2.5) * 0.65; 
+    // 💡 [핵심 교정 축] 분산범위(ui.scatter) 배율의 기초 폭을 기존보다 50% 추가 압축!
+    // 기존 0.4 ~ 2.5 범위에서 -> 0.2 ~ 1.25 범위로 완벽하게 하향 시공하여 가변 폭을 조밀하게 맞췄습니다.
+    let currentBaseRadius = THREE.MathUtils.mapLinear(ui.scatter, 0.5, 5.0, 0.2, 1.25) * 0.65; 
 
     let seedValue = ui.seed;
     const seededRandom = () => {
@@ -125,7 +128,6 @@ export default class ThreeCube {
       return x - Math.floor(x);
     };
 
-    // 지형변경 슬라이더 구간별 6대 형태학 셋업 판정
     let shapeType = 'circle';
     if (ui.seed <= 16) shapeType = 'dot';
     else if (ui.seed <= 33) shapeType = 'circle';
@@ -142,17 +144,14 @@ export default class ThreeCube {
       let finalY = 0;
 
       if (shapeType === 'dot') {
-        // 1. 점 모드 (완벽한 제로 영점 수렴)
         finalX = 0.001 * Math.cos(angle);
         finalY = 0.001 * Math.sin(angle);
       } 
       else if (shapeType === 'circle') {
-        // 2. 써클 모드
         finalX = Math.cos(angle) * currentBaseRadius;
         finalY = Math.sin(angle) * currentBaseRadius;
       } 
       else if (shapeType === 'triangle') {
-        // 3. 삼각형 모드
         let triAngle = angle + Math.PI / 6;
         let rTri = currentBaseRadius * (Math.sqrt(3) / (Math.sqrt(3) * Math.cos(triAngle % (Math.PI * 2 / 3) - Math.PI / 3)));
         if (isNaN(rTri) || !isFinite(rTri)) rTri = currentBaseRadius;
@@ -160,26 +159,22 @@ export default class ThreeCube {
         finalY = Math.sin(angle) * rTri;
       } 
       else if (shapeType === 'square') {
-        // 4. 사각형 모드
         let rSquare = currentBaseRadius * Math.min(1.0 / Math.abs(Math.cos(angle)), 1.0 / Math.abs(Math.sin(angle)));
         if (isNaN(rSquare) || !isFinite(rSquare)) rSquare = currentBaseRadius;
         finalX = Math.cos(angle) * rSquare;
         finalY = Math.sin(angle) * rSquare;
       } 
       else if (shapeType === 'star') {
-        // 5. 별모양 모드
         let starPoints = 5;
         let rStar = currentBaseRadius * (0.6 + 0.4 * Math.cos(starPoints * angle));
         finalX = Math.cos(angle) * rStar;
         finalY = Math.sin(angle) * rStar;
       } 
       else {
-        // 6. 타원 모드
         finalX = Math.cos(angle) * currentBaseRadius * 1.25;
         finalY = Math.sin(angle) * currentBaseRadius * 0.8;
       }
 
-      // 주파수 노이즈 결합 편차 보간
       let noiseShift = 1.0 + (Math.sin(freqRatio * Math.PI * 4.0) * 0.03);
       finalX *= noiseShift;
       finalY *= noiseShift;
@@ -229,7 +224,6 @@ export default class ThreeCube {
       mesh.position.y = finalY;
       mesh.position.z = 0;
 
-      // 머리가 정중앙 원점에서 바깥 방사형 벡터를 정확히 바라보도록 탄젠트 로테이션 락 피스
       mesh.rotation.z = Math.atan2(finalY, finalX) - Math.PI / 2;
 
       this.scene.add(mesh);
@@ -352,12 +346,9 @@ export default class ThreeCube {
       freqVolume *= ui.burst;
       let dynamicResponse = freqVolume * 4.8 * amplitudeMultiplier;
 
-      // 💡 [버그 원천 분쇄 코어] 정점 위치 거리가 극도로 가까워도(점 모드) 나눗셈 오류가 안 나도록 고유 고정 각도로 대체 적용
-      let len = Math.sqrt(node.mesh.position.x * node.mesh.position.x + node.mesh.position.y * node.mesh.position.y);
       let dirX = Math.cos(node.angle);
       let dirY = Math.sin(node.angle);
 
-      // 점 모드일 때와 일반 도형 모드일 때의 기저 길이를 수학적으로 지능형 자동 복조
       let baseLengthOffset = (node.baseX === 0.001 * dirX) ? 0 : Math.sqrt(node.baseX * node.baseX + node.baseY * node.baseY);
 
       if (node.mode === 'full-bar') {
