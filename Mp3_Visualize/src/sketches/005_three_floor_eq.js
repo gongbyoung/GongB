@@ -1,8 +1,9 @@
 /**
  * src/sketches/005_three_floor_eq.js
- * - [버전] Ver 3.1 (개별 LED 셀 내부 단색 유지 및 수직 칸별 계단식 그라디언트 전환 완결판)
- * - 스타일 1: 바다색 계단 (개별 칸은 완벽한 단색 / 1층 어두운 블루에서 위층 밝은 시안 블루로 칸마다 색상 변형)
- * - 스타일 2: 불색 계단 (개별 칸은 완벽한 단색 / 1층 밝은 오렌지 레드에서 위층 어두운 잿빛 크림슨으로 칸마다 색상 변형)
+ * - [버전] Ver 3.2 (하드웨어 컬러 누적 버그 완치 및 개별 LED 셀 완전 단색 보정 완결판)
+ * - update() 루프 내 multiplyScalar 누적 곱 연산으로 인해 색상이 타버리던 치명적 결함을 userData.baseColor 원본 백업 구조로 완전 해결
+ * - 스타일 1: 바다색 계단 (개별 칸 내부 그라디언트 제거 ➡️ 완벽한 고정 단색 / 위층으로 갈수록 맑은 아쿠아 블루로 계단식 변형)
+ * - 스타일 2: 불색 계단 (개별 칸 내부 그라디언트 제거 ➡️ 완벽한 고정 단색 / 위층으로 갈수록 짙은 마그마 레드 크림슨으로 계단식 변형)
  * - 스타일 3: 가상 픽커 커스텀 지정 배색 (1층 Color 1 단색 -> 위층 Color 2 단색으로 칸별 선형 전환)
  * - 스타일 4: 아래칸 채움 없이 최고 피크 정점들만 스무스하게 이어 흐르는 네온 파도(Wave)선 연출 유지
  * - 스타일 5: 면 채움 없이 순수 사각형 외곽 테두리선(Wireframe) 구조의 개별 도트 올랜덤 컬러 셔플 유지
@@ -38,7 +39,7 @@ export default class ThreeFloorEqualizer {
     this.currentWidth = 0;
     this.currentHeight = 0;
     
-    this.version = "005호 칸별 단색 변형 스펙트럼 Ver 3.1";
+    this.version = "005호 칸별 단색 변형 스펙트럼 Ver 3.2";
   }
 
   init() {
@@ -108,27 +109,24 @@ export default class ThreeFloorEqualizer {
     }
 
     for (let i = 0; i < this.barCount; i++) {
-      // 💡 각 대역폭 스타일별 기준 기저 컬러 원천 마킹
       let baseBottomColor = new THREE.Color();
       let baseTopColor = new THREE.Color();
 
       if (this.uiSettings.style === 'monochrome') {
-        baseBottomColor.setHex(0x001a33); // 1. 바다색 그라디언트 기저 (어두운 심해 청색)
-        baseTopColor.setHex(0x33d6ff);    // 위로 갈수록 맑은 아쿠아 블루
+        baseBottomColor.setHex(0x001a33); // 스타일 1: 바다색 계단 기저 (어두운 심해 청색)
+        baseTopColor.setHex(0x33d6ff);    // 위로 갈수록 맑은 아쿠아 블루 단색
       } else if (this.uiSettings.style === 'pastel') {
-        baseBottomColor.setHex(0xff4500); // 2. 불색 그라디언트 기저 (밝고 강렬한 오렌지 마그마)
-        baseTopColor.setHex(0x1a0000);    // 위로 갈수록 어둡게 타버린 크림슨 블랙
+        baseBottomColor.setHex(0xff4500); // 스타일 2: 불색 계단 기저 (밝고 강렬한 오렌지 마그마)
+        baseTopColor.setHex(0x1a0000);    // 위로 갈수록 어둡게 타버린 크림슨 블랙 단색
       } else if (this.uiSettings.style === 'custom') {
-        baseBottomColor.set(this.uiSettings.customColors.gas1); // 3. 커스텀 지정 배색
+        baseBottomColor.set(this.uiSettings.customColors.gas1); // 스타일 3: 커스텀 지정 배색
         baseTopColor.set(this.uiSettings.customColors.gas2);
       } else {
-        baseBottomColor.setHex(0xff0055); // 4, 5번 네이티브 배색 (네온 핑크)
+        baseBottomColor.setHex(0xff0055); // 스타일 4, 5번 네이티브 기본 배색 (네온 핑크)
         baseTopColor.setHex(0x00ffcc);    // 네온 민트
       }
 
-      // 💡 [핵심 알고리즘 수정 패치] 
-      // 개별 큐브 내부에 그라디언트가 생기지 않도록 Fragment Shader 내부의 mix 보간식을 폐기하고,
-      // 셰이더에는 단일 단색 유니폼(u_cellColor)만 주입하여 완벽한 면 정갈함을 유지합니다.
+      // 개별 큐브 내부에 얼룩덜룩한 그라디언트 변형이 생기지 않도록 단일 단색 유니폼(u_cellColor) 시스템 셋업
       const material = new THREE.ShaderMaterial({
         uniforms: {
           u_cellColor: { value: new THREE.Color(0xffffff) },
@@ -148,12 +146,10 @@ export default class ThreeFloorEqualizer {
           uniform float u_wireOnly;
           varying vec2 vUv;
           void main() {
-            // 한 칸 격자 테두리 마스크 보간 공식
             float borderX = smoothstep(0.0, 0.08, vUv.x) * smoothstep(1.0, 0.92, vUv.x);
             float borderY = smoothstep(0.0, 0.08, vUv.y) * smoothstep(1.0, 0.92, vUv.y);
             float mask = borderX * borderY;
 
-            // 스타일 5번 제어: u_wireOnly 켜지면 내부를 비우고 정사방 테두리선만 표출
             if (u_wireOnly > 0.5) {
                mask = (mask < 0.95) ? 1.0 : 0.0;
                if(mask < 0.1) discard; 
@@ -177,16 +173,15 @@ export default class ThreeFloorEqualizer {
       for (let j = 0; j < this.maxCells; j++) {
         const cellMat = material.clone();
         
-        // 💡 [수학적 계단식 컬러 분할]
-        // 1층부터 15층까지 각 칸의 높이 비율(ratio)을 계산하여 칸막이별로 완벽한 '고정 단색'을 개별 주입합니다.
+        // 💡 [수학적 계단식 컬러 선형 분할 연산]
         let cellRatio = j / (this.maxCells - 1);
         let finalCellColor = new THREE.Color();
         finalCellColor.copy(baseBottomColor).lerp(baseTopColor, cellRatio);
         
         // 스타일 5번 우회 예외: 테두리만 남기고 올 랜덤 컬러 처리 시
         if (this.uiSettings.style !== 'monochrome' && this.uiSettings.style !== 'pastel' && this.uiSettings.style !== 'custom' && this.uiSettings.style !== 'full-random') {
-            cellMat.uniforms.u_wireOnly.value = 1.0; // 5번 기능 활성화
-            finalCellColor.setHSL(seededRandom(), 1.0, 0.6); // 완전히 독립된 도트 무작위 랜덤화
+            cellMat.uniforms.u_wireOnly.value = 1.0; 
+            finalCellColor.setHSL(seededRandom(), 1.0, 0.6); 
         }
 
         cellMat.uniforms.u_cellColor.value.copy(finalCellColor);
@@ -194,6 +189,11 @@ export default class ThreeFloorEqualizer {
         const cellMesh = new THREE.Mesh(geometry, cellMat);
         cellMesh.scale.set(barWidth, cellHeight, 1);
         cellMesh.position.set(channelObj.posX, bottomY + j * (cellHeight + cellSpacing), 0);
+
+        // 💡 [색상 타버림 방지 코어 장치] 매 프레임 연산 시 누적 곱셈으로 색이 깨지는 걸 막기 위해 원본 단색을 백업합니다.
+        cellMesh.userData = {
+          baseColor: finalCellColor.clone()
+        };
 
         this.scene.add(cellMesh);
         channelObj.cells.push(cellMesh);
@@ -292,18 +292,18 @@ export default class ThreeFloorEqualizer {
         const activeThreshold = channel.smoothedHeight * this.maxCells;
         let channelHighestY = -this.currentHeight / 2 + 15;
 
-        channel.materials.forEach((mat, cellIdx) => {
-          // 💡 [발광 멀티플라이어] 개별 셀의 고유 단색 밝기를 실시간 상향 링크
-          mat.uniforms.u_cellColor.value.multiplyScalar(glowMultiplier);
+        channel.cells.forEach((cellMesh, cellIdx) => {
+          const mat = channel.materials[cellIdx];
+          
+          // 💡 [핵심 버그 완전 픽스] 매 프레임 누적해서 연산하지 않고, 백업해둔 백업 컬러본(baseColor)을 기준으로 1회성 정밀 밝기 맵핑 유도
+          mat.uniforms.u_cellColor.value.copy(cellMesh.userData.baseColor).multiplyScalar(glowMultiplier);
 
-          // 💡 스타일 4번 조건 판정 시: 아래칸 다 지우고 채움 없이 파도 스플라인 점만 획득
           if (this.uiSettings.style === 'full-random') {
              mat.uniforms.u_opacity.value = 0.0; 
              if (cellIdx < activeThreshold) {
-                 channelHighestY = channel.cells[cellIdx].position.y + (channel.cells[cellIdx].scale.y);
+                 channelHighestY = cellMesh.position.y + (cellMesh.scale.y);
              }
           } 
-          // 그 외 일반 1, 2, 3, 5번 스타일 격자 점등 연산
           else {
              if (cellIdx < activeThreshold) {
                mat.uniforms.u_opacity.value = 0.95; 
@@ -316,7 +316,6 @@ export default class ThreeFloorEqualizer {
         peakPoints.push(new THREE.Vector3(channel.posX, channelHighestY, 2));
       });
 
-      // 스타일 4번 파도 연출 스플라인 제어 루프
       if (this.uiSettings.style === 'full-random' && this.waveLineMesh) {
           this.waveLineMesh.material.opacity = 1.0;
           
