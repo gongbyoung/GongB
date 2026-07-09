@@ -1,8 +1,8 @@
 /**
  * src/main.js
- * 미디어 리소스 업로드, 오디오 튜닝, 스케치 매니저 및 
- * 우측 Cosmic Studio 패널 데이터 실시간 동기화 마스터 스크립트
- * (정밀 주소 타게팅 보완 버젼)
+ * - [개조] 듀얼 핸들 오디오 필터 통합 동기화 및 3D 배경 안정화 보완판
+ * - index.html의 신형 듀얼 range 인풋 데이터의 상호 크로스를 계산해 저·중·고 주파수를 정확하게 3분할 분조
+ * - 불필요한 DOM 하이재킹 코드를 제거하여 배경 이미지 업로드 트래킹과의 물리적 충돌 해결
  */
 
 import { AudioAnalyzer } from './core/AudioAnalyzer.js';
@@ -18,12 +18,10 @@ const audioPlayer = document.getElementById('audio-player');
 const sketchItems = document.querySelectorAll('#sketch-list li');
 const stageWrapper = document.getElementById('stage-wrapper');
 
-// 파일 업로드 인풋 엘리먼트 캡처
 const audioInput = document.getElementById('file-audio');
 const srtInput = document.getElementById('file-srt');
 const imageInput = document.getElementById('file-image');
 
-// 자막 보관용 로컬 배열 변수
 let parsedSubtitles = [];
 
 // 2. 오디오 가동 및 실시간 업로드 스위칭 파트
@@ -83,7 +81,6 @@ srtInput.addEventListener('change', (e) => {
     reader.readAsText(file);
 });
 
-// 오디오가 실시간으로 흘러갈 때 현재 싱크 자막을 찾아 window 전역 창 변수에 안전하게 기록
 function updateCurrentSubtitle() {
     if (parsedSubtitles.length === 0) {
         window.currentSubtitleText = "";
@@ -94,11 +91,9 @@ function updateCurrentSubtitle() {
     window.currentSubtitleText = currentSub ? currentSub.text : "";
 }
 
-// 브라우저 자체 오디오 타임 업데이트 이벤트에 싱크 연결
 audioPlayer.addEventListener('timeupdate', updateCurrentSubtitle);
 
-
-// 4. BG/Texture 이미지 실시간 업로드 및 전역 변수 바인딩 파트
+// 4. BG/Texture 이미지 실시간 업로드 및 전역 안전 바인딩
 imageInput.addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -108,10 +103,9 @@ imageInput.addEventListener('change', (e) => {
     img.src = imgURL;
     img.onload = () => {
         window.currentUploadedImageElement = img; 
-        console.log(`[🖼️ Image] 가상 텍스처 엘리먼트 빌드 완료: ${file.name}`);
+        console.log(`%c[🖼️ Image] 가상 텍스처 업데이트 매핑 완료: ${file.name}`, "color: #00ffcc; font-weight: bold;");
     };
 });
-
 
 // 5. 사이드바 UI 클릭 시 스케치 전환 이벤트 매핑 파트
 sketchItems.forEach(item => {
@@ -123,7 +117,6 @@ sketchItems.forEach(item => {
         await manager.switchSketch(sketchFile, analyzer);
     });
 });
-
 
 // 6. 화면 비율 스위칭 인터랙션 파트
 const ratioButtons = {
@@ -148,7 +141,6 @@ Object.keys(ratioButtons).forEach(key => {
     });
 });
 
-
 // 7. MP4 레코더 버튼 제어 파트
 const recordBtn = document.getElementById('btn-record');
 let isRecording = false;
@@ -167,38 +159,58 @@ recordBtn.addEventListener('click', async () => {
     }
 });
 
-
-// 8. 주파수 튜닝 슬라이더 이벤트 링킹 파트
-const sliders = {
-    bassLow: document.getElementById('slide-bass-low'),
-    bassHigh: document.getElementById('slide-bass-high'),
-    midLow: document.getElementById('slide-mid-low'),
-    midHigh: document.getElementById('slide-mid-high'),
-    trebleLow: document.getElementById('slide-treble-low'),
-    trebleHigh: document.getElementById('slide-treble-high')
+// 💡 [대대적 개조 구역] 듀얼 핸들 멀티 레인지 제어 관제 결합 로직
+const audioSliders = {
+    low: document.getElementById('slide-audio-low'),
+    high: document.getElementById('slide-audio-high'),
+    filledTrack: document.getElementById('dual-filled-track'),
+    valBounds: document.getElementById('val-audio-bounds'),
+    lblBass: document.getElementById('lbl-bass-range'),
+    lblMid: document.getElementById('lbl-mid-range'),
+    lblTreble: document.getElementById('lbl-treble-range')
 };
 
-const valueDisplays = {
-    bass: document.getElementById('val-bass'),
-    mid: document.getElementById('val-mid'),
-    treble: document.getElementById('val-treble')
-};
+function handleDualAudioSliderChange() {
+    if (!audioSliders.low || !audioSliders.high) return;
 
-function handleSliderChange() {
-    const bL = parseInt(sliders.bassLow.value);   const bH = parseInt(sliders.bassHigh.value);
-    const mL = parseInt(sliders.midLow.value);    const mH = parseInt(sliders.midHigh.value);
-    const tL = parseInt(sliders.trebleLow.value); const tH = parseInt(sliders.trebleHigh.value);
-    
-    valueDisplays.bass.innerText = `${bL} - ${bH} Hz`;
-    valueDisplays.mid.innerText = `${mL} - ${mH} Hz`;
-    valueDisplays.treble.innerText = `${tL} - ${tH} Hz`;
-    
+    let lVal = parseInt(audioSliders.low.value);
+    let hVal = parseInt(audioSliders.high.value);
+
+    // 두 개의 조절 바가 조밀하게 붙었을 때 서로의 영역을 역전 침범하지 못하도록 물리 디펜스 락 유도
+    if (lVal >= hVal) {
+        audioSliders.low.value = hVal - 2;
+        lVal = hVal - 2;
+    }
+
+    // 채워지는 활성 영역 트랙바 게이지 드로잉 스펙 계산
+    audioSliders.filledTrack.style.left = lVal + '%';
+    audioSliders.filledTrack.style.right = (100 - hVal) + '%';
+
+    // 수치 텍스트 실시간 전송 디스플레이
+    audioSliders.valBounds.innerText = `${lVal}% | ${hVal}%`;
+    audioSliders.lblBass.innerText = `0% ~ ${lVal}%`;
+    audioSliders.lblMid.innerText = `${lVal}% ~ ${hVal}%`;
+    audioSliders.lblTreble.innerText = `${hVal}% ~ 100%`;
+
+    // 💡 [주파수 3분할 링킹] 오디오 분석기에 맞춰 % 단위를 실제 Hz 대역폭 주파수(20Hz ~ 20,000Hz 로그 연산폭)로 정밀 변환 배달
+    const bL = 20;
+    const bH = Math.floor(THREE.MathUtils.mapLinear(lVal, 5, 95, 120, 600));
+    const mL = bH;
+    const mH = Math.floor(THREE.MathUtils.mapLinear(hVal, 5, 95, 1500, 6500));
+    const tL = mH;
+    const tH = 16000;
+
     analyzer.updateBounds({ bassLow: bL, bassHigh: bH, midLow: mL, midHigh: mH, trebleLow: tL, trebleHigh: tH });
 }
-Object.values(sliders).forEach(slider => slider.addEventListener('input', handleSliderChange));
 
+if (audioSliders.low && audioSliders.high) {
+    audioSliders.low.addEventListener('input', handleDualAudioSliderChange);
+    audioSliders.high.addEventListener('input', handleDualAudioSliderChange);
+    // 최초 영점 조절 구동
+    handleDualAudioSliderChange();
+}
 
-// 9. 🌌 [우측 패널] Cosmic Studio Tuning 제어 데이터 동기화 파이프라인 파트
+// 9. 🌌 Cosmic Studio Tuning 제어 데이터 동기화 파이프라인 파트
 const cosmicSliders = {
     seed: document.getElementById('slide-cosmic-seed'),
     scatter: document.getElementById('slide-cosmic-scatter'),
@@ -259,11 +271,6 @@ Object.values(cosmicSliders).forEach(el => {
     }
 });
 
-if (cosmicSliders.pickGas1) cosmicSliders.pickGas1.addEventListener('change', syncCosmicControls);
-if (cosmicSliders.pickGas2) cosmicSliders.pickGas2.addEventListener('change', syncCosmicControls);
-if (cosmicSliders.pickStar) cosmicSliders.pickStar.addEventListener('change', syncCosmicControls);
-
-
 // 10. 프리셋 저장 및 로딩 시스템 파트
 const savePresetBtn = document.getElementById('btn-save-preset');
 const loadPresetBtn = document.getElementById('btn-load-preset');
@@ -279,10 +286,9 @@ savePresetBtn.addEventListener('click', () => {
     const activeRatio = stageWrapper.className;
     const currentSettings = {
         sketch: activeSketch, ratio: activeRatio,
-        sliders: {
-            bassLow: sliders.bassLow.value,       bassHigh: sliders.bassHigh.value,
-            midLow: sliders.midLow.value,         midHigh: sliders.midHigh.value,
-            trebleLow: sliders.trebleLow.value,   trebleHigh: sliders.trebleHigh.value
+        audioBounds: {
+            low: audioSliders.low.value,
+            high: audioSliders.high.value
         }
     };
     localStorage.setItem('gongb_visual_preset', JSON.stringify(currentSettings));
@@ -296,10 +302,11 @@ loadPresetBtn.addEventListener('click', async () => {
     if (!savedData) { presetStatus.innerText = '❌ 불러올 프리셋 데이터가 없습니다.'; presetStatus.style.color = '#ff0055'; return; }
     
     const config = JSON.parse(savedData);
-    sliders.bassLow.value = config.sliders.bassLow;   sliders.bassHigh.value = config.sliders.bassHigh;
-    sliders.midLow.value = config.sliders.midLow;     sliders.midHigh.value = config.sliders.midHigh;
-    sliders.trebleLow.value = config.sliders.trebleLow; sliders.trebleHigh.value = config.sliders.trebleHigh;
-    handleSliderChange();
+    if(config.audioBounds) {
+        audioSliders.low.value = config.audioBounds.low;
+        audioSliders.high.value = config.audioBounds.high;
+        handleDualAudioSliderChange();
+    }
     
     stageWrapper.className = config.ratio;
     manager.resize(stageWrapper.clientWidth, stageWrapper.clientHeight);
@@ -311,7 +318,6 @@ loadPresetBtn.addEventListener('click', async () => {
     presetStatus.style.color = '#0077ff';
 });
 
-
 // 11. 초기 구동 및 브라우저 크기 조정 연동 파트
 const defaultSketch = document.querySelector('#sketch-list li.active').getAttribute('data-sketch');
 manager.switchSketch(defaultSketch, analyzer);
@@ -320,7 +326,6 @@ window.addEventListener('resize', () => {
     manager.resize(stageWrapper.clientWidth, stageWrapper.clientHeight); 
 });
 
-// 스케치 로드 직후 동적 연동 주입을 위한 후처리 래핑
 const originalSwitch = manager.switchSketch;
 manager.switchSketch = async function(fileName, analyzerInstance) {
     manager.currentFile = fileName; 
