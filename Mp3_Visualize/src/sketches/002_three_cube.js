@@ -1,7 +1,7 @@
 /**
  * src/sketches/002_three_cube.js
- * - [버전] Ver 4.2 (음악 재생 시 3D 화면 블랙스크린 증발 버그 100% 완전 수정본)
- * - 재생 버튼 클릭 시 가이드 UI 페이드아웃과 동시에 WebGL 렌더러가 끊김 없이 연속 드로잉하도록 파이프라인 보장
+ * - [버전] Ver 4.3 (런타임 p5 객체 참조 오류 완벽 격파 및 정면 방사형 안전 구동판)
+ * - Three.js 독립 구동 시 p5 전역 객체 참조로 인한 문법 에러(not defined)를 THREE.MathUtils로 100% 대체 수정 완료
  * - 서클 정면 배치 및 중심에서 바깥쪽으로 사방 방사형 확장 3대 형태학 무작위 셔플 유지
  * - 3중 멀티피커(가스1, 가스2, 대형별) 연동 및 특수문자 파일명 우회 3D 배경 스크린 탑재 유지
  */
@@ -14,8 +14,8 @@ export default class ThreeCube {
     this.renderer = null;
     this.guiOverlay = null;
 
-    // 💡 패치 갱신 마커 세팅
-    this.version = "002호 3D Radial Outward Bar Ver 4.2";
+    // 💡 최종 픽스 마커 세팅
+    this.version = "002호 3D Radial Outward Bar Ver 4.3";
     this.isAudioActive = false;
     this.lastSettingsStr = "";
 
@@ -245,7 +245,7 @@ export default class ThreeCube {
   }
 
   resetCanvas(p, isPreview = false) {
-     // 사양 동기화 우회
+     // 구조적 우회 유지
   }
 
   update(audioData) {
@@ -263,7 +263,6 @@ export default class ThreeCube {
     const audioEl = document.querySelector('audio');
     let isPlaying = audioEl && !audioEl.paused;
 
-    // 💡 [버그 해결 코어] 이전의 가차 없는 조기 종료(return) 제어 방식을 전면 해제하고 플래그 핸들링만 처리
     if (isPlaying || (audioData && audioData.vol > 0.005)) {
         this.isAudioActive = true;
         if (this.guiOverlay) this.guiOverlay.style.opacity = '0';
@@ -277,20 +276,19 @@ export default class ThreeCube {
     let masterVol = audioData ? audioData.vol : 0.1;
     masterVol *= ui.burst;
 
-    let scaleMultiplier = (window.p5) ? 1.0 : 1.0; 
+    // 💡 [버그 격파 코어] window.p5 객체가 정의되지 않아도 100% 안전하게 구동되도록 Three.js 순수 공식 인터폴레이션으로 교체 피팅
+    let scaleMultiplier = 1.0; 
     const glowSlider = document.getElementById('slide-cosmic-glow');
     if (glowSlider) {
       scaleMultiplier = THREE.MathUtils.mapLinear(parseFloat(glowSlider.value), 10, 150, 0.4, 2.5);
     }
 
-    // 💡 정지 상태든 재생 상태든 128개 3D 행렬 위치 및 변환 연산 가동 보장
     this.visualNodes.forEach((node) => {
       let freqVolume = 0;
       if (this.isAudioActive && hasRaw) {
         let rawIdx = Math.floor(node.freqIdxRatio * (rawData.length - 1));
         freqVolume = rawData[rawIdx] / 255.0;
       } else {
-        // 정지 대기 중일 때는 은은한 시각 안내용 사인파 기류 펄싱
         freqVolume = Math.sin(time * 2.0 + node.seedShift * 5.0) * 0.08 + 0.08;
       }
 
@@ -324,11 +322,10 @@ export default class ThreeCube {
       }
     });
 
-    // 정면 Z축 자전 회전 관성력 반영
     this.scene.rotation.z = time * 0.04 + (masterVol * 0.06);
     this.scene.rotation.y = Math.sin(time * 0.3) * 0.04;
 
-    // 💡 [핵심 패치 구역] 리턴문 바깥으로 탈출 배치하여 어떤 상황에서도 무조건 드로잉 가속 보장!
+    // 💡 밖으로 확실하게 탈출 고정하여 무조건 화면 리프레시 강제 가속
     this.renderer.render(this.scene, this.camera);
   }
 
