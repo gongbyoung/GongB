@@ -1,10 +1,9 @@
 /**
  * src/sketches/002_three_cube.js
- * - [버전] Ver 4.12 (스케일 누적 폭주 버그 완벽 수정 및 배경 실시간 가림 현상 원천 차단판)
- * - 기하학 모양학 공식 내부의 반경 중복 연산 오류를 완전 제거하여 분산범위 조작 시 10% 수준의 초컴팩트 스케일 안착 보장
- * - 배경 플레이트를 Z: -30 공간으로 완벽히 후방 배치하여 오디오 비트 폭발 시 메쉬가 배경 이미지를 가리는 현상 완전 해결
- * - 점 모드 0나누기 NaN 예외 방어 및 지형변경 슬라이더 구간별 6대 기하학 형태 변형 완결판 유지
- * - 3대 형태학 무작위 셔플 및 5대 컬러 스타일 프리셋, 비동기 텍스처 needsUpdate 실시간 리프레시 유지
+ * - [버전] Ver 4.13 (실시간 텍스처 로딩 및 오디오 노드 상태 정밀 디버그 로그 탑재판)
+ * - 배경화면 미출력 현상의 원인 규명을 위해 DOM 추적, TextureLoader 성공/실패 여부를 콘솔창(Console)에 명확히 기록
+ * - 매 60프레임마다 기하학 모양 상태와 오디오 데이터 버퍼 유입 강도를 덤프 출력
+ * - 분산범위(Center Scatter) 기반 컴팩트 10% 스케일, Z: -30 레이어 후방 배치, 6대 기하학 레이아웃 매퍼 유지
  */
 
 export default class ThreeCube {
@@ -15,8 +14,7 @@ export default class ThreeCube {
     this.renderer = null;
     this.guiOverlay = null;
 
-    // 💡 레이어 뎁스 및 스케일 완전 수정 마커 세팅
-    this.version = "002호 3D Radial Outward Bar Ver 4.12";
+    this.version = "002호 3D Radial Outward Bar Ver 4.13";
     this.isAudioActive = false;
     this.lastSettingsStr = "";
 
@@ -27,14 +25,20 @@ export default class ThreeCube {
     this.bgMesh = null;
     this.lastBgSrc = "";
     this.domObserver = null;
+
+    // 디버깅용 프레임 카운터
+    this.logFrameCount = 0;
+    this.currentShapeLogName = "circle";
   }
 
   init() {
     const width = this.container.clientWidth;
     const height = this.container.clientHeight;
 
+    console.log(`%c[${this.version}] 🚀 스케치 초기화 시동 완료 (화면 크기: ${width}x${height})`, "color: #00ffcc; font-weight: bold;");
+
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.FogExp2(0x06060a, 0.005); // 배경 이미지 식별을 위해 안개 농도를 한층 완화
+    this.scene.fog = new THREE.FogExp2(0x06060a, 0.005); 
 
     this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
     this.camera.position.set(0, 0, 8); 
@@ -45,14 +49,14 @@ export default class ThreeCube {
     this.renderer.setClearColor(0x06060a);
     this.container.appendChild(this.renderer.domElement);
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.35); // 배경 시인성을 위해 환경광 상향
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.35); 
     this.scene.add(ambientLight);
 
     const pointLight = new THREE.PointLight(0xffffff, 1.5, 100);
     pointLight.position.set(0, 0, 7); 
     this.scene.add(pointLight);
 
-    // 💡 [배경판 뎁스 격리 완비] 큐브 메쉬가 뒤덮지 못하도록 Z축을 -30 구조적 우주 끝벽으로 완벽 차단 배치
+    // 배경 스크린 후방 격리 세팅
     const bgGeo = new THREE.PlaneGeometry(80, 50); 
     const bgMat = new THREE.MeshBasicMaterial({ color: 0x09090e, depthWrite: false, fog: false });
     this.bgMesh = new THREE.Mesh(bgGeo, bgMat);
@@ -97,16 +101,16 @@ export default class ThreeCube {
         ⚙️ STAGE STATUS: ${this.version} READY
       </div>
       <h3 style="color: #ffffff; font-size: 16.5px; margin: 0 0 16px 0; font-weight: 600;">
-        002호 정면 방사형 비주얼라이저 가이드
+        002호 실시간 텔레메트리 디버그 가이드
       </h3>
       <div style="font-size: 12.5px; text-align: left; line-height: 1.75; color: #dddddd;">
-        <p style="margin: 6px 0;">🔵 <strong style="color: #00ffcc;">[10% 스케일 컴팩트]</strong> 크기 누적 오작동을 원천 완파하고 가변 반경을 10% 수준으로 조밀하게 다듬었습니다.</p>
-        <p style="margin: 6px 0;">🖼️ <strong style="color: #ffffff;">[배경 가림 버그 완파]</strong> 배경판 레이어 뎁스를 후방 최외곽(-30)으로 밀어내어 이미지가 선명하게 출력됩니다.</p>
+        <p style="margin: 6px 0;">🕵️‍♂️ <strong style="color: #00ffcc;">[실시간 콘솔 검증]</strong> 배경 이미지의 유입 성공/실패 여부를 콘솔창에 낱낱이 출력합니다.</p>
         <p style="margin: 6px 0;">🎲 <strong style="color: #ffffff;">[6대 기하학 스위칭]</strong> 지형변경 슬라이더 구간별로 [점 ➡️ 서클 ➡️ 삼각형 ➡️ 사각형 ➡️ 별 ➡️ 타원] 변형 완료!</p>
+        <p style="margin: 6px 0;">📏 <strong style="color: #ffffff;">[10% 스케일 컴팩트]</strong> 분산범위 수치 폭주 연산 오류를 해결하여 아담하게 안착했습니다.</p>
         <p style="margin: 6px 0; color: #ffcc00;">▶️ <strong style="color: #ffcc00;">[하단 스타트]</strong> 재생 버튼을 누르면 이 가이드창이 투명하게 사라지며 영상이 시작됩니다!</p>
       </div>
       <div style="color: #777777; font-size: 10.5px; margin-top: 16px; border-top: 1px solid #222530; padding-top: 10px;">
-        음악이 정지되면 안내 설명창이 다시 활성화됩니다.
+        우측 개발자 도구 Console 탭을 연 상태에서 테스트해주세요.
       </div>
     `;
     this.container.appendChild(this.guiOverlay);
@@ -119,7 +123,6 @@ export default class ThreeCube {
     const baseBoxGeometry = new THREE.BoxGeometry(0.12, 1, 0.12);
     const ui = this.getUIParams();
 
-    // 💡 [10% 압축 핵심 연산 개조 축] 폭주 버그를 격파하고 9:16 모바일 세로 비율 정중앙에 완전 안착되도록 0.02 ~ 0.4 배율 폭으로 엄격 조율
     let currentBaseRadius = THREE.MathUtils.mapLinear(ui.scatter, 0.5, 5.0, 0.02, 0.4); 
 
     let seedValue = ui.seed;
@@ -136,6 +139,8 @@ export default class ThreeCube {
     else if (ui.seed <= 83) shapeType = 'star';
     else shapeType = 'ellipse';
 
+    this.currentShapeLogName = shapeType; // 실시간 덤프용 이름 백업
+
     for (let i = 0; i < this.barCount; i++) {
       const angle = (i / this.barCount) * Math.PI * 2;
       let freqRatio = i / this.barCount;
@@ -143,7 +148,6 @@ export default class ThreeCube {
       let finalX = 0;
       let finalY = 0;
 
-      // 💡 각 기하학 좌표 매트릭스 공식의 단위 왜곡 반경 균등 보정 완성
       if (shapeType === 'dot') {
         finalX = 0.001 * Math.cos(angle);
         finalY = 0.001 * Math.sin(angle);
@@ -176,7 +180,6 @@ export default class ThreeCube {
         finalY = Math.sin(angle) * 0.8;
       }
 
-      // 💡 실시간 슬라이더 가변 마스터 계수를 여기서 깔끔하게 1회만 연산 적용하여 누적 폭주 버그 원천 차단
       finalX *= currentBaseRadius;
       finalY *= currentBaseRadius;
 
@@ -218,7 +221,7 @@ export default class ThreeCube {
 
       let currentGeo = baseBoxGeometry;
       if (mode === 'start-only') {
-        currentGeo = new THREE.BoxGeometry(0.08, 0.08, 0.08); // 콤팩트 크기에 맞춰 입자 지오메트리 슬림 최적화
+        currentGeo = new THREE.BoxGeometry(0.08, 0.08, 0.08); 
       } else if (mode === 'tip-only') {
         currentGeo = new THREE.BoxGeometry(0.09, 0.12, 0.09); 
       }
@@ -245,6 +248,7 @@ export default class ThreeCube {
     }
   }
 
+  // 💡 [배경 이미지 디버그 관제탑]
   setupDirectInputTracker() {
     const loader = new THREE.TextureLoader();
     const findAndBindImage = () => {
@@ -259,14 +263,28 @@ export default class ThreeCube {
       if (targetImg && targetImg.src && targetImg.src !== this.lastBgSrc) {
         this.lastBgSrc = targetImg.src;
         
-        loader.load(targetImg.src, (tex) => {
-          this.bgTexture = tex;
-          if (this.bgMesh) {
-            this.bgMesh.material.dispose();
-            this.bgMesh.material = new THREE.MeshBasicMaterial({ map: this.bgTexture, depthWrite: false, fog: false });
-            this.bgMesh.material.needsUpdate = true; 
+        console.log(`%c[디버그] 🖼️ DOM에서 배경 이미지 요소 포착 완료! 주소: ${targetImg.src.substring(0, 80)}...`, "color: #ff9900;");
+
+        // Three.js 비동기 파이프라인 시동
+        loader.load(
+          targetImg.src, 
+          (tex) => {
+            // 💡 로딩 성공 시 확인용 로그 덤프
+            console.log("%c[디버그] 🎉 Three.js TextureLoader 업로드 성공! 해상도: " + tex.image.width + "x" + tex.image.height, "color: #33cc33; font-weight: bold;");
+            
+            this.bgTexture = tex;
+            if (this.bgMesh) {
+              this.bgMesh.material.dispose();
+              this.bgMesh.material = new THREE.MeshBasicMaterial({ map: this.bgTexture, depthWrite: false, fog: false });
+              this.bgMesh.material.needsUpdate = true; 
+            }
+          },
+          undefined,
+          (err) => {
+            // 💡 로딩 실패 시 에러 사유 및 원인 격리 로그 덤프
+            console.error("[디버그] ❌ Three.js TextureLoader 업로드 실패! 원인:", err);
           }
-        });
+        );
       }
     };
     this.domObserver = new MutationObserver(() => { findAndBindImage(); });
@@ -306,6 +324,8 @@ export default class ThreeCube {
     const time = Date.now() * 0.001;
     const ui = this.getUIParams();
 
+    this.logFrameCount++;
+
     let currentSettingsStr = `${ui.seed}-${ui.scatter}-${ui.style}-${ui.gas1Hex}-${ui.gas2Hex}-${ui.starHex}`;
     if (this.lastSettingsStr !== currentSettingsStr) {
         this.lastSettingsStr = currentSettingsStr;
@@ -332,6 +352,14 @@ export default class ThreeCube {
     let masterVol = audioData ? (audioData.vol || audioData.volume || 0.1) : 0.1;
     masterVol *= ui.burst;
 
+    // 💡 [실시간 60프레임 정기 덤프 검증소]
+    if (this.logFrameCount % 60 === 0) {
+      console.log(
+        `%c[텔레메트리 프레임 로그] 🔮 형태: ${this.currentShapeLogName.toUpperCase()} | 오디오 상태: ${this.isAudioActive ? '재생 중' : '정지 중'} | 오디오 배열 길이: ${rawData.length}개 | 마스터 볼륨 배율: ${masterVol.toFixed(2)}`,
+        "color: #bbbbbb; font-size: 10.5px;"
+      );
+    }
+
     let amplitudeMultiplier = THREE.MathUtils.mapLinear(ui.glow, 0.1, 1.5, 0.3, 2.5);
 
     this.visualNodes.forEach((node) => {
@@ -351,7 +379,6 @@ export default class ThreeCube {
       }
 
       freqVolume *= ui.burst;
-      // 초컴팩트 영역 배율에 맞춰 타격 탄성 승수 계수도 안정적인 3.8 배율로 정밀 싱크로나이즈
       let dynamicResponse = freqVolume * 3.8 * amplitudeMultiplier;
 
       let dirX = Math.cos(node.angle);
