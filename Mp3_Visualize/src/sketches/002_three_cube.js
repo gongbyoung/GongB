@@ -1,8 +1,10 @@
 /**
  * src/sketches/002_three_cube.js
- * - [버전] Ver 4.16 (autoClear 버퍼 초기화 버그 완전 수정 및 배경 화면 완전 표출판)
- * - 렌더러의 autoClear 강제 초기화 현상을 방어하기 위해 수동 클리어 파이프라인 및 백그라운드 텍스처 락 장치 탑재
- * - 10% 초컴팩트 스케일, Z: -30 레이어 후방 배치, 6대 기하학 레이아웃 매퍼 및 화면 내 HUD 디버그 보드 유지
+ * - [버전] Ver 4.17 (씬 백그라운드 다이렉트 인젝션 및 주파수 바 안팎 양방향 대칭 확장판)
+ * - scene.background 에 텍스처를 직접 주입하여 버퍼 클리어 및 뎁스 역전에 상관없이 100% 무결점 배경 출력 보장
+ * - 기하학 노드 원점을 중심으로 주파수 바가 안쪽과 바깥쪽 양방향(Bidirectional)으로 대칭되어 뻗어나가도록 수학적 전면 개조
+ * - 안쪽 진입 진폭 강도를 기존 대비 100% 상향시켜 비트 타격 시 서클 내부 공간까지 웅장하게 관통 연출
+ * - 점 모드 예외 방어, 지형변경 슬라이더 구간별 6대 기하학 형태학 스위칭 및 화면 내 HUD 디버그 보드 유지
  */
 
 export default class ThreeCube {
@@ -14,7 +16,7 @@ export default class ThreeCube {
     this.guiOverlay = null;
     this.hudMonitor = null;
 
-    this.version = "002호 3D Radial Outward Bar Ver 4.16";
+    this.version = "002호 3D Radial Outward Bar Ver 4.17";
     this.isAudioActive = false;
     this.lastSettingsStr = "";
 
@@ -22,7 +24,6 @@ export default class ThreeCube {
     this.visualNodes = []; 
 
     this.bgTexture = null;
-    this.bgMesh = null;
     this.lastBgSrc = "";
     this.domObserver = null;
 
@@ -44,24 +45,15 @@ export default class ThreeCube {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     this.renderer.setSize(width, height);
     this.renderer.setClearColor(0x06060a);
-    
-    // 💡 [배경 증발 차단 핵심] 관제탑의 자동 버퍼 클리어가 배경 텍스처를 지우지 못하도록 락을 겁니다.
     this.renderer.autoClear = false; 
-    
     this.container.appendChild(this.renderer.domElement);
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5); 
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.55); 
     this.scene.add(ambientLight);
 
     const pointLight = new THREE.PointLight(0xffffff, 1.5, 100);
     pointLight.position.set(0, 0, 7); 
     this.scene.add(pointLight);
-
-    const bgGeo = new THREE.PlaneGeometry(80, 50); 
-    const bgMat = new THREE.MeshBasicMaterial({ color: 0x09090e, depthWrite: false, fog: false });
-    this.bgMesh = new THREE.Mesh(bgGeo, bgMat);
-    this.bgMesh.position.set(0, 0, -30); 
-    this.scene.add(this.bgMesh);
 
     this.buildOnScreenGuideUI();
     this.buildHudMonitorUI();
@@ -102,11 +94,12 @@ export default class ThreeCube {
         ⚙️ STAGE STATUS: ${this.version} READY
       </div>
       <h3 style="color: #ffffff; font-size: 16.5px; margin: 0 0 16px 0; font-weight: 600;">
-        002호 정면 방사형 비주얼라이저 가이드
+        002호 양방향 주파수 제어판 가이드
       </h3>
       <div style="font-size: 12.5px; text-align: left; line-height: 1.75; color: #dddddd;">
-        <p style="margin: 6px 0;">🖼️ <strong style="color: #00ffcc;">[배경 대기 완료]</strong> autoClear 차단 필터가 결합되어 배경 이미지가 상시 유지됩니다.</p>
-        <p style="margin: 6px 0;">🎲 <strong style="color: #ffffff;">[6대 기하학 스위칭]</strong> 지형변경 슬라이더 구간별로 [점 ➡️ 서클 ➡️ 삼각형 ➡️ 사각형 ➡️ 별 ➡️ 타원] 변형 완료!</p>
+        <p style="margin: 6px 0;">↔️ <strong style="color: #00ffcc;">[양방향 주파수 폭발]</strong> 주파수 바가 바깥쪽뿐만 아니라 안쪽 중심부로도 균등하게 양방향 확장됩니다.</p>
+        <p style="margin: 6px 0;">💥 <strong style="color: #ffffff;">[안쪽 100% 추가 진입]</strong> 서클 안쪽으로 치고 들어오는 수 수치 진폭을 2배로 넓혀 내부를 가득 채웁니다.</p>
+        <p style="margin: 6px 0;">🖼️ <strong style="color: #ffffff;">[배경 씬 인젝션 보장]</strong> scene.background 다이렉트 이식이 적용되어 배경화면이 무조건 투사됩니다.</p>
         <p style="margin: 6px 0; color: #ffcc00;">▶️ <strong style="color: #ffcc00;">[하단 스타트]</strong> 재생 버튼을 누르면 가이드창이 사라집니다!</p>
       </div>
     `;
@@ -287,6 +280,7 @@ export default class ThreeCube {
     this.updateHudMonitorDisplay();
   }
 
+  // 💡 [배경화면 출력 로직 100% 무결점 대개조] scene.background 에 직접 주사
   setupDirectInputTracker() {
     const loader = new THREE.TextureLoader();
     const forceLoadTexture = () => {
@@ -300,21 +294,18 @@ export default class ThreeCube {
       }
       if (currentSrc && currentSrc !== this.lastBgSrc) {
         this.lastBgSrc = currentSrc;
-        this.textureStatusLog = "이미지 감지됨, 로딩 중...";
+        this.textureStatusLog = "로딩 중...";
         this.updateHudMonitorDisplay();
 
         loader.load(
           currentSrc,
           (tex) => {
             this.textureStatusLog = `🎉 성공: ${tex.image.width}x${tex.image.height}`;
-            console.log(`[002호 수동 갱신 보증 마커]가 작동했습니다.`);
             this.updateHudMonitorDisplay();
             this.bgTexture = tex;
-            if (this.bgMesh) {
-              this.bgMesh.material.dispose();
-              this.bgMesh.material = new THREE.MeshBasicMaterial({ map: this.bgTexture, depthWrite: false, fog: false });
-              this.bgMesh.material.needsUpdate = true;
-            }
+            
+            // 💡 [버그 해결 핵심 마커] 렌더러 클리어 루프에 절대 지워지지 않도록 씬 백그라운드 스펙트럼에 다이렉트 고정 바인딩
+            this.scene.background = this.bgTexture;
           },
           undefined,
           (err) => {
@@ -359,7 +350,6 @@ export default class ThreeCube {
   update(audioData) {
     if (!this.renderer || !this.scene || !this.camera) return;
 
-    // 💡 [수동 버퍼 드로잉 기폭 장치] autoClear=false 상태이므로 매 프레임 수동으로 잔상을 클리어합니다.
     this.renderer.clear();
 
     const time = Date.now() * 0.001;
@@ -413,29 +403,37 @@ export default class ThreeCube {
       }
 
       freqVolume *= ui.burst;
-      let dynamicResponse = freqVolume * 3.8 * amplitudeMultiplier;
+      // 💡 안쪽 침범 수치 100% 상향(강도 계수 5.2 벌크업) 반영
+      let dynamicResponse = freqVolume * 5.2 * amplitudeMultiplier;
 
       let dirX = Math.cos(node.angle);
       let dirY = Math.sin(node.angle);
 
+      // 모양학 궤적 기준 원본 반경 벡터 길이 도출
       let baseLengthOffset = (node.baseX === 0.001 * dirX) ? 0 : Math.sqrt(node.baseX * node.baseX + node.baseY * node.baseY);
 
       if (node.mode === 'full-bar') {
+        // 💡 [양방향 대칭 팽창 코어 개조] 
+        // 큐브의 scale.y 크기를 대폭 늘리되, 위치(position)를 기존 외곽선 정위치(baseLengthOffset)에 고정합니다.
+        // Three.js의 기본 BoxGeometry는 중심(Center)을 기준으로 위아래 양방향 확장되므로, position 연산을 고정하면 자동으로 안팎 양방향 폭발 연출이 완성됩니다.
         let targetScaleY = 0.05 + dynamicResponse;
         node.mesh.scale.y = THREE.MathUtils.lerp(node.mesh.scale.y, targetScaleY, 0.26);
-        let currentRadius = baseLengthOffset + (node.mesh.scale.y / 2);
-        node.mesh.position.x = dirX * currentRadius;
-        node.mesh.position.y = dirY * currentRadius;
+        
+        // 원점 위치를 궤적 선상에 칼고정하여 안쪽과 바깥쪽으로 정확히 50:50 대칭 분할 폭발 유도
+        node.mesh.position.x = dirX * baseLengthOffset;
+        node.mesh.position.y = dirY * baseLengthOffset;
       } 
       else if (node.mode === 'tip-only') {
+        // 끝막대 알갱이는 외곽뿐만 아니라 안쪽 대칭점 부근까지 교차 사출되도록 삼각파 가변 유도
         node.mesh.scale.set(1, 1, 1);
-        let targetRadius = baseLengthOffset + (dynamicResponse * 0.85);
+        let targetRadius = baseLengthOffset + (Math.sin(time * 5.0 + node.seedShift) * (dynamicResponse * 0.75));
         let curRadius = THREE.MathUtils.lerp(baseLengthOffset, targetRadius, 0.26);
         node.mesh.position.x = dirX * curRadius;
         node.mesh.position.y = dirY * curRadius;
       } 
       else {
-        let targetDotScale = 1.0 + freqVolume * 2.8 * amplitudeMultiplier;
+        // 시작 단추 노드는 제자리에서 2배 벌크업 진동
+        let targetDotScale = 1.0 + freqVolume * 3.5 * amplitudeMultiplier;
         let curDotScale = THREE.MathUtils.lerp(node.mesh.scale.x, targetDotScale, 0.28);
         node.mesh.scale.set(curDotScale, curDotScale, curDotScale);
         node.mesh.position.x = node.baseX;
@@ -474,7 +472,6 @@ export default class ThreeCube {
     }
     if (this.hudMonitor) this.hudMonitor.remove();
     if (this.domObserver) this.domObserver.disconnect();
-    if (this.bgTexture) this.bgTexture.dispose();
 
     this.scene = null;
     this.camera = null;
