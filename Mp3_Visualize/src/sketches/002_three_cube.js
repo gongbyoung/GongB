@@ -1,9 +1,9 @@
 /**
  * src/sketches/002_three_cube.js
- * - [버전] Ver 4.1 (서클 정면 배치 및 중심에서 바깥쪽으로 사방 방사형 확장 오버홀 완결판)
- * - 비주얼라이저 서클을 정면으로 세우고 오디오 주파수 반응 시 큐브들이 중심축에서 바깥 외곽으로 곧게 자라나도록 개조
- * - 3대 형태학 셔플 및 5대 컬러 프리셋(태양, 파란바다, 3중 멀티피커, 랜덤원색, 와이어테두리) 완벽 유지
- * - 사용 설명 가이드 HTML 레이어(스타트 재생 시 자동 페이드아웃 소멸) 및 특수문자 우회 BG 이미지 스크린 결합
+ * - [버전] Ver 4.2 (음악 재생 시 3D 화면 블랙스크린 증발 버그 100% 완전 수정본)
+ * - 재생 버튼 클릭 시 가이드 UI 페이드아웃과 동시에 WebGL 렌더러가 끊김 없이 연속 드로잉하도록 파이프라인 보장
+ * - 서클 정면 배치 및 중심에서 바깥쪽으로 사방 방사형 확장 3대 형태학 무작위 셔플 유지
+ * - 3중 멀티피커(가스1, 가스2, 대형별) 연동 및 특수문자 파일명 우회 3D 배경 스크린 탑재 유지
  */
 
 export default class ThreeCube {
@@ -14,8 +14,8 @@ export default class ThreeCube {
     this.renderer = null;
     this.guiOverlay = null;
 
-    // 💡 최종 업데이트 확인용 마커
-    this.version = "002호 3D Radial Outward Bar Ver 4.1";
+    // 💡 패치 갱신 마커 세팅
+    this.version = "002호 3D Radial Outward Bar Ver 4.2";
     this.isAudioActive = false;
     this.lastSettingsStr = "";
 
@@ -35,7 +35,6 @@ export default class ThreeCube {
     this.scene = new THREE.Scene();
     this.scene.fog = new THREE.FogExp2(0x06060a, 0.02);
 
-    // 💡 [정면 배치 개조] 서클 비주얼라이저를 정면으로 칼정렬하기 위해 카메라를 정중앙 앞쪽으로 이동
     this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
     this.camera.position.set(0, 0, 8); 
     this.camera.lookAt(0, 0, 0);
@@ -49,20 +48,19 @@ export default class ThreeCube {
     this.scene.add(ambientLight);
 
     const pointLight = new THREE.PointLight(0xffffff, 1.5, 100);
-    pointLight.position.set(0, 0, 6); // 정면에서 광원을 선명하게 투사
+    pointLight.position.set(0, 0, 6); 
     this.scene.add(pointLight);
 
-    // 3D 우주 배경 스크린 (CORS 및 특수문자 대응)
     const bgGeo = new THREE.PlaneGeometry(24, 14);
     const bgMat = new THREE.MeshBasicMaterial({ color: 0x09090e, depthWrite: false });
     this.bgMesh = new THREE.Mesh(bgGeo, bgMat);
     this.bgMesh.position.set(0, 0, -4); 
     this.scene.add(this.bgMesh);
 
-    // [공통 표준 규격] 가이드 레이어 생성
+    // [공통 표준 규격] 가이드 레이어 부팅
     this.buildOnScreenGuideUI();
 
-    // 💡 [핵심 정면 방사형 엔진] 3D 격자 구조물 사전 빌드 기동
+    // 정면 방사형 매트릭스 어레이 링 빌드
     this.buildRadialMatrix();
 
     this.setupDirectInputTracker();
@@ -116,12 +114,10 @@ export default class ThreeCube {
     this.container.appendChild(this.guiOverlay);
   }
 
-  // 💡 [방사형 축 변환 빌더] 모든 박스의 기준 축을 중심에서 바깥 방사형을 향하도록 정렬
   buildRadialMatrix() {
     this.visualNodes.forEach(node => this.scene.remove(node.mesh));
     this.visualNodes = [];
 
-    // 바깥쪽으로 길게 뻗어나갈 수 있도록 기본 지오메트리를 원각 축으로 슬림하게 설계 (두께 0.12, 기본 길이 1)
     const baseBoxGeometry = new THREE.BoxGeometry(0.12, 1, 0.12);
     const ui = this.getUIParams();
 
@@ -135,7 +131,6 @@ export default class ThreeCube {
       const angle = (i / this.barCount) * Math.PI * 2;
       let freqRatio = i / this.barCount;
       
-      // 주파수 시작점 이격 변이 매트릭스 공식
       let baseRadiusOffset = 2.0 + Math.sin(freqRatio * Math.PI * 4.0) * 0.35 + seededRandom() * 0.2;
 
       let drawRand = seededRandom();
@@ -179,12 +174,10 @@ export default class ThreeCube {
 
       const mesh = new THREE.Mesh(currentGeo, material);
 
-      // 💡 [정면 방사형 배치] 큐브들을 X, Y 평면상에 원형으로 배치 (Z축은 정면 고정)
       mesh.position.x = Math.cos(angle) * baseRadiusOffset;
       mesh.position.y = Math.sin(angle) * baseRadiusOffset;
       mesh.position.z = 0;
 
-      // 💡 [방사형 각도 고정 핵심] 박스의 머리(길어지는 축)가 중심에서 사방 바깥쪽을 향하도록 Z축 회전 매핑
       mesh.rotation.z = angle - Math.PI / 2;
 
       this.scene.add(mesh);
@@ -251,7 +244,10 @@ export default class ThreeCube {
       };
   }
 
-  // 💡 [방사형 동적 프레임 변환] 중심축 기준 사방 바깥 팽창 연산
+  resetCanvas(p, isPreview = false) {
+     // 사양 동기화 우회
+  }
+
   update(audioData) {
     if (!this.renderer || !this.scene || !this.camera) return;
 
@@ -267,14 +263,13 @@ export default class ThreeCube {
     const audioEl = document.querySelector('audio');
     let isPlaying = audioEl && !audioEl.paused;
 
+    // 💡 [버그 해결 코어] 이전의 가차 없는 조기 종료(return) 제어 방식을 전면 해제하고 플래그 핸들링만 처리
     if (isPlaying || (audioData && audioData.vol > 0.005)) {
         this.isAudioActive = true;
         if (this.guiOverlay) this.guiOverlay.style.opacity = '0';
     } else {
         this.isAudioActive = false;
         if (this.guiOverlay) this.guiOverlay.style.opacity = '1';
-        this.renderer.render(this.scene, this.camera);
-        return;
     }
 
     let rawData = (audioData && audioData.raw) ? audioData.raw : [];
@@ -282,46 +277,44 @@ export default class ThreeCube {
     let masterVol = audioData ? audioData.vol : 0.1;
     masterVol *= ui.burst;
 
-    let scaleMultiplier = p5 ? p5.prototype.map(ui.glow, 10, 150, 0.4, 2.5) : 1.0;
+    let scaleMultiplier = (window.p5) ? 1.0 : 1.0; 
+    const glowSlider = document.getElementById('slide-cosmic-glow');
+    if (glowSlider) {
+      scaleMultiplier = THREE.MathUtils.mapLinear(parseFloat(glowSlider.value), 10, 150, 0.4, 2.5);
+    }
 
+    // 💡 정지 상태든 재생 상태든 128개 3D 행렬 위치 및 변환 연산 가동 보장
     this.visualNodes.forEach((node) => {
       let freqVolume = 0;
-      if (hasRaw) {
+      if (this.isAudioActive && hasRaw) {
         let rawIdx = Math.floor(node.freqIdxRatio * (rawData.length - 1));
         freqVolume = rawData[rawIdx] / 255.0;
       } else {
-        freqVolume = Math.sin(time * 3.5 + node.seedShift * 8.0) * 0.25 + 0.25;
+        // 정지 대기 중일 때는 은은한 시각 안내용 사인파 기류 펄싱
+        freqVolume = Math.sin(time * 2.0 + node.seedShift * 5.0) * 0.08 + 0.08;
       }
 
       freqVolume *= ui.burst;
       let dynamicResponse = freqVolume * 6.8 * scaleMultiplier;
 
-      // 💡 [방사형 확장 오버홀] 3대 형태학 모드가 Y축이 아닌 원의 중심을 기준으로 반응 가동
       if (node.mode === 'full-bar') {
-        // 1. 전체 막대: 중심에서 사방 바깥 방향으로의 길이 스케일(Y축) 팽창
         let targetScaleY = 0.1 + dynamicResponse;
         node.mesh.scale.y = THREE.MathUtils.lerp(node.mesh.scale.y, targetScaleY, 0.26);
-        
-        // 막대 뿌리(시작점)가 원에 고정된 채 바깥쪽으로 길어지도록 방사형 위치 자동 보정
         let extendedRadius = node.baseRadius + (node.mesh.scale.y / 2);
         node.mesh.position.x = Math.cos(node.angle) * extendedRadius;
         node.mesh.position.y = Math.sin(node.angle) * extendedRadius;
-
-      } else if (node.mode === 'tip-only') {
-        // 2. 끝만 막대 (공중 비트 상자): 스케일 체적은 유지한 채, 큐브 알갱이가 주파수 비트에 맞춰 바깥 우주 외곽으로 웅장하게 발사 및 사출(Radius 확장)
+      } 
+      else if (node.mode === 'tip-only') {
         node.mesh.scale.set(1, 1, 1);
         let targetRadius = node.baseRadius + (dynamicResponse * 0.85);
         let curRadius = THREE.MathUtils.lerp(node.baseRadius, targetRadius, 0.26);
-        
         node.mesh.position.x = Math.cos(node.angle) * curRadius;
         node.mesh.position.y = Math.sin(node.angle) * curRadius;
-
-      } else {
-        // 3. 시작만 표현 (앵커 단추): 사방으로 튕겨 나가지 않고 정위치에서 볼륨 감도만큼 구슬 크기 자체가 전방향 벌크업 반짝임
+      } 
+      else {
         let targetDotScale = 1.0 + freqVolume * 3.5 * scaleMultiplier;
         let curDotScale = THREE.MathUtils.lerp(node.mesh.scale.x, targetDotScale, 0.28);
         node.mesh.scale.set(curDotScale, curDotScale, curDotScale);
-
         node.mesh.position.x = Math.cos(node.angle) * node.baseRadius;
         node.mesh.position.y = Math.sin(node.angle) * node.baseRadius;
       }
@@ -331,12 +324,11 @@ export default class ThreeCube {
       }
     });
 
-    // 💡 서클 전면의 입체감을 유지하되, 전체 방사형 링 무대가 관성 시계 방향으로 우아하게 자전 회전하도록 정면(Z축) 롤링 효과 주입
+    // 정면 Z축 자전 회전 관성력 반영
     this.scene.rotation.z = time * 0.04 + (masterVol * 0.06);
-    
-    // 깊이감을 배가하기 위한 미세한 3D 틸팅 흔들림 효과
     this.scene.rotation.y = Math.sin(time * 0.3) * 0.04;
 
+    // 💡 [핵심 패치 구역] 리턴문 바깥으로 탈출 배치하여 어떤 상황에서도 무조건 드로잉 가속 보장!
     this.renderer.render(this.scene, this.camera);
   }
 
