@@ -1,11 +1,11 @@
 /**
  * src/sketches/005_three_floor_eq.js
- * - [버전] Ver 3.0 (5대 변형 커스텀 스타일 및 파도선 / 외곽선 박스 셔플 매트릭스 완결판)
- * - 스타일 1: 바다색 그라디언트 (아래 어둡고 위가 밝은 청량한 아쿠아 마린 블루)
- * - 스타일 2: 불색 그라디언트 (아래 밝고 강렬하며 위로 갈수록 어두워지는 스모크 파이어 레드)
- * - 스타일 3: 가상 픽커 커스텀 배색 링크 고정
- * - 스타일 4: 아래칸 제거 후 최고 피크 정점들만 스무스하게 이어 실시간으로 출렁이는 네온 파도(Wave)선 연출
- * - 스타일 5: 면 채움 없이 순수 사각형 외곽 테두리선(Wireframe Only)으로만 구성된 개별 도트 올랜덤 컬러 셔플
+ * - [버전] Ver 3.1 (개별 LED 셀 내부 단색 유지 및 수직 칸별 계단식 그라디언트 전환 완결판)
+ * - 스타일 1: 바다색 계단 (개별 칸은 완벽한 단색 / 1층 어두운 블루에서 위층 밝은 시안 블루로 칸마다 색상 변형)
+ * - 스타일 2: 불색 계단 (개별 칸은 완벽한 단색 / 1층 밝은 오렌지 레드에서 위층 어두운 잿빛 크림슨으로 칸마다 색상 변형)
+ * - 스타일 3: 가상 픽커 커스텀 지정 배색 (1층 Color 1 단색 -> 위층 Color 2 단색으로 칸별 선형 전환)
+ * - 스타일 4: 아래칸 채움 없이 최고 피크 정점들만 스무스하게 이어 흐르는 네온 파도(Wave)선 연출 유지
+ * - 스타일 5: 면 채움 없이 순수 사각형 외곽 테두리선(Wireframe) 구조의 개별 도트 올랜덤 컬러 셔플 유지
  * - 분산범위(가로간격), 지형변경(주파수 셔플), 발광(밝기), 폭발력(볼륨 높이) 및 무결점 배경 주입 완벽 연동
  */
 
@@ -38,7 +38,7 @@ export default class ThreeFloorEqualizer {
     this.currentWidth = 0;
     this.currentHeight = 0;
     
-    this.version = "005호 5대 신형 스타일 스펙트럼 Ver 3.0";
+    this.version = "005호 칸별 단색 변형 스펙트럼 Ver 3.1";
   }
 
   init() {
@@ -70,7 +70,6 @@ export default class ThreeFloorEqualizer {
     if (window.cosmicEngineSettings) {
       const global = window.cosmicEngineSettings;
       this.uiSettings.seed = global.seed ?? 42;
-      // 9:16 최적화를 위해 가로 스케터 픽셀 간격 축 매핑 보정
       this.uiSettings.scatter = THREE.MathUtils.mapLinear(global.scatterExponent ?? 2.2, 0.5, 5.0, 45, 8);
       this.uiSettings.style = global.colorStyle ?? 'neon';
       this.uiSettings.glow = (global.glowIntensity ?? 0.85) * 100; 
@@ -109,35 +108,32 @@ export default class ThreeFloorEqualizer {
     }
 
     for (let i = 0; i < this.barCount; i++) {
-      // 💡 [개조 사항] 신형 1~3번 그라디언트 컬러 좌표 기획 시공
-      let bottomColor = new THREE.Color();
-      let topColor = new THREE.Color();
+      // 💡 각 대역폭 스타일별 기준 기저 컬러 원천 마킹
+      let baseBottomColor = new THREE.Color();
+      let baseTopColor = new THREE.Color();
 
       if (this.uiSettings.style === 'monochrome') {
-        // 1. 바다색 그라디언트: 아래 어두운 블루 ➡️ 위 밝은 시안 실버 블루
-        bottomColor.setHex(0x002244); 
-        topColor.setHex(0x33ccff);   
+        baseBottomColor.setHex(0x001a33); // 1. 바다색 그라디언트 기저 (어두운 심해 청색)
+        baseTopColor.setHex(0x33d6ff);    // 위로 갈수록 맑은 아쿠아 블루
       } else if (this.uiSettings.style === 'pastel') {
-        // 2. 불색 그라디언트: 아래 밝은 네온 레드 오렌지 ➡️ 위 어두운 다크 블러드 크림슨
-        bottomColor.setHex(0xff3300); 
-        topColor.setHex(0x220000);   
+        baseBottomColor.setHex(0xff4500); // 2. 불색 그라디언트 기저 (밝고 강렬한 오렌지 마그마)
+        baseTopColor.setHex(0x1a0000);    // 위로 갈수록 어둡게 타버린 크림슨 블랙
       } else if (this.uiSettings.style === 'custom') {
-        // 3. 커스텀 지정 배색
-        bottomColor.set(this.uiSettings.customColors.gas1);
-        topColor.set(this.uiSettings.customColors.gas2);
+        baseBottomColor.set(this.uiSettings.customColors.gas1); // 3. 커스텀 지정 배색
+        baseTopColor.set(this.uiSettings.customColors.gas2);
       } else {
-        // 4, 5번 레이아웃 및 쉴드 기본 배색 (Cyberpunk Pink-Mint)
-        bottomColor.setHex(0xff0055);
-        topColor.setHex(0x00ffcc);
+        baseBottomColor.setHex(0xff0055); // 4, 5번 네이티브 배색 (네온 핑크)
+        baseTopColor.setHex(0x00ffcc);    // 네온 민트
       }
 
-      // 커스텀 버텍스/프레그먼트 빌더 매핑
+      // 💡 [핵심 알고리즘 수정 패치] 
+      // 개별 큐브 내부에 그라디언트가 생기지 않도록 Fragment Shader 내부의 mix 보간식을 폐기하고,
+      // 셰이더에는 단일 단색 유니폼(u_cellColor)만 주입하여 완벽한 면 정갈함을 유지합니다.
       const material = new THREE.ShaderMaterial({
         uniforms: {
-          u_bottomColor: { value: bottomColor },
-          u_topColor: { value: topColor },
+          u_cellColor: { value: new THREE.Color(0xffffff) },
           u_opacity: { value: 0.1 },
-          u_wireOnly: { value: 0.0 } // 5번 와이어프레임 플래그
+          u_wireOnly: { value: 0.0 } 
         },
         vertexShader: `
           varying vec2 vUv;
@@ -147,26 +143,23 @@ export default class ThreeFloorEqualizer {
           }
         `,
         fragmentShader: `
-          uniform vec3 u_bottomColor;
-          uniform vec3 u_topColor;
+          uniform vec3 u_cellColor;
           uniform float u_opacity;
           uniform float u_wireOnly;
           varying vec2 vUv;
           void main() {
-            vec3 gradColor = mix(u_bottomColor, u_topColor, vUv.y);
-            
-            // 일반 격자 셀 테두리 마스크 보간
+            // 한 칸 격자 테두리 마스크 보간 공식
             float borderX = smoothstep(0.0, 0.08, vUv.x) * smoothstep(1.0, 0.92, vUv.x);
             float borderY = smoothstep(0.0, 0.08, vUv.y) * smoothstep(1.0, 0.92, vUv.y);
             float mask = borderX * borderY;
 
-            // 💡 스타일 5번 제어: u_wireOnly 가 활성화되면 속을 도려내고 엣지선만 표현
+            // 스타일 5번 제어: u_wireOnly 켜지면 내부를 비우고 정사방 테두리선만 표출
             if (u_wireOnly > 0.5) {
                mask = (mask < 0.95) ? 1.0 : 0.0;
-               if(mask < 0.1) discard; // 내부 픽셀 제거
+               if(mask < 0.1) discard; 
             }
 
-            gl_FragColor = vec4(gradColor, u_opacity * mask);
+            gl_FragColor = vec4(u_cellColor, u_opacity * mask);
           }
         `,
         transparent: true,
@@ -184,16 +177,19 @@ export default class ThreeFloorEqualizer {
       for (let j = 0; j < this.maxCells; j++) {
         const cellMat = material.clone();
         
+        // 💡 [수학적 계단식 컬러 분할]
+        // 1층부터 15층까지 각 칸의 높이 비율(ratio)을 계산하여 칸막이별로 완벽한 '고정 단색'을 개별 주입합니다.
+        let cellRatio = j / (this.maxCells - 1);
+        let finalCellColor = new THREE.Color();
+        finalCellColor.copy(baseBottomColor).lerp(baseTopColor, cellRatio);
+        
         // 스타일 5번 우회 예외: 테두리만 남기고 올 랜덤 컬러 처리 시
         if (this.uiSettings.style !== 'monochrome' && this.uiSettings.style !== 'pastel' && this.uiSettings.style !== 'custom' && this.uiSettings.style !== 'full-random') {
-            cellMat.uniforms.u_wireOnly.value = 1.0; // 5번 외곽선 기능 활성화
-            
-            // 128개 모든 칸막이 도트가 완벽히 독립된 무작위 랜덤 색상 셔플 바인딩
-            let randColor = new THREE.Color();
-            randColor.setHSL(seededRandom(), 1.0, 0.6);
-            cellMat.uniforms.u_bottomColor.value.copy(randColor);
-            cellMat.uniforms.u_topColor.value.copy(randColor);
+            cellMat.uniforms.u_wireOnly.value = 1.0; // 5번 기능 활성화
+            finalCellColor.setHSL(seededRandom(), 1.0, 0.6); // 완전히 독립된 도트 무작위 랜덤화
         }
+
+        cellMat.uniforms.u_cellColor.value.copy(finalCellColor);
 
         const cellMesh = new THREE.Mesh(geometry, cellMat);
         cellMesh.scale.set(barWidth, cellHeight, 1);
@@ -208,18 +204,16 @@ export default class ThreeFloorEqualizer {
     }
   }
 
-  // 💡 [스타일 4번 대수술] 최고 피크를 하나로 부드럽게 이어서 출렁이게 만들 스플라인 파도선 라인 컨테이너
   buildWaveLineContainer() {
     if (this.waveLineMesh) this.scene.remove(this.waveLineMesh);
     
     const lineGeo = new THREE.BufferGeometry();
-    // 부드러운 보간 정점을 위해 채널 수의 4배 서브 포인터 배치
     const positions = new Float32Array(this.barCount * 4 * 3);
     lineGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 
     const lineMat = new THREE.LineBasicMaterial({
       color: 0x00ffcc,
-      linewidth: 4, // 굵고 선명한 네온 라인 효과
+      linewidth: 4, 
       transparent: true,
       opacity: 0.0,
       depthWrite: false
@@ -280,11 +274,9 @@ export default class ThreeFloorEqualizer {
     const time = Date.now() * 0.001;
 
     if (audioData && audioData.raw && audioData.raw.length > 0) {
-      const peakPoints = []; // 파도선 생성용 정점 배열
+      const peakPoints = []; 
 
-      // 💡 [발광/크기 ➡️ 색의 밝기 매칭] 
       const glowMultiplier = THREE.MathUtils.mapLinear(this.uiSettings.glow, 10, 250, 0.5, 4.0);
-      // 💡 [폭발력 ➡️ 볼륨 높이 마스터 매칭] 
       const gainMultiplier = parseFloat(this.uiSettings.gain) / 100;
 
       this.eqBars.forEach((channel) => {
@@ -298,53 +290,44 @@ export default class ThreeFloorEqualizer {
         channel.smoothedHeight = THREE.MathUtils.lerp(channel.smoothedHeight, targetHeight, 0.24);
 
         const activeThreshold = channel.smoothedHeight * this.maxCells;
-        
-        // 파도선 추적용 로컬 최고점 피크값 산출 변수
         let channelHighestY = -this.currentHeight / 2 + 15;
 
         channel.materials.forEach((mat, cellIdx) => {
-          // 실시간 밝기 배율 실시간 곱 연산 적용
-          mat.uniforms.u_bottomColor.value.multiplyScalar(glowMultiplier);
-          mat.uniforms.u_topColor.value.multiplyScalar(glowMultiplier);
+          // 💡 [발광 멀티플라이어] 개별 셀의 고유 단색 밝기를 실시간 상향 링크
+          mat.uniforms.u_cellColor.value.multiplyScalar(glowMultiplier);
 
-          // 💡 스타일 4번 조건 판정 시: 아래칸 다 지우고 채움 없이 무조건 투명 은폐 시공
+          // 💡 스타일 4번 조건 판정 시: 아래칸 다 지우고 채움 없이 파도 스플라인 점만 획득
           if (this.uiSettings.style === 'full-random') {
-             mat.uniforms.u_opacity.value = 0.0; // 강제 소등 처리
-             
-             // 최고 파도의 위치 정점만 역산하여 좌표 백업
+             mat.uniforms.u_opacity.value = 0.0; 
              if (cellIdx < activeThreshold) {
                  channelHighestY = channel.cells[cellIdx].position.y + (channel.cells[cellIdx].scale.y);
              }
           } 
-          // 그 외 일반 그라디언트 및 5번 외곽선 셔플 스타일 구동 분기
+          // 그 외 일반 1, 2, 3, 5번 스타일 격자 점등 연산
           else {
              if (cellIdx < activeThreshold) {
-               mat.uniforms.u_opacity.value = 0.95; // 활성 점등
+               mat.uniforms.u_opacity.value = 0.95; 
              } else {
-               mat.uniforms.u_opacity.value = 0.08; // 기본 소등
+               mat.uniforms.u_opacity.value = 0.08; 
              }
           }
         });
 
-        // 4번 스타일을 위한 실시간 피크 3D 원점 벡터 수집
         peakPoints.push(new THREE.Vector3(channel.posX, channelHighestY, 2));
       });
 
-      // 💡 [스타일 4번 파도 연출 코어 수식 엔진 기동]
+      // 스타일 4번 파도 연출 스플라인 제어 루프
       if (this.uiSettings.style === 'full-random' && this.waveLineMesh) {
           this.waveLineMesh.material.opacity = 1.0;
           
-          // 파도선을 더 영롱하게 보정하기 위해 CatmullRom 3D 곡선 스플라인 함수 보간 수학 적용
           const curve = new THREE.CatmullRomCurve3(peakPoints);
-          curve.curveType = 'centripetal'; // 엣지 튕김 없는 스무스 스플라인 형태 락
+          curve.curveType = 'centripetal'; 
           
           const splinePoints = curve.getPoints(this.barCount * 4);
           this.waveLineMesh.geometry.setFromPoints(splinePoints);
-          
-          // 파도선 색상 전용 커스텀 칼라 가변 연동
           this.waveLineMesh.material.color.setHSL(0.4 + Math.sin(time * 2.0) * 0.15, 1.0, 0.55 * glowMultiplier);
       } else if (this.waveLineMesh) {
-          this.waveLineMesh.material.opacity = 0.0; // 4번 스타일 아닐 때는 파도 라인 완전 은닉
+          this.waveLineMesh.material.opacity = 0.0; 
       }
     }
 
