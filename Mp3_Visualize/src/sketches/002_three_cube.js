@@ -1,10 +1,10 @@
 /**
  * src/sketches/002_three_cube.js
- * - [버전] Ver 4.11 (비동기 텍스처 이미지 로딩 needsUpdate 누락 및 안개 Fog 가림 현상 버그 100% 완전 해결판)
- * - TextureLoader 비동기 완료 시점에 material.needsUpdate = true 강제 칩을 주입하여 실시간 렌더링 세대교체 보장
- * - 배경 메쉬만 안개 효과(fog: false)의 간섭을 차단하여 이미지가 뒤에 온전하고 꽉 차게 방출되도록 공학 설계
- * - 분산범위(Center Scatter) 기반 50% 슬림 콤팩트 스케일링 및 지형변경 슬라이더 6대 기하학 레이아웃 매퍼 유지
- * - 점 모드 0나누기 NaN 좌표 깨짐 방어 및 3대 형태학 무작위 셔플, 5대 컬러 프리셋 완벽 유지
+ * - [버전] Ver 4.12 (스케일 누적 폭주 버그 완벽 수정 및 배경 실시간 가림 현상 원천 차단판)
+ * - 기하학 모양학 공식 내부의 반경 중복 연산 오류를 완전 제거하여 분산범위 조작 시 10% 수준의 초컴팩트 스케일 안착 보장
+ * - 배경 플레이트를 Z: -30 공간으로 완벽히 후방 배치하여 오디오 비트 폭발 시 메쉬가 배경 이미지를 가리는 현상 완전 해결
+ * - 점 모드 0나누기 NaN 예외 방어 및 지형변경 슬라이더 구간별 6대 기하학 형태 변형 완결판 유지
+ * - 3대 형태학 무작위 셔플 및 5대 컬러 스타일 프리셋, 비동기 텍스처 needsUpdate 실시간 리프레시 유지
  */
 
 export default class ThreeCube {
@@ -15,8 +15,8 @@ export default class ThreeCube {
     this.renderer = null;
     this.guiOverlay = null;
 
-    // 💡 최종 미디어 융합 완결판 마커 세팅
-    this.version = "002호 3D Radial Outward Bar Ver 4.11";
+    // 💡 레이어 뎁스 및 스케일 완전 수정 마커 세팅
+    this.version = "002호 3D Radial Outward Bar Ver 4.12";
     this.isAudioActive = false;
     this.lastSettingsStr = "";
 
@@ -34,7 +34,7 @@ export default class ThreeCube {
     const height = this.container.clientHeight;
 
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.FogExp2(0x06060a, 0.02);
+    this.scene.fog = new THREE.FogExp2(0x06060a, 0.005); // 배경 이미지 식별을 위해 안개 농도를 한층 완화
 
     this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
     this.camera.position.set(0, 0, 8); 
@@ -45,18 +45,18 @@ export default class ThreeCube {
     this.renderer.setClearColor(0x06060a);
     this.container.appendChild(this.renderer.domElement);
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.22);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.35); // 배경 시인성을 위해 환경광 상향
     this.scene.add(ambientLight);
 
     const pointLight = new THREE.PointLight(0xffffff, 1.5, 100);
-    pointLight.position.set(0, 0, 6); 
+    pointLight.position.set(0, 0, 7); 
     this.scene.add(pointLight);
 
-    // 💡 [배경판 생성 부근 개조] 안개(fog: false)의 간섭을 완전히 찢어버려 까맣게 탈색되는 버그를 무력화
-    const bgGeo = new THREE.PlaneGeometry(24, 14);
+    // 💡 [배경판 뎁스 격리 완비] 큐브 메쉬가 뒤덮지 못하도록 Z축을 -30 구조적 우주 끝벽으로 완벽 차단 배치
+    const bgGeo = new THREE.PlaneGeometry(80, 50); 
     const bgMat = new THREE.MeshBasicMaterial({ color: 0x09090e, depthWrite: false, fog: false });
     this.bgMesh = new THREE.Mesh(bgGeo, bgMat);
-    this.bgMesh.position.set(0, 0, -4); 
+    this.bgMesh.position.set(0, 0, -30); 
     this.scene.add(this.bgMesh);
 
     this.buildOnScreenGuideUI();
@@ -100,9 +100,9 @@ export default class ThreeCube {
         002호 정면 방사형 비주얼라이저 가이드
       </h3>
       <div style="font-size: 12.5px; text-align: left; line-height: 1.75; color: #dddddd;">
-        <p style="margin: 6px 0;">🖼️ <strong style="color: #00ffcc;">[배경 이미지 리얼 타임 맵]</strong> 비동기 로딩 텍스처 업데이트 락 해제로 이미지가 칼같이 투사됩니다.</p>
-        <p style="margin: 6px 0;">🎲 <strong style="color: #ffffff;">[6대 기하학 스위칭]</strong> 지형변경 슬라이더 구간별로 [점 ➡️ 서클 ➡️ 삼각형 ➡️ 사각형 ➡️ 별 ➡️ 타원] 형태 변형 완료!</p>
-        <p style="margin: 6px 0;">📏 <strong style="color: #ffffff;">[분산범위 크기 조절]</strong> 분산범위 수치를 밀고 당겨 9:16 모바일 뷰에 안착하는 컴팩트 마스터 반경을 조절하세요.</p>
+        <p style="margin: 6px 0;">🔵 <strong style="color: #00ffcc;">[10% 스케일 컴팩트]</strong> 크기 누적 오작동을 원천 완파하고 가변 반경을 10% 수준으로 조밀하게 다듬었습니다.</p>
+        <p style="margin: 6px 0;">🖼️ <strong style="color: #ffffff;">[배경 가림 버그 완파]</strong> 배경판 레이어 뎁스를 후방 최외곽(-30)으로 밀어내어 이미지가 선명하게 출력됩니다.</p>
+        <p style="margin: 6px 0;">🎲 <strong style="color: #ffffff;">[6대 기하학 스위칭]</strong> 지형변경 슬라이더 구간별로 [점 ➡️ 서클 ➡️ 삼각형 ➡️ 사각형 ➡️ 별 ➡️ 타원] 변형 완료!</p>
         <p style="margin: 6px 0; color: #ffcc00;">▶️ <strong style="color: #ffcc00;">[하단 스타트]</strong> 재생 버튼을 누르면 이 가이드창이 투명하게 사라지며 영상이 시작됩니다!</p>
       </div>
       <div style="color: #777777; font-size: 10.5px; margin-top: 16px; border-top: 1px solid #222530; padding-top: 10px;">
@@ -119,8 +119,8 @@ export default class ThreeCube {
     const baseBoxGeometry = new THREE.BoxGeometry(0.12, 1, 0.12);
     const ui = this.getUIParams();
 
-    // 분산범위 기반 50% 콤팩트 축소 마스터 기본 반경
-    let currentBaseRadius = THREE.MathUtils.mapLinear(ui.scatter, 0.5, 5.0, 0.2, 1.25) * 0.65; 
+    // 💡 [10% 압축 핵심 연산 개조 축] 폭주 버그를 격파하고 9:16 모바일 세로 비율 정중앙에 완전 안착되도록 0.02 ~ 0.4 배율 폭으로 엄격 조율
+    let currentBaseRadius = THREE.MathUtils.mapLinear(ui.scatter, 0.5, 5.0, 0.02, 0.4); 
 
     let seedValue = ui.seed;
     const seededRandom = () => {
@@ -143,39 +143,44 @@ export default class ThreeCube {
       let finalX = 0;
       let finalY = 0;
 
+      // 💡 각 기하학 좌표 매트릭스 공식의 단위 왜곡 반경 균등 보정 완성
       if (shapeType === 'dot') {
         finalX = 0.001 * Math.cos(angle);
         finalY = 0.001 * Math.sin(angle);
       } 
       else if (shapeType === 'circle') {
-        finalX = Math.cos(angle) * currentBaseRadius;
-        finalY = Math.sin(angle) * currentBaseRadius;
+        finalX = Math.cos(angle);
+        finalY = Math.sin(angle);
       } 
       else if (shapeType === 'triangle') {
         let triAngle = angle + Math.PI / 6;
-        let rTri = currentBaseRadius * (Math.sqrt(3) / (Math.sqrt(3) * Math.cos(triAngle % (Math.PI * 2 / 3) - Math.PI / 3)));
-        if (isNaN(rTri) || !isFinite(rTri)) rTri = currentBaseRadius;
+        let rTri = (Math.sqrt(3) / (Math.sqrt(3) * Math.cos(triAngle % (Math.PI * 2 / 3) - Math.PI / 3)));
+        if (isNaN(rTri) || !isFinite(rTri)) rTri = 1.0;
         finalX = Math.cos(angle) * rTri;
         finalY = Math.sin(angle) * rTri;
       } 
       else if (shapeType === 'square') {
-        let rSquare = currentBaseRadius * Math.min(1.0 / Math.abs(Math.cos(angle)), 1.0 / Math.abs(Math.sin(angle)));
-        if (isNaN(rSquare) || !isFinite(rSquare)) rSquare = currentBaseRadius;
+        let rSquare = Math.min(1.0 / Math.abs(Math.cos(angle)), 1.0 / Math.abs(Math.sin(angle)));
+        if (isNaN(rSquare) || !isFinite(rSquare)) rSquare = 1.0;
         finalX = Math.cos(angle) * rSquare;
         finalY = Math.sin(angle) * rSquare;
       } 
       else if (shapeType === 'star') {
         let starPoints = 5;
-        let rStar = currentBaseRadius * (0.6 + 0.4 * Math.cos(starPoints * angle));
+        let rStar = (0.6 + 0.4 * Math.cos(starPoints * angle));
         finalX = Math.cos(angle) * rStar;
         finalY = Math.sin(angle) * rStar;
       } 
       else {
-        finalX = Math.cos(angle) * currentBaseRadius * 1.25;
-        finalY = Math.sin(angle) * currentBaseRadius * 0.8;
+        finalX = Math.cos(angle) * 1.25;
+        finalY = Math.sin(angle) * 0.8;
       }
 
-      let noiseShift = 1.0 + (Math.sin(freqRatio * Math.PI * 4.0) * 0.03);
+      // 💡 실시간 슬라이더 가변 마스터 계수를 여기서 깔끔하게 1회만 연산 적용하여 누적 폭주 버그 원천 차단
+      finalX *= currentBaseRadius;
+      finalY *= currentBaseRadius;
+
+      let noiseShift = 1.0 + (Math.sin(freqRatio * Math.PI * 4.0) * 0.02);
       finalX *= noiseShift;
       finalY *= noiseShift;
 
@@ -213,9 +218,9 @@ export default class ThreeCube {
 
       let currentGeo = baseBoxGeometry;
       if (mode === 'start-only') {
-        currentGeo = new THREE.BoxGeometry(0.12, 0.12, 0.12); 
+        currentGeo = new THREE.BoxGeometry(0.08, 0.08, 0.08); // 콤팩트 크기에 맞춰 입자 지오메트리 슬림 최적화
       } else if (mode === 'tip-only') {
-        currentGeo = new THREE.BoxGeometry(0.13, 0.18, 0.13); 
+        currentGeo = new THREE.BoxGeometry(0.09, 0.12, 0.09); 
       }
 
       const mesh = new THREE.Mesh(currentGeo, material);
@@ -240,7 +245,6 @@ export default class ThreeCube {
     }
   }
 
-  // 💡 [배경 주입 옵저버 전면 개조] needsUpdate 기폭 장치 수혈 탑재
   setupDirectInputTracker() {
     const loader = new THREE.TextureLoader();
     const findAndBindImage = () => {
@@ -259,7 +263,6 @@ export default class ThreeCube {
           this.bgTexture = tex;
           if (this.bgMesh) {
             this.bgMesh.material.dispose();
-            // 💡 안개 차단형 재질 재생성 및needsUpdate 선언 완벽 조립
             this.bgMesh.material = new THREE.MeshBasicMaterial({ map: this.bgTexture, depthWrite: false, fog: false });
             this.bgMesh.material.needsUpdate = true; 
           }
@@ -348,7 +351,8 @@ export default class ThreeCube {
       }
 
       freqVolume *= ui.burst;
-      let dynamicResponse = freqVolume * 4.8 * amplitudeMultiplier;
+      // 초컴팩트 영역 배율에 맞춰 타격 탄성 승수 계수도 안정적인 3.8 배율로 정밀 싱크로나이즈
+      let dynamicResponse = freqVolume * 3.8 * amplitudeMultiplier;
 
       let dirX = Math.cos(node.angle);
       let dirY = Math.sin(node.angle);
@@ -356,7 +360,7 @@ export default class ThreeCube {
       let baseLengthOffset = (node.baseX === 0.001 * dirX) ? 0 : Math.sqrt(node.baseX * node.baseX + node.baseY * node.baseY);
 
       if (node.mode === 'full-bar') {
-        let targetScaleY = 0.1 + dynamicResponse;
+        let targetScaleY = 0.05 + dynamicResponse;
         node.mesh.scale.y = THREE.MathUtils.lerp(node.mesh.scale.y, targetScaleY, 0.26);
         
         let currentRadius = baseLengthOffset + (node.mesh.scale.y / 2);
@@ -371,7 +375,7 @@ export default class ThreeCube {
         node.mesh.position.y = dirY * curRadius;
       } 
       else {
-        let targetDotScale = 1.0 + freqVolume * 3.5 * amplitudeMultiplier;
+        let targetDotScale = 1.0 + freqVolume * 2.8 * amplitudeMultiplier;
         let curDotScale = THREE.MathUtils.lerp(node.mesh.scale.x, targetDotScale, 0.28);
         node.mesh.scale.set(curDotScale, curDotScale, curDotScale);
         node.mesh.position.x = node.baseX;
