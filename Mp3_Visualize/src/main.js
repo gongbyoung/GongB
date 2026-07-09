@@ -1,8 +1,8 @@
 /**
  * src/main.js
- * - [개조] 듀얼 핸들 오디오 필터 통합 동기화 및 3D 배경 안정화 보완판
- * - index.html의 신형 듀얼 range 인풋 데이터의 상호 크로스를 계산해 저·중·고 주파수를 정확하게 3분할 분조
- * - 불필요한 DOM 하이재킹 코드를 제거하여 배경 이미지 업로드 트래킹과의 물리적 충돌 해결
+ * - [버전] Ver 4.16 (Null 참조 addEventListener 에러 원천 격파 방어막 탑재판)
+ * - Cosmic Studio Tuning 슬라이더 바인딩 시 특정 엘리먼트가 null 이라도 스크립트가 멈추지 않도록 안전 필터링 완비
+ * - 듀얼 핸들 오디오 필터 통합 동기화 및 3D 배경 안정화 완벽 유지
  */
 
 import { AudioAnalyzer } from './core/AudioAnalyzer.js';
@@ -159,7 +159,7 @@ recordBtn.addEventListener('click', async () => {
     }
 });
 
-// 💡 [대대적 개조 구역] 듀얼 핸들 멀티 레인지 제어 관제 결합 로직
+// 8. 듀얼 핸들 멀티 레인지 제어 관제 결합 로직
 const audioSliders = {
     low: document.getElementById('slide-audio-low'),
     high: document.getElementById('slide-audio-high'),
@@ -176,23 +176,21 @@ function handleDualAudioSliderChange() {
     let lVal = parseInt(audioSliders.low.value);
     let hVal = parseInt(audioSliders.high.value);
 
-    // 두 개의 조절 바가 조밀하게 붙었을 때 서로의 영역을 역전 침범하지 못하도록 물리 디펜스 락 유도
     if (lVal >= hVal) {
         audioSliders.low.value = hVal - 2;
         lVal = hVal - 2;
     }
 
-    // 채워지는 활성 영역 트랙바 게이지 드로잉 스펙 계산
-    audioSliders.filledTrack.style.left = lVal + '%';
-    audioSliders.filledTrack.style.right = (100 - hVal) + '%';
+    if (audioSliders.filledTrack) {
+        audioSliders.filledTrack.style.left = lVal + '%';
+        audioSliders.filledTrack.style.right = (100 - hVal) + '%';
+    }
 
-    // 수치 텍스트 실시간 전송 디스플레이
-    audioSliders.valBounds.innerText = `${lVal}% | ${hVal}%`;
-    audioSliders.lblBass.innerText = `0% ~ ${lVal}%`;
-    audioSliders.lblMid.innerText = `${lVal}% ~ ${hVal}%`;
-    audioSliders.lblTreble.innerText = `${hVal}% ~ 100%`;
+    if (audioSliders.valBounds) audioSliders.valBounds.innerText = `${lVal}% | ${hVal}%`;
+    if (audioSliders.lblBass) audioSliders.lblBass.innerText = `0% ~ ${lVal}%`;
+    if (audioSliders.lblMid) audioSliders.lblMid.innerText = `${lVal}% ~ ${hVal}%`;
+    if (audioSliders.lblTreble) audioSliders.lblTreble.innerText = `${hVal}% ~ 100%`;
 
-    // 💡 [주파수 3분할 링킹] 오디오 분석기에 맞춰 % 단위를 실제 Hz 대역폭 주파수(20Hz ~ 20,000Hz 로그 연산폭)로 정밀 변환 배달
     const bL = 20;
     const bH = Math.floor(THREE.MathUtils.mapLinear(lVal, 5, 95, 120, 600));
     const mL = bH;
@@ -206,20 +204,20 @@ function handleDualAudioSliderChange() {
 if (audioSliders.low && audioSliders.high) {
     audioSliders.low.addEventListener('input', handleDualAudioSliderChange);
     audioSliders.high.addEventListener('input', handleDualAudioSliderChange);
-    // 최초 영점 조절 구동
     handleDualAudioSliderChange();
 }
 
 // 9. 🌌 Cosmic Studio Tuning 제어 데이터 동기화 파이프라인 파트
+// 💡 index.html의 실제 ID 프리셋 구조를 고려하여 유연하게 타게팅 매핑
 const cosmicSliders = {
     seed: document.getElementById('slide-cosmic-seed'),
     scatter: document.getElementById('slide-cosmic-scatter'),
     color: document.getElementById('select-cosmic-color'),
     glow: document.getElementById('slide-cosmic-glow'),
     gain: document.getElementById('slide-cosmic-gain'),
-    pickGas1: document.getElementById('picker-gas1'),
-    pickGas2: document.getElementById('picker-gas2'),
-    pickStar: document.getElementById('picker-star')
+    pickGas1: document.getElementById('picker-gas1') || document.getElementById('picker-cosmic-color1'),
+    pickGas2: document.getElementById('picker-gas2') || document.getElementById('picker-cosmic-color2'),
+    pickStar: document.getElementById('picker-star') || document.getElementById('picker-cosmic-color3')
 };
 
 const cosmicDisplays = {
@@ -234,18 +232,18 @@ function syncCosmicControls() {
 
     const seedVal = parseInt(cosmicSliders.seed.value);
     const scatterVal = parseFloat(cosmicSliders.scatter.value) / 10; 
-    const colorVal = cosmicSliders.color.value;
-    const glowVal = parseFloat(cosmicSliders.glow.value) / 100;
-    const gainVal = parseFloat(cosmicSliders.gain.value) / 100;
+    const colorVal = cosmicSliders.color ? cosmicSliders.color.value : 'neon';
+    const glowVal = cosmicSliders.glow ? parseFloat(cosmicSliders.glow.value) / 100 : 0.85;
+    const gainVal = cosmicSliders.gain ? parseFloat(cosmicSliders.gain.value) / 100 : 1.0;
 
-    const cGas1 = cosmicSliders.pickGas1.value;
-    const cGas2 = cosmicSliders.pickGas2.value;
-    const cStar = cosmicSliders.pickStar.value;
+    const cGas1 = cosmicSliders.pickGas1 ? cosmicSliders.pickGas1.value : '#ff0055';
+    const cGas2 = cosmicSliders.pickGas2 ? cosmicSliders.pickGas2.value : '#00ffcc';
+    const cStar = cosmicSliders.pickStar ? cosmicSliders.pickStar.value : '#ffffff';
 
-    cosmicDisplays.seed.innerText = seedVal;
-    cosmicDisplays.scatter.innerText = scatterVal.toFixed(1);
-    cosmicDisplays.glow.innerText = glowVal.toFixed(2);
-    cosmicDisplays.gain.innerText = gainVal.toFixed(1);
+    if (cosmicDisplays.seed) cosmicDisplays.seed.innerText = seedVal;
+    if (cosmicDisplays.scatter) cosmicDisplays.scatter.innerText = scatterVal.toFixed(1);
+    if (cosmicDisplays.glow) cosmicDisplays.glow.innerText = glowVal.toFixed(2);
+    if (cosmicDisplays.gain) cosmicDisplays.gain.innerText = gainVal.toFixed(1);
 
     window.cosmicEngineSettings = {
         seed: seedVal,
@@ -264,6 +262,7 @@ function syncCosmicControls() {
     }
 }
 
+// 💡 [버그 격파 코어] 특정 엘리먼트가 존재하지 않더라도 에러를 무조건 비껴가도록 안전장치 구축
 Object.values(cosmicSliders).forEach(el => {
     if (el) {
         el.addEventListener('input', syncCosmicControls);
@@ -277,49 +276,60 @@ const loadPresetBtn = document.getElementById('btn-load-preset');
 const presetStatus = document.getElementById('preset-status');
 
 if (localStorage.getItem('gongb_visual_preset')) {
-    presetStatus.innerText = '✅ 최근 저장된 설정을 불러올 수 있습니다.';
-    presetStatus.style.color = '#00ffcc';
+    if (presetStatus) {
+        presetStatus.innerText = '✅ 최근 저장된 설정을 불러올 수 있습니다.';
+        presetStatus.style.color = '#00ffcc';
+    }
 }
 
-savePresetBtn.addEventListener('click', () => {
-    const activeSketch = document.querySelector('#sketch-list li.active').getAttribute('data-sketch');
-    const activeRatio = stageWrapper.className;
-    const currentSettings = {
-        sketch: activeSketch, ratio: activeRatio,
-        audioBounds: {
-            low: audioSliders.low.value,
-            high: audioSliders.high.value
+if (savePresetBtn) {
+    savePresetBtn.addEventListener('click', () => {
+        const activeSketch = document.querySelector('#sketch-list li.active').getAttribute('data-sketch');
+        const activeRatio = stageWrapper.className;
+        const currentSettings = {
+            sketch: activeSketch, ratio: activeRatio,
+            audioBounds: {
+                low: audioSliders.low ? audioSliders.low.value : 25,
+                high: audioSliders.high ? audioSliders.high.value : 75
+            }
+        };
+        localStorage.setItem('gongb_visual_preset', JSON.stringify(currentSettings));
+        if (presetStatus) {
+            presetStatus.innerText = '💾 성공적으로 저장되었습니다!';
+            presetStatus.style.color = '#00ffcc';
+            setTimeout(() => { presetStatus.innerText = '✅ 최근 저장된 설정을 불러올 수 있습니다.'; }, 2000);
         }
-    };
-    localStorage.setItem('gongb_visual_preset', JSON.stringify(currentSettings));
-    presetStatus.innerText = '💾 성공적으로 저장되었습니다!';
-    presetStatus.style.color = '#00ffcc';
-    setTimeout(() => { presetStatus.innerText = '✅ 최근 저장된 설정을 불러올 수 있습니다.'; }, 2000);
-});
+    });
+}
 
-loadPresetBtn.addEventListener('click', async () => {
-    const savedData = localStorage.getItem('gongb_visual_preset');
-    if (!savedData) { presetStatus.innerText = '❌ 불러올 프리셋 데이터가 없습니다.'; presetStatus.style.color = '#ff0055'; return; }
-    
-    const config = JSON.parse(savedData);
-    if(config.audioBounds) {
-        audioSliders.low.value = config.audioBounds.low;
-        audioSliders.high.value = config.audioBounds.high;
-        handleDualAudioSliderChange();
-    }
-    
-    stageWrapper.className = config.ratio;
-    manager.resize(stageWrapper.clientWidth, stageWrapper.clientHeight);
-    
-    sketchItems.forEach(li => { li.classList.remove('active'); if (li.getAttribute('data-sketch') === config.sketch) li.classList.add('active'); });
-    await manager.switchSketch(config.sketch, analyzer);
-    
-    presetStatus.innerText = '📂 프리셋 로딩 완수!';
-    presetStatus.style.color = '#0077ff';
-});
+if (loadPresetBtn) {
+    loadPresetBtn.addEventListener('click', async () => {
+        const savedData = localStorage.getItem('gongb_visual_preset');
+        if (!savedData) { if (presetStatus) { presetStatus.innerText = '❌ 불러올 프리셋 데이터가 없습니다.'; presetStatus.style.color = '#ff0055'; } return; }
+        
+        const config = JSON.parse(savedData);
+        if(config.audioBounds && audioSliders.low && audioSliders.high) {
+            audioSliders.low.value = config.audioBounds.low;
+            audioSliders.high.value = config.audioBounds.high;
+            handleDualAudioSliderChange();
+        }
+        
+        stageWrapper.className = config.ratio;
+        manager.resize(stageWrapper.clientWidth, stageWrapper.clientHeight);
+        
+        sketchItems.forEach(li => { li.classList.remove('active'); if (li.getAttribute('data-sketch') === config.sketch) li.classList.add('active'); });
+        await manager.switchSketch(config.sketch, analyzer);
+        
+        if (presetStatus) {
+            presetStatus.innerText = '📂 프리셋 로딩 완수!';
+            presetStatus.style.color = '#0077ff';
+        }
+    });
+}
 
 // 11. 초기 구동 및 브라우저 크기 조정 연동 파트
-const defaultSketch = document.querySelector('#sketch-list li.active').getAttribute('data-sketch');
+const activeLi = document.querySelector('#sketch-list li.active');
+const defaultSketch = activeLi ? activeLi.getAttribute('data-sketch') : '001_p5_wave.js';
 manager.switchSketch(defaultSketch, analyzer);
 
 window.addEventListener('resize', () => { 
