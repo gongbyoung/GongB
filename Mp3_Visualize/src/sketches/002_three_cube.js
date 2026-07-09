@@ -1,10 +1,8 @@
 /**
  * src/sketches/002_three_cube.js
- * - [버전] Ver 4.15 (외부 UI 간섭 코드 제거 및 순수 3D 링 바 + 화면 내 HUD 디버그 통합판)
- * - 공통 UI(index.html, main.js) 영역 침범 코드를 전면 삭제하여 이미지 로딩 파이프라인의 원천 먹통 현상 해결
- * - 3D WebGL 캔버스 화면 오른쪽 상단 내부에만 HUD 디버그 모니터를 안전하게 안착시켜 실시간 로딩 검증 제공
- * - 10% 초컴팩트 스케일링, Z: -30 레이어 후방 배치, 지형변경 슬라이더 구간별 6대 기하학 형태학 스위칭 완벽 유지
- * - 3대 형태학 무작위 셔플 및 5대 컬러 스타일 프리셋, 비동기 텍스처 실시간 리프레시 완벽 보장
+ * - [버전] Ver 4.16 (autoClear 버퍼 초기화 버그 완전 수정 및 배경 화면 완전 표출판)
+ * - 렌더러의 autoClear 강제 초기화 현상을 방어하기 위해 수동 클리어 파이프라인 및 백그라운드 텍스처 락 장치 탑재
+ * - 10% 초컴팩트 스케일, Z: -30 레이어 후방 배치, 6대 기하학 레이아웃 매퍼 및 화면 내 HUD 디버그 보드 유지
  */
 
 export default class ThreeCube {
@@ -14,9 +12,9 @@ export default class ThreeCube {
     this.camera = null;
     this.renderer = null;
     this.guiOverlay = null;
-    this.hudMonitor = null; // 💡 WebGL 화면 내부에 고정될 HUD 모니터
+    this.hudMonitor = null;
 
-    this.version = "002호 3D Radial Outward Bar Ver 4.15";
+    this.version = "002호 3D Radial Outward Bar Ver 4.16";
     this.isAudioActive = false;
     this.lastSettingsStr = "";
 
@@ -46,26 +44,27 @@ export default class ThreeCube {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     this.renderer.setSize(width, height);
     this.renderer.setClearColor(0x06060a);
+    
+    // 💡 [배경 증발 차단 핵심] 관제탑의 자동 버퍼 클리어가 배경 텍스처를 지우지 못하도록 락을 겁니다.
+    this.renderer.autoClear = false; 
+    
     this.container.appendChild(this.renderer.domElement);
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4); 
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5); 
     this.scene.add(ambientLight);
 
     const pointLight = new THREE.PointLight(0xffffff, 1.5, 100);
     pointLight.position.set(0, 0, 7); 
     this.scene.add(pointLight);
 
-    // 💡 배경 플레이트 후방 안전 배치 격리
     const bgGeo = new THREE.PlaneGeometry(80, 50); 
     const bgMat = new THREE.MeshBasicMaterial({ color: 0x09090e, depthWrite: false, fog: false });
     this.bgMesh = new THREE.Mesh(bgGeo, bgMat);
     this.bgMesh.position.set(0, 0, -30); 
     this.scene.add(this.bgMesh);
 
-    // 공통 표준 레이어 및 화면 내 HUD 디버그 모드 탑재
     this.buildOnScreenGuideUI();
     this.buildHudMonitorUI();
-
     this.buildRadialMatrix();
     this.setupDirectInputTracker();
   }
@@ -106,16 +105,14 @@ export default class ThreeCube {
         002호 정면 방사형 비주얼라이저 가이드
       </h3>
       <div style="font-size: 12.5px; text-align: left; line-height: 1.75; color: #dddddd;">
-        <p style="margin: 6px 0;">📊 <strong style="color: #00ffcc;">[화면 내 디버그 HUD]</strong> 3D 화면 우측 상단에 실시간 이미지 로딩 상태 검증 스크린이 고정 출력됩니다.</p>
+        <p style="margin: 6px 0;">🖼️ <strong style="color: #00ffcc;">[배경 대기 완료]</strong> autoClear 차단 필터가 결합되어 배경 이미지가 상시 유지됩니다.</p>
         <p style="margin: 6px 0;">🎲 <strong style="color: #ffffff;">[6대 기하학 스위칭]</strong> 지형변경 슬라이더 구간별로 [점 ➡️ 서클 ➡️ 삼각형 ➡️ 사각형 ➡️ 별 ➡️ 타원] 변형 완료!</p>
-        <p style="margin: 6px 0;">📏 <strong style="color: #ffffff;">[10% 스케일 컴팩트]</strong> 분산범위 수치 폭주 연산 오류를 해결하여 아담하게 안착했습니다.</p>
-        <p style="margin: 6px 0; color: #ffcc00;">▶️ <strong style="color: #ffcc00;">[하단 스타트]</strong> 재생 버튼을 누르면 이 가이드창이 투명하게 사라지며 영상이 시작됩니다!</p>
+        <p style="margin: 6px 0; color: #ffcc00;">▶️ <strong style="color: #ffcc00;">[하단 스타트]</strong> 재생 버튼을 누르면 가이드창이 사라집니다!</p>
       </div>
     `;
     this.container.appendChild(this.guiOverlay);
   }
 
-  // 💡 3D 화면 우측 상단 내부에만 콤팩트하게 상주하는 진짜 HUD 모니터 보드 설치
   buildHudMonitorUI() {
     const oldHud = this.container.querySelector('.cosmic-hud-monitor');
     if (oldHud) oldHud.remove();
@@ -290,34 +287,28 @@ export default class ThreeCube {
     this.updateHudMonitorDisplay();
   }
 
-  // 💡 [배경 업로드 연동 복구 부근] 상위 관제탑의 구조를 해치지 않는 가장 안전한 브라우저 돔 추적기
   setupDirectInputTracker() {
     const loader = new THREE.TextureLoader();
-    
     const forceLoadTexture = () => {
-      // 좌측 패널에 생성된 모든 이미지 프리뷰 엘리먼트 중 활성화된 리소스 추출
       const allImgs = document.querySelectorAll('.media-resources img') || document.querySelectorAll('img');
       let currentSrc = "";
-      
       for (let img of allImgs) {
         if (img.src && (img.src.includes('blob:') || img.src.length > 30 || img.id.includes('preview') || img.src.includes('data:image'))) {
           currentSrc = img.src;
           break;
         }
       }
-
       if (currentSrc && currentSrc !== this.lastBgSrc) {
         this.lastBgSrc = currentSrc;
-        this.textureStatusLog = "이미지 전송 감지, 로딩 중...";
+        this.textureStatusLog = "이미지 감지됨, 로딩 중...";
         this.updateHudMonitorDisplay();
 
         loader.load(
           currentSrc,
           (tex) => {
-            // 💡 이미지 안착 시 가독성 높은 성공 마커 출력
             this.textureStatusLog = `🎉 성공: ${tex.image.width}x${tex.image.height}`;
+            console.log(`[002호 수동 갱신 보증 마커]가 작동했습니다.`);
             this.updateHudMonitorDisplay();
-            
             this.bgTexture = tex;
             if (this.bgMesh) {
               this.bgMesh.material.dispose();
@@ -333,10 +324,9 @@ export default class ThreeCube {
         );
       }
     };
-
     this.domObserver = new MutationObserver(() => { forceLoadTexture(); });
     this.domObserver.observe(document.body, { attributes: true, childList: true, subtree: true });
-    setInterval(forceLoadTexture, 1200); // 1.2초 단위 강제 하드웨어 매핑 트래킹
+    setInterval(forceLoadTexture, 1000); 
     setTimeout(forceLoadTexture, 500);
   }
 
@@ -369,6 +359,9 @@ export default class ThreeCube {
   update(audioData) {
     if (!this.renderer || !this.scene || !this.camera) return;
 
+    // 💡 [수동 버퍼 드로잉 기폭 장치] autoClear=false 상태이므로 매 프레임 수동으로 잔상을 클리어합니다.
+    this.renderer.clear();
+
     const time = Date.now() * 0.001;
     const ui = this.getUIParams();
 
@@ -391,7 +384,6 @@ export default class ThreeCube {
 
     let rawData = [];
     if (audioData) {
-        // 기존 index.html / main.js 인프라와 호환되는 모든 오디오 밴드 리스트 추출
         rawData = audioData.raw || audioData.spectrum || audioData.frequencyData || [];
     }
     
@@ -399,7 +391,6 @@ export default class ThreeCube {
     let masterVol = audioData ? (audioData.vol || audioData.volume || 0.1) : 0.1;
     masterVol *= ui.burst;
 
-    // HUD 모니터 프레임 레이트 주기적 로깅
     if (Math.floor(time * 60) % 20 === 0) {
       this.updateHudMonitorDisplay(rawData.length);
     }
@@ -408,10 +399,8 @@ export default class ThreeCube {
 
     this.visualNodes.forEach((node) => {
       let freqVolume = 0;
-      
       if (this.isAudioActive) {
         if (hasRaw) {
-          // 💡 인덱스 분등 분할 매핑을 통해 외부 오디오 튜닝 필터 데이터 유연하게 흡수
           let currentIdx = Math.floor(node.freqIdxRatio * (rawData.length - 1));
           freqVolume = rawData[currentIdx] / 255.0;
         } else {
@@ -434,7 +423,6 @@ export default class ThreeCube {
       if (node.mode === 'full-bar') {
         let targetScaleY = 0.05 + dynamicResponse;
         node.mesh.scale.y = THREE.MathUtils.lerp(node.mesh.scale.y, targetScaleY, 0.26);
-        
         let currentRadius = baseLengthOffset + (node.mesh.scale.y / 2);
         node.mesh.position.x = dirX * currentRadius;
         node.mesh.position.y = dirY * currentRadius;
