@@ -1,8 +1,9 @@
 /**
  * src/sketches/002_three_cube.js
- * - [버전] Ver 4.6 (타원 왜곡 완전 격파 및 분산범위 슬라이더 ➡️ 서클 기본 반지름 크기 연동판)
- * - 9:16 해상도에서도 일그러짐 없는 완전한 정원(Circle) 형태학 궤적으로 비주얼라이저 라인 전면 교정
- * - 분산범위(Center Scatter) 조작 시 서클의 기본 반경 크기가 시원하게 조여들고 확장되도록 인터랙션 결합
+ * - [버전] Ver 4.7 (9:16 모바일 세로 뷰 전용 컴팩트 스케일 오버홀)
+ * - 세로 화면 비율(9:16)에서 서클이 좌우로 터져나가는 블랙홀 현상을 완전히 해결하기 위해 기본 스케일 계수(0.65)를 주입
+ * - 서클 자체의 기본 반지름(Base Radius)을 35% 즉시 축소하여 한눈에 정원이 다 들어오도록 시공 완료
+ * - 분산범위(Center Scatter) 슬라이더 조작 시 서클의 축소·확장 범위를 컴팩트한 최적화 범위로 튜닝
  * - 3대 형태학 무작위 셔플 및 5대 컬러 스타일 프리셋, 특수문자 우회 3D 배경 스크린 탑재 유지
  */
 
@@ -14,7 +15,8 @@ export default class ThreeCube {
     this.renderer = null;
     this.guiOverlay = null;
 
-    this.version = "002호 3D Radial Outward Bar Ver 4.6";
+    // 💡 최종 콤팩트 스케일 픽스 마커 세팅
+    this.version = "002호 3D Radial Outward Bar Ver 4.7";
     this.isAudioActive = false;
     this.lastSettingsStr = "";
 
@@ -97,8 +99,8 @@ export default class ThreeCube {
         002호 정면 방사형 비주얼라이저 가이드
       </h3>
       <div style="font-size: 12.5px; text-align: left; line-height: 1.75; color: #dddddd;">
-        <p style="margin: 6px 0;">🔵 <strong style="color: #00ffcc;">[완벽한 정원]</strong> 타원형 찌그러짐 왜곡을 완벽히 수리하여 정갈한 써클 형태학 링을 구축했습니다.</p>
-        <p style="margin: 6px 0;">📏 <strong style="color: #ffffff;">[분산범위 크기 조절]</strong> 우측 분산범위 슬라이더를 움직이면 서클 자체의 크기를 통째로 조절할 수 있습니다.</p>
+        <p style="margin: 6px 0;">🔵 <strong style="color: #00ffcc;">[컴팩트 스케일]</strong> 9:16 세로 뷰 비율을 고려해 서클 기본 크기를 35% 즉시 축소했습니다. 한눈에 다 들어옵니다.</p>
+        <p style="margin: 6px 0;">📏 <strong style="color: #ffffff;">[분산범위 크기 조절]</strong> 분산범위 슬라이더를 통해 줄어든 컴팩트 스케일 서클의 전체 반경을 동적으로 튜닝할 수 있습니다.</p>
         <p style="margin: 6px 0;">🎲 <strong style="color: #ffffff;">[3대 형태학]</strong> 전체 막대, 공중부양 끝막대, 시작점 앵커 단추 형태학 믹싱이 유지됩니다.</p>
         <p style="margin: 6px 0; color: #ffcc00;">▶️ <strong style="color: #ffcc00;">[하단 스타트]</strong> 재생 버튼을 누르면 이 가이드창이 투명하게 사라지며 영상이 시작됩니다!</p>
       </div>
@@ -109,7 +111,6 @@ export default class ThreeCube {
     this.container.appendChild(this.guiOverlay);
   }
 
-  // 💡 [정원 리빌딩 매트릭스] 타원형 왜곡을 원천 격파하는 완전 등방성 정원 수식 배치
   buildRadialMatrix() {
     this.visualNodes.forEach(node => this.scene.remove(node.mesh));
     this.visualNodes = [];
@@ -117,9 +118,8 @@ export default class ThreeCube {
     const baseBoxGeometry = new THREE.BoxGeometry(0.12, 1, 0.12);
     const ui = this.getUIParams();
 
-    // 💡 [기획 1 매핑] 관제탑 분산범위(ui.scatter) 슬라이더 수치를 서클의 기본 배치 반경(Base Radius)으로 1:1 링크 주입
-    // 수치 0.5~5.0 범위에 매칭하여 최소 0.6에서 최대 4.5 반경으로 시원하게 가변 스케일링
-    let currentBaseRadius = THREE.MathUtils.mapLinear(ui.scatter, 0.5, 5.0, 0.6, 3.8);
+    // 💡 세로 뷰(9:16)에서 서클이 좌우로 터지는 현상을 해결하기 위해 35% 축소 계수(0.65)를 반영했습니다.
+    let currentBaseRadius = THREE.MathUtils.mapLinear(ui.scatter, 0.5, 5.0, 0.4, 2.5) * 0.65; 
 
     let seedValue = ui.seed;
     const seededRandom = () => {
@@ -131,7 +131,6 @@ export default class ThreeCube {
       const angle = (i / this.barCount) * Math.PI * 2;
       let freqRatio = i / this.barCount;
       
-      // 💡 주파수 시작점 미세 변이 오프셋도 완전히 정원형 파동 기류로 보정
       let individualOffset = currentBaseRadius + (Math.sin(freqRatio * Math.PI * 6.0) * (currentBaseRadius * 0.08)) + (seededRandom() * 0.05);
 
       let drawRand = seededRandom();
@@ -175,7 +174,6 @@ export default class ThreeCube {
 
       const mesh = new THREE.Mesh(currentGeo, material);
 
-      // 💡 [정원 형태 배치] 타원 찌그러짐을 유발하던 인자를 삭제하고 완벽한 사인/코사인 반지름 원으로 안착
       mesh.position.x = Math.cos(angle) * individualOffset;
       mesh.position.y = Math.sin(angle) * individualOffset;
       mesh.position.z = 0;
@@ -224,8 +222,8 @@ export default class ThreeCube {
 
   getUIParams() {
       const seedSlider = document.getElementById('slide-cosmic-seed');
-      const scatterSlider = document.getElementById('slide-cosmic-scatter'); // 💡 분산범위 (서클 크기 마스터 소스)
-      const glowSlider = document.getElementById('slide-cosmic-glow');       // 💡 발광크기 (막대 진폭 마스터 소스)
+      const scatterSlider = document.getElementById('slide-cosmic-scatter'); 
+      const glowSlider = document.getElementById('slide-cosmic-glow');       
       const colorSelect = document.getElementById('select-cosmic-color');
       const gainSlider = document.getElementById('slide-cosmic-gain');
 
@@ -247,7 +245,7 @@ export default class ThreeCube {
   }
 
   resetCanvas(p, isPreview = false) {
-     // 인터페이스 우회
+     // 인터페이스 우회 유지
   }
 
   update(audioData) {
@@ -256,7 +254,6 @@ export default class ThreeCube {
     const time = Date.now() * 0.001;
     const ui = this.getUIParams();
 
-    // 💡 분산범위(ui.scatter)의 가변 변동을 실시간 캡처하여 매 프레임 원형 크기 동적 갱신 추적
     let currentSettingsStr = `${ui.seed}-${ui.scatter}-${ui.style}-${ui.gas1Hex}-${ui.gas2Hex}-${ui.starHex}`;
     if (this.lastSettingsStr !== currentSettingsStr) {
         this.lastSettingsStr = currentSettingsStr;
@@ -283,7 +280,6 @@ export default class ThreeCube {
     let masterVol = audioData ? (audioData.vol || audioData.volume || 0.1) : 0.1;
     masterVol *= ui.burst;
 
-    // 💡 발광크기(Glow & Size)는 오직 주파수 진폭 피크 배율 제어로만 단독 활용 격리
     let amplitudeMultiplier = THREE.MathUtils.mapLinear(ui.glow, 0.1, 1.5, 0.3, 2.5);
 
     this.visualNodes.forEach((node) => {
