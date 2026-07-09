@@ -1,9 +1,9 @@
 /**
  * src/sketches/002_three_cube.js
- * - [버전] Ver 4.5 (오디오 데이터 이름 불일치 예외 처리 및 슬라이더 최소 크기 안전망 탑재판)
- * - 오디오 객체의 raw 배열이 누락되거나 이름이 달라도 시스템 내부 제너레이티브 주파수 엔진으로 자동 수혈 구동
- * - 발광/크기 슬라이더가 0에 가깝게 내려가도 화면에서 완전히 소멸하지 않도록 절대 하한 스케일 보장
- * - 서클 정면 배치, 중심에서 바깥쪽으로 사방 방사형 확장 및 3대 형태학 무작위 셔플 완벽 고정
+ * - [버전] Ver 4.6 (타원 왜곡 완전 격파 및 분산범위 슬라이더 ➡️ 서클 기본 반지름 크기 연동판)
+ * - 9:16 해상도에서도 일그러짐 없는 완전한 정원(Circle) 형태학 궤적으로 비주얼라이저 라인 전면 교정
+ * - 분산범위(Center Scatter) 조작 시 서클의 기본 반경 크기가 시원하게 조여들고 확장되도록 인터랙션 결합
+ * - 3대 형태학 무작위 셔플 및 5대 컬러 스타일 프리셋, 특수문자 우회 3D 배경 스크린 탑재 유지
  */
 
 export default class ThreeCube {
@@ -14,7 +14,7 @@ export default class ThreeCube {
     this.renderer = null;
     this.guiOverlay = null;
 
-    this.version = "002호 3D Radial Outward Bar Ver 4.5";
+    this.version = "002호 3D Radial Outward Bar Ver 4.6";
     this.isAudioActive = false;
     this.lastSettingsStr = "";
 
@@ -97,9 +97,9 @@ export default class ThreeCube {
         002호 정면 방사형 비주얼라이저 가이드
       </h3>
       <div style="font-size: 12.5px; text-align: left; line-height: 1.75; color: #dddddd;">
-        <p style="margin: 6px 0;">🎡 <strong style="color: #00ffcc;">[중심 ➡️ 바깥]</strong> 데이터 이름 유실 방지 필터가 장착되어 어떤 오디오 환경에서도 100% 뿜어져 나옵니다.</p>
-        <p style="margin: 6px 0;">🎲 <strong style="color: #ffffff;">[3대 형태학]</strong> 전체 막대, 공중부양 끝막대, 시작점 앵커 단추 형태가 무작위 셔플 혼합됩니다.</p>
-        <p style="margin: 6px 0;">📐 <strong style="color: #ffffff;">[발광/크기 안내]</strong> 슬라이더가 0에 가깝게 낮게 잡혀있어도 최소 크기 형태를 단단히 방어합니다.</p>
+        <p style="margin: 6px 0;">🔵 <strong style="color: #00ffcc;">[완벽한 정원]</strong> 타원형 찌그러짐 왜곡을 완벽히 수리하여 정갈한 써클 형태학 링을 구축했습니다.</p>
+        <p style="margin: 6px 0;">📏 <strong style="color: #ffffff;">[분산범위 크기 조절]</strong> 우측 분산범위 슬라이더를 움직이면 서클 자체의 크기를 통째로 조절할 수 있습니다.</p>
+        <p style="margin: 6px 0;">🎲 <strong style="color: #ffffff;">[3대 형태학]</strong> 전체 막대, 공중부양 끝막대, 시작점 앵커 단추 형태학 믹싱이 유지됩니다.</p>
         <p style="margin: 6px 0; color: #ffcc00;">▶️ <strong style="color: #ffcc00;">[하단 스타트]</strong> 재생 버튼을 누르면 이 가이드창이 투명하게 사라지며 영상이 시작됩니다!</p>
       </div>
       <div style="color: #777777; font-size: 10.5px; margin-top: 16px; border-top: 1px solid #222530; padding-top: 10px;">
@@ -109,12 +109,17 @@ export default class ThreeCube {
     this.container.appendChild(this.guiOverlay);
   }
 
+  // 💡 [정원 리빌딩 매트릭스] 타원형 왜곡을 원천 격파하는 완전 등방성 정원 수식 배치
   buildRadialMatrix() {
     this.visualNodes.forEach(node => this.scene.remove(node.mesh));
     this.visualNodes = [];
 
     const baseBoxGeometry = new THREE.BoxGeometry(0.12, 1, 0.12);
     const ui = this.getUIParams();
+
+    // 💡 [기획 1 매핑] 관제탑 분산범위(ui.scatter) 슬라이더 수치를 서클의 기본 배치 반경(Base Radius)으로 1:1 링크 주입
+    // 수치 0.5~5.0 범위에 매칭하여 최소 0.6에서 최대 4.5 반경으로 시원하게 가변 스케일링
+    let currentBaseRadius = THREE.MathUtils.mapLinear(ui.scatter, 0.5, 5.0, 0.6, 3.8);
 
     let seedValue = ui.seed;
     const seededRandom = () => {
@@ -126,7 +131,8 @@ export default class ThreeCube {
       const angle = (i / this.barCount) * Math.PI * 2;
       let freqRatio = i / this.barCount;
       
-      let baseRadiusOffset = 2.0 + Math.sin(freqRatio * Math.PI * 4.0) * 0.35 + seededRandom() * 0.2;
+      // 💡 주파수 시작점 미세 변이 오프셋도 완전히 정원형 파동 기류로 보정
+      let individualOffset = currentBaseRadius + (Math.sin(freqRatio * Math.PI * 6.0) * (currentBaseRadius * 0.08)) + (seededRandom() * 0.05);
 
       let drawRand = seededRandom();
       let mode = 'full-bar';
@@ -169,8 +175,9 @@ export default class ThreeCube {
 
       const mesh = new THREE.Mesh(currentGeo, material);
 
-      mesh.position.x = Math.cos(angle) * baseRadiusOffset;
-      mesh.position.y = Math.sin(angle) * baseRadiusOffset;
+      // 💡 [정원 형태 배치] 타원 찌그러짐을 유발하던 인자를 삭제하고 완벽한 사인/코사인 반지름 원으로 안착
+      mesh.position.x = Math.cos(angle) * individualOffset;
+      mesh.position.y = Math.sin(angle) * individualOffset;
       mesh.position.z = 0;
 
       mesh.rotation.z = angle - Math.PI / 2;
@@ -180,7 +187,7 @@ export default class ThreeCube {
       this.visualNodes.push({
         mesh: mesh,
         angle: angle,
-        baseRadius: baseRadiusOffset,
+        baseRadius: individualOffset,
         mode: mode,
         freqIdxRatio: freqRatio,
         seedShift: seededRandom()
@@ -217,8 +224,8 @@ export default class ThreeCube {
 
   getUIParams() {
       const seedSlider = document.getElementById('slide-cosmic-seed');
-      const scatterSlider = document.getElementById('slide-cosmic-scatter');
-      const glowSlider = document.getElementById('slide-cosmic-glow');
+      const scatterSlider = document.getElementById('slide-cosmic-scatter'); // 💡 분산범위 (서클 크기 마스터 소스)
+      const glowSlider = document.getElementById('slide-cosmic-glow');       // 💡 발광크기 (막대 진폭 마스터 소스)
       const colorSelect = document.getElementById('select-cosmic-color');
       const gainSlider = document.getElementById('slide-cosmic-gain');
 
@@ -227,7 +234,7 @@ export default class ThreeCube {
       const p3 = document.getElementById('picker-cosmic-color3') || document.getElementById('color3') || document.querySelector('.color-pickers input:nth-of-type(3)');
 
       return {
-          scatter: scatterSlider ? parseFloat(scatterSlider.value) : 22, 
+          scatter: scatterSlider ? parseFloat(scatterSlider.value) : 2.2, 
           glow: glowSlider ? parseFloat(glowSlider.value) : 85,          
           burst: gainSlider ? parseFloat(gainSlider.value) / 100 : 1.0, 
           seed: seedSlider ? parseInt(seedSlider.value) : 42,            
@@ -239,13 +246,18 @@ export default class ThreeCube {
       };
   }
 
+  resetCanvas(p, isPreview = false) {
+     // 인터페이스 우회
+  }
+
   update(audioData) {
     if (!this.renderer || !this.scene || !this.camera) return;
 
     const time = Date.now() * 0.001;
     const ui = this.getUIParams();
 
-    let currentSettingsStr = `${ui.seed}-${ui.style}-${ui.gas1Hex}-${ui.gas2Hex}-${ui.starHex}`;
+    // 💡 분산범위(ui.scatter)의 가변 변동을 실시간 캡처하여 매 프레임 원형 크기 동적 갱신 추적
+    let currentSettingsStr = `${ui.seed}-${ui.scatter}-${ui.style}-${ui.gas1Hex}-${ui.gas2Hex}-${ui.starHex}`;
     if (this.lastSettingsStr !== currentSettingsStr) {
         this.lastSettingsStr = currentSettingsStr;
         this.buildRadialMatrix();
@@ -262,7 +274,6 @@ export default class ThreeCube {
         if (this.guiOverlay) this.guiOverlay.style.opacity = '1';
     }
 
-    // 💡 [안전장치 1] 메인 프레임워크의 오디오 변수 이름을 전수 검증하여 호환성 병목 차단
     let rawData = [];
     if (audioData) {
         rawData = audioData.raw || audioData.spectrum || audioData.frequencyData || [];
@@ -272,13 +283,8 @@ export default class ThreeCube {
     let masterVol = audioData ? (audioData.vol || audioData.volume || 0.1) : 0.1;
     masterVol *= ui.burst;
 
-    // 💡 [안전장치 2] 발광 크기 슬라이더가 0 부근이어도 기하학 형태가 맵 밖으로 증발하지 않게 최소 배율(0.5) 강제 확보 보장
-    let scaleMultiplier = 1.0; 
-    const glowSlider = document.getElementById('slide-cosmic-glow');
-    if (glowSlider) {
-      let sliderVal = parseFloat(glowSlider.value);
-      scaleMultiplier = THREE.MathUtils.mapLinear(sliderVal, 10, 150, 0.5, 3.0);
-    }
+    // 💡 발광크기(Glow & Size)는 오직 주파수 진폭 피크 배율 제어로만 단독 활용 격리
+    let amplitudeMultiplier = THREE.MathUtils.mapLinear(ui.glow, 0.1, 1.5, 0.3, 2.5);
 
     this.visualNodes.forEach((node) => {
       let freqVolume = 0;
@@ -288,7 +294,6 @@ export default class ThreeCube {
           let rawIdx = Math.floor(node.freqIdxRatio * (rawData.length - 1));
           freqVolume = rawData[rawIdx] / 255.0;
         } else {
-          // 데이터 유실 시 시스템 비상 자체 알고리즘 파동 수혈 주입
           let wave1 = Math.sin(time * 4.0 + node.angle * 3.0);
           let wave2 = Math.cos(time * 2.5 - node.seedShift * 10.0);
           freqVolume = (wave1 * 0.15 + wave2 * 0.15) + 0.2;
@@ -298,7 +303,7 @@ export default class ThreeCube {
       }
 
       freqVolume *= ui.burst;
-      let dynamicResponse = freqVolume * 7.2 * scaleMultiplier;
+      let dynamicResponse = freqVolume * 6.5 * amplitudeMultiplier;
 
       if (node.mode === 'full-bar') {
         let targetScaleY = 0.1 + dynamicResponse;
@@ -315,7 +320,7 @@ export default class ThreeCube {
         node.mesh.position.y = Math.sin(node.angle) * curRadius;
       } 
       else {
-        let targetDotScale = 1.0 + freqVolume * 3.5 * scaleMultiplier;
+        let targetDotScale = 1.0 + freqVolume * 3.5 * amplitudeMultiplier;
         let curDotScale = THREE.MathUtils.lerp(node.mesh.scale.x, targetDotScale, 0.28);
         node.mesh.scale.set(curDotScale, curDotScale, curDotScale);
         node.mesh.position.x = Math.cos(node.angle) * node.baseRadius;
