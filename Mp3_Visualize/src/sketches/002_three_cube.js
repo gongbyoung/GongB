@@ -1,9 +1,9 @@
 /**
  * src/sketches/002_three_cube.js
- * - [버전] Ver 4.17 (씬 백그라운드 다이렉트 인젝션 및 주파수 바 안팎 양방향 대칭 확장판)
- * - scene.background 에 텍스처를 직접 주입하여 버퍼 클리어 및 뎁스 역전에 상관없이 100% 무결점 배경 출력 보장
- * - 기하학 노드 원점을 중심으로 주파수 바가 안쪽과 바깥쪽 양방향(Bidirectional)으로 대칭되어 뻗어나가도록 수학적 전면 개조
- * - 안쪽 진입 진폭 강도를 기존 대비 100% 상향시켜 비트 타격 시 서클 내부 공간까지 웅장하게 관통 연출
+ * - [버전] Ver 4.18 (관제탑 전역 변수 직접 바인딩 및 배경 이미지 실시간 렌더링 완결판)
+ * - main.js가 업로드한 window.currentUploadedImageElement 메모리를 다이렉트로 낚아채는 매핑 파이프라인 탑재
+ * - scene.background 텍스처 생성 주기를 동기화하여 지연 시간 없이 100% 무결점 배경 이미지 출력 보장
+ * - 서클 중심 안팎 양방향(Bidirectional) 대칭 주파수 폭발 진폭 가속 연산 공식 유지
  * - 점 모드 예외 방어, 지형변경 슬라이더 구간별 6대 기하학 형태학 스위칭 및 화면 내 HUD 디버그 보드 유지
  */
 
@@ -16,7 +16,7 @@ export default class ThreeCube {
     this.guiOverlay = null;
     this.hudMonitor = null;
 
-    this.version = "002호 3D Radial Outward Bar Ver 4.17";
+    this.version = "002호 3D Radial Outward Bar Ver 4.18";
     this.isAudioActive = false;
     this.lastSettingsStr = "";
 
@@ -48,10 +48,10 @@ export default class ThreeCube {
     this.renderer.autoClear = false; 
     this.container.appendChild(this.renderer.domElement);
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.55); 
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6); 
     this.scene.add(ambientLight);
 
-    const pointLight = new THREE.PointLight(0xffffff, 1.5, 100);
+    const pointLight = new THREE.PointLight(0xffffff, 1.5, 7);
     pointLight.position.set(0, 0, 7); 
     this.scene.add(pointLight);
 
@@ -94,13 +94,12 @@ export default class ThreeCube {
         ⚙️ STAGE STATUS: ${this.version} READY
       </div>
       <h3 style="color: #ffffff; font-size: 16.5px; margin: 0 0 16px 0; font-weight: 600;">
-        002호 양방향 주파수 제어판 가이드
+        002호 전역 텍스처 동기화 완료판
       </h3>
       <div style="font-size: 12.5px; text-align: left; line-height: 1.75; color: #dddddd;">
-        <p style="margin: 6px 0;">↔️ <strong style="color: #00ffcc;">[양방향 주파수 폭발]</strong> 주파수 바가 바깥쪽뿐만 아니라 안쪽 중심부로도 균등하게 양방향 확장됩니다.</p>
-        <p style="margin: 6px 0;">💥 <strong style="color: #ffffff;">[안쪽 100% 추가 진입]</strong> 서클 안쪽으로 치고 들어오는 수 수치 진폭을 2배로 넓혀 내부를 가득 채웁니다.</p>
-        <p style="margin: 6px 0;">🖼️ <strong style="color: #ffffff;">[배경 씬 인젝션 보장]</strong> scene.background 다이렉트 이식이 적용되어 배경화면이 무조건 투사됩니다.</p>
-        <p style="margin: 6px 0; color: #ffcc00;">▶️ <strong style="color: #ffcc00;">[하단 스타트]</strong> 재생 버튼을 누르면 가이드창이 사라집니다!</p>
+        <p style="margin: 6px 0;">🖼️ <strong style="color: #00ffcc;">[전역 메모리 직통 링크]</strong> main.js 관제탑의 업로드 데이터 메모리를 실시간 강제 추적하여 즉시 반영합니다.</p>
+        <p style="margin: 6px 0;">↔️ <strong style="color: #ffffff;">[양방향 스케일링 폭발]</strong> 주파수 바가 원점을 기준으로 안쪽과 바깥쪽 사방으로 균등 진동 대칭 분할 폭발합니다.</p>
+        <p style="margin: 6px 0; color: #ffcc00;">▶️ <strong style="color: #ffcc00;">[하단 스타트]</strong> 재생 버튼을 누르면 가이드창이 투명하게 소멸합니다.</p>
       </div>
     `;
     this.container.appendChild(this.guiOverlay);
@@ -234,7 +233,7 @@ export default class ThreeCube {
         if (mode === 'full-bar') finalColor.set(ui.gas1Hex);
         else if (mode === 'tip-only') finalColor.set(ui.gas2Hex);
         else finalColor.set(ui.starHex);
-      } else if (ui.style.includes('full-random') || ui.style.includes('gradient')) {
+    } else if (ui.style.includes('full-random') || ui.style.includes('gradient')) {
         finalColor.setHSL(seededRandom(), 0.95, 0.55);
       } else {
         finalColor.setHSL(seededRandom(), 1.0, 0.6);
@@ -280,45 +279,60 @@ export default class ThreeCube {
     this.updateHudMonitorDisplay();
   }
 
-  // 💡 [배경화면 출력 로직 100% 무결점 대개조] scene.background 에 직접 주사
+  // 💡 [배경 파이프라인 올수리] 관제탑 전역 변수(window.currentUploadedImageElement)를 직접 가로채도록 튜닝
   setupDirectInputTracker() {
-    const loader = new THREE.TextureLoader();
-    const forceLoadTexture = () => {
-      const allImgs = document.querySelectorAll('.media-resources img') || document.querySelectorAll('img');
-      let currentSrc = "";
-      for (let img of allImgs) {
-        if (img.src && (img.src.includes('blob:') || img.src.length > 30 || img.id.includes('preview') || img.src.includes('data:image'))) {
-          currentSrc = img.src;
-          break;
+    const forceSyncTexture = () => {
+      let targetSrc = "";
+      let sourceElement = null;
+
+      // 1순위: main.js 관제탑이 정식 가공하여 바인딩해놓은 메모리 인스턴스 직접 수혈 추출
+      if (window.currentUploadedImageElement && window.currentUploadedImageElement.src) {
+        targetSrc = window.currentUploadedImageElement.src;
+        sourceElement = window.currentUploadedImageElement;
+      } else {
+        // 2순위: 돔 엘리먼트 백업 하드웨어 풀링 추적
+        const allImgs = document.querySelectorAll('.media-resources img') || document.querySelectorAll('img');
+        for (let img of allImgs) {
+          if (img.src && (img.src.includes('blob:') || img.src.length > 30 || img.id.includes('preview') || img.src.includes('data:image'))) {
+            targetSrc = img.src;
+            sourceElement = img;
+            break;
+          }
         }
       }
-      if (currentSrc && currentSrc !== this.lastBgSrc) {
-        this.lastBgSrc = currentSrc;
-        this.textureStatusLog = "로딩 중...";
+
+      if (targetSrc && targetSrc !== this.lastBgSrc && sourceElement) {
+        this.lastBgSrc = targetSrc;
+        this.textureStatusLog = "전역 변수 디코딩 중...";
         this.updateHudMonitorDisplay();
 
-        loader.load(
-          currentSrc,
-          (tex) => {
-            this.textureStatusLog = `🎉 성공: ${tex.image.width}x${tex.image.height}`;
-            this.updateHudMonitorDisplay();
-            this.bgTexture = tex;
-            
-            // 💡 [버그 해결 핵심 마커] 렌더러 클리어 루프에 절대 지워지지 않도록 씬 백그라운드 스펙트럼에 다이렉트 고정 바인딩
+        try {
+          // 비동기 다운로드 파이프라인 오류를 완벽 차단하기 위해 Three.js 기본 Texture 인스턴스로 즉시 주입 매핑
+          const tex = new THREE.Texture(sourceElement);
+          tex.needsUpdate = true; // 하드웨어 렌더 칩 가동
+          
+          this.bgTexture = tex;
+          this.scene.background = this.bgTexture;
+          
+          this.textureStatusLog = `🎉 동기화 성공: ${sourceElement.width || 'OK'}px`;
+          this.updateHudMonitorDisplay();
+        } catch (e) {
+          // 예외 우회용 로더 재기동 락
+          const loader = new THREE.TextureLoader();
+          loader.load(targetSrc, (t) => {
+            this.bgTexture = t;
             this.scene.background = this.bgTexture;
-          },
-          undefined,
-          (err) => {
-            this.textureStatusLog = `❌ 에러: 로더 거부`;
+            this.textureStatusLog = `🎉 로더 복구 성공`;
             this.updateHudMonitorDisplay();
-          }
-        );
+          });
+        }
       }
     };
-    this.domObserver = new MutationObserver(() => { forceLoadTexture(); });
+
+    this.domObserver = new MutationObserver(() => { forceSyncTexture(); });
     this.domObserver.observe(document.body, { attributes: true, childList: true, subtree: true });
-    setInterval(forceLoadTexture, 1000); 
-    setTimeout(forceLoadTexture, 500);
+    setInterval(forceSyncTexture, 1000); 
+    setTimeout(forceSyncTexture, 500);
   }
 
   getUIParams() {
@@ -403,28 +417,21 @@ export default class ThreeCube {
       }
 
       freqVolume *= ui.burst;
-      // 💡 안쪽 침범 수치 100% 상향(강도 계수 5.2 벌크업) 반영
       let dynamicResponse = freqVolume * 5.2 * amplitudeMultiplier;
 
       let dirX = Math.cos(node.angle);
       let dirY = Math.sin(node.angle);
 
-      // 모양학 궤적 기준 원본 반경 벡터 길이 도출
       let baseLengthOffset = (node.baseX === 0.001 * dirX) ? 0 : Math.sqrt(node.baseX * node.baseX + node.baseY * node.baseY);
 
       if (node.mode === 'full-bar') {
-        // 💡 [양방향 대칭 팽창 코어 개조] 
-        // 큐브의 scale.y 크기를 대폭 늘리되, 위치(position)를 기존 외곽선 정위치(baseLengthOffset)에 고정합니다.
-        // Three.js의 기본 BoxGeometry는 중심(Center)을 기준으로 위아래 양방향 확장되므로, position 연산을 고정하면 자동으로 안팎 양방향 폭발 연출이 완성됩니다.
         let targetScaleY = 0.05 + dynamicResponse;
         node.mesh.scale.y = THREE.MathUtils.lerp(node.mesh.scale.y, targetScaleY, 0.26);
         
-        // 원점 위치를 궤적 선상에 칼고정하여 안쪽과 바깥쪽으로 정확히 50:50 대칭 분할 폭발 유도
         node.mesh.position.x = dirX * baseLengthOffset;
         node.mesh.position.y = dirY * baseLengthOffset;
       } 
       else if (node.mode === 'tip-only') {
-        // 끝막대 알갱이는 외곽뿐만 아니라 안쪽 대칭점 부근까지 교차 사출되도록 삼각파 가변 유도
         node.mesh.scale.set(1, 1, 1);
         let targetRadius = baseLengthOffset + (Math.sin(time * 5.0 + node.seedShift) * (dynamicResponse * 0.75));
         let curRadius = THREE.MathUtils.lerp(baseLengthOffset, targetRadius, 0.26);
@@ -432,7 +439,6 @@ export default class ThreeCube {
         node.mesh.position.y = dirY * curRadius;
       } 
       else {
-        // 시작 단추 노드는 제자리에서 2배 벌크업 진동
         let targetDotScale = 1.0 + freqVolume * 3.5 * amplitudeMultiplier;
         let curDotScale = THREE.MathUtils.lerp(node.mesh.scale.x, targetDotScale, 0.28);
         node.mesh.scale.set(curDotScale, curDotScale, curDotScale);
