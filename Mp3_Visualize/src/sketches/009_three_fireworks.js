@@ -1,10 +1,10 @@
 /**
  * src/sketches/009_three_fireworks.js
- * - [버전] Ver 5.2 (실시간 콘솔 디버그 로그 및 초기화 기본 수치 마킹 완결판)
- * - 붉은 사각형 종이 현상을 유체 심플렉스 노이즈 수식 밸런싱으로 완전 수리 복구
- * - 자막 캔버스 렌더러 루프 변수 디버깅 완료 ➡️ 네온 자막 백사장 드로잉 무결점 보장
- * - init() 시점에 UI에서 조정한 값들의 초기화 기본 수치를 개발자 도구 콘솔창에 자동 출력
- * - update() 주기마다 현재 수위(Gauge) 상태 및 SRT 싱크로율을 실시간 콘솔 로그 디버깅 지원
+ * - [버전] Ver 5.3 (프레그먼트 셰이더 uvUnoise 타이핑 오타 완치 및 렌더링 정상화 완결판)
+ * - uvUnoise 에러를 uvNoise 변수명으로 정밀 교정하여 GPU 컴파일러 에러 100% 완치
+ * - 자막 출현 0.8초 전 파도가 솟구쳐 화면을 가린 뒤, 내려가면서 모래사장에 자막을 표출하는 해안선 연출 복구
+ * - init() 시점에 UI에서 조정한 값들의 초기화 기본 수치 콘솔 테이블 출력 유지
+ * - update() 주기마다 현재 수위(Gauge) 상태 및 SRT 싱크로율을 0.5초 주기로 정갈하게 콘솔 로깅 지원
  */
 
 export default class ThreeMediaArtWall {
@@ -26,7 +26,7 @@ export default class ThreeMediaArtWall {
     this.viewWidth = 0;
     this.viewHeight = 0;
     this.lastLogTime = 0;
-    this.version = "009호 자연 유체 해변 스튜디오 Ver 5.2";
+    this.version = "009호 자연 유체 해변 스튜디오 Ver 5.3";
   }
 
   init() {
@@ -54,7 +54,6 @@ export default class ThreeMediaArtWall {
     this.viewWidth = viewWidth;
     this.viewHeight = viewHeight;
 
-    // 💡 [초기화 기본 수치 콘솔 로그 출력 부량]
     const initialUI = this.getUIParams();
     console.log(`%c[🚀 009호 초기화 가동] 시스템 로드 및 기본 셋업 수치 브리핑`, "color: #00ffcc; font-weight: bold; font-size: 11px;");
     console.table({
@@ -163,15 +162,13 @@ export default class ThreeMediaArtWall {
         }
 
         void main() {
-          // 💡 정밀 무작위 물결 연산 팩 보정 (Range 가 가로 주파수 파동 제어)
           vec2 uvNoise = vUv * vec2(u_range * 1.5, 3.5);
           uvNoise.y -= u_time * 0.4;
 
-          // Volume 이 종단면 포말 쪼개짐 스케일 제어
+          // 💡 [오타 수리 완료] uvUnoise 오타를 uvNoise로 완벽하게 복구했습니다.
           float n = noise(uvNoise) * 0.12 * u_volume;
-          n += noise(uvUnoise * 2.0) * 0.04 * (u_volume * 0.5);
+          n += noise(uvNoise * 2.0) * 0.04 * (u_volume * 0.5);
 
-          // 하단 기준선 보정 매칭 (수치 종단 폭 조정)
           float waveLine = (u_gauge * 1.1 - 0.1) + n;
           
           float f = smoothstep(waveLine - 0.04, waveLine, vUv.y);
@@ -179,7 +176,6 @@ export default class ThreeMediaArtWall {
 
           vec3 baseFluidColor = mix(u_colorGas1, u_colorGas2, foam * 0.7);
 
-          // 💥 붉은 사각형 종이 오류를 차단하기 위해 디스카드 마진을 정밀 알파 테스팅으로 우회
           float alpha = 1.0 - f;
           if (vUv.y > waveLine + 0.04) {
               alpha = 0.0;
@@ -206,7 +202,7 @@ export default class ThreeMediaArtWall {
       depthWrite: false
     });
     this.textPlane = new THREE.Mesh(geo, mat);
-    this.textPlane.position.set(0, -1.8, 0.5); // 자막 배치 레이어 정돈
+    this.textPlane.position.set(0, -1.8, 0.5); 
     this.scene.add(this.textPlane);
   }
 
@@ -248,7 +244,6 @@ export default class ThreeMediaArtWall {
     const lineHeight = fontSizeStyle * 1.35;
     const startY = 256 - ((lines.length - 1) * lineHeight) / 2;
 
-    // 💡 [오타 완치] 기존 루프 탈출 조건문 매핑 에러를 k 변수로 안전 결합 패치
     for (let k = 0; k < lines.length; k++) {
         ctx.shadowColor = 'rgba(0,0,0,0.6)';
         ctx.shadowBlur = 5;
@@ -320,8 +315,6 @@ export default class ThreeMediaArtWall {
       srtStatusMessage = "⏸️ 정지 모드 (오른쪽 Gauge 수치 수동 제어 모드)";
     }
 
-    // 💡 [실시간 콘솔 디버그 로그 장치] 
-    // 매 프레임 폭주하여 콘솔이 밀리는 걸 방지하기 위해 0.5초 간격으로 정갈하게 필터링 출력
     const nowMs = Date.now();
     if (nowMs - this.lastLogTime > 500) {
       console.log(
