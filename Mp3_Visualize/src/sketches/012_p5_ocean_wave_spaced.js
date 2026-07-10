@@ -1,9 +1,9 @@
 /**
  * src/sketches/012_p5_ocean_wave_spaced.js
- * - [버전] Ver 7.6 (한 박자 정밀 오디오 타격 싱크 및 악기 스펙트럼 완결판)
- * - 단순 볼륨 감지를 탈피하고 직전 프레임 대비 변위 스파이크(Peak)를 역산하여 한 박자 한 박자 정확한 물리 타이밍 연동
- * - 타악기(실로폰, 드럼)의 날카로운 타격 순간 공들이 스프링처럼 즉각 튀어 오르는 어택 감도 극대화
- * - 관제탑 [RESET] 즉시 적용 시스템, 실시간 배경 이미지 로더 및 가독성 75% 틴트 쉴드 완벽 유지
+ * - [버전] Ver 7.7 (스피어 크기/위치 UI 단독 매핑 및 네온 Trail 잔상 완결판)
+ * - 비어있던 3D Position Offset X를 '모든 공의 크기(Size)' 제어로, Y를 '공들의 상하 중심 위치(Y-Center)' 제어로 완벽 바인딩
+ * - Range(scatter)는 오직 레일의 가로 간격(Spacing) 확장 역할만 전담하도록 명확히 분리
+ * - 캔버스 알파 페이딩 버퍼 기믹을 통해 공명 바운스, 진자 웨이브, 마블 런 모든 모드에 영롱한 꼬리 잔상(Trail) 탑재
  */
 
 export default class P5OceanWaveSpaced {
@@ -16,14 +16,12 @@ export default class P5OceanWaveSpaced {
     this.numTracks = 9; 
 
     this.smoothedInput = new Float32Array(this.numBands);
-    
-    // 💡 한 박자 정밀 싱크를 위해 직전 프레임의 주파수 값을 저장하는 버퍼 버킷
     this.audioHistory = new Float32Array(this.numBands);
     
     this.currentAudioData = null;
     this.loadedSeed = -1;
     this.currentMode = "공명 바운스";
-    this.version = "한 박자 정밀 싱크 물리 스튜디오 Ver 7.6";
+    this.version = "정밀 UI 매핑 및 잔상 물리 스튜디오 Ver 7.7";
   }
 
   async init() {
@@ -37,13 +35,14 @@ export default class P5OceanWaveSpaced {
       });
     }
 
-    console.log(`%c[🔮 012호 박자 동기화 가동] ${this.version}`, "color: #00ffcc; font-weight: bold; font-size: 13px;");
+    console.log(`%c[🔮 012호 정밀 매핑 완료] ${this.version}`, "color: #00ffcc; font-weight: bold; font-size: 13px;");
     console.log(
-      `%c🛠️ 박자 및 악기 정밀 제어 메뉴얼\n` +
-      `• 실로폰 / 드럼 (타악기 대역) ➡️ 소리가 닿는 한 박자 단위로 공이 즉시 튕겨 나갑니다.\n` +
-      `• 바이올린 / 첼로 (현악기 대역) ➡️ 활을 켜는 리듬과 음의 고저에 따라 부드러운 하모닉스 진동을 전개합니다.\n` +
-      `• Shuffle 변경 후 [RESET] 클릭 시 모드가 무작위 교체됩니다.`,
-      "color: #ffffff; line-height: 1.6;"
+      `%c🛠️ 신규 확장 조작 변수 가이드\n` +
+      `1. 🔴 3D Position Offset X ➡️ 모든 스피어(공)의 개별 크기(Diameter)를 제어합니다. (추천: 15~50)\n` +
+      `2. 🟢 3D Position Offset Y ➡️ 공들의 상하 중간 기준 위치(Y-Center)를 오프셋 제어합니다.\n` +
+      `3. 🌊 Range (Range 5~50)  ➡️ 이제 공 크기와 무관하게 오직 레일간 '가로 간격' 너비만 조절합니다.\n` +
+      `• 모든 물리 무대에 실시간 네온 궤적 꼬리(Trail) 잔상 엔진이 기본 가동됩니다.`,
+      "color: #ffff00; line-height: 1.6;"
     );
 
     const sketch = (p) => {
@@ -61,11 +60,11 @@ export default class P5OceanWaveSpaced {
         p.randomSeed(seed);
         let modes = ["공명 바운스", "진자 웨이브", "무한 마블 런"];
         this.currentMode = modes[p.floor(p.random(modes.length))];
-        console.log(`%c[⚡ RESET 계수 반영] 현재 물리 세계관: ${this.currentMode}`, "color: #00ffcc; font-weight: bold;");
+        console.log(`%c[⚡ RESET 세계관] 결정된 하드웨어 물리: ${this.currentMode}`, "color: #00ffcc; font-weight: bold;");
 
         for (let i = 0; i < this.numBands; i++) {
           this.orbs.push({
-            y: p.height / 2,
+            y: p.height / 2, // 기본적으로 화면 정중앙(중간)에 안착
             vy: 0,
             angle: 0
           });
@@ -81,6 +80,7 @@ export default class P5OceanWaveSpaced {
         if (!this.currentAudioData) { p.clear(); ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, width, height); return; }
 
         let scatter = 22, gain = 100, glow = 85, seed = 42, gauge = 50;
+        let offX = 0, offY = 0; // X(크기), Y(중심위치) 매핑용 변수 초기화
         let customColors = { gas1: '#ff0055', gas2: '#00ffcc', star: '#ffffff' };
 
         if (window.cosmicEngineSettings) {
@@ -90,40 +90,35 @@ export default class P5OceanWaveSpaced {
           seed = window.cosmicEngineSettings.seed || 42;
           gauge = window.cosmicEngineSettings.gaugeValue || 0.5;
           customColors = window.cosmicEngineSettings.customColors || customColors;
+          
+          // 💡 비어있던 오프셋 패널 수치를 다이렉트로 인터셉트
+          offX = window.cosmicEngineSettings.positionOffset?.x || 0; // 공의 크기 가인
+          offY = window.cosmicEngineSettings.positionOffset?.y || 0; // 공의 상하 중간 정렬 변위
         }
 
-        p.clear();
-
-        // 배경화면 및 틴트
+        // 💡 [핵심 구현: 영롱한 Trail 잔상 캔버스 엔진 수립]
+        // 매 프레임 화면을 완전히 clear()하지 않고, 반투명 검은색 틴트를 입혀 꼬리 잔상을 보존합니다.
+        ctx.save();
+        ctx.shadowBlur = 0; // 배경 드로잉 시 블러 간섭 제거
         if (window.currentUploadedImageElement) {
             ctx.drawImage(window.currentUploadedImageElement, 0, 0, width, height);
-            ctx.fillStyle = 'rgba(11, 5, 23, 0.75)'; 
+            ctx.fillStyle = 'rgba(12, 6, 24, 0.18)'; // 잔상 길이를 최적으로 유지하는 알파 블로킹 틴트 (0.18)
             ctx.fillRect(0, 0, width, height);
         } else {
-            const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
-            bgGrad.addColorStop(0, '#060012');
-            bgGrad.addColorStop(0.5, '#110020');
-            bgGrad.addColorStop(1, '#000000');
-            ctx.fillStyle = bgGrad;
+            // 그라디언트 배경 위에도 꼬리가 남도록 반투명 오버레이
+            ctx.fillStyle = 'rgba(10, 0, 22, 0.18)';
             ctx.fillRect(0, 0, width, height);
         }
+        ctx.restore();
 
-        // 💡 [한 박자 정밀 타격 스파이크 역산 프레임]
+        // 100분의 1초 단위 한 박자 타격 스파이크 역산 엔진
         const spikeTrigger = new Float32Array(this.numBands);
-        
         if (this.currentAudioData.raw && this.currentAudioData.raw.length > 0) {
             const dataLen = this.currentAudioData.raw.length;
-            
             const instrumentIndices = [
-                p.floor(dataLen * 0.02),  // 0: 🥁 베이스 드럼 (킥)
-                p.floor(dataLen * 0.06),  // 1: 🥁 스네어 드럼
-                p.floor(dataLen * 0.10),  // 2: 🎻 첼로 중저역선
-                p.floor(dataLen * 0.16),  // 3: 🎻 비올라 중역선
-                p.floor(dataLen * 0.26),  // 4: 🎻 바이올린 선율 주축
-                p.floor(dataLen * 0.42),  // 5: 🎼 실로폰 고음 타격점
-                p.floor(dataLen * 0.60),  // 6: 🎻 바이올린 고주파 배음
-                p.floor(dataLen * 0.76),  // 7: 🥁 하이햇 / 심벌즈 메탈릭
-                p.floor(dataLen * 0.92)   // 8: ✨ 초고역 사운드 에어선
+                p.floor(dataLen * 0.02), p.floor(dataLen * 0.06), p.floor(dataLen * 0.10),
+                p.floor(dataLen * 0.16), p.floor(dataLen * 0.26), p.floor(dataLen * 0.42),
+                p.floor(dataLen * 0.60), p.floor(dataLen * 0.76), p.floor(dataLen * 0.92)
             ];
 
             for (let i = 0; i < this.numBands; i++) {
@@ -131,15 +126,10 @@ export default class P5OceanWaveSpaced {
                 let rawVal = this.currentAudioData.raw[idx] || 0;
                 let normalized = Math.pow(rawVal / 255.0, 1.6) * (gain * 1.5);
                 
-                // 💥 [박자 동기화 핵심 수식]: 직전 프레임과의 차이값을 구함 (음의 시작점 포착)
                 let delta = normalized - this.audioHistory[i];
-                if (delta > 0.08) {
-                    // 순간적으로 탁 치고 올라오는 음의 첫 박자 타이밍 격발 에너지 주입
-                    spikeTrigger[i] = delta * 4.5; 
-                }
-                this.audioHistory[i] = normalized; // 역사 버퍼 최신화
+                if (delta > 0.08) { spikeTrigger[i] = delta * 4.5; }
+                this.audioHistory[i] = normalized;
 
-                // 기본 일렁임 감도 스무딩 보간
                 let isPercussion = (i === 0 || i === 1 || i === 5 || i === 7);
                 let lerpFactor = isPercussion ? 0.4 : 0.15;
                 this.smoothedInput[i] += (normalized - this.smoothedInput[i]) * lerpFactor;
@@ -147,34 +137,40 @@ export default class P5OceanWaveSpaced {
         }
 
         const time = Date.now() * 0.0015;
-        const orbSize = p.map(scatter, 5, 50, 12, 36); 
+        
+        // 💡 [UI 변수 다이렉트 직결 변환 고정]
+        // 1) 공 크기 조절: positionOffset.x (기본 0일 때 폴백 22, 입력하는 수치대로 실시간 픽셀 반경 락인)
+        const orbSize = (offX !== 0) ? p.constrain(offX, 5, 120) : 22; 
+        // 2) 상하 중간 정렬 위치: 화면 절반(중간) 축에 positionOffset.y 오프셋을 더함
+        const centerYBase = (height / 2) + (offY * -1.5); // 방향 직관성 보정
+        
         const baseGlow = p.map(glow, 10, 250, 4, 32);  
-
+        // Range는 이제 오직 순수 가로 간격(Spacing)만 지배합니다.
         const spacing = p.map(scatter, 5, 50, width * 0.072, width * 0.1); 
         const totalW = (this.numTracks - 1) * spacing;
         const startX = (width - totalW) / 2;
 
-        // 레일 트랙 가이드 렌더링
+        // 가이드 트랙 가선 드로잉 (중심 Y축 연동)
         p.strokeWeight(1);
         for (let i = 0; i < this.numTracks; i++) {
           let lineC = p.color(customColors.gas2);
           let x = startX + i * spacing;
           
           if (this.currentMode === "공명 바운스") {
-              lineC.setAlpha(20); p.stroke(lineC);
-              p.line(x, height * 0.1, x, height * 0.8);
+              lineC.setAlpha(15); p.stroke(lineC);
+              p.line(x, centerYBase - height * 0.35, x, centerYBase + height * 0.35);
           } else if (this.currentMode === "진자 웨이브") {
               p.beginShape(); p.noFill();
-              lineC.setAlpha(30); p.stroke(lineC);
-              for (let y = height * 0.15; y <= height * 0.85; y += 15) {
-                  let yRatio = p.map(y, height * 0.15, height * 0.85, 0, p.PI * 2);
+              lineC.setAlpha(20); p.stroke(lineC);
+              for (let y = centerYBase - height * 0.35; y <= centerYBase + height * 0.35; y += 15) {
+                  let yRatio = p.map(y, centerYBase - height * 0.35, centerYBase + height * 0.35, 0, p.PI * 2);
                   let guideX = x + p.sin(yRatio + time) * (spacing * 0.1); 
                   p.curveVertex(guideX, y);
               }
               p.endShape();
           } else if (this.currentMode === "무한 마블 런") {
               let lineC_2 = p.color(customColors.gas1);
-              lineC_2.setAlpha(35); p.stroke(lineC_2);
+              lineC_2.setAlpha(25); p.stroke(lineC_2);
               p.line(x, 0, x, height);
           }
         }
@@ -183,12 +179,12 @@ export default class P5OceanWaveSpaced {
         ctx.shadowBlur = baseGlow;
         ctx.shadowColor = customColors.star;
 
-        // 9개 오브제 박자 정밀 드로잉 루프
+        // 9개 오브제 박자 및 네온 Trail 드로잉 루프
         for (let i = 0; i < this.numBands; i++) {
           let x = startX + i * spacing;
           let pt = this.orbs[i];
           let input = this.smoothedInput[i];
-          let spike = spikeTrigger[i]; // 한 박자 정밀 타격 벡터
+          let spike = spikeTrigger[i]; 
           
           let orbColor = p.lerpColor(p.color(customColors.gas1), p.color(customColors.gas2), (i / 8.0));
           
@@ -196,39 +192,38 @@ export default class P5OceanWaveSpaced {
             const gravity = 0.35 + (gauge * 0.0055); 
             pt.vy += gravity;
             
-            // 💥 일반 볼륨 대신 한 박자 스파이크 에너지를 폭발적으로 척력으로 공급
-            if (spike > 0.0) {
-                pt.vy -= spike * 3.5; 
-            }
+            if (spike > 0.0) { pt.vy -= spike * 3.5; }
             pt.vy *= 0.955; 
             pt.y += pt.vy;
 
-            if (pt.y > height * 0.8) {
-              pt.y = height * 0.8;
+            // Y 중심점 연동 바닥 경계선 바운스 설정 (바닥선이 아니라 지정한 중간 영역 안에서 바운스)
+            let limitBottom = centerYBase + height * 0.3;
+            let limitTop = centerYBase - height * 0.3;
+
+            if (pt.y > limitBottom) {
+              pt.y = limitBottom;
               pt.vy = -pt.vy * 0.6; 
 
-              // 바닥을 탁 치는 타이밍에 가산되는 네온 플래시 싱크
-              ctx.shadowBlur = baseGlow * 2.8; ctx.shadowColor = orbColor;
+              ctx.shadowBlur = baseGlow * 2.5; ctx.shadowColor = orbColor;
               let flashC = p.lerpColor(orbColor, p.color(255), 0.6); p.fill(flashC);
-              p.circle(x, pt.y, orbSize * 1.35);
+              p.circle(x, pt.y, orbSize * 1.3);
               ctx.shadowBlur = baseGlow; ctx.shadowColor = customColors.star;
-            } else if (pt.y < height * 0.1) { pt.y = height * 0.1; pt.vy = 0; }
+            } else if (pt.y < limitTop) { pt.y = limitTop; pt.vy = 0; }
 
             p.fill(orbColor);
             p.circle(x, pt.y, orbSize);
             
           } else if (this.currentMode === "진자 웨이브") {
-            const pendulumBaseH = height * 0.35;
-            const pivotY = height * 0.1;
+            // Y 중심점 정렬 기저 기준 진자 물리 변형
+            const pendulumBaseH = height * 0.32;
+            const pivotY = centerYBase - height * 0.35;
 
-            // 현악기는 한 박자마다 줄이 팅기듯이 수축했다가 이내 우아한 배음 곡선으로 복원
             let pendulumLen = pendulumBaseH + i * (spacing * 0.45) - (input * 1.0) - (spike * 1.5);
-            
             let phase = time * (0.65 + i * 0.065) + p.PI / 2; 
             let theta = p.sin(phase) * 0.42; 
             
             p.strokeWeight(1.5);
-            let lineC = p.color(customColors.gas2); lineC.setAlpha(80); p.stroke(lineC);
+            let lineC = p.color(customColors.gas2); lineC.setAlpha(60); p.stroke(lineC);
             let pendX = x + p.sin(theta) * pendulumLen;
             let pendY = pivotY + p.cos(theta) * pendulumLen;
             
@@ -243,7 +238,6 @@ export default class P5OceanWaveSpaced {
             const railTop = -orbSize * 2;
             const railBottom = height + orbSize * 2;
             
-            // 💥 한 박자 소리가 날카롭게 격발될 때 공이 레일을 따라 슈루룩 미끄러지는 순간 가속 질주 물리
             let currentVy = (gauge * 0.12) + 1.2 + (i * 0.35) + (input * 1.2) + (spike * 4.0);
             pt.y += currentVy; 
 
