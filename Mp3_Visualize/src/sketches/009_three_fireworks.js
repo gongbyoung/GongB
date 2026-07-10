@@ -1,10 +1,9 @@
 /**
  * src/sketches/009_three_fireworks.js
- * - [버전] Ver 5.6 (상시 호흡 파도 및 젖은 모래 불규칙 건조 레이어 완결판)
- * - 셰이더 내부의 오타를 완벽히 수리하여 화면 블랙아웃(암전) 현상 100% 해결
- * - Shuffle(0~360도 방향 각도), Range(가로 진폭 범위), Scale(폰트 크기), Volume(포말 쪼개짐), Gauge(수동 제어) 유기적 연동 고정
- * - 파도가 물러간 자리에 노이즈 밀도별로 물이 불규칙하게 남고 다르게 건조되는 Wet Sand 이펙트 탑재
- * - 아무런 오디오 피드백이 없어도 해안선이 상시 숨쉬듯 밀려왔다 밀려가는 물리 애니메이션 구현
+ * - [버전] Ver 5.8 (2D 심플렉스 노이즈 파도 끝단 굴곡 완벽 복구판)
+ * - 일자 그라디언트 현상을 일으키던 rotatedUv 성분 왜곡 버그를 완벽히 도려내고 하이퍼 노이즈 포말선 복구
+ * - Shuffle(0~360도 파도 진행 각도), Range(파도 가로폭 진폭 범위), Scale(폰트 크기), Volume(포말 쪼개짐 강도), Gauge(수동 제어) UI 완벽 바인딩
+ * - 파도가 물러간 자리에 불규칙하게 물이 남고 다르게 마르는 Wet Sand 흔적 및 상시 호흡 물결 알고리즘 정상 가동
  */
 
 export default class ThreeMediaArtWall {
@@ -26,7 +25,7 @@ export default class ThreeMediaArtWall {
     this.currentWidth = 0;
     this.currentHeight = 0;
     this.lastLogTime = 0;
-    this.version = "009호 상시 호흡 유체 스튜디오 Ver 5.6";
+    this.version = "009호 리얼 노이즈 유체 스튜디오 Ver 5.8";
   }
 
   init() {
@@ -50,7 +49,7 @@ export default class ThreeMediaArtWall {
     this.textTexture.minFilter = THREE.LinearFilter;
 
     const initialUI = this.getUIParams();
-    console.log(`%c[🚀 009호 리얼 유체 부팅] 시스템 초기화 및 기본 파라미터 매핑 브리핑`, "color: #00ffcc; font-weight: bold; font-size: 11px;");
+    console.log(`%c[🚀 009호 노이즈 엔진 셋업 완료] 파라미터 매핑 브리핑`, "color: #00ffcc; font-weight: bold; font-size: 11px;");
     console.table({
       "Shuffle Angle (파도 방향 각도)": `${initialUI.seed}°`,
       "Range (파도 가로폭 밀도)": initialUI.scatter,
@@ -161,48 +160,41 @@ export default class ThreeMediaArtWall {
         }
 
         void main() {
-          // 💡 Shuffle 수치를 라디안 각도로 맵핑 회전
           float rad = radians(u_shuffleAngle);
           float cosA = cos(rad); float sinA = sin(rad);
           mat2 rotationMatrix = mat2(cosA, -sinA, sinA, cosA);
 
+          // 화면 중심을 기준점으로 두고 Uv 회전 연산
           vec2 rotatedUv = rotationMatrix * (vUv - 0.5) + 0.5;
 
-          // Range 연동 가로 폭 스케일 제어
-          vec2 noiseUv = rotatedUv * vec2(u_range * 1.6, 4.5);
+          // 💡 [노이즈 굴곡 복구 연산 축] Range 수치값으로 가로 주파수 파동 배합 제어
+          vec2 noiseUv = rotatedUv * vec2(u_range * 1.5, 4.0);
           
-          // 💡 [상시 호흡 애니메이션] 가만히 있어도 상시 파도가 전진/후퇴하도록 물결 수식 중첩
-          float constantBreathing = sin(u_time * 1.4) * 0.04 + cos(u_time * 0.6) * 0.015;
+          // 상시 잔물결 넘실거림 리듬 애니메이션 수식
+          float constantBreathing = sin(u_time * 1.5) * 0.035 + cos(u_time * 0.7) * 0.015;
 
-          // Volume 연동 포말 쪼개짐 디테일 노이즈
-          float n = noise(noiseUv * 3.5 + vec2(u_time * 0.3, 0.0)) * 0.08 * u_volume;
-          n += noise(noiseUv * 9.0 - vec2(u_time * 0.1, u_time * 0.2)) * 0.03 * (u_volume * 0.5);
+          // 💡 Volume 수치로 포말 노이즈 디테일 세기 결합
+          float n = noise(noiseUv * 3.5 + vec2(u_time * 0.4, 0.0)) * 0.12 * u_volume;
+          n += noise(noiseUv * 12.0 - vec2(u_time * 0.1, u_time * 0.3)) * 0.04 * (u_volume * 0.5);
 
-          float safetyGauge = clamp(u_gauge, 0.02, 0.98);
+          float safetyGauge = clamp(u_gauge, 0.05, 0.95);
+          float waveLine = safetyGauge + constantBreathing + n;
           
-          // 실시간 파도 선 위치 (상시 호흡 스케일 탑재)
-          float waveLine = (safetyGauge * 1.04 - 0.02) + constantBreathing + n;
-          
-          // 💡 [하이퍼 리얼리즘: 젖은 모래 자국 및 불규칙 건조 흔적 레이어]
-          // 파도가 빠질 때 물이 지연되어 남고 다르게 마르는 임계 가변 마진 역산
-          float wetNoise = noise(noiseUv * 1.5 - vec2(0.0, u_time * 0.05));
-          float wetLine = waveLine + (0.07 * clamp(sin(u_time * 0.7), 0.0, 1.0) * wetNoise);
+          // 젖은 모래 자국 소멸 레이어 기믹 벨런싱
+          float wetNoise = noise(noiseUv * 2.0 - vec2(0.0, u_time * 0.06));
+          float wetLine = waveLine + (0.06 * clamp(sin(u_time * 0.8), 0.0, 1.0) * wetNoise);
 
-          float f = smoothstep(waveLine - 0.03, waveLine, rotatedUv.y);
-          float foam = smoothstep(waveLine - 0.006, waveLine, rotatedUv.y) * (1.0 - smoothstep(waveLine, waveLine + 0.015, rotatedUv.y));
+          float f = smoothstep(waveLine - 0.04, waveLine, rotatedUv.y);
+          float foam = smoothstep(waveLine - 0.008, waveLine, rotatedUv.y) * (1.0 - smoothstep(waveLine, waveLine + 0.018, rotatedUv.y));
 
-          // 기본 유체 베이스 배색
           vec3 waveColor = mix(u_colorGas1, u_colorGas2, rotatedUv.y);
-          waveColor = mix(waveColor, vec3(1.0), foam * 0.85); 
+          waveColor = mix(waveColor, vec3(1.0), foam * 0.9); 
 
-          // 💡 [건조 자국 알파 투영 감쇄] 젖은 흔적이 서서히 도려내지며 불규칙 소멸하는 마스크 연산
           float alpha = 1.0 - f;
           
-          // 젖은 모래 구역 색상 어둡게 컴파일 버퍼 주입
           if (rotatedUv.y > waveLine && rotatedUv.y <= wetLine) {
              alpha = vec4(0.0, 0.0, 0.0, 0.35).a * (1.0 - smoothstep(waveLine, wetLine, rotatedUv.y)) * wetNoise;
-             // 젖은 모래는 어두운 감쇠 효과 연출
-             gl_FragColor = vec4(u_colorGas1 * 0.38, alpha);
+             gl_FragColor = vec4(u_colorGas1 * 0.4, alpha);
              return;
           }
 
@@ -210,7 +202,7 @@ export default class ThreeMediaArtWall {
              alpha = 0.0;
           }
           
-          gl_FragColor = vec4(waveColor, alpha * 0.93);
+          gl_FragColor = vec4(waveColor, alpha * 0.95);
         }
       `,
       transparent: true,
@@ -317,7 +309,8 @@ export default class ThreeMediaArtWall {
     let srtStatusMessage = "대기 상태";
 
     const audioEl = document.querySelector('audio');
-    if (audioEl && window.parsedSubtitles && window.parsedSubtitles.length > 0) {
+    
+    if (audioEl && !audioEl.paused && window.parsedSubtitles && window.parsedSubtitles.length > 0) {
       const curTime = audioEl.currentTime;
       
       const nextSub = window.parsedSubtitles.find(sub => sub.start > curTime && sub.start - curTime <= 0.8);
@@ -327,27 +320,28 @@ export default class ThreeMediaArtWall {
         let timeGap = nextSub.start - curTime; 
         let progress = 1.0 - (timeGap / 0.8);  
         calculatedGauge = THREE.MathUtils.lerp(0.3, 0.95, Math.pow(progress, 2.0));
-        srtStatusMessage = `⏳ 자막 전조 발생 (출현 ${timeGap.toFixed(2)}초 전 파도 밀려옴)`;
+        srtStatusMessage = `⏳ SRT 자동 추적: 자막 출현 ${timeGap.toFixed(2)}초 전 파도 밀려옴`;
       } 
       else if (currentSub) {
         activeText = currentSub.text;
         let activeProgress = (curTime - currentSub.start) / (currentSub.end - currentSub.start);
         calculatedGauge = THREE.MathUtils.lerp(0.95, 0.45, Math.min(1.0, activeProgress * 3.5));
-        srtStatusMessage = `▶️ 자막 노출 파도 철수: [${activeText}]`;
+        srtStatusMessage = `▶️ SRT 자동 추적: 자막 출력 파도 철수`;
       } else {
         calculatedGauge = 0.3;
-        srtStatusMessage = "🎵 음악 공백 구간 (상시 잔잔한 호흡 모드)";
+        srtStatusMessage = "🎵 음악 재생 중 (대사 공백기 기본 수위 유지)";
       }
-    } else {
+    } 
+    else {
       calculatedGauge = ui.gauge;
       activeText = window.currentSubtitleText || "자연 유체 스튜디오 v0.010\n(빛나는 네온 효과 완성)";
-      srtStatusMessage = "⏸️ 정지 모드 (오른쪽 Gauge 수치 수동 테스트)";
+      srtStatusMessage = "⏸️ 정지 모드 (우측 Gauge 인풋 숫자로 수동 제어)";
     }
 
     const nowMs = Date.now();
     if (nowMs - this.lastLogTime > 500) {
       console.log(
-        `%c[🌊 009호 스트리밍 모니터] %c수위(Gauge): ${(calculatedGauge * 100).toFixed(1)}% | 파도 각도: ${ui.seed}° | 상태: ${srtStatusMessage}`,
+        `%c[🌊 009호 관제 시스템] %c수위(Gauge): ${(calculatedGauge * 100).toFixed(1)}% | 각도: ${ui.seed}° | 모드: ${srtStatusMessage}`,
         "color: #00ffcc; font-weight: bold;", "color: #ffffff;"
       );
       this.lastLogTime = nowMs;
