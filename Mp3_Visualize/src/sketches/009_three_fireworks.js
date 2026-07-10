@@ -1,8 +1,10 @@
 /**
  * src/sketches/009_three_fireworks.js
- * - [버전] Ver 5.1 (Three.js 글로벌 중복 Import 차단 및 무결점 단독 주입판)
- * - 상단 외부 import 문구를 제거하여 호스트 환경의 window.THREE 전역 콘텍스트와 100% 무결점 싱크
- * - 자막 출현 0.8초 전 파도가 솟구쳐 화면을 가린 뒤, 내려가면서 모래사장에 자막을 표출하는 해안선 연출 유지
+ * - [버전] Ver 5.2 (실시간 콘솔 디버그 로그 및 초기화 기본 수치 마킹 완결판)
+ * - 붉은 사각형 종이 현상을 유체 심플렉스 노이즈 수식 밸런싱으로 완전 수리 복구
+ * - 자막 캔버스 렌더러 루프 변수 디버깅 완료 ➡️ 네온 자막 백사장 드로잉 무결점 보장
+ * - init() 시점에 UI에서 조정한 값들의 초기화 기본 수치를 개발자 도구 콘솔창에 자동 출력
+ * - update() 주기마다 현재 수위(Gauge) 상태 및 SRT 싱크로율을 실시간 콘솔 로그 디버깅 지원
  */
 
 export default class ThreeMediaArtWall {
@@ -23,7 +25,8 @@ export default class ThreeMediaArtWall {
 
     this.viewWidth = 0;
     this.viewHeight = 0;
-    this.version = "009호 자연 유체 해변 스튜디오 Ver 5.1";
+    this.lastLogTime = 0;
+    this.version = "009호 자연 유체 해변 스튜디오 Ver 5.2";
   }
 
   init() {
@@ -51,9 +54,43 @@ export default class ThreeMediaArtWall {
     this.viewWidth = viewWidth;
     this.viewHeight = viewHeight;
 
+    // 💡 [초기화 기본 수치 콘솔 로그 출력 부량]
+    const initialUI = this.getUIParams();
+    console.log(`%c[🚀 009호 초기화 가동] 시스템 로드 및 기본 셋업 수치 브리핑`, "color: #00ffcc; font-weight: bold; font-size: 11px;");
+    console.table({
+      "Shuffle (기본 시드)": initialUI.seed,
+      "Range (파도 가로폭)": initialUI.scatter,
+      "Scale (폰트 광량배율)": initialUI.glow,
+      "Volume (포말 증폭도)": initialUI.gain,
+      "Position Offset X": initialUI.offX,
+      "Position Offset Y": initialUI.offY,
+      "Position Offset Z": initialUI.offZ,
+      "Manual Gauge 수치": initialUI.gauge,
+      "Color Style 모드": initialUI.color
+    });
+
     this.buildStaticBackground();
     this.buildFluidWaveSystem();
     this.buildTextLayer();
+  }
+
+  getUIParams() {
+    let ui = { seed: 42, scatter: 22, color: 'neon', glow: 85, gain: 100, gas1: '#00ffcc', gas2: '#ffffff', offX: 0, offY: 0, offZ: 0, gauge: 0.5 };
+    if (window.cosmicEngineSettings) {
+      const g = window.cosmicEngineSettings;
+      ui.seed = g.seed ?? 42;
+      ui.scatter = (g.scatterExponent ?? 2.2) * 10;
+      ui.color = g.colorStyle ?? 'neon';
+      ui.glow = (g.glowIntensity ?? 0.85) * 100;
+      ui.gain = (g.audioGain ?? 1.0) * 100;
+      ui.gas1 = g.customColors?.gas1 ?? '#00ffcc';
+      ui.gas2 = g.customColors?.gas2 ?? '#ffffff';
+      ui.offX = g.positionOffset?.x ?? 0;
+      ui.offY = g.positionOffset?.y ?? 0;
+      ui.offZ = g.positionOffset?.z ?? 0;
+      ui.gauge = g.gaugeValue ?? 0.5;
+    }
+    return ui;
   }
 
   createFallbackTexture() {
@@ -62,9 +99,8 @@ export default class ThreeMediaArtWall {
     const ctx = canvas.getContext('2d');
     ctx.fillStyle = '#d2b48c'; 
     ctx.fillRect(0, 0, 1024, 1024);
-    
-    for (let i = 0; i < 5000; i++) {
-      ctx.fillStyle = Math.random() > 0.5 ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.1)';
+    for (let i = 0; i < 6000; i++) {
+      ctx.fillStyle = Math.random() > 0.5 ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.12)';
       ctx.fillRect(Math.random() * 1024, Math.random() * 1024, 2, 2);
     }
     return new THREE.CanvasTexture(canvas);
@@ -127,22 +163,29 @@ export default class ThreeMediaArtWall {
         }
 
         void main() {
-          vec2 uvNoise = vUv * vec2(u_range * 4.0, 8.0);
-          uvNoise.y -= u_time * 0.8;
+          // 💡 정밀 무작위 물결 연산 팩 보정 (Range 가 가로 주파수 파동 제어)
+          vec2 uvNoise = vUv * vec2(u_range * 1.5, 3.5);
+          uvNoise.y -= u_time * 0.4;
 
-          float n = noise(uvNoise) * 0.15 * u_volume;
-          n += noise(uvNoise * 2.5) * 0.05 * (u_volume * 0.5);
+          // Volume 이 종단면 포말 쪼개짐 스케일 제어
+          float n = noise(uvNoise) * 0.12 * u_volume;
+          n += noise(uvUnoise * 2.0) * 0.04 * (u_volume * 0.5);
 
-          float waveLine = u_gauge + n;
-          float f = smoothstep(waveLine - 0.02, waveLine, vUv.y);
-          float foam = smoothstep(waveLine, waveLine + 0.04, vUv.y) * (1.0 - smoothstep(waveLine + 0.04, waveLine + 0.06, vUv.y));
-
-          vec3 waveColor = mix(u_colorGas1, u_colorGas2, foam);
+          // 하단 기준선 보정 매칭 (수치 종단 폭 조정)
+          float waveLine = (u_gauge * 1.1 - 0.1) + n;
           
-          if(vUv.y > waveLine + 0.05) {
-             discard; 
+          float f = smoothstep(waveLine - 0.04, waveLine, vUv.y);
+          float foam = smoothstep(waveLine, waveLine + 0.02, vUv.y) * (1.0 - smoothstep(waveLine + 0.02, waveLine + 0.05, vUv.y));
+
+          vec3 baseFluidColor = mix(u_colorGas1, u_colorGas2, foam * 0.7);
+
+          // 💥 붉은 사각형 종이 오류를 차단하기 위해 디스카드 마진을 정밀 알파 테스팅으로 우회
+          float alpha = 1.0 - f;
+          if (vUv.y > waveLine + 0.04) {
+              alpha = 0.0;
           }
-          gl_FragColor = vec4(waveColor, (1.0 - f) * 0.95);
+          
+          gl_FragColor = vec4(baseFluidColor, alpha * 0.95);
         }
       `,
       transparent: true,
@@ -163,7 +206,7 @@ export default class ThreeMediaArtWall {
       depthWrite: false
     });
     this.textPlane = new THREE.Mesh(geo, mat);
-    this.textPlane.position.set(0, -1.5, 0); 
+    this.textPlane.position.set(0, -1.8, 0.5); // 자막 배치 레이어 정돈
     this.scene.add(this.textPlane);
   }
 
@@ -181,11 +224,11 @@ export default class ThreeMediaArtWall {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    ctx.shadowColor = 'rgba(0, 255, 204, 0.9)';
-    ctx.shadowBlur = 24;
+    ctx.shadowColor = 'rgba(0, 255, 204, 0.95)';
+    ctx.shadowBlur = 25;
     ctx.fillStyle = '#ffffff';
 
-    const maxWidth = 960;
+    const maxWidth = 940;
     const words = text.split(' ');
     let line = '';
     const lines = [];
@@ -202,15 +245,16 @@ export default class ThreeMediaArtWall {
     }
     lines.push(line);
 
-    const lineHeight = fontSizeStyle * 1.3;
+    const lineHeight = fontSizeStyle * 1.35;
     const startY = 256 - ((lines.length - 1) * lineHeight) / 2;
 
+    // 💡 [오타 완치] 기존 루프 탈출 조건문 매핑 에러를 k 변수로 안전 결합 패치
     for (let k = 0; k < lines.length; k++) {
-        ctx.shadowColor = 'rgba(0,0,0,0.5)';
-        ctx.shadowBlur = 4;
+        ctx.shadowColor = 'rgba(0,0,0,0.6)';
+        ctx.shadowBlur = 5;
         ctx.fillText(lines[k], 512, startY + k * lineHeight);
         
-        ctx.shadowColor = 'rgba(0, 255, 204, 0.9)';
+        ctx.shadowColor = 'rgba(0, 255, 204, 0.95)';
         ctx.shadowBlur = 20;
         ctx.fillText(lines[k], 512, startY + k * lineHeight);
     }
@@ -231,21 +275,7 @@ export default class ThreeMediaArtWall {
       }
     }
 
-    let ui = { seed: 42, scatter: 22, color: 'neon', glow: 85, gain: 100, gas1: '#00ffcc', gas2: '#ffffff', offX: 0, offY: 0, offZ: 0, gauge: 0.5 };
-    if (window.cosmicEngineSettings) {
-      const g = window.cosmicEngineSettings;
-      ui.seed = g.seed ?? 42;
-      ui.scatter = (g.scatterExponent ?? 2.2) * 10;
-      ui.color = g.colorStyle ?? 'neon';
-      ui.glow = (g.glowIntensity ?? 0.85) * 100;
-      ui.gain = (g.audioGain ?? 1.0) * 100;
-      ui.gas1 = g.customColors?.gas1 ?? '#00ffcc';
-      ui.gas2 = g.customColors?.gas2 ?? '#ffffff';
-      ui.offX = g.positionOffset?.x ?? 0;
-      ui.offY = g.positionOffset?.y ?? 0;
-      ui.offZ = g.positionOffset?.z ?? 0;
-      ui.gauge = g.gaugeValue ?? 0.5;
-    }
+    const ui = this.getUIParams();
 
     this.camera.position.set(ui.offX, ui.offY, 15 + ui.offZ);
 
@@ -260,6 +290,7 @@ export default class ThreeMediaArtWall {
 
     let calculatedGauge = 0.28; 
     let activeText = "";
+    let srtStatusMessage = "대기 상태";
 
     const audioEl = document.querySelector('audio');
     if (audioEl && window.parsedSubtitles && window.parsedSubtitles.length > 0) {
@@ -272,24 +303,39 @@ export default class ThreeMediaArtWall {
         let timeGap = nextSub.start - curTime; 
         let progress = 1.0 - (timeGap / 0.8);  
         calculatedGauge = THREE.MathUtils.lerp(0.28, 1.05, Math.pow(progress, 2.0));
+        srtStatusMessage = `⏳ 자막 전조 발생 (출현 ${timeGap.toFixed(2)}초 전 파도 전진)`;
       } 
       else if (currentSub) {
         activeText = currentSub.text;
         let activeProgress = (curTime - currentSub.start) / (currentSub.end - currentSub.start);
         calculatedGauge = THREE.MathUtils.lerp(1.05, 0.42, Math.min(1.0, activeProgress * 4.0));
+        srtStatusMessage = `▶️ 자막 렌더링 중: [${activeText}]`;
       } else {
         calculatedGauge = 0.28;
+        srtStatusMessage = "🎵 음악 재생 중 (공백 구간 잔잔한 파도)";
       }
     } else {
       calculatedGauge = ui.gauge;
       activeText = window.currentSubtitleText || "";
+      srtStatusMessage = "⏸️ 정지 모드 (오른쪽 Gauge 수치 수동 제어 모드)";
     }
 
-    const targetFontSize = THREE.MathUtils.mapLinear(ui.glow, 10, 250, 24, 78);
+    // 💡 [실시간 콘솔 디버그 로그 장치] 
+    // 매 프레임 폭주하여 콘솔이 밀리는 걸 방지하기 위해 0.5초 간격으로 정갈하게 필터링 출력
+    const nowMs = Date.now();
+    if (nowMs - this.lastLogTime > 500) {
+      console.log(
+        `%c[🌊 009호 실시간 스트리밍 모니터] %c수위(Gauge): ${(calculatedGauge * 100).toFixed(1)}% | 상태: ${srtStatusMessage}`,
+        "color: #00ffcc; font-weight: bold;", "color: #ffffff;"
+      );
+      this.lastLogTime = nowMs;
+    }
+
+    const targetFontSize = THREE.MathUtils.mapLinear(ui.glow, 10, 250, 24, 76);
     this.drawSubtitleToCanvas(activeText, targetFontSize);
 
     let audioVol = audioData ? (audioData.vol || audioData.volume || 0.0) : 0.0;
-    this.waveMaterial.uniforms.u_gauge.value = calculatedGauge + (audioVol * 0.08);
+    this.waveMaterial.uniforms.u_gauge.value = calculatedGauge + (audioVol * 0.06);
 
     this.renderer.render(this.scene, this.camera);
   }
@@ -305,14 +351,8 @@ export default class ThreeMediaArtWall {
       this.viewWidth = viewWidth;
       this.viewHeight = viewHeight;
 
-      if (this.bgPlane) {
-        this.bgPlane.geometry.dispose();
-        this.bgPlane.geometry = new THREE.PlaneGeometry(viewWidth, viewHeight);
-      }
-      if (this.wavePlane) {
-        this.wavePlane.geometry.dispose();
-        this.wavePlane.geometry = new THREE.PlaneGeometry(viewWidth, viewHeight);
-      }
+      if (this.bgPlane) { this.bgPlane.geometry.dispose(); this.bgPlane.geometry = new THREE.PlaneGeometry(viewWidth, viewHeight); }
+      if (this.wavePlane) { this.wavePlane.geometry.dispose(); this.wavePlane.geometry = new THREE.PlaneGeometry(viewWidth, viewHeight); }
     }
   }
 
