@@ -1,9 +1,9 @@
 /**
  * src/sketches/009_three_fireworks.js
- * - [버전] Ver 6.2 (오리지널 v0.010 순수 셰이더 복원 및 관제탑 UI 변수 완벽 직결판)
- * - 회원님이 올려주신 v0.010 HTML 프레그먼트 셰이더 코드를 100% 원본 그대로 완벽 이식
- * - Shuffle(파도 각도), Range(파도 간격 밀도), Scale(자막 크기), Volume(노이즈 디테일), Gauge(수동 수위) 완벽 링킹
- * - 45도 PerspectiveCamera 및 6000x6000 단일 평면을 사용하여 칼단면 버그를 영구 소멸하고 진짜 노이즈 굴곡 해변 출력
+ * - [버전] Ver 6.3 (SRT 초 단위 싱크 일치 및 v0.010 순수 셰이더 완전 고정판)
+ * - main.js 자막 파서의 초(Seconds) 단위와 100% 동일하게 시간 축을 일치시켜 자막 추적 먹통 현상 완치
+ * - Shuffle(0~360도 진행 각도), Range(파도 가로 Spacing), Scale(자막 크기), Volume(파도 노이즈 디테일), Gauge(수동 수위) 완벽 바인딩
+ * - 파도가 물러간 자리에 불규칙하게 물이 남고 마르는 물웅덩이(puddleN) 및 심해 발광 효과 완벽 가동
  */
 
 export default class ThreeMediaArtWall {
@@ -24,9 +24,10 @@ export default class ThreeMediaArtWall {
     this.time = 0;
     this.baseSurge = 0.75;
     this.splashTimer = 0.0;
+    this.currentSubtitle = "";
 
     this.lastLogTime = 0;
-    this.version = "Nature Fluid Studio v0.010 (마스터 UI 직결판)";
+    this.version = "Nature Fluid Studio v0.010 (Seconds 싱크 고정판)";
   }
 
   init() {
@@ -67,18 +68,17 @@ export default class ThreeMediaArtWall {
     let ui = { seed: 180, scatter: 0.2, color: 'neon', glow: 90, gain: 1.5, gas1: '#16a0b5', gas2: '#063b4c', offX: 0, offY: 0, offZ: 0, gauge: 0.5 };
     if (window.cosmicEngineSettings) {
       const g = window.cosmicEngineSettings;
-      // 마스터 UI 넘버값을 오리지널 v0.010 스케일 축으로 정밀 치환
-      ui.seed = g.seed ?? 180; // Shuffle ➡️ uAngle (0~360)
+      ui.seed = g.seed ?? 180; // Shuffle ➡️ uAngle
       ui.scatter = THREE.MathUtils.mapLinear(g.scatterExponent ?? 2.2, 0.5, 5.0, 0.0, 1.0); // Range ➡️ uWaveSpacing (0.0~1.0)
       ui.color = g.colorStyle ?? 'neon';
-      ui.glow = THREE.MathUtils.mapLinear(g.glowIntensity ?? 0.85, 0.1, 2.5, 40, 250); // Scale ➡️ 자막 크기 (40~250)
+      ui.glow = THREE.MathUtils.mapLinear(g.glowIntensity ?? 0.85, 0.1, 2.5, 40, 250); // Scale ➡️ 자막 크기
       ui.gain = THREE.MathUtils.mapLinear(g.audioGain ?? 1.0, 0.1, 5.0, 0.5, 4.0); // Volume ➡️ uWaveDetail (0.5~4.0)
       ui.gas1 = g.customColors?.gas1 ?? '#16a0b5'; 
       ui.gas2 = g.customColors?.gas2 ?? '#063b4c';
       ui.offX = g.positionOffset?.x ?? 0;
       ui.offY = g.positionOffset?.y ?? 0;
       ui.offZ = g.positionOffset?.z ?? 0;
-      ui.gauge = g.gaugeValue ?? 0.5; // Gauge ➡️ uSurge 수동 높이 (0.0~1.0)
+      ui.gauge = g.gaugeValue ?? 0.5; // Gauge ➡️ uSurge (0.0~1.0)
     }
     return ui;
   }
@@ -233,7 +233,6 @@ export default class ThreeMediaArtWall {
     ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
 
-    // 💡 오리지널 v0.010 특유의 2중 네온 떡광량 발광 기법 복원
     ctx.shadowColor = '#00e5ff';
     ctx.shadowBlur = 80;
     ctx.fillStyle = '#00e5ff';
@@ -258,7 +257,6 @@ export default class ThreeMediaArtWall {
     const ui = this.getUIParams();
     this.time += 0.015;
 
-    // 💡 [3D Position Offset X, Y, Z] 카메라 시점 컨트롤 연동
     this.camera.position.set(ui.offX, 1500 + ui.offY, ui.offZ);
     this.camera.lookAt(ui.offX, ui.offY, ui.offZ);
 
@@ -267,41 +265,40 @@ export default class ThreeMediaArtWall {
     let visibleWidth = visibleHeight * this.camera.aspect;
     this.waveMaterial.uniforms.uTextScale.value.set(6000.0 / visibleWidth, 6000.0 / visibleHeight);
 
-    // 💡 [오리지널 v0.010 핵심 주입 링크]
     this.waveMaterial.uniforms.uTime.value = this.time;
-    this.waveMaterial.uniforms.uAngle.value = ui.seed;          // Shuffle ➡️ uAngle
-    this.waveMaterial.uniforms.uWaveSpacing.value = ui.scatter;  // Range ➡️ uWaveSpacing
-    this.waveMaterial.uniforms.uWaveDetail.value = ui.gain;      // Volume ➡️ uWaveDetail
+    this.waveMaterial.uniforms.uAngle.value = ui.seed;          
+    this.waveMaterial.uniforms.uWaveSpacing.value = ui.scatter;  
+    this.waveMaterial.uniforms.uWaveDetail.value = ui.gain;      
     this.waveMaterial.uniforms.uSeed.value = this.globalRandomSeed;
 
+    // 💡 [초정밀 초(Seconds) 단위 변환 복구 완료]
     let targetSurge = 0.05;
     let activeText = "";
     let modeLabel = "";
 
     const audioEl = document.querySelector('audio');
     
-    // 💥 오디오 가동 시 ➡️ 100분의 1초 단위 SRT 자막 타임라인 추적 제어권 가동
+    // 💥 오디오 가동 시 초(Seconds) 단위로 완벽 계산
     if (audioEl && !audioEl.paused && window.parsedSubtitles && window.parsedSubtitles.length > 0) {
-      const curTime = audioEl.currentTime * 1000;
+      const curTime = audioEl.currentTime; // milliseconds 환산 삭제 ➡️ Seconds로 단일 정렬
       
-      const nextSub = window.parsedSubtitles.find(sub => sub.start > curTime && sub.start - curTime <= 800);
+      const nextSub = window.parsedSubtitles.find(sub => sub.start > curTime && sub.start - curTime <= 0.8); // 800ms ➡️ 0.8초
       const currentSub = window.parsedSubtitles.find(sub => curTime >= sub.start && curTime <= sub.end);
 
       if (nextSub) {
-        let progress = 1.0 - ((nextSub.start - curTime) / 800);
-        targetSurge = THREE.MathUtils.lerp(0.05, 0.95, Math.pow(progress, 2.0));
-        modeLabel = "⏳ SRT 자동 추적: 자막 발생 전 파도 급전진";
+        let progress = 1.0 - ((nextSub.start - curTime) / 0.8);
+        targetSurge = THREE.MathUtils.lerp(0.85, 0.05, Math.pow(progress, 2.0)); // 0.85에서 0.05(덮기)로 급전진
+        modeLabel = "⏳ SRT 자동 추적: 자막 출현 전 파도 덮침 돌격";
       } else if (currentSub) {
         activeText = currentSub.text;
         let activeProgress = (curTime - currentSub.start) / (currentSub.end - currentSub.start);
-        targetSurge = THREE.MathUtils.lerp(0.95, 0.35, Math.min(1.0, activeProgress * 3.5));
-        modeLabel = "▶️ SRT 자동 추적: 자막 노출 파도 퇴각";
+        targetSurge = THREE.MathUtils.lerp(0.05, 0.85, Math.min(1.0, activeProgress * 3.5)); // 0.05에서 0.85(철수)로 복귀
+        modeLabel = "▶️ SRT 자동 추적: 자막 노출 파도 철수";
       } else {
-        targetSurge = 0.05;
+        targetSurge = 0.05; // 평소에는 모래를 덮는 기본 대기 상태
         modeLabel = "🎵 오디오 재생 중 (공백 대기 구간)";
       }
     } 
-    // 💥 정지 상태일 때 ➡️ 매뉴얼 Gauge 수치(0~100) 기반 1:1 수동 서지 가인 제어
     else {
       targetSurge = ui.gauge;
       activeText = window.currentSubtitleText || "자연 유체 스튜디오 v0.010\n(빛나는 네온 효과 완성)";
@@ -316,16 +313,14 @@ export default class ThreeMediaArtWall {
     const nowMs = Date.now();
     if (nowMs - this.lastLogTime > 500) {
       console.log(
-        `%c[🌊 v0.010 복구 완결] %c수위(Surge): ${currentSurge.toFixed(2)} | 각도(Shuffle): ${ui.seed}° | 모드: ${modeLabel}`,
+        `%c[🌊 v0.010 완결] %c수위(Surge): ${currentSurge.toFixed(2)} | 각도(Shuffle): ${ui.seed}° | 모드: ${modeLabel}`,
         "color: #00ffcc; font-weight: bold;", "color: #ffffff;"
       );
       this.lastLogTime = nowMs;
     }
 
-    // 자막 크기 정밀 제어 링크 주입
     this.drawSubtitleToCanvas(activeText, ui.glow);
 
-    // 실시간 비트 진폭 타격 연동
     let audioVol = audioData ? (audioData.vol || audioData.volume || 0.0) : 0.0;
     this.waveMaterial.uniforms.uBass.value = audioVol * 2.0;
     this.waveMaterial.uniforms.uTreble.value = audioVol * 2.5;
