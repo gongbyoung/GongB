@@ -1,9 +1,9 @@
 /**
  * src/sketches/012_p5_ocean_wave_spaced.js
- * - [버전] Ver 7.2 (배경 이미지 지원 및 마스터 조작 가이드 콘솔 출력 완결판)
- * - 사용자가 업로드한 이미지(window.currentUploadedImageElement)를 배경화면으로 실시간 자동 매핑
- * - 초기화(init) 시점에 현재 시스템 버전 및 패널별 정밀 조작법 가이드를 브라우저 콘솔에 자동 출력
- * - SRT 자막 연동 엔진을 전면 걷어내고 오직 음악 비트와 매뉴얼 패널 수치로만 깔끔하게 구동되는 앰비언트 모드 완비
+ * - [버전] Ver 7.3 (⚡ RESET 즉시 적용 연동 및 마스터 가이드 콘솔 출력 최종 완결판)
+ * - 관제탑의 [현재 수치 즉시 적용 (RESET)] 단추 클릭 시 부팅 루틴과 1:1 결합하여 실시간 물리 상태 리셋 가동
+ * - 사용자가 업로드한 이미지가 있으면 캔버스 배경에 자동 수혈 투사 (가독성을 위한 70% 암전 틴트 시공)
+ * - 자막(SRT) 파이프라인의 간섭을 완전히 원천 제거하여 앰비언트 월페이퍼(Ambient Wallpaper) 구동에 최적화 완수
  */
 
 export default class P5OceanWaveSpaced {
@@ -21,7 +21,7 @@ export default class P5OceanWaveSpaced {
     this.currentAudioData = null;
     this.loadedSeed = -1;
     this.currentMode = "공명 바운스";
-    this.version = "Satisfying Orbs 물리 스튜디오 Ver 7.2";
+    this.version = "Satisfying Orbs 물리 스튜디오 Ver 7.3";
   }
 
   async init() {
@@ -35,15 +35,15 @@ export default class P5OceanWaveSpaced {
       });
     }
 
-    // 💡 [초기화 가이드 시스템]: 현재 버전 명칭 및 패널 조작 메뉴얼 콘솔 출력 부량
-    console.log(`%c[🔮 012호 시스템 가동] ${this.version}`, "color: #00ffcc; font-weight: bold; font-size: 13px;");
+    // 💡 [시스템 가이드 라인 브리핑 출력]
+    console.log(`%c[🔮 012호 가동완료] ${this.version}`, "color: #00ffcc; font-weight: bold; font-size: 13px;");
     console.log(
-      `%c🛠️ 마스터 패널 실시간 제어 가이드\n` +
-      `1. Shuffle  ➡️ 입력하는 숫자에 따라 3가지 물리 모드(공명 바운스 / 진자 웨이브 / 무한 마블 런)가 무작위로 교체됩니다.\n` +
-      `2. Range    ➡️ 9개 공(Orb)의 크기 및 가로 배치 간격(Spacing)의 너비를 조절합니다.\n` +
-      `3. Scale    ➡️ 공들이 바닥에 부딪히거나 회전할 때 뿜어져 나오는 네온 빛(Glow)의 Blur 확산 강도를 조절합니다.\n` +
-      `4. Volume   ➡️ 오디오 소리에 반응하여 공이 운동하는 물리적인 진폭(바운스 및 하강 속도)을 증폭시킵니다.\n` +
-      `5. Gauge    ➡️ 공명 바운스 및 마블 런 모드에서 공들이 기본적으로 굴러가는 기저 속도를 제어합니다.`,
+      `%c🎛️ 물리 스튜디오 핵심 파라미터 조작 메뉴얼\n` +
+      `1. Shuffle  ➡️ 입력 수치에 따라 3가지 물리 무대(공명 바운스 / 진자 웨이브 / 무한 마블 런)가 랜덤 결정됩니다.\n` +
+      `2. Range    ➡️ 9개 공(Orb)의 물리 반경 크기와 가로 배치 간격(Spacing)의 스케일을 제어합니다.\n` +
+      `3. Scale    ➡️ 공들이 마찰 및 바운스할 때 투사되는 광원 네온(Glow)의 섀도 블러 범위를 결정합니다.\n` +
+      `4. Volume   ➡️ 오디오 신호 입력 시 공들이 중력을 거스르고 튀어 오르는 탄성 에너지를 배가시킵니다.\n` +
+      `5. Gauge    ➡️ 공명 바운스의 낙하 중력 상수 및 마블 런 레일의 무한 루프 기저 이동 속도를 지배합니다.`,
       "color: #ffffff; line-height: 1.6;"
     );
 
@@ -54,13 +54,26 @@ export default class P5OceanWaveSpaced {
         canvas.style('z-index', '1');
         p.noLoop();
         
+        // RESET 발생 시 물리 객체 프레임 완전 재정렬
+        let scatter = 22, seed = 42;
+        if (window.cosmicEngineSettings) {
+          seed = window.cosmicEngineSettings.seed || 42;
+          scatter = window.cosmicEngineSettings.scatterExponent || 2.2;
+        }
+
+        p.randomSeed(seed);
+        let modes = ["공명 바운스", "진자 웨이브", "무한 마블 런"];
+        this.currentMode = modes[p.floor(p.random(modes.length))];
+        console.log(`%c[⚡ RESET 무대 가동] 물리 엔진 결정: ${this.currentMode} (지형 시드: ${seed})`, "color: #00ffcc; font-weight: bold;");
+
         for (let i = 0; i < this.numBands; i++) {
           this.orbs.push({
-            y: p.height / 2,
+            y: p.random(p.height * 0.2, p.height * 0.5),
             vy: 0,
             angle: 0
           });
         }
+        this.loadedSeed = seed;
       };
 
       p.draw = () => {
@@ -82,64 +95,47 @@ export default class P5OceanWaveSpaced {
           customColors = window.cosmicEngineSettings.customColors || customColors;
         }
 
-        // Shuffle 수치 변경 시 물리 테이블 무대 리셋 분기
-        if (this.loadedSeed !== seed) {
-            this.loadedSeed = seed;
-            p.randomSeed(seed);
-            
-            let modes = ["공명 바운스", "진자 웨이브", "무한 마블 런"];
-            this.currentMode = modes[p.floor(p.random(modes.length))];
-            console.log(`%c[🎛️ 무대 스위칭 리포트] 현재 가동 중인 물리 법칙: ${this.currentMode}`, "color: #ffaa00; font-weight: bold;");
-            
-            for (let i = 0; i < this.numBands; i++) {
-                this.orbs[i].y = height / 2;
-                this.orbs[i].vy = 0;
-            }
-        }
-
         p.clear();
 
-        // 💡 [배경 이미지 엔진 이식 완료]
-        // 사용자가 로컬에서 이미지를 업로드했으면 무대 배경에 꽉 차게 드로잉 처리
+        // 💡 실시간 이미지 배경화면 바인딩 투사 엔진
         if (window.currentUploadedImageElement) {
             ctx.drawImage(window.currentUploadedImageElement, 0, 0, width, height);
-            // 가독성을 위해 어두운 반투명 틴트 레이어 한 겹 필터링
-            ctx.fillStyle = 'rgba(10, 5, 25, 0.7)';
+            // 70% 틴트 차단막 시공으로 네온 Orbs의 시인성 하드웨어 극대화
+            ctx.fillStyle = 'rgba(11, 6, 22, 0.72)';
             ctx.fillRect(0, 0, width, height);
         } else {
-            // 업로드된 이미지가 없을 때는 기존 오리지널 앰비언트 그라디언트 맵 가동
             const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
-            bgGrad.addColorStop(0, '#0a001a');
-            bgGrad.addColorStop(0.5, '#15002a');
+            bgGrad.addColorStop(0, '#090018');
+            bgGrad.addColorStop(0.5, '#140026');
             bgGrad.addColorStop(1, '#000000');
             ctx.fillStyle = bgGrad;
             ctx.fillRect(0, 0, width, height);
         }
 
-        // 오디오 타격 버퍼 주입
+        // 주파수 타격 세기 보간
         if (this.currentAudioData.raw && this.currentAudioData.raw.length > 0) {
             for (let i = 0; i < this.numBands; i++) {
-                const binIndex = p.floor(2 + Math.pow(i / 8, 1.3) * 120); 
+                const binIndex = p.floor(2 + Math.pow(i / 8, 1.35) * 115); 
                 let rawVal = (binIndex < this.currentAudioData.raw.length) ? this.currentAudioData.raw[binIndex] : 0;
-                let normalized = Math.pow(rawVal / 255.0, 1.8);
+                let normalized = Math.pow(rawVal / 255.0, 1.7);
                 
                 let currentH = this.smoothedInput[i];
-                let targetH = normalized * (gain * 1.5); 
+                let targetH = normalized * (gain * 1.4); 
 
-                currentH += (targetH - currentH) * 0.25;
+                currentH += (targetH - currentH) * 0.22;
                 this.smoothedInput[i] = currentH;
             }
         }
 
         const time = Date.now() * 0.0015;
-        const orbSize = p.map(scatter, 5, 50, 12, 38); // Range에 매핑된 공 크기
-        const baseGlow = p.map(glow, 10, 250, 4, 30);  // Scale에 매핑된 광량 퍼짐 정도
+        const orbSize = p.map(scatter, 5, 50, 12, 38); 
+        const baseGlow = p.map(glow, 10, 250, 4, 32);  
 
         const spacing = p.map(scatter, 5, 50, width * 0.07, width * 0.1); 
         const totalW = (this.numTracks - 1) * spacing;
         const startX = (width - totalW) / 2;
 
-        // 가이드 트랙 가이드라인 렌더링
+        // 가이드 레일 인젝션 드로잉
         p.strokeWeight(1);
         for (let i = 0; i < this.numTracks; i++) {
           let lineC = p.color(customColors.gas2);
@@ -164,12 +160,11 @@ export default class P5OceanWaveSpaced {
           }
         }
 
-        // 네온 글로우 발광 콘텍스트 고정
         p.noStroke();
         ctx.shadowBlur = baseGlow;
         ctx.shadowColor = customColors.star;
 
-        // 9개 공 물리 법칙 투사 루프
+        // 9개 오브제 물리식 수치 반영 전개
         for (let i = 0; i < this.numBands; i++) {
           let x = startX + i * spacing;
           let pt = this.orbs[i];
@@ -178,21 +173,18 @@ export default class P5OceanWaveSpaced {
           let orbColor = p.lerpColor(p.color(customColors.gas1), p.color(customColors.gas2), (i / 8.0));
           
           if (this.currentMode === "공명 바운스") {
-            const gravity = 0.4 + (gauge * 0.005); // Gauge 수치로 기본 탄성 가중치 가변
+            const gravity = 0.38 + (gauge * 0.0055); 
             pt.vy += gravity;
-            pt.vy -= input * 2.5; 
-            pt.vy *= 0.97; 
+            pt.vy -= input * 2.4; 
+            pt.vy *= 0.965; 
             pt.y += pt.vy;
 
             if (pt.y > height * 0.8) {
               pt.y = height * 0.8;
-              pt.vy = -pt.vy * 0.65; 
+              pt.vy = -pt.vy * 0.64; 
 
-              // 충돌 스플래시 발광 효과
-              ctx.shadowBlur = baseGlow * 2.5;
-              ctx.shadowColor = orbColor;
-              let flashC = p.lerpColor(orbColor, p.color(255), 0.5);
-              p.fill(flashC);
+              ctx.shadowBlur = baseGlow * 2.5; ctx.shadowColor = orbColor;
+              let flashC = p.lerpColor(orbColor, p.color(255), 0.5); p.fill(flashC);
               p.circle(x, pt.y, orbSize * 1.3);
               ctx.shadowBlur = baseGlow; ctx.shadowColor = customColors.star;
             } else if (pt.y < height * 0.1) { pt.y = height * 0.1; pt.vy = 0; }
@@ -201,17 +193,15 @@ export default class P5OceanWaveSpaced {
             p.circle(x, pt.y, orbSize);
             
           } else if (this.currentMode === "진자 웨이브") {
-            const pendulumBaseH = height * 0.35;
+            const pendulumBaseH = height * 0.36;
             const pivotY = height * 0.1;
 
-            let pendulumLen = pendulumBaseH + i * (spacing * 0.5) - input * 1.0;
-            
-            // 아름다운 하모닉 정현파 무한 루프 진동 수식
-            let phase = time * (0.7 + i * 0.07) + p.PI / 2; 
-            let theta = p.sin(phase) * 0.4; 
+            let pendulumLen = pendulumBaseH + i * (spacing * 0.48) - input * 0.9;
+            let phase = time * (0.68 + i * 0.068) + p.PI / 2; 
+            let theta = p.sin(phase) * 0.42; 
             
             p.strokeWeight(1.5);
-            let lineC = p.color(customColors.gas2); lineC.setAlpha(90); p.stroke(lineC);
+            let lineC = p.color(customColors.gas2); lineC.setAlpha(85); p.stroke(lineC);
             let pendX = x + p.sin(theta) * pendulumLen;
             let pendY = pivotY + p.cos(theta) * pendulumLen;
             
@@ -226,8 +216,7 @@ export default class P5OceanWaveSpaced {
             const railTop = -orbSize * 2;
             const railBottom = height + orbSize * 2;
             
-            // Gauge 수치에 오디오 진폭을 더해 낙하 롤링 속도 직결 제어
-            let currentVy = (gauge * 0.1) + 2.0 + (i * 0.4) + (input * 2.0);
+            let currentVy = (gauge * 0.12) + 1.8 + (i * 0.38) + (input * 2.2);
             pt.y += currentVy; 
 
             if (pt.y > railBottom) {
