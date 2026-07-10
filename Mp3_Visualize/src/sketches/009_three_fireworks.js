@@ -1,9 +1,9 @@
 /**
  * src/sketches/009_three_fireworks.js
- * - [버전] Ver 6.4 (매 파도 가변형 랜덤 시드 및 v0.010 아키텍처 최종 완결판)
- * - 파도가 완전히 철수했다가 다시 밀려오는 시점을 정밀 추적하여 uSeed(지형 노이즈 형태)를 매번 무작위 변경
- * - 가만히 두거나 음악이 흐를 때 똑같은 파도 모양이 무한 반복되던 문제를 해결하여 하이퍼 리얼리즘 완성
- * - Shuffle(파도 방향 각도), Range(파도 간격 밀도), Scale(자막 크기), Volume(노이즈 디테일), Gauge(수동 수위) UI 완벽 바인딩
+ * - [버전] Ver 6.5 (대형 중심 곡선 변위 및 매 파도 가변 랜덤 완결판)
+ * - 끝부분의 자잘한 디테일과 별개로 파도 중심선 자체를 부드러운 S자 형태로 크게 구부리는 대형 변위 엔진 탑재
+ * - 파도가 물러갔다 다시 밀려올 때 자잘한 포말 모양은 물론, 대형 중심 곡선의 형태가 통째로 무작위 스위칭됨
+ * - Shuffle(파도 각도), Range(가로 Spacing 밀도), Scale(자막 크기), Volume(노이즈 디테일), Gauge(수동 수위) UI 완벽 바인딩
  */
 
 export default class ThreeMediaArtWall {
@@ -21,14 +21,16 @@ export default class ThreeMediaArtWall {
 
     this.currentImageEl = null;
     this.globalRandomSeed = Math.random() * 100.0;
-    this.time = 0;
     
-    // 💡 매번 새로운 파형 추적을 위한 가속도/방향 필터 변수
+    // 💡 노란색 대형 중심 곡선을 매번 무작위로 뒤섞기 위한 추가 셔플 시드
+    this.largeCurveSeed = Math.random() * 200.0;
+    
+    this.time = 0;
     this.prevSurge = 0.0;
     this.wasGoingDown = false;
 
     this.lastLogTime = 0;
-    this.version = "Nature Fluid Studio v0.010 (매 파도 가변 랜덤판)";
+    this.version = "Nature Fluid Studio v0.010 (대형 중심 곡선 가변판)";
   }
 
   init() {
@@ -102,8 +104,8 @@ export default class ThreeMediaArtWall {
     this.waveMaterial = new THREE.ShaderMaterial({
       uniforms: {
         uTime: { value: 0.0 }, uBass: { value: 0.0 }, uTreble: { value: 0.0 },
-        uAngle: { value: 180.0 }, uSeed: { value: 0.0 }, uWaveDetail: { value: 1.5 },
-        uSurge: { value: 0.25 }, uSurgeVelocity: { value: 0.0 }, uWaveSpacing: { value: 0.2 },
+        uAngle: { value: 180.0 }, uSeed: { value: 0.0 }, uLargeSeed: { value: 0.0 }, // 대형 곡선용 시드 유니폼 추가
+        uWaveDetail: { value: 1.5 }, uSurge: { value: 0.25 }, uSurgeVelocity: { value: 0.0 }, uWaveSpacing: { value: 0.2 },
         uFoamSize: { value: 0.15 }, uAudioDirMode: { value: 1.0 }, 
         uTextMap: { value: this.textTexture }, uTextScale: { value: new THREE.Vector2(1.0, 1.0) },
         uSandMap: { value: this.sandTex }, uUseSandMap: { value: 0.0 }, 
@@ -112,7 +114,7 @@ export default class ThreeMediaArtWall {
       vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
       fragmentShader: `
         uniform float uTime; uniform float uBass; uniform float uTreble; 
-        uniform float uAngle; uniform float uSeed; uniform float uWaveDetail; uniform float uSurge; uniform float uSurgeVelocity; uniform float uWaveSpacing;
+        uniform float uAngle; uniform float uSeed; uniform float uLargeSeed; uniform float uWaveDetail; uniform float uSurge; uniform float uSurgeVelocity; uniform float uWaveSpacing;
         uniform float uFoamSize; uniform float uAudioDirMode;
         uniform sampler2D uTextMap; uniform vec2 uTextScale;
         uniform sampler2D uSandMap; uniform float uUseSandMap; 
@@ -141,11 +143,18 @@ export default class ThreeMediaArtWall {
             float audioLevelOffset = (uAudioDirMode > 0.5) ? ((uBass * 0.15) - (uTreble * 0.15)) : (-(uBass * 0.05) - (uTreble * 0.05));
             float audioRipple = sin(rUv.x * freq + uTime) * uBass * 0.1;
             
-            float wavePos = uSurge + audioLevelOffset + (waveSine * 0.06) + audioRipple; 
+            // 💡 [노란색 대형 중심 곡선 모핑 엔진 장착]
+            // 파도의 진입 축 좌표를 부드러운 S자형 대형 곡선으로 크게 출렁이게 뒤트는 저주파 노이즈 벡터 계산
+            float largeCurve = noise(vec2(rUv.x * 1.8 + uLargeSeed, uTime * 0.1)) * 0.16;
+            largeCurve += sin(rUv.x * 3.14 + uLargeSeed * 0.5) * 0.04; // 부드러운 곡률 보정
             
+            // 파도의 기본 중심선 마스터 포지션에 대형 중심 곡선 오프셋 적용
+            float wavePos = uSurge + audioLevelOffset + (waveSine * 0.05) + audioRipple + largeCurve; 
+            
+            // 파도 끝부분의 자잘한 포말 노이즈 (기존 디테일 밸런스 유지)
             float n1 = noise(noiseUv * 8.0 * uWaveDetail + uTime * 0.2 + (uTreble * 0.1)); 
             float n2 = noise(noiseUv * 20.0 * uWaveDetail - uTime * 0.1);
-            float distToWave = rUv.y - wavePos + (n1 * 0.15) + (n2 * 0.05);
+            float distToWave = rUv.y - wavePos + (n1 * 0.14) + (n2 * 0.04);
             
             vec3 texSand = cSand;
             if (uUseSandMap > 0.5) {
@@ -269,6 +278,7 @@ export default class ThreeMediaArtWall {
     this.waveMaterial.uniforms.uWaveSpacing.value = ui.scatter;  
     this.waveMaterial.uniforms.uWaveDetail.value = ui.gain;      
     this.waveMaterial.uniforms.uSeed.value = this.globalRandomSeed;
+    this.waveMaterial.uniforms.uLargeSeed.value = this.largeCurveSeed; // 대형 곡선 시드 주입
 
     let targetSurge = 0.05;
     let activeText = "";
@@ -292,7 +302,7 @@ export default class ThreeMediaArtWall {
         targetSurge = THREE.MathUtils.lerp(0.05, 0.85, Math.min(1.0, activeProgress * 3.5));
         modeLabel = "▶️ SRT 자동 추적: 자막 노출 파도 철수";
       } else {
-        targetSurge = 0.85; // 대기 공백 구간에는 물이 빠진 바다 상태 고정
+        targetSurge = 0.85; 
         modeLabel = "🎵 오디오 재생 중 (공백 대기 구간)";
       }
     } 
@@ -307,15 +317,16 @@ export default class ThreeMediaArtWall {
     this.waveMaterial.uniforms.uSurge.value = currentSurge;
     this.waveMaterial.uniforms.uSurgeVelocity.value = Math.abs(targetSurge - currentSurge);
 
-    // 💡 [핵심 구현: 매 파도 진입 시 무작위 가변 뒤섞기 엔진]
-    // 파도가 최고 수위로 올라왔다가(바다 뒤로 후퇴했다가) 다시 아래 모래사장(전진)으로 떨어지기 직전 터닝 시점 캐치
+    // 💡 [매 파도 전환 시 대형 노란선 중심 곡선 형태 스위칭 스케줄러]
     if (currentSurge > this.prevSurge) {
-      this.wasGoingDown = false; // 물이 빠지는 중(뒤로 후퇴 중)
+      this.wasGoingDown = false; 
     } else if (currentSurge < this.prevSurge) {
-      // 💥 파도가 최하점을 찍고 다시 밀려 들어오기 시작하는 완벽한 반전 시점 포착!
       if (!this.wasGoingDown && currentSurge < 0.25) { 
-        this.globalRandomSeed = Math.random() * 500.0; // 매 파도마다 완전히 새로운 좌우 노이즈 시드 무작위 배정
-        console.log(`%c[🌊 파도 지형 전수 스위칭] 완전 새로운 물결 셔플 시드 자동 주입: ${this.globalRandomSeed.toFixed(2)}`, "color: #ffaa00; font-weight: bold;");
+        this.globalRandomSeed = Math.random() * 500.0; // 자잘한 포말 형태 리셋
+        
+        // 💥 파도가 완전히 나갔다 들어올 때 노란색 대형 중심 굴곡의 뼈대 형태를 통째로 랜덤 리셋!
+        this.largeCurveSeed = Math.random() * 1000.0; 
+        console.log(`%c[🌊 노란색 마스터 축 랜덤 변형] 중심 곡선 대형 셰이프 리프레시 완료: ${this.largeCurveSeed.toFixed(1)}`, "color: #ffcc00; font-weight: bold;");
       }
       this.wasGoingDown = true;
     }
@@ -324,7 +335,7 @@ export default class ThreeMediaArtWall {
     const nowMs = Date.now();
     if (nowMs - this.lastLogTime > 500) {
       console.log(
-        `%c[🌊 v0.010 가변 락인] %c수위(Surge): ${currentSurge.toFixed(2)} | 각도(Shuffle): ${ui.seed}° | 실시간 시드: ${this.globalRandomSeed.toFixed(1)} | 모드: ${modeLabel}`,
+        `%c[🌊 v0.010 중심곡선 고정] %c수위: ${currentSurge.toFixed(2)} | 각도: ${ui.seed}° | 중심 시드: ${this.largeCurveSeed.toFixed(0)} | 모드: ${modeLabel}`,
         "color: #00ffcc; font-weight: bold;", "color: #ffffff;"
       );
       this.lastLogTime = nowMs;
