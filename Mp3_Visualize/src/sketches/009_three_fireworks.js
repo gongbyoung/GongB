@@ -1,9 +1,9 @@
 /**
  * src/sketches/009_three_fireworks.js
- * - [버전] Ver 6.3 (SRT 초 단위 싱크 일치 및 v0.010 순수 셰이더 완전 고정판)
- * - main.js 자막 파서의 초(Seconds) 단위와 100% 동일하게 시간 축을 일치시켜 자막 추적 먹통 현상 완치
- * - Shuffle(0~360도 진행 각도), Range(파도 가로 Spacing), Scale(자막 크기), Volume(파도 노이즈 디테일), Gauge(수동 수위) 완벽 바인딩
- * - 파도가 물러간 자리에 불규칙하게 물이 남고 마르는 물웅덩이(puddleN) 및 심해 발광 효과 완벽 가동
+ * - [버전] Ver 6.4 (매 파도 가변형 랜덤 시드 및 v0.010 아키텍처 최종 완결판)
+ * - 파도가 완전히 철수했다가 다시 밀려오는 시점을 정밀 추적하여 uSeed(지형 노이즈 형태)를 매번 무작위 변경
+ * - 가만히 두거나 음악이 흐를 때 똑같은 파도 모양이 무한 반복되던 문제를 해결하여 하이퍼 리얼리즘 완성
+ * - Shuffle(파도 방향 각도), Range(파도 간격 밀도), Scale(자막 크기), Volume(노이즈 디테일), Gauge(수동 수위) UI 완벽 바인딩
  */
 
 export default class ThreeMediaArtWall {
@@ -22,12 +22,13 @@ export default class ThreeMediaArtWall {
     this.currentImageEl = null;
     this.globalRandomSeed = Math.random() * 100.0;
     this.time = 0;
-    this.baseSurge = 0.75;
-    this.splashTimer = 0.0;
-    this.currentSubtitle = "";
+    
+    // 💡 매번 새로운 파형 추적을 위한 가속도/방향 필터 변수
+    this.prevSurge = 0.0;
+    this.wasGoingDown = false;
 
     this.lastLogTime = 0;
-    this.version = "Nature Fluid Studio v0.010 (Seconds 싱크 고정판)";
+    this.version = "Nature Fluid Studio v0.010 (매 파도 가변 랜덤판)";
   }
 
   init() {
@@ -37,7 +38,6 @@ export default class ThreeMediaArtWall {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x020205);
 
-    // 💡 오리지널 v0.010 원본 카메라 매트릭스 고수
     this.camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 8000);
     this.camera.position.set(0, 1500, 0);
     this.camera.lookAt(0, 0, 0);
@@ -47,7 +47,6 @@ export default class ThreeMediaArtWall {
     this.renderer.setSize(w, h);
     this.container.appendChild(this.renderer.domElement);
 
-    // 오리지널 1920x1920 고해상도 자막 캔버스 맵 바인딩
     this.textCanvas = document.createElement('canvas');
     this.textCanvas.width = 1920;
     this.textCanvas.height = 1920;
@@ -68,17 +67,17 @@ export default class ThreeMediaArtWall {
     let ui = { seed: 180, scatter: 0.2, color: 'neon', glow: 90, gain: 1.5, gas1: '#16a0b5', gas2: '#063b4c', offX: 0, offY: 0, offZ: 0, gauge: 0.5 };
     if (window.cosmicEngineSettings) {
       const g = window.cosmicEngineSettings;
-      ui.seed = g.seed ?? 180; // Shuffle ➡️ uAngle
-      ui.scatter = THREE.MathUtils.mapLinear(g.scatterExponent ?? 2.2, 0.5, 5.0, 0.0, 1.0); // Range ➡️ uWaveSpacing (0.0~1.0)
+      ui.seed = g.seed ?? 180; 
+      ui.scatter = THREE.MathUtils.mapLinear(g.scatterExponent ?? 2.2, 0.5, 5.0, 0.0, 1.0); 
       ui.color = g.colorStyle ?? 'neon';
-      ui.glow = THREE.MathUtils.mapLinear(g.glowIntensity ?? 0.85, 0.1, 2.5, 40, 250); // Scale ➡️ 자막 크기
-      ui.gain = THREE.MathUtils.mapLinear(g.audioGain ?? 1.0, 0.1, 5.0, 0.5, 4.0); // Volume ➡️ uWaveDetail (0.5~4.0)
+      ui.glow = THREE.MathUtils.mapLinear(g.glowIntensity ?? 0.85, 0.1, 2.5, 40, 250); 
+      ui.gain = THREE.MathUtils.mapLinear(g.audioGain ?? 1.0, 0.1, 5.0, 0.5, 4.0); 
       ui.gas1 = g.customColors?.gas1 ?? '#16a0b5'; 
       ui.gas2 = g.customColors?.gas2 ?? '#063b4c';
       ui.offX = g.positionOffset?.x ?? 0;
       ui.offY = g.positionOffset?.y ?? 0;
       ui.offZ = g.positionOffset?.z ?? 0;
-      ui.gauge = g.gaugeValue ?? 0.5; // Gauge ➡️ uSurge (0.0~1.0)
+      ui.gauge = g.gaugeValue ?? 0.5; 
     }
     return ui;
   }
@@ -271,31 +270,29 @@ export default class ThreeMediaArtWall {
     this.waveMaterial.uniforms.uWaveDetail.value = ui.gain;      
     this.waveMaterial.uniforms.uSeed.value = this.globalRandomSeed;
 
-    // 💡 [초정밀 초(Seconds) 단위 변환 복구 완료]
     let targetSurge = 0.05;
     let activeText = "";
     let modeLabel = "";
 
     const audioEl = document.querySelector('audio');
     
-    // 💥 오디오 가동 시 초(Seconds) 단위로 완벽 계산
     if (audioEl && !audioEl.paused && window.parsedSubtitles && window.parsedSubtitles.length > 0) {
-      const curTime = audioEl.currentTime; // milliseconds 환산 삭제 ➡️ Seconds로 단일 정렬
+      const curTime = audioEl.currentTime;
       
-      const nextSub = window.parsedSubtitles.find(sub => sub.start > curTime && sub.start - curTime <= 0.8); // 800ms ➡️ 0.8초
+      const nextSub = window.parsedSubtitles.find(sub => sub.start > curTime && sub.start - curTime <= 0.8);
       const currentSub = window.parsedSubtitles.find(sub => curTime >= sub.start && curTime <= sub.end);
 
       if (nextSub) {
         let progress = 1.0 - ((nextSub.start - curTime) / 0.8);
-        targetSurge = THREE.MathUtils.lerp(0.85, 0.05, Math.pow(progress, 2.0)); // 0.85에서 0.05(덮기)로 급전진
-        modeLabel = "⏳ SRT 자동 추적: 자막 출현 전 파도 덮침 돌격";
+        targetSurge = THREE.MathUtils.lerp(0.85, 0.05, Math.pow(progress, 2.0));
+        modeLabel = "⏳ SRT 자동 추적: 자막 발생 전 파도 밀려옴";
       } else if (currentSub) {
         activeText = currentSub.text;
         let activeProgress = (curTime - currentSub.start) / (currentSub.end - currentSub.start);
-        targetSurge = THREE.MathUtils.lerp(0.05, 0.85, Math.min(1.0, activeProgress * 3.5)); // 0.05에서 0.85(철수)로 복귀
+        targetSurge = THREE.MathUtils.lerp(0.05, 0.85, Math.min(1.0, activeProgress * 3.5));
         modeLabel = "▶️ SRT 자동 추적: 자막 노출 파도 철수";
       } else {
-        targetSurge = 0.05; // 평소에는 모래를 덮는 기본 대기 상태
+        targetSurge = 0.85; // 대기 공백 구간에는 물이 빠진 바다 상태 고정
         modeLabel = "🎵 오디오 재생 중 (공백 대기 구간)";
       }
     } 
@@ -310,10 +307,24 @@ export default class ThreeMediaArtWall {
     this.waveMaterial.uniforms.uSurge.value = currentSurge;
     this.waveMaterial.uniforms.uSurgeVelocity.value = Math.abs(targetSurge - currentSurge);
 
+    // 💡 [핵심 구현: 매 파도 진입 시 무작위 가변 뒤섞기 엔진]
+    // 파도가 최고 수위로 올라왔다가(바다 뒤로 후퇴했다가) 다시 아래 모래사장(전진)으로 떨어지기 직전 터닝 시점 캐치
+    if (currentSurge > this.prevSurge) {
+      this.wasGoingDown = false; // 물이 빠지는 중(뒤로 후퇴 중)
+    } else if (currentSurge < this.prevSurge) {
+      // 💥 파도가 최하점을 찍고 다시 밀려 들어오기 시작하는 완벽한 반전 시점 포착!
+      if (!this.wasGoingDown && currentSurge < 0.25) { 
+        this.globalRandomSeed = Math.random() * 500.0; // 매 파도마다 완전히 새로운 좌우 노이즈 시드 무작위 배정
+        console.log(`%c[🌊 파도 지형 전수 스위칭] 완전 새로운 물결 셔플 시드 자동 주입: ${this.globalRandomSeed.toFixed(2)}`, "color: #ffaa00; font-weight: bold;");
+      }
+      this.wasGoingDown = true;
+    }
+    this.prevSurge = currentSurge;
+
     const nowMs = Date.now();
     if (nowMs - this.lastLogTime > 500) {
       console.log(
-        `%c[🌊 v0.010 완결] %c수위(Surge): ${currentSurge.toFixed(2)} | 각도(Shuffle): ${ui.seed}° | 모드: ${modeLabel}`,
+        `%c[🌊 v0.010 가변 락인] %c수위(Surge): ${currentSurge.toFixed(2)} | 각도(Shuffle): ${ui.seed}° | 실시간 시드: ${this.globalRandomSeed.toFixed(1)} | 모드: ${modeLabel}`,
         "color: #00ffcc; font-weight: bold;", "color: #ffffff;"
       );
       this.lastLogTime = nowMs;
