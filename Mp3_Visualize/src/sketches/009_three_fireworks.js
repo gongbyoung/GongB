@@ -1,10 +1,10 @@
 /**
  * src/sketches/009_three_fireworks.js
- * - [버전] Ver 5.4 (직교 카메라 좌표계 수리 및 마스터 UI 정밀 매프 바인딩 완결판)
- * - 붉은 사각형 오류 원인이던 uTextScale 연산을 직교 뷰포트형 screenUv 파이프라인으로 전면 전개 수리
- * - Shuffle(파도 모양 뒤섞기), Range(가로 범위), Scale(폰트 크기), Volume(포말 쪼개짐 강도), Gauge(수동 수위) 완벽 링킹
- * - init() 시점에 우측 UI 조작 파라미터들의 초기화 기본 수치 콘솔 테이블 출력 완비
- * - update() 루프 주기마다 현재 실시간 파도 수위 상태 및 SRT 자막 싱크 상황 모니터링 콘솔 로깅 지원
+ * - [버전] Ver 5.5 (Shuffle 0~360도 각도 변환 및 반대편 화면 끝 이탈 방지 완결판)
+ * - Shuffle 파라미터를 0~360도 공간 회전 각도로 다이렉트 매핑하여 파도가 해당 각도 방향으로 치도록 대수술
+ * - 회전 벡터 기반의 수위 한계 클램핑 공식을 주입하여 파도 끝단이 각도 정반대편 화면 경계선을 탈출하지 않도록 방어
+ * - Range(가로 범위), Scale(폰트 크기), Volume(포말 쪼개짐 강도), Gauge(실시간 수위 제어) 유기적 링크 고정
+ * - init() 시점의 초기화 기본 수치 리포트 및 update() 루프 주기별 콘솔 디버그 로그 시스템 유지
  */
 
 export default class ThreeMediaArtWall {
@@ -26,7 +26,7 @@ export default class ThreeMediaArtWall {
     this.currentWidth = 0;
     this.currentHeight = 0;
     this.lastLogTime = 0;
-    this.version = "009호 자연 유체 해변 스튜디오 Ver 5.4";
+    this.version = "009호 자연 유체 해변 스튜디오 Ver 5.5";
   }
 
   init() {
@@ -35,16 +35,9 @@ export default class ThreeMediaArtWall {
 
     this.scene = new THREE.Scene();
 
-    // 💡 화면 고정용 정면 직교 카메라 정렬 시공
     this.camera = new THREE.OrthographicCamera(-this.currentWidth / 2, this.currentWidth / 2, this.currentHeight / 2, -this.currentHeight / 2, 0.1, 1000);
     this.camera.position.z = 15;
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
-    this.renderer.setSize(this.currentWidth, this.currentHeight);
-    this.renderer.setClearColor(0x000000);
-    this.container.appendChild(this.renderer.domElement);
-
-    // 자막 해상도 버퍼를 뷰포트 축과 동기화하여 글자 잘림 방지
     this.textCanvas = document.createElement('canvas');
     this.textCanvas.width = 1024;
     this.textCanvas.height = 1024;
@@ -52,17 +45,17 @@ export default class ThreeMediaArtWall {
     this.textTexture.minFilter = THREE.LinearFilter;
 
     const initialUI = this.getUIParams();
-    console.log(`%c[🚀 009호 부팅 완료] 시스템 로드 기본 세팅 수치 리포트`, "color: #00ffcc; font-weight: bold; font-size: 11px;");
+    console.log(`%c[🚀 009호 셋업 완료] Shuffle 각도 및 경계선 락 파라미터 브리핑`, "color: #00ffcc; font-weight: bold; font-size: 11px;");
     console.table({
-      "Shuffle (기본 시드)": initialUI.seed,
-      "Range (파도 가로폭)": initialUI.scatter,
-      "Scale (폰트 기본 크기)": initialUI.glow,
-      "Volume (포말 쪼개짐 강도)": initialUI.gain,
+      "Shuffle Angle (파도 각도)": `${initialUI.seed}°`,
+      "Range (파도 진폭 범위)": initialUI.scatter,
+      "Scale (자막 폰트 크기)": initialUI.glow,
+      "Volume (포말 디테일 강도)": initialUI.gain,
       "3D Position Offset X": initialUI.offX,
       "3D Position Offset Y": initialUI.offY,
       "3D Position Offset Z": initialUI.offZ,
       "Manual Gauge 제어값": initialUI.gauge,
-      "Color Style 팔레트": initialUI.color
+      "Color Style 모드": initialUI.color
     });
 
     this.buildStaticBackground();
@@ -71,16 +64,17 @@ export default class ThreeMediaArtWall {
   }
 
   getUIParams() {
-    let ui = { seed: 42, scatter: 22, color: 'neon', glow: 85, gain: 100, gas1: '#00ffcc', gas2: '#ffffff', offX: 0, offY: 0, offZ: 0, gauge: 0.5 };
+    let ui = { seed: 180, scatter: 22, color: 'neon', glow: 85, gain: 100, gas1: '#00ffcc', gas2: '#ffffff', offX: 0, offY: 0, offZ: 0, gauge: 0.5 };
     if (window.cosmicEngineSettings) {
       const g = window.cosmicEngineSettings;
-      ui.seed = g.seed ?? 42;
+      // Shuffle 수치를 0~360도 각도로 가변 고정
+      ui.seed = THREE.MathUtils.clamp(g.seed ?? 180, 0, 360);
       ui.scatter = (g.scatterExponent ?? 2.2) * 10;
       ui.color = g.colorStyle ?? 'neon';
       ui.glow = (g.glowIntensity ?? 0.85) * 100;
       ui.gain = (g.audioGain ?? 1.0) * 100;
-      ui.gas1 = g.customColors?.gas1 ?? '#ff0055'; // 회원님 픽커 컬러 수혈 기본값
-      ui.gas2 = g.customColors?.gas2 ?? '#00ffcc';
+      ui.gas1 = g.customColors?.gas1 ?? '#00ffcc';
+      ui.gas2 = g.customColors?.gas2 ?? '#ffffff';
       ui.offX = g.positionOffset?.x ?? 0;
       ui.offY = g.positionOffset?.y ?? 0;
       ui.offZ = g.positionOffset?.z ?? 0;
@@ -95,7 +89,7 @@ export default class ThreeMediaArtWall {
     const ctx = canvas.getContext('2d');
     ctx.fillStyle = '#d2b48c'; 
     ctx.fillRect(0, 0, 512, 512);
-    for (let i = 0; i < 3000; i++) {
+    for (let i = 0; i < 4000; i++) {
       ctx.fillStyle = Math.random() > 0.5 ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.1)';
       ctx.fillRect(Math.random() * 512, Math.random() * 512, 2, 2);
     }
@@ -125,11 +119,11 @@ export default class ThreeMediaArtWall {
       uniforms: {
         u_time: { value: 0 },
         u_gauge: { value: 0.5 }, 
-        u_shuffle: { value: 42 },
+        u_shuffleAngle: { value: 180.0 }, // Shuffle 수치가 각도로 변환되어 주입됨
         u_range: { value: 2.2 },
         u_volume: { value: 1.0 },
-        u_colorGas1: { value: new THREE.Color('#ff0055') }, 
-        u_colorGas2: { value: new THREE.Color('#00ffcc') }  
+        u_colorGas1: { value: new THREE.Color('#00ffcc') }, 
+        u_colorGas2: { value: new THREE.Color('#ffffff') }  
       },
       vertexShader: `
         varying vec2 vUv;
@@ -141,7 +135,7 @@ export default class ThreeMediaArtWall {
       fragmentShader: `
         uniform float u_time;
         uniform float u_gauge;
-        uniform float u_shuffle;
+        uniform float u_shuffleAngle;
         uniform float u_range;
         uniform float u_volume;
         uniform vec3 u_colorGas1;
@@ -150,7 +144,7 @@ export default class ThreeMediaArtWall {
 
         vec2 hash(vec2 p) {
           p = vec2(dot(p,vec2(127.1,311.7)), dot(p,vec2(269.5,183.3)));
-          return -1.0 + 2.0*fract(sin(p)*43758.5453123 + u_shuffle);
+          return -1.0 + 2.0*fract(sin(p)*43758.5453123);
         }
         float noise(vec2 p) {
           const float K1 = 0.366025404; const float K2 = 0.211324865;
@@ -163,30 +157,39 @@ export default class ThreeMediaArtWall {
         }
 
         void main() {
-          // 💡 [Range 제어 바인딩] 파도의 가로 파동 스펙트럼 밀도 가변 분기
-          vec2 uvNoise = vUv * vec2(u_range * 2.0, 5.0);
-          uvNoise.y -= u_time * 0.3;
+          // 💡 [Shuffle 방향 각도 변환 이식] 2D 회전 매트릭스 가동
+          float rad = radians(u_shuffleAngle);
+          float cosA = cos(rad); float sinA = sin(rad);
+          mat2 rotationMatrix = mat2(cosA, -sinA, sinA, cosA);
 
-          // [Volume 제어 바인딩] 파도 끝단 포말이 쪼개지는 자글자글한 디테일 노이즈 강도 결합
-          float n = noise(uvNoise * 4.0) * 0.08 * u_volume;
-          n += noise(uvNoise * 12.0) * 0.03 * (u_volume * 0.6);
+          // 화면 중심 기준으로 UV 회전 전개
+          vec2 rotatedUv = rotationMatrix * (vUv - 0.5) + 0.5;
 
-          // Gauge 연동 물리 한계선
-          float waveLine = u_gauge + n;
+          // Range 가 적용된 가로축 물결 밀도 벡터
+          vec2 noiseUv = rotatedUv * vec2(u_range * 1.5, 4.0);
+          noiseUv.x += u_time * 0.2;
+
+          // Volume 기반 포말 쪼개짐 노이즈 가중치
+          float n = noise(noiseUv * 3.5) * 0.09 * u_volume;
+          n += noise(noiseUv * 10.0) * 0.03 * (u_volume * 0.5);
+
+          // 💡 [반대편 화면 끝 탈출 방지 알고리즘]
+          // 파도 수위선이 회전 각도에 의해 화면 외부 경계선을 뚫고 증발하지 않도록 안전 마진 하드웨어 클램핑 락
+          float safetyGauge = clamp(u_gauge, 0.03, 0.97);
+          float waveLine = (safetyGauge * 1.05 - 0.025) + n;
           
-          float f = smoothstep(waveLine - 0.03, waveLine, vUv.y);
-          float foam = smoothstep(waveLine - 0.005, waveLine, vUv.y) * (1.0 - smoothstep(waveLine, waveLine + 0.02, vUv.y));
+          float f = smoothstep(waveLine - 0.03, waveLine, rotatedUv.y);
+          float foam = smoothstep(waveLine - 0.005, waveLine, rotatedUv.y) * (1.0 - smoothstep(waveLine, waveLine + 0.02, rotatedUv.y));
 
-          // 최종 유체 컬러 조합
-          vec3 waveColor = mix(u_colorGas1, u_colorGas2, vUv.y);
-          waveColor = mix(waveColor, vec3(1.0), foam * 0.8); // 하얀 거품층 가산 혼합
+          vec3 waveColor = mix(u_colorGas1, u_colorGas2, rotatedUv.y);
+          waveColor = mix(waveColor, vec3(1.0), foam * 0.8); 
 
-          // 💥 사각형 박스 오류 원천 제거: 디스카드 조건식을 직교 Uv 축 경계에 맞춰 무결점 컷팅
-          if (vUv.y > waveLine + 0.02) {
-             discard;
+          float alpha = 1.0 - f;
+          if (rotatedUv.y > waveLine + 0.02) {
+             alpha = 0.0;
           }
-
-          gl_FragColor = vec4(waveColor, (1.0 - f) * 0.9);
+          
+          gl_FragColor = vec4(waveColor, alpha * 0.95);
         }
       `,
       transparent: true,
@@ -207,13 +210,10 @@ export default class ThreeMediaArtWall {
       depthWrite: false
     });
     this.textPlane = new THREE.Mesh(geo, mat);
-    this.textPlane.position.set(0, 0, 0.5); // 자막 배치 레이어 정돈
+    this.textPlane.position.set(0, 0, 0.5); 
     this.scene.add(this.textPlane);
   }
 
-  /**
-   * 💡 [Scale 폰트 크기 가인] 자동 동기화 네온 크로스 드로잉 엔진
-   */
   drawSubtitleToCanvas(text, fontSizeStyle) {
     const ctx = this.textCanvas.getContext('2d');
     ctx.clearRect(0, 0, 1024, 1024);
@@ -228,7 +228,6 @@ export default class ThreeMediaArtWall {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    // 쨍하고 깊은 광량의 Additive 네온 글로우 드로잉 레이어 시공
     ctx.shadowColor = 'rgba(0, 255, 204, 0.95)';
     ctx.shadowBlur = 30;
     ctx.fillStyle = 'rgba(0, 255, 204, 0.8)';
@@ -251,16 +250,13 @@ export default class ThreeMediaArtWall {
     lines.push(line);
 
     const lineHeight = fontSizeStyle * 1.4;
-    // 화면 중앙 기준 하단 65% 지점(모래사장 바닥면 감각)에 정밀 영동
-    const startY = 680 - ((lines.length - 1) * lineHeight) / 2;
+    const startY = 720 - ((lines.length - 1) * lineHeight) / 2; // 모래사장 하단 정밀 영동 위치
 
     for (let k = 0; k < lines.length; k++) {
-        // 1단 네온 섀도 베이스
         ctx.shadowColor = 'rgba(0, 255, 204, 0.9)';
         ctx.shadowBlur = 25;
         ctx.fillText(lines[k], 512, startY + k * lineHeight);
         
-        // 2단 네온사인의 하얀 심지(Core) 수직 중첩 렌더링
         ctx.shadowBlur = 0;
         ctx.fillStyle = '#ffffff';
         ctx.fillText(lines[k], 512, startY + k * lineHeight);
@@ -284,12 +280,13 @@ export default class ThreeMediaArtWall {
 
     const ui = this.getUIParams();
 
-    // 💡 [3D Position Offset X, Y, Z] 실시간 가변축 오프셋 반영 투사
     this.camera.position.set(ui.offX, ui.offY, 15 + ui.offZ);
 
     this.waveMaterial.uniforms.u_colorGas1.value.set(ui.gas1);
     this.waveMaterial.uniforms.u_colorGas2.value.set(ui.gas2);
-    this.waveMaterial.uniforms.u_shuffle.value = ui.seed;
+    
+    // 💡 Shuffle 값을 파도의 회전 각도(0~360) 유니폼으로 직통 링크
+    this.waveMaterial.uniforms.u_shuffleAngle.value = ui.seed;
     this.waveMaterial.uniforms.u_range.value = ui.scatter / 10;
     this.waveMaterial.uniforms.u_volume.value = ui.gain / 100;
 
@@ -320,25 +317,23 @@ export default class ThreeMediaArtWall {
         srtStatusMessage = `▶️ 자막 노출 파도 철수: [${activeText}]`;
       } else {
         calculatedGauge = 0.3;
-        srtStatusMessage = "🎵 음악 공백 대기 구간 (평온한 수위)";
+        srtStatusMessage = "🎵 음악 공백 구간";
       }
     } else {
-      // 💡 음악 미재생 시 [Gauge] 입력 칸 숫자로 100% 매뉴얼 제어권 락인
       calculatedGauge = ui.gauge;
       activeText = window.currentSubtitleText || "자연 유체 스튜디오 v0.010\n(빛나는 네온 효과 완성)";
-      srtStatusMessage = "⏸️ 정지 모드 (오른쪽 Gauge 수치 타이핑 실시간 테스트)";
+      srtStatusMessage = "⏸️ 정지 모드 (오른쪽 Gauge 수치 타이핑 제어)";
     }
 
     const nowMs = Date.now();
     if (nowMs - this.lastLogTime > 500) {
       console.log(
-        `%c[🌊 009호 실시간 스트리밍 모니터] %c수위(Gauge): ${(calculatedGauge * 100).toFixed(1)}% | 상태: ${srtStatusMessage}`,
+        `%c[🌊 009호 실시간 스트리밍 모니터] %c수위(Gauge): ${(calculatedGauge * 100).toFixed(1)}% | 방향 각도(Shuffle): ${ui.seed}° | 상태: ${srtStatusMessage}`,
         "color: #00ffcc; font-weight: bold;", "color: #ffffff;"
       );
       this.lastLogTime = nowMs;
     }
 
-    // 💡 [Scale] 파라미터 연동 ➡️ 폰트 크기 스케일 정밀 가인 결합
     const targetFontSize = THREE.MathUtils.mapLinear(ui.glow, 10, 250, 30, 85);
     this.drawSubtitleToCanvas(activeText, targetFontSize);
 
