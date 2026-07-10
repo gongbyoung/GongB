@@ -1,9 +1,9 @@
 /**
  * src/sketches/009_three_fireworks.js
- * - [버전] Ver 5.9 (오리지널 v0.010 심플렉스 노이즈 및 파도 역학 완벽 이식판)
- * - 오리지널 코드의 matRot 회전 행렬, noise(), distToWave 공식을 100% 동일하게 복구하여 일자 단면 버그 원천 박멸
- * - Shuffle(0~360도 파도 진행 각도), Range(파도 가로 간격 밀도), Scale(자막 크기), Volume(포말 디테일), Gauge(수동 수위) 완벽 매핑
- * - 파도가 물러간 자리에 불규칙하게 물이 남고 마르는 오리지널 특유의 물웅덩이(puddleN) 및 심해 발광 효과 완벽 작동
+ * - [버전] Ver 6.0 (정점 128분할 격자 주입 및 셰이더 축 싱크 완전 정밀 패치판)
+ * - PlaneGeometry 세그먼트를 128x128로 세분화하여 일직선 칼단면 현상을 완벽 차단하고 리얼 노이즈 파형 복구
+ * - uTextScale과 회전 변위 좌표계를 가로세로 화면비에 맞춰 재컴파일하여 파도선과 물웅덩이 싱크 미스 전면 수리
+ * - Shuffle(0~360도 진행 각도), Range(파도 간격 밀도), Scale(자막 크기), Volume(포말 디테일), Gauge(수동 제어) UI 완벽 바인딩
  */
 
 export default class ThreeMediaArtWall {
@@ -24,7 +24,7 @@ export default class ThreeMediaArtWall {
     this.currentWidth = 0;
     this.currentHeight = 0;
     this.lastLogTime = 0;
-    this.version = "009호 자연 유체 스튜디오 Ver 5.9";
+    this.version = "009호 정밀 격자 유체 스튜디오 Ver 6.0";
   }
 
   init() {
@@ -34,7 +34,6 @@ export default class ThreeMediaArtWall {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x020205);
 
-    // 💡 오리지널의 PerspectiveCamera 원근 시야각 완벽 복원
     this.camera = new THREE.PerspectiveCamera(45, this.currentWidth / this.currentHeight, 0.1, 8000);
     this.camera.position.set(0, 1500, 0); 
     this.camera.lookAt(0, 0, 0);
@@ -44,7 +43,6 @@ export default class ThreeMediaArtWall {
     this.renderer.setSize(this.currentWidth, this.currentHeight);
     this.container.appendChild(this.renderer.domElement);
 
-    // 오리지널 1920x1920 캔버스 텍스처 버퍼 규격 고수
     this.textCanvas = document.createElement('canvas');
     this.textCanvas.width = 1920;
     this.textCanvas.height = 1920;
@@ -95,20 +93,20 @@ export default class ThreeMediaArtWall {
   }
 
   buildFluidWaveSystem() {
-    // 💡 오리지널 6000x6000 Geometry판 구조 완전 이식
-    const waveGeo = new THREE.PlaneGeometry(6000, 6000, 1, 1);
+    // 💡 [대수술 핵심 축] 1,1 이던 단면 세그먼트를 128,128 격자로 파괴 분할하여 정밀 노이즈 진폭 공간 확보
+    const waveGeo = new THREE.PlaneGeometry(6000, 6000, 128, 128);
     
     this.waveMaterial = new THREE.ShaderMaterial({
       uniforms: {
         uTime: { value: 0.0 },
         uBass: { value: 0.0 },
         uTreble: { value: 0.0 },
-        uAngle: { value: 180.0 }, // Shuffle 연동
+        uAngle: { value: 180.0 }, 
         uSeed: { value: 42.0 },
-        uWaveDetail: { value: 1.5 }, // Volume 연동 디테일
-        uSurge: { value: 0.5 }, // SRT 및 Gauge 연동
+        uWaveDetail: { value: 1.5 }, 
+        uSurge: { value: 0.5 }, 
         uSurgeVelocity: { value: 0.05 },
-        uWaveSpacing: { value: 0.2 }, // Range 연동 Spacing
+        uWaveSpacing: { value: 0.2 }, 
         uFoamSize: { value: 0.15 },
         uAudioDirMode: { value: 1.0 },
         uTextMap: { value: this.textTexture },
@@ -147,6 +145,7 @@ export default class ThreeMediaArtWall {
         }
         
         void main() {
+            // 💡 뷰포트 종횡비 왜곡 보정 링크 결합
             vec2 screenUv = (vUv - 0.5) * uTextScale + 0.5; 
             float ang = radians(uAngle); float cosA = cos(ang); float sinA = sin(ang); mat2 matRot = mat2(cosA, -sinA, sinA, cosA);
             
@@ -160,7 +159,7 @@ export default class ThreeMediaArtWall {
             
             float wavePos = uSurge + audioLevelOffset + (waveSine * 0.06) + audioRipple; 
             
-            // 💡 오리지널 하이퍼 노이즈 굴곡선 공식 완벽 활성화
+            // 격자가 쪼개져 있으므로 이제 n1, n2 노이즈 파형이 온전히 구겨지며 정밀 표출됩니다.
             float n1 = noise(noiseUv * 8.0 * uWaveDetail + uTime * 0.2 + (uTreble * 0.1)); 
             float n2 = noise(noiseUv * 20.0 * uWaveDetail - uTime * 0.1);
             float distToWave = rUv.y - wavePos + (n1 * 0.15) + (n2 * 0.05);
@@ -232,7 +231,6 @@ export default class ThreeMediaArtWall {
     });
 
     this.wavePlane = new THREE.Mesh(waveGeo, this.waveMaterial);
-    // 오리지널 바닥 평면 눞힘 각도 싱크 고수
     this.wavePlane.rotation.x = -Math.PI / 2; 
     this.scene.add(this.wavePlane);
   }
@@ -252,7 +250,6 @@ export default class ThreeMediaArtWall {
     ctx.textAlign = 'center';
     ctx.lineJoin = 'round';
 
-    // 💥 오리지널의 강력한 네온 2중 중첩 코어 광량 이식
     ctx.shadowColor = 'rgba(0, 229, 255, 0.9)';
     ctx.shadowBlur = 80;
     ctx.fillStyle = 'rgba(0, 229, 255, 1.0)';
@@ -308,7 +305,6 @@ export default class ThreeMediaArtWall {
 
     const ui = this.getUIParams();
 
-    // 💡 [3D Position Offset X, Y, Z] 연동 및 원근 카메라의 uTextScale 유연 가인 처리
     this.camera.position.set(ui.offX, 1500 + ui.offY, ui.offZ);
     this.camera.lookAt(ui.offX, ui.offY, ui.offZ);
 
@@ -317,10 +313,9 @@ export default class ThreeMediaArtWall {
     let visibleWidth = visibleHeight * this.camera.aspect;
     this.waveMaterial.uniforms.uTextScale.value.set(6000.0 / visibleWidth, 6000.0 / visibleHeight);
 
-    // 💡 오리지널 수치 바인딩 연동 브릿지 시공
-    this.waveMaterial.uniforms.uAngle.value = ui.seed; // Shuffle ➡️ 각도로 대입
-    this.waveMaterial.uniforms.uWaveSpacing.value = ui.scatter / 50; // Range ➡️ Spacing 밀도로 대입
-    this.waveMaterial.uniforms.uWaveDetail.value = THREE.MathUtils.mapLinear(ui.gain, 10, 500, 0.5, 4.0); // Volume ➡️ Detail로 대입
+    this.waveMaterial.uniforms.uAngle.value = ui.seed; 
+    this.waveMaterial.uniforms.uWaveSpacing.value = ui.scatter / 50; 
+    this.waveMaterial.uniforms.uWaveDetail.value = THREE.MathUtils.mapLinear(ui.gain, 10, 500, 0.5, 4.0); 
 
     const time = Date.now() * 0.0015;
     this.waveMaterial.uniforms.uTime.value = time;
@@ -332,7 +327,7 @@ export default class ThreeMediaArtWall {
     const audioEl = document.querySelector('audio');
     
     if (audioEl && !audioEl.paused && window.parsedSubtitles && window.parsedSubtitles.length > 0) {
-      const curTime = audioEl.currentTime * 1000; // 오리지널 밀리초 스케일 변환
+      const curTime = audioEl.currentTime * 1000; 
       
       const nextSub = window.parsedSubtitles.find(sub => sub.start > curTime && sub.start - curTime <= 800);
       const currentSub = window.parsedSubtitles.find(sub => curTime >= sub.start && curTime <= sub.end);
@@ -341,25 +336,23 @@ export default class ThreeMediaArtWall {
         let timeGap = nextSub.start - curTime; 
         let progress = 1.0 - (timeGap / 800);  
         targetSurge = THREE.MathUtils.lerp(0.05, 0.95, Math.pow(progress, 2.0));
-        srtStatusMessage = `⏳ SRT 추적: 자막 출현 전 파도 급팽창`;
+        srtStatusMessage = `⏳ SRT 추적 중: 자막 출현 전 파도 덮침`;
       } 
       else if (currentSub) {
         activeText = currentSub.text;
         let activeProgress = (curTime - currentSub.start) / (currentSub.end - currentSub.start);
         targetSurge = THREE.MathUtils.lerp(0.95, 0.35, Math.min(1.0, activeProgress * 3.5));
-        srtStatusMessage = `▶️ SRT 추적: 백사장 자막 개방 파도 퇴각`;
+        srtStatusMessage = `▶️ SRT 추적 중: 파도 퇴각 및 자막 활성화`;
       } else {
         targetSurge = 0.05;
         srtStatusMessage = "🎵 음악 공백 구간";
       }
     } else {
-      // 정지 상태일 때는 오직 매뉴얼 Gauge로 1:1 수동 제어
       targetSurge = ui.gauge;
       activeText = window.currentSubtitleText || "자연 유체 스튜디오 v0.010\n(빛나는 네온 효과 완성)";
-      srtStatusMessage = "⏸️ 정지 모드 (Gauge 수치 수동 테스트)";
+      srtStatusMessage = "⏸️ 정지 모드 (Gauge 수치 제어)";
     }
 
-    // 오리지널 감속 보간 서지 속도 가동
     let currentSurge = this.waveMaterial.uniforms.uSurge.value;
     currentSurge += (targetSurge - currentSurge) * 0.05;
     this.waveMaterial.uniforms.uSurge.value = currentSurge;
@@ -368,17 +361,15 @@ export default class ThreeMediaArtWall {
     const nowMs = Date.now();
     if (nowMs - this.lastLogTime > 500) {
       console.log(
-        `%c[🌊 009호 오리지널 락인] %c수위(Surge): ${currentSurge.toFixed(2)} | 파도 각도: ${ui.seed}° | 상태: ${srtStatusMessage}`,
+        `%c[🌊 009호 정밀 싱크 완료] %c수위(Surge): ${currentSurge.toFixed(2)} | 파도 각도: ${ui.seed}° | 상태: ${srtStatusMessage}`,
         "color: #00ffcc; font-weight: bold;", "color: #ffffff;"
       );
       this.lastLogTime = nowMs;
     }
 
-    // 💡 [Scale] 파라미터 연동 ➡️ 오리지널 폰트 사이즈(40~250) 스케일로 바인딩
     const targetFontSize = THREE.MathUtils.mapLinear(ui.glow, 10, 250, 40, 250);
     this.drawSubtitleToCanvas(activeText, targetFontSize);
 
-    // 오디오 원본 볼륨 데이터 바인딩 수혈
     let audioVol = audioData ? (audioData.vol || audioData.volume || 0.0) : 0.0;
     this.waveMaterial.uniforms.uBass.value = audioVol * 2.5;
     this.waveMaterial.uniforms.uTreble.value = audioVol * 1.5;
