@@ -1,9 +1,9 @@
 /**
  * src/sketches/009_three_fireworks.js
- * - [버전] Ver 5.8 (2D 심플렉스 노이즈 파도 끝단 굴곡 완벽 복구판)
- * - 일자 그라디언트 현상을 일으키던 rotatedUv 성분 왜곡 버그를 완벽히 도려내고 하이퍼 노이즈 포말선 복구
- * - Shuffle(0~360도 파도 진행 각도), Range(파도 가로폭 진폭 범위), Scale(폰트 크기), Volume(포말 쪼개짐 강도), Gauge(수동 제어) UI 완벽 바인딩
- * - 파도가 물러간 자리에 불규칙하게 물이 남고 다르게 마르는 Wet Sand 흔적 및 상시 호흡 물결 알고리즘 정상 가동
+ * - [버전] Ver 5.9 (오리지널 v0.010 심플렉스 노이즈 및 파도 역학 완벽 이식판)
+ * - 오리지널 코드의 matRot 회전 행렬, noise(), distToWave 공식을 100% 동일하게 복구하여 일자 단면 버그 원천 박멸
+ * - Shuffle(0~360도 파도 진행 각도), Range(파도 가로 간격 밀도), Scale(자막 크기), Volume(포말 디테일), Gauge(수동 수위) 완벽 매핑
+ * - 파도가 물러간 자리에 불규칙하게 물이 남고 마르는 오리지널 특유의 물웅덩이(puddleN) 및 심해 발광 효과 완벽 작동
  */
 
 export default class ThreeMediaArtWall {
@@ -17,7 +17,6 @@ export default class ThreeMediaArtWall {
     this.wavePlane = null;
     this.textCanvas = null;
     this.textTexture = null;
-    this.textPlane = null;
 
     this.currentImageEl = null;
     this.baseTexture = null;
@@ -25,7 +24,7 @@ export default class ThreeMediaArtWall {
     this.currentWidth = 0;
     this.currentHeight = 0;
     this.lastLogTime = 0;
-    this.version = "009호 리얼 노이즈 유체 스튜디오 Ver 5.8";
+    this.version = "009호 자연 유체 스튜디오 Ver 5.9";
   }
 
   init() {
@@ -33,51 +32,41 @@ export default class ThreeMediaArtWall {
     this.currentHeight = this.container.clientHeight;
 
     this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x020205);
 
-    this.camera = new THREE.OrthographicCamera(-this.currentWidth / 2, this.currentWidth / 2, this.currentHeight / 2, -this.currentHeight / 2, 0.1, 1000);
-    this.camera.position.z = 15;
+    // 💡 오리지널의 PerspectiveCamera 원근 시야각 완벽 복원
+    this.camera = new THREE.PerspectiveCamera(45, this.currentWidth / this.currentHeight, 0.1, 8000);
+    this.camera.position.set(0, 1500, 0); 
+    this.camera.lookAt(0, 0, 0);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    this.renderer.setPixelRatio(window.devicePixelRatio);
     this.renderer.setSize(this.currentWidth, this.currentHeight);
-    this.renderer.setClearColor(0x000000);
     this.container.appendChild(this.renderer.domElement);
 
+    // 오리지널 1920x1920 캔버스 텍스처 버퍼 규격 고수
     this.textCanvas = document.createElement('canvas');
-    this.textCanvas.width = 1024;
-    this.textCanvas.height = 1024;
+    this.textCanvas.width = 1920;
+    this.textCanvas.height = 1920;
     this.textTexture = new THREE.CanvasTexture(this.textCanvas);
+    this.textTexture.generateMipmaps = false;
     this.textTexture.minFilter = THREE.LinearFilter;
-
-    const initialUI = this.getUIParams();
-    console.log(`%c[🚀 009호 노이즈 엔진 셋업 완료] 파라미터 매핑 브리핑`, "color: #00ffcc; font-weight: bold; font-size: 11px;");
-    console.table({
-      "Shuffle Angle (파도 방향 각도)": `${initialUI.seed}°`,
-      "Range (파도 가로폭 밀도)": initialUI.scatter,
-      "Scale (자막 폰트 기본 크기)": initialUI.glow,
-      "Volume (포말 쪼개짐 디테일)": initialUI.gain,
-      "3D Position Offset X": initialUI.offX,
-      "3D Position Offset Y": initialUI.offY,
-      "3D Position Offset Z": initialUI.offZ,
-      "Manual Gauge 제어값": initialUI.gauge,
-      "Color Style 팔레트 모드": initialUI.color
-    });
 
     this.buildStaticBackground();
     this.buildFluidWaveSystem();
-    this.buildTextLayer();
   }
 
   getUIParams() {
-    let ui = { seed: 180, scatter: 22, color: 'neon', glow: 85, gain: 100, gas1: '#00ffcc', gas2: '#ffffff', offX: 0, offY: 0, offZ: 0, gauge: 0.5 };
+    let ui = { seed: 180, scatter: 22, color: 'neon', glow: 85, gain: 100, gas1: '#ff0055', gas2: '#00ffcc', offX: 0, offY: 0, offZ: 0, gauge: 0.5 };
     if (window.cosmicEngineSettings) {
       const g = window.cosmicEngineSettings;
-      ui.seed = THREE.MathUtils.clamp(g.seed ?? 180, 0, 360);
+      ui.seed = g.seed ?? 180;
       ui.scatter = (g.scatterExponent ?? 2.2) * 10;
       ui.color = g.colorStyle ?? 'neon';
       ui.glow = (g.glowIntensity ?? 0.85) * 100;
       ui.gain = (g.audioGain ?? 1.0) * 100;
-      ui.gas1 = g.customColors?.gas1 ?? '#00ffcc'; 
-      ui.gas2 = g.customColors?.gas2 ?? '#ffffff';
+      ui.gas1 = g.customColors?.gas1 ?? '#ff0055'; 
+      ui.gas2 = g.customColors?.gas2 ?? '#00ffcc';
       ui.offX = g.positionOffset?.x ?? 0;
       ui.offY = g.positionOffset?.y ?? 0;
       ui.offZ = g.positionOffset?.z ?? 0;
@@ -88,14 +77,10 @@ export default class ThreeMediaArtWall {
 
   createFallbackTexture() {
     const canvas = document.createElement('canvas');
-    canvas.width = 512; canvas.height = 512;
+    canvas.width = 2; canvas.height = 2;
     const ctx = canvas.getContext('2d');
     ctx.fillStyle = '#d2b48c'; 
-    ctx.fillRect(0, 0, 512, 512);
-    for (let i = 0; i < 4000; i++) {
-      ctx.fillStyle = Math.random() > 0.5 ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.1)';
-      ctx.fillRect(Math.random() * 512, Math.random() * 512, 2, 2);
-    }
+    ctx.fillRect(0, 0, 2, 2);
     return new THREE.CanvasTexture(canvas);
   }
 
@@ -107,26 +92,33 @@ export default class ThreeMediaArtWall {
     } else {
       this.baseTexture = this.createFallbackTexture();
     }
-
-    const geo = new THREE.PlaneGeometry(this.currentWidth, this.currentHeight);
-    const mat = new THREE.MeshBasicMaterial({ map: this.baseTexture });
-    this.bgPlane = new THREE.Mesh(geo, mat);
-    this.bgPlane.position.set(0, 0, -2);
-    this.scene.add(this.bgPlane);
   }
 
   buildFluidWaveSystem() {
-    const geo = new THREE.PlaneGeometry(this.currentWidth, this.currentHeight);
+    // 💡 오리지널 6000x6000 Geometry판 구조 완전 이식
+    const waveGeo = new THREE.PlaneGeometry(6000, 6000, 1, 1);
     
     this.waveMaterial = new THREE.ShaderMaterial({
       uniforms: {
-        u_time: { value: 0 },
-        u_gauge: { value: 0.5 }, 
-        u_shuffleAngle: { value: 180.0 }, 
-        u_range: { value: 2.2 },
-        u_volume: { value: 1.0 },
-        u_colorGas1: { value: new THREE.Color('#00ffcc') }, 
-        u_colorGas2: { value: new THREE.Color('#ffffff') }  
+        uTime: { value: 0.0 },
+        uBass: { value: 0.0 },
+        uTreble: { value: 0.0 },
+        uAngle: { value: 180.0 }, // Shuffle 연동
+        uSeed: { value: 42.0 },
+        uWaveDetail: { value: 1.5 }, // Volume 연동 디테일
+        uSurge: { value: 0.5 }, // SRT 및 Gauge 연동
+        uSurgeVelocity: { value: 0.05 },
+        uWaveSpacing: { value: 0.2 }, // Range 연동 Spacing
+        uFoamSize: { value: 0.15 },
+        uAudioDirMode: { value: 1.0 },
+        uTextMap: { value: this.textTexture },
+        uTextScale: { value: new THREE.Vector2(1.0, 1.0) },
+        uSandMap: { value: this.baseTexture },
+        uUseSandMap: { value: window.currentUploadedImageElement ? 1.0 : 0.0 },
+        cSand: { value: new THREE.Color('#d2b48c') },
+        cShallow: { value: new THREE.Color('#16a0b5') },
+        cDeep: { value: new THREE.Color('#063b4c') },
+        cFoam: { value: new THREE.Color('#ffffff') }
       },
       vertexShader: `
         varying vec2 vUv;
@@ -136,100 +128,118 @@ export default class ThreeMediaArtWall {
         }
       `,
       fragmentShader: `
-        uniform float u_time;
-        uniform float u_gauge;
-        uniform float u_shuffleAngle;
-        uniform float u_range;
-        uniform float u_volume;
-        uniform vec3 u_colorGas1;
-        uniform vec3 u_colorGas2;
+        uniform float uTime; uniform float uBass; uniform float uTreble; 
+        uniform float uAngle; uniform float uSeed; uniform float uWaveDetail; uniform float uSurge; uniform float uSurgeVelocity; uniform float uWaveSpacing;
+        uniform float uFoamSize; uniform float uAudioDirMode;
+        uniform sampler2D uTextMap; uniform vec2 uTextScale;
+        uniform sampler2D uSandMap; uniform float uUseSandMap; 
+        uniform vec3 cSand; uniform vec3 cShallow; uniform vec3 cDeep; uniform vec3 cFoam;
         varying vec2 vUv;
-
-        vec2 hash(vec2 p) {
-          p = vec2(dot(p,vec2(127.1,311.7)), dot(p,vec2(269.5,183.3)));
-          return -1.0 + 2.0*fract(sin(p)*43758.5453123);
+        
+        vec2 hash( vec2 p ) { p = vec2( dot(p,vec2(127.1,311.7)), dot(p,vec2(269.5,183.3)) ); return -1.0 + 2.0*fract(sin(p)*43758.5453123); }
+        float noise( in vec2 p ) {
+            const float K1 = 0.366025404; const float K2 = 0.211324865;
+            vec2 i = floor( p + (p.x+p.y)*K1 ); vec2 a = p - i + (i.x+i.y)*K2; vec2 o = (a.x>a.y) ? vec2(1.0,0.0) : vec2(0.0,1.0);
+            vec2 b = a - o + K2; vec2 c = a - 1.0 + 2.0*K2;
+            vec3 h = max( 0.5-vec3(dot(a,a), dot(b,b), dot(c,c) ), 0.0 );
+            vec3 n = h*h*h*h*vec3( dot(a,hash(i+0.0)), dot(b,hash(i+o)), dot(c,hash(i+1.0)));
+            return dot( n, vec3(70.0) );
         }
-        float noise(vec2 p) {
-          const float K1 = 0.366025404; const float K2 = 0.211324865;
-          vec2 i = floor(p + (p.x+p.y)*K1); vec2 a = p - i + (i.x+i.y)*K2;
-          vec2 o = (a.x>a.y) ? vec2(1.0,0.0) : vec2(0.0,1.0);
-          vec2 b = a - o + K2; vec2 c = a - 1.0 + 2.0*K2;
-          vec3 h = max(0.5-vec3(dot(a,a), dot(b,b), dot(c,c)), 0.0);
-          vec3 n = h*h*h*h*vec3(dot(a,hash(i+0.0)), dot(b,hash(i+o)), dot(c,hash(i+1.0)));
-          return dot(n, vec3(70.0));
-        }
-
+        
         void main() {
-          float rad = radians(u_shuffleAngle);
-          float cosA = cos(rad); float sinA = sin(rad);
-          mat2 rotationMatrix = mat2(cosA, -sinA, sinA, cosA);
+            vec2 screenUv = (vUv - 0.5) * uTextScale + 0.5; 
+            float ang = radians(uAngle); float cosA = cos(ang); float sinA = sin(ang); mat2 matRot = mat2(cosA, -sinA, sinA, cosA);
+            
+            vec2 rUv = matRot * (screenUv - 0.5) + 0.5; vec2 noiseUv = rUv + vec2(uSeed * 0.1); 
+            
+            float freq = mix(4.0, 40.0, uWaveSpacing);
+            float waveSine = sin(uTime * 1.5);
+            
+            float audioLevelOffset = (uAudioDirMode > 0.5) ? ((uBass * 0.15) - (uTreble * 0.15)) : (-(uBass * 0.05) - (uTreble * 0.05));
+            float audioRipple = sin(rUv.x * freq + uTime) * uBass * 0.1;
+            
+            float wavePos = uSurge + audioLevelOffset + (waveSine * 0.06) + audioRipple; 
+            
+            // 💡 오리지널 하이퍼 노이즈 굴곡선 공식 완벽 활성화
+            float n1 = noise(noiseUv * 8.0 * uWaveDetail + uTime * 0.2 + (uTreble * 0.1)); 
+            float n2 = noise(noiseUv * 20.0 * uWaveDetail - uTime * 0.1);
+            float distToWave = rUv.y - wavePos + (n1 * 0.15) + (n2 * 0.05);
+            
+            vec3 texSand = cSand;
+            if (uUseSandMap > 0.5) {
+                texSand = texture2D(uSandMap, screenUv).rgb;
+            } else {
+                float sandN = noise(noiseUv * 150.0);
+                texSand = cSand * (0.9 + sandN * 0.15);
+            }
+            
+            vec4 textData = vec4(0.0);
+            if(screenUv.x >= 0.0 && screenUv.x <= 1.0 && screenUv.y >= 0.0 && screenUv.y <= 1.0) { 
+                textData = texture2D(uTextMap, screenUv); 
+            }
 
-          // 화면 중심을 기준점으로 두고 Uv 회전 연산
-          vec2 rotatedUv = rotationMatrix * (vUv - 0.5) + 0.5;
+            vec3 finalColor;
 
-          // 💡 [노이즈 굴곡 복구 연산 축] Range 수치값으로 가로 주파수 파동 배합 제어
-          vec2 noiseUv = rotatedUv * vec2(u_range * 1.5, 4.0);
-          
-          // 상시 잔물결 넘실거림 리듬 애니메이션 수식
-          float constantBreathing = sin(u_time * 1.5) * 0.035 + cos(u_time * 0.7) * 0.015;
+            if (distToWave < 0.0) { 
+                vec3 baseSand = texSand; 
+                if (distToWave > -0.05) baseSand *= 0.85; 
+                
+                vec3 sandWithText = mix(baseSand, textData.rgb, textData.a);
+                sandWithText += textData.rgb * textData.a * 0.7; 
 
-          // 💡 Volume 수치로 포말 노이즈 디테일 세기 결합
-          float n = noise(noiseUv * 3.5 + vec2(u_time * 0.4, 0.0)) * 0.12 * u_volume;
-          n += noise(noiseUv * 12.0 - vec2(u_time * 0.1, u_time * 0.3)) * 0.04 * (u_volume * 0.5);
+                float puddleN = noise(noiseUv * 15.0 * uWaveDetail);
+                if (distToWave > -0.25 && puddleN > 0.55) { 
+                    if (puddleN < 0.58) {
+                        finalColor = cFoam; 
+                    } else { 
+                        vec2 distTextUv = screenUv + vec2(sin(uTime*3.0 + screenUv.y*50.0)*0.005);
+                        vec4 distTextData = texture2D(uTextMap, distTextUv);
+                        vec3 puddleTextSand = mix(baseSand, distTextData.rgb, distTextData.a * 0.7);
+                        puddleTextSand += distTextData.rgb * distTextData.a * 0.5; 
+                        finalColor = mix(puddleTextSand, cShallow, 0.4); 
+                    } 
+                } else { 
+                    finalColor = sandWithText; 
+                }
+            } else { 
+                float textDistortion = noise(rUv * 30.0 + uTime) * 0.02 * clamp(distToWave*5.0, 0.0, 1.0);
+                vec2 distTextUv = screenUv + textDistortion;
+                vec4 distTextData = vec4(0.0);
+                if(distTextUv.x >= 0.0 && distTextUv.x <= 1.0 && distTextUv.y >= 0.0 && distTextUv.y <= 1.0) { 
+                    distTextData = texture2D(uTextMap, distTextUv); 
+                }
+                
+                vec3 underwaterText = mix(texSand, distTextData.rgb, distTextData.a * 0.8);
+                underwaterText += distTextData.rgb * distTextData.a * 0.6; 
+                vec3 underwaterFloor = mix(underwaterText, cShallow, 0.5); 
+                
+                vec3 waterColor = mix(cShallow, cDeep, smoothstep(0.0, 0.4, distToWave));
+                waterColor = mix(underwaterFloor, waterColor, smoothstep(0.0, 0.2, distToWave));
 
-          float safetyGauge = clamp(u_gauge, 0.05, 0.95);
-          float waveLine = safetyGauge + constantBreathing + n;
-          
-          // 젖은 모래 자국 소멸 레이어 기믹 벨런싱
-          float wetNoise = noise(noiseUv * 2.0 - vec2(0.0, u_time * 0.06));
-          float wetLine = waveLine + (0.06 * clamp(sin(u_time * 0.8), 0.0, 1.0) * wetNoise);
-
-          float f = smoothstep(waveLine - 0.04, waveLine, rotatedUv.y);
-          float foam = smoothstep(waveLine - 0.008, waveLine, rotatedUv.y) * (1.0 - smoothstep(waveLine, waveLine + 0.018, rotatedUv.y));
-
-          vec3 waveColor = mix(u_colorGas1, u_colorGas2, rotatedUv.y);
-          waveColor = mix(waveColor, vec3(1.0), foam * 0.9); 
-
-          float alpha = 1.0 - f;
-          
-          if (rotatedUv.y > waveLine && rotatedUv.y <= wetLine) {
-             alpha = vec4(0.0, 0.0, 0.0, 0.35).a * (1.0 - smoothstep(waveLine, wetLine, rotatedUv.y)) * wetNoise;
-             gl_FragColor = vec4(u_colorGas1 * 0.4, alpha);
-             return;
-          }
-
-          if (rotatedUv.y > wetLine) {
-             alpha = 0.0;
-          }
-          
-          gl_FragColor = vec4(waveColor, alpha * 0.95);
+                float baseFoam = uFoamSize * 0.1;
+                float foamThickness = baseFoam + noise(noiseUv * 40.0 - uTime * 2.0) * 0.02 + (uSurgeVelocity * 0.5) + (uTreble * 0.01);
+                if (distToWave < foamThickness) { 
+                    finalColor = cFoam; 
+                } else { 
+                    finalColor = waterColor; 
+                }
+            }
+            
+            gl_FragColor = vec4(finalColor, 1.0);
         }
       `,
-      transparent: true,
-      depthWrite: false
+      side: THREE.DoubleSide
     });
 
-    this.wavePlane = new THREE.Mesh(geo, this.waveMaterial);
-    this.wavePlane.position.set(0, 0, 1); 
+    this.wavePlane = new THREE.Mesh(waveGeo, this.waveMaterial);
+    // 오리지널 바닥 평면 눞힘 각도 싱크 고수
+    this.wavePlane.rotation.x = -Math.PI / 2; 
     this.scene.add(this.wavePlane);
-  }
-
-  buildTextLayer() {
-    const geo = new THREE.PlaneGeometry(this.currentWidth, this.currentHeight);
-    const mat = new THREE.MeshBasicMaterial({
-      map: this.textTexture,
-      transparent: true,
-      blending: THREE.NormalBlending,
-      depthWrite: false
-    });
-    this.textPlane = new THREE.Mesh(geo, mat);
-    this.textPlane.position.set(0, 0, 0.5); 
-    this.scene.add(this.textPlane);
   }
 
   drawSubtitleToCanvas(text, fontSizeStyle) {
     const ctx = this.textCanvas.getContext('2d');
-    ctx.clearRect(0, 0, 1024, 1024);
+    ctx.clearRect(0, 0, 1920, 1920);
 
     if (!text) {
       this.textTexture.needsUpdate = true;
@@ -240,12 +250,14 @@ export default class ThreeMediaArtWall {
     ctx.font = `bold ${fontSizeStyle}px sans-serif`;
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'center';
+    ctx.lineJoin = 'round';
 
-    ctx.shadowColor = 'rgba(0, 255, 204, 0.95)';
-    ctx.shadowBlur = 28;
-    ctx.fillStyle = 'rgba(0, 255, 204, 0.8)';
+    // 💥 오리지널의 강력한 네온 2중 중첩 코어 광량 이식
+    ctx.shadowColor = 'rgba(0, 229, 255, 0.9)';
+    ctx.shadowBlur = 80;
+    ctx.fillStyle = 'rgba(0, 229, 255, 1.0)';
 
-    const maxWidth = 900;
+    const maxWidth = 1600;
     const words = text.split(' ');
     let line = '';
     const lines = [];
@@ -262,17 +274,19 @@ export default class ThreeMediaArtWall {
     }
     lines.push(line);
 
-    const lineHeight = fontSizeStyle * 1.38;
-    const startY = 700 - ((lines.length - 1) * lineHeight) / 2;
+    const lineHeight = fontSizeStyle * 1.4;
+    const startY = 1024 - ((lines.length - 1) * lineHeight) / 2;
 
-    for (let k = 0; k < lines.length; k++) {
-        ctx.shadowColor = 'rgba(0, 255, 204, 0.9)';
-        ctx.shadowBlur = 22;
-        ctx.fillText(lines[k], 512, startY + k * lineHeight);
-        
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = '#ffffff';
-        ctx.fillText(lines[k], 512, startY + k * lineHeight);
+    for (let loop = 0; loop < 2; loop++) {
+        for (let i = 0; i < lines.length; i++) {
+            ctx.fillText(lines[i], 960, startY + i * lineHeight);
+        }
+    }
+
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#ffffff';
+    for (let i = 0; i < lines.length; i++) {
+        ctx.fillText(lines[i], 960, startY + i * lineHeight);
     }
 
     ctx.restore();
@@ -280,78 +294,94 @@ export default class ThreeMediaArtWall {
   }
 
   update(audioData) {
-    if (!this.renderer || !this.scene || !this.camera) return;
+    if (!this.renderer || !this.scene || !this.camera || !this.wavePlane) return;
 
     if (this.currentImageEl !== window.currentUploadedImageElement) {
       this.currentImageEl = window.currentUploadedImageElement;
       if (this.currentImageEl) {
         this.baseTexture = new THREE.Texture(this.currentImageEl);
         this.baseTexture.needsUpdate = true;
-        this.bgPlane.material.map = this.baseTexture;
+        this.waveMaterial.uniforms.uSandMap.value = this.baseTexture;
+        this.waveMaterial.uniforms.uUseSandMap.value = 1.0;
       }
     }
 
     const ui = this.getUIParams();
 
-    this.camera.position.set(ui.offX, ui.offY, 15 + ui.offZ);
+    // 💡 [3D Position Offset X, Y, Z] 연동 및 원근 카메라의 uTextScale 유연 가인 처리
+    this.camera.position.set(ui.offX, 1500 + ui.offY, ui.offZ);
+    this.camera.lookAt(ui.offX, ui.offY, ui.offZ);
 
-    this.waveMaterial.uniforms.u_colorGas1.value.set(ui.gas1);
-    this.waveMaterial.uniforms.u_colorGas2.value.set(ui.gas2);
-    this.waveMaterial.uniforms.u_shuffleAngle.value = ui.seed;
-    this.waveMaterial.uniforms.u_range.value = ui.scatter / 10;
-    this.waveMaterial.uniforms.u_volume.value = ui.gain / 100;
+    let fovRad = 45 * Math.PI / 180;
+    let visibleHeight = 2 * Math.tan(fovRad / 2) * this.camera.position.y; 
+    let visibleWidth = visibleHeight * this.camera.aspect;
+    this.waveMaterial.uniforms.uTextScale.value.set(6000.0 / visibleWidth, 6000.0 / visibleHeight);
 
-    const time = Date.now() * 0.002;
-    this.waveMaterial.uniforms.u_time.value = time;
+    // 💡 오리지널 수치 바인딩 연동 브릿지 시공
+    this.waveMaterial.uniforms.uAngle.value = ui.seed; // Shuffle ➡️ 각도로 대입
+    this.waveMaterial.uniforms.uWaveSpacing.value = ui.scatter / 50; // Range ➡️ Spacing 밀도로 대입
+    this.waveMaterial.uniforms.uWaveDetail.value = THREE.MathUtils.mapLinear(ui.gain, 10, 500, 0.5, 4.0); // Volume ➡️ Detail로 대입
 
-    let calculatedGauge = 0.3; 
+    const time = Date.now() * 0.0015;
+    this.waveMaterial.uniforms.uTime.value = time;
+
+    let targetSurge = 0.05; 
     let activeText = "";
     let srtStatusMessage = "대기 상태";
 
     const audioEl = document.querySelector('audio');
     
     if (audioEl && !audioEl.paused && window.parsedSubtitles && window.parsedSubtitles.length > 0) {
-      const curTime = audioEl.currentTime;
+      const curTime = audioEl.currentTime * 1000; // 오리지널 밀리초 스케일 변환
       
-      const nextSub = window.parsedSubtitles.find(sub => sub.start > curTime && sub.start - curTime <= 0.8);
+      const nextSub = window.parsedSubtitles.find(sub => sub.start > curTime && sub.start - curTime <= 800);
       const currentSub = window.parsedSubtitles.find(sub => curTime >= sub.start && curTime <= sub.end);
 
       if (nextSub) {
         let timeGap = nextSub.start - curTime; 
-        let progress = 1.0 - (timeGap / 0.8);  
-        calculatedGauge = THREE.MathUtils.lerp(0.3, 0.95, Math.pow(progress, 2.0));
-        srtStatusMessage = `⏳ SRT 자동 추적: 자막 출현 ${timeGap.toFixed(2)}초 전 파도 밀려옴`;
+        let progress = 1.0 - (timeGap / 800);  
+        targetSurge = THREE.MathUtils.lerp(0.05, 0.95, Math.pow(progress, 2.0));
+        srtStatusMessage = `⏳ SRT 추적: 자막 출현 전 파도 급팽창`;
       } 
       else if (currentSub) {
         activeText = currentSub.text;
         let activeProgress = (curTime - currentSub.start) / (currentSub.end - currentSub.start);
-        calculatedGauge = THREE.MathUtils.lerp(0.95, 0.45, Math.min(1.0, activeProgress * 3.5));
-        srtStatusMessage = `▶️ SRT 자동 추적: 자막 출력 파도 철수`;
+        targetSurge = THREE.MathUtils.lerp(0.95, 0.35, Math.min(1.0, activeProgress * 3.5));
+        srtStatusMessage = `▶️ SRT 추적: 백사장 자막 개방 파도 퇴각`;
       } else {
-        calculatedGauge = 0.3;
-        srtStatusMessage = "🎵 음악 재생 중 (대사 공백기 기본 수위 유지)";
+        targetSurge = 0.05;
+        srtStatusMessage = "🎵 음악 공백 구간";
       }
-    } 
-    else {
-      calculatedGauge = ui.gauge;
+    } else {
+      // 정지 상태일 때는 오직 매뉴얼 Gauge로 1:1 수동 제어
+      targetSurge = ui.gauge;
       activeText = window.currentSubtitleText || "자연 유체 스튜디오 v0.010\n(빛나는 네온 효과 완성)";
-      srtStatusMessage = "⏸️ 정지 모드 (우측 Gauge 인풋 숫자로 수동 제어)";
+      srtStatusMessage = "⏸️ 정지 모드 (Gauge 수치 수동 테스트)";
     }
+
+    // 오리지널 감속 보간 서지 속도 가동
+    let currentSurge = this.waveMaterial.uniforms.uSurge.value;
+    currentSurge += (targetSurge - currentSurge) * 0.05;
+    this.waveMaterial.uniforms.uSurge.value = currentSurge;
+    this.waveMaterial.uniforms.uSurgeVelocity.value = Math.abs(targetSurge - currentSurge);
 
     const nowMs = Date.now();
     if (nowMs - this.lastLogTime > 500) {
       console.log(
-        `%c[🌊 009호 관제 시스템] %c수위(Gauge): ${(calculatedGauge * 100).toFixed(1)}% | 각도: ${ui.seed}° | 모드: ${srtStatusMessage}`,
+        `%c[🌊 009호 오리지널 락인] %c수위(Surge): ${currentSurge.toFixed(2)} | 파도 각도: ${ui.seed}° | 상태: ${srtStatusMessage}`,
         "color: #00ffcc; font-weight: bold;", "color: #ffffff;"
       );
       this.lastLogTime = nowMs;
     }
 
-    const targetFontSize = THREE.MathUtils.mapLinear(ui.glow, 10, 250, 30, 85);
+    // 💡 [Scale] 파라미터 연동 ➡️ 오리지널 폰트 사이즈(40~250) 스케일로 바인딩
+    const targetFontSize = THREE.MathUtils.mapLinear(ui.glow, 10, 250, 40, 250);
     this.drawSubtitleToCanvas(activeText, targetFontSize);
 
+    // 오디오 원본 볼륨 데이터 바인딩 수혈
     let audioVol = audioData ? (audioData.vol || audioData.volume || 0.0) : 0.0;
-    this.waveMaterial.uniforms.u_gauge.value = calculatedGauge + (audioVol * 0.05);
+    this.waveMaterial.uniforms.uBass.value = audioVol * 2.5;
+    this.waveMaterial.uniforms.uTreble.value = audioVol * 1.5;
 
     this.renderer.render(this.scene, this.camera);
   }
@@ -360,25 +390,15 @@ export default class ThreeMediaArtWall {
     if (this.camera && this.renderer) {
       this.currentWidth = w;
       this.currentHeight = h;
-      
-      this.camera.left = -w / 2;
-      this.camera.right = w / 2;
-      this.camera.top = h / 2;
-      this.camera.bottom = -h / 2;
-      this.camera.updateProjectionMatrix();
       this.renderer.setSize(w, h);
-
-      if (this.bgPlane) { this.bgPlane.geometry.dispose(); this.bgPlane.geometry = new THREE.PlaneGeometry(w, h); }
-      if (this.wavePlane) { this.wavePlane.geometry.dispose(); this.wavePlane.geometry = new THREE.PlaneGeometry(w, h); }
-      if (this.textPlane) { this.textPlane.geometry.dispose(); this.textPlane.geometry = new THREE.PlaneGeometry(w, h); }
+      this.camera.aspect = w / h;
+      this.camera.updateProjectionMatrix();
     }
   }
 
   destroy() {
     if (!this.scene) return;
-    if (this.bgPlane) { this.bgPlane.geometry.dispose(); this.bgPlane.material.dispose(); }
-    if (this.wavePlane) { this.wavePlane.geometry.dispose(); this.wavePlane.material.dispose(); }
-    if (this.textPlane) { this.textPlane.geometry.dispose(); this.textPlane.material.dispose(); }
+    if (this.wavePlane) { this.wavePlane.geometry.dispose(); this.wavePlane.material.dispose(); this.scene.remove(this.wavePlane); }
     if (this.textTexture) this.textTexture.dispose();
     if (this.renderer) { this.container.removeChild(this.renderer.domElement); this.renderer.dispose(); }
     this.scene = null; this.camera = null; this.renderer = null;
