@@ -198,7 +198,7 @@ export default class P5OceanWaveSpaced {
   }
 
   resize(w, h) {
-    if (this.p5Instance) {
+    if (this.p5Instance) {  
       this.p5Instance.resizeCanvas(w, h);
     }
   }
