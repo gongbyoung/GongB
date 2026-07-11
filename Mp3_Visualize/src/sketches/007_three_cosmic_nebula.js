@@ -1,9 +1,10 @@
 /**
  * src/sketches/007_three_cosmic_nebula.js
- * - [버전] Ver 2.4 (분산 범위 하드웨어 다이렉트 바인딩 및 팝업 점멸 버그 완치판)
- * - buildCosmos() 호출 시 메모리 누수 없이 기존 입자 버퍼를 클리어하고, 새로 조정된 분산 범위 수치대로 공간 반경 재컴파일 배치 완비
- * - 비동기 오퍼시티 소멸 트리거 타이밍을 락인하여 안내 팝업창이 살짝살짝 깜빡거리며 방해하던 돔 버그 원천 수정
- * - 32채널 무작위 독립 14대 거동 매트릭스(흔들기, 회전, 원형 번짐, 사방 사출 비행, 꼬리 잔상, 워프 순간이동) 완벽 유지
+ * - [버전] Ver 2.5 (오로라 성운의 호흡 Resonant Nebula - 앰비언트 3D 완결판)
+ * - 입자들이 사방으로 강하게 튀거나 워프하던 자극적 카오스를 지우고 오가닉 유체 일렁임으로 대개조
+ * - 즉각적인 기계적 급변을 필터링하고 0.04의 극도로 끈적한 롱 디케이(Long Decay) 이징 댐핑 구축
+ * - 칠흑 같은 블랙을 해체하고 딥 인디고 블루 암부 리프팅 및 3D 입체 카메라 유영 무브먼트 구현
+ * - 관제탑 Color Style Palette(No1~No5) 색상 테마 및 현재 수치 즉시 적용 (RESET) 파이프라인 완벽 동기화
  */
 
 export default class ThreeRealNebula {
@@ -24,7 +25,10 @@ export default class ThreeRealNebula {
     this.loadedScatter = -1;
     this.loadedColorStyle = '';
     
-    this.version = "007호 32채널 수치 동기화 고정판 Ver 2.4";
+    // 끈적한 호흡을 지탱하기 위한 독립 대역 스무딩 버퍼 수립
+    this.smoothChannels = new Float32Array(32);
+    this.cameraTime = 0;
+    this.version = "007호 Ambient Nebula Stream Ver 2.5";
   }
 
   init() {
@@ -32,18 +36,20 @@ export default class ThreeRealNebula {
     const height = this.container.clientHeight;
 
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.FogExp2(0x010103, 0.02);
+    
+    // 💡 [배경과의 통합]: 완전 블랙을 지우고 짙은 인디고 새벽녘 빛무리를 안개 깊이로 융합
+    this.scene.fog = new THREE.FogExp2(0x060914, 0.015);
 
     this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
-    this.camera.position.set(0, 4, 15);
+    this.camera.position.set(0, 3, 16);
     this.camera.lookAt(0, 0, 0);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     this.renderer.setSize(width, height);
-    this.renderer.setClearColor(0x010103);
+    this.renderer.setClearColor(0x060914); // 딥 인디고 암부 리프팅
     this.container.appendChild(this.renderer.domElement);
 
-    this.scene.add(new THREE.AmbientLight(0x222233, 1.2));
+    this.scene.add(new THREE.AmbientLight(0x222535, 1.5));
 
     this.buildOnScreenGuideUI();
     this.buildCosmos();
@@ -59,39 +65,24 @@ export default class ThreeRealNebula {
       this.guiOverlay.className = 'cosmic-shader-guide';
       
       Object.assign(this.guiOverlay.style, {
-        position: 'absolute',
-        top: '50%',
-        left: '50%',
-        transform: 'translate(-50%, -50%)',
-        width: '85%',
-        maxWidth: '440px',
-        backgroundColor: 'rgba(5, 7, 12, 0.96)',
-        border: '1px solid rgba(0, 255, 204, 0.7)', 
-        borderRadius: '12px',
-        padding: '22px',
-        color: '#ffffff',
-        fontFamily: 'sans-serif',
-        zIndex: '9999', 
-        boxShadow: '0 8px 30px rgba(0,0,0,0.8)',
-        boxSizing: 'border-box',
-        textAlign: 'center',
-        pointerEvents: 'none',
-        display: 'block', // 락 고정
-        opacity: '1',
-        transition: 'opacity 0.4s ease'
+        position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+        width: '85%', maxWidth: '440px', backgroundColor: 'rgba(6, 9, 20, 0.95)',
+        border: '1px solid rgba(0, 255, 204, 0.5)', borderRadius: '14px', padding: '24px',
+        color: '#ffffff', fontFamily: 'sans-serif', zIndex: '9999', 
+        boxShadow: '0 8px 30px rgba(0,0,0,0.75)', boxSizing: 'border-box', textAlign: 'center',
+        display: 'block', opacity: '1', transition: 'opacity 0.5s ease-in-out'
       });
 
       this.guiOverlay.innerHTML = `
         <div style="color: #00ffcc; font-size: 11px; text-align: left; margin-bottom: 14px; font-weight: bold; letter-spacing: 0.5px;">
-          ⚙️ STAGE STATUS: ${this.version} READY
+          🌌 STAGE STATUS: ${this.version} READY
         </div>
-        <h3 style="color: #ffffff; font-size: 16px; margin: 0 0 14px 0; font-weight: 600;">
-          007호 32채널 무작위 마스터 제어 무대
+        <h3 style="color: #ffffff; font-size: 16.5px; margin: 0 0 14px 0; font-weight: 600;">
+          007호 명상 스튜디오: 오로라 성운의 호흡
         </h3>
-        <div style="font-size: 12px; text-align: left; line-height: 1.75; color: #dddddd;">
-          <p style="margin: 4px 0;">⚡ <strong style="color: #00ffcc;">[수동 동기화 픽스]</strong> 분산 범위 및 지형 수치를 조정한 후 우측의 <strong>'즉시 적용(RESET)'</strong> 단추를 누르면 버벅거림 없이 우주가 칼같이 동적 재배치됩니다.</p>
-          <p style="margin: 4px 0;">🌌 <strong style="color: #ffffff;">[32채널 14대 거동 분리]</strong> 흔들기, 제자리 회전, 원형 번짐, 사방 임의 비행, 꼬리 잔상, 순간이동 워프 물리 기믹이 독립된 힘의 스케일로 연동됩니다.</p>
-          <p style="margin: 4px 0; color: #ffcc00;">▶️ <strong style="color: #ffcc00;">[하단 스타트]</strong> 재생 버튼을 누르면 이 가이드 팝업창이 부드럽게 완전 소멸합니다.</p>
+        <div style="font-size: 12.5px; text-align: left; line-height: 1.8; color: #dddddd;">
+          <p style="margin: 4px 0;">✨ <strong>[대개조]</strong> 입자들이 튀고 워프하던 자극적 기믹을 해체하고, 은하수 가스가 물결처럼 일렁이는 3D 유체 오로라 공간으로 리빌딩했습니다.</p>
+          <p style="margin: 4px 0; color: #ffcc00;">▶️ 하단의 오디오 재생 버튼을 누르면 이 가이드 팝업창이 아련하게 소멸합니다.</p>
         </div>
       `;
       this.container.appendChild(this.guiOverlay);
@@ -100,17 +91,14 @@ export default class ThreeRealNebula {
   }
 
   createGlowTexture() {
-    const canvas = document.createElement('canvas');
-    canvas.width = 64;
-    canvas.height = 64;
+    const canvas = document.createElement('canvas'); canvas.width = 64; canvas.height = 64;
     const ctx = canvas.getContext('2d');
     const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
     gradient.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
-    gradient.addColorStop(0.2, 'rgba(255, 255, 255, 0.6)');
-    gradient.addColorStop(0.6, 'rgba(255, 255, 255, 0.15)');
-    gradient.addColorStop(1.0, 'rgba(255, 255, 255, 0.0)');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, 64, 64);
+    gradient.addColorStop(0.25, 'rgba(255, 255, 255, 0.55)');
+    gradient.addColorStop(0.6, 'rgba(255, 255, 255, 0.12)');
+    gradient.addColorStop(1.0, 'rgba(0, 0, 0, 0.0)');
+    ctx.fillStyle = gradient; ctx.fillRect(0, 0, 64, 64);
     const texture = new THREE.CanvasTexture(canvas);
     texture.needsUpdate = true;
     return texture;
@@ -121,7 +109,6 @@ export default class ThreeRealNebula {
     return x - Math.floor(x);
   }
 
-  // 💡 [대수술 구역] 적용 버튼 누를 때마다 호출되어 새 수치 범위대로 파티클 버퍼를 완벽하게 재가공 부팅
   buildCosmos() {
     if (window.cosmicEngineSettings) {
       this.currentSeed = window.cosmicEngineSettings.seed;
@@ -130,8 +117,8 @@ export default class ThreeRealNebula {
       this.customColors = window.cosmicEngineSettings.customColors;
     } else {
       this.currentSeed = 42;
-      this.scatterExponent = 2.2;
-      this.colorStyle = 'monochrome';
+      this.scatterExponent = 22;
+      this.colorStyle = 'neon';
       this.customColors = { gas1: '#ff0055', gas2: '#00ffcc', star: '#ffffff' };
     }
 
@@ -139,7 +126,6 @@ export default class ThreeRealNebula {
     this.loadedScatter = this.scatterExponent;
     this.loadedColorStyle = this.colorStyle;
 
-    // 메모리 누수 방지를 위해 기존 포인트 노드가 있다면 씬에서 깔끔하게 철거 및 디스포즈
     if (this.points) {
       this.scene.remove(this.points);
       this.geometry.dispose();
@@ -154,8 +140,29 @@ export default class ThreeRealNebula {
     this.particleData = [];
     let sRandom = this.currentSeed;
 
-    // 💡 [분산 범위 정밀 매핑] 우측 슬라이더 수치(scatterExponent) 값에 맞춰 사방으로 뻗어 나가는 성운의 총체적 최대 반경 제한선 확정
-    const maxDistributionRadius = THREE.MathUtils.mapLinear(this.scatterExponent, 0.5, 5.0, 1.5, 25.0);
+    // 관제탑 scatter(Range) 지수를 성운의 정갈한 확산 반경으로 매핑
+    const maxDistributionRadius = THREE.MathUtils.mapLinear(this.scatterExponent, 5, 50, 2.5, 12.0);
+
+    // 💡 [Color Style Palette 5대 명상 컬러칩 수리 및 셰이더 이식 준비]
+    let baseC1 = new THREE.Color(), baseC2 = new THREE.Color(), baseC3 = new THREE.Color();
+    if (this.colorStyle === 'monochrome') {
+      // No1: 차분한 모스 그린 그라데이션
+      baseC1.set('#1e382b'); baseC2.set('#4da87a'); baseC3.set('#ffffff');
+    } else if (this.colorStyle === 'neon') {
+      // No2: 따뜻한 샌드 베이지 아날로그
+      baseC1.set('#9e8467'); baseC2.set('#fcf7ed'); baseC3.set('#ffffff');
+    } else if (this.colorStyle === 'pastel') {
+      // No3: 은은한 대지 / 새벽녘 라벤더 핑크
+      baseC1.set('#1a2333'); baseC2.set('#e6b0a1'); baseC3.set('#ffffff');
+    } else if (this.colorStyle === 'custom') {
+      // No4: 커스텀 컬러 바인딩
+      baseC1.set(this.customColors.gas1); baseC2.set(this.customColors.gas2); baseC3.set(this.customColors.star);
+    } else {
+      // No5: 올 랜덤 시드 분산형
+      baseC1.setHSL(this.seededRandom(this.currentSeed + 10), 0.7, 0.5);
+      baseC2.setHSL(this.seededRandom(this.currentSeed + 20), 0.6, 0.6);
+      baseC3.setHex(0xffffff);
+    }
 
     for (let i = 0; i < this.particleCount; i++) {
       sRandom = this.seededRandom(sRandom) * 1000;
@@ -167,43 +174,28 @@ export default class ThreeRealNebula {
       const theta = r1 * 2.0 * Math.PI;
       const phi = Math.acos(2.0 * r2 - 1.0);
       
-      // 💡 분산범위 지수가 무결하게 주입되어 별들이 압축/분산 조절되는 물리 반경 공식 고정
-      const baseDist = Math.pow(r3, 0.5) * maxDistributionRadius;
+      const baseDist = Math.pow(r3, 0.6) * maxDistributionRadius;
 
+      // 둥근 타원형 우주 가스 수면 레이아웃 좌표 컴파일
       const x = baseDist * Math.sin(phi) * Math.cos(theta);
-      const y = baseDist * Math.sin(phi) * Math.sin(theta) * 0.55; 
+      const y = baseDist * Math.sin(phi) * Math.sin(theta) * 0.45; 
       const z = baseDist * Math.cos(phi);
 
       positions[i * 3] = x;
       positions[i * 3 + 1] = y;
       positions[i * 3 + 2] = z;
 
-      let pSize = 0.015 + r1 * 0.025;
+      let pSize = 0.04 + r1 * 0.05;
       let color = new THREE.Color();
-      let starType = (r4 < 0.08) ? 'star' : 'gas';
+      let starType = (r4 < 0.07) ? 'star' : 'gas';
 
-      if (starType === 'star') pSize = 0.15 + r1 * 0.22; 
-
-      if (this.colorStyle === 'monochrome') {
-        if (starType === 'star') color.setHex(0xffffff);
-        else if (i % 3 === 0) color.setHex(0x001a4d); 
-        else if (i % 3 === 1) color.setHex(0x0055cc); 
-        else color.setHex(0x26d9ff);                
-      } 
-      else if (this.colorStyle === 'pastel') {
-        if (starType === 'star') color.setHex(0xffbb44);
-        else if (i % 2 === 0) color.setHex(0xff3c00); 
-        else color.setHex(0x1a0200);                
-      }
-      else if (this.colorStyle === 'custom') {
-        const cc = this.customColors;
-        if (starType === 'star') color.set(cc.star);
-        else if (i % 2 === 0) color.set(cc.gas1);
-        else color.set(cc.gas2);
-      } 
-      else {
-        if (starType === 'star') color.setHSL(r1, 0.3, 0.9);
-        else color.setHSL(r1, 0.8, 0.55);
+      if (starType === 'star') {
+        pSize = 0.25 + r1 * 0.3;
+        color.copy(baseC3);
+      } else {
+        // 내외곽 거리에 따른 조화로운 아날로그 가스 색채 블렌딩
+        let lerpFactor = THREE.MathUtils.clamp(baseDist / maxDistributionRadius, 0, 1);
+        color.copy(baseC1).lerp(baseC2, lerpFactor);
       }
 
       colors[i * 3] = color.r;
@@ -211,24 +203,19 @@ export default class ThreeRealNebula {
       colors[i * 3 + 2] = color.b;
       sizes[i] = pSize;
 
-      const randomForceMagnitude = 0.4 + r2 * 2.2; 
+      const randomForceMagnitude = 0.5 + r2 * 1.5; 
       const randomAngle = r3 * Math.PI * 2;
-      const dirX = Math.cos(randomAngle);
-      const dirY = (r1 - 0.5) * 2.0;
-      const dirZ = Math.sin(randomAngle);
 
       this.particleData.push({
         baseX: x, baseY: y, baseZ: z, 
         radius: baseDist, angle: theta,
-        speed: (0.05 + r1 * 0.3) * randomForceMagnitude,
-        twinkleSpeed: 3.0 + r2 * 9.0,
+        speed: (0.02 + r1 * 0.1) * randomForceMagnitude,
         type: starType,
         baseSize: pSize,
         randomPhase: r3 * Math.PI,
         originalColor: color.clone(),
         forceScale: randomForceMagnitude,
-        dirX: dirX, dirY: dirY, dirZ: dirZ,
-        currentWarpTime: r4 * 10.0
+        dirX: Math.cos(randomAngle), dirY: (r1 - 0.5) * 2.0, dirZ: Math.sin(randomAngle)
       });
     }
 
@@ -267,116 +254,95 @@ export default class ThreeRealNebula {
   update(audioData) {
     if (!this.renderer || !this.scene || !this.camera || !this.points) return;
 
+    let offX = 0, offY = 0, offZ = 0;
     if (window.cosmicEngineSettings) {
       this.colorStyle = window.cosmicEngineSettings.colorStyle;
       this.audioGain = window.cosmicEngineSettings.audioGain;
       const glow = window.cosmicEngineSettings.glowIntensity;
-      this.material.opacity = Math.min(1.0, glow); 
-      this.material.size = Math.max(0.4, glow * 2.2); 
+      
+      // 관제탑 실시간 입자 스케일 및 오퍼시티 결합
+      this.material.opacity = THREE.MathUtils.lerp(this.material.opacity, Math.min(1.0, (glow / 100.0) * 1.1), 0.1); 
+      this.material.size = THREE.MathUtils.lerp(this.material.size, Math.max(0.4, (glow / 100.0) * 2.5), 0.1); 
+
+      offX = window.cosmicEngineSettings.positionOffset?.x || 0;
+      offY = window.cosmicEngineSettings.positionOffset?.y || 0;
+      offZ = window.cosmicEngineSettings.positionOffset?.z || 0;
     }
 
-    const time = Date.now() * 0.001;
+    const time = Date.now() * 0.0006;
     const positions = this.geometry.attributes.position.array;
-    const colors = this.geometry.attributes.color.array;
     const sizes = this.geometry.attributes.pSize.array;
 
-    const gain = this.audioGain;
+    const gain = this.audioGain || 1.0;
     let rawBands = audioData ? (audioData.raw || audioData.spectrum || []) : [];
     let hasBands = rawBands.length > 20;
 
-    let volume = audioData ? (audioData.vol || audioData.volume || 0.1) : 0.1;
+    let volume = audioData ? (audioData.vol || 0.1) : 0.1;
     volume *= gain;
 
-    // 💡 안내 가이드창 점멸 버그 완전 차단 픽스 바인딩
+    const audioEl = document.querySelector('audio');
+    let isPlaying = audioEl && !audioEl.paused;
+
+    // 안내 팝업 가이드창 소멸 트래킹 락인 픽스
     if (this.guiOverlay) {
-      if (volume > 0.05) this.guiOverlay.style.opacity = '0';
-      else this.guiOverlay.style.opacity = '1';
+      if (isPlaying || volume > 0.06) {
+        this.guiOverlay.style.opacity = '0';
+        this.guiOverlay.style.pointerEvents = 'none';
+      } else {
+        this.guiOverlay.style.opacity = '1';
+      }
     }
 
+    // 💡 [개선안 1: 움직임의 호흡 조절] 32개 가상 채널 0.04 레이트의 초저속 댐핑 스무딩 필터링
+    for (let c = 0; i < 32; c++) {
+      let bandPower = hasBands ? (rawBands[Math.floor((c / 32) * (rawBands.length - 1))] / 255.0) : 0.0;
+      bandPower *= gain;
+      
+      // 💥 끈적하고 웅장한 여운(Decay)을 주입하기 위한 서서히 변화하는 댐핑 공식 동기화
+      this.smoothChannels[c] += (bandPower - this.smoothChannels[c]) * 0.04;
+    }
+
+    // 파티클 정렬 좌표 실시간 유체 일렁임 투사 루프
     for (let i = 0; i < this.particleCount; i++) {
       const data = this.particleData[i];
       const channelIdx = i % 32;
       
-      let bandPower = hasBands ? (rawBands[Math.floor((channelIdx / 32) * (rawBands.length - 1))] / 255.0) : 0.1;
-      bandPower *= gain;
+      const dynamicForce = this.smoothChannels[channelIdx] * data.forceScale;
 
-      const dynamicForce = bandPower * data.forceScale;
+      // 💡 [개선안 2: 유기적이고 곡선적인 움직임 유도]
+      // 난기류 워프나 튀는 기믹을 철폐하고 액체처럼 유연하게 일렁이는 삼각 정현파 물결 변위 주입
+      let waveWarpX = Math.sin(time * 2.0 + data.randomPhase + data.angle) * (dynamicForce * 1.8);
+      let waveWarpY = Math.cos(time * 1.5 + data.randomPhase - data.radius) * (dynamicForce * 1.2);
+      let waveWarpZ = Math.sin(time * 1.8 - data.randomPhase) * (dynamicForce * 1.6);
 
-      let tX = data.baseX;
-      let tY = data.baseY;
-      let tZ = data.baseZ;
+      let tX = data.baseX + waveWarpX;
+      let tY = data.baseY + waveWarpY;
+      let tZ = data.baseZ + waveWarpZ;
 
-      switch (channelIdx) {
-        case 0: case 1: case 2:
-          tY += Math.sin(time * 25.0 + data.randomPhase) * (dynamicForce * 1.5);
-          break;
-        case 3: case 4:
-          tX += Math.cos(time * 25.0 + data.randomPhase) * (dynamicForce * 1.5);
-          break;
-        case 5: case 6:
-          sizes[i] = data.baseSize * (1.0 + dynamicForce * 5.0);
-          break;
-        case 7: case 8:
-          let pushDist = 1.0 + dynamicForce * 1.2; tX *= pushDist; tY *= pushDist; tZ *= pushDist;
-          break;
-        case 9: case 10:
-          let rotAngle = time * 2.0 * data.speed + (dynamicForce * 0.5);
-          tX = data.baseX * Math.cos(rotAngle) - data.baseZ * Math.sin(rotAngle);
-          tZ = data.baseX * Math.sin(rotAngle) + data.baseZ * Math.cos(rotAngle);
-          break;
-        case 11: case 12:
-          let diag = Math.sin(time * 22.0 + data.randomPhase) * (dynamicForce * 1.4); tX += diag; tY += diag;
-          break;
-        case 13: case 14: case 15:
-          let pullDist = Math.max(0.1, 1.0 - (dynamicForce * 0.85)); tX *= pullDist; tY *= pullDist; tZ *= pullDist;
-          sizes[i] = data.baseSize * (0.3 + (1.0 - pullDist) * 3.0);
-          break;
-        case 16: case 17: case 18:
-          let rFly = dynamicForce * 4.5; tX += Math.abs(data.dirX) * rFly; tY += data.dirY * rFly * 0.3; tZ += data.dirZ * rFly * 0.3;
-          break;
-        case 19: case 20: case 21:
-          let dFly = dynamicForce * 4.5; tX += data.dirX * dFly * 0.3; tY -= Math.abs(data.dirY) * dFly; tZ += data.dirZ * dFly * 0.3;
-          break;
-        case 22: case 23: case 24:
-          let lFly = dynamicForce * 4.5; tX -= Math.abs(data.dirX) * lFly; tY += data.dirY * lFly * 0.3; tZ += data.dirZ * lFly * 0.3;
-          break;
-        case 25: case 26: case 27:
-          let uFly = dynamicForce * 4.5; tX += data.dirX * uFly * 0.3; tY += Math.abs(data.dirY) * uFly; tZ += data.dirZ * uFly * 0.3;
-          break;
-        case 28: case 29:
-          let trailPulse = 1.0 + Math.sin(time * 12.0 + data.randomPhase) * (dynamicForce * 0.8); tX *= trailPulse; tY *= trailPulse; tZ *= trailPulse;
-          if (bandPower > 0.6) {
-             colors[i * 3] = 1.0; colors[i * 3 + 1] = 0.9; colors[i * 3 + 2] = 0.3;
-          } else {
-             colors[i * 3] = THREE.MathUtils.lerp(colors[i * 3], data.originalColor.r, 0.1); colors[i * 3 + 1] = THREE.MathUtils.lerp(colors[i * 3 + 1], data.originalColor.g, 0.1); colors[i * 3 + 2] = THREE.MathUtils.lerp(colors[i * 3 + 2], data.originalColor.b, 0.1);
-          }
-          break;
-        case 30: case 31:
-          if (bandPower > 0.82) {
-             tX = data.baseX + data.dirX * (data.forceScale * 8.0); tY = data.baseY + data.dirY * (data.forceScale * 5.0); tZ = data.baseZ + data.dirZ * (data.forceScale * 8.0);
-             sizes[i] = data.baseSize * 4.5; 
-          } else {
-             let backTremble = Math.sin(time * 30.0) * 0.05; tX += backTremble; tY += backTremble; tZ += backTremble;
-             sizes[i] = THREE.MathUtils.lerp(sizes[i], data.baseSize * (1.0 + bandPower * 1.5), 0.2);
-          }
-          break;
-      }
+      // 성운 입자 브리딩 스케일링 유도
+      sizes[i] = data.baseSize * (1.0 + this.smoothChannels[channelIdx] * 1.8);
 
-      positions[i * 3]     = THREE.MathUtils.lerp(positions[i * 3], tX, 0.28);
-      positions[i * 3 + 1] = THREE.MathUtils.lerp(positions[i * 3 + 1], tY, 0.28);
-      positions[i * 3 + 2] = THREE.MathUtils.lerp(positions[i * 3 + 2], tZ, 0.28);
-      
-      if (channelIdx !== 5 && channelIdx !== 6 && channelIdx !== 30 && channelIdx !== 31) {
-         sizes[i] = data.baseSize * (1.0 + bandPower * 2.0);
-      }
+      // 보간 속도를 활용해 픽셀이 튀지 않고 스며들듯 포지션 트래킹
+      let i3 = i * 3;
+      positions[i3]     = THREE.MathUtils.lerp(positions[i3], tX, 0.22);
+      positions[i3 + 1] = THREE.MathUtils.lerp(positions[i3 + 1], tY, 0.22);
+      positions[i3 + 2] = THREE.MathUtils.lerp(positions[i3 + 2], tZ, 0.22);
     }
 
     this.geometry.attributes.position.needsUpdate = true;
-    this.geometry.attributes.color.needsUpdate = true;
     this.geometry.attributes.pSize.needsUpdate = true;
 
-    this.points.rotation.y = time * 0.01 + (volume * 0.02);
-    this.points.rotation.x = Math.sin(time * 0.005) * 0.03;
+    // 💡 [개선안 4: 느릿한 공간 이동] 가상 카메라가 은하수의 숨결을 따라 입체 시네마틱 유영 무브먼트 진행
+    this.cameraTime += 0.003;
+    let subtleCameraZ = 15.0 + Math.sin(this.cameraTime) * 0.8 + (offZ * 2.0) - (volume * 0.5);
+    this.camera.position.x = THREE.MathUtils.lerp(this.camera.position.x, (offX * 0.3) + Math.sin(this.cameraTime * 0.5) * 0.4, 0.05);
+    this.camera.position.y = THREE.MathUtils.lerp(this.camera.position.y, 3.0 + (offY * -0.3) + Math.cos(this.cameraTime * 0.4) * 0.3, 0.05);
+    this.camera.position.z = THREE.MathUtils.lerp(this.camera.position.z, subtleCameraZ, 0.05);
+    this.camera.lookAt(0, 0, 0);
+
+    // 전체 은하 무대의 웅장하고 느릿한 자전 공전 회전 레이트 세팅
+    this.points.rotation.y = time * 0.015 + (volume * 0.015);
+    this.points.rotation.x = Math.sin(time * 0.004) * 0.02;
 
     this.renderer.render(this.scene, this.camera);
   }
@@ -391,14 +357,8 @@ export default class ThreeRealNebula {
 
   destroy() {
     if (!this.scene) return;
-    if (this.points) {
-      this.scene.remove(this.points);
-      this.geometry.dispose();
-    }
-    if (this.renderer) {
-      this.container.removeChild(this.renderer.domElement);
-      this.renderer.dispose();
-    }
+    if (this.points) { this.scene.remove(this.points); this.geometry.dispose(); }
+    if (this.renderer) { this.container.removeChild(this.renderer.domElement); this.renderer.dispose(); }
     if (this.guiOverlay) this.guiOverlay.remove();
     this.scene = null; this.camera = null; this.renderer = null; this.particleData = [];
   }
