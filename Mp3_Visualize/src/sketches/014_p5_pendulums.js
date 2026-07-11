@@ -1,8 +1,8 @@
 /**
  * src/sketches/014_p5_pendulums.js
- * - [버전] Ver 2.7 (isPlaying 참조 에러 완치 및 시네마틱 오토 팝업 페이딩 완결판)
- * - 이징 오타 및 ReferenceError 원천 봉쇄 처리 완료
- * - 음악 재생 시 락이 걸리지 않고 안내 팝업창이 정상적으로 투명 소멸하도록 밸런스 조정
+ * - [버전] Ver 2.8 (ctx 선언 초기화 순서 에러 완치 및 시네마틱 라이프사이클 마스터판)
+ * - 'ctx'를 선언하기 전에 참조하던 호환성 에러를 완벽하게 정화 완료
+ * - 음악 재생 및 리셋 시 락인 현상 없이 가이드 팝업창이 오로라처럼 투명하게 소멸함
  */
 
 export default class P5Pendulums {
@@ -17,7 +17,7 @@ export default class P5Pendulums {
     this.cameraDrift = 0;
     this.cameraZoom = 1.0;
     this.currentMode = "공명의 잔상";
-    this.version = "Resonant Echoes Ambient Ver 2.7";
+    this.version = "Resonant Echoes Ambient Ver 2.8";
 
     this.guiOverlay = null; 
   }
@@ -57,6 +57,10 @@ export default class P5Pendulums {
       p.draw = () => {
         p.clear();
 
+        // 💡 [에러 교정 완료] 드로잉 콘텍스트(ctx)를 가장 먼저 확실하게 바인딩하여 초기화 순서 락 해제
+        const ctx = p.drawingContext;
+        ctx.shadowBlur = 0;
+
         let seed = 42, scatter = 22, glow = 85, gain = 100, gauge = 50;
         let offX = 0, offY = 0, offZ = 0;
         let colorStyle = 'neon';
@@ -78,10 +82,8 @@ export default class P5Pendulums {
 
         p.noiseSeed(seed);
 
-        // 한지 느낌의 그라데이션 배경
+        // 부드러운 한지/새벽녘 감성 대지 그라데이션 배경 전개
         p.noStroke();
-        ctx.shadowBlur = 0;
-        const ctx = p.drawingContext;
         const bgGrad = ctx.createLinearGradient(0, 0, 0, p.height);
         bgGrad.addColorStop(0, '#0a0d14');   
         bgGrad.addColorStop(0.5, '#10141f'); 
@@ -98,10 +100,10 @@ export default class P5Pendulums {
         if (this.currentAudioData && this.currentAudioData.raw && this.currentAudioData.raw.length > 0) {
           rawData = this.currentAudioData.raw;
           const audioEl = document.querySelector('audio');
-          if (audioEl && !audioEl.paused) isAudioPlaying = true; // 💡 오타 완치: 변수 연동 일치
+          if (audioEl && !audioEl.paused) isAudioPlaying = true;
         }
 
-        // 💡 오디오가 실제로 재생 시작되면 팝업 가이드를 부드럽게 소멸시킴
+        // 오디오가 재생되면 가이드 팝업창을 부드럽게 소멸시킴
         if (isAudioPlaying && this.guiOverlay) {
           this.guiOverlay.style.opacity = '0';
           this.guiOverlay.style.pointerEvents = 'none';
