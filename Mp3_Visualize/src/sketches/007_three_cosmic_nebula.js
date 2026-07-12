@@ -1,8 +1,8 @@
 /**
  * src/sketches/007_three_cosmic_nebula.js
- * - [버전] Ver 2.8 (성운 가스 입자 크기 및 발광 광량 시인성 대증폭 완결판)
- * - 슬라이더 수치 변환 시 최하단 크기 잠금을 상향하여 안 보이고 묻히던 현상 완벽 완치
- * - Additive Blending 렌더링 칩의 투명도와 가산 혼합 밀도를 높여 웅장한 가스 질감 실시간 확보
+ * - [버전] Ver 2.9 (관제탑 Gauge 슬라이더 기반 성운 투명도/밀도 조절 시스템 완결판)
+ * - 우측 Cosmic Studio의 'Gauge' 입력값을 가스 입자들의 최적화 Opacity 계수로 다이렉트 연동
+ * - 슬라이더를 왼쪽으로 밀수록 안개처럼 투명도가 아련하게 감쇠되어 은은한 여백의 미 실시간 연출
  */
 
 export default class ThreeRealNebula {
@@ -25,7 +25,7 @@ export default class ThreeRealNebula {
     
     this.smoothChannels = new Float32Array(32);
     this.cameraTime = 0;
-    this.version = "007호 Ambient Nebula Stream Ver 2.8";
+    this.version = "007호 Ambient Nebula Stream Ver 2.9";
   }
 
   init() {
@@ -33,7 +33,6 @@ export default class ThreeRealNebula {
     const height = this.container.clientHeight;
 
     this.scene = new THREE.Scene();
-    // 💡 배경 캔버스의 안개 농도를 부드럽게 완화하여 가스가 가리던 현상 방지
     this.scene.fog = new THREE.FogExp2(0x060914, 0.012);
 
     this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
@@ -83,7 +82,7 @@ export default class ThreeRealNebula {
           <li><strong>Range :</strong> 몽환적인 성운 분산 물리 최대 반경 제한 조절</li>
           <li><strong>Scale :</strong> 성운 입자들의 기본 광량 브러시 크기 지배</li>
           <li><strong>Volume :</strong> 주파수 유입 시 일렁이는 유체 팽창 강도 증폭</li>
-          <li><strong>Gauge :</strong> 암부와 가스 간 그라데이션 채도 농도 제어</li>
+          <li><strong>Gauge :</strong> <strong style="color: #00ffcc;">[핵심]</strong> 가스 성운의 은은한 투명도 및 선명도 진하기 조절</li>
           <li><strong>3D Offset :</strong> 가상 시네마 카메라 공간 시점 이동 (0,0,0=정면)</li>
           <li><strong>Color Style :</strong> No1~No5 명상 테마 아날로그 자연 오로라색 스위칭</li>
         </ul>
@@ -97,7 +96,6 @@ export default class ThreeRealNebula {
     const canvas = document.createElement('canvas'); canvas.width = 64; canvas.height = 64;
     const ctx = canvas.getContext('2d');
     const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-    // 💡 빛무리가 더 맑고 뚜렷하게 발광하도록 캔버스 불투명도 지전 상향
     gradient.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
     gradient.addColorStop(0.3, 'rgba(255, 255, 255, 0.75)');
     gradient.addColorStop(0.6, 'rgba(255, 255, 255, 0.25)');
@@ -181,7 +179,6 @@ export default class ThreeRealNebula {
       positions[i * 3 + 1] = y;
       positions[i * 3 + 2] = z;
 
-      // 💡 기본 입자 크기 볼륨 자체를 와이드하게 상향 조정 (시인성 픽스)
       let pSize = 0.12 + r1 * 0.15;
       let color = new THREE.Color();
       let starType = (r4 < 0.08) ? 'star' : 'gas';
@@ -225,7 +222,7 @@ export default class ThreeRealNebula {
         map: this.createGlowTexture(),
         vertexColors: true,
         transparent: true,
-        opacity: 0.95, // 극강의 조화를 위해 오퍼시티 상향
+        opacity: 0.5, // 가변 추적을 위한 기본값 세팅
         blending: THREE.AdditiveBlending,
         depthWrite: false
       });
@@ -256,12 +253,18 @@ export default class ThreeRealNebula {
       this.audioGain = window.cosmicEngineSettings.audioGain;
       const glow = window.cosmicEngineSettings.glowIntensity;
       
-      // 💡 [Glow 스케일 연동 공식 대변혁]: 슬라이더 수치를 곱 연산으로 파싱하여 화면상에 무조건 은하수가 뚜렷하게 발광하도록 승압 셋업
-      let calculatedOpacity = THREE.MathUtils.mapLinear(glow, 10, 250, 0.45, 1.0);
-      let calculatedSize = THREE.MathUtils.mapLinear(glow, 10, 250, 1.5, 6.5);
+      // 💡 [Gauge 하드웨어 인터페이스 직결 매핑 수술]: 관제탑 게이지 변수(0~100)를 수집
+      const gaugeEl = document.getElementById('num-cosmic-gauge');
+      let gaugeVal = gaugeEl ? parseFloat(gaugeEl.value) : 50;
 
-      this.material.opacity = THREE.MathUtils.lerp(this.material.opacity, calculatedOpacity, 0.1);
-      this.material.size = THREE.MathUtils.lerp(this.material.size, calculatedSize, 0.1);
+      // Gauge 슬라이더에 비례하여 성운 가스 투명도(Opacity) 범위를 최소 0.08에서 최대 0.95까지 유연 조절
+      let calculatedOpacity = THREE.MathUtils.mapLinear(gaugeVal, 0, 100, 0.08, 0.95);
+      
+      // Scale 슬라이더(glow)는 순수하게 입자들의 크기 포커스에만 매핑 분리
+      let calculatedSize = THREE.MathUtils.mapLinear(glow, 10, 250, 1.2, 5.5);
+
+      this.material.opacity = THREE.MathUtils.lerp(this.material.opacity, calculatedOpacity, 0.15);
+      this.material.size = THREE.MathUtils.lerp(this.material.size, calculatedSize, 0.15);
 
       offX = window.cosmicEngineSettings.positionOffset?.x || 0;
       offY = window.cosmicEngineSettings.positionOffset?.y || 0;
