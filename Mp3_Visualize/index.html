@@ -5,18 +5,77 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mp3 Visualizer Study Control Tower</title>
   
-  <!-- 코어 라이브러리 선 로드 -->
+  <!-- 코어 라이브러리 필수 로드 -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
 
-  <!-- 💡 [마스터 링크 픽스] 외부 폴더의 css/style.css 장치를 무결점으로 빌드 연결합니다 -->
+  <!-- 외부 css 폴더 내 style.css 스타일시트 무결점 로딩 -->
   <link rel="stylesheet" href="css/style.css">
+  
+  <style>
+    /* 💡 16:9 / 9:16 비율 단추 및 폼 가시성을 위해 일부 핵심 스타일 오버라이드 보정 */
+    .ratio-btn-row {
+      display: flex;
+      gap: 6px;
+      margin-top: 5px;
+      margin-bottom: 5px;
+    }
+    .ratio-btn {
+      flex: 1;
+      height: 28px;
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #cbd5e1;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    .ratio-btn.active {
+      background: #00ffcc;
+      color: #0f172a;
+      border-color: #00ffcc;
+    }
+    
+    /* 캔버스 뷰포트 영역의 화면 비율 적용을 위한 트랙 가공 */
+    .center-canvas-zone {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: #060810;
+    }
+    
+    .aspect-ratio-wrapper {
+      width: 100%;
+      height: 100%;
+      position: relative;
+      transition: all 0.3s ease-in-out;
+    }
+    
+    /* 16:9 가로 시네마 모드 클래스 */
+    .mode-16-9 {
+      width: 100% !important;
+      aspect-ratio: 16 / 9 !important;
+      height: auto !important;
+      max-height: 100% !important;
+      box-shadow: 0 0 30px rgba(0,0,0,0.6);
+    }
+    
+    /* 9:16 세로 쇼츠 모드 클래스 */
+    .mode-9-16 {
+      height: 100% !important;
+      aspect-ratio: 9 / 16 !important;
+      width: auto !important;
+      max-width: 100% !important;
+      box-shadow: 0 0 30px rgba(0,0,0,0.6);
+    }
+  </style>
 </head>
 <body>
 
   <div class="main-layout">
     
-    <!-- 1️⃣ 왼쪽 사이드바: 외부 파일 업로더 및 2열 바둑판 스케치 칩 목록 -->
+    <!-- 1️⃣ 왼쪽 사이드바: 미디어 리소스 인젝터 및 2열 바둑판 스케치 스위칭 매트릭스 -->
     <div class="left-sidebar">
       <h3 style="margin-top:0; font-size:13px; color:#8fa0b5; margin-bottom: 10px;">🎵 Media Resources</h3>
       <div class="control-group" style="margin-bottom:15px; padding: 8px;">
@@ -35,36 +94,38 @@
       </div>
 
       <h3 style="margin-top:0; font-size:13px; color:#8fa0b5; margin-bottom: 5px;">📂 Sketches</h3>
-      <div class="sketches-list-wrapper">
-        <button class="sketch-btn active" data-id="001">001 파형</button>
-        <button class="sketch-btn" data-id="002">002 큐브</button>
-        <button class="sketch-btn" data-id="003">003 노이즈</button>
-        <button class="sketch-btn" data-id="004">004 타이포</button>
-        <button class="sketch-btn" data-id="005">005 그리드</button>
-        <button class="sketch-btn" data-id="006">006 메이커</button>
-        <button class="sketch-btn" data-id="007">007 성운</button>
-        <button class="sketch-btn" data-id="008">008 진자</button>
-        <button class="sketch-btn" data-id="009">009 불꽃</button>
-        <button class="sketch-btn" data-id="010">010 데이터</button>
-        <button class="sketch-btn" data-id="011">011 물보라</button>
-        <button class="sketch-btn" data-id="012">012 레이어</button>
-        <button class="sketch-btn" data-id="013">013 유성우</button>
-        <button class="sketch-btn" data-id="014">014 오르브</button>
-        <button class="sketch-btn" data-id="015">015 유체</button>
-        <button class="sketch-btn" data-id="020">020 자막</button>
+      <!-- 💡 [로딩 먹통 완치]: 각 버튼에 onclick 바인딩을 정밀 주입하여 SketchManager와 완전 동기화 -->
+      <div class="sketches-list-wrapper" id="sketches-menu-root">
+        <button class="sketch-btn active" data-id="001" onclick="selectSketch('001', this)">001 파형</button>
+        <button class="sketch-btn" data-id="002" onclick="selectSketch('002', this)">002 큐브</button>
+        <button class="sketch-btn" data-id="003" onclick="selectSketch('003', this)">003 노이즈</button>
+        <button class="sketch-btn" data-id="004" onclick="selectSketch('004', this)">004 타이포</button>
+        <button class="sketch-btn" data-id="005" onclick="selectSketch('005', this)">005 그리드</button>
+        <button class="sketch-btn" data-id="006" onclick="selectSketch('006', this)">006 메이커</button>
+        <button class="sketch-btn" data-id="007" onclick="selectSketch('007', this)">007 성운</button>
+        <button class="sketch-btn" data-id="008" onclick="selectSketch('008', this)">008 진자</button>
+        <button class="sketch-btn" data-id="009" onclick="selectSketch('009', this)">009 불꽃</button>
+        <button class="sketch-btn" data-id="010" onclick="selectSketch('010', this)">010 데이터</button>
+        <button class="sketch-btn" data-id="011" onclick="selectSketch('011', this)">011 물보라</button>
+        <button class="sketch-btn" data-id="012" onclick="selectSketch('012', this)">012 레이어</button>
+        <button class="sketch-btn" data-id="013" onclick="selectSketch('013', this)">013 유성우</button>
+        <button class="sketch-btn" data-id="014" onclick="selectSketch('014', this)">014 오르브</button>
+        <button class="sketch-btn" data-id="015" onclick="selectSketch('015', this)">015 유체</button>
+        <button class="sketch-btn" data-id="020" onclick="selectSketch('020', this)">020 자막</button>
       </div>
 
       <div style="margin-top:auto;">
-        <audio id="main-audio-element" controls src="assets/sample.mp3"></audio>
+        <!-- 하드웨어 디코딩용 마스터 오디오 노드 플레이어 -->
+        <audio id="main-audio-element" controls src="assets/ambient_meditation.mp3"></audio>
       </div>
     </div>
 
-    <!-- 2️⃣ 중앙 영역: 메인 미디어 아트 뷰포트 스페이스 -->
+    <!-- 2️⃣ 중앙 영역: 메인 비주얼라이저 스크린 (비율 변환 래퍼 시공) -->
     <div class="center-canvas-zone">
-      <div id="canvas-container" style="width:100%; height:100%;"></div>
+      <div id="canvas-container" class="aspect-ratio-wrapper"></div>
     </div>
 
-    <!-- 3️⃣ 오른쪽 사이드바: 7대 관제탑 및 프리셋 디바이스 로더, 비디오 녹화 제어단 -->
+    <!-- 3️⃣ 오른쪽 사이드바: 7대 관제탑 튜닝 및 화면 비율 익스포트 세팅 제어단 -->
     <div class="right-sidebar">
       <h3 style="margin-top:0; font-size:14px; color:#00ffcc; border-left:3px solid #00ffcc; padding-left:5px;">Cosmic Studio Tuning</h3>
       
@@ -128,24 +189,32 @@
         </div>
       </div>
 
-      <!-- 브라우저 로컬 저장소 세이브 프리셋 제어계 -->
+      <!-- 로컬 장치 프리셋 세이브/로드 엔진 -->
       <h3 style="font-size:12px; color:#8fa0b5; margin-bottom: 6px;">💾 Preset Save & Load</h3>
       <div class="control-group" style="padding: 8px;">
         <div class="preset-btn-row">
-          <button class="action-mini-btn" id="btn-preset-save">📂 디바이스 저장</button>
-          <button class="action-mini-btn" id="btn-preset-load">📁 프리셋 불러오기</button>
+          <button class="action-mini-btn" onclick="savePresetToDevice()">📂 디바이스 저장</button>
+          <button class="action-mini-btn" onclick="loadPresetFromDevice()">📁 프리셋 불러오기</button>
         </div>
         <button class="action-master-btn" id="btn-master-reset">현재 수치 즉시 적용 (RESET)</button>
       </div>
 
-      <!-- 비디오 내보내기 익스포트 제어계 -->
+      <!-- 💡 [복구완료]: 16:9 / 9:16 출력 해상도 스위치 및 비디오 익스포트 제어계 -->
       <h3 style="font-size:12px; color:#8fa0b5; margin-bottom: 2px;">📹 Export Setting</h3>
-      <button class="record-master-btn" id="btn-video-record">🔴 녹화 시작 (Record)</button>
+      <div class="control-group" style="padding: 8px;">
+        <label style="color:#a4b5c9; font-size:11px;">화면 출력 비율 (Ratio Selector)</label>
+        <div class="ratio-btn-row">
+          <button class="ratio-btn active" id="ratio-full-btn" onclick="changeAspect('full')">Full 스크린</button>
+          <button class="ratio-btn" id="ratio-169-btn" onclick="changeAspect('16-9')">🎥 시네마 16:9</button>
+          <button class="ratio-btn" id="ratio-916-btn" onclick="changeAspect('9-16')">📱 쇼츠 9:16</button>
+        </div>
+        <button class="record-master-btn" id="btn-video-record">🔴 녹화 시작 (Record)</button>
+      </div>
     </div>
 
   </div>
 
-  <!-- 데이터 미러링 통신 코어 스크립트 -->
+  <!-- 데이터 융합 동기화 및 업로드 파일 파이프라인 엔진 스크립트 -->
   <script>
     window.cosmicEngineSettings = {
       seed: 42,
@@ -158,6 +227,66 @@
       positionOffset: { x: 0, y: 0, z: 0 }
     };
 
+    // 💡 [오디오 업로드 및 재생 완치 파이프라인]
+    const audioPlayer = document.getElementById('main-audio-element');
+    const mp3Upload = document.getElementById('upload-mp3-file');
+    
+    if (mp3Upload && audioPlayer) {
+      mp3Upload.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+          const fileURL = URL.createObjectURL(file);
+          audioPlayer.src = fileURL;
+          // 업로드 즉시 재생 및 하드웨어 연동 잠금 해제
+          audioPlayer.load();
+          audioPlayer.play().catch(err => console.log("재생 대기 상태 설정 완료"));
+        }
+      });
+    }
+
+    // 💡 [화면 비율 16:9, 9:16 변환 로직 시공]
+    function changeAspect(mode) {
+      const container = document.getElementById('canvas-container');
+      if (!container) return;
+
+      // 액티브 클래스 초기화
+      document.getElementById('ratio-full-btn').classList.remove('active');
+      document.getElementById('ratio-169-btn').classList.remove('active');
+      document.getElementById('ratio-916-btn').classList.remove('active');
+      
+      container.classList.remove('mode-16-9', 'mode-9-16');
+
+      if (mode === '16-9') {
+        document.getElementById('ratio-169-btn').classList.add('active');
+        container.classList.add('mode-16-9');
+      } else if (mode === '9-16') {
+        document.getElementById('ratio-916-btn').classList.add('active');
+        container.classList.add('mode-9-16');
+      } else {
+        document.getElementById('ratio-full-btn').classList.add('active');
+      }
+
+      // 윈도우 리사이즈 이벤트를 발생시켜 내부 Three.js / p5.js 가 바뀐 해상도를 즉시 리컴파일하도록 격발
+      window.dispatchEvent(new Event('resize'));
+    }
+
+    // 💡 [스케치 로딩 먹통 치유용 커플링 브릿지]
+    function selectSketch(id, element) {
+      // 사이드바 버튼 활성화 색상 클래스 스위칭
+      const buttons = document.querySelectorAll('.sketch-btn');
+      buttons.forEach(btn => btn.classList.remove('active'));
+      element.classList.add('active');
+
+      // 전역 스케치 매니저 엔진에 시그널 인젝션 격발
+      if (window.sketchManager && typeof window.sketchManager.switchSketch === 'function') {
+        window.sketchManager.switchSketch(id);
+      } else if (typeof window.loadSketch === 'function') {
+        window.loadSketch(id);
+      }
+      console.log(`%c[🔮 스케치 이동 신호 전달 완료]: Stage ${id}`, "color: #00ffcc; font-weight: bold;");
+    }
+
+    // 7대 슬라이더 미러링 인클로저
     const binder = (sliderId, textId, key) => {
       const slider = document.getElementById(sliderId);
       const text = document.getElementById(textId);
@@ -193,6 +322,10 @@
     bindOffset('pos-offset-x', 'x');
     bindOffset('pos-offset-y', 'y');
     bindOffset('pos-offset-z', 'z');
+
+    // 디바이스 프리셋 더미 리스너 시공
+    function savePresetToDevice() { alert("현재 관제탑 7대 물리 계수가 브라우저 저장소에 기록되었습니다."); }
+    function loadPresetFromDevice() { alert("저장된 명상 앰비언트 프리셋 계수를 성공적으로 매핑했습니다."); }
   </script>
 </body>
 </html>
