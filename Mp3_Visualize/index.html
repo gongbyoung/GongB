@@ -4,26 +4,20 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mp3 Visualizer Study Control Tower</title>
-  
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
   <link rel="stylesheet" href="css/style.css">
-  
   <style>
-    /* 💡 [핵심 수리]: .main-layout은 건드리지 않고, 중앙 캔버스만 비율 제어 */
-    .center-canvas-zone { position: relative; }
-    /* #stage-wrapper를 중앙 캔버스 래퍼로 격리 */
-    #stage-wrapper { width: 100%; height: 100%; position: relative; }
-    .ratio-169 { aspect-ratio: 16/9 !important; height: auto !important; width: 100% !important; margin: auto !important; }
-    .ratio-916 { aspect-ratio: 9/16 !important; height: 100% !important; width: auto !important; margin: auto !important; }
+    /* 💡 관제탑 패널 내부 슬라이더-수치 입력 수평 정렬 */
+    .slider-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .slider-row input[type="range"] { flex: 1; }
+    .slider-row input[type="number"] { width: 50px !important; text-align: center; }
   </style>
 </head>
 <body>
 
-  <!-- 전체 레이아웃 래퍼 -->
-  <div class="main-layout">
-    
-    <!-- 1️⃣ 왼쪽 사이드바 -->
+  <div class="main-layout" id="stage-wrapper">
+    <!-- 왼쪽 사이드바 -->
     <div class="left-sidebar">
       <h3>🎵 Media Resources</h3>
       <div class="control-group">
@@ -34,6 +28,7 @@
 
       <h3>📂 Sketches</h3>
       <ul class="sketches-list-wrapper" id="sketch-list">
+        <!-- 001~020 스케치 목록 -->
         <li class="sketch-btn active" data-sketch="001_p5_wave.js">001 파형</li>
         <li class="sketch-btn" data-sketch="002_three_cube.js">002 큐브</li>
         <li class="sketch-btn" data-sketch="003_glsl_noise.js">003 노이즈</li>
@@ -58,23 +53,30 @@
       <audio id="audio-player" controls src="assets/sample.mp3"></audio>
     </div>
 
-    <!-- 2️⃣ 중앙 영역: 💡 여기에만 id="stage-wrapper"를 부여하여 클래스 변경 시에도 레이아웃 고정 -->
+    <!-- 중앙 영역 -->
     <div class="center-canvas-zone">
-      <div id="stage-wrapper">
-         <div id="canvas-stage" style="width:100%; height:100%;"></div>
-      </div>
+      <div id="canvas-stage" style="width:100%; height:100%;"></div>
     </div>
 
-    <!-- 3️⃣ 오른쪽 사이드바 -->
+    <!-- 오른쪽 사이드바 -->
     <div class="right-sidebar">
       <h3>Cosmic Studio Tuning</h3>
-      <div class="control-group"><label>Shuffle</label><input type="range" id="num-cosmic-seed" min="1" max="500" value="42"></div>
-      <div class="control-group"><label>Range</label><input type="range" id="num-cosmic-scatter" min="5" max="50" value="22"></div>
-      <div class="control-group"><label>Scale</label><input type="range" id="num-cosmic-glow" min="10" max="250" value="85"></div>
-      <div class="control-group"><label>Volume</label><input type="range" id="num-cosmic-gain" min="10" max="500" value="100"></div>
-      <div class="control-group"><label>Gauge</label><input type="range" id="num-cosmic-gauge" min="0" max="100" value="50"></div>
+      <!-- 슬라이더 및 입력창 연동 -->
+      <div class="control-group"><label>Shuffle</label><div class="slider-row"><input type="range" id="num-cosmic-seed" min="1" max="500" value="42"><input type="number" id="val-cosmic-seed" value="42"></div></div>
+      <div class="control-group"><label>Range</label><div class="slider-row"><input type="range" id="num-cosmic-scatter" min="5" max="50" value="22"><input type="number" id="val-cosmic-scatter" value="22"></div></div>
+      <div class="control-group"><label>Scale</label><div class="slider-row"><input type="range" id="num-cosmic-glow" min="10" max="250" value="85"><input type="number" id="val-cosmic-glow" value="85"></div></div>
+      <div class="control-group"><label>Volume</label><div class="slider-row"><input type="range" id="num-cosmic-gain" min="10" max="500" value="100"><input type="number" id="val-cosmic-gain" value="100"></div></div>
+      <div class="control-group"><label>Gauge</label><div class="slider-row"><input type="range" id="num-cosmic-gauge" min="0" max="100" value="50"><input type="number" id="val-cosmic-gauge" value="50"></div></div>
+      
       <button class="action-master-btn" id="btn-apply-cosmic">현재 수치 즉시 적용 (RESET)</button>
       
+      <h3>💾 Preset Save & Load</h3>
+      <div class="preset-btn-row">
+        <button class="action-mini-btn" id="btn-save-preset">📂 디바이스 저장</button>
+        <button class="action-mini-btn" id="btn-load-preset">📁 불러오기</button>
+        <input type="file" id="hidden-preset-file-input" accept=".json" style="display:none;">
+      </div>
+
       <h3>📹 Export Setting</h3>
       <div class="preset-btn-row">
         <button class="action-mini-btn" id="btn-ratio-full">Full</button>
@@ -83,9 +85,22 @@
       </div>
       <button class="record-master-btn" id="btn-record">🔴 녹화 시작 (Record)</button>
     </div>
-
   </div>
 
   <script type="module" src="src/main.js"></script>
+  <script>
+    // 슬라이더 <-> 수치 입력창 양방향 동기화
+    function syncValue(rangeId, numId) {
+      const range = document.getElementById(rangeId);
+      const num = document.getElementById(numId);
+      range.addEventListener('input', () => { num.value = range.value; });
+      num.addEventListener('input', () => { range.value = num.value; });
+    }
+    syncValue('num-cosmic-seed', 'val-cosmic-seed');
+    syncValue('num-cosmic-scatter', 'val-cosmic-scatter');
+    syncValue('num-cosmic-glow', 'val-cosmic-glow');
+    syncValue('num-cosmic-gain', 'val-cosmic-gain');
+    syncValue('num-cosmic-gauge', 'val-cosmic-gauge');
+  </script>
 </body>
 </html>
