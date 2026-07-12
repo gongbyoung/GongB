@@ -244,6 +244,15 @@ export default class ThreeRealNebula {
     this.scene.add(this.points);
   }
 
+/**
+ * src/sketches/007_three_cosmic_nebula.js
+ * - [버전] Ver 3.0 (Gauge 투명도 역전 맵핑 및 광량 포화 방지 패치)
+ * - Gauge 0 수치에서 입자가 뭉쳐도 하얗게 타지 않도록 투명도(Opacity) 범위를 [0.01 ~ 0.5]로 대폭 하향 조정
+ * - 가산 혼합(Additive Blending)을 유지하되 입자별 투명도를 획기적으로 낮춰 몽환적 여백 확보
+ */
+
+// update() 함수 내부의 연동 부분만 아래와 같이 수정해 주세요.
+
   update(audioData) {
     if (!this.renderer || !this.scene || !this.camera || !this.points) return;
 
@@ -253,15 +262,14 @@ export default class ThreeRealNebula {
       this.audioGain = window.cosmicEngineSettings.audioGain;
       const glow = window.cosmicEngineSettings.glowIntensity;
       
-      // 💡 [Gauge 하드웨어 인터페이스 직결 매핑 수술]: 관제탑 게이지 변수(0~100)를 수집
       const gaugeEl = document.getElementById('num-cosmic-gauge');
-      let gaugeVal = gaugeEl ? parseFloat(gaugeEl.value) : 50;
+      let gaugeVal = gaugeEl ? parseFloat(gaugeEl.value) : 0; // 현재 0으로 설정된 게이지 반영
 
-      // Gauge 슬라이더에 비례하여 성운 가스 투명도(Opacity) 범위를 최소 0.08에서 최대 0.95까지 유연 조절
-      let calculatedOpacity = THREE.MathUtils.mapLinear(gaugeVal, 0, 100, 0.08, 0.95);
+      // 💡 [핵심 패치]: Gauge가 0일 때 오퍼시티를 0.01로 극도로 낮추어 '하얗게 타는 현상' 원천 봉쇄
+      // 최대치(100)일 때도 0.5를 넘지 않게 하여 가스 덩어리가 뭉쳐도 몽환적인 반투명도 유지
+      let calculatedOpacity = THREE.MathUtils.mapLinear(gaugeVal, 0, 100, 0.01, 0.5);
       
-      // Scale 슬라이더(glow)는 순수하게 입자들의 크기 포커스에만 매핑 분리
-      let calculatedSize = THREE.MathUtils.mapLinear(glow, 10, 250, 1.2, 5.5);
+      let calculatedSize = THREE.MathUtils.mapLinear(glow, 10, 250, 1.0, 4.0);
 
       this.material.opacity = THREE.MathUtils.lerp(this.material.opacity, calculatedOpacity, 0.15);
       this.material.size = THREE.MathUtils.lerp(this.material.size, calculatedSize, 0.15);
@@ -270,6 +278,8 @@ export default class ThreeRealNebula {
       offY = window.cosmicEngineSettings.positionOffset?.y || 0;
       offZ = window.cosmicEngineSettings.positionOffset?.z || 0;
     }
+
+    // ... 이하 나머지 update() 로직은 동일 ...
 
     const time = Date.now() * 0.0006;
     const positions = this.geometry.attributes.position.array;
