@@ -1,9 +1,8 @@
 /**
  * src/sketches/007_three_cosmic_nebula.js
- * - [버전] Ver 2.7 (SyntaxError 구문 오류 완치 및 사용설명서 팝업 마스터판)
- * - 37번째 줄 문법 파싱 오류(: 토큰 에러)를 완벽하게 디버깅 및 정화 완료
- * - 초기 구동 및 리셋 시 화면 정중앙에 7대 관제탑 전용 앰비언트 사용설명서 가이드 팝업 상시 출력
- * - 오디오 재생 바 클릭 또는 볼륨 유입 시 가이드창이 안개처럼 부드럽게 완전 소멸하도록 제어
+ * - [버전] Ver 2.8 (성운 가스 입자 크기 및 발광 광량 시인성 대증폭 완결판)
+ * - 슬라이더 수치 변환 시 최하단 크기 잠금을 상향하여 안 보이고 묻히던 현상 완벽 완치
+ * - Additive Blending 렌더링 칩의 투명도와 가산 혼합 밀도를 높여 웅장한 가스 질감 실시간 확보
  */
 
 export default class ThreeRealNebula {
@@ -26,7 +25,7 @@ export default class ThreeRealNebula {
     
     this.smoothChannels = new Float32Array(32);
     this.cameraTime = 0;
-    this.version = "007호 Ambient Nebula Stream Ver 2.7";
+    this.version = "007호 Ambient Nebula Stream Ver 2.8";
   }
 
   init() {
@@ -34,8 +33,8 @@ export default class ThreeRealNebula {
     const height = this.container.clientHeight;
 
     this.scene = new THREE.Scene();
-    // 💡 [오타 완치] 뒤쪽에 붙어있던 구문 파싱 오류를 완벽하게 정화했습니다.
-    this.scene.fog = new THREE.FogExp2(0x060914, 0.015);
+    // 💡 배경 캔버스의 안개 농도를 부드럽게 완화하여 가스가 가리던 현상 방지
+    this.scene.fog = new THREE.FogExp2(0x060914, 0.012);
 
     this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
     this.camera.position.set(0, 3, 16);
@@ -52,7 +51,6 @@ export default class ThreeRealNebula {
     this.buildCosmos();
   }
 
-  // 사용설명서 팝업 대장치
   buildOnScreenGuideUI() {
     if (!this.container) return;
     const oldOverlay = this.container.querySelector('.cosmic-shader-guide');
@@ -99,9 +97,10 @@ export default class ThreeRealNebula {
     const canvas = document.createElement('canvas'); canvas.width = 64; canvas.height = 64;
     const ctx = canvas.getContext('2d');
     const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    // 💡 빛무리가 더 맑고 뚜렷하게 발광하도록 캔버스 불투명도 지전 상향
     gradient.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
-    gradient.addColorStop(0.25, 'rgba(255, 255, 255, 0.55)');
-    gradient.addColorStop(0.6, 'rgba(255, 255, 255, 0.12)');
+    gradient.addColorStop(0.3, 'rgba(255, 255, 255, 0.75)');
+    gradient.addColorStop(0.6, 'rgba(255, 255, 255, 0.25)');
     gradient.addColorStop(1.0, 'rgba(0, 0, 0, 0.0)');
     ctx.fillStyle = gradient; ctx.fillRect(0, 0, 64, 64);
     const texture = new THREE.CanvasTexture(canvas);
@@ -145,20 +144,20 @@ export default class ThreeRealNebula {
     this.particleData = [];
     let sRandom = this.currentSeed;
 
-    const maxDistributionRadius = THREE.MathUtils.mapLinear(this.scatterExponent, 5, 50, 2.5, 12.0);
+    const maxDistributionRadius = THREE.MathUtils.mapLinear(this.scatterExponent, 5, 50, 3.0, 11.0);
 
     let baseC1 = new THREE.Color(), baseC2 = new THREE.Color(), baseC3 = new THREE.Color();
     if (this.colorStyle === 'monochrome') {
-      baseC1.set('#1e382b'); baseC2.set('#4da87a'); baseC3.set('#ffffff');
+      baseC1.set('#234c38'); baseC2.set('#59bfa1'); baseC3.set('#ffffff');
     } else if (this.colorStyle === 'neon') {
-      baseC1.set('#9e8467'); baseC2.set('#fcf7ed'); baseC3.set('#ffffff');
+      baseC1.set('#ab8d6c'); baseC2.set('#fcf6e8'); baseC3.set('#ffffff');
     } else if (this.colorStyle === 'pastel') {
-      baseC1.set('#1a2333'); baseC2.set('#e6b0a1'); baseC3.set('#ffffff');
+      baseC1.set('#1e2a38'); baseC2.set('#f0bfa3'); baseC3.set('#ffffff');
     } else if (this.colorStyle === 'custom') {
       baseC1.set(this.customColors.gas1); baseC2.set(this.customColors.gas2); baseC3.set(this.customColors.star);
     } else {
-      baseC1.setHSL(this.seededRandom(this.currentSeed + 10), 0.7, 0.5);
-      baseC2.setHSL(this.seededRandom(this.currentSeed + 20), 0.6, 0.6);
+      baseC1.setHSL(this.seededRandom(this.currentSeed + 10), 0.7, 0.55);
+      baseC2.setHSL(this.seededRandom(this.currentSeed + 20), 0.6, 0.65);
       baseC3.setHex(0xffffff);
     }
 
@@ -182,12 +181,13 @@ export default class ThreeRealNebula {
       positions[i * 3 + 1] = y;
       positions[i * 3 + 2] = z;
 
-      let pSize = 0.04 + r1 * 0.05;
+      // 💡 기본 입자 크기 볼륨 자체를 와이드하게 상향 조정 (시인성 픽스)
+      let pSize = 0.12 + r1 * 0.15;
       let color = new THREE.Color();
-      let starType = (r4 < 0.07) ? 'star' : 'gas';
+      let starType = (r4 < 0.08) ? 'star' : 'gas';
 
       if (starType === 'star') {
-        pSize = 0.25 + r1 * 0.3;
+        pSize = 0.45 + r1 * 0.5;
         color.copy(baseC3);
       } else {
         let lerpFactor = THREE.MathUtils.clamp(baseDist / maxDistributionRadius, 0, 1);
@@ -225,7 +225,7 @@ export default class ThreeRealNebula {
         map: this.createGlowTexture(),
         vertexColors: true,
         transparent: true,
-        opacity: 0.85,
+        opacity: 0.95, // 극강의 조화를 위해 오퍼시티 상향
         blending: THREE.AdditiveBlending,
         depthWrite: false
       });
@@ -256,8 +256,12 @@ export default class ThreeRealNebula {
       this.audioGain = window.cosmicEngineSettings.audioGain;
       const glow = window.cosmicEngineSettings.glowIntensity;
       
-      this.material.opacity = THREE.MathUtils.lerp(this.material.opacity, Math.min(1.0, (glow / 100.0) * 1.1), 0.1);
-      this.material.size = THREE.MathUtils.lerp(this.material.size, Math.max(0.4, (glow / 100.0) * 2.5), 0.1);
+      // 💡 [Glow 스케일 연동 공식 대변혁]: 슬라이더 수치를 곱 연산으로 파싱하여 화면상에 무조건 은하수가 뚜렷하게 발광하도록 승압 셋업
+      let calculatedOpacity = THREE.MathUtils.mapLinear(glow, 10, 250, 0.45, 1.0);
+      let calculatedSize = THREE.MathUtils.mapLinear(glow, 10, 250, 1.5, 6.5);
+
+      this.material.opacity = THREE.MathUtils.lerp(this.material.opacity, calculatedOpacity, 0.1);
+      this.material.size = THREE.MathUtils.lerp(this.material.size, calculatedSize, 0.1);
 
       offX = window.cosmicEngineSettings.positionOffset?.x || 0;
       offY = window.cosmicEngineSettings.positionOffset?.y || 0;
@@ -307,7 +311,7 @@ export default class ThreeRealNebula {
       let tY = data.baseY + waveWarpY;
       let tZ = data.baseZ + waveWarpZ;
 
-      sizes[i] = data.baseSize * (1.0 + this.smoothChannels[channelIdx] * 1.8);
+      sizes[i] = data.baseSize * (1.0 + this.smoothChannels[channelIdx] * 2.2);
 
       let i3 = i * 3;
       positions[i3]     = THREE.MathUtils.lerp(positions[i3], tX, 0.22);
