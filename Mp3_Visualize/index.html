@@ -5,125 +5,37 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mp3 Visualizer Study Control Tower</title>
   
-  <!-- 코어 라이브러리 선 로드 -->
+  <!-- 라이브러리 -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
 
-  <!-- 외부 폴더의 css/style.css 정밀 로딩 -->
+  <!-- 💡 style.css 로딩 -->
   <link rel="stylesheet" href="css/style.css">
   
   <style>
-    /* ==========================================================================
-       🛡️ [마스터 레이아웃 세이프 가드] 
-       main.js가 클래스명을 지워도 최상단 3단 프레임 레이아웃이 절대 파괴되지 않도록 고정
-       ========================================================================== */
-    #stage-wrapper {
-      display: flex !important;
-      width: 100vw !important;
-      height: 100vh !important;
-      background-color: #05070c !important;
-      color: #fff !important;
-      font-family: sans-serif !important;
-      overflow: hidden !important;
-    }
-    
-    /* 중앙 캔버스 구역 내에서 비율 래퍼 정중앙 수평/수직 정렬 보장 */
-    .center-canvas-zone {
-      flex: 1 !important;
-      height: 100vh !important;
-      display: flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      background-color: #060810 !important;
-      overflow: hidden !important;
-    }
-
-    /* 💡 기본 풀 스크린 배치 */
-    #stage-wrapper.ratio-full #canvas-stage {
-      width: 100% !important;
-      height: 100% !important;
-    }
-
-    /* 🎥 16:9 가로 시네마 명상 모드 가변 핏 */
-    #stage-wrapper.ratio-169 #canvas-stage {
-      width: 100% !important;
-      aspect-ratio: 16 / 9 !important;
-      height: auto !important;
-      max-height: 100% !important;
-      margin: auto !important;
-      box-shadow: 0 0 35px rgba(0, 0, 0, 0.9) !important;
-      border: 1px solid rgba(255, 255, 255, 0.1) !important;
-    }
-
-    /* 📱 9:16 세로 쇼츠 모드 가변 핏 */
-    #stage-wrapper.ratio-916 #canvas-stage {
-      height: 100% !important;
-      aspect-ratio: 9 / 16 !important;
-      width: auto !important;
-      max-width: 100% !important;
-      margin: auto !important;
-      box-shadow: 0 0 35px rgba(0, 0, 0, 0.9) !important;
-      border: 1px solid rgba(255, 255, 255, 0.1) !important;
-    }
-
-    /* 2열 바둑판 정렬 보정 */
-    .sketches-list-wrapper {
-      display: grid !important;
-      grid-template-columns: 1fr 1fr !important;
-      grid-gap: 6px !important;
-      margin-top: 10px;
-      margin-bottom: 20px;
-    }
-    .sketch-btn {
-      width: 100% !important;
-      height: 38px !important;
-      background-color: #1e293b !important;
-      border: 1px solid #334155 !important;
-      border-radius: 4px !important;
-      color: #cbd5e1 !important;
-      font-size: 11px !important;
-      cursor: pointer;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      transition: background 0.2s;
-    }
-    .sketch-btn:hover, .sketch-btn.active {
-      background-color: #00ffcc !important;
-      border-color: #00ffcc !important;
-      color: #0f172a !important;
-      font-weight: bold !important;
-    }
+    /* 💥 고정 레이아웃 가드: main.js가 클래스를 밀어도 3단 레이아웃은 파괴되지 않음 */
+    .main-layout { display: flex !important; width: 100vw !important; height: 100vh !important; overflow: hidden; }
+    .center-canvas-zone { flex: 1 !important; display: flex !important; align-items: center !important; justify-content: center !important; background-color: #060810; position: relative; }
+    #canvas-container { width: 100%; height: 100%; position: relative; }
+    .ratio-169 { aspect-ratio: 16/9 !important; height: auto !important; }
+    .ratio-916 { aspect-ratio: 9/16 !important; width: auto !important; height: 100% !important; }
   </style>
 </head>
 <body>
 
-  <!-- main.js가 탐색하여 강제로 제어하는 타깃 ID 'stage-wrapper' -->
   <div class="main-layout" id="stage-wrapper">
     
-    <!-- ------------------------------------------------------------------------
-         1️⃣ 왼쪽 사이드바: 미디어 리소스 로더 및 2열 스케치 칩 정렬 매트릭스
-         ------------------------------------------------------------------------ -->
+    <!-- 1️⃣ 왼쪽 사이드바 -->
     <div class="left-sidebar">
-      <h3 style="margin-top:0; font-size:13px; color:#8fa0b5; margin-bottom: 10px;">🎵 Media Resources</h3>
-      <div class="control-group" style="margin-bottom:15px; padding: 8px;">
-        <div class="file-input-wrapper">
-          <span>🔊 MP3 오디오:</span>
-          <input type="file" id="file-audio" accept="audio/*">
-        </div>
-        <div class="file-input-wrapper">
-          <span>📝 SRT 자막:</span>
-          <input type="file" id="file-srt" accept=".srt">
-        </div>
-        <div class="file-input-wrapper">
-          <span>🖼️ 배경 이미지:</span>
-          <input type="file" id="file-image" accept="image/*">
-        </div>
+      <h3>🎵 Media Resources</h3>
+      <div class="control-group">
+        <div class="file-input-wrapper"><span>🔊 MP3:</span><input type="file" id="file-audio" accept="audio/*"></div>
+        <div class="file-input-wrapper"><span>📝 SRT:</span><input type="file" id="file-srt" accept=".srt"></div>
+        <div class="file-input-wrapper"><span>🖼️ BG:</span><input type="file" id="file-image" accept="image/*"></div>
       </div>
 
-      <h3 style="margin-top:0; font-size:13px; color:#8fa0b5; margin-bottom: 5px;">📂 Sketches</h3>
-      <!-- 💡 깃허브 실시간 파일명과 100% 일치하도록 보정 정렬 완료 -->
-      <ul class="sketches-list-wrapper" id="sketch-list" style="list-style:none; padding:0; margin:0;">
+      <h3>📂 Sketches</h3>
+      <ul class="sketches-list-wrapper" id="sketch-list">
         <li class="sketch-btn active" data-sketch="001_p5_wave.js">001 파형</li>
         <li class="sketch-btn" data-sketch="002_three_cube.js">002 큐브</li>
         <li class="sketch-btn" data-sketch="003_glsl_noise.js">003 노이즈</li>
@@ -139,126 +51,40 @@
         <li class="sketch-btn" data-sketch="013_p5_ink_meteor_shower.js">013 유성우</li>
         <li class="sketch-btn" data-sketch="014_p5_pendulums.js">014 오르브</li>
         <li class="sketch-btn" data-sketch="015_three_p5_aurora.js">015 유체</li>
-        <li class="sketch-btn" data-sketch="016_p5_stylized_painter.js">016 화가</li>
-        <li class="sketch-btn" data-sketch="017_p5_fbm_cloud.js">017 구름</li>
-        <li class="sketch-btn" data-sketch="018_glsl_noise.js">018 GLSL</li>
-        <li class="sketch-btn" data-sketch="019_p5_512_circles.js">019 원반</li>
         <li class="sketch-btn" data-sketch="020_p5_srt_canvas.js">020 자막</li>
       </ul>
 
-      <div style="margin-top:auto;">
-        <!-- 오리지널 마스터 디코더 플레이어 바인딩 -->
-        <audio id="audio-player" controls src="ambient_meditation.mp3"></audio>
-      </div>
+      <!-- 💡 오디오 경로를 assets/sample.mp3로 고정 -->
+      <audio id="audio-player" controls src="assets/sample.mp3"></audio>
     </div>
 
-    <!-- ------------------------------------------------------------------------
-         2️⃣ 중앙 영역: 메인 미디어 아트 뷰포트 (canvas-stage 타깃 정밀 배정)
-         ------------------------------------------------------------------------ -->
+    <!-- 2️⃣ 중앙 영역 -->
     <div class="center-canvas-zone">
-      <div id="canvas-stage"></div>
+      <div id="canvas-container"></div>
     </div>
 
-    <!-- ------------------------------------------------------------------------
-         3️⃣ 오른쪽 사이드바: 7대 관제탑 튜닝 및 프리셋, 화면 비율 익스포트 제어계
-         ------------------------------------------------------------------------ -->
+    <!-- 3️⃣ 오른쪽 사이드바 -->
     <div class="right-sidebar">
-      <h3 style="margin-top:0; font-size:14px; color:#00ffcc; border-left:3px solid #00ffcc; padding-left:5px;">Cosmic Studio Tuning</h3>
+      <h3>Cosmic Studio Tuning</h3>
+      <div class="control-group"><label>Shuffle</label><div class="slider-row"><input type="range" id="num-cosmic-seed" min="1" max="500" value="42"></div></div>
+      <div class="control-group"><label>Range</label><div class="slider-row"><input type="range" id="num-cosmic-scatter" min="5" max="50" value="22"></div></div>
+      <div class="control-group"><label>Scale</label><div class="slider-row"><input type="range" id="num-cosmic-glow" min="10" max="250" value="85"></div></div>
+      <div class="control-group"><label>Volume</label><div class="slider-row"><input type="range" id="num-cosmic-gain" min="10" max="500" value="100"></div></div>
+      <div class="control-group"><label>Gauge</label><div class="slider-row"><input type="range" id="num-cosmic-gauge" min="0" max="100" value="50"></div></div>
       
-      <!-- cosmicControls 변수 허브 타깃 매핑 -->
-      <div class="control-group">
-        <label>Shuffle</label>
-        <div class="slider-row">
-          <input type="range" id="num-cosmic-seed" min="1" max="500" value="42">
-        </div>
+      <button class="action-master-btn" id="btn-apply-cosmic">현재 수치 즉시 적용 (RESET)</button>
+      
+      <h3>📹 Export Setting</h3>
+      <div class="preset-btn-row">
+        <button class="action-mini-btn" id="btn-ratio-full">Full</button>
+        <button class="action-mini-btn" id="btn-ratio-169">16:9</button>
+        <button class="action-mini-btn" id="btn-ratio-916">9:16</button>
       </div>
-
-      <div class="control-group">
-        <label>Range</label>
-        <div class="slider-row">
-          <input type="range" id="num-cosmic-scatter" min="5" max="50" value="22">
-        </div>
-      </div>
-
-      <div class="control-group">
-        <label>Scale</label>
-        <div class="slider-row">
-          <input type="range" id="num-cosmic-glow" min="10" max="250" value="85">
-        </div>
-      </div>
-
-      <div class="control-group">
-        <label>Volume</label>
-        <div class="slider-row">
-          <input type="range" id="num-cosmic-gain" min="10" max="500" value="100">
-        </div>
-      </div>
-
-      <div class="control-group">
-        <label>Gauge</label>
-        <div class="slider-row">
-          <input type="range" id="num-cosmic-gauge" min="0" max="100" value="50">
-        </div>
-      </div>
-
-      <div class="control-group">
-        <label>Color Style Palette</label>
-        <select id="select-cosmic-color">
-          <option value="monochrome" selected>No1 : 차분한 모스그린 힐링 톤</option>
-          <option value="neon">No2 : 따뜻한 샌드베이지 아날로그 톤</option>
-          <option value="pastel">No3 : 은은한 대지 / 새벽녘 라벤더 톤</option>
-          <option value="custom">No4 : 커스텀 수혈 칼라 파이프라인</option>
-          <option value="random">No5 : 올 랜덤 아날로그 오로라 시프팅</option>
-        </select>
-        
-        <div style="display: flex; gap: 8px; margin-top: 6px;">
-          <input type="color" id="picker-gas1" value="#ff0055" style="width:24px; height:20px; border:none; background:none; cursor:pointer;">
-          <input type="color" id="picker-gas2" value="#00ffcc" style="width:24px; height:20px; border:none; background:none; cursor:pointer;">
-          <input type="color" id="picker-star" value="#ffffff" style="width:24px; height:20px; border:none; background:none; cursor:pointer;">
-        </div>
-      </div>
-
-      <div class="control-group">
-        <label>3D Position Offset (X, Y, Z)</label>
-        <div class="offset-row">
-          <div class="offset-unit"><span>X</span><input type="number" id="num-offset-x" value="0"></div>
-          <div class="offset-unit"><span>Y</span><input type="number" id="num-offset-y" value="0"></div>
-          <div class="offset-unit"><span>Z</span><input type="number" id="num-offset-z" value="0"></div>
-        </div>
-      </div>
-
-      <!-- 프리셋 로컬 디바이스 입출력 장치 연동 -->
-      <h3 style="font-size:12px; color:#8fa0b5; margin-bottom: 4px;">💾 Preset Save & Load <span id="preset-status" style="font-size:10px;"></span></h3>
-      <div class="control-group" style="padding: 8px;">
-        <div class="preset-btn-row">
-          <button class="action-mini-btn" id="btn-save-preset">📂 프리셋 저장</button>
-          <button class="action-mini-btn" id="btn-load-preset">📁 프리셋 불러오기</button>
-          <input type="file" id="hidden-preset-file-input" accept=".json" style="display:none;">
-        </div>
-        <button class="action-master-btn" id="btn-apply-cosmic">현재 수치 즉시 적용 (RESET)</button>
-      </div>
-
-      <!-- 16:9 / 9:16 출력 해상도 스위치 및 비디오 익스포트 제어계 -->
-      <h3 style="font-size:12px; color:#8fa0b5; margin-bottom: 2px;">📹 Export Setting</h3>
-      <div class="control-group" style="padding: 8px;">
-        <div class="preset-btn-row" style="margin-bottom:6px;">
-          <button class="action-mini-btn active" id="btn-ratio-full">Full</button>
-          <button class="action-mini-btn" id="btn-ratio-169">16:9</button>
-          <button class="action-mini-btn" id="btn-ratio-916">9:16</button>
-        </div>
-        <button class="record-master-btn" id="btn-record">🔴 녹화 시작 (Record)</button>
-      </div>
+      <button class="record-master-btn" id="btn-record">🔴 녹화 시작 (Record)</button>
     </div>
 
   </div>
 
-  <!-- 주파수 분할 필터 바인딩을 위한 더미 레이어 (main.js 구동 에러 방지용) -->
-  <div style="display:none;">
-    <input type="range" id="slide-audio-low" value="20">
-    <input type="range" id="slide-audio-high" value="80">
-  </div>
-
-  <!-- 메인 제어 코어 스크립트 모듈 로드 -->
   <script type="module" src="src/main.js"></script>
 </body>
 </html>
