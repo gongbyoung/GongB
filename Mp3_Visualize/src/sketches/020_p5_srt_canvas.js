@@ -1,9 +1,9 @@
 /**
  * src/sketches/020_p5_srt_canvas.js
- * - [버전] Ver 1.1 (관제탑 7대 조작계 1:1 매핑 및 정중앙 정렬 픽스판)
- * - [자막 안 보임 치유 완료] p5.js 드로잉 컨텍스트의 정중앙 정렬(0,0,0) 파이프라인 무결점 시공
- * - [관제탑 매핑]: Scale(폭), Volume(글자크기), Shuffle(모양), Range(입자크기), Gauge(가림시간ms), PosBox(X,Y) 완벽 바인딩
- * - [배경 잎 상향]: 기존 미세하던 잎 크기를 1~100 수치로 조정 가능하게 하여 100배 크기까지 몽환적으로 증폭
+ * - [버전] Ver 1.2 (p5 인스턴스 참조 에러 완치 및 아날로그 입자 쉐이프 대개조 마스터판)
+ * - trackSrtTimeline 내 p.millis 참조 오류를 봉쇄하고 정중앙 정렬 동기화 유지
+ * - No1(단풍잎), No2(풀잎), No3(눈꽃 결정)을 베지에 곡선 및 육방 구조식으로 정교하게 드로잉
+ * - Scale(폭), Volume(자막크기), Range(입자편차), Gauge(가림시간ms), 3D 위치 오프셋 직결 완비
  */
 
 export default class P5SrtCanvas {
@@ -14,12 +14,12 @@ export default class P5SrtCanvas {
 
     this.srtTracks = [];
     this.currentText = "은하수를 유영하는 키네틱 빛의 숨결";
-    this.textWrapWidth = 0.8; // 기본 가로폭 비율
+    this.currentTrackEndTime = 0;
 
     this.particles = [];
     this.textPixels = [];
     
-    this.version = "020호 SRT Kinetic Lyric Ver 1.1";
+    this.version = "020호 SRT Kinetic Lyric Ver 1.2";
     this.guiOverlay = null;
     this.lastColorStyle = "";
   }
@@ -35,7 +35,7 @@ export default class P5SrtCanvas {
       });
     }
 
-    console.log(`%c[🔮 020호 자막 스테이지 가동] ${this.version}`, "color: #00ffcc; font-weight: bold; font-size: 13px;");
+    console.log(`%c[🔮 020호 자막 엔진 패치 완료] ${this.version}`, "color: #00ffcc; font-weight: bold; font-size: 13px;");
 
     this.buildOnScreenGuideUI();
     this.parseDefaultSrt();
@@ -47,8 +47,6 @@ export default class P5SrtCanvas {
         canvas.style('z-index', '1');
         p.noLoop();
         p.textFont('sans-serif');
-        
-        // 💡 [자막 정중앙 정렬 픽스]: x, y축 모두 정중앙으로 칼같이 박제
         p.textAlign(p.CENTER, p.CENTER);
       };
 
@@ -61,75 +59,60 @@ export default class P5SrtCanvas {
 
         if (window.cosmicEngineSettings) {
           seed = window.cosmicEngineSettings.seed || 42;
-          // 💡 [ Range (입자 크기 범위) 매핑]
           scatter = window.cosmicEngineSettings.scatterExponent || 22; 
-          
-          // 💡 [Volume (글자 크기) 매핑]: 슬라이더 수치(10~500)를 글자 크기(30~130)로 매핑
           gain = window.cosmicEngineSettings.audioGain || 1.0;          
-          
-          // 💡 [Scale (가로폭) 매핑]: 폰트 크기 대신 가로폭 비율(0.4 ~ 0.95)로 매핑
           glow = window.cosmicEngineSettings.glowIntensity || 85; 
-          
           colorStyle = window.cosmicEngineSettings.colorStyle || 'monochrome';
-          
-          // 💡 [Gauge (가림 시간 ms) 매핑]: 슬라이더(0~100)를 밀리초(0ms ~ 1200ms)로 매핑
           gauge = window.cosmicEngineSettings.gaugeValue || 50; 
-          
           offX = window.cosmicEngineSettings.positionOffset?.x || 0;
           offY = window.cosmicEngineSettings.positionOffset?.y || 0;
           offZ = window.cosmicEngineSettings.positionOffset?.z || 0;
         }
 
         p.noiseSeed(seed);
-        p.randomSeed(seed); // 💡 [Shuffle (모양 랜덤) 매핑]: 시드 숫자에 따라 잎사귀/눈송이 궤적 완전 랜덤화
+        p.randomSeed(seed);
 
         const width = p.width;
         const height = p.height;
 
         this.trackSrtTimeline();
 
-        // 어스름한 새벽녘 캔버스 배경 처리
-        p.background(8, 11, 18, 50);
+        p.background(8, 11, 18);
 
         let bass = this.currentAudioData ? (this.currentAudioData.bass || 0.0) : 0.0;
-        let volumeFactor = gain * (1.0 + bass * 0.5); // 볼륨은 오디오 싱크 왜곡으로 활용
-
-        // 💡 [배경 잎 크기 상향]: Range 슬라이더 수치에 따라 1~100 배율로 잎사귀 크기 전면 증폭 (기존 0.6 ~ 2.2배)
+        let volumeFactor = gain * (1.0 + bass * 0.5);
         let leafSizeMultiplier = p.map(scatter, 5, 50, 1.0, 100.0);
 
         if (this.lastColorStyle !== colorStyle || p.frameCount % 120 === 0) {
           this.lastColorStyle = colorStyle;
-          this.regenerateParticles(width, height, 50, scatter, leafSizeMultiplier); // 개수는 관제탑 Gauge가 아닌 Ver 1.0 사양 유지
+          this.regenerateParticles(width, height);
           if (colorStyle === 'custom') {
             this.computeTextPixels(p, glow, gain);
           }
         }
 
-        // 💡 [X,Y,Z 위치 조정 픽스]: 자막의 레이아웃 위치를 관제탑 Position Offset 박스 수치로 이동
         p.push();
         p.translate(width / 2 + offX * 2, height / 2 + offY * -2, offZ * -1);
 
-        // 💡 [Gauge 가림 시간 연동 기믹]: Gauge 수치가 높을수록 마스킹(Fading) 시간이 끈적하게 늘어남
         let fadeTimeFactor = p.map(gauge, 0, 100, 0, 1200);
 
-        // 💡 알고리즘 스위칭 구조 가동
         if (colorStyle === 'monochrome') {
-          // 🍁 [스타일 1]: 낙엽 마스크 (차분한 모스그린 및 브라운 잎사귀 페이드)
-          this.drawStandardText(p, glow, gain, 'rgba(235, 230, 220, 0.95)', volumeFactor, fadeTimeFactor);
-          this.drawLeafLayer(p, 'rgba(135, 95, 60, 0.45)', 'rgba(65, 95, 75, 0.5)', scatter, leafSizeMultiplier);
+          // 🍁 [스타일 1]: 단풍잎 마스크 연출
+          this.drawStandardText(p, glow, gain, 'rgba(245, 238, 225, 0.95)', fadeTimeFactor);
+          this.drawMapleLeafLayer(p, scatter, leafSizeMultiplier);
         } 
         else if (colorStyle === 'neon') {
-          // 🌿 [스타일 2]: 풀잎 마스크 (차분한 그린 앤 민트 스프링 잎사귀)
-          this.drawStandardText(p, glow, gain, 'rgba(240, 245, 242, 0.95)', volumeFactor, fadeTimeFactor);
-          this.drawLeafLayer(p, 'rgba(75, 145, 105, 0.5)', 'rgba(125, 185, 155, 0.4)', scatter, leafSizeMultiplier);
+          // 🌿 [스타일 2]: 풀잎 마스크 연출
+          this.drawStandardText(p, glow, gain, 'rgba(238, 246, 240, 0.95)', fadeTimeFactor);
+          this.drawGrassLeafLayer(p, scatter, leafSizeMultiplier);
         } 
         else if (colorStyle === 'pastel') {
-          // ❄️ [스타일 3]: 눈송이 마스크 (실키 소프트 안개 라벤더 스노우)
-          this.drawStandardText(p, glow, gain, 'rgba(255, 255, 255, 0.98)', volumeFactor, fadeTimeFactor);
-          this.drawSnowLayer(p, scatter);
+          // ❄️ [스타일 3]: 눈꽃 결정 마스크 연출
+          this.drawStandardText(p, glow, gain, 'rgba(255, 255, 255, 0.98)', fadeTimeFactor);
+          this.drawSnowflakeLayer(p, scatter, leafSizeMultiplier);
         } 
         else if (colorStyle === 'custom' || colorStyle === 'full-random') {
-          // 🌊 [스타일 4]: 빗방울 물리 분해 왜곡 연산 기믹 (4번 전용 비선형 알고리즘)
+          // 🌊 [스타일 4]: 빗방울 비선형 왜곡 분해 물리
           this.drawRainFluidAlgorithm(p, glow, gain, volumeFactor, scatter);
         }
 
@@ -140,39 +123,130 @@ export default class P5SrtCanvas {
     this.p5Instance = new window.p5(sketch, this.container);
   }
 
-  // 1, 2, 3번 공용 스탠다드 자막 출력 및 가로폭 줄바꿈/글자 크기 정밀 매핑
-  drawStandardText(p, glow, gain, textColorStr, volumeFactor, fadeTimeFactor) {
+  // 자막 드로잉 레이어 파이프라인
+  drawStandardText(p, glow, gain, textColorStr, fadeTimeFactor) {
     p.push();
-    
-    // 💡 [Volume 매핑]: 슬라이더 수치(10~500)에 따라 글자 크기 오가닉 조정 (30px ~ 130px)
     let fontSize = p.map(gain, 10, 500, 30, 130);
     p.textSize(fontSize);
     
-    // 💡 [Scale 매핑]: 슬라이더 수치에 따라 가로폭 제한 조절하여 줄바꿈 유도 (폭의 0.4 ~ 0.95배)
     let wrapWidthFactor = p.map(glow, 10, 250, 0.4, 0.95);
     let wrapWidth = p.width * wrapWidthFactor;
 
     p.fill(textColorStr);
     
-    // 💡 [Gauge 가림 시간 매핑]: 자막이 가려지기 시작~종료되는 오퍼시티 페이드 타이밍 조절
-    const time = p.millis();
+    const time = performance.now();
     if (this.currentTrackEndTime && time > this.currentTrackEndTime - fadeTimeFactor) {
       let alpha = p.map(time, this.currentTrackEndTime - fadeTimeFactor, this.currentTrackEndTime, 255, 0);
       p.fill(255, alpha);
     }
     
-    // 💡 p5.js의 줄바꿈 기능을 활용해 정중앙(0,0) 기준 가로폭 제한 자막 출력
     p.text(this.currentText, 0, 0, wrapWidth); 
     p.pop();
   }
 
-  // 💡 [4번 전용 비선형 물리 알고리즘]: 빗방울 타격 분해 및 바닥 팝업 역학 수식
+  // 🍁 [독립 쉐이더 1]: 다각 베지에 곡선을 활용한 리얼 단풍잎 드로잉
+  drawMapleLeafLayer(p, scatter, leafSizeMultiplier) {
+    p.noStroke();
+    const time = p.frameCount * 0.015;
+    this.particles.forEach((pt, idx) => {
+      pt.y += pt.speed * 0.4;
+      pt.x += p.sin(time + pt.phase) * 0.5;
+      if (pt.y > p.height) { pt.y = p.random(-50, -10); pt.x = p.random(p.width); }
+
+      // 가을 단풍 무드 파스텔 그라데이션 조합 분배
+      p.fill(idx % 2 === 0 ? 'rgba(185, 65, 45, 0.55)' : 'rgba(215, 125, 40, 0.45)');
+      p.push();
+      p.translate(pt.x - p.width / 2, pt.y - p.height / 2);
+      p.rotate(pt.phase + time);
+      
+      let r = (pt.size * 1.5) * leafSizeMultiplier * 0.15;
+      
+      // 베지에 기반 5갈래 단풍 잎사귀 물리 구조 수식 시공
+      p.beginShape();
+      p.vertex(0, -r);
+      p.bezierVertex(r*0.2, -r*0.5, r*0.4, -r*0.6, r*0.7, -r*0.4);
+      p.vertex(r*0.5, -r*0.2);
+      p.bezierVertex(r*0.7, -r*0.1, r*0.9, 0, r, r*0.3);
+      p.vertex(r*0.4, r*0.2);
+      p.bezierVertex(r*0.3, r*0.5, r*0.1, r*0.8, 0, r);
+      p.bezierVertex(-r*0.1, r*0.8, -r*0.3, r*0.5, -r*0.4, r*0.2);
+      p.vertex(-r, r*0.3);
+      p.bezierVertex(-r*0.9, 0, -r*0.7, -r*0.1, -r*0.5, -r*0.2);
+      p.vertex(-r*0.7, -r*0.4);
+      p.bezierVertex(-r*0.4, -r*0.6, -r*0.2, -r*0.5, 0, -r);
+      p.endShape(p.CLOSE);
+      p.pop();
+    });
+  }
+
+  // 🌿 [독립 쉐이더 2]: 유선형 대칭 곡선을 활용한 리얼 봄/여름 풀잎 드로잉
+  drawGrassLeafLayer(p, scatter, leafSizeMultiplier) {
+    p.noStroke();
+    const time = p.frameCount * 0.015;
+    this.particles.forEach((pt, idx) => {
+      pt.y += pt.speed * 0.4;
+      pt.x += p.sin(time + pt.phase) * 0.5;
+      if (pt.y > p.height) { pt.y = p.random(-50, -10); pt.x = p.random(p.width); }
+
+      p.fill(idx % 2 === 0 ? 'rgba(52, 128, 82, 0.5)' : 'rgba(92, 173, 126, 0.4)');
+      p.push();
+      p.translate(pt.x - p.width / 2, pt.y - p.height / 2);
+      p.rotate(pt.phase + time);
+      
+      let w = pt.size * leafSizeMultiplier * 0.25;
+      let h = w * 2.2;
+      
+      // 풀잎 형태학 융합 곡선 가공
+      p.beginShape();
+      p.vertex(0, -h/2);
+      p.bezierVertex(w/2, -h/4, w/2, h/4, 0, h/2);
+      p.bezierVertex(-w/2, h/4, -w/2, -h/4, 0, -h/2);
+      p.endShape(p.CLOSE);
+
+      // 인맥 중앙선 드로잉으로 아날로그 질감 가산
+      p.stroke(idx % 2 === 0 ? 'rgba(32, 85, 52, 0.3)' : 'rgba(255,255,255,0.2)');
+      p.strokeWeight(1.5);
+      p.line(0, -h/2, 0, h/2);
+      p.noStroke();
+      
+      p.pop();
+    });
+  }
+
+  // ❄️ [독립 쉐이더 3]: 육방 대칭 기하학 결정을 활용한 리얼 겨울 눈꽃 드로잉
+  drawSnowflakeLayer(p, scatter, leafSizeMultiplier) {
+    p.stroke(255, 255, 255, 160);
+    const time = p.frameCount * 0.01;
+    this.particles.forEach(pt => {
+      pt.y += pt.speed * 0.3;
+      pt.x += p.sin(time * 2.0 + pt.phase) * 0.8;
+      if (pt.y > p.height) { pt.y = p.random(-30, 0); pt.x = p.random(p.width); }
+
+      p.push();
+      p.translate(pt.x - p.width / 2, pt.y - p.height / 2);
+      p.rotate(pt.phase + time * 0.5);
+      
+      let size = (pt.size * 0.8) * (leafSizeMultiplier * 0.12);
+      p.strokeWeight(p.constrain(size * 0.15, 1.0, 3.5));
+      
+      // 6방 대칭 결정 침상 가지 군무 연산
+      for (let j = 0; j < 6; j++) {
+        p.rotate(p.PI / 3);
+        p.line(0, 0, 0, -size);
+        p.line(0, -size * 0.5, size * 0.25, -size * 0.7);
+        p.line(0, -size * 0.5, -size * 0.25, -size * 0.7);
+      }
+      p.pop();
+    });
+    p.noStroke();
+  }
+
+  // 🌊 [스타일 4]: 빗방울 물리 분해 왜곡 연산
   drawRainFluidAlgorithm(p, glow, gain, volumeFactor, scatter) {
     const width = p.width;
     const height = p.height;
     const time = p.frameCount * 0.03;
 
-    // 1) 전경에 내리는 몽환적인 빗방울 드로잉
     p.stroke('rgba(165, 195, 215, 0.4)');
     p.strokeWeight(1.2);
     this.particles.forEach(pt => {
@@ -182,82 +256,34 @@ export default class P5SrtCanvas {
       p.line(pt.x, pt.y, pt.x, pt.y + pt.size * 2);
     });
 
-    // 2) 빗방울에 글자들이 흐트러진 뒤 바닥에서 입체적으로 솟구치는 유체 픽셀 드로잉
     p.noStroke();
-    
-    let groundY = height * 0.82; // 바닥 분출 리셋 기준선
+    let groundY = height * 0.82;
 
     this.textPixels.forEach(px => {
-      // 주파수 볼륨과 정현파 사인 노이즈를 융합하여 흐트러지는 왜곡 계수 연산
       let waveWarp = p.noise(px.origX * 0.01, px.origY * 0.01, time) * (volumeFactor * 0.8);
-      
-      // 빗방울 낙하 시점에 따른 비선형 흐트러짐
       px.x += p.sin(time + px.phase) * (waveWarp * 0.05);
       
-      // 💥 핵심 연출 시공: 글자들이 흐트러진 뒤 바닥(groundY)에서 가속도를 타고 솟구쳐 오르는 물리 이징 피딩
       if (waveWarp > 12) {
-        px.y += (groundY - px.y) * 0.08; // 바닥으로 정렬 유동
+        px.y += (groundY - px.y) * 0.08;
         px.isGrounded = true;
       }
 
       if (px.isGrounded) {
-        px.popupY -= 0.6 + p.noise(px.x, time) * 1.5; // 바닥에서 자막 미립자가 분출되며 수면 위로 솟구침
-        if (px.popupY < -120) { px.popupY = 0; px.isGrounded = false; } // 순환 루프 리셋
+        px.popupY -= 0.6 + p.noise(px.x, time) * 1.5;
+        if (px.popupY < -120) { px.popupY = 0; px.isGrounded = false; }
       }
 
       let finalY = px.origY + (px.isGrounded ? px.popupY : p.cos(time + px.phase) * waveWarp * 0.2);
-      
-      // 몽환적인 스카이 블루 인디고 파스텔 톤 픽셀 브러시 조합
       p.fill(160 + p.sin(time + px.phase) * 45, 195, 245, px.alpha);
       p.ellipse(px.x - p.width / 2, finalY - p.height / 2, p.map(scatter, 5, 50, 1.5, 4.5));
     });
   }
 
-  // 1, 2번 계절용 유기적 리본/나뭇잎 레이어 연출 (잎사귀 크기 증폭 픽스)
-  drawLeafLayer(p, c1Str, c2Str, scatter, leafSizeMultiplier) {
-    p.noStroke();
-    const time = p.frameCount * 0.015;
-    this.particles.forEach((pt, idx) => {
-      pt.y += pt.speed * 0.4;
-      pt.x += p.sin(time + pt.phase) * 0.5;
-      if (pt.y > p.height) { pt.y = p.random(-50, -10); pt.x = p.random(p.width); }
-
-      p.fill(idx % 2 === 0 ? c1Str : c2Str);
-      p.push();
-      p.translate(pt.x - p.width / 2, pt.y - p.height / 2); // 정중앙 좌표 변환
-      p.rotate(pt.phase + time);
-      
-      // 💡 [배경 잎사귀 100배 상향]: 관제탑 Range 슬라이더 수치에 따라 크기 전면 증폭
-      let finalLeafSize = pt.size * leafSizeMultiplier;
-      p.ellipse(0, 0, finalLeafSize * 1.8, finalLeafSize); // 유기적 리본 잎사귀 형상화
-      p.pop();
-    });
-  }
-
-  // 3번 계절용 몽환적인 렌더링 스노우 가루 레이어 연출
-  drawSnowLayer(p, scatter) {
-    p.noStroke();
-    const time = p.frameCount * 0.01;
-    this.particles.forEach(pt => {
-      pt.y += pt.speed * 0.3;
-      pt.x += p.sin(time * 2.0 + pt.phase) * 0.8;
-      if (pt.y > p.height) { pt.y = p.random(-30, 0); pt.x = p.random(p.width); }
-
-      p.fill(255, 255, 255, pt.alpha * 0.8);
-      let snowSize = pt.size * p.map(scatter, 5, 50, 0.5, 2.0);
-      p.ellipse(pt.x - p.width / 2, pt.y - p.height / 2, snowSize);
-    });
-  }
-
-  // 4번 알고리즘용 텍스트의 픽셀 좌표 분해 매트릭스 추출 캐싱 연산
   computeTextPixels(p, glow, gain) {
     this.textPixels = [];
-    
-    // 💡 픽셀 추출용 글자 크기 동기화
     let fontSize = p.map(gain, 10, 500, 30, 130);
     p.textSize(fontSize);
     
-    // 💡 픽셀 추출용 가로폭 동기화 및 줄바꿈 적용
     let wrapWidthFactor = p.map(glow, 10, 250, 0.4, 0.95);
     let wrapWidth = p.width * wrapWidthFactor;
 
@@ -266,22 +292,17 @@ export default class P5SrtCanvas {
     offscreen.textSize(fontSize);
     offscreen.textAlign(p.CENTER, p.CENTER);
     offscreen.fill(255);
-    // 💡 p5.js의 줄바꿈 기능을 활용해 정중앙(0,0) 기준 가로폭 제한 자막 출력
     offscreen.text(this.currentText, p.width / 2, p.height / 2, wrapWidth);
     offscreen.loadPixels();
 
-    // 연산 최적화를 위해 스킵 샘플링 픽셀 스캔 고정
     for (let y = 0; y < p.height; y += 4) {
       for (let x = 0; x < p.width; x += 4) {
         let index = (x + y * p.width) * 4;
         if (offscreen.pixels[index] > 128) {
           this.textPixels.push({
-            x: x, y: y,
-            origX: x, origY: y,
-            phase: p.random(p.TWO_PI),
-            alpha: p.random(140, 255),
-            popupY: 0,
-            isGrounded: false
+            x: x, y: y, origX: x, origY: y,
+            phase: p.random(p.TWO_PI), alpha: p.random(140, 255),
+            popupY: 0, isGrounded: false
           });
         }
       }
@@ -289,9 +310,8 @@ export default class P5SrtCanvas {
     offscreen.remove();
   }
 
-  regenerateParticles(width, height, gauge, scatter, leafSizeMultiplier) {
+  regenerateParticles(width, height) {
     this.particles = [];
-    // 개수는 280개로 박제 (Ver 1.0 사양 유지)
     for (let i = 0; i < 280; i++) {
       this.particles.push({
         x: Math.random() * width,
@@ -304,7 +324,6 @@ export default class P5SrtCanvas {
     }
   }
 
-  // 오디오 싱크 기반 SRT 타임라인 자동 매퍼 변환 장치
   trackSrtTimeline() {
     const audioEl = document.querySelector('audio');
     if (!audioEl || this.srtTracks.length === 0) return;
@@ -313,12 +332,11 @@ export default class P5SrtCanvas {
     let foundTrack = this.srtTracks.find(t => curTime >= t.start && curTime <= t.end);
     if (foundTrack && this.currentText !== foundTrack.text) {
       this.currentText = foundTrack.text;
-      // 가림 타이밍ms 연산을 위해 종료 시간ms 캐싱
-      this.currentTrackEndTime = p.millis() + (foundTrack.end - curTime) * 1000;
+      // 💡 [에러 정화 고정]: p.millis() 대신 고유 타임 바인딩으로 ReferenceError 완전 봉쇄
+      this.currentTrackEndTime = performance.now() + (foundTrack.end - curTime) * 1000;
     }
   }
 
-  // 기본 명상 자막 데이터 파싱 모듈 인젝션
   parseDefaultSrt() {
     const rawSrt = `
 1
@@ -384,7 +402,7 @@ export default class P5SrtCanvas {
       <div style="color: #00ffcc; font-size: 11px; text-align: left; margin-bottom: 12px; font-weight: bold;">⚙️ STAGE STATUS: ${this.version} READY</div>
       <h3 style="color: #ffffff; font-size: 16px; margin: 0 0 14px 0; font-weight: 600;">020호 익스프레션 자막 미디어 아트</h3>
       <div style="font-size: 12.5px; text-align: left; line-height: 1.75; color: #dddddd;">
-        <p style="margin: 4px 0;">🎬 1, 2, 3번은 자연물 가림 마스크이며 4번(Color Style: Custom)은 빗방울 물리 분산 및 바닥 분출 자막 알고리즘이 가동됩니다.</p>
+        <p style="margin: 4px 0;">🎬 1, 2, 3번은 단풍잎/풀잎/눈꽃 마스크이며 4번(Custom Color)은 빗방울 물리 분산 및 바닥 분출 자막 알고리즘이 가동됩니다.</p>
         <p style="margin: 4px 0; color: #ffcc00;">▶️ [하단 오디오 재생] 기능과 100% 실시간 호환 연동 완료!</p>
       </div>
     `;
