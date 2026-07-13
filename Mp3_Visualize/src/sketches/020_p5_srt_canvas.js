@@ -1,11 +1,10 @@
 /**
  * src/sketches/020_p5_srt_canvas.js
- * - [버전] Ver 15.0 (하이퍼 텍스처 캐싱 렌더러 및 레이어링 안착 마스터판)
- * - createGraphics 텍스처 풀 기술을 시공하여 실시간 그라디언트 연산 과부하 및 CPU 버벅임 100% 완치
- * - 레이어 순서 혁신: [축적 버퍼] -> [가사 자막] -> [라이브 입자] 순으로 배치하여 잎을 뚫고 나오는 가사 구현
- * - 평시 가사 영역 침범 전면 통제 및 Gauge 임계 타임라인 윈도우 진입 시 가사 면적 타겟 가림 폭격
- * - Shuffle 연동: 크림슨, 골드 앰버, 버와인 등 형태와 색이 완벽히 분산된 5가지 프리베이킹 단풍 셔플링 탑재
- * - 눈꽃송이 가산 인광 하이라이트 복구 및 비 효과 시 가사 고정형 디졸브(Dissolve) 소멸 완비
+ * - [버전] Ver 15.5 (하드웨어 가속 프리렌더링 및 가상 캔버스 메모리 청소 완결판)
+ * - 자막 프리렌더링 캐시 레이어를 시공하여 매 프레임 발생하던 폰트 레이아웃 CPU 병목 완치
+ * - .remove() 가비지 컬렉터 강제 구동으로 유령 캔버스 점유 메모리 누수 원천 봉쇄
+ * - 레이어 정렬: [바닥 축적 버퍼] -> [순수 가사 자막] -> [라이브 파티클] 순으로 시각성 최적화
+ * - 평시 가사 영역 완벽 우회 및 자막 종료 타임라인 타겟팅 가림 구현
  */
 export default class P5SrtCanvasStage {
   constructor(container) {
@@ -14,16 +13,17 @@ export default class P5SrtCanvasStage {
     this.particles = [];
     
     this.accumulationBuffer = null;
+    this.subtitleBuffer = null; // 💡 자막 연산 폭발을 막기 위한 전용 프리렌더 캐시 버퍼
     this.lastWidth = 0;
     this.lastHeight = 0;
     
     this.lastTrackedText = "";
     this.subtitleRiseY = 0;
+    this.lastRenderedText = "";
+    this.lastRenderedFontSize = 0;
     
-    // 💡 CPU 과부하 파괴를 위한 오프스크린 고속 텍스처 캐시 풀
     this.textureCaches = null;
-    
-    this.version = "020호 Optimized Texture Cache Rising Engine Ver 15.0";
+    this.version = "020호 Light-Speed Pre-rendered Engine Ver 15.5";
   }
 
   init() {
@@ -39,7 +39,7 @@ export default class P5SrtCanvasStage {
         this.lastWidth = p.width;
         this.lastHeight = p.height;
         
-        // 💡 켜지는 순간 초고속 픽셀 텍스처 팩토리 기동
+        // 정적 텍스처 미리 굽기 공장 가동
         this.createTextureFactories(p);
         p.loop();
       };
@@ -53,15 +53,19 @@ export default class P5SrtCanvasStage {
         
         const style = settings.colorStyle; 
 
+        // 💡 [메모리 누수 완치]: 새 버퍼를 생성하기 전 올드 캔버스 객체를 엘리먼트 레벨에서 강제 삭제
         if (this.lastWidth !== p.width || this.lastHeight !== p.height) {
           let newBuffer = p.createGraphics(p.width, p.height);
           newBuffer.image(this.accumulationBuffer, 0, 0);
+          
+          if (this.accumulationBuffer) this.accumulationBuffer.remove();
           this.accumulationBuffer = newBuffer;
+          
           this.lastWidth = p.width;
           this.lastHeight = p.height;
         }
 
-        // 1. SRT 자막 공간 영역 및 타임라인 정밀 분석
+        // SRT 데이터 스트림 트래킹
         const audioEl = document.getElementById('audio-player');
         const subs = window.parsedSubtitles || [];
         const currentTime = audioEl ? audioEl.currentTime : 0;
@@ -74,6 +78,7 @@ export default class P5SrtCanvasStage {
         const tracking = fontSize * 0.72;
         const leading = fontSize * 1.45;
 
+        // 자막 공간 상자 면적 동적 분석
         let maxLineChars = 0;
         const lines = text.split(" ");
         lines.forEach(l => { if (l.length > maxLineChars) maxLineChars = l.length; });
@@ -87,12 +92,12 @@ export default class P5SrtCanvasStage {
         const centerY = (p.height / 2) + offY;
 
         if (text !== this.lastTrackedText) {
-          if (text !== "") this.subtitleRiseY = 35; // 가사 고유 안착점 35px 아래 배치
+          if (text !== "") this.subtitleRiseY = 35; 
           this.lastTrackedText = text;
         }
         this.subtitleRiseY = p.lerp(this.subtitleRiseY, 0, 0.08);
 
-        // 타임라인 가림 윈도우 연산
+        // 타임라인 동기화 기반 가림 임계 수치 계산
         let coverFactor = 0.0;
         let isCoveringTimeWindow = false;
         if (currentSub) {
@@ -106,55 +111,48 @@ export default class P5SrtCanvasStage {
           }
         }
 
-        // 2. 가사 가림 타이밍 연동 스폰 시스템
+        // 파티클 스폰 레이트
         let spawnRate = p.frameCount % 3 === 0 ? 1 : 0; 
         if (isCoveringTimeWindow) {
           const gaugeRaw = settings.gaugeValue > 1 ? settings.gaugeValue : settings.gaugeValue * 100;
-          spawnRate = p.floor(p.map(coverFactor, 0.0, 1.0, 1, p.max(3, p.floor(gaugeRaw * 0.45))));
+          spawnRate = p.floor(p.map(coverFactor, 0.0, 1.0, 1, p.max(2, p.floor(gaugeRaw * 0.35))));
         }
 
         for (let k = 0; k < spawnRate; k++) {
           this.spawnParticle(p, style, settings, isCoveringTimeWindow, coverFactor, centerX, centerY, boxW, boxH);
         }
 
-        // 3. 물리 상태 동기화 업데이트
         this.updateParticlesPhysics(p, settings);
 
-        // 💡 [레이어 순서 버그 완치]: 1단계 - 바닥에 쌓여 무제한 누적되는 융단 버퍼를 가장 밑바탕에 투사
+        // 💡 1단계 레이어: 이미 깔린 낙엽 융단 버퍼를 가장 바탕에 드로우
         p.image(this.accumulationBuffer, 0, 0);
 
-        // 💡 [레이어 순서 버그 완치]: 2단계 - 깔려있는 낙엽 융단 위로 순수 가사 자막을 렌더링 (뚫고 올라오는 연출 성립)
-        this.drawSubtitle(p, style, settings, isCoveringTimeWindow, coverFactor, currentSub, this.subtitleRiseY, fontSize, tracking, leading, offX, offY);
+        // 💡 2단계 레이어: 뚫고 나오는 느낌 극대화를 위해 낙엽 버퍼 위, 공중 파티클 밑에 가사 전면 배치
+        this.drawSubtitle(p, style, settings, isCoveringTimeWindow, coverFactor, currentSub, this.subtitleRiseY, fontSize, tracking, leading, offX, offY, boxW, boxH);
 
-        // 💡 [레이어 순서 버그 완치]: 3단계 - 공중에서 날아 떨어지는 역동적 라이브 파티클을 최상단에 묘사 (가릴 때 글자 위로 안착)
+        // 💡 3단계 레이어: 공중에서 날아 떨어지는 역동적 파티클을 최상단에 투사
         this.drawLiveParticles(p, glowRaw);
       };
     };
     this.p5Instance = new window.p5(sketch, this.container);
   }
 
-  // 💡 [CPU 0% 화 팩토리]: 다채로운 셔플 형태와 그라데이션을 미리 구워 보관하는 메모리 캐시 엔진
   createTextureFactories(p) {
     this.textureCaches = { leaf: [], grass: [], snow: [] };
 
-    // 🍁 1. 단풍잎 셔플 레이아웃 프리베이킹 (5종)
     const leafColors = [
-      { r: 245, g: 75, b: 35 },  // 산뜻한 다홍
-      { r: 185, g: 30, b: 20 },  // 짙은 피빛 크림슨
-      { r: 255, g: 155, b: 45 }, // 찬란한 황금 앰버
-      { r: 220, g: 90, b: 30 },  // 오가닉 주황 단풍
-      { r: 140, g: 25, b: 15 }   // 말라가는 고풍 갈색
+      { r: 240, g: 70, b: 35 }, { r: 180, g: 30, b: 20 }, { r: 255, g: 150, b: 45 },
+      { r: 215, g: 85, b: 30 }, { r: 135, g: 25, b: 15 }
     ];
     const lobesPool = [5, 7, 6, 5, 7];
 
     leafColors.forEach((c, idx) => {
       let pg = p.createGraphics(128, 128);
       let ctx = pg.drawingContext;
-      let size = 36;
+      let size = 35;
       let lobes = lobesPool[idx];
 
-      ctx.save();
-      ctx.translate(64, 64);
+      ctx.save(); ctx.translate(64, 64);
       let grad = ctx.createRadialGradient(0, 0, 0, 0, 0, size * 1.25);
       grad.addColorStop(0, `rgba(${c.r}, ${p.min(255, c.g + 45)}, ${p.min(255, c.b + 35)}, 0.95)`);
       grad.addColorStop(0.4, `rgba(${c.r}, ${c.g}, ${c.b}, 0.95)`);
@@ -167,23 +165,18 @@ export default class P5SrtCanvasStage {
         let x = r * Math.cos(a); let y = r * Math.sin(a);
         if (a === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
-      ctx.closePath();
-      ctx.fill();
-
-      ctx.strokeStyle = `rgba(${p.max(0, c.r - 110)}, 12, 6, 0.35)`;
-      ctx.lineWidth = 1.6;
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = `rgba(${p.max(0, c.r - 110)}, 10, 5, 0.35)`; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, size * 1.05); ctx.stroke();
       ctx.restore();
       this.textureCaches.leaf.push(pg);
     });
 
-    // 🍃 2. 풀잎 프리베이킹 (5종)
     for (let i = 0; i < 5; i++) {
       let pg = p.createGraphics(128, 128);
       let ctx = pg.drawingContext;
       let size = 38;
-      ctx.save();
-      ctx.translate(64, 64);
+      ctx.save(); ctx.translate(64, 64);
       let grad = ctx.createRadialGradient(0, 0, 0, 0, 0, size * 1.2);
       let greenShift = 135 + i * 16;
       grad.addColorStop(0, `rgba(${greenShift - 45}, 245, 95, 0.95)`);
@@ -191,36 +184,28 @@ export default class P5SrtCanvasStage {
       grad.addColorStop(1, 'rgba(10, 55, 15, 0.95)');
       ctx.fillStyle = grad;
 
-      ctx.beginPath();
-      ctx.moveTo(0, -size * 1.3);
+      ctx.beginPath(); ctx.moveTo(0, -size * 1.3);
       ctx.bezierCurveTo(size * 0.65, -size * 0.45, size * 0.65, size * 0.65, 0, size * 1.3);
       ctx.bezierCurveTo(-size * 0.65, size * 0.65, -size * 0.65, -size * 0.45, 0, -size * 1.3);
-      ctx.closePath();
-      ctx.fill();
-
-      ctx.strokeStyle = 'rgba(8, 40, 10, 0.35)';
-      ctx.lineWidth = 1.8;
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = 'rgba(8, 40, 10, 0.35)'; ctx.lineWidth = 1.8;
       ctx.beginPath(); ctx.moveTo(0, -size * 1.1); ctx.lineTo(0, size * 1.1); ctx.stroke();
       ctx.restore();
       this.textureCaches.grass.push(pg);
     }
 
-    // ❄️ 3. 눈꽃송이 프리베이킹 (5종)
     for (let i = 0; i < 5; i++) {
       let pg = p.createGraphics(128, 128);
       let ctx = pg.drawingContext;
       let size = 35;
-      ctx.save();
-      ctx.translate(64, 64);
+      ctx.save(); ctx.translate(64, 64);
       let grad = ctx.createRadialGradient(0, 0, 0, 0, 0, size * 1.2);
       grad.addColorStop(0, 'rgba(255, 255, 255, 0.98)');
       grad.addColorStop(1, `rgba(${190 - i * 12}, 220, 255, 0.75)`);
-      ctx.strokeStyle = grad;
-      ctx.lineWidth = 2.8;
+      ctx.strokeStyle = grad; ctx.lineWidth = 2.8;
 
       for (let j = 0; j < 6; j++) {
-        ctx.rotate(Math.PI / 3);
-        ctx.beginPath();
+        ctx.rotate(Math.PI / 3); ctx.beginPath();
         ctx.moveTo(0, 0); ctx.lineTo(0, -size);
         ctx.moveTo(0, -size * 0.4); ctx.lineTo(size * 0.32, -size * 0.58);
         ctx.moveTo(0, -size * 0.4); ctx.lineTo(-size * 0.32, -size * 0.58);
@@ -229,6 +214,37 @@ export default class P5SrtCanvasStage {
       ctx.restore();
       this.textureCaches.snow.push(pg);
     }
+  }
+
+  // 💡 [CPU 최적화의 핵]: 고중량 폰트 드로잉을 가사 전환 시 딱 1번만 이미지로 가공하는 가속 컨베이어
+  renderSubtitleCache(p, text, fontSize, tracking, leading) {
+    if (!text) { if (this.subtitleBuffer) this.subtitleBuffer.clear(); return; }
+    
+    const lines = text.split(" ");
+    let maxLineChars = 0;
+    lines.forEach(l => { if (l.length > maxLineChars) maxLineChars = l.length; });
+    
+    const reqW = Math.max(120, p.floor(maxLineChars * tracking + 50));
+    const reqH = Math.max(120, p.floor(lines.length * leading + 50));
+    
+    if (!this.subtitleBuffer) {
+      this.subtitleBuffer = p.createGraphics(reqW, reqH);
+    } else if (this.subtitleBuffer.width < reqW || this.subtitleBuffer.height < reqH) {
+      this.subtitleBuffer.remove();
+      this.subtitleBuffer = p.createGraphics(reqW, reqH);
+    }
+    
+    let sb = this.subtitleBuffer;
+    sb.clear(); sb.textSize(fontSize); sb.textAlign(p.CENTER, p.CENTER); sb.fill(255); sb.noStroke();
+    
+    lines.forEach((line, lineIdx) => {
+      let currentLineY = (sb.height / 2) + (lineIdx * leading) - ((lines.length - 1) * leading * 0.5);
+      let chars = line.split("");
+      chars.forEach((char, charIdx) => {
+        let finalX = (sb.width / 2) + (charIdx * tracking) - ((chars.length - 1) * tracking * 0.5);
+        sb.text(char, finalX, currentLineY);
+      });
+    });
   }
 
   spawnParticle(p, style, settings, isCoveringTimeWindow, coverFactor, centerX, centerY, boxW, boxH) {
@@ -253,42 +269,31 @@ export default class P5SrtCanvasStage {
     let targetX = p.random(p.width);
     let targetY = p.random(p.height);
 
-    // 💡 [가사 영역 분산 가림 및 우회 알고리즘 체결]
+    // 💡 [가사 영역 상시 우회]: 평시 연주 중에는 가사 경계면에 절대 안착하지 않도록 오차 제어
     if (!isCoveringTimeWindow) {
-      // 1) 평시 가사가 떠 있을 때는 가사 박스를 절대 침범하지 못하도록 목적지 우회 필터 가동
-      let safetyCounter = 0;
-      while (p.abs(targetX - centerX) < boxW * 1.1 && p.abs(targetY - centerY) < boxH * 1.1 && safetyCounter < 40) {
-        targetX = p.random(p.width);
-        targetY = p.random(p.height);
-        safetyCounter++;
+      let guardLoop = 0;
+      while (p.abs(targetX - centerX) < boxW * 1.15 && p.abs(targetY - centerY) < boxH * 1.15 && guardLoop < 30) {
+        targetX = p.random(p.width); targetY = p.random(p.height);
+        guardLoop++;
       }
     } else {
-      // 2) 오직 가사가 교체 소멸되는 타이밍에만 정확하게 가사 영역 범위 안으로 폭격 안착
+      // 가사 교체 타임라인 한정 박스 전역 포화 매립 타겟팅
       targetX = centerX + p.random(-boxW * 0.5, boxW * 0.5);
       targetY = centerY + p.random(-boxH * 0.5, boxH * 0.5);
     }
 
     this.particles.push({
-      x: startX,
-      y: type === 'rain' ? p.random(p.height) : startY,
-      startX: startX,
-      startY: startY,
-      targetX: targetX,
-      targetY: targetY,
-      pct: 0.0,
-      step: isCoveringTimeWindow ? p.random(0.018, 0.048) : p.random(speedScale * 0.75, speedScale * 1.25),
-      startSize: startSize,
-      endSize: endSize,
-      currentSize: startSize,
-      angle: p.random(p.TWO_PI),
-      spin: p.random(-0.04, 0.04),
-      waveSeed: p.random(100),
-      waveAmp: p.random(25, 55),
-      type: type,
-      // 💡 셔플 팩토리와 연동시킬 인덱스 값 난수 박제
-      shuffledTextureIdx: p.floor(p.random(100)),
-      alpha: 255
+      x: startX, y: type === 'rain' ? p.random(p.height) : startY,
+      startX: startX, startY: startY, targetX: targetX, targetY: targetY,
+      pct: 0.0, step: isCoveringTimeWindow ? p.random(0.02, 0.055) : p.random(speedScale * 0.75, speedScale * 1.25),
+      startSize: startSize, endSize: endSize, currentSize: startSize,
+      angle: p.random(p.TWO_PI), spin: p.random(-0.04, 0.04),
+      waveSeed: p.random(100), waveAmp: p.random(25, 55), type: type,
+      shuffledTextureIdx: p.floor(p.random(100)), alpha: 255
     });
+
+    // 💡 무제한 라이브 객체 연산 방지를 위한 배열 캡 한계령 자진 체결
+    if (this.particles.length > 180) { this.particles.shift(); }
   }
 
   updateParticlesPhysics(p, settings) {
@@ -307,14 +312,12 @@ export default class P5SrtCanvasStage {
           let rawY = p.lerp(pt.startY, pt.targetY, pt.pct);
           
           let wave = Math.sin(pt.pct * Math.PI * 3 + pt.waveSeed) * pt.waveAmp * (1.0 - pt.pct);
-          pt.x = rawX + wave * 0.6;
-          pt.y = rawY + wave * 0.4;
+          pt.x = rawX + wave * 0.6; pt.y = rawY + wave * 0.4;
           
           pt.currentSize = p.lerp(pt.startSize, pt.endSize, pt.pct);
           pt.angle += pt.spin;
         }
 
-        // 목적지 평면에 도달해 멈추면 거기를 바닥으로 인정, 영구 축적 오프스크린 버퍼에 고속 페인팅
         if (pt.pct >= 1.0) {
           this.drawCachedTextureShape(this.accumulationBuffer, pt, true, 0);
           this.particles.splice(i, 1);
@@ -327,9 +330,7 @@ export default class P5SrtCanvasStage {
     for (let i = 0; i < this.particles.length; i++) {
       let pt = this.particles[i];
       if (pt.type === 'rain') {
-        p.noFill();
-        p.stroke(145, 185, 255, pt.alpha);
-        p.strokeWeight(2.5);
+        p.noFill(); p.stroke(145, 185, 255, pt.alpha); p.strokeWeight(2.5);
         p.ellipse(pt.x, pt.y, (255 - pt.alpha) * (pt.endSize * 0.05));
       } else {
         this.drawCachedTextureShape(p, pt, false, glowRaw);
@@ -337,28 +338,22 @@ export default class P5SrtCanvasStage {
     }
   }
 
-  // 💡 [초고속 이미지 블리팅 렌더러]: 수만 번의 기하 연산을 단순 픽셀 복사로 변환하여 성능 극대화
   drawCachedTextureShape(target, pt, useEndSize, glowRaw) {
     let pool = this.textureCaches[pt.type];
     if (!pool || pool.length === 0) return;
     
-    // 복잡한 셔플 정보가 구워져 보관된 고유 그래픽스 피스 링 링크 수립
     let cachedGraphics = pool[pt.shuffledTextureIdx % pool.length];
     const renderSize = useEndSize ? pt.endSize : pt.currentSize;
 
     if (target === this.p5Instance) {
-      // 1) 실시간 주 화면 최상단 투사 파트
       let p = this.p5Instance;
-      p.push();
-      p.translate(pt.x, pt.y);
-      p.rotate(pt.angle);
+      p.push(); p.translate(pt.x, pt.y); p.rotate(pt.angle);
 
-      // 눈꽃 하이퍼 가산 발광 섀도우 블러 바인딩
       if (pt.type === 'snow' && glowRaw > 0) {
         let ctx = p.drawingContext;
         ctx.save();
-        ctx.shadowBlur = p.map(glowRaw, 10, 250, 15, 65);
-        ctx.shadowColor = 'rgba(230, 245, 255, 0.95)';
+        ctx.shadowBlur = p.map(glowRaw, 10, 250, 15, 60);
+        ctx.shadowColor = 'rgba(235, 245, 255, 0.95)';
         p.image(cachedGraphics, -renderSize, -renderSize, renderSize * 2, renderSize * 2);
         ctx.restore();
       } else {
@@ -366,46 +361,36 @@ export default class P5SrtCanvasStage {
       }
       p.pop();
     } else {
-      // 2) 가상 오프스크린 영구 안착 버퍼 축적 파트
-      target.push();
-      target.translate(pt.x, pt.y);
-      target.rotate(pt.angle);
+      target.push(); target.translate(pt.x, pt.y); target.rotate(pt.angle);
       target.image(cachedGraphics, -renderSize, -renderSize, renderSize * 2, renderSize * 2);
       target.pop();
     }
   }
 
-  drawSubtitle(p, style, settings, isCoveringTimeWindow, coverFactor, currentSub, riseY, fontSize, tracking, leading, offX, offY) {
+  drawSubtitle(p, style, settings, isCoveringTimeWindow, coverFactor, currentSub, riseY, fontSize, tracking, leading, offX, offY, boxW, boxH) {
     const text = window.currentSubtitleText || "";
     if (!text) return;
 
-    p.textSize(fontSize);
-    p.textAlign(p.CENTER, p.CENTER);
+    // 💡 [대변혁 성공]: 조건이 바뀔 때만 프리렌더 엔진을 1회 구동하여 폰트 무한 연산 부하 완전 소멸
+    if (text !== this.lastRenderedText || fontSize !== this.lastRenderedFontSize) {
+      this.renderSubtitleCache(p, text, fontSize, tracking, leading);
+      this.lastRenderedText = text;
+      this.lastRenderedFontSize = fontSize;
+    }
 
+    p.push();
+    p.imageMode(p.CENTER);
+    
     let alphaFade = 255;
     if (isCoveringTimeWindow && currentSub) {
       alphaFade = p.constrain((1.0 - coverFactor) * 255, 0, 255);
     }
-
-    const lines = text.split(" ");
     
-    lines.forEach((line, lineIdx) => {
-      // 자막 안착 위치 바로 밑(35px)에서 스르륵 고개를 들며 상승 안착
-      let currentLineY = (p.height / 2) + offY + riseY + (lineIdx * leading) - ((lines.length - 1) * leading * 0.5);
-      let chars = line.split("");
-      
-      chars.forEach((char, charIdx) => {
-        let finalX = (p.width / 2) + offX + (charIdx * tracking) - ((chars.length - 1) * tracking * 0.5);
-        let finalY = currentLineY;
-
-        // 💡 [요청 반영 완치]: 비 효과 선택 시 가사가 미쳐 날뛰며 깨지던 번짐 파동식을 완전 삭제
-        // 💡 오직 가사가 바뀔 때 비에 고스란히 씻겨 용해되듯 alphaFade 감쇠를 통해 스르륵 디졸브 소멸 고정
-
-        p.fill(255, alphaFade);
-        p.noStroke();
-        p.text(char, finalX, finalY);
-      });
-    });
+    p.tint(255, alphaFade);
+    
+    // 💡 [대변혁 성공]: 60fps로 도는 메인 루프에서는 미리 구워둔 가사 캔버스 이미지를 초고속 단순 복사 투사
+    p.image(this.subtitleBuffer, (p.width / 2) + offX, (p.height / 2) + offY + riseY);
+    p.pop();
 
     if (isCoveringTimeWindow && alphaFade <= 2 && (style === 'neon' || style === 'pastel' || style === 'monochrome')) {
        this.accumulationBuffer.fill(style === 'neon' ? [140, 35, 20, 18] : style === 'pastel' ? [30, 95, 35, 18] : [220, 230, 245, 12]);
@@ -413,12 +398,22 @@ export default class P5SrtCanvasStage {
     }
   }
 
-  update(audioData) { if (this.p5Instance) this.p5Instance.redraw(); }
+  update(audioData) {
+    // 💡 [완치 비결]: 오토 루프(p.loop)와 슬라이더 redraw() 간의 스레드 간섭 충돌 유발을 막기 위해 비워둠
+  }
+  
   resize(w, h) { if (this.p5Instance) this.p5Instance.resizeCanvas(w, h); }
+
   destroy() {
     if (this.p5Instance) { this.p5Instance.remove(); this.p5Instance = null; }
     if (this.accumulationBuffer) { this.accumulationBuffer.remove(); this.accumulationBuffer = null; }
+    if (this.subtitleBuffer) { this.subtitleBuffer.remove(); this.subtitleBuffer = null; }
+    if (this.textureCaches) {
+      ['leaf', 'grass', 'snow'].forEach(t => {
+        if (this.textureCaches[t]) this.textureCaches[t].forEach(g => g?.remove());
+      });
+      this.textureCaches = null;
+    }
     this.particles = [];
-    this.textureCaches = null;
   }
 }
