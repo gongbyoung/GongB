@@ -1,8 +1,6 @@
 /**
  * src/main.js
- * - [버전] Ver 5.1 (cosmicControls 오타 완치 및 프리셋 파일 입출력 안정화 패치판)
- * - 슬라이더 간섭 잔재(cosmicSliders, cosmicFacilities)를 완벽히 도려내고 cosmicControls로 통일
- * - Shuffle, Range, Scale, Volume 인풋 박스 기반의 완벽한 단독 데이터 파이프라인
+ * - [버전] Ver 5.2 (기본 자산 자동 로딩 및 시스템 안정화 통합판)
  */
 
 import { AudioAnalyzer } from './core/AudioAnalyzer.js';
@@ -22,6 +20,28 @@ const srtInput = document.getElementById('file-srt');
 const imageInput = document.getElementById('file-image');
 
 let parsedSubtitles = [];
+
+// 💡 초기 로딩: assets 폴더 기본 자산 로드
+window.addEventListener('DOMContentLoaded', async () => {
+    try {
+        // SRT 자동 파싱 및 주입
+        const srtRes = await fetch('assets/sample.srt');
+        const srtData = await srtRes.text();
+        parsedSubtitles = parseSRT(srtData);
+        window.parsedSubtitles = parsedSubtitles;
+        console.log("Assets SRT 자동 로드 완료, 자막 수:", parsedSubtitles.length);
+
+        // 이미지 자동 로드
+        const img = new Image();
+        img.src = 'assets/sample.jpg';
+        img.onload = () => { 
+            window.currentUploadedImageElement = img; 
+            console.log("Assets 이미지 자동 로드 완료"); 
+        };
+    } catch (err) {
+        console.error("기본 자산 로드 실패:", err);
+    }
+});
 
 audioPlayer.addEventListener('play', () => { analyzer.connectAudioElement(audioPlayer); });
 audioInput.addEventListener('change', (e) => {
@@ -133,7 +153,6 @@ if (audioSliders.low && audioSliders.high) {
     handleDualAudioSliderChange();
 }
 
-// 💡 [수리 기포 마커] cosmicControls 단독 인풋 허브 매립 완수
 const cosmicControls = {
     numSeed: document.getElementById('num-cosmic-seed'),
     numScatter: document.getElementById('num-cosmic-scatter'),
@@ -192,11 +211,12 @@ if (applyCosmicBtn) {
         syncCosmicControls();
         if (manager.currentSketch && typeof manager.currentSketch.buildCosmos === 'function') {
             manager.currentSketch.buildCosmos();
+        } else if (manager.currentSketch) {
+            manager.switchSketch(manager.currentFile, analyzer);
         }
     });
 }
 
-// 💡 [에러 교정 완료] 다른 이름으로 저장 및 열기 기능의 변수 충돌 완전 소멸
 const savePresetBtn = document.getElementById('btn-save-preset');
 const loadPresetBtn = document.getElementById('btn-load-preset');
 const hiddenPresetInput = document.getElementById('hidden-preset-file-input');
@@ -267,15 +287,11 @@ if (loadPresetBtn && hiddenPresetInput) {
                     audioSliders.low.value = config.audioBounds.low; audioSliders.high.value = config.audioBounds.high; handleDualAudioSliderChange();
                 }
                 const targetRatioKey = config.ratioKey || 'full';
-                Object.keys(ratioButtons).forEach(key => {
-                    if (ratioButtons[key]) { if (key === targetRatioKey) ratioButtons[key].classList.add('active'); else ratioButtons[key].classList.remove('active'); }
-                });
                 stageWrapper.className = '';
                 if (targetRatioKey === 'full') stageWrapper.className = 'ratio-full';
-                if (targetRatioKey === '169') stageWrapper.className = 'ratio-169';
-                if (targetRatioKey === '916') stageWrapper.className = 'ratio-916';
+                if (targetRatioKey === 'i169') stageWrapper.className = 'ratio-169';
+                if (targetRatioKey === 'i916') stageWrapper.className = 'ratio-916';
                 
-                setTimeout(() => { manager.resize(stageWrapper.clientWidth, stageWrapper.clientHeight); }, 150);
                 if (config.sketch) {
                     sketchItems.forEach(li => { li.classList.remove('active'); if (li.getAttribute('data-sketch') === config.sketch) li.classList.add('active'); });
                     await manager.switchSketch(config.sketch, analyzer);
