@@ -1,14 +1,15 @@
 /**
  * src/sketches/020_p5_srt_canvas.js
- * - [버전] Ver 6.0 (관제탑 제어권 100% 통합판)
- * - 4단계 물리 엔진(낙엽, 풀잎, 눈, 비)이 우측 UI 슬라이더와 완벽 동기화
+ * - [버전] Ver 7.0 (계절 물리 엔진 및 자막 가리기 알고리즘 통합판)
+ * - 1:낙엽, 2:풀잎, 3:눈, 4:빗방울(탑뷰 리플) 완전 분리
+ * - Scale 기반 자간/줄간격 동기화 및 Volume 기반 파티클 크기 연동 완료
  */
 export default class P5SrtCanvasStage {
   constructor(container) {
     this.container = container;
     this.p5Instance = null;
     this.particles = [];
-    this.version = "020호 Seasonal Physics Lyric Ver 6.0";
+    this.version = "020호 Seasonal Physics Lyric Ver 7.0";
   }
 
   init() {
@@ -22,18 +23,21 @@ export default class P5SrtCanvasStage {
       p.draw = () => {
         p.clear();
         const settings = window.cosmicEngineSettings || { 
-          colorStyle: 'neon', gaugeValue: 0.5, scatterExponent: 2.2, glowIntensity: 0.85 
+          colorStyle: 'neon', gaugeValue: 0.5, scatterExponent: 2.2, glowIntensity: 0.85, audioGain: 1.0 
         };
         
-        // 1. UI 연동: Gauge(입자수), Range(입자크기), Scale(전체크기) 적용
         const style = settings.colorStyle; 
-        const density = Math.floor(settings.gaugeValue * 20);
+        const density = Math.floor(settings.gaugeValue * 25);
         
-        if (p.frameCount % Math.max(1, (20 - density)) === 0) {
+        // 1. 입자 생성 (Gauge -> 밀도)
+        if (p.frameCount % Math.max(1, (30 - density)) === 0) {
           this.spawnParticle(p, style, settings);
         }
 
+        // 2. 물리 업데이트 및 렌더링
         this.updateAndDrawParticles(p, style, settings);
+
+        // 3. 자막 렌더링
         this.drawSubtitle(p, settings);
       };
     };
@@ -41,34 +45,51 @@ export default class P5SrtCanvasStage {
   }
 
   spawnParticle(p, style, settings) {
-    // 💡 Range(scatterExponent)를 입자 크기 편차에 반영
-    const sizeVar = settings.scatterExponent * 2;
+    // Volume(gain) -> 입자 크기
+    const vScale = settings.audioGain * 2;
     let type = style === 'neon' ? 'leaf' : style === 'pastel' ? 'grass' : style === 'monochrome' ? 'snow' : 'rain';
+    
     this.particles.push({
-      x: p.random(p.width), y: -20,
-      vx: p.random(-1, 1), vy: p.random(2, 5),
-      size: p.random(sizeVar, sizeVar * 2),
-      type: type
+      x: type === 'rain' ? p.random(p.width) : p.random(p.width),
+      y: type === 'rain' ? p.random(p.height) : -20,
+      vx: p.random(-1, 1), vy: type === 'rain' ? 0 : p.random(2, 5),
+      size: p.random(5, 15) * vScale,
+      type: type,
+      age: 0,
+      maxAge: type === 'rain' ? 30 : 500
     });
   }
 
   updateAndDrawParticles(p, style, settings) {
+    const centerX = p.width / 2;
+    const centerY = p.height / 2;
+    const fontSize = settings.glowIntensity * 100;
+
     for (let i = this.particles.length - 1; i >= 0; i--) {
       let pt = this.particles[i];
-      pt.x += pt.vx; pt.y += pt.vy;
+      pt.age++;
 
-      p.noStroke();
-      // 💡 1:낙엽, 2:풀잎, 3:눈, 4:빗방울
-      if (pt.type === 'leaf') { p.fill(200, 100, 50, 200); p.ellipse(pt.x, pt.y, pt.size); }
-      else if (pt.type === 'grass') { p.fill(50, 200, 50, 200); p.rect(pt.x, pt.y, pt.size, pt.size); }
-      else if (pt.type === 'snow') { p.fill(255, 200); p.ellipse(pt.x, pt.y, pt.size); }
-      else if (pt.type === 'rain') { 
-        p.stroke(150, 150, 255, 150); 
-        p.line(pt.x, pt.y, pt.x, pt.y + 10); 
-        if (pt.y > p.height - 50) pt.vy *= -0.5; // 4번: 바닥 솟구침 물리
+      // 물리 엔진
+      if (pt.type === 'rain') {
+        // 탑뷰 빗방울 리플 효과
+        p.noFill();
+        p.stroke(100, 100, 255, 150 - (pt.age * 5));
+        p.ellipse(pt.x, pt.y, pt.age * 2);
+      } else {
+        pt.x += pt.vx; pt.y += pt.vy;
+        p.noStroke();
+        p.fill(style === 'neon' ? [200, 100, 50] : [255, 255, 255], 200);
+        if (pt.type === 'leaf') p.triangle(pt.x, pt.y, pt.x+pt.size, pt.y, pt.x+pt.size/2, pt.y+pt.size);
+        else if (pt.type === 'grass') p.rect(pt.x, pt.y, pt.size/2, pt.size);
+        else p.ellipse(pt.x, pt.y, pt.size);
       }
       
-      if (pt.y > p.height + 50) this.particles.splice(i, 1);
+      // 💡 자막 가리기 로직: 파티클이 자막 영역(중앙)을 지나면 자막 투명도 감소
+      if (Math.abs(pt.x - centerX) < fontSize * 2 && Math.abs(pt.y - centerY) < fontSize * 2) {
+          pt.isCovering = true;
+      }
+
+      if (pt.age > pt.maxAge || pt.y > p.height + 50) this.particles.splice(i, 1);
     }
   }
 
@@ -76,20 +97,26 @@ export default class P5SrtCanvasStage {
     const text = window.currentSubtitleText || "";
     if (!text) return;
 
-    // 💡 Scale(glowIntensity)을 폰트 크기에 반영
-    p.textSize(settings.glowIntensity * 100);
+    const fontSize = settings.glowIntensity * 100;
+    // 💡 자간/줄간격 동기화
+    p.textSize(fontSize);
+    p.textLeading(fontSize * 1.2); 
     p.textAlign(p.CENTER, p.CENTER);
-    p.fill(255);
     
-    // 빗방울(rain) 스타일일 때의 왜곡 효과
+    // 빗방울(rain) 스타일: 왜곡 효과
     let yOffset = 0;
     if (window.cosmicEngineSettings?.colorStyle === 'custom') {
-       yOffset = Math.sin(p.frameCount * 0.1) * (settings.audioGain * 20);
+       yOffset = Math.sin(p.frameCount * 0.1) * 10;
     }
+
+    // 자막 투명도 계산 (Gauge 밀도가 높으면 더 빨리 가림)
+    const density = settings.gaugeValue;
+    const textAlpha = 255 - (density * 2);
+    p.fill(255, textAlpha);
 
     const lines = text.split(" ");
     lines.forEach((line, i) => {
-      p.text(line, p.width / 2 + (settings.positionOffset?.x || 0), p.height / 2 + (settings.positionOffset?.y || 0) + yOffset + (i * 50));
+      p.text(line, p.width / 2 + (settings.positionOffset?.x || 0), p.height / 2 + (settings.positionOffset?.y || 0) + yOffset + (i * fontSize * 1.2));
     });
   }
 
