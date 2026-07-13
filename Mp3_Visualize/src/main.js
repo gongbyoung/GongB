@@ -16,20 +16,18 @@ const playMusicBtn = document.getElementById('btn-play-music');
 
 let parsedSubtitles = [];
 
-// 1. 초기 자산 로딩
+// 1. 초기 자산 자동 로딩 (assets/)
 window.addEventListener('DOMContentLoaded', async () => {
     try {
         const srtRes = await fetch('assets/sample.srt');
-        const srtText = await srtRes.text();
-        parsedSubtitles = parseSRT(srtText);
+        parsedSubtitles = parseSRT(await srtRes.text());
         window.parsedSubtitles = parsedSubtitles;
-        const img = new Image();
-        img.src = 'assets/sample.jpg';
+        const img = new Image(); img.src = 'assets/sample.jpg';
         img.onload = () => { window.currentUploadedImageElement = img; };
-    } catch (err) { console.error("기본 자산 로드 실패"); }
+    } catch (err) { console.warn("기본 자산 로드 대기 중"); }
 });
 
-// 2. 음악 재생 제어
+// 2. 미리보기 재생 버튼 로직
 playMusicBtn.addEventListener('click', () => {
     if (audioPlayer.paused) {
         audioPlayer.play();
@@ -41,6 +39,7 @@ playMusicBtn.addEventListener('click', () => {
     }
 });
 
+// 3. 파일 로드 (재생 즉시 안됨)
 audioInput.addEventListener('change', (e) => {
     const file = e.target.files[0]; if (!file) return;
     audioPlayer.pause(); 
@@ -49,7 +48,7 @@ audioInput.addEventListener('change', (e) => {
     playMusicBtn.innerText = '▶️ 음악 재생 (Play)';
 });
 
-// 3. 자막 파싱
+// 4. 자막 파싱 및 전역 업데이트
 function parseSRT(data) {
     const blocks = data.replace(/\r/g, '').trim().split('\n\n');
     return blocks.map(b => {
@@ -70,15 +69,17 @@ audioPlayer.addEventListener('timeupdate', () => {
     window.currentSubtitleText = sub ? sub.text : "";
 });
 
-// 4. 스케치 및 비율 제어
+// 5. 스케치 전환
 sketchItems.forEach(item => {
     item.addEventListener('click', async (e) => {
         sketchItems.forEach(li => li.classList.remove('active'));
         e.currentTarget.classList.add('active');
         await manager.switchSketch(e.currentTarget.getAttribute('data-sketch'), analyzer);
+        syncCosmicControls();
     });
 });
 
+// 6. 비율 전환 (지연 없이 즉시 리사이즈)
 const ratioButtons = { full: document.getElementById('btn-ratio-full'), i169: document.getElementById('btn-ratio-169'), i916: document.getElementById('btn-ratio-916') };
 Object.keys(ratioButtons).forEach(key => {
     if (ratioButtons[key]) {
@@ -91,25 +92,7 @@ Object.keys(ratioButtons).forEach(key => {
     }
 });
 
-// 5. 녹화 및 슬라이더 제어
-const recordBtn = document.getElementById('btn-record');
-let isRecording = false;
-recordBtn?.addEventListener('click', async () => {
-    if (!isRecording) { isRecording = true; await recorder.start(); recordBtn.innerText = '⏹️ 녹화 중지'; }
-    else { isRecording = false; await recorder.stop(); recordBtn.innerText = '🔴 녹화 시작 (Record)'; }
-});
-
-const audioSliders = { low: document.getElementById('slide-audio-low'), high: document.getElementById('slide-audio-high') };
-function handleAudioSlider() {
-    if (!audioSliders.low || !audioSliders.high) return;
-    const bL = 20; const bH = Math.floor(THREE.MathUtils.mapLinear(parseInt(audioSliders.low.value), 5, 95, 120, 600));
-    const mL = bH; const mH = Math.floor(THREE.MathUtils.mapLinear(parseInt(audioSliders.high.value), 5, 95, 1500, 6500));
-    analyzer.updateBounds({ bassLow: bL, bassHigh: bH, midLow: mL, midHigh: mH, trebleLow: mL, trebleHigh: 16000 });
-}
-audioSliders.low?.addEventListener('input', handleAudioSlider);
-audioSliders.high?.addEventListener('input', handleAudioSlider);
-
-// 6. 관제탑 통제 허브
+// 7. 관제탑 허브 및 프리셋 로직
 const cosmicControls = {
     numSeed: document.getElementById('num-cosmic-seed'), numScatter: document.getElementById('num-cosmic-scatter'),
     color: document.getElementById('select-cosmic-color'), numGlow: document.getElementById('num-cosmic-glow'),
@@ -120,27 +103,51 @@ const cosmicControls = {
 };
 
 function syncCosmicControls() {
+    if (!cosmicControls.numSeed) return;
     window.cosmicEngineSettings = {
         seed: parseInt(cosmicControls.numSeed.value),
-        scatterExponent: parseFloat(cosmicControls.numScatter.value) / 10,
+        scatterExponent: parseFloat(cosmicControls.numScatter.value),
         colorStyle: cosmicControls.color.value,
-        glowIntensity: parseFloat(cosmicControls.numGlow.value) / 100,
-        audioGain: parseFloat(cosmicControls.numGain.value) / 100,
+        glowIntensity: parseFloat(cosmicControls.numGlow.value),
+        audioGain: parseFloat(cosmicControls.numGain.value),
         customColors: { gas1: cosmicControls.pickGas1.value, gas2: cosmicControls.pickGas2.value, star: cosmicControls.pickStar.value },
         positionOffset: { x: parseFloat(cosmicControls.offsetX.value), y: parseFloat(cosmicControls.offsetY.value), z: parseFloat(cosmicControls.offsetZ.value) },
-        gaugeValue: parseInt(cosmicControls.numGauge.value) / 100
+        gaugeValue: parseFloat(cosmicControls.numGauge.value)
     };
 }
-Object.values(cosmicControls).forEach(el => el?.addEventListener('input', syncCosmicControls));
-document.getElementById('btn-apply-cosmic')?.addEventListener('click', () => { syncCosmicControls(); manager.currentSketch?.buildCosmos?.(); });
 
-// 7. 프리셋 저장/불러오기
+// 💡 [핵심 수리 완료]: 슬라이더 인풋 변경시 스케치 인스턴스 강제 수동 리드로우 동기화 트리거 체결
+Object.values(cosmicControls).forEach(el => {
+    el?.addEventListener('input', () => {
+        syncCosmicControls();
+        if (manager.currentSketch && typeof manager.currentSketch.update === 'function') {
+            manager.currentSketch.update(null); // 프리뷰 상태에서도 변경 즉시 시각화
+        }
+    });
+});
+
+document.getElementById('btn-apply-cosmic')?.addEventListener('click', () => {
+    syncCosmicControls();
+    if (manager.currentSketch && typeof manager.currentSketch.buildCosmos === 'function') {
+        manager.currentSketch.buildCosmos();
+    } else {
+        manager.switchSketch(manager.currentFile, analyzer);
+    }
+});
+
+// 8. 녹화 및 프리셋 로직
+const recordBtn = document.getElementById('btn-record');
+let isRecording = false;
+recordBtn?.addEventListener('click', async () => {
+    if (!isRecording) { isRecording = true; await recorder.start(); recordBtn.innerText = '⏹️ 녹화 중지'; }
+    else { isRecording = false; await recorder.stop(); recordBtn.innerText = '🔴 녹화 시작 (Record)'; }
+});
+
 document.getElementById('btn-save-preset')?.addEventListener('click', () => {
     const data = JSON.stringify({ cosmic: window.cosmicEngineSettings, sketch: manager.currentFile });
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([data])); a.download = 'preset.json'; a.click();
 });
 
-// 초기화
 const activeLi = document.querySelector('#sketch-list li.active');
 manager.switchSketch(activeLi ? activeLi.getAttribute('data-sketch') : '001_p5_wave.js', analyzer);
 window.addEventListener('resize', () => manager.resize(stageWrapper.clientWidth, stageWrapper.clientHeight));
