@@ -1,15 +1,22 @@
 /**
  * src/sketches/020_p5_srt_canvas.js
- * - [버전] Ver 7.5 (자연계 리얼 셰이프 모델링 및 가산 레이어 감쇠 완결판)
- * - Shuffle(배치 랜덤 시드), Range(입자 낙하 속도 분산), Scale(자간/줄간 동격 지배), Volume(잎/눈꽃송이 고유 형태 크기), Gauge(가림 밀도 임계점 조절)
- * - 1:단풍잎(Maple), 2:풀잎(Grass), 3:눈꽃송이(6축 결정), 4:빗방울 탑뷰 리플(자막 레이어 파동 용해 용출 알고리즘) 완전 시공
+ * - [버전] Ver 9.0 (시즌별 가산 축적 버퍼 및 GAUGE 타이밍 마스크 엔진)
+ * - GAUGE 수치를 자막 종료 전 가림 시간(초)으로 파싱하여 정확한 타임라인 통제 구현
+ * - createGraphics 백포 버퍼를 활용해 낙엽과 풀잎이 사양 저하 없이 무제한으로 쌓이는 시스템 시공
+ * - Scale 슬라이더 기반 최소 글꼴 배율 2배 격상 및 자간/줄간 고정 비례 팽창 패치
  */
 export default class P5SrtCanvasStage {
   constructor(container) {
     this.container = container;
     this.p5Instance = null;
     this.particles = [];
-    this.version = "020호 Real Custom Geometry Lyric Ver 7.5";
+    
+    // 무제한 축적 레이어를 위한 오프스크린 가상 캔버스 버퍼
+    this.accumulationBuffer = null;
+    this.lastWidth = 0;
+    this.lastHeight = 0;
+    
+    this.version = "020호 Layered Accumulation Engine Ver 9.0";
   }
 
   init() {
@@ -18,165 +25,219 @@ export default class P5SrtCanvasStage {
         const canvas = p.createCanvas(this.container.clientWidth, this.container.clientHeight);
         canvas.style('position', 'absolute');
         canvas.style('z-index', '1');
+        
+        // 영구 축적용 그래픽스 버퍼 레이어 생성
+        this.accumulationBuffer = p.createGraphics(p.width, p.height);
+        this.accumulationBuffer.clear();
+        
+        this.lastWidth = p.width;
+        this.lastHeight = p.height;
         p.noLoop();
       };
 
       p.draw = () => {
         p.clear();
         
+        // main.js의 /10, /100 정규화 스케일 파이프라인 수신
         const settings = window.cosmicEngineSettings || { 
-          seed: 42, scatterExponent: 22, glowIntensity: 85, audioGain: 100, gaugeValue: 50, colorStyle: 'neon' 
+          seed: 42, scatterExponent: 2.2, glowIntensity: 0.85, audioGain: 1.0, gaugeValue: 0.5, colorStyle: 'neon' 
         };
         
         p.randomSeed(settings.seed);
+        const style = settings.colorStyle; 
 
-        const style = settings.colorStyle; // neon=단풍잎, pastel=풀잎, monochrome=눈꽃송이, earth=빗방울탑뷰
-        const density = Math.floor(p.map(settings.gaugeValue, 0, 100, 2, 45));
-
-        // 1. 파티클 수명 주기 스폰
-        if (p.frameCount % Math.max(1, (50 - density)) === 0) {
-          this.spawnParticle(p, style, settings);
+        // 화면 크기가 변했을 때 축적 버퍼도 안전하게 리사이즈
+        if (this.lastWidth !== p.width || this.lastHeight !== p.height) {
+          let newBuffer = p.createGraphics(p.width, p.height);
+          newBuffer.image(this.accumulationBuffer, 0, 0);
+          this.accumulationBuffer = newBuffer;
+          this.lastWidth = p.width;
+          this.lastHeight = p.height;
         }
 
-        // 2. 물리 렌더링 및 개별 자막 마스크 레이어 산출
-        let maskForce = this.updateAndDrawParticles(p, style, settings);
+        // 1. SRT 타임라인 및 GAUGE 기반 가림 윈도우 계산
+        const audioEl = document.getElementById('audio-player');
+        const subs = window.parsedSubtitles || [];
+        const currentTime = audioEl ? audioEl.currentTime : 0;
+        
+        // 현재 재생 중인 자막 객체 정밀 역추적
+        const currentSub = subs.find(s => currentTime >= s.start && currentTime <= s.end);
+        
+        let isCoveringTimeWindow = false;
+        if (currentSub) {
+          const remainingTime = currentSub.end - currentTime;
+          // Gauge(0.0~1.0)를 최대 2.5초 전부터 덮기 시작하는 매커니즘 시간선으로 매핑
+          const coverThresholdTime = p.map(settings.gaugeValue, 0.0, 1.0, 0.0, 2.5);
+          if (remainingTime <= coverThresholdTime) {
+            isCoveringTimeWindow = true;
+          }
+        }
 
-        // 3. 자간 및 줄간격이 완벽히 비례 동기화된 가림 자막 마스터 출력
-        this.drawSubtitle(p, style, settings, maskForce);
+        // 2. 자연계 입자 생성 프로세스 (일반 낙하 vs 자막 집중 매립)
+        let spawnRate = p.floor(p.map(settings.gaugeValue, 0.0, 1.0, 1, 6));
+        if (isCoveringTimeWindow) spawnRate *= 3; // 가림 시간 타이밍에는 3배 폭발 스폰
+
+        if (p.frameCount % 2 === 0) {
+          for (let k = 0; k < spawnRate; k++) {
+            this.spawnParticle(p, style, settings, isCoveringTimeWindow);
+          }
+        }
+
+        // 3. 실시간 물리 입자 갱신 및 수명이 다한 조각들 축적 버퍼에 영구 박제
+        this.updateAndBufferParticles(p, settings);
+
+        // 4. 먼저 쌓인 낙엽/풀잎 축적 버퍼 레이어를 메인 화면에 묘사
+        p.image(this.accumulationBuffer, 0, 0);
+
+        // 5. 완벽한 자간/줄간 비율이 공급되는 자막 레이어 최종 출력
+        this.drawSubtitle(p, style, settings, isCoveringTimeWindow, currentSub);
       };
     };
     this.p5Instance = new window.p5(sketch, this.container);
   }
 
-  spawnParticle(p, style, settings) {
-    // Volume(audioGain)에 정비례하는 자연 셰이프 고유 크기 스케일 바인딩
-    const baseSize = p.map(settings.audioGain, 10, 500, 8, 85);
-    const scatterSpeed = p.map(settings.scatterExponent, 5, 50, 1, 8);
+  spawnParticle(p, style, settings, isCoveringTimeWindow) {
+    // Volume 슬라이더 수치에 직결된 입자 고유 셰이프 기본 크기 배율 결정
+    const particleScale = p.map(settings.audioGain, 0.1, 5.0, 20, 110);
+    const speedScale = p.map(settings.scatterExponent, 0.5, 5.0, 1.0, 8.0);
 
-    let type = 'leaf';
+    let type = 'leaf'; // neon
     if (style === 'pastel') type = 'grass';
     if (style === 'monochrome') type = 'snow';
     if (style === 'earth') type = 'rain';
 
+    let spawnX = p.random(p.width);
+    let spawnY = -40;
+
+    // 💡 [매커니즘 핵심]: 자막 가림 타임라인 윈도우 발동 시, 스폰 좌표를 자막 정중앙 픽셀 박스로 강제 고정 펌핑
+    if (isCoveringTimeWindow && type !== 'rain') {
+      const fontSize = p.map(settings.glowIntensity, 0.1, 2.5, 50, 220);
+      spawnX = (p.width / 2) + p.random(-fontSize * 2.5, fontSize * 2.5) + (settings.positionOffset?.x || 0);
+      spawnY = (p.height / 2) + p.random(-fontSize * 1.5, fontSize * 1.5) + (settings.positionOffset?.y || 0);
+    }
+
     this.particles.push({
-      x: p.random(p.width),
-      y: type === 'rain' ? p.random(p.height) : -30,
-      vx: p.random(-1.5, 1.5),
-      vy: type === 'rain' ? 0 : p.random(1.5, 4.5) * (scatterSpeed * 0.5),
-      size: p.random(baseSize * 0.6, baseSize * 1.4),
+      x: spawnX,
+      y: type === 'rain' ? p.random(p.height) : spawnY,
+      vx: isCoveringTimeWindow ? p.random(-0.5, 0.5) : p.random(-2, 2),
+      vy: type === 'rain' ? 0 : (isCoveringTimeWindow ? p.random(0.5, 2.0) : p.random(2, 5) * (speedScale * 0.5)),
+      size: p.random(particleScale * 0.75, particleScale * 1.25),
       angle: p.random(p.TWO_PI),
-      spin: p.random(-0.03, 0.03),
+      spin: p.random(-0.05, 0.05),
       type: type,
-      age: 0,
-      maxAge: type === 'rain' ? 45 : 600
+      isSettled: false,
+      alpha: 255
     });
   }
 
-  updateAndDrawParticles(p, style, settings) {
-    let textZoneCoverage = 0;
-    const centerX = p.width / 2;
-    const centerY = p.height / 2;
-    const textBoundary = p.map(settings.glowIntensity, 10, 250, 40, 400);
+  updateAndDrawParticles(p, settings) {
+    // 이 메서드는 아래 updateAndBufferParticles 시스템 내로 정밀 통합 분희되어 연산됩니다.
+  }
 
+  updateAndBufferParticles(p, settings) {
     for (let i = this.particles.length - 1; i >= 0; i--) {
       let pt = this.particles[i];
-      pt.age++;
 
       if (pt.type === 'rain') {
-        // 💡 4번 효과 [탑뷰 비 무대]: 빗방울 낙하 파동 리플 링 전개
+        // [4번 효과]: 빗방울 탑뷰 리플 물리
+        pt.alpha -= 6;
         p.noFill();
-        let progress = pt.age / pt.maxAge;
-        p.stroke(140, 180, 255, 255 * (1.0 - progress));
+        p.stroke(160, 200, 255, pt.alpha);
         p.strokeWeight(2);
-        p.ellipse(pt.x, pt.y, pt.age * (pt.size * 0.15));
-        
-        // 리플 중심부 타격점 가림 산출
-        let d = p.dist(pt.x, pt.y, centerX, centerY);
-        if (d < textBoundary) {
-          textZoneCoverage += (1.0 - progress) * (settings.gaugeValue / 50.0);
-        }
+        p.ellipse(pt.x, pt.y, (255 - pt.alpha) * (pt.size * 0.04));
+        if (pt.alpha <= 0) this.particles.splice(i, 1);
       } else {
-        // 💡 1,2,3번 효과 [하강 기류 무대]: 자막 덮기용 정밀 자연 기하학 드로잉
-        pt.x += pt.vx; 
+        // [1,2,3번 효과]: 낙하 및 바닥 바인딩 물리
+        pt.x += pt.vx;
         pt.y += pt.vy;
         pt.angle += pt.spin;
 
+        // 바닥 또는 자막 가림 타겟 안착 조건 연산
+        if (pt.y >= p.height - pt.size * 0.4) {
+          pt.y = p.height - pt.size * 0.4;
+          pt.isSettled = true;
+        }
+
+        // 실시간 화면에 살아있는 공중 파티클 묘사
         p.push();
         p.translate(pt.x, pt.y);
         p.rotate(pt.angle);
         p.noStroke();
-
-        if (pt.type === 'leaf') {
-          // 🍁 No1: 단풍잎 리얼 수식 모델링
-          p.fill(195, 55, 35, 230);
-          p.beginShape();
-          for (let a = 0; a < p.TWO_PI; a += 0.05) {
-            let r = pt.size * (1.0 + 0.4 * p.sin(5 * a) + 0.2 * p.sin(10 * a));
-            let x = r * p.cos(a); let y = r * p.sin(a);
-            p.vertex(x, y);
-          }
-          p.endShape(p.CLOSE);
-          p.stroke(130, 25, 15); p.strokeWeight(1.5); p.line(0, 0, 0, pt.size * 1.1);
-        } 
-        else if (pt.type === 'grass') {
-          // 🍃 No2: 뾰족한 인맥 수려 풀잎 모델링
-          p.fill(55, 155, 65, 230);
-          p.beginShape();
-          p.vertex(0, -pt.size * 1.2);
-          p.bezierVertex(pt.size * 0.6, -pt.size * 0.4, pt.size * 0.6, pt.size * 0.6, 0, pt.size * 1.2);
-          p.bezierVertex(-pt.size * 0.6, pt.size * 0.6, -pt.size * 0.6, -pt.size * 0.4, 0, -pt.size * 1.2);
-          p.endShape(p.CLOSE);
-          p.stroke(35, 105, 40); p.strokeWeight(2); p.line(0, -pt.size * 1.1, 0, pt.size * 1.1);
-        } 
-        else {
-          // ❄️ No3: 정교한 6축 결정 대우주 눈꽃송이 모델링
-          p.stroke(240, 248, 255, 230);
-          p.strokeWeight(p.max(1.5, pt.size * 0.08));
-          p.noFill();
-          for (let j = 0; j < 6; j++) {
-            p.rotate(p.PI / 3);
-            p.line(0, 0, 0, -pt.size);
-            p.line(0, -pt.size * 0.4, pt.size * 0.3, -pt.size * 0.6);
-            p.line(0, -pt.size * 0.4, -pt.size * 0.3, -pt.size * 0.6);
-            p.line(0, -pt.size * 0.7, pt.size * 0.2, -pt.size * 0.85);
-            p.line(0, -pt.size * 0.7, -pt.size * 0.2, -pt.size * 0.85);
-          }
-        }
+        this.drawNatureShape(p, pt);
         p.pop();
 
-        // 글자 영역 가림 누적량 연산
-        let d = p.dist(pt.x, pt.y, centerX, centerY);
-        if (d < textBoundary) {
-          textZoneCoverage += (settings.gaugeValue / 40.0);
+        // 💡 [무제한 축적 매커니즘]: 바닥에 닿았거나 낙엽/풀잎 고유 플래그 충족 시 오프스크린 그래픽 버퍼에 영구 페인팅 후 가볍게 소멸
+        if (pt.isSettled) {
+          this.accumulationBuffer.push();
+          this.accumulationBuffer.translate(pt.x, pt.y);
+          this.accumulationBuffer.rotate(pt.angle);
+          this.accumulationBuffer.noStroke();
+          this.drawNatureShape(this.accumulationBuffer, pt);
+          this.accumulationBuffer.pop();
+
+          // Live 배열에서 제거하여 리소스 반환 (메모리 누수 완전 동결)
+          this.particles.splice(i, 1);
         }
       }
-
-      if (pt.age > pt.maxAge || pt.y > p.height + 40) {
-        this.particles.splice(i, 1);
-      }
     }
-    return textZoneCoverage;
   }
 
-  drawSubtitle(p, style, settings, maskForce) {
+  drawNatureShape(ctx, pt) {
+    // p5 메인 캔버스와 오프스크린 버퍼 양쪽 모두 정밀 드로잉이 연동되도록 상호 컨텍스트 추적 처리
+    if (pt.type === 'leaf') {
+      ctx.fill(200, 60, 40, 240);
+      ctx.beginShape();
+      for (let a = 0; a < 6.28; a += 0.06) {
+        let r = pt.size * (1.0 + 0.4 * Math.sin(5 * a) + 0.2 * Math.sin(10 * a));
+        ctx.vertex(r * Math.cos(a), r * Math.sin(a));
+      }
+      ctx.endShape(2); // CLOSE
+      ctx.stroke(130, 25, 15); ctx.strokeWeight(2); ctx.line(0, 0, 0, pt.size * 1.1);
+    } 
+    else if (pt.type === 'grass') {
+      ctx.fill(50, 160, 70, 240);
+      ctx.beginShape();
+      ctx.vertex(0, -pt.size * 1.3);
+      ctx.bezierVertex(pt.size * 0.65, -pt.size * 0.45, pt.size * 0.65, pt.size * 0.65, 0, pt.size * 1.3);
+      ctx.bezierVertex(-pt.size * 0.65, pt.size * 0.65, -pt.size * 0.65, -pt.size * 0.45, 0, -pt.size * 1.3);
+      ctx.endShape(2);
+      ctx.stroke(30, 100, 40); ctx.strokeWeight(2.5); ctx.line(0, -pt.size * 1.2, 0, pt.size * 1.2);
+    } 
+    else if (pt.type === 'snow') {
+      ctx.stroke(245, 250, 255, 235);
+      ctx.strokeWeight(Math.max(2.5, pt.size * 0.1));
+      for (let j = 0; j < 6; j++) {
+        ctx.rotate(3.14159 / 3);
+        ctx.line(0, 0, 0, -pt.size);
+        ctx.line(0, -pt.size * 0.4, pt.size * 0.35, -pt.size * 0.6);
+        ctx.line(0, -pt.size * 0.4, -pt.size * 0.35, -pt.size * 0.6);
+      }
+    }
+  }
+
+  drawSubtitle(p, style, settings, isCoveringTimeWindow, currentSub) {
     const text = window.currentSubtitleText || "";
     if (!text) return;
 
-    // 💡 [자간/줄간격 비율 고정 수술]: Scale(glowIntensity) 수치에 따라 완벽한 기하급수 비례 배율 연동
-    const fontSize = p.map(settings.glowIntensity, 10, 250, 16, 110);
-    const tracking = fontSize * 0.65; // 글자간의 정갈한 여백 비율 박제
-    const leading = fontSize * 1.35;  // 줄간격이 글꼴 크기와 동일한 비율로 동반 팽창 보정
+    // 💡 [글자 크기 하한선 2배 상향]: 최소 크기 50px에서 최대 220px까지 광활한 팽창 밸런스 매핑
+    const fontSize = p.map(settings.glowIntensity, 0.1, 2.5, 50, 220);
+    const tracking = fontSize * 0.72; // 글꼴에 고정 비례 연동되는 완벽한 자간 배율
+    const leading = fontSize * 1.45;  // 글꼴과 동일 비율로 동반 조율되는 절대 줄간격 배율 공정
 
     p.textSize(fontSize);
     p.textAlign(p.CENTER, p.CENTER);
 
-    // Gauge 및 자연 누적 가림 힘에 의한 알파 레이어 감쇠식
-    let calculatedAlpha = 255 - (maskForce * 12);
-    calculatedAlpha = p.constrain(calculatedAlpha, 0, 255);
+    // 💡 [타임라인 알파 덮기 연산식]: 가림 시간 윈도우에 돌입하면 자막 투명도가 0으로 서서히 용해 소멸
+    let alphaFade = 255;
+    if (isCoveringTimeWindow && currentSub) {
+      const audioEl = document.getElementById('audio-player');
+      const currentTime = audioEl ? audioEl.currentTime : 0;
+      const progress = (currentSub.end - currentTime) / p.map(settings.gaugeValue, 0.0, 1.0, 0.001, 2.5);
+      alphaFade = p.constrain(progress * 255, 0, 255);
+    }
 
     const offX = settings.positionOffset?.x || 0;
     const offY = settings.positionOffset?.y || 0;
-
     const lines = text.split(" ");
     
     lines.forEach((line, lineIdx) => {
@@ -189,18 +250,25 @@ export default class P5SrtCanvasStage {
         let finalX = currentRawX;
         let finalY = currentLineY;
 
-        // 💡 4번 비 효과: 자막 레이어가 물결 파동(Ripple)에 퍼지듯이 왜곡 소멸하는 물리식
+        // [4번 효과 - 빗방울 탑뷰 리플 파동 분산 왜곡]
         if (style === 'earth') {
-          let waveFactor = p.sin(p.frameCount * 0.08 + charIdx * 0.5 + lineIdx) * p.map(settings.gaugeValue, 0, 100, 2, 45);
-          finalX += waveFactor * 0.6;
-          finalY += p.cos(p.frameCount * 0.06 + charIdx) * waveFactor * 0.4;
+          let wave = p.sin(p.frameCount * 0.12 + charIdx * 0.7) * p.map(settings.gaugeValue, 0.0, 1.0, 0, 50);
+          finalX += wave * 0.8;
+          finalY += p.cos(p.frameCount * 0.09 + charIdx) * wave * 0.5;
         }
 
-        p.fill(255, calculatedAlpha);
+        p.fill(255, alphaFade);
         p.noStroke();
         p.text(char, finalX, finalY);
       });
     });
+
+    // 💡 자막 가림 타이밍이 완벽히 끝나 자막 투명도가 0이 되면 축적 버퍼에 자막 형상의 잔상을 낙엽과 동화시켜 도장 찍기
+    if (isCoveringTimeWindow && alphaFade <= 2 && (style === 'neon' || style === 'pastel')) {
+       // 자막이 가려짐과 동시에 낙엽/풀잎 무더기로 완전히 고착화되었음을 버퍼에 각인
+       this.accumulationBuffer.fill(style === 'neon' ? [140, 35, 20, 45] : [30, 95, 35, 45]);
+       this.accumulationBuffer.rect(0, 0, p.width, p.height);
+    }
   }
 
   update(audioData) {
@@ -213,6 +281,7 @@ export default class P5SrtCanvasStage {
 
   destroy() {
     if (this.p5Instance) { this.p5Instance.remove(); this.p5Instance = null; }
+    if (this.accumulationBuffer) { this.accumulationBuffer.remove(); this.accumulationBuffer = null; }
     this.particles = [];
   }
 }
