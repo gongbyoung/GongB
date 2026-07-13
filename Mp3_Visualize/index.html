@@ -2,28 +2,44 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mp3 Visualizer Study Control Tower</title>
+  
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
   <link rel="stylesheet" href="css/style.css">
+  
   <style>
-    /* 💡 레이아웃 보호: 캔버스 외곽을 절대 벗어나지 않게 하는 가드 */
-    .center-canvas-zone { display: flex; align-items: center; justify-content: center; }
-    #stage-wrapper { transition: all 0.3s ease; }
-    .ratio-full { width: 100%; height: 100%; }
-    .ratio-169 { aspect-ratio: 16/9; height: auto !important; width: 100%; }
-    .ratio-916 { aspect-ratio: 9/16; height: 100% !important; width: auto; }
+    .center-canvas-zone { display: flex; align-items: center; justify-content: center; overflow: hidden; background-color: #060810; position: relative; }
+    #stage-wrapper { transition: all 0.3s ease; width: 100%; height: 100%; position: relative; }
+    .ratio-full { width: 100% !important; height: 100% !important; }
+    .ratio-169 { aspect-ratio: 16/9 !important; height: auto !important; width: 100% !important; }
+    .ratio-916 { aspect-ratio: 9/16 !important; height: 100% !important; width: auto !important; }
     
-    /* 슬라이더 옆 수치 표시창 정렬 */
-    .slider-row { display: flex; align-items: center; gap: 8px; }
-    .slider-row input[type="number"] { width: 50px; background: #0f172a; color: #fff; border: 1px solid #334155; border-radius: 4px; }
+    .slider-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .slider-row input[type="range"] { flex: 1; }
+    .slider-row input[type="number"] { width: 50px !important; text-align: center; background: #0f172a; color: #fff; border: 1px solid #334155; border-radius: 4px; }
+    
+    .offset-row { display: flex; gap: 6px; margin-top: 5px; }
+    .offset-unit { flex: 1; display: flex; align-items: center; background: #0f172a; border: 1px solid #334155; padding: 2px 6px; border-radius: 4px; }
+    .offset-unit span { color: #00ffcc; font-size: 10px; font-weight: bold; margin-right: 4px; }
+    .offset-unit input { width: 100%; background: transparent; border: none; color: #fff; text-align: center; outline: none; }
   </style>
 </head>
 <body>
 
   <div class="main-layout">
+    
+    <!-- 1. 왼쪽 사이드바 -->
     <div class="left-sidebar">
-      <!-- Media Resources & Sketches -->
+      <h3>🎵 Media Resources</h3>
+      <div class="control-group">
+        <div class="file-input-wrapper"><span>🔊 MP3:</span><input type="file" id="file-audio" accept="audio/*"></div>
+        <div class="file-input-wrapper"><span>📝 SRT:</span><input type="file" id="file-srt" accept=".srt"></div>
+        <div class="file-input-wrapper"><span>🖼️ BG:</span><input type="file" id="file-image" accept="image/*"></div>
+      </div>
+
+      <h3>📂 Sketches</h3>
       <ul class="sketches-list-wrapper" id="sketch-list">
         <li class="sketch-btn active" data-sketch="001_p5_wave.js">001 파형</li>
         <li class="sketch-btn" data-sketch="002_three_cube.js">002 큐브</li>
@@ -49,19 +65,47 @@
       <audio id="audio-player" controls src="assets/sample.mp3"></audio>
     </div>
 
+    <!-- 2. 중앙 영역 -->
     <div class="center-canvas-zone">
       <div id="stage-wrapper" class="ratio-full">
          <div id="canvas-stage" style="width:100%; height:100%;"></div>
       </div>
     </div>
 
+    <!-- 3. 오른쪽 사이드바 -->
     <div class="right-sidebar">
       <h3>Cosmic Studio Tuning</h3>
+      
+      <!-- 기본 슬라이더들 -->
       <div class="control-group"><label>Shuffle (Seed)</label><div class="slider-row"><input type="range" id="num-cosmic-seed" min="1" max="500" value="42"><input type="number" id="val-cosmic-seed" value="42"></div></div>
       <div class="control-group"><label>Range (Scatter)</label><div class="slider-row"><input type="range" id="num-cosmic-scatter" min="5" max="50" value="22"><input type="number" id="val-cosmic-scatter" value="22"></div></div>
       <div class="control-group"><label>Scale (Glow)</label><div class="slider-row"><input type="range" id="num-cosmic-glow" min="10" max="250" value="85"><input type="number" id="val-cosmic-glow" value="85"></div></div>
       <div class="control-group"><label>Volume (Gain)</label><div class="slider-row"><input type="range" id="num-cosmic-gain" min="10" max="500" value="100"><input type="number" id="val-cosmic-gain" value="100"></div></div>
       <div class="control-group"><label>Gauge</label><div class="slider-row"><input type="range" id="num-cosmic-gauge" min="0" max="100" value="50"><input type="number" id="val-cosmic-gauge" value="50"></div></div>
+      
+      <!-- 컬러 팔레트 -->
+      <div class="control-group">
+        <label>Color Style Palette</label>
+        <select id="select-cosmic-color" style="width:100%; height:28px; background:#0f172a; color:#fff; border:1px solid #334155;">
+            <option value="neon">Neon</option>
+            <option value="pastel">Pastel</option>
+        </select>
+        <div style="display:flex; gap:5px; margin-top:5px;">
+            <input type="color" id="picker-gas1" value="#ff0055">
+            <input type="color" id="picker-gas2" value="#00ffcc">
+            <input type="color" id="picker-star" value="#ffffff">
+        </div>
+      </div>
+
+      <!-- 3D 포지션 오프셋 -->
+      <div class="control-group">
+        <label>3D Position Offset (X, Y, Z)</label>
+        <div class="offset-row">
+            <div class="offset-unit"><span>X</span><input type="number" id="num-offset-x" value="0"></div>
+            <div class="offset-unit"><span>Y</span><input type="number" id="num-offset-y" value="0"></div>
+            <div class="offset-unit"><span>Z</span><input type="number" id="num-offset-z" value="0"></div>
+        </div>
+      </div>
       
       <button class="action-master-btn" id="btn-apply-cosmic">현재 수치 즉시 적용 (RESET)</button>
       
@@ -73,16 +117,23 @@
         <input type="file" id="hidden-preset-file-input" accept=".json" style="display:none;">
       </div>
 
+      <h3>📹 Export Setting</h3>
+      <div class="preset-btn-row">
+        <button class="action-mini-btn" id="btn-ratio-full">Full</button>
+        <button class="action-mini-btn" id="btn-ratio-169">16:9</button>
+        <button class="action-mini-btn" id="btn-ratio-916">9:16</button>
+      </div>
       <button class="record-master-btn" id="btn-record">🔴 녹화 시작 (Record)</button>
     </div>
   </div>
 
   <script type="module" src="src/main.js"></script>
   <script>
-    // 20260713 백업본 main.js와 동기화된 UI 동기화 루프
+    // 입력창 실시간 동기화
     function syncValue(rangeId, numId) {
       const range = document.getElementById(rangeId);
       const num = document.getElementById(numId);
+      if(!range || !num) return;
       range.addEventListener('input', () => { num.value = range.value; });
       num.addEventListener('input', () => { range.value = num.value; });
     }
