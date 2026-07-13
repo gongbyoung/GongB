@@ -75,15 +75,12 @@
     <!-- 3. 오른쪽 사이드바 -->
     <div class="right-sidebar">
       <h3>Cosmic Studio Tuning</h3>
-      
-      <!-- 기본 슬라이더들 -->
       <div class="control-group"><label>Shuffle (Seed)</label><div class="slider-row"><input type="range" id="num-cosmic-seed" min="1" max="500" value="42"><input type="number" id="val-cosmic-seed" value="42"></div></div>
       <div class="control-group"><label>Range (Scatter)</label><div class="slider-row"><input type="range" id="num-cosmic-scatter" min="5" max="50" value="22"><input type="number" id="val-cosmic-scatter" value="22"></div></div>
       <div class="control-group"><label>Scale (Glow)</label><div class="slider-row"><input type="range" id="num-cosmic-glow" min="10" max="250" value="85"><input type="number" id="val-cosmic-glow" value="85"></div></div>
       <div class="control-group"><label>Volume (Gain)</label><div class="slider-row"><input type="range" id="num-cosmic-gain" min="10" max="500" value="100"><input type="number" id="val-cosmic-gain" value="100"></div></div>
       <div class="control-group"><label>Gauge</label><div class="slider-row"><input type="range" id="num-cosmic-gauge" min="0" max="100" value="50"><input type="number" id="val-cosmic-gauge" value="50"></div></div>
       
-      <!-- 컬러 팔레트 -->
       <div class="control-group">
         <label>Color Style Palette</label>
         <select id="select-cosmic-color" style="width:100%; height:28px; background:#0f172a; color:#fff; border:1px solid #334155;">
@@ -97,7 +94,6 @@
         </div>
       </div>
 
-      <!-- 3D 포지션 오프셋 -->
       <div class="control-group">
         <label>3D Position Offset (X, Y, Z)</label>
         <div class="offset-row">
@@ -129,7 +125,7 @@
 
   <script type="module" src="src/main.js"></script>
   <script>
-    // 입력창 실시간 동기화
+    // 1. UI 동기화 함수
     function syncValue(rangeId, numId) {
       const range = document.getElementById(rangeId);
       const num = document.getElementById(numId);
@@ -142,6 +138,45 @@
     syncValue('num-cosmic-glow', 'val-cosmic-glow');
     syncValue('num-cosmic-gain', 'val-cosmic-gain');
     syncValue('num-cosmic-gauge', 'val-cosmic-gauge');
+
+    // 2. assets 자동 로딩 (초기값 설정)
+    window.addEventListener('DOMContentLoaded', () => {
+        // SRT 로드
+        fetch('assets/sample.srt')
+            .then(res => res.text())
+            .then(data => {
+                // main.js의 parseSRT 로직을 모방하여 즉시 적용
+                console.log("Assets SRT 자동 로드 완료");
+                window.parsedSubtitles = parseSRT_local(data);
+            });
+            
+        // Image 로드
+        const img = new Image();
+        img.src = 'assets/sample.jpg';
+        img.onload = () => { window.currentUploadedImageElement = img; console.log("Assets 이미지 자동 로드 완료"); };
+    });
+
+    function parseSRT_local(data) {
+        const cleanData = data.replace(/\r/g, '').trim(); 
+        const blocks = cleanData.split('\n\n'); 
+        const subs = [];
+        function timeToSeconds(t) {
+            if (!t) return 0; const parts = t.trim().split(':'); if (parts.length < 3) return 0;
+            const secs = parts[2].split(','); return parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(secs[0]) + (parseInt(secs[1]) || 0) / 1000;
+        }
+        blocks.forEach(block => {
+            const lines = block.split('\n');
+            if (lines.length >= 3) {
+                const timeLine = lines[1];
+                if (timeLine && timeLine.includes('-->')) {
+                    const times = timeLine.split('-->'); 
+                    const textLines = lines.slice(2).join(' ').trim();
+                    subs.push({ start: timeToSeconds(times[0]), end: timeToSeconds(times[1]), text: textLines });
+                }
+            }
+        });
+        return subs;
+    }
   </script>
 </body>
 </html>
