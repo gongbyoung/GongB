@@ -1,10 +1,9 @@
 /**
  * src/sketches/020_p5_srt_canvas.js
- * - [버전] Ver 11.0 (오가닉 그라디언트 셰이딩 및 분산형 부유 낙하 엔진 완결판)
- * - createRadialGradient 인터페이스 연동을 통해 입체적이고 수려한 그라디언트 잎사귀 구현
- * - 자막 영역 전역으로 목적지를 자연스럽게 분산하여 특정 한 점에 몰리는 클럼핑 버그 완치
- * - 삼각함수 조화진동(Harmonic Wave)을 궤적에 대입하여 가을바람에 나풀거리며 날아오는 물리 시공
- * - 남은 시간에 비례하여 레이어 밀도가 스무스하게 보간 상승하는 Easing 알고리즘 장착
+ * - [버전] Ver 11.2 (네이티브 그래픽 컨텍스트 예외 교정 및 렌더링 락 완치판)
+ * - drawGradientShape 내부의 무효한 ctx.noStroke() 코드를 완벽히 청소하여 그래픽 루프 셧다운 버그 해결
+ * - p5.js 고유 네이티브 루프를 활성화하여 끊김 없는 60fps 오가닉 나풀거림 연출 보장
+ * - 1:단풍잎(그라디언트), 2:풀잎(그라디언트), 3:눈꽃송이(6축), 4:빗방울(탑뷰 리플 왜곡) 전체 메커니즘 정상화
  */
 export default class P5SrtCanvasStage {
   constructor(container) {
@@ -19,7 +18,7 @@ export default class P5SrtCanvasStage {
     this.lastTrackedText = "";
     this.subtitleRiseY = 0;
     
-    this.version = "020호 Organic Floating Gradient Engine Ver 11.0";
+    this.version = "020호 Organic Floating Gradient Engine Ver 11.2";
   }
 
   init() {
@@ -34,7 +33,9 @@ export default class P5SrtCanvasStage {
         
         this.lastWidth = p.width;
         this.lastHeight = p.height;
-        p.noLoop();
+        
+        // 💡 실시간 나풀거림 애니메이션을 매끄럽게 처리하기 위해 p5 기본 루프 자동 가동
+        p.loop();
       };
 
       p.draw = () => {
@@ -69,23 +70,22 @@ export default class P5SrtCanvasStage {
         }
         this.subtitleRiseY = p.lerp(this.subtitleRiseY, 0, 0.09);
 
-        // 💡 [갑작스러운 가림 완화]: 시간 간격을 Easing 계수로 치환하여 밀도 점진 상승 유도
         let coverFactor = 0.0;
         let isCoveringTimeWindow = false;
         if (currentSub) {
           const remainingTime = currentSub.end - currentTime;
-          const coverThresholdTime = p.map(settings.gaugeValue, 0.0, 1.0, 0.0, 2.8);
+          const coverThresholdTime = p.map(settings.gaugeValue, 0, 100, 0.0, 2.8);
           if (remainingTime <= coverThresholdTime) {
             isCoveringTimeWindow = true;
-            // 종료 지점에 도달할수록 0.0에서 1.0으로 스무스하게 변화
             coverFactor = p.constrain((coverThresholdTime - remainingTime) / coverThresholdTime, 0.0, 1.0);
           }
         }
 
-        // 2. 상시 낙하 스폰 레이트 결정 (coverFactor에 맞춰 점진적 폭발 발생)
+        // 2. 상시 낙하 스폰 레이트 결정 (Gauge 수치 및 가림 여부에 따라 동적 조율)
         let spawnRate = 1; 
         if (isCoveringTimeWindow) {
-          spawnRate = p.floor(p.map(coverFactor, 0.0, 1.0, 1, Math.floor(settings.gaugeValue * 22)));
+          const gaugeRaw = settings.gaugeValue > 1 ? settings.gaugeValue : settings.gaugeValue * 100;
+          spawnRate = p.floor(p.map(coverFactor, 0.0, 1.0, 1, p.max(2, p.floor(gaugeRaw * 0.22))));
         }
 
         if (p.frameCount % 2 === 0) {
@@ -97,13 +97,13 @@ export default class P5SrtCanvasStage {
         // 3. 탑뷰 유기적 조화 물리엔진 업데이트
         this.updateParticlesPhysics(p, settings);
 
-        // 4. [레이어 렌더링 순서박제]: 자막 레이어를 백그라운드에 먼저 묘사 (낙엽 아래 배치)
+        // 4. [레이어 역전 적층 시공]: 자막을 가장 먼저 백그라운드에 렌더링 (낙엽 밑으로 진입)
         this.drawSubtitle(p, style, settings, isCoveringTimeWindow, coverFactor, currentSub, this.subtitleRiseY);
 
-        // 5. 이미 바닥에 깔려서 무제한 누적되고 있는 그라디언트 영구 축적 버퍼 투사
+        // 5. 이미 바닥에 깔려서 영구 누적되고 있는 그라디언트 축적 버퍼 레이어 투사
         p.image(this.accumulationBuffer, 0, 0);
 
-        // 6. 현재 공중에서 바람을 타고 나풀거리며 날아오는 라이브 입자들을 최상단에 렌더링
+        // 6. 공중에서 바람을 타고 나풀거리며 이동 중인 라이브 파티클들을 최상단에 투사
         this.drawLiveParticles(p);
       };
     };
@@ -111,29 +111,29 @@ export default class P5SrtCanvasStage {
   }
 
   spawnParticle(p, style, settings, isCoveringTimeWindow, coverFactor) {
-    const baseShapeSize = p.map(settings.audioGain, 0.1, 5.0, 15, 85);
-    // 💡 개별 입자마다 크기 편차 부여
+    const gainRaw = settings.audioGain > 5 ? settings.audioGain : settings.audioGain * 100;
+    const baseShapeSize = p.map(gainRaw, 10, 500, 15, 85);
     const finalSize = p.random(baseShapeSize * 0.65, baseShapeSize * 1.35);
-    const speedScale = p.map(settings.scatterExponent, 0.5, 5.0, 0.006, 0.035);
+    
+    const scatterRaw = settings.scatterExponent > 5 ? settings.scatterExponent : settings.scatterExponent * 10;
+    const speedScale = p.map(scatterRaw, 5, 50, 0.006, 0.035);
 
     let type = 'leaf';
     if (style === 'pastel') type = 'grass';
     if (style === 'monochrome') type = 'snow';
     if (style === 'earth') type = 'rain';
 
-    // 사방 원형 테두리 외부 스폰 좌표계 수립
     const spawnAngle = p.random(p.TWO_PI);
     const spawnRadius = p.max(p.width, p.height) * 0.8;
     const startX = (p.width / 2) + p.cos(spawnAngle) * spawnRadius;
     const startY = (p.height / 2) + p.sin(spawnAngle) * spawnRadius;
 
-    // 화면 전역으로 골고루 분산되는 기본 목적지
     let targetX = p.random(p.width);
     let targetY = p.random(p.height);
 
-    // 💡 [한 점 뭉침 완치]: 자막 박스의 대략적인 가로/세로 영역 폭에 맞춰 목적지를 넓게 분산 분출
     if (isCoveringTimeWindow && type !== 'rain') {
-      const fontSize = p.map(settings.glowIntensity, 0.1, 2.5, 50, 220);
+      const glowRaw = settings.glowIntensity > 5 ? settings.glowIntensity : settings.glowIntensity * 100;
+      const fontSize = p.map(glowRaw, 10, 250, 50, 220);
       const textWidthArea = fontSize * 5.0 * coverFactor;
       const textHeightArea = fontSize * 2.5 * coverFactor;
       
@@ -149,12 +149,10 @@ export default class P5SrtCanvasStage {
       targetX: targetX,
       targetY: targetY,
       pct: 0,
-      // 가림 타이밍 시 진입 가속도를 점진적으로 튜닝
       step: isCoveringTimeWindow ? p.random(0.012, 0.038) : p.random(speedScale * 0.7, speedScale * 1.3),
       size: finalSize,
       angle: p.random(p.TWO_PI),
       spin: p.random(-0.03, 0.03),
-      // 💡 나풀나풀 춤추는 진동 벡터 성분 추가
       waveSeed: p.random(100),
       waveAmp: p.random(15, 45),
       type: type,
@@ -177,11 +175,9 @@ export default class P5SrtCanvasStage {
           pt.pct += pt.step;
           if (pt.pct > 1.0) pt.pct = 1.0;
           
-          // 기본 보간 궤적 연산
           let rawX = p.lerp(pt.startX, pt.targetX, pt.pct);
           let rawY = p.lerp(pt.startY, pt.targetY, pt.pct);
           
-          // 💡 [가을 낙엽 부유 묘사]: 목적지로 날아오며 진행방향 직교축으로 나풀나풀 물결치는 동선 구현
           let waveOffset = Math.sin(pt.age * 0.06 + pt.waveSeed) * pt.waveAmp * (1.0 - pt.pct);
           pt.x = rawX + waveOffset * 0.5;
           pt.y = rawY + waveOffset * 0.3;
@@ -189,7 +185,6 @@ export default class P5SrtCanvasStage {
           pt.angle += pt.spin;
         }
 
-        // 목적지 도달 시 영구축적 오프스크린 버퍼에 그라디언트 스탬프를 찍고 배열 이탈
         if (pt.pct >= 1.0) {
           this.drawGradientShape(this.accumulationBuffer, pt);
           this.particles.splice(i, 1);
@@ -212,22 +207,19 @@ export default class P5SrtCanvasStage {
     }
   }
 
-  // 💡 [그라디언트 합성 엔진]: 네이티브 Canvas2D 그라디언트 맵을 p5/그래픽스 레이어에 완벽 주입
+  // 💡 [버그 완치]: 에러를 유발하던 무효한 'ctx.noStroke()' 라인을 완벽히 제거
   drawGradientShape(target, pt) {
     let ctx = target.drawingContext;
     ctx.save();
     ctx.translate(pt.x, pt.y);
     ctx.rotate(pt.angle);
-    ctx.noStroke();
 
-    // 원형 방사형 그라디언트 정의 (빛과 그림자의 자연스러운 분포 분출)
     let grad = ctx.createRadialGradient(0, 0, 0, 0, 0, pt.size * 1.2);
 
     if (pt.type === 'leaf') {
-      // 🍁 No1 단풍잎: 타오르는 가을 불꽃의 단풍 그라디언트
-      grad.addColorStop(0, 'rgba(255, 110, 60, 0.95)');   // 중심: 화사한 다홍빛
-      grad.addColorStop(0.4, 'rgba(215, 55, 35, 0.95)');   // 중간: 깊은 단풍색
-      grad.addColorStop(1, 'rgba(125, 25, 15, 0.95)');     // 외곽: 깊은 갈색 테두리
+      grad.addColorStop(0, 'rgba(255, 110, 60, 0.95)');   
+      grad.addColorStop(0.4, 'rgba(215, 55, 35, 0.95)');   
+      grad.addColorStop(1, 'rgba(125, 25, 15, 0.95)');     
       ctx.fillStyle = grad;
 
       ctx.beginPath();
@@ -239,16 +231,14 @@ export default class P5SrtCanvasStage {
       ctx.closePath();
       ctx.fill();
 
-      // 맥 줄기선 추가 드로잉
       ctx.strokeStyle = 'rgba(95, 15, 5, 0.4)';
       ctx.lineWidth = 1.8;
       ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, pt.size * 1.05); ctx.stroke();
     } 
     else if (pt.type === 'grass') {
-      // 🍃 No2 풀잎: 인맥의 깊이가 살아있는 오가닉 그린 그라디언트
-      grad.addColorStop(0, 'rgba(150, 240, 95, 0.95)');   // 중심: 맑은 연두빛
-      grad.addColorStop(0.5, 'rgba(50, 165, 70, 0.95)');   // 중간: 수려한 초록색
-      grad.addColorStop(1, 'rgba(15, 75, 25, 0.95)');      // 외곽: 짙은 삼림색
+      grad.addColorStop(0, 'rgba(150, 240, 95, 0.95)');   
+      grad.addColorStop(0.5, 'rgba(50, 165, 70, 0.95)');   
+      grad.addColorStop(1, 'rgba(15, 75, 25, 0.95)');      
       ctx.fillStyle = grad;
 
       ctx.beginPath();
@@ -263,9 +253,8 @@ export default class P5SrtCanvasStage {
       ctx.beginPath(); ctx.moveTo(0, -pt.size * 1.1), ctx.lineTo(0, pt.size * 1.1); ctx.stroke();
     } 
     else if (pt.type === 'snow') {
-      // ❄️ No3 눈꽃송이: 겨울 결정체 성에 입체 그라디언트
-      grad.addColorStop(0, 'rgba(255, 255, 255, 0.98)');   // 중심: 화이트
-      grad.addColorStop(1, 'rgba(175, 210, 255, 0.60)');   // 외곽: 아이스 블루
+      grad.addColorStop(0, 'rgba(255, 255, 255, 0.98)');   
+      grad.addColorStop(1, 'rgba(175, 210, 255, 0.60)');   
       ctx.strokeStyle = grad;
       ctx.lineWidth = Math.max(2.2, pt.size * 0.09);
       
@@ -285,14 +274,14 @@ export default class P5SrtCanvasStage {
     const text = window.currentSubtitleText || "";
     if (!text) return;
 
-    const fontSize = p.map(settings.glowIntensity, 0.1, 2.5, 50, 220);
+    const glowRaw = settings.glowIntensity > 5 ? settings.glowIntensity : settings.glowIntensity * 100;
+    const fontSize = p.map(glowRaw, 10, 250, 50, 220);
     const tracking = fontSize * 0.72; 
     const leading = fontSize * 1.45;  
 
     p.textSize(fontSize);
     p.textAlign(p.CENTER, p.CENTER);
 
-    // Easing 계수를 반영한 자막의 점진적 선형 소멸 알파 계산
     let alphaFade = 255;
     if (isCoveringTimeWindow && currentSub) {
       alphaFade = p.constrain((1.0 - coverFactor) * 255, 0, 255);
@@ -313,7 +302,8 @@ export default class P5SrtCanvasStage {
         let finalY = currentLineY;
 
         if (style === 'earth') {
-          let wave = p.sin(p.frameCount * 0.12 + charIdx * 0.7) * (settings.gaugeValue * 45);
+          const gaugeRaw = settings.gaugeValue > 1 ? settings.gaugeValue : settings.gaugeValue * 100;
+          let wave = p.sin(p.frameCount * 0.12 + charIdx * 0.7) * (gaugeRaw * 0.45);
           finalX += wave * 0.8;
           finalY += p.cos(p.frameCount * 0.09 + charIdx) * wave * 0.5;
         }
@@ -324,7 +314,6 @@ export default class P5SrtCanvasStage {
       });
     });
 
-    // 자막 소멸 매립 시점 완료 플래그 작동
     if (isCoveringTimeWindow && alphaFade <= 2 && (style === 'neon' || style === 'pastel' || style === 'monochrome')) {
        this.accumulationBuffer.fill(style === 'neon' ? [140, 35, 20, 18] : style === 'pastel' ? [30, 95, 35, 18] : [220, 230, 245, 12]);
        this.accumulationBuffer.rect(0, 0, p.width, p.height);
