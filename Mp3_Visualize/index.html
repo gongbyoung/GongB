@@ -4,33 +4,33 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mp3 Visualizer Study Control Tower</title>
-  
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
   <link rel="stylesheet" href="css/style.css">
-  
   <style>
+    /* 오른쪽 UI 상단 밀착 및 간격 최적화 */
+    .right-sidebar { display: flex; flex-direction: column; gap: 5px !important; padding: 10px 16px !important; }
+    .control-group { margin-bottom: 5px !important; padding: 5px !important; }
+    h3 { margin-bottom: 5px !important; font-size: 14px !important; }
+    
     .center-canvas-zone { display: flex; align-items: center; justify-content: center; overflow: hidden; background-color: #060810; position: relative; }
     #stage-wrapper { transition: all 0.3s ease; width: 100%; height: 100%; position: relative; }
     .ratio-full { width: 100% !important; height: 100% !important; }
     .ratio-169 { aspect-ratio: 16/9 !important; height: auto !important; width: 100% !important; }
     .ratio-916 { aspect-ratio: 9/16 !important; height: 100% !important; width: auto !important; }
     
-    .slider-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .slider-row { display: flex; align-items: center; gap: 8px; }
     .slider-row input[type="range"] { flex: 1; }
     .slider-row input[type="number"] { width: 50px !important; text-align: center; background: #0f172a; color: #fff; border: 1px solid #334155; border-radius: 4px; }
     
-    .offset-row { display: flex; gap: 6px; margin-top: 5px; }
+    .offset-row { display: flex; gap: 6px; }
     .offset-unit { flex: 1; display: flex; align-items: center; background: #0f172a; border: 1px solid #334155; padding: 2px 6px; border-radius: 4px; }
     .offset-unit span { color: #00ffcc; font-size: 10px; font-weight: bold; margin-right: 4px; }
     .offset-unit input { width: 100%; background: transparent; border: none; color: #fff; text-align: center; outline: none; }
   </style>
 </head>
 <body>
-
   <div class="main-layout">
-    
-    <!-- 1. 왼쪽 사이드바 -->
     <div class="left-sidebar">
       <h3>🎵 Media Resources</h3>
       <div class="control-group">
@@ -38,7 +38,6 @@
         <div class="file-input-wrapper"><span>📝 SRT:</span><input type="file" id="file-srt" accept=".srt"></div>
         <div class="file-input-wrapper"><span>🖼️ BG:</span><input type="file" id="file-image" accept="image/*"></div>
       </div>
-
       <h3>📂 Sketches</h3>
       <ul class="sketches-list-wrapper" id="sketch-list">
         <li class="sketch-btn active" data-sketch="001_p5_wave.js">001 파형</li>
@@ -65,14 +64,12 @@
       <audio id="audio-player" controls src="assets/sample.mp3"></audio>
     </div>
 
-    <!-- 2. 중앙 영역 -->
     <div class="center-canvas-zone">
       <div id="stage-wrapper" class="ratio-full">
          <div id="canvas-stage" style="width:100%; height:100%;"></div>
       </div>
     </div>
 
-    <!-- 3. 오른쪽 사이드바 -->
     <div class="right-sidebar">
       <h3>Cosmic Studio Tuning</h3>
       <div class="control-group"><label>Shuffle (Seed)</label><div class="slider-row"><input type="range" id="num-cosmic-seed" min="1" max="500" value="42"><input type="number" id="val-cosmic-seed" value="42"></div></div>
@@ -86,6 +83,9 @@
         <select id="select-cosmic-color" style="width:100%; height:28px; background:#0f172a; color:#fff; border:1px solid #334155;">
             <option value="neon">Neon</option>
             <option value="pastel">Pastel</option>
+            <option value="monochrome">Monochrome</option>
+            <option value="earth">Earth</option>
+            <option value="custom">Custom</option>
         </select>
         <div style="display:flex; gap:5px; margin-top:5px;">
             <input type="color" id="picker-gas1" value="#ff0055">
@@ -125,7 +125,6 @@
 
   <script type="module" src="src/main.js"></script>
   <script>
-    // 1. UI 동기화 함수
     function syncValue(rangeId, numId) {
       const range = document.getElementById(rangeId);
       const num = document.getElementById(numId);
@@ -139,43 +138,20 @@
     syncValue('num-cosmic-gain', 'val-cosmic-gain');
     syncValue('num-cosmic-gauge', 'val-cosmic-gauge');
 
-    // 2. assets 자동 로딩 (초기값 설정)
     window.addEventListener('DOMContentLoaded', () => {
-        // SRT 로드
-        fetch('assets/sample.srt')
-            .then(res => res.text())
-            .then(data => {
-                // main.js의 parseSRT 로직을 모방하여 즉시 적용
-                console.log("Assets SRT 자동 로드 완료");
-                window.parsedSubtitles = parseSRT_local(data);
-            });
-            
-        // Image 로드
-        const img = new Image();
-        img.src = 'assets/sample.jpg';
-        img.onload = () => { window.currentUploadedImageElement = img; console.log("Assets 이미지 자동 로드 완료"); };
+        fetch('assets/sample.srt').then(res => res.text()).then(data => { window.parsedSubtitles = parseSRT_local(data); });
+        const img = new Image(); img.src = 'assets/sample.jpg';
+        img.onload = () => { window.currentUploadedImageElement = img; };
     });
 
     function parseSRT_local(data) {
-        const cleanData = data.replace(/\r/g, '').trim(); 
-        const blocks = cleanData.split('\n\n'); 
-        const subs = [];
-        function timeToSeconds(t) {
-            if (!t) return 0; const parts = t.trim().split(':'); if (parts.length < 3) return 0;
-            const secs = parts[2].split(','); return parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(secs[0]) + (parseInt(secs[1]) || 0) / 1000;
-        }
-        blocks.forEach(block => {
+        const blocks = data.replace(/\r/g, '').trim().split('\n\n');
+        return blocks.map(block => {
             const lines = block.split('\n');
-            if (lines.length >= 3) {
-                const timeLine = lines[1];
-                if (timeLine && timeLine.includes('-->')) {
-                    const times = timeLine.split('-->'); 
-                    const textLines = lines.slice(2).join(' ').trim();
-                    subs.push({ start: timeToSeconds(times[0]), end: timeToSeconds(times[1]), text: textLines });
-                }
-            }
-        });
-        return subs;
+            if (lines.length < 3) return null;
+            const times = lines[1].split('-->');
+            return { text: lines.slice(2).join(' ').trim() };
+        }).filter(Boolean);
     }
   </script>
 </body>
