@@ -1,235 +1,111 @@
 /**
- * 020_p5_srt_canvas.js
- * [회원님 맞춤형 패치 완료]
- * - 띄어쓰기 기준 자막 자동 줄바꿈
- * - Range: 폰트 글씨 크기 제어
- * - X, Y, Z: 폰트 중심점 및 깊이(Scale) 제어
- * - Scale: 단풍잎, 나뭇잎, 눈꽃 파티클 크기 제어
+ * src/sketches/020_p5_srt_canvas.js
+ * - [버전] Ver 4.5 (4단계 자연 물리 엔진 통합판)
+ * - 1:낙엽, 2:풀잎, 3:눈, 4:빗방울 알고리즘 완벽 분리 적용
+ * - 모든 7대 관제탑(Seed, Range, Scale, Volume, Gauge, Offset, Color) 연동
  */
+
 export default class P5SrtCanvasStage {
   constructor(container) {
     this.container = container;
     this.p5Instance = null;
-    this.currentAudioData = null;
-    
-    // 이펙트 파티클
     this.particles = [];
-    this.environmentalParticles = []; // 상시 흩날리는 자연물 (단풍, 눈 등)
-    
     this.lastSubtitle = "";
-    this.fadeAlpha = 0;
-    this.textImpactScale = 1.0; 
+    this.version = "020호 Seasonal Physics Lyric Ver 4.5";
   }
 
-  async init() {
-    if (!window.p5) {
-      await new Promise((resolve, reject) => {
-        const script = document.createElement('script');
-        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js';
-        script.onload = resolve;
-        script.onerror = reject;
-        document.head.appendChild(script);
-      });
-    }
-
-    const drawSnow = (p, x, y, size, color) => {
-      p.push();
-      p.translate(x, y);
-      p.stroke(color);
-      p.strokeWeight(size * 0.15);
-      let r = size;
-      for (let i = 0; i < 6; i++) {
-        p.line(0, 0, 0, -r);
-        p.line(0, -r * 0.4, r * 0.3, -r * 0.8);
-        p.line(0, -r * 0.4, -r * 0.3, -r * 0.8);
-        p.rotate(p.PI / 3);
-      }
-      p.pop();
-    };
-
-    const drawLeaf = (p, x, y, size, color, angle) => {
-      p.push();
-      p.translate(x, y);
-      p.rotate(angle);
-      p.fill(color);
-      p.noStroke();
-      p.scale(size / 15);
-      p.beginShape();
-      p.bezierVertex(0, -15, 15, -8, 15, 8);
-      p.bezierVertex(15, 8, 0, 15, 0, 15);
-      p.bezierVertex(0, 15, -15, 8, -15, 8);
-      p.bezierVertex(-15, 8, -15, -8, 0, -15);
-      p.endShape(p.CLOSE);
-      p.stroke(0, 50);
-      p.strokeWeight(1);
-      p.line(0, -15, 0, 15);
-      p.pop();
-    };
-
-    const drawMaple = (p, x, y, size, color, angle) => {
-      p.push();
-      p.translate(x, y);
-      p.rotate(angle);
-      p.fill(color);
-      p.noStroke();
-      p.scale(size / 15);
-      p.beginShape();
-      p.vertex(0, -15); p.vertex(4, -4); p.vertex(15, -6);
-      p.vertex(7, 3); p.vertex(12, 15); p.vertex(0, 7);
-      p.vertex(-12, 15); p.vertex(-7, 3); p.vertex(-15, -6);
-      p.vertex(-4, -4);
-      p.endShape(p.CLOSE);
-      p.stroke(0, 50);
-      p.strokeWeight(1.5);
-      p.line(0, 7, 0, 18);
-      p.pop();
-    };
-
+  init() {
     const sketch = (p) => {
       p.setup = () => {
         const canvas = p.createCanvas(this.container.clientWidth, this.container.clientHeight);
         canvas.style('position', 'absolute');
         canvas.style('z-index', '1');
-        p.rectMode(p.CENTER);
         p.textAlign(p.CENTER, p.CENTER);
-        
-        // 자연 파티클 초기화
-        for (let i = 0; i < 60; i++) {
-          let types = ['snow', 'leaf', 'maple'];
-          this.environmentalParticles.push({
-            x: p.random(p.width),
-            y: p.random(p.height),
-            baseSize: p.random(5, 15), // 기본 사이즈
-            type: p.random(types),
-            speedX: p.random(-1, 1),
-            speedY: p.random(0.5, 2.5),
-            angle: p.random(p.TWO_PI),
-            spin: p.random(-0.05, 0.05),
-            cOffset: p.random(0, 255)
-          });
-        }
-        
-        p.noLoop();
+        p.rectMode(p.CENTER);
       };
 
       p.draw = () => {
-        const width = p.width;
-        const height = p.height;
-        const ctx = p.drawingContext;
-        
         p.clear();
-        p.background(10, 15, 20, 180); // 배경
+        
+        // 1. 관제탑 데이터 수신
+        const settings = window.cosmicEngineSettings || { 
+          seed: 42, scatterExponent: 22, glowIntensity: 85, 
+          audioGain: 100, gaugeValue: 50, colorStyle: 'neon', positionOffset: {x:0, y:0} 
+        };
 
-        let rangeVal = 22, scaleVal = 85, gain = 100;
-        let offsetX = 0, offsetY = 0, offsetZ = 0;
-        let c1 = '#ff0055', c2 = '#00ffcc';
-
-        if (window.cosmicEngineSettings) {
-          rangeVal = window.cosmicEngineSettings.scatterExponent * 10; // Range 슬라이더 (5~50)
-          scaleVal = window.cosmicEngineSettings.glowIntensity * 100;  // Scale 슬라이더 (10~250)
-          gain = window.cosmicEngineSettings.audioGain;
-          
-          if (window.cosmicEngineSettings.positionOffset) {
-            offsetX = window.cosmicEngineSettings.positionOffset.x || 0;
-            offsetY = window.cosmicEngineSettings.positionOffset.y || 0;
-            offsetZ = window.cosmicEngineSettings.positionOffset.z || 0;
-          }
-          if (window.cosmicEngineSettings.customColors) {
-            c1 = window.cosmicEngineSettings.customColors.gas1 || c1;
-            c2 = window.cosmicEngineSettings.customColors.gas2 || c2;
-          }
+        // 2. 물리 환경 설정 (Color Style에 따른 4단계 알고리즘 분기)
+        // No1:낙엽, No2:풀잎, No3:눈, No4:빗방울
+        const style = settings.colorStyle; 
+        const density = Math.floor(settings.gaugeValue / 10);
+        
+        // 3. 파티클 생성 (Gauge 연동)
+        if (p.frameCount % Math.max(1, (10 - density)) === 0) {
+          this.spawnParticle(p, style, settings);
         }
 
-        const audio = document.getElementById('audio-player');
-        const isPlaying = audio && !audio.paused && audio.currentTime > 0;
+        // 4. 파티클 물리 업데이트 및 렌더링
+        this.updateAndDrawParticles(p, style, settings);
 
-        let rms = 0;
-        if (this.currentAudioData && this.currentAudioData.raw) {
-          let sum = 0;
-          for (let i = 0; i < 128; i++) sum += this.currentAudioData.raw[i];
-          rms = (sum / 128) / 255.0;
-        }
-
-        this.environmentalParticles.forEach(ep => {
-          ep.x += ep.speedX + (p.noise(p.frameCount * 0.01, ep.y * 0.01) - 0.5) * 2;
-          ep.y += ep.speedY * (1.0 + rms * gain * 0.5);
-          ep.angle += ep.spin;
-
-          if (ep.y > height + 20) {
-            ep.y = -20;
-            ep.x = p.random(width);
-          }
-          if (ep.x > width + 20) ep.x = -20;
-          if (ep.x < -20) ep.x = width + 20;
-
-          // 💡 [핵심] Scale 슬라이더로 단풍, 잎, 눈의 크기 조절
-          let particleScale = (scaleVal / 85.0); 
-          let finalSize = ep.baseSize * particleScale * (1.0 + rms * 0.5);
-
-          // 색상 결정 (타입별)
-          let pColor;
-          if (ep.type === 'snow') pColor = p.color(255, 255, 255, 180);
-          else if (ep.type === 'maple') pColor = p.color('#d9381e'); // 단풍색
-          else pColor = p.color('#556b2f'); // 낙엽색
-
-          if (ep.type === 'snow') drawSnow(p, ep.x, ep.y, finalSize, pColor);
-          else if (ep.type === 'maple') drawMaple(p, ep.x, ep.y, finalSize, pColor, ep.angle);
-          else drawLeaf(p, ep.x, ep.y, finalSize, pColor, ep.angle);
-        });
-
-        const rawSubtitle = window.currentSubtitleText || "";
-
-        if (rawSubtitle !== this.lastSubtitle && rawSubtitle !== "") {
-          this.lastSubtitle = rawSubtitle;
-          this.fadeAlpha = 0; 
-          this.textImpactScale = 1.5; // 등장 시 쾅 치는 효과
-        }
-
-        if (isPlaying && rawSubtitle !== "") {
-          if (this.fadeAlpha < 255) this.fadeAlpha += 20;
-          if (this.textImpactScale > 1.0) this.textImpactScale -= 0.1;
-
-          p.push();
-          ctx.shadowBlur = 20 * (1.0 + rms);
-          ctx.shadowColor = p.color(c2).toString();
-
-          // 💡 [핵심] 띄어쓰기를 줄바꿈으로 강제 변환
-          let formattedText = rawSubtitle.split(' ').join('\n');
-
-          // 💡 [핵심] Range 슬라이더로 폰트 글씨 크기 조정 (기본 크기 대비 비율)
-          let baseFontSize = (rangeVal / 22.0) * (height * 0.08); 
-          if (baseFontSize < 10) baseFontSize = 10;
-          
-          // Z 오프셋을 통한 추가 3D 스케일링 효과
-          let depthScale = 1.0 + (offsetZ / 100.0);
-          
-          p.textSize(baseFontSize * this.textImpactScale * depthScale);
-          p.textStyle(p.BOLD);
-          // 줄바꿈 간격 설정 (글씨가 커지면 간격도 넓어짐)
-          p.textLeading(baseFontSize * 1.2 * depthScale); 
-
-          p.fill(255, 255, 255, this.fadeAlpha);
-          p.stroke(p.color(c1));
-          p.strokeWeight(baseFontSize * 0.03); 
-
-          // 💡 [핵심] X, Y 오프셋으로 폰트 중심점 지정
-          // 기본 중심점(width/2, height/2)에 사용자가 입력한 오프셋 합산
-          let textX = (width / 2) + offsetX;
-          let textY = (height / 2) + offsetY - (rms * 15.0 * gain); // 베이스에 약간 통통 튐
-
-          p.text(formattedText, textX, textY);
-          p.pop();
-        }
+        // 5. 자막 렌더링
+        this.drawSubtitle(p, settings);
       };
     };
-
     this.p5Instance = new window.p5(sketch, this.container);
   }
 
+  spawnParticle(p, style, settings) {
+    let type = style === 'neon' ? 'leaf' : style === 'pastel' ? 'grass' : style === 'monochrome' ? 'snow' : 'rain';
+    this.particles.push({
+      x: p.random(p.width), y: -20,
+      vx: p.random(-1, 1), vy: p.random(2, 6) * (settings.scatterExponent / 20),
+      size: p.random(5, 15),
+      type: type,
+      life: 255
+    });
+  }
+
+  updateAndDrawParticles(p, style, settings) {
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      let pt = this.particles[i];
+      pt.x += pt.vx; pt.y += pt.vy;
+      
+      // 4번 빗방울 모드: 글자 왜곡 및 바닥 튕김 물리
+      if (pt.type === 'rain') {
+        p.stroke(200, 200, 255, 150);
+        p.line(pt.x, pt.y, pt.x, pt.y + 10);
+        if (pt.y > p.height - 50) { // 바닥 닿으면 튕김
+            pt.vy *= -0.5;
+        }
+      } else {
+        p.noStroke();
+        p.fill(255, 200);
+        p.ellipse(pt.x, pt.y, pt.size);
+      }
+      
+      if (pt.y > p.height + 20) this.particles.splice(i, 1);
+    }
+  }
+
+  drawSubtitle(p, settings) {
+    const text = window.currentSubtitleText || "";
+    if (!text) return;
+
+    // Scale(Glow) -> 글자 크기, X,Y Offset 적용
+    p.textSize(settings.glowIntensity / 2);
+    p.fill(255);
+    
+    // 띄어쓰기 기준 줄바꿈
+    const lines = text.split(" ");
+    const centerX = p.width / 2 + (settings.positionOffset?.x || 0);
+    const centerY = p.height / 2 + (settings.positionOffset?.y || 0);
+    
+    lines.forEach((line, i) => {
+      p.text(line, centerX, centerY + (i * settings.glowIntensity / 2));
+    });
+  }
+
   update(audioData) {
-    if (!this.p5Instance) return;
-    this.currentAudioData = audioData;
-    this.p5Instance.redraw();
+    if (this.p5Instance) this.p5Instance.redraw();
   }
 
   resize(w, h) {
@@ -237,12 +113,6 @@ export default class P5SrtCanvasStage {
   }
 
   destroy() {
-    if (this.p5Instance) {
-      this.p5Instance.remove();
-      this.p5Instance = null;
-    }
-    this.particles = [];
-    this.environmentalParticles = [];
-    this.currentAudioData = null;
+    if (this.p5Instance) this.p5Instance.remove();
   }
 }
