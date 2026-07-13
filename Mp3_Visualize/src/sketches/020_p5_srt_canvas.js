@@ -1,9 +1,9 @@
 /**
  * src/sketches/020_p5_srt_canvas.js
- * - [버전] Ver 9.5 (탑뷰 사방 유입 축적 엔진 및 자막 매립 타이밍 완결판)
- * - 사방 외곽 경계선에서 생성되어 화면 안쪽 목적지로 날아와 평면적으로 쌓이는 리얼 탑뷰 시뮬레이션
- * - Volume 기반 크기 스케일에 미세 난수 배율을 바인딩하여 조금씩 다른 크기 편차 구현
- * - 자막 가림 타이밍 진입 시 목적지가 자막 박스로 타겟팅되어 완벽하게 매립 소멸 유도
+ * - [버전] Ver 10.0 (레이어 역전 적층형 자막 솟구침 엔진 완결판)
+ * - 렌더링 파이프라인 구조 개혁: 자막을 버퍼보다 먼저 그려 쌓인 낙엽 아래에서 위로 용출되는 연출 시공
+ * - 텍스트 변경 감지기 및 Y축 Lerp 보간기를 탑재하여 새 자막이 아래에서 위로 부드럽게 상승 전환
+ * - 평시에는 매우 느린 속도로 상시 낙하 축적, 자막 종료 타임라인 윈도우에서만 자막 집중 매립 트리거 발동
  */
 export default class P5SrtCanvasStage {
   constructor(container) {
@@ -16,7 +16,11 @@ export default class P5SrtCanvasStage {
     this.lastWidth = 0;
     this.lastHeight = 0;
     
-    this.version = "020호 Top-View Omni Accumulator Ver 9.5";
+    // 💡 [자막 상승 애니메이션 상태 기기 제어 매크로]
+    this.lastTrackedText = "";
+    this.subtitleRiseY = 0;
+    
+    this.version = "020호 Sub-Layer Rising Engine Ver 10.0";
   }
 
   init() {
@@ -52,13 +56,24 @@ export default class P5SrtCanvasStage {
           this.lastHeight = p.height;
         }
 
-        // 1. SRT 자막 타임라인 트래킹 및 GAUGE 가림 윈도우 연산
+        // 1. SRT 자막 추적 및 GAUGE 기반 종료 가림 타임라인 연산
         const audioEl = document.getElementById('audio-player');
         const subs = window.parsedSubtitles || [];
         const currentTime = audioEl ? audioEl.currentTime : 0;
         
         const currentSub = subs.find(s => currentTime >= s.start && currentTime <= s.end);
-        
+        const text = window.currentSubtitleText || "";
+
+        // 💡 [자막 변경 트리거]: 새로운 자막이 출현하면 바닥(+160px) 아래에 배치하여 상승 준비
+        if (text !== this.lastTrackedText) {
+          if (text !== "") {
+            this.subtitleRiseY = 160; 
+          }
+          this.lastTrackedText = text;
+        }
+        // 목적지인 0px(정중앙)을 향해 부드럽게 감속 상승
+        this.subtitleRiseY = p.lerp(this.subtitleRiseY, 0, 0.08);
+
         let isCoveringTimeWindow = false;
         if (currentSub) {
           const remainingTime = currentSub.end - currentTime;
@@ -68,52 +83,53 @@ export default class P5SrtCanvasStage {
           }
         }
 
-        // 2. 사방 생성 속도 조절 (가림 타이밍에는 폭발적으로 증가)
-        let spawnRate = p.floor(p.map(settings.gaugeValue, 0.0, 1.0, 1, 5));
-        if (isCoveringTimeWindow) spawnRate *= 4; 
+        // 2. 상시 유입 낙하 스폰 (천천히 상시 스폰 vs 가림 타임 폭발 스폰)
+        let spawnRate = 1; 
+        if (isCoveringTimeWindow) spawnRate = p.floor(p.map(settings.gaugeValue, 0.0, 1.0, 2, 18));
 
-        if (p.frameCount % 2 === 0) {
+        if (p.frameCount % 3 === 0) {
           for (let k = 0; k < spawnRate; k++) {
             this.spawnParticle(p, style, settings, isCoveringTimeWindow);
           }
         }
 
-        // 3. 탑뷰 물리 엔진 업데이트 및 고착화
-        this.updateAndBufferParticles(p, settings);
+        // 3. 물리 연산 업데이트 (안착 시 백버퍼에 박제)
+        this.updateParticlesPhysics(p, settings);
 
-        // 4. 누적된 탑뷰 배경 레이어 묘사
+        // 💡 [레이어 혁명 큐]: 1단계 - 자막을 가장 먼저 백그라운드 위에 드로우
+        this.drawSubtitle(p, style, settings, isCoveringTimeWindow, currentSub, this.subtitleRiseY);
+
+        // 💡 [레이어 혁명 큐]: 2단계 - 이미 쌓여있는 영구 낙엽 버퍼를 자막 위에 덮어 씌움
         p.image(this.accumulationBuffer, 0, 0);
 
-        // 5. 황금비율 자막 레이어 최종 렌더링
-        this.drawSubtitle(p, style, settings, isCoveringTimeWindow, currentSub);
+        // 💡 [레이어 혁명 큐]: 3단계 - 공중에 날아다니는 실시간 라이브 파티클을 최상단에 투사
+        this.drawLiveParticles(p);
       };
     };
     this.p5Instance = new window.p5(sketch, this.container);
   }
 
   spawnParticle(p, style, settings, isCoveringTimeWindow) {
-    // 💡 [크기 편차 구현]: Volume 수치 기본 크기에 난수(0.65 ~ 1.35)를 곱해 조금씩 다르게 바인딩
     const baseShapeSize = p.map(settings.audioGain, 0.1, 5.0, 15, 90);
     const finalSize = p.random(baseShapeSize * 0.65, baseShapeSize * 1.35);
     
-    const speedScale = p.map(settings.scatterExponent, 0.5, 5.0, 0.02, 0.12);
+    // 💡 [천천히 이동]: 평시 유입 속도를 대폭 하향하여 아주 우아하고 정갈하게 날아오도록 조정
+    const speedScale = p.map(settings.scatterExponent, 0.5, 5.0, 0.005, 0.04);
 
     let type = 'leaf';
     if (style === 'pastel') type = 'grass';
     if (style === 'monochrome') type = 'snow';
     if (style === 'earth') type = 'rain';
 
-    // 💡 [탑뷰 사방 유입 매커니즘]: 화면 중앙을 기준으로 바깥쪽 원형 경계선에서 스폰 좌표 산출
     const spawnAngle = p.random(p.TWO_PI);
-    const spawnRadius = p.max(p.width, p.height) * 0.7;
+    const spawnRadius = p.max(p.width, p.height) * 0.75;
     const startX = (p.width / 2) + p.cos(spawnAngle) * spawnRadius;
     const startY = (p.height / 2) + p.sin(spawnAngle) * spawnRadius;
 
-    // 최종 안착할 평면 목적지(Target) 계산
     let targetX = p.random(p.width);
     let targetY = p.random(p.height);
 
-    // 자막 가림 시간대에는 목적지를 자막 텍스트 바운더리 내부로 강제 밀착
+    // 💡 [타임라인 가림]: 오직 자막이 지워지는 타이밍에만 자막 박스로 타겟팅 락인
     if (isCoveringTimeWindow && type !== 'rain') {
       const fontSize = p.map(settings.glowIntensity, 0.1, 2.5, 50, 220);
       targetX = (p.width / 2) + p.random(-fontSize * 2.2, fontSize * 2.2) + (settings.positionOffset?.x || 0);
@@ -125,52 +141,36 @@ export default class P5SrtCanvasStage {
       y: type === 'rain' ? p.random(p.height) : startY,
       targetX: targetX,
       targetY: targetY,
-      pct: 0, // 목적지 도달 백분율 (0.0 -> 1.0)
-      step: p.random(speedScale * 0.7, speedScale * 1.3),
+      pct: 0,
+      step: isCoveringTimeWindow ? p.random(0.03, 0.09) : p.random(speedScale * 0.6, speedScale * 1.4),
       size: finalSize,
       angle: p.random(p.TWO_PI),
-      spin: p.random(-0.06, 0.06),
+      spin: p.random(-0.04, 0.04),
       type: type,
       age: 0,
-      maxAge: type === 'rain' ? 45 : 300,
+      maxAge: type === 'rain' ? 45 : 400,
       alpha: 255
     });
   }
 
-  updateAndBufferParticles(p, settings) {
+  updateParticlesPhysics(p, settings) {
     for (let i = this.particles.length - 1; i >= 0; i--) {
       let pt = this.particles[i];
       pt.age++;
 
       if (pt.type === 'rain') {
-        // [비 효과]: 탑뷰 수면 리플 파동 물리
-        pt.alpha -= 6;
-        p.noFill();
-        p.stroke(150, 195, 255, pt.alpha);
-        p.strokeWeight(2);
-        p.ellipse(pt.x, pt.y, (255 - pt.alpha) * (pt.size * 0.05));
+        pt.alpha -= 5;
         if (pt.alpha <= 0) this.particles.splice(i, 1);
       } else {
-        // [낙엽, 풀잎, 눈 효과]: 사방에서 목적지로 Lerp 이동
         if (pt.pct < 1.0) {
           pt.pct += pt.step;
           if (pt.pct > 1.0) pt.pct = 1.0;
-          
-          // 목적지 유입 좌표 보간 연산
           pt.x = p.lerp(pt.x, pt.targetX, pt.pct);
           pt.y = p.lerp(pt.y, pt.targetY, pt.pct);
           pt.angle += pt.spin;
         }
 
-        // 날아오는 도중의 실시간 공중 객체 묘사
-        p.push();
-        p.translate(pt.x, pt.y);
-        p.rotate(pt.angle);
-        p.noStroke();
-        this.drawNatureShape(p, pt);
-        p.pop();
-
-        // 💡 목적지에 완벽히 도달하면 가상 백버퍼에 영구 낙인 후 배열 제거 (무제한 축적 보장)
+        // 목적지에 도달 완료 시 자막 위 혹은 바닥 버퍼에 영구 박제 및 라이브 목록 소멸
         if (pt.pct >= 1.0) {
           this.accumulationBuffer.push();
           this.accumulationBuffer.translate(pt.x, pt.y);
@@ -185,6 +185,25 @@ export default class P5SrtCanvasStage {
     }
   }
 
+  drawLiveParticles(p) {
+    for (let i = 0; i < this.particles.length; i++) {
+      let pt = this.particles[i];
+      if (pt.type === 'rain') {
+        p.noFill();
+        p.stroke(140, 190, 255, pt.alpha);
+        p.strokeWeight(2.5);
+        p.ellipse(pt.x, pt.y, (255 - pt.alpha) * (pt.size * 0.05));
+      } else {
+        p.push();
+        p.translate(pt.x, pt.y);
+        p.rotate(pt.angle);
+        p.noStroke();
+        this.drawNatureShape(p, pt);
+        p.pop();
+      }
+    }
+  }
+
   drawNatureShape(ctx, pt) {
     if (pt.type === 'leaf') {
       ctx.fill(205, 65, 40, 245);
@@ -193,7 +212,7 @@ export default class P5SrtCanvasStage {
         let r = pt.size * (1.0 + 0.4 * Math.sin(5 * a) + 0.2 * Math.sin(10 * a));
         ctx.vertex(r * Math.cos(a), r * Math.sin(a));
       }
-      ctx.endShape(2); // CLOSE
+      ctx.endShape(2);
       ctx.stroke(135, 28, 18); ctx.strokeWeight(1.8); ctx.line(0, 0, 0, pt.size * 1.05);
     } 
     else if (pt.type === 'grass') {
@@ -206,7 +225,6 @@ export default class P5SrtCanvasStage {
       ctx.stroke(32, 105, 42); ctx.strokeWeight(2.2); ctx.line(0, -pt.size * 1.15, 0, pt.size * 1.15);
     } 
     else if (pt.type === 'snow') {
-      // ❄️ 눈송이 결정이 바닥에 부드럽게 쌓이도록 탑뷰 묘사
       ctx.stroke(245, 250, 255, 240);
       ctx.strokeWeight(Math.max(2.2, pt.size * 0.09));
       for (let j = 0; j < 6; j++) {
@@ -218,7 +236,7 @@ export default class P5SrtCanvasStage {
     }
   }
 
-  drawSubtitle(p, style, settings, isCoveringTimeWindow, currentSub) {
+  drawSubtitle(p, style, settings, isCoveringTimeWindow, currentSub, riseY) {
     const text = window.currentSubtitleText || "";
     if (!text) return;
 
@@ -229,7 +247,6 @@ export default class P5SrtCanvasStage {
     p.textSize(fontSize);
     p.textAlign(p.CENTER, p.CENTER);
 
-    // 자막 덮기 시점 도달 시 투명도를 감쇠시켜 자연스럽게 파묻히는 연출
     let alphaFade = 255;
     if (isCoveringTimeWindow && currentSub) {
       const audioEl = document.getElementById('audio-player');
@@ -243,7 +260,8 @@ export default class P5SrtCanvasStage {
     const lines = text.split(" ");
     
     lines.forEach((line, lineIdx) => {
-      let currentLineY = (p.height / 2) + offY + (lineIdx * leading) - ((lines.length - 1) * leading * 0.5);
+      // 💡 [상승 좌표 대입]: 산출된 라인 기준 좌표에 실시간 변위인 riseY를 가산하여 솟구침 묘사
+      let currentLineY = (p.height / 2) + offY + riseY + (lineIdx * leading) - ((lines.length - 1) * leading * 0.5);
       let chars = line.split("");
       
       chars.forEach((char, charIdx) => {
@@ -264,9 +282,8 @@ export default class P5SrtCanvasStage {
       });
     });
 
-    // 가림이 완료되어 글자가 사라지는 정확한 타이밍에 버퍼 레이어 색상 톤 다운 (완전 고착 효과)
     if (isCoveringTimeWindow && alphaFade <= 2 && (style === 'neon' || style === 'pastel' || style === 'monochrome')) {
-       this.accumulationBuffer.fill(style === 'neon' ? [140, 35, 20, 30] : style === 'pastel' ? [30, 95, 35, 30] : [220, 230, 245, 20]);
+       this.accumulationBuffer.fill(style === 'neon' ? [140, 35, 20, 20] : style === 'pastel' ? [30, 95, 35, 20] : [220, 230, 245, 15]);
        this.accumulationBuffer.rect(0, 0, p.width, p.height);
     }
   }
