@@ -1,10 +1,9 @@
 /**
  * src/sketches/020_p5_srt_canvas.js
- * - [버전] Ver 13.0 (리얼 탑뷰 원근 감쇄 및 분산 안착 엔진 완결판)
- * - 매 프레임 randomSeed를 리셋하여 지네처럼 뭉치던 치명적인 트레일 버그 완치
- * - 화면 바깥에서 크게 생성 -> 화면 안쪽 목푯값으로 살랑살랑 회전하며 축소(원근 투과)
- * - 입자가 목적지에 도달해 멈추는 픽셀 좌표를 곧바로 '바닥'으로 인식해 무제한 레이어 축적
- * - 자막 가림 타이밍에는 목적지가 자막 텍스트 레이아웃 전역으로 분산 타겟팅되어 매립
+ * - [버전] Ver 13.5 (자막 면적 자동 트래킹 및 오프스크린 잎사귀 뚫기 매립 엔진)
+ * - 자막의 줄수/글자수/스케일을 실시간 분석하여 Bounding Box 면적 인지 알고리즘 탑재
+ * - Gauge 세팅 초단위 타임라인 매칭 시 자막 영역 내부로만 낙엽 집중 매립 통제
+ * - 차기 자막 출현 시 p5.js 오프스크린 erase() 엔진을 연동하여 쌓인 잎사귀 융단을 뚫고 출현(Piercing Reveal)
  */
 export default class P5SrtCanvasStage {
   constructor(container) {
@@ -17,10 +16,11 @@ export default class P5SrtCanvasStage {
     this.lastWidth = 0;
     this.lastHeight = 0;
     
+    // 자막 상태 제어 큐
     this.lastTrackedText = "";
     this.subtitleRiseY = 0;
     
-    this.version = "020호 Top-View Perspective Shrink Engine Ver 13.0";
+    this.version = "020호 Subtitle Dimension Piercing Engine Ver 13.5";
   }
 
   init() {
@@ -45,7 +45,6 @@ export default class P5SrtCanvasStage {
           seed: 42, scatterExponent: 2.2, glowIntensity: 0.85, audioGain: 1.0, gaugeValue: 0.5, colorStyle: 'neon' 
         };
         
-        // 💡 [버그 완치]: 지네 모양 사슬을 만들던 프레임별 randomSeed() 강제 초기화 코드를 폐기하여 정상 난수 복구
         const style = settings.colorStyle; 
 
         if (this.lastWidth !== p.width || this.lastHeight !== p.height) {
@@ -56,7 +55,9 @@ export default class P5SrtCanvasStage {
           this.lastHeight = p.height;
         }
 
-        // 1. SRT 자막 타임라인 추적 및 가림 임계 수치 환산
+        // ==========================================
+        // ⚙️ ALGORITHM 1: 자막 데이터 및 공간 영역(Bounding Box) 연산
+        // ==========================================
         const audioEl = document.getElementById('audio-player');
         const subs = window.parsedSubtitles || [];
         const currentTime = audioEl ? audioEl.currentTime : 0;
@@ -64,86 +65,122 @@ export default class P5SrtCanvasStage {
         const currentSub = subs.find(s => currentTime >= s.start && currentTime <= s.end);
         const text = window.currentSubtitleText || "";
 
-        // 자막 변경 시 자막 박스 로컬 기준 35px 아래에서 솟구침
+        // 관제탑 인풋 박스 배율 크기 복원 통합 매핑
+        const glowRaw = settings.glowIntensity > 5 ? settings.glowIntensity : settings.glowIntensity * 100;
+        const fontSize = p.map(glowRaw, 10, 250, 50, 220);
+        const tracking = fontSize * 0.72;
+        const leading = fontSize * 1.45;
+
+        // 자막 공간 상자 너비/높이 동적 연산
+        let maxLineChars = 0;
+        const lines = text.split(" ");
+        lines.forEach(l => { if (l.length > maxLineChars) maxLineChars = l.length; });
+        
+        const boxW = maxLineChars * tracking;
+        const boxH = lines.length * leading;
+
+        const offX = settings.positionOffset?.x || 0;
+        const offY = settings.positionOffset?.y || 0;
+        const centerX = (p.width / 2) + offX;
+        const centerY = (p.height / 2) + offY;
+
+        // 자막 변경 감지 및 로컬 바운더리 상승 트리거
         if (text !== this.lastTrackedText) {
-          if (text !== "") this.subtitleRiseY = 35; 
+          if (text !== "") this.subtitleRiseY = 40; // 자막 위치 아래 40px 지점 배치
           this.lastTrackedText = text;
         }
         this.subtitleRiseY = p.lerp(this.subtitleRiseY, 0, 0.08);
 
+        // ==========================================
+        // ⚙️ ALGORITHM 2: 타임라인 동기화 기반 가림 계수 연산
+        // ==========================================
         let coverFactor = 0.0;
         let isCoveringTimeWindow = false;
         if (currentSub) {
           const remainingTime = currentSub.end - currentTime;
-          const coverThresholdTime = p.map(settings.gaugeValue, 0, 100, 0.0, 2.5);
+          const gaugeRaw = settings.gaugeValue > 1 ? settings.gaugeValue : settings.gaugeValue * 100;
+          // Gauge 수치를 초 단위(최대 2.8초) 타임라인 가림 한계선으로 정밀 치환
+          const coverThresholdTime = p.map(gaugeRaw, 0, 100, 0.0, 2.8);
+          
           if (remainingTime <= coverThresholdTime) {
             isCoveringTimeWindow = true;
             coverFactor = p.constrain((coverThresholdTime - remainingTime) / coverThresholdTime, 0.0, 1.0);
           }
         }
 
-        // 2. 탑뷰 스폰 레이트 (상시 유입 vs 자막 가림 시 분산 폭발 스폰)
+        // 3. 탑뷰 입자 생성 제어 (가림 타이밍 동기화 시 융단폭격 모드 돌입)
         let spawnRate = p.frameCount % 3 === 0 ? 1 : 0; 
         if (isCoveringTimeWindow) {
           const gaugeRaw = settings.gaugeValue > 1 ? settings.gaugeValue : settings.gaugeValue * 100;
-          spawnRate = p.floor(p.map(coverFactor, 0.0, 1.0, 1, p.max(3, p.floor(gaugeRaw * 0.35))));
+          spawnRate = p.floor(p.map(coverFactor, 0.0, 1.0, 1, p.max(3, p.floor(gaugeRaw * 0.45))));
         }
 
         for (let k = 0; k < spawnRate; k++) {
-          this.spawnParticle(p, style, settings, isCoveringTimeWindow, coverFactor);
+          this.spawnParticle(p, style, settings, isCoveringTimeWindow, coverFactor, centerX, centerY, boxW, boxH);
         }
 
-        // 3. 탑뷰 감쇄 보간 물리엔진 업데이트
+        // 4. 물리 연산 업데이트 (목적지 도달 시 영구축적 버퍼에 복사)
         this.updateParticlesPhysics(p, settings);
 
-        // 💡 [레이어 축적 시공]: 자막을 가장 먼저 그려 이미 깔린 낙엽 및 날아오는 낙엽 밑에 배치
-        this.drawSubtitle(p, style, settings, isCoveringTimeWindow, coverFactor, currentSub, this.subtitleRiseY);
+        // ==========================================
+        // ⚙️ ALGORITHM 3: 새 자막 출현 시 잎사귀 뚫기(Piercing Mask) 실현
+        // ==========================================
+        if (this.subtitleRiseY > 0.5 && text !== "" && (style === 'neon' || style === 'pastel' || style === 'monochrome')) {
+          // 상승 애니메이션 진행도 산출 (뚫고 나오는 구멍 면적의 팽창 계수)
+          let pierceProgress = p.map(this.subtitleRiseY, 40, 0, 0.2, 1.15);
+          
+          this.accumulationBuffer.push();
+          // 오프스크린 그래픽스 픽셀 버퍼 알파 채널 소거 모드 진입
+          this.accumulationBuffer.erase();
+          this.accumulationBuffer.rectMode(p.CENTER);
+          this.accumulationBuffer.noStroke();
+          this.accumulationBuffer.fill(0, 255);
+          // 자막이 위치한 로컬 공간 면적만큼 누적된 낙엽 더미를 물리적으로 도려냄
+          this.accumulationBuffer.rect(centerX, (p.height / 2) + offY + this.subtitleRiseY, boxW * pierceProgress, boxH * pierceProgress, 18);
+          this.accumulationBuffer.noErase();
+          this.accumulationBuffer.pop();
+        }
 
-        // 4. 낙엽이 안착하여 멈추는 순간 도장이 찍히는 평면 축적 버퍼 레이어 투사
+        // 5. 레이어 출력 큐: 1단계 자막 드로우
+        this.drawSubtitle(p, style, settings, isCoveringTimeWindow, coverFactor, currentSub, this.subtitleRiseY, fontSize, tracking, leading, offX, offY);
+
+        // 6. 레이어 출력 큐: 2단계 뚫기 컷아웃이 완료된 영구 축적 버퍼 평면 투사
         p.image(this.accumulationBuffer, 0, 0);
 
-        // 5. 현재 하늘에서 바닥(목적지)을 향해 작아지며 날아오는 라이브 입자들을 최상단에 렌더링
+        // 7. 레이어 출력 큐: 3단계 공중에서 하강 낙하 중인 역동적 라이브 파티클 최상단 투사
         this.drawLiveParticles(p);
       };
     };
     this.p5Instance = new window.p5(sketch, this.container);
   }
 
-  spawnParticle(p, style, settings, isCoveringTimeWindow, coverFactor) {
+  spawnParticle(p, style, settings, isCoveringTimeWindow, coverFactor, centerX, centerY, boxW, boxH) {
     const gainRaw = settings.audioGain > 5 ? settings.audioGain : settings.audioGain * 100;
-    const baseShapeSize = p.map(gainRaw, 10, 500, 12, 65); // 바닥에 안착했을 때의 최종 크기
+    const baseShapeSize = p.map(gainRaw, 10, 500, 12, 65); 
     const endSize = p.random(baseShapeSize * 0.7, baseShapeSize * 1.3);
-    
-    // 💡 [원근 스케일 박제]: 하늘 높이 있을 때는 카메라와 가까우므로 3배 더 크게 시작
-    const startSize = endSize * 3.2;
+    const startSize = endSize * 3.2; // 원근 투과 공중 확대 배율
 
     const scatterRaw = settings.scatterExponent > 5 ? settings.scatterExponent : settings.scatterExponent * 10;
-    const speedScale = p.map(scatterRaw, 5, 50, 0.01, 0.04);
+    const speedScale = p.map(scatterRaw, 5, 50, 0.012, 0.045);
 
     let type = 'leaf';
     if (style === 'pastel') type = 'grass';
     if (style === 'monochrome') type = 'snow';
     if (style === 'earth') type = 'rain';
 
-    // 💡 [사방 외곽 스폰]: 화면 중앙 기준 반지름 바깥 경계선 외곽에서 스폰
     const spawnAngle = p.random(p.TWO_PI);
     const spawnRadius = p.max(p.width, p.height) * 0.75;
     const startX = (p.width / 2) + p.cos(spawnAngle) * spawnRadius;
     const startY = (p.height / 2) + p.sin(spawnAngle) * spawnRadius;
 
-    // 화면 평면 전체가 곧 바닥이므로, 무작위 타겟 좌표 설정
+    // 화면 평면 전체 목적지 분산화 기본값
     let targetX = p.random(p.width);
     let targetY = p.random(p.height);
 
-    // 자막 가림 타이밍에는 목적지를 자막 박스 면적 전역으로 골고루 분산 타겟팅
+    // 💡 [자막 위치 자동 매칭 가림 통제]: 동적으로 추출한 자막 박스 면적 사각형 영역 내부로만 목적지 제한 바인딩
     if (isCoveringTimeWindow && type !== 'rain') {
-      const glowRaw = settings.glowIntensity > 5 ? settings.glowIntensity : settings.glowIntensity * 100;
-      const fontSize = p.map(glowRaw, 10, 250, 50, 220);
-      const textWidthArea = fontSize * 4.5 * coverFactor;
-      const textHeightArea = fontSize * 2.2 * coverFactor;
-      
-      targetX = (p.width / 2) + p.random(-textWidthArea, textWidthArea) + (settings.positionOffset?.x || 0);
-      targetY = (p.height / 2) + p.random(-textHeightArea, textHeightArea) + (settings.positionOffset?.y || 0);
+      targetX = centerX + p.random(-boxW * 0.5, boxW * 0.5);
+      targetY = centerY + p.random(-boxH * 0.5, boxH * 0.5);
     }
 
     this.particles.push({
@@ -153,15 +190,15 @@ export default class P5SrtCanvasStage {
       startY: startY,
       targetX: targetX,
       targetY: targetY,
-      pct: 0.0, // 보간 진행률 (0.0 -> 1.0)
-      step: isCoveringTimeWindow ? p.random(0.015, 0.045) : p.random(speedScale * 0.75, speedScale * 1.25),
+      pct: 0.0,
+      step: isCoveringTimeWindow ? p.random(0.018, 0.05) : p.random(speedScale * 0.75, speedScale * 1.25),
       startSize: startSize,
       endSize: endSize,
       currentSize: startSize,
       angle: p.random(p.TWO_PI),
       spin: p.random(-0.04, 0.04),
       waveSeed: p.random(100),
-      waveAmp: p.random(20, 50),
+      waveAmp: p.random(25, 55),
       type: type,
       alpha: 255
     });
@@ -179,21 +216,19 @@ export default class P5SrtCanvasStage {
           pt.pct += pt.step;
           if (pt.pct > 1.0) pt.pct = 1.0;
           
-          // 사방 바깥에서 안쪽 목적지로 좁혀지는 평면 궤적 보간
           let rawX = p.lerp(pt.startX, pt.targetX, pt.pct);
           let rawY = p.lerp(pt.startY, pt.targetY, pt.pct);
           
-          // 💡 [살랑살랑 부유 진동]: 날아오는 궤적의 수직축으로 가을바람 조화 진동 대입
+          // 가을바람에 살랑거리는 하모닉 웨이브 궤적 보정
           let wave = Math.sin(pt.pct * Math.PI * 3 + pt.waveSeed) * pt.waveAmp * (1.0 - pt.pct);
           pt.x = rawX + wave * 0.6;
           pt.y = rawY + wave * 0.4;
           
-          // 💡 [크기 조절 핵심]: 하늘(대)에서 바닥(소)으로 내려앉으며 원근감 있게 축소
           pt.currentSize = p.lerp(pt.startSize, pt.endSize, pt.pct);
           pt.angle += pt.spin;
         }
 
-        // 💡 목적지에 100% 도달해 멈추면 거기를 곧바로 바닥으로 인정, 영구 축적 버퍼에 복사 후 라이브 배열 탈출
+        // 평면 바닥(목적지)에 도달 및 안착 즉시 축적 그래픽 버퍼에 도장 찍기
         if (pt.pct >= 1.0) {
           this.drawGradientShape(this.accumulationBuffer, pt, true);
           this.particles.splice(i, 1);
@@ -222,7 +257,6 @@ export default class P5SrtCanvasStage {
     ctx.translate(pt.x, pt.y);
     ctx.rotate(pt.angle);
 
-    // 안착 플래그에 따라 최종 고정 크기 혹은 실시간 유동 축소 크기를 바인딩
     const renderSize = useEndSize ? pt.endSize : pt.currentSize;
     let grad = ctx.createRadialGradient(0, 0, 0, 0, 0, renderSize * 1.2);
 
@@ -280,29 +314,23 @@ export default class P5SrtCanvasStage {
     ctx.restore();
   }
 
-  drawSubtitle(p, style, settings, isCoveringTimeWindow, coverFactor, currentSub, riseY) {
+  drawSubtitle(p, style, settings, isCoveringTimeWindow, coverFactor, currentSub, riseY, fontSize, tracking, leading, offX, offY) {
     const text = window.currentSubtitleText || "";
     if (!text) return;
-
-    const glowRaw = settings.glowIntensity > 5 ? settings.glowIntensity : settings.glowIntensity * 100;
-    const fontSize = p.map(glowRaw, 10, 250, 50, 220);
-    const tracking = fontSize * 0.72; 
-    const leading = fontSize * 1.45;  
 
     p.textSize(fontSize);
     p.textAlign(p.CENTER, p.CENTER);
 
+    // Easing 보간을 적용해 부드럽게 지워지는 알파 채널 계산
     let alphaFade = 255;
     if (isCoveringTimeWindow && currentSub) {
       alphaFade = p.constrain((1.0 - coverFactor) * 255, 0, 255);
     }
 
-    const offX = settings.positionOffset?.x || 0;
-    const offY = settings.positionOffset?.y || 0;
     const lines = text.split(" ");
     
     lines.forEach((line, lineIdx) => {
-      // 자막 고유 안착 위치 바로 아래(35px)에서 부드럽게 고개를 들며 상승 안착
+      // 35px 아래에서 안착 위치를 향해 고개를 들며 상승 분출 연출
       let currentLineY = (p.height / 2) + offY + riseY + (lineIdx * leading) - ((lines.length - 1) * leading * 0.5);
       let chars = line.split("");
       
@@ -323,6 +351,7 @@ export default class P5SrtCanvasStage {
       });
     });
 
+    // 완벽 가림 매립 완료 플래그 작동 시 버퍼 색상 동화 안정화
     if (isCoveringTimeWindow && alphaFade <= 2 && (style === 'neon' || style === 'pastel' || style === 'monochrome')) {
        this.accumulationBuffer.fill(style === 'neon' ? [140, 35, 20, 18] : style === 'pastel' ? [30, 95, 35, 18] : [220, 230, 245, 12]);
        this.accumulationBuffer.rect(0, 0, p.width, p.height);
