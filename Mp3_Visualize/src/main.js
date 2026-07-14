@@ -17,28 +17,30 @@ const playMusicBtn = document.getElementById('btn-play-music');
 let parsedSubtitles = [];
 let isAudioAnalyzerConnected = false;
 
-// 💡 [알고리즘 1]: 미디어 아트용 고품격 구글 웹폰트 동적 인젝션 시공
+// 1. 미디어 아트용 고품격 구글 웹폰트 동적 인젝션 시공
 window.addEventListener('DOMContentLoaded', () => {
     const link = document.createElement('link');
     link.rel = 'stylesheet';
     link.href = 'https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@500;900&display=swap';
     document.head.appendChild(link);
     
-    // 💡 [알고리즘 2]: 녹화 영상에 기록되지 않는 모니터링 전용 투명 진단 HUD 인터페이스 동적 생성
+    // 2. 녹화 영상에 기록되지 않는 모니터링 전용 투명 진단 HUD 콘솔 동적 생성
     const hud = document.createElement('div');
     hud.id = 'diagnostic-hud-console';
     hud.style.cssText = 'position:fixed; top:15px; right:350px; z-index:9999; background:rgba(5,15,25,0.85); color:#00ffcc; font-family:monospace; font-size:11px; padding:12px; border:1px solid #00ffcc; border-radius:6px; pointer-events:none; line-height:1.5; box-shadow:0 0 10px rgba(0,255,204,0.3); width:240px;';
     document.body.appendChild(hud);
     
-    // HUD 실시간 데이터 갱신 타이머 작동 (200ms 주기로 리소스를 먹지 않게 렌더링)
     setInterval(() => {
         const diag = window.sketchDiagnostics || {};
         const memInfo = window.performance && window.performance.memory ? 
-            Math.round(window.performance.memory.usedJSHeapSize / 1024 / 1024) + ' MB' : 'N/A (지원불가)';
+            Math.round(window.performance.memory.usedJSHeapSize / 1024 / 1024) + ' MB' : 'N/A';
+            
+        const activeLi = document.querySelector('#sketch-list li.active');
+        const currentFile = activeLi ? activeLi.getAttribute('data-sketch') : 'None';
         
         hud.innerHTML = `
             <div style="font-weight:bold; color:#ffff00; border-bottom:1px dashed #00ffcc; padding-bottom:4px; margin-bottom:4px;">📊 CORE SYSTEM DIAGNOSTICS</div>
-            <div>• RUNNING SKETCH: <span style="color:#fff">${manager.currentFile || 'None'}</span></div>
+            <div>• RUNNING SKETCH: <span style="color:#fff">${currentFile}</span></div>
             <div>• ENGINE FPS    : <span style="color:#fff">${diag.fps || 0} Frame</span></div>
             <div>• MEMORY HEAP   : <span style="color:#fff">${memInfo}</span></div>
             <div>• ACTIVE SHAPE  : <span style="color:#fff">${diag.particleCount || 0} Pcs</span></div>
@@ -179,24 +181,22 @@ Object.values(cosmicControls).forEach(el => {
     });
 });
 
+// 💡 [버그 완전 치료]: 현재 활성화된 스케치 이름을 DOM에서 직접 뜯어와 재시동하므로 리셋 시 화면 증발 원천 차단
 document.getElementById('btn-apply-cosmic')?.addEventListener('click', () => {
     syncCosmicControls();
     if (manager.currentSketch && typeof manager.currentSketch.buildCosmos === 'function') {
         manager.currentSketch.buildCosmos();
     } else {
-        manager.switchSketch(manager.currentFile, analyzer);
+        const activeLi = document.querySelector('#sketch-list li.active');
+        const currentSketch = activeLi ? activeLi.getAttribute('data-sketch') : '001_p5_wave.js';
+        manager.switchSketch(currentSketch, analyzer);
     }
 });
 
-const recordBtn = document.getElementById('btn-record');
-let isRecording = false;
-recordBtn?.addEventListener('click', async () => {
-    if (!isRecording) { isRecording = true; await recorder.start(); recordBtn.innerText = '⏹️ 녹화 중지'; }
-    else { isRecording = false; await recorder.stop(); recordBtn.innerText = '🔴 녹화 시작 (Record)'; }
-});
-
 document.getElementById('btn-save-preset')?.addEventListener('click', () => {
-    const data = JSON.stringify({ cosmic: window.cosmicEngineSettings, sketch: manager.currentFile });
+    const activeLi = document.querySelector('#sketch-list li.active');
+    const currentSketch = activeLi ? activeLi.getAttribute('data-sketch') : '001_p5_wave.js';
+    const data = JSON.stringify({ cosmic: window.cosmicEngineSettings, sketch: currentSketch });
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([data])); a.download = 'preset.json'; a.click();
 });
 
