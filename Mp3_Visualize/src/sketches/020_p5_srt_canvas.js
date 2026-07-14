@@ -1,10 +1,10 @@
 /**
  * src/sketches/020_p5_srt_canvas.js
- * - [버전] Ver 17.0 (하드웨어 30FPS 락 & 폰트 랜덤 셔플 및 절대 레이어 가림 엔진)
- * - 초기화(RESET) 버튼을 누를 때마다 'Black Han Sans'와 'Noto Sans KR' 중 하나를 100% 무작위 자동 선택 바인딩
- * - 레이어 가림 절대성 확보: 가림 타이밍 시 가사 레이어 위로 쉐이프 텍스처를 강제 오버레이 투사하여 물리적 매립 완수
- * - 가사 변경 트리거 발생 즉시 글자 위 낙엽들을 바닥 버퍼로 백베이킹(Bake)하여 다음 자막의 클린 출현 레이어 보장
- * - 30FPS 하드웨어 가속 최적화 고정으로 지연 및 버벅임 100% 영구 동결
+ * - [버전] Ver 17.5 (셔플 오가닉 단풍 수묵색상 및 PASTEL 초록잎 고정판)
+ * - Neon 단풍잎: 옐로우, 버트 오렌지, 크림슨 레드, 체스넛 브라운 등 다채로운 가을빛을 한 잎사귀 안 그라디언트에 완전 물들임
+ * - Pastel 풀잎: 파스텔 톤 가설을 철회하고 완벽하게 파릇파릇 싱그러운 초록색류 5가지 그라디언트 잎으로 강제 고정 튜닝
+ * - 30FPS 하드웨어 가속 락 및 글자 투명화 없는 명품 적층 덮기 가림 완성
+ * - 초기화(RESET) 시 Noto Sans KR / Black Han Sans 마스터 웹글꼴 중 1종 무작위 자동 결정 스위칭
  */
 export default class P5SrtCanvasStage {
   constructor(container) {
@@ -23,11 +23,9 @@ export default class P5SrtCanvasStage {
     this.lastRenderedFontSize = 0;
     this.lastRenderedColor = "";
     
-    // 💡 [폰트 랜덤 스위칭 상태 변수]
     this.currentFont = 'Black Han Sans';
-    
     this.textureCaches = null;
-    this.version = "020호 Random Font & Absolute Overlay Engine Ver 17.0";
+    this.version = "020호 Realistic Shuffled Foliage Engine Ver 17.5";
   }
 
   init() {
@@ -43,14 +41,14 @@ export default class P5SrtCanvasStage {
         this.lastWidth = p.width;
         this.lastHeight = p.height;
         
-        // 💡 [알고리즘 1: 폰트 랜덤 초기화]: 리셋/기동 시마다 두 명품 폰트 중 하나를 무작위 선정
+        // 💡 초기화(RESET) 시마다 폰트를 무작위로 자동 선정
         const fontPool = ['Black Han Sans', 'Noto Sans KR'];
         this.currentFont = p.random(fontPool);
-        console.log(`🎨 [FONT ENGINE] 현재 무작위 선택된 자막 글꼴: ${this.currentFont}`);
+        console.log(`🎨 [FONT RANDOMIZER] 선택된 명품 서체: ${this.currentFont}`);
         
         this.createTextureFactories(p);
         
-        // 30FPS 하드웨어 락 고정
+        // 30FPS 하드웨어 락 보정
         p.frameRate(30);
         p.loop();
       };
@@ -75,7 +73,7 @@ export default class P5SrtCanvasStage {
           this.lastHeight = p.height;
         }
 
-        // SRT 데이터 스트림 추적
+        // SRT 가사 타임라인 정밀 트래킹
         const audioEl = document.getElementById('audio-player');
         const subs = window.parsedSubtitles || [];
         const currentTime = audioEl ? audioEl.currentTime : 0;
@@ -100,7 +98,7 @@ export default class P5SrtCanvasStage {
         const centerX = (p.width / 2) + offX;
         const centerY = (p.height / 2) + offY;
 
-        // 가사 변환 시 최상단 고착 낙엽들을 바닥 배경 버퍼로 완전 압착 베이킹(Bake) 처리
+        // 가사가 변경되는 순간 전경에 있던 가림 조각들을 전부 배경으로 베이킹 처리
         if (text !== this.lastTrackedText) {
           this.particles.forEach(pt => {
             if (pt.isSettledOnText) {
@@ -111,7 +109,6 @@ export default class P5SrtCanvasStage {
           this.lastTrackedText = text;
         }
 
-        // 타임라인 동기화 가림 시간선 계산
         let coverFactor = 0.0;
         let isCoveringTimeWindow = false;
         if (currentSub) {
@@ -125,7 +122,6 @@ export default class P5SrtCanvasStage {
           }
         }
 
-        // 프레임 밀도 스폰 보정
         let spawnRate = p.frameCount % 2 === 0 ? 1 : 0; 
         if (isCoveringTimeWindow) {
           const gaugeRaw = settings.gaugeValue > 1 ? settings.gaugeValue : settings.gaugeValue * 100;
@@ -138,7 +134,7 @@ export default class P5SrtCanvasStage {
 
         this.updateParticlesPhysics(p, settings, custom, isCoveringTimeWindow);
 
-        // 시스템 진단 HUD 매핑
+        // 시스템 진단 통계 갱신
         window.sketchDiagnostics = {
           fps: p.floor(p.frameRate()),
           particleCount: this.particles.length,
@@ -146,56 +142,72 @@ export default class P5SrtCanvasStage {
           activeFunction: `Render[Font:${this.currentFont.replace(/ /g,'')}]`
         };
 
-        // ==========================================
-        // 💡 [알고리즘 2: 절대 레이어 적층 시공 파이프라인]
-        // ==========================================
-        
-        // 1단계(최하단 바닥): 기존에 이미 안착해 깔려있던 낙엽 버퍼 투사
-        p.image(this.accumulationBuffer, 0, 0);
-        
-        // 2단계(중간 전경): 100% 완전 불투명 상태로 순수 가사 자막을 정갈하게 인쇄 (낙엽 위에 얹어짐)
-        this.drawSubtitle(p, style, settings, custom, isCoveringTimeWindow, coverFactor, currentSub, fontSize, tracking, leading, offX, offY);
-        
-        // 3단계(최상단 덮개): 공중 비행 입자 및 자막 표면에 안착한 낙엽들을 자막 '위로' 최종 투사 (물리 가림 백프로 실현)
-        this.drawLiveParticles(p, glowRaw, custom);
+        // 절대 레이어링 파이프라인 가동
+        p.image(this.accumulationBuffer, 0, 0); // 1단계: 바닥 레이어
+        this.drawSubtitle(p, style, settings, custom, isCoveringTimeWindow, coverFactor, currentSub, fontSize, tracking, leading, offX, offY); // 2단계: 가사 자막 레이어 (배경 위에 안착)
+        this.drawLiveParticles(p, glowRaw, custom); // 3단계: 가사 위를 덮는 물리 가림 레이어
       };
     };
     this.p5Instance = new window.p5(sketch, this.container);
   }
 
+  // 💡 [알고리즘 3]: 노랑, 갈색이 유기적으로 공존하는 진짜 단풍잎 및 선명한 초록 풀잎 프리베이킹
   createTextureFactories(p) {
     this.textureCaches = { leaf: [], grass: [], snow: [] };
     const settings = window.cosmicEngineSettings || { customColors: { gas1: '#ff4500', gas2: '#8b0000', star: '#ffff00' } };
     const custom = settings.customColors;
 
-    for (let i = 0; i < 5; i++) {
+    // 🍁 1. 단풍잎(Neon): 한 잎사귀 안에 노랑, 주황, 빨강, 갈색(Burnt Chestnut/Ochre)이 유기적으로 뒤섞이는 5종 셔플링 디자인
+    const leafMixes = [
+      { c0: 'rgba(255, 220, 85, 0.95)',  c1: custom.gas1, c2: 'rgba(100, 35, 10, 0.95)' },  // 화사한 골드노랑 -> 커스텀1 -> 밤색 낙엽 갈색
+      { c0: custom.star,                 c1: 'rgba(215, 65, 25, 0.95)',  c2: 'rgba(85, 30, 8, 0.95)' },   // 커스텀Star -> 물든 가을 오렌지 -> 짙은 황토갈색
+      { c0: 'rgba(255, 195, 60, 0.95)',  c1: custom.gas2, c2: 'rgba(75, 20, 5, 0.95)' },   // 금색 앰버 -> 커스텀2 -> 다크 체스넛 브라운
+      { c0: 'rgba(230, 160, 45, 0.95)',  c1: 'rgba(180, 40, 15, 0.95)',  c2: custom.gas2 },               // 가을 들판 황토색 -> 타오르는 붉은 단풍 -> 커스텀2
+      { c0: 'rgba(255, 235, 110, 0.95)', c1: custom.gas1, c2: 'rgba(115, 45, 15, 0.95)' } // 햇살 옐로우 -> 커스텀1 -> 마른 낙엽 갈색
+    ];
+
+    leafMixes.forEach((m, idx) => {
       let pg = p.createGraphics(128, 128); let ctx = pg.drawingContext; let size = 35;
       ctx.save(); ctx.translate(64, 64);
       let grad = ctx.createRadialGradient(0, 0, 0, 0, 0, size * 1.25);
-      grad.addColorStop(0, custom.star); grad.addColorStop(0.5, custom.gas1); grad.addColorStop(1, custom.gas2);
+      grad.addColorStop(0, m.c0); 
+      grad.addColorStop(0.5, m.c1); 
+      grad.addColorStop(1, m.c2);
       ctx.fillStyle = grad; ctx.beginPath();
       for (let a = 0; a < 6.28; a += 0.05) {
-        let lobes = i % 2 === 0 ? 5 : 7;
+        let lobes = idx % 2 === 0 ? 5 : 7;
         let r = size * (1.0 + 0.4 * Math.sin(lobes * a) + 0.2 * Math.sin(lobes * 2 * a));
         let x = r * Math.cos(a); let y = r * Math.sin(a);
         if (a === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
       ctx.closePath(); ctx.fill(); ctx.restore();
       this.textureCaches.leaf.push(pg);
-    }
+    });
 
-    for (let i = 0; i < 5; i++) {
+    // 🍃 2. 풀잎(Pastel): 붉은색의 간섭을 완전히 차단한 극도로 싱그럽고 파릇파릇한 리얼 초록색류 그라디언트 고정 시공
+    const greenMixes = [
+      { c0: 'rgba(185, 245, 100, 0.95)', c1: 'rgba(55, 185, 80, 0.95)',  c2: 'rgba(15, 75, 25, 0.95)' },  // 라임 그린 -> 잔디 초록 -> 숲속 딥 그린
+      { c0: 'rgba(165, 235, 130, 0.95)', c1: 'rgba(40, 155, 110, 0.95)', c2: 'rgba(10, 65, 45, 0.95)' },  // 민트 연두 -> 에메랄드 -> 다크 올리브 그린
+      { c0: 'rgba(215, 250, 110, 0.95)', c1: 'rgba(110, 200, 60, 0.95)', c2: 'rgba(30, 100, 20, 0.95)' }, // 밝은 황록색 -> 올리브 초록 -> 깊은 전나무색
+      { c0: 'rgba(195, 240, 150, 0.95)', c1: 'rgba(75, 175, 75, 0.95)',  c2: 'rgba(20, 85, 30, 0.95)' },  // 파스텔 연두 -> 정통 초록색 -> 이끼 상록수색
+      { c0: 'rgba(160, 225, 95, 0.95)',  c1: 'rgba(50, 145, 60, 0.95)',  c2: 'rgba(12, 60, 15, 0.95)' }   // 어린새싹 그린 -> 삼림 그린 -> 다크 포레스트 그린
+    ];
+
+    greenMixes.forEach((gm, idx) => {
       let pg = p.createGraphics(128, 128); let ctx = pg.drawingContext; let size = 38;
       ctx.save(); ctx.translate(64, 64);
       let grad = ctx.createRadialGradient(0, 0, 0, 0, 0, size * 1.2);
-      grad.addColorStop(0, '#a6f05f'); grad.addColorStop(0.6, custom.gas1); grad.addColorStop(1, custom.gas2);
+      grad.addColorStop(0, gm.c0); 
+      grad.addColorStop(0.5, gm.c1); 
+      grad.addColorStop(1, gm.c2);
       ctx.fillStyle = grad; ctx.beginPath(); ctx.moveTo(0, -size * 1.3);
       ctx.bezierCurveTo(size * 0.65, -size * 0.45, size * 0.65, size * 0.65, 0, size * 1.3);
       ctx.bezierCurveTo(-size * 0.65, size * 0.65, -size * 0.65, -size * 0.45, 0, -size * 1.3);
       ctx.closePath(); ctx.fill(); ctx.restore();
       this.textureCaches.grass.push(pg);
-    }
+    });
 
+    // ❄️ 3. 눈꽃송이(Monochrome) 프리베이킹
     for (let i = 0; i < 5; i++) {
       let pg = p.createGraphics(128, 128); let ctx = pg.drawingContext; let size = 35;
       ctx.save(); ctx.translate(64, 64);
@@ -227,8 +239,6 @@ export default class P5SrtCanvasStage {
     
     let sb = this.subtitleBuffer;
     sb.clear(); 
-    
-    // 💡 초기화 시 랜덤 결정된 고유 폰트를 다이내믹 주입
     sb.textFont(this.currentFont); 
     sb.textSize(fontSize); sb.textAlign(p.CENTER, p.CENTER);
     sb.fill(textColorStyle); sb.noStroke();
@@ -272,7 +282,6 @@ export default class P5SrtCanvasStage {
         guardLoop++;
       }
     } else {
-      // 💡 [정밀 유착 유도]: 가사 텍스트의 바운딩 면적 박스 스케일 내부로 목푯값 완전 정렬
       targetX = centerX + p.random(-boxW * 0.45, boxW * 0.45);
       targetY = centerY + p.random(-boxH * 0.45, boxH * 0.45);
     }
@@ -318,7 +327,6 @@ export default class P5SrtCanvasStage {
 
         if (pt.pct >= 1.0) {
           if (isCoveringTimeWindow && pt.isTargetingText) {
-            // 💡 가사 덮기용 알맹이는 소멸하지 않고 가사 정면 레이어 위에 그대로 정지 고정
             pt.isSettledOnText = true; 
           } else {
             this.drawCachedTextureShape(this.accumulationBuffer, pt, true, 0, custom);
@@ -336,7 +344,6 @@ export default class P5SrtCanvasStage {
         p.noFill(); p.stroke(custom.gas1); p.strokeWeight(2.5);
         p.ellipse(pt.x, pt.y, (255 - pt.alpha) * (pt.endSize * 0.05));
       } else {
-        // 💡 자막보다 나중에(최상단에) 드로우되므로 자막을 완벽하게 덮어버림
         this.drawCachedTextureShape(p, pt, pt.isSettledOnText, glowRaw, custom);
       }
     }
@@ -385,15 +392,11 @@ export default class P5SrtCanvasStage {
     }
 
     p.push(); p.imageMode(p.CENTER);
-    
-    // 💡 [물리 가림 완치]: 가림 시간대에도 자막 자체의 불투명도는 언제나 선명하게 255 고정 (비 효과 제외)
     let alphaLock = 255;
     if (style === 'earth' && isCoveringTimeWindow && currentSub) {
       alphaLock = p.constrain((1.0 - coverFactor) * 255, 0, 255);
     }
     p.tint(255, alphaLock);
-    
-    // 튀어오르는 변위 없이 완벽 제자리에 깔끔 투사
     p.image(this.subtitleBuffer, (p.width / 2) + offX, (p.height / 2) + offY);
     p.pop();
   }
