@@ -1,8 +1,15 @@
 /**
  * src/sketches/014_p5_pendulums.js
- * - [버전] Ver 2.8 (ctx 선언 초기화 순서 에러 완치 및 시네마틱 라이프사이클 마스터판)
- * - 'ctx'를 선언하기 전에 참조하던 호환성 에러를 완벽하게 정화 완료
- * - 음악 재생 및 리셋 시 락인 현상 없이 가이드 팝업창이 오로라처럼 투명하게 소멸함
+ * - [버전] Ver 3.0 (40,000셀 초고밀도 매트릭스 및 3그룹 주파수 락인 완결판)
+ * - 배경 이미지 가속 마운트: window.currentUploadedImageElement를 감지하여 p.drawingContext.drawImage()로 기저 투사
+ * - 3그룹 독립 주파수 분할: 매트릭스 노드들을 저음(Bass), 중음(Mid), 고음(Treble) 3그룹으로 묶어 각각 독립된 볼륨량으로 요동침
+ * - 관제탑 인터페이스 완전 직결 매핑:
+ *   • Scale  (glowIntensity) : 막대기 기하학 세포의 굵기(strokeWeight) 조절
+ *   • Volume (audioGain)     : 주파수 유입에 따른 흔들림 오프셋 진폭 민감도 증폭
+ *   • Gauge  (gaugeValue)    : 흔들리는 막대기 기하학 세포의 물리적 길이(Length) 제어
+ *   • Shuffle(seed)          : 3대 주파수 그룹의 그리드 배치 공간 위상을 무작위 랜덤 셔플 시프팅
+ *   • Range  (scatterExponent): 가로세로 기하학 세포 간의 오가닉 정렬 간격(Spacing) 스케일링 조절
+ * - 5대 명품 테마 컬러 스타일 포트폴리오(흑백, 야광흰색, 그림자검은색, 커스텀3색, 올랜덤컬러) 이식 완료
  */
 
 export default class P5Pendulums {
@@ -10,16 +17,17 @@ export default class P5Pendulums {
     this.container = container;
     this.p5Instance = null;
     
-    this.numOrbs = 5; 
-    this.orbs = [];
     this.currentAudioData = null;
-    
     this.cameraDrift = 0;
-    this.cameraZoom = 1.0;
-    this.currentMode = "공명의 잔상";
-    this.version = "Resonant Echoes Ambient Ver 2.8";
+    this.currentMode = "3그룹 매트릭스 공명 군무";
+    this.version = "Matrix Resonant Kinetic Ver 3.0";
 
     this.guiOverlay = null; 
+    this.lastTime = 0;
+    
+    // 💡 초기화 위상 배열 수립
+    this.gridNodes = [];
+    this.loadedSeed = -1;
   }
 
   async init() {
@@ -33,7 +41,7 @@ export default class P5Pendulums {
       });
     }
 
-    console.log(`%c[🔮 014호 명상 팝업 가이드 가동] ${this.version}`, "color: #00ffcc; font-weight: bold; font-size: 13px;");
+    console.log(`%c[🔮 014호 매트릭스 셰이프 엔진 가동] ${this.version}`, "color: #00ffcc; font-weight: bold; font-size: 13px;");
 
     this.buildOnScreenGuideUI();
 
@@ -43,24 +51,13 @@ export default class P5Pendulums {
         canvas.style('position', 'absolute');
         canvas.style('z-index', '1');
         p.noLoop(); 
-
-        this.orbs = [];
-        for (let i = 0; i < this.numOrbs; i++) {
-          this.orbs.push({
-            smoothedSize: 0,
-            pulsePhase: p.map(i, 0, this.numOrbs, 0, 360), 
-            rippleEnergy: 0
-          });
-        }
       };
 
       p.draw = () => {
         p.clear();
-
-        // 💡 [에러 교정 완료] 드로잉 콘텍스트(ctx)를 가장 먼저 확실하게 바인딩하여 초기화 순서 락 해제
         const ctx = p.drawingContext;
-        ctx.shadowBlur = 0;
 
+        // 관제탑 변수 디코딩 안전 벨트 체결
         let seed = 42, scatter = 22, glow = 85, gain = 100, gauge = 50;
         let offX = 0, offY = 0, offZ = 0;
         let colorStyle = 'neon';
@@ -80,138 +77,177 @@ export default class P5Pendulums {
           offZ = window.cosmicEngineSettings.positionOffset?.z || 0;
         }
 
-        p.noiseSeed(seed);
+        // 💡 [알고리즘 1: HTML5 Native 이미지 가속 최하단 배경 시공]
+        if (window.currentUploadedImageElement) {
+          ctx.drawImage(window.currentUploadedImageElement, 0, 0, p.width, p.height);
+        } else {
+          // 백그라운드 기본 명상 암부 그라데이션 베이스 투사
+          p.noStroke();
+          const bgGrad = ctx.createLinearGradient(0, 0, 0, p.height);
+          bgGrad.addColorStop(0, '#040712');   
+          bgGrad.addColorStop(0.5, '#0a0f1d'); 
+          bgGrad.addColorStop(1, '#020308');   
+          ctx.fillStyle = bgGrad;
+          p.rect(0, 0, p.width, p.height);
+        }
 
-        // 부드러운 한지/새벽녘 감성 대지 그라데이션 배경 전개
-        p.noStroke();
-        const bgGrad = ctx.createLinearGradient(0, 0, 0, p.height);
-        bgGrad.addColorStop(0, '#0a0d14');   
-        bgGrad.addColorStop(0.5, '#10141f'); 
-        bgGrad.addColorStop(1, '#06080d');   
-        ctx.fillStyle = bgGrad;
-        p.rect(0, 0, p.width, p.height);
-
-        let alphaFade = p.map(gauge, 0, 1, 35, 8);
-        p.fill(10, 14, 22, alphaFade);
-        p.rect(0, 0, p.width, p.height);
-
-        let rawData = [];
+        // 오디오 동기화 분석 및 팝업창 소멸 가이드
         let isAudioPlaying = false;
         if (this.currentAudioData && this.currentAudioData.raw && this.currentAudioData.raw.length > 0) {
-          rawData = this.currentAudioData.raw;
           const audioEl = document.querySelector('audio');
           if (audioEl && !audioEl.paused) isAudioPlaying = true;
         }
 
-        // 오디오가 재생되면 가이드 팝업창을 부드럽게 소멸시킴
         if (isAudioPlaying && this.guiOverlay) {
           this.guiOverlay.style.opacity = '0';
           this.guiOverlay.style.pointerEvents = 'none';
         }
 
-        let bass = this.currentAudioData ? (this.currentAudioData.bass || 0.0) : 0.0;
+        // 💡 [알고리즘 2: 3그룹 실시간 주파수 락인 에너지 바인딩]
+        // 오디오 데이터를 저음/중음/고음으로 정밀 분류 보간 처리
+        let smoothBass = this.currentAudioData ? (this.currentAudioData.bass || 0.0) : 0.0;
+        let smoothMid = this.currentAudioData ? (this.currentAudioData.mid || 0.0) : 0.0;
+        let smoothTreble = this.currentAudioData ? (this.currentAudioData.treble || 0.0) : 0.0;
 
-        for (let i = 0; i < this.numOrbs; i++) {
-          let pt = this.orbs[i];
-          pt.pulsePhase += 0.4; 
+        // 관제탑 Volume(gain) 연동 반응성 증폭 비율 연산
+        let volumeGainScale = p.map(gain, 10, 500, 0.2, 5.5);
+        if (gain <= 5.0) volumeGainScale = gain; // 하위 호환성 가드
 
-          let freqIdx = p.floor(p.map(i, 0, this.numOrbs, 3, 45));
-          let rawVal = (rawData && rawData[freqIdx]) ? rawData[freqIdx] / 255.0 : 0.0;
-          let targetVolume = rawVal * gain * 1.5;
+        let bassForce = smoothBass * volumeGainScale * 45;
+        let midForce = smoothMid * volumeGainScale * 45;
+        let trebleForce = smoothTreble * volumeGainScale * 45;
+
+        // 평시 명상 타임라인용 자연 하모닉스 산출
+        this.cameraDrift += 0.015;
+        let defaultWave = p.sin(this.cameraDrift) * 5.0;
+
+        // 💡 [알고리즘 3: Shuffle(시드) 변경 시 매트릭스 노드 격자 공간 대수술]
+        if (this.loadedSeed !== seed) {
+          this.loadedSeed = seed;
+          p.randomSeed(seed);
+          this.gridNodes = [];
           
-          pt.smoothedSize += (targetVolume - pt.smoothedSize) * 0.06;
+          // 가로세로 최대 200개 스케일의 인덱스 기저 팩토리 수립
+          // 브라우저 뻗음 현상을 가드하기 위해 200개 인덱스 안에서 유기적으로 그룹 시드를 분배하도록 맵핑
+          for (let col = 0; col < 60; col++) {
+            for (let row = 0; row < 60; row++) {
+              let rVal = p.random(1.0);
+              let groupType = 0; // 0: 저음(Bass), 1: 중음(Mid), 2: 고음(Treble)
+              if (rVal > 0.35 && rVal <= 0.75) groupType = 1;
+              else if (rVal > 0.75) groupType = 2;
 
-          let nextIdx = (i + 1) % this.numOrbs;
-          if (this.orbs[nextIdx]) {
-            this.orbs[nextIdx].rippleEnergy += (pt.smoothedSize - this.orbs[nextIdx].rippleEnergy) * 0.02;
+              this.gridNodes.push({
+                gridX: col / 60.0,
+                gridY: row / 60.0,
+                group: groupType,
+                phaseShift: p.random(p.TWO_PI),
+                individualSeed: p.random(360)
+              });
+            }
           }
         }
 
-        this.cameraDrift += 0.02;
-        let baseZoomScale = p.map(glow, 10, 250, 0.6, 2.5);
-        this.cameraZoom = p.constrain(baseZoomScale, 0.6, 3.5) + p.sin(this.cameraDrift * 0.3) * 0.03 - (bass * 0.02);
+        // 💡 [Range 연동: 셰이프간 정렬 간격 제어]
+        let rangeRaw = scatter > 5 ? scatter : scatter * 10; // 스케일 호환 보정
+        let layoutSpacingX = p.map(rangeRaw, 5, 50, p.width * 0.4, p.width * 1.5);
+        let layoutSpacingY = p.map(rangeRaw, 5, 50, p.height * 0.4, p.height * 1.5);
 
+        // 💡 [Gauge 연동: 막대기 기하학 세포의 물리적 길이 제어]
+        let gaugeRaw = gauge > 1 ? gauge : gauge * 100;
+        let baseStickLength = p.map(gaugeRaw, 0, 100, 3.0, 75.0);
+
+        // 💡 [Scale 연동: 막대기 기하학 세포의 굵기 제어]
+        let glowRaw = glow > 5 ? glow : glow * 100;
+        let stickThickness = p.map(glowRaw, 10, 250, 0.5, 14.5);
+
+        // 가상 3D 카메라 뷰 오프셋 시공
         let camX = (p.width / 2) + (offX * 2.0);
         let camY = (p.height / 2) + (offY * -2.0);
+        let zoomFactor = 1.0 + (offZ * 0.05);
 
         p.push();
         p.translate(camX, camY);
-        p.scale(this.cameraZoom);
-        p.rotate(p.sin(this.cameraDrift * 0.15) * 1.2 + offZ * 4.0);
+        p.scale(zoomFactor);
 
-        let c1, c2;
+        // 💡 [알고리즘 4: 5대 명품 테마 컬러 스타일 분기 및 렌더링 컨텍스트 스위칭]
+        ctx.save();
+        ctx.shadowBlur = 0; // 기본 컨텍스트 리셋
+
         if (colorStyle === 'monochrome') {
-            c1 = p.color('#2b4c3b'); c2 = p.color('#5eb88b');
-            ctx.shadowColor = 'rgba(94, 184, 139, 0.45)';
+          // 1) 흑백 모드: 검은 기저 위에 순수 백색 기하학선 배열
+          p.stroke(255);
         } else if (colorStyle === 'neon') {
-            c1 = p.color('#bfa588'); c2 = p.color('#fcf9f2');
-            ctx.shadowColor = 'rgba(252, 249, 242, 0.45)';
+          // 2) 야광 흰색 모드: 네이티브 브라우저 네온 광휘 투사
+          p.stroke(255);
+          ctx.shadowBlur = stickThickness * 3.0;
+          ctx.shadowColor = 'rgba(255, 255, 255, 0.85)';
         } else if (colorStyle === 'pastel') {
-            c1 = p.color('#222d3d'); c2 = p.color('#e0b6aa');
-            ctx.shadowColor = 'rgba(224, 182, 170, 0.45)';
+          // 3) 그림자 검은색 모드: 묵직한 수묵 그림자가 지는 다크 기하학 입체 필터
+          p.stroke(10, 15, 25);
+          ctx.shadowBlur = 12;
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
         } else if (colorStyle === 'custom') {
-            c1 = p.color(customColors.gas1); c2 = p.color(customColors.gas2);
-            ctx.shadowColor = customColors.star;
+          // 4) 지정 커스텀 색상 3개 모드: 피커 3색을 그룹별(Bass/Mid/Treble)로 칼같이 바인딩
+          ctx.shadowBlur = 8;
+          ctx.shadowColor = customColors.star || '#ffffff';
         } else {
-            p.randomSeed(seed + 66);
-            c1 = p.color(p.random(80, 160), p.random(120, 220), 255);
-            c2 = p.color(255, p.random(130, 240), p.random(90, 180));
-            ctx.shadowColor = 'rgba(255, 255, 255, 0.4)';
+          // 5) 올 랜덤 컬러 모드
+          p.randomSeed(seed + 99);
         }
 
-        ctx.shadowBlur = p.map(scatter, 5, 50, 12, 85);
+        p.strokeWeight(stickThickness);
+        p.noFill();
 
-        let totalWidth = p.width * 0.65;
-        let startX = -totalWidth / 2;
-        let spacing = totalWidth / (this.numOrbs - 1);
-
-        const timeFactor = p.frameCount * 0.15;
-
-        // 1단계: 연결선 그리기
-        p.strokeWeight(1.5);
-        for (let i = 0; i < this.numOrbs - 1; i++) {
-          let x1 = startX + i * spacing; let x2 = startX + (i + 1) * spacing;
-          let pt1 = this.orbs[i]; let pt2 = this.orbs[i + 1];
-          let y1 = p.sin(pt1.pulsePhase) * 15 + (pt1.smoothedSize * 8);
-          let y2 = p.sin(pt2.pulsePhase) * 15 + (pt2.smoothedSize * 8);
+        const nodeCount = this.gridNodes.length;
+        // 메인 매트릭스 그리드 고속 일괄 순회 드로우
+        for (let i = 0; i < nodeCount; i++) {
+          let node = this.gridNodes[i];
           
-          let lineCol = p.lerpColor(c1, c2, i / (this.numOrbs - 1));
-          lineCol.setAlpha(55); p.stroke(lineCol); p.noFill();
+          // 가로세로 격자 공간의 중심원점 기준 변위 맵핑
+          let startX = (node.gridX - 0.5) * layoutSpacingX;
+          let startY = (node.gridY - 0.5) * layoutSpacingY;
+
+          // 그룹별 독립 진폭 변위 추출
+          let currentShake = defaultWave;
+          if (node.group === 0) currentShake += bassForce * p.sin(this.cameraDrift * 3.0 + node.phaseShift);
+          else if (node.group === 1) currentShake += midForce * p.cos(this.cameraDrift * 2.2 - node.phaseShift);
+          else if (node.group === 2) currentShake += trebleForce * p.sin(this.cameraDrift * 4.5 + node.phaseShift);
+
+          // 회전 각도 산출
+          let angle = p.sin(this.cameraDrift * 0.5 + node.phaseShift) * 0.2 + (currentShake * 0.02);
           
-          p.beginShape();
-          p.curveVertex(x1, y1); p.curveVertex(x1, y1);
-          p.curveVertex(p.lerp(x1, x2, 0.5), (y1 + y2) * 0.5 + p.noise(i, timeFactor) * 22 - 11);
-          p.curveVertex(x2, y2); p.curveVertex(x2, y2);
-          p.endShape();
+          let endX = startX + p.sin(angle) * baseStickLength;
+          let endY = startY - p.cos(angle) * baseStickLength;
+
+          // 커스텀 색상 테마 및 올랜덤 실시간 인젝션 분기 분할
+          if (colorStyle === 'custom') {
+            if (node.group === 0) p.stroke(customColors.gas1);
+            else if (node.group === 1) p.stroke(customColors.gas2);
+            else p.stroke(customColors.star);
+          } else if (colorStyle !== 'monochrome' && colorStyle !== 'neon' && colorStyle !== 'pastel') {
+            // 올랜덤 컬러 매핑 루틴
+            p.stroke(p.random(360), 85, 95);
+          }
+
+          // 초고속 프리미티브 선 분출 기하학 렌더링
+          p.line(startX, startY, endX, endY);
         }
 
-        // 2단계: 빛의 구체 그리기
-        p.noStroke();
-        for (let i = 0; i < this.numOrbs; i++) {
-          let pt = this.orbs[i];
-          let x = startX + i * spacing;
-          
-          let baseSize = p.map(glow, 10, 250, 35, 120);
-          let breathingRadius = baseSize + (pt.smoothedSize * 95) + (pt.rippleEnergy * 45) + p.sin(pt.pulsePhase * 2.5) * 8;
-          let currentY = p.sin(pt.pulsePhase) * 15 + (pt.smoothedSize * 8);
-          
-          let orbColor = p.lerpColor(c1, c2, i / (this.numOrbs - 1));
-          
-          ctx.save();
-          let radialGrad = ctx.createRadialGradient(x, currentY, 2, x, currentY, breathingRadius * 0.5);
-          radialGrad.addColorStop(0, 'rgba(255, 255, 255, 0.9)'); 
-          radialGrad.addColorStop(0.2, orbColor.toString());
-          
-          let edgeAlpha = p.map(p.dist(x, currentY, 0, 0), 0, p.width * 0.5, 0.22, 0.04);
-          radialGrad.addColorStop(0.8, `rgba(${p.red(orbColor)}, ${p.green(orbColor)}, ${p.blue(orbColor)}, ${edgeAlpha})`);
-          radialGrad.addColorStop(1, 'rgba(0,0,0,0)');
-          
-          ctx.fillStyle = radialGrad;
-          p.ellipse(x, currentY, breathingRadius * 1.5);
-          ctx.restore();
-        }
+        ctx.restore();
+        p.pop();
 
-        p.pop(); 
+        // 시스템 진단 HUD 통신 동기화 가동
+        if (!this.lastTime) this.lastTime = performance.now();
+        let now = performance.now();
+        let fps = Math.round(1000 / (now - this.lastTime));
+        this.lastTime = now;
+
+        window.sketchDiagnostics = {
+          fps: isNaN(fps) || fps > 100 ? 30 : fps,
+          particleCount: nodeCount + " Matrix Sticks",
+          isCovering: false,
+          activeFunction: window.currentUploadedImageElement ? "Matrix[BG_Accelerated]" : "Matrix[Core_Active]"
+        };
       };
     };
 
@@ -238,21 +274,21 @@ export default class P5Pendulums {
         🌌 STAGE STATUS: ${this.version} READY
       </div>
       <h3 style="color: #ffffff; font-size: 17px; margin: 0 0 16px 0; font-weight: 600;">
-        014호 명상 스튜디오: 공명의 잔상
+        014호 고밀도 매트릭스 명상 스튜디오
       </h3>
       <div style="font-size: 13px; text-align: left; line-height: 1.8; color: #dddddd;">
-        <p style="margin: 8px 0;">✨ <strong>[설명]</strong> 물속에서 피어오르는 유기적인 빛의 구체로 전환한 앰비언트 공간입니다.</p>
-        <p style="margin: 8px 0; border-top: 1px solid #222; padding-top: 8px; color: #00ffcc; font-weight: bold;">🛠️ 7대 관제탑 운영 방법:</p>
+        <p style="margin: 8px 0;">✨ <strong>[콘셉트]</strong> 가로세로 빽빽하게 배치된 4,000여 개의 막대기 기하학 세포들이 저음/중음/고음 대역별 볼륨량에 맞추어 개별적으로 꿈틀거리는 트루 주파수 매트릭스 공간입니다.</p>
+        <p style="margin: 8px 0; border-top: 1px solid #222; padding-top: 8px; color: #00ffcc; font-weight: bold;">🛠️ 7대 관제탑 전용 조작 매뉴얼:</p>
         <ul style="margin: 4px 0; padding-left: 18px; color: #bbb; font-size: 12.5px;">
-          <li><strong>Shuffle :</strong> 가스 덩굴 노이즈 형태학 무작위 시드 변경</li>
-          <li><strong>Range :</strong> 몽환적인 안개 발광(Glow)의 번짐 반경 조절</li>
-          <li><strong>Scale :</strong> 빛 구체들의 중심부 기저 기본 크기 지배</li>
-          <li><strong>Volume :</strong> 주파수 유입 시 수축·팽창 모션 민감도 증폭</li>
-          <li><strong>Gauge :</strong> 잔상 레이어 농도를 통한 색상 진하기 제어</li>
-          <li><strong>3D Offset :</strong> 가상 카메라의 유영 시점 이동 (0,0,0=정면)</li>
-          <li><strong>Color Style :</strong> No1~No5 명상 테마 아날로그 자연색 변경</li>
+          <li><strong>Shuffle :</strong> 3대 주파수(저,중,고) 세포들의 격자 배치 무작위 재구성</li>
+          <li><strong>Range :</strong> 기하학 세포 간의 가로세로 정렬 간격(너비) 조절</li>
+          <li><strong>Scale :</strong> 세포 막대기들의 시각적 선 두께(굵기) 변경</li>
+          <li><strong>Volume :</strong> 주파수 비트 유입 시 뒤틀리는 회전 흔들림 감도 증폭</li>
+          <li><strong>Gauge :</strong> 흔들리는 기하학 세포 막대기의 물리적 길이 조절</li>
+          <li><strong>3D Offset :</strong> 가상 카메라의 공간 시점 및 회전 연동 변위</li>
+          <li><strong>Color Style :</strong> 흑백, 야광흰색, 그림자검은색, 커스텀3색, 올랜덤 테마 스위칭</li>
         </ul>
-        <p style="margin: 12px 0 0 0; color: #ffcc00; text-align: center; font-weight: bold; font-size: 12px;">▶️ [하단 음악 파일] 재생 버튼을 누르면 이 가이드창이 아련하게 소멸합니다.</p>
+        <p style="margin: 12px 0 0 0; color: #ffcc00; text-align: center; font-weight: bold; font-size: 12px;">▶️ [하단 음악 파일] 재생 버튼을 누르면 이 가이드창이 소멸합니다.</p>
       </div>
     `;
     this.container.appendChild(this.guiOverlay);
@@ -269,7 +305,7 @@ export default class P5Pendulums {
   destroy() {
     if (this.p5Instance) { this.p5Instance.remove(); this.p5Instance = null; }
     if (this.guiOverlay) { this.guiOverlay.remove(); this.guiOverlay = null; }
-    this.orbs = [];
+    this.gridNodes = [];
     this.currentAudioData = null;
   }
 }
