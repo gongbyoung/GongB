@@ -1,9 +1,9 @@
 /**
  * src/sketches/007_three_cosmic_nebula.js
- * - [버전] Ver 3.1 (관제탑 기능 정의 일치 및 하얗게 타는 현상 완전 치유판)
- * - Shuffle(모양 랜덤), Range(입자 크기 편차), Scale(전체 스케일), Volume(Glow수), Gauge(입자 수) 완벽 매립
- * - Gauge 0 수치 시 입자 수를 최소화하고, 가산 혼합 임계점을 낮춰 화이트 포화 현상 완치
- * - Color Style Palette (No1 ~ No5) 아날로그 파스텔 테마 직결 연동 완수
+ * - [버전] Ver 4.0 (3D 성운 실시간 배경 이미지 레이어 통합판)
+ * - 외부 업로드 이미지(땅/호수바닥)를 THREE.Texture로 실시간 가속 마운트하여 3D 우주 기저 배경에 바인딩
+ * - Shuffle(모양 랜덤), Range(입자 크기 편차), Scale(전체 스케일), Volume(Glow수), Gauge(입자 수) 완벽 연동 유지
+ * - 30FPS 진단 HUD 통신용 가상 프레임 레이터 및 3D 입자 실시간 카운터 완벽 결합
  */
 
 export default class ThreeRealNebula {
@@ -28,7 +28,13 @@ export default class ThreeRealNebula {
     
     this.smoothChannels = new Float32Array(32);
     this.cameraTime = 0;
-    this.version = "007호 Resonant Nebula Ver 3.1";
+    this.version = "007호 Resonant Nebula Ver 4.0";
+
+    // 💡 배경 이미지 및 HUD 타임 컨트롤러 트래킹 변수 수립
+    this.bgTexture = null;
+    this.lastBgImage = null;
+    this.lastTime = 0;
+    this.activeParticleCount = 0;
   }
 
   init() {
@@ -128,10 +134,10 @@ export default class ThreeRealNebula {
 
     return {
       seed: seedInput ? parseInt(seedInput.value) : 1,
-      scatter: scatterInput ? parseFloat(scatterInput.value) : 15, // Range (크고작은 범위)
-      glow: glowInput ? parseFloat(glowInput.value) : 10,         // Scale (전체 크기)
-      gain: gainInput ? parseFloat(gainInput.value) : 500,        // Volume (Glow 수)
-      gauge: gaugeInput ? parseFloat(gaugeInput.value) : 0,       // Gauge (입자의 수)
+      scatter: scatterInput ? parseFloat(scatterInput.value) : 15, 
+      glow: glowInput ? parseFloat(glowInput.value) : 10,         
+      gain: gainInput ? parseFloat(gainInput.value) : 500,        
+      gauge: gaugeInput ? parseFloat(gaugeInput.value) : 0,       
       colorStyle: colorSelect ? colorSelect.value.toLowerCase() : 'neon',
       gas1Hex: (p1 && p1.value) ? p1.value : '#ff0055',
       gas2Hex: (p2 && p2.value) ? p2.value : '#00ffcc',
@@ -156,8 +162,7 @@ export default class ThreeRealNebula {
 
     this.geometry = new THREE.BufferGeometry();
     
-    // 💡 [Gauge 연동 - 입자의 수 조절]: 게이지가 0일 때는 최소 3,000개만 뿌려 완전히 하얗게 타는 현상을 분쇄!
-    // 게이지가 100 최대치로 갈수록 최대 30,000개까지 입자가 풍성하게 충전 배치됩니다.
+    // 게이지 연동 입자 수 스케일링
     this.activeParticleCount = THREE.MathUtils.mapLinear(ui.gauge, 0, 100, 3000, this.maxParticles);
     this.activeParticleCount = Math.floor(this.activeParticleCount);
 
@@ -166,7 +171,7 @@ export default class ThreeRealNebula {
     const sizes = new Float32Array(this.activeParticleCount);
 
     this.particleData = [];
-    let sRandom = ui.seed; // 💡 [Shuffle 연동]: 시드 숫자에 따라 무작위 난수 형태학 시드 무대 격발
+    let sRandom = ui.seed; 
 
     let baseC1 = new THREE.Color(), baseC2 = new THREE.Color(), baseC3 = new THREE.Color();
     if (ui.colorStyle === 'monochrome') {
@@ -193,7 +198,6 @@ export default class ThreeRealNebula {
       const theta = r1 * 2.0 * Math.PI;
       const phi = Math.acos(2.0 * r2 - 1.0);
       
-      // 기저 베이스 성운 고리 구조 형성
       const baseDist = Math.pow(r3, 0.5) * 6.5;
 
       const x = baseDist * Math.sin(phi) * Math.cos(theta);
@@ -204,8 +208,7 @@ export default class ThreeRealNebula {
       positions[i * 3 + 1] = y;
       positions[i * 3 + 2] = z;
 
-      // 💡 [Range 연동 - 크고 작은 입자 범위 편차 세팅]
-      // scatter(Range 수치)가 높을수록 큰 입자와 소립자의 격차 스케일 한계선이 극대화 확장됩니다.
+      // Range 입자 크기 편차 범위 매립
       let sizeSpread = THREE.MathUtils.mapLinear(ui.scatter, 5, 50, 0.05, 0.55);
       let pSize = 0.06 + r1 * sizeSpread;
       
@@ -278,11 +281,39 @@ export default class ThreeRealNebula {
 
     const ui = this.getUIParams();
 
-    // 💡 [실시간 수치 적용 감지 인터페이스 엔진]
-    // 사용자가 우측 관제탑에서 Shuffle(시드)이나 Gauge(입자수)를 바꾸는 순간 칼같이 구조 재조립 격발
+    // 사용자가 관제탑에서 Shuffle(시드)이나 Gauge(입자수)를 바꾸는 순간 칼같이 구조 재조립
     if (this.loadedSeed !== ui.seed || this.loadedGauge !== ui.gauge || this.loadedScatter !== ui.scatter || this.loadedColorStyle !== ui.colorStyle) {
       this.buildCosmos();
     }
+
+    // 💡 [배경 이미지 실시간 가속 마운트 엔진 수립]
+    const bgImg = window.currentUploadedImageElement;
+    if (bgImg && bgImg !== this.lastBgImage) {
+      if (this.bgTexture) this.bgTexture.dispose();
+      this.bgTexture = new THREE.Texture(bgImg);
+      this.bgTexture.minFilter = THREE.LinearFilter;
+      this.bgTexture.magFilter = THREE.LinearFilter;
+      this.bgTexture.needsUpdate = true;
+      this.lastBgImage = bgImg;
+      this.scene.background = this.bgTexture; // Three 공간 최하단 레이어 안착
+    } else if (!bgImg && this.lastBgImage) {
+      this.scene.background = new THREE.Color(0x060914);
+      this.lastBgImage = null;
+    }
+
+    // 진단 HUD 연동용 FPS 환산 타임 트래킹
+    if (!this.lastTime) this.lastTime = performance.now();
+    let now = performance.now();
+    let fps = Math.round(1000 / (now - this.lastTime));
+    this.lastTime = now;
+
+    // 메인 HUD에 실시간 변수 상태 피딩 투사
+    window.sketchDiagnostics = {
+      fps: isNaN(fps) || fps > 100 ? 30 : fps,
+      particleCount: this.activeParticleCount,
+      isCovering: false,
+      activeFunction: this.bgTexture ? "Nebula[BG_Active]" : "Nebula[Space_Active]"
+    };
 
     let offX = 0, offY = 0, offZ = 0;
     if (window.cosmicEngineSettings) {
@@ -298,14 +329,11 @@ export default class ThreeRealNebula {
     let rawBands = audioData ? (audioData.raw || audioData.spectrum || []) : [];
     let hasBands = rawBands.length > 20;
 
-    // 💡 [Volume 연동 - GLOW 수 제어 파이프라인]
-    // gain(Volume 수치) 기수가 높을수록 입자들의 자체 발광 빔 오퍼시티가 극대화 중첩 충전됩니다.
-    // 게이지 수가 작아 충돌 화이트 아웃 현상이 제어되므로 가산 혼합 한계점을 부드럽게 연동
+    // Volume 연동 자체 발광 오퍼시티 바인딩
     let calculatedOpacity = THREE.MathUtils.mapLinear(ui.gain, 10, 500, 0.12, 0.85);
     this.material.opacity = THREE.MathUtils.lerp(this.material.opacity, calculatedOpacity, 0.12);
 
-    // 💡 [Scale 연동 - 전체 스케일 정밀 결합]
-    // glow(Scale 단락) 수치 범위(10~250)에 직결 매핑되어 성운 전체 구 지름 배율이 조절됩니다.
+    // Scale 연동 성운 전체 구 지름 배율 튜닝
     let globalScale = THREE.MathUtils.mapLinear(ui.glow, 10, 250, 0.5, 3.8);
     this.points.scale.set(globalScale, globalScale, globalScale);
 
@@ -374,7 +402,18 @@ export default class ThreeRealNebula {
   destroy() {
     if (!this.scene) return;
     if (this.points) { this.scene.remove(this.points); this.geometry.dispose(); }
-    if (this.renderer) { this.container.removeChild(this.renderer.domElement); this.renderer.dispose(); }
+    
+    // 💡 생성된 가속 텍스처 자원 및 참조 링크 완전 해제
+    if (this.bgTexture) {
+      this.bgTexture.dispose();
+      this.bgTexture = null;
+    }
+    this.lastBgImage = null;
+
+    if (this.renderer) {
+      this.container.removeChild(this.renderer.domElement);
+      this.renderer.dispose();
+    }
     if (this.guiOverlay) this.guiOverlay.remove();
     this.scene = null; this.camera = null; this.renderer = null; this.particleData = [];
   }
