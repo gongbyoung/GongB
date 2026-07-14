@@ -17,7 +17,7 @@ const playMusicBtn = document.getElementById('btn-play-music');
 let parsedSubtitles = [];
 let isAudioAnalyzerConnected = false;
 
-// 💡 스케치별 맞춤형 관제탑 슬라이더 조작 설명서 데이터베이스
+// 스케치별 맞춤형 관제탑 슬라이더 조작 설명서 데이터베이스
 const sketchDescriptions = {
     '001_p5_wave.js': `
         <strong style="color:#00ffcc; font-size:12px;">📊 [001호 파형] 오디오 웨이브</strong><br>
@@ -28,7 +28,7 @@ const sketchDescriptions = {
     '020_p5_srt_canvas.js': `
         <strong style="color:#00ffcc; font-size:12px;">🍁 [020호 자막] 물리 안착 & 30FPS 가림 아트</strong><br>
         • <strong>Shuffle(Seed)</strong>: 노랑/갈색 단풍잎 및 형태 조합의 무작위 다양성 재구성<br>
-        • <strong>Range(Scatter)</strong>: 입자들이 가을바람을 타고 화면 중앙으로 날아오는 하강 속도<br>
+        • <strong>Range(Scatter)</strong>: 입자가 가을바람을 타고 화면 중앙으로 날아오는 하강 속도<br>
         • <strong>Scale(Glow)</strong>: 가사 자막 글씨 크기 조절 (눈꽃송이의 야광 반사광 범위 동시 조절)<br>
         • <strong>Volume(Gain)</strong>: 단풍잎, 풀잎, 눈꽃 결정의 디바이스 안착 크기 편차 조절<br>
         • <strong>Gauge</strong>: 가사가 끝나기 직전, 잎들이 가사 위를 '물리적으로 포개어 덮는 시간(초)' 조절<br>
@@ -37,7 +37,7 @@ const sketchDescriptions = {
     `
 };
 
-// 💡 선택한 스케치의 설명서를 사이드바 하단에 출력하는 함수
+// 선택한 스케치의 설명서를 사이드바 하단에 출력하는 함수
 function updateSketchManual(sketchName) {
     const panel = document.getElementById('sketch-description-panel');
     if (!panel) return;
@@ -73,12 +73,12 @@ window.addEventListener('DOMContentLoaded', () => {
     setInterval(() => {
         const diag = window.sketchDiagnostics || {};
         
-        // 메모리 힙 검사 방어 코드 추가
+        // 메모리 힙 검사 방어 코드
         const usedMemRaw = window.performance && window.performance.memory ? 
             Math.round(window.performance.memory.usedJSHeapSize / 1024 / 1024) + ' MB' : 'N/A (Not Supported)';
         const usedMem = usedMemRaw.includes('undefined') ? 'N/A (Not Supported)' : usedMemRaw;
             
-        // 💡 [HUD 파일명 버그 완치]: DOM에서 액티브 상태를 직접 가져와 무조건 정확한 파일명 출력
+        // DOM에서 액티브 상태를 직접 가져와 무조건 정확한 파일명 출력
         const activeLi = document.querySelector('#sketch-list li.active');
         const currentFile = activeLi ? activeLi.getAttribute('data-sketch').split('/').pop() : 'None';
         
@@ -131,6 +131,7 @@ audioInput.addEventListener('change', (e) => {
     playMusicBtn.innerText = '▶️ 음악 재생 (Play)';
 });
 
+// 💡 [치명적 콤마/말줄임표 오류 완전 치유]: 단 한 칸의 누락도 없이 완전 개방된 SRT 엔진
 function parseSRT(data) {
     if (!data) return [];
     const blocks = data.replace(/\r/g, '').trim().split('\n\n');
@@ -142,8 +143,6 @@ function parseSRT(data) {
         const times = timeLine.split('-->');
         if (times.length < 2) return null;
 
-        ...
-        // 중략 없는 완전한 복원을 위해 파싱 로직 정상 유지
         function timeToSeconds(t) {
             if (!t) return 0;
             const p = t.trim().split(':');
@@ -229,7 +228,6 @@ Object.values(cosmicControls).forEach(el => {
     });
 });
 
-// 💡 [버그 완전 해결]: 현재 활성화된 버튼의 스케치 파일명을 직접 DOM에서 추출하므로 RESET 시 무조건 정상 구동
 document.getElementById('btn-apply-cosmic')?.addEventListener('click', () => {
     syncCosmicControls();
     const activeLi = document.querySelector('#sketch-list li.active');
@@ -250,7 +248,7 @@ document.getElementById('btn-save-preset')?.addEventListener('click', () => {
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([data])); a.download = 'preset.json'; a.click();
 });
 
-// 첫 실행 바인딩
+// 첫 기동 런타임 바인딩
 const activeLi = document.querySelector('#sketch-list li.active');
 const initSketch = activeLi ? activeLi.getAttribute('data-sketch') : '001_p5_wave.js';
 manager.switchSketch(initSketch, analyzer).then(() => {
