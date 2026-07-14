@@ -1,10 +1,10 @@
 /**
  * src/sketches/020_p5_srt_canvas.js
- * - [버전] Ver 16.0 (관제탑 3색 컬러 오버라이드 및 폰트 로드 마스터판)
- * - Noto Sans KR / Black Han Sans 마스터 폰트를 캐시 드로잉에 완전 장착
- * - 눈(Monochrome)과 비(Earth) 스타일 선택 시 가사 가독성 증폭을 위해 customColors 3색 연동 필터링 구축
- * - 가사 변경 전 영역 침범 엄격 통제 디테일 매싱 교정 완료
- * - 전역 window.sketchDiagnostics 객체로 HUD 로거에 실시간 변수 상태 전송
+ * - [버전] Ver 16.5 (30FPS 하드웨어 락 및 리얼 물리 가림 엔진)
+ * - 30FPS 고정 시공으로 CPU/메모리 부하 원천 파괴 및 부드러운 하드웨어 가속 보장
+ * - 가사 투명화(Alpha Fade) 및 상승 트랜지션 전면 폐기 -> 완전 불투명(255) 상태로 즉시 출현
+ * - 레이어 재정렬: [축적 버퍼] -> [자막(완전불투명)] -> [라이브/자막 가림 파티클] 순으로 시공하여 진짜 물리 가림 실현
+ * - 가사 변경 시 글자를 덮고 있던 최상단 낙엽 조각들을 바닥 버퍼로 즉시 베이킹(Bake) 처리
  */
 export default class P5SrtCanvasStage {
   constructor(container) {
@@ -18,13 +18,12 @@ export default class P5SrtCanvasStage {
     this.lastHeight = 0;
     
     this.lastTrackedText = "";
-    this.subtitleRiseY = 0;
     this.lastRenderedText = "";
     this.lastRenderedFontSize = 0;
     this.lastRenderedColor = "";
     
     this.textureCaches = null;
-    this.version = "020호 Custom-Color Adaptive Engine Ver 16.0";
+    this.version = "020호 30FPS Real Masking Engine Ver 16.5";
   }
 
   init() {
@@ -41,6 +40,9 @@ export default class P5SrtCanvasStage {
         this.lastHeight = p.height;
         
         this.createTextureFactories(p);
+        
+        // 💡 [30FPS 락 체결]: 초당 30프레임으로 제한하여 그래픽 가속 연산 최적화 고정
+        p.frameRate(30);
         p.loop();
       };
 
@@ -53,7 +55,7 @@ export default class P5SrtCanvasStage {
         };
         
         const style = settings.colorStyle; 
-        const custom = settings.customColors || { gas1: '#ff4500', gas2: '#8b0000', star: '#ffff00' };
+        const custom = settings.customColors;
 
         if (this.lastWidth !== p.width || this.lastHeight !== p.height) {
           let newBuffer = p.createGraphics(p.width, p.height);
@@ -64,7 +66,7 @@ export default class P5SrtCanvasStage {
           this.lastHeight = p.height;
         }
 
-        // 1. SRT 타임라인 정밀 트래킹
+        // SRT 데이터 스트림 추적
         const audioEl = document.getElementById('audio-player');
         const subs = window.parsedSubtitles || [];
         const currentTime = audioEl ? audioEl.currentTime : 0;
@@ -89,13 +91,19 @@ export default class P5SrtCanvasStage {
         const centerX = (p.width / 2) + offX;
         const centerY = (p.height / 2) + offY;
 
+        // 💡 [가사 변경 및 전경 베이킹 트리거]: 가사가 바뀔 때 글자 위에 얹혀있던 낙엽들을 바닥 버퍼로 즉시 구워버림
         if (text !== this.lastTrackedText) {
-          if (text !== "") this.subtitleRiseY = 35; 
+          this.particles.forEach(pt => {
+            if (pt.isSettledOnText) {
+              this.drawCachedTextureShape(this.accumulationBuffer, pt, true, 0, custom);
+            }
+          });
+          // 글자 위 낙엽들을 라이브 배열에서 일제 청소하여 새 가사 출현 공간 확보
+          this.particles = this.particles.filter(pt => !pt.isSettledOnText);
           this.lastTrackedText = text;
         }
-        this.subtitleRiseY = p.lerp(this.subtitleRiseY, 0, 0.08);
 
-        // 가림 임계 수치 환산
+        // 타임라인 동기화 가림 시간선 계산
         let coverFactor = 0.0;
         let isCoveringTimeWindow = false;
         if (currentSub) {
@@ -109,30 +117,35 @@ export default class P5SrtCanvasStage {
           }
         }
 
-        // 💡 [매커니즘 미묘함 조치]: 가사 변하기 전 영역 침범 엄격 통제
-        let spawnRate = p.frameCount % 3 === 0 ? 1 : 0; 
+        // 30fps 최적화에 맞춘 동적 스폰 밀도 보정
+        let spawnRate = p.frameCount % 2 === 0 ? 1 : 0; 
         if (isCoveringTimeWindow) {
           const gaugeRaw = settings.gaugeValue > 1 ? settings.gaugeValue : settings.gaugeValue * 100;
-          spawnRate = p.floor(p.map(coverFactor, 0.0, 1.0, 1, p.max(2, p.floor(gaugeRaw * 0.38))));
+          spawnRate = p.floor(p.map(coverFactor, 0.0, 1.0, 2, p.max(4, p.floor(gaugeRaw * 0.45))));
         }
 
         for (let k = 0; k < spawnRate; k++) {
           this.spawnParticle(p, style, settings, isCoveringTimeWindow, coverFactor, centerX, centerY, boxW, boxH);
         }
 
-        this.updateParticlesPhysics(p, settings, custom);
+        this.updateParticlesPhysics(p, settings, custom, isCoveringTimeWindow);
 
-        // 💡 [HUD 전역 데이터 바인딩]: main.js 로거에 실시간 전송
+        // 시스템 진단 HUD 통신 데이터 스트림
         window.sketchDiagnostics = {
           fps: p.floor(p.frameRate()),
-          particleCount: this.particles.length + (this.accumulationBuffer ? 100 : 0),
+          particleCount: this.particles.length,
           isCovering: isCoveringTimeWindow,
-          activeFunction: isCoveringTimeWindow ? "BuryingSubtitle()" : "AmbientDrifting()"
+          activeFunction: isCoveringTimeWindow ? "PhysicalTargetBurying()" : "AmbientDrifting()"
         };
 
-        // 레이어 출력 큐
+        // 💡 [레이어링의 대혁명 연출 큐]: 자막을 바닥 버퍼 위, 라이브 입자 아래에 샌드위치 시공
+        // 1단계: 기존에 쌓인 바닥 융단 낙엽 드로우
         p.image(this.accumulationBuffer, 0, 0);
-        this.drawSubtitle(p, style, settings, custom, isCoveringTimeWindow, coverFactor, currentSub, this.subtitleRiseY, fontSize, tracking, leading, offX, offY);
+        
+        // 2단계: 그 위에 100% 완전 불투명 상태로 가사 자막을 정갈하게 인쇄 (배경 낙엽 위에 얹어짐)
+        this.drawSubtitle(p, style, settings, custom, isCoveringTimeWindow, coverFactor, currentSub, fontSize, tracking, leading, offX, offY);
+        
+        // 3단계: 공중 낙엽 및 글자 전면에 안착하여 글씨를 '진짜' 가려버리는 물리 낙엽 최상단 투사
         this.drawLiveParticles(p, glowRaw, custom);
       };
     };
@@ -144,51 +157,36 @@ export default class P5SrtCanvasStage {
     const settings = window.cosmicEngineSettings || { customColors: { gas1: '#ff4500', gas2: '#8b0000', star: '#ffff00' } };
     const custom = settings.customColors;
 
-    // 🍁 단풍잎 프리베이킹 (관제탑 Custom Color 반영)
     for (let i = 0; i < 5; i++) {
-      let pg = p.createGraphics(128, 128);
-      let ctx = pg.drawingContext;
-      let size = 35;
+      let pg = p.createGraphics(128, 128); let ctx = pg.drawingContext; let size = 35;
       ctx.save(); ctx.translate(64, 64);
       let grad = ctx.createRadialGradient(0, 0, 0, 0, 0, size * 1.25);
-      grad.addColorStop(0, custom.star);
-      grad.addColorStop(0.5, custom.gas1);
-      grad.addColorStop(1, custom.gas2);
-      ctx.fillStyle = grad;
-      ctx.beginPath();
+      grad.addColorStop(0, custom.star); grad.addColorStop(0.5, custom.gas1); grad.addColorStop(1, custom.gas2);
+      ctx.fillStyle = grad; ctx.beginPath();
       for (let a = 0; a < 6.28; a += 0.05) {
         let lobes = i % 2 === 0 ? 5 : 7;
         let r = size * (1.0 + 0.4 * Math.sin(lobes * a) + 0.2 * Math.sin(lobes * 2 * a));
         let x = r * Math.cos(a); let y = r * Math.sin(a);
         if (a === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
-      ctx.closePath(); ctx.fill();
-      ctx.restore();
+      ctx.closePath(); ctx.fill(); ctx.restore();
       this.textureCaches.leaf.push(pg);
     }
 
-    // 🍃 풀잎 프리베이킹
     for (let i = 0; i < 5; i++) {
-      let pg = p.createGraphics(128, 128);
-      let ctx = pg.drawingContext;
-      let size = 38;
+      let pg = p.createGraphics(128, 128); let ctx = pg.drawingContext; let size = 38;
       ctx.save(); ctx.translate(64, 64);
       let grad = ctx.createRadialGradient(0, 0, 0, 0, 0, size * 1.2);
       grad.addColorStop(0, '#a6f05f'); grad.addColorStop(0.6, custom.gas1); grad.addColorStop(1, custom.gas2);
-      ctx.fillStyle = grad;
-      ctx.beginPath(); ctx.moveTo(0, -size * 1.3);
+      ctx.fillStyle = grad; ctx.beginPath(); ctx.moveTo(0, -size * 1.3);
       ctx.bezierCurveTo(size * 0.65, -size * 0.45, size * 0.65, size * 0.65, 0, size * 1.3);
       ctx.bezierCurveTo(-size * 0.65, size * 0.65, -size * 0.65, -size * 0.45, 0, -size * 1.3);
-      ctx.closePath(); ctx.fill();
-      ctx.restore();
+      ctx.closePath(); ctx.fill(); ctx.restore();
       this.textureCaches.grass.push(pg);
     }
 
-    // ❄️ 눈꽃송이 프리베이킹 (가산 인광 하이라이트 반영)
     for (let i = 0; i < 5; i++) {
-      let pg = p.createGraphics(128, 128);
-      let ctx = pg.drawingContext;
-      let size = 35;
+      let pg = p.createGraphics(128, 128); let ctx = pg.drawingContext; let size = 35;
       ctx.save(); ctx.translate(64, 64);
       ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3.0;
       for (let j = 0; j < 6; j++) {
@@ -202,7 +200,6 @@ export default class P5SrtCanvasStage {
     }
   }
 
-  // 💡 [가사 고가속 프리렌더 엔진]: 로딩된 구글 폰트를 완벽히 가사에 주입하고 색상 변화에 실시간 갱신 대응
   renderSubtitleCache(p, text, fontSize, tracking, leading, textColorStyle) {
     if (!text) { if (this.subtitleBuffer) this.subtitleBuffer.clear(); return; }
     const lines = text.split(" ");
@@ -218,13 +215,7 @@ export default class P5SrtCanvasStage {
     }
     
     let sb = this.subtitleBuffer;
-    sb.clear();
-    
-    // 💡 동적 주입된 메인 웹폰트 바인딩 지시
-    sb.textFont('Black Han Sans'); 
-    sb.textSize(fontSize); sb.textAlign(p.CENTER, p.CENTER);
-    
-    // 💡 [색상 가독성 완치]: 지정된 관제탑 3색 컬러셋을 가사에 투사
+    sb.clear(); sb.textFont('Black Han Sans'); sb.textSize(fontSize); sb.textAlign(p.CENTER, p.CENTER);
     sb.fill(textColorStyle); sb.noStroke();
     
     lines.forEach((line, lineIdx) => {
@@ -239,12 +230,13 @@ export default class P5SrtCanvasStage {
 
   spawnParticle(p, style, settings, isCoveringTimeWindow, coverFactor, centerX, centerY, boxW, boxH) {
     const gainRaw = settings.audioGain > 5 ? settings.audioGain : settings.audioGain * 100;
-    const baseShapeSize = p.map(gainRaw, 10, 500, 12, 62); 
+    const baseShapeSize = p.map(gainRaw, 10, 500, 12, 65); 
     const endSize = p.random(baseShapeSize * 0.7, baseShapeSize * 1.3);
     const startSize = endSize * 3.0; 
 
     const scatterRaw = settings.scatterExponent > 5 ? settings.scatterExponent : settings.scatterExponent * 10;
-    const speedScale = p.map(scatterRaw, 5, 50, 0.012, 0.045);
+    // 💡 30fps 하향에 대응하여 보간 속도 계수를 2배 상향 터치
+    const speedScale = p.map(scatterRaw, 5, 50, 0.024, 0.09);
 
     let type = 'leaf';
     if (style === 'pastel') type = 'grass';
@@ -266,6 +258,7 @@ export default class P5SrtCanvasStage {
         guardLoop++;
       }
     } else {
+      // 가림 타이밍 시 가사 영역 내부 박스로 정밀 유착 분산화
       targetX = centerX + p.random(-boxW * 0.5, boxW * 0.5);
       targetY = centerY + p.random(-boxH * 0.5, boxH * 0.5);
     }
@@ -273,36 +266,52 @@ export default class P5SrtCanvasStage {
     this.particles.push({
       x: startX, y: type === 'rain' ? p.random(p.height) : startY,
       startX: startX, startY: startY, targetX: targetX, targetY: targetY,
-      pct: 0.0, step: isCoveringTimeWindow ? p.random(0.02, 0.055) : p.random(speedScale * 0.75, speedScale * 1.25),
+      pct: 0.0, 
+      step: isCoveringTimeWindow ? p.random(0.035, 0.09) : p.random(speedScale * 0.75, speedScale * 1.25),
       startSize: startSize, endSize: endSize, currentSize: startSize,
       angle: p.random(p.TWO_PI), spin: p.random(-0.04, 0.04),
       waveSeed: p.random(100), waveAmp: p.random(25, 55), type: type,
-      shuffledTextureIdx: p.floor(p.random(100)), alpha: 255
+      shuffledTextureIdx: p.floor(p.random(100)), alpha: 255,
+      isTargetingText: isCoveringTimeWindow, // 가사 가림용 파티클 여부 바인딩
+      isSettledOnText: false
     });
 
-    if (this.particles.length > 150) { this.particles.shift(); }
+    if (this.particles.length > 200) { this.particles.shift(); }
   }
 
-  updateParticlesPhysics(p, settings, custom) {
+  updateParticlesPhysics(p, settings, custom, isCoveringTimeWindow) {
     for (let i = this.particles.length - 1; i >= 0; i--) {
       let pt = this.particles[i];
+
       if (pt.type === 'rain') {
-        pt.alpha -= 5;
+        pt.alpha -= 10; // 30fps 대응 페이딩 속도 상향
         if (pt.alpha <= 0) this.particles.splice(i, 1);
       } else {
+        // 이미 글자 위에 고착되어 가리고 있는 녀석은 물리 연산 스킵
+        if (pt.isSettledOnText) continue;
+
         if (pt.pct < 1.0) {
           pt.pct += pt.step;
           if (pt.pct > 1.0) pt.pct = 1.0;
+          
           let rawX = p.lerp(pt.startX, pt.targetX, pt.pct);
           let rawY = p.lerp(pt.startY, pt.targetY, pt.pct);
+          
           let wave = Math.sin(pt.pct * Math.PI * 3 + pt.waveSeed) * pt.waveAmp * (1.0 - pt.pct);
           pt.x = rawX + wave * 0.6; pt.y = rawY + wave * 0.4;
+          
           pt.currentSize = p.lerp(pt.startSize, pt.endSize, pt.pct);
           pt.angle += pt.spin;
         }
+
+        // 💡 [물리 가림의 핵심 알고리즘]: 목적지 도달 시 가사 가림용이면 최상단 레이어에 정지 고정, 일반 낙엽이면 바닥 버퍼로 즉시 전송
         if (pt.pct >= 1.0) {
-          this.drawCachedTextureShape(this.accumulationBuffer, pt, true, 0, custom);
-          this.particles.splice(i, 1);
+          if (isCoveringTimeWindow && pt.isTargetingText) {
+            pt.isSettledOnText = true; // 가사 표면에 물리 박제 플래그 작동 (제거하지 않고 홀딩)
+          } else {
+            this.drawCachedTextureShape(this.accumulationBuffer, pt, true, 0, custom);
+            this.particles.splice(i, 1);
+          }
         }
       }
     }
@@ -312,10 +321,11 @@ export default class P5SrtCanvasStage {
     for (let i = 0; i < this.particles.length; i++) {
       let pt = this.particles[i];
       if (pt.type === 'rain') {
-        p.noFill(); p.stroke(custom.gas1); p.strokeWeight(2.5); // 비 리플 색상 커스텀 연동
+        p.noFill(); p.stroke(custom.gas1); p.strokeWeight(2.5);
         p.ellipse(pt.x, pt.y, (255 - pt.alpha) * (pt.endSize * 0.05));
       } else {
-        this.drawCachedTextureShape(p, pt, false, glowRaw, custom);
+        // 공중 파티클 및 글자 전면 안착 가림 파티클 모두 최상단에 투사
+        this.drawCachedTextureShape(p, pt, pt.isSettledOnText, glowRaw, custom);
       }
     }
   }
@@ -332,9 +342,7 @@ export default class P5SrtCanvasStage {
       p.push(); p.translate(pt.x, pt.y); p.rotate(pt.angle);
       if (pt.type === 'snow' && glowRaw > 0) {
         let ctx = p.drawingContext;
-        ctx.save();
-        ctx.shadowBlur = p.map(glowRaw, 10, 250, 15, 60);
-        ctx.shadowColor = custom.gas2; // 눈꽃 발광색 커스텀 지정화
+        ctx.save(); ctx.shadowBlur = p.map(glowRaw, 10, 250, 15, 60); ctx.shadowColor = custom.gas2;
         p.image(cachedGraphics, -renderSize, -renderSize, renderSize * 2, renderSize * 2);
         ctx.restore();
       } else {
@@ -348,19 +356,15 @@ export default class P5SrtCanvasStage {
     }
   }
 
-  drawSubtitle(p, style, settings, custom, isCoveringTimeWindow, coverFactor, currentSub, riseY, fontSize, tracking, leading, offX, offY, boxW, boxH) {
+  drawSubtitle(p, style, settings, custom, isCoveringTimeWindow, coverFactor, currentSub, fontSize, tracking, leading, offX, offY) {
     const text = window.currentSubtitleText || "";
     if (!text) return;
 
-    // 💡 [알고리즘 3]: 눈(Monochrome)과 비(Earth) 스타일일 때 잘 보이지 않던 가사 색상을 관제탑 3색(custom.star)으로 강제 스위칭
     let textColorStyle = '#ffffff';
     if (style === 'monochrome' || style === 'earth' || style === 'custom') {
       textColorStyle = custom.star; 
-    } else {
-      textColorStyle = '#ffffff'; // 네온/파스텔은 기본 화이트 유지 혹은 취향에 맞춰 조정
     }
 
-    // 조건부 프리렌더 캐시 무효화 검증식
     if (text !== this.lastRenderedText || fontSize !== this.lastRenderedFontSize || textColorStyle !== this.lastRenderedColor) {
       this.renderSubtitleCache(p, text, fontSize, tracking, leading, textColorStyle);
       this.lastRenderedText = text;
@@ -369,20 +373,18 @@ export default class P5SrtCanvasStage {
     }
 
     p.push(); p.imageMode(p.CENTER);
-    let alphaFade = 255;
-    if (isCoveringTimeWindow && currentSub) {
-      alphaFade = p.constrain((1.0 - coverFactor) * 255, 0, 255);
-    }
-    p.tint(255, alphaFade);
     
-    // 💡 비 효과 시 흔들림 없이 스르륵 가만히 디졸브 연출 완성
-    p.image(this.subtitleBuffer, (p.width / 2) + offX, (p.height / 2) + offY + riseY);
-    p.pop();
-
-    if (isCoveringTimeWindow && alphaFade <= 2 && (style === 'neon' || style === 'pastel' || style === 'monochrome')) {
-       this.accumulationBuffer.fill(style === 'neon' ? [140, 35, 20, 18] : style === 'pastel' ? [30, 95, 35, 18] : [220, 230, 245, 12]);
-       this.accumulationBuffer.rect(0, 0, p.width, p.height);
+    // 💡 [투명화 완전 박멸]: 가림 윈도우 진행도에 상관없이 언제나 선명도 255(100% 불투명) 보존 고정
+    let alphaLock = 255;
+    if (style === 'earth' && isCoveringTimeWindow && currentSub) {
+      // 비 효과 시에만 번져서 사라지는 디졸브 연출을 위해 알파 감쇄 허용
+      alphaLock = p.constrain((1.0 - coverFactor) * 255, 0, 255);
     }
+    p.tint(255, alphaLock);
+    
+    // 💡 애니메이션 변위(riseY)를 제거하여 가사가 튀어오르지 않고 제자리에 즉시 고정 출현하도록 연동
+    p.image(this.subtitleBuffer, (p.width / 2) + offX, (p.height / 2) + offY);
+    p.pop();
   }
 
   update(audioData) {}
