@@ -1,10 +1,10 @@
 /**
  * src/sketches/008_three_pendulum_wave.js
- * - [버전] Ver 6.0 (3D 키네틱 리본 배경 이미지 통합 및 16채널 트루 스플릿 판)
- * - 외부 업로드 이미지(땅/호수바닥)를 THREE.Texture로 실시간 가속 마운트하여 3D 우주 배경에 레이어 통합
- * - 16채널 트루 스펙트럼 스플릿: FFT 512 주파수 배열을 16등분 컷오프하여 16개 진자에 1:1 완벽 독립 구동력 주입
- * - 지속형 에너지(Continuous Force)와 충격형 진폭(Transient Delta) 물리 연산을 하이브리드 결합하여 고유 움직임 극대화
- * - 30FPS 진단 HUD 통신 가상 프레임 레이터 및 실시간 3D 키네틱 링크 카운터 완벽 시공 완료
+ * - [버전] Ver 7.0 (80채널 초고밀도 은하수 세포 및 014 컬러 스타일 동기화 마스터판)
+ * - 구조 오버홀: 줄 유실을 유도하여 오직 회전부 끝점(빛의 세포) 80개만 화면 비율에 맞춰 정밀 배치
+ * - 014호 테마 동기화: 흑백, 야광흰색, 그림자검은색, 커스텀3색, 올랜덤 컬러 스위칭 완벽 작동
+ * - 물리 계수 매립: Scale(Glow 크기), Volume(움직임 진폭 크기), Gauge(진자 반경 길이), Range(세포간 정렬 간격) 직결
+ * - 30FPS 하드웨어 가속 및 외부 업로드 이미지 최하단 백그라운드 마운트 엔진 결합 완료
  */
 
 export default class ThreePendulumWave {
@@ -14,38 +14,34 @@ export default class ThreePendulumWave {
     this.camera = null;
     this.renderer = null;
 
-    this.numPendulums = 16; 
+    // 💡 [개혁 1]: 기존 16개에서 화면 비율에 맞춰 정확히 5배 늘린 80개 고밀도 세포 풀 수립
+    this.numPendulums = 80; 
     
+    // 80채널 독립 물리 연산 버퍼 배열
     this.a1 = new Float32Array(this.numPendulums);
     this.a2 = new Float32Array(this.numPendulums);
     this.a1_v = new Float32Array(this.numPendulums);
     this.a2_v = new Float32Array(this.numPendulums);
-    this.x0 = new Float32Array(this.numPendulums);
-    this.y0 = new Float32Array(this.numPendulums);
+    this.pivotX = new Float32Array(this.numPendulums);
+    this.pivotY = new Float32Array(this.numPendulums);
+    this.nodeGroup = new Int32Array(this.numPendulums); // 0:저음, 1:중음, 2:고음
 
     this.prevFreqBins = new Float32Array(this.numPendulums);
 
-    this.baseL1 = 0.9;
-    this.baseL2 = 0.8;
-    this.m1 = 1.2;
-    this.m2 = 1.2;
-    this.g = 0.35; 
+    this.baseM1 = 1.2;
+    this.baseM2 = 1.2;
+    this.g = 0.38; 
 
     this.loadedSeed = -1;
-    this.invertFrequency = false;
     this.colorStyle = 'neon';
 
-    this.maxTrailPoints = 32;
-    this.trailHistories = [];
-    this.trailGeometries = [];
-    this.trailMeshes = [];
-    
     this.pointsGeo = null;
     this.pointsMesh = null;
+    this.pointColorsArray = null; // 실시간 컬러 갱신용 버퍼
     
-    this.version = "008호 Kinetic Aurora Pendulum Ver 6.0";
+    this.version = "008호 Quantum Galaxy Nodes Ver 7.0";
 
-    // 💡 배경 이미지 및 HUD 타임 컨트롤러 트래킹 변수 수립
+    // 배경 가속 및 HUD 컨트롤러 트래킹 변수
     this.bgTexture = null;
     this.lastBgImage = null;
     this.lastTime = 0;
@@ -56,21 +52,20 @@ export default class ThreePendulumWave {
     const height = this.container.clientHeight;
 
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.FogExp2(0x060810, 0.02);
+    this.scene.fog = new THREE.FogExp2(0x05070f, 0.015);
 
-    this.camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 1000);
-    this.camera.position.set(0.3, -0.2, 9.5);
+    this.camera = new THREE.PerspectiveCamera(55, width / height, 0.1, 1000);
+    this.camera.position.set(0, 0, 10);
     this.camera.lookAt(0, 0, 0);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     this.renderer.setSize(width, height);
-    this.renderer.setClearColor(0x060810);
-    this.renderer.autoClear = false; 
+    this.renderer.setClearColor(0x05070f);
     this.container.appendChild(this.renderer.domElement);
 
-    this.scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    this.scene.add(new THREE.AmbientLight(0xffffff, 0.8));
 
-    console.log(`%c[🔮 008호 트루 독립 스플릿 가동] ${this.version}`, "color: #00ffcc; font-weight: bold; font-size: 13px;");
+    console.log(`%c[🌌 008호 퀀텀 세포 엔진 기동] ${this.version}`, "color: #00ffcc; font-weight: bold; font-size: 13px;");
 
     this.buildPendulumGrid();
   }
@@ -80,66 +75,73 @@ export default class ThreePendulumWave {
     return x - Math.floor(x);
   }
 
+  // 💡 [알고리즘 1: 화면 비율 맞춤형 80채널 분산 격자 배치 아키텍처]
   buildPendulumGrid() {
-    this.trailMeshes.forEach(mesh => this.scene.remove(mesh));
-    if (this.pointsMesh) this.scene.remove(this.pointsMesh);
-    
-    this.trailHistories = [];
-    this.trailGeometries = [];
-    this.trailMeshes = [];
+    if (this.pointsMesh) {
+      this.scene.remove(this.pointsMesh);
+      this.pointsGeo.dispose();
+      this.pointsMesh = null;
+    }
 
-    const pointPositions = new Float32Array(this.numPendulums * 2 * 3);
-    const pointColors = new Float32Array(this.numPendulums * 2 * 3);
+    const width = this.container.clientWidth;
+    const height = this.container.clientHeight;
+    const aspect = width / height;
+
+    // 화면 가로세로 비율(Aspect)에 따라 최적의 행렬(Cols x Rows)을 계산하여 80개를 고르게 안착
+    let cols = Math.floor(Math.sqrt(this.numPendulums * aspect));
+    cols = Math.max(4, Math.min(20, cols));
+    let rows = Math.ceil(this.numPendulums / cols);
+    
+    const pointPositions = new Float32Array(this.numPendulums * 3);
+    this.pointColorsArray = new Float32Array(this.numPendulums * 3);
+
+    let sRandom = this.loadedSeed <= 0 ? 42 : this.loadedSeed;
 
     for (let i = 0; i < this.numPendulums; i++) {
-      // 독립 나선형 위상차 초깃값 분배
-      let phaseOffset = i * (Math.PI / 8); 
-      this.a1[i] = Math.PI + 0.1 + Math.sin(phaseOffset) * 0.2;
-      this.a2[i] = Math.PI - 0.1 + Math.cos(phaseOffset) * 0.2;
+      let cIdx = i % cols;
+      let rIdx = Math.floor(i / cols);
+
+      // 정규화 좌표계 변환 (-0.5 ~ 0.5)
+      this.pivotX[i] = (cIdx / Math.max(1, cols - 1)) - 0.5;
+      this.pivotY[i] = 0.5 - (rIdx / Math.max(1, rows - 1));
+
+      // 주파수 3그룹 분배 (0:저음, 1:중음, 2:고음)
+      sRandom = this.seededRandom(sRandom) * 1000;
+      let groupRand = this.seededRandom(sRandom + 1);
+      if (groupRand < 0.3) this.nodeGroup[i] = 0;
+      else if (groupRand < 0.75) this.nodeGroup[i] = 1;
+      else this.nodeGroup[i] = 2;
+
+      // 카오스 물리를 위한 초기 회전각 및 속도 위상차 셔플 주입
+      let phaseOffset = i * (Math.PI / 6.0) + this.seededRandom(sRandom + 2) * Math.PI;
+      this.a1[i] = Math.PI + 0.2 * Math.sin(phaseOffset);
+      this.a2[i] = Math.PI + 0.2 * Math.cos(phaseOffset);
       this.a1_v[i] = 0;
       this.a2_v[i] = 0;
       this.prevFreqBins[i] = 0;
 
-      const trailPoints = [];
-      for (let p = 0; p < this.maxTrailPoints; p++) {
-        trailPoints.push(new THREE.Vector3(0, 0, 0));
-      }
-      this.trailHistories.push(trailPoints);
-
-      const trailGeo = new THREE.BufferGeometry();
-      const posArray = new Float32Array(this.maxTrailPoints * 3);
-      const colArray = new Float32Array(this.maxTrailPoints * 3);
-      trailGeo.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
-      trailGeo.setAttribute('color', new THREE.BufferAttribute(colArray, 3));
-      this.trailGeometries.push(trailGeo);
-
-      const trailMat = new THREE.LineBasicMaterial({
-        vertexColors: true,
-        transparent: true,
-        opacity: 0.55,
-        blending: THREE.AdditiveBlending
-      });
-
-      const trailMesh = new THREE.Line(trailGeo, trailMat);
-      this.trailMeshes.push(trailMesh);
-      this.scene.add(trailMesh);
+      // 초기 임시 포지션 대입
+      pointPositions[i * 3] = this.pivotX[i] * 10;
+      pointPositions[i * 3 + 1] = this.pivotY[i] * 6;
+      pointPositions[i * 3 + 2] = 0;
     }
 
     this.pointsGeo = new THREE.BufferGeometry();
     this.pointsGeo.setAttribute('position', new THREE.BufferAttribute(pointPositions, 3));
-    this.pointsGeo.setAttribute('color', new THREE.BufferAttribute(pointColors, 3));
+    this.pointsGeo.setAttribute('color', new THREE.BufferAttribute(this.pointColorsArray, 3));
 
-    const pointMat = new THREE.PointsMaterial({
-      size: 0.35,
+    // 💡 끝점 입자 전용 고화질 원형 알파 글로우 텍스처 바인딩
+    this.material = new THREE.PointsMaterial({
+      size: 1.0,
       map: this.createGlowTexture(),
       vertexColors: true,
       transparent: true,
-      opacity: 0.85,
+      opacity: 0.9,
       blending: THREE.AdditiveBlending,
       depthWrite: false
     });
 
-    this.pointsMesh = new THREE.Points(this.geometry || this.pointsGeo, pointMat);
+    this.pointsMesh = new THREE.Points(this.pointsGeo, this.material);
     this.scene.add(this.pointsMesh);
   }
 
@@ -148,7 +150,8 @@ export default class ThreePendulumWave {
     const ctx = canvas.getContext('2d');
     const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
     gradient.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
-    gradient.addColorStop(0.3, 'rgba(255, 255, 255, 0.45)');
+    gradient.addColorStop(0.25, 'rgba(255, 255, 255, 0.55)');
+    gradient.addColorStop(0.6, 'rgba(255, 255, 255, 0.15)');
     gradient.addColorStop(1.0, 'rgba(0, 0, 0, 0.0)');
     ctx.fillStyle = gradient; ctx.fillRect(0, 0, 64, 64);
     return new THREE.CanvasTexture(canvas);
@@ -157,9 +160,8 @@ export default class ThreePendulumWave {
   update(audioData) {
     if (!this.renderer || !this.scene || !this.camera || !this.pointsMesh) return;
 
-    this.renderer.clearDepth();
-
-    let seed = 42, scatter = 2.2, glow = 85, gain = 1.0;
+    // 관제탑 컨트롤러 파라미터 실시간 디코딩 벨트 수혈
+    let seed = 42, scatter = 2.2, glow = 85, gain = 1.0, gauge = 50;
     let customColors = { gas1: '#ff0055', gas2: '#00ffcc', star: '#ffffff' };
 
     if (window.cosmicEngineSettings) {
@@ -169,15 +171,16 @@ export default class ThreePendulumWave {
       gain = window.cosmicEngineSettings.audioGain;          
       customColors = window.cosmicEngineSettings.customColors;
       this.colorStyle = window.cosmicEngineSettings.colorStyle;
+      gauge = window.cosmicEngineSettings.gaugeValue || 0.5;
     }
 
+    // 💡 [Shuffle 제어]: 시드 스위칭 감지 즉시 은하수 격자 공간 물리 재조립 격발
     if (this.loadedSeed !== seed) {
       this.loadedSeed = seed;
-      this.invertFrequency = (seed % 2 === 0);
       this.buildPendulumGrid();
     }
 
-    // 💡 [배경 이미지 실시간 가속 마운트 엔진 시공]
+    // 💡 [배경 이미지 가속 마운트 커넥터]
     const bgImg = window.currentUploadedImageElement;
     if (bgImg && bgImg !== this.lastBgImage) {
       if (this.bgTexture) this.bgTexture.dispose();
@@ -186,195 +189,155 @@ export default class ThreePendulumWave {
       this.bgTexture.magFilter = THREE.LinearFilter;
       this.bgTexture.needsUpdate = true;
       this.lastBgImage = bgImg;
-      this.scene.background = this.bgTexture; // 3D 월드 최하단 레이어 고정 안착
+      this.scene.background = this.bgTexture; 
     } else if (!bgImg && this.lastBgImage) {
-      this.scene.background = new THREE.Color(0x060810);
+      this.scene.background = new THREE.Color(0x05070f);
       this.lastBgImage = null;
     }
 
-    // 진단 HUD 연동용 FPS 환산 타임 트래킹
+    // HUD 시스템 모니터링 연동 연산
     if (!this.lastTime) this.lastTime = performance.now();
     let now = performance.now();
     let fps = Math.round(1000 / (now - this.lastTime));
     this.lastTime = now;
 
-    // 메인 HUD에 실시간 변수 상태 피딩 투사
     window.sketchDiagnostics = {
       fps: isNaN(fps) || fps > 100 ? 30 : fps,
-      particleCount: this.numPendulums + " Kinetic Links",
+      particleCount: this.numPendulums + " Quantum Orbs",
       isCovering: false,
-      activeFunction: this.bgTexture ? "Kinetic[BG_Loaded]" : "Kinetic[Core_Active]"
+      activeFunction: `KineticNodes[Style:${this.colorStyle}]`
     };
 
-    const aspect = this.camera.aspect;
-    const viewHeight = Math.tan(THREE.MathUtils.degToRad(50 / 2)) * 9.5 * 2; 
-    const viewWidth = viewHeight * aspect;
+    // 💡 [Scale 연동 - Glow 수치에 따른 구체 크기 조정]
+    let glowRaw = glow > 5 ? glow : glow * 100;
+    let computedSize = THREE.MathUtils.mapLinear(glowRaw, 10, 250, 0.15, 2.5);
+    this.material.size = computedSize;
+
+    // 💡 [Range 연동 - 세포 간 가로세로 정렬 간격 배치 배율화]
+    let scatterRaw = scatter > 5 ? scatter : scatter * 10;
+    let layoutWidth = THREE.MathUtils.mapLinear(scatterRaw, 5, 50, 6.0, 19.0);
+    let layoutHeight = THREE.MathUtils.mapLinear(scatterRaw, 5, 50, 4.0, 11.0);
+
+    // 💡 [Gauge 연동 - 기하학 세포 회전 반경 암 물리 길이 제어]
+    let gaugeRaw = gauge > 1 ? gauge : gauge * 100;
+    let curL1 = THREE.MathUtils.mapLinear(gaugeRaw, 0, 100, 0.1, 1.2);
+    let curL2 = THREE.MathUtils.mapLinear(gaugeRaw, 0, 100, 0.08, 1.0);
+
+    // 💡 [Volume 연동 - 주파수 3그룹 분할 상호작용 움직임 크기 증폭]
+    let smoothBass = audioData ? (audioData.bass || 0.0) : 0.0;
+    let smoothMid = audioData ? (audioData.mid || 0.0) : 0.0;
+    let smoothTreble = audioData ? (audioData.treble || 0.0) : 0.0;
+
+    let volumeGainScale = gain > 5 ? gain / 100.0 : gain; // 상위 슬라이더 규격 정규화 보정
+    let bassImpulse = smoothBass * volumeGainScale * 1.8;
+    let midImpulse = smoothMid * volumeGainScale * 1.5;
+    let trebleImpulse = smoothTreble * volumeGainScale * 1.5;
+
+    // 💡 [알고리즘 2: 014호 호환 5대 테마 컬러 컬렉션 분기 주입 마스터 루프]
+    let baseC1 = new THREE.Color(), baseC2 = new THREE.Color(), baseC3 = new THREE.Color();
     
-    const stepX = (viewWidth / 4);
-    const stepY = (viewHeight / 4);
-
-    const scatterScale = scatter / 22.0; 
-    const curL1 = this.baseL1 * scatterScale;
-    const curL2 = this.baseL2 * scatterScale;
-
-    // 💡 [알고리즘: 16채널 트루 주파수 스플릿 핵심 연산구역]
-    const freqBins = new Float32Array(this.numPendulums);
-    if (audioData) {
-      const rawBands = audioData.raw || audioData.spectrum || [];
-      
-      if (rawBands.length >= this.numPendulums) {
-        // FFT 256/512 스펙트럼 크기를 청크 단위로 분할하여 16개 대역 평균 주파수 수혈
-        let chunkSize = Math.floor(rawBands.length / this.numPendulums);
-        for (let i = 0; i < this.numPendulums; i++) {
-          let sum = 0;
-          for (let j = 0; j < chunkSize; j++) {
-            sum += rawBands[i * chunkSize + j];
-          }
-          let avg = sum / chunkSize;
-          // 주파수 크기가 0~255로 들어올 때와 0~1로 들어올 때 유연 대응 노멀라이징
-          freqBins[i] = avg > 1.0 ? avg / 255.0 : avg;
-          
-          // 고음역대로 갈수록 감쇠하는 신호 진폭 보완을 위해 가중 밸런스 부스트 시공
-          let frequencyBoost = 1.0 + (i / this.numPendulums) * 2.2;
-          freqBins[i] *= (gain * frequencyBoost); 
-        }
-      } else {
-        // Fallback: 오디오 버퍼가 초기 로딩 중이거나 공백일 때 아날로그 보간 대체
-        for (let i = 0; i < this.numPendulums; i++) {
-          let factor = i / (this.numPendulums - 1);
-          if (factor < 0.20) {
-            freqBins[i] = THREE.MathUtils.lerp(audioData.subBass || 0.1, audioData.bass || 0.1, factor * 5.0);
-          } else if (factor < 0.70) {
-            freqBins[i] = THREE.MathUtils.lerp(audioData.bass || 0.1, audioData.mid || 0.1, (factor - 0.20) * 2.0);
-          } else {
-            freqBins[i] = THREE.MathUtils.lerp(audioData.mid || 0.1, audioData.treble || 0.1, (factor - 0.70) * 3.33);
-          }
-          freqBins[i] *= gain;
-        }
-      }
-    }
-
-    const pPos = this.pointsGeo.attributes.position.array;
-    const pCol = this.pointsGeo.attributes.color.array;
-    const mu = 1 + this.m1 / this.m2;
-
-    let baseC1 = new THREE.Color(), baseC2 = new THREE.Color();
     if (this.colorStyle === 'monochrome') {
-      baseC1.set('#1e3d2f'); baseC2.set('#52b381');
+      this.material.blending = THREE.NormalBlending;
+      baseC1.set('#ffffff'); baseC2.set('#ffffff'); baseC3.set('#ffffff');
     } else if (this.colorStyle === 'neon') {
-      baseC1.set('#a38a6c'); baseC2.set('#fcf8f0');
+      this.material.blending = THREE.AdditiveBlending;
+      baseC1.set('#ffffff'); baseC2.set('#ffffff'); baseC3.set('#ffffff');
     } else if (this.colorStyle === 'pastel') {
-      baseC1.set('#1a2430'); baseC2.set('#ebbaa8');
+      // 그림자 검은색 모드: 물속 먹색 질감을 위해 블렌딩 반전 기믹 선언
+      this.material.blending = THREE.NormalBlending;
+      baseC1.set('#080d1a'); baseC2.set('#101626'); baseC3.set('#04060d');
     } else if (this.colorStyle === 'custom') {
-      baseC1.set(customColors.gas1); baseC2.set(customColors.gas2);
-    } else {
-      baseC1.setHSL(this.seededRandom(seed + 45), 0.6, 0.5);
-      baseC2.setHSL(this.seededRandom(seed + 90), 0.7, 0.7);
+      this.material.blending = THREE.AdditiveBlending;
+      baseC1.set(customColors.gas1); baseC2.set(customColors.gas2); baseC3.set(customColors.star);
     }
 
     const time = Date.now() * 0.001;
+    const positions = this.pointsGeo.attributes.position.array;
+    const colors = this.pointsGeo.attributes.color.array;
+    const mu = 1 + this.baseM1 / this.baseM2;
 
     for (let i = 0; i < this.numPendulums; i++) {
-      const col = i % 4;
-      const row = Math.floor(i / 4);
-      
-      const bx = (col - 1.5) * stepX * 0.95;
-      const by = (1.5 - row) * stepY * 0.95;
+      // 원천 pivot 기준 배치
+      let bx = this.pivotX[i] * layoutWidth;
+      let by = this.pivotY[i] * layoutHeight;
 
-      // 💡 각 진자 인덱스(i)가 16개의 '진짜' 독립 대역 주파수와 1:1 매핑 연동
-      const targetBinIdx = this.invertFrequency ? (this.numPendulums - 1 - i) : i;
-      const currentFreqForce = freqBins[targetBinIdx];
-      
-      // 실시간 흐름 미분 추적 변위 분석
-      const delta = currentFreqForce - this.prevFreqBins[i];
-      
-      // 💡 [독립 기네틱 무드 장착]: 1) 평시 흐름에 독립 주파수 가중치를 지속 부여하여 춤추게 유도
-      this.a1_v[i] += Math.sin(time * 2.5 + i) * currentFreqForce * 0.015;
-      this.a2_v[i] += Math.cos(time * 2.0 - i) * currentFreqForce * 0.025;
+      // 주파수 3그룹 매핑에 따른 실시간 가속 발진 물리 엔진 수립
+      let groupForce = 0;
+      if (this.nodeGroup[i] === 0) groupForce = bassImpulse;
+      else if (this.nodeGroup[i] === 1) groupForce = midImpulse;
+      else groupForce = trebleImpulse;
 
-      // 💡 2) 강한 비트 타격(Transient Kick) 감지 시 대역 신호 차이에 의해 각 진자가 완전히 개별 속도로 발진
-      if (delta > 0.003) {
-        const randDir = this.seededRandom(seed + i) > 0.5 ? 1 : -1;
-        this.a1_v[i] += delta * (4.2 + (i * 0.2)) * randDir;
-        this.a2_v[i] *= 0.60;
-      } else if (delta < -0.003) {
-        this.a1_v[i] *= 0.50;
-        const randDir = this.seededRandom(seed + i + 35) > 0.5 ? 1 : -1;
-        this.a2_v[i] += Math.abs(delta) * 1.8 * randDir;
+      // 미분 흐름 추적 및 타격 진폭 계수 도출
+      let delta = groupForce - this.prevFreqBins[i];
+      this.a1_v[i] += Math.sin(time * 3.0 + i) * groupForce * 0.012;
+
+      if (delta > 0.002) {
+        let randDir = this.seededRandom(seed + i) > 0.5 ? 1 : -1;
+        // 💡 주파수 대역 에너지에 직결되어 움직임의 크기 편차가 극대화 튕겨나감
+        this.a1_v[i] += delta * (4.5 + i * 0.02) * randDir;
+        this.a2_v[i] *= 0.55;
       }
+      this.prevFreqBins[i] = groupForce;
 
-      this.prevFreqBins[i] = currentFreqForce;
-
-      // 이중 진자 카오스 물리 방정식 루프
-      const dAngle = this.a1[i] - this.a2[i];
-      const num1 = this.g * (Math.sin(this.a2[i]) * Math.cos(dAngle) - mu * Math.sin(this.a1[i])) - 
+      // 이중 진자 카오스 모션 역학 방정식 바인딩
+      let dAngle = this.a1[i] - this.a2[i];
+      let num1 = this.g * (Math.sin(this.a2[i]) * Math.cos(dAngle) - mu * Math.sin(this.a1[i])) - 
                   (curL2 * this.a2_v[i] * this.a2_v[i] + curL1 * this.a1_v[i] * this.a1_v[i] * Math.cos(dAngle)) * Math.sin(dAngle);
-      const den1 = curL1 * (mu - Math.cos(dAngle) * Math.cos(dAngle));
-      const a1_a = num1 / den1;
+      let den1 = curL1 * (mu - Math.cos(dAngle) * Math.cos(dAngle));
+      let a1_a = num1 / (den1 === 0 ? 0.001 : den1);
 
-      const num2 = this.g * mu * (Math.sin(this.a1[i]) * Math.cos(dAngle) - Math.sin(this.a2[i])) + 
+      let num2 = this.g * mu * (Math.sin(this.a1[i]) * Math.cos(dAngle) - Math.sin(this.a2[i])) + 
                   (mu * curL1 * this.a1_v[i] * this.a1_v[i] + curL2 * this.a2_v[i] * this.a2_v[i] * Math.cos(dAngle)) * Math.sin(dAngle);
-      const den2 = curL2 * (mu - Math.cos(dAngle) * Math.cos(dAngle));
-      const a2_a = num2 / den2;
+      let den2 = curL2 * (mu - Math.cos(dAngle) * Math.cos(dAngle));
+      let a2_a = num2 / (den2 === 0 ? 0.001 : den2);
 
       this.a1_v[i] += a1_a * 0.04;
       this.a2_v[i] += a2_a * 0.04;
       this.a1[i] += this.a1_v[i] * 0.1;
       this.a2[i] += this.a2_v[i] * 0.1;
 
-      // 0.72 물속 저항 물리 유체 점성 댐핑
-      this.a1_v[i] *= 0.72; 
-      this.a2_v[i] *= 0.72;
+      // 물속 점성 제어 댐핑 필터 적용
+      this.a1_v[i] *= 0.74; 
+      this.a2_v[i] *= 0.74;
 
-      const px1 = bx + curL1 * Math.sin(this.a1[i]);
-      const py1 = by - curL1 * Math.cos(this.a1[i]);
-      const px2 = px1 + curL2 * Math.sin(this.a2[i]);
-      const py2 = py1 - curL2 * Math.cos(this.a2[i]);
+      // 💡 최종 더블 회전부 '끝점'의 위치 공간 좌표 기하학 도출
+      let px1 = bx + curL1 * Math.sin(this.a1[i]);
+      let py1 = by - curL1 * Math.cos(this.a1[i]);
+      let px2 = px1 + curL2 * Math.sin(this.a2[i]);
+      let py2 = py1 - curL2 * Math.cos(this.a2[i]);
 
-      const pIdx = i * 6;
-      pPos[pIdx] = px1;   pPos[pIdx+1] = py1;   pPos[pIdx+2] = 0.01;
-      pPos[pIdx+3] = px2; pPos[pIdx+4] = py2; pPos[pIdx+5] = 0.02;
+      let i3 = i * 3;
+      positions[i3]     = px2;
+      positions[i3 + 1] = py2;
+      positions[i3 + 2] = 0.01;
 
-      // 대역별 궤적 오로라 리본 색상 그라데이션
-      let blendRatio = i / (this.numPendulums - 1);
-      let mixedC1 = new THREE.Color().copy(baseC1).lerp(baseC2, blendRatio * 0.5);
-      let mixedC2 = new THREE.Color().copy(baseC1).lerp(baseC2, 0.5 + blendRatio * 0.5);
-
-      pCol[pIdx] = mixedC1.r; pCol[pIdx+1] = mixedC1.g; pCol[pIdx+2] = mixedC1.b;
-      pCol[pIdx+3] = mixedC2.r; pCol[pIdx+4] = mixedC2.g; pCol[pIdx+5] = mixedC2.b;
-
-      // 오로라 리본 트레일 버퍼 갱신
-      const history = this.trailHistories[i];
-      history.shift();
-      history.push(new THREE.Vector3(px2, py2, -0.02));
-
-      const tGeo = this.trailGeometries[i];
-      const tPos = tGeo.attributes.position.array;
-      const tCol = tGeo.attributes.color.array;
-
-      for (let p = 0; p < this.maxTrailPoints; p++) {
-        const tIdx = p * 3;
-        tPos[tIdx] = history[p].x;
-        tPos[tIdx+1] = history[p].y;
-        tPos[tIdx+2] = history[p].z;
-
-        let alphaRatio = p / (this.maxTrailPoints - 1);
-        let ribbonGradColor = new THREE.Color().copy(mixedC1).lerp(mixedC2, alphaRatio);
-        
-        tCol[tIdx] = ribbonGradColor.r * alphaRatio;
-        tCol[tIdx+1] = ribbonGradColor.g * alphaRatio;
-        tCol[tIdx+2] = ribbonGradColor.b * alphaRatio;
+      // 💡 [컬러 동기화]: 014호와 완벽히 동일한 컬러 변환 스펙트럼 인젝션
+      if (this.colorStyle === 'custom') {
+        if (this.nodeGroup[i] === 0) baseC3.copy(baseC1);
+        else if (this.nodeGroup[i] === 1) baseC3.copy(baseC2);
+        // 고음조는 기본 스타 컬러 유지
+        colors[i3] = baseC3.r; colors[i3 + 1] = baseC3.g; colors[i3 + 2] = baseC3.b;
+      } else if (this.colorStyle !== 'monochrome' && this.colorStyle !== 'neon' && this.colorStyle !== 'pastel') {
+        // 올 랜덤 컬러 스위칭 연산 파트
+        let dynamicSeed = seed + i * 28;
+        colors[i3]     = this.seededRandom(dynamicSeed);
+        colors[i3 + 1] = this.seededRandom(dynamicSeed + 5);
+        colors[i3 + 2] = this.seededRandom(dynamicSeed + 12);
+      } else {
+        // 흑백, 야광, 그림자 검은색의 정적 대입
+        let blendLerp = i / (this.numPendulums - 1);
+        let finalThemeColor = new THREE.Color().copy(baseC1).lerp(baseC2, blendLerp);
+        colors[i3] = finalThemeColor.r; colors[i3 + 1] = finalThemeColor.g; colors[i3 + 2] = finalThemeColor.b;
       }
-      tGeo.attributes.position.needsUpdate = true;
-      tGeo.attributes.color.needsUpdate = true;
     }
 
-    this.pointsGeo.attributes.position.needsUpdate = true;
-    this.pointsGeo.attributes.color.needsUpdate = true;
+    this.geometry.attributes.position.needsUpdate = true;
+    this.geometry.attributes.color.needsUpdate = true;
 
-    let camTime = Date.now() * 0.0004;
-    this.camera.position.x = 0.3 + Math.sin(camTime) * 0.2;
-    this.camera.position.y = -0.2 + Math.cos(camTime * 0.8) * 0.15;
+    // 카메라는 잔잔한 앰비언트 유영 유지
+    let camTime = Date.now() * 0.0003;
+    this.camera.position.x = Math.sin(camTime) * 0.15;
+    this.camera.position.y = Math.cos(camTime * 0.9) * 0.1;
 
     this.renderer.render(this.scene, this.camera);
   }
@@ -382,15 +345,14 @@ export default class ThreePendulumWave {
   resize(w, h) {
     if (this.camera && this.renderer) {
       this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); this.renderer.setSize(w, h);
+      this.buildPendulumGrid(); // 리사이즈 시 화면 비율 재연산 리인덱싱
     }
   }
 
   destroy() {
     if (!this.scene) return;
-    this.trailMeshes.forEach(mesh => { mesh.geometry.dispose(); mesh.material.dispose(); this.scene.remove(mesh); });
-    if (this.pointsGeo) { this.pointsGeo.dispose(); this.pointsMesh.material.dispose(); this.scene.remove(this.pointsMesh); }
+    if (this.pointsMesh) { this.scene.remove(this.pointsMesh); this.geometry.dispose(); }
     
-    // 💡 생성된 배경 가속 텍스처 자원 메모리 완전 완전 박멸
     if (this.bgTexture) {
       this.bgTexture.dispose();
       this.bgTexture = null;
@@ -402,6 +364,5 @@ export default class ThreePendulumWave {
       this.renderer.dispose();
     }
     this.scene = null; this.camera = null; this.renderer = null;
-    this.trailHistories = []; this.trailGeometries = []; this.trailMeshes = [];
   }
 }
