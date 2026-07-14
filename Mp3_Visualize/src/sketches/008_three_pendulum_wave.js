@@ -1,9 +1,10 @@
 /**
  * src/sketches/008_three_pendulum_wave.js
- * - [버전] Ver 5.1 (16채널 주파수 독립 매핑 및 오가닉 키네틱 군무 완결판)
- * - 16개 진자가 주파수 대역별(저음~고음)로 완전히 독립되어 제각각 다르게 반응하도록 매핑 수리
- * - 각 노드별 고유 진동수와 위상차(Phase Offset)를 결합하여 따로 또 같이 일렁이는 최면 효과 구현
- * - 0.72 Heavy Damping 물속 저항 물리 및 슬로우 리본 트레일 궤적 완벽 유지
+ * - [버전] Ver 6.0 (3D 키네틱 리본 배경 이미지 통합 및 16채널 트루 스플릿 판)
+ * - 외부 업로드 이미지(땅/호수바닥)를 THREE.Texture로 실시간 가속 마운트하여 3D 우주 배경에 레이어 통합
+ * - 16채널 트루 스펙트럼 스플릿: FFT 512 주파수 배열을 16등분 컷오프하여 16개 진자에 1:1 완벽 독립 구동력 주입
+ * - 지속형 에너지(Continuous Force)와 충격형 진폭(Transient Delta) 물리 연산을 하이브리드 결합하여 고유 움직임 극대화
+ * - 30FPS 진단 HUD 통신 가상 프레임 레이터 및 실시간 3D 키네틱 링크 카운터 완벽 시공 완료
  */
 
 export default class ThreePendulumWave {
@@ -42,7 +43,12 @@ export default class ThreePendulumWave {
     this.pointsGeo = null;
     this.pointsMesh = null;
     
-    this.version = "008호 Kinetic Aurora Pendulum Ver 5.1";
+    this.version = "008호 Kinetic Aurora Pendulum Ver 6.0";
+
+    // 💡 배경 이미지 및 HUD 타임 컨트롤러 트래킹 변수 수립
+    this.bgTexture = null;
+    this.lastBgImage = null;
+    this.lastTime = 0;
   }
 
   init() {
@@ -64,7 +70,7 @@ export default class ThreePendulumWave {
 
     this.scene.add(new THREE.AmbientLight(0xffffff, 0.6));
 
-    console.log(`%c[🔮 008호 독립 파이프라인 가동] ${this.version}`, "color: #00ffcc; font-weight: bold; font-size: 13px;");
+    console.log(`%c[🔮 008호 트루 독립 스플릿 가동] ${this.version}`, "color: #00ffcc; font-weight: bold; font-size: 13px;");
 
     this.buildPendulumGrid();
   }
@@ -86,7 +92,7 @@ export default class ThreePendulumWave {
     const pointColors = new Float32Array(this.numPendulums * 2 * 3);
 
     for (let i = 0; i < this.numPendulums; i++) {
-      // 💡 [독립 위상차 분배]: 각 진자가 고유한 시작 각도와 흐름을 가지도록 나선형 정렬
+      // 독립 나선형 위상차 초깃값 분배
       let phaseOffset = i * (Math.PI / 8); 
       this.a1[i] = Math.PI + 0.1 + Math.sin(phaseOffset) * 0.2;
       this.a2[i] = Math.PI - 0.1 + Math.cos(phaseOffset) * 0.2;
@@ -133,7 +139,7 @@ export default class ThreePendulumWave {
       depthWrite: false
     });
 
-    this.pointsMesh = new THREE.Points(this.pointsGeo, pointMat);
+    this.pointsMesh = new THREE.Points(this.geometry || this.pointsGeo, pointMat);
     this.scene.add(this.pointsMesh);
   }
 
@@ -149,7 +155,7 @@ export default class ThreePendulumWave {
   }
 
   update(audioData) {
-    if (!this.renderer || !this.scene || !this.camera) return;
+    if (!this.renderer || !this.scene || !this.camera || !this.pointsMesh) return;
 
     this.renderer.clearDepth();
 
@@ -171,6 +177,35 @@ export default class ThreePendulumWave {
       this.buildPendulumGrid();
     }
 
+    // 💡 [배경 이미지 실시간 가속 마운트 엔진 시공]
+    const bgImg = window.currentUploadedImageElement;
+    if (bgImg && bgImg !== this.lastBgImage) {
+      if (this.bgTexture) this.bgTexture.dispose();
+      this.bgTexture = new THREE.Texture(bgImg);
+      this.bgTexture.minFilter = THREE.LinearFilter;
+      this.bgTexture.magFilter = THREE.LinearFilter;
+      this.bgTexture.needsUpdate = true;
+      this.lastBgImage = bgImg;
+      this.scene.background = this.bgTexture; // 3D 월드 최하단 레이어 고정 안착
+    } else if (!bgImg && this.lastBgImage) {
+      this.scene.background = new THREE.Color(0x060810);
+      this.lastBgImage = null;
+    }
+
+    // 진단 HUD 연동용 FPS 환산 타임 트래킹
+    if (!this.lastTime) this.lastTime = performance.now();
+    let now = performance.now();
+    let fps = Math.round(1000 / (now - this.lastTime));
+    this.lastTime = now;
+
+    // 메인 HUD에 실시간 변수 상태 피딩 투사
+    window.sketchDiagnostics = {
+      fps: isNaN(fps) || fps > 100 ? 30 : fps,
+      particleCount: this.numPendulums + " Kinetic Links",
+      isCovering: false,
+      activeFunction: this.bgTexture ? "Kinetic[BG_Loaded]" : "Kinetic[Core_Active]"
+    };
+
     const aspect = this.camera.aspect;
     const viewHeight = Math.tan(THREE.MathUtils.degToRad(50 / 2)) * 9.5 * 2; 
     const viewWidth = viewHeight * aspect;
@@ -182,24 +217,40 @@ export default class ThreePendulumWave {
     const curL1 = this.baseL1 * scatterScale;
     const curL2 = this.baseL2 * scatterScale;
 
-    // 💡 [16채널 완전 독립 분할 매핑 수리 완수]
+    // 💡 [알고리즘: 16채널 트루 주파수 스플릿 핵심 연산구역]
     const freqBins = new Float32Array(this.numPendulums);
     if (audioData) {
-      for (let i = 0; i < this.numPendulums; i++) {
-        let factor = i / (this.numPendulums - 1);
-        
-        // 512 버퍼 구간을 16개의 독립된 서브 안테나 대역으로 칼같이 쪼개어 수혈
-        if (factor < 0.20) {
-          freqBins[i] = THREE.MathUtils.lerp(audioData.subBass || 0.1, audioData.bass || 0.1, factor * 5.0);
-        } else if (factor < 0.70) {
-          freqBins[i] = THREE.MathUtils.lerp(audioData.bass || 0.1, audioData.mid || 0.1, (factor - 0.20) * 2.0);
-        } else {
-          freqBins[i] = THREE.MathUtils.lerp(audioData.mid || 0.1, audioData.treble || 0.1, (factor - 0.70) * 3.33);
+      const rawBands = audioData.raw || audioData.spectrum || [];
+      
+      if (rawBands.length >= this.numPendulums) {
+        // FFT 256/512 스펙트럼 크기를 청크 단위로 분할하여 16개 대역 평균 주파수 수혈
+        let chunkSize = Math.floor(rawBands.length / this.numPendulums);
+        for (let i = 0; i < this.numPendulums; i++) {
+          let sum = 0;
+          for (let j = 0; j < chunkSize; j++) {
+            sum += rawBands[i * chunkSize + j];
+          }
+          let avg = sum / chunkSize;
+          // 주파수 크기가 0~255로 들어올 때와 0~1로 들어올 때 유연 대응 노멀라이징
+          freqBins[i] = avg > 1.0 ? avg / 255.0 : avg;
+          
+          // 고음역대로 갈수록 감쇠하는 신호 진폭 보완을 위해 가중 밸런스 부스트 시공
+          let frequencyBoost = 1.0 + (i / this.numPendulums) * 2.2;
+          freqBins[i] *= (gain * frequencyBoost); 
         }
-        
-        // 고음역대로 갈수록 감쇠되는 물리 질량을 보완하기 위해 대역별 가중 부스트 처리
-        let frequencyBoost = 1.0 + (i / this.numPendulums) * 1.5;
-        freqBins[i] *= (gain * frequencyBoost); 
+      } else {
+        // Fallback: 오디오 버퍼가 초기 로딩 중이거나 공백일 때 아날로그 보간 대체
+        for (let i = 0; i < this.numPendulums; i++) {
+          let factor = i / (this.numPendulums - 1);
+          if (factor < 0.20) {
+            freqBins[i] = THREE.MathUtils.lerp(audioData.subBass || 0.1, audioData.bass || 0.1, factor * 5.0);
+          } else if (factor < 0.70) {
+            freqBins[i] = THREE.MathUtils.lerp(audioData.bass || 0.1, audioData.mid || 0.1, (factor - 0.20) * 2.0);
+          } else {
+            freqBins[i] = THREE.MathUtils.lerp(audioData.mid || 0.1, audioData.treble || 0.1, (factor - 0.70) * 3.33);
+          }
+          freqBins[i] *= gain;
+        }
       }
     }
 
@@ -221,6 +272,8 @@ export default class ThreePendulumWave {
       baseC2.setHSL(this.seededRandom(seed + 90), 0.7, 0.7);
     }
 
+    const time = Date.now() * 0.001;
+
     for (let i = 0; i < this.numPendulums; i++) {
       const col = i % 4;
       const row = Math.floor(i / 4);
@@ -228,27 +281,31 @@ export default class ThreePendulumWave {
       const bx = (col - 1.5) * stepX * 0.95;
       const by = (1.5 - row) * stepY * 0.95;
 
-      // 💡 각 진자 인덱스(i)가 고유 대역 주파수(targetBinIdx)와 1:1로 엄격 매핑되도록 연결
+      // 💡 각 진자 인덱스(i)가 16개의 '진짜' 독립 대역 주파수와 1:1 매핑 연동
       const targetBinIdx = this.invertFrequency ? (this.numPendulums - 1 - i) : i;
       const currentFreqForce = freqBins[targetBinIdx];
       
-      // 실시간 흐름 미분 추적 계산
+      // 실시간 흐름 미분 추적 변위 분석
       const delta = currentFreqForce - this.prevFreqBins[i];
       
+      // 💡 [독립 기네틱 무드 장착]: 1) 평시 흐름에 독립 주파수 가중치를 지속 부여하여 춤추게 유도
+      this.a1_v[i] += Math.sin(time * 2.5 + i) * currentFreqForce * 0.015;
+      this.a2_v[i] += Math.cos(time * 2.0 - i) * currentFreqForce * 0.025;
+
+      // 💡 2) 강한 비트 타격(Transient Kick) 감지 시 대역 신호 차이에 의해 각 진자가 완전히 개별 속도로 발진
       if (delta > 0.003) {
         const randDir = this.seededRandom(seed + i) > 0.5 ? 1 : -1;
-        // 💡 주파수 대역별 신호 차이에 의해 각 진자가 완전히 독자적인 속도로 튕겨 나감
-        this.a1_v[i] += delta * (3.5 + (i * 0.1)) * randDir;
-        this.a2_v[i] *= 0.65;
+        this.a1_v[i] += delta * (4.2 + (i * 0.2)) * randDir;
+        this.a2_v[i] *= 0.60;
       } else if (delta < -0.003) {
-        this.a1_v[i] *= 0.55;
-        const randDir = this.seededRandom(seed + i + 40) > 0.5 ? 1 : -1;
-        this.a2_v[i] += Math.abs(delta) * 1.5 * randDir;
+        this.a1_v[i] *= 0.50;
+        const randDir = this.seededRandom(seed + i + 35) > 0.5 ? 1 : -1;
+        this.a2_v[i] += Math.abs(delta) * 1.8 * randDir;
       }
 
       this.prevFreqBins[i] = currentFreqForce;
 
-      // 물리 공식 연산 루프
+      // 이중 진자 카오스 물리 방정식 루프
       const dAngle = this.a1[i] - this.a2[i];
       const num1 = this.g * (Math.sin(this.a2[i]) * Math.cos(dAngle) - mu * Math.sin(this.a1[i])) - 
                   (curL2 * this.a2_v[i] * this.a2_v[i] + curL1 * this.a1_v[i] * this.a1_v[i] * Math.cos(dAngle)) * Math.sin(dAngle);
@@ -265,7 +322,7 @@ export default class ThreePendulumWave {
       this.a1[i] += this.a1_v[i] * 0.1;
       this.a2[i] += this.a2_v[i] * 0.1;
 
-      // 무거운 물속 끈적한 저항 댐핑
+      // 0.72 물속 저항 물리 유체 점성 댐핑
       this.a1_v[i] *= 0.72; 
       this.a2_v[i] *= 0.72;
 
@@ -278,7 +335,7 @@ export default class ThreePendulumWave {
       pPos[pIdx] = px1;   pPos[pIdx+1] = py1;   pPos[pIdx+2] = 0.01;
       pPos[pIdx+3] = px2; pPos[pIdx+4] = py2; pPos[pIdx+5] = 0.02;
 
-      // 고유 인덱스에 따라 은하수 리본 색상도 입체 그라데이션 매핑
+      // 대역별 궤적 오로라 리본 색상 그라데이션
       let blendRatio = i / (this.numPendulums - 1);
       let mixedC1 = new THREE.Color().copy(baseC1).lerp(baseC2, blendRatio * 0.5);
       let mixedC2 = new THREE.Color().copy(baseC1).lerp(baseC2, 0.5 + blendRatio * 0.5);
@@ -286,7 +343,7 @@ export default class ThreePendulumWave {
       pCol[pIdx] = mixedC1.r; pCol[pIdx+1] = mixedC1.g; pCol[pIdx+2] = mixedC1.b;
       pCol[pIdx+3] = mixedC2.r; pCol[pIdx+4] = mixedC2.g; pCol[pIdx+5] = mixedC2.b;
 
-      // 히스토리 트레일 버퍼 적재
+      // 오로라 리본 트레일 버퍼 갱신
       const history = this.trailHistories[i];
       history.shift();
       history.push(new THREE.Vector3(px2, py2, -0.02));
@@ -332,7 +389,18 @@ export default class ThreePendulumWave {
     if (!this.scene) return;
     this.trailMeshes.forEach(mesh => { mesh.geometry.dispose(); mesh.material.dispose(); this.scene.remove(mesh); });
     if (this.pointsGeo) { this.pointsGeo.dispose(); this.pointsMesh.material.dispose(); this.scene.remove(this.pointsMesh); }
-    if (this.renderer) { this.container.removeChild(this.renderer.domElement); this.renderer.dispose(); }
+    
+    // 💡 생성된 배경 가속 텍스처 자원 메모리 완전 완전 박멸
+    if (this.bgTexture) {
+      this.bgTexture.dispose();
+      this.bgTexture = null;
+    }
+    this.lastBgImage = null;
+
+    if (this.renderer) {
+      this.container.removeChild(this.renderer.domElement);
+      this.renderer.dispose();
+    }
     this.scene = null; this.camera = null; this.renderer = null;
     this.trailHistories = []; this.trailGeometries = []; this.trailMeshes = [];
   }
