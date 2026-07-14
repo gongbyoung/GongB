@@ -1,11 +1,11 @@
 /**
  * src/sketches/020_p5_srt_canvas.js
- * - [버전] Ver 18.5 (그래픽 메모리 최적화 및 Silent Failure 완치판)
- * - 그래픽 메모리 가속 패치: textureCaches를 하나의 통합된 Lite 팩토리로 리팩토링하여 
- *   그래픽 버퍼 수를 줄이고 VRAM 점유율을 획기적으로 낮추어 검은 화면 오류 원천 차단
- * - 배경 이미지 PERSISTENCY 확보: 캔버스 컨텍스트가 초기화되더라도 배경 이미지가 항상PERSISTENCY하게 출력되도록 로직 통합
- * - Ver 18.0의 절대 레이어 적층 및 진짜 물리 가림 물리 연산은 그대로 유지
- * - 30FPS 하드웨어 락 보정으로 조작 지연 현상 0% 달성
+ * - [버전] Ver 19.0 (누락된 입자 판별 엔진 복구 및 가사 공백 방어 마스터판)
+ * - spawnParticle 내부의 ReferenceError: type 변수 선언부를 완벽하게 부활시켜 흑화 현상 완치
+ * - Neon 단풍잎: 중심의 찬란한 노랑, 주황에서 외곽의 마른 대지 갈색까지 섞인 입체적 오가닉 단풍 8종 탑재
+ * - Pastel 풀잎: 연두, 잔디초록, 깊은 상록수 그린 계열 8종 그라데이션으로 리얼 초록잎 무드 완전 고정
+ * - 가사 미로딩(음악 정지 상태) 시 Bounding Box 연산이 NaN으로 튕기며 버퍼가 깨지던 취약점 가드 조치
+ * - 30FPS 하드웨어 가속 최적화 락 고정 및 가사 레이어 절대 물리 가림 구조 시공
  */
 export default class P5SrtCanvasStage {
   constructor(container) {
@@ -24,10 +24,8 @@ export default class P5SrtCanvasStage {
     this.lastRenderedColor = "";
     
     this.currentFont = 'Black Han Sans';
-    
-    // 💡 [패치 요령 1]: textureCaches를 리스트 하나로 통합하여 Lite 팩토리로 개편
     this.textureCachesList = null; 
-    this.version = "020호 Hardware-Accelerated optimized Engine Ver 18.5";
+    this.version = "020호 Hardware-Accelerated Optimized Engine Ver 19.0";
   }
 
   init() {
@@ -43,14 +41,14 @@ export default class P5SrtCanvasStage {
         this.lastWidth = p.width;
         this.lastHeight = p.height;
         
-        // 초기화 시 가사 폰트 2종 중 무작위 스위칭
+        // 초기화 및 리셋 시 가사 폰트 2종 중 무작위 자동 결정
         const fontPool = ['Black Han Sans', 'Noto Sans KR'];
         this.currentFont = p.random(fontPool);
         console.log(`🎨 [FONT ENGINE] 캔버스 가사 서체 무작위 세팅 완료: ${this.currentFont}`);
         
         this.createTextureFactories(p);
         
-        // 30FPS 하드웨어 가속 락
+        // 30FPS 하드웨어 가속 락 고정
         p.frameRate(30);
         p.loop();
       };
@@ -64,7 +62,7 @@ export default class P5SrtCanvasStage {
         };
         
         const style = settings.colorStyle; 
-        const custom = settings.customColors;
+        const custom = settings.customColors || { gas1: '#ff4500', gas2: '#8b0000', star: '#ffff00' };
 
         if (this.lastWidth !== p.width || this.lastHeight !== p.height) {
           let newBuffer = p.createGraphics(p.width, p.height);
@@ -75,7 +73,12 @@ export default class P5SrtCanvasStage {
           this.lastHeight = p.height;
         }
 
-        // SRT 가사 동기화 타임라인 트래킹
+        // 1단계 최하단 바닥 레이어: 외부 땅바닥/호수바닥 배경 이미지 실시간 합성
+        if (window.currentUploadedImageElement) {
+          p.image(window.currentUploadedImageElement, 0, 0, p.width, p.height);
+        }
+
+        // SRT 가사 동기화 타임라인 추적
         const audioEl = document.getElementById('audio-player');
         const subs = window.parsedSubtitles || [];
         const currentTime = audioEl ? audioEl.currentTime : 0;
@@ -100,7 +103,7 @@ export default class P5SrtCanvasStage {
         const centerX = (p.width / 2) + offX;
         const centerY = (p.height / 2) + offY;
 
-        // 가사 변환 시 최상단 고착 입자들을 바닥 버퍼로 완전 압착 베이킹 처리
+        // 가사가 다음 구절로 바뀔 때 글자 위 고착 낙엽들을 배경 버퍼로 강제 압착 굽기(Bake)
         if (text !== this.lastTrackedText) {
           this.particles.forEach(pt => {
             if (pt.isSettledOnText) {
@@ -111,7 +114,7 @@ export default class P5SrtCanvasStage {
           this.lastTrackedText = text;
         }
 
-        // 가림 임계 연산
+        // 가림 임계 윈도우 계산
         let coverFactor = 0.0;
         let isCoveringTimeWindow = false;
         if (currentSub) {
@@ -125,7 +128,7 @@ export default class P5SrtCanvasStage {
           }
         }
 
-        // 30FPS 하드웨어 락 대응 프레임 밀도 스폰 보정
+        // 30FPS 대응 밀도 스폰 보정
         let spawnRate = p.frameCount % 2 === 0 ? 1 : 0; 
         if (isCoveringTimeWindow) {
           const gaugeRaw = settings.gaugeValue > 1 ? settings.gaugeValue : settings.gaugeValue * 100;
@@ -138,7 +141,7 @@ export default class P5SrtCanvasStage {
 
         this.updateParticlesPhysics(p, settings, custom, isCoveringTimeWindow);
 
-        // HUD 로거 진단 정보 매핑
+        // 시스템 진단 HUD 통신 가동
         window.sketchDiagnostics = {
           fps: p.floor(p.frameRate()),
           particleCount: this.particles.length,
@@ -146,45 +149,35 @@ export default class P5SrtCanvasStage {
           activeFunction: `Render[Font:${this.currentFont.replace(/ /g,'')}]`
         };
 
-        // ==========================================
-        // 💡 [알고리즘 2: 배경 이미지 PERSISTENCY 및 절대 레이어 적층 리펙토링]
-        // ==========================================
-        
-        // 1단계(최하단 바닥): 리얼 땅바닥/호수바닥 텍스처 레이어 시공
-        // [패치 요령 2]: 배경 이미지가 항상 PERSISTENCY하게 출력되도록 로직 통합
-        if (window.currentUploadedImageElement) {
-          p.image(window.currentUploadedImageElement, 0, 0, p.width, p.height);
-        }
-        
-        // 2단계: 기존에 이미 안착해 깔려있던 낙엽 축적 버퍼 투사
+        // 2단계 레이어: 배경 위에 차곡차곡 누적되는 잎사귀 평면 안착 버퍼 투사
         p.image(this.accumulationBuffer, 0, 0);
         
-        // 3단계(중간 전경): 100% 완전 불투명 상태로 가사 자막 인쇄
+        // 3단계 레이어: 100% 불투명도로 가사 자막 선명하게 노출 (배경 낙엽 더미 위에 깔끔히 얹어짐)
         this.drawSubtitle(p, style, settings, custom, isCoveringTimeWindow, coverFactor, currentSub, fontSize, tracking, leading, offX, offY);
         
-        // 4단계(최상단 덮개): 공중 비행 입자 및 자막 표면에 안착한 낙엽들을 최종 투사 (물리 가림 백프로 실현)
+        // 4단계 레이어: 공중 파티클 및 자막 표면에 안착하여 글씨를 덮어 지워버리는 물리 가림 잎사귀 최상단 투사
         this.drawLiveParticles(p, glowRaw, custom);
       };
     };
     this.p5Instance = new window.p5(sketch, this.container);
   }
 
-  // 💡 [알고리즘 3: Lite 팩토리 - 그래픽 메모리 최적화 통합 생성]
+  // 💡 [그라데이션 세분화]: 진짜 가을 산길 낙엽의 노랑/갈색 조화 및 PASTEL용 리얼 초록색류 분리 팩토리
   createTextureFactories(p) {
-    this.textureCachesList = []; // [패치 요령 3]: 리스트 하나로 Lite 팩토리 통합 생성
+    this.textureCachesList = []; 
     const settings = window.cosmicEngineSettings || { customColors: { gas1: '#ff4500', gas2: '#8b0000', star: '#ffff00' } };
-    const custom = settings.customColors;
+    const custom = settings.customColors || { gas1: '#ff4500', gas2: '#8b0000', star: '#ffff00' };
 
-    // 🍁 단풍잎(Neon): 8종 Lite 팩토리 수묵 그라데이션 물들임
+    // 🍁 1. 단풍잎(Neon 무드): 노랑, 주황, 다홍, 마른 흙갈색이 한 조각 안에 수묵화처럼 번져있는 진짜 낙엽 조합 (8종)
     const leafMixes = [
-      { c0: 'rgba(255, 220, 85, 0.95)',  c1: custom.gas1, c2: 'rgba(100, 35, 10, 0.95)', size: 35 },  
-      { c0: custom.star,                 c1: 'rgba(215, 65, 25, 0.95)',  c2: 'rgba(85, 30, 8, 0.95)',  size: 35 },   
-      { c0: 'rgba(255, 195, 60, 0.95)',  c1: custom.gas2, c2: 'rgba(75, 20, 5, 0.95)',   size: 35 },   
-      { c0: 'rgba(230, 160, 45, 0.95)',  c1: 'rgba(180, 40, 15, 0.95)',  c2: custom.gas2,               size: 35 },               
-      { c0: 'rgba(255, 235, 110, 0.95)', c1: custom.gas1, c2: 'rgba(115, 45, 15, 0.95)', size: 35 }, 
-      { c0: custom.star,                 c1: custom.gas2,                 c2: 'rgba(128, 64, 32, 0.95)', size: 32 }, 
-      { c0: custom.gas1,                 c1: custom.gas2,                 c2: 'rgba(64, 32, 16, 0.95)',  size: 38 }, 
-      { c0: 'rgba(255, 255, 255, 0.95)', c1: custom.gas1, c2: custom.gas2, size: 30 } 
+      { c0: '#ffe04d', c1: '#ff5a21', c2: '#5e1b00', size: 35 }, // 골드노랑 -> 단풍주황 -> 마른 대지 갈색
+      { c0: custom.star,c1: '#d63300', c2: '#4a1200', size: 36 }, // 커스텀Star -> 붉은다홍 -> 밤색 갈색
+      { c0: '#ff9933', c1: custom.gas1,c2: '#360a00', size: 34 }, // 노란 앰버 -> 커스텀1 -> 다크 브라운
+      { c0: '#ffa644', c1: '#b31800', c2: custom.gas2, size: 35 }, // 주황빛 -> 피빛 크림슨 -> 커스텀2 갈색
+      { c0: '#ffea70', c1: custom.gas1,c2: '#732c02', size: 32 }, 
+      { c0: '#ffd214', c1: '#c62828', c2: '#4a1102', size: 37 }, 
+      { c0: '#ff6f40', c1: custom.gas2,c2: '#3a2521', size: 33 }, 
+      { c0: '#ffeb3b', c1: '#ff5722', c2: '#5c3e35', size: 35 }
     ];
 
     leafMixes.forEach((m, idx) => {
@@ -203,16 +196,16 @@ export default class P5SrtCanvasStage {
       this.textureCachesList.push(pg);
     });
 
-    // 🍃 풀잎(Pastel): 붉은색을 차단한 청아하고 화사한 리얼 초록색류 8종 Lite 팩토리 캐시 고정 시공
+    // 🍃 2. 풀잎(Pastel 무드): 붉은 간섭을 원천 차단하고 연두, 초록, 상록수 숲속 그린으로 완전 고정된 8종 디자인
     const greenMixes = [
-      { c0: 'rgba(185, 245, 100, 0.95)', c1: 'rgba(55, 185, 80, 0.95)',  c2: 'rgba(15, 75, 25, 0.95)',  size: 38 },  
-      { c0: 'rgba(165, 235, 130, 0.95)', c1: 'rgba(40, 155, 110, 0.95)', c2: 'rgba(10, 65, 45, 0.95)',  size: 38 },  
-      { c0: 'rgba(215, 250, 110, 0.95)', c1: 'rgba(110, 200, 60, 0.95)', c2: 'rgba(30, 100, 20, 0.95)', size: 38 }, 
-      { c0: 'rgba(195, 240, 150, 0.95)', c1: 'rgba(75, 175, 75, 0.95)',  c2: 'rgba(20, 85, 30, 0.95)',  size: 38 },  
-      { c0: 'rgba(160, 225, 95, 0.95)',  c1: 'rgba(50, 145, 60, 0.95)',  c2: 'rgba(12, 60, 15, 0.95)', size: 38 }, 
-      { c0: 'rgba(185, 245, 100, 0.95)', c1: custom.gas1, c2: custom.gas2, size: 35 }, 
-      { c0: custom.star,                 c1: 'rgba(128, 255, 128, 0.95)', c2: custom.gas1, size: 32 }, 
-      { c0: custom.gas2,                 c1: custom.gas1, c2: custom.star, size: 40 } 
+      { c0: '#bdf567', c1: '#37bd51', c2: '#0e4a1a', size: 38 }, // 라임연두 -> 실시간 잔디초록 -> 깊은 삼림그린
+      { c0: '#a3eb81', c1: '#26996c', c2: '#093f2c', size: 36 }, // 새싹연두 -> 비취초록 -> 다크 포레스트
+      { c0: '#d9fa6f', c1: '#6ec73b', c2: '#1d6313', size: 37 }, 
+      { c0: '#c1ef94', c1: '#4aaf4a', c2: '#12541d', size: 38 }, 
+      { c0: '#9ee05c', c1: '#30903a', c2: '#0a3b0d', size: 35 }, 
+      { c0: '#c2ff55', c1: '#2c7a30', c2: '#17571c', size: 34 }, 
+      { c0: '#e5f3e6', c1: '#4caf4f', c2: '#16571c', size: 36 }, 
+      { c0: '#c5e6c6', c1: '#2c7a30', c2: '#00473e', size: 38 }
     ];
 
     greenMixes.forEach((gm, idx) => {
@@ -227,7 +220,7 @@ export default class P5SrtCanvasStage {
       this.textureCachesList.push(pg);
     });
 
-    // ❄️ 눈꽃송이(Monochrome): 8종 Lite 팩토리 캐시 시공
+    // ❄️ 3. 눈꽃송이(Monochrome 무드): 고선명 겨울 성에 결정 캐시 (8종)
     for (let i = 0; i < 8; i++) {
       let pg = p.createGraphics(128, 128); let ctx = pg.drawingContext; let size = p.random(30, 40);
       ctx.save(); ctx.translate(64, 64);
@@ -258,9 +251,7 @@ export default class P5SrtCanvasStage {
     }
     
     let sb = this.subtitleBuffer;
-    sb.clear(); 
-    sb.textFont(this.currentFont); 
-    sb.textSize(fontSize); sb.textAlign(p.CENTER, p.CENTER);
+    sb.clear(); sb.textFont(this.currentFont); sb.textSize(fontSize); sb.textAlign(p.CENTER, p.CENTER);
     sb.fill(textColorStyle); sb.noStroke();
     
     lines.forEach((line, lineIdx) => {
@@ -282,6 +273,12 @@ export default class P5SrtCanvasStage {
     const scatterRaw = settings.scatterExponent > 5 ? settings.scatterExponent : settings.scatterExponent * 10;
     const speedScale = p.map(scatterRaw, 5, 50, 0.024, 0.09);
 
+    // 💡 [원인 완치]: 누락되었던 쉐이프 무드 판별문을 완벽하게 부활시켜 ReferenceError 근절!
+    let type = 'leaf';
+    if (style === 'pastel') type = 'grass';
+    if (style === 'monochrome') type = 'snow';
+    if (style === 'earth') type = 'rain';
+
     const spawnAngle = p.random(p.TWO_PI);
     const spawnRadius = p.max(p.width, p.height) * 0.75;
     const startX = (p.width / 2) + p.cos(spawnAngle) * spawnRadius;
@@ -290,21 +287,27 @@ export default class P5SrtCanvasStage {
     let targetX = p.random(p.width);
     let targetY = p.random(p.height);
 
+    // 💡 [NaN 가사 가드]: 자막 미로딩 시 구역 폭이 NaN으로 환산되어 튕기는 연산 오차 방어
+    const safeBoxW = isNaN(boxW) || boxW <= 0 ? 100 : boxW;
+    const safeBoxH = isNaN(boxH) || boxH <= 0 ? 50 : boxH;
+
     if (!isCoveringTimeWindow) {
       let guardLoop = 0;
-      while (p.abs(targetX - centerX) < boxW * 1.2 && p.abs(targetY - centerY) < boxH * 1.2 && guardLoop < 25) {
+      while (p.abs(targetX - centerX) < safeBoxW * 1.2 && p.abs(targetY - centerY) < safeBoxH * 1.2 && guardLoop < 25) {
         targetX = p.random(p.width); targetY = p.random(p.height);
         guardLoop++;
       }
     } else {
-      targetX = centerX + p.random(-boxW * 0.45, boxW * 0.45);
-      targetY = centerY + p.random(-boxH * 0.45, boxH * 0.45);
+      targetX = centerX + p.random(-safeBoxW * 0.45, safeBoxW * 0.45);
+      targetY = centerY + p.random(-safeBoxH * 0.45, safeBoxH * 0.45);
     }
 
-    // 💡 [패치 요령 4]: 통합 Lite 팩토리 리스트에 맞게 spawning logic 리펙토링
-    const totalTextures = this.textureCachesList ? this.textureCachesList.length : 1;
-    const typeOffset = style === 'neon' ? 0 : style === 'pastel' ? 8 : style === 'monochrome' ? 16 : 0; // 통합 리스트의 인덱스 오프셋 연산
-    const shuffledIdx = p.floor(p.random(totalTextures)); // 전체 리스트 중 무작위 셔플 (rain 효과 제외)
+    // 팩토리 슬라이싱 셔플 정보 매핑 (단풍:0~7, 풀잎:8~15, 눈꽃:16~23)
+    let baseOffset = 0;
+    if (style === 'pastel') baseOffset = 8;
+    if (style === 'monochrome') baseOffset = 16;
+
+    const shuffledIdx = baseOffset + p.floor(p.random(8)); 
 
     this.particles.push({
       x: startX, y: startY,
@@ -315,17 +318,18 @@ export default class P5SrtCanvasStage {
       waveSeed: p.random(100), waveAmp: p.random(25, 55), alpha: 255,
       isTargetingText: isCoveringTimeWindow, 
       isSettledOnText: false,
-      textureIdx: shuffledIdx // Lite 팩토리 전용 무작위 셔플 인덱스 바인딩
+      textureIdx: shuffledIdx 
     });
 
     if (this.particles.length > 350) { this.particles.shift(); }
   }
 
   updateParticlesPhysics(p, settings, custom, isCoveringTimeWindow) {
+    const style = settings.colorStyle;
     for (let i = this.particles.length - 1; i >= 0; i--) {
       let pt = this.particles[i];
 
-      if (settings.colorStyle === 'earth') {
+      if (style === 'earth') {
         pt.alpha -= 10; 
         if (pt.alpha <= 0) this.particles.splice(i, 1);
       } else {
@@ -358,7 +362,6 @@ export default class P5SrtCanvasStage {
   }
 
   drawLiveParticles(p, glowRaw, custom) {
-    // rain 효과 전용 루틴 분리
     const style = window.cosmicEngineSettings ? window.cosmicEngineSettings.colorStyle : 'neon';
     if (style === 'earth') {
       for (let i = 0; i < this.particles.length; i++) {
@@ -374,15 +377,10 @@ export default class P5SrtCanvasStage {
   }
 
   drawCachedTextureShape(target, pt, useEndSize, glowRaw, custom) {
-    // 💡 [패치 요령 5]: 통합 Lite 팩토리 전용 텍스처 인덱싱 루틴 시공
     if (!this.textureCachesList || this.textureCachesList.length === 0) return;
     
-    // spawning logic에서 바인딩된 shuffledIdx를 그대로 사용하여 무작위성 확보
+    let cachedGraphics = this.textureCachesList[pt.textureIdx % this.textureCachesList.length]; 
     const style = window.cosmicEngineSettings ? window.cosmicEngineSettings.colorStyle : 'neon';
-    const totalTextures = this.textureCachesList.length;
-    let cachedGraphics = this.textureCachesList[pt.textureIdx % totalTextures]; // Lite 팩토리 무작위 셔플링
-
-    // snow 효과 전용 특수 드로우 루틴 시공
     const isSnow = style === 'monochrome';
     const renderSize = useEndSize ? pt.endSize : pt.currentSize;
 
@@ -391,7 +389,7 @@ export default class P5SrtCanvasStage {
       p.push(); p.translate(pt.x, pt.y); p.rotate(pt.angle);
       if (isSnow && glowRaw > 0) {
         let ctx = p.drawingContext;
-        ctx.save(); ctx.shadowBlur = p.map(glowRaw, 10, 250, 15, 60); ctx.shadowColor = custom.gas2;
+        ctx.save(); ctx.shadowBlur = p.map(glowRaw, 10, 250, 15, 60); ctx.shadowColor = custom?.gas2 || '#ffffff';
         p.image(cachedGraphics, -renderSize, -renderSize, renderSize * 2, renderSize * 2);
         ctx.restore();
       } else {
@@ -407,19 +405,25 @@ export default class P5SrtCanvasStage {
 
   drawSubtitle(p, style, settings, custom, isCoveringTimeWindow, coverFactor, currentSub, fontSize, tracking, leading, offX, offY) {
     const text = window.currentSubtitleText || "";
-    if (!text) return;
+    if (!text) return; // 자막 데이터 부재 시 예외 프리그 탈출 가드
 
     let textColorStyle = '#ffffff';
     if (style === 'monochrome' || style === 'earth' || style === 'custom') {
-      textColorStyle = custom.star; 
+      textColorStyle = custom?.star || '#ffffff'; 
     }
 
-    if (text !== this.lastRenderedText || fontSize !== this.lastRenderedFontSize || textColorStyle !== this.lastRenderedColor) {
-      this.renderSubtitleCache(p, text, fontSize, tracking, leading, textColorStyle);
+    const safeFontSize = isNaN(fontSize) || fontSize <= 0 ? 60 : fontSize;
+    const safeTracking = isNaN(tracking) || tracking <= 0 ? 40 : tracking;
+    const safeLeading = isNaN(leading) || leading <= 0 ? 80 : leading;
+
+    if (text !== this.lastRenderedText || safeFontSize !== this.lastRenderedFontSize || textColorStyle !== this.lastRenderedColor) {
+      this.renderSubtitleCache(p, text, safeFontSize, safeTracking, safeLeading, textColorStyle);
       this.lastRenderedText = text;
-      this.lastRenderedFontSize = fontSize;
+      this.lastRenderedFontSize = safeFontSize;
       this.lastRenderedColor = textColorStyle;
     }
+
+    if (!this.subtitleBuffer) return;
 
     p.push(); p.imageMode(p.CENTER);
     let alphaLock = 255;
@@ -438,7 +442,6 @@ export default class P5SrtCanvasStage {
     if (this.p5Instance) { this.p5Instance.remove(); this.p5Instance = null; }
     if (this.accumulationBuffer) { this.accumulationBuffer.remove(); this.accumulationBuffer = null; }
     if (this.subtitleBuffer) { this.subtitleBuffer.remove(); this.subtitleBuffer = null; }
-    // [패치 요령 6]: Lite 팩토리 리스트 통합 해제
     if (this.textureCachesList) {
       this.textureCachesList.forEach(g => g?.remove());
       this.textureCachesList = null;
