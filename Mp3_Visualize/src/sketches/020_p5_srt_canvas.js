@@ -1,16 +1,19 @@
 /**
  * src/sketches/020_p5_srt_canvas.js
- * - [버전] Ver 19.5 (HTML5 native 이미지 드로우 및 30FPS 절대 레이어 가림 마스터판)
- * - p.image()의 규격 불일치로 인한 사일런트 크래시 버그를 p.drawingContext.drawImage() 시공으로 완벽 치유
- * - 레이어 정렬 구조: [HTML5 native 배경] -> [바닥 축적 버퍼] -> [가사 자막] -> [라이브/가림 파티클]
+ * - [버전] Ver 20.0 (독립 settledParticles 보관소 및 리얼 적층 가림 엔진)
+ * - 안착 입자를 독립 배열로 격리하여 개수 상한 필터에 의해 가림 잎사귀가 사전 증발하던 버그 완치
+ * - 다음 자막 출현 시, 이전 자막을 덮은 잎더미를 바닥 레이어로 완벽히 구워내어(Bake) 그 위에 새 자막이 적층 출현함
  * - 초기화(RESET) 실행 시마다 'Black Han Sans'와 'Noto Sans KR' 중 1종 무작위 자동 셔플링
- * - 30FPS 하드웨어 가속 고정으로 부하율 제로 실현
+ * - 30FPS 하드웨어 가속 고정 및 HTML5 native 배경 컨텍스트 드로우 결합
  */
 export default class P5SrtCanvasStage {
   constructor(container) {
     this.container = container;
     this.p5Instance = null;
+    
+    // 💡 [레이어 혁명]: 공중 비행 입자와 자막 안착 입자를 완전 분리하여 사전 삭제 버그 원천 봉쇄
     this.particles = [];
+    this.settledParticles = []; 
     
     this.accumulationBuffer = null;
     this.subtitleBuffer = null; 
@@ -24,7 +27,7 @@ export default class P5SrtCanvasStage {
     
     this.currentFont = 'Black Han Sans';
     this.textureCachesList = null; 
-    this.version = "020호 Native Image Context Engine Ver 19.5";
+    this.version = "020호 Layered Accumulation Engine Ver 20.0";
   }
 
   init() {
@@ -43,7 +46,7 @@ export default class P5SrtCanvasStage {
         // 초기화 및 리셋 시 가사 폰트 2종 중 무작위 자동 결정
         const fontPool = ['Black Han Sans', 'Noto Sans KR'];
         this.currentFont = p.random(fontPool);
-        console.log(`🎨 [FONT ENGINE] 캔버스 가사 서체 무작위 세팅 완료: ${this.currentFont}`);
+        console.log(`🎨 [FONT ENGINE] 적층 무대 가사 서체 무작위 세팅 완료: ${this.currentFont}`);
         
         this.createTextureFactories(p);
         
@@ -72,7 +75,7 @@ export default class P5SrtCanvasStage {
           this.lastHeight = p.height;
         }
 
-        // 💡 [버그 완치 핵심]: p5 타입 에러를 원천 배제하기 위해 브라우저 native 2D 그래픽 쉘로 직접 드로우
+        // 1단계 최하단 바닥 레이어: 외부 땅바닥/호수바닥 배경 이미지 실시간 합성
         if (window.currentUploadedImageElement) {
           p.drawingContext.drawImage(window.currentUploadedImageElement, 0, 0, p.width, p.height);
         }
@@ -102,14 +105,13 @@ export default class P5SrtCanvasStage {
         const centerX = (p.width / 2) + offX;
         const centerY = (p.height / 2) + offY;
 
-        // 가사가 다음 구절로 바뀔 때 글자 위 고착 낙엽들을 배경 버퍼로 강제 압착 굽기
+        // 💡 [리얼 적층 구현 트리거]: 가사가 교체되는 정확한 타이밍에, 이전 글자를 완전히 덮고 있던 
+        // 잎사귀 보관소(settledParticles) 물량을 바닥 배경 버퍼로 리얼 타임 압착 베이킹(Bake) 시킵니다.
         if (text !== this.lastTrackedText) {
-          this.particles.forEach(pt => {
-            if (pt.isSettledOnText) {
-              this.drawCachedTextureShape(this.accumulationBuffer, pt, true, 0, custom);
-            }
+          this.settledParticles.forEach(pt => {
+            this.drawCachedTextureShape(this.accumulationBuffer, pt, true, 0, custom);
           });
-          this.particles = this.particles.filter(pt => !pt.isSettledOnText);
+          this.settledParticles = []; // 새 가사를 위해 안착 보관소 완전 초기화 (사전 유실 절대 없음)
           this.lastTrackedText = text;
         }
 
@@ -143,18 +145,22 @@ export default class P5SrtCanvasStage {
         // 시스템 진단 HUD 통신 가동
         window.sketchDiagnostics = {
           fps: p.floor(p.frameRate()),
-          particleCount: this.particles.length,
+          particleCount: this.particles.length + this.settledParticles.length,
           isCovering: isCoveringTimeWindow,
           activeFunction: `Render[Font:${this.currentFont.replace(/ /g,'')}]`
         };
 
-        // 2단계 레이어: 배경 위에 차곡차곡 누적되는 잎사귀 평면 안착 버퍼 투사
+        // =======================================================
+        // 💡 [회원님 기획 통찰 반영: 가사 절대 상위 레이어 적층 시스템]
+        // =======================================================
+        
+        // 2단계 레이어: 배경 이미지와 과거 가사들이 파묻혀 누적된 리얼 잎더미 융단 투사
         p.image(this.accumulationBuffer, 0, 0);
         
-        // 3단계 레이어: 100% 불투명도로 가사 자막 선명하게 노출 (배경 낙엽 위에 안전하게 안착)
+        // 3단계 레이어: 100% 불투명도로 다음 가사 자막을 노출 (과거에 쌓인 잎더미 '위'로 깨끗이 안착)
         this.drawSubtitle(p, style, settings, custom, isCoveringTimeWindow, coverFactor, currentSub, fontSize, tracking, leading, offX, offY);
         
-        // 4단계 레이어: 공중 파티클 및 자막 표면에 안착하여 글씨를 덮어 지워버리는 물리 가림 잎사귀 최상단 투사
+        // 4단계 레이어: 현재 공중 비행 입자 및 현재 활성화된 가사 표면을 가리고 있는 실시간 입자 투사
         this.drawLiveParticles(p, glowRaw, custom);
       };
     };
@@ -166,7 +172,7 @@ export default class P5SrtCanvasStage {
     const settings = window.cosmicEngineSettings || { customColors: { gas1: '#ff4500', gas2: '#8b0000', star: '#ffff00' } };
     const custom = settings.customColors || { gas1: '#ff4500', gas2: '#8b0000', star: '#ffff00' };
 
-    // 단풍잎(Neon): 노랑, 주황, 다홍, 마른 흙갈색 그라데이션 조합 (8종)
+    // 단풍잎(Neon 무드): 노랑, 주황, 다홍, 마른 흙갈색 그라데이션 조합 (8종)
     const leafMixes = [
       { c0: '#ffe04d', c1: '#ff5a21', c2: '#5e1b00', size: 35 }, 
       { c0: custom.star,c1: '#d63300', c2: '#4a1200', size: 36 }, 
@@ -194,7 +200,7 @@ export default class P5SrtCanvasStage {
       this.textureCachesList.push(pg);
     });
 
-    // 풀잎(Pastel): 연두, 초록, 상록수 그린 8종 디자인
+    // 풀잎(Pastel 무드): 연두, 초록, 상록수 그린 8종 디자인
     const greenMixes = [
       { c0: '#bdf567', c1: '#37bd51', c2: '#0e4a1a', size: 38 }, 
       { c0: '#a3eb81', c1: '#26996c', c2: '#093f2c', size: 36 }, 
@@ -218,7 +224,7 @@ export default class P5SrtCanvasStage {
       this.textureCachesList.push(pg);
     });
 
-    // 눈꽃송이(Monochrome): 고선명 겨울 성에 결정 캐시 (8종)
+    // 눈꽃송이(Monochrome 무드): 고선명 겨울 결정 캐시 (8종)
     for (let i = 0; i < 8; i++) {
       let pg = p.createGraphics(128, 128); let ctx = pg.drawingContext; let size = p.random(30, 40);
       ctx.save(); ctx.translate(64, 64);
@@ -314,11 +320,11 @@ export default class P5SrtCanvasStage {
       angle: p.random(p.TWO_PI), spin: p.random(-0.04, 0.04),
       waveSeed: p.random(100), waveAmp: p.random(25, 55), alpha: 255,
       isTargetingText: isCoveringTimeWindow, 
-      isSettledOnText: false,
       textureIdx: shuffledIdx 
     });
 
-    if (this.particles.length > 350) { this.particles.shift(); }
+    // 💡 날아다니는 공중 파티클만 상한 캡을 씌워 메모리 최적화 완수 (안착 물량은 간섭 안함)
+    if (this.particles.length > 400) { this.particles.shift(); }
   }
 
   updateParticlesPhysics(p, settings, custom, isCoveringTimeWindow) {
@@ -330,8 +336,6 @@ export default class P5SrtCanvasStage {
         pt.alpha -= 10; 
         if (pt.alpha <= 0) this.particles.splice(i, 1);
       } else {
-        if (pt.isSettledOnText) continue;
-
         if (pt.pct < 1.0) {
           pt.pct += pt.step;
           if (pt.pct > 1.0) pt.pct = 1.0;
@@ -348,7 +352,9 @@ export default class P5SrtCanvasStage {
 
         if (pt.pct >= 1.0) {
           if (isCoveringTimeWindow && pt.isTargetingText) {
-            pt.isSettledOnText = true; 
+            // 💡 [개혁 수식]: 안착에 성공한 입자는 파괴 한계선이 없는 철통 '독립 보관소'로 즉시 이송
+            this.settledParticles.push(pt); 
+            this.particles.splice(i, 1);
           } else {
             this.drawCachedTextureShape(this.accumulationBuffer, pt, true, 0, custom);
             this.particles.splice(i, 1);
@@ -367,8 +373,13 @@ export default class P5SrtCanvasStage {
         p.ellipse(pt.x, pt.y, (255 - pt.alpha) * (pt.endSize * 0.05));
       }
     } else {
+      // 1) 공중 비행 라이브 입자 드로우
       for (let i = 0; i < this.particles.length; i++) {
-        this.drawCachedTextureShape(p, this.particles[i], this.particles[i].isSettledOnText, glowRaw, custom);
+        this.drawCachedTextureShape(p, this.particles[i], false, glowRaw, custom);
+      }
+      // 2) 💡 [절대 최상단 가림]: 현재 활성화된 구절 위를 덮고 있는 안착 잎사귀들을 최종 투사 (가독성 완전 은폐)
+      for (let i = 0; i < this.settledParticles.length; i++) {
+        this.drawCachedTextureShape(p, this.settledParticles[i], true, glowRaw, custom);
       }
     }
   }
@@ -444,5 +455,6 @@ export default class P5SrtCanvasStage {
       this.textureCachesList = null;
     }
     this.particles = [];
+    this.settledParticles = [];
   }
 }
