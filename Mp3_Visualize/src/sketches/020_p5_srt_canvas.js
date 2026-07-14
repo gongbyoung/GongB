@@ -1,11 +1,10 @@
 /**
  * src/sketches/020_p5_srt_canvas.js
- * - [버전] Ver 19.0 (누락된 입자 판별 엔진 복구 및 가사 공백 방어 마스터판)
- * - spawnParticle 내부의 ReferenceError: type 변수 선언부를 완벽하게 부활시켜 흑화 현상 완치
- * - Neon 단풍잎: 중심의 찬란한 노랑, 주황에서 외곽의 마른 대지 갈색까지 섞인 입체적 오가닉 단풍 8종 탑재
- * - Pastel 풀잎: 연두, 잔디초록, 깊은 상록수 그린 계열 8종 그라데이션으로 리얼 초록잎 무드 완전 고정
- * - 가사 미로딩(음악 정지 상태) 시 Bounding Box 연산이 NaN으로 튕기며 버퍼가 깨지던 취약점 가드 조치
- * - 30FPS 하드웨어 가속 최적화 락 고정 및 가사 레이어 절대 물리 가림 구조 시공
+ * - [버전] Ver 19.5 (HTML5 native 이미지 드로우 및 30FPS 절대 레이어 가림 마스터판)
+ * - p.image()의 규격 불일치로 인한 사일런트 크래시 버그를 p.drawingContext.drawImage() 시공으로 완벽 치유
+ * - 레이어 정렬 구조: [HTML5 native 배경] -> [바닥 축적 버퍼] -> [가사 자막] -> [라이브/가림 파티클]
+ * - 초기화(RESET) 실행 시마다 'Black Han Sans'와 'Noto Sans KR' 중 1종 무작위 자동 셔플링
+ * - 30FPS 하드웨어 가속 고정으로 부하율 제로 실현
  */
 export default class P5SrtCanvasStage {
   constructor(container) {
@@ -25,7 +24,7 @@ export default class P5SrtCanvasStage {
     
     this.currentFont = 'Black Han Sans';
     this.textureCachesList = null; 
-    this.version = "020호 Hardware-Accelerated Optimized Engine Ver 19.0";
+    this.version = "020호 Native Image Context Engine Ver 19.5";
   }
 
   init() {
@@ -73,9 +72,9 @@ export default class P5SrtCanvasStage {
           this.lastHeight = p.height;
         }
 
-        // 1단계 최하단 바닥 레이어: 외부 땅바닥/호수바닥 배경 이미지 실시간 합성
+        // 💡 [버그 완치 핵심]: p5 타입 에러를 원천 배제하기 위해 브라우저 native 2D 그래픽 쉘로 직접 드로우
         if (window.currentUploadedImageElement) {
-          p.image(window.currentUploadedImageElement, 0, 0, p.width, p.height);
+          p.drawingContext.drawImage(window.currentUploadedImageElement, 0, 0, p.width, p.height);
         }
 
         // SRT 가사 동기화 타임라인 추적
@@ -103,7 +102,7 @@ export default class P5SrtCanvasStage {
         const centerX = (p.width / 2) + offX;
         const centerY = (p.height / 2) + offY;
 
-        // 가사가 다음 구절로 바뀔 때 글자 위 고착 낙엽들을 배경 버퍼로 강제 압착 굽기(Bake)
+        // 가사가 다음 구절로 바뀔 때 글자 위 고착 낙엽들을 배경 버퍼로 강제 압착 굽기
         if (text !== this.lastTrackedText) {
           this.particles.forEach(pt => {
             if (pt.isSettledOnText) {
@@ -152,7 +151,7 @@ export default class P5SrtCanvasStage {
         // 2단계 레이어: 배경 위에 차곡차곡 누적되는 잎사귀 평면 안착 버퍼 투사
         p.image(this.accumulationBuffer, 0, 0);
         
-        // 3단계 레이어: 100% 불투명도로 가사 자막 선명하게 노출 (배경 낙엽 더미 위에 깔끔히 얹어짐)
+        // 3단계 레이어: 100% 불투명도로 가사 자막 선명하게 노출 (배경 낙엽 위에 안전하게 안착)
         this.drawSubtitle(p, style, settings, custom, isCoveringTimeWindow, coverFactor, currentSub, fontSize, tracking, leading, offX, offY);
         
         // 4단계 레이어: 공중 파티클 및 자막 표면에 안착하여 글씨를 덮어 지워버리는 물리 가림 잎사귀 최상단 투사
@@ -162,18 +161,17 @@ export default class P5SrtCanvasStage {
     this.p5Instance = new window.p5(sketch, this.container);
   }
 
-  // 💡 [그라데이션 세분화]: 진짜 가을 산길 낙엽의 노랑/갈색 조화 및 PASTEL용 리얼 초록색류 분리 팩토리
   createTextureFactories(p) {
     this.textureCachesList = []; 
     const settings = window.cosmicEngineSettings || { customColors: { gas1: '#ff4500', gas2: '#8b0000', star: '#ffff00' } };
     const custom = settings.customColors || { gas1: '#ff4500', gas2: '#8b0000', star: '#ffff00' };
 
-    // 🍁 1. 단풍잎(Neon 무드): 노랑, 주황, 다홍, 마른 흙갈색이 한 조각 안에 수묵화처럼 번져있는 진짜 낙엽 조합 (8종)
+    // 단풍잎(Neon): 노랑, 주황, 다홍, 마른 흙갈색 그라데이션 조합 (8종)
     const leafMixes = [
-      { c0: '#ffe04d', c1: '#ff5a21', c2: '#5e1b00', size: 35 }, // 골드노랑 -> 단풍주황 -> 마른 대지 갈색
-      { c0: custom.star,c1: '#d63300', c2: '#4a1200', size: 36 }, // 커스텀Star -> 붉은다홍 -> 밤색 갈색
-      { c0: '#ff9933', c1: custom.gas1,c2: '#360a00', size: 34 }, // 노란 앰버 -> 커스텀1 -> 다크 브라운
-      { c0: '#ffa644', c1: '#b31800', c2: custom.gas2, size: 35 }, // 주황빛 -> 피빛 크림슨 -> 커스텀2 갈색
+      { c0: '#ffe04d', c1: '#ff5a21', c2: '#5e1b00', size: 35 }, 
+      { c0: custom.star,c1: '#d63300', c2: '#4a1200', size: 36 }, 
+      { c0: '#ff9933', c1: custom.gas1,c2: '#360a00', size: 34 }, 
+      { c0: '#ffa644', c1: '#b31800', c2: custom.gas2, size: 35 }, 
       { c0: '#ffea70', c1: custom.gas1,c2: '#732c02', size: 32 }, 
       { c0: '#ffd214', c1: '#c62828', c2: '#4a1102', size: 37 }, 
       { c0: '#ff6f40', c1: custom.gas2,c2: '#3a2521', size: 33 }, 
@@ -196,10 +194,10 @@ export default class P5SrtCanvasStage {
       this.textureCachesList.push(pg);
     });
 
-    // 🍃 2. 풀잎(Pastel 무드): 붉은 간섭을 원천 차단하고 연두, 초록, 상록수 숲속 그린으로 완전 고정된 8종 디자인
+    // 풀잎(Pastel): 연두, 초록, 상록수 그린 8종 디자인
     const greenMixes = [
-      { c0: '#bdf567', c1: '#37bd51', c2: '#0e4a1a', size: 38 }, // 라임연두 -> 실시간 잔디초록 -> 깊은 삼림그린
-      { c0: '#a3eb81', c1: '#26996c', c2: '#093f2c', size: 36 }, // 새싹연두 -> 비취초록 -> 다크 포레스트
+      { c0: '#bdf567', c1: '#37bd51', c2: '#0e4a1a', size: 38 }, 
+      { c0: '#a3eb81', c1: '#26996c', c2: '#093f2c', size: 36 }, 
       { c0: '#d9fa6f', c1: '#6ec73b', c2: '#1d6313', size: 37 }, 
       { c0: '#c1ef94', c1: '#4aaf4a', c2: '#12541d', size: 38 }, 
       { c0: '#9ee05c', c1: '#30903a', c2: '#0a3b0d', size: 35 }, 
@@ -220,7 +218,7 @@ export default class P5SrtCanvasStage {
       this.textureCachesList.push(pg);
     });
 
-    // ❄️ 3. 눈꽃송이(Monochrome 무드): 고선명 겨울 성에 결정 캐시 (8종)
+    // 눈꽃송이(Monochrome): 고선명 겨울 성에 결정 캐시 (8종)
     for (let i = 0; i < 8; i++) {
       let pg = p.createGraphics(128, 128); let ctx = pg.drawingContext; let size = p.random(30, 40);
       ctx.save(); ctx.translate(64, 64);
@@ -251,7 +249,9 @@ export default class P5SrtCanvasStage {
     }
     
     let sb = this.subtitleBuffer;
-    sb.clear(); sb.textFont(this.currentFont); sb.textSize(fontSize); sb.textAlign(p.CENTER, p.CENTER);
+    sb.clear(); 
+    sb.textFont(this.currentFont || 'sans-serif'); 
+    sb.textSize(fontSize); sb.textAlign(p.CENTER, p.CENTER);
     sb.fill(textColorStyle); sb.noStroke();
     
     lines.forEach((line, lineIdx) => {
@@ -273,7 +273,6 @@ export default class P5SrtCanvasStage {
     const scatterRaw = settings.scatterExponent > 5 ? settings.scatterExponent : settings.scatterExponent * 10;
     const speedScale = p.map(scatterRaw, 5, 50, 0.024, 0.09);
 
-    // 💡 [원인 완치]: 누락되었던 쉐이프 무드 판별문을 완벽하게 부활시켜 ReferenceError 근절!
     let type = 'leaf';
     if (style === 'pastel') type = 'grass';
     if (style === 'monochrome') type = 'snow';
@@ -287,7 +286,6 @@ export default class P5SrtCanvasStage {
     let targetX = p.random(p.width);
     let targetY = p.random(p.height);
 
-    // 💡 [NaN 가사 가드]: 자막 미로딩 시 구역 폭이 NaN으로 환산되어 튕기는 연산 오차 방어
     const safeBoxW = isNaN(boxW) || boxW <= 0 ? 100 : boxW;
     const safeBoxH = isNaN(boxH) || boxH <= 0 ? 50 : boxH;
 
@@ -302,7 +300,6 @@ export default class P5SrtCanvasStage {
       targetY = centerY + p.random(-safeBoxH * 0.45, safeBoxH * 0.45);
     }
 
-    // 팩토리 슬라이싱 셔플 정보 매핑 (단풍:0~7, 풀잎:8~15, 눈꽃:16~23)
     let baseOffset = 0;
     if (style === 'pastel') baseOffset = 8;
     if (style === 'monochrome') baseOffset = 16;
@@ -405,7 +402,7 @@ export default class P5SrtCanvasStage {
 
   drawSubtitle(p, style, settings, custom, isCoveringTimeWindow, coverFactor, currentSub, fontSize, tracking, leading, offX, offY) {
     const text = window.currentSubtitleText || "";
-    if (!text) return; // 자막 데이터 부재 시 예외 프리그 탈출 가드
+    if (!text) return; 
 
     let textColorStyle = '#ffffff';
     if (style === 'monochrome' || style === 'earth' || style === 'custom') {
