@@ -1,10 +1,10 @@
 /**
  * src/sketches/020_p5_srt_canvas.js
- * - [버전] Ver 16.5 (30FPS 하드웨어 락 및 리얼 물리 가림 엔진)
- * - 30FPS 고정 시공으로 CPU/메모리 부하 원천 파괴 및 부드러운 하드웨어 가속 보장
- * - 가사 투명화(Alpha Fade) 및 상승 트랜지션 전면 폐기 -> 완전 불투명(255) 상태로 즉시 출현
- * - 레이어 재정렬: [축적 버퍼] -> [자막(완전불투명)] -> [라이브/자막 가림 파티클] 순으로 시공하여 진짜 물리 가림 실현
- * - 가사 변경 시 글자를 덮고 있던 최상단 낙엽 조각들을 바닥 버퍼로 즉시 베이킹(Bake) 처리
+ * - [버전] Ver 17.0 (하드웨어 30FPS 락 & 폰트 랜덤 셔플 및 절대 레이어 가림 엔진)
+ * - 초기화(RESET) 버튼을 누를 때마다 'Black Han Sans'와 'Noto Sans KR' 중 하나를 100% 무작위 자동 선택 바인딩
+ * - 레이어 가림 절대성 확보: 가림 타이밍 시 가사 레이어 위로 쉐이프 텍스처를 강제 오버레이 투사하여 물리적 매립 완수
+ * - 가사 변경 트리거 발생 즉시 글자 위 낙엽들을 바닥 버퍼로 백베이킹(Bake)하여 다음 자막의 클린 출현 레이어 보장
+ * - 30FPS 하드웨어 가속 최적화 고정으로 지연 및 버벅임 100% 영구 동결
  */
 export default class P5SrtCanvasStage {
   constructor(container) {
@@ -18,12 +18,16 @@ export default class P5SrtCanvasStage {
     this.lastHeight = 0;
     
     this.lastTrackedText = "";
+    this.subtitleRiseY = 0;
     this.lastRenderedText = "";
     this.lastRenderedFontSize = 0;
     this.lastRenderedColor = "";
     
+    // 💡 [폰트 랜덤 스위칭 상태 변수]
+    this.currentFont = 'Black Han Sans';
+    
     this.textureCaches = null;
-    this.version = "020호 30FPS Real Masking Engine Ver 16.5";
+    this.version = "020호 Random Font & Absolute Overlay Engine Ver 17.0";
   }
 
   init() {
@@ -39,9 +43,14 @@ export default class P5SrtCanvasStage {
         this.lastWidth = p.width;
         this.lastHeight = p.height;
         
+        // 💡 [알고리즘 1: 폰트 랜덤 초기화]: 리셋/기동 시마다 두 명품 폰트 중 하나를 무작위 선정
+        const fontPool = ['Black Han Sans', 'Noto Sans KR'];
+        this.currentFont = p.random(fontPool);
+        console.log(`🎨 [FONT ENGINE] 현재 무작위 선택된 자막 글꼴: ${this.currentFont}`);
+        
         this.createTextureFactories(p);
         
-        // 💡 [30FPS 락 체결]: 초당 30프레임으로 제한하여 그래픽 가속 연산 최적화 고정
+        // 30FPS 하드웨어 락 고정
         p.frameRate(30);
         p.loop();
       };
@@ -91,14 +100,13 @@ export default class P5SrtCanvasStage {
         const centerX = (p.width / 2) + offX;
         const centerY = (p.height / 2) + offY;
 
-        // 💡 [가사 변경 및 전경 베이킹 트리거]: 가사가 바뀔 때 글자 위에 얹혀있던 낙엽들을 바닥 버퍼로 즉시 구워버림
+        // 가사 변환 시 최상단 고착 낙엽들을 바닥 배경 버퍼로 완전 압착 베이킹(Bake) 처리
         if (text !== this.lastTrackedText) {
           this.particles.forEach(pt => {
             if (pt.isSettledOnText) {
               this.drawCachedTextureShape(this.accumulationBuffer, pt, true, 0, custom);
             }
           });
-          // 글자 위 낙엽들을 라이브 배열에서 일제 청소하여 새 가사 출현 공간 확보
           this.particles = this.particles.filter(pt => !pt.isSettledOnText);
           this.lastTrackedText = text;
         }
@@ -117,11 +125,11 @@ export default class P5SrtCanvasStage {
           }
         }
 
-        // 30fps 최적화에 맞춘 동적 스폰 밀도 보정
+        // 프레임 밀도 스폰 보정
         let spawnRate = p.frameCount % 2 === 0 ? 1 : 0; 
         if (isCoveringTimeWindow) {
           const gaugeRaw = settings.gaugeValue > 1 ? settings.gaugeValue : settings.gaugeValue * 100;
-          spawnRate = p.floor(p.map(coverFactor, 0.0, 1.0, 2, p.max(4, p.floor(gaugeRaw * 0.45))));
+          spawnRate = p.floor(p.map(coverFactor, 0.0, 1.0, 2, p.max(5, p.floor(gaugeRaw * 0.55))));
         }
 
         for (let k = 0; k < spawnRate; k++) {
@@ -130,22 +138,25 @@ export default class P5SrtCanvasStage {
 
         this.updateParticlesPhysics(p, settings, custom, isCoveringTimeWindow);
 
-        // 시스템 진단 HUD 통신 데이터 스트림
+        // 시스템 진단 HUD 매핑
         window.sketchDiagnostics = {
           fps: p.floor(p.frameRate()),
           particleCount: this.particles.length,
           isCovering: isCoveringTimeWindow,
-          activeFunction: isCoveringTimeWindow ? "PhysicalTargetBurying()" : "AmbientDrifting()"
+          activeFunction: `Render[Font:${this.currentFont.replace(/ /g,'')}]`
         };
 
-        // 💡 [레이어링의 대혁명 연출 큐]: 자막을 바닥 버퍼 위, 라이브 입자 아래에 샌드위치 시공
-        // 1단계: 기존에 쌓인 바닥 융단 낙엽 드로우
+        // ==========================================
+        // 💡 [알고리즘 2: 절대 레이어 적층 시공 파이프라인]
+        // ==========================================
+        
+        // 1단계(최하단 바닥): 기존에 이미 안착해 깔려있던 낙엽 버퍼 투사
         p.image(this.accumulationBuffer, 0, 0);
         
-        // 2단계: 그 위에 100% 완전 불투명 상태로 가사 자막을 정갈하게 인쇄 (배경 낙엽 위에 얹어짐)
+        // 2단계(중간 전경): 100% 완전 불투명 상태로 순수 가사 자막을 정갈하게 인쇄 (낙엽 위에 얹어짐)
         this.drawSubtitle(p, style, settings, custom, isCoveringTimeWindow, coverFactor, currentSub, fontSize, tracking, leading, offX, offY);
         
-        // 3단계: 공중 낙엽 및 글자 전면에 안착하여 글씨를 '진짜' 가려버리는 물리 낙엽 최상단 투사
+        // 3단계(최상단 덮개): 공중 비행 입자 및 자막 표면에 안착한 낙엽들을 자막 '위로' 최종 투사 (물리 가림 백프로 실현)
         this.drawLiveParticles(p, glowRaw, custom);
       };
     };
@@ -215,7 +226,11 @@ export default class P5SrtCanvasStage {
     }
     
     let sb = this.subtitleBuffer;
-    sb.clear(); sb.textFont('Black Han Sans'); sb.textSize(fontSize); sb.textAlign(p.CENTER, p.CENTER);
+    sb.clear(); 
+    
+    // 💡 초기화 시 랜덤 결정된 고유 폰트를 다이내믹 주입
+    sb.textFont(this.currentFont); 
+    sb.textSize(fontSize); sb.textAlign(p.CENTER, p.CENTER);
     sb.fill(textColorStyle); sb.noStroke();
     
     lines.forEach((line, lineIdx) => {
@@ -235,7 +250,6 @@ export default class P5SrtCanvasStage {
     const startSize = endSize * 3.0; 
 
     const scatterRaw = settings.scatterExponent > 5 ? settings.scatterExponent : settings.scatterExponent * 10;
-    // 💡 30fps 하향에 대응하여 보간 속도 계수를 2배 상향 터치
     const speedScale = p.map(scatterRaw, 5, 50, 0.024, 0.09);
 
     let type = 'leaf';
@@ -258,25 +272,24 @@ export default class P5SrtCanvasStage {
         guardLoop++;
       }
     } else {
-      // 가림 타이밍 시 가사 영역 내부 박스로 정밀 유착 분산화
-      targetX = centerX + p.random(-boxW * 0.5, boxW * 0.5);
-      targetY = centerY + p.random(-boxH * 0.5, boxH * 0.5);
+      // 💡 [정밀 유착 유도]: 가사 텍스트의 바운딩 면적 박스 스케일 내부로 목푯값 완전 정렬
+      targetX = centerX + p.random(-boxW * 0.45, boxW * 0.45);
+      targetY = centerY + p.random(-boxH * 0.45, boxH * 0.45);
     }
 
     this.particles.push({
       x: startX, y: type === 'rain' ? p.random(p.height) : startY,
       startX: startX, startY: startY, targetX: targetX, targetY: targetY,
-      pct: 0.0, 
-      step: isCoveringTimeWindow ? p.random(0.035, 0.09) : p.random(speedScale * 0.75, speedScale * 1.25),
+      pct: 0.0, step: isCoveringTimeWindow ? p.random(0.04, 0.095) : p.random(speedScale * 0.75, speedScale * 1.25),
       startSize: startSize, endSize: endSize, currentSize: startSize,
       angle: p.random(p.TWO_PI), spin: p.random(-0.04, 0.04),
       waveSeed: p.random(100), waveAmp: p.random(25, 55), type: type,
       shuffledTextureIdx: p.floor(p.random(100)), alpha: 255,
-      isTargetingText: isCoveringTimeWindow, // 가사 가림용 파티클 여부 바인딩
+      isTargetingText: isCoveringTimeWindow, 
       isSettledOnText: false
     });
 
-    if (this.particles.length > 200) { this.particles.shift(); }
+    if (this.particles.length > 350) { this.particles.shift(); }
   }
 
   updateParticlesPhysics(p, settings, custom, isCoveringTimeWindow) {
@@ -284,10 +297,9 @@ export default class P5SrtCanvasStage {
       let pt = this.particles[i];
 
       if (pt.type === 'rain') {
-        pt.alpha -= 10; // 30fps 대응 페이딩 속도 상향
+        pt.alpha -= 10; 
         if (pt.alpha <= 0) this.particles.splice(i, 1);
       } else {
-        // 이미 글자 위에 고착되어 가리고 있는 녀석은 물리 연산 스킵
         if (pt.isSettledOnText) continue;
 
         if (pt.pct < 1.0) {
@@ -304,10 +316,10 @@ export default class P5SrtCanvasStage {
           pt.angle += pt.spin;
         }
 
-        // 💡 [물리 가림의 핵심 알고리즘]: 목적지 도달 시 가사 가림용이면 최상단 레이어에 정지 고정, 일반 낙엽이면 바닥 버퍼로 즉시 전송
         if (pt.pct >= 1.0) {
           if (isCoveringTimeWindow && pt.isTargetingText) {
-            pt.isSettledOnText = true; // 가사 표면에 물리 박제 플래그 작동 (제거하지 않고 홀딩)
+            // 💡 가사 덮기용 알맹이는 소멸하지 않고 가사 정면 레이어 위에 그대로 정지 고정
+            pt.isSettledOnText = true; 
           } else {
             this.drawCachedTextureShape(this.accumulationBuffer, pt, true, 0, custom);
             this.particles.splice(i, 1);
@@ -324,7 +336,7 @@ export default class P5SrtCanvasStage {
         p.noFill(); p.stroke(custom.gas1); p.strokeWeight(2.5);
         p.ellipse(pt.x, pt.y, (255 - pt.alpha) * (pt.endSize * 0.05));
       } else {
-        // 공중 파티클 및 글자 전면 안착 가림 파티클 모두 최상단에 투사
+        // 💡 자막보다 나중에(최상단에) 드로우되므로 자막을 완벽하게 덮어버림
         this.drawCachedTextureShape(p, pt, pt.isSettledOnText, glowRaw, custom);
       }
     }
@@ -374,15 +386,14 @@ export default class P5SrtCanvasStage {
 
     p.push(); p.imageMode(p.CENTER);
     
-    // 💡 [투명화 완전 박멸]: 가림 윈도우 진행도에 상관없이 언제나 선명도 255(100% 불투명) 보존 고정
+    // 💡 [물리 가림 완치]: 가림 시간대에도 자막 자체의 불투명도는 언제나 선명하게 255 고정 (비 효과 제외)
     let alphaLock = 255;
     if (style === 'earth' && isCoveringTimeWindow && currentSub) {
-      // 비 효과 시에만 번져서 사라지는 디졸브 연출을 위해 알파 감쇄 허용
       alphaLock = p.constrain((1.0 - coverFactor) * 255, 0, 255);
     }
     p.tint(255, alphaLock);
     
-    // 💡 애니메이션 변위(riseY)를 제거하여 가사가 튀어오르지 않고 제자리에 즉시 고정 출현하도록 연동
+    // 튀어오르는 변위 없이 완벽 제자리에 깔끔 투사
     p.image(this.subtitleBuffer, (p.width / 2) + offX, (p.height / 2) + offY);
     p.pop();
   }
