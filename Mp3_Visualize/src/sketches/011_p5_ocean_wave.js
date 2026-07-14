@@ -1,6 +1,10 @@
 /**
- * 011_p5_ocean_wave.js
- * [수정됨] 유한 좌표 연산 패치를 통한 Non-finite error 방어 로직 내장
+ * src/sketches/011_p5_ocean_wave.js
+ * - [버전] Ver 2.0 (HTML5 native 이미지 드로우 및 입체 파도 레이어 통합판)
+ * - 외부 업로드 이미지(땅/호수바닥)를 가속 컨텍스트로 실시간 캡처하여 파이프라인 최하단 배경에 바인딩
+ * - p.image() 규격 불일치 에러를 우회하기 위해 p.drawingContext.drawImage() 고속 시공법 적용
+ * - 정렬 레이어: [HTML5 BG 이미지] -> [6채널 오디오 입체 파도 그라데이션] -> [스플래시 포말 파티클]
+ * - 시스템 진단 HUD 통신 가상 프레임 레이터 및 실시간 파티클 카운터 완벽 연동
  */
 export default class P5OceanWaveStage {
   constructor(container) {
@@ -16,6 +20,7 @@ export default class P5OceanWaveStage {
 
     this.loadedSeed = -1;
     this.shuffleMap = [0, 1, 2, 3, 4, 5];
+    this.version = "011호 Interactive Ocean BG Ver 2.0";
   }
 
   async init() {
@@ -43,12 +48,28 @@ export default class P5OceanWaveStage {
         const ctx = p.drawingContext;
         
         p.clear();
-        const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
-        bgGrad.addColorStop(0, '#02040a'); 
-        bgGrad.addColorStop(0.5, '#051020'); 
-        bgGrad.addColorStop(1, '#000000'); 
-        ctx.fillStyle = bgGrad;
-        ctx.fillRect(0, 0, width, height);
+
+        // 💡 [알고리즘 1: 리얼 땅바닥/호수바닥 텍스처 레이어 시공]
+        // 업로드 창을 통해 주입된 배경 이미지가 존재하면 브라우저 native 2D 그래픽 쉘로 직접 배경 바닥에 드로우
+        if (window.currentUploadedImageElement) {
+          ctx.drawImage(window.currentUploadedImageElement, 0, 0, width, height);
+        } else {
+          // 배경 이미지가 없을 경우Fallback용 오가닉 그라데이션 투사
+          const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
+          bgGrad.addColorStop(0, '#02040a'); 
+          bgGrad.addColorStop(0.5, '#051020'); 
+          bgGrad.addColorStop(1, '#000000'); 
+          ctx.fillStyle = bgGrad;
+          ctx.fillRect(0, 0, width, height);
+        }
+
+        // 실시간 진단 HUD 모니터링 데이터 바인딩 스트리밍
+        window.sketchDiagnostics = {
+          fps: p.floor(p.frameRate()) === 0 ? 30 : p.floor(p.frameRate()),
+          particleCount: this.particles.length,
+          isCovering: false,
+          activeFunction: window.currentUploadedImageElement ? "Ocean[BG_Mapped]" : "Ocean[Grad_Mapped]"
+        };
 
         if (!this.currentAudioData) return;
 
@@ -102,7 +123,7 @@ export default class P5OceanWaveStage {
           const spread = (bottomBoundary - topBoundary) * (scatter / 2.2);
           let baseY = midPoint - (spread / 2) + (idx / 5) * spread;
 
-          // 💡 [안전패치]: Non-finite 방어용 좌표 가공
+          // Non-finite 방어용 유한 공간 좌표계 스퀴즈 가공
           const gradY0 = Math.max(0, Math.min(height, baseY - amplitude));
           const gradY1 = Math.max(0, Math.min(height, baseY + height*0.3));
 
@@ -126,7 +147,7 @@ export default class P5OceanWaveStage {
             let waveOffset = p.sin(x * 0.01 + time + idx) * 0.5 + 0.5; 
             let y = baseY - (noiseVal * waveOffset) * amplitude * 2.0;
             
-            // 파티클 생성 로직
+            // 주파수 타격 변위(delta) 감지 시 물보라 포말 파티클 생성 로직
             if (delta > 5.0 && noiseVal > 0.5 && p.random() < 0.2) {
                 this.particles.push({ x: x, y: y, vx: p.random(-1, 1), vy: -p.random(2, 5), life: 255, color: crestColor });
             }
@@ -136,14 +157,15 @@ export default class P5OceanWaveStage {
           p.endShape(p.CLOSE);
         }
 
-        // 파티클 처리
+        // 최상단 레이어: 포말 파티클 처리 루틴
         p.noStroke();
-        this.particles.forEach((pt, i) => {
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            let pt = this.particles[i];
             pt.vy += 0.2; pt.x += pt.vx; pt.y += pt.vy; pt.life -= 5;
             p.fill(pt.color.levels[0], pt.color.levels[1], pt.color.levels[2], pt.life);
             p.circle(pt.x, pt.y, 3);
             if (pt.life <= 0) this.particles.splice(i, 1);
-        });
+        }
       };
     };
     this.p5Instance = new window.p5(sketch, this.container);
