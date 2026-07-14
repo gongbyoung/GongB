@@ -1,10 +1,10 @@
 /**
  * src/sketches/003_glsl_noise.js
- * - [버전] Ver 3.5 (오로라가 일렁이는 밤의 수면 - 명상형 GPU 셰이더 완결판)
- * - 순수 블랙(Pure Black) 경계를 해체하고 딥 네이비/미드나잇 퍼플 암부 리프팅 적용
- * - 크기 팽창 대신 액체 유체 왜곡(Fluid Distortion)과 흐르는(Panning) 유기적 왜곡식 매립
- * - 관제탑 Color Style Palette(No1~No5) 및 RESET 단추 클릭 시 시드/카메라 좌표 물리 완벽 동기화
- * - 외곽부 자동 렌즈 아웃포커싱(Subtle Lens Blur) 연산 및 프레임 스무딩(Decay) 극대화 완료
+ * - [버전] Ver 4.0 (이미지 가속 굴절 및 주파수 하이퍼 동기화 판)
+ * - 외부 업로드 이미지(땅/호수바닥)를 THREE.Texture로 실시간 마운트하여 파이프라인 최하단에 바인딩
+ * - 주파수(Bass/Mid)에 연동되어 배경 이미지와 오로라 수면이 함께 액체처럼 출렁이는 실시간 굴절 연출 완성
+ * - Shuffle(Seed) 슬라이더 연동: 시드 값에 따라 사인 노이즈 기저 위상을 격파하여 모양 다변화 완수
+ * - 30FPS 진단 HUD 통신용 가상 프레임 레이터 및 함수 식 트래커 내장
  */
 
 export default class GlslNoise {
@@ -15,13 +15,18 @@ export default class GlslNoise {
     this.renderer = null;
     this.uniforms = null;
 
-    this.version = "003호 Ambient Fluid Nebula Ver 3.5";
-    this.currentMode = "오로라 밤의 수면";
+    this.version = "003호 Refractive Fluid Nebula Ver 4.0";
+    this.currentMode = "오로라 밤의 수면 & 이미지 굴절";
     
-    // CPU 단축 보간 버퍼 수립 (여운 및 이징용)
+    // CPU 보간 버퍼 (끈적한 유체 감쇠용)
     this.smoothBass = 0;
     this.smoothMid = 0;
     this.smoothTreble = 0;
+
+    // 💡 배경 이미지 전용 트래킹 멤버 변수 수립
+    this.bgTexture = null;
+    this.lastBgImage = null;
+    this.lastTime = 0;
   }
 
   init() {
@@ -41,7 +46,7 @@ export default class GlslNoise {
       void main() { gl_Position = vec4(position, 1.0); }
     `;
 
-    // 💡 [대수술: 앰비언트 최적화 하이엔드 프래그먼트 셰이더 소스 프로그래밍]
+    // 💡 [대수술: 이미지 굴절 및 주파수 하이퍼 반응 프래그먼트 셰이더]
     const fragmentShader = `
       uniform vec2 u_resolution;
       uniform float u_time;
@@ -49,7 +54,7 @@ export default class GlslNoise {
       uniform float u_mid;
       uniform float u_treble;
       
-      // 관제탑 UI 직접 제어용 유니폼 매핑
+      // 관제탑 UI 인터페이스 유니폼 매핑
       uniform int u_color_style;
       uniform vec3 u_custom_c1;
       uniform vec3 u_custom_c2;
@@ -57,6 +62,11 @@ export default class GlslNoise {
       uniform float u_range;
       uniform float u_gauge;
       uniform vec3 u_camera_offset;
+      
+      // 💡 [신규 유니폼 이식]: 셔플 시드 및 배경 이미지 연동 컨트롤러
+      uniform float u_seed;
+      uniform int u_has_bg;
+      uniform sampler2D u_bg_texture;
 
       // 오가닉 스플라인 유체 사인 노이즈
       float sineNoise(in vec2 p) {
@@ -64,79 +74,95 @@ export default class GlslNoise {
       }
 
       void main() {
-        // 💡 [3D 카메라 오프셋 매핑]: X, Y 변위를 좌표계 기저에 투사하고 Z축으로 스케일 가산
         vec2 centerUV = gl_FragCoord.xy / u_resolution.xy;
         vec2 uv = (gl_FragCoord.xy * 2.0 - u_resolution.xy) / min(u_resolution.x, u_resolution.y);
         
-        // 관제탑 3D Offset 입력단 매핑 치환 (정면 0,0,0 기준 변위 기믹)
+        // 💡 [Shuffle 연동]: 시드 난수에 따라 원천 좌표 공간을 뒤틀어 매번 다른 형태 유도
+        vec2 shuffleOffset = vec2(sin(u_seed * 4.12 + 1.5), cos(u_seed * 7.85 - 2.3)) * 3.5;
+        uv += shuffleOffset;
+        
+        // 3D 카메라 공간 오프셋 제어
         uv.x -= (u_camera_offset.x * 0.2);
         uv.y -= (u_camera_offset.y * 0.2);
         uv *= (1.0 + u_camera_offset.z * 0.1);
 
-        // 💡 [Scale 연동]: 관제탑 Scale(u_scale) 수치에 따라 전체 세포 패턴 스케일 크기 제어
+        // Scale 제어
         float patternScale = mix(3.5, 0.8, u_scale);
         uv *= patternScale;
 
-        // 💡 [개선안 2: 패턴의 크기보다 흐름과 일렁임으로]
-        // 즉각적인 툭툭 튀는 반응을 분쇄하고 액체 유체 웨이프 워프 매커니즘 구현
-        float flowSpeed = u_time * 0.15;
+        // 💡 [주파수 움직임 극대화]: 주파수 크기 변동폭을 유체 스피드와 진폭 계수에 직접 곱 연산 처리
+        float flowSpeed = u_time * 0.15 + (u_bass * 0.3);
         vec2 warpUV = uv;
         
-        // 저음역 물결(Ripple) 분산 왜곡 루프
+        float bassFactor = 1.0 + (u_bass * 3.2);
+        float midFactor = 1.0 + (u_mid * 2.5);
+
+        // 유체 파동 왜곡 연산 파트 (주파수 락인 매커니즘)
         for(float i = 1.0; i < 4.0; i++) {
-          warpUV.x += sin(warpUV.y + flowSpeed + u_mid * 0.4) * 0.35 / i;
-          warpUV.y += cos(warpUV.x + flowSpeed * 0.8 + u_bass * 0.5) * 0.25 / i;
+          warpUV.x += sin(warpUV.y + flowSpeed + u_mid * 2.2) * 0.45 * bassFactor / i;
+          warpUV.y += cos(warpUV.x + flowSpeed * 0.8 + u_bass * 1.8) * 0.35 * midFactor / i;
         }
 
-        // 💡 [Range 연동]: u_range 수치에 따라 입자 안개 및 미세 세포 밀도 조정
+        // 세포 밀도 및 최종 노이즈 강도 계산
         float cellDensity = mix(1.0, 4.0, u_range);
-        float strength = sineNoise(warpUV * cellDensity);
+        float strength = sineNoise(warpUV * cellDensity + u_seed * 0.1);
 
-        // 💡 [개선안 1: 명도 대비 낮추기]: 완전 블랙 해체 공정
-        // 게이지 값(u_gauge)을 진하기 채도로 엮고 베이스는 깊은 미드나잇 네이비블루(#080c16) 톤으로 리프팅
+        // 어두운 명도 리프팅 기저색 생성
         vec3 baseMidnight = vec3(0.03, 0.05, 0.09) * mix(0.5, 2.0, u_gauge); 
         
-        // 💡 [Color Style Palette 5대 테마 그라데이션 컬러 셋업]
+        // 💡 [배경 이미지 드로우 및 호수 굴절 왜곡 알고리즘]
+        vec3 finalBackground = baseMidnight;
+        if (u_has_bg == 1) {
+          // 오디오 저음에 맞춰 배경 이미지 픽셀이 물결치듯 굴절되는 유체 렌즈 효과 구현
+          vec2 refractionUV = centerUV + vec2(sin(warpUV.y * 2.5), cos(warpUV.x * 2.5)) * 0.012 * u_bass;
+          vec3 bgImageColor = texture2D(u_bg_texture, refractionUV).rgb;
+          
+          // 이미지를 숲속 깊은 수면 아래의 질감으로 부드럽게 동화시킴
+          finalBackground = mix(baseMidnight, bgImageColor * 0.6, 0.85);
+        }
+
+        // 테마 컬러 그라데이션 분기
         vec3 col1 = vec3(0.0);
         vec3 col2 = vec3(0.0);
 
         if (u_color_style == 0) {
-          // No1: 모스 그린 힐링 톤
           col1 = vec3(0.15, 0.32, 0.22); col2 = vec3(0.42, 0.75, 0.58);
         } else if (u_color_style == 1) {
-          // No2: 샌드 베이지 아날로그 수면
           col1 = vec3(0.68, 0.56, 0.44); col2 = vec3(0.92, 0.88, 0.82);
         } else if (u_color_style == 2) {
-          // No3: 은은한 대지 / 새벽녘 톤
           col1 = vec3(0.12, 0.18, 0.26); col2 = vec3(0.95, 0.76, 0.70);
         } else if (u_color_style == 3) {
-          // No4: 커스텀 컬러 파이프라인 수혈
           col1 = u_custom_c1; col2 = u_custom_c2;
         } else {
-          // No5: 올 랜덤 시드 시프팅 오로라 색체
           col1 = vec3(0.2, 0.4, 0.6) + sin(u_time * 0.2) * 0.1;
           col2 = vec3(0.7, 0.5, 0.6) + cos(u_time * 0.3) * 0.1;
         }
 
-        // 💡 [개선안 1: 색상 다양성(Nuance) 부여] 오디오 고음(u_treble) 및 시간 호흡에 따라 물들듯 시프팅
-        vec3 dynamicGlow = mix(col1, col2, 0.5 + 0.5 * sin(u_time * 0.4 + u_treble * 0.5));
+        // 고음(Treble) 반응성 인광 물들임 시프팅
+        vec3 dynamicGlow = mix(col1, col2, 0.5 + 0.5 * sin(u_time * 0.4 + u_treble * 1.8));
         
-        // 셰이더 마스크 필터 조합
+        // 굴절 오로라 패턴 합성
         float alphaFilter = smoothstep(-0.8, 0.8, strength);
-        vec3 finalGlowPattern = mix(baseMidnight, dynamicGlow, alphaFilter * (0.6 + u_bass * 0.4));
+        float glowIntensityPulse = alphaFilter * (0.5 + u_bass * 0.8 + u_treble * 0.4);
+        
+        vec3 finalGlowPattern = mix(finalBackground, dynamicGlow, glowIntensityPulse);
 
-        // 💡 [개선안 2: 초점의 변화(Lens Blur)] 중심부에서 외곽으로 갈수록 아웃포커싱되도록 비네팅 렌즈 블러 레이어링
+        // 이미지 로딩 모드 시 오로라 빛무리를 수면 위에 유기적으로 발광 혼합(Screen Blend)
+        if (u_has_bg == 1) {
+          vec3 bgImageColorOrigin = texture2D(u_bg_texture, centerUV + vec2(sin(warpUV.y), cos(warpUV.x)) * 0.005).rgb;
+          finalGlowPattern = mix(bgImageColorOrigin, finalGlowPattern + bgImageColorOrigin * 0.25, alphaFilter * 0.65);
+        }
+
+        // 주변부 렌즈 비네팅 아웃포커스 마스크
         float distFromCenter = length(centerUV - vec2(0.5));
         float blurMask = smoothstep(0.15, 0.65, distFromCenter);
-        
-        // 주변부 픽셀 채도를 부드럽게 감쇠하여 시각적 쉼터(여백) 제공
-        vec3 finalVisual = mix(finalGlowPattern, baseMidnight * 1.2, blurMask * 0.45);
+        vec3 finalVisual = mix(finalGlowPattern, finalBackground * 1.1, blurMask * 0.45);
 
         gl_FragColor = vec4(finalVisual, 1.0);
       }
     `;
 
-    // 유니폼 아키텍처 매립 세팅
+    // 유니폼 아키텍처 인젝션
     this.uniforms = {
       u_resolution: { value: new THREE.Vector2(width, height) },
       u_time: { value: 0 },
@@ -150,7 +176,12 @@ export default class GlslNoise {
       u_scale: { value: 0.85 },
       u_range: { value: 0.22 },
       u_gauge: { value: 0.5 },
-      u_camera_offset: { value: new THREE.Vector3(0, 0, 0) }
+      u_camera_offset: { value: new THREE.Vector3(0, 0, 0) },
+      
+      // 💡 셔플 및 텍스처 데이터 Uniform 엔트리 추가
+      u_seed: { value: 0.0 },
+      u_has_bg: { value: 0 },
+      u_bg_texture: { value: null }
     };
 
     const geometry = new THREE.PlaneGeometry(2, 2);
@@ -166,14 +197,13 @@ export default class GlslNoise {
     this.syncWithCosmicPanel();
   }
 
-  // 💡 [현재수치적용 RESET 및 실시간 드래그 동기화 마스터 트래커]
+  // [RESET 및 실시간 드래그 동기화 마스터 트래커]
   syncWithCosmicPanel() {
     if (!this.uniforms || !window.cosmicEngineSettings) return;
-
     const settings = window.cosmicEngineSettings;
     
-    // 1) 컬러 스타일 변환 매핑 (드롭다운 번호 매칭)
-    let styleInt = 1; // 기본 샌드베이지
+    // 1) 컬러 스타일 인덱스 디코딩
+    let styleInt = 1; 
     if (settings.colorStyle === 'monochrome') styleInt = 0;
     else if (settings.colorStyle === 'neon') styleInt = 1;
     else if (settings.colorStyle === 'pastel') styleInt = 2;
@@ -182,13 +212,31 @@ export default class GlslNoise {
     
     this.uniforms.u_color_style.value = styleInt;
 
-    // 2) 커스텀 픽커 수혈 변환
+    // 2) 💡 [배경 이미지 감지 엔진 체결]: 이미지 가속 텍스처 실시간 핫 마운트
+    const bgImg = window.currentUploadedImageElement;
+    if (bgImg && bgImg !== this.lastBgImage) {
+      if (this.bgTexture) this.bgTexture.dispose();
+      this.bgTexture = new THREE.Texture(bgImg);
+      this.bgTexture.minFilter = THREE.LinearFilter;
+      this.bgTexture.magFilter = THREE.LinearFilter;
+      this.bgTexture.needsUpdate = true;
+      this.lastBgImage = bgImg;
+      this.uniforms.u_bg_texture.value = this.bgTexture;
+      this.uniforms.u_has_bg.value = 1;
+    } else if (!bgImg) {
+      this.uniforms.u_has_bg.value = 0;
+    }
+
+    // 3) 💡 [Shuffle 시드 바인딩]: 형태 무작위 전환 계수 주입
+    this.uniforms.u_seed.value = parseFloat(settings.seed || 0.0);
+
+    // 4) 커스텀 색상 피커 수혈
     if (settings.customColors) {
       this.uniforms.u_custom_c1.value.set(settings.customColors.gas1);
       this.uniforms.u_custom_c2.value.set(settings.customColors.gas2);
     }
 
-    // 3) Scale, Range, Gauge 계수 정규화 연동 락인
+    // 5) 슬라이더 물리 계수 정규화 연동
     const scaleEl = document.getElementById('num-cosmic-glow');
     const rangeEl = document.getElementById('num-cosmic-scatter');
     const gaugeEl = document.getElementById('num-cosmic-gauge');
@@ -197,7 +245,7 @@ export default class GlslNoise {
     this.uniforms.u_range.value = rangeEl ? (parseFloat(rangeEl.value) / 50.0) : 0.5;
     this.uniforms.u_gauge.value = gaugeEl ? (parseFloat(gaugeEl.value) / 100.0) : 0.5;
 
-    // 4) 가상 3D 카메라 공간 좌표 매핑 연동
+    // 3D 공간 카메라 오프셋 매핑
     if (settings.positionOffset) {
       this.uniforms.u_camera_offset.value.set(
         settings.positionOffset.x || 0,
@@ -210,25 +258,37 @@ export default class GlslNoise {
   update(audioData) {
     if (!this.renderer || !this.scene || !this.camera) return;
 
-    // 매 프레임 실시간 슬라이더 변수 동기화 펌핑
     this.syncWithCosmicPanel();
 
-    // 💡 [개선안 2: 모션 블러와 잔상의 활용] 
-    // 오디오 진폭에 0.05 초저속 릴리즈 보간을 먹여 아주 끈적하고 부드러운 유체 흐름 완성 (Decay 완치)
+    // 진단 HUD 연동용 타임 체크 계산
+    if (!this.lastTime) this.lastTime = performance.now();
+    let now = performance.now();
+    let fps = Math.round(1000 / (now - this.lastTime));
+    this.lastTime = now;
+
+    // 메인 HUD에 실시간 변수 상태 피딩 투사
+    window.sketchDiagnostics = {
+      fps: isNaN(fps) || fps > 100 ? 30 : fps,
+      particleCount: this.uniforms.u_has_bg.value === 1 ? "BG_Refracted" : "ShaderOnly",
+      isCovering: false,
+      activeFunction: `FluidNoise[Seed:${this.uniforms.u_seed.value}]`
+    };
+
+    // 오디오 초저속 릴리즈 보간 (끈적하고 부드러운 전개 확보)
     let targetBass = 0.0, targetMid = 0.0, targetTreble = 0.0;
     
     if (audioData) {
-      targetBass = (audioData.bass || 0.0) * 1.5;
-      targetMid = (audioData.mid || 0.0) * 1.2;
-      targetTreble = (audioData.treble || 0.0) * 1.2;
+      targetBass = (audioData.bass || 0.0) * 1.6;
+      targetMid = (audioData.mid || 0.0) * 1.3;
+      targetTreble = (audioData.treble || 0.0) * 1.3;
     }
 
     this.smoothBass += (targetBass - this.smoothBass) * 0.05;
     this.smoothMid += (targetMid - this.smoothMid) * 0.05;
     this.smoothTreble += (targetTreble - this.smoothTreble) * 0.05;
 
-    // 시간 경과선 투사
-    this.uniforms.u_time.value += 0.005 + (this.smoothBass * 0.004);
+    // 주파수 반응 타임 연산선 전개
+    this.uniforms.u_time.value += 0.005 + (this.smoothBass * 0.006);
     
     this.uniforms.u_bass.value = this.smoothBass;
     this.uniforms.u_mid.value = this.smoothMid;
@@ -249,6 +309,14 @@ export default class GlslNoise {
       object.geometry.dispose();
       object.material.dispose();
     });
+    
+    // 💡 생성된 이미지 가속 텍스처 메모리 자원 완전 해제
+    if (this.bgTexture) {
+      this.bgTexture.dispose();
+      this.bgTexture = null;
+    }
+    this.lastBgImage = null;
+
     if (this.renderer) {
       this.container.removeChild(this.renderer.domElement);
       this.renderer.dispose();
