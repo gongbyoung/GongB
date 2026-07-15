@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cosmic Audio Studio - Cinematic MP3 Player</title>
+    <title>Cosmic Audio Studio - Production MP3 Player</title>
     <!-- Three.js 코어 라이브러리 탑재 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     
-    <!-- 💡 [MIME 및 경로 버그 완치] 외부 style.css를 파일 내부로 완벽하게 락인(Lock-in) 시공 -->
+    <!-- 💡 [MIME/경로 에러 완전 면역] 내부 통합 락인 스타일시트 시공 -->
     <style>
         * {
             box-sizing: border-box;
@@ -25,25 +25,24 @@
             overflow: hidden;
         }
 
-        /* 전체 스튜디오 컨테이너 3단 파티션 레이아웃 */
         #studio-container {
             display: flex;
             width: 100%;
             height: 100%;
             position: relative;
-            padding-bottom: 60px; /* 하단 마스터 플레이 바 확보 공간 */
+            padding-bottom: 60px; /* 마스터 제어 바 장착 공간 */
         }
 
-        /* 좌우측 마스터 관제탑 패널 공통 */
+        /* 좌우측 관제탑 사이드바 공통 공정 */
         .control-panel {
             width: 300px;
             height: calc(100% - 60px);
-            background: rgba(8, 11, 22, 0.94);
+            background: rgba(7, 10, 20, 0.96);
             border-right: 1px solid rgba(0, 240, 255, 0.15);
-            padding: 16px;
+            padding: 14px;
             display: flex;
             flex-direction: column;
-            gap: 16px;
+            gap: 12px;
             overflow-y: auto;
             z-index: 10;
             position: absolute;
@@ -58,273 +57,182 @@
         }
 
         .panel-section {
-            background: rgba(13, 18, 34, 0.85);
+            background: rgba(11, 15, 30, 0.9);
             border: 1px solid rgba(0, 240, 255, 0.08);
             border-radius: 8px;
-            padding: 14px;
+            padding: 12px;
         }
-        .mini-section { padding: 10px 14px; }
+        .mini-section { padding: 8px 12px; }
 
         .control-panel h2 {
-            font-size: 13px;
+            font-size: 12px;
             font-weight: bold;
             color: #00ffcc;
             letter-spacing: 0.5px;
             text-transform: uppercase;
-            margin-bottom: 12px;
+            margin-bottom: 10px;
             border-bottom: 1px solid rgba(0, 255, 204, 0.15);
             padding-bottom: 4px;
         }
 
-        /* 입력 양식 스타일 세팅 */
-        .input-group {
-            margin-bottom: 10px;
-        }
-        .input-group label {
-            display: block;
-            font-size: 11px;
-            color: #8a9fc2;
-            margin-bottom: 4px;
-        }
+        .input-group { margin-bottom: 8px; }
+        .input-group label { display: block; font-size: 11px; color: #8a9fc2; margin-bottom: 4px; }
         .input-group input[type="file"] {
-            width: 100%;
-            font-size: 11px;
-            background: #090d1a;
-            border: 1px solid #1a263d;
-            border-radius: 4px;
-            color: #fff;
-            padding: 4px;
+            width: 100%; font-size: 11px; background: #070a14; border: 1px solid #152035;
+            border-radius: 4px; color: #fff; padding: 5px; cursor: pointer;
         }
 
-        /* 왼쪽 파일 목록 스위처 */
-        #sketch-list {
+        /* 💡 멀티 플레이리스트 출력 컨테이너 */
+        #playlist-box {
             list-style: none;
+            max-height: 180px;
+            overflow-y: auto;
             display: flex;
             flex-direction: column;
-            gap: 4px;
+            gap: 3px;
+            padding-right: 2px;
         }
-        #sketch-list li {
-            padding: 8px 10px;
-            font-size: 11.5px;
-            background: rgba(20, 28, 50, 0.6);
-            border: 1px solid rgba(255,255,255,0.03);
+        #playlist-box li {
+            padding: 6px 8px;
+            font-size: 11px;
+            background: rgba(18, 25, 45, 0.7);
+            border: 1px solid rgba(255,255,255,0.02);
             border-radius: 4px;
             cursor: pointer;
-            color: #b0c4de;
-            transition: all 0.2s ease;
-        }
-        #sketch-list li:hover {
-            background: rgba(0, 240, 255, 0.1);
-            color: #00f0ff;
-        }
-        #sketch-list li.active {
-            background: #00f0ff;
-            color: #05070f;
-            font-weight: bold;
-            box-shadow: 0 0 10px rgba(0,240,255,0.3);
-        }
-
-        /* 슬라이더 제어단 그래픽 매핑 */
-        .slider-group { margin-bottom: 12px; }
-        .slider-label {
+            color: #a0b4cc;
             display: flex;
             justify-content: space-between;
-            font-size: 11px;
-            color: #8a9fc2;
-            margin-bottom: 4px;
-        }
-        .slider-label input {
-            width: 45px;
-            background: none;
-            border: none;
-            color: #00ffcc;
-            font-family: monospace;
-            text-align: right;
-            font-size: 11px;
-        }
-        input[type="range"] {
-            width: 100%;
-            height: 4px;
-            background: #141c32;
-            border-radius: 2px;
-            outline: none;
-            appearance: none;
-        }
-        input[type="range"]::-webkit-slider-thumb {
-            appearance: none;
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            background: #00ffcc;
-            cursor: pointer;
-            box-shadow: 0 0 5px rgba(0,255,204,0.5);
-        }
-
-        /* 컬러 피커 행 */
-        .picker-row {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 12px;
-        }
-        .picker-row div {
-            display: flex;
-            flex-direction: column;
             align-items: center;
-            gap: 4px;
+            transition: all 0.15s;
         }
+        #playlist-box li:hover { background: rgba(0, 240, 255, 0.08); color: #00f0ff; }
+        #playlist-box li.active {
+            background: rgba(0, 255, 204, 0.15);
+            border: 1px solid #00ffcc;
+            color: #00ffcc;
+            font-weight: bold;
+        }
+        .srt-badge {
+            font-size: 9px; padding: 1px 4px; border-radius: 3px;
+            background: #102a25; color: #00ffcc; border: 1px solid rgba(0,255,204,0.3);
+        }
+        .srt-badge.none { background: #2a1215; color: #ff4a5a; border: 1px solid rgba(255,74,90,0.3); }
+
+        #sketch-list { list-style: none; display: flex; flex-direction: column; gap: 4px; }
+        #sketch-list li {
+            padding: 7px 9px; font-size: 11px; background: rgba(16, 22, 38, 0.7);
+            border-radius: 4px; cursor: pointer; color: #b0c4de; transition: all 0.15s;
+        }
+        #sketch-list li:hover { background: rgba(0, 240, 255, 0.08); color: #00f0ff; }
+        #sketch-list li.active {
+            background: #00f0ff; color: #05070f; font-weight: bold; box-shadow: 0 0 8px rgba(0,240,255,0.25);
+        }
+
+        /* 관제탑 튜닝 슬라이더 디자인 */
+        .slider-group { margin-bottom: 10px; }
+        .slider-label { display: flex; justify-content: space-between; font-size: 11px; color: #8a9fc2; margin-bottom: 3px; }
+        .slider-label input { width: 40px; background: none; border: none; color: #00ffcc; font-family: monospace; text-align: right; font-size: 11px; }
+        input[type="range"] { width: 100%; height: 4px; background: #121829; border-radius: 2px; outline: none; appearance: none; }
+        input[type="range"]::-webkit-slider-thumb { appearance: none; width: 12px; height: 12px; border-radius: 50%; background: #00ffcc; cursor: pointer; }
+
+        .picker-row { display: flex; justify-content: space-between; margin-bottom: 10px; }
+        .picker-row div { display: flex; flex-direction: column; align-items: center; gap: 3px; }
         .picker-row label { font-size: 10px; color: #8a9fc2; }
-        .picker-row input[type="color"] {
-            width: 40px; height: 20px; background: none; border: none; cursor: pointer;
-        }
+        .picker-row input[type="color"] { width: 36px; height: 18px; background: none; border: none; cursor: pointer; }
 
         .select-group label { display: block; font-size: 11px; color: #8a9fc2; margin-bottom: 4px; }
-        .select-group select {
-            width: 100%; background: #090d1a; border: 1px solid #1a263d; border-radius: 4px;
-            color: #fff; padding: 6px; font-size: 11px; outline: none;
-        }
+        .select-group select { width: 100%; background: #070a14; border: 1px solid #152035; border-radius: 4px; color: #fff; padding: 5px; font-size: 11px; outline: none; }
 
-        /* 버튼 스타일화 */
-        .action-btn {
-            width: 100%; padding: 10px; border-radius: 5px; border: none; font-size: 11.5px;
-            font-weight: bold; cursor: pointer; margin-top: 6px; transition: all 0.2s;
-        }
-        .active-btn { background: #00f0ff; color: #05070f; box-shadow: 0 0 10px rgba(0,240,255,0.2); }
-        .active-btn:hover { background: #00d2e0; }
-        .btn-row { display: flex; gap: 6px; }
-        .sub-btn, .ratio-btn {
-            flex: 1; padding: 6px; font-size: 11px; background: #151e36; border: 1px solid #24325c;
-            border-radius: 4px; color: #b0c4de; cursor: pointer;
-        }
+        .action-btn { width: 100%; padding: 9px; border-radius: 4px; border: none; font-size: 11px; font-weight: bold; cursor: pointer; margin-top: 4px; transition: all 0.15s; }
+        .active-btn { background: #00f0ff; color: #05070f; box-shadow: 0 0 8px rgba(0,240,255,0.15); }
+        .btn-row { display: flex; gap: 5px; }
+        .sub-btn, .ratio-btn { flex: 1; padding: 5px; font-size: 11px; background: #121829; border: 1px solid #1f2a47; border-radius: 4px; color: #b0c4de; cursor: pointer; }
         .ratio-btn.active { background: #00ffcc; color: #05070f; font-weight: bold; }
-        .record-btn { background: #ff2a55; color: #fff; margin-top: 8px; }
-        .record-btn:hover { background: #e01b43; }
+        .record-btn { background: #ff2a55; color: #fff; margin-top: 6px; }
 
-        /* ========================================== */
-        /* 🎬 중앙 메인 무대 컨텍스트 아키텍처 */
-        /* ========================================== */
+        /* 🎬 중앙 메인 무대 레이아웃 */
         #stage-wrapper {
-            flex: 1;
-            height: calc(100% - 60px);
-            position: relative;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background: #000000;
-            margin-left: 300px;
-            margin-right: 300px;
-            transition: all 0.3s ease;
+            flex: 1; height: calc(100% - 60px); position: relative; display: flex;
+            justify-content: center; align-items: center; background: #000000;
+            margin-left: 300px; margin-right: 300px; transition: all 0.3s ease;
         }
-
-        #canvas-stage {
-            width: 100%;
-            height: 100%;
-            position: relative;
-            overflow: hidden;
-        }
-
-        /* 상용 디바이스 화면 비율 컴포지팅 가이드선 */
+        #canvas-stage { width: 100%; height: 100%; position: relative; overflow: hidden; }
+        
         .ratio-full { width: 100%; height: 100%; }
         .ratio-169 #canvas-stage { aspect-ratio: 16/9; width: 100%; height: auto; max-height: 100%; box-shadow: 0 0 30px rgba(0,0,0,0.8); }
         .ratio-916 #canvas-stage { aspect-ratio: 9/16; height: 100%; width: auto; max-width: 100%; box-shadow: 0 0 30px rgba(0,0,0,0.8); }
 
         /* ========================================== */
-        /* 🎚️ 하단 데크: 프로용 미디어 타임라인 제어 바 */
-        /* ========================================== */
+        /* 🎚️ 하단 데크: 프로 마스터 미디어 플레이 제어 바 */
+        /* ========================================== --> */
         #master-player-deck {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            height: 60px;
-            background: #080b16;
-            border-top: 1px solid rgba(0, 240, 255, 0.2);
-            display: flex;
-            align-items: center;
-            padding: 0 20px;
-            gap: 16px;
-            z-index: 100;
+            position: absolute; bottom: 0; left: 0; width: 100%; height: 60px;
+            background: #060912; border-top: 1px solid rgba(0, 240, 255, 0.2);
+            display: flex; align-items: center; padding: 0 16px; gap: 12px; z-index: 100;
         }
 
-        .deck-play-btn {
-            padding: 8px 16px;
-            background: #00ffcc;
-            color: #05070f;
-            border: none;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: bold;
-            cursor: pointer;
-            min-width: 140px;
-            box-shadow: 0 0 10px rgba(0,255,204,0.2);
+        /* 키네틱 제어 버튼 그룹 */
+        .deck-control-group { display: flex; align-items: center; gap: 6px; }
+        .deck-icon-btn {
+            background: #111625; border: 1px solid #1f2b45; color: #fff;
+            width: 32px; height: 32px; border-radius: 4px; font-size: 12px;
+            cursor: pointer; display: flex; justify-content: center; align-items: center;
+            transition: all 0.15s;
         }
-        .deck-play-btn:hover { background: #00d9b5; }
+        .deck-icon-btn:hover { background: rgba(0,240,255,0.15); color: #00f0ff; border-color: #00f0ff; }
+        .deck-play-master-btn { background: #00ffcc; color: #05070f; width: 36px; height: 36px; border-radius: 50%; font-size: 13px; border: none; }
+        .deck-play-master-btn:hover { background: #00d9b5; transform: scale(1.05); }
 
         #deck-timeline-wrapper {
-            flex: 1;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            position: relative;
+            flex: 1; display: flex; flex-direction: column; gap: 4px; justify-content: center;
         }
-        .time-display {
-            font-family: monospace;
-            font-size: 11px;
-            color: #6c84a3;
-            min-width: 35px;
-        }
+        .timeline-upper-row { display: flex; justify-content: space-between; align-items: center; }
+        #deck-track-title { font-size: 11px; color: #00ffcc; font-weight: bold; max-width: 350px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        
+        .timeline-lower-row { display: flex; align-items: center; gap: 8px; width: 100%; }
+        .time-display { font-family: monospace; font-size: 11px; color: #6c84a3; min-width: 35px; }
 
-        #progress-bar-container {
-            flex: 1;
-            height: 6px;
-            background: #141b30;
-            border-radius: 3px;
-            position: relative;
-            cursor: pointer;
-        }
-        #progress-bar-fill {
-            width: 0%;
-            height: 100%;
-            background: linear-gradient(90deg, #00f0ff, #00ffcc);
-            border-radius: 3px;
-            position: absolute;
-            top: 0;
-            left: 0;
-            transition: width 0.1s linear;
-        }
+        #progress-bar-container { flex: 1; height: 6px; background: #121726; border-radius: 3px; position: relative; cursor: pointer; }
+        #progress-bar-fill { width: 0%; height: 100%; background: linear-gradient(90deg, #00f0ff, #00ffcc); border-radius: 3px; position: absolute; top: 0; left: 0; }
 
-        #deck-volume-wrapper {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            width: 120px;
+        #deck-mode-volume-wrapper { display: flex; align-items: center; gap: 12px; }
+        .deck-select-mode {
+            background: #070a14; border: 1px solid #152035; border-radius: 4px;
+            color: #00ffcc; padding: 5px; font-size: 11px; outline: none; cursor: pointer; width: 120px;
         }
-        #deck-volume-slider {
-            width: 100%;
-            cursor: pointer;
-        }
+        #deck-volume-wrapper { display: flex; align-items: center; gap: 6px; width: 90px; }
     </style>
 </head>
 <body>
 
     <div id="studio-container">
         <!-- ========================================== -->
-        <!-- 📁 좌측 관제탑: 미디어 자산 및 스케치 스위처 -->
+        <!-- 📁 좌측 관제탑: 미디어 자산 및 플레이리스트 -->
         <!-- ========================================== -->
         <aside id="sidebar-left" class="control-panel">
             <div class="panel-section">
-                <h2>🎵 Media Resources</h2>
+                <h2>🎵 Multi Media Resources</h2>
+                <!-- 💡 다중 선택(multiple) 파이프라인 전면 시공 -->
                 <div class="input-group">
-                    <label for="file-audio">📂 MP3 음악:</label>
-                    <input type="file" id="file-audio" accept="audio/mp3">
+                    <label for="file-audio-multi">📂 MP3 음원 다중 선택 (복수 가능):</label>
+                    <input type="file" id="file-audio-multi" accept="audio/mp3" multiple>
                 </div>
                 <div class="input-group">
-                    <label for="file-srt">📝 SRT 자막:</label>
-                    <input type="file" id="file-srt" accept=".srt">
+                    <label for="file-srt-multi">📝 SRT 자막 다중 선택 (자동 매핑):</label>
+                    <input type="file" id="file-srt-multi" accept=".srt" multiple>
                 </div>
                 <div class="input-group">
-                    <label for="file-image">🖼️ BG 땅/호수바닥:</label>
+                    <label for="file-image">🖼️ BG 땅/호수바닥 배경:</label>
                     <input type="file" id="file-image" accept="image/*">
                 </div>
+            </div>
+
+            <!-- 💡 실시간 음원 트랙 상태 관제 플레이리스트 큐 -->
+            <div class="panel-section">
+                <h2>📋 Production Playlist</h2>
+                <ul id="playlist-box">
+                    <li style="color:#556b85; text-align:center; justify-content:center; cursor:default;">상단에서 음원 파일을 업로드하세요.</li>
+                </ul>
             </div>
 
             <div class="panel-section">
@@ -343,16 +251,15 @@
         </aside>
 
         <!-- ========================================== -->
-        <!-- 🎬 중앙 무대: 실시간 시네마틱 렌더링 캔버스 -->
+        <!-- 🎬 중앙 무대: 시네마틱 가속 프리뷰 무대 -->
         <!-- ========================================== -->
         <main id="stage-wrapper" class="ratio-full">
             <div id="canvas-stage"></div>
-            <!-- 내부 오디오 객체 -->
             <audio id="audio-player"></audio>
         </main>
 
         <!-- ========================================== -->
-        <!-- 🎛️ 우측 관제탑: Cosmic Studio 핵심 튜너 슬라이더 -->
+        <!-- 🎛️ 우측 관제탑: Cosmic Studio 마스터 슬라이더 -->
         <!-- ========================================== -->
         <aside id="sidebar-right" class="control-panel">
             <div class="panel-section">
@@ -401,9 +308,7 @@
                 </div>
 
                 <div class="position-offset-row" style="display:none;">
-                    <input type="number" id="num-offset-x" value="0">
-                    <input type="number" id="num-offset-y" value="0">
-                    <input type="number" id="num-offset-z" value="0">
+                    <input type="number" id="num-offset-x" value="0"><input type="number" id="num-offset-y" value="0"><input type="number" id="num-offset-z" value="0">
                 </div>
 
                 <button id="btn-apply-cosmic" class="action-btn active-btn">현재 수치 즉시 적용 (RESET)</button>
@@ -429,37 +334,84 @@
         </aside>
 
         <!-- ========================================== -->
-        <!-- 🎚️ 하단 데크: 통합 미디어 프로 마스터 플레이 바 -->
+        <!-- 🎚️ 하단 데크: 프로 마스터 오토메이션 제어 데크 바 -->
         <!-- ========================================== -->
         <footer id="master-player-deck">
-            <button id="btn-play-music" class="deck-play-btn">▶️ 음악 재생 (Play)</button>
+            <!-- 💡 이전, 되감기, 재생, 빨리감기, 다음 기능 탑재 -->
+            <div class="deck-control-group">
+                <button id="btn-deck-prev" class="deck-icon-btn" title="이전 곡">⏮️</button>
+                <button id="btn-deck-rewind" class="deck-icon-btn" title="10초 되감기">⏪</button>
+                <button id="btn-deck-play" class="deck-icon-btn deck-play-master-btn" title="재생/일시정지">▶️</button>
+                <button id="btn-deck-forward" class="deck-icon-btn" title="10초 빨리감기">⏩</button>
+                <button id="btn-deck-next" class="deck-icon-btn" title="다음 곡">⏭️</button>
+            </div>
             
             <div id="deck-timeline-wrapper">
-                <span id="time-current" class="time-display">00:00</span>
-                <div id="progress-bar-container">
-                    <div id="progress-bar-fill"></div>
+                <div class="timeline-upper-row">
+                    <div id="deck-track-title">선택된 오디오 트랙이 없습니다.</div>
                 </div>
-                <span id="time-total" class="time-display">00:00</span>
+                <div class="timeline-lower-row">
+                    <span id="time-current" class="time-display">00:00</span>
+                    <div id="progress-bar-container">
+                        <div id="progress-bar-fill"></div>
+                    </div>
+                    <span id="time-total" class="time-display">00:00</span>
+                </div>
             </div>
 
-            <div id="deck-volume-wrapper">
-                <span style="font-size:11px; color:#888;">🔊</span>
-                <input type="range" id="deck-volume-slider" min="0" max="1" step="0.01" value="0.8">
+            <!-- 💡 랜덤재생, 한곡반복, 전곡반복 스위처 노브 디바이스 및 볼륨 바 -->
+            <div id="deck-mode-volume-wrapper">
+                <select id="deck-play-mode" class="deck-select-mode">
+                    <option value="normal">전곡 순차 재생</option>
+                    <option value="repeat-all">🔄 전곡 반복 재생</option>
+                    <option value="repeat-one">🔂 한곡 반복 재생</option>
+                    <option value="shuffle">🔀 랜덤 재생 (셔플)</option>
+                </select>
+
+                <div id="deck-volume-wrapper">
+                    <span style="font-size:11px; color:#6c84a3;">🔊</span>
+                    <input type="range" id="deck-volume-slider" min="0" max="1" step="0.01" value="0.8">
+                </div>
             </div>
         </footer>
     </div>
 
-    <!-- 스크립트 파이프라인 구동 -->
+    <!-- 핵심 비주얼라이저 스크립트 결합 -->
     <script type="module" src="src/main.js"></script>
+    
+    <!-- ========================================== -->
+    <!-- 💡 [마스터 코어]: 멀티 플레이리스트 & 자동 SRT 링크 엔진 -->
+    <!-- ========================================== -->
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const audio = document.getElementById('audio-player');
-            const playBtn = document.getElementById('btn-play-music');
+            const playBtn = document.getElementById('btn-deck-play');
+            const prevBtn = document.getElementById('btn-deck-prev');
+            const nextBtn = document.getElementById('btn-deck-next');
+            const rewindBtn = document.getElementById('btn-deck-rewind');
+            const forwardBtn = document.getElementById('btn-deck-forward');
+            
             const progressContainer = document.getElementById('progress-bar-container');
             const progressFill = document.getElementById('progress-bar-fill');
             const timeCurrent = document.getElementById('time-current');
             const timeTotal = document.getElementById('time-total');
+            
+            const trackTitle = document.getElementById('deck-track-title');
             const volumeSlider = document.getElementById('deck-volume-slider');
+            const playModeSelect = document.getElementById('deck-play-mode');
+            
+            const audioMultiInput = document.getElementById('file-audio-multi');
+            const srtMultiInput = document.getElementById('file-srt-multi');
+            const playlistBox = document.getElementById('playlist-box');
+
+            // 전역 플레이 관리 상태 기기
+            let playlist = [];
+            let srtPool = {}; // 파일 기본명(Key) : 파싱된 자막 데이터(Value)
+            let currentIndex = -1;
+
+            function getBaseName(filename) {
+                return filename.substring(0, filename.lastIndexOf('.')).trim();
+            }
 
             function formatTime(secs) {
                 if (isNaN(secs)) return "00:00";
@@ -468,28 +420,214 @@
                 return `${m}:${s}`;
             }
 
-            audio.addEventListener('loadedmetadata', () => {
-                timeTotal.innerText = formatTime(audio.duration);
+            // 📝 1단계: SRT 자막 풀 다중 처리 및 캐싱
+            srtMultiInput.addEventListener('change', (e) => {
+                const files = e.target.files;
+                if (!files.length) return;
+
+                let readCount = 0;
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    const baseName = getBaseName(file.name);
+                    const reader = new FileReader();
+
+                    reader.onload = (event) => {
+                        srtPool[baseName] = parseSRT(event.target.result);
+                        readCount++;
+                        // 전부 다 읽었으면 기존 로드된 플레이리스트 자막 매핑 재리프레시
+                        if (readCount === files.length) {
+                            rematchPlaylistSRT();
+                        }
+                    };
+                    reader.readAsText(file);
+                }
             });
 
+            // 🎵 2단계: MP3 음원 다중 처리 및 파일명 기준 오토 매핑 격발
+            audioMultiInput.addEventListener('change', (e) => {
+                const files = e.target.files;
+                if (!files.length) return;
+
+                playlist = [];
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    const baseName = getBaseName(file.name);
+                    
+                    playlist.push({
+                        file: file,
+                        name: file.name,
+                        baseName: baseName,
+                        url: URL.createObjectURL(file)
+                    });
+                }
+                
+                rematchPlaylistSRT();
+                playTrack(0); // 첫 곡 즉시 강제 장착 구동
+            });
+
+            // 🔄 3단계: 자막-음원 동적 실시간 링크 매칭
+            function rematchPlaylistSRT() {
+                playlistBox.innerHTML = "";
+                if (playlist.length === 0) {
+                    playlistBox.innerHTML = '<li style="color:#556b85; text-align:center; justify-content:center;">음원이 비어있습니다.</li>';
+                    return;
+                }
+
+                playlist.forEach((track, idx) => {
+                    const hasSRT = srtPool[track.baseName] ? true : false;
+                    const li = document.createElement('li');
+                    if (idx === currentIndex) li.className = 'active';
+                    
+                    li.innerHTML = `
+                        <span style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${idx+1}. ${track.name}</span>
+                        <span class="srt-badge ${hasSRT ? '' : 'none'}">${hasSRT ? 'SRT 매핑' : '자막 없음'}</span>
+                    `;
+                    
+                    li.addEventListener('click', () => {
+                        playTrack(idx);
+                    });
+                    playlistBox.appendChild(li);
+                });
+            }
+
+            // 🎛️ 4단계: 트랙 단락 구동 스위처
+            function playTrack(index) {
+                if (index < 0 || index >= playlist.length) return;
+                
+                currentIndex = index;
+                const track = playlist[currentIndex];
+                
+                audio.src = track.url;
+                trackTitle.innerText = `🎬 [재생 중] ${track.name}`;
+                
+                // 💡 [동기화 핵심]: 020호 및 코어 가속 엔진이 감지할 수 있도록 자막 풀을 전역 window 컨텍스트에 수혈
+                const mappedSRT = srtPool[track.baseName] || [];
+                window.parsedSubtitles = mappedSRT;
+                window.currentSubtitleText = "";
+
+                // 목록 활성화 클래스 스위칭
+                const items = playlistBox.querySelectorAll('li');
+                items.forEach((li, i) => {
+                    if (i === currentIndex) li.className = 'active';
+                    else li.className = '';
+                });
+
+                audio.load();
+                audio.play().then(() => {
+                    playBtn.innerText = '⏸️';
+                }).catch(() => {
+                    playBtn.innerText = '▶️';
+                });
+            }
+
+            // ⚡ 5단계: 미디어 디렉션 프로 버튼 물리 트리거 전개
+            playBtn.addEventListener('click', () => {
+                if (playlist.length === 0) return;
+                if (audio.paused) {
+                    audio.play();
+                    playBtn.innerText = '⏸️';
+                } else {
+                    audio.pause();
+                    playBtn.innerText = '▶️';
+                }
+            });
+
+            rewindBtn.addEventListener('click', () => { audio.currentTime = Math.max(0, audio.currentTime - 10); });
+            forwardBtn.addEventListener('click', () => { audio.currentTime = Math.min(audio.duration || 0, audio.currentTime + 10); });
+
+            prevBtn.addEventListener('click', () => {
+                if (playlist.length <= 1) return;
+                let targetIdx = currentIndex - 1;
+                if (targetIdx < 0) targetIdx = playlist.length - 1;
+                playTrack(targetIdx);
+            });
+
+            nextBtn.addEventListener('click', () => {
+                triggerNextTrack(true); // 강제 스킵 모드
+            });
+
+            // 💡 [알고리즘 5: 3대 마스터 재생 모드 연동 타임라인 엔드 감지 연산]
+            audio.addEventListener('ended', () => {
+                triggerNextTrack(false); // 오토 런타임 엔드 모드
+            });
+
+            function triggerNextTrack(isManualSkip) {
+                if (playlist.length === 0) return;
+                const mode = playModeSelect.value;
+
+                if (!isManualSkip && mode === 'repeat-one') {
+                    // 1) 한곡 반복 재생
+                    audio.currentTime = 0;
+                    audio.play();
+                    return;
+                }
+
+                if (mode === 'shuffle') {
+                    // 2) 랜덤 재생 (셔플)
+                    let nextRand = Math.floor(Math.random() * playlist.length);
+                    if (playlist.length > 1 && nextRand === currentIndex) {
+                        nextRand = (nextRand + 1) % playlist.length; // 동일 곡 방어
+                    }
+                    playTrack(nextRand);
+                } else {
+                    // 3) 전곡 순차 및 전곡 반복 재생 (repeat-all)
+                    let nextIdx = currentIndex + 1;
+                    if (nextIdx >= playlist.length) {
+                        if (mode === 'repeat-all') {
+                            nextIdx = 0; // 회전 루프
+                        } else {
+                            playBtn.innerText = '▶️';
+                            return; // 순차 정지
+                        }
+                    }
+                    playTrack(nextIdx);
+                }
+            }
+
+            // 자막 실시간 동기화 오버랩 프레임 빌더
             audio.addEventListener('timeupdate', () => {
                 if (!audio.duration) return;
                 const pct = (audio.currentTime / audio.duration) * 100;
                 progressFill.style.width = `${pct}%`;
                 timeCurrent.innerText = formatTime(audio.currentTime);
+
+                // 020호 가림 예술용 실시간 텍스트 프레임 주입
+                const subs = window.parsedSubtitles || [];
+                if (subs.length > 0) {
+                    const currentSub = subs.find(s => audio.currentTime >= s.start && audio.currentTime <= s.end);
+                    window.currentSubtitleText = currentSub ? currentSub.text : "";
+                }
             });
 
             progressContainer.addEventListener('click', (e) => {
                 if (!audio.duration) return;
                 const rect = progressContainer.getBoundingClientRect();
-                const clickX = e.clientX - rect.left;
-                const width = rect.width;
-                audio.currentTime = (clickX / width) * audio.duration;
+                audio.currentTime = ((e.clientX - rect.left) / rect.width) * audio.duration;
             });
 
-            volumeSlider.addEventListener('input', (e) => {
-                audio.volume = e.target.value;
-            });
+            volumeSlider.addEventListener('input', (e) => { audio.volume = e.target.value; });
+
+            // SRT 자막 문자열 복합 레졸루션 함수
+            function parseSRT(data) {
+                if (!data) return [];
+                const blocks = data.replace(/\r/g, '').trim().split('\n\n');
+                return blocks.map(b => {
+                    const lines = b.split('\n');
+                    if (lines.length < 3) return null;
+                    const timeLine = lines[1];
+                    if (!timeLine || !timeLine.includes('-->')) return null;
+                    const times = timeLine.split('-->');
+                    if (times.length < 2) return null;
+
+                    function timeToSeconds(t) {
+                        if (!t) return 0;
+                        const p = t.trim().split(':');
+                        if (p.length < 3) return 0;
+                        return parseInt(p[0]) * 3600 + parseInt(p[1]) * 60 + parseFloat(p[2].replace(',', '.'));
+                    }
+                    return { start: timeToSeconds(times[0]), end: timeToSeconds(times[1]), text: lines.slice(2).join(' ').trim() };
+                }).filter(Boolean);
+            }
         });
     </script>
 </body>
