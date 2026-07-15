@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cosmic Audio Studio - Cinematic MP3 Player</title>
+    <!-- Three.js 코어 라이브러리 탑재 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- CSS 무대 연출 파일 연결 -->
+    <link rel="stylesheet" href="src/style.css">
+</head>
+<body>
+
+    <div id="studio-container">
+        <!-- ========================================== -->
+        <!-- 📁 좌측 관제탑: 미디어 자산 및 스케치 스위처 -->
+        <!-- ========================================== -->
+        <aside id="sidebar-left" class="control-panel">
+            <div class="panel-section">
+                <h2>🎵 Media Resources</h2>
+                <div class="input-group">
+                    <label for="file-audio">📂 MP3 음악:</label>
+                    <input type="file" id="file-audio" accept="audio/mp3">
+                </div>
+                <div class="input-group">
+                    <label for="file-srt">📝 SRT 자막:</label>
+                    <input type="file" id="file-srt" accept=".srt">
+                </div>
+                <div class="input-group">
+                    <label for="file-image">🖼️ BG 땅/호수바닥:</label>
+                    <input type="file" id="file-image" accept="image/*">
+                </div>
+            </div>
+
+            <div class="panel-section">
+                <h2>📁 Visual Sketches</h2>
+                <ul id="sketch-list">
+                    <li class="active" data-sketch="001_p5_wave.js">001호 오디오 파형</li>
+                    <li data-sketch="003_glsl_noise.js">003호 오로라 수면</li>
+                    <li data-sketch="007_three_cosmic_nebula.js">007호 오로라 성운</li>
+                    <li data-sketch="008_three_pendulum_wave.js">008호 은하수 세포</li>
+                    <li data-sketch="011_p5_ocean_wave.js">011호 오션 웨이브</li>
+                    <li data-sketch="014_p5_pendulums.js">014호 기하학 매트릭스</li>
+                    <li data-sketch="019_p5_512_circles.js">019호 512 서클 엔진</li>
+                    <li data-sketch="020_p5_srt_canvas.js">020호 절대 적층 자막</li>
+                </ul>
+            </div>
+        </aside>
+
+        <!-- ========================================== -->
+        <!-- 🎬 중앙 무대: 실시간 시네마틱 렌더링 캔버스 -->
+        <!-- ========================================== -->
+        <main id="stage-wrapper" class="ratio-full">
+            <div id="canvas-stage"></div>
+            <!-- 내부 오디오 객체 (화면에서는 완전히 가려짐) -->
+            <audio id="audio-player"></audio>
+        </main>
+
+        <!-- ========================================== -->
+        <!-- 🎛️ 우측 관제탑: Cosmic Studio 핵심 튜너 슬라이더 -->
+        <!-- ========================================== -->
+        <aside id="sidebar-right" class="control-panel">
+            <div class="panel-section">
+                <h2>Cosmic Studio Tuning</h2>
+                
+                <div class="slider-group">
+                    <div class="slider-label"><span>Shuffle (Seed)</span><input type="number" id="num-cosmic-seed" value="42" min="1" max="999"></div>
+                    <input type="range" id="slide-cosmic-seed" min="1" max="100" value="42" oninput="document.getElementById('num-cosmic-seed').value=this.value">
+                </div>
+
+                <div class="slider-group">
+                    <div class="slider-label"><span>Range (Scatter)</span><input type="number" id="num-cosmic-scatter" value="22" min="0" max="100"></div>
+                    <input type="range" id="slide-cosmic-scatter" min="0" max="100" value="22" oninput="document.getElementById('num-cosmic-scatter').value=this.value">
+                </div>
+
+                <div class="slider-group">
+                    <div class="slider-label"><span>Scale (Glow)</span><input type="number" id="num-cosmic-glow" value="85" min="0" max="250"></div>
+                    <input type="range" id="slide-cosmic-glow" min="0" max="250" value="85" oninput="document.getElementById('num-cosmic-glow').value=this.value">
+                </div>
+
+                <div class="slider-group">
+                    <div class="slider-label"><span>Volume (Gain)</span><input type="number" id="num-cosmic-gain" value="100" min="0" max="500"></div>
+                    <input type="range" id="slide-cosmic-gain" min="0" max="500" value="100" oninput="document.getElementById('num-cosmic-gain').value=this.value">
+                </div>
+
+                <div class="slider-group">
+                    <div class="slider-label"><span>Gauge</span><input type="number" id="num-cosmic-gauge" value="50" min="0" max="100"></div>
+                    <input type="range" id="slide-cosmic-gauge" min="0" max="100" value="50" oninput="document.getElementById('num-cosmic-gauge').value=this.value">
+                </div>
+
+                <div class="picker-row">
+                    <div><label>Gas1</label><input type="color" id="picker-gas1" value="#ff0055"></div>
+                    <div><label>Gas2</label><input type="color" id="picker-gas2" value="#00ffcc"></div>
+                    <div><label>Star</label><input type="color" id="picker-star" value="#ffffff"></div>
+                </div>
+
+                <div class="select-group">
+                    <label for="select-cosmic-color">Color Style Palette</label>
+                    <select id="select-cosmic-color">
+                        <option value="neon">Neon (명상 오로라)</option>
+                        <option value="monochrome">Monochrome (순백 기하학)</option>
+                        <option value="pastel">Pastel (수묵/숲속 잉크)</option>
+                        <option value="custom">Custom Selector (지정 3색)</option>
+                        <option value="full-random">Full Random (찬란한 무지개)</option>
+                    </select>
+                </div>
+
+                <!-- 가상 3D 카메라 공간 오프셋 제어단 -->
+                <div class="position-offset-row" style="display:none;">
+                    <input type="number" id="num-offset-x" value="0">
+                    <input type="number" id="num-offset-y" value="0">
+                    <input type="number" id="num-offset-z" value="0">
+                </div>
+
+                <button id="btn-apply-cosmic" class="action-btn active-btn">현재 수치 즉시 적용 (RESET)</button>
+            </div>
+
+            <div class="panel-section mini-section">
+                <h2>💾 Preset Save & Load</h2>
+                <div class="btn-row">
+                    <button id="btn-save-preset" class="sub-btn">디바이스 저장</button>
+                    <button id="btn-load-preset" class="sub-btn">불러오기</button>
+                </div>
+            </div>
+
+            <div class="panel-section mini-section">
+                <h2>🎥 Export Setting</h2>
+                <div class="btn-row">
+                    <button id="btn-ratio-full" class="ratio-btn active">Full</button>
+                    <button id="btn-ratio-169" class="ratio-btn">16:9</button>
+                    <button id="btn-ratio-916" class="ratio-btn">9:16</button>
+                </div>
+                <button id="btn-record-video" class="action-btn record-btn">🔴 녹화 시작 (Record)</button>
+            </div>
+        </aside>
+
+        <!-- ========================================== -->
+        <!-- 🎚️ 하단 데크: 통합 미디어 프로 마스터 플레이 바 -->
+        <!-- ========================================== -->
+        <footer id="master-player-deck">
+            <button id="btn-play-music" class="deck-play-btn">▶️ 음악 재생 (Play)</button>
+            
+            <div id="deck-timeline-wrapper">
+                <span id="time-current" class="time-display">00:00</span>
+                <div id="progress-bar-container">
+                    <div id="progress-bar-fill"></div>
+                </div>
+                <span id="time-total" class="time-display">00:00</span>
+            </div>
+
+            <div id="deck-volume-wrapper">
+                <span style="font-size:11px; color:#888;">🔊</span>
+                <input type="range" id="deck-volume-slider" min="0" max="1" step="0.01" value="0.8">
+            </div>
+        </footer>
+    </div>
+
+    <!-- 스크립트 파이프라인 구동 -->
+    <script type="module" src="src/main.js"></script>
+    <script>
+        // 하단 마스터 바 전용 실시간 연동 로직
+        document.addEventListener('DOMContentLoaded', () => {
+            const audio = document.getElementById('audio-player');
+            const playBtn = document.getElementById('btn-play-music');
+            const progressContainer = document.getElementById('progress-bar-container');
+            const progressFill = document.getElementById('progress-bar-fill');
+            const timeCurrent = document.getElementById('time-current');
+            const timeTotal = document.getElementById('time-total');
+            const volumeSlider = document.getElementById('deck-volume-slider');
+
+            function formatTime(secs) {
+                if (isNaN(secs)) return "00:00";
+                const m = Math.floor(secs / 60).toString().padStart(2, '0');
+                const s = Math.floor(secs % 60).toString().padStart(2, '0');
+                return `${m}:${s}`;
+            }
+
+            audio.addEventListener('loadedmetadata', () => {
+                timeTotal.innerText = formatTime(audio.duration);
+            });
+
+            audio.addEventListener('timeupdate', () => {
+                if (!audio.duration) return;
+                const pct = (audio.currentTime / audio.duration) * 100;
+                progressFill.style.width = `${pct}%`;
+                timeCurrent.innerText = formatTime(audio.currentTime);
+            });
+
+            progressContainer.addEventListener('click', (e) => {
+                if (!audio.duration) return;
+                const rect = progressContainer.getBoundingClientRect();
+                const clickX = e.clientX - rect.left;
+                const width = rect.width;
+                audio.currentTime = (clickX / width) * audio.duration;
+            });
+
+            volumeSlider.addEventListener('input', (e) => {
+                audio.volume = e.target.value;
+            });
+        });
+    </script>
+</body>
+</html>
