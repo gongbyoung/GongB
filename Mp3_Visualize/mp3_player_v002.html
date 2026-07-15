@@ -6,8 +6,303 @@
     <title>Cosmic Audio Studio - Cinematic MP3 Player</title>
     <!-- Three.js 코어 라이브러리 탑재 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <!-- CSS 무대 연출 파일 연결 -->
-    <link rel="stylesheet" href="src/style.css">
+    
+    <!-- 💡 [MIME 및 경로 버그 완치] 외부 style.css를 파일 내부로 완벽하게 락인(Lock-in) 시공 -->
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            background-color: #05070f;
+            color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            overflow: hidden;
+        }
+
+        /* 전체 스튜디오 컨테이너 3단 파티션 레이아웃 */
+        #studio-container {
+            display: flex;
+            width: 100%;
+            height: 100%;
+            position: relative;
+            padding-bottom: 60px; /* 하단 마스터 플레이 바 확보 공간 */
+        }
+
+        /* 좌우측 마스터 관제탑 패널 공통 */
+        .control-panel {
+            width: 300px;
+            height: calc(100% - 60px);
+            background: rgba(8, 11, 22, 0.94);
+            border-right: 1px solid rgba(0, 240, 255, 0.15);
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            overflow-y: auto;
+            z-index: 10;
+            position: absolute;
+            top: 0;
+        }
+
+        #sidebar-left { left: 0; }
+        #sidebar-right {
+            right: 0;
+            border-right: none;
+            border-left: 1px solid rgba(0, 240, 255, 0.15);
+        }
+
+        .panel-section {
+            background: rgba(13, 18, 34, 0.85);
+            border: 1px solid rgba(0, 240, 255, 0.08);
+            border-radius: 8px;
+            padding: 14px;
+        }
+        .mini-section { padding: 10px 14px; }
+
+        .control-panel h2 {
+            font-size: 13px;
+            font-weight: bold;
+            color: #00ffcc;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            margin-bottom: 12px;
+            border-bottom: 1px solid rgba(0, 255, 204, 0.15);
+            padding-bottom: 4px;
+        }
+
+        /* 입력 양식 스타일 세팅 */
+        .input-group {
+            margin-bottom: 10px;
+        }
+        .input-group label {
+            display: block;
+            font-size: 11px;
+            color: #8a9fc2;
+            margin-bottom: 4px;
+        }
+        .input-group input[type="file"] {
+            width: 100%;
+            font-size: 11px;
+            background: #090d1a;
+            border: 1px solid #1a263d;
+            border-radius: 4px;
+            color: #fff;
+            padding: 4px;
+        }
+
+        /* 왼쪽 파일 목록 스위처 */
+        #sketch-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        #sketch-list li {
+            padding: 8px 10px;
+            font-size: 11.5px;
+            background: rgba(20, 28, 50, 0.6);
+            border: 1px solid rgba(255,255,255,0.03);
+            border-radius: 4px;
+            cursor: pointer;
+            color: #b0c4de;
+            transition: all 0.2s ease;
+        }
+        #sketch-list li:hover {
+            background: rgba(0, 240, 255, 0.1);
+            color: #00f0ff;
+        }
+        #sketch-list li.active {
+            background: #00f0ff;
+            color: #05070f;
+            font-weight: bold;
+            box-shadow: 0 0 10px rgba(0,240,255,0.3);
+        }
+
+        /* 슬라이더 제어단 그래픽 매핑 */
+        .slider-group { margin-bottom: 12px; }
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: #8a9fc2;
+            margin-bottom: 4px;
+        }
+        .slider-label input {
+            width: 45px;
+            background: none;
+            border: none;
+            color: #00ffcc;
+            font-family: monospace;
+            text-align: right;
+            font-size: 11px;
+        }
+        input[type="range"] {
+            width: 100%;
+            height: 4px;
+            background: #141c32;
+            border-radius: 2px;
+            outline: none;
+            appearance: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            appearance: none;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #00ffcc;
+            cursor: pointer;
+            box-shadow: 0 0 5px rgba(0,255,204,0.5);
+        }
+
+        /* 컬러 피커 행 */
+        .picker-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+        .picker-row div {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+        .picker-row label { font-size: 10px; color: #8a9fc2; }
+        .picker-row input[type="color"] {
+            width: 40px; height: 20px; background: none; border: none; cursor: pointer;
+        }
+
+        .select-group label { display: block; font-size: 11px; color: #8a9fc2; margin-bottom: 4px; }
+        .select-group select {
+            width: 100%; background: #090d1a; border: 1px solid #1a263d; border-radius: 4px;
+            color: #fff; padding: 6px; font-size: 11px; outline: none;
+        }
+
+        /* 버튼 스타일화 */
+        .action-btn {
+            width: 100%; padding: 10px; border-radius: 5px; border: none; font-size: 11.5px;
+            font-weight: bold; cursor: pointer; margin-top: 6px; transition: all 0.2s;
+        }
+        .active-btn { background: #00f0ff; color: #05070f; box-shadow: 0 0 10px rgba(0,240,255,0.2); }
+        .active-btn:hover { background: #00d2e0; }
+        .btn-row { display: flex; gap: 6px; }
+        .sub-btn, .ratio-btn {
+            flex: 1; padding: 6px; font-size: 11px; background: #151e36; border: 1px solid #24325c;
+            border-radius: 4px; color: #b0c4de; cursor: pointer;
+        }
+        .ratio-btn.active { background: #00ffcc; color: #05070f; font-weight: bold; }
+        .record-btn { background: #ff2a55; color: #fff; margin-top: 8px; }
+        .record-btn:hover { background: #e01b43; }
+
+        /* ========================================== */
+        /* 🎬 중앙 메인 무대 컨텍스트 아키텍처 */
+        /* ========================================== */
+        #stage-wrapper {
+            flex: 1;
+            height: calc(100% - 60px);
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #000000;
+            margin-left: 300px;
+            margin-right: 300px;
+            transition: all 0.3s ease;
+        }
+
+        #canvas-stage {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* 상용 디바이스 화면 비율 컴포지팅 가이드선 */
+        .ratio-full { width: 100%; height: 100%; }
+        .ratio-169 #canvas-stage { aspect-ratio: 16/9; width: 100%; height: auto; max-height: 100%; box-shadow: 0 0 30px rgba(0,0,0,0.8); }
+        .ratio-916 #canvas-stage { aspect-ratio: 9/16; height: 100%; width: auto; max-width: 100%; box-shadow: 0 0 30px rgba(0,0,0,0.8); }
+
+        /* ========================================== */
+        /* 🎚️ 하단 데크: 프로용 미디어 타임라인 제어 바 */
+        /* ========================================== */
+        #master-player-deck {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 60px;
+            background: #080b16;
+            border-top: 1px solid rgba(0, 240, 255, 0.2);
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            gap: 16px;
+            z-index: 100;
+        }
+
+        .deck-play-btn {
+            padding: 8px 16px;
+            background: #00ffcc;
+            color: #05070f;
+            border: none;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            min-width: 140px;
+            box-shadow: 0 0 10px rgba(0,255,204,0.2);
+        }
+        .deck-play-btn:hover { background: #00d9b5; }
+
+        #deck-timeline-wrapper {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            position: relative;
+        }
+        .time-display {
+            font-family: monospace;
+            font-size: 11px;
+            color: #6c84a3;
+            min-width: 35px;
+        }
+
+        #progress-bar-container {
+            flex: 1;
+            height: 6px;
+            background: #141b30;
+            border-radius: 3px;
+            position: relative;
+            cursor: pointer;
+        }
+        #progress-bar-fill {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #00f0ff, #00ffcc);
+            border-radius: 3px;
+            position: absolute;
+            top: 0;
+            left: 0;
+            transition: width 0.1s linear;
+        }
+
+        #deck-volume-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 120px;
+        }
+        #deck-volume-slider {
+            width: 100%;
+            cursor: pointer;
+        }
+    </style>
 </head>
 <body>
 
@@ -52,7 +347,7 @@
         <!-- ========================================== -->
         <main id="stage-wrapper" class="ratio-full">
             <div id="canvas-stage"></div>
-            <!-- 내부 오디오 객체 (화면에서는 완전히 가려짐) -->
+            <!-- 내부 오디오 객체 -->
             <audio id="audio-player"></audio>
         </main>
 
@@ -105,7 +400,6 @@
                     </select>
                 </div>
 
-                <!-- 가상 3D 카메라 공간 오프셋 제어단 -->
                 <div class="position-offset-row" style="display:none;">
                     <input type="number" id="num-offset-x" value="0">
                     <input type="number" id="num-offset-y" value="0">
@@ -158,7 +452,6 @@
     <!-- 스크립트 파이프라인 구동 -->
     <script type="module" src="src/main.js"></script>
     <script>
-        // 하단 마스터 바 전용 실시간 연동 로직
         document.addEventListener('DOMContentLoaded', () => {
             const audio = document.getElementById('audio-player');
             const playBtn = document.getElementById('btn-play-music');
