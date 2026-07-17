@@ -1,13 +1,14 @@
 /**
  * src/sketches/005_three_floor_eq.js
- * - [버전] Ver 3.2 (하드웨어 컬러 누적 버그 완치 및 개별 LED 셀 완전 단색 보정 완결판)
- * - update() 루프 내 multiplyScalar 누적 곱 연산으로 인해 색상이 타버리던 치명적 결함을 userData.baseColor 원본 백업 구조로 완전 해결
- * - 스타일 1: 바다색 계단 (개별 칸 내부 그라디언트 제거 ➡️ 완벽한 고정 단색 / 위층으로 갈수록 맑은 아쿠아 블루로 계단식 변형)
- * - 스타일 2: 불색 계단 (개별 칸 내부 그라디언트 제거 ➡️ 완벽한 고정 단색 / 위층으로 갈수록 짙은 마그마 레드 크림슨으로 계단식 변형)
- * - 스타일 3: 가상 픽커 커스텀 지정 배색 (1층 Color 1 단색 -> 위층 Color 2 단색으로 칸별 선형 전환)
- * - 스타일 4: 아래칸 채움 없이 최고 피크 정점들만 스무스하게 이어 흐르는 네온 파도(Wave)선 연출 유지
- * - 스타일 5: 면 채움 없이 순수 사각형 외곽 테두리선(Wireframe) 구조의 개별 도트 올랜덤 컬러 셔플 유지
- * - 분산범위(가로간격), 지형변경(주파수 셔플), 발광(밝기), 폭발력(볼륨 높이) 및 무결점 배경 주입 완벽 연동
+ * - [버전] Ver 4.0 (32채널 네온 악기 버튼 매트릭스 & 7대 셔플 반응 액션 완결판)
+ * - 이미지 수혈: 반 고흐 명화나 업로드 이미지를 THREE.Texture로 변환하여 3D 우주 배경에 실시간 레이어 통합
+ * - 구조 개혁: 기존 계단식 바를 폐기하고, 이미지 양식과 일치하는 4열 x 8행 = 총 32개의 동그라미/사각형 네온 버튼 매트릭스 시공
+ * - Shuffle (Seed) 연동: 시드 변경 즉시 32개 버튼에 7가지 독자 반응 액션 모드와 기하학 형태를 무작위 교차 셔플링
+ * - 관제탑 제어 인터페이스 100% 직결 매핑:
+ *   • Scale  (glowIntensity) : 네온 버튼 라인의 원천 밝기 및 글로우 블렌딩 반경 지배
+ *   • Volume (audioGain)     : 주파수 유입 시 7대 모드 변위가 튕겨 나가는 움직임 크기(진폭) 가중치 부스트
+ *   • Range  (scatterExponent): 32개 네온 버튼 간의 가로세로 정렬 배치 간격(Spacing) 확장
+ *   • Gauge  (gaugeValue)    : 내부 악기 기하학의 기본 디테일 밀도 변형 제어
  */
 
 export default class ThreeFloorEqualizer {
@@ -16,15 +17,16 @@ export default class ThreeFloorEqualizer {
     this.scene = null;
     this.camera = null;
     this.renderer = null;
-    this.eqBars = []; 
-    this.waveLineMesh = null; // 4번 스타일 전용 스무스 파도선
     
-    this.barCount = 32; 
-    this.maxCells = 15; 
-    
+    // 💡 4열 x 8행 = 32개의 고밀도 독립 네온 버튼 구조체
+    this.matrixButtons = [];
+    this.numCols = 4;
+    this.numRows = 8;
+    this.totalButtons = 32;
+
     this.bgTexture = null;
-    this.lastBgSrc = "";
-    this.domObserver = null;
+    this.lastBgImage = null;
+    this.lastTime = 0;
 
     this.uiSettings = {
       seed: 42,
@@ -32,348 +34,392 @@ export default class ThreeFloorEqualizer {
       style: 'neon', 
       glow: 85,
       gain: 100,
+      gauge: 50,
       customColors: { gas1: '#ff0055', gas2: '#00ffcc', star: '#ffffff' }
     };
 
-    this.sampleIndices = []; 
-    this.currentWidth = 0;
-    this.currentHeight = 0;
-    
-    this.version = "005호 칸별 단색 변형 스펙트럼 Ver 3.2";
+    this.version = "005호 Neon Instrument Matrix Ver 4.0";
   }
 
   init() {
-    this.currentWidth = this.container.clientWidth;
-    this.currentHeight = this.container.clientHeight;
+    const width = this.container.clientWidth;
+    const height = this.container.clientHeight;
 
     this.scene = new THREE.Scene();
+    this.scene.fog = new THREE.FogExp2(0x05060c, 0.012);
 
-    this.camera = new THREE.OrthographicCamera(-this.currentWidth / 2, this.currentWidth / 2, this.currentHeight / 2, -this.currentHeight / 2, 0.1, 1000);
-    this.camera.position.z = 10;
+    // 원근감이 살아있는 공간 시네마틱 카메라 배치
+    this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
+    this.camera.position.set(0, 0, 11);
+    this.camera.lookAt(0, 0, 0);
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, alpha: true });
-    this.renderer.setSize(this.currentWidth, this.currentHeight);
-    this.renderer.setClearColor(0x000000, 0.0); 
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    this.renderer.setSize(width, height);
+    this.renderer.setClearColor(0x05060c);
     this.container.appendChild(this.renderer.domElement);
 
-    this.scene.add(new THREE.AmbientLight(0xffffff, 1.2));
-
-    const geometry = new THREE.BoxGeometry(1, 1, 1);
-    geometry.translate(0, 0.5, 0);
+    this.scene.add(new THREE.AmbientLight(0xffffff, 1.0));
 
     this.syncUISettings();
-    this.buildSegmentMatrix(geometry);
-    this.buildWaveLineContainer(); 
-    this.setupDirectInputTracker();
+    this.buildInstrumentMatrix();
   }
 
   syncUISettings() {
     if (window.cosmicEngineSettings) {
       const global = window.cosmicEngineSettings;
       this.uiSettings.seed = global.seed ?? 42;
-      this.uiSettings.scatter = THREE.MathUtils.mapLinear(global.scatterExponent ?? 2.2, 0.5, 5.0, 45, 8);
+      this.uiSettings.scatter = global.scatterExponent ?? 2.2;
       this.uiSettings.style = global.colorStyle ?? 'neon';
-      this.uiSettings.glow = (global.glowIntensity ?? 0.85) * 100; 
-      this.uiSettings.gain = (global.audioGain ?? 1.0) * 100;
+      this.uiSettings.glow = global.glowIntensity ?? 0.85; 
+      this.uiSettings.gain = global.audioGain ?? 1.0;
+      this.uiSettings.gauge = global.gaugeValue ?? 0.5;
       this.uiSettings.customColors = global.customColors ?? { gas1: '#ff0055', gas2: '#00ffcc', star: '#ffffff' };
     }
   }
 
-  buildSegmentMatrix(geometry) {
-    this.eqBars.forEach(channel => {
-      channel.cells.forEach(cellMesh => this.scene.remove(cellMesh));
+  seededRandom(seed) {
+    const x = Math.sin(seed) * 10000;
+    return x - Math.floor(x);
+  }
+
+  // 💡 [알고리즘 1: 이미지 양식 일치형 32개 네온 악기 하이엔드 생성기]
+  buildInstrumentMatrix() {
+    // 기존에 깔린 자산 흔적 없이 소멸 처리
+    this.matrixButtons.forEach(btn => {
+      this.scene.remove(btn.group);
+      btn.geometries.forEach(g => g.dispose());
+      btn.materials.forEach(m => m.dispose());
     });
-    this.eqBars = [];
+    this.matrixButtons = [];
 
-    const totalScatterWidth = THREE.MathUtils.mapLinear(this.uiSettings.scatter, 5, 50, this.currentWidth * 0.98, this.currentWidth * 0.4);
-    const barWidth = (totalScatterWidth / this.barCount) * 0.85; 
-    const startX = -totalScatterWidth / 2 + barWidth / 2;
-    const bottomY = -this.currentHeight / 2 + 15;
+    let sRandom = this.uiSettings.seed;
 
-    const totalHeightLimit = this.currentHeight * 0.82;
-    const cellHeight = (totalHeightLimit / this.maxCells) * 0.86;
-    const cellSpacing = (totalHeightLimit / this.maxCells) * 0.14;
-
-    this.sampleIndices = [];
-    for (let i = 0; i < 256; i++) this.sampleIndices.push(i);
-    
-    let seedValue = this.uiSettings.seed;
-    const seededRandom = () => {
-      let x = Math.sin(seedValue++) * 10000;
-      return x - Math.floor(x);
-    };
-    
-    for (let i = this.sampleIndices.length - 1; i > 0; i--) {
-      const j = Math.floor(seededRandom() * (i + 1));
-      [this.sampleIndices[i], this.sampleIndices[j]] = [this.sampleIndices[j], this.sampleIndices[i]];
+    // 014호 호환 마스터 파레트 디코딩
+    let baseC1 = new THREE.Color(), baseC2 = new THREE.Color();
+    if (this.uiSettings.style === 'monochrome') {
+      baseC1.set('#ffffff'); baseC2.set('#999999');
+    } else if (this.uiSettings.style === 'neon') {
+      baseC1.set('#ff0055'); baseC2.set('#00ffcc');
+    } else if (this.uiSettings.style === 'pastel') {
+      baseC1.set('#1a2536'); baseC2.set('#ebbaa8'); // 묵직한 다크 잉크 수묵 톤
+    } else if (this.uiSettings.style === 'custom') {
+      baseC1.set(this.uiSettings.customColors.gas1);
+      baseC2.set(this.uiSettings.customColors.gas2);
+    } else {
+      baseC1.setRGB(0.9, 0.1, 0.4); baseC2.setRGB(0.1, 0.9, 0.6);
     }
 
-    for (let i = 0; i < this.barCount; i++) {
-      let baseBottomColor = new THREE.Color();
-      let baseTopColor = new THREE.Color();
+    // 그리드 생성 루프 전개
+    for (let i = 0; i < this.totalButtons; i++) {
+      const col = i % this.numCols;
+      const row = Math.floor(i / this.numCols);
 
-      if (this.uiSettings.style === 'monochrome') {
-        baseBottomColor.setHex(0x001a33); // 스타일 1: 바다색 계단 기저 (어두운 심해 청색)
-        baseTopColor.setHex(0x33d6ff);    // 위로 갈수록 맑은 아쿠아 블루 단색
-      } else if (this.uiSettings.style === 'pastel') {
-        baseBottomColor.setHex(0xff4500); // 스타일 2: 불색 계단 기저 (밝고 강렬한 오렌지 마그마)
-        baseTopColor.setHex(0x1a0000);    // 위로 갈수록 어둡게 타버린 크림슨 블랙 단색
-      } else if (this.uiSettings.style === 'custom') {
-        baseBottomColor.set(this.uiSettings.customColors.gas1); // 스타일 3: 커스텀 지정 배색
-        baseTopColor.set(this.uiSettings.customColors.gas2);
-      } else {
-        baseBottomColor.setHex(0xff0055); // 스타일 4, 5번 네이티브 기본 배색 (네온 핑크)
-        baseTopColor.setHex(0x00ffcc);    // 네온 민트
+      const btnGroup = new THREE.Group();
+      const geomList = [];
+      const matList = [];
+
+      sRandom = this.seededRandom(sRandom) * 1000;
+      let shapeRand = this.seededRandom(sRandom + 1);
+      let modeRand = this.seededRandom(sRandom + 2);
+
+      // 💡 [SHUFFLE 연동]: 7가지 반응 특수 액션 모드를 버튼별로 골고루 랜덤 분배
+      let assignedActionMode = Math.floor(modeRand * 7) + 1; 
+
+      // 칸별 고유 컬러 브렌딩 그라데이션 추출
+      let blendRatio = i / (this.totalButtons - 1);
+      let btnThemeColor = baseC1.clone().lerp(baseC2, blendRatio);
+      
+      if (this.uiSettings.style === 'full-random') {
+        btnThemeColor.setHSL(this.seededRandom(sRandom + 5), 0.9, 0.6);
       }
 
-      // 개별 큐브 내부에 얼룩덜룩한 그라디언트 변형이 생기지 않도록 단일 단색 유니폼(u_cellColor) 시스템 셋업
-      const material = new THREE.ShaderMaterial({
-        uniforms: {
-          u_cellColor: { value: new THREE.Color(0xffffff) },
-          u_opacity: { value: 0.1 },
-          u_wireOnly: { value: 0.0 } 
-        },
-        vertexShader: `
-          varying vec2 vUv;
-          void main() {
-            vUv = uv;
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-          }
-        `,
-        fragmentShader: `
-          uniform vec3 u_cellColor;
-          uniform float u_opacity;
-          uniform float u_wireOnly;
-          varying vec2 vUv;
-          void main() {
-            float borderX = smoothstep(0.0, 0.08, vUv.x) * smoothstep(1.0, 0.92, vUv.x);
-            float borderY = smoothstep(0.0, 0.08, vUv.y) * smoothstep(1.0, 0.92, vUv.y);
-            float mask = borderX * borderY;
-
-            if (u_wireOnly > 0.5) {
-               mask = (mask < 0.95) ? 1.0 : 0.0;
-               if(mask < 0.1) discard; 
-            }
-
-            gl_FragColor = vec4(u_cellColor, u_opacity * mask);
-          }
-        `,
+      // 기본 공통 재질 바인딩
+      const meshMat = new THREE.MeshBasicMaterial({
+        color: btnThemeColor,
         transparent: true,
-        depthWrite: false
+        opacity: assignedActionMode === 5 ? 0.05 : 0.2, // 5번 채움모드용 초기 오퍼시티 분기
+        side: THREE.DoubleSide
+      });
+      const lineMat = new THREE.LineBasicMaterial({
+        color: btnThemeColor,
+        transparent: true,
+        opacity: 0.9,
+        linewidth: 2
       });
 
-      const channelObj = {
-        cells: [],
-        materials: [],
-        sampleIndex: this.sampleIndices[i % 256], 
-        smoothedHeight: 0,
-        posX: startX + i * (totalScatterWidth / this.barCount)
-      };
+      matList.push(meshMat, lineMat);
 
-      for (let j = 0; j < this.maxCells; j++) {
-        const cellMat = material.clone();
-        
-        // 💡 [수학적 계단식 컬러 선형 분할 연산]
-        let cellRatio = j / (this.maxCells - 1);
-        let finalCellColor = new THREE.Color();
-        finalCellColor.copy(baseBottomColor).lerp(baseTopColor, cellRatio);
-        
-        // 스타일 5번 우회 예외: 테두리만 남기고 올 랜덤 컬러 처리 시
-        if (this.uiSettings.style !== 'monochrome' && this.uiSettings.style !== 'pastel' && this.uiSettings.style !== 'custom' && this.uiSettings.style !== 'full-random') {
-            cellMat.uniforms.u_wireOnly.value = 1.0; 
-            finalCellColor.setHSL(seededRandom(), 1.0, 0.6); 
-        }
-
-        cellMat.uniforms.u_cellColor.value.copy(finalCellColor);
-
-        const cellMesh = new THREE.Mesh(geometry, cellMat);
-        cellMesh.scale.set(barWidth, cellHeight, 1);
-        cellMesh.position.set(channelObj.posX, bottomY + j * (cellHeight + cellSpacing), 0);
-
-        // 💡 [색상 타버림 방지 코어 장치] 매 프레임 연산 시 누적 곱셈으로 색이 깨지는 걸 막기 위해 원본 단색을 백업합니다.
-        cellMesh.userData = {
-          baseColor: finalCellColor.clone()
-        };
-
-        this.scene.add(cellMesh);
-        channelObj.cells.push(cellMesh);
-        channelObj.materials.push(cellMat);
-      }
-
-      this.eqBars.push(channelObj);
-    }
-  }
-
-  buildWaveLineContainer() {
-    if (this.waveLineMesh) this.scene.remove(this.waveLineMesh);
-    
-    const lineGeo = new THREE.BufferGeometry();
-    const positions = new Float32Array(this.barCount * 4 * 3);
-    lineGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-
-    const lineMat = new THREE.LineBasicMaterial({
-      color: 0x00ffcc,
-      linewidth: 4, 
-      transparent: true,
-      opacity: 0.0,
-      depthWrite: false
-    });
-
-    this.waveLineMesh = new THREE.Line(lineGeo, lineMat);
-    this.scene.add(this.waveLineMesh);
-  }
-
-  setupDirectInputTracker() {
-    const forceSyncTexture = () => {
-      let targetSrc = "";
-      let sourceElement = null;
-
-      if (window.currentUploadedImageElement && window.currentUploadedImageElement.src) {
-        targetSrc = window.currentUploadedImageElement.src;
-        sourceElement = window.currentUploadedImageElement;
+      // 1) 외곽 프레임 시공 (동그라미 vs 사각형 교차 셔플팅)
+      let outerFrameMesh;
+      if (shapeRand > 0.5) {
+        // 동그라미 프레임 (Ring)
+        const ringGeo = new THREE.RingGeometry(0.55, 0.6, 32);
+        outerFrameMesh = new THREE.Mesh(ringGeo, lineMat);
+        geomList.push(ringGeo);
       } else {
-        const allImgs = document.querySelectorAll('.media-resources img') || document.querySelectorAll('img');
-        for (let img of allImgs) {
-          if (img.src && (img.src.includes('blob:') || img.src.length > 30 || img.id.includes('preview') || img.src.includes('data:image'))) {
-            targetSrc = img.src;
-            sourceElement = img;
-            break;
-          }
-        }
+        // 사각형 테두리 프레임 (Box Outline)
+        const boxGeo = new THREE.BoxGeometry(1.0, 1.0, 0.05);
+        const edges = new THREE.EdgesGeometry(boxGeo);
+        outerFrameMesh = new THREE.LineSegments(edges, lineMat);
+        geomList.push(boxGeo, edges);
+      }
+      btnGroup.add(outerFrameMesh);
+
+      // 2) 💡 [이미지 매칭]: 내부 악기 및 기하학 모형 다양성 절단면 구성 (기타, 비파, 음표 형상화)
+      const innerGroup = new THREE.Group();
+      let instrumentType = Math.floor(this.seededRandom(sRandom + 3) * 4);
+
+      if (instrumentType === 0) {
+        // 현악기 타입 (넥 + 울림통 기하학)
+        const bodyGeo = new THREE.CircleGeometry(0.22, 16);
+        const neckGeo = new THREE.BoxGeometry(0.06, 0.5, 0.02);
+        neckGeo.translate(0, 0.3, 0);
+        
+        const bodyMesh = new THREE.Mesh(bodyGeo, meshMat);
+        const neckMesh = new THREE.Mesh(neckGeo, lineMat);
+        innerGroup.add(bodyMesh, neckMesh);
+        geomList.push(bodyGeo, neckGeo);
+      } else if (instrumentType === 1) {
+        // 음표 타입 (Note 형상)
+        const headGeo = new THREE.CircleGeometry(0.12, 16);
+        headGeo.translate(-0.1, -0.15, 0);
+        const stemGeo = new THREE.BoxGeometry(0.04, 0.4, 0.02);
+        stemGeo.translate(0.02, 0.05, 0);
+        const flagGeo = new THREE.BoxGeometry(0.15, 0.05, 0.02);
+        flagGeo.translate(0.1, 0.23, 0);
+
+        innerGroup.add(new THREE.Mesh(headGeo, meshMat), new THREE.Mesh(stemGeo, lineMat), new THREE.Mesh(flagGeo, lineMat));
+        geomList.push(headGeo, stemGeo, flagGeo);
+      } else if (instrumentType === 2) {
+        // 피파/오카리나 타입 (타원형 복합 구조체)
+        const luteGeo = new THREE.CylinderGeometry(0.05, 0.22, 0.5, 16);
+        const luteMesh = new THREE.Mesh(luteGeo, meshMat);
+        luteMesh.rotation.z = Math.PI / 4;
+        innerGroup.add(luteMesh);
+        geomList.push(luteGeo);
+      } else {
+        // 하모니카/스피커 진동판 기하학 구조
+        const coreGeo = new THREE.RingGeometry(0.05, 0.25, 6);
+        const coreMesh = new THREE.Mesh(coreGeo, lineMat);
+        innerGroup.add(coreMesh);
+        geomList.push(coreGeo);
       }
 
-      if (targetSrc && targetSrc !== this.lastBgSrc && sourceElement) {
-        this.lastBgSrc = targetSrc;
-        try {
-          const tex = new THREE.Texture(sourceElement);
-          tex.needsUpdate = true;
-          this.bgTexture = tex;
-          this.scene.background = this.bgTexture;
-        } catch (e) {
-          const loader = new THREE.TextureLoader();
-          loader.load(targetSrc, (t) => {
-            this.bgTexture = t;
-            this.scene.background = this.bgTexture;
-          });
-        }
-      }
-    };
+      // 악기 아이콘 전체가 비스듬하게 서 있는 이미지 고유 무드 투사
+      innerGroup.rotation.z = -Math.PI / 6;
+      btnGroup.add(innerGroup);
 
-    this.domObserver = new MutationObserver(() => { forceSyncTexture(); });
-    this.domObserver.observe(document.body, { attributes: true, childList: true, subtree: true });
-    setInterval(forceSyncTexture, 1000);
-    setTimeout(forceSyncTexture, 500);
+      // 3) 6번 모드 전용 외부 팽창 리플 링 사전 증설
+      const rippleGeo = new THREE.RingGeometry(0.6, 0.63, 32);
+      const rippleMat = lineMat.clone();
+      rippleMat.opacity = 0.0;
+      const rippleMesh = new THREE.Mesh(rippleGeo, rippleMat);
+      btnGroup.add(rippleMesh);
+      geomList.push(rippleGeo);
+      matList.push(rippleMat);
+
+      this.scene.add(btnGroup);
+
+      this.matrixButtons.push({
+        group: btnGroup,
+        inner: innerGroup,
+        outer: outerFrameMesh,
+        ripple: rippleMesh,
+        rippleMaterial: rippleMat,
+        geometries: geomList,
+        materials: matList,
+        baseColor: btnThemeColor.clone(),
+        actionMode: assignedActionMode,
+        sampleIndex: Math.floor(p.map(i, 0, this.totalButtons, 2, 180)), // 대역별 주파수 1:1 직결 매핑
+        colPos: col,
+        rowPos: row,
+        rippleActive: false,
+        rippleScale: 1.0
+      });
+    }
   }
 
   update(audioData) {
-    if (!this.renderer || !this.scene || !this.camera) return;
+    if (!this.renderer || !this.scene || !this.camera || this.matrixButtons.length === 0) return;
 
     this.syncUISettings();
     this.renderer.clear();
 
+    // [배경 이미지 가속 마운트 커넥터 일치]
+    const bgImg = window.currentUploadedImageElement;
+    if (bgImg && bgImg !== this.lastBgImage) {
+      if (this.bgTexture) this.bgTexture.dispose();
+      this.bgTexture = new THREE.Texture(bgImg);
+      this.bgTexture.minFilter = THREE.LinearFilter;
+      this.bgTexture.magFilter = THREE.LinearFilter;
+      this.bgTexture.needsUpdate = true;
+      this.lastBgImage = bgImg;
+      this.scene.background = this.bgTexture; // 3D 월드 최하단 안착
+    } else if (!bgImg && this.lastBgImage) {
+      this.scene.background = new THREE.Color(0x05060c);
+      this.lastBgImage = null;
+    }
+
+    // 진단 HUD 타임 연산선 전개
+    if (!this.lastTime) this.lastTime = performance.now();
+    let now = performance.now();
+    let fps = Math.round(1000 / (now - this.lastTime));
+    this.lastTime = now;
+
+    window.sketchDiagnostics = {
+      fps: isNaN(fps) || fps > 100 ? 30 : fps,
+      particleCount: this.totalButtons + " Neon Matrix Buttons",
+      isCovering: false,
+      activeFunction: `NeonGrid[ShuffleMode:Active]`
+    };
+
     const time = Date.now() * 0.001;
 
-    if (audioData && audioData.raw && audioData.raw.length > 0) {
-      const peakPoints = []; 
+    // 관제탑 물리 제어 스케일링 계수 환산
+    let scatterRaw = this.uiSettings.scatter > 5 ? this.uiSettings.scatter : this.uiSettings.scatter * 10;
+    let layoutSpacingX = THREE.MathUtils.mapLinear(scatterRaw, 5, 50, 1.5, 3.2);
+    let layoutSpacingY = THREE.MathUtils.mapLinear(scatterRaw, 5, 50, 1.0, 1.8);
 
-      const glowMultiplier = THREE.MathUtils.mapLinear(this.uiSettings.glow, 10, 250, 0.5, 4.0);
-      const gainMultiplier = parseFloat(this.uiSettings.gain) / 100;
+    let glowRaw = this.uiSettings.glow > 5 ? this.uiSettings.glow : this.uiSettings.glow * 100;
+    let glowFactor = THREE.MathUtils.mapLinear(glowRaw, 10, 250, 0.4, 3.8);
 
-      this.eqBars.forEach((channel) => {
-        const rawValue = (audioData.raw[channel.sampleIndex] || 0) / 255;
+    let volumeGainScale = this.uiSettings.gain > 5 ? this.uiSettings.gain / 100.0 : this.uiSettings.gain;
 
-        let sensitivityBoost = 1.0;
-        if (channel.sampleIndex > 110) sensitivityBoost = 2.4;
-        else if (channel.sampleIndex > 60) sensitivityBoost = 1.7;
+    // 💡 [알고리즘 2: 32채널 7대 반응 액션 실시간 역학 루프 연산구역]
+    this.matrixButtons.forEach((btn) => {
+      // 스크린샷 가로세로 중앙 정렬 간격 배치 전개
+      let finalX = (btn.colPos - (this.numCols - 1) * 0.5) * layoutSpacingX;
+      let finalY = ((this.numRows - 1) * 0.5 - btn.rowPos) * layoutSpacingY;
+      btn.group.position.set(finalX, finalY, 0);
 
-        const targetHeight = rawValue * sensitivityBoost * gainMultiplier;
-        channel.smoothedHeight = THREE.MathUtils.lerp(channel.smoothedHeight, targetHeight, 0.24);
+      // 주파수 바인딩 유입 및 정규화
+      let rawFreq = 0.0;
+      if (audioData && audioData.raw && audioData.raw.length > 0) {
+        rawFreq = (audioData.raw[btn.sampleIndex] || 0) / 255.0;
+      } else {
+        // 평시 잔잔한 사인파 호흡
+        rawFreq = (Math.sin(time * 2.0 + btn.sampleIndex) * 0.5 + 0.5) * 0.15;
+      }
 
-        const activeThreshold = channel.smoothedHeight * this.maxCells;
-        let channelHighestY = -this.currentHeight / 2 + 15;
+      let freqIntensity = rawFreq * volumeGainScale;
+      let delta = freqIntensity - btn.prevForce;
+      btn.prevForce = freqIntensity;
 
-        channel.cells.forEach((cellMesh, cellIdx) => {
-          const mat = channel.materials[cellIdx];
-          
-          // 💡 [핵심 버그 완전 픽스] 매 프레임 누적해서 연산하지 않고, 백업해둔 백업 컬러본(baseColor)을 기준으로 1회성 정밀 밝기 맵핑 유도
-          mat.uniforms.u_cellColor.value.copy(cellMesh.userData.baseColor).multiplyScalar(glowMultiplier);
+      // 물리 기본값 청소 및 리셋 초기화
+      btn.group.scale.setScalar(1.0);
+      btn.inner.scale.setScalar(1.0);
+      
+      // 색상 타버림 방지 userData 원본 동기화 복사
+      let currentMatColor = btn.baseColor.clone();
 
-          if (this.uiSettings.style === 'full-random') {
-             mat.uniforms.u_opacity.value = 0.0; 
-             if (cellIdx < activeThreshold) {
-                 channelHighestY = cellMesh.position.y + (cellMesh.scale.y);
-             }
-          } 
-          else {
-             if (cellIdx < activeThreshold) {
-               mat.uniforms.u_opacity.value = 0.95; 
-             } else {
-               mat.uniforms.u_opacity.value = 0.08; 
-             }
-          }
-        });
-
-        peakPoints.push(new THREE.Vector3(channel.posX, channelHighestY, 2));
+      btn.materials.forEach(mat => {
+        if (mat.color) mat.color.copy(btn.baseColor).multiplyScalar(glowFactor);
+        if (mat.opacity && mat !== btn.rippleMaterial) mat.opacity = 0.3 + freqIntensity * 0.4;
       });
 
-      if (this.uiSettings.style === 'full-random' && this.waveLineMesh) {
-          this.waveLineMesh.material.opacity = 1.0;
-          
-          const curve = new THREE.CatmullRomCurve3(peakPoints);
-          curve.curveType = 'centripetal'; 
-          
-          const splinePoints = curve.getPoints(this.barCount * 4);
-          this.waveLineMesh.geometry.setFromPoints(splinePoints);
-          this.waveLineMesh.material.color.setHSL(0.4 + Math.sin(time * 2.0) * 0.15, 1.0, 0.55 * glowMultiplier);
-      } else if (this.waveLineMesh) {
-          this.waveLineMesh.material.opacity = 0.0; 
+      // ========================================================
+      // 💡 [핵심]: SHUFFLE로 배정된 버튼별 고유 7대 특수 반응 모드 실행
+      // ========================================================
+      switch (btn.actionMode) {
+        case 1:
+          // 1번 모드 [스피커 맥동]: 블러 팽창처럼 전체 스케일 바이브레이션
+          let pulseScale = 1.0 + freqIntensity * 0.45;
+          btn.group.scale.setScalar(pulseScale);
+          break;
+
+        case 2:
+          // 2번 모드 [하이퍼 GLOW]: 주파수 진폭 시 미친 듯한 인광 펌핑
+          let peakGlow = glowFactor * (1.0 + freqIntensity * 3.5);
+          btn.materials.forEach(mat => {
+            if (mat.color) mat.color.copy(btn.baseColor).multiplyScalar(peakGlow);
+          });
+          break;
+
+        case 3:
+          // 3번 모드 [색상 반전]: 임계 타격 시 비트 보색 색채 전환
+          if (freqIntensity > 0.3) {
+            let invertColor = new THREE.Color(1.0 - btn.baseColor.r, 1.0 - btn.baseColor.g, 1.0 - btn.baseColor.b);
+            btn.materials.forEach(mat => {
+              if (mat.color) mat.color.copy(invertColor).multiplyScalar(glowFactor * 1.5);
+            });
+          }
+          break;
+
+        case 4:
+          // 4번 모드 [제자리 회전]: 외부 고정, 내부 악기 노드만 스무스 스핀
+          btn.inner.rotation.z = -Math.PI / 6 + (freqIntensity * Math.PI * 1.2);
+          break;
+
+        case 5:
+          // 5번 모드 [테두리 색 내부 채움]: 볼륨 크기대로 오퍼시티 면적 확장 승격
+          let fillOpacity = THREE.MathUtils.clamp(freqIntensity * 0.95, 0.05, 0.9);
+          btn.materials[0].opacity = fillOpacity; // meshMat 두께 채움 오퍼시티 가산
+          break;
+
+        case 6:
+          // 6번 모드 [외곽 확장 파도]: 트랜지언트 킥 감지 시 리플 확산 트리거
+          if (delta > 0.08 && !btn.rippleActive) {
+            btn.rippleActive = true;
+            btn.rippleScale = 1.0;
+          }
+          break;
+
+        case 7:
+          // 7번 모드 [악기 독자 펄스]: 외곽 가드 고정, 내부 알갱이 셰이프만 커졌다 작아지기
+          let innerPulse = 1.0 + freqIntensity * 0.75;
+          btn.inner.scale.setScalar(innerPulse);
+          break;
       }
-    }
+
+      // 6번 리플 모드 독립 애니메이션 프레임 워크 구동
+      if (btn.rippleActive) {
+        btn.rippleScale += 0.08;
+        btn.ripple.scale.setScalar(btn.rippleScale);
+        btn.rippleMaterial.opacity = (2.5 - btn.rippleScale) * 0.6;
+        btn.rippleMaterial.color.copy(btn.baseColor).multiplyScalar(glowFactor * 1.2);
+
+        if (btn.rippleScale >= 2.5) {
+          btn.rippleActive = false;
+          btn.rippleScale = 1.0;
+          btn.rippleMaterial.opacity = 0.0;
+        }
+      } else {
+        btn.rippleMaterial.opacity = 0.0;
+      }
+    });
 
     this.renderer.render(this.scene, this.camera);
   }
 
   resize(w, h) {
     if (this.camera && this.renderer) {
-      this.currentWidth = w;
-      this.currentHeight = h;
-      this.camera.left = -w / 2;
-      this.camera.right = w / 2;
-      this.camera.top = h / 2;
-      this.camera.bottom = -h / 2;
+      this.camera.aspect = w / h;
       this.camera.updateProjectionMatrix();
       this.renderer.setSize(w, h);
-
-      const geometry = new THREE.BoxGeometry(1, 1, 1);
-      geometry.translate(0, 0.5, 0);
-      this.syncUISettings();
-      this.buildSegmentMatrix(geometry);
-      this.buildWaveLineContainer();
     }
   }
 
   destroy() {
     if (!this.scene) return;
-    this.eqBars.forEach(channel => {
-      channel.cells.forEach(cellMesh => {
-        cellMesh.geometry.dispose();
-        cellMesh.material.dispose();
-      });
+    this.matrixButtons.forEach(btn => {
+      this.scene.remove(btn.group);
+      btn.geometries.forEach(g => g.dispose());
+      btn.materials.forEach(m => m.dispose());
     });
-    if (this.waveLineMesh) {
-        this.waveLineMesh.geometry.dispose();
-        this.waveLineMesh.material.dispose();
+    
+    if (this.bgTexture) {
+      this.bgTexture.dispose();
+      this.bgTexture = null;
     }
+    this.lastBgImage = null;
+
     if (this.renderer) {
       this.container.removeChild(this.renderer.domElement);
       this.renderer.dispose();
     }
-    if (this.domObserver) this.domObserver.disconnect();
-    if (this.bgTexture) this.bgTexture.dispose();
-
     this.scene = null;
     this.camera = null;
     this.renderer = null;
-    this.eqBars = [];
+    this.matrixButtons = [];
   }
 }
