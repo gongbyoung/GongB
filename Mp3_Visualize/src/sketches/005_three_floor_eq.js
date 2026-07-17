@@ -1,12 +1,9 @@
 /**
  * src/sketches/005_three_floor_eq.js
- * - [버전] Ver 4.7 (관제탑 X, Y, Z 인풋 민감도 1/50 초정밀 스케일 다운 완결판)
- * - 민감도 오버홀: 사용자 피드백 반영, 조작 계통 편의를 위해 인풋 입력값에 0.02(50분의 1) 감축 필터를 물리 적용
- * - 이미지 수혈: z-image-turbo_01103_.jpg 등 업로드된 아틀라스 이미지 격자를 4x8로 정밀 커팅 매핑
- * - 실시간 튜닝 매커니즘 (민감도 1/50 감축 상태):
- *   • X 입력창 : 값 1당 UV 가로 0.02 소폭 이동 (좌우 미세 피팅)
- *   • Y 입력창 : 값 1당 UV 세로 0.02 소폭 이동 (상하 미세 피팅)
- *   • Z 입력창 : 값 1당 내부 이미지 스케일 2% 미세 확대/축소 (줌 크래시 보정)
+ * - [버전] Ver 4.8 (하이브리드 둥근 사각형-원형 프레임 캘리브레이션 완결판)
+ * - 버그 완치: 원형 프레임에 둥근 사각형 에셋이 들어가 찌그러지던 현상을 shapeMap 개별 매핑으로 완벽 해결
+ * - 셰이더 마스킹: 셰이더 내부에서 Rounded Box SDF 및 Circle 마스크를 구동하여 검은 외곽 여백을 100% 원천 증발 시공
+ * - 7대 모션 액션: 셔플(Seed) 변경 시 32개 버튼에 스피커 펄스, 회전, 리플 등 특수 효과 무작위 매핑 유지
  */
 
 export default class ThreeFloorEqualizer {
@@ -16,7 +13,6 @@ export default class ThreeFloorEqualizer {
     this.camera = null;
     this.renderer = null;
     
-    // 4열 x 8행 = 32개의 고밀도 독립 네온 버튼 구조체
     this.matrixButtons = [];
     this.numCols = 4;
     this.numRows = 8;
@@ -25,6 +21,20 @@ export default class ThreeFloorEqualizer {
     this.bgTexture = null;
     this.lastBgImage = null;
     this.lastTime = 0;
+
+    // 💡 [VFX 아틀라스 셰이프 마스터 맵]: 원본 이미지와 1:1 대응되는 도형 락인 정보 (0: 원형, 1: 둥근 사각형)
+    this.shapeMap = [
+      0, 0, 0, 0, // 1층: 전부 원형
+      0, 1, 0, 0, // 2층: 2열 주황 기타 사각형
+      0, 0, 1, 1, // 3층: 3열 보라 카드, 4열 주황 가로팩 사각형
+      0, 0, 0, 0, // 4층: 전부 원형
+      0, 0, 1, 0, // 5층: 3열 빨강 스피커 사각형
+      0, 0, 0, 0, // 6층: 전부 원형
+      0, 0, 0, 0, // 7층: 전부 원형
+      0, 0, 0, 0  // 8층: 전부 원형
+    ];
+
+    this.sharedGeometries = []; // 중복 메모리 누수 방지용 공유 가드
 
     this.uiSettings = {
       seed: 42,
@@ -36,7 +46,7 @@ export default class ThreeFloorEqualizer {
       customColors: { gas1: '#ff0055', gas2: '#00ffcc', star: '#ffffff' }
     };
 
-    this.version = "005호 Neon Image Slicer Ver 4.7";
+    this.version = "005호 Neon Hybrid Slicer Ver 4.8";
   }
 
   init() {
@@ -46,9 +56,8 @@ export default class ThreeFloorEqualizer {
     this.scene = new THREE.Scene();
     this.scene.fog = new THREE.FogExp2(0x04050a, 0.015);
 
-    // 원근감이 살아있는 공간 시네마틱 카메라 배치
     this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
-    this.camera.position.set(0, 0, 11);
+    this.camera.position.set(0, 0, 10.5);
     this.camera.lookAt(0, 0, 0);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -80,13 +89,54 @@ export default class ThreeFloorEqualizer {
     return x - Math.floor(x);
   }
 
+  // 💡 [수학적 하이엔드 설계]: 네온 링과 완벽히 호환되는 속 빈 둥근 사각형 격자 프레임 제작기
+  createRoundedRingGeometry(w, h, r, thickness) {
+    const shape = new THREE.Shape();
+    const x = -w / 2, y = -h / 2;
+    
+    // 외곽 라인 (Counter-Clockwise)
+    shape.moveTo(x, y + r);
+    shape.lineTo(x, y + h - r);
+    shape.quadraticCurveTo(x, y + h, x + r, y + h);
+    shape.lineTo(x + w - r, y + h);
+    shape.quadraticCurveTo(x + w, y + h, x + w, y + h - r);
+    shape.lineTo(x + w, y + r);
+    shape.quadraticCurveTo(x + w, y, x + w - r, y);
+    shape.lineTo(x + r, y);
+    shape.quadraticCurveTo(x, y, x, y + r);
+
+    // 내부 구멍 라인 (Clockwise)
+    const hole = new THREE.Path();
+    const iw = w - thickness * 2;
+    const ih = h - thickness * 2;
+    const ir = Math.max(0.01, r - thickness);
+    const ix = -iw / 2, iy = -ih / 2;
+    
+    hole.moveTo(ix, iy + ir);
+    hole.lineTo(ix + iw - ir, iy);
+    hole.quadraticCurveTo(ix + iw, iy, ix + iw, iy + ir);
+    hole.lineTo(ix + iw, iy + ih - ir);
+    hole.quadraticCurveTo(ix + iw, iy + ih, ix + iw - ir, iy + ih);
+    hole.lineTo(ix + ir, iy + ih);
+    hole.quadraticCurveTo(ix, iy + ih, ix, iy + ih - ir);
+    hole.lineTo(ix, iy + ir);
+    hole.quadraticCurveTo(ix, iy, ix + ir, iy);
+
+    shape.holes.push(hole);
+    return new THREE.ShapeGeometry(shape, 24);
+  }
+
   buildInstrumentMatrix() {
+    // 이전 자원 완전 릴리즈
     this.matrixButtons.forEach(btn => {
       this.scene.remove(btn.group);
-      btn.geometries.forEach(g => g.dispose());
       btn.materials.forEach(m => m.dispose());
     });
+    if (this.sharedGeometries) {
+      this.sharedGeometries.forEach(g => g.dispose());
+    }
     this.matrixButtons = [];
+    this.sharedGeometries = [];
 
     let sRandom = this.uiSettings.seed;
 
@@ -104,16 +154,21 @@ export default class ThreeFloorEqualizer {
       baseC1.setRGB(0.9, 0.1, 0.4); baseC2.setRGB(0.1, 0.9, 0.6);
     }
 
-    const ringGeo = new THREE.RingGeometry(0.56, 0.6, 32);
-    const innerPlaneGeo = new THREE.PlaneGeometry(0.92, 0.92);
-    const rippleGeo = new THREE.RingGeometry(0.61, 0.64, 32);
+    // 최적화용 원천 지오메트리 셋 수립
+    const ringGeo = new THREE.RingGeometry(0.55, 0.6, 32);
+    const roundedRingGeo = this.createRoundedRingGeometry(1.12, 1.12, 0.24, 0.05);
+    const innerPlaneGeo = new THREE.PlaneGeometry(0.95, 0.95);
+    
+    const rippleCircleGeo = new THREE.RingGeometry(0.61, 0.64, 32);
+    const rippleSquareGeo = this.createRoundedRingGeometry(1.22, 1.22, 0.28, 0.04);
+
+    this.sharedGeometries.push(ringGeo, roundedRingGeo, innerPlaneGeo, rippleCircleGeo, rippleSquareGeo);
 
     for (let i = 0; i < this.totalButtons; i++) {
       const col = i % this.numCols;
       const row = Math.floor(i / this.numCols);
 
       const btnGroup = new THREE.Group();
-      const geomList = [ringGeo, innerPlaneGeo, rippleGeo];
       const matList = [];
 
       sRandom = this.seededRandom(sRandom) * 1000;
@@ -127,15 +182,20 @@ export default class ThreeFloorEqualizer {
         btnThemeColor.setHSL(this.seededRandom(sRandom + 5), 0.9, 0.6);
       }
 
+      // 💡 [도형 분기 판독]: 현재 칸이 사각형 슬라이싱 대상인지 실시간 판정
+      const isSquareType = this.shapeMap[i] === 1;
+
       const lineMat = new THREE.LineBasicMaterial({
         color: btnThemeColor,
         transparent: true,
         opacity: 0.9
       });
-      const outerRing = new THREE.Mesh(ringGeo, lineMat);
+
+      // 판정에 따라 알맞은 3D 네온 외곽 프레임 장착
+      const outerRing = new THREE.Mesh(isSquareType ? roundedRingGeo : ringGeo, lineMat);
       btnGroup.add(outerRing);
 
-      // 커스텀 셰이더 슬라이서 매립
+      // 💡 [GPU 셰이더 마스크 연산 단면 시공]: 둥근 사각형과 원형을 경계 바깥으로 완전 Discard 컷
       const sliceShaderMat = new THREE.ShaderMaterial({
         uniforms: {
           u_texture: { value: new THREE.Texture() },
@@ -146,7 +206,8 @@ export default class ThreeFloorEqualizer {
           u_glow: { value: 1.0 },
           u_opacity: { value: 1.0 },
           u_invert: { value: 0.0 },
-          u_fillMode: { value: 0.0 }
+          u_fillMode: { value: 0.0 },
+          u_shapeType: { value: isSquareType ? 1.0 : 0.0 } // 0.0: 원형 마스크, 1.0: 둥근 사각 마스크
         },
         vertexShader: `
           varying vec2 vUv;
@@ -165,9 +226,26 @@ export default class ThreeFloorEqualizer {
           uniform float u_opacity;
           uniform float u_invert;
           uniform float u_fillMode;
+          uniform float u_shapeType;
           varying vec2 vUv;
 
+          // 모서리가 둥근 사각형을 픽셀 단위로 도려내는 SDF 공식
+          float roundedBoxSDF(vec2 p, vec2 b, float r) {
+              vec2 d = abs(p) - b + vec2(r);
+              return min(max(d.x, d.y), 0.0) + length(max(d, 0.0)) - r;
+          }
+
           void main() {
+            // 💡 [원천 기술]: 3D 테두리 바깥으로 삐져나가는 사각형 이미지의 검은 여백을 실시간 삭제
+            if (u_shapeType > 0.5) {
+              vec2 p = vUv - vec2(0.5);
+              float d = roundedBoxSDF(p, vec2(0.45), 0.16);
+              if (d > 0.0) discard; 
+            } else {
+              float d = length(vUv - vec2(0.5));
+              if (d > 0.47) discard; 
+            }
+
             vec4 finalTex = vec4(1.0);
             if (u_hasTexture > 0.5) {
               vec2 slicedUV = vUv * u_uvScale + u_uvOffset;
@@ -196,9 +274,10 @@ export default class ThreeFloorEqualizer {
       const innerIconMesh = new THREE.Mesh(innerPlaneGeo, sliceShaderMat);
       btnGroup.add(innerIconMesh);
 
+      // 리플 링 역시 셰이프 속성에 맞춰 대응 장착
       const rippleMat = lineMat.clone();
       rippleMat.opacity = 0.0;
-      const rippleMesh = new THREE.Mesh(rippleGeo, rippleMat);
+      const rippleMesh = new THREE.Mesh(isSquareType ? rippleSquareGeo : rippleCircleGeo, rippleMat);
       btnGroup.add(rippleMesh);
 
       matList.push(lineMat, sliceShaderMat, rippleMat);
@@ -212,7 +291,6 @@ export default class ThreeFloorEqualizer {
         ripple: rippleMesh,
         rippleMaterial: rippleMat,
         shaderMaterial: sliceShaderMat,
-        geometries: geomList,
         materials: matList,
         baseColor: btnThemeColor.clone(),
         actionMode: assignedActionMode,
@@ -244,7 +322,7 @@ export default class ThreeFloorEqualizer {
     this.camera.aspect = aspect;
     this.camera.updateProjectionMatrix();
 
-    // 관제탑 UI 수치 로드
+    // 관제탑 X, Y, Z 눈금 계수 확보
     let offX = 0, offY = 0, offZ = 0;
     const elX = document.getElementById('num-offset-x');
     const elY = document.getElementById('num-offset-y');
@@ -254,7 +332,7 @@ export default class ThreeFloorEqualizer {
     if (elY) offY = parseFloat(elY.value) || 0;
     if (elZ) offZ = parseFloat(elZ.value) || 0;
 
-    // 💡 [핵심 개혁]: 입력 인터페이스 수치의 민감도를 1/50(0.02) 스케일로 압착 가드 전사
+    // 💡 편안한 타이핑 조절을 위해 실시간 연산 오프셋 감도를 정확히 1/50인 0.02 배율로 감축 조율
     const sensitivity = 0.02; 
     let microX = offX * sensitivity;
     let microY = offY * sensitivity;
@@ -291,9 +369,9 @@ export default class ThreeFloorEqualizer {
 
     window.sketchDiagnostics = {
       fps: isNaN(fps) || fps > 100 ? 30 : fps,
-      particleCount: this.totalButtons + " Fine Aligned Icons",
+      particleCount: this.totalButtons + " Calibrated Buttons",
       isCovering: false,
-      activeFunction: targetImg ? "Matrix[Micro_Calibration_Mode]" : "Matrix[Placeholder]"
+      activeFunction: targetImg ? "Matrix[SDF_Hybrid_Masking]" : "Matrix[Placeholder]"
     };
 
     const time = Date.now() * 0.001;
@@ -307,17 +385,15 @@ export default class ThreeFloorEqualizer {
 
     let volumeGainScale = this.uiSettings.gain > 5 ? this.uiSettings.gain / 100.0 : this.uiSettings.gain;
 
-    // 32채널 7대 고유 액션 제어 루프
     this.matrixButtons.forEach((btn) => {
       let finalX = (btn.colPos - (this.numCols - 1) * 0.5) * layoutSpacingX;
       let finalY = ((this.numRows - 1) * 0.5 - btn.rowPos) * layoutSpacingY;
       btn.group.position.set(finalX, finalY, 0);
 
-      // 💡 초정밀 micro 변수가 더해진 4x8 정밀 자르기 좌표 연산
+      // 💡 [정밀 UV 오프셋 시공]: 1/50 정밀 스냅샷 계수가 반영된 조각 절단
       let finalUvOffsetX = (btn.colPos / 4.0) + microX;
       let finalUvOffsetY = ((7.0 - btn.rowPos) / 8.0) + microY;
       
-      // 마이너스 방향 보정 가드가 적용된 줌 연산선 수립
       let finalUvScaleX = (1.0 / 4.0) * (1.0 + microZ);
       let finalUvScaleY = (1.0 / 8.0) * (1.0 + microZ);
 
@@ -403,10 +479,14 @@ export default class ThreeFloorEqualizer {
     if (!this.scene) return;
     this.matrixButtons.forEach(btn => {
       this.scene.remove(btn.group);
-      btn.geometries.forEach(g => g.dispose());
       btn.materials.forEach(m => m.dispose());
     });
     
+    if (this.sharedGeometries) {
+      this.sharedGeometries.forEach(g => g.dispose());
+      this.sharedGeometries = [];
+    }
+
     if (this.bgTexture) {
       this.bgTexture.dispose();
       this.bgTexture = null;
