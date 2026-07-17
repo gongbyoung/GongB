@@ -1,12 +1,12 @@
 /**
  * src/sketches/005_three_floor_eq.js
- * - [버전] Ver 4.6 (관제탑 X, Y, Z 노브 직결 이미지 슬라이싱 캘리브레이션 완결판)
- * - 보정 개혁: 오른쪽 사이드바의 3D Position Offset (X,Y,Z) 값을 실시간 텍스처 오프셋 제어기로 전사 리인덱싱
+ * - [버전] Ver 4.7 (관제탑 X, Y, Z 인풋 민감도 1/50 초정밀 스케일 다운 완결판)
+ * - 민감도 오버홀: 사용자 피드백 반영, 조작 계통 편의를 위해 인풋 입력값에 0.02(50분의 1) 감축 필터를 물리 적용
  * - 이미지 수혈: z-image-turbo_01103_.jpg 등 업로드된 아틀라스 이미지 격자를 4x8로 정밀 커팅 매핑
- * - 실시간 튜닝 매커니즘:
- *   • X 입력창 : 이미지 조각들의 가로축 자르기 위치 미세 이동 (UV Offset X)
- *   • Y 입력창 : 이미지 조각들의 세로축 자르기 위치 미세 이동 (UV Offset Y)
- *   • Z 입력창 : 각 격자 셀 내부에 채워지는 네온 이미지의 확대/축소 비율 배율화 (UV Scale Zoom)
+ * - 실시간 튜닝 매커니즘 (민감도 1/50 감축 상태):
+ *   • X 입력창 : 값 1당 UV 가로 0.02 소폭 이동 (좌우 미세 피팅)
+ *   • Y 입력창 : 값 1당 UV 세로 0.02 소폭 이동 (상하 미세 피팅)
+ *   • Z 입력창 : 값 1당 내부 이미지 스케일 2% 미세 확대/축소 (줌 크래시 보정)
  */
 
 export default class ThreeFloorEqualizer {
@@ -36,7 +36,7 @@ export default class ThreeFloorEqualizer {
       customColors: { gas1: '#ff0055', gas2: '#00ffcc', star: '#ffffff' }
     };
 
-    this.version = "005호 Neon Image Slicer Ver 4.6";
+    this.version = "005호 Neon Image Slicer Ver 4.7";
   }
 
   init() {
@@ -46,6 +46,7 @@ export default class ThreeFloorEqualizer {
     this.scene = new THREE.Scene();
     this.scene.fog = new THREE.FogExp2(0x04050a, 0.015);
 
+    // 원근감이 살아있는 공간 시네마틱 카메라 배치
     this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
     this.camera.position.set(0, 0, 11);
     this.camera.lookAt(0, 0, 0);
@@ -243,7 +244,7 @@ export default class ThreeFloorEqualizer {
     this.camera.aspect = aspect;
     this.camera.updateProjectionMatrix();
 
-    // 💡 [알고리즘 1]: 우측 패널의 X, Y, Z 디바이스 수치 실시간 강제 포착 및 미세 눈금 필터링
+    // 관제탑 UI 수치 로드
     let offX = 0, offY = 0, offZ = 0;
     const elX = document.getElementById('num-offset-x');
     const elY = document.getElementById('num-offset-y');
@@ -252,6 +253,12 @@ export default class ThreeFloorEqualizer {
     if (elX) offX = parseFloat(elX.value) || 0;
     if (elY) offY = parseFloat(elY.value) || 0;
     if (elZ) offZ = parseFloat(elZ.value) || 0;
+
+    // 💡 [핵심 개혁]: 입력 인터페이스 수치의 민감도를 1/50(0.02) 스케일로 압착 가드 전사
+    const sensitivity = 0.02; 
+    let microX = offX * sensitivity;
+    let microY = offY * sensitivity;
+    let microZ = offZ * sensitivity;
 
     // 업로드 아틀라스 이미지 감지 파이프라인
     const targetImg = window.currentUploadedImageElement;
@@ -284,9 +291,9 @@ export default class ThreeFloorEqualizer {
 
     window.sketchDiagnostics = {
       fps: isNaN(fps) || fps > 100 ? 30 : fps,
-      particleCount: this.totalButtons + " Calibrated Buttons",
+      particleCount: this.totalButtons + " Fine Aligned Icons",
       isCovering: false,
-      activeFunction: targetImg ? "Matrix[VFX_4x8_Calibrating]" : "Matrix[Placeholder]"
+      activeFunction: targetImg ? "Matrix[Micro_Calibration_Mode]" : "Matrix[Placeholder]"
     };
 
     const time = Date.now() * 0.001;
@@ -306,13 +313,13 @@ export default class ThreeFloorEqualizer {
       let finalY = ((this.numRows - 1) * 0.5 - btn.rowPos) * layoutSpacingY;
       btn.group.position.set(finalX, finalY, 0);
 
-      // 💡 [알고리즘 2]: X, Y 축 오프셋 주입 및 Z축을 통한 개별 아틀라스 줌스케일 동적 분사
-      let finalUvOffsetX = (btn.colPos / 4.0) + offX;
-      let finalUvOffsetY = ((7.0 - btn.rowPos) / 8.0) + offY;
+      // 💡 초정밀 micro 변수가 더해진 4x8 정밀 자르기 좌표 연산
+      let finalUvOffsetX = (btn.colPos / 4.0) + microX;
+      let finalUvOffsetY = ((7.0 - btn.rowPos) / 8.0) + microY;
       
-      // Z 값이 0일 때 정상 배율(1.0)을 유지하도록 보정 연산
-      let finalUvScaleX = (1.0 / 4.0) * (1.0 + offZ);
-      let finalUvScaleY = (1.0 / 8.0) * (1.0 + offZ);
+      // 마이너스 방향 보정 가드가 적용된 줌 연산선 수립
+      let finalUvScaleX = (1.0 / 4.0) * (1.0 + microZ);
+      let finalUvScaleY = (1.0 / 8.0) * (1.0 + microZ);
 
       btn.shaderMaterial.uniforms.u_uvOffset.value.set(finalUvOffsetX, finalUvOffsetY);
       btn.shaderMaterial.uniforms.u_uvScale.value.set(finalUvScaleX, finalUvScaleY);
