@@ -1,9 +1,14 @@
 /**
  * src/sketches/005_three_floor_eq.js
- * - [버전] Ver 4.8 (하이브리드 둥근 사각형-원형 프레임 캘리브레이션 완결판)
- * - 버그 완치: 원형 프레임에 둥근 사각형 에셋이 들어가 찌그러지던 현상을 shapeMap 개별 매핑으로 완벽 해결
- * - 셰이더 마스킹: 셰이더 내부에서 Rounded Box SDF 및 Circle 마스크를 구동하여 검은 외곽 여백을 100% 원천 증발 시공
- * - 7대 모션 액션: 셔플(Seed) 변경 시 32개 버튼에 스피커 펄스, 회전, 리플 등 특수 효과 무작위 매핑 유지
+ * - [버전] Ver 5.0 (순수 기하학 네온 매트릭스 및 독립 배경 마운트 완결판)
+ * - 구조 전환: 이미지 슬라이싱을 전면 폐기하고, 100% 무결점 3D 벡터 네온 기하학 악기 오브젝트로 전격 대체
+ * - 배경 분리: 업로드된 이미지는 3D 월드의 최하단 배경(scene.background)으로만 깨끗하게 투사되어 왜곡 방지
+ * - 3대 형상 모드 (Shuffle Seed 연동):
+ *   • Seed % 3 === 1 : 빽빽하고 리드미컬한 [전체 사각형] 모드
+ *   • Seed % 3 === 2 : 우아하고 청명한 [전체 원형] 모드
+ *   • Seed % 3 === 0 : 가득 찬 재미를 주는 [반반 랜덤 셔플] 모드
+ * - 3D Position Offset (X, Y, Z) 제어 전환:
+ *   • 이제 버튼 개별 조작 대신, 네온 버튼 Grid 전체를 배경 이미지 위에서 상하좌우(X, Y)로 이동시키고 카메라 거리(Z)를 미세 조율하는 마스터 컴포지터로 작동
  */
 
 export default class ThreeFloorEqualizer {
@@ -13,6 +18,7 @@ export default class ThreeFloorEqualizer {
     this.camera = null;
     this.renderer = null;
     
+    this.gridGroup = null; // 32개 버튼 전체를 품어 미세 이동시키는 마스터 그룹
     this.matrixButtons = [];
     this.numCols = 4;
     this.numRows = 8;
@@ -22,19 +28,7 @@ export default class ThreeFloorEqualizer {
     this.lastBgImage = null;
     this.lastTime = 0;
 
-    // 💡 [VFX 아틀라스 셰이프 마스터 맵]: 원본 이미지와 1:1 대응되는 도형 락인 정보 (0: 원형, 1: 둥근 사각형)
-    this.shapeMap = [
-      0, 0, 0, 0, // 1층: 전부 원형
-      0, 1, 0, 0, // 2층: 2열 주황 기타 사각형
-      0, 0, 1, 1, // 3층: 3열 보라 카드, 4열 주황 가로팩 사각형
-      0, 0, 0, 0, // 4층: 전부 원형
-      0, 0, 1, 0, // 5층: 3열 빨강 스피커 사각형
-      0, 0, 0, 0, // 6층: 전부 원형
-      0, 0, 0, 0, // 7층: 전부 원형
-      0, 0, 0, 0  // 8층: 전부 원형
-    ];
-
-    this.sharedGeometries = []; // 중복 메모리 누수 방지용 공유 가드
+    this.sharedGeometries = [];
 
     this.uiSettings = {
       seed: 42,
@@ -46,7 +40,7 @@ export default class ThreeFloorEqualizer {
       customColors: { gas1: '#ff0055', gas2: '#00ffcc', star: '#ffffff' }
     };
 
-    this.version = "005호 Neon Hybrid Slicer Ver 4.8";
+    this.version = "005호 Neon Geometry Grid Ver 5.0";
   }
 
   init() {
@@ -56,6 +50,7 @@ export default class ThreeFloorEqualizer {
     this.scene = new THREE.Scene();
     this.scene.fog = new THREE.FogExp2(0x04050a, 0.015);
 
+    // 카메라 원근감 최적화 배치
     this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
     this.camera.position.set(0, 0, 10.5);
     this.camera.lookAt(0, 0, 0);
@@ -65,7 +60,10 @@ export default class ThreeFloorEqualizer {
     this.renderer.setClearColor(0x04050a);
     this.container.appendChild(this.renderer.domElement);
 
-    this.scene.add(new THREE.AmbientLight(0xffffff, 1.0));
+    this.scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+
+    this.gridGroup = new THREE.Group();
+    this.scene.add(this.gridGroup);
 
     this.syncUISettings();
     this.buildInstrumentMatrix();
@@ -89,12 +87,11 @@ export default class ThreeFloorEqualizer {
     return x - Math.floor(x);
   }
 
-  // 💡 [수학적 하이엔드 설계]: 네온 링과 완벽히 호환되는 속 빈 둥근 사각형 격자 프레임 제작기
+  // 둥근 사각형의 속 빈 네온 링 구조 생성 함수
   createRoundedRingGeometry(w, h, r, thickness) {
     const shape = new THREE.Shape();
     const x = -w / 2, y = -h / 2;
     
-    // 외곽 라인 (Counter-Clockwise)
     shape.moveTo(x, y + r);
     shape.lineTo(x, y + h - r);
     shape.quadraticCurveTo(x, y + h, x + r, y + h);
@@ -105,7 +102,6 @@ export default class ThreeFloorEqualizer {
     shape.lineTo(x + r, y);
     shape.quadraticCurveTo(x, y, x, y + r);
 
-    // 내부 구멍 라인 (Clockwise)
     const hole = new THREE.Path();
     const iw = w - thickness * 2;
     const ih = h - thickness * 2;
@@ -127,26 +123,28 @@ export default class ThreeFloorEqualizer {
   }
 
   buildInstrumentMatrix() {
-    // 이전 자원 완전 릴리즈
+    // 이전 생성 자산 디스포즈 청소
     this.matrixButtons.forEach(btn => {
-      this.scene.remove(btn.group);
+      this.gridGroup.remove(btn.group);
+      btn.geometries.forEach(g => g.dispose());
       btn.materials.forEach(m => m.dispose());
     });
     if (this.sharedGeometries) {
       this.sharedGeometries.forEach(g => g.dispose());
+      this.sharedGeometries = [];
     }
     this.matrixButtons = [];
-    this.sharedGeometries = [];
 
     let sRandom = this.uiSettings.seed;
 
+    // 014호 테마 호환 컬러 셋 디코딩
     let baseC1 = new THREE.Color(), baseC2 = new THREE.Color();
     if (this.uiSettings.style === 'monochrome') {
       baseC1.set('#ffffff'); baseC2.set('#999999');
     } else if (this.uiSettings.style === 'neon') {
       baseC1.set('#ff0055'); baseC2.set('#00ffcc');
     } else if (this.uiSettings.style === 'pastel') {
-      baseC1.set('#121b29'); baseC2.set('#dba494'); 
+      baseC1.set('#152238'); baseC2.set('#ffd1b3'); 
     } else if (this.uiSettings.style === 'custom') {
       baseC1.set(this.uiSettings.customColors.gas1);
       baseC2.set(this.uiSettings.customColors.gas2);
@@ -154,24 +152,28 @@ export default class ThreeFloorEqualizer {
       baseC1.setRGB(0.9, 0.1, 0.4); baseC2.setRGB(0.1, 0.9, 0.6);
     }
 
-    // 최적화용 원천 지오메트리 셋 수립
-    const ringGeo = new THREE.RingGeometry(0.55, 0.6, 32);
-    const roundedRingGeo = this.createRoundedRingGeometry(1.12, 1.12, 0.24, 0.05);
-    const innerPlaneGeo = new THREE.PlaneGeometry(0.95, 0.95);
+    // 기본 벡터 에셋 공유 지오메트리 셋 빌드
+    const ringGeo = new THREE.RingGeometry(0.53, 0.58, 32);
+    const roundedRingGeo = this.createRoundedRingGeometry(1.1, 1.1, 0.22, 0.05);
     
-    const rippleCircleGeo = new THREE.RingGeometry(0.61, 0.64, 32);
-    const rippleSquareGeo = this.createRoundedRingGeometry(1.22, 1.22, 0.28, 0.04);
+    const rippleCircleGeo = new THREE.RingGeometry(0.58, 0.61, 32);
+    const rippleSquareGeo = this.createRoundedRingGeometry(1.18, 1.18, 0.26, 0.03);
 
-    this.sharedGeometries.push(ringGeo, roundedRingGeo, innerPlaneGeo, rippleCircleGeo, rippleSquareGeo);
+    this.sharedGeometries.push(ringGeo, roundedRingGeo, rippleCircleGeo, rippleSquareGeo);
+
+    // 💡 [형상 전환 룰]: Seed의 값을 기준으로 전체 원형, 전체 사각형, 반반 셔플 결정
+    const seedMode = this.uiSettings.seed % 3;
 
     for (let i = 0; i < this.totalButtons; i++) {
       const col = i % this.numCols;
       const row = Math.floor(i / this.numCols);
 
       const btnGroup = new THREE.Group();
+      const geomList = [];
       const matList = [];
 
       sRandom = this.seededRandom(sRandom) * 1000;
+      let shapeRand = this.seededRandom(sRandom + 1);
       let modeRand = this.seededRandom(sRandom + 2);
 
       let assignedActionMode = Math.floor(modeRand * 7) + 1; 
@@ -182,116 +184,96 @@ export default class ThreeFloorEqualizer {
         btnThemeColor.setHSL(this.seededRandom(sRandom + 5), 0.9, 0.6);
       }
 
-      // 💡 [도형 분기 판독]: 현재 칸이 사각형 슬라이싱 대상인지 실시간 판정
-      const isSquareType = this.shapeMap[i] === 1;
+      // 💡 [형상 매핑 핵심]: 원형 및 사각형 락인 분기
+      let isSquareType = false;
+      if (seedMode === 1) {
+        isSquareType = true; // 전부 사각형 모드
+      } else if (seedMode === 2) {
+        isSquareType = false; // 전부 원형 모드
+      } else {
+        isSquareType = shapeRand > 0.5; // 반반 랜덤 셔플 모드
+      }
 
+      const meshMat = new THREE.MeshBasicMaterial({
+        color: btnThemeColor,
+        transparent: true,
+        opacity: assignedActionMode === 5 ? 0.05 : 0.2, 
+        side: THREE.DoubleSide
+      });
       const lineMat = new THREE.LineBasicMaterial({
         color: btnThemeColor,
         transparent: true,
         opacity: 0.9
       });
 
-      // 판정에 따라 알맞은 3D 네온 외곽 프레임 장착
+      matList.push(meshMat, lineMat);
+
+      // 1) 외곽 프레임 부착 (SDF 방식 대신 완전한 3D 벡터 구조)
       const outerRing = new THREE.Mesh(isSquareType ? roundedRingGeo : ringGeo, lineMat);
       btnGroup.add(outerRing);
 
-      // 💡 [GPU 셰이더 마스크 연산 단면 시공]: 둥근 사각형과 원형을 경계 바깥으로 완전 Discard 컷
-      const sliceShaderMat = new THREE.ShaderMaterial({
-        uniforms: {
-          u_texture: { value: new THREE.Texture() },
-          u_hasTexture: { value: 0.0 },
-          u_uvOffset: { value: new THREE.Vector2(0, 0) }, 
-          u_uvScale: { value: new THREE.Vector2(1.0 / 4.0, 1.0 / 8.0) },
-          u_color: { value: btnThemeColor.clone() },
-          u_glow: { value: 1.0 },
-          u_opacity: { value: 1.0 },
-          u_invert: { value: 0.0 },
-          u_fillMode: { value: 0.0 },
-          u_shapeType: { value: isSquareType ? 1.0 : 0.0 } // 0.0: 원형 마스크, 1.0: 둥근 사각 마스크
-        },
-        vertexShader: `
-          varying vec2 vUv;
-          void main() {
-            vUv = uv;
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-          }
-        `,
-        fragmentShader: `
-          uniform sampler2D u_texture;
-          uniform float u_hasTexture;
-          uniform vec2 u_uvOffset;
-          uniform vec2 u_uvScale;
-          uniform vec3 u_color;
-          uniform float u_glow;
-          uniform float u_opacity;
-          uniform float u_invert;
-          uniform float u_fillMode;
-          uniform float u_shapeType;
-          varying vec2 vUv;
+      // 2) 내부 악기 형상의 프로시저럴 기하학 엠블럼 생성
+      const innerGroup = new THREE.Group();
+      let instrumentType = Math.floor(this.seededRandom(sRandom + 3) * 4);
 
-          // 모서리가 둥근 사각형을 픽셀 단위로 도려내는 SDF 공식
-          float roundedBoxSDF(vec2 p, vec2 b, float r) {
-              vec2 d = abs(p) - b + vec2(r);
-              return min(max(d.x, d.y), 0.0) + length(max(d, 0.0)) - r;
-          }
+      if (instrumentType === 0) {
+        // 기타/비파 형태
+        const bodyGeo = new THREE.CircleGeometry(0.2, 16);
+        const neckGeo = new THREE.BoxGeometry(0.04, 0.44, 0.02);
+        neckGeo.translate(0, 0.25, 0);
+        
+        const bodyMesh = new THREE.Mesh(bodyGeo, meshMat);
+        const neckMesh = new THREE.Mesh(neckGeo, lineMat);
+        innerGroup.add(bodyMesh, neckMesh);
+        geomList.push(bodyGeo, neckGeo);
+      } else if (instrumentType === 1) {
+        // 음표 형태
+        const headGeo = new THREE.CircleGeometry(0.1, 16);
+        headGeo.translate(-0.08, -0.12, 0);
+        const stemGeo = new THREE.BoxGeometry(0.03, 0.35, 0.02);
+        stemGeo.translate(0.01, 0.05, 0);
+        const flagGeo = new THREE.BoxGeometry(0.12, 0.04, 0.02);
+        flagGeo.translate(0.08, 0.2, 0);
 
-          void main() {
-            // 💡 [원천 기술]: 3D 테두리 바깥으로 삐져나가는 사각형 이미지의 검은 여백을 실시간 삭제
-            if (u_shapeType > 0.5) {
-              vec2 p = vUv - vec2(0.5);
-              float d = roundedBoxSDF(p, vec2(0.45), 0.16);
-              if (d > 0.0) discard; 
-            } else {
-              float d = length(vUv - vec2(0.5));
-              if (d > 0.47) discard; 
-            }
+        innerGroup.add(new THREE.Mesh(headGeo, meshMat), new THREE.Mesh(stemGeo, lineMat), new THREE.Mesh(flagGeo, lineMat));
+        geomList.push(headGeo, stemGeo, flagGeo);
+      } else if (instrumentType === 2) {
+        // 다이내믹 3중 스펙트럼 미니 바 형태
+        const barGeo1 = new THREE.BoxGeometry(0.05, 0.2, 0.02); barGeo1.translate(-0.1, 0, 0);
+        const barGeo2 = new THREE.BoxGeometry(0.05, 0.32, 0.02); barGeo2.translate(0, 0, 0);
+        const barGeo3 = new THREE.BoxGeometry(0.05, 0.15, 0.02); barGeo3.translate(0.1, 0, 0);
 
-            vec4 finalTex = vec4(1.0);
-            if (u_hasTexture > 0.5) {
-              vec2 slicedUV = vUv * u_uvScale + u_uvOffset;
-              finalTex = texture2D(u_texture, slicedUV);
-              
-              if (u_invert > 0.5) {
-                finalTex.rgb = 1.0 - finalTex.rgb;
-              }
-              finalTex.rgb *= u_color * u_glow;
-              finalTex.a *= u_opacity;
-            } else {
-              float d = length(vUv - vec2(0.5));
-              float ring = smoothstep(0.02, 0.0, abs(d - 0.28));
-              float core = smoothstep(0.08, 0.0, d);
-              finalTex = vec4(u_color * u_glow, (ring + core * u_fillMode) * u_opacity);
-            }
-            if (finalTex.a < 0.02) discard;
-            gl_FragColor = finalTex;
-          }
-        `,
-        transparent: true,
-        depthWrite: false,
-        side: THREE.DoubleSide
-      });
+        innerGroup.add(new THREE.Mesh(barGeo1, meshMat), new THREE.Mesh(barGeo2, lineMat), new THREE.Mesh(barGeo3, meshMat));
+        geomList.push(barGeo1, barGeo2, barGeo3);
+      } else {
+        // Concentric 우퍼 스피커 형태
+        const coreGeo = new THREE.RingGeometry(0.04, 0.2, 6);
+        const coreMesh = new THREE.Mesh(coreGeo, lineMat);
+        innerGroup.add(coreMesh);
+        geomList.push(coreGeo);
+      }
 
-      const innerIconMesh = new THREE.Mesh(innerPlaneGeo, sliceShaderMat);
-      btnGroup.add(innerIconMesh);
+      innerGroup.rotation.z = -Math.PI / 6; // 비스듬하게 세워진 원형 무드 유지
+      btnGroup.add(innerGroup);
 
-      // 리플 링 역시 셰이프 속성에 맞춰 대응 장착
+      // 6번 리플용 외곽 링 부착
       const rippleMat = lineMat.clone();
       rippleMat.opacity = 0.0;
       const rippleMesh = new THREE.Mesh(isSquareType ? rippleSquareGeo : rippleCircleGeo, rippleMat);
       btnGroup.add(rippleMesh);
 
-      matList.push(lineMat, sliceShaderMat, rippleMat);
-      this.scene.add(btnGroup);
+      matList.push(rippleMat);
+      this.gridGroup.add(btnGroup);
 
       let computedIndex = Math.floor(THREE.MathUtils.mapLinear(i, 0, this.totalButtons, 2, 180));
 
       this.matrixButtons.push({
         group: btnGroup,
-        inner: innerIconMesh,
+        inner: innerGroup,
         ripple: rippleMesh,
         rippleMaterial: rippleMat,
-        shaderMaterial: sliceShaderMat,
         materials: matList,
+        geometries: geomList,
         baseColor: btnThemeColor.clone(),
         actionMode: assignedActionMode,
         sampleIndex: computedIndex, 
@@ -315,14 +297,14 @@ export default class ThreeFloorEqualizer {
     const aspect = width / height;
 
     if (aspect < 1.0) {
-      this.camera.position.z = THREE.MathUtils.lerp(this.camera.position.z, 11.5 / (aspect * 1.05), 0.1);
+      this.camera.position.z = THREE.MathUtils.lerp(this.camera.position.z, 11.0 / aspect, 0.1);
     } else {
-      this.camera.position.z = THREE.MathUtils.lerp(this.camera.position.z, 10.5, 0.1);
+      this.camera.position.z = THREE.MathUtils.lerp(this.camera.position.z, 10.0, 0.1);
     }
     this.camera.aspect = aspect;
     this.camera.updateProjectionMatrix();
 
-    // 관제탑 X, Y, Z 눈금 계수 확보
+    // 💡 [적용의 전환]: X, Y, Z 입력창의 값을 버튼 Grid 전체의 오프셋 제어선으로 연결 (민감도 1/50 적용)
     let offX = 0, offY = 0, offZ = 0;
     const elX = document.getElementById('num-offset-x');
     const elY = document.getElementById('num-offset-y');
@@ -332,13 +314,12 @@ export default class ThreeFloorEqualizer {
     if (elY) offY = parseFloat(elY.value) || 0;
     if (elZ) offZ = parseFloat(elZ.value) || 0;
 
-    // 💡 편안한 타이핑 조절을 위해 실시간 연산 오프셋 감도를 정확히 1/50인 0.02 배율로 감축 조율
-    const sensitivity = 0.02; 
-    let microX = offX * sensitivity;
-    let microY = offY * sensitivity;
-    let microZ = offZ * sensitivity;
+    const sensitivity = 0.02;
+    this.gridGroup.position.x = offX * sensitivity * 10.0;
+    this.gridGroup.position.y = offY * sensitivity * 10.0;
+    this.camera.position.z += offZ * sensitivity * 5.0; // Z 축은 카메라 거리를 당기고 미는 줌 렌즈 작동
 
-    // 업로드 아틀라스 이미지 감지 파이프라인
+    // 💡 [배경 이미지]: 사진은 3D 공간의 완벽한 캔버스 배경으로만 독립 안착
     const targetImg = window.currentUploadedImageElement;
     if (targetImg && targetImg !== this.lastBgImage) {
       if (this.bgTexture) this.bgTexture.dispose();
@@ -347,31 +328,24 @@ export default class ThreeFloorEqualizer {
       this.bgTexture.magFilter = THREE.LinearFilter;
       this.bgTexture.needsUpdate = true;
       this.lastBgImage = targetImg;
-
-      this.matrixButtons.forEach(btn => {
-        btn.shaderMaterial.uniforms.u_texture.value = this.bgTexture;
-        btn.shaderMaterial.uniforms.u_hasTexture.value = 1.0;
-        btn.shaderMaterial.needsUpdate = true;
-      });
+      this.scene.background = this.bgTexture; // 버튼에 입히지 않고 배경에 깔기
     } else if (!targetImg && this.lastBgImage) {
-      this.matrixButtons.forEach(btn => {
-        btn.shaderMaterial.uniforms.u_hasTexture.value = 0.0;
-        btn.shaderMaterial.needsUpdate = true;
-      });
+      this.scene.background = new THREE.Color(0x04050a);
       this.lastBgImage = null;
     }
 
-    // 진단 HUD 연동
+    // 진단 HUD 스트리밍
     if (!this.lastTime) this.lastTime = performance.now();
     let now = performance.now();
     let fps = Math.round(1000 / (now - this.lastTime));
     this.lastTime = now;
 
+    let shapeModeText = this.uiSettings.seed % 3 === 1 ? "Squares" : this.uiSettings.seed % 3 === 2 ? "Circles" : "Mixed";
     window.sketchDiagnostics = {
       fps: isNaN(fps) || fps > 100 ? 30 : fps,
-      particleCount: this.totalButtons + " Calibrated Buttons",
+      particleCount: this.totalButtons + " Neon Geometries",
       isCovering: false,
-      activeFunction: targetImg ? "Matrix[SDF_Hybrid_Masking]" : "Matrix[Placeholder]"
+      activeFunction: `Grid[Shape:${shapeModeText}]`
     };
 
     const time = Date.now() * 0.001;
@@ -385,20 +359,11 @@ export default class ThreeFloorEqualizer {
 
     let volumeGainScale = this.uiSettings.gain > 5 ? this.uiSettings.gain / 100.0 : this.uiSettings.gain;
 
+    // 32채널 7대 고유 액션 제어 루프
     this.matrixButtons.forEach((btn) => {
       let finalX = (btn.colPos - (this.numCols - 1) * 0.5) * layoutSpacingX;
       let finalY = ((this.numRows - 1) * 0.5 - btn.rowPos) * layoutSpacingY;
       btn.group.position.set(finalX, finalY, 0);
-
-      // 💡 [정밀 UV 오프셋 시공]: 1/50 정밀 스냅샷 계수가 반영된 조각 절단
-      let finalUvOffsetX = (btn.colPos / 4.0) + microX;
-      let finalUvOffsetY = ((7.0 - btn.rowPos) / 8.0) + microY;
-      
-      let finalUvScaleX = (1.0 / 4.0) * (1.0 + microZ);
-      let finalUvScaleY = (1.0 / 8.0) * (1.0 + microZ);
-
-      btn.shaderMaterial.uniforms.u_uvOffset.value.set(finalUvOffsetX, finalUvOffsetY);
-      btn.shaderMaterial.uniforms.u_uvScale.value.set(finalUvScaleX, finalUvScaleY);
 
       let rawFreq = 0.0;
       if (audioData && audioData.raw && audioData.raw.length > 0) {
@@ -411,33 +376,41 @@ export default class ThreeFloorEqualizer {
       let delta = freqIntensity - btn.prevForce;
       btn.prevForce = freqIntensity;
 
+      // 물리 스케일 베이스 리셋
       btn.group.scale.setScalar(1.0);
       btn.inner.scale.setScalar(1.0);
       btn.inner.rotation.z = 0;
 
-      btn.shaderMaterial.uniforms.u_glow.value = glowFactor;
-      btn.shaderMaterial.uniforms.u_opacity.value = 0.3 + freqIntensity * 0.7;
-      btn.shaderMaterial.uniforms.u_invert.value = 0.0;
-      btn.shaderMaterial.uniforms.u_fillMode.value = 0.0;
-
-      btn.materials[0].opacity = 0.3 + freqIntensity * 0.6; 
+      btn.materials.forEach(mat => {
+        if (mat.color) mat.color.copy(btn.baseColor).multiplyScalar(glowFactor);
+        if (mat.opacity && mat !== btn.rippleMaterial) {
+          mat.opacity = mat.type === "MeshBasicMaterial" ? (btn.actionMode === 5 ? 0.05 : 0.2) : 0.9;
+        }
+      });
 
       switch (btn.actionMode) {
         case 1:
           btn.group.scale.setScalar(1.0 + freqIntensity * 0.45);
           break;
         case 2:
-          btn.shaderMaterial.uniforms.u_glow.value = glowFactor * (1.0 + freqIntensity * 3.2);
+          btn.materials.forEach(mat => {
+            if (mat.color) mat.color.copy(btn.baseColor).multiplyScalar(glowFactor * (1.0 + freqIntensity * 3.2));
+          });
           break;
         case 3:
-          if (freqIntensity > 0.28) btn.shaderMaterial.uniforms.u_invert.value = 1.0;
+          if (freqIntensity > 0.28) {
+            let invertColor = new THREE.Color(1.0 - btn.baseColor.r, 1.0 - btn.baseColor.g, 1.0 - btn.baseColor.b);
+            btn.materials.forEach(mat => {
+              if (mat.color) mat.color.copy(invertColor).multiplyScalar(glowFactor * 1.5);
+            });
+          }
           break;
         case 4:
           btn.inner.rotation.z = freqIntensity * Math.PI * 1.0;
           break;
         case 5:
-          btn.shaderMaterial.uniforms.u_fillMode.value = 1.0;
-          btn.shaderMaterial.uniforms.u_opacity.value = THREE.MathUtils.clamp(freqIntensity * 1.2, 0.1, 0.95);
+          // 테두리 색 내부 면 채우기 (MeshBasicMaterial 오퍼시티 최대화)
+          btn.materials[0].opacity = THREE.MathUtils.clamp(freqIntensity * 1.2, 0.05, 0.95);
           break;
         case 6:
           if (delta > 0.07 && !btn.rippleActive) {
@@ -478,9 +451,11 @@ export default class ThreeFloorEqualizer {
   destroy() {
     if (!this.scene) return;
     this.matrixButtons.forEach(btn => {
-      this.scene.remove(btn.group);
+      this.gridGroup.remove(btn.group);
+      btn.geometries.forEach(g => g.dispose());
       btn.materials.forEach(m => m.dispose());
     });
+    this.scene.remove(this.gridGroup);
     
     if (this.sharedGeometries) {
       this.sharedGeometries.forEach(g => g.dispose());
