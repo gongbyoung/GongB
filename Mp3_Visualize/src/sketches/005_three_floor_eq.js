@@ -1,14 +1,12 @@
 /**
  * src/sketches/005_three_floor_eq.js
- * - [버전] Ver 5.0 (순수 기하학 네온 매트릭스 및 독립 배경 마운트 완결판)
- * - 구조 전환: 이미지 슬라이싱을 전면 폐기하고, 100% 무결점 3D 벡터 네온 기하학 악기 오브젝트로 전격 대체
- * - 배경 분리: 업로드된 이미지는 3D 월드의 최하단 배경(scene.background)으로만 깨끗하게 투사되어 왜곡 방지
- * - 3대 형상 모드 (Shuffle Seed 연동):
- *   • Seed % 3 === 1 : 빽빽하고 리드미컬한 [전체 사각형] 모드
- *   • Seed % 3 === 2 : 우아하고 청명한 [전체 원형] 모드
- *   • Seed % 3 === 0 : 가득 찬 재미를 주는 [반반 랜덤 셔플] 모드
- * - 3D Position Offset (X, Y, Z) 제어 전환:
- *   • 이제 버튼 개별 조작 대신, 네온 버튼 Grid 전체를 배경 이미지 위에서 상하좌우(X, Y)로 이동시키고 카메라 거리(Z)를 미세 조율하는 마스터 컴포지터로 작동
+ * - [버전] Ver 5.1 (배경 이미지 X,Y 위치 및 Z 스케일 제어 + 비율 완치 판정 완결판)
+ * - 비율 완치: 16:9, 9:16 종횡비 변환 시 마스터 그리드가 화면 밖으로 탈출하지 않도록 aspect 가드 센서 복구
+ * - 조작 혁신: 3D Position Offset (X, Y, Z) 인풋 노브를 "로딩된 배경 이미지 메시"에 직결 체결
+ *   • X 입력창 : 배경 이미지를 좌우로 미세 이동
+ *   • Y 입력창 : 배경 이미지를 상하로 미세 이동
+ *   • Z 입력창 : 배경 이미지의 스케일 크기를 줌인/줌아웃 확대 축소
+ * - 순수 기하학 네온 매트릭스 7대 오디오 반응 및 3대 형상 셔플 모드는 완벽하게 보존형 유지
  */
 
 export default class ThreeFloorEqualizer {
@@ -18,7 +16,9 @@ export default class ThreeFloorEqualizer {
     this.camera = null;
     this.renderer = null;
     
-    this.gridGroup = null; // 32개 버튼 전체를 품어 미세 이동시키는 마스터 그룹
+    this.gridGroup = null;      // 32개 네온 버튼이 담긴 중앙 고정 그룹
+    this.bgMesh = null;         // 💡 [개혁]: X, Y, Z 조작을 온전히 수혈받을 독립 배경 이미지 메시
+    
     this.matrixButtons = [];
     this.numCols = 4;
     this.numRows = 8;
@@ -40,7 +40,7 @@ export default class ThreeFloorEqualizer {
       customColors: { gas1: '#ff0055', gas2: '#00ffcc', star: '#ffffff' }
     };
 
-    this.version = "005호 Neon Geometry Grid Ver 5.0";
+    this.version = "005호 Neon Geometry Grid Ver 5.1";
   }
 
   init() {
@@ -50,7 +50,6 @@ export default class ThreeFloorEqualizer {
     this.scene = new THREE.Scene();
     this.scene.fog = new THREE.FogExp2(0x04050a, 0.015);
 
-    // 카메라 원근감 최적화 배치
     this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
     this.camera.position.set(0, 0, 10.5);
     this.camera.lookAt(0, 0, 0);
@@ -61,6 +60,20 @@ export default class ThreeFloorEqualizer {
     this.container.appendChild(this.renderer.domElement);
 
     this.scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+
+    // 💡 [배경 플레이트 선행 시공]: 격자판 뒤쪽에 위치할 고화질 이미지 보드 생성
+    const bgPlaneGeo = new THREE.PlaneGeometry(16, 16);
+    this.bgMeshMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 1.0,
+      depthWrite: false,
+      visible: false // 이미지 로딩 전에는 숨김 처리
+    });
+    this.bgMesh = new THREE.Mesh(bgPlaneGeo, this.bgMeshMaterial);
+    this.bgMesh.position.set(0, 0, -5); // 버튼들(Z=0)보다 한참 뒤에 배치
+    this.scene.add(this.bgMesh);
+    this.sharedGeometries.push(bgPlaneGeo);
 
     this.gridGroup = new THREE.Group();
     this.scene.add(this.gridGroup);
@@ -87,7 +100,6 @@ export default class ThreeFloorEqualizer {
     return x - Math.floor(x);
   }
 
-  // 둥근 사각형의 속 빈 네온 링 구조 생성 함수
   createRoundedRingGeometry(w, h, r, thickness) {
     const shape = new THREE.Shape();
     const x = -w / 2, y = -h / 2;
@@ -123,21 +135,15 @@ export default class ThreeFloorEqualizer {
   }
 
   buildInstrumentMatrix() {
-    // 이전 생성 자산 디스포즈 청소
     this.matrixButtons.forEach(btn => {
       this.gridGroup.remove(btn.group);
       btn.geometries.forEach(g => g.dispose());
       btn.materials.forEach(m => m.dispose());
     });
-    if (this.sharedGeometries) {
-      this.sharedGeometries.forEach(g => g.dispose());
-      this.sharedGeometries = [];
-    }
     this.matrixButtons = [];
 
     let sRandom = this.uiSettings.seed;
 
-    // 014호 테마 호환 컬러 셋 디코딩
     let baseC1 = new THREE.Color(), baseC2 = new THREE.Color();
     if (this.uiSettings.style === 'monochrome') {
       baseC1.set('#ffffff'); baseC2.set('#999999');
@@ -152,7 +158,6 @@ export default class ThreeFloorEqualizer {
       baseC1.setRGB(0.9, 0.1, 0.4); baseC2.setRGB(0.1, 0.9, 0.6);
     }
 
-    // 기본 벡터 에셋 공유 지오메트리 셋 빌드
     const ringGeo = new THREE.RingGeometry(0.53, 0.58, 32);
     const roundedRingGeo = this.createRoundedRingGeometry(1.1, 1.1, 0.22, 0.05);
     
@@ -161,7 +166,6 @@ export default class ThreeFloorEqualizer {
 
     this.sharedGeometries.push(ringGeo, roundedRingGeo, rippleCircleGeo, rippleSquareGeo);
 
-    // 💡 [형상 전환 룰]: Seed의 값을 기준으로 전체 원형, 전체 사각형, 반반 셔플 결정
     const seedMode = this.uiSettings.seed % 3;
 
     for (let i = 0; i < this.totalButtons; i++) {
@@ -184,14 +188,13 @@ export default class ThreeFloorEqualizer {
         btnThemeColor.setHSL(this.seededRandom(sRandom + 5), 0.9, 0.6);
       }
 
-      // 💡 [형상 매핑 핵심]: 원형 및 사각형 락인 분기
       let isSquareType = false;
       if (seedMode === 1) {
-        isSquareType = true; // 전부 사각형 모드
+        isSquareType = true; 
       } else if (seedMode === 2) {
-        isSquareType = false; // 전부 원형 모드
+        isSquareType = false; 
       } else {
-        isSquareType = shapeRand > 0.5; // 반반 랜덤 셔플 모드
+        isSquareType = shapeRand > 0.5; 
       }
 
       const meshMat = new THREE.MeshBasicMaterial({
@@ -208,16 +211,13 @@ export default class ThreeFloorEqualizer {
 
       matList.push(meshMat, lineMat);
 
-      // 1) 외곽 프레임 부착 (SDF 방식 대신 완전한 3D 벡터 구조)
       const outerRing = new THREE.Mesh(isSquareType ? roundedRingGeo : ringGeo, lineMat);
       btnGroup.add(outerRing);
 
-      // 2) 내부 악기 형상의 프로시저럴 기하학 엠블럼 생성
       const innerGroup = new THREE.Group();
       let instrumentType = Math.floor(this.seededRandom(sRandom + 3) * 4);
 
       if (instrumentType === 0) {
-        // 기타/비파 형태
         const bodyGeo = new THREE.CircleGeometry(0.2, 16);
         const neckGeo = new THREE.BoxGeometry(0.04, 0.44, 0.02);
         neckGeo.translate(0, 0.25, 0);
@@ -227,7 +227,6 @@ export default class ThreeFloorEqualizer {
         innerGroup.add(bodyMesh, neckMesh);
         geomList.push(bodyGeo, neckGeo);
       } else if (instrumentType === 1) {
-        // 음표 형태
         const headGeo = new THREE.CircleGeometry(0.1, 16);
         headGeo.translate(-0.08, -0.12, 0);
         const stemGeo = new THREE.BoxGeometry(0.03, 0.35, 0.02);
@@ -238,7 +237,6 @@ export default class ThreeFloorEqualizer {
         innerGroup.add(new THREE.Mesh(headGeo, meshMat), new THREE.Mesh(stemGeo, lineMat), new THREE.Mesh(flagGeo, lineMat));
         geomList.push(headGeo, stemGeo, flagGeo);
       } else if (instrumentType === 2) {
-        // 다이내믹 3중 스펙트럼 미니 바 형태
         const barGeo1 = new THREE.BoxGeometry(0.05, 0.2, 0.02); barGeo1.translate(-0.1, 0, 0);
         const barGeo2 = new THREE.BoxGeometry(0.05, 0.32, 0.02); barGeo2.translate(0, 0, 0);
         const barGeo3 = new THREE.BoxGeometry(0.05, 0.15, 0.02); barGeo3.translate(0.1, 0, 0);
@@ -246,23 +244,20 @@ export default class ThreeFloorEqualizer {
         innerGroup.add(new THREE.Mesh(barGeo1, meshMat), new THREE.Mesh(barGeo2, lineMat), new THREE.Mesh(barGeo3, meshMat));
         geomList.push(barGeo1, barGeo2, barGeo3);
       } else {
-        // Concentric 우퍼 스피커 형태
         const coreGeo = new THREE.RingGeometry(0.04, 0.2, 6);
         const coreMesh = new THREE.Mesh(coreGeo, lineMat);
         innerGroup.add(coreMesh);
         geomList.push(coreGeo);
       }
 
-      innerGroup.rotation.z = -Math.PI / 6; // 비스듬하게 세워진 원형 무드 유지
+      innerGroup.rotation.z = -Math.PI / 6; 
       btnGroup.add(innerGroup);
 
-      // 6번 리플용 외곽 링 부착
-      const rippleMat = lineMat.clone();
-      rippleMat.opacity = 0.0;
-      const rippleMesh = new THREE.Mesh(isSquareType ? rippleSquareGeo : rippleCircleGeo, rippleMat);
+      const rippleMesh = new THREE.Mesh(isSquareType ? rippleSquareGeo : rippleCircleGeo, lineMat.clone());
+      rippleMesh.material.opacity = 0.0;
       btnGroup.add(rippleMesh);
 
-      matList.push(rippleMat);
+      matList.push(rippleMesh.material);
       this.gridGroup.add(btnGroup);
 
       let computedIndex = Math.floor(THREE.MathUtils.mapLinear(i, 0, this.totalButtons, 2, 180));
@@ -271,7 +266,7 @@ export default class ThreeFloorEqualizer {
         group: btnGroup,
         inner: innerGroup,
         ripple: rippleMesh,
-        rippleMaterial: rippleMat,
+        rippleMaterial: rippleMesh.material,
         materials: matList,
         geometries: geomList,
         baseColor: btnThemeColor.clone(),
@@ -296,15 +291,18 @@ export default class ThreeFloorEqualizer {
     const height = this.container.clientHeight;
     const aspect = width / height;
 
+    // 💡 [화면비율 16:9 및 9:16 완치 디텍터]: 세로 화면(aspect < 1)이 되면 전체 그리드 배율을 칼같이 자동 스케일 다운
     if (aspect < 1.0) {
-      this.camera.position.z = THREE.MathUtils.lerp(this.camera.position.z, 11.0 / aspect, 0.1);
+      this.gridGroup.scale.setScalar(aspect * 0.95); // 9:16 스위칭 시 절대 안 잘리고 정중앙 정렬
+      this.camera.aspect = aspect;
+      this.camera.updateProjectionMatrix();
     } else {
-      this.camera.position.z = THREE.MathUtils.lerp(this.camera.position.z, 10.0, 0.1);
+      this.gridGroup.scale.setScalar(1.0); // 16:9 가로 모드 정상 배율 환원
+      this.camera.aspect = aspect;
+      this.camera.updateProjectionMatrix();
     }
-    this.camera.aspect = aspect;
-    this.camera.updateProjectionMatrix();
 
-    // 💡 [적용의 전환]: X, Y, Z 입력창의 값을 버튼 Grid 전체의 오프셋 제어선으로 연결 (민감도 1/50 적용)
+    // 관제탑 캘리브레이션 노브 값 추출
     let offX = 0, offY = 0, offZ = 0;
     const elX = document.getElementById('num-offset-x');
     const elY = document.getElementById('num-offset-y');
@@ -314,12 +312,21 @@ export default class ThreeFloorEqualizer {
     if (elY) offY = parseFloat(elY.value) || 0;
     if (elZ) offZ = parseFloat(elZ.value) || 0;
 
+    // 편안한 조작을 위해 민감도 인덱스 1/50 락인
     const sensitivity = 0.02;
-    this.gridGroup.position.x = offX * sensitivity * 10.0;
-    this.gridGroup.position.y = offY * sensitivity * 10.0;
-    this.camera.position.z += offZ * sensitivity * 5.0; // Z 축은 카메라 거리를 당기고 미는 줌 렌즈 작동
 
-    // 💡 [배경 이미지]: 사진은 3D 공간의 완벽한 캔버스 배경으로만 독립 안착
+    // 💡 [요청 사양 핵심]: X, Y 노브는 오직 배경 이미지의 이동에만, Z 노브는 이미지 크기 배율(Scale) 조절에만 직결 관제
+    if (this.bgMesh) {
+      this.bgMesh.position.x = offX * sensitivity * 10.0;
+      this.bgMesh.position.y = offY * sensitivity * 10.0;
+      
+      // Z축 인풋 수치에 따라 이미지 가로세로 크기가 링 뒤쪽에서 유기적으로 주행 줌인/줌아웃
+      let defaultBgScale = 14.5;
+      let calculatedScale = defaultBgScale * (1.0 + (offZ * sensitivity));
+      this.bgMesh.scale.set(calculatedScale, calculatedScale, 1.0);
+    }
+
+    // 💡 [배경 자산 마운팅]: 사진이 들어오는 즉시 3D 공간의 독립 전용 레이어에 수혈
     const targetImg = window.currentUploadedImageElement;
     if (targetImg && targetImg !== this.lastBgImage) {
       if (this.bgTexture) this.bgTexture.dispose();
@@ -328,13 +335,19 @@ export default class ThreeFloorEqualizer {
       this.bgTexture.magFilter = THREE.LinearFilter;
       this.bgTexture.needsUpdate = true;
       this.lastBgImage = targetImg;
-      this.scene.background = this.bgTexture; // 버튼에 입히지 않고 배경에 깔기
+      
+      // 독립 플레이트 활성화
+      this.bgMeshMaterial.map = this.bgTexture;
+      this.bgMeshMaterial.visible = true;
+      this.bgMeshMaterial.needsUpdate = true;
+      this.scene.background = null; 
     } else if (!targetImg && this.lastBgImage) {
+      this.bgMeshMaterial.visible = false;
       this.scene.background = new THREE.Color(0x04050a);
       this.lastBgImage = null;
     }
 
-    // 진단 HUD 스트리밍
+    // 시스템 시스템 진단 노드 알림
     if (!this.lastTime) this.lastTime = performance.now();
     let now = performance.now();
     let fps = Math.round(1000 / (now - this.lastTime));
@@ -343,9 +356,9 @@ export default class ThreeFloorEqualizer {
     let shapeModeText = this.uiSettings.seed % 3 === 1 ? "Squares" : this.uiSettings.seed % 3 === 2 ? "Circles" : "Mixed";
     window.sketchDiagnostics = {
       fps: isNaN(fps) || fps > 100 ? 30 : fps,
-      particleCount: this.totalButtons + " Neon Geometries",
+      particleCount: this.totalButtons + " Matrix Buttons",
       isCovering: false,
-      activeFunction: `Grid[Shape:${shapeModeText}]`
+      activeFunction: targetImg ? "Matrix[BG_Calibrating_Active]" : "Matrix[Pure_Geometry]"
     };
 
     const time = Date.now() * 0.001;
@@ -376,7 +389,6 @@ export default class ThreeFloorEqualizer {
       let delta = freqIntensity - btn.prevForce;
       btn.prevForce = freqIntensity;
 
-      // 물리 스케일 베이스 리셋
       btn.group.scale.setScalar(1.0);
       btn.inner.scale.setScalar(1.0);
       btn.inner.rotation.z = 0;
@@ -409,7 +421,6 @@ export default class ThreeFloorEqualizer {
           btn.inner.rotation.z = freqIntensity * Math.PI * 1.0;
           break;
         case 5:
-          // 테두리 색 내부 면 채우기 (MeshBasicMaterial 오퍼시티 최대화)
           btn.materials[0].opacity = THREE.MathUtils.clamp(freqIntensity * 1.2, 0.05, 0.95);
           break;
         case 6:
@@ -457,6 +468,11 @@ export default class ThreeFloorEqualizer {
     });
     this.scene.remove(this.gridGroup);
     
+    if (this.bgMesh) {
+      this.scene.remove(this.bgMesh);
+      this.bgMeshMaterial.dispose();
+    }
+
     if (this.sharedGeometries) {
       this.sharedGeometries.forEach(g => g.dispose());
       this.sharedGeometries = [];
