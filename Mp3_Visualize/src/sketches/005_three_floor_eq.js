@@ -1,14 +1,12 @@
 /**
  * src/sketches/005_three_floor_eq.js
- * - [버전] Ver 4.5 (화면 비율 가드 센서 및 4x8 고화질 이미지 슬라이싱 엔진 통합판)
- * - 비율 완치: 16:9, 9:16 변환 시 실시간 가상 카메라 Z축 및 레이아웃 바인딩 배율 연산으로 찌그러짐 원천 봉쇄
- * - 텍스처 슬라이싱: window.currentUploadedImageElement 자산을 4열 x 8행 이미지 아틀라스로 인지하여 32개 버튼에 개별 픽셀 커팅 매핑
- * - Shuffle (Seed) 연동: 시드 변경 즉시 32개 버튼에 7가지 독자 반응 액션 모드를 무작위 교차 셔플링
- * - 관제탑 제어 인터페이스 100% 직결 매핑:
- *   • Scale  (glowIntensity) : 네온 버튼 라인의 원천 밝기 및 글로우 블렌딩 반경 지배
- *   • Volume (audioGain)     : 주파수 유입 시 7대 모드 변위가 튕겨 나가는 움직임 크기(진폭) 가중치 부스트
- *   • Range  (scatterExponent): 32개 네온 버튼 간의 가로세로 정렬 배치 간격(Spacing) 확장
- *   • Gauge  (gaugeValue)    : 이미지 소스가 없을 때의 플레이스홀더 엠블럼 기본 반경 제어
+ * - [버전] Ver 4.6 (관제탑 X, Y, Z 노브 직결 이미지 슬라이싱 캘리브레이션 완결판)
+ * - 보정 개혁: 오른쪽 사이드바의 3D Position Offset (X,Y,Z) 값을 실시간 텍스처 오프셋 제어기로 전사 리인덱싱
+ * - 이미지 수혈: z-image-turbo_01103_.jpg 등 업로드된 아틀라스 이미지 격자를 4x8로 정밀 커팅 매핑
+ * - 실시간 튜닝 매커니즘:
+ *   • X 입력창 : 이미지 조각들의 가로축 자르기 위치 미세 이동 (UV Offset X)
+ *   • Y 입력창 : 이미지 조각들의 세로축 자르기 위치 미세 이동 (UV Offset Y)
+ *   • Z 입력창 : 각 격자 셀 내부에 채워지는 네온 이미지의 확대/축소 비율 배율화 (UV Scale Zoom)
  */
 
 export default class ThreeFloorEqualizer {
@@ -38,7 +36,7 @@ export default class ThreeFloorEqualizer {
       customColors: { gas1: '#ff0055', gas2: '#00ffcc', star: '#ffffff' }
     };
 
-    this.version = "005호 Neon Image Slicer Ver 4.5";
+    this.version = "005호 Neon Image Slicer Ver 4.6";
   }
 
   init() {
@@ -48,7 +46,6 @@ export default class ThreeFloorEqualizer {
     this.scene = new THREE.Scene();
     this.scene.fog = new THREE.FogExp2(0x04050a, 0.015);
 
-    // 원근감이 살아있는 공간 시네마틱 카메라 배치
     this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
     this.camera.position.set(0, 0, 11);
     this.camera.lookAt(0, 0, 0);
@@ -82,7 +79,6 @@ export default class ThreeFloorEqualizer {
     return x - Math.floor(x);
   }
 
-  // [알고리즘 1: 4열 x 8행 하이엔드 이미지 슬라이싱 아키텍처 팩토리]
   buildInstrumentMatrix() {
     this.matrixButtons.forEach(btn => {
       this.scene.remove(btn.group);
@@ -122,7 +118,6 @@ export default class ThreeFloorEqualizer {
       sRandom = this.seededRandom(sRandom) * 1000;
       let modeRand = this.seededRandom(sRandom + 2);
 
-      // SHUFFLE 연동: 7가지 반응 특수 액션 모드를 버튼별로 골고루 랜덤 분배
       let assignedActionMode = Math.floor(modeRand * 7) + 1; 
 
       let blendRatio = i / (this.totalButtons - 1);
@@ -131,7 +126,6 @@ export default class ThreeFloorEqualizer {
         btnThemeColor.setHSL(this.seededRandom(sRandom + 5), 0.9, 0.6);
       }
 
-      // 외곽 프레임 네온 링 재질
       const lineMat = new THREE.LineBasicMaterial({
         color: btnThemeColor,
         transparent: true,
@@ -140,12 +134,12 @@ export default class ThreeFloorEqualizer {
       const outerRing = new THREE.Mesh(ringGeo, lineMat);
       btnGroup.add(outerRing);
 
-      // 💡 [VFX 핵심 연산]: 4x8 이미지 아틀라스를 실시간 정밀 타겟팅 분할하는 커스텀 슬라이싱 셰이더 인젝션
+      // 커스텀 셰이더 슬라이서 매립
       const sliceShaderMat = new THREE.ShaderMaterial({
         uniforms: {
           u_texture: { value: new THREE.Texture() },
           u_hasTexture: { value: 0.0 },
-          u_uvOffset: { value: new THREE.Vector2(col / 4.0, (7.0 - row) / 8.0) }, // 4x8 픽셀 크래시 자동 맵핑 좌표 오프셋
+          u_uvOffset: { value: new THREE.Vector2(0, 0) }, 
           u_uvScale: { value: new THREE.Vector2(1.0 / 4.0, 1.0 / 8.0) },
           u_color: { value: btnThemeColor.clone() },
           u_glow: { value: 1.0 },
@@ -175,7 +169,6 @@ export default class ThreeFloorEqualizer {
           void main() {
             vec4 finalTex = vec4(1.0);
             if (u_hasTexture > 0.5) {
-              // 💡 [슬라이싱 엔진 핵심식]: 아틀라스 이미지 격자 단면 좌표 동기화 투사
               vec2 slicedUV = vUv * u_uvScale + u_uvOffset;
               finalTex = texture2D(u_texture, slicedUV);
               
@@ -185,7 +178,6 @@ export default class ThreeFloorEqualizer {
               finalTex.rgb *= u_color * u_glow;
               finalTex.a *= u_opacity;
             } else {
-              // 이미지 로딩 전 고급 프레임 플레이스홀더 연산
               float d = length(vUv - vec2(0.5));
               float ring = smoothstep(0.02, 0.0, abs(d - 0.28));
               float core = smoothstep(0.08, 0.0, d);
@@ -203,7 +195,6 @@ export default class ThreeFloorEqualizer {
       const innerIconMesh = new THREE.Mesh(innerPlaneGeo, sliceShaderMat);
       btnGroup.add(innerIconMesh);
 
-      // 6번 리플 확장 파도 링 선포
       const rippleMat = lineMat.clone();
       rippleMat.opacity = 0.0;
       const rippleMesh = new THREE.Mesh(rippleGeo, rippleMat);
@@ -244,18 +235,25 @@ export default class ThreeFloorEqualizer {
     const height = this.container.clientHeight;
     const aspect = width / height;
 
-    // 💡 [버그 완치 1]: 9:16 세로화면 및 16:9 가로화면 스위칭 감지 즉시 뷰포트 종횡비 가드 자동 스케일링 작동
     if (aspect < 1.0) {
-      // 9:16 모드일 때는 카메라 거리를 멀리 밀어 격자가 화면 잘림 없이 정중앙에 쏙 들어오게 압착
       this.camera.position.z = THREE.MathUtils.lerp(this.camera.position.z, 11.5 / (aspect * 1.05), 0.1);
     } else {
-      // 16:9 및 풀 스크린 기본 시네마틱 고정 거리 유지
       this.camera.position.z = THREE.MathUtils.lerp(this.camera.position.z, 10.5, 0.1);
     }
     this.camera.aspect = aspect;
     this.camera.updateProjectionMatrix();
 
-    // 💡 [버그 완치 2]: 업로드 창에 들어온 악기 아틀라스 이미지를 통째로 추출하여 32개 셰이더 슬라이서 유니폼에 전사
+    // 💡 [알고리즘 1]: 우측 패널의 X, Y, Z 디바이스 수치 실시간 강제 포착 및 미세 눈금 필터링
+    let offX = 0, offY = 0, offZ = 0;
+    const elX = document.getElementById('num-offset-x');
+    const elY = document.getElementById('num-offset-y');
+    const elZ = document.getElementById('num-offset-z');
+    
+    if (elX) offX = parseFloat(elX.value) || 0;
+    if (elY) offY = parseFloat(elY.value) || 0;
+    if (elZ) offZ = parseFloat(elZ.value) || 0;
+
+    // 업로드 아틀라스 이미지 감지 파이프라인
     const targetImg = window.currentUploadedImageElement;
     if (targetImg && targetImg !== this.lastBgImage) {
       if (this.bgTexture) this.bgTexture.dispose();
@@ -265,7 +263,6 @@ export default class ThreeFloorEqualizer {
       this.bgTexture.needsUpdate = true;
       this.lastBgImage = targetImg;
 
-      // 32개 버튼에 슬라이싱 소스 공급선 일제 개방
       this.matrixButtons.forEach(btn => {
         btn.shaderMaterial.uniforms.u_texture.value = this.bgTexture;
         btn.shaderMaterial.uniforms.u_hasTexture.value = 1.0;
@@ -279,7 +276,7 @@ export default class ThreeFloorEqualizer {
       this.lastBgImage = null;
     }
 
-    // 진단 HUD 연동 계수
+    // 진단 HUD 연동
     if (!this.lastTime) this.lastTime = performance.now();
     let now = performance.now();
     let fps = Math.round(1000 / (now - this.lastTime));
@@ -287,9 +284,9 @@ export default class ThreeFloorEqualizer {
 
     window.sketchDiagnostics = {
       fps: isNaN(fps) || fps > 100 ? 30 : fps,
-      particleCount: this.totalButtons + " Sliced Neon Buttons",
+      particleCount: this.totalButtons + " Calibrated Buttons",
       isCovering: false,
-      activeFunction: targetImg ? "Matrix[4x8_Sliced_Active]" : "Matrix[Placeholder_Emblem]"
+      activeFunction: targetImg ? "Matrix[VFX_4x8_Calibrating]" : "Matrix[Placeholder]"
     };
 
     const time = Date.now() * 0.001;
@@ -303,11 +300,22 @@ export default class ThreeFloorEqualizer {
 
     let volumeGainScale = this.uiSettings.gain > 5 ? this.uiSettings.gain / 100.0 : this.uiSettings.gain;
 
-    // 32채널 7대 고유 액션 제어 트랙 구동
+    // 32채널 7대 고유 액션 제어 루프
     this.matrixButtons.forEach((btn) => {
       let finalX = (btn.colPos - (this.numCols - 1) * 0.5) * layoutSpacingX;
       let finalY = ((this.numRows - 1) * 0.5 - btn.rowPos) * layoutSpacingY;
       btn.group.position.set(finalX, finalY, 0);
+
+      // 💡 [알고리즘 2]: X, Y 축 오프셋 주입 및 Z축을 통한 개별 아틀라스 줌스케일 동적 분사
+      let finalUvOffsetX = (btn.colPos / 4.0) + offX;
+      let finalUvOffsetY = ((7.0 - btn.rowPos) / 8.0) + offY;
+      
+      // Z 값이 0일 때 정상 배율(1.0)을 유지하도록 보정 연산
+      let finalUvScaleX = (1.0 / 4.0) * (1.0 + offZ);
+      let finalUvScaleY = (1.0 / 8.0) * (1.0 + offZ);
+
+      btn.shaderMaterial.uniforms.u_uvOffset.value.set(finalUvOffsetX, finalUvOffsetY);
+      btn.shaderMaterial.uniforms.u_uvScale.value.set(finalUvScaleX, finalUvScaleY);
 
       let rawFreq = 0.0;
       if (audioData && audioData.raw && audioData.raw.length > 0) {
@@ -320,56 +328,45 @@ export default class ThreeFloorEqualizer {
       let delta = freqIntensity - btn.prevForce;
       btn.prevForce = freqIntensity;
 
-      // 물리 스케일 베이스 리셋
       btn.group.scale.setScalar(1.0);
       btn.inner.scale.setScalar(1.0);
       btn.inner.rotation.z = 0;
 
-      // 셰이더 유니폼 조작 계통 직결 동기화
       btn.shaderMaterial.uniforms.u_glow.value = glowFactor;
       btn.shaderMaterial.uniforms.u_opacity.value = 0.3 + freqIntensity * 0.7;
       btn.shaderMaterial.uniforms.u_invert.value = 0.0;
       btn.shaderMaterial.uniforms.u_fillMode.value = 0.0;
 
-      btn.materials[0].opacity = 0.3 + freqIntensity * 0.6; // 외곽 네온 링 밝기 연동
+      btn.materials[0].opacity = 0.3 + freqIntensity * 0.6; 
 
-      // SHUFFLE 시드에 매핑된 버튼별 독자 액션 분기격발
       switch (btn.actionMode) {
         case 1:
-          // 1번 [스피커 맥동]
           btn.group.scale.setScalar(1.0 + freqIntensity * 0.45);
           break;
         case 2:
-          // 2번 [하이퍼 GLOW]
           btn.shaderMaterial.uniforms.u_glow.value = glowFactor * (1.0 + freqIntensity * 3.2);
           break;
         case 3:
-          // 3번 [색상 반전]
           if (freqIntensity > 0.28) btn.shaderMaterial.uniforms.u_invert.value = 1.0;
           break;
         case 4:
-          // 4번 [제자리 회전]
           btn.inner.rotation.z = freqIntensity * Math.PI * 1.0;
           break;
         case 5:
-          // 5번 [테두리 색 내부 채움]
           btn.shaderMaterial.uniforms.u_fillMode.value = 1.0;
           btn.shaderMaterial.uniforms.u_opacity.value = THREE.MathUtils.clamp(freqIntensity * 1.2, 0.1, 0.95);
           break;
         case 6:
-          // 6번 [외곽 확장 파도 리플]
           if (delta > 0.07 && !btn.rippleActive) {
             btn.rippleActive = true;
             btn.rippleScale = 1.0;
           }
           break;
         case 7:
-          // 7번 [악기 독자 펄스]
           btn.inner.scale.setScalar(1.0 + freqIntensity * 0.7);
           break;
       }
 
-      // 6번 리플 애니메이션 라이프사이클 처리
       if (btn.rippleActive) {
         btn.rippleScale += 0.09;
         btn.ripple.scale.setScalar(btn.rippleScale);
