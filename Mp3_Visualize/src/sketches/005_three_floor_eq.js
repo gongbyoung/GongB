@@ -1,12 +1,12 @@
 /**
  * src/sketches/005_three_floor_eq.js
- * - [버전] Ver 5.1 (배경 이미지 X,Y 위치 및 Z 스케일 제어 + 비율 완치 판정 완결판)
- * - 비율 완치: 16:9, 9:16 종횡비 변환 시 마스터 그리드가 화면 밖으로 탈출하지 않도록 aspect 가드 센서 복구
- * - 조작 혁신: 3D Position Offset (X, Y, Z) 인풋 노브를 "로딩된 배경 이미지 메시"에 직결 체결
+ * - [버전] Ver 5.2 (배경 이미지 캔버스 종횡비 피팅 및 X,Y,Z 통제선 재정렬 버전)
+ * - 크기/위치 교정: 배경 3D 평면을 1x1 기본형으로 변경하고, 카메라 시야각(FOV) 및 캔버스 비율에 맞추어 이미지 자동 피팅(Cover) 연산 적용
+ * - 제어기 연동: 3D Position Offset (X, Y, Z) 노브 수치를 이미지 전용으로 귀속
  *   • X 입력창 : 배경 이미지를 좌우로 미세 이동
  *   • Y 입력창 : 배경 이미지를 상하로 미세 이동
- *   • Z 입력창 : 배경 이미지의 스케일 크기를 줌인/줌아웃 확대 축소
- * - 순수 기하학 네온 매트릭스 7대 오디오 반응 및 3대 형상 셔플 모드는 완벽하게 보존형 유지
+ *   • Z 입력창 : 배경 이미지의 크기 배율을 확대/축소 (Zoom)
+ * - 화면 비율 가드: 16:9, 9:16 스위칭 시 마스터 그리드가 중앙 정렬 비율을 유지하도록 배율 가드 유지
  */
 
 export default class ThreeFloorEqualizer {
@@ -16,8 +16,8 @@ export default class ThreeFloorEqualizer {
     this.camera = null;
     this.renderer = null;
     
-    this.gridGroup = null;      // 32개 네온 버튼이 담긴 중앙 고정 그룹
-    this.bgMesh = null;         // 💡 [개혁]: X, Y, Z 조작을 온전히 수혈받을 독립 배경 이미지 메시
+    this.gridGroup = null;      
+    this.bgMesh = null;         
     
     this.matrixButtons = [];
     this.numCols = 4;
@@ -40,7 +40,7 @@ export default class ThreeFloorEqualizer {
       customColors: { gas1: '#ff0055', gas2: '#00ffcc', star: '#ffffff' }
     };
 
-    this.version = "005호 Neon Geometry Grid Ver 5.1";
+    this.version = "005호 Neon Geometry Grid Ver 5.2";
   }
 
   init() {
@@ -61,17 +61,17 @@ export default class ThreeFloorEqualizer {
 
     this.scene.add(new THREE.AmbientLight(0xffffff, 1.2));
 
-    // 💡 [배경 플레이트 선행 시공]: 격자판 뒤쪽에 위치할 고화질 이미지 보드 생성
-    const bgPlaneGeo = new THREE.PlaneGeometry(16, 16);
+    // 기본 단위를 1x1 규격으로 시공하여 동적 scale 연산이 화면 크기와 정확히 맞물리도록 변경
+    const bgPlaneGeo = new THREE.PlaneGeometry(1, 1);
     this.bgMeshMaterial = new THREE.MeshBasicMaterial({
       color: 0xffffff,
       transparent: true,
       opacity: 1.0,
       depthWrite: false,
-      visible: false // 이미지 로딩 전에는 숨김 처리
+      visible: false 
     });
     this.bgMesh = new THREE.Mesh(bgPlaneGeo, this.bgMeshMaterial);
-    this.bgMesh.position.set(0, 0, -5); // 버튼들(Z=0)보다 한참 뒤에 배치
+    this.bgMesh.position.set(0, 0, -5); // 버튼 뒤편 공간에 배치
     this.scene.add(this.bgMesh);
     this.sharedGeometries.push(bgPlaneGeo);
 
@@ -291,18 +291,16 @@ export default class ThreeFloorEqualizer {
     const height = this.container.clientHeight;
     const aspect = width / height;
 
-    // 💡 [화면비율 16:9 및 9:16 완치 디텍터]: 세로 화면(aspect < 1)이 되면 전체 그리드 배율을 칼같이 자동 스케일 다운
+    // 화면 비율 압착 가드 센서 (9:16 세로 대응 배율 자동 축소 조율)
     if (aspect < 1.0) {
-      this.gridGroup.scale.setScalar(aspect * 0.95); // 9:16 스위칭 시 절대 안 잘리고 정중앙 정렬
-      this.camera.aspect = aspect;
-      this.camera.updateProjectionMatrix();
+      this.gridGroup.scale.setScalar(aspect * 0.95); 
     } else {
-      this.gridGroup.scale.setScalar(1.0); // 16:9 가로 모드 정상 배율 환원
-      this.camera.aspect = aspect;
-      this.camera.updateProjectionMatrix();
+      this.gridGroup.scale.setScalar(1.0); 
     }
+    this.camera.aspect = aspect;
+    this.camera.updateProjectionMatrix();
 
-    // 관제탑 캘리브레이션 노브 값 추출
+    // 관제탑 조작 UI 입력값 로드
     let offX = 0, offY = 0, offZ = 0;
     const elX = document.getElementById('num-offset-x');
     const elY = document.getElementById('num-offset-y');
@@ -312,21 +310,39 @@ export default class ThreeFloorEqualizer {
     if (elY) offY = parseFloat(elY.value) || 0;
     if (elZ) offZ = parseFloat(elZ.value) || 0;
 
-    // 편안한 조작을 위해 민감도 인덱스 1/50 락인
-    const sensitivity = 0.02;
+    const sensitivity = 0.02; // 1/50 조율 감도 필터
 
-    // 💡 [요청 사양 핵심]: X, Y 노브는 오직 배경 이미지의 이동에만, Z 노브는 이미지 크기 배율(Scale) 조절에만 직결 관제
-    if (this.bgMesh) {
-      this.bgMesh.position.x = offX * sensitivity * 10.0;
-      this.bgMesh.position.y = offY * sensitivity * 10.0;
-      
-      // Z축 인풋 수치에 따라 이미지 가로세로 크기가 링 뒤쪽에서 유기적으로 주행 줌인/줌아웃
-      let defaultBgScale = 14.5;
-      let calculatedScale = defaultBgScale * (1.0 + (offZ * sensitivity));
-      this.bgMesh.scale.set(calculatedScale, calculatedScale, 1.0);
+    // 💡 [배경 이미지 캔버스 비율 피팅 및 X,Y,Z 직결 바인딩 연산 구조]
+    if (this.bgMesh && this.bgTexture && this.bgTexture.image) {
+      const imgW = this.bgTexture.image.width || 1;
+      const imgH = this.bgTexture.image.height || 1;
+      const imgAspect = imgW / imgH;
+
+      // 카메라 각도와 심도 오프셋 거리를 기준으로 현재 화면의 실제 3D 뷰포트 단면 크기 정밀 계산
+      const dist = this.camera.position.z - this.bgMesh.position.z;
+      const vHeight = 2 * dist * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
+      const vWidth = vHeight * aspect;
+
+      // 배경 이미지가 잘려 나가거나 왜곡되지 않도록 화면 영역을 꽉 채우는 기본 Fit 스케일 공식
+      let baseScaleX = vWidth;
+      let baseScaleY = vHeight;
+
+      if (aspect > imgAspect) {
+        baseScaleY = vWidth / imgAspect;
+      } else {
+        baseScaleX = vHeight * imgAspect;
+      }
+
+      // Z 입력값 연동: 이미지 배율 크기 축소/확대 (Zoom) 조절 지점
+      let zoomMultiplier = 1.0 + (offZ * sensitivity);
+      this.bgMesh.scale.set(baseScaleX * zoomMultiplier, baseScaleY * zoomMultiplier, 1.0);
+
+      // X, Y 입력값 연동: 화면 크기에 유동적으로 반응하는 이미지 위치 좌우/상하 이동 정밀 조정
+      this.bgMesh.position.x = offX * sensitivity * vWidth * 0.5;
+      this.bgMesh.position.y = offY * sensitivity * vHeight * 0.5;
     }
 
-    // 💡 [배경 자산 마운팅]: 사진이 들어오는 즉시 3D 공간의 독립 전용 레이어에 수혈
+    // 업로드 이미지 감지 파이프라인
     const targetImg = window.currentUploadedImageElement;
     if (targetImg && targetImg !== this.lastBgImage) {
       if (this.bgTexture) this.bgTexture.dispose();
@@ -336,7 +352,6 @@ export default class ThreeFloorEqualizer {
       this.bgTexture.needsUpdate = true;
       this.lastBgImage = targetImg;
       
-      // 독립 플레이트 활성화
       this.bgMeshMaterial.map = this.bgTexture;
       this.bgMeshMaterial.visible = true;
       this.bgMeshMaterial.needsUpdate = true;
@@ -347,7 +362,7 @@ export default class ThreeFloorEqualizer {
       this.lastBgImage = null;
     }
 
-    // 시스템 시스템 진단 노드 알림
+    // 시스템 진단 콘솔 연동
     if (!this.lastTime) this.lastTime = performance.now();
     let now = performance.now();
     let fps = Math.round(1000 / (now - this.lastTime));
@@ -358,7 +373,7 @@ export default class ThreeFloorEqualizer {
       fps: isNaN(fps) || fps > 100 ? 30 : fps,
       particleCount: this.totalButtons + " Matrix Buttons",
       isCovering: false,
-      activeFunction: targetImg ? "Matrix[BG_Calibrating_Active]" : "Matrix[Pure_Geometry]"
+      activeFunction: targetImg ? "Matrix[BG_Fitting_Mode]" : "Matrix[Pure_Geometry]"
     };
 
     const time = Date.now() * 0.001;
@@ -372,7 +387,6 @@ export default class ThreeFloorEqualizer {
 
     let volumeGainScale = this.uiSettings.gain > 5 ? this.uiSettings.gain / 100.0 : this.uiSettings.gain;
 
-    // 32채널 7대 고유 액션 제어 루프
     this.matrixButtons.forEach((btn) => {
       let finalX = (btn.colPos - (this.numCols - 1) * 0.5) * layoutSpacingX;
       let finalY = ((this.numRows - 1) * 0.5 - btn.rowPos) * layoutSpacingY;
