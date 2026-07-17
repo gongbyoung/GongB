@@ -1,14 +1,14 @@
 /**
  * src/sketches/005_three_floor_eq.js
- * - [버전] Ver 4.1 (ReferenceError 오타 완치 및 32채널 네온 악기 매트릭스 완결판)
- * - 버그 완치: buildInstrumentMatrix 내부 p.map 참조 오류를 THREE.MathUtils.mapLinear로 완벽 수리
- * - 이미지 수혈: 반 고흐 명화나 업로드 이미지를 THREE.Texture로 변환하여 3D 우주 배경에 실시간 레이어 통합
- * - Shuffle (Seed) 연동: 시드 변경 즉시 32개 버튼에 7가지 독자 반응 액션 모드와 기하학 형태를 무작위 교차 셔플팅
+ * - [버전] Ver 4.5 (화면 비율 가드 센서 및 4x8 고화질 이미지 슬라이싱 엔진 통합판)
+ * - 비율 완치: 16:9, 9:16 변환 시 실시간 가상 카메라 Z축 및 레이아웃 바인딩 배율 연산으로 찌그러짐 원천 봉쇄
+ * - 텍스처 슬라이싱: window.currentUploadedImageElement 자산을 4열 x 8행 이미지 아틀라스로 인지하여 32개 버튼에 개별 픽셀 커팅 매핑
+ * - Shuffle (Seed) 연동: 시드 변경 즉시 32개 버튼에 7가지 독자 반응 액션 모드를 무작위 교차 셔플링
  * - 관제탑 제어 인터페이스 100% 직결 매핑:
  *   • Scale  (glowIntensity) : 네온 버튼 라인의 원천 밝기 및 글로우 블렌딩 반경 지배
  *   • Volume (audioGain)     : 주파수 유입 시 7대 모드 변위가 튕겨 나가는 움직임 크기(진폭) 가중치 부스트
  *   • Range  (scatterExponent): 32개 네온 버튼 간의 가로세로 정렬 배치 간격(Spacing) 확장
- *   • Gauge  (gaugeValue)    : 내부 악기 기하학의 기본 디테일 밀도 변형 제어
+ *   • Gauge  (gaugeValue)    : 이미지 소스가 없을 때의 플레이스홀더 엠블럼 기본 반경 제어
  */
 
 export default class ThreeFloorEqualizer {
@@ -38,7 +38,7 @@ export default class ThreeFloorEqualizer {
       customColors: { gas1: '#ff0055', gas2: '#00ffcc', star: '#ffffff' }
     };
 
-    this.version = "005호 Neon Instrument Matrix Ver 4.1";
+    this.version = "005호 Neon Image Slicer Ver 4.5";
   }
 
   init() {
@@ -46,7 +46,7 @@ export default class ThreeFloorEqualizer {
     const height = this.container.clientHeight;
 
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.FogExp2(0x05060c, 0.012);
+    this.scene.fog = new THREE.FogExp2(0x04050a, 0.015);
 
     // 원근감이 살아있는 공간 시네마틱 카메라 배치
     this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
@@ -55,7 +55,7 @@ export default class ThreeFloorEqualizer {
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     this.renderer.setSize(width, height);
-    this.renderer.setClearColor(0x05060c);
+    this.renderer.setClearColor(0x04050a);
     this.container.appendChild(this.renderer.domElement);
 
     this.scene.add(new THREE.AmbientLight(0xffffff, 1.0));
@@ -82,9 +82,8 @@ export default class ThreeFloorEqualizer {
     return x - Math.floor(x);
   }
 
-  // [알고리즘 1: 이미지 양식 일치형 32개 네온 악기 하이엔드 생성기]
+  // [알고리즘 1: 4열 x 8행 하이엔드 이미지 슬라이싱 아키텍처 팩토리]
   buildInstrumentMatrix() {
-    // 기존에 깔린 자산 흔적 없이 소멸 처리
     this.matrixButtons.forEach(btn => {
       this.scene.remove(btn.group);
       btn.geometries.forEach(g => g.dispose());
@@ -94,14 +93,13 @@ export default class ThreeFloorEqualizer {
 
     let sRandom = this.uiSettings.seed;
 
-    // 014호 호환 마스터 파레트 디코딩
     let baseC1 = new THREE.Color(), baseC2 = new THREE.Color();
     if (this.uiSettings.style === 'monochrome') {
       baseC1.set('#ffffff'); baseC2.set('#999999');
     } else if (this.uiSettings.style === 'neon') {
       baseC1.set('#ff0055'); baseC2.set('#00ffcc');
     } else if (this.uiSettings.style === 'pastel') {
-      baseC1.set('#1a2536'); baseC2.set('#ebbaa8'); 
+      baseC1.set('#121b29'); baseC2.set('#dba494'); 
     } else if (this.uiSettings.style === 'custom') {
       baseC1.set(this.uiSettings.customColors.gas1);
       baseC2.set(this.uiSettings.customColors.gas2);
@@ -109,119 +107,119 @@ export default class ThreeFloorEqualizer {
       baseC1.setRGB(0.9, 0.1, 0.4); baseC2.setRGB(0.1, 0.9, 0.6);
     }
 
-    // 그리드 생성 루프 전개
+    const ringGeo = new THREE.RingGeometry(0.56, 0.6, 32);
+    const innerPlaneGeo = new THREE.PlaneGeometry(0.92, 0.92);
+    const rippleGeo = new THREE.RingGeometry(0.61, 0.64, 32);
+
     for (let i = 0; i < this.totalButtons; i++) {
       const col = i % this.numCols;
       const row = Math.floor(i / this.numCols);
 
       const btnGroup = new THREE.Group();
-      const geomList = [];
+      const geomList = [ringGeo, innerPlaneGeo, rippleGeo];
       const matList = [];
 
       sRandom = this.seededRandom(sRandom) * 1000;
-      let shapeRand = this.seededRandom(sRandom + 1);
       let modeRand = this.seededRandom(sRandom + 2);
 
       // SHUFFLE 연동: 7가지 반응 특수 액션 모드를 버튼별로 골고루 랜덤 분배
       let assignedActionMode = Math.floor(modeRand * 7) + 1; 
 
-      // 칸별 고유 컬러 브렌딩 그라데이션 추출
       let blendRatio = i / (this.totalButtons - 1);
       let btnThemeColor = baseC1.clone().lerp(baseC2, blendRatio);
-      
       if (this.uiSettings.style === 'full-random') {
         btnThemeColor.setHSL(this.seededRandom(sRandom + 5), 0.9, 0.6);
       }
 
-      // 기본 공통 재질 바인딩
-      const meshMat = new THREE.MeshBasicMaterial({
-        color: btnThemeColor,
-        transparent: true,
-        opacity: assignedActionMode === 5 ? 0.05 : 0.2, 
-        side: THREE.DoubleSide
-      });
+      // 외곽 프레임 네온 링 재질
       const lineMat = new THREE.LineBasicMaterial({
         color: btnThemeColor,
         transparent: true,
-        opacity: 0.9,
-        linewidth: 2
+        opacity: 0.9
+      });
+      const outerRing = new THREE.Mesh(ringGeo, lineMat);
+      btnGroup.add(outerRing);
+
+      // 💡 [VFX 핵심 연산]: 4x8 이미지 아틀라스를 실시간 정밀 타겟팅 분할하는 커스텀 슬라이싱 셰이더 인젝션
+      const sliceShaderMat = new THREE.ShaderMaterial({
+        uniforms: {
+          u_texture: { value: new THREE.Texture() },
+          u_hasTexture: { value: 0.0 },
+          u_uvOffset: { value: new THREE.Vector2(col / 4.0, (7.0 - row) / 8.0) }, // 4x8 픽셀 크래시 자동 맵핑 좌표 오프셋
+          u_uvScale: { value: new THREE.Vector2(1.0 / 4.0, 1.0 / 8.0) },
+          u_color: { value: btnThemeColor.clone() },
+          u_glow: { value: 1.0 },
+          u_opacity: { value: 1.0 },
+          u_invert: { value: 0.0 },
+          u_fillMode: { value: 0.0 }
+        },
+        vertexShader: `
+          varying vec2 vUv;
+          void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          uniform sampler2D u_texture;
+          uniform float u_hasTexture;
+          uniform vec2 u_uvOffset;
+          uniform vec2 u_uvScale;
+          uniform vec3 u_color;
+          uniform float u_glow;
+          uniform float u_opacity;
+          uniform float u_invert;
+          uniform float u_fillMode;
+          varying vec2 vUv;
+
+          void main() {
+            vec4 finalTex = vec4(1.0);
+            if (u_hasTexture > 0.5) {
+              // 💡 [슬라이싱 엔진 핵심식]: 아틀라스 이미지 격자 단면 좌표 동기화 투사
+              vec2 slicedUV = vUv * u_uvScale + u_uvOffset;
+              finalTex = texture2D(u_texture, slicedUV);
+              
+              if (u_invert > 0.5) {
+                finalTex.rgb = 1.0 - finalTex.rgb;
+              }
+              finalTex.rgb *= u_color * u_glow;
+              finalTex.a *= u_opacity;
+            } else {
+              // 이미지 로딩 전 고급 프레임 플레이스홀더 연산
+              float d = length(vUv - vec2(0.5));
+              float ring = smoothstep(0.02, 0.0, abs(d - 0.28));
+              float core = smoothstep(0.08, 0.0, d);
+              finalTex = vec4(u_color * u_glow, (ring + core * u_fillMode) * u_opacity);
+            }
+            if (finalTex.a < 0.02) discard;
+            gl_FragColor = finalTex;
+          }
+        `,
+        transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide
       });
 
-      matList.push(meshMat, lineMat);
+      const innerIconMesh = new THREE.Mesh(innerPlaneGeo, sliceShaderMat);
+      btnGroup.add(innerIconMesh);
 
-      // 1) 외곽 프레임 시공 (동그라미 vs 사각형 교차 셔플팅)
-      let outerFrameMesh;
-      if (shapeRand > 0.5) {
-        const ringGeo = new THREE.RingGeometry(0.55, 0.6, 32);
-        outerFrameMesh = new THREE.Mesh(ringGeo, lineMat);
-        geomList.push(ringGeo);
-      } else {
-        const boxGeo = new THREE.BoxGeometry(1.0, 1.0, 0.05);
-        const edges = new THREE.EdgesGeometry(boxGeo);
-        outerFrameMesh = new THREE.LineSegments(edges, lineMat);
-        geomList.push(boxGeo, edges);
-      }
-      btnGroup.add(outerFrameMesh);
-
-      // 2) 내부 악기 기하학 구조체 시공
-      const innerGroup = new THREE.Group();
-      let instrumentType = Math.floor(this.seededRandom(sRandom + 3) * 4);
-
-      if (instrumentType === 0) {
-        const bodyGeo = new THREE.CircleGeometry(0.22, 16);
-        const neckGeo = new THREE.BoxGeometry(0.06, 0.5, 0.02);
-        neckGeo.translate(0, 0.3, 0);
-        
-        const bodyMesh = new THREE.Mesh(bodyGeo, meshMat);
-        const neckMesh = new THREE.Mesh(neckGeo, lineMat);
-        innerGroup.add(bodyMesh, neckMesh);
-        geomList.push(bodyGeo, neckGeo);
-      } else if (instrumentType === 1) {
-        const headGeo = new THREE.CircleGeometry(0.12, 16);
-        headGeo.translate(-0.1, -0.15, 0);
-        const stemGeo = new THREE.BoxGeometry(0.04, 0.4, 0.02);
-        stemGeo.translate(0.02, 0.05, 0);
-        const flagGeo = new THREE.BoxGeometry(0.15, 0.05, 0.02);
-        flagGeo.translate(0.1, 0.23, 0);
-
-        innerGroup.add(new THREE.Mesh(headGeo, meshMat), new THREE.Mesh(stemGeo, lineMat), new THREE.Mesh(flagGeo, lineMat));
-        geomList.push(headGeo, stemGeo, flagGeo);
-      } else if (instrumentType === 2) {
-        const luteGeo = new THREE.CylinderGeometry(0.05, 0.22, 0.5, 16);
-        const luteMesh = new THREE.Mesh(luteGeo, meshMat);
-        luteMesh.rotation.z = Math.PI / 4;
-        innerGroup.add(luteMesh);
-        geomList.push(luteGeo);
-      } else {
-        const coreGeo = new THREE.RingGeometry(0.05, 0.25, 6);
-        const coreMesh = new THREE.Mesh(coreGeo, lineMat);
-        innerGroup.add(coreMesh);
-        geomList.push(coreGeo);
-      }
-
-      innerGroup.rotation.z = -Math.PI / 6;
-      btnGroup.add(innerGroup);
-
-      // 3) 6번 모드 전용 외부 팽창 리플 링 사전 증설
-      const rippleGeo = new THREE.RingGeometry(0.6, 0.63, 32);
+      // 6번 리플 확장 파도 링 선포
       const rippleMat = lineMat.clone();
       rippleMat.opacity = 0.0;
       const rippleMesh = new THREE.Mesh(rippleGeo, rippleMat);
       btnGroup.add(rippleMesh);
-      geomList.push(rippleGeo);
-      matList.push(rippleMat);
 
+      matList.push(lineMat, sliceShaderMat, rippleMat);
       this.scene.add(btnGroup);
 
-      // 💡 [버그 완치 핵심]: p.map 오타를 THREE.MathUtils.mapLinear 모듈로 변환 완료!
       let computedIndex = Math.floor(THREE.MathUtils.mapLinear(i, 0, this.totalButtons, 2, 180));
 
       this.matrixButtons.push({
         group: btnGroup,
-        inner: innerGroup,
-        outer: outerFrameMesh,
+        inner: innerIconMesh,
         ripple: rippleMesh,
         rippleMaterial: rippleMat,
+        shaderMaterial: sliceShaderMat,
         geometries: geomList,
         materials: matList,
         baseColor: btnThemeColor.clone(),
@@ -242,22 +240,46 @@ export default class ThreeFloorEqualizer {
     this.syncUISettings();
     this.renderer.clear();
 
-    // 배경 이미지 가속 마운트 커넥터 일치
-    const bgImg = window.currentUploadedImageElement;
-    if (bgImg && bgImg !== this.lastBgImage) {
+    const width = this.container.clientWidth;
+    const height = this.container.clientHeight;
+    const aspect = width / height;
+
+    // 💡 [버그 완치 1]: 9:16 세로화면 및 16:9 가로화면 스위칭 감지 즉시 뷰포트 종횡비 가드 자동 스케일링 작동
+    if (aspect < 1.0) {
+      // 9:16 모드일 때는 카메라 거리를 멀리 밀어 격자가 화면 잘림 없이 정중앙에 쏙 들어오게 압착
+      this.camera.position.z = THREE.MathUtils.lerp(this.camera.position.z, 11.5 / (aspect * 1.05), 0.1);
+    } else {
+      // 16:9 및 풀 스크린 기본 시네마틱 고정 거리 유지
+      this.camera.position.z = THREE.MathUtils.lerp(this.camera.position.z, 10.5, 0.1);
+    }
+    this.camera.aspect = aspect;
+    this.camera.updateProjectionMatrix();
+
+    // 💡 [버그 완치 2]: 업로드 창에 들어온 악기 아틀라스 이미지를 통째로 추출하여 32개 셰이더 슬라이서 유니폼에 전사
+    const targetImg = window.currentUploadedImageElement;
+    if (targetImg && targetImg !== this.lastBgImage) {
       if (this.bgTexture) this.bgTexture.dispose();
-      this.bgTexture = new THREE.Texture(bgImg);
+      this.bgTexture = new THREE.Texture(targetImg);
       this.bgTexture.minFilter = THREE.LinearFilter;
       this.bgTexture.magFilter = THREE.LinearFilter;
       this.bgTexture.needsUpdate = true;
-      this.lastBgImage = bgImg;
-      this.scene.background = this.bgTexture; 
-    } else if (!bgImg && this.lastBgImage) {
-      this.scene.background = new THREE.Color(0x05060c);
+      this.lastBgImage = targetImg;
+
+      // 32개 버튼에 슬라이싱 소스 공급선 일제 개방
+      this.matrixButtons.forEach(btn => {
+        btn.shaderMaterial.uniforms.u_texture.value = this.bgTexture;
+        btn.shaderMaterial.uniforms.u_hasTexture.value = 1.0;
+        btn.shaderMaterial.needsUpdate = true;
+      });
+    } else if (!targetImg && this.lastBgImage) {
+      this.matrixButtons.forEach(btn => {
+        btn.shaderMaterial.uniforms.u_hasTexture.value = 0.0;
+        btn.shaderMaterial.needsUpdate = true;
+      });
       this.lastBgImage = null;
     }
 
-    // 진단 HUD 타임 연산선 전개
+    // 진단 HUD 연동 계수
     if (!this.lastTime) this.lastTime = performance.now();
     let now = performance.now();
     let fps = Math.round(1000 / (now - this.lastTime));
@@ -265,103 +287,94 @@ export default class ThreeFloorEqualizer {
 
     window.sketchDiagnostics = {
       fps: isNaN(fps) || fps > 100 ? 30 : fps,
-      particleCount: this.totalButtons + " Neon Instrument Buttons",
+      particleCount: this.totalButtons + " Sliced Neon Buttons",
       isCovering: false,
-      activeFunction: `NeonGrid[Style:${this.uiSettings.style}]`
+      activeFunction: targetImg ? "Matrix[4x8_Sliced_Active]" : "Matrix[Placeholder_Emblem]"
     };
 
     const time = Date.now() * 0.001;
 
-    // 관제탑 물리 제어 스케일링 계수 환산
     let scatterRaw = this.uiSettings.scatter > 5 ? this.uiSettings.scatter : this.uiSettings.scatter * 10;
-    let layoutSpacingX = THREE.MathUtils.mapLinear(scatterRaw, 5, 50, 1.5, 3.2);
-    let layoutSpacingY = THREE.MathUtils.mapLinear(scatterRaw, 5, 50, 1.0, 1.8);
+    let layoutSpacingX = THREE.MathUtils.mapLinear(scatterRaw, 5, 50, 1.45, 3.0);
+    let layoutSpacingY = THREE.MathUtils.mapLinear(scatterRaw, 5, 50, 0.95, 1.7);
 
     let glowRaw = this.uiSettings.glow > 5 ? this.uiSettings.glow : this.uiSettings.glow * 100;
     let glowFactor = THREE.MathUtils.mapLinear(glowRaw, 10, 250, 0.4, 3.8);
 
     let volumeGainScale = this.uiSettings.gain > 5 ? this.uiSettings.gain / 100.0 : this.uiSettings.gain;
 
-    // 32채널 7대 반응 액션 실시간 역학 루프 연산구역
+    // 32채널 7대 고유 액션 제어 트랙 구동
     this.matrixButtons.forEach((btn) => {
       let finalX = (btn.colPos - (this.numCols - 1) * 0.5) * layoutSpacingX;
       let finalY = ((this.numRows - 1) * 0.5 - btn.rowPos) * layoutSpacingY;
       btn.group.position.set(finalX, finalY, 0);
 
-      // 주파수 바인딩 유입 및 정규화
       let rawFreq = 0.0;
       if (audioData && audioData.raw && audioData.raw.length > 0) {
         rawFreq = (audioData.raw[btn.sampleIndex] || 0) / 255.0;
       } else {
-        rawFreq = (Math.sin(time * 2.0 + btn.sampleIndex) * 0.5 + 0.5) * 0.15;
+        rawFreq = (Math.sin(time * 2.5 + btn.sampleIndex) * 0.5 + 0.5) * 0.12;
       }
 
       let freqIntensity = rawFreq * volumeGainScale;
       let delta = freqIntensity - btn.prevForce;
       btn.prevForce = freqIntensity;
 
-      // 물리 기본값 청소 및 리셋 초기화
+      // 물리 스케일 베이스 리셋
       btn.group.scale.setScalar(1.0);
       btn.inner.scale.setScalar(1.0);
-      
-      btn.materials.forEach(mat => {
-        if (mat.color) mat.color.copy(btn.baseColor).multiplyScalar(glowFactor);
-        if (mat.opacity && mat !== btn.rippleMaterial) mat.opacity = 0.3 + freqIntensity * 0.4;
-      });
+      btn.inner.rotation.z = 0;
 
-      // SHUFFLE로 배정된 버튼별 고유 7대 특수 반응 모드 실행
+      // 셰이더 유니폼 조작 계통 직결 동기화
+      btn.shaderMaterial.uniforms.u_glow.value = glowFactor;
+      btn.shaderMaterial.uniforms.u_opacity.value = 0.3 + freqIntensity * 0.7;
+      btn.shaderMaterial.uniforms.u_invert.value = 0.0;
+      btn.shaderMaterial.uniforms.u_fillMode.value = 0.0;
+
+      btn.materials[0].opacity = 0.3 + freqIntensity * 0.6; // 외곽 네온 링 밝기 연동
+
+      // SHUFFLE 시드에 매핑된 버튼별 독자 액션 분기격발
       switch (btn.actionMode) {
         case 1:
-          let pulseScale = 1.0 + freqIntensity * 0.45;
-          btn.group.scale.setScalar(pulseScale);
+          // 1번 [스피커 맥동]
+          btn.group.scale.setScalar(1.0 + freqIntensity * 0.45);
           break;
-
         case 2:
-          let peakGlow = glowFactor * (1.0 + freqIntensity * 3.5);
-          btn.materials.forEach(mat => {
-            if (mat.color) mat.color.copy(btn.baseColor).multiplyScalar(peakGlow);
-          });
+          // 2번 [하이퍼 GLOW]
+          btn.shaderMaterial.uniforms.u_glow.value = glowFactor * (1.0 + freqIntensity * 3.2);
           break;
-
         case 3:
-          if (freqIntensity > 0.3) {
-            let invertColor = new THREE.Color(1.0 - btn.baseColor.r, 1.0 - btn.baseColor.g, 1.0 - btn.baseColor.b);
-            btn.materials.forEach(mat => {
-              if (mat.color) mat.color.copy(invertColor).multiplyScalar(glowFactor * 1.5);
-            });
-          }
+          // 3번 [색상 반전]
+          if (freqIntensity > 0.28) btn.shaderMaterial.uniforms.u_invert.value = 1.0;
           break;
-
         case 4:
-          btn.inner.rotation.z = -Math.PI / 6 + (freqIntensity * Math.PI * 1.2);
+          // 4번 [제자리 회전]
+          btn.inner.rotation.z = freqIntensity * Math.PI * 1.0;
           break;
-
         case 5:
-          let fillOpacity = THREE.MathUtils.clamp(freqIntensity * 0.95, 0.05, 0.9);
-          btn.materials[0].opacity = fillOpacity; 
+          // 5번 [테두리 색 내부 채움]
+          btn.shaderMaterial.uniforms.u_fillMode.value = 1.0;
+          btn.shaderMaterial.uniforms.u_opacity.value = THREE.MathUtils.clamp(freqIntensity * 1.2, 0.1, 0.95);
           break;
-
         case 6:
-          if (delta > 0.08 && !btn.rippleActive) {
+          // 6번 [외곽 확장 파도 리플]
+          if (delta > 0.07 && !btn.rippleActive) {
             btn.rippleActive = true;
             btn.rippleScale = 1.0;
           }
           break;
-
         case 7:
-          let innerPulse = 1.0 + freqIntensity * 0.75;
-          btn.inner.scale.setScalar(innerPulse);
+          // 7번 [악기 독자 펄스]
+          btn.inner.scale.setScalar(1.0 + freqIntensity * 0.7);
           break;
       }
 
-      // 6번 리플 모드 독립 애니메이션 프레임 워크 구동
+      // 6번 리플 애니메이션 라이프사이클 처리
       if (btn.rippleActive) {
-        btn.rippleScale += 0.08;
+        btn.rippleScale += 0.09;
         btn.ripple.scale.setScalar(btn.rippleScale);
-        btn.rippleMaterial.opacity = (2.5 - btn.rippleScale) * 0.6;
-        btn.rippleMaterial.color.copy(btn.baseColor).multiplyScalar(glowFactor * 1.2);
-
-        if (btn.rippleScale >= 2.5) {
+        btn.rippleMaterial.opacity = (2.4 - btn.rippleScale) * 0.7;
+        if (btn.rippleScale >= 2.4) {
           btn.rippleActive = false;
           btn.rippleScale = 1.0;
           btn.rippleMaterial.opacity = 0.0;
@@ -376,9 +389,9 @@ export default class ThreeFloorEqualizer {
 
   resize(w, h) {
     if (this.camera && this.renderer) {
+      this.renderer.setSize(w, h);
       this.camera.aspect = w / h;
       this.camera.updateProjectionMatrix();
-      this.renderer.setSize(w, h);
     }
   }
 
@@ -400,9 +413,7 @@ export default class ThreeFloorEqualizer {
       this.container.removeChild(this.renderer.domElement);
       this.renderer.dispose();
     }
-    this.scene = null;
-    this.camera = null;
-    this.renderer = null;
+    this.scene = null; this.camera = null; this.renderer = null;
     this.matrixButtons = [];
   }
 }
