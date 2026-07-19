@@ -16,7 +16,7 @@ let isAudioAnalyzerConnected = false;
 
 const broadcast = new BroadcastChannel('cosmic_fft_channel');
 
-// 💡 [수리 핵심]: 기동 초기 단계에서 브라우저 메모리에 복원된 최신 주파수 분할 테이블을 즉시 자동 마운트
+// 기동 초기 단계에서 브라우저 메모리에 복원된 최신 주파수 분할 테이블을 즉시 자동 마운트
 let initialRanges = { totalBands: 4, ranges: [] };
 const savedLatestConfig = localStorage.getItem('cosmic_fft_active_latest');
 if (savedLatestConfig) {
@@ -81,11 +81,32 @@ window.addEventListener('DOMContentLoaded', () => {
     }, 200);
 });
 
+// 배경 이미지 업로드 디코더
 imageInput.addEventListener('change', (e) => {
     const file = e.target.files[0]; if (!file) return;
     const imgURL = URL.createObjectURL(file); const img = new Image(); img.src = imgURL;
     img.onload = () => { window.currentUploadedImageElement = img; };
 });
+
+// 💡 [수리 완료]: 외부 오디오 파일 업로드 시 재생 브라우저 돔 객체에 데이터를 직결 인젝션하는 제어선 구축
+const audioInput = document.getElementById('file-audio') || document.getElementById('file-mp3') || document.querySelector('input[type="file"][accept*="audio"]');
+if (audioInput) {
+    audioInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        // 가상 오브젝트 주소를 추출하여 플레이어 소스에 수혈
+        const audioURL = URL.createObjectURL(file);
+        audioPlayer.src = audioURL;
+        audioPlayer.load(); // 오디오 스트림 데이터 새로고침 강제 집행
+        
+        // 새 음악이 장전되었으므로 애널라이저 플래그 세팅 해제 및 재생 버튼 텍스트 초기화
+        isAudioAnalyzerConnected = false;
+        if (deckPlayBtn) {
+            deckPlayBtn.innerText = "▶️ 음악 재생 (Play)";
+        }
+    });
+}
 
 sketchItems.forEach(item => {
     item.addEventListener('click', async (e) => {
@@ -178,7 +199,6 @@ function renderEngineTicker() {
         broadcast.postMessage({ type: 'AUDIO_STREAM', raw: Array.from(compiledAudioData.raw) });
     }
 
-    // 💡 [수리 핵심]: 캘리브레이터 조작창을 끈 상태라도 브라우저 메모리에 백업되어 있는 범위를 찾아 customBands 가공 수혈
     if (window.customFrequencyRanges && window.customFrequencyRanges.ranges && window.customFrequencyRanges.ranges.length > 0) {
         compiledAudioData.customBands = window.customFrequencyRanges.ranges.map(band => {
             let sum = 0; let count = 0;
