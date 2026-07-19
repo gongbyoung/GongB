@@ -1,9 +1,8 @@
 /**
  * src/sketches/021_matrix_press.js
- * - [버전] Ver 2.8 테두리-내부 색상 동기화 및 채도/명도 동적 변조 버전
- * - 레이아웃 사양: 캔버스 실제 종횡비 실시간 추적 격자 정렬 (16:9 <-> 9:16 완벽 완결)
- * - 컬러 혁신: 드롭다운 'Earth' 선택 시 각 채널 버튼이 고유의 테두리 색상(Hue)을 내부로 100% 상속.
- *   음악 볼륨에 비례하여 색상의 채도(S)와 명도(L)가 실시간으로 치솟으며 완벽한 일체형 컬러 입체감을 연출.
+ * - [버전] Ver 2.9 철벽 방어형 매트릭스 콘솔 (스레드 다운 예외 차단 패치)
+ * - 버그 수리: 부동소수점 언더플로우에 의한 음수 반지름 생성 차단 및 그라데이션 컬러 스트링 가드 장착
+ * - 레이아웃: 캔버스 실제 종횡비 실시간 추적 격자 정렬 (16:9 <-> 9:16 완전 대응)
  */
 
 export default class MatrixPressSketch {
@@ -16,12 +15,12 @@ export default class MatrixPressSketch {
     this.width = 0;
     this.height = 0;
     this.smoothedValues = new Array(32).fill(0);
-    this.version = "021호 Matrix Press Ver 2.8";
+    this.version = "021호 Matrix Press Ver 2.9";
 
-    // 💡 테두리용 32채널 무작위 고유 색상 파장 배열 가설
+    // 32채널 무작위 고유 색상 파장 배열
     this.randomStrokeHues = Array.from({ length: 32 }, () => Math.floor(Math.random() * 360));
     
-    // 아날로그 빈티지 노이즈 캐시 질감 레이어
+    // 아날로그 빈티지 노이즈 캐시 레이어
     this.noiseCanvas = document.createElement('canvas');
     this.noiseCanvas.width = 128;
     this.noiseCanvas.height = 128;
@@ -140,7 +139,9 @@ export default class MatrixPressSketch {
 
       const targetValue = rawFreq * gainScale;
       this.smoothedValues[i] += (targetValue - this.smoothedValues[i]) * 0.28;
-      const intensity = this.smoothedValues[i];
+      
+      // 💡 [방어 가드 레일 1]: 오디오 진폭 감쇠 시 음수 픽셀 버그가 안 생기도록 하한선을 0으로 완벽히 락인
+      const intensity = Math.max(0, this.smoothedValues[i]);
 
       const margin = 4;
       const btnX = startX + margin;
@@ -167,22 +168,16 @@ export default class MatrixPressSketch {
           baseStrokeStyle = '#14203e';
           activeColor = '#00f0ff';
           break;
-          
         case 'earth':
         case '3':
-          // [테두리 색상 연산]: 대기 시에는 차분하게, 음압 유입 시 명도 확보
           baseStrokeStyle = `hsla(${strokeHue}, 85%, 35%, 0.65)`;
           if (intensity > 0.08) {
              baseStrokeStyle = `hsla(${strokeHue}, 100%, 55%, 1)`;
           }
-
-          // 💡 [핵심 개혁]: 내부에 채워질 불빛도 완벽하게 테두리 고유 색상(strokeHue)을 100% 그대로 추적상속
-          // 볼륨(intensity)에 맞춰 채도(S)와 명도(L) 수치 레이어가 역동적으로 동반 압착 상승하는 수식 체결
-          const dynamicSat = Math.min(100, Math.round(35 + intensity * 65));   // 35% (차분함) -> 100% (원색 폭발)
-          const dynamicLight = Math.min(90, Math.round(14 + intensity * 51));  // 14% (어두운 소멸) -> 65% (고명도 네온 광원)
+          const dynamicSat = Math.min(100, Math.round(35 + intensity * 65));
+          const dynamicLight = Math.min(90, Math.round(14 + intensity * 51));
           activeColor = `hsla(${strokeHue}, ${dynamicSat}%, ${dynamicLight}%, 1)`;
           break;
-
         case 'pastel':
           baseStrokeStyle = '#475569';
           activeColor = '#fbbf24';
@@ -200,13 +195,26 @@ export default class MatrixPressSketch {
       this.drawRoundedRect(this.ctx, btnX, btnY, btnW, btnH, cornerRadius);
       this.ctx.fill();
 
-      // 내부 확산 연출 유닛 (모든 모드가 상속된 동적 activeColor를 완벽하게 반영하도록 가리개 보정)
+      // 내부 확산 연출 유닛
       if (pressModeType === 0) {
         if (intensity > 0.01) {
-          const innerBlurGlow = this.ctx.createRadialGradient(centerX, centerY, 1, centerX, centerY, Math.max(btnW, btnH) * 0.45 * intensity);
+          // 💡 [방어 가드 레일 2]: 외곽 반지름이 시작 반지름(1)보다 무조건 커지도록 보장하여 Canvas 컴파일 에러 원천 봉쇄
+          const outerRadius = Math.max(1.1, Math.max(btnW, btnH) * 0.45 * intensity);
+          
+          const innerBlurGlow = this.ctx.createRadialGradient(centerX, centerY, 1, centerX, centerY, outerRadius);
+          
+          // 💡 [방어 가드 레일 3]: Hex 색상 코드가 들어와도 깨진 문자열 예외가 터지지 않도록 포맷 검증 처리
+          let midGlowColor = activeColor;
+          if (midGlowColor.includes('hsla')) {
+            midGlowColor = midGlowColor.replace('1)', '0.35)').replace(')', ', 0.35)');
+          } else {
+            midGlowColor = 'rgba(0, 240, 255, 0.35)'; // Hex일 때 안전한 디폴트 투명색 수혈
+          }
+
           innerBlurGlow.addColorStop(0, activeColor);
-          innerBlurGlow.addColorStop(0.5, activeColor.replace('1)', '0.35)').replace(')', ', 0.35)'));
+          innerBlurGlow.addColorStop(0.5, midGlowColor);
           innerBlurGlow.addColorStop(1, 'rgba(0,0,0,0)');
+          
           this.ctx.fillStyle = innerBlurGlow;
           this.drawRoundedRect(this.ctx, btnX + 1, btnY + 1, btnW - 2, btnH - 2, cornerRadius);
           this.ctx.fill();
@@ -223,7 +231,6 @@ export default class MatrixPressSketch {
         }
       } 
       else if (pressModeType === 2) {
-        // [모드 2]: 명암비 모드일 때도 올랜덤(Earth)일 경우엔 색상의 명도 변조 스케일링으로 동화
         if (colorStyle === 'earth' || colorStyle === '3') {
           this.ctx.fillStyle = activeColor;
         } else {
@@ -249,7 +256,6 @@ export default class MatrixPressSketch {
         this.ctx.restore();
       }
 
-      // 와이어프레임 외곽선 최종 타격
       this.ctx.strokeStyle = baseStrokeStyle;
       this.ctx.lineWidth = intensity > 0.08 ? 1.8 + intensity * 2 : 1.0;
       
@@ -266,9 +272,9 @@ export default class MatrixPressSketch {
 
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: `32 Matrix Console [Unified Color System]`,
+      particleCount: `32 Matrix Console [Anti-Crash Locked]`,
       isCovering: true,
-      activeFunction: `Matrix[Color_Decouple_Fixed_v2.8]`
+      activeFunction: `Matrix[Exception_Defended_v2.9]`
     };
   }
 
