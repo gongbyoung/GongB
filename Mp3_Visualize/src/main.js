@@ -11,12 +11,12 @@ const sketchItems = document.querySelectorAll('#sketch-list li');
 const stageWrapper = document.getElementById('stage-wrapper');
 const imageInput = document.getElementById('file-image');
 
-// 하단 프로덕션 데크 버튼 제어 노드 매핑
+// 좌측 사이드바 음악 재생 버튼 매핑
 const deckPlayBtn = document.getElementById('btn-play-music');
 
 let isAudioAnalyzerConnected = false;
 
-// 스케치별 맞춤형 관제탑 슬라이더 조작 설명서 데이터베이스
+// 스케치별 맞춤형 관제탑 설명서 데이터베이스
 const sketchDescriptions = {
     '001_p5_wave.js': `
         <strong style="color:#00ffcc; font-size:12px;">📊 [001호 파형] 오디오 웨이브</strong><br>
@@ -114,9 +114,7 @@ sketchItems.forEach(item => {
     });
 });
 
-// =================================================================
-// 💡 [교정 파이프라인]: 16:9 / 9:16 비동기 레이아웃 타이밍 락인 제어기
-// =================================================================
+// 16:9 / 9:16 비동기 레이아웃 타이밍 제어기
 const ratioButtons = { 
     full: document.getElementById('btn-ratio-full'), 
     i169: document.getElementById('btn-ratio-169'), 
@@ -129,15 +127,11 @@ Object.keys(ratioButtons).forEach(key => {
             Object.values(ratioButtons).forEach(b => b?.classList.remove('active'));
             e.currentTarget.classList.add('active');
             
-            // 1. 스타일 클래스를 먼저 변경하여 CSS aspect-ratio 격발
             stageWrapper.className = (key === 'full') ? 'ratio-full' : (key === 'i169') ? 'ratio-169' : 'ratio-916';
             
-            // 2. 브라우저가 화면 틀 크기를 완전히 재계산하여 확정할 수 있도록 60ms 미세 지연 후 치수 검출
             setTimeout(() => {
                 const computedWidth = stageWrapper.clientWidth;
                 const computedHeight = stageWrapper.clientHeight;
-                
-                // 엔진에 확정된 새 너비와 높이를 전달하여 화면 깨짐 방지
                 manager.resize(computedWidth, computedHeight);
             }, 60);
         });
@@ -185,16 +179,36 @@ document.getElementById('btn-save-preset')?.addEventListener('click', () => {
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([data])); a.download = 'preset.json'; a.click();
 });
 
+// 💡 [수리 핵심]: 오디오 컨텍스트 연결을 재생 버튼 클릭 시 1회만 실행하도록 안정화
+if (deckPlayBtn && audioPlayer) {
+    deckPlayBtn.addEventListener('click', () => {
+        if (audioPlayer.paused) {
+            audioPlayer.play().then(() => {
+                deckPlayBtn.innerText = "⏸️ 일시정지 (Pause)";
+                
+                // 단 한 번만 안전하게 오디오 랩퍼 스트림 노드 연결 및 중복 차단
+                if (!isAudioAnalyzerConnected) {
+                    try {
+                        analyzer.connectAudioElement(audioPlayer);
+                    } catch (err) {
+                        console.warn("오디오 컨텍스트 연결 상태 우회:", err);
+                    }
+                    isAudioAnalyzerConnected = true;
+                }
+            }).catch(e => console.error("재생 시작 실패:", e));
+        } else {
+            audioPlayer.pause();
+            deckPlayBtn.innerText = "▶️ 음악 재생 (Play)";
+        }
+    });
+}
+
 function renderEngineTicker() {
     requestAnimationFrame(renderEngineTicker);
 
-    if (audioPlayer && !audioPlayer.paused && !isAudioAnalyzerConnected) {
-        analyzer.connectAudioElement(audioPlayer);
-        isAudioAnalyzerConnected = true;
-    }
-
     let compiledAudioData = { bass: 0, mid: 0, treble: 0, vol: 0, raw: new Uint8Array(256) };
     
+    // 안전 장치 가드 하에 주파수 데이터 분배 수혈
     if (isAudioAnalyzerConnected && analyzer) {
         if (typeof analyzer.getAudioData === 'function') {
             compiledAudioData = analyzer.getAudioData();
@@ -218,6 +232,7 @@ function renderEngineTicker() {
         }
     }
 
+    // 루프 마비 없이 스케치 매니저 드로우 유도
     manager.update(compiledAudioData);
 }
 
