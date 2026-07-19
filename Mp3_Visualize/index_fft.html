@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cosmic Audio Studio - FFT Frequency Calibrator</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+    body, html {
+      width: 100%;
+      height: 100%;
+      background-color: #04060d;
+      color: #e2e8f0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow: hidden;
+    }
+    .calibrator-container {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+      padding: 20px;
+    }
+    header {
+      border-bottom: 1px solid rgba(0, 240, 255, 0.2);
+      padding-bottom: 15px;
+      margin-bottom: 15px;
+    }
+    h1 {
+      font-size: 16px;
+      color: #00ffcc;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+    }
+    .top-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 15px;
+      flex-wrap: wrap;
+    }
+    .select-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .select-group label {
+      font-size: 12px;
+      color: #94a3b8;
+    }
+    select {
+      background: #0f172a;
+      color: #00ffcc;
+      border: 1px solid #334155;
+      border-radius: 4px;
+      padding: 6px 12px;
+      font-size: 12px;
+      outline: none;
+      cursor: pointer;
+    }
+    .preset-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .btn {
+      background: #1e293b;
+      color: #cbd5e1;
+      border: 1px solid #475569;
+      border-radius: 4px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .btn:hover {
+      background: rgba(0, 240, 255, 0.1);
+      color: #00f0ff;
+      border-color: #00f0ff;
+    }
+    .btn-export {
+      background: #0284c7;
+      color: #fff;
+      border-color: #0369a1;
+    }
+    .btn-export:hover {
+      background: #0369a1;
+      color: #fff;
+    }
+    /* 슬라이더 목록 스크롤 구역 */
+    .sliders-viewport {
+      flex: 1;
+      overflow-y: auto;
+      padding-right: 5px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    /* 개별 채널 제어 카드 디자인 */
+    .band-row-card {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(51, 65, 85, 0.5);
+      border-radius: 6px;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+    .band-label {
+      min-width: 65px;
+      font-size: 12px;
+      font-weight: 900;
+      color: #38bdf8;
+      font-family: monospace;
+    }
+    .slider-controls-block {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .slider-sub-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .slider-sub-row span {
+      font-size: 11px;
+      color: #64748b;
+      min-width: 32px;
+    }
+    input[type="range"] {
+      flex: 1;
+      height: 4px;
+      background: #1e293b;
+      border-radius: 2px;
+      outline: none;
+      appearance: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      appearance: none;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #00ffcc;
+      cursor: pointer;
+      transition: transform 0.1s;
+    }
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.2);
+    }
+    input[type="number"] {
+      width: 50px;
+      background: #020617;
+      color: #fff;
+      border: 1px solid #334155;
+      border-radius: 3px;
+      text-align: center;
+      font-size: 11px;
+      font-family: monospace;
+      padding: 2px 0;
+      outline: none;
+    }
+    /* 크로스오버 체크 경고 전용 스타일 */
+    .error-flash {
+      color: #ef4444 !important;
+      border-color: #ef4444 !important;
+    }
+    /* 스크롤바 디자인 맞춤화 */
+    .sliders-viewport::-webkit-scrollbar { width: 6px; }
+    .sliders-viewport::-webkit-scrollbar-track { background: #04060d; }
+    .sliders-viewport::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+    .sliders-viewport::-webkit-scrollbar-thumb:hover { background: #334155; }
+  </style>
+</head>
+<body>
+
+  <div class="calibrator-container">
+    <header>
+      <h1>🎛️ Custom Frequency Calibrator Workspace</h1>
+      <div class="top-toolbar">
+        <div class="select-group">
+          <label for="band-count-selector">분할 채널 개수 (Bands):</label>
+          <select id="band-count-selector">
+            <!-- 3부터 32까지 동적 루프 대응 선언 -->
+            <option value="3">3 채널 분할</option>
+            <option value="4" selected>4 채널 분할 (기본)</option>
+            <option value="8">8 채널 분할</option>
+            <option value="12">12 채널 분할</option>
+            <option value="16">16 채널 분할</option>
+            <option value="24">24 채널 분할</option>
+            <option value="32">32 채널 분할</option>
+          </select>
+        </div>
+        <div class="preset-actions">
+          <button class="btn" id="btn-import-json">📂 프리셋 불러오기</button>
+          <button class="btn btn-export" id="btn-export-json">💾 프리셋 내보내기</button>
+          <input type="file" id="file-import-hidden" accept=".json" style="display:none;">
+        </div>
+      </div>
+    </header>
+
+    <!-- 채널별 제어 노드가 실시간으로 찍히는 뷰포트 대지 -->
+    <main class="sliders-viewport" id="sliders-container"></main>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const container = document.getElementById('sliders-container');
+      const bandSelector = document.getElementById('band-count-selector');
+      const exportBtn = document.getElementById('btn-export-json');
+      const importBtn = document.getElementById('btn-import-json');
+      const fileInput = document.getElementById('file-import-hidden');
+
+      // 💡 [통신 패브릭 시공]: 메인 무대(index.html) 측 main.js로 데이터 공중 사사하는 전용 파이프 채널 개설
+      const broadcast = new BroadcastChannel('cosmic_fft_channel');
+
+      // 데이터 메모리 구조체 초기 스켈레톤 선언
+      let currentCalibratorData = {
+        totalBands: 4,
+        ranges: []
+      };
+
+      // 로컬 스토리지 복원 또는 균등 자동 분할 공식 가동
+      function initSystemData() {
+        const saved = localStorage.getItem('cosmic_fft_config');
+        if (saved) {
+          try {
+            currentCalibratorData = JSON.parse(saved);
+            bandSelector.value = currentCalibratorData.totalBands;
+            renderDynamicSliders();
+            broadcastCurrentRanges();
+            return;
+          } catch(e) {
+            console.warn("스토리지 파싱 에러 백업 초기화:", e);
+          }
+        }
+        generateEvenSplits(parseInt(bandSelector.value));
+      }
+
+      // 0부터 255 사이의 FFT 인덱스를 채널 개수만큼 등간격으로 자동 분배하는 수식
+      function generateEvenSplits(count) {
+        currentCalibratorData.totalBands = count;
+        currentCalibratorData.ranges = [];
+        
+        const step = Math.floor(256 / count);
+        
+        for (let i = 0; i < count; i++) {
+          const startIdx = i * step;
+          // 마지막 채널은 255까지 꽉 채워서 분배 누수 방지
+          const endIdx = (i === count - 1) ? 255 : (startIdx + step - 1);
+          
+          currentCalibratorData.ranges.push({
+            id: i,
+            name: `ch_${String(i+1).padStart(2, '0')}`,
+            start: startIdx,
+            end: endIdx
+          });
+        }
+        renderDynamicSliders();
+        saveAndBroadcast();
+      }
+
+      // 데이터 뷰 컴포넌트 실시간 동적 렌더링 팩토리
+      function renderDynamicSliders() {
+        container.innerHTML = '';
+        
+        currentCalibratorData.ranges.forEach((band, idx) => {
+          const card = document.createElement('div');
+          card.className = 'band-row-card';
+          
+          card.innerHTML = `
+            <div class="band-label">CH ${String(idx+1).padStart(2, '0')}</div>
+            <div class="slider-controls-block">
+              <div class="slider-sub-row">
+                <span>Start</span>
+                <input type="range" class="range-start" min="0" max="255" value="${band.start}">
+                <input type="number" class="num-start" min="0" max="255" value="${band.start}">
+              </div>
+              <div class="slider-sub-row">
+                <span>End</span>
+                <input type="range" class="range-end" min="0" max="255" value="${band.end}">
+                <input type="number" class="num-end" min="0" max="255" value="${band.end}">
+              </div>
+            </div>
+          `;
+
+          // 내부 연동 바인딩용 요소 추출
+          const rangeStart = card.querySelector('.range-start');
+          const numStart = card.querySelector('.num-start');
+          const rangeEnd = card.querySelector('.range-end');
+          const numEnd = card.querySelector('.num-end');
+
+          // 양방향 미세 튜닝 회로 결합 (Start 지점)
+          rangeStart.addEventListener('input', () => {
+            numStart.value = rangeStart.value;
+            validateAndApply(idx, parseInt(rangeStart.value), parseInt(rangeEnd.value), numStart, numEnd);
+          });
+          numStart.addEventListener('input', () => {
+            let val = parseInt(numStart.value);
+            if (isNaN(val)) return;
+            if (val < 0) val = 0; if (val > 255) val = 255;
+            rangeStart.value = val;
+            validateAndApply(idx, val, parseInt(rangeEnd.value), numStart, numEnd);
+          });
+
+          // 양방향 미세 튜닝 회로 결합 (End 지점)
+          rangeEnd.addEventListener('input', () => {
+            numEnd.value = rangeEnd.value;
+            validateAndApply(idx, parseInt(rangeStart.value), parseInt(rangeEnd.value), numStart, numEnd);
+          });
+          numEnd.addEventListener('input', () => {
+            let val = parseInt(numEnd.value);
+            if (isNaN(val)) return;
+            if (val < 0) val = 0; if (val > 255) val = 255;
+            rangeEnd.value = val;
+            validateAndApply(idx, parseInt(rangeStart.value), val, numStart, numEnd);
+          });
+
+          container.appendChild(card);
+        });
+      }
+
+      // 역전 현상(Start가 End보다 커지는 현상) 가드 필터 및 무결 보정 로직
+      function validateAndApply(index, startVal, endVal, elStart, elEnd) {
+        if (startVal > endVal) {
+          // 크로스오버 예외 발생 시 인풋 테두리를 붉은색으로 반전시켜 경고 시각화
+          elStart.classList.add('error-flash');
+          elEnd.classList.add('error-flash');
+          return; 
+        }
+        
+        elStart.classList.remove('error-flash');
+        elEnd.classList.remove('error-flash');
+
+        currentCalibratorData.ranges[index].start = startVal;
+        currentCalibratorData.ranges[index].end = endVal;
+
+        saveAndBroadcast();
+      }
+
+      function saveAndBroadcast() {
+        localStorage.setItem('cosmic_fft_config', JSON.stringify(currentCalibratorData));
+        broadcastCurrentRanges();
+      }
+
+      function broadcastCurrentRanges() {
+        // 💡 교차 채널 파이프라인을 타고 데이터 패킷을 공중 무선 송신
+        broadcast.postMessage(currentCalibratorData);
+      }
+
+      // 채널 셀렉터 조작 감지선
+      bandSelector.addEventListener('change', (e) => {
+        generateEvenSplits(parseInt(e.target.value));
+      });
+
+      // JSON 파일 내보내기 (Export)
+      exportBtn.addEventListener('click', () => {
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(currentCalibratorData, null, 2));
+        const dlAnchor = document.createElement('a');
+        dlAnchor.setAttribute("href", dataStr);
+        dlAnchor.setAttribute("download", `cosmic_fft_preset_${currentCalibratorData.totalBands}ch.json`);
+        document.body.appendChild(dlAnchor);
+        dlAnchor.click();
+        dlAnchor.remove();
+      });
+
+      // JSON 파일 불러오기 (Import 트리거)
+      importBtn.addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          try {
+            const parsed = JSON.parse(event.target.result);
+            if (parsed.totalBands && Array.isArray(parsed.ranges)) {
+              currentCalibratorData = parsed;
+              bandSelector.value = currentCalibratorData.totalBands;
+              renderDynamicSliders();
+              saveAndBroadcast();
+            } else {
+              alert("유효하지 않은 주파수 프리셋 구조입니다.");
+            }
+          } catch(err) {
+            alert("JSON 파일 판독 실패: " + err.message);
+          }
+        };
+        reader.readAsText(file);
+        fileInput.value = ''; // 파일 리셋 처리
+      });
+
+      // 최초 시스템 실행 가동
+      initSystemData();
+    });
+  </script>
+</body>
+</html>
