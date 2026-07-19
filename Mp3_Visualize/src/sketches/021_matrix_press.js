@@ -1,8 +1,9 @@
 /**
  * src/sketches/021_matrix_press.js
- * - [버전] Ver 2.3 반응형 픽셀 락인 및 올랜덤 테두리 이퀄라이저 콘솔
- * - 레이아웃 보정: 캔버스 물리 스케일(w, h) 실시간 종횡비 연동형 격자 정렬 (16:9 <-> 9:16 완벽 대응)
- * - 컬러 스타일 추가: 'neon_random' 선택 시 버튼의 테두리(Stroke)와 내부 활성 컬러가 32채널 고유 랜덤 색상으로 일제 도포
+ * - [버전] Ver 2.5 진성 올랜덤(테두리/내부 디커플링) 매트릭스 콘솔
+ * - 레이아웃 사양: 캔버스 실제 스케일 기반 종횡비 연동형 격자 정렬 (16:9 <-> 9:16 완벽 대응)
+ * - 컬러 혁신: 'all_random', 'random', 'neon_random' 대응
+ *   각 채널 버튼의 [테두리 색상]과 [내부 활성 색상]이 서로 다른 고유의 랜덤 HSLA 축을 가지고 완전히 따로 노는 진성 올랜덤 구현
  */
 
 export default class MatrixPressSketch {
@@ -15,12 +16,13 @@ export default class MatrixPressSketch {
     this.width = 0;
     this.height = 0;
     this.smoothedValues = new Array(32).fill(0);
-    this.version = "021호 Matrix Press Ver 2.3";
+    this.version = "021호 Matrix Press Ver 2.5";
 
-    // 💡 [신설]: 32개 채널 버튼 고유의 올랜덤 HSLA 색상 코드 씨드 테이블 사전 구축
-    this.randomHues = Array.from({ length: 32 }, () => Math.floor(Math.random() * 360));
+    // 💡 [핵심 개혁]: 내부 불빛용 랜덤 색상 배열과 테두리(Stroke)용 랜덤 색상 배열을 완전 독립 분리
+    this.randomActiveHues = Array.from({ length: 32 }, () => Math.floor(Math.random() * 360));
+    this.randomStrokeHues = Array.from({ length: 32 }, () => Math.floor(Math.random() * 360));
     
-    // 아날로그 빈티지 노이즈 캐시 맵 생성
+    // 아날로그 빈티지 노이즈 캐시 버퍼
     this.noiseCanvas = document.createElement('canvas');
     this.noiseCanvas.width = 128;
     this.noiseCanvas.height = 128;
@@ -38,7 +40,6 @@ export default class MatrixPressSketch {
   }
 
   resize(w, h) {
-    // 💡 마스터 스케줄러가 던져주는 실제 캔버스 엘리먼트 크기 1:1 강제 동화 수리
     this.width = w || this.container.clientWidth;
     this.height = h || this.container.clientHeight;
     this.canvas.width = this.width;
@@ -67,27 +68,27 @@ export default class MatrixPressSketch {
     const r = size * 0.35;
 
     switch(type % 4) {
-      case 0: //  drum
+      case 0: 
         ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
         ctx.moveTo(cx - r, cy - r * 0.3); ctx.lineTo(cx + r, cy - r * 0.3);
         ctx.moveTo(cx - r * 0.6, cy + r * 0.4); ctx.lineTo(cx - r * 0.1, cy - r * 0.3);
         ctx.moveTo(cx + r * 0.6, cy + r * 0.4); ctx.lineTo(cx + r * 0.1, cy - r * 0.3);
         ctx.stroke(); break;
-      case 1: // vocal sine
+      case 1: 
         ctx.beginPath();
         for (let x = -r; x <= r; x += 2) {
           let y = Math.sin(x * 0.2 + Date.now() * 0.01) * r * 0.4;
           if (x === -r) ctx.moveTo(cx + x, cy + y); else ctx.lineTo(cx + x, cy + y);
         }
         ctx.stroke(); break;
-      case 2: // synth/melody
+      case 2: 
         ctx.strokeRect(cx - r, cy - r * 0.4, r * 2, r * 0.8);
         ctx.beginPath();
         ctx.moveTo(cx - r * 0.4, cy - r * 0.4); ctx.lineTo(cx - r * 0.4, cy + r * 0.1);
         ctx.moveTo(cx, cy - r * 0.4); ctx.lineTo(cx, cy + r * 0.1);
         ctx.moveTo(cx + r * 0.4, cy - r * 0.4); ctx.lineTo(cx + r * 0.4, cy + r * 0.1);
         ctx.stroke(); break;
-      case 3: // high-hat / bell
+      case 3: 
         ctx.beginPath(); ctx.moveTo(cx, cy - r); ctx.lineTo(cx + r, cy + r * 0.6); ctx.lineTo(cx - r, cy + r * 0.6); ctx.closePath(); ctx.stroke(); break;
     }
     ctx.restore();
@@ -96,14 +97,12 @@ export default class MatrixPressSketch {
   update(audioData) {
     if (!this.ctx) return;
 
-    // 💡 [수리 완료]: 렌더 프레임 시작 시점의 물리 픽셀 규격을 실시간 추출하여 매핑 에러 원천 차단
     const renderW = this.canvas.width;
     const renderH = this.canvas.height;
 
     this.ctx.fillStyle = '#04060b';
     this.ctx.fillRect(0, 0, renderW, renderH);
 
-    // 💡 [수리 완료]: 종횡비를 체크하여 16:9(가로)는 8x4, 9:16(세로)은 4x8로 격자 보드판 강제 스위칭 연동
     const isVerticalLayout = renderH > renderW;
     const cols = isVerticalLayout ? 4 : 8;
     const rows = isVerticalLayout ? 8 : 4;
@@ -116,7 +115,6 @@ export default class MatrixPressSketch {
     const seed = globalSettings.seed ?? 42;
     const colorStyle = globalSettings.colorStyle || 'neon';
 
-    // SHUFFLE(Seed) 입력 수치에 따라 내부 프레스 인터랙션 모드 (0~3) 매핑
     const pressModeType = seed % 4;
 
     for (let i = 0; i < 32; i++) {
@@ -138,7 +136,6 @@ export default class MatrixPressSketch {
       this.smoothedValues[i] += (targetValue - this.smoothedValues[i]) * 0.28;
       const intensity = this.smoothedValues[i];
 
-      // 💡 [외곽선 100% 완전 고정]: 프레스 모드가 변해도 바깥 마스크 좌표는 격자선에 고정
       const margin = 4;
       const btnX = startX + margin;
       const btnY = startY + margin;
@@ -152,7 +149,7 @@ export default class MatrixPressSketch {
       let activeColor = '#00f0ff';
       let fillBaseColor = 'rgba(10, 16, 32, 0.9)';
 
-      // 컬러 팔레트 배포 분기점
+      // 💡 [수리 및 상호 호환 패치]: 메인 UI 셀렉터가 어떤 올랜덤 명칭을 던져도 철벽 수비하도록 케이스 병합
       switch(colorStyle) {
         case 'bw':
           baseStrokeStyle = '#334155';
@@ -164,13 +161,20 @@ export default class MatrixPressSketch {
           activeColor = '#00f0ff';
           break;
           
-        // 💡 [신설 및 수리 완료]: 관제탑 Color Style Palette에서 'neon_random' 피킹 시 작동할 올랜덤 테두리 매핑
+        // 💡 [혁신]: 올랜덤 테두리 + 올랜덤 내부 불빛 디커플링 주입 선언문
+        case 'all_random':
+        case 'random':
         case 'neon_random':
-          const targetHue = (this.randomHues[i] + seed) % 360;
-          // 비활성 베이스 테두리선도 고유 어두운 톤의 네온 컬러로 분배
-          baseStrokeStyle = `hsla(${targetHue}, 85%, 25%, 0.7)`;
-          // 소리가 유입되어 활성화될 때 분출될 청명한 고유 네온 컬러 매핑
-          activeColor = `hsla(${targetHue}, 100%, 55%, 1)`;
+          const strokeHue = (this.randomStrokeHues[i] + seed) % 360;
+          const activeHue = (this.randomActiveHues[i] + seed) % 360;
+          
+          // 테두리 전용 독립 색상 마운트
+          baseStrokeStyle = `hsla(${strokeHue}, 80%, 25%, 0.7)`;
+          if (intensity > 0.08) {
+             baseStrokeStyle = `hsla(${strokeHue}, 95%, 55%, 1)`;
+          }
+          // 내부 번짐용 전용 독립 색상 마운트
+          activeColor = `hsla(${activeHue}, 100%, 55%, 1)`;
           break;
           
         case 'custom':
@@ -186,14 +190,12 @@ export default class MatrixPressSketch {
 
       this.ctx.save();
 
-      // 버튼 하우징 베이스 드로우
       this.ctx.fillStyle = fillBaseColor;
       this.drawRoundedRect(this.ctx, btnX, btnY, btnW, btnH, cornerRadius);
       this.ctx.fill();
 
-      // 4대 지능형 프레스 인터랙션 구동층 (외곽선 고정형 내부 확산 연산)
+      // 프레스 인터랙션
       if (pressModeType === 0) {
-        // [모드 0]: 안쪽으로 스며들며 번지는 블러 광학식 레이저 효과
         if (intensity > 0.01) {
           const innerBlurGlow = this.ctx.createRadialGradient(centerX, centerY, 1, centerX, centerY, Math.max(btnW, btnH) * 0.45 * intensity);
           innerBlurGlow.addColorStop(0, activeColor);
@@ -205,7 +207,6 @@ export default class MatrixPressSketch {
         }
       } 
       else if (pressModeType === 1) {
-        // [모드 1]: 내부 전체를 외부 활성 컬러 음압 비율로 가득 밀어 채우기
         if (intensity > 0.01) {
           this.ctx.save();
           this.ctx.globalAlpha = intensity * 0.8;
@@ -216,20 +217,17 @@ export default class MatrixPressSketch {
         }
       } 
       else if (pressModeType === 2) {
-        // [모드 2]: 유입 볼륨 수치에 따른 정밀 흑백/컬러 명암 대비 계측 레이어
         const brightnessValue = Math.floor(intensity * 120);
         this.ctx.fillStyle = `rgba(${brightnessValue}, ${brightnessValue + 15}, ${brightnessValue + 35}, 0.7)`;
         this.drawRoundedRect(this.ctx, btnX + 1, btnY + 1, btnW - 2, btnH - 2, cornerRadius);
         this.ctx.fill();
       } 
       else if (pressModeType === 3) {
-        // [모드 3]: 중앙 배치 악기 글리프 센터 라이팅 투사
         this.ctx.strokeStyle = activeColor;
         this.ctx.globalAlpha = 0.2 + intensity * 0.8;
         this.drawInstrumentGlyph(this.ctx, centerX, centerY, Math.min(btnW, btnH), i, intensity);
       }
 
-      // 오래된 아날로그 노이즈 오버레이 표면 텍스처 인젝션
       if (colorStyle === 'vintage_noise') {
         this.ctx.save();
         this.ctx.globalCompositeOperation = 'source-over';
@@ -240,9 +238,9 @@ export default class MatrixPressSketch {
         this.ctx.restore();
       }
 
-      // 💡 [최종 테두리 렌더 마감]: 32채널 고정 와이어프레임 타격 (올랜덤 색상 완벽 투사)
-      this.ctx.strokeStyle = intensity > 0.08 ? activeColor : baseStrokeStyle;
-      this.ctx.lineWidth = intensity > 0.08 ? 1.5 + intensity * 2 : 1.0;
+      // 고정 와이어프레임 외곽선 최종 투사
+      this.ctx.strokeStyle = baseStrokeStyle;
+      this.ctx.lineWidth = intensity > 0.08 ? 1.8 + intensity * 2 : 1.0;
       
       if (intensity > 0.08 && colorStyle !== 'bw') {
         this.ctx.shadowBlur = intensity * 12;
@@ -257,9 +255,9 @@ export default class MatrixPressSketch {
 
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: `32 Matrix Console [Shuffle Mode: ${pressModeType}]`,
+      particleCount: `32 Matrix [Decoupled Random Mode]`,
       isCovering: true,
-      activeFunction: `Matrix[Aspect_Sync_V2.3]`
+      activeFunction: `Matrix[True_AllRandom_v2.5]`
     };
   }
 
