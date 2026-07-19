@@ -1,8 +1,8 @@
 /**
  * src/sketches/021_matrix_press.js
- * - [버전] Ver 2.6 UI 고정 메뉴 동화형 매트릭스 콘솔
- * - 화면비 제어: 캔버스 물리 치수 실시간 종횡비 추적으로 16:9(8x4), 9:16(4x8) 공백 없이 완전 대응
- * - 매핑 동기화: UI 드롭다운의 'Earth' 선택 시 -> [테두리 올랜덤 + 내부 올랜덤] 진성 격발 스위칭
+ * - [버전] Ver 2.7 DOM 다이렉트 바이패스형 진성 올랜덤 매트릭스 콘솔
+ * - 시스템 수리: main.js의 이벤트 신호 누수를 차단하기 위해 드롭다운 DOM 엘리먼트 실시간 직결 판독
+ * - 컬러 사양: 'Earth' (또는 인덱스 3번) 선택 시 32개 버튼의 [테두리 고유 색상]과 [내부 불빛 고유 색상]을 완전 독립 분리하여 진성 올랜덤 격발
  */
 
 export default class MatrixPressSketch {
@@ -15,13 +15,13 @@ export default class MatrixPressSketch {
     this.width = 0;
     this.height = 0;
     this.smoothedValues = new Array(32).fill(0);
-    this.version = "021호 Matrix Press Ver 2.6";
+    this.version = "021호 Matrix Press Ver 2.7";
 
-    // 💡 테두리용 랜덤 색상축과 내부 블러용 랜덤 색상축을 완전 독립 생성
+    // 💡 테두리(Stroke)와 내부 불빛(Active)이 완벽히 따로 놀도록 32채널 독립 랜덤 색상축 분리 생성
     this.randomActiveHues = Array.from({ length: 32 }, () => Math.floor(Math.random() * 360));
     this.randomStrokeHues = Array.from({ length: 32 }, () => Math.floor(Math.random() * 360));
     
-    // 아날로그 빈티지 노이즈 캐시 맵
+    // 아날로그 빈티지 노이즈 캐시 버퍼
     this.noiseCanvas = document.createElement('canvas');
     this.noiseCanvas.width = 128;
     this.noiseCanvas.height = 128;
@@ -102,7 +102,7 @@ export default class MatrixPressSketch {
     this.ctx.fillStyle = '#04060b';
     this.ctx.fillRect(0, 0, renderW, renderH);
 
-    // 16:9 가로와 9:16 세로 레이아웃 실시간 강제 변환 엔진
+    // 가로/세로 화면비 실시간 격자 레이아웃 정렬 장치 (16:9 - 8x4 / 9:16 - 4x8)
     const isVerticalLayout = renderH > renderW;
     const cols = isVerticalLayout ? 4 : 8;
     const rows = isVerticalLayout ? 8 : 4;
@@ -114,8 +114,14 @@ export default class MatrixPressSketch {
     const gainScale = globalSettings.audioGain ?? 1.0;
     const seed = globalSettings.seed ?? 42;
     
-    // 대소문자 변환 오류 방지를 위한 소문자 처리 리인덱싱
-    const colorStyle = (globalSettings.colorStyle || 'neon').toLowerCase();
+    // 💡 [원천 해결 책]: main.js를 거치지 않고 드롭다운 메뉴의 실제 선택 값을 실시간 다이렉트 추적
+    const colorSelectDOM = document.getElementById('select-cosmic-color');
+    let colorStyle = 'neon';
+    if (colorSelectDOM) {
+      colorStyle = colorSelectDOM.value.toLowerCase();
+    } else {
+      colorStyle = (globalSettings.colorStyle || 'neon').toLowerCase();
+    }
 
     const pressModeType = seed % 4;
 
@@ -138,7 +144,6 @@ export default class MatrixPressSketch {
       this.smoothedValues[i] += (targetValue - this.smoothedValues[i]) * 0.28;
       const intensity = this.smoothedValues[i];
 
-      // 외곽선 완전 고정 규격
       const margin = 4;
       const btnX = startX + margin;
       const btnY = startY + margin;
@@ -152,38 +157,39 @@ export default class MatrixPressSketch {
       let activeColor = '#00f0ff';
       let fillBaseColor = 'rgba(10, 16, 32, 0.9)';
 
-      // 💡 [수리 완료]: UI 패널의 5대 셀렉터 옵션 문자열과 정밀 직결 매핑 분기회로
+      // 하드웨어식 컬러 라우팅 분기
       switch(colorStyle) {
-        case 'monochrome': // Monochrome 선택 시 -> 흑백 모드
+        case 'monochrome':
           baseStrokeStyle = '#334155';
           activeColor = `rgb(${210 + intensity * 45}, ${210 + intensity * 45}, ${210 + intensity * 45})`;
-          fillBaseColor = `rgba(${12 + intensity * 35}, ${12 + intensity * 35}, ${12 + intensity * 35}, 0.95)`;
+          fillBaseColor = `rgba(${12 + intensity * 35}, ${12 + intensity * 35}, ${12 + intensity * 35}, 0.955)`;
           break;
-        case 'neon': // Neon 선택 시 -> 정규 청록 네온 모드
+        case 'neon':
           baseStrokeStyle = '#14203e';
           activeColor = '#00f0ff';
           break;
           
-        case 'earth': // 🔥 [핵심]: 드롭다운에서 'Earth'를 피킹하면 테두리 올랜덤 + 내부 올랜덤이 완전 분리 기동!
+        // 💡 [수리 포인트]: 문자열 'earth' 나 혹은 select의 인덱스 매핑값 '3'이 들어와도 완벽 격발
+        case 'earth':
+        case '3':
           const strokeHue = (this.randomStrokeHues[i] + seed) % 360;
           const activeHue = (this.randomActiveHues[i] + seed) % 360;
           
-          // 테두리선용 개별 무작위 HSLA 컬러 바인딩
-          baseStrokeStyle = `hsla(${strokeHue}, 80%, 25%, 0.7)`;
+          // 💡 정적 상태에서도 테두리 올랜덤이 확연히 인지되도록 기본 베이스 라인 자체를 컬러풀하게 빌드
+          baseStrokeStyle = `hsla(${strokeHue}, 90%, 38%, 0.65)`;
           if (intensity > 0.08) {
-             baseStrokeStyle = `hsla(${strokeHue}, 95%, 55%, 1)`;
+             baseStrokeStyle = `hsla(${strokeHue}, 100%, 55%, 1)`;
           }
-          // 안쪽 확산 효과용 개별 무작위 HSLA 컬러 바인딩
+          // 내부 인터랙션용 별도 고유 컬러 매핑
           activeColor = `hsla(${activeHue}, 100%, 55%, 1)`;
           break;
 
-        case 'pastel': // Pastel 선택 시 -> 빈티지 질감 모드로 우회 결합
+        case 'pastel':
           baseStrokeStyle = '#475569';
           activeColor = '#fbbf24';
           fillBaseColor = 'rgba(26, 31, 44, 0.92)';
           break;
-          
-        case 'custom': // Custom 선택 시 -> 사용자 지정 노브 컬러 스케일
+        case 'custom':
           baseStrokeStyle = '#261b15';
           activeColor = globalSettings.customColors?.star || '#ff0055';
           break;
@@ -195,7 +201,7 @@ export default class MatrixPressSketch {
       this.drawRoundedRect(this.ctx, btnX, btnY, btnW, btnH, cornerRadius);
       this.ctx.fill();
 
-      // 내부 확산 프레스 인터랙션
+      // 내부 모션 유닛
       if (pressModeType === 0) {
         if (intensity > 0.01) {
           const innerBlurGlow = this.ctx.createRadialGradient(centerX, centerY, 1, centerX, centerY, Math.max(btnW, btnH) * 0.45 * intensity);
@@ -229,7 +235,6 @@ export default class MatrixPressSketch {
         this.drawInstrumentGlyph(this.ctx, centerX, centerY, Math.min(btnW, btnH), i, intensity);
       }
 
-      // Pastel(오래된 질감 노이즈) 전사 패치
       if (colorStyle === 'pastel') {
         this.ctx.save();
         this.ctx.globalCompositeOperation = 'source-over';
@@ -240,7 +245,7 @@ export default class MatrixPressSketch {
         this.ctx.restore();
       }
 
-      // 최종 외곽선 붓칠
+      // 와이어프레임 외곽선 마감 드로우
       this.ctx.strokeStyle = baseStrokeStyle;
       this.ctx.lineWidth = intensity > 0.08 ? 1.8 + intensity * 2 : 1.0;
       
@@ -257,9 +262,9 @@ export default class MatrixPressSketch {
 
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: `32 Matrix [Decoupled Random Mode: Earth Trigger]`,
+      particleCount: `32 Matrix Console [DOM Bypass Active]`,
       isCovering: true,
-      activeFunction: `Matrix[Aspect_Sync_v2.6]`
+      activeFunction: `Matrix[True_AllRandom_V2.7]`
     };
   }
 
