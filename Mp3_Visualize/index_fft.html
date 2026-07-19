@@ -14,8 +14,6 @@
     .control-unit { display: flex; align-items: center; gap: 8px; }
     .control-unit label { font-size: 11px; color: #94a3b8; font-weight: bold; }
     select { background: #020617; color: #00ffcc; border: 1px solid #334155; border-radius: 4px; padding: 4px 8px; font-size: 11px; outline: none; }
-    
-    /* 트리밍 제어 전용 노브 스타일 */
     .btn { background: #1e293b; color: #cbd5e1; border: 1px solid #475569; border-radius: 4px; padding: 5px 10px; font-size: 11px; font-weight: bold; cursor: pointer; }
     .btn:hover { background: rgba(0, 240, 255, 0.1); color: #00f0ff; border-color: #00f0ff; }
     .btn-trim { background: #b91c1c; color: #fff; border-color: #991b1b; }
@@ -30,10 +28,7 @@
     .v-meter-fill-bar { width: 100%; height: 2%; background: linear-gradient(0deg, #0044ff 0%, #00ffcc 75%, #ff0055 100%); border-radius: 2px 2px 0 0; box-shadow: 0 0 8px rgba(0, 255, 204, 0.3); transition: height 0.04s ease; }
     .strip-text-label { font-size: 9px; font-family: monospace; color: #475569; position: absolute; bottom: -16px; }
 
-    /* 활성 구간 정보 디스플레이 바 */
     .status-range-bar { display: flex; justify-content: space-between; font-size: 11px; font-family: monospace; color: #94a3b8; background: #0b111e; padding: 4px 10px; border-radius: 4px; border: 1px solid #1e293b; }
-
-    /* 하나로 이어서 붙인 단일 마스터 슬라이더 트랙 */
     .unified-slider-track-zone { height: 50px; background: #090d16; border: 1px solid #1e293b; border-radius: 6px; position: relative; margin-top: 5px; padding: 0 20px; display: flex; align-items: center; }
     .unified-base-line { width: 100%; height: 6px; background: #151f32; border-radius: 3px; position: relative; }
     
@@ -47,27 +42,22 @@
   <div class="main-layout">
     <header>
       <h1>🎛️ Contiguous Multi-Thumb Monitor Console</h1>
-      
       <div class="toolbar-groups">
         <div class="control-unit">
           <label for="band-count-select">채널 수:</label>
           <select id="band-count-select"></select>
         </div>
-
-        <!-- 💡 [신설]: 공백 제거 감도 및 자동 트리밍 트리거 덱 -->
         <div class="control-unit" style="border-left: 1px solid #2d3748; padding-left: 15px;">
           <label>공백 컷 임계값:</label>
           <input type="number" id="num-gate-threshold" value="5" min="0" max="100">
           <button class="btn btn-trim" id="btn-auto-crop-silence">✂️ 공백 대역폭 즉시 제외</button>
           <button class="btn" id="btn-reset-crop" style="font-size:10px; padding: 5px 6px;">🔄 전체 해제</button>
         </div>
-
         <div class="control-unit" style="border-left: 1px solid #2d3748; padding-left: 15px;">
           <input type="file" id="file-audio-local" accept="audio/*" style="display:none;">
           <button class="btn" onclick="document.getElementById('file-audio-local').click()">📂 오디오 로드</button>
           <audio id="local-audio-player" controls></audio>
         </div>
-
         <div class="preset-actions">
           <button class="btn" id="btn-import-json">📂 로드</button>
           <button class="btn btn-export" id="btn-export-json">💾 저장</button>
@@ -78,16 +68,13 @@
 
     <main class="console-board-viewport">
       <div class="meters-container-row" id="meters-stage"></div>
-
-      <!-- 💡 [신설]: 현재 음량이 존재하는 활성 주파수 인덱스 모니터링 라인 -->
       <div class="status-range-bar">
         <span>🏁 마스터 시작 주파수 위치: <strong id="txt-master-start" style="color:#00ffcc;">0</strong> FFT Index</span>
         <span style="color:#64748b;">|</span>
-        <span style="color:#ffff00;">🔥 실시간 분석 대역 영역 내에서만 32채널 밀집 압착 구동 중</span>
+        <span style="color:#ffff00;">🔥 실시간 분석 대역 영역 내에서만 채널 밀집 압착 구동 중</span>
         <span style="color:#64748b;">|</span>
         <span>🏳️ 마스터 마감 주파수 위치: <strong id="txt-master-end" style="color:#00ffcc;">255</strong> FFT Index</span>
       </div>
-
       <div class="unified-slider-track-zone">
         <div class="unified-base-line" id="master-track-line"></div>
       </div>
@@ -99,13 +86,11 @@
       const metersStage = document.getElementById('meters-stage');
       const masterTrackLine = document.getElementById('master-track-line');
       const bandCountSelect = document.getElementById('band-count-select');
-      
       const gateThresholdInput = document.getElementById('num-gate-threshold');
       const autoCropBtn = document.getElementById('btn-auto-crop-silence');
       const resetCropBtn = document.getElementById('btn-reset-crop');
       const txtMasterStart = document.getElementById('txt-master-start');
       const txtMasterEnd = document.getElementById('txt-master-end');
-
       const exportBtn = document.getElementById('btn-export-json');
       const importBtn = document.getElementById('btn-import-json');
       const fileInput = document.getElementById('file-import-hidden');
@@ -124,23 +109,15 @@
       let activeBandsCount = 32;
       let splitPoints = []; 
       let currentBandsConfig = { totalBands: activeBandsCount, ranges: [] };
-
-      // 💡 [수식 제어 축 확장]: 전체 트랙의 시작벽과 끝벽을 관리할 동적 마스터 포인터
-      let masterStart = 0;
-      let masterEnd = 255;
-
-      // 노래 전체 대역 중 피크 에너지를 상시 수집할 누적 어레이 배열
+      let masterStart = 0; let masterEnd = 255;
       let fftPeaks = new Array(256).fill(0);
-
       let isDragging = false; let activeThumbIdx = -1;
       let audioCtx = null; let analyser = null; let sourceNode = null;
 
       localAudioInput.addEventListener('change', (e) => {
         const file = e.target.files[0]; if (!file) return;
         localAudioPlayer.src = URL.createObjectURL(file);
-        // 새 노래 로드 시 피크 초기화
-        fftPeaks.fill(0);
-        masterStart = 0; masterEnd = 255;
+        fftPeaks.fill(0); masterStart = 0; masterEnd = 255;
         if (!audioCtx) {
           audioCtx = new (window.AudioContext || window.webkitAudioContext)();
           analyser = audioCtx.createAnalyser(); analyser.fftSize = 512;
@@ -155,12 +132,7 @@
           const bufferLength = analyser.frequencyBinCount;
           const dataArray = new Uint8Array(bufferLength);
           analyser.getByteFrequencyData(dataArray);
-          
-          // 💡 프레임마다 피크 에너지 상시 누적 수집
-          for(let i=0; i<256; i++) {
-            if(dataArray[i] > fftPeaks[i]) fftPeaks[i] = dataArray[i];
-          }
-
+          for(let i=0; i<256; i++) { if(dataArray[i] > fftPeaks[i]) fftPeaks[i] = dataArray[i]; }
           calculateLiveBands(dataArray);
         }
       }
@@ -169,99 +141,60 @@
       broadcast.onmessage = (e) => {
         if (localAudioPlayer.paused && e.data && e.data.type === 'AUDIO_STREAM' && e.data.raw) {
           const rawData = e.data.raw;
-          for(let i=0; i<256; i++) {
-            if(rawData[i] > fftPeaks[i]) fftPeaks[i] = rawData[i];
-          }
+          for(let i=0; i<256; i++) { if(rawData[i] > fftPeaks[i]) fftPeaks[i] = rawData[i]; }
           calculateLiveBands(rawData);
         }
       };
 
-      // 💡 [공백 제거 스캔 알고리즘]: 임계값을 넘지 못하는 좌우 공백 구역 깎아내기 격발
       autoCropBtn.addEventListener('click', () => {
         const threshold = parseInt(gateThresholdInput.value) || 5;
-        
-        let firstActive = 0;
-        let lastActive = 255;
+        let firstActive = 0; let lastActive = 255;
+        for(let i=0; i<256; i++) { if(fftPeaks[i] > threshold) { firstActive = i; break; } }
+        for(let i=255; i>=0; i--) { if(fftPeaks[i] > threshold) { lastActive = i; break; } }
+        if(lastActive - firstActive < activeBandsCount + 2) { alert("소리 신호가 부족합니다."); return; }
 
-        // 왼쪽에서부터 신호가 살아나는 지점 스캔
-        for(let i=0; i<256; i++) {
-          if(fftPeaks[i] > threshold) { firstActive = i; break; }
-        }
-        // 오른쪽에서부터 신호가 살아나는 지점 역스캔
-        for(let i=255; i>=0; i--) {
-          if(fftPeaks[i] > threshold) { lastActive = i; break; }
-        }
+        masterStart = firstActive; masterEnd = lastActive;
+        txtMasterStart.innerText = masterStart; txtMasterEnd.innerText = masterEnd;
 
-        // 안전 가드 (최소 밴드 폭 확보)
-        if(lastActive - firstActive < activeBandsCount + 2) {
-          alert("소리 신호가 너무 부족하여 공백을 자를 수 없습니다.");
-          return;
-        }
-
-        masterStart = firstActive;
-        masterEnd = lastActive;
-
-        txtMasterStart.innerText = masterStart;
-        txtMasterEnd.innerText = masterEnd;
-
-        // 잘라낸 실제 음역대 폭 내부에서 32채널 균등 그리드 재배열
         splitPoints = [];
         const step = (masterEnd - masterStart) / activeBandsCount;
-        for (let i = 0; i < activeBandsCount - 1; i++) {
-          splitPoints.push(Math.round(masterStart + (i + 1) * step));
-        }
-
+        for (let i = 0; i < activeBandsCount - 1; i++) { splitPoints.push(Math.round(masterStart + (i + 1) * step)); }
         rebuildRangesAndSync();
       });
 
-      // 복구 리셋 버튼
       resetCropBtn.addEventListener('click', () => {
         masterStart = 0; masterEnd = 255;
         txtMasterStart.innerText = 0; txtMasterEnd.innerText = 255;
-        fftPeaks.fill(0);
-        initUnifiedWorkspace();
+        fftPeaks.fill(0); initUnifiedWorkspace();
       });
 
       function initUnifiedWorkspace() {
         activeBandsCount = parseInt(bandCountSelect.value);
         const saved = localStorage.getItem(`cosmic_fft_unified_v4_${activeBandsCount}ch`);
-        
         if (saved) {
           try {
             const parsed = JSON.parse(saved);
             if (parsed && Array.isArray(parsed.splits) && parsed.splits.length === activeBandsCount - 1) {
-              splitPoints = parsed.splits;
-              masterStart = parsed.masterStart ?? 0;
-              masterEnd = parsed.masterEnd ?? 255;
-              txtMasterStart.innerText = masterStart;
-              txtMasterEnd.innerText = masterEnd;
-              rebuildRangesAndSync();
-              return;
+              splitPoints = parsed.splits; masterStart = parsed.masterStart ?? 0; masterEnd = parsed.masterEnd ?? 255;
+              txtMasterStart.innerText = masterStart; txtMasterEnd.innerText = masterEnd;
+              rebuildRangesAndSync(); return;
             }
           } catch(e) {}
         }
-        
         splitPoints = [];
         const step = (masterEnd - masterStart) / activeBandsCount;
-        for (let i = 0; i < activeBandsCount - 1; i++) {
-          splitPoints.push(Math.round(masterStart + (i + 1) * step));
-        }
+        for (let i = 0; i < activeBandsCount - 1; i++) { splitPoints.push(Math.round(masterStart + (i + 1) * step)); }
         rebuildRangesAndSync();
       }
 
       function rebuildRangesAndSync() {
         currentBandsConfig.totalBands = activeBandsCount;
         currentBandsConfig.ranges = [];
-        
         for (let i = 0; i < activeBandsCount; i++) {
           let startIdx = masterStart; let endIdx = masterEnd;
-          if (i === 0) {
-            startIdx = masterStart; endIdx = splitPoints[0];
-          } else if (i === activeBandsCount - 1) {
-            startIdx = splitPoints[activeBandsCount - 2] + 1; endIdx = masterEnd;
-          } else {
-            startIdx = splitPoints[i - 1] + 1; endIdx = splitPoints[i];
-          }
+          if (i === 0) { startIdx = masterStart; endIdx = splitPoints[0]; }
+          else if (i === activeBandsCount - 1) { startIdx = splitPoints[activeBandsCount - 2] + 1; endIdx = masterEnd; }
+          else { startIdx = splitPoints[i - 1] + 1; endIdx = splitPoints[i]; }
           currentBandsConfig.ranges.push({ id: i, name: `ch_${i+1}`, start: startIdx, end: endIdx });
         }
 
@@ -269,93 +202,65 @@
         
         const saveState = { splits: splitPoints, masterStart: masterStart, masterEnd: masterEnd };
         localStorage.setItem(`cosmic_fft_unified_v4_${activeBandsCount}ch`, JSON.stringify(saveState));
+        
+        // 💡 [수리]: main.js가 구동 단계에서 직접 인터셉트해 갈 수 있는 단일 통합 최신 로컬 키 전사 보존
+        localStorage.setItem('cosmic_fft_active_latest', JSON.stringify(currentBandsConfig));
+        
         broadcast.postMessage({ type: 'RANGE_UPDATE', config: currentBandsConfig });
       }
 
       function renderMetersAndTrackSliders() {
         metersStage.innerHTML = '';
         for (let i = 0; i < activeBandsCount; i++) {
-          const strip = document.createElement('div');
-          strip.className = 'meter-column-strip';
-          strip.innerHTML = `
-            <div class="v-meter-fill-bar" id="v-bar-${i}"></div>
-            <div class="strip-text-label">CH${String(i+1).padStart(2, '0')}</div>
-          `;
+          const strip = document.createElement('div'); strip.className = 'meter-column-strip';
+          strip.innerHTML = `<div class="v-meter-fill-bar" id="v-bar-${i}"></div><div class="strip-text-label">CH${String(i+1).padStart(2, '0')}</div>`;
           metersStage.appendChild(strip);
         }
-
         masterTrackLine.innerHTML = '';
         const totalSplitsNum = activeBandsCount - 1;
-        
         for (let i = 0; i < totalSplitsNum; i++) {
-          const thumb = document.createElement('div');
-          thumb.className = 'unified-slider-thumb';
-          
-          // 💡 [스케일 매핑 필터 교정]: 0~255 전체축 대신 잘라낸 마스터 뷰포트 너비 비율에 맞춰 정렬 위치 결정
+          const thumb = document.createElement('div'); thumb.className = 'unified-slider-thumb';
           let denom = (masterEnd - masterStart);
           let positionPercentage = denom > 0 ? ((splitPoints[i] - masterStart) / denom) * 100 : 0;
           thumb.style.left = `${positionPercentage}%`;
-          
           thumb.innerHTML = `<div class="thumb-index-balloon">${splitPoints[i]}</div>`;
-
-          thumb.addEventListener('mousedown', (e) => {
-            isDragging = true; activeThumbIdx = i; e.preventDefault();
-          });
+          thumb.addEventListener('mousedown', (e) => { isDragging = true; activeThumbIdx = i; e.preventDefault(); });
           masterTrackLine.appendChild(thumb);
         }
       }
 
-      // 💡 [마우스 좌표 트랙 필터 교정]: 마스터 활성 구간(Start ~ End) 폭 안에서 비례 제어 연산하도록 스위칭
       document.addEventListener('mousemove', (e) => {
         if (!isDragging || activeThumbIdx === -1) return;
-
         const rect = masterTrackLine.getBoundingClientRect();
-        let mouseX = e.clientX - rect.left;
-        let percentage = mouseX / rect.width;
-        
+        let mouseX = e.clientX - rect.left; let percentage = mouseX / rect.width;
         let targetVal = Math.round(masterStart + percentage * (masterEnd - masterStart));
-        if (targetVal < masterStart) targetVal = masterStart;
-        if (targetVal > masterEnd) targetVal = masterEnd;
+        if (targetVal < masterStart) targetVal = masterStart; if (targetVal > masterEnd) targetVal = masterEnd;
 
         const i = activeThumbIdx;
         const minAllowed = (i === 0) ? masterStart : splitPoints[i - 1] + 1;
         const maxAllowed = (i === activeBandsCount - 2) ? (masterEnd - 1) : splitPoints[i + 1] - 1;
-
-        if (targetVal >= minAllowed && targetVal <= maxAllowed) {
-          splitPoints[i] = targetVal;
-          rebuildRangesAndSync();
-        }
+        if (targetVal >= minAllowed && targetVal <= maxAllowed) { splitPoints[i] = targetVal; rebuildRangesAndSync(); }
       });
 
       document.addEventListener('mouseup', () => { isDragging = false; activeThumbIdx = -1; });
 
       function calculateLiveBands(rawFFT) {
         currentBandsConfig.ranges.forEach((band, idx) => {
-          const bar = document.getElementById(`v-bar-${idx}`);
-          if (!bar) return;
-
+          const bar = document.getElementById(`v-bar-${idx}`); if (!bar) return;
           let sum = 0; let count = 0;
-          for (let i = band.start; i <= band.end; i++) {
-            sum += rawFFT[i] || 0; count++;
-          }
+          for (let i = band.start; i <= band.end; i++) { sum += rawFFT[i] || 0; count++; }
           let average = count > 0 ? sum / count : 0;
           let heightPercent = Math.min(100, Math.max(2, Math.round((average / 255) * 100)));
-          
           bar.style.height = `${heightPercent}%`;
         });
       }
 
       bandCountSelect.addEventListener('change', () => { initUnifiedWorkspace(); });
-
       exportBtn.addEventListener('click', () => {
         const outData = { totalBands: activeBandsCount, splits: splitPoints, masterStart: masterStart, masterEnd: masterEnd };
         const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(outData, null, 2));
-        const dlAnchor = document.createElement('a');
-        dlAnchor.setAttribute("href", dataStr);
-        dlAnchor.setAttribute("download", `cosmic_contiguous_crop_${activeBandsCount}ch.json`);
-        dlAnchor.click(); dlAnchor.remove();
+        const dlAnchor = document.createElement('a'); dlAnchor.setAttribute("href", dataStr); dlAnchor.setAttribute("download", `cosmic_contiguous_crop_${activeBandsCount}ch.json`); dlAnchor.click(); dlAnchor.remove();
       });
-
       importBtn.addEventListener('click', () => fileInput.click());
       fileInput.addEventListener('change', (e) => {
         const file = e.target.files[0]; if (!file) return;
