@@ -1,9 +1,8 @@
 /**
  * src/sketches/021_matrix_press.js
- * - [버전] Ver 2.5 진성 올랜덤(테두리/내부 디커플링) 매트릭스 콘솔
- * - 레이아웃 사양: 캔버스 실제 스케일 기반 종횡비 연동형 격자 정렬 (16:9 <-> 9:16 완벽 대응)
- * - 컬러 혁신: 'all_random', 'random', 'neon_random' 대응
- *   각 채널 버튼의 [테두리 색상]과 [내부 활성 색상]이 서로 다른 고유의 랜덤 HSLA 축을 가지고 완전히 따로 노는 진성 올랜덤 구현
+ * - [버전] Ver 2.6 UI 고정 메뉴 동화형 매트릭스 콘솔
+ * - 화면비 제어: 캔버스 물리 치수 실시간 종횡비 추적으로 16:9(8x4), 9:16(4x8) 공백 없이 완전 대응
+ * - 매핑 동기화: UI 드롭다운의 'Earth' 선택 시 -> [테두리 올랜덤 + 내부 올랜덤] 진성 격발 스위칭
  */
 
 export default class MatrixPressSketch {
@@ -16,13 +15,13 @@ export default class MatrixPressSketch {
     this.width = 0;
     this.height = 0;
     this.smoothedValues = new Array(32).fill(0);
-    this.version = "021호 Matrix Press Ver 2.5";
+    this.version = "021호 Matrix Press Ver 2.6";
 
-    // 💡 [핵심 개혁]: 내부 불빛용 랜덤 색상 배열과 테두리(Stroke)용 랜덤 색상 배열을 완전 독립 분리
+    // 💡 테두리용 랜덤 색상축과 내부 블러용 랜덤 색상축을 완전 독립 생성
     this.randomActiveHues = Array.from({ length: 32 }, () => Math.floor(Math.random() * 360));
     this.randomStrokeHues = Array.from({ length: 32 }, () => Math.floor(Math.random() * 360));
     
-    // 아날로그 빈티지 노이즈 캐시 버퍼
+    // 아날로그 빈티지 노이즈 캐시 맵
     this.noiseCanvas = document.createElement('canvas');
     this.noiseCanvas.width = 128;
     this.noiseCanvas.height = 128;
@@ -103,6 +102,7 @@ export default class MatrixPressSketch {
     this.ctx.fillStyle = '#04060b';
     this.ctx.fillRect(0, 0, renderW, renderH);
 
+    // 16:9 가로와 9:16 세로 레이아웃 실시간 강제 변환 엔진
     const isVerticalLayout = renderH > renderW;
     const cols = isVerticalLayout ? 4 : 8;
     const rows = isVerticalLayout ? 8 : 4;
@@ -113,7 +113,9 @@ export default class MatrixPressSketch {
     const globalSettings = window.cosmicEngineSettings || {};
     const gainScale = globalSettings.audioGain ?? 1.0;
     const seed = globalSettings.seed ?? 42;
-    const colorStyle = globalSettings.colorStyle || 'neon';
+    
+    // 대소문자 변환 오류 방지를 위한 소문자 처리 리인덱싱
+    const colorStyle = (globalSettings.colorStyle || 'neon').toLowerCase();
 
     const pressModeType = seed % 4;
 
@@ -136,6 +138,7 @@ export default class MatrixPressSketch {
       this.smoothedValues[i] += (targetValue - this.smoothedValues[i]) * 0.28;
       const intensity = this.smoothedValues[i];
 
+      // 외곽선 완전 고정 규격
       const margin = 4;
       const btnX = startX + margin;
       const btnY = startY + margin;
@@ -149,42 +152,40 @@ export default class MatrixPressSketch {
       let activeColor = '#00f0ff';
       let fillBaseColor = 'rgba(10, 16, 32, 0.9)';
 
-      // 💡 [수리 및 상호 호환 패치]: 메인 UI 셀렉터가 어떤 올랜덤 명칭을 던져도 철벽 수비하도록 케이스 병합
+      // 💡 [수리 완료]: UI 패널의 5대 셀렉터 옵션 문자열과 정밀 직결 매핑 분기회로
       switch(colorStyle) {
-        case 'bw':
+        case 'monochrome': // Monochrome 선택 시 -> 흑백 모드
           baseStrokeStyle = '#334155';
           activeColor = `rgb(${210 + intensity * 45}, ${210 + intensity * 45}, ${210 + intensity * 45})`;
           fillBaseColor = `rgba(${12 + intensity * 35}, ${12 + intensity * 35}, ${12 + intensity * 35}, 0.95)`;
           break;
-        case 'neon':
+        case 'neon': // Neon 선택 시 -> 정규 청록 네온 모드
           baseStrokeStyle = '#14203e';
           activeColor = '#00f0ff';
           break;
           
-        // 💡 [혁신]: 올랜덤 테두리 + 올랜덤 내부 불빛 디커플링 주입 선언문
-        case 'all_random':
-        case 'random':
-        case 'neon_random':
+        case 'earth': // 🔥 [핵심]: 드롭다운에서 'Earth'를 피킹하면 테두리 올랜덤 + 내부 올랜덤이 완전 분리 기동!
           const strokeHue = (this.randomStrokeHues[i] + seed) % 360;
           const activeHue = (this.randomActiveHues[i] + seed) % 360;
           
-          // 테두리 전용 독립 색상 마운트
+          // 테두리선용 개별 무작위 HSLA 컬러 바인딩
           baseStrokeStyle = `hsla(${strokeHue}, 80%, 25%, 0.7)`;
           if (intensity > 0.08) {
              baseStrokeStyle = `hsla(${strokeHue}, 95%, 55%, 1)`;
           }
-          // 내부 번짐용 전용 독립 색상 마운트
+          // 안쪽 확산 효과용 개별 무작위 HSLA 컬러 바인딩
           activeColor = `hsla(${activeHue}, 100%, 55%, 1)`;
           break;
-          
-        case 'custom':
-          baseStrokeStyle = '#261b15';
-          activeColor = globalSettings.customColors?.star || '#ff0055';
-          break;
-        case 'vintage_noise':
+
+        case 'pastel': // Pastel 선택 시 -> 빈티지 질감 모드로 우회 결합
           baseStrokeStyle = '#475569';
           activeColor = '#fbbf24';
           fillBaseColor = 'rgba(26, 31, 44, 0.92)';
+          break;
+          
+        case 'custom': // Custom 선택 시 -> 사용자 지정 노브 컬러 스케일
+          baseStrokeStyle = '#261b15';
+          activeColor = globalSettings.customColors?.star || '#ff0055';
           break;
       }
 
@@ -194,7 +195,7 @@ export default class MatrixPressSketch {
       this.drawRoundedRect(this.ctx, btnX, btnY, btnW, btnH, cornerRadius);
       this.ctx.fill();
 
-      // 프레스 인터랙션
+      // 내부 확산 프레스 인터랙션
       if (pressModeType === 0) {
         if (intensity > 0.01) {
           const innerBlurGlow = this.ctx.createRadialGradient(centerX, centerY, 1, centerX, centerY, Math.max(btnW, btnH) * 0.45 * intensity);
@@ -228,7 +229,8 @@ export default class MatrixPressSketch {
         this.drawInstrumentGlyph(this.ctx, centerX, centerY, Math.min(btnW, btnH), i, intensity);
       }
 
-      if (colorStyle === 'vintage_noise') {
+      // Pastel(오래된 질감 노이즈) 전사 패치
+      if (colorStyle === 'pastel') {
         this.ctx.save();
         this.ctx.globalCompositeOperation = 'source-over';
         const noisePattern = this.ctx.createPattern(this.noiseCanvas, 'repeat');
@@ -238,11 +240,11 @@ export default class MatrixPressSketch {
         this.ctx.restore();
       }
 
-      // 고정 와이어프레임 외곽선 최종 투사
+      // 최종 외곽선 붓칠
       this.ctx.strokeStyle = baseStrokeStyle;
       this.ctx.lineWidth = intensity > 0.08 ? 1.8 + intensity * 2 : 1.0;
       
-      if (intensity > 0.08 && colorStyle !== 'bw') {
+      if (intensity > 0.08 && colorStyle !== 'monochrome') {
         this.ctx.shadowBlur = intensity * 12;
         this.ctx.shadowColor = activeColor;
       }
@@ -255,9 +257,9 @@ export default class MatrixPressSketch {
 
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: `32 Matrix [Decoupled Random Mode]`,
+      particleCount: `32 Matrix [Decoupled Random Mode: Earth Trigger]`,
       isCovering: true,
-      activeFunction: `Matrix[True_AllRandom_v2.5]`
+      activeFunction: `Matrix[Aspect_Sync_v2.6]`
     };
   }
 
