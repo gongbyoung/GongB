@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cosmic Audio Studio - Unified FFT Calibrator</title>
+  <title>Cosmic Audio Studio - Intelligent Automated Calibrator</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
     body, html { width: 100%; height: 100%; background-color: #05070f; color: #cbd5e1; font-family: sans-serif; overflow: hidden; }
@@ -14,10 +14,16 @@
     .control-unit { display: flex; align-items: center; gap: 8px; }
     .control-unit label { font-size: 11px; color: #94a3b8; font-weight: bold; }
     select { background: #020617; color: #00ffcc; border: 1px solid #334155; border-radius: 4px; padding: 4px 8px; font-size: 11px; outline: none; }
+    
     .btn { background: #1e293b; color: #cbd5e1; border: 1px solid #475569; border-radius: 4px; padding: 5px 10px; font-size: 11px; font-weight: bold; cursor: pointer; }
     .btn:hover { background: rgba(0, 240, 255, 0.1); color: #00f0ff; border-color: #00f0ff; }
     .btn-trim { background: #b91c1c; color: #fff; border-color: #991b1b; }
     .btn-trim:hover { background: #991b1b; border-color: #ef4444; }
+    
+    /* 🤖 지능형 자동화 버튼 전용 네온 스타일 */
+    .btn-auto-engine { background: #047857; color: #fff; border-color: #065f46; box-shadow: 0 0 8px rgba(52, 211, 153, 0.3); }
+    .btn-auto-engine:hover { background: #059669; border-color: #34d399; box-shadow: 0 0 12px #34d399; }
+
     .btn-export { background: #0284c7; color: #fff; border-color: #0369a1; }
     audio { height: 26px; background: #020617; border-radius: 4px; border: 1px solid #334155; }
     input[type="number"] { width: 40px; background: #000; color: #00ffcc; border: 1px solid #334155; border-radius: 3px; font-size: 11px; text-align: center; }
@@ -41,23 +47,28 @@
 
   <div class="main-layout">
     <header>
-      <h1>🎛️ Contiguous Multi-Thumb Monitor Console</h1>
+      <h1>🎛️ Intelligent Dynamic Monitor Console</h1>
       <div class="toolbar-groups">
         <div class="control-unit">
           <label for="band-count-select">채널 수:</label>
           <select id="band-count-select"></select>
         </div>
-        <div class="control-unit" style="border-left: 1px solid #2d3748; padding-left: 15px;">
-          <label>공백 컷 임계값:</label>
-          <input type="number" id="num-gate-threshold" value="5" min="0" max="100">
-          <button class="btn btn-trim" id="btn-auto-crop-silence">✂️ 공백 대역폭 즉시 제외</button>
-          <button class="btn" id="btn-reset-crop" style="font-size:10px; padding: 5px 6px;">🔄 전체 해제</button>
+        
+        <!-- 💡 자동화 조작 콘솔 유닛 인터페이스 추가 -->
+        <div class="control-unit" style="border-left: 1px solid #2d3748; padding-left: 12px;">
+          <input type="number" id="num-gate-threshold" value="5" min="0" max="100" style="display:none;">
+          <button class="btn btn-trim" id="btn-auto-crop-silence" style="display:none;"></button>
+          
+          <button class="btn btn-auto-engine" id="btn-intelligent-auto-split">🤖 악기 대역 자동화 분할</button>
+          <button class="btn" id="btn-reset-crop">🔄 전체 초기화</button>
         </div>
-        <div class="control-unit" style="border-left: 1px solid #2d3748; padding-left: 15px;">
+
+        <div class="control-unit" style="border-left: 1px solid #2d3748; padding-left: 12px;">
           <input type="file" id="file-audio-local" accept="audio/*" style="display:none;">
           <button class="btn" onclick="document.getElementById('file-audio-local').click()">📂 오디오 로드</button>
           <audio id="local-audio-player" controls></audio>
         </div>
+
         <div class="preset-actions">
           <button class="btn" id="btn-import-json">📂 로드</button>
           <button class="btn btn-export" id="btn-export-json">💾 저장</button>
@@ -69,11 +80,11 @@
     <main class="console-board-viewport">
       <div class="meters-container-row" id="meters-stage"></div>
       <div class="status-range-bar">
-        <span>🏁 마스터 시작 주파수 위치: <strong id="txt-master-start" style="color:#00ffcc;">0</strong> FFT Index</span>
+        <span>🏁 최소 주파수 벽: <strong id="txt-master-start" style="color:#00ffcc;">0</strong></span>
         <span style="color:#64748b;">|</span>
-        <span style="color:#ffff00;">🔥 실시간 분석 대역 영역 내에서만 채널 밀집 압착 구동 중</span>
+        <span style="color:#34d399;" id="txt-automation-status">ℹ️ 음악을 재생시켜 피크 값을 수집한 뒤 자동화 버튼을 누르세요.</span>
         <span style="color:#64748b;">|</span>
-        <span>🏳️ 마스터 마감 주파수 위치: <strong id="txt-master-end" style="color:#00ffcc;">255</strong> FFT Index</span>
+        <span>🏳️ 최대 주파수 벽: <strong id="txt-master-end" style="color:#00ffcc;">255</strong></span>
       </div>
       <div class="unified-slider-track-zone">
         <div class="unified-base-line" id="master-track-line"></div>
@@ -86,11 +97,13 @@
       const metersStage = document.getElementById('meters-stage');
       const masterTrackLine = document.getElementById('master-track-line');
       const bandCountSelect = document.getElementById('band-count-select');
-      const gateThresholdInput = document.getElementById('num-gate-threshold');
-      const autoCropBtn = document.getElementById('btn-auto-crop-silence');
-      const resetCropBtn = document.getElementById('btn-reset-crop');
       const txtMasterStart = document.getElementById('txt-master-start');
       const txtMasterEnd = document.getElementById('txt-master-end');
+      const txtStatus = document.getElementById('txt-automation-status');
+      
+      const intelligentBtn = document.getElementById('btn-intelligent-auto-split');
+      const resetCropBtn = document.getElementById('btn-reset-crop');
+
       const exportBtn = document.getElementById('btn-export-json');
       const importBtn = document.getElementById('btn-import-json');
       const fileInput = document.getElementById('file-import-hidden');
@@ -118,6 +131,7 @@
         const file = e.target.files[0]; if (!file) return;
         localAudioPlayer.src = URL.createObjectURL(file);
         fftPeaks.fill(0); masterStart = 0; masterEnd = 255;
+        txtStatus.innerText = "📊 새 오디오 장전됨 - 하이라이트 구간을 재생하여 데이터를 수집하세요.";
         if (!audioCtx) {
           audioCtx = new (window.AudioContext || window.webkitAudioContext)();
           analyser = audioCtx.createAnalyser(); analyser.fftSize = 512;
@@ -146,26 +160,64 @@
         }
       };
 
-      autoCropBtn.addEventListener('click', () => {
-        const threshold = parseInt(gateThresholdInput.value) || 5;
+      // 💡 [지능형 자동화 코어 엔진]: 누적 에너지 밀도 분포 역추적 정밀 연산 알고리즘
+      intelligentBtn.addEventListener('click', () => {
+        // 1단계: 유효 사운드가 시작되고 끝나는 최외곽 경계선 선검출 (문턱값 6 기준)
         let firstActive = 0; let lastActive = 255;
-        for(let i=0; i<256; i++) { if(fftPeaks[i] > threshold) { firstActive = i; break; } }
-        for(let i=255; i>=0; i--) { if(fftPeaks[i] > threshold) { lastActive = i; break; } }
-        if(lastActive - firstActive < activeBandsCount + 2) { alert("소리 신호가 부족합니다."); return; }
+        for(let i=0; i<256; i++) { if(fftPeaks[i] > 6) { firstActive = i; break; } }
+        for(let i=255; i>=0; i--) { if(fftPeaks[i] > 6) { lastActive = i; break; } }
+        
+        if(lastActive - firstActive < activeBandsCount + 5) {
+          alert("수집된 오디오 스펙트럼 데이터가 부족합니다. 음악을 잠시 재생한 후 시도해 주세요.");
+          return;
+        }
+        
+        masterStart = firstActive;
+        masterEnd = lastActive;
+        txtMasterStart.innerText = masterStart;
+        txtMasterEnd.innerText = masterEnd;
 
-        masterStart = firstActive; masterEnd = lastActive;
-        txtMasterStart.innerText = masterStart; txtMasterEnd.innerText = masterEnd;
+        // 2단계: 활성 구간 내 전체 소리 에너지 적분 구하기
+        let totalActiveEnergy = 0;
+        for (let i = masterStart; i <= masterEnd; i++) {
+          totalActiveEnergy += fftPeaks[i];
+        }
 
-        splitPoints = [];
-        const step = (masterEnd - masterStart) / activeBandsCount;
-        for (let i = 0; i < activeBandsCount - 1; i++) { splitPoints.push(Math.round(masterStart + (i + 1) * step)); }
+        // 3단계: 1개 채널이 담당해야 할 균등 에너지 분배 목표치 책정
+        let targetEnergyPerBand = totalActiveEnergy / activeBandsCount;
+        
+        let newSplits = [];
+        let accumulatedEnergy = 0;
+        let currentTargetMultiplier = 1;
+
+        // 4단계: 주파수를 전진하며 에너지가 뭉쳐있는 포인트마다 경계선 칼같이 배치
+        for (let i = masterStart; i < masterEnd; i++) {
+          accumulatedEnergy += fftPeaks[i];
+          
+          if (accumulatedEnergy >= targetEnergyPerBand * currentTargetMultiplier) {
+            newSplits.push(i);
+            currentTargetMultiplier++;
+            if (newSplits.length >= activeBandsCount - 1) break;
+          }
+        }
+
+        // 데이터 밀집 편향 보정 가드코드
+        while (newSplits.length < activeBandsCount - 1) {
+          let lastVal = newSplits.length > 0 ? newSplits[newSplits.length - 1] : masterStart;
+          newSplits.push(Math.min(masterEnd - 1, lastVal + 1));
+        }
+
+        splitPoints = newSplits.sort((a,b) => a-b);
+        txtStatus.innerText = "🤖 자동화 완료: 악기 에너지 밀도 분포에 기반하여 32채널 최적 락인 분할 완료.";
         rebuildRangesAndSync();
       });
 
       resetCropBtn.addEventListener('click', () => {
         masterStart = 0; masterEnd = 255;
         txtMasterStart.innerText = 0; txtMasterEnd.innerText = 255;
-        fftPeaks.fill(0); initUnifiedWorkspace();
+        fftPeaks.fill(0); 
+        txtStatus.innerText = "🔄 누적 피크 및 트리밍 데이터 전면 리셋 초기화 완료.";
+        initUnifiedWorkspace();
       });
 
       function initUnifiedWorkspace() {
@@ -199,13 +251,9 @@
         }
 
         renderMetersAndTrackSliders();
-        
         const saveState = { splits: splitPoints, masterStart: masterStart, masterEnd: masterEnd };
         localStorage.setItem(`cosmic_fft_unified_v4_${activeBandsCount}ch`, JSON.stringify(saveState));
-        
-        // 💡 [수리]: main.js가 구동 단계에서 직접 인터셉트해 갈 수 있는 단일 통합 최신 로컬 키 전사 보존
         localStorage.setItem('cosmic_fft_active_latest', JSON.stringify(currentBandsConfig));
-        
         broadcast.postMessage({ type: 'RANGE_UPDATE', config: currentBandsConfig });
       }
 
@@ -259,7 +307,7 @@
       exportBtn.addEventListener('click', () => {
         const outData = { totalBands: activeBandsCount, splits: splitPoints, masterStart: masterStart, masterEnd: masterEnd };
         const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(outData, null, 2));
-        const dlAnchor = document.createElement('a'); dlAnchor.setAttribute("href", dataStr); dlAnchor.setAttribute("download", `cosmic_contiguous_crop_${activeBandsCount}ch.json`); dlAnchor.click(); dlAnchor.remove();
+        const dlAnchor = document.createElement('a'); dlAnchor.setAttribute("href", dataStr); dlAnchor.setAttribute("download", `cosmic_auto_mach_${activeBandsCount}ch.json`); dlAnchor.click(); dlAnchor.remove();
       });
       importBtn.addEventListener('click', () => fileInput.click());
       fileInput.addEventListener('change', (e) => {
