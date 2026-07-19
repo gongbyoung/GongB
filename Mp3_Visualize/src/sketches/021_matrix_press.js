@@ -1,8 +1,8 @@
 /**
  * src/sketches/021_matrix_press.js
- * - [버전] Ver 1.0 가변형 32채널 프레스 매트릭스 콘솔
- * - 레이아웃 사양: 16:9 및 9:16 화면비 자동 감지 및 빈틈없는 스케일 매핑 (8x4 / 4x8 동적 스위칭)
- * - 비주얼 메커니즘: 주파수 에너지 강도에 비례한 3D 버튼 프레스(눌림) 깊이 연산 및 네온 그라데이션 광도 매핑
+ * - [버전] Ver 2.0 고정 와이어프레임 내부 확산형 매트릭스 콘솔
+ * - 화면비 사양: 캔버스 물리 치수 기반 완전 반응형 격자 매핑 (여백/왜곡 완전 제거)
+ * - 비주얼 메커니즘: 외곽선 고정, 내부 번짐 블러, 외부색 채우기, 명암 대비 연산, 악기 글리프 센터 라이팅 통합
  */
 
 export default class MatrixPressSketch {
@@ -14,10 +14,23 @@ export default class MatrixPressSketch {
 
     this.width = 0;
     this.height = 0;
-    
-    // 이전 프레임의 압착 강도를 유지하여 부드러운 유기적 모션을 만드는 감쇠 배열
     this.smoothedValues = new Array(32).fill(0);
-    this.version = "021호 Matrix Press Ver 1.0";
+    this.version = "021호 Matrix Press Ver 2.0";
+
+    // 올랜덤 네온 고유 색상 고정을 위한 씨드 배열
+    this.randomHues = Array.from({ length: 32 }, () => Math.floor(Math.random() * 360));
+    
+    // 빈티지 노이즈 질감 처리를 위한 사전 오프라인 캐시 노이즈 버퍼 생성
+    this.noiseCanvas = document.createElement('canvas');
+    this.noiseCanvas.width = 128;
+    this.noiseCanvas.height = 128;
+    const nCtx = this.noiseCanvas.getContext('2d');
+    const nImg = nCtx.createImageData(128, 128);
+    for (let i = 0; i < nImg.data.length; i += 4) {
+      const val = Math.floor(Math.random() * 255);
+      nImg.data[i] = val; nImg.data[i+1] = val; nImg.data[i+2] = val; nImg.data[i+3] = 22; // 미세 투명 노이즈
+    }
+    nCtx.putImageData(nImg, 0, 0);
   }
 
   init() {
@@ -25,15 +38,13 @@ export default class MatrixPressSketch {
   }
 
   resize(w, h) {
+    // 💡 [화면비 무결 수리]: 전달받은 마스터 캔버스 창의 물리적 스케일을 유실 없이 직결 동화
     this.width = w || this.container.clientWidth;
     this.height = h || this.container.clientHeight;
     this.canvas.width = this.width;
     this.canvas.height = this.height;
   }
 
-  /**
-   * 캔버스 내부에 라운드 사각형(버튼) 경로를 그리는 2D 팩토리 유틸리티
-   */
   drawRoundedRect(ctx, x, y, width, height, radius) {
     ctx.beginPath();
     ctx.moveTo(x + radius, y);
@@ -48,102 +59,207 @@ export default class MatrixPressSketch {
     ctx.closePath();
   }
 
+  /**
+   * 💡 32단 채널별 고유 악기 추상 픽토그램 그래픽 드로우 유틸리티
+   */
+  drawInstrumentGlyph(ctx, cx, cy, size, type, intensity) {
+    ctx.save();
+    ctx.lineWidth = 1.5 + intensity * 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    const r = size * 0.4;
+    switch(type % 4) {
+      case 0: // 🥁 저음/킥 드럼 팩터 형상
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.moveTo(cx - r, cy - r * 0.3); ctx.lineTo(cx + r, cy - r * 0.3);
+        ctx.moveTo(cx - r * 0.7, cy + r * 0.4); ctx.lineTo(cx - r * 0.2, cy - r * 0.3);
+        ctx.moveTo(cx + r * 0.7, cy + r * 0.4); ctx.lineTo(cx + r * 0.2, cy - r * 0.3);
+        ctx.stroke();
+        break;
+      case 1: // 〰️ 중음/보컬 주파수 사인 웨이브 형상
+        ctx.beginPath();
+        for (let x = -r; x <= r; x += 2) {
+          let y = Math.sin(x * 0.2 + Date.now() * 0.01) * r * 0.5;
+          if (x === -r) ctx.moveTo(cx + x, cy + y);
+          else ctx.lineTo(cx + x, cy + y);
+        }
+        ctx.stroke();
+        break;
+      case 2: // 🎹 건반/멜로디 기하학 매트릭스 형상
+        ctx.strokeRect(cx - r, cy - r * 0.5, r * 2, r);
+        ctx.beginPath();
+        ctx.moveTo(cx - r * 0.3, cy - r * 0.5); ctx.lineTo(cx - r * 0.3, cy + r * 0.1);
+        ctx.moveTo(cx, cy - r * 0.5); ctx.lineTo(cx, cy + r * 0.1);
+        ctx.moveTo(cx + r * 0.3, cy - r * 0.5); ctx.lineTo(cx + r * 0.3, cy + r * 0.1);
+        ctx.stroke();
+        break;
+      case 3: // 🔔 고음/하이햇 심벌즈 트라이앵글 형상
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - r);
+        ctx.lineTo(cx + r, cy + r * 0.8);
+        ctx.lineTo(cx - r, cy + r * 0.8);
+        ctx.closePath();
+        ctx.stroke();
+        break;
+    }
+    ctx.restore();
+  }
+
   update(audioData) {
     if (!this.ctx) return;
 
-    // 1. 화면 픽셀 클리어 및 기본 배경색 지정
-    this.ctx.fillStyle = '#04060b';
-    this.ctx.fillRect(0, 0, this.width, this.height);
+    // 1. 관제탑 전역 설정 상태소 필터 인터셉트
+    const globalSettings = window.cosmicEngineSettings || {};
+    const gainScale = globalSettings.audioGain ?? 1.0;
+    const seed = globalSettings.seed ?? 42; 
+    const colorStyle = globalSettings.colorStyle || 'neon'; // bw, neon, custom 등
 
-    // 2. 16:9 가로형 vs 9:16 세로형 레이아웃 동적 락인 분기 공식
+    // 2. 화면 종횡비 자동 검출에 따른 가로/세로 매트릭스 격자 스위칭 (공백 차단 보정축)
     const isWide = this.width > this.height;
     const cols = isWide ? 8 : 4;
     const rows = isWide ? 4 : 8;
 
-    // 빈 공간 없이 화면을 가득 채우기 위한 셀 단위 치수 연산
     const cellW = this.width / cols;
     const cellH = this.height / rows;
 
-    // 시스템 전역 설정 컬러 무드 로드 가드라인
-    const globalSettings = window.cosmicEngineSettings || {};
-    const gainScale = globalSettings.audioGain ?? 1.0;
+    this.ctx.fillStyle = '#05070e';
+    this.ctx.fillRect(0, 0, this.width, this.height);
 
-    // 3. 32단 격자 매트릭스 전사 드로우 루프 기동
+    // 💡 [SHUFFLE 인터커넥트 해독기]: 관제탑 씨드 수치를 연산하여 4개 물리 프레스 모드를 랜덤 조합 분배
+    // 씨드 값의 수학적 나머지에 따라 메인 효과 가중치 전환
+    const pressModeType = seed % 4; 
+
+    // 3. 32채널 정방향 전사 렌더링 벨트 기동
     for (let i = 0; i < 32; i++) {
       const colIdx = i % cols;
       const rowIdx = Math.floor(i / cols);
 
-      // 격자 중심 좌표 산출
       const startX = colIdx * cellW;
       const startY = rowIdx * cellH;
 
-      // 4. 오디오 워크스테이션에서 넘어오는 32채널 커스텀 가공 주파수 수혈
+      // 32채널 데이터 정밀 파싱
       let rawFreq = 0;
       if (audioData && audioData.customBands && audioData.customBands[i] !== undefined) {
         rawFreq = audioData.customBands[i];
       } else if (audioData && audioData.raw && audioData.raw.length > 0) {
-        // 만약 캘리브레이터 채널이 동기화되지 않았을 경우 원본 배열 분배 우회로 가동
         const sampleIdx = Math.floor((i / 32) * audioData.raw.length);
         rawFreq = (audioData.raw[sampleIdx] || 0) / 255.0;
       }
 
-      // 볼륨 게인 배율 주입 및 모션 스무딩 필터 가동
+      // 평활 모션 댐핑 가동
       const targetValue = rawFreq * gainScale;
-      this.smoothedValues[i] += (targetValue - this.smoothedValues[i]) * 0.25;
+      this.smoothedValues[i] += (targetValue - this.smoothedValues[i]) * 0.28;
       const intensity = this.smoothedValues[i];
 
-      // 5. 🛠️ [눌림 효과 핵심]: 진폭 강도에 따른 공간 압착 변환 연산
-      // 주파수가 강할수록 버튼 크기가 중심 방향으로 축소(Scale down)되어 아래로 들어간 입체감을 구현합니다.
-      const margin = 3; // 기본 버튼 간격 테두리
-      const baseW = cellW - margin * 2;
-      const baseH = cellH - margin * 2;
+      // 💡 [외곽선 고정 설계]: 바깥 테두리 영역은 무조건 고정
+      const margin = 4;
+      const btnX = startX + margin;
+      const btnY = startY + margin;
+      const btnW = cellW - margin * 2;
+      const btnH = cellH - margin * 2;
+      const centerX = btnX + btnW / 2;
+      const centerY = btnY + btnH / 2;
+      const cornerRadius = Math.min(btnW, btnH) * 0.12;
 
-      const pressScale = 1.0 - intensity * 0.22; // 최대 22% 압착 심도
-      const btnW = baseW * pressScale;
-      const btnH = baseH * pressScale;
+      // 4. 테마 컬러 스타일 수식 분기 라인
+      let baseStrokeStyle = '#1e293b';
+      let activeColor = '#00ffcc';
+      let fillBaseColor = 'rgba(12, 18, 36, 0.86)';
 
-      // 압착 축소 시 중심점이 어긋나지 않도록 보정 오프셋 계산
-      const centerX = startX + cellW / 2;
-      const centerY = startY + cellH / 2;
-      const btnX = centerX - btnW / 2;
-      const btnY = centerY - btnH / 2;
+      switch(colorStyle) {
+        case 'bw': // 🖤 흑백 스타일 라인
+          baseStrokeStyle = '#334155';
+          activeColor = `rgb(${200 + intensity * 55}, ${200 + intensity * 55}, ${200 + intensity * 55})`;
+          fillBaseColor = `rgba(${15 + intensity * 40}, ${15 + intensity * 40}, ${15 + intensity * 40}, 0.95)`;
+          break;
+        case 'neon': // 💎 정규 사이안 네온 라인
+          baseStrokeStyle = '#16223f';
+          activeColor = '#00f0ff';
+          break;
+        case 'neon_random': // 🌈 올랜덤 개별 고유 네온 무드 라인
+          baseStrokeStyle = '#1f1635';
+          activeColor = `hsla(${(this.randomHues[i] + seed) % 360}, 100%, 60%, 1)`;
+          break;
+        case 'custom': // 🎨 사용자 커스텀 컬러 노브 매핑 연동
+          baseStrokeStyle = '#231c18';
+          activeColor = globalSettings.customColors?.star || '#ffff00';
+          break;
+        case 'vintage_noise': // 🎚️ 아날로그 텍스처 노이즈 라인
+          baseStrokeStyle = '#475569';
+          activeColor = '#fbbf24';
+          fillBaseColor = 'rgba(28, 33, 46, 0.9)';
+          break;
+      }
 
-      // 라운드 값 산출 (셀 크기에 비례)
-      const cornerRadius = Math.min(btnW, btnH) * 0.18;
-
-      // 6. 콘솔 그래픽 렌더링 스타일링 디자인
       this.ctx.save();
 
-      // 버튼 본체 베이스 컬러 그라데이션 투사 (눌릴수록 내부 그림자 효과 처럼 어두워짐)
-      const bodyGrad = this.ctx.createLinearGradient(btnX, btnY, btnX, btnY + btnH);
-      const darkAlpha = 0.35 + intensity * 0.45; // 눌릴수록 어두운 베일 층 강화
-      bodyGrad.addColorStop(0, `rgba(16, 24, 48, 0.9)`);
-      bodyGrad.addColorStop(1, `rgba(8, 12, 24, 0.95)`);
-      
-      this.ctx.fillStyle = bodyGrad;
+      // 기본 베이스 버튼 바닥 도포
+      this.ctx.fillStyle = fillBaseColor;
       this.drawRoundedRect(this.ctx, btnX, btnY, btnW, btnH, cornerRadius);
       this.ctx.fill();
 
-      // 7. 네온 에너지 코어 센터 라이팅 (눌릴수록 중심에서 올라오는 코어 서지)
-      if (intensity > 0.02) {
-        const coreGrad = this.ctx.createRadialGradient(centerX, centerY, 2, centerX, centerY, Math.max(btnW, btnH) * 0.5);
-        coreGrad.addColorStop(0, `rgba(0, 255, 204, ${intensity * 0.75})`);
-        coreGrad.addColorStop(0.4, `rgba(0, 102, 255, ${intensity * 0.3})`);
-        coreGrad.addColorStop(1, 'rgba(0,0,0,0)');
-        
-        this.ctx.fillStyle = coreGrad;
-        this.drawRoundedRect(this.ctx, btnX, btnY, btnW, btnH, cornerRadius);
+      // 5. 💡 [요구사항 핵심]: 외곽선은 그대로 고정하고 안쪽 가변 프레스 효과 표현 분기
+      
+      // [옵션 A]: 안쪽으로 번지듯이 블러 형태로 라이팅이 수축/번지는 연출
+      if (pressModeType === 0) {
+        if (intensity > 0.01) {
+          const innerGlow = this.ctx.createRadialGradient(centerX, centerY, 2, centerX, centerY, Math.max(btnW, btnH) * 0.45 * intensity);
+          innerGlow.addColorStop(0, activeColor);
+          innerGlow.addColorStop(0.6, activeColor.replace('1)', '0.3)').replace(')', ', 0.3)'));
+          innerGlow.addColorStop(1, 'rgba(0,0,0,0)');
+          
+          this.ctx.fillStyle = innerGlow;
+          this.drawRoundedRect(this.ctx, btnX + 2, btnY + 2, btnW - 4, btnH - 4, cornerRadius);
+          this.ctx.fill();
+        }
+      } 
+      // [옵션 B]: 내부 전체를 외부 활성 컬러로 농밀하게 밀어 채우기
+      else if (pressModeType === 1) {
+        if (intensity > 0.01) {
+          this.ctx.save();
+          this.ctx.globalAlpha = intensity * 0.85;
+          this.ctx.fillStyle = activeColor;
+          this.drawRoundedRect(this.ctx, btnX + 2, btnY + 2, btnW - 4, btnH - 4, cornerRadius);
+          this.ctx.fill();
+          this.ctx.restore();
+        }
+      } 
+      // [옵션 C]: 볼륨의 연산 수치 대역폭에 따라 100% 명암 대비 콘트라스트 매핑
+      else if (pressModeType === 2) {
+        const shadeValue = Math.floor(intensity * 130);
+        this.ctx.fillStyle = `rgba(${ shadeValue }, ${ shadeValue + 20 }, ${ shadeValue + 40 }, 0.65)`;
+        this.drawRoundedRect(this.ctx, btnX + 1, btnY + 1, btnW - 2, btnH - 2, cornerRadius);
         this.ctx.fill();
+      } 
+      // [옵션 D]: 중앙에 세팅된 소리 채널별 악기 아이콘 글리프 활성화 광역 투사
+      else if (pressModeType === 3) {
+        this.ctx.strokeStyle = activeColor;
+        this.ctx.globalAlpha = 0.15 + intensity * 0.85;
+        this.drawInstrumentGlyph(this.ctx, centerX, centerY, Math.min(btnW, btnH), i, intensity);
       }
 
-      // 8. 테두리 외곽 네온 와이어프레임 튜닝 (주파수 강도에 따라 핑크에서 청록으로 색 변이)
-      const hue1 = 210 + intensity * 120; // 사이안 블루에서 마젠타 핑크 영역 순환
-      this.ctx.strokeStyle = `hsla(${hue1}, 95%, 60%, ${0.25 + intensity * 0.75})`;
-      this.ctx.lineWidth = 1.5 + intensity * 2.5; // 강도에 따른 선 두께 확장
+      // 6. [오래된 오래된 아날로그 노이즈 질감 패치 옵션 결합]
+      if (colorStyle === 'vintage_noise') {
+        this.ctx.save();
+        this.ctx.globalCompositeOperation = 'source-over';
+        // 오프라인 노이즈 캔버스를 반복 패턴 형태로 표면에 전사 마운트
+        const noisePattern = this.ctx.createPattern(this.noiseCanvas, 'repeat');
+        this.ctx.fillStyle = noisePattern;
+        this.drawRoundedRect(this.ctx, btnX, btnY, btnW, btnH, cornerRadius);
+        this.ctx.fill();
+        this.ctx.restore();
+      }
+
+      // 7. 파이널 링 외곽선 처리 (고정 와이어프레임 타격)
+      this.ctx.strokeStyle = intensity > 0.1 ? activeColor : baseStrokeStyle;
+      this.ctx.lineWidth = intensity > 0.1 ? 1.5 + intensity * 2 : 1.0;
       
-      // 실시간 발광 글로우 광학 효과 인젝션
-      this.ctx.shadowBlur = intensity * 14;
-      this.ctx.shadowColor = `hsla(${hue1}, 95%, 60%, 0.8)`;
+      if (intensity > 0.1 && colorStyle !== 'bw') {
+        this.ctx.shadowBlur = intensity * 12;
+        this.ctx.shadowColor = activeColor;
+      }
 
       this.drawRoundedRect(this.ctx, btnX, btnY, btnW, btnH, cornerRadius);
       this.ctx.stroke();
@@ -151,12 +267,12 @@ export default class MatrixPressSketch {
       this.ctx.restore();
     }
 
-    // 엔진 진단 패널 데이터 송신선 체결
+    // 엔진 실시간 관제 연동 정보 적재
     window.sketchDiagnostics = {
-      fps: Math.round(1000 / 16), // 가상 타임 윈도우 기준 프레임
-      particleCount: "32 Responsive Buttons",
+      fps: 60,
+      particleCount: `Grid Matrix [Mode Seed: ${pressModeType}]`,
       isCovering: true,
-      activeFunction: "Matrix[3D_Press_Contiguous]"
+      activeFunction: `Matrix[FixedBounds_AutoAspect]`
     };
   }
 
