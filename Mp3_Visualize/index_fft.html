@@ -29,10 +29,12 @@
     }
     header {
       border-bottom: 1px solid rgba(0, 240, 255, 0.15);
-      padding-bottom: 10px;
+      padding-bottom: 12px;
       display: flex;
       justify-content: space-between;
       align-items: center;
+      flex-wrap: wrap;
+      gap: 15px;
     }
     h1 {
       font-size: 15px;
@@ -40,9 +42,21 @@
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
-    .preset-actions {
+    .toolbar-groups {
       display: flex;
-      gap: 8px;
+      align-items: center;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+    .control-unit {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .control-unit label {
+      font-size: 11px;
+      color: #94a3b8;
+      font-weight: bold;
     }
     .btn {
       background: #1e293b;
@@ -67,8 +81,17 @@
     .btn-export:hover {
       background: #0369a1;
     }
+    
+    /* 오디오 플레이어 커스텀 스타일 */
+    audio {
+      height: 28px;
+      background: #0f172a;
+      border-radius: 4px;
+      border: 1px solid #334155;
+      outline: none;
+    }
 
-    /* 💡 [중앙 배치]: 32채널 그래픽 레벨 미터 무대 */
+    /* 중앙 배치: 32채널 그래픽 레벨 미터 무대 */
     .center-visualizer-zone {
       flex: 2;
       background: #020408;
@@ -93,7 +116,7 @@
     }
     .meter-bar-fill {
       width: 100%;
-      height: 2%; /* 초기값 */
+      height: 2%; 
       background: linear-gradient(0deg, #0066ff 0%, #00ffcc 70%, #ff0055 100%);
       border-radius: 2px 2px 0 0;
       box-shadow: 0 0 10px rgba(0, 255, 204, 0.3);
@@ -108,7 +131,7 @@
       bottom: -18px;
     }
 
-    /* 💡 [하단 배치]: 31개 경계 제어 슬라이더 구역 */
+    /* 하단 배치: 31개 경계 제어 슬라이더 구역 */
     .bottom-controls-zone {
       flex: 3;
       background: rgba(15, 23, 42, 0.4);
@@ -194,18 +217,29 @@
 
   <div class="main-layout">
     <header>
-      <h1>🎛️ 32-Band Contiguous Frequency Workspace</h1>
-      <div class="preset-actions">
-        <button class="btn" id="btn-import-json">📂 프리셋 불러오기</button>
-        <button class="btn btn-export" id="btn-export-json">💾 프리셋 내보내기</button>
-        <input type="file" id="file-import-hidden" accept=".json" style="display:none;">
+      <h1>🎛️ Contiguous Frequency Workspace</h1>
+      
+      <div class="toolbar-groups">
+        <!-- 💡 [신설]: 내장 오디오 로딩 및 재생 컨트롤 유닛 -->
+        <div class="control-unit">
+          <label>🎵 MUSIC LOAD:</label>
+          <input type="file" id="file-audio-local" accept="audio/*" style="display:none;">
+          <button class="btn" onclick="document.getElementById('file-audio-local').click()">📂 음악 파일 선택</button>
+          <audio id="local-audio-player" controls></audio>
+        </div>
+
+        <div class="preset-actions">
+          <button class="btn" id="btn-import-json">📂 프리셋 파일 로드</button>
+          <button class="btn btn-export" id="btn-export-json">💾 프리셋 내보내기</button>
+          <input type="file" id="file-import-hidden" accept=".json" style="display:none;">
+        </div>
       </div>
     </header>
 
-    <!-- 💡 화면 정중앙 배치: 32개 이퀄라이저 기둥 무대 -->
+    <!-- 화면 정중앙 배치: 32개 이퀄라이저 기둥 무대 -->
     <main class="center-visualizer-zone" id="equalizer-stage"></main>
 
-    <!-- 💡 화면 하단 배치: 중복 유실 없는 31개 경계 컨트롤러 -->
+    <!-- 화면 하단 배치: 중복 유실 없는 31개 경계 컨트롤러 -->
     <section class="bottom-controls-zone">
       <div class="section-subtitle">✂️ 31 Boundary Split Points Calibration (FFT Index 0 ~ 255)</div>
       <div class="sliders-grid-container" id="sliders-grid"></div>
@@ -219,16 +253,23 @@
       const exportBtn = document.getElementById('btn-export-json');
       const importBtn = document.getElementById('btn-import-json');
       const fileInput = document.getElementById('file-import-hidden');
+      
+      // 내장 오디오 조작 노드 추출
+      const localAudioInput = document.getElementById('file-audio-local');
+      const localAudioPlayer = document.getElementById('local-audio-player');
 
       const broadcast = new BroadcastChannel('cosmic_fft_channel');
 
       const TOTAL_BANDS = 32;
       const TOTAL_SPLITS = 31;
 
-      // 💡 [수학적 정렬 설계]: 31개의 잘라낼 경계선 번호 배열 관리 체계 (초기값 균등 분배)
-      // P[0]=7 이면 CH01은 0~7, CH02는 8부터 시작
       let splitPoints = [];
       let currentBandsConfig = { totalBands: TOTAL_BANDS, ranges: [] };
+
+      // 💡 [신설]: 로컬 오디오 분석용 Web Audio API 인프라 변수
+      let audioCtx = null;
+      let analyser = null;
+      let sourceNode = null;
 
       // 32개 기둥 그래픽 엘리먼트 사전 구축
       for (let i = 0; i < TOTAL_BANDS; i++) {
@@ -241,9 +282,49 @@
         eqStage.appendChild(col);
       }
 
-      // 60FPS 유입 오디오 수신 파이프라인
+      // 💡 [신설]: 로컬 오디오 로딩 리스너 및 래퍼 체결
+      localAudioInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const url = URL.createObjectURL(file);
+        localAudioPlayer.src = url;
+
+        // 브라우저 오디오 보안 정책 해제를 동반한 분석 노드 인젝션
+        setupLocalAudioAnalysis();
+      });
+
+      function setupLocalAudioAnalysis() {
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          analyser = audioCtx.createAnalyser();
+          analyser.fftSize = 512; // 256개 주파수 빈 스펙트럼 획득 규격
+          
+          sourceNode = audioCtx.createMediaElementSource(localAudioPlayer);
+          sourceNode.connect(analyser);
+          analyser.connect(audioCtx.destination);
+        }
+      }
+
+      // 💡 [신설]: 로컬 재생 시 자체 60FPS 애니메이션 루프 구동으로 실시간 바 드로우
+      function localAnalysisLoop() {
+        requestAnimationFrame(localAnalysisLoop);
+        
+        if (analyser && !localAudioPlayer.paused) {
+          const bufferLength = analyser.frequencyBinCount;
+          const dataArray = new Uint8Array(bufferLength);
+          analyser.getByteFrequencyData(dataArray);
+          
+          // 추출된 실시간 주파수 팩을 미터 연산기로 투사
+          calculateLiveBands(dataArray);
+        }
+      }
+      localAnalysisLoop();
+
+      // 외부 수신 파이프라인 (메인 무대 창에서 오는 오디오 신호도 병행 처리 지원)
       broadcast.onmessage = (e) => {
-        if (e.data && e.data.type === 'AUDIO_STREAM' && e.data.raw) {
+        // 로컬 오디오가 멈춰있거나 로드되지 않았을 때만 외부 스트림을 수용하여 화면 간섭 방지
+        if (localAudioPlayer.paused && e.data && e.data.type === 'AUDIO_STREAM' && e.data.raw) {
           calculateLiveBands(e.data.raw);
         }
       };
@@ -261,7 +342,6 @@
           } catch(e) {}
         }
         
-        // 데이터가 없거나 꼬여있을 때 초기 8단위 등간격 강제 빌드 (7, 15, 23 ... 247)
         splitPoints = [];
         for (let i = 0; i < TOTAL_SPLITS; i++) {
           splitPoints.push((i + 1) * 8 - 1);
@@ -269,7 +349,6 @@
         rebuildRangesAndSync();
       }
 
-      // 💡 [중복/누수 원천 봉쇄 알고리즘]: 31개 절단선을 기준으로 32개 연쇄 구역 도출
       function rebuildRangesAndSync() {
         currentBandsConfig.ranges = [];
         
@@ -301,7 +380,6 @@
         broadcast.postMessage({ type: 'RANGE_UPDATE', config: currentBandsConfig });
       }
 
-      // 31개 경계 제어 컴포넌트 출력
       function renderGridSliders() {
         slidersGrid.innerHTML = '';
         
@@ -309,7 +387,6 @@
           const card = document.createElement('div');
           card.className = 'split-card';
           
-          // 💡 상하한선 안전 장치 조율: 이전 슬라이더 위치보다 무조건 +1 커야 하고 다음 슬라이더보다 -1 작아야 함
           const minAllowed = (i === 0) ? 0 : splitPoints[i - 1] + 1;
           const maxAllowed = (i === TOTAL_SPLITS - 1) ? 254 : splitPoints[i + 1] - 1;
           
@@ -328,8 +405,6 @@
             const val = parseInt(e.target.value);
             splitPoints[i] = val;
             badge.innerText = val;
-            
-            // 한 라인이 움직이면 즉시 전체 규칙 재연산 및 양옆 노브 한계치 실시간 연쇄 봉쇄
             rebuildRangesAndSync();
           });
 
@@ -337,7 +412,6 @@
         }
       }
 
-      // 실시간 중앙 32개 네온 바 출력 높이 연산 루프
       function calculateLiveBands(rawFFT) {
         currentBandsConfig.ranges.forEach((band, idx) => {
           const bar = document.getElementById(`eq-bar-${idx}`);
@@ -351,14 +425,12 @@
           }
 
           let average = count > 0 ? sum / count : 0;
-          // 높이 감도 정규화 가드 배율
           let heightPercent = Math.min(100, Math.max(2, Math.round((average / 255) * 100)));
           
           bar.style.height = `${heightPercent}%`;
         });
       }
 
-      // 프리셋 파일 저장 조작
       exportBtn.addEventListener('click', () => {
         const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(splitPoints, null, 2));
         const dlAnchor = document.createElement('a');
@@ -368,7 +440,6 @@
         dlAnchor.remove();
       });
 
-      // 프리셋 파일 적재 조작
       importBtn.addEventListener('click', () => fileInput.click());
       fileInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
@@ -388,6 +459,7 @@
         fileInput.value = '';
       });
 
+      // 최초 구동 격발
       initCalibrationSystem();
     });
   </script>
