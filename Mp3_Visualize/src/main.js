@@ -12,11 +12,14 @@ const stageWrapper = document.getElementById('stage-wrapper');
 const imageInput = document.getElementById('file-image');
 const deckPlayBtn = document.getElementById('btn-play-music');
 
+// 녹화 시작/중지 컨트롤 버튼 바인딩
+const recordBtn = document.getElementById('btn-record') || document.querySelector('.btn-record') || document.getElementById('btn-start-record');
+
 let isAudioAnalyzerConnected = false;
 
 const broadcast = new BroadcastChannel('cosmic_fft_channel');
 
-// 기동 초기 단계에서 브라우저 메모리에 복원된 최신 주파수 분할 테이블을 즉시 자동 마운트
+// 기동 초기 단계에서 브라우저 메모리에 복원된 최신 주파수 분할 테이블 마운트
 let initialRanges = { totalBands: 4, ranges: [] };
 const savedLatestConfig = localStorage.getItem('cosmic_fft_active_latest');
 if (savedLatestConfig) {
@@ -82,25 +85,23 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 // 배경 이미지 업로드 디코더
-imageInput.addEventListener('change', (e) => {
+imageInput?.addEventListener('change', (e) => {
     const file = e.target.files[0]; if (!file) return;
     const imgURL = URL.createObjectURL(file); const img = new Image(); img.src = imgURL;
     img.onload = () => { window.currentUploadedImageElement = img; };
 });
 
-// 💡 [수리 완료]: 외부 오디오 파일 업로드 시 재생 브라우저 돔 객체에 데이터를 직결 인젝션하는 제어선 구축
+// 외부 MP3 오디오 스트림 인젝터
 const audioInput = document.getElementById('file-audio') || document.getElementById('file-mp3') || document.querySelector('input[type="file"][accept*="audio"]');
 if (audioInput) {
     audioInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (!file) return;
         
-        // 가상 오브젝트 주소를 추출하여 플레이어 소스에 수혈
         const audioURL = URL.createObjectURL(file);
         audioPlayer.src = audioURL;
-        audioPlayer.load(); // 오디오 스트림 데이터 새로고침 강제 집행
+        audioPlayer.load();
         
-        // 새 음악이 장전되었으므로 애널라이저 플래그 세팅 해제 및 재생 버튼 텍스트 초기화
         isAudioAnalyzerConnected = false;
         if (deckPlayBtn) {
             deckPlayBtn.innerText = "▶️ 음악 재생 (Play)";
@@ -166,6 +167,51 @@ if (deckPlayBtn && audioPlayer) {
             });
         } else {
             audioPlayer.pause(); deckPlayBtn.innerText = "▶️ 음악 재생 (Play)";
+        }
+    });
+}
+
+// 💡 [핵심 보완]: 녹화 시작 클릭 시 0초 리셋 후 음악과 녹화를 동시 집행하는 이벤트 트리거
+if (recordBtn) {
+    recordBtn.addEventListener('click', () => {
+        // 1. 녹화 중이 아닐 때 (녹화 시작 동작)
+        if (!recorder || !recorder.isRecording) {
+            if (audioPlayer && audioPlayer.src) {
+                // 💡 [0초 처음으로 위치 강제 이동]
+                audioPlayer.currentTime = 0;
+                
+                // 음악 재생 및 분석기 체결
+                audioPlayer.play().then(() => {
+                    if (deckPlayBtn) {
+                        deckPlayBtn.innerText = "⏸️ 일시정지 (Pause)";
+                    }
+                    if (!isAudioAnalyzerConnected) {
+                        try { analyzer.connectAudioElement(audioPlayer); } catch (err) {}
+                        isAudioAnalyzerConnected = true;
+                    }
+                }).catch(err => console.warn("오디오 재생 트리거 차단:", err));
+            }
+
+            // 💡 [비주얼 녹화 엔진 기동]
+            if (recorder && typeof recorder.start === 'function') {
+                recorder.start();
+            }
+            
+            recordBtn.innerText = "⏹️ 녹화 중지 (Stop)";
+            recordBtn.style.backgroundColor = "#e11d48"; // 녹화 중 붉은색 활성
+        } 
+        // 2. 이미 녹화 중일 때 (녹화 완료 및 저장 동작)
+        else {
+            if (recorder && typeof recorder.stop === 'function') {
+                recorder.stop();
+            }
+            if (audioPlayer) {
+                audioPlayer.pause();
+                if (deckPlayBtn) deckPlayBtn.innerText = "▶️ 음악 재생 (Play)";
+            }
+            
+            recordBtn.innerText = "🔴 녹화 시작 (Record)";
+            recordBtn.style.backgroundColor = ""; // 원래 버튼 색상 복원
         }
     });
 }
