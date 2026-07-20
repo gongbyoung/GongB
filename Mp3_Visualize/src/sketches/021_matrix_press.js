@@ -1,8 +1,8 @@
 /**
  * src/sketches/021_matrix_press.js
- * - [버전] Ver 2.9 철벽 방어형 매트릭스 콘솔 (스레드 다운 예외 차단 패치)
- * - 버그 수리: 부동소수점 언더플로우에 의한 음수 반지름 생성 차단 및 그라데이션 컬러 스트링 가드 장착
- * - 레이아웃: 캔버스 실제 종횡비 실시간 추적 격자 정렬 (16:9 <-> 9:16 완전 대응)
+ * - [버전] Ver 3.0 주파수 스크램블러 및 예외 차단 완결판 콘솔
+ * - 기능 혁신: 관제탑 Range (Scatter) 슬라이더의 위치 값을 시드로 차용하여 32채널 주파수 배선을 정밀하게 뒤섞음
+ * - 컬러 진화: 주파수가 스크램블될 때, 해당 채널 고유의 네온 컬러 파장도 주파수 경로를 따라 함께 이동하여 시각적 인지성 보장
  */
 
 export default class MatrixPressSketch {
@@ -15,12 +15,12 @@ export default class MatrixPressSketch {
     this.width = 0;
     this.height = 0;
     this.smoothedValues = new Array(32).fill(0);
-    this.version = "021호 Matrix Press Ver 2.9";
+    this.version = "021호 Matrix Press Ver 3.0";
 
-    // 32채널 무작위 고유 색상 파장 배열
+    // 32채널 고유 무작위 테두리 색상 파장 배열
     this.randomStrokeHues = Array.from({ length: 32 }, () => Math.floor(Math.random() * 360));
     
-    // 아날로그 빈티지 노이즈 캐시 레이어
+    // 아날로그 빈티지 노이즈 캐시 맵
     this.noiseCanvas = document.createElement('canvas');
     this.noiseCanvas.width = 128;
     this.noiseCanvas.height = 128;
@@ -112,15 +112,33 @@ export default class MatrixPressSketch {
     const gainScale = globalSettings.audioGain ?? 1.0;
     const seed = globalSettings.seed ?? 42;
     
+    // 💡 [DOM 연동]: 드롭다운 컬러 및 스캐터 슬라이더 노브 값 실시간 판독 수리
     const colorSelectDOM = document.getElementById('select-cosmic-color');
+    const scatterDOM = document.getElementById('num-cosmic-scatter');
+    
     let colorStyle = 'neon';
-    if (colorSelectDOM) {
-      colorStyle = colorSelectDOM.value.toLowerCase();
-    } else {
-      colorStyle = (globalSettings.colorStyle || 'neon').toLowerCase();
-    }
+    if (colorSelectDOM) colorStyle = colorSelectDOM.value.toLowerCase();
+    else colorStyle = (globalSettings.colorStyle || 'neon').toLowerCase();
+
+    let scatterVal = 0;
+    if (scatterDOM) scatterVal = parseInt(scatterDOM.value) || 0;
+    else if (globalSettings.scatterExponent !== undefined) scatterVal = Math.round(globalSettings.scatterExponent * 10);
 
     const pressModeType = seed % 4;
+
+    // 💡 [지능형 스크램블러 코어]: 스캐터 값이 0보다 클 때, 32채널 배열 주파수 통로를 난수 매핑화
+    let bandIndices = Array.from({ length: 32 }, (_, idx) => idx);
+    if (scatterVal > 0) {
+      // 슬라이더 위치 번호와 시드를 연산하여 고정 난수 제너레이터(LCG) 기동
+      let currentSeed = scatterVal * 87654 + (seed * 321);
+      for (let m = bandIndices.length - 1; m > 0; m--) {
+        currentSeed = (currentSeed * 1103515245 + 12345) % 2147483648;
+        let j = Math.floor((currentSeed / 2147483648) * (m + 1));
+        let temp = bandIndices[m];
+        bandIndices[m] = bandIndices[j];
+        bandIndices[j] = temp;
+      }
+    }
 
     for (let i = 0; i < 32; i++) {
       const colIdx = i % cols;
@@ -129,18 +147,19 @@ export default class MatrixPressSketch {
       const startX = colIdx * cellW;
       const startY = rowIdx * cellH;
 
+      // 💡 현재 격자 칸(i)이 락온할 분산 주파수 채널 인덱스(dataIdx) 추출
+      const dataIdx = bandIndices[i];
+
       let rawFreq = 0;
-      if (audioData && audioData.customBands && audioData.customBands[i] !== undefined) {
-        rawFreq = audioData.customBands[i];
+      if (audioData && audioData.customBands && audioData.customBands[dataIdx] !== undefined) {
+        rawFreq = audioData.customBands[dataIdx];
       } else if (audioData && audioData.raw && audioData.raw.length > 0) {
-        const sampleIdx = Math.floor((i / 32) * audioData.raw.length);
+        const sampleIdx = Math.floor((dataIdx / 32) * audioData.raw.length);
         rawFreq = (audioData.raw[sampleIdx] || 0) / 255.0;
       }
 
       const targetValue = rawFreq * gainScale;
       this.smoothedValues[i] += (targetValue - this.smoothedValues[i]) * 0.28;
-      
-      // 💡 [방어 가드 레일 1]: 오디오 진폭 감쇠 시 음수 픽셀 버그가 안 생기도록 하한선을 0으로 완벽히 락인
       const intensity = Math.max(0, this.smoothedValues[i]);
 
       const margin = 4;
@@ -156,7 +175,8 @@ export default class MatrixPressSketch {
       let activeColor = '#00f0ff';
       let fillBaseColor = 'rgba(10, 16, 32, 0.9)';
 
-      const strokeHue = (this.randomStrokeHues[i] + seed) % 360;
+      // 💡 색상 파장을 dataIdx 기준으로 연동하여, 주파수가 섞이더라도 악기 고유 컬러가 버튼을 따라다니도록 바인딩
+      const strokeHue = (this.randomStrokeHues[dataIdx] + seed) % 360;
 
       switch(colorStyle) {
         case 'monochrome':
@@ -195,20 +215,17 @@ export default class MatrixPressSketch {
       this.drawRoundedRect(this.ctx, btnX, btnY, btnW, btnH, cornerRadius);
       this.ctx.fill();
 
-      // 내부 확산 연출 유닛
+      // 내부 모션 팩토리
       if (pressModeType === 0) {
         if (intensity > 0.01) {
-          // 💡 [방어 가드 레일 2]: 외곽 반지름이 시작 반지름(1)보다 무조건 커지도록 보장하여 Canvas 컴파일 에러 원천 봉쇄
           const outerRadius = Math.max(1.1, Math.max(btnW, btnH) * 0.45 * intensity);
-          
           const innerBlurGlow = this.ctx.createRadialGradient(centerX, centerY, 1, centerX, centerY, outerRadius);
           
-          // 💡 [방어 가드 레일 3]: Hex 색상 코드가 들어와도 깨진 문자열 예외가 터지지 않도록 포맷 검증 처리
           let midGlowColor = activeColor;
           if (midGlowColor.includes('hsla')) {
             midGlowColor = midGlowColor.replace('1)', '0.35)').replace(')', ', 0.35)');
           } else {
-            midGlowColor = 'rgba(0, 240, 255, 0.35)'; // Hex일 때 안전한 디폴트 투명색 수혈
+            midGlowColor = 'rgba(0, 240, 255, 0.35)';
           }
 
           innerBlurGlow.addColorStop(0, activeColor);
@@ -243,7 +260,8 @@ export default class MatrixPressSketch {
       else if (pressModeType === 3) {
         this.ctx.strokeStyle = activeColor;
         this.ctx.globalAlpha = 0.2 + intensity * 0.8;
-        this.drawInstrumentGlyph(this.ctx, centerX, centerY, Math.min(btnW, btnH), i, intensity);
+        // 악기 모양도 섞인 매핑 구조(dataIdx)를 추적하도록 파라미터 매칭
+        this.drawInstrumentGlyph(this.ctx, centerX, centerY, Math.min(btnW, btnH), dataIdx, intensity);
       }
 
       if (colorStyle === 'pastel') {
@@ -272,9 +290,9 @@ export default class MatrixPressSketch {
 
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: `32 Matrix Console [Anti-Crash Locked]`,
+      particleCount: `32 Matrix [Scrambler Node: ${scatterVal}]`,
       isCovering: true,
-      activeFunction: `Matrix[Exception_Defended_v2.9]`
+      activeFunction: `Matrix[Freq_Scrambled_v3.0]`
     };
   }
 
