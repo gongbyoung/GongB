@@ -1,11 +1,13 @@
 /**
  * src/sketches/018_cloud.js
- * - [버전] Ver 1.0 원거리 포토리얼리스틱 구름 & 대기 스카이 셰이더
- * - 비주얼 메커니즘:
- * 1) 원근 투영(Perspective Horizon Projection): 지평선 쪽으로 갈수록 구름이 작아지고 촘촘해지는 원거리 하늘 구현
- * 2) fBm (Fractional Brownian Motion) 6중 노이즈: 실제 구름처럼 부드럽고 정밀한 입자 표현
- * 3) 태양광 산란 & 그림자(Sun Rayleigh Scattering): 구름 상단의 밝은 하이라이트와 하단의 입체적 그림자 층
- * 4) 오디오 유기적 연동: 음악의 베이스와 게인에 따라 구름의 밀도와 햇살 라이팅이 입체적으로 반응
+ * - [버전] Ver 2.0 관제탑 슬라이더 완전 연동 포토리얼 구름 스케치
+ * - 연동 매핑 사양:
+ * 1) Shuffle (Seed): 구름 시드 노이즈 오프셋 ➔ 구름 모양 및 배치 무작위 변형
+ * 2) Range (Scatter): 구름 입자 디테일 & 바람 유동 속도 제어
+ * 3) Scale (Glow): 구름 줌 스케일 & 구름 덩어리 크기 조절
+ * 4) Volume (Gain): 오디오 음악 비트에 반응하는 구름 부피 팽창 감도
+ * 5) Gauge: 구름 커버리지 밀도 (맑은 하늘 ~ 빽빽한 구름)
+ * 6) Color Style Palette & Custom: Neon, Monochrome, Pastel, Earth, Custom(가스1, 가스2, 스타 색상) 하늘/구름 컬러 매핑
  */
 
 export default class CloudSketch {
@@ -18,7 +20,7 @@ export default class CloudSketch {
     this.width = 0;
     this.height = 0;
     this.time = 0;
-    this.version = "018호 포토리얼 구름 Ver 1.0";
+    this.version = "018호 포토리얼 구름 Ver 2.0";
 
     this.program = null;
     this.uniforms = {};
@@ -34,7 +36,6 @@ export default class CloudSketch {
   initWebGL() {
     const gl = this.gl;
 
-    // 정점 셰이더 (전체 화면 2D 사각형)
     const vsSource = `
       attribute vec2 a_position;
       varying vec2 v_uv;
@@ -44,7 +45,6 @@ export default class CloudSketch {
       }
     `;
 
-    // 프래그먼트 셰이더 (fBm 노이즈 + 원근 시점 매핑 + 대기 산란 라이팅)
     const fsSource = `
       precision highp float;
       varying vec2 v_uv;
@@ -54,14 +54,23 @@ export default class CloudSketch {
       uniform float u_bass;
       uniform float u_gain;
 
-      // 2D 난수 생성 함수
+      // 관제탑 슬라이더 유니폼 파라미터
+      uniform float u_seed;
+      uniform float u_scatter;
+      uniform float u_glowScale;
+      uniform float u_gaugeDensity;
+
+      // 컬러 세트 유니폼
+      uniform vec3 u_skyColor;
+      uniform vec3 u_cloudLight;
+      uniform vec3 u_cloudShadow;
+
       float hash(vec2 p) {
         p = fract(p * vec2(123.34, 456.21));
         p += dot(p, p + 45.32);
         return fract(p.x * p.y);
       }
 
-      // 부드러운 Value Noise
       float noise(vec2 p) {
         vec2 i = floor(p);
         vec2 f = fract(p);
@@ -75,7 +84,6 @@ export default class CloudSketch {
         return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
       }
 
-      // fBm (Fractional Brownian Motion) - 6단계 다중 노이즈 합성
       float fbm(vec2 p) {
         float v = 0.0;
         float a = 0.5;
@@ -92,54 +100,51 @@ export default class CloudSketch {
       void main() {
         vec2 st = (gl_FragCoord.xy - 0.5 * u_resolution) / u_resolution.y;
 
-        // 1. 원거리 원근 투영 (지평선 구름 축소 왜곡)
-        // 화면 아래쪽(st.y)으로 갈수록 원근감이 소멸하며 멀리 있는 구름 시점 생성
+        // 원근 지평선 매핑
         float horizonOffset = st.y + 0.38;
-        if (horizonOffset <= 0.001) {
-          horizonOffset = 0.001; // 음수 연산 차단 방어
-        }
+        if (horizonOffset <= 0.001) horizonOffset = 0.001;
 
-        // 지평선 기하학적 맵핑 (멀리 있는 구름일수록 촘촘하게 축소)
         vec2 skyCoord = vec2(st.x / horizonOffset, 1.0 / horizonOffset);
 
-        // 구름 흐름 타임라인 (바람에 천천히 밀려가는 자연스러운 이동)
-        float speed = u_time * 0.035;
-        vec2 cloudUV = skyCoord * 0.35 + vec2(speed, speed * 0.12);
+        // 1. Range (Scatter) - 바람 속도 및 복잡도 제어
+        float windSpeed = u_time * (0.015 + u_scatter * 0.02);
+        
+        // 2. Scale (Glow) - 구름 크기 줌 스케일링
+        float zoomScale = mix(0.6, 0.15, clamp(u_glowScale, 0.0, 2.0));
+        
+        // 3. Shuffle (Seed) - 무작위 구름 위치 및 노이즈 형태 변경 오프셋
+        vec2 seedOffset = vec2(u_seed * 1.731, u_seed * 3.141);
+        vec2 cloudUV = skyCoord * zoomScale + vec2(windSpeed, windSpeed * 0.12) + seedOffset;
 
-        // 2. fBm 노이즈로 밀도 및 형태 산출
+        // fBm 다중 노이즈 합성
         float q = fbm(cloudUV);
-        float r = fbm(cloudUV + q + vec2(1.7, 9.2) + u_time * 0.008);
+        float r = fbm(cloudUV + q + vec2(1.7, 9.2) + u_time * 0.005 * (1.0 + u_scatter));
         float cloudDensity = fbm(cloudUV + r);
 
-        // 음악 베이스 반응형 부피 팽창
-        cloudDensity = smoothstep(0.36 - u_bass * 0.06, 0.76, cloudDensity);
+        // 4. Gauge & Volume(Gain) - 구름 양(밀도) 및 음악 베이스 반응 폭
+        float baseThreshold = mix(0.58, 0.15, clamp(u_gaugeDensity, 0.0, 1.0));
+        float bassExpand = u_bass * u_gain * 0.15;
+        
+        cloudDensity = smoothstep(baseThreshold - bassExpand, baseThreshold + 0.38, cloudDensity);
 
-        // 3. 사진 같은 대기 & 스카이 그라데이션
-        vec3 skyColorZenith = vec3(0.18, 0.44, 0.78);  // 머리 위 깊은 푸른 하늘
-        vec3 skyColorHorizon = vec3(0.65, 0.80, 0.95); // 지평선 밝은 하늘
+        // 5. 하늘 및 구름 컬러 합성
+        vec3 skyColorZenith = u_skyColor;
+        vec3 skyColorHorizon = mix(u_skyColor, vec3(1.0), 0.35);
 
         float skyGradFactor = clamp(st.y + 0.5, 0.0, 1.0);
-        vec3 skyColor = mix(skyColorHorizon, skyColorZenith, skyGradFactor);
+        vec3 currentSky = mix(skyColorHorizon, skyColorZenith, skyGradFactor);
 
-        // 4. 입체적 구름 태양광 산란 & 그림자 (Light & Shadow Shading)
-        vec3 cloudSunLight = vec3(1.0, 0.98, 0.94);   // 햇빛 받는 상단 (유백색)
-        vec3 cloudShadow   = vec3(0.42, 0.48, 0.58);   // 안쪽 음영 (차가운 그림자)
-
-        // 경사면에 따른 입체 음영 연산
+        // 입체 광원 산란 연산
         float lightSlope = fbm(cloudUV + vec2(0.03, 0.03)) - cloudDensity;
-        float shadowFactor = clamp(0.45 + lightSlope * 2.8, 0.0, 1.0);
+        float shadowFactor = clamp(0.42 + lightSlope * 2.8, 0.0, 1.0);
 
-        vec3 cloudColor = mix(cloudShadow, cloudSunLight, shadowFactor);
-        cloudColor += vec3(u_bass * 0.12); // 비트에 맞춘 미세한 광채 반사
+        vec3 cloudColor = mix(u_cloudShadow, u_cloudLight, shadowFactor);
+        cloudColor += vec3(u_bass * u_gain * 0.12); // 음악 비트 반사 광채
 
-        // 5. 지평선 안개(Haze) 스무딩 & 알파 블렌딩
         float horizonFade = smoothstep(0.0, 0.28, horizonOffset);
         float finalCloudAlpha = clamp(cloudDensity * horizonFade, 0.0, 1.0);
 
-        // 최종 컬러 합성
-        vec3 finalColor = mix(skyColor, cloudColor, finalCloudAlpha * 0.92);
-
-        // 지평선 가까이 자연스러운 대기 원근감 필터
+        vec3 finalColor = mix(currentSky, cloudColor, finalCloudAlpha * 0.94);
         finalColor = mix(skyColorHorizon, finalColor, horizonFade);
 
         gl_FragColor = vec4(finalColor, 1.0);
@@ -166,6 +171,13 @@ export default class CloudSketch {
       u_time: gl.getUniformLocation(this.program, "u_time"),
       u_bass: gl.getUniformLocation(this.program, "u_bass"),
       u_gain: gl.getUniformLocation(this.program, "u_gain"),
+      u_seed: gl.getUniformLocation(this.program, "u_seed"),
+      u_scatter: gl.getUniformLocation(this.program, "u_scatter"),
+      u_glowScale: gl.getUniformLocation(this.program, "u_glowScale"),
+      u_gaugeDensity: gl.getUniformLocation(this.program, "u_gaugeDensity"),
+      u_skyColor: gl.getUniformLocation(this.program, "u_skyColor"),
+      u_cloudLight: gl.getUniformLocation(this.program, "u_cloudLight"),
+      u_cloudShadow: gl.getUniformLocation(this.program, "u_cloudShadow"),
     };
   }
 
@@ -193,6 +205,14 @@ export default class CloudSketch {
     return program;
   }
 
+  hexToVec3(hex) {
+    if (!hex) return [1, 1, 1];
+    hex = hex.replace('#', '');
+    if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+    const num = parseInt(hex, 16);
+    return [(num >> 16 & 255) / 255, (num >> 8 & 255) / 255, (num & 255) / 255];
+  }
+
   init() {
     this.resize();
   }
@@ -212,12 +232,57 @@ export default class CloudSketch {
 
     this.time += 0.016;
 
+    // 관제탑 슬라이더 파라미터 로드
     const globalSettings = window.cosmicEngineSettings || {};
-    const gainScale = globalSettings.audioGain ?? 1.0;
+    const seed = globalSettings.seed ?? 42;
+    const scatterVal = globalSettings.scatterExponent ?? 1.8;
+    const glowVal = globalSettings.glowIntensity ?? 0.85;
+    const gainVal = globalSettings.audioGain ?? 1.0;
+    const gaugeVal = globalSettings.gaugeValue ?? 0.5;
+
+    const colorSelectDOM = document.getElementById('select-cosmic-color');
+    let colorStyle = 'neon';
+    if (colorSelectDOM) colorStyle = colorSelectDOM.value.toLowerCase();
+    else colorStyle = (globalSettings.colorStyle || 'neon').toLowerCase();
+
+    // 컬러 세트 매핑
+    let skyCol = [0.15, 0.45, 0.78];
+    let lightCol = [0.98, 0.95, 0.92];
+    let shadowCol = [0.42, 0.48, 0.58];
+
+    switch(colorStyle) {
+      case 'neon':
+        skyCol = [0.03, 0.08, 0.22];
+        lightCol = [0.0, 0.95, 1.0];
+        shadowCol = [0.08, 0.15, 0.35];
+        break;
+      case 'monochrome':
+        skyCol = [0.08, 0.08, 0.10];
+        lightCol = [0.90, 0.90, 0.92];
+        shadowCol = [0.22, 0.22, 0.25];
+        break;
+      case 'pastel':
+        skyCol = [0.75, 0.62, 0.72];
+        lightCol = [1.0, 0.94, 0.82];
+        shadowCol = [0.42, 0.32, 0.48];
+        break;
+      case 'earth':
+        skyCol = [0.18, 0.48, 0.82];
+        lightCol = [0.98, 0.96, 0.92];
+        shadowCol = [0.38, 0.45, 0.55];
+        break;
+      case 'custom':
+        if (globalSettings.customColors) {
+          skyCol = this.hexToVec3(globalSettings.customColors.gas1);
+          shadowCol = this.hexToVec3(globalSettings.customColors.gas2);
+          lightCol = this.hexToVec3(globalSettings.customColors.star);
+        }
+        break;
+    }
 
     let bassVal = 0.0;
     if (audioData && typeof audioData.bass === 'number') {
-      bassVal = audioData.bass * gainScale;
+      bassVal = audioData.bass * gainVal;
     }
 
     const gl = this.gl;
@@ -226,15 +291,26 @@ export default class CloudSketch {
     gl.uniform2f(this.uniforms.u_resolution, this.width, this.height);
     gl.uniform1f(this.uniforms.u_time, this.time);
     gl.uniform1f(this.uniforms.u_bass, bassVal);
-    gl.uniform1f(this.uniforms.u_gain, gainScale);
+    gl.uniform1f(this.uniforms.u_gain, gainVal);
+
+    // 슬라이더 유니폼 송신
+    gl.uniform1f(this.uniforms.u_seed, seed);
+    gl.uniform1f(this.uniforms.u_scatter, scatterVal);
+    gl.uniform1f(this.uniforms.u_glowScale, glowVal);
+    gl.uniform1f(this.uniforms.u_gaugeDensity, gaugeVal);
+
+    // 컬러 유니폼 송신
+    gl.uniform3fv(this.uniforms.u_skyColor, skyCol);
+    gl.uniform3fv(this.uniforms.u_cloudLight, lightCol);
+    gl.uniform3fv(this.uniforms.u_cloudShadow, shadowCol);
 
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: "fBm Procedural Sky & Clouds",
+      particleCount: `fBm Sky [Seed:${seed} / Density:${Math.round(gaugeVal*100)}%]`,
       isCovering: true,
-      activeFunction: "Cloud[Photoreal_fBm_Perspective]"
+      activeFunction: "Cloud[Fully_Interactive_v2.0]"
     };
   }
 
