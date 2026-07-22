@@ -1,13 +1,10 @@
 /**
  * src/sketches/018_cloud.js
- * - [버전] Ver 2.0 관제탑 슬라이더 완전 연동 포토리얼 구름 스케치
- * - 연동 매핑 사양:
- * 1) Shuffle (Seed): 구름 시드 노이즈 오프셋 ➔ 구름 모양 및 배치 무작위 변형
- * 2) Range (Scatter): 구름 입자 디테일 & 바람 유동 속도 제어
- * 3) Scale (Glow): 구름 줌 스케일 & 구름 덩어리 크기 조절
- * 4) Volume (Gain): 오디오 음악 비트에 반응하는 구름 부피 팽창 감도
- * 5) Gauge: 구름 커버리지 밀도 (맑은 하늘 ~ 빽빽한 구름)
- * 6) Color Style Palette & Custom: Neon, Monochrome, Pastel, Earth, Custom(가스1, 가스2, 스타 색상) 하늘/구름 컬러 매핑
+ * - [버전] Ver 2.5 관제탑 슬라이더 + BG 배경 이미지 합성 셰이더
+ * - 신규 기능:
+ * 1) 좌측 패널(BG: 파일 선택)에서 업로드된 이미지 자산을 WebGL 2D 텍스처로 자동 바인딩
+ * 2) 화면 종횡비(16:9, 9:16 등) 전환 시 배경 이미지 비율이 왜곡되지 않는 Cover 방식 비율 매핑
+ * 3) 배경 이미지 위로 3D fBm 구름 레이어가 자연스럽게 흐르며 합성되는 대기 광학 블렌딩
  */
 
 export default class CloudSketch {
@@ -20,11 +17,15 @@ export default class CloudSketch {
     this.width = 0;
     this.height = 0;
     this.time = 0;
-    this.version = "018호 포토리얼 구름 Ver 2.0";
+    this.version = "018호 배경 이미지 합성 구름 Ver 2.5";
 
     this.program = null;
     this.uniforms = {};
     
+    // WebGL 텍스처 메모리 버퍼 생성
+    this.bgTexture = null;
+    this.lastLoadedBgImg = null;
+
     if (!this.gl) {
       console.error("WebGL을 지원하지 않는 브라우저입니다.");
       return;
@@ -35,6 +36,9 @@ export default class CloudSketch {
 
   initWebGL() {
     const gl = this.gl;
+
+    // 텍스처 객체 가설
+    this.bgTexture = gl.createTexture();
 
     const vsSource = `
       attribute vec2 a_position;
@@ -54,7 +58,7 @@ export default class CloudSketch {
       uniform float u_bass;
       uniform float u_gain;
 
-      // 관제탑 슬라이더 유니폼 파라미터
+      // 관제탑 슬라이더 유니폼
       uniform float u_seed;
       uniform float u_scatter;
       uniform float u_glowScale;
@@ -64,6 +68,11 @@ export default class CloudSketch {
       uniform vec3 u_skyColor;
       uniform vec3 u_cloudLight;
       uniform vec3 u_cloudShadow;
+
+      // 💡 [배경 이미지 텍스처 바인딩 유니폼]
+      uniform sampler2D u_bgTexture;
+      uniform float u_hasBgTexture;
+      uniform vec2 u_imageResolution;
 
       float hash(vec2 p) {
         p = fract(p * vec2(123.34, 456.21));
@@ -106,13 +115,13 @@ export default class CloudSketch {
 
         vec2 skyCoord = vec2(st.x / horizonOffset, 1.0 / horizonOffset);
 
-        // 1. Range (Scatter) - 바람 속도 및 복잡도 제어
+        // 1. 바람 속도
         float windSpeed = u_time * (0.015 + u_scatter * 0.02);
         
-        // 2. Scale (Glow) - 구름 크기 줌 스케일링
+        // 2. 구름 크기 줌 스케일링
         float zoomScale = mix(0.6, 0.15, clamp(u_glowScale, 0.0, 2.0));
         
-        // 3. Shuffle (Seed) - 무작위 구름 위치 및 노이즈 형태 변경 오프셋
+        // 3. Shuffle (Seed) 위치 오프셋
         vec2 seedOffset = vec2(u_seed * 1.731, u_seed * 3.141);
         vec2 cloudUV = skyCoord * zoomScale + vec2(windSpeed, windSpeed * 0.12) + seedOffset;
 
@@ -121,31 +130,54 @@ export default class CloudSketch {
         float r = fbm(cloudUV + q + vec2(1.7, 9.2) + u_time * 0.005 * (1.0 + u_scatter));
         float cloudDensity = fbm(cloudUV + r);
 
-        // 4. Gauge & Volume(Gain) - 구름 양(밀도) 및 음악 베이스 반응 폭
+        // 4. Gauge & Volume(Gain)
         float baseThreshold = mix(0.58, 0.15, clamp(u_gaugeDensity, 0.0, 1.0));
         float bassExpand = u_bass * u_gain * 0.15;
-        
         cloudDensity = smoothstep(baseThreshold - bassExpand, baseThreshold + 0.38, cloudDensity);
 
-        // 5. 하늘 및 구름 컬러 합성
+        // 5. 기본 절차적 하늘 컬러
         vec3 skyColorZenith = u_skyColor;
         vec3 skyColorHorizon = mix(u_skyColor, vec3(1.0), 0.35);
 
         float skyGradFactor = clamp(st.y + 0.5, 0.0, 1.0);
         vec3 currentSky = mix(skyColorHorizon, skyColorZenith, skyGradFactor);
 
+        // 💡 [배경 이미지 텍스처 인젝션 및 Cover 비율 보정]
+        if (u_hasBgTexture > 0.5) {
+          vec2 stScreen = gl_FragCoord.xy / u_resolution;
+          float screenAspect = u_resolution.x / u_resolution.y;
+          float imgAspect = u_imageResolution.x / u_imageResolution.y;
+          
+          vec2 bgUV = stScreen;
+          if (screenAspect > imgAspect) {
+            float s = imgAspect / screenAspect;
+            bgUV.y = (bgUV.y - 0.5) * s + 0.5;
+          } else {
+            float s = screenAspect / imgAspect;
+            bgUV.x = (bgUV.x - 0.5) * s + 0.5;
+          }
+          
+          vec4 loadedBg = texture2D(u_bgTexture, bgUV);
+          currentSky = loadedBg.rgb;
+        }
+
         // 입체 광원 산란 연산
         float lightSlope = fbm(cloudUV + vec2(0.03, 0.03)) - cloudDensity;
         float shadowFactor = clamp(0.42 + lightSlope * 2.8, 0.0, 1.0);
 
         vec3 cloudColor = mix(u_cloudShadow, u_cloudLight, shadowFactor);
-        cloudColor += vec3(u_bass * u_gain * 0.12); // 음악 비트 반사 광채
+        cloudColor += vec3(u_bass * u_gain * 0.12);
 
         float horizonFade = smoothstep(0.0, 0.28, horizonOffset);
         float finalCloudAlpha = clamp(cloudDensity * horizonFade, 0.0, 1.0);
 
+        // 배경 위에 구름 레이어 합성 (Overlaid Blending)
         vec3 finalColor = mix(currentSky, cloudColor, finalCloudAlpha * 0.94);
-        finalColor = mix(skyColorHorizon, finalColor, horizonFade);
+
+        // 배경 이미지가 없을 때만 지평선 안개 스무딩 적용
+        if (u_hasBgTexture <= 0.5) {
+          finalColor = mix(skyColorHorizon, finalColor, horizonFade);
+        }
 
         gl_FragColor = vec4(finalColor, 1.0);
       }
@@ -178,6 +210,9 @@ export default class CloudSketch {
       u_skyColor: gl.getUniformLocation(this.program, "u_skyColor"),
       u_cloudLight: gl.getUniformLocation(this.program, "u_cloudLight"),
       u_cloudShadow: gl.getUniformLocation(this.program, "u_cloudShadow"),
+      u_bgTexture: gl.getUniformLocation(this.program, "u_bgTexture"),
+      u_hasBgTexture: gl.getUniformLocation(this.program, "u_hasBgTexture"),
+      u_imageResolution: gl.getUniformLocation(this.program, "u_imageResolution"),
     };
   }
 
@@ -232,7 +267,6 @@ export default class CloudSketch {
 
     this.time += 0.016;
 
-    // 관제탑 슬라이더 파라미터 로드
     const globalSettings = window.cosmicEngineSettings || {};
     const seed = globalSettings.seed ?? 42;
     const scatterVal = globalSettings.scatterExponent ?? 1.8;
@@ -245,7 +279,6 @@ export default class CloudSketch {
     if (colorSelectDOM) colorStyle = colorSelectDOM.value.toLowerCase();
     else colorStyle = (globalSettings.colorStyle || 'neon').toLowerCase();
 
-    // 컬러 세트 매핑
     let skyCol = [0.15, 0.45, 0.78];
     let lightCol = [0.98, 0.95, 0.92];
     let shadowCol = [0.42, 0.48, 0.58];
@@ -288,29 +321,56 @@ export default class CloudSketch {
     const gl = this.gl;
     gl.useProgram(this.program);
 
+    // 💡 [배경 이미지 동적 바인딩 파이프라인]
+    const bgImg = window.currentUploadedImageElement;
+    let hasBg = 0.0;
+    let imgW = 1.0, imgH = 1.0;
+
+    if (bgImg && bgImg.complete && bgImg.naturalWidth > 0) {
+      hasBg = 1.0;
+      imgW = bgImg.naturalWidth;
+      imgH = bgImg.naturalHeight;
+
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, this.bgTexture);
+
+      if (this.lastLoadedBgImg !== bgImg) {
+        this.lastLoadedBgImg = bgImg;
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bgImg);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      }
+    }
+
     gl.uniform2f(this.uniforms.u_resolution, this.width, this.height);
     gl.uniform1f(this.uniforms.u_time, this.time);
     gl.uniform1f(this.uniforms.u_bass, bassVal);
     gl.uniform1f(this.uniforms.u_gain, gainVal);
 
-    // 슬라이더 유니폼 송신
     gl.uniform1f(this.uniforms.u_seed, seed);
     gl.uniform1f(this.uniforms.u_scatter, scatterVal);
     gl.uniform1f(this.uniforms.u_glowScale, glowVal);
     gl.uniform1f(this.uniforms.u_gaugeDensity, gaugeVal);
 
-    // 컬러 유니폼 송신
     gl.uniform3fv(this.uniforms.u_skyColor, skyCol);
     gl.uniform3fv(this.uniforms.u_cloudLight, lightCol);
     gl.uniform3fv(this.uniforms.u_cloudShadow, shadowCol);
+
+    // 텍스처 유니폼 송신
+    gl.uniform1i(this.uniforms.u_bgTexture, 0);
+    gl.uniform1f(this.uniforms.u_hasBgTexture, hasBg);
+    gl.uniform2f(this.uniforms.u_imageResolution, imgW, imgH);
 
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: `fBm Sky [Seed:${seed} / Density:${Math.round(gaugeVal*100)}%]`,
+      particleCount: `fBm Sky [BgImage:${hasBg > 0.5 ? 'Active' : 'Procedural'}]`,
       isCovering: true,
-      activeFunction: "Cloud[Fully_Interactive_v2.0]"
+      activeFunction: "Cloud[BgTexture_Overlay_v2.5]"
     };
   }
 
