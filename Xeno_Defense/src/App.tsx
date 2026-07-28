@@ -203,6 +203,7 @@ export default function App() {
   ]);
   const [autoWaveCountdown, setAutoWaveCountdown] = useState<number | null>(null);
   const [selectedTowerIndex, setSelectedTowerIndex] = useState<number | null>(null);
+  const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const requestRef = useRef<number>(null);
@@ -910,27 +911,29 @@ export default function App() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-8">
+      <main className="max-w-7xl mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">
         {/* Game Area */}
-        <div className="flex flex-col items-center gap-6">
-          <div className="relative group">
+        <div className="flex flex-col items-center gap-4 w-full">
+          <div className="relative group w-full max-w-[800px] flex items-center justify-center">
             <canvas
               ref={canvasRef}
               width={currentMap.width * currentMap.cellSize}
               height={currentMap.height * currentMap.cellSize}
-              className="bg-[#111] rounded-xl border border-white/10 shadow-2xl cursor-crosshair"
+              className="w-full max-h-[calc(100vh-230px)] object-contain bg-[#111] rounded-2xl border border-white/10 shadow-2xl cursor-crosshair"
+              style={{ aspectRatio: `${currentMap.width} / ${currentMap.height}` }}
               onClick={(e) => {
                 const rect = canvasRef.current?.getBoundingClientRect();
                 if (!rect) return;
-                const x = Math.floor((e.clientX - rect.left) / currentMap.cellSize);
-                const y = Math.floor((e.clientY - rect.top) / currentMap.cellSize);
+                const scaleX = (currentMap.width * currentMap.cellSize) / rect.width;
+                const scaleY = (currentMap.height * currentMap.cellSize) / rect.height;
+                const x = Math.floor(((e.clientX - rect.left) * scaleX) / currentMap.cellSize);
+                const y = Math.floor(((e.clientY - rect.top) * scaleY) / currentMap.cellSize);
                 
                 const existingTowerIndex = towers.findIndex(t => t.x === x && t.y === y);
                 if (existingTowerIndex !== -1) {
                   setSelectedTowerIndex(existingTowerIndex);
                 } else {
                   placeTower(x, y);
-                  // Only clear selection if we didn't just place a tower (placeTower auto-selects)
                 }
               }}
             />
@@ -940,16 +943,16 @@ export default function App() {
                 <motion.div 
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  className="absolute inset-0 bg-black/80 backdrop-blur-sm rounded-xl flex flex-col items-center justify-center z-40"
+                  className="absolute inset-0 bg-black/85 backdrop-blur-sm rounded-2xl flex flex-col items-center justify-center z-40 p-6 text-center"
                 >
-                  <Skull className="w-20 h-20 text-red-500 mb-4 animate-pulse" />
-                  <h2 className="text-4xl font-black uppercase italic tracking-tighter mb-2">System Failure</h2>
-                  <p className="text-white/60 mb-8">Wave {wave} reached. Defense breached.</p>
+                  <Skull className="w-16 h-16 text-red-500 mb-4 animate-pulse" />
+                  <h2 className="text-3xl font-black uppercase italic tracking-tighter mb-2">System Failure</h2>
+                  <p className="text-white/60 mb-6 text-sm">Wave {wave} reached. Defense breached.</p>
                   <button 
                     onClick={() => initMap(currentMap)}
-                    className="px-8 py-3 bg-white text-black font-bold rounded-full hover:scale-105 transition-transform flex items-center gap-2"
+                    className="px-8 py-3 bg-white text-black font-bold rounded-full hover:scale-105 transition-transform flex items-center gap-2 text-sm shadow-lg"
                   >
-                    <RotateCcw className="w-5 h-5" />
+                    <RotateCcw className="w-4 h-4" />
                     REBOOT SYSTEM
                   </button>
                 </motion.div>
@@ -958,30 +961,30 @@ export default function App() {
           </div>
 
           {/* Upgrade Panel Container (Below Map) */}
-          <div className="w-full max-w-[600px] h-32 relative">
+          <div className="w-full max-w-[800px] h-24 relative">
             <AnimatePresence>
               {selectedTowerIndex !== null && towers[selectedTowerIndex] && (
                 <motion.div
-                  initial={{ opacity: 0, y: 20 }}
+                  initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 20 }}
-                  className="absolute inset-0 bg-black/90 backdrop-blur-md p-4 rounded-2xl border border-white/20 shadow-2xl z-30 flex items-center gap-6"
+                  exit={{ opacity: 0, y: 10 }}
+                  className="absolute inset-0 bg-black/90 backdrop-blur-md p-3.5 rounded-2xl border border-white/20 shadow-2xl z-30 flex items-center gap-4"
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: TOWER_DATA[towers[selectedTowerIndex].type].color + '20' }}>
-                      <TowerIcon className="w-6 h-6" style={{ color: TOWER_DATA[towers[selectedTowerIndex].type].color }} />
+                  <div className="flex items-center gap-3 shrink-0">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: TOWER_DATA[towers[selectedTowerIndex].type].color + '20' }}>
+                      <TowerIcon className="w-5 h-5" style={{ color: TOWER_DATA[towers[selectedTowerIndex].type].color }} />
                     </div>
                     <div>
-                      <p className="font-bold text-sm tracking-tight">{TOWER_DATA[towers[selectedTowerIndex].type].label}</p>
+                      <p className="font-bold text-xs tracking-tight">{TOWER_DATA[towers[selectedTowerIndex].type].label}</p>
                       <p className="text-[10px] text-white/40 uppercase tracking-wider">Level {towers[selectedTowerIndex].level}</p>
                     </div>
                   </div>
 
-                  <div className="h-10 w-px bg-white/10" />
+                  <div className="h-8 w-px bg-white/10 shrink-0" />
 
                   <div className="flex-1 flex gap-2">
                     <div className="flex-1">
-                      <div className="flex justify-between text-[10px] uppercase tracking-widest text-white/40 mb-1">
+                      <div className="flex justify-between text-[9px] uppercase tracking-widest text-white/40 mb-0.5">
                         <span>Upgrade</span>
                         <span className="text-yellow-500 font-bold">${Math.floor(TOWER_DATA[towers[selectedTowerIndex].type].cost * 0.8 * towers[selectedTowerIndex].level)}</span>
                       </div>
@@ -996,14 +999,14 @@ export default function App() {
                           }
                         }}
                         disabled={money < Math.floor(TOWER_DATA[towers[selectedTowerIndex].type].cost * 0.8 * towers[selectedTowerIndex].level) || towers[selectedTowerIndex].level >= 5}
-                        className="w-full py-2 bg-green-500 text-black font-bold rounded-lg hover:bg-green-400 disabled:opacity-20 transition-all text-xs"
+                        className="w-full py-1.5 bg-green-500 text-black font-bold rounded-lg hover:bg-green-400 disabled:opacity-20 transition-all text-xs"
                       >
                         {towers[selectedTowerIndex].level >= 5 ? 'MAX' : 'UPGRADE'}
                       </button>
                     </div>
 
                     <div className="w-24">
-                      <div className="flex justify-between text-[10px] uppercase tracking-widest text-white/40 mb-1">
+                      <div className="flex justify-between text-[9px] uppercase tracking-widest text-white/40 mb-0.5">
                         <span>Sell</span>
                         <span className="text-red-400 font-bold">
                           ${Math.floor((TOWER_DATA[towers[selectedTowerIndex].type].cost + (towers[selectedTowerIndex].level - 1) * (TOWER_DATA[towers[selectedTowerIndex].type].cost * 0.8)) * 0.7)}
@@ -1011,7 +1014,7 @@ export default function App() {
                       </div>
                       <button
                         onClick={() => sellTower(selectedTowerIndex)}
-                        className="w-full py-2 bg-red-500/20 hover:bg-red-500/40 text-red-500 font-bold rounded-lg border border-red-500/30 transition-all text-xs"
+                        className="w-full py-1.5 bg-red-500/20 hover:bg-red-500/40 text-red-500 font-bold rounded-lg border border-red-500/30 transition-all text-xs"
                       >
                         SELL
                       </button>
@@ -1020,7 +1023,7 @@ export default function App() {
 
                   <button 
                     onClick={() => setSelectedTowerIndex(null)}
-                    className="p-2 hover:bg-white/10 rounded-full transition-colors text-white/40"
+                    className="p-1.5 hover:bg-white/10 rounded-full transition-colors text-white/40"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -1029,20 +1032,21 @@ export default function App() {
             </AnimatePresence>
           </div>
 
-          <div className="mt-8 w-full flex items-center justify-between bg-white/5 p-4 rounded-2xl border border-white/10 gap-4">
-            {/* Left: Info */}
-            <div className="flex items-center gap-3 min-w-[180px]">
-              <div className="p-2 bg-white/10 rounded-lg">
-                <Info className="w-4 h-4 text-blue-400" />
+          {/* Bottom Tower Arsenal - All 9 Towers Visible in 1 Row */}
+          <div className="w-full max-w-[800px] flex items-center justify-between bg-white/5 p-2.5 sm:p-3 rounded-2xl border border-white/10 gap-2 sm:gap-3">
+            {/* Left Info Badge */}
+            <div className="hidden sm:flex items-center gap-2 shrink-0 pr-2 border-r border-white/10">
+              <div className="p-1.5 bg-white/10 rounded-lg">
+                <Info className="w-3.5 h-3.5 text-blue-400" />
               </div>
               <div>
-                <p className="text-xs font-bold uppercase tracking-tight">Mazing Strategy</p>
-                <p className="text-[10px] text-white/40 leading-tight">Towers act as walls.</p>
+                <p className="text-[10px] font-bold uppercase tracking-tight">Mazing</p>
+                <p className="text-[9px] text-white/40 leading-none">Walls</p>
               </div>
             </div>
 
-            {/* Center: Tower Arsenal (Horizontal) */}
-            <div className="flex-1 flex items-center justify-center gap-2 overflow-x-auto scrollbar-hide px-4 border-x border-white/5">
+            {/* Tower Selection Grid - All 9 Towers Side by Side */}
+            <div className="flex-1 grid grid-cols-9 gap-1 sm:gap-1.5 min-w-0">
               {(Object.entries(TOWER_DATA) as [TowerType, typeof TOWER_DATA['BASIC']][]).map(([type, data]) => {
                 const canAfford = money >= data.cost;
                 return (
@@ -1050,85 +1054,87 @@ export default function App() {
                     key={type}
                     onClick={() => setSelectedTowerType(type)}
                     disabled={!canAfford}
-                    className={`flex flex-col items-center p-2 rounded-xl border transition-all min-w-[70px] ${
+                    className={`flex flex-col items-center justify-center p-1 sm:p-2 rounded-xl border transition-all w-full min-w-0 ${
                       selectedTowerType === type 
-                        ? 'bg-white/15 border-white/30 shadow-lg scale-105' 
-                        : 'bg-white/5 border-white/5 hover:border-white/10'
+                        ? 'bg-white/20 border-white/50 shadow-lg scale-105 z-10' 
+                        : 'bg-white/5 border-white/5 hover:border-white/20'
                     } ${!canAfford ? 'opacity-30 grayscale' : ''}`}
                   >
-                    <div className="w-8 h-8 flex items-center justify-center mb-1">
-                      {type === 'BASIC' && <Crosshair className="w-5 h-5" style={{ color: data.color }} />}
-                      {type === 'SNIPER' && <Target className="w-5 h-5" style={{ color: data.color }} />}
-                      {type === 'SPLASH' && <Zap className="w-5 h-5" style={{ color: data.color }} />}
-                      {type === 'MACHINE_GUN' && <LayoutGrid className="w-5 h-5" style={{ color: data.color }} />}
-                      {type === 'LASER' && <Target className="w-5 h-5" style={{ color: data.color }} />}
-                      {type === 'POISON' && <Skull className="w-5 h-5" style={{ color: data.color }} />}
-                      {type === 'ELECTRIC' && <Zap className="w-5 h-5" style={{ color: data.color }} />}
-                      {type === 'ROCKET' && <ChevronRight className="w-5 h-5" style={{ color: data.color }} />}
-                      {type === 'ANTI_AIR' && <Shield className="w-5 h-5" style={{ color: data.color }} />}
+                    <div className="w-5 h-5 sm:w-6 sm:h-6 flex items-center justify-center mb-0.5">
+                      {type === 'BASIC' && <Crosshair className="w-3.5 h-3.5 sm:w-4 sm:h-4" style={{ color: data.color }} />}
+                      {type === 'SNIPER' && <Target className="w-3.5 h-3.5 sm:w-4 sm:h-4" style={{ color: data.color }} />}
+                      {type === 'SPLASH' && <Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4" style={{ color: data.color }} />}
+                      {type === 'MACHINE_GUN' && <LayoutGrid className="w-3.5 h-3.5 sm:w-4 sm:h-4" style={{ color: data.color }} />}
+                      {type === 'LASER' && <Target className="w-3.5 h-3.5 sm:w-4 sm:h-4" style={{ color: data.color }} />}
+                      {type === 'POISON' && <Skull className="w-3.5 h-3.5 sm:w-4 sm:h-4" style={{ color: data.color }} />}
+                      {type === 'ELECTRIC' && <Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4" style={{ color: data.color }} />}
+                      {type === 'ROCKET' && <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" style={{ color: data.color }} />}
+                      {type === 'ANTI_AIR' && <Shield className="w-3.5 h-3.5 sm:w-4 sm:h-4" style={{ color: data.color }} />}
                     </div>
-                    <p className="text-[9px] font-bold truncate w-full text-center">{data.label}</p>
-                    <p className="text-[9px] text-yellow-500 font-mono">${data.cost}</p>
+                    <p className="text-[8px] sm:text-[9px] font-bold truncate w-full text-center leading-tight">{data.label}</p>
+                    <p className="text-[8px] sm:text-[9px] text-yellow-500 font-mono font-semibold">${data.cost}</p>
                   </button>
                 );
               })}
-            </div>
-            
-            {/* Right: Controls */}
-            <div className="flex items-center gap-3 min-w-[240px] justify-end">
-              {autoWaveCountdown !== null && (
-                <div className="text-right mr-2">
-                  <p className="text-[9px] uppercase tracking-widest text-white/40">Auto</p>
-                  <p className="text-sm font-mono font-bold text-yellow-500">{autoWaveCountdown}s</p>
-                </div>
-              )}
-              <button 
-                onClick={() => document.getElementById('save-slots-container')?.scrollIntoView({behavior: 'smooth'})}
-                className="px-3 py-2 bg-white/10 hover:bg-white/20 text-white font-bold rounded-lg transition-all flex items-center gap-2 text-xs"
-              >
-                <Shield className="w-3 h-3" />
-                SAVE/LOAD
-              </button>
-              <button 
-                onClick={startWave}
-                disabled={enemies.length > 0 || gameOver}
-                className="px-4 py-2 bg-green-500 text-black font-bold rounded-lg hover:bg-green-400 disabled:opacity-50 transition-all flex items-center gap-2 text-xs shadow-[0_0_15px_rgba(34,197,94,0.2)]"
-              >
-                NEXT WAVE
-                <ChevronRight className="w-4 h-4" />
-              </button>
             </div>
           </div>
         </div>
 
         {/* Sidebar */}
-        <aside className="space-y-8">
-          {/* Save Slots */}
-          <div id="save-slots-container" className="bg-white/5 rounded-2xl border border-yellow-500/20 p-6 shadow-[0_0_30px_rgba(234,179,8,0.05)]">
-            <h3 className="text-xs font-bold uppercase tracking-widest text-yellow-500 mb-4 flex items-center gap-2">
-              <Shield className="w-4 h-4" />
-              DATA ARCHIVE
+        <aside className="space-y-6 w-full">
+          {/* Wave Control Section */}
+          <div className="bg-white/5 rounded-2xl border border-green-500/20 p-5 shadow-[0_0_30px_rgba(34,197,94,0.05)]">
+            <h3 className="text-xs font-bold uppercase tracking-widest text-green-400 mb-3 flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <Play className="w-4 h-4 text-green-500" />
+                WAVE CONTROL
+              </span>
+              <span className="text-[10px] font-mono text-white/40">WAVE {wave + 1}</span>
             </h3>
-            <div className="space-y-3">
+
+            <button
+              onClick={startWave}
+              disabled={enemies.length > 0 || gameOver}
+              className="w-full py-3.5 bg-green-500 hover:bg-green-400 disabled:opacity-30 text-black font-black rounded-xl text-xs shadow-[0_0_20px_rgba(34,197,94,0.25)] uppercase tracking-wider flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98]"
+            >
+              <span>NEXT WAVE</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
+
+            {autoWaveCountdown !== null && (
+              <div className="mt-3 text-center p-2 rounded-xl bg-yellow-500/10 border border-yellow-500/20">
+                <p className="text-[9px] uppercase tracking-widest text-yellow-500/80 font-bold">Auto Wave Launch</p>
+                <p className="text-sm font-mono font-bold text-yellow-400">{autoWaveCountdown}s</p>
+              </div>
+            )}
+          </div>
+
+          {/* Data Archive (Save / Load) */}
+          <div className="bg-white/5 rounded-2xl border border-yellow-500/20 p-5 shadow-[0_0_30px_rgba(234,179,8,0.05)]">
+            <h3 className="text-xs font-bold uppercase tracking-widest text-yellow-500 mb-3.5 flex items-center gap-2">
+              <Shield className="w-4 h-4" />
+              DATA ARCHIVE — SAVE / LOAD
+            </h3>
+            <div className="space-y-2.5">
               {saveSlots.map(slot => (
-                <div key={slot.id} className="p-3 rounded-xl bg-black/40 border border-white/5 flex items-center justify-between gap-3">
+                <div key={slot.id} className="p-2.5 rounded-xl bg-black/40 border border-white/10 flex items-center justify-between gap-2 hover:border-white/20 transition-all">
                   <div className="flex-1 min-w-0">
-                    <p className="text-[10px] font-bold text-white/40 uppercase tracking-wider">Slot {slot.id}</p>
-                    <p className="text-xs font-medium truncate text-white/80">
+                    <p className="text-[9px] font-bold text-yellow-500/80 uppercase tracking-wider">Slot {slot.id}</p>
+                    <p className="text-[11px] font-mono truncate text-white/80">
                       {slot.date ? slot.date : 'Empty Slot'}
                     </p>
                   </div>
-                  <div className="flex gap-1">
+                  <div className="flex gap-1.5 shrink-0">
                     <button 
                       onClick={() => saveGame(slot.id)}
-                      className="px-3 py-1.5 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-500 text-[10px] font-bold rounded-lg transition-all border border-yellow-500/20"
+                      className="px-2.5 py-1 bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 text-[11px] font-bold rounded-lg border border-yellow-500/30 transition-all"
                     >
                       SAVE
                     </button>
                     <button 
                       onClick={() => loadGame(slot.id)}
                       disabled={!slot.data}
-                      className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-white/60 text-[10px] font-bold rounded-lg transition-all border border-white/5 disabled:opacity-20"
+                      className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-white text-[11px] font-bold rounded-lg border border-white/10 transition-all disabled:opacity-20"
                     >
                       LOAD
                     </button>
@@ -1138,13 +1144,36 @@ export default function App() {
             </div>
           </div>
 
+          {/* Map Selection */}
+          <div className="bg-white/5 rounded-2xl border border-white/10 p-5">
+            <h3 className="text-xs font-bold uppercase tracking-widest text-white/40 mb-3 flex items-center gap-2">
+              <MapIcon className="w-4 h-4" />
+              Select Sector
+            </h3>
+            <div className="grid grid-cols-1 gap-2">
+              {(Object.values(MAPS)).map((map) => (
+                <button
+                  key={map.id}
+                  onClick={() => setCurrentMap(map)}
+                  className={`p-2.5 rounded-xl border text-xs font-bold transition-all text-left ${
+                    currentMap.id === map.id 
+                      ? 'bg-white/15 border-white/40 text-white shadow-md' 
+                      : 'bg-transparent border-white/5 text-white/40 hover:border-white/20'
+                  }`}
+                >
+                  {map.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Combat History */}
-          <div className="bg-white/5 rounded-2xl border border-white/10 p-6">
-            <h3 className="text-xs font-bold uppercase tracking-widest text-white/40 mb-4 flex items-center gap-2">
+          <div className="bg-white/5 rounded-2xl border border-white/10 p-5">
+            <h3 className="text-xs font-bold uppercase tracking-widest text-white/40 mb-3 flex items-center gap-2">
               <RotateCcw className="w-4 h-4" />
               COMBAT HISTORY
             </h3>
-            <div className="space-y-2">
+            <div className="space-y-2 max-h-40 overflow-y-auto scrollbar-hide">
               {combatHistory.length === 0 ? (
                 <p className="text-xs text-white/20 italic">No records yet...</p>
               ) : (
@@ -1155,44 +1184,6 @@ export default function App() {
                   </div>
                 ))
               )}
-            </div>
-          </div>
-
-          {/* Map Selection */}
-          <div className="bg-white/5 rounded-2xl border border-white/10 p-6">
-            <h3 className="text-xs font-bold uppercase tracking-widest text-white/40 mb-4 flex items-center gap-2">
-              <MapIcon className="w-4 h-4" />
-              Select Sector
-            </h3>
-            <div className="grid grid-cols-1 gap-2">
-              {(Object.values(MAPS)).map((map) => (
-                <button
-                  key={map.id}
-                  onClick={() => setCurrentMap(map)}
-                  className={`p-3 rounded-xl border text-xs font-bold transition-all ${
-                    currentMap.id === map.id 
-                      ? 'bg-white/10 border-white/30 text-white' 
-                      : 'bg-transparent border-white/5 text-white/40 hover:border-white/20'
-                  }`}
-                >
-                  {map.name}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="bg-white/5 rounded-2xl border border-white/10 p-6">
-            <h3 className="text-xs font-bold uppercase tracking-widest text-white/40 mb-4 flex items-center gap-2">
-              <WallIcon className="w-4 h-4" />
-              Tactical Intel
-            </h3>
-            <div className="space-y-4 text-sm text-white/60 leading-relaxed">
-              <p>
-                <strong className="text-white">A* Pathfinding:</strong> Enemies always calculate the shortest path to the red exit.
-              </p>
-              <p>
-                <strong className="text-white">Outside Spawn:</strong> Enemies now spawn outside the grid and move in.
-              </p>
             </div>
           </div>
         </aside>
