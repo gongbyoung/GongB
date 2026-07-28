@@ -1,15 +1,7 @@
-/**
- * src/main.js
- * 미디어 리소스 업로드, 오디오 튜닝, 스케치 매니저 및 
- * 우측 Cosmic Studio 패널 데이터 실시간 동기화 마스터 스크립트
- * (정밀 주소 타게팅 보완 버젼)
- */
-
 import { AudioAnalyzer } from './core/AudioAnalyzer.js';
 import { SketchManager } from './core/SketchManager.js';
 import { VideoRecorder } from './core/VideoRecorder.js';
 
-// 1. 코어 엔진 인스턴스 초기화
 const analyzer = new AudioAnalyzer();
 const manager = new SketchManager('canvas-stage');
 const recorder = new VideoRecorder('canvas-stage');
@@ -17,313 +9,259 @@ const recorder = new VideoRecorder('canvas-stage');
 const audioPlayer = document.getElementById('audio-player');
 const sketchItems = document.querySelectorAll('#sketch-list li');
 const stageWrapper = document.getElementById('stage-wrapper');
-
-// 파일 업로드 인풋 엘리먼트 캡처
-const audioInput = document.getElementById('file-audio');
-const srtInput = document.getElementById('file-srt');
 const imageInput = document.getElementById('file-image');
+const deckPlayBtn = document.getElementById('btn-play-music');
 
-// 자막 보관용 로컬 배열 변수
-let parsedSubtitles = [];
+// 녹화 시작/중지 컨트롤 버튼 바인딩
+const recordBtn = document.getElementById('btn-record') || document.querySelector('.btn-record') || document.getElementById('btn-start-record');
 
-// 2. 오디오 가동 및 실시간 업로드 스위칭 파트
-audioPlayer.addEventListener('play', () => {
-    analyzer.connectAudioElement(audioPlayer);
-});
+let isAudioAnalyzerConnected = false;
 
-audioInput.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+const broadcast = new BroadcastChannel('cosmic_fft_channel');
 
-    audioPlayer.pause();
-    const audioURL = URL.createObjectURL(file);
-    audioPlayer.src = audioURL;
+// 기동 초기 단계에서 브라우저 메모리에 복원된 최신 주파수 분할 테이블 마운트
+let initialRanges = { totalBands: 4, ranges: [] };
+const savedLatestConfig = localStorage.getItem('cosmic_fft_active_latest');
+if (savedLatestConfig) {
+    try {
+        initialRanges = JSON.parse(savedLatestConfig);
+    } catch(e) {
+        console.warn("메인 무대 메모리 주파수 규칙 적재 우회:", e);
+    }
+}
+window.customFrequencyRanges = initialRanges;
+
+broadcast.onmessage = (e) => {
+    if (e.data && e.data.type === 'RANGE_UPDATE' && e.data.config) {
+        window.customFrequencyRanges = e.data.config;
+    }
+};
+
+const sketchDescriptions = {
+    '001_p5_wave.js': `<strong style="color:#00ffcc; font-size:12px;">📊 [001호 파형] 오디오 웨이브</strong><br>• <strong>Volume(Gain)</strong>: 오디오 주파수 감도 및 파형 진동 폭 조절<br>• <strong>Scale(Glow)</strong>: 네온 라인의 굵기 및 발광 세기 튜닝`,
+    '005_three_floor_eq.js': `<strong style="color:#00ffcc; font-size:12px;">🎛️ [005호 그리드] 순수 기하학 네온 매트릭스</strong><br>• <strong>Shuffle(Seed)</strong>: 프레임 형상 일제 변환<br>• <strong>Offset(X, Y, Z)</strong>: 배경 이미지 위치 및 배율 줌 제어`
+};
+
+function updateSketchManual(sketchName) {
+    const panel = document.getElementById('sketch-description-panel');
+    if (!panel) return;
+    const cleanName = sketchName.split('/').pop();
+    panel.innerHTML = sketchDescriptions[cleanName] || `<strong style="color:#00ffcc; font-size:12px;">⚙️ [${cleanName.split('_')[0]}호 스케치 기동]</strong><br>• 관제탑 슬라이더로 수치 제어가 가능합니다.`;
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet'; link.href = 'https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@500;900&display=swap';
+    document.head.appendChild(link);
     
-    console.log(`[🎵 Audio] 새로운 음악으로 교체 완료: ${file.name}`);
-    audioPlayer.load();
-    audioPlayer.play();
-});
-
-// 3. SRT 자막 파싱 및 전역 안전 연동 파트
-function parseSRT(data) {
-    const cleanData = data.replace(/\r/g, '').trim();
-    const blocks = cleanData.split('\n\n');
-    const subs = [];
-    
-    function timeToSeconds(t) {
-        if (!t) return 0;
-        const parts = t.trim().split(':');
-        if (parts.length < 3) return 0;
-        const secs = parts[2].split(',');
-        return parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(secs[0]) + (parseInt(secs[1]) || 0) / 1000;
+    const listContainer = document.getElementById('sketch-list');
+    if (listContainer) {
+        const descPanel = document.createElement('div');
+        descPanel.id = 'sketch-description-panel';
+        descPanel.style.cssText = 'margin-top: 15px; padding: 12px; background: rgba(8, 12, 26, 0.96); border: 1px solid #00f0ff; border-radius: 6px; color: #d0e0ff; font-family: sans-serif; font-size: 11px; line-height: 1.6;';
+        listContainer.parentNode.insertBefore(descPanel, listContainer.nextSibling);
     }
     
-    blocks.forEach(block => {
-        const lines = block.split('\n');
-        if (lines.length >= 3) {
-            const timeLine = lines[1];
-            if (timeLine && timeLine.includes('-->')) {
-                const times = timeLine.split('-->');
-                const textLines = lines.slice(2).join(' ').trim();
-                subs.push({ start: timeToSeconds(times[0]), end: timeToSeconds(times[1]), text: textLines });
-            }
+    const hud = document.createElement('div');
+    hud.id = 'diagnostic-hud-console';
+    hud.style.cssText = 'position:fixed; top:15px; right:320px; z-index:9999; background:rgba(5,15,25,0.85); color:#00ffcc; font-family:monospace; font-size:11px; padding:12px; border:1px solid #00ffcc; border-radius:6px; pointer-events:none; width:240px;';
+    document.body.appendChild(hud);
+    
+    setInterval(() => {
+        const diag = window.sketchDiagnostics || {};
+        const usedMemRaw = window.performance && window.performance.memory ? Math.round(window.performance.memory.usedJSHeapSize / 1024 / 1024) + ' MB' : 'N/A';
+        const activeLi = document.querySelector('#sketch-list li.active');
+        const currentFile = activeLi ? activeLi.getAttribute('data-sketch').split('/').pop() : 'None';
+        
+        hud.innerHTML = `
+            <div style="font-weight:bold; color:#ffff00; border-bottom:1px dashed #00ffcc; padding-bottom:4px; margin-bottom:4px;">📊 CORE SYSTEM DIAGNOSTICS</div>
+            <div>• RUNNING SKETCH: <span style="color:#fff">${currentFile}</span></div>
+            <div>• ENGINE FPS    : <span style="color:#fff">${diag.fps || 0} Frame</span></div>
+            <div>• MEMORY HEAP   : <span style="color:#fff">${usedMemRaw}</span></div>
+            <div>• ACTIVE SHAPE  : <span style="color:#fff">${diag.particleCount || 0} Pcs</span></div>
+            <div>• CORE FUNCTION : <span style="color:#ff00ff">${diag.activeFunction || 'Idle'}</span></div>
+        `;
+    }, 200);
+});
+
+// 배경 이미지 업로드 디코더
+imageInput?.addEventListener('change', (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const imgURL = URL.createObjectURL(file); const img = new Image(); img.src = imgURL;
+    img.onload = () => { window.currentUploadedImageElement = img; };
+});
+
+// 외부 MP3 오디오 스트림 인젝터
+const audioInput = document.getElementById('file-audio') || document.getElementById('file-mp3') || document.querySelector('input[type="file"][accept*="audio"]');
+if (audioInput) {
+    audioInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        const audioURL = URL.createObjectURL(file);
+        audioPlayer.src = audioURL;
+        audioPlayer.load();
+        
+        isAudioAnalyzerConnected = false;
+        if (deckPlayBtn) {
+            deckPlayBtn.innerText = "▶️ 음악 재생 (Play)";
         }
     });
-    return subs;
 }
 
-srtInput.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-        parsedSubtitles = parseSRT(event.target.result);
-        console.log(`[📝 SRT] 커스텀 자막 로드 성공: ${parsedSubtitles.length}문장`);
-    };
-    reader.readAsText(file);
-});
-
-// 오디오가 실시간으로 흘러갈 때 현재 싱크 자막을 찾아 window 전역 창 변수에 안전하게 기록
-function updateCurrentSubtitle() {
-    if (parsedSubtitles.length === 0) {
-        window.currentSubtitleText = "";
-        return;
-    }
-    const currentTime = audioPlayer.currentTime;
-    const currentSub = parsedSubtitles.find(sub => currentTime >= sub.start && currentTime <= sub.end);
-    window.currentSubtitleText = currentSub ? currentSub.text : "";
-}
-
-// 브라우저 자체 오디오 타임 업데이트 이벤트에 싱크 연결
-audioPlayer.addEventListener('timeupdate', updateCurrentSubtitle);
-
-
-// 4. BG/Texture 이미지 실시간 업로드 및 전역 변수 바인딩 파트
-imageInput.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const imgURL = URL.createObjectURL(file);
-    const img = new Image();
-    img.src = imgURL;
-    img.onload = () => {
-        window.currentUploadedImageElement = img; 
-        console.log(`[🖼️ Image] 가상 텍스처 엘리먼트 빌드 완료: ${file.name}`);
-    };
-});
-
-
-// 5. 사이드바 UI 클릭 시 스케치 전환 이벤트 매핑 파트
 sketchItems.forEach(item => {
     item.addEventListener('click', async (e) => {
         sketchItems.forEach(li => li.classList.remove('active'));
         e.currentTarget.classList.add('active');
-        
-        const sketchFile = e.currentTarget.getAttribute('data-sketch');
-        await manager.switchSketch(sketchFile, analyzer);
+        const targetSketch = e.currentTarget.getAttribute('data-sketch');
+        await manager.switchSketch(targetSketch, analyzer);
+        syncCosmicControls();
+        updateSketchManual(targetSketch);
     });
 });
 
-
-// 6. 화면 비율 스위칭 인터랙션 파트
-const ratioButtons = {
-    full: document.getElementById('btn-ratio-full'),
-    i169: document.getElementById('btn-ratio-169'),
-    i916: document.getElementById('btn-ratio-916')
-};
-
+const ratioButtons = { full: document.getElementById('btn-ratio-full'), i169: document.getElementById('btn-ratio-169'), i916: document.getElementById('btn-ratio-916') };
 Object.keys(ratioButtons).forEach(key => {
-    ratioButtons[key].addEventListener('click', (e) => {
-        Object.values(ratioButtons).forEach(btn => btn.classList.remove('active'));
-        e.currentTarget.classList.add('active');
-        
-        stageWrapper.className = '';
-        if (key === 'full') stageWrapper.className = 'ratio-full';
-        if (key === 'i169') stageWrapper.className = 'ratio-169';
-        if (key === 'i916') stageWrapper.className = 'ratio-916';
-        
-        setTimeout(() => {
-            manager.resize(stageWrapper.clientWidth, stageWrapper.clientHeight);
-        }, 320);
-    });
-});
-
-
-// 7. MP4 레코더 버튼 제어 파트
-const recordBtn = document.getElementById('btn-record');
-let isRecording = false;
-
-recordBtn.addEventListener('click', async () => {
-    if (!isRecording) {
-        isRecording = true;
-        recordBtn.innerText = '⏹️ 녹화 중지 및 MP4 저장';
-        recordBtn.classList.add('recording');
-        await recorder.start();
-    } else {
-        isRecording = false;
-        recordBtn.innerText = '🔴 녹화 시작 (Record)';
-        recordBtn.classList.remove('recording');
-        await recorder.stop();
+    if (ratioButtons[key]) {
+        ratioButtons[key].addEventListener('click', (e) => {
+            Object.values(ratioButtons).forEach(b => b?.classList.remove('active')); e.currentTarget.classList.add('active');
+            stageWrapper.className = (key === 'full') ? 'ratio-full' : (key === 'i169') ? 'ratio-169' : 'ratio-916';
+            setTimeout(() => { manager.resize(stageWrapper.clientWidth, stageWrapper.clientHeight); }, 60);
+        });
     }
 });
 
-
-// 8. 주파수 튜닝 슬라이더 이벤트 링킹 파트
-const sliders = {
-    bassLow: document.getElementById('slide-bass-low'),
-    bassHigh: document.getElementById('slide-bass-high'),
-    midLow: document.getElementById('slide-mid-low'),
-    midHigh: document.getElementById('slide-mid-high'),
-    trebleLow: document.getElementById('slide-treble-low'),
-    trebleHigh: document.getElementById('slide-treble-high')
-};
-
-const valueDisplays = {
-    bass: document.getElementById('val-bass'),
-    mid: document.getElementById('val-mid'),
-    treble: document.getElementById('val-treble')
-};
-
-function handleSliderChange() {
-    const bL = parseInt(sliders.bassLow.value);   const bH = parseInt(sliders.bassHigh.value);
-    const mL = parseInt(sliders.midLow.value);    const mH = parseInt(sliders.midHigh.value);
-    const tL = parseInt(sliders.trebleLow.value); const tH = parseInt(sliders.trebleHigh.value);
-    
-    valueDisplays.bass.innerText = `${bL} - ${bH} Hz`;
-    valueDisplays.mid.innerText = `${mL} - ${mH} Hz`;
-    valueDisplays.treble.innerText = `${tL} - ${tH} Hz`;
-    
-    analyzer.updateBounds({ bassLow: bL, bassHigh: bH, midLow: mL, midHigh: mH, trebleLow: tL, trebleHigh: tH });
-}
-Object.values(sliders).forEach(slider => slider.addEventListener('input', handleSliderChange));
-
-
-// 9. 🌌 [우측 패널] Cosmic Studio Tuning 제어 데이터 동기화 파이프라인 파트
-const cosmicSliders = {
-    seed: document.getElementById('slide-cosmic-seed'),
-    scatter: document.getElementById('slide-cosmic-scatter'),
-    color: document.getElementById('select-cosmic-color'),
-    glow: document.getElementById('slide-cosmic-glow'),
-    gain: document.getElementById('slide-cosmic-gain'),
-    pickGas1: document.getElementById('picker-gas1'),
-    pickGas2: document.getElementById('picker-gas2'),
-    pickStar: document.getElementById('picker-star')
-};
-
-const cosmicDisplays = {
-    seed: document.getElementById('val-cosmic-seed'),
-    scatter: document.getElementById('val-cosmic-scatter'),
-    glow: document.getElementById('val-cosmic-glow'),
-    gain: document.getElementById('val-cosmic-gain')
+const cosmicControls = {
+    numSeed: document.getElementById('num-cosmic-seed'), numScatter: document.getElementById('num-cosmic-scatter'),
+    color: document.getElementById('select-cosmic-color'), numGlow: document.getElementById('num-cosmic-glow'),
+    numGain: document.getElementById('num-cosmic-gain'), pickGas1: document.getElementById('picker-gas1'),
+    pickGas2: document.getElementById('picker-gas2'), pickStar: document.getElementById('picker-star'),
+    numGauge: document.getElementById('num-cosmic-gauge')
 };
 
 function syncCosmicControls() {
-    if (!cosmicSliders.seed) return; 
-
-    const seedVal = parseInt(cosmicSliders.seed.value);
-    const scatterVal = parseFloat(cosmicSliders.scatter.value) / 10; 
-    const colorVal = cosmicSliders.color.value;
-    const glowVal = parseFloat(cosmicSliders.glow.value) / 100;
-    const gainVal = parseFloat(cosmicSliders.gain.value) / 100;
-
-    const cGas1 = cosmicSliders.pickGas1.value;
-    const cGas2 = cosmicSliders.pickGas2.value;
-    const cStar = cosmicSliders.pickStar.value;
-
-    cosmicDisplays.seed.innerText = seedVal;
-    cosmicDisplays.scatter.innerText = scatterVal.toFixed(1);
-    cosmicDisplays.glow.innerText = glowVal.toFixed(2);
-    cosmicDisplays.gain.innerText = gainVal.toFixed(1);
-
+    if (!cosmicControls.numSeed) return;
     window.cosmicEngineSettings = {
-        seed: seedVal,
-        scatterExponent: scatterVal,
-        colorStyle: colorVal,
-        glowIntensity: glowVal,
-        audioGain: gainVal,
-        customColors: { gas1: cGas1, gas2: cGas2, star: cStar }
+        seed: parseInt(cosmicControls.numSeed.value),
+        scatterExponent: parseFloat(cosmicControls.numScatter.value) / 10,
+        colorStyle: cosmicControls.color.value,
+        glowIntensity: parseFloat(cosmicControls.numGlow.value) / 100,
+        audioGain: parseFloat(cosmicControls.numGain.value) / 100,
+        customColors: { gas1: cosmicControls.pickGas1.value, gas2: cosmicControls.pickGas2.value, star: cosmicControls.pickStar.value },
+        positionOffset: { x: 0, y: 0, z: 0 },
+        gaugeValue: parseInt(cosmicControls.numGauge.value) / 100
     };
-
-    if (manager.currentFile === '007_three_cosmic_nebula.js' && manager.currentSketch) {
-        const sk = manager.currentSketch;
-        if (typeof sk.buildCosmos === 'function') {
-            sk.buildCosmos();
-        }
-    }
 }
 
-Object.values(cosmicSliders).forEach(el => {
-    if (el) {
-        el.addEventListener('input', syncCosmicControls);
-        el.addEventListener('change', syncCosmicControls);
-    }
-});
+Object.values(cosmicControls).forEach(el => { el?.addEventListener('input', () => { syncCosmicControls(); }); });
 
-if (cosmicSliders.pickGas1) cosmicSliders.pickGas1.addEventListener('change', syncCosmicControls);
-if (cosmicSliders.pickGas2) cosmicSliders.pickGas2.addEventListener('change', syncCosmicControls);
-if (cosmicSliders.pickStar) cosmicSliders.pickStar.addEventListener('change', syncCosmicControls);
-
-
-// 10. 프리셋 저장 및 로딩 시스템 파트
-const savePresetBtn = document.getElementById('btn-save-preset');
-const loadPresetBtn = document.getElementById('btn-load-preset');
-const presetStatus = document.getElementById('preset-status');
-
-if (localStorage.getItem('gongb_visual_preset')) {
-    presetStatus.innerText = '✅ 최근 저장된 설정을 불러올 수 있습니다.';
-    presetStatus.style.color = '#00ffcc';
+if (deckPlayBtn && audioPlayer) {
+    deckPlayBtn.addEventListener('click', () => {
+        if (audioPlayer.paused) {
+            audioPlayer.play().then(() => {
+                deckPlayBtn.innerText = "⏸️ 일시정지 (Pause)";
+                if (!isAudioAnalyzerConnected) {
+                    try { analyzer.connectAudioElement(audioPlayer); } catch (err) {}
+                    isAudioAnalyzerConnected = true;
+                }
+            });
+        } else {
+            audioPlayer.pause(); deckPlayBtn.innerText = "▶️ 음악 재생 (Play)";
+        }
+    });
 }
 
-savePresetBtn.addEventListener('click', () => {
-    const activeSketch = document.querySelector('#sketch-list li.active').getAttribute('data-sketch');
-    const activeRatio = stageWrapper.className;
-    const currentSettings = {
-        sketch: activeSketch, ratio: activeRatio,
-        sliders: {
-            bassLow: sliders.bassLow.value,       bassHigh: sliders.bassHigh.value,
-            midLow: sliders.midLow.value,         midHigh: sliders.midHigh.value,
-            trebleLow: sliders.trebleLow.value,   trebleHigh: sliders.trebleHigh.value
+// 💡 [핵심 보완]: 녹화 시작 클릭 시 0초 리셋 후 음악과 녹화를 동시 집행하는 이벤트 트리거
+if (recordBtn) {
+    recordBtn.addEventListener('click', () => {
+        // 1. 녹화 중이 아닐 때 (녹화 시작 동작)
+        if (!recorder || !recorder.isRecording) {
+            if (audioPlayer && audioPlayer.src) {
+                // 💡 [0초 처음으로 위치 강제 이동]
+                audioPlayer.currentTime = 0;
+                
+                // 음악 재생 및 분석기 체결
+                audioPlayer.play().then(() => {
+                    if (deckPlayBtn) {
+                        deckPlayBtn.innerText = "⏸️ 일시정지 (Pause)";
+                    }
+                    if (!isAudioAnalyzerConnected) {
+                        try { analyzer.connectAudioElement(audioPlayer); } catch (err) {}
+                        isAudioAnalyzerConnected = true;
+                    }
+                }).catch(err => console.warn("오디오 재생 트리거 차단:", err));
+            }
+
+            // 💡 [비주얼 녹화 엔진 기동]
+            if (recorder && typeof recorder.start === 'function') {
+                recorder.start();
+            }
+            
+            recordBtn.innerText = "⏹️ 녹화 중지 (Stop)";
+            recordBtn.style.backgroundColor = "#e11d48"; // 녹화 중 붉은색 활성
+        } 
+        // 2. 이미 녹화 중일 때 (녹화 완료 및 저장 동작)
+        else {
+            if (recorder && typeof recorder.stop === 'function') {
+                recorder.stop();
+            }
+            if (audioPlayer) {
+                audioPlayer.pause();
+                if (deckPlayBtn) deckPlayBtn.innerText = "▶️ 음악 재생 (Play)";
+            }
+            
+            recordBtn.innerText = "🔴 녹화 시작 (Record)";
+            recordBtn.style.backgroundColor = ""; // 원래 버튼 색상 복원
         }
-    };
-    localStorage.setItem('gongb_visual_preset', JSON.stringify(currentSettings));
-    presetStatus.innerText = '💾 성공적으로 저장되었습니다!';
-    presetStatus.style.color = '#00ffcc';
-    setTimeout(() => { presetStatus.innerText = '✅ 최근 저장된 설정을 불러올 수 있습니다.'; }, 2000);
-});
+    });
+}
 
-loadPresetBtn.addEventListener('click', async () => {
-    const savedData = localStorage.getItem('gongb_visual_preset');
-    if (!savedData) { presetStatus.innerText = '❌ 불러올 프리셋 데이터가 없습니다.'; presetStatus.style.color = '#ff0055'; return; }
+function renderEngineTicker() {
+    requestAnimationFrame(renderEngineTicker);
+
+    let compiledAudioData = { bass: 0, mid: 0, treble: 0, vol: 0, raw: new Uint8Array(256) };
     
-    const config = JSON.parse(savedData);
-    sliders.bassLow.value = config.sliders.bassLow;   sliders.bassHigh.value = config.sliders.bassHigh;
-    sliders.midLow.value = config.sliders.midLow;     sliders.midHigh.value = config.sliders.midHigh;
-    sliders.trebleLow.value = config.sliders.trebleLow; sliders.trebleHigh.value = config.sliders.trebleHigh;
-    handleSliderChange();
-    
-    stageWrapper.className = config.ratio;
-    manager.resize(stageWrapper.clientWidth, stageWrapper.clientHeight);
-    
-    sketchItems.forEach(li => { li.classList.remove('active'); if (li.getAttribute('data-sketch') === config.sketch) li.classList.add('active'); });
-    await manager.switchSketch(config.sketch, analyzer);
-    
-    presetStatus.innerText = '📂 프리셋 로딩 완수!';
-    presetStatus.style.color = '#0077ff';
-});
+    if (isAudioAnalyzerConnected && analyzer) {
+        if (typeof analyzer.getAudioData === 'function') {
+            compiledAudioData = analyzer.getAudioData();
+        } else if (analyzer.analyser) {
+            const bufferLength = analyzer.analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            analyzer.analyser.getByteFrequencyData(dataArray);
+            compiledAudioData.raw = dataArray;
+            
+            let b = 0, m = 0, t = 0;
+            for (let i = 0; i < 20; i++) b += dataArray[i];
+            for (let i = 20; i < 100; i++) m += dataArray[i];
+            for (let i = 100; i < 220; i++) t += dataArray[i];
+            compiledAudioData.bass = (b / 20) / 255.0;
+            compiledAudioData.mid = (m / 80) / 255.0;
+            compiledAudioData.treble = (t / 120) / 255.0;
+            compiledAudioData.vol = (b + m + t) / 220 / 255.0;
+        }
+    }
 
+    if (compiledAudioData.raw && compiledAudioData.raw.length > 0) {
+        broadcast.postMessage({ type: 'AUDIO_STREAM', raw: Array.from(compiledAudioData.raw) });
+    }
 
-// 11. 초기 구동 및 브라우저 크기 조정 연동 파트
-const defaultSketch = document.querySelector('#sketch-list li.active').getAttribute('data-sketch');
-manager.switchSketch(defaultSketch, analyzer);
+    if (window.customFrequencyRanges && window.customFrequencyRanges.ranges && window.customFrequencyRanges.ranges.length > 0) {
+        compiledAudioData.customBands = window.customFrequencyRanges.ranges.map(band => {
+            let sum = 0; let count = 0;
+            for (let i = band.start; i <= band.end; i++) { sum += compiledAudioData.raw[i] || 0; count++; }
+            return count > 0 ? (sum / count) / 255.0 : 0;
+        });
 
-window.addEventListener('resize', () => { 
-    manager.resize(stageWrapper.clientWidth, stageWrapper.clientHeight); 
-});
+        if (compiledAudioData.customBands[0] !== undefined) compiledAudioData.bass = compiledAudioData.customBands[0];
+        if (compiledAudioData.customBands[1] !== undefined) compiledAudioData.mid = compiledAudioData.customBands[1];
+        if (compiledAudioData.customBands[2] !== undefined) compiledAudioData.treble = compiledAudioData.customBands[2];
+    }
 
-// 스케치 로드 직후 동적 연동 주입을 위한 후처리 래핑
-const originalSwitch = manager.switchSketch;
-manager.switchSketch = async function(fileName, analyzerInstance) {
-    manager.currentFile = fileName; 
-    await originalSwitch.call(manager, fileName, analyzerInstance);
-    syncCosmicControls(); 
-};
+    manager.update(compiledAudioData);
+}
+
+const activeLi = document.querySelector('#sketch-list li.active');
+const initSketch = activeLi ? activeLi.getAttribute('data-sketch') : '001_p5_wave.js';
+syncCosmicControls();
+manager.switchSketch(initSketch, analyzer).then(() => { updateSketchManual(initSketch); renderEngineTicker(); });
+window.addEventListener('resize', () => manager.resize(stageWrapper.clientWidth, stageWrapper.clientHeight));
