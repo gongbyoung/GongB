@@ -1,6 +1,6 @@
 /**
  * src/sketches/001_p5_wave.js
- * - [4-Stem 개혁판] 보컬/드럼/베이스/기타 각자 역할 분담 오디오 웨이브
+ * - [수리 완결판] 보컬/드럼/베이스 연동 다이내믹 원형 웨이브
  */
 export default class P5WaveSketch {
   constructor(container) {
@@ -25,42 +25,37 @@ export default class P5WaveSketch {
     if (!this.ctx) return;
     const globalSettings = window.cosmicEngineSettings || {};
     const gainVal = globalSettings.audioGain ?? 1.0;
-    const glowVal = globalSettings.glowIntensity ?? 0.85;
 
-    // 💡 4-Stem 표준 수치 수신
-    const vocals = (audioData?.vocalsVol || 0) * gainVal;
-    const drums  = (audioData?.drumsVol  || 0) * gainVal;
-    const bass   = (audioData?.bassVol   || 0) * gainVal;
-    const other  = (audioData?.otherVol  || 0) * gainVal;
+    const targetAudio = (audioData && audioData.vocalsVol !== undefined) ? audioData : (window.latestCompiledAudioData || {});
+    const vocals = (targetAudio.vocalsVol || 0) * gainVal;
+    const drums  = (targetAudio.drumsVol  || 0) * gainVal;
+    const bass   = (targetAudio.bassVol   || 0) * gainVal;
+    const other  = (targetAudio.otherVol  || 0) * gainVal;
 
     const w = this.canvas.width;
     const h = this.canvas.height;
-    const cx = w / 2;
-    const cy = h / 2;
 
-    this.ctx.fillStyle = 'rgba(6, 8, 16, 0.25)';
+    this.ctx.fillStyle = 'rgba(6, 8, 16, 0.3)';
     this.ctx.fillRect(0, 0, w, h);
 
-    // 🎹 기타/반주: 회전 속도 제어
-    this.angle += 0.01 + other * 0.05;
+    this.angle += 0.01 + other * 0.04;
 
     this.ctx.save();
-    this.ctx.translate(cx, cy);
+    this.ctx.translate(w / 2, h / 2);
     this.ctx.rotate(this.angle);
 
-    // 🎸 베이스: 네온 Glow 발광
-    this.ctx.shadowColor = globalSettings.customColors?.gas1 || '#00ffcc';
-    this.ctx.shadowBlur = 10 + bass * 40 * glowVal;
+    const strokeColor = globalSettings.customColors?.gas1 || '#ff0055';
+    this.ctx.shadowColor = strokeColor;
+    this.ctx.shadowBlur = 10 + bass * 45;
 
     this.ctx.beginPath();
-    const points = 120;
-    // 🥁 드럼: 기본 반경 펄스
-    const baseRadius = Math.min(w, h) * 0.22 + drums * 40;
+    const points = 180;
+    const baseRadius = Math.min(w, h) * 0.22 + (drums * 60);
 
     for (let i = 0; i < points; i++) {
       const a = (i / points) * Math.PI * 2;
-      // 🎤 보컬: 진동 굴곡 파동
-      const wave = Math.sin(a * 8 + this.angle * 5) * (vocals * 60) + Math.cos(a * 16) * (drums * 30);
+      // 🎤 보컬 & 드럼 진동 가중치 극대화
+      const wave = Math.sin(a * 12 + this.angle * 4) * (vocals * 90 + 10) + Math.cos(a * 24) * (drums * 50);
       const r = baseRadius + wave;
       const x = Math.cos(a) * r;
       const y = Math.sin(a) * r;
@@ -70,18 +65,17 @@ export default class P5WaveSketch {
     }
     this.ctx.closePath();
 
-    this.ctx.strokeStyle = globalSettings.customColors?.star || '#ffffff';
-    // 🎸 베이스: 선 두께 확장
-    this.ctx.lineWidth = 2 + bass * 8;
+    this.ctx.strokeStyle = globalSettings.customColors?.star || '#00ffcc';
+    this.ctx.lineWidth = 3 + bass * 10;
     this.ctx.stroke();
 
     this.ctx.restore();
 
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: `4-Stem Wave [Drums:${drums.toFixed(2)}]`,
+      particleCount: `Wave Active [Vocal:${vocals.toFixed(2)}]`,
       isCovering: true,
-      activeFunction: "P5Wave[4Stem_Mapped]"
+      activeFunction: "P5Wave[Fixed_Active]"
     };
   }
 
