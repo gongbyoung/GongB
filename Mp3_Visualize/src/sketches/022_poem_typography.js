@@ -1,31 +1,47 @@
 /**
  * src/sketches/022_poem_typography.js
- * - [버전] Ver 3.5 4-Stem 모드 락온 패치판
+ * - [버전] Ver 4.0 4-Stem 분리 음원 완전 락온 & 캔버스 라이프사이클 복원판
+ * - 수정 내용:
+ * 1) 캔버스 파기 후 재진입 시 캔버스/컨텍스트 자동 재개설 (스케치 선택 차단 방지)
+ * 2) smoothedValues 객체 기반 NaN 오염 차단 회로 탑재
+ * 3) 4-Stem 감도 5배 증폭 및 보컬 무음 구간 시 타 악기 추종 Fallback 모션 작동
  */
 
 export default class PoemTypographySketch {
   constructor(container) {
     this.container = container;
-    this.canvas = document.createElement('canvas');
-    this.ctx = this.canvas.getContext('2d');
-    this.container.appendChild(this.canvas);
-
-    this.width = 0;
-    this.height = 0;
+    this.canvas = null;
+    this.ctx = null;
     this.time = 0;
-    this.smoothedValues = new Array(64).fill(0);
-    this.version = "022호 시 타이포 Ver 3.5";
+    this.smoothedValues = {};
+    this.version = "022호 시 타이포 Ver 4.0";
+
+    this.init();
   }
 
-  init() { this.resize(); }
+  // 💡 [수리 1]: 스케치 재선택 시 캔버스 및 컨텍스트 자동 복원
+  init() {
+    if (!this.canvas || !this.canvas.parentNode) {
+      this.canvas = document.createElement('canvas');
+      this.ctx = this.canvas.getContext('2d');
+      if (this.container) {
+        this.container.appendChild(this.canvas);
+      }
+    }
+    this.resize();
+  }
 
   resize(w, h) {
-    this.width = w || this.container.clientWidth;
-    this.height = h || this.container.clientHeight;
-    this.canvas.width = this.width;
-    this.canvas.height = this.height;
+    if (!this.container && !w) return;
+    this.width = w || this.container.clientWidth || 800;
+    this.height = h || this.container.clientHeight || 600;
+    if (this.canvas) {
+      this.canvas.width = this.width;
+      this.canvas.height = this.height;
+    }
   }
 
+  // 자동 줄바꿈 처리
   wrapText(text, maxLineWidth, letterSpacing) {
     const words = text.split(' ');
     const lines = [];
@@ -50,7 +66,11 @@ export default class PoemTypographySketch {
   }
 
   update(audioData) {
-    if (!this.ctx) return;
+    // 💡 캔버스가 없으면 즉시 자동 개설
+    if (!this.ctx || !this.canvas) {
+      this.init();
+      if (!this.ctx) return;
+    }
 
     this.time += 0.016;
     const renderW = this.canvas.width;
@@ -67,29 +87,35 @@ export default class PoemTypographySketch {
 
     let vocalsVol = 0, drumsVol = 0, bassVol = 0, otherVol = 0;
 
-    // 💡 [수리 핵심 3]: 명확한 isMultiStem 플래그 검사로 4-Stem 데이터 100% 매핑
+    // 💡 [수리 2]: 4-Stem 음압 감도 5배 증폭 및 보컬 무음 시 타 악기 반응 보완
     if (audioData && audioData.isMultiStem) {
-      vocalsVol = (audioData.vocalsVol || 0) * gainVal * 4.0;
-      drumsVol  = (audioData.drumsVol  || 0) * gainVal * 4.0;
-      bassVol   = (audioData.bassVol   || 0) * gainVal * 4.0;
-      otherVol  = (audioData.otherVol  || 0) * gainVal * 4.0;
+      vocalsVol = (audioData.vocalsVol || 0) * gainVal * 5.0;
+      drumsVol  = (audioData.drumsVol  || 0) * gainVal * 5.0;
+      bassVol   = (audioData.bassVol   || 0) * gainVal * 5.0;
+      otherVol  = (audioData.otherVol  || 0) * gainVal * 5.0;
+
+      // 보컬이 잠시 쉴 때 드럼/기타 소리에 맞춰 글자가 점프하도록 보정
+      const maxOther = Math.max(drumsVol, bassVol, otherVol);
+      if (vocalsVol < 0.05 && maxOther > 0.05) {
+        vocalsVol = maxOther * 0.6;
+      }
     } else if (audioData) {
       const vol = audioData.vol || 0;
       const bass = audioData.bass || 0;
       const mid = audioData.mid || 0;
       const treble = audioData.treble || 0;
 
-      vocalsVol = (mid * 2.5 + vol * 1.5) * gainVal;
-      drumsVol  = (bass * 3.0) * gainVal;
-      bassVol   = (bass * 2.5 + vol * 1.0) * gainVal;
-      otherVol  = (treble * 2.5 + mid * 1.0) * gainVal;
+      vocalsVol = (mid * 3.0 + vol * 2.0) * gainVal;
+      drumsVol  = (bass * 3.5) * gainVal;
+      bassVol   = (bass * 3.0 + vol * 1.0) * gainVal;
+      otherVol  = (treble * 3.0 + mid * 1.0) * gainVal;
     }
 
     const colorSelectDOM = document.getElementById('select-cosmic-color');
     let colorStyle = 'neon';
     if (colorSelectDOM) colorStyle = colorSelectDOM.value.toLowerCase();
 
-    // 🥁 드럼 반응: 화면 충격 셰이크
+    // 🥁 [드럼]: 화면 충격 셰이크
     this.ctx.save();
     if (drumsVol > 0.05) {
       const shakeX = (Math.random() - 0.5) * Math.min(drumsVol * 25, 25);
@@ -153,8 +179,13 @@ export default class PoemTypographySketch {
 
         if (char === ' ') continue;
 
+        // 💡 [수리 3]: NaN 방지 가드 (항상 정수 0에서 출발하도록 검증)
+        if (typeof this.smoothedValues[globalCharIndex] !== 'number' || isNaN(this.smoothedValues[globalCharIndex])) {
+          this.smoothedValues[globalCharIndex] = 0;
+        }
+
         const targetVal = vocalsVol;
-        this.smoothedValues[globalCharIndex] += (targetVal - this.smoothedValues[globalCharIndex]) * 0.3;
+        this.smoothedValues[globalCharIndex] += (targetVal - this.smoothedValues[globalCharIndex]) * 0.35;
         const charIntensity = Math.max(0, this.smoothedValues[globalCharIndex]);
 
         const waveDelay = globalCharIndex * (gaugeVal * 0.2);
@@ -165,12 +196,12 @@ export default class PoemTypographySketch {
         let charScale = 1.0;
         let charRotation = 0;
 
-        // 🎤 보컬 반응: 글자 튀오름
-        const idleMotion = Math.sin(this.time * 2 + globalCharIndex * 0.5) * (baseFontSize * 0.06);
-        const bounce = Math.abs(Math.sin(timePhase)) * (charIntensity * baseFontSize * 1.5) + idleMotion;
+        // 🎤 [보컬 반응]: 글자 수직 점프
+        const idleMotion = Math.sin(this.time * 2 + globalCharIndex * 0.5) * (baseFontSize * 0.05);
+        const bounce = Math.abs(Math.sin(timePhase)) * (charIntensity * baseFontSize * 1.6) + idleMotion;
         charY -= bounce;
 
-        // 🎹 기타 반응: 글자 각도 회전
+        // 🎹 [기타 반응]: 글자 회전 파동
         charRotation = Math.sin(timePhase) * (otherVol * 1.0 + Math.sin(this.time + globalCharIndex) * 0.1);
 
         if (animMode === 1) charScale = 1.0 + charIntensity * 0.8;
@@ -205,7 +236,7 @@ export default class PoemTypographySketch {
         this.ctx.scale(charScale, charScale);
         this.ctx.rotate(charRotation);
 
-        // 🎸 베이스 반응: 네온 발광 폭발
+        // 🎸 [베이스 반응]: 네온 불빛 폭발
         const effectiveGlow = bassVol + charIntensity * 0.4;
         if (effectiveGlow > 0.02) {
           this.ctx.shadowColor = shadowColor;
@@ -229,15 +260,15 @@ export default class PoemTypographySketch {
 
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: `4-Stem Active [Vocals:${vocalsVol.toFixed(2)}]`,
+      particleCount: `4-Stem Mapped [Vocals:${vocalsVol.toFixed(2)}]`,
       isCovering: true,
-      activeFunction: "PoemTypography[4Stem_Fixed_v3.5]"
+      activeFunction: "PoemTypography[4Stem_Active_v4.0]"
     };
   }
 
   destroy() {
     if (this.canvas && this.canvas.parentNode) {
-      this.container.removeChild(this.canvas);
+      this.canvas.parentNode.removeChild(this.canvas);
     }
     this.canvas = null;
     this.ctx = null;
