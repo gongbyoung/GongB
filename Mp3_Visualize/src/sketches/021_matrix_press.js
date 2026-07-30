@@ -1,6 +1,6 @@
 /**
  * src/sketches/021_matrix_press.js
- * - [4-Stem 전용] 32채널 이퀄라이저 패드 관제탑
+ * - [수리 완결판] 32채널 악기별 반응형 런치패드
  */
 export default class MatrixPressSketch {
   constructor(container) {
@@ -27,12 +27,12 @@ export default class MatrixPressSketch {
 
     const globalSettings = window.cosmicEngineSettings || {};
     const gainVal = globalSettings.audioGain ?? 1.0;
-    const glowVal = globalSettings.glowIntensity ?? 0.85;
 
-    const vocals = (audioData?.vocalsVol || 0) * gainVal;
-    const drums  = (audioData?.drumsVol  || 0) * gainVal;
-    const bass   = (audioData?.bassVol   || 0) * gainVal;
-    const other  = (audioData?.otherVol  || 0) * gainVal;
+    const targetAudio = (audioData && audioData.vocalsVol !== undefined) ? audioData : (window.latestCompiledAudioData || {});
+    const vocals = (targetAudio.vocalsVol || 0) * gainVal;
+    const drums  = (targetAudio.drumsVol  || 0) * gainVal;
+    const bass   = (targetAudio.bassVol   || 0) * gainVal;
+    const other  = (targetAudio.otherVol  || 0) * gainVal;
 
     const renderW = this.canvas.width;
     const renderH = this.canvas.height;
@@ -41,7 +41,7 @@ export default class MatrixPressSketch {
     this.ctx.fillRect(0, 0, renderW, renderH);
 
     const cols = 8;
-    const rows = 4; // 8 x 4 = 32채널
+    const rows = 4;
     const padding = 12;
     const padW = (renderW - padding * (cols + 1)) / cols;
     const padH = (renderH - padding * (rows + 1)) / rows;
@@ -54,32 +54,29 @@ export default class MatrixPressSketch {
         const x = padding + c * (padW + padding);
         const y = padding + r * (padH + padding);
 
-        // 악기별 채널 분담 연산
+        // 💡 행별 악기 반응 매핑
         let intensity = 0;
-        if (r === 3) intensity = bass * 1.5;         // 맨 아래행: 베이스
-        else if (r === 2) intensity = drums * 1.5;    // 3번째 행: 드럼
-        else if (r === 1) intensity = vocals * 1.5;   // 2번째 행: 보컬
-        else intensity = other * 1.5;                 // 맨 위행: 기타/반주
+        if (r === 3) intensity = bass * 2.0;       // 4번째 행: 베이스
+        else if (r === 2) intensity = drums * 2.0;  // 3번째 행: 드럼
+        else if (r === 1) intensity = vocals * 2.0; // 2번째 행: 보컬
+        else intensity = other * 2.0;               // 1번째 행: 기타/반주
 
-        const wave = Math.sin(this.time * 5 + padIndex * 0.3) * 0.2;
-        const activeAlpha = Math.min(1.0, intensity + wave);
+        const activeAlpha = Math.min(1.0, intensity);
 
         this.ctx.save();
         this.ctx.translate(x, y);
 
-        // 베이스/드럼 반응 글로우
-        if (activeAlpha > 0.15) {
-          this.ctx.shadowColor = `hsl(${padIndex * 11 + this.time * 40}, 100%, 60%)`;
-          this.ctx.shadowBlur = activeAlpha * 25 * glowVal;
+        const hue = padIndex * 11 + this.time * 30;
+        if (activeAlpha > 0.05) {
+          this.ctx.shadowColor = `hsl(${hue}, 100%, 60%)`;
+          this.ctx.shadowBlur = activeAlpha * 30;
         }
 
-        // 패드 테두리
-        this.ctx.strokeStyle = `hsl(${padIndex * 11 + this.time * 40}, 100%, ${50 + activeAlpha * 40}%)`;
-        this.ctx.lineWidth = 2 + activeAlpha * 4;
+        this.ctx.strokeStyle = `hsl(${hue}, 100%, ${40 + activeAlpha * 50}%)`;
+        this.ctx.lineWidth = 2 + activeAlpha * 5;
         this.ctx.strokeRect(0, 0, padW, padH);
 
-        // 패드 내부 채우기
-        this.ctx.fillStyle = `hsla(${padIndex * 11 + this.time * 40}, 100%, 50%, ${activeAlpha * 0.4})`;
+        this.ctx.fillStyle = `hsla(${hue}, 100%, 50%, ${0.15 + activeAlpha * 0.7})`;
         this.ctx.fillRect(0, 0, padW, padH);
 
         this.ctx.restore();
@@ -90,7 +87,7 @@ export default class MatrixPressSketch {
       fps: 60,
       particleCount: `32 Channel Matrix Pads`,
       isCovering: true,
-      activeFunction: "MatrixPress[4Stem_Active]"
+      activeFunction: "MatrixPress[Audio_Fixed]"
     };
   }
 
