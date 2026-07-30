@@ -12,11 +12,9 @@ const stageWrapper = document.getElementById('stage-wrapper');
 const imageInput = document.getElementById('file-image');
 const deckPlayBtn = document.getElementById('btn-play-music');
 
-// 녹화 시작/중지 컨트롤 버튼 바인딩
 const recordBtn = document.getElementById('btn-record') || document.querySelector('.btn-record') || document.getElementById('btn-start-record');
 
 let isAudioAnalyzerConnected = false;
-
 const broadcast = new BroadcastChannel('cosmic_fft_channel');
 
 // 💡 4-Stem MP3 멀티 트랙 오디오 엔진 변수
@@ -62,8 +60,13 @@ loadStemFile('file-stem-bass', 'bass');
 loadStemFile('file-stem-other', 'other');
 
 // 💡 4개 MP3 오차 없는 칼동기화 (Sync) 재생 / 일시정지 함수
-function toggleMultiStemPlayback() {
+async function toggleMultiStemPlayback() {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    
+    // 💡 [수리 핵심 1]: 브라우저 AudioContext 잠김 강제 해제
+    if (audioCtx.state === 'suspended') {
+        await audioCtx.resume();
+    }
     
     if (isMultiStemPlaying) {
         Object.keys(stemSources).forEach(key => {
@@ -104,15 +107,11 @@ function toggleMultiStemPlayback() {
 
 btnPlayMulti?.addEventListener('click', toggleMultiStemPlayback);
 
-// 기동 초기 단계에서 브라우저 메모리에 복원된 최신 주파수 분할 테이블 마운트
+// 기동 초기 단계 주파수 규칙 적재
 let initialRanges = { totalBands: 4, ranges: [] };
 const savedLatestConfig = localStorage.getItem('cosmic_fft_active_latest');
 if (savedLatestConfig) {
-    try {
-        initialRanges = JSON.parse(savedLatestConfig);
-    } catch(e) {
-        console.warn("메인 무대 메모리 주파수 규칙 적재 우회:", e);
-    }
+    try { initialRanges = JSON.parse(savedLatestConfig); } catch(e) {}
 }
 window.customFrequencyRanges = initialRanges;
 
@@ -123,8 +122,7 @@ broadcast.onmessage = (e) => {
 };
 
 const sketchDescriptions = {
-    '001_p5_wave.js': `<strong style="color:#00ffcc; font-size:12px;">📊 [001호 파형] 오디오 웨이브</strong><br>• <strong>Volume(Gain)</strong>: 오디오 주파수 감도 및 파형 진동 폭 조절<br>• <strong>Scale(Glow)</strong>: 네온 라인의 굵기 및 발광 세기 튜닝`,
-    '005_three_floor_eq.js': `<strong style="color:#00ffcc; font-size:12px;">🎛️ [005호 그리드] 순수 기하학 네온 매트릭스</strong><br>• <strong>Shuffle(Seed)</strong>: 프레임 형상 일제 변환<br>• <strong>Offset(X, Y, Z)</strong>: 배경 이미지 위치 및 배율 줌 제어`,
+    '001_p5_wave.js': `<strong style="color:#00ffcc; font-size:12px;">📊 [001호 파형] 오디오 웨이브</strong><br>• <strong>Volume(Gain)</strong>: 오디오 주파수 감도 조절`,
     '022_poem_typography.js': `<strong style="color:#00ffcc; font-size:12px;">✍️ [022호 시타이포] 4-Stem 모션 타이포그래피</strong><br>• <strong>보컬</strong>: 글자 튀오름 | <strong>드럼</strong>: 충격 펄스<br>• <strong>베이스</strong>: 네온 발광 | <strong>기타</strong>: 회전 파동`
 };
 
@@ -132,7 +130,7 @@ function updateSketchManual(sketchName) {
     const panel = document.getElementById('sketch-description-panel');
     if (!panel) return;
     const cleanName = sketchName.split('/').pop();
-    panel.innerHTML = sketchDescriptions[cleanName] || `<strong style="color:#00ffcc; font-size:12px;">⚙️ [${cleanName.split('_')[0]}호 스케치 기동]</strong><br>• 관제탑 슬라이더로 수치 제어가 가능합니다.`;
+    panel.innerHTML = sketchDescriptions[cleanName] || `<strong style="color:#00ffcc; font-size:12px;">⚙️ [${cleanName.split('_')[0]}호 스케치 기동]</strong>`;
 }
 
 window.addEventListener('DOMContentLoaded', () => {
@@ -170,28 +168,20 @@ window.addEventListener('DOMContentLoaded', () => {
     }, 200);
 });
 
-// 배경 이미지 업로드 디코더
 imageInput?.addEventListener('change', (e) => {
     const file = e.target.files[0]; if (!file) return;
     const imgURL = URL.createObjectURL(file); const img = new Image(); img.src = imgURL;
     img.onload = () => { window.currentUploadedImageElement = img; };
 });
 
-// 외부 MP3 오디오 스트림 인젝터 (단일 오디오 용)
 const audioInput = document.getElementById('file-audio') || document.getElementById('file-mp3') || document.querySelector('input[type="file"][accept*="audio"]');
 if (audioInput) {
     audioInput.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        
-        const audioURL = URL.createObjectURL(file);
-        audioPlayer.src = audioURL;
+        const file = e.target.files[0]; if (!file) return;
+        audioPlayer.src = URL.createObjectURL(file);
         audioPlayer.load();
-        
         isAudioAnalyzerConnected = false;
-        if (deckPlayBtn) {
-            deckPlayBtn.innerText = "▶️ 음악 재생 (Play)";
-        }
+        if (deckPlayBtn) deckPlayBtn.innerText = "▶️ 음악 재생 (Play)";
     });
 }
 
@@ -228,19 +218,18 @@ const cosmicControls = {
 function syncCosmicControls() {
     if (!cosmicControls.numSeed) return;
     window.cosmicEngineSettings = {
-        ...window.cosmicEngineSettings, // 시 문구 데이터 보존
+        ...window.cosmicEngineSettings,
         seed: parseInt(cosmicControls.numSeed.value),
         scatterExponent: parseFloat(cosmicControls.numScatter.value) / 10,
         colorStyle: cosmicControls.color.value,
         glowIntensity: parseFloat(cosmicControls.numGlow.value) / 100,
         audioGain: parseFloat(cosmicControls.numGain.value) / 100,
         customColors: { gas1: cosmicControls.pickGas1.value, gas2: cosmicControls.pickGas2.value, star: cosmicControls.pickStar.value },
-        positionOffset: { x: 0, y: 0, z: 0 },
         gaugeValue: parseInt(cosmicControls.numGauge.value) / 100
     };
 }
 
-Object.values(cosmicControls).forEach(el => { el?.addEventListener('input', () => { syncCosmicControls(); }); });
+Object.values(cosmicControls).forEach(el => { el?.addEventListener('input', syncCosmicControls); });
 
 if (deckPlayBtn && audioPlayer) {
     deckPlayBtn.addEventListener('click', () => {
@@ -258,46 +247,34 @@ if (deckPlayBtn && audioPlayer) {
     });
 }
 
-// 녹화 시작 클릭 시 0초 리셋 후 음악과 녹화를 동시 집행하는 이벤트 트리거
 if (recordBtn) {
     recordBtn.addEventListener('click', () => {
         if (!recorder || !recorder.isRecording) {
             if (audioPlayer && audioPlayer.src) {
                 audioPlayer.currentTime = 0;
                 audioPlayer.play().then(() => {
-                    if (deckPlayBtn) {
-                        deckPlayBtn.innerText = "⏸️ 일시정지 (Pause)";
-                    }
+                    if (deckPlayBtn) deckPlayBtn.innerText = "⏸️ 일시정지 (Pause)";
                     if (!isAudioAnalyzerConnected) {
                         try { analyzer.connectAudioElement(audioPlayer); } catch (err) {}
                         isAudioAnalyzerConnected = true;
                     }
-                }).catch(err => console.warn("오디오 재생 트리거 차단:", err));
+                }).catch(err => console.warn("오디오 재생 오류:", err));
             }
-
-            if (recorder && typeof recorder.start === 'function') {
-                recorder.start();
-            }
-            
+            if (recorder && typeof recorder.start === 'function') recorder.start();
             recordBtn.innerText = "⏹️ 녹화 중지 (Stop)";
             recordBtn.style.backgroundColor = "#e11d48";
-        } 
-        else {
-            if (recorder && typeof recorder.stop === 'function') {
-                recorder.stop();
-            }
+        } else {
+            if (recorder && typeof recorder.stop === 'function') recorder.stop();
             if (audioPlayer) {
                 audioPlayer.pause();
                 if (deckPlayBtn) deckPlayBtn.innerText = "▶️ 음악 재생 (Play)";
             }
-            
             recordBtn.innerText = "🔴 녹화 시작 (Record)";
             recordBtn.style.backgroundColor = "";
         }
     });
 }
 
-// 💡 스템별 순간 음압 추출 헬퍼 함수
 function getStemVolume(analyser) {
     if (!analyser) return 0;
     const data = new Uint8Array(analyser.frequencyBinCount);
@@ -312,7 +289,6 @@ function renderEngineTicker() {
 
     let compiledAudioData = { bass: 0, mid: 0, treble: 0, vol: 0, raw: new Uint8Array(256) };
     
-    // 1. 단일 오디오 재생 시 데이터 추출
     if (isAudioAnalyzerConnected && analyzer) {
         if (typeof analyzer.getAudioData === 'function') {
             compiledAudioData = analyzer.getAudioData();
@@ -324,44 +300,3 @@ function renderEngineTicker() {
             
             let b = 0, m = 0, t = 0;
             for (let i = 0; i < 20; i++) b += dataArray[i];
-            for (let i = 20; i < 100; i++) m += dataArray[i];
-            for (let i = 100; i < 220; i++) t += dataArray[i];
-            compiledAudioData.bass = (b / 20) / 255.0;
-            compiledAudioData.mid = (m / 80) / 255.0;
-            compiledAudioData.treble = (t / 120) / 255.0;
-            compiledAudioData.vol = (b + m + t) / 220 / 255.0;
-        }
-    }
-
-    if (compiledAudioData.raw && compiledAudioData.raw.length > 0) {
-        broadcast.postMessage({ type: 'AUDIO_STREAM', raw: Array.from(compiledAudioData.raw) });
-    }
-
-    if (window.customFrequencyRanges && window.customFrequencyRanges.ranges && window.customFrequencyRanges.ranges.length > 0) {
-        compiledAudioData.customBands = window.customFrequencyRanges.ranges.map(band => {
-            let sum = 0; let count = 0;
-            for (let i = band.start; i <= band.end; i++) { sum += compiledAudioData.raw[i] || 0; count++; }
-            return count > 0 ? (sum / count) / 255.0 : 0;
-        });
-
-        if (compiledAudioData.customBands[0] !== undefined) compiledAudioData.bass = compiledAudioData.customBands[0];
-        if (compiledAudioData.customBands[1] !== undefined) compiledAudioData.mid = compiledAudioData.customBands[1];
-        if (compiledAudioData.customBands[2] !== undefined) compiledAudioData.treble = compiledAudioData.customBands[2];
-    }
-
-    // 💡 2. 4-Stem 멀티 트랙 재생 시 악기별 음압 주입
-    if (isMultiStemPlaying) {
-        compiledAudioData.vocalsVol = getStemVolume(stemAnalysers.vocals);
-        compiledAudioData.drumsVol  = getStemVolume(stemAnalysers.drums);
-        compiledAudioData.bassVol   = getStemVolume(stemAnalysers.bass);
-        compiledAudioData.otherVol  = getStemVolume(stemAnalysers.other);
-    }
-
-    manager.update(compiledAudioData);
-}
-
-const activeLi = document.querySelector('#sketch-list li.active');
-const initSketch = activeLi ? activeLi.getAttribute('data-sketch') : '001_p5_wave.js';
-syncCosmicControls();
-manager.switchSketch(initSketch, analyzer).then(() => { updateSketchManual(initSketch); renderEngineTicker(); });
-window.addEventListener('resize', () => manager.resize(stageWrapper.clientWidth, stageWrapper.clientHeight));
