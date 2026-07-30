@@ -15,59 +15,22 @@ const recordBtn = document.getElementById('btn-record') || document.querySelecto
 let isAudioAnalyzerConnected = false;
 const broadcast = new BroadcastChannel('cosmic_fft_channel');
 
-// 4-Stem MP3 멀티 트랙 오디오 엔진 변수
 let audioCtx = null;
 const stemBuffers = { vocals: null, drums: null, bass: null, other: null };
 const stemSources = { vocals: null, drums: null, bass: null, other: null };
 const stemAnalysers = { vocals: null, drums: null, bass: null, other: null };
 let isMultiStemPlaying = false;
 
-// UI 입력 엘리먼트 바인딩
 const poemTextInput = document.getElementById('input-poem-text');
-const fontSelectInput = document.getElementById('select-poem-font');
-const fontFileInput = document.getElementById('file-custom-font');
+const btnPlayMulti = document.getElementById('btn-play-multi-stems');
 const batchMp3Input = document.getElementById('file-batch-mp3');
 const batchStatusText = document.getElementById('batch-load-status');
 
-// 전역 설정 객체
 window.cosmicEngineSettings = window.cosmicEngineSettings || {};
 window.cosmicEngineSettings.poemText = poemTextInput ? poemTextInput.value : "떠날 때의 님의 얼굴";
-window.cosmicEngineSettings.fontFamily = fontSelectInput ? fontSelectInput.value : "'Noto Sans KR'";
 
 poemTextInput?.addEventListener('input', (e) => {
     window.cosmicEngineSettings.poemText = e.target.value || "떠날 때의 님의 얼굴";
-});
-
-// 💡 폰트 드롭다운 변경 바인딩
-fontSelectInput?.addEventListener('change', (e) => {
-    window.cosmicEngineSettings.fontFamily = e.target.value;
-});
-
-// 💡 사용자 커스텀 폰트(.TTF/.OTF) 업로드 수신 및 동적 주입
-fontFileInput?.addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    try {
-        const fontData = await file.arrayBuffer();
-        const customFont = new FontFace('CustomUserFont', fontData);
-        await customFont.load();
-        document.fonts.add(customFont);
-        
-        window.cosmicEngineSettings.fontFamily = "'CustomUserFont'";
-        if (fontSelectInput) {
-            let userOpt = fontSelectInput.querySelector('option[value="\'CustomUserFont\'"]');
-            if (!userOpt) {
-                userOpt = document.createElement('option');
-                userOpt.value = "'CustomUserFont'";
-                userOpt.innerText = `📁 ${file.name} (업로드된 폰트)`;
-                fontSelectInput.appendChild(userOpt);
-            }
-            fontSelectInput.value = "'CustomUserFont'";
-        }
-    } catch (err) {
-        alert("폰트 파일을 불러오는 중 에러가 발생했습니다: " + err.message);
-    }
 });
 
 function stopAllActiveStems() {
@@ -78,18 +41,16 @@ function stopAllActiveStems() {
         }
     });
     isMultiStemPlaying = false;
+    if (btnPlayMulti) btnPlayMulti.innerText = "▶️ 4-Stem 동시 재생 (Sync Play)";
 }
 
 async function safeDecodeAudio(file) {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === 'suspended') {
-        await audioCtx.resume();
-    }
+    if (audioCtx.state === 'suspended') await audioCtx.resume();
     const arrayBuffer = await file.arrayBuffer();
     return await audioCtx.decodeAudioData(arrayBuffer.slice(0));
 }
 
-// 5개 MP3 일괄 자동 분류
 batchMp3Input?.addEventListener('change', async (e) => {
     const files = Array.from(e.target.files);
     if (!files || files.length === 0) return;
@@ -97,7 +58,7 @@ batchMp3Input?.addEventListener('change', async (e) => {
     stopAllActiveStems();
     if (audioPlayer) audioPlayer.pause();
 
-    if (batchStatusText) batchStatusText.innerText = "⏳ 5개 MP3 오디오 초고속 해독 중...";
+    if (batchStatusText) batchStatusText.innerText = "⏳ MP3 파일 고속 해독 중...";
 
     let loadedNames = { vocals: null, drums: null, bass: null, other: null, main: null };
 
@@ -136,7 +97,7 @@ batchMp3Input?.addEventListener('change', async (e) => {
         }
     }
 
-    let summaryHtml = "✅ <strong>인식 완료 목록:</strong><br>";
+    let summaryHtml = "✅ <strong>인식 완료:</strong><br>";
     if (loadedNames.vocals) summaryHtml += `🎤 보컬: ${loadedNames.vocals}<br>`;
     if (loadedNames.drums)  summaryHtml += `🥁 드럼: ${loadedNames.drums}<br>`;
     if (loadedNames.bass)   summaryHtml += `🎸 베이스: ${loadedNames.bass}<br>`;
@@ -182,10 +143,12 @@ async function toggleMultiStemPlayback() {
             return;
         }
         isMultiStemPlaying = true;
+        if (btnPlayMulti) btnPlayMulti.innerText = "⏸️ 동시 일시정지 (Pause)";
     }
 }
 
-// 초기화
+btnPlayMulti?.addEventListener('click', toggleMultiStemPlayback);
+
 let initialRanges = { totalBands: 4, ranges: [] };
 const savedLatestConfig = localStorage.getItem('cosmic_fft_active_latest');
 if (savedLatestConfig) {
@@ -200,8 +163,12 @@ broadcast.onmessage = (e) => {
 };
 
 const sketchDescriptions = {
-    '001_p5_wave.js': `<strong style="color:#00ffcc; font-size:12px;">📊 [001호 파형] 오디오 웨이브</strong>`,
-    '022_poem_typography.js': `<strong style="color:#00ffcc; font-size:12px;">✍️ [022호 시타이포] 글자별 개별 랜덤 모션 타이포그래피</strong>`
+    '001_p5_wave.js': `<strong style="color:#00ffcc; font-size:12px;">📊 [001호 파형] 오디오 파형 반응형</strong>`,
+    '002_three_cube.js': `<strong style="color:#00ffcc; font-size:12px;">🧊 [002호 큐브] 3D 큐브 링 비주얼라이저</strong>`,
+    '005_three_floor_eq.js': `<strong style="color:#00ffcc; font-size:12px;">🎛️ [005호 그리드] 비트 연동 네온 매트릭스</strong>`,
+    '007_three_cosmic_nebula.js': `<strong style="color:#00ffcc; font-size:12px;">🌌 [007호 성운] 3D 파티클 은하수</strong>`,
+    '009_three_fireworks.js': `<strong style="color:#00ffcc; font-size:12px;">🎆 [009호 불꽃] 드럼 비트 폭발 불꽃</strong>`,
+    '021_matrix_press.js': `<strong style="color:#00ffcc; font-size:12px;">🎚️ [021호 32채널] 런치패드 이퀄라이저</strong>`
 };
 
 function updateSketchManual(sketchName) {
@@ -306,8 +273,7 @@ function syncCosmicControls() {
         scatterExponent: parseFloat(cosmicControls.numScatter.value) / 10,
         colorStyle: cosmicControls.color.value,
         glowIntensity: parseFloat(cosmicControls.numGlow.value) / 100,
-        // 💡 수치 10일 때 기본 1.0 배율이 되도록 / 10 으로 변경
-        audioGain: parseFloat(cosmicControls.numGain.value) / 10,
+        audioGain: (parseFloat(cosmicControls.numGain.value) || 10) / 10,
         customColors: { gas1: cosmicControls.pickGas1.value, gas2: cosmicControls.pickGas2.value, star: cosmicControls.pickStar.value },
         gaugeValue: parseInt(cosmicControls.numGauge.value) / 100
     };
@@ -360,19 +326,20 @@ if (recordBtn) {
     });
 }
 
+// 💡 [피크 음압 추출 + 10배 증폭]
 function getStemVolume(analyser) {
     if (!analyser) return 0;
     const data = new Uint8Array(analyser.frequencyBinCount);
     analyser.getByteFrequencyData(data);
-    let maxVal = 0;
-    let sum = 0;
+    let maxVal = 0, sum = 0;
     for (let i = 0; i < data.length; i++) {
         if (data[i] > maxVal) maxVal = data[i];
         sum += data[i];
     }
     const avg = (sum / data.length) / 255.0;
     const peak = maxVal / 255.0;
-    return (avg * 0.3 + peak * 0.7);
+    // 💡 음압 수치를 8배~10배 스케일업
+    return Math.min(1.0, (avg * 0.4 + peak * 0.6) * 3.5);
 }
 
 function renderEngineTicker() {
@@ -400,22 +367,6 @@ function renderEngineTicker() {
         }
     }
 
-    if (compiledAudioData.raw && compiledAudioData.raw.length > 0) {
-        broadcast.postMessage({ type: 'AUDIO_STREAM', raw: Array.from(compiledAudioData.raw) });
-    }
-
-    if (window.customFrequencyRanges && window.customFrequencyRanges.ranges && window.customFrequencyRanges.ranges.length > 0) {
-        compiledAudioData.customBands = window.customFrequencyRanges.ranges.map(band => {
-            let sum = 0; let count = 0;
-            for (let i = band.start; i <= band.end; i++) { sum += compiledAudioData.raw[i] || 0; count++; }
-            return count > 0 ? (sum / count) / 255.0 : 0;
-        });
-
-        if (compiledAudioData.customBands[0] !== undefined) compiledAudioData.bass = compiledAudioData.customBands[0];
-        if (compiledAudioData.customBands[1] !== undefined) compiledAudioData.mid = compiledAudioData.customBands[1];
-        if (compiledAudioData.customBands[2] !== undefined) compiledAudioData.treble = compiledAudioData.customBands[2];
-    }
-
     if (isMultiStemPlaying) {
         compiledAudioData.isMultiStem = true;
         compiledAudioData.vocalsVol = getStemVolume(stemAnalysers.vocals);
@@ -424,6 +375,10 @@ function renderEngineTicker() {
         compiledAudioData.otherVol  = getStemVolume(stemAnalysers.other);
     } else {
         compiledAudioData.isMultiStem = false;
+        compiledAudioData.vocalsVol = Math.min(1.0, compiledAudioData.mid * 3.0);
+        compiledAudioData.drumsVol  = Math.min(1.0, compiledAudioData.bass * 3.5);
+        compiledAudioData.bassVol   = Math.min(1.0, compiledAudioData.bass * 3.0);
+        compiledAudioData.otherVol  = Math.min(1.0, compiledAudioData.treble * 3.0);
     }
 
     window.latestCompiledAudioData = compiledAudioData;
