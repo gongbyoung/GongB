@@ -15,7 +15,7 @@ const recordBtn = document.getElementById('btn-record') || document.querySelecto
 let isAudioAnalyzerConnected = false;
 const broadcast = new BroadcastChannel('cosmic_fft_channel');
 
-// 💡 4-Stem MP3 멀티 트랙 오디오 엔진 변수
+// 4-Stem MP3 멀티 트랙 오디오 엔진 변수
 let audioCtx = null;
 const stemBuffers = { vocals: null, drums: null, bass: null, other: null };
 const stemSources = { vocals: null, drums: null, bass: null, other: null };
@@ -24,19 +24,52 @@ let isMultiStemPlaying = false;
 
 // UI 입력 엘리먼트 바인딩
 const poemTextInput = document.getElementById('input-poem-text');
-const btnPlayMulti = document.getElementById('btn-play-multi-stems');
+const fontSelectInput = document.getElementById('select-poem-font');
+const fontFileInput = document.getElementById('file-custom-font');
 const batchMp3Input = document.getElementById('file-batch-mp3');
 const batchStatusText = document.getElementById('batch-load-status');
 
-// 시 문구 전역 데이터 세팅
+// 전역 설정 객체
 window.cosmicEngineSettings = window.cosmicEngineSettings || {};
 window.cosmicEngineSettings.poemText = poemTextInput ? poemTextInput.value : "떠날 때의 님의 얼굴";
+window.cosmicEngineSettings.fontFamily = fontSelectInput ? fontSelectInput.value : "'Noto Sans KR'";
 
 poemTextInput?.addEventListener('input', (e) => {
     window.cosmicEngineSettings.poemText = e.target.value || "떠날 때의 님의 얼굴";
 });
 
-// 💡 기존 재생 중인 Stem 오디오 노드 강제 정지 헬퍼
+// 💡 폰트 드롭다운 변경 바인딩
+fontSelectInput?.addEventListener('change', (e) => {
+    window.cosmicEngineSettings.fontFamily = e.target.value;
+});
+
+// 💡 사용자 커스텀 폰트(.TTF/.OTF) 업로드 수신 및 동적 주입
+fontFileInput?.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    try {
+        const fontData = await file.arrayBuffer();
+        const customFont = new FontFace('CustomUserFont', fontData);
+        await customFont.load();
+        document.fonts.add(customFont);
+        
+        window.cosmicEngineSettings.fontFamily = "'CustomUserFont'";
+        if (fontSelectInput) {
+            let userOpt = fontSelectInput.querySelector('option[value="\'CustomUserFont\'"]');
+            if (!userOpt) {
+                userOpt = document.createElement('option');
+                userOpt.value = "'CustomUserFont'";
+                userOpt.innerText = `📁 ${file.name} (업로드된 폰트)`;
+                fontSelectInput.appendChild(userOpt);
+            }
+            fontSelectInput.value = "'CustomUserFont'";
+        }
+    } catch (err) {
+        alert("폰트 파일을 불러오는 중 에러가 발생했습니다: " + err.message);
+    }
+});
+
 function stopAllActiveStems() {
     Object.keys(stemSources).forEach(key => {
         if (stemSources[key]) {
@@ -45,10 +78,8 @@ function stopAllActiveStems() {
         }
     });
     isMultiStemPlaying = false;
-    if (btnPlayMulti) btnPlayMulti.innerText = "▶️ 4-Stem 동시 재생 (Sync Play)";
 }
 
-// 💡 [안전 디코딩 헬퍼 함수]
 async function safeDecodeAudio(file) {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     if (audioCtx.state === 'suspended') {
@@ -58,7 +89,7 @@ async function safeDecodeAudio(file) {
     return await audioCtx.decodeAudioData(arrayBuffer.slice(0));
 }
 
-// 💡 [스마트 자동 분류 처리 엔진]: 5개 MP3 안전 분류 및 디코딩
+// 5개 MP3 일괄 자동 분류
 batchMp3Input?.addEventListener('change', async (e) => {
     const files = Array.from(e.target.files);
     if (!files || files.length === 0) return;
@@ -72,7 +103,6 @@ batchMp3Input?.addEventListener('change', async (e) => {
 
     for (let file of files) {
         const name = file.name.toLowerCase();
-        
         const createStemAnalyser = () => {
             const analyser = audioCtx.createAnalyser();
             analyser.fftSize = 256;
@@ -106,7 +136,6 @@ batchMp3Input?.addEventListener('change', async (e) => {
         }
     }
 
-    // 시각적 상태 업데이터
     let summaryHtml = "✅ <strong>인식 완료 목록:</strong><br>";
     if (loadedNames.vocals) summaryHtml += `🎤 보컬: ${loadedNames.vocals}<br>`;
     if (loadedNames.drums)  summaryHtml += `🥁 드럼: ${loadedNames.drums}<br>`;
@@ -118,43 +147,14 @@ batchMp3Input?.addEventListener('change', async (e) => {
         batchStatusText.innerHTML = summaryHtml;
     }
 
-    // 오디오 슬롯 준비 완료 시 즉시 자동 동시 재생
     if (stemBuffers.vocals || stemBuffers.drums || stemBuffers.bass || stemBuffers.other) {
         toggleMultiStemPlayback();
     }
 });
 
-// 개별 파일 로더
-async function loadStemFile(fileInputId, stemKey) {
-    const input = document.getElementById(fileInputId);
-    if (!input) return;
-    input.addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        
-        try {
-            stemBuffers[stemKey] = await safeDecodeAudio(file);
-            const analyser = audioCtx.createAnalyser();
-            analyser.fftSize = 256;
-            stemAnalysers[stemKey] = analyser;
-        } catch(err) {
-            console.error(`[4-Stem] ${stemKey} 로딩 실패:`, err);
-        }
-    });
-}
-
-loadStemFile('file-stem-vocals', 'vocals');
-loadStemFile('file-stem-drums', 'drums');
-loadStemFile('file-stem-bass', 'bass');
-loadStemFile('file-stem-other', 'other');
-
-// 💡 4개 MP3 칼동기화 (Sync) 재생 / 일시정지 함수
 async function toggleMultiStemPlayback() {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    
-    if (audioCtx.state === 'suspended') {
-        await audioCtx.resume();
-    }
+    if (audioCtx.state === 'suspended') await audioCtx.resume();
     
     if (isMultiStemPlaying) {
         stopAllActiveStems();
@@ -170,26 +170,20 @@ async function toggleMultiStemPlayback() {
                 loadedCount++;
                 const source = audioCtx.createBufferSource();
                 source.buffer = stemBuffers[key];
-                
                 source.connect(stemAnalysers[key]);
                 stemAnalysers[key].connect(audioCtx.destination);
-                
                 source.start(startTargetTime);
                 stemSources[key] = source;
             }
         });
 
         if (loadedCount === 0) {
-            alert("MP3 스템 파일 변환 중입니다. 1~2초 후 다시 [▶️ 4-Stem 동시 재생]을 눌러주세요!");
+            alert("MP3 스템 파일 변환 중입니다. 잠시 후 다시 시작해주세요!");
             return;
         }
-
         isMultiStemPlaying = true;
-        if (btnPlayMulti) btnPlayMulti.innerText = "⏸️ 동시 일시정지 (Pause)";
     }
 }
-
-btnPlayMulti?.addEventListener('click', toggleMultiStemPlayback);
 
 // 초기화
 let initialRanges = { totalBands: 4, ranges: [] };
@@ -206,8 +200,8 @@ broadcast.onmessage = (e) => {
 };
 
 const sketchDescriptions = {
-    '001_p5_wave.js': `<strong style="color:#00ffcc; font-size:12px;">📊 [001호 파형] 오디오 웨이브</strong><br>• <strong>Volume(Gain)</strong>: 오디오 주파수 감도 조절`,
-    '022_poem_typography.js': `<strong style="color:#00ffcc; font-size:12px;">✍️ [022호 시타이포] 4-Stem 모션 타이포그래피</strong><br>• <strong>보컬</strong>: 글자 튀오름 | <strong>드럼</strong>: 충격 펄스<br>• <strong>베이스</strong>: 네온 발광 | <strong>기타</strong>: 회전 파동`
+    '001_p5_wave.js': `<strong style="color:#00ffcc; font-size:12px;">📊 [001호 파형] 오디오 웨이브</strong>`,
+    '022_poem_typography.js': `<strong style="color:#00ffcc; font-size:12px;">✍️ [022호 시타이포] 글자별 개별 랜덤 모션 타이포그래피</strong>`
 };
 
 function updateSketchManual(sketchName) {
@@ -218,10 +212,6 @@ function updateSketchManual(sketchName) {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
-    const link = document.createElement('link');
-    link.rel = 'stylesheet'; link.href = 'https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@500;900&display=swap';
-    document.head.appendChild(link);
-    
     const listContainer = document.getElementById('sketch-list');
     if (listContainer) {
         const descPanel = document.createElement('div');
