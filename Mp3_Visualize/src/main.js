@@ -306,7 +306,8 @@ function syncCosmicControls() {
         scatterExponent: parseFloat(cosmicControls.numScatter.value) / 10,
         colorStyle: cosmicControls.color.value,
         glowIntensity: parseFloat(cosmicControls.numGlow.value) / 100,
-        audioGain: parseFloat(cosmicControls.numGain.value) / 100,
+        // 💡 수치 10일 때 기본 1.0 배율이 되도록 / 10 으로 변경
+        audioGain: parseFloat(cosmicControls.numGain.value) / 10,
         customColors: { gas1: cosmicControls.pickGas1.value, gas2: cosmicControls.pickGas2.value, star: cosmicControls.pickStar.value },
         gaugeValue: parseInt(cosmicControls.numGauge.value) / 100
     };
