@@ -97,7 +97,7 @@ batchMp3Input?.addEventListener('change', async (e) => {
         }
     }
 
-    let summaryHtml = "✅ <strong>인식 완료:</strong><br>";
+    let summaryHtml = "✅ <strong>인식 완료 목록:</strong><br>";
     if (loadedNames.vocals) summaryHtml += `🎤 보컬: ${loadedNames.vocals}<br>`;
     if (loadedNames.drums)  summaryHtml += `🥁 드럼: ${loadedNames.drums}<br>`;
     if (loadedNames.bass)   summaryHtml += `🎸 베이스: ${loadedNames.bass}<br>`;
@@ -163,12 +163,12 @@ broadcast.onmessage = (e) => {
 };
 
 const sketchDescriptions = {
-    '001_p5_wave.js': `<strong style="color:#00ffcc; font-size:12px;">📊 [001호 파형] 오디오 파형 반응형</strong>`,
-    '002_three_cube.js': `<strong style="color:#00ffcc; font-size:12px;">🧊 [002호 큐브] 3D 큐브 링 비주얼라이저</strong>`,
-    '005_three_floor_eq.js': `<strong style="color:#00ffcc; font-size:12px;">🎛️ [005호 그리드] 비트 연동 네온 매트릭스</strong>`,
-    '007_three_cosmic_nebula.js': `<strong style="color:#00ffcc; font-size:12px;">🌌 [007호 성운] 3D 파티클 은하수</strong>`,
+    '001_p5_wave.js': `<strong style="color:#00ffcc; font-size:12px;">📊 [001호 파형] 오디오 진동 파형</strong>`,
+    '002_three_cube.js': `<strong style="color:#00ffcc; font-size:12px;">🧊 [002호 큐브] 3D 회전 큐브 링</strong>`,
+    '005_three_floor_eq.js': `<strong style="color:#00ffcc; font-size:12px;">🎛️ [005호 그리드] 비트 반응형 이퀄라이저 매트릭스</strong>`,
+    '007_three_cosmic_nebula.js': `<strong style="color:#00ffcc; font-size:12px;">🌌 [007호 성운] 3D 우주 별빛 은하수</strong>`,
     '009_three_fireworks.js': `<strong style="color:#00ffcc; font-size:12px;">🎆 [009호 불꽃] 드럼 비트 폭발 불꽃</strong>`,
-    '021_matrix_press.js': `<strong style="color:#00ffcc; font-size:12px;">🎚️ [021호 32채널] 런치패드 이퀄라이저</strong>`
+    '021_matrix_press.js': `<strong style="color:#00ffcc; font-size:12px;">🎚️ [021호 32채널] 악기별 반응 런치패드</strong>`
 };
 
 function updateSketchManual(sketchName) {
@@ -326,7 +326,6 @@ if (recordBtn) {
     });
 }
 
-// 💡 [피크 음압 추출 + 10배 증폭]
 function getStemVolume(analyser) {
     if (!analyser) return 0;
     const data = new Uint8Array(analyser.frequencyBinCount);
@@ -338,8 +337,7 @@ function getStemVolume(analyser) {
     }
     const avg = (sum / data.length) / 255.0;
     const peak = maxVal / 255.0;
-    // 💡 음압 수치를 8배~10배 스케일업
-    return Math.min(1.0, (avg * 0.4 + peak * 0.6) * 3.5);
+    return Math.min(1.0, (avg * 0.3 + peak * 0.7) * 4.0);
 }
 
 function renderEngineTicker() {
@@ -375,10 +373,10 @@ function renderEngineTicker() {
         compiledAudioData.otherVol  = getStemVolume(stemAnalysers.other);
     } else {
         compiledAudioData.isMultiStem = false;
-        compiledAudioData.vocalsVol = Math.min(1.0, compiledAudioData.mid * 3.0);
-        compiledAudioData.drumsVol  = Math.min(1.0, compiledAudioData.bass * 3.5);
-        compiledAudioData.bassVol   = Math.min(1.0, compiledAudioData.bass * 3.0);
-        compiledAudioData.otherVol  = Math.min(1.0, compiledAudioData.treble * 3.0);
+        compiledAudioData.vocalsVol = Math.min(1.0, compiledAudioData.mid * 3.5);
+        compiledAudioData.drumsVol  = Math.min(1.0, compiledAudioData.bass * 4.0);
+        compiledAudioData.bassVol   = Math.min(1.0, compiledAudioData.bass * 3.5);
+        compiledAudioData.otherVol  = Math.min(1.0, compiledAudioData.treble * 3.5);
     }
 
     window.latestCompiledAudioData = compiledAudioData;
