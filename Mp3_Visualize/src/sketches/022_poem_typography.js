@@ -1,6 +1,9 @@
 /**
  * src/sketches/022_poem_typography.js
- * - [버전] Ver 5.5 4-Stem 전역 이중 검증 & 하이브리드 자동 추종 완결판
+ * - [버전] Ver 6.0 글자별 모션 개별 랜덤화 (Shuffle 연동) & 실시간 폰트 바인딩 완결판
+ * - 핵심 개혁:
+ * 1) Shuffle (Seed) 슬라이더에 따라 각 글자가 6가지 서로 다른 개별 모션을 할당받아 춤춤
+ * 2) UI에서 지정된 폰트 (웹폰트 또는 커스텀 .TTF/.OTF) 실시간 반영
  */
 
 export default class PoemTypographySketch {
@@ -10,7 +13,7 @@ export default class PoemTypographySketch {
     this.ctx = null;
     this.time = 0;
     this.smoothedValues = {};
-    this.version = "022호 시 타이포 Ver 5.5";
+    this.version = "022호 시 타이포 Ver 6.0";
 
     this.init();
   }
@@ -48,14 +51,19 @@ export default class PoemTypographySketch {
         box-shadow: 0 0 30px rgba(0, 255, 204, 0.35); font-family: sans-serif;
       ">
         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1e293b; padding-bottom:10px; margin-bottom:12px;">
-          <span style="color:#00ffcc; font-size:14px; font-weight:bold;">✍️ 022호 시 타이포 스마트 안내</span>
+          <span style="color:#00ffcc; font-size:14px; font-weight:bold;">✍️ 022호 시 타이포 모션 & 폰트 조작 가이드</span>
           <span id="btn-poem-modal-x" style="color:#f43f5e; font-weight:bold; cursor:pointer; font-size:16px;">✕</span>
         </div>
 
         <div style="font-size:11px; line-height:1.6; max-height:60vh; overflow-y:auto;">
-          <div style="color:#facc15; font-weight:bold; margin-bottom:3px;">⚡ 스마트 파일 일괄 인식 지원</div>
+          <div style="color:#facc15; font-weight:bold; margin-bottom:3px;">🔤 폰트 지정 & 커스텀 TTF 업로드</div>
           <div style="background:#020617; padding:8px; border-radius:4px; border:1px solid #1e293b; margin-bottom:10px;">
-            좌측 상단의 <strong style="color:#00ffcc;">[MP3 파일 전체 일괄 선택]</strong> 칸에 폴더 안의 파일들을 한꺼번에 선택(Ctrl+A)해서 올리면, 시스템이 메인 MP3와 4개 스템(Vocals, Drums, Bass, Other)을 자동으로 분류하여 바로 재생합니다!
+            좌측 패널의 <strong style="color:#38bdf8;">[🔤 폰트 선택 & 사용자 폰트]</strong>에서 원하시는 글꼴을 바꾸거나, 가지고 계신 TTF/OTF 파일만 올리면 자막 폰트가 즉시 변경됩니다!
+          </div>
+
+          <div style="color:#facc15; font-weight:bold; margin-bottom:3px;">🎲 글자별 개별 랜덤 모션 (Shuffle)</div>
+          <div style="background:#020617; padding:8px; border-radius:4px; border:1px solid #1e293b;">
+            우측 패널의 <strong style="color:#00ffcc;">Shuffle (Seed)</strong> 슬라이더를 옮기면 각 글자들에 부여되는 개별 움직임(점프, 회전, 줌, S곡선, 팝업)이 완전 랜덤하게 재배치됩니다!
           </div>
         </div>
 
@@ -79,11 +87,10 @@ export default class PoemTypographySketch {
     if (panel) {
       panel.innerHTML = `
         <div style="line-height:1.5; color:#d0e0ff; font-size:11px;">
-          <strong style="color:#00ffcc; font-size:12px;">✍️ [022호 시타이포] 사용 가이드</strong><br>
-          • <strong>일괄 선택</strong>: [MP3 전체 일괄 선택]으로 다중 파일 한 번에 로드<br>
-          • <strong>Scale (Glow)</strong>: 글자 크기 축소/확대<br>
-          • <strong>Range (Scatter)</strong>: 자간 간격 조율<br>
-          • <strong>Gauge</strong>: 행간(줄 간격) 조율
+          <strong style="color:#00ffcc; font-size:12px;">✍️ [022호 시타이포] 모션 & 폰트 가이드</strong><br>
+          • <strong>Shuffle (Seed)</strong>: 글자별 개별 모션 랜덤 셔플링<br>
+          • <strong>폰트 선택</strong>: 좌측 UI에서 대표 웹폰트 or TTF 파일 즉시 적용<br>
+          • <strong>Scale/Range/Gauge</strong>: 폰트 크기, 자간, 행간 간격 조율
         </div>
       `;
     }
@@ -97,6 +104,12 @@ export default class PoemTypographySketch {
       this.canvas.width = this.width;
       this.canvas.height = this.height;
     }
+  }
+
+  // 글자별 해시 기반 독립 모션 타입 산출 함수 (0~5)
+  getCharMotionType(seed, charIndex) {
+    const hash = Math.sin(seed * 999 + charIndex * 1337) * 43758.5453123;
+    return Math.floor(Math.abs(hash) % 6);
   }
 
   wrapText(text, maxLineWidth, letterSpacing) {
@@ -128,7 +141,6 @@ export default class PoemTypographySketch {
       if (!this.ctx) return;
     }
 
-    // 💡 전역 데이터 이중 보완 백업
     const targetAudio = (audioData && audioData.isMultiStem !== undefined) ? audioData : (window.latestCompiledAudioData || audioData || {});
 
     this.time += 0.016;
@@ -142,6 +154,9 @@ export default class PoemTypographySketch {
     const gainVal = globalSettings.audioGain ?? 1.0;
     const gaugeVal = globalSettings.gaugeValue ?? 0.5;
 
+    // 💡 동적 폰트 패밀리 판독
+    const targetFontFamily = globalSettings.fontFamily || "'Noto Sans KR'";
+
     const rawText = (globalSettings.poemText || "떠날 때의 님의 얼굴").trim();
 
     let vocalsVol = 0, drumsVol = 0, bassVol = 0, otherVol = 0;
@@ -152,12 +167,10 @@ export default class PoemTypographySketch {
       drumsVol  = (targetAudio.drumsVol  || 0) * gainVal * 5.0;
       bassVol   = (targetAudio.bassVol   || 0) * gainVal * 5.0;
       otherVol  = (targetAudio.otherVol  || 0) * gainVal * 5.0;
-      modeText = `4-Stem Active [Vocal:${vocalsVol.toFixed(2)}]`;
+      modeText = `4-Stem Mapped [Vocals:${vocalsVol.toFixed(2)}]`;
 
       const maxOther = Math.max(drumsVol, bassVol, otherVol);
-      if (vocalsVol < 0.05 && maxOther > 0.05) {
-        vocalsVol = maxOther * 0.6;
-      }
+      if (vocalsVol < 0.05 && maxOther > 0.05) vocalsVol = maxOther * 0.6;
     } else if (targetAudio) {
       const vol = targetAudio.vol || 0;
       const bass = targetAudio.bass || 0;
@@ -175,7 +188,7 @@ export default class PoemTypographySketch {
     let colorStyle = 'neon';
     if (colorSelectDOM) colorStyle = colorSelectDOM.value.toLowerCase();
 
-    // 🥁 드럼 반응: 화면 충격 셰이크
+    // 드럼 충격 셰이크
     this.ctx.save();
     if (drumsVol > 0.05) {
       const shakeX = (Math.random() - 0.5) * Math.min(drumsVol * 25, 25);
@@ -204,7 +217,7 @@ export default class PoemTypographySketch {
       this.ctx.fillRect(0, 0, renderW, renderH);
     }
 
-    // 2. 폰트 레이아웃
+    // 2. 폰트 레이아웃 & 폰트 체인징 바인딩
     const isPortrait = renderH > renderW;
     const baseFontSize = Math.min(renderW, renderH) * (isPortrait ? 0.08 : 0.07) * (0.5 + glowVal * 1.2);
     const letterSpacing = baseFontSize * (0.75 + scatterVal * 0.15);
@@ -219,9 +232,10 @@ export default class PoemTypographySketch {
 
     this.ctx.textAlign = 'center';
     this.ctx.textBaseline = 'middle';
-    this.ctx.font = `900 ${baseFontSize}px 'Noto Sans KR', sans-serif`;
+    
+    // 💡 동적 지정된 폰트 적용
+    this.ctx.font = `900 ${baseFontSize}px ${targetFontFamily}, sans-serif`;
 
-    const animMode = seed % 4;
     let globalCharIndex = 0;
 
     for (let l = 0; l < totalLines; l++) {
@@ -250,22 +264,45 @@ export default class PoemTypographySketch {
         const waveDelay = globalCharIndex * (gaugeVal * 0.2);
         const timePhase = this.time * 4.5 - waveDelay;
 
-        const charX = lineStartX + (c * letterSpacing);
+        let charX = lineStartX + (c * letterSpacing);
         let charY = lineY;
         let charScale = 1.0;
         let charRotation = 0;
 
-        // 🎤 보컬 반응
-        const idleMotion = Math.sin(this.time * 2 + globalCharIndex * 0.5) * (baseFontSize * 0.05);
-        const bounce = Math.abs(Math.sin(timePhase)) * (charIntensity * baseFontSize * 1.6) + idleMotion;
-        charY -= bounce;
+        const idleMotion = Math.sin(this.time * 2 + globalCharIndex * 0.5) * (baseFontSize * 0.04);
 
-        // 🎹 기타 반응
-        charRotation = Math.sin(timePhase) * (otherVol * 1.0 + Math.sin(this.time + globalCharIndex) * 0.1);
+        // 💡 [핵심]: Shuffle(Seed) 기반 글자별 모션 동작 타입 계산 (0~5)
+        const charMotionType = this.getCharMotionType(seed, globalCharIndex);
 
-        if (animMode === 1) charScale = 1.0 + charIntensity * 0.8;
-        else if (animMode === 2) charRotation += (charIntensity * 0.5);
-        else if (animMode === 3) charScale = 1.0 + Math.sin(timePhase) * charIntensity * 0.5;
+        switch(charMotionType) {
+          case 0: // 수직 점프 (Vertical Bounce)
+            charY -= Math.abs(Math.sin(timePhase)) * (charIntensity * baseFontSize * 1.8) + idleMotion;
+            break;
+
+          case 1: // 스케일 줌 펄스 (Zoom Pulse)
+            charScale = 1.0 + charIntensity * 1.2;
+            charY -= idleMotion;
+            break;
+
+          case 2: // 3D 회전 틸트 (Dynamic Rotation)
+            charRotation = Math.sin(timePhase) * (otherVol * 1.5 + charIntensity * 0.8);
+            break;
+
+          case 3: // 좌우 물결 이동 (Horizontal Wave)
+            charX += Math.sin(timePhase * 2) * (charIntensity * baseFontSize * 0.6);
+            charY -= Math.cos(timePhase) * (charIntensity * baseFontSize * 0.8);
+            break;
+
+          case 4: // S-곡선 각도 바운스 (S-Curve Tilt)
+            charY -= Math.abs(Math.cos(timePhase)) * (charIntensity * baseFontSize * 1.4);
+            charRotation = Math.cos(timePhase) * 0.4;
+            break;
+
+          case 5: // 팝업 스케일 & 스윙 (Pop Scale & Swing)
+            charScale = 1.0 + Math.sin(timePhase * 2) * charIntensity * 0.6;
+            charY -= Math.sin(timePhase) * (charIntensity * baseFontSize * 1.2);
+            break;
+        }
 
         let strokeColor = '#00f0ff', fillColor = '#ffffff', shadowColor = '#00f0ff';
         const hueOffset = (globalCharIndex * 22 + seed * 10) % 360;
@@ -295,7 +332,7 @@ export default class PoemTypographySketch {
         this.ctx.scale(charScale, charScale);
         this.ctx.rotate(charRotation);
 
-        // 🎸 베이스 반응
+        // 베이스 네온 불빛
         const effectiveGlow = bassVol + charIntensity * 0.4;
         if (effectiveGlow > 0.02) {
           this.ctx.shadowColor = shadowColor;
@@ -321,7 +358,7 @@ export default class PoemTypographySketch {
       fps: 60,
       particleCount: modeText,
       isCovering: true,
-      activeFunction: "PoemTypography[AutoMatch_v5.5]"
+      activeFunction: "PoemTypography[PerChar_RandomMotion_v6.0]"
     };
   }
 
