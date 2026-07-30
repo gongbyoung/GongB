@@ -7,11 +7,9 @@ const manager = new SketchManager('canvas-stage');
 const recorder = new VideoRecorder('canvas-stage');
 
 const audioPlayer = document.getElementById('audio-player');
-const sketchItems = document.querySelectorAll('#sketch-list li');
 const stageWrapper = document.getElementById('stage-wrapper');
 const imageInput = document.getElementById('file-image');
 const deckPlayBtn = document.getElementById('btn-play-music');
-
 const recordBtn = document.getElementById('btn-record') || document.querySelector('.btn-record') || document.getElementById('btn-start-record');
 
 let isAudioAnalyzerConnected = false;
@@ -24,7 +22,7 @@ const stemSources = { vocals: null, drums: null, bass: null, other: null };
 const stemAnalysers = { vocals: null, drums: null, bass: null, other: null };
 let isMultiStemPlaying = false;
 
-// 💡 UI 입력 엘리먼트 바인딩
+// UI 입력 엘리먼트 바인딩
 const poemTextInput = document.getElementById('input-poem-text');
 const btnPlayMulti = document.getElementById('btn-play-multi-stems');
 
@@ -45,12 +43,16 @@ async function loadStemFile(fileInputId, stemKey) {
         if (!file) return;
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         
-        const arrayBuffer = await file.arrayBuffer();
-        stemBuffers[stemKey] = await audioCtx.decodeAudioData(arrayBuffer);
-        
-        const analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 256;
-        stemAnalysers[stemKey] = analyser;
+        try {
+            const arrayBuffer = await file.arrayBuffer();
+            stemBuffers[stemKey] = await audioCtx.decodeAudioData(arrayBuffer);
+            
+            const analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 256;
+            stemAnalysers[stemKey] = analyser;
+        } catch(err) {
+            console.error(`[4-Stem] ${stemKey} 로딩 실패:`, err);
+        }
     });
 }
 
@@ -63,7 +65,6 @@ loadStemFile('file-stem-other', 'other');
 async function toggleMultiStemPlayback() {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     
-    // 💡 [수리 핵심 1]: 브라우저 AudioContext 잠김 강제 해제
     if (audioCtx.state === 'suspended') {
         await audioCtx.resume();
     }
@@ -123,6 +124,7 @@ broadcast.onmessage = (e) => {
 
 const sketchDescriptions = {
     '001_p5_wave.js': `<strong style="color:#00ffcc; font-size:12px;">📊 [001호 파형] 오디오 웨이브</strong><br>• <strong>Volume(Gain)</strong>: 오디오 주파수 감도 조절`,
+    '005_three_floor_eq.js': `<strong style="color:#00ffcc; font-size:12px;">🎛️ [005호 그리드] 순수 기하학 네온 매트릭스</strong><br>• <strong>Shuffle(Seed)</strong>: 프레임 형상 일제 변환`,
     '022_poem_typography.js': `<strong style="color:#00ffcc; font-size:12px;">✍️ [022호 시타이포] 4-Stem 모션 타이포그래피</strong><br>• <strong>보컬</strong>: 글자 튀오름 | <strong>드럼</strong>: 충격 펄스<br>• <strong>베이스</strong>: 네온 발광 | <strong>기타</strong>: 회전 파동`
 };
 
@@ -168,12 +170,14 @@ window.addEventListener('DOMContentLoaded', () => {
     }, 200);
 });
 
+// 배경 이미지 업로드 디코더
 imageInput?.addEventListener('change', (e) => {
     const file = e.target.files[0]; if (!file) return;
     const imgURL = URL.createObjectURL(file); const img = new Image(); img.src = imgURL;
     img.onload = () => { window.currentUploadedImageElement = img; };
 });
 
+// 단일 MP3 오디오 스트림 로더
 const audioInput = document.getElementById('file-audio') || document.getElementById('file-mp3') || document.querySelector('input[type="file"][accept*="audio"]');
 if (audioInput) {
     audioInput.addEventListener('change', (e) => {
@@ -185,17 +189,28 @@ if (audioInput) {
     });
 }
 
-sketchItems.forEach(item => {
-    item.addEventListener('click', async (e) => {
-        sketchItems.forEach(li => li.classList.remove('active'));
-        e.currentTarget.classList.add('active');
-        const targetSketch = e.currentTarget.getAttribute('data-sketch');
-        await manager.switchSketch(targetSketch, analyzer);
-        syncCosmicControls();
-        updateSketchManual(targetSketch);
-    });
-});
+// 💡 [핵심 개편]: 스케치 목록 클릭 이벤트 - 이벤트 위임(Event Delegation)으로 100% 안전 구동
+const sketchListContainer = document.getElementById('sketch-list');
+if (sketchListContainer) {
+    sketchListContainer.addEventListener('click', async (e) => {
+        const targetLi = e.target.closest('li[data-sketch]');
+        if (!targetLi) return;
 
+        document.querySelectorAll('#sketch-list li').forEach(li => li.classList.remove('active'));
+        targetLi.classList.add('active');
+
+        const targetSketch = targetLi.getAttribute('data-sketch');
+        try {
+            await manager.switchSketch(targetSketch, analyzer);
+            syncCosmicControls();
+            updateSketchManual(targetSketch);
+        } catch(err) {
+            console.error(`[Sketch Switch Error] ${targetSketch} 로딩 실패:`, err);
+        }
+    });
+}
+
+// 렌더링 비율 버튼
 const ratioButtons = { full: document.getElementById('btn-ratio-full'), i169: document.getElementById('btn-ratio-169'), i916: document.getElementById('btn-ratio-916') };
 Object.keys(ratioButtons).forEach(key => {
     if (ratioButtons[key]) {
@@ -284,6 +299,7 @@ function getStemVolume(analyser) {
     return (sum / data.length) / 255.0;
 }
 
+// 💡 메인 렌더링 루프 (완성본)
 function renderEngineTicker() {
     requestAnimationFrame(renderEngineTicker);
 
@@ -300,3 +316,55 @@ function renderEngineTicker() {
             
             let b = 0, m = 0, t = 0;
             for (let i = 0; i < 20; i++) b += dataArray[i];
+            for (let i = 20; i < 100; i++) m += dataArray[i];
+            for (let i = 100; i < 220; i++) t += dataArray[i];
+            compiledAudioData.bass = (b / 20) / 255.0;
+            compiledAudioData.mid = (m / 80) / 255.0;
+            compiledAudioData.treble = (t / 120) / 255.0;
+            compiledAudioData.vol = (b + m + t) / 220 / 255.0;
+        }
+    }
+
+    if (compiledAudioData.raw && compiledAudioData.raw.length > 0) {
+        broadcast.postMessage({ type: 'AUDIO_STREAM', raw: Array.from(compiledAudioData.raw) });
+    }
+
+    if (window.customFrequencyRanges && window.customFrequencyRanges.ranges && window.customFrequencyRanges.ranges.length > 0) {
+        compiledAudioData.customBands = window.customFrequencyRanges.ranges.map(band => {
+            let sum = 0; let count = 0;
+            for (let i = band.start; i <= band.end; i++) { sum += compiledAudioData.raw[i] || 0; count++; }
+            return count > 0 ? (sum / count) / 255.0 : 0;
+        });
+
+        if (compiledAudioData.customBands[0] !== undefined) compiledAudioData.bass = compiledAudioData.customBands[0];
+        if (compiledAudioData.customBands[1] !== undefined) compiledAudioData.mid = compiledAudioData.customBands[1];
+        if (compiledAudioData.customBands[2] !== undefined) compiledAudioData.treble = compiledAudioData.customBands[2];
+    }
+
+    // 💡 4-Stem 데이터 매핑
+    if (isMultiStemPlaying) {
+        compiledAudioData.isMultiStem = true;
+        compiledAudioData.vocalsVol = getStemVolume(stemAnalysers.vocals);
+        compiledAudioData.drumsVol  = getStemVolume(stemAnalysers.drums);
+        compiledAudioData.bassVol   = getStemVolume(stemAnalysers.bass);
+        compiledAudioData.otherVol  = getStemVolume(stemAnalysers.other);
+    } else {
+        compiledAudioData.isMultiStem = false;
+    }
+
+    manager.update(compiledAudioData);
+}
+
+// 스케치 초기화 및 기동
+const activeLi = document.querySelector('#sketch-list li.active');
+const initSketch = activeLi ? activeLi.getAttribute('data-sketch') : '001_p5_wave.js';
+syncCosmicControls();
+manager.switchSketch(initSketch, analyzer).then(() => {
+    updateSketchManual(initSketch);
+    renderEngineTicker();
+}).catch(err => {
+    console.error("초기 스케치 로딩 예외:", err);
+    renderEngineTicker();
+});
+
+window.addEventListener('resize', () => manager.resize(stageWrapper.clientWidth, stageWrapper.clientHeight));
