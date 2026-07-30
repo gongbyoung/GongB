@@ -1,10 +1,6 @@
 /**
  * src/sketches/022_poem_typography.js
- * - [버전] Ver 3.0 자동 줄바꿈(Multi-line) & 반응형 크기 조절 & 오디오 감도 대폭 강화
- * - 해결 과제:
- * 1) 16:9, 9:16 세로 화면 비율에 맞춰 글자가 잘리지 않고 자동으로 줄바꿈(2줄/3줄 등)되도록 레이아웃 엔진 적용
- * 2) Scale (Glow) 슬라이더로 폰트 크기, Range로 자간, Gauge로 줄 간격을 자유롭게 조율
- * 3) 단일 MP3 및 4-Stem MP3 모두 호환되는 강력한 주파수 감도 보정 (소리가 안 움직이던 문제 완전 해결)
+ * - [버전] Ver 3.5 4-Stem 모드 락온 패치판
  */
 
 export default class PoemTypographySketch {
@@ -18,12 +14,10 @@ export default class PoemTypographySketch {
     this.height = 0;
     this.time = 0;
     this.smoothedValues = new Array(64).fill(0);
-    this.version = "022호 시 타이포 Ver 3.0";
+    this.version = "022호 시 타이포 Ver 3.5";
   }
 
-  init() {
-    this.resize();
-  }
+  init() { this.resize(); }
 
   resize(w, h) {
     this.width = w || this.container.clientWidth;
@@ -32,7 +26,6 @@ export default class PoemTypographySketch {
     this.canvas.height = this.height;
   }
 
-  // 문장을 화면 너비에 맞춰 자동 줄바꿈(Multi-line) 단어/글자 단위로 분할하는 함수
   wrapText(text, maxLineWidth, letterSpacing) {
     const words = text.split(' ');
     const lines = [];
@@ -52,10 +45,7 @@ export default class PoemTypographySketch {
         currentLineWidth += wordWidth + letterSpacing;
       }
     }
-    if (currentLine.length > 0) {
-      lines.push(currentLine.join(' '));
-    }
-
+    if (currentLine.length > 0) lines.push(currentLine.join(' '));
     return lines.length > 0 ? lines : [text];
   }
 
@@ -66,50 +56,44 @@ export default class PoemTypographySketch {
     const renderW = this.canvas.width;
     const renderH = this.canvas.height;
 
-    // 관제탑 슬라이더 파라미터 로드
     const globalSettings = window.cosmicEngineSettings || {};
     const seed = globalSettings.seed ?? 42;
-    const scatterVal = globalSettings.scatterExponent ?? 2.2; // 자간/간격
-    const glowVal = globalSettings.glowIntensity ?? 0.85;       // 폰트 크기 및 스케일
-    const gainVal = globalSettings.audioGain ?? 1.0;           // 반응 감도 배율
-    const gaugeVal = globalSettings.gaugeValue ?? 0.5;         // 줄 간격
+    const scatterVal = globalSettings.scatterExponent ?? 2.2;
+    const glowVal = globalSettings.glowIntensity ?? 0.85;
+    const gainVal = globalSettings.audioGain ?? 1.0;
+    const gaugeVal = globalSettings.gaugeValue ?? 0.5;
 
-    // 시 문구 받아오기
     const rawText = (globalSettings.poemText || "떠날 때의 님의 얼굴").trim();
 
-    // 💡 [오디오 호환성 보정]: 4-Stem 및 단일 MP3 모두 무조건 반응하도록 드라이버 바인딩
     let vocalsVol = 0, drumsVol = 0, bassVol = 0, otherVol = 0;
 
-    if (audioData) {
-      if (audioData.vocalsVol !== undefined && (audioData.vocalsVol > 0 || audioData.drumsVol > 0)) {
-        // 4-Stem MP3 재생 중
-        vocalsVol = audioData.vocalsVol * gainVal * 3.0;
-        drumsVol  = audioData.drumsVol  * gainVal * 3.0;
-        bassVol   = audioData.bassVol   * gainVal * 3.0;
-        otherVol  = audioData.otherVol  * gainVal * 3.0;
-      } else {
-        // 단일 MP3 재생 중 (주파수 대역 분할 매핑)
-        const vol = audioData.vol || 0;
-        const bass = audioData.bass || 0;
-        const mid = audioData.mid || 0;
-        const treble = audioData.treble || 0;
+    // 💡 [수리 핵심 3]: 명확한 isMultiStem 플래그 검사로 4-Stem 데이터 100% 매핑
+    if (audioData && audioData.isMultiStem) {
+      vocalsVol = (audioData.vocalsVol || 0) * gainVal * 4.0;
+      drumsVol  = (audioData.drumsVol  || 0) * gainVal * 4.0;
+      bassVol   = (audioData.bassVol   || 0) * gainVal * 4.0;
+      otherVol  = (audioData.otherVol  || 0) * gainVal * 4.0;
+    } else if (audioData) {
+      const vol = audioData.vol || 0;
+      const bass = audioData.bass || 0;
+      const mid = audioData.mid || 0;
+      const treble = audioData.treble || 0;
 
-        vocalsVol = (mid * 2.5 + vol * 1.5) * gainVal;
-        drumsVol  = (bass * 3.0) * gainVal;
-        bassVol   = (bass * 2.5 + vol * 1.0) * gainVal;
-        otherVol  = (treble * 2.5 + mid * 1.0) * gainVal;
-      }
+      vocalsVol = (mid * 2.5 + vol * 1.5) * gainVal;
+      drumsVol  = (bass * 3.0) * gainVal;
+      bassVol   = (bass * 2.5 + vol * 1.0) * gainVal;
+      otherVol  = (treble * 2.5 + mid * 1.0) * gainVal;
     }
 
     const colorSelectDOM = document.getElementById('select-cosmic-color');
     let colorStyle = 'neon';
     if (colorSelectDOM) colorStyle = colorSelectDOM.value.toLowerCase();
 
-    // 🥁 [드럼 반응]: 화면 전체 충격 셰이크
+    // 🥁 드럼 반응: 화면 충격 셰이크
     this.ctx.save();
-    if (drumsVol > 0.08) {
-      const shakeX = (Math.random() - 0.5) * Math.min(drumsVol * 20, 20);
-      const shakeY = (Math.random() - 0.5) * Math.min(drumsVol * 20, 20);
+    if (drumsVol > 0.05) {
+      const shakeX = (Math.random() - 0.5) * Math.min(drumsVol * 25, 25);
+      const shakeY = (Math.random() - 0.5) * Math.min(drumsVol * 25, 25);
       this.ctx.translate(shakeX, shakeY);
     }
 
@@ -134,20 +118,16 @@ export default class PoemTypographySketch {
       this.ctx.fillRect(0, 0, renderW, renderH);
     }
 
-    // 2. 💡 [반응형 폰트 크기 & 자동 줄바꿈 연산 코어]
+    // 2. 폰트 레이아웃
     const isPortrait = renderH > renderW;
     const baseFontSize = Math.min(renderW, renderH) * (isPortrait ? 0.08 : 0.07) * (0.5 + glowVal * 1.2);
     const letterSpacing = baseFontSize * (0.75 + scatterVal * 0.15);
     const lineHeight = baseFontSize * (1.3 + gaugeVal * 0.4);
-
-    // 가로 여백 제한 (화면 너비의 88% 이내로 잘리지 않게 제한)
     const maxLineWidth = renderW * 0.88;
 
-    // 문장을 여러 줄로 자동 분할
     const lines = this.wrapText(rawText, maxLineWidth, letterSpacing);
     const totalLines = lines.length;
 
-    // 전체 텍스트 블록 수직 중앙 정렬
     const totalBlockHeight = (totalLines - 1) * lineHeight;
     const startY = (renderH - totalBlockHeight) / 2;
 
@@ -158,7 +138,6 @@ export default class PoemTypographySketch {
     const animMode = seed % 4;
     let globalCharIndex = 0;
 
-    // 3. 줄 단위 & 글자 단위 다중 루프
     for (let l = 0; l < totalLines; l++) {
       const lineText = lines[l];
       const lineChars = lineText.split('');
@@ -174,7 +153,6 @@ export default class PoemTypographySketch {
 
         if (char === ' ') continue;
 
-        // 글자별 개별 스무딩
         const targetVal = vocalsVol;
         this.smoothedValues[globalCharIndex] += (targetVal - this.smoothedValues[globalCharIndex]) * 0.3;
         const charIntensity = Math.max(0, this.smoothedValues[globalCharIndex]);
@@ -187,28 +165,19 @@ export default class PoemTypographySketch {
         let charScale = 1.0;
         let charRotation = 0;
 
-        // 🎤 [보컬 반응]: 글자 튀오름 + 기본 유기적 미세 유동
-        const idleMotion = Math.sin(this.time * 2 + globalCharIndex * 0.5) * (baseFontSize * 0.08);
-        const bounce = Math.abs(Math.sin(timePhase)) * (charIntensity * baseFontSize * 1.2 + idleMotion);
+        // 🎤 보컬 반응: 글자 튀오름
+        const idleMotion = Math.sin(this.time * 2 + globalCharIndex * 0.5) * (baseFontSize * 0.06);
+        const bounce = Math.abs(Math.sin(timePhase)) * (charIntensity * baseFontSize * 1.5) + idleMotion;
         charY -= bounce;
 
-        // 🎹 [기타 반응]: 글자 각도 회전
-        charRotation = Math.sin(timePhase) * (otherVol * 0.8 + Math.sin(this.time + globalCharIndex) * 0.1);
+        // 🎹 기타 반응: 글자 각도 회전
+        charRotation = Math.sin(timePhase) * (otherVol * 1.0 + Math.sin(this.time + globalCharIndex) * 0.1);
 
-        // 모드별 특수 변형
-        if (animMode === 1) {
-          charScale = 1.0 + charIntensity * 0.8;
-        } else if (animMode === 2) {
-          charRotation += (charIntensity * 0.5);
-        } else if (animMode === 3) {
-          charScale = 1.0 + Math.sin(timePhase) * charIntensity * 0.5;
-        }
+        if (animMode === 1) charScale = 1.0 + charIntensity * 0.8;
+        else if (animMode === 2) charRotation += (charIntensity * 0.5);
+        else if (animMode === 3) charScale = 1.0 + Math.sin(timePhase) * charIntensity * 0.5;
 
-        // Color Style 매핑
-        let strokeColor = '#00f0ff';
-        let fillColor = '#ffffff';
-        let shadowColor = '#00f0ff';
-
+        let strokeColor = '#00f0ff', fillColor = '#ffffff', shadowColor = '#00f0ff';
         const hueOffset = (globalCharIndex * 22 + seed * 10) % 360;
 
         switch(colorStyle) {
@@ -236,11 +205,11 @@ export default class PoemTypographySketch {
         this.ctx.scale(charScale, charScale);
         this.ctx.rotate(charRotation);
 
-        // 🎸 [베이스 반응]: 네온 발광 폭발
-        const effectiveGlow = bassVol + charIntensity * 0.5;
+        // 🎸 베이스 반응: 네온 발광 폭발
+        const effectiveGlow = bassVol + charIntensity * 0.4;
         if (effectiveGlow > 0.02) {
           this.ctx.shadowColor = shadowColor;
-          this.ctx.shadowBlur = 8 + effectiveGlow * 40 * glowVal;
+          this.ctx.shadowBlur = 8 + effectiveGlow * 45 * glowVal;
         } else {
           this.ctx.shadowBlur = 0;
         }
@@ -260,9 +229,9 @@ export default class PoemTypographySketch {
 
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: `Lines:${totalLines} / Chars:${globalCharIndex}`,
+      particleCount: `4-Stem Active [Vocals:${vocalsVol.toFixed(2)}]`,
       isCovering: true,
-      activeFunction: "PoemTypography[MultiLine_AutoWrap_v3.0]"
+      activeFunction: "PoemTypography[4Stem_Fixed_v3.5]"
     };
   }
 
