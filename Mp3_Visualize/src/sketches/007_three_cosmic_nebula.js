@@ -1,6 +1,6 @@
 /**
  * src/sketches/007_three_cosmic_nebula.js
- * - [4-Stem 전용] Three.js 3,000개 입자 우주 성운
+ * - [수리 완결판] 3,000개 별빛 성운 은하수 복원
  */
 export default class ThreeCosmicNebulaSketch {
   constructor(container) {
@@ -25,10 +25,11 @@ export default class ThreeCosmicNebulaSketch {
 
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(60, this.width / this.height, 0.1, 1000);
-    this.camera.position.z = 25;
+    this.camera.position.z = 28;
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     this.renderer.setSize(this.width, this.height);
+    this.renderer.domElement.style.cssText = 'width:100% !important; height:100% !important; display:block;';
     this.container.appendChild(this.renderer.domElement);
 
     const particleCount = 3000;
@@ -37,7 +38,7 @@ export default class ThreeCosmicNebulaSketch {
     this.initialPositions = new Float32Array(particleCount * 3);
 
     for (let i = 0; i < particleCount; i++) {
-      const r = Math.random() * 12 + 1;
+      const r = Math.random() * 14 + 1;
       const theta = Math.random() * Math.PI * 2;
       const phi = (Math.random() - 0.5) * Math.PI;
 
@@ -58,9 +59,9 @@ export default class ThreeCosmicNebulaSketch {
 
     const material = new THREE.PointsMaterial({
       color: 0x00f0ff,
-      size: 0.25,
+      size: 0.8,
       transparent: true,
-      opacity: 0.85,
+      opacity: 0.9,
       blending: THREE.AdditiveBlending
     });
 
@@ -85,27 +86,25 @@ export default class ThreeCosmicNebulaSketch {
     const globalSettings = window.cosmicEngineSettings || {};
     const gainVal = globalSettings.audioGain ?? 1.0;
 
-    const vocals = (audioData?.vocalsVol || 0) * gainVal;
-    const drums  = (audioData?.drumsVol  || 0) * gainVal;
-    const bass   = (audioData?.bassVol   || 0) * gainVal;
-    const other  = (audioData?.otherVol  || 0) * gainVal;
+    const targetAudio = (audioData && audioData.vocalsVol !== undefined) ? audioData : (window.latestCompiledAudioData || {});
+    const vocals = (targetAudio.vocalsVol || 0) * gainVal;
+    const drums  = (targetAudio.drumsVol  || 0) * gainVal;
+    const bass   = (targetAudio.bassVol   || 0) * gainVal;
+    const other  = (targetAudio.otherVol  || 0) * gainVal;
 
-    // 🎹 기타: 성운 회전 속도
-    this.particleSystem.rotation.z += 0.002 + other * 0.02;
-    this.particleSystem.rotation.x += 0.001 + bass * 0.01;
+    this.particleSystem.rotation.z += 0.003 + other * 0.03;
+    this.particleSystem.rotation.x += 0.001 + bass * 0.02;
 
     const posAttr = this.particleSystem.geometry.attributes.position;
     const count = posAttr.count;
-
-    // 🥁 드럼 & 🎤 보컬: 입자 방사형 팽창
-    const burstFactor = 1.0 + drums * 0.8 + bass * 0.4;
+    const burstFactor = 1.0 + drums * 1.2 + bass * 0.5;
 
     for (let i = 0; i < count; i++) {
       const ix = this.initialPositions[i * 3];
       const iy = this.initialPositions[i * 3 + 1];
       const iz = this.initialPositions[i * 3 + 2];
 
-      const wave = Math.sin(this.time * 3 + i) * (vocals * 1.5);
+      const wave = Math.sin(this.time * 4 + i) * (vocals * 2.0);
 
       this.positions[i * 3] = ix * burstFactor;
       this.positions[i * 3 + 1] = iy * burstFactor + wave;
@@ -117,9 +116,9 @@ export default class ThreeCosmicNebulaSketch {
 
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: `Particles: 3,000`,
+      particleCount: `Particles: 3,000 Pcs`,
       isCovering: true,
-      activeFunction: "ThreeCosmicNebula[4Stem_Active]"
+      activeFunction: "ThreeCosmicNebula[Render_Fixed]"
     };
   }
 
