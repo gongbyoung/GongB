@@ -1,6 +1,6 @@
 /**
  * src/sketches/009_three_fireworks.js
- * - [4-Stem 전용] 드럼 타격 연동 불꽃 폭발 시뮬레이션
+ * - [수리 완결판] 드럼 타격 연동 불꽃 폭발 복원
  */
 export default class ThreeFireworksSketch {
   constructor(container) {
@@ -25,14 +25,14 @@ export default class ThreeFireworksSketch {
   spawnFirework(cx, cy, count, hue, speedMult) {
     for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const speed = (Math.random() * 6 + 2) * speedMult;
+      const speed = (Math.random() * 8 + 3) * speedMult;
       this.particles.push({
         x: cx, y: cy,
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
         alpha: 1.0,
-        decay: Math.random() * 0.02 + 0.01,
-        color: `hsl(${hue + Math.random() * 40}, 100%, 65%)`
+        decay: Math.random() * 0.02 + 0.015,
+        color: `hsl(${hue + Math.random() * 50}, 100%, 65%)`
       });
     }
   }
@@ -44,32 +44,31 @@ export default class ThreeFireworksSketch {
     const globalSettings = window.cosmicEngineSettings || {};
     const gainVal = globalSettings.audioGain ?? 1.0;
 
-    const vocals = (audioData?.vocalsVol || 0) * gainVal;
-    const drums  = (audioData?.drumsVol  || 0) * gainVal;
-    const bass   = (audioData?.bassVol   || 0) * gainVal;
-    const other  = (audioData?.otherVol  || 0) * gainVal;
+    const targetAudio = (audioData && audioData.vocalsVol !== undefined) ? audioData : (window.latestCompiledAudioData || {});
+    const vocals = (targetAudio.vocalsVol || 0) * gainVal;
+    const drums  = (targetAudio.drumsVol  || 0) * gainVal;
+    const bass   = (targetAudio.bassVol   || 0) * gainVal;
+    const other  = (targetAudio.otherVol  || 0) * gainVal;
 
     const w = this.canvas.width;
     const h = this.canvas.height;
 
-    // 어두운 잔상 배경
     this.ctx.fillStyle = 'rgba(3, 5, 12, 0.25)';
     this.ctx.fillRect(0, 0, w, h);
 
-    // 🥁 드럼: 비트 피크 시 불꽃 폭발 생성
-    if (drums > 0.08 && Math.random() < 0.4) {
-      const cx = Math.random() * (w * 0.7) + w * 0.15;
-      const cy = Math.random() * (h * 0.5) + h * 0.2;
-      const hue = (this.time * 60 + other * 100) % 360;
-      this.spawnFirework(cx, cy, Math.floor(20 + drums * 60), hue, 1.0 + bass);
+    // 🥁 드럼 타격 시 불꽃 자동 발사 (기본 지속 발사 임계값 완화)
+    if (drums > 0.03 || Math.random() < 0.08) {
+      const cx = Math.random() * (w * 0.8) + w * 0.1;
+      const cy = Math.random() * (h * 0.5) + h * 0.15;
+      const hue = (this.time * 80 + other * 120) % 360;
+      this.spawnFirework(cx, cy, Math.floor(20 + drums * 70), hue, 1.0 + bass * 0.8);
     }
 
-    // 불꽃 파티클 물리 업데이트
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
       p.x += p.vx;
       p.y += p.vy;
-      p.vy += 0.08; // 중력
+      p.vy += 0.1; // 중력
       p.alpha -= p.decay;
 
       if (p.alpha <= 0) {
@@ -81,10 +80,10 @@ export default class ThreeFireworksSketch {
       this.ctx.globalAlpha = p.alpha;
       this.ctx.fillStyle = p.color;
       this.ctx.shadowColor = p.color;
-      this.ctx.shadowBlur = 6 + vocals * 10;
+      this.ctx.shadowBlur = 8 + vocals * 12;
 
       this.ctx.beginPath();
-      this.ctx.arc(p.x, p.y, 2 + bass * 3, 0, Math.PI * 2);
+      this.ctx.arc(p.x, p.y, 2.5 + bass * 3, 0, Math.PI * 2);
       this.ctx.fill();
       this.ctx.restore();
     }
@@ -93,7 +92,7 @@ export default class ThreeFireworksSketch {
       fps: 60,
       particleCount: `Sparks: ${this.particles.length}`,
       isCovering: true,
-      activeFunction: "ThreeFireworks[4Stem_Active]"
+      activeFunction: "ThreeFireworks[Render_Fixed]"
     };
   }
 
