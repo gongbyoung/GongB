@@ -1,6 +1,6 @@
 /**
  * src/sketches/005_three_floor_eq.js
- * - [수리 완결판] 드럼/보컬 비트 연동 솟구치는 네온 그리드
+ * - [수리 완료] 드럼/보컬 비트 연동 솟구치는 네온 그리드
  */
 export default class ThreeFloorEqSketch {
   constructor(container) {
@@ -32,7 +32,6 @@ export default class ThreeFloorEqSketch {
     const vocals = (targetAudio.vocalsVol || 0) * gainVal;
     const drums  = (targetAudio.drumsVol  || 0) * gainVal;
     const bass   = (targetAudio.bassVol   || 0) * gainVal;
-    const other  = (targetAudio.otherVol  || 0) * gainVal;
 
     const renderW = this.canvas.width;
     const renderH = this.canvas.height;
@@ -50,22 +49,20 @@ export default class ThreeFloorEqSketch {
         const x = cellW * (c + 1.5);
         const y = cellH * (r + 1.5);
 
-        // 🥁 드럼과 🎤 보컬에 직결된 블록 높이 변형
-        const audioBounce = (drums * 40) + ((c === 3 || c === 4) ? vocals * 60 : 0);
-        const wave = Math.sin(this.time * 3 + c + r) * (other * 15 + 3);
+        // 🥁 드럼 및 보컬 비트 반응에 따른 스케일 수직 팽창
+        const audioBounce = (drums * 50) + ((c === 3 || c === 4) ? vocals * 70 : 0);
 
-        const boxW = Math.max(12, cellW * 0.65 + audioBounce * 0.5);
-        const boxH = Math.max(12, cellH * 0.65 + audioBounce + wave);
+        const boxW = Math.max(12, cellW * 0.65 + audioBounce * 0.4);
+        const boxH = Math.max(12, cellH * 0.65 + audioBounce);
 
         this.ctx.save();
         this.ctx.translate(x, y);
 
-        // 🎸 베이스: 네온 테두리 폭발
         this.ctx.shadowColor = globalSettings.customColors?.gas2 || '#00f0ff';
         this.ctx.shadowBlur = 4 + bass * 40;
 
-        const hue = (c * 25 + r * 20 + this.time * 30) % 360;
-        this.ctx.strokeStyle = `hsla(${hue}, 100%, 65%, ${0.4 + bass * 0.6})`;
+        const hue = (c * 25 + r * 20 + this.time * 40) % 360;
+        this.ctx.strokeStyle = `hsla(${hue}, 100%, 65%, ${0.3 + bass * 0.7})`;
         this.ctx.lineWidth = 2 + bass * 5;
         this.ctx.strokeRect(-boxW / 2, -boxH / 2, boxW, boxH);
 
@@ -77,7 +74,7 @@ export default class ThreeFloorEqSketch {
       fps: 60,
       particleCount: `Grid: ${cols}x${rows}`,
       isCovering: true,
-      activeFunction: "ThreeFloorEq[Audio_Fixed]"
+      activeFunction: "ThreeFloorEq[Render_Fixed]"
     };
   }
 
