@@ -1,9 +1,10 @@
+
 <!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>슬픈 우상 - 순차 채움 타이포그래피 제너레이터</title>
+  <title>슬픈 우상 - 음절 단위 정밀 타이포그래피 제너레이터</title>
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -295,8 +296,8 @@
 
   <header>
     <div>
-      <h1>슬픈 우상 (Sad Idol) Sequential Typography Generator</h1>
-      <div class="subtitle">한 글자씩 순차 채움 & 분량 확인 타이포그래피 (GitHub Pages Ready)</div>
+      <h1>슬픈 우상 (Sad Idol) Syllable-Precision Typography Generator</h1>
+      <div class="subtitle">음절 단위 충돌 패킹 기반 타이포그래피 (GitHub Pages Ready)</div>
     </div>
   </header>
 
@@ -387,15 +388,15 @@
           <div class="form-group">
             <label for="contentFontSize">내부 글자 크기 (px)</label>
             <div class="range-group">
-              <input type="range" id="contentFontSize" min="10" max="36" value="18">
-              <span class="range-val" id="contentFontSizeVal">18</span>
+              <input type="range" id="contentFontSize" min="10" max="36" value="16">
+              <span class="range-val" id="contentFontSizeVal">16</span>
             </div>
           </div>
           <div class="form-group">
             <label for="contentLineHeight">내부 줄 간격</label>
             <div class="range-group">
-              <input type="range" id="contentLineHeight" min="0.9" max="2.0" step="0.05" value="1.2">
-              <span class="range-val" id="contentLineHeightVal">1.2</span>
+              <input type="range" id="contentLineHeight" min="0.9" max="2.0" step="0.05" value="1.15">
+              <span class="range-val" id="contentLineHeightVal">1.15</span>
             </div>
           </div>
         </div>
@@ -447,7 +448,7 @@
 
     </div>
 
-    <!-- Right Canvas Preview -->
+    <!-- Right Preview Area -->
     <div class="preview-area">
       <div class="canvas-wrapper">
         <canvas id="mainCanvas" width="1080" height="1080"></canvas>
@@ -459,7 +460,6 @@
     const canvas = document.getElementById('mainCanvas');
     const ctx = canvas.getContext('2d');
 
-    // Single Mask Canvas for Offscreen Glyphs
     const maskCanvas = document.createElement('canvas');
     const maskCtx = maskCanvas.getContext('2d');
 
@@ -529,12 +529,12 @@
       render();
     });
 
-    // Main Sequential Render
+    // Syllable-Level Collision Rendering Routine
     function render() {
       const W = canvas.width;
       const H = canvas.height;
 
-      // 1. Clear Canvas Background
+      // Clear Canvas Background
       ctx.fillStyle = bgColorInput.value;
       ctx.fillRect(0, 0, W, H);
 
@@ -572,10 +572,13 @@
         });
       }
 
-      // Prepare Poem Words
-      let cleanPoem = poemContentInput.value.replace(/\r\n|\r|\n/g, ' ').replace(/\s+/g, ' ').trim();
+      // Prepare Poem Text as a Character Stream
+      let cleanPoem = poemContentInput.value.replace(/
+|
+|
+/g, ' ').replace(/\s+/g, ' ').trim();
       if (!cleanPoem) cleanPoem = "내용 없음";
-      const words = cleanPoem.split(' ');
+      const poemChars = cleanPoem.split('');
 
       const cFontSize = parseFloat(contentFontSizeInput.value) * (W / 1080);
       const cLineHeight = parseFloat(contentLineHeightInput.value);
@@ -586,15 +589,13 @@
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
 
-      const spaceWidth = ctx.measureText(' ').width;
       const isRepeat = fillModeSelect.value === 'repeat';
 
-      let wordIdx = 0;
-      let totalWordsPlaced = 0;
+      let charIdx = 0;
+      let totalCharsPlaced = 0;
 
       // Render Glyph by Glyph Sequentially ('슬' -> '픈' -> '우' -> '상')
       glyphs.forEach((g) => {
-        // Draw individual character mask on offscreen canvas
         maskCanvas.width = W;
         maskCanvas.height = H;
         maskCtx.clearRect(0, 0, W, H);
@@ -603,6 +604,10 @@
         maskCtx.font = `900 ${mFontSize}px ${maskFontSelect.value}`;
         maskCtx.textAlign = 'center';
         maskCtx.textBaseline = 'middle';
+        // Add subtle stroke dilation to guarantee thick readable stroke masks
+        maskCtx.lineWidth = Math.max(10, mFontSize * 0.08);
+        maskCtx.strokeStyle = '#ffffff';
+        maskCtx.strokeText(g.char, g.cx, g.cy);
         maskCtx.fillText(g.char, g.cx, g.cy);
 
         const imgData = maskCtx.getImageData(0, 0, W, H);
@@ -616,7 +621,7 @@
         }
 
         function canFitBox(x, y, w, h) {
-          const samples = 4;
+          const samples = 3;
           for (let i = 0; i <= samples; i++) {
             for (let j = 0; j <= samples; j++) {
               if (!isInsideGlyph(x + (w * i) / samples, y + (h * j) / samples)) return false;
@@ -625,42 +630,40 @@
           return true;
         }
 
-        // Bounding Box for current glyph scan
         const bboxYMin = Math.max(0, Math.floor(g.cy - mFontSize * 0.65));
         const bboxYMax = Math.min(H - cFontSize, Math.floor(g.cy + mFontSize * 0.65));
         const bboxXMin = Math.max(0, Math.floor(g.cx - mFontSize * 0.65));
         const bboxXMax = Math.min(W - cFontSize, Math.floor(g.cx + mFontSize * 0.65));
 
-        const stepX = Math.max(2, Math.floor(cFontSize * 0.25));
+        const stepX = Math.max(2, Math.floor(cFontSize * 0.2));
 
         for (let y = bboxYMin; y <= bboxYMax; y += lineSpacing) {
           let x = bboxXMin;
           while (x <= bboxXMax) {
-            // Stop if poem is finished and repeat is OFF
-            if (!isRepeat && wordIdx >= words.length) break;
+            if (!isRepeat && charIdx >= poemChars.length) break;
 
             if (!isInsideGlyph(x, y + cFontSize * 0.5)) {
               x += stepX;
               continue;
             }
 
-            const currentWord = words[wordIdx % words.length];
-            const wordWidth = ctx.measureText(currentWord).width;
+            const currentChar = poemChars[charIdx % poemChars.length];
+            const charWidth = ctx.measureText(currentChar).width;
 
-            if (canFitBox(x, y, wordWidth, cFontSize)) {
-              ctx.fillText(currentWord, x, y);
-              x += wordWidth + spaceWidth;
-              wordIdx++;
-              totalWordsPlaced++;
+            if (canFitBox(x, y, charWidth, cFontSize)) {
+              ctx.fillText(currentChar, x, y);
+              x += charWidth;
+              charIdx++;
+              totalCharsPlaced++;
             } else {
               x += stepX;
             }
           }
-          if (!isRepeat && wordIdx >= words.length) break;
+          if (!isRepeat && charIdx >= poemChars.length) break;
         }
       });
 
-      // 4. Stroke Overlay (If Enabled)
+      // Outer Stroke Overlay (If Enabled)
       if (showStrokeCheckbox.checked) {
         const strokeW = parseFloat(maskStrokeWidthInput.value) * (W / 1080);
         if (strokeW > 0) {
@@ -676,17 +679,17 @@
         }
       }
 
-      // 5. Update Poem Capacity Analysis Badge
-      const totalPoemWords = words.length;
-      let statHTML = `총 시 단어 수: <b>${totalPoemWords}개</b><br>`;
-      statHTML += `배치 완료된 단어 수: <b>${totalWordsPlaced}개</b> `;
+      // Update Poem Capacity Status
+      const totalPoemChars = poemChars.length;
+      let statHTML = `총 시 글자 수: <b>${totalPoemChars}자</b><br>`;
+      statHTML += `배치 완료된 글자 수: <b>${totalCharsPlaced}자</b> `;
 
-      if (totalWordsPlaced < totalPoemWords) {
-        statHTML += `<span style="color:#ef4444;">(시가 ${totalPoemWords - totalWordsPlaced}단어 남음 / 글자 크기가 커서 다 안 들어감)</span>`;
-      } else if (totalWordsPlaced === totalPoemWords) {
+      if (totalCharsPlaced < totalPoemChars) {
+        statHTML += `<span style="color:#ef4444;">(시가 ${totalPoemChars - totalCharsPlaced}자 남음 / 글자 크기가 커서 다 안 들어감)</span>`;
+      } else if (totalCharsPlaced === totalPoemChars) {
         statHTML += `<span style="color:#10b981;">(시 전체가 100% 딱 들어맞음!)</span>`;
       } else {
-        const loops = (totalWordsPlaced / totalPoemWords).toFixed(1);
+        const loops = (totalCharsPlaced / totalPoemChars).toFixed(1);
         statHTML += `<span style="color:#f59e0b;">(시 전체 완독 후 ${loops}회 반복 채워짐)</span>`;
       }
       poemStatText.innerHTML = statHTML;
@@ -695,7 +698,7 @@
     // Download PNG
     downloadBtn.addEventListener('click', () => {
       const link = document.createElement('a');
-      link.download = `sad_idol_sequential_typography_${Date.now()}.png`;
+      link.download = `sad_idol_syllable_typography_${Date.now()}.png`;
       link.href = canvas.toDataURL('image/png');
       link.click();
     });
@@ -713,10 +716,10 @@
       strokeControls.style.pointerEvents = 'none';
       maskStrokeWidthInput.value = '1.5';
       maskStrokeWidthVal.textContent = '1.5';
-      contentFontSizeInput.value = '18';
-      contentFontSizeVal.textContent = '18';
-      contentLineHeightInput.value = '1.2';
-      contentLineHeightVal.textContent = '1.2';
+      contentFontSizeInput.value = '16';
+      contentFontSizeVal.textContent = '16';
+      contentLineHeightInput.value = '1.15';
+      contentLineHeightVal.textContent = '1.15';
       fillModeSelect.value = 'repeat';
       contentColorInput.value = '#e2e8f0';
       bgColorInput.value = '#0b0d14';
