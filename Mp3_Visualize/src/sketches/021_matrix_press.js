@@ -1,6 +1,6 @@
 /**
  * src/sketches/021_matrix_press.js
- * - [수리 완결판] 32채널 악기별 반응형 런치패드
+ * - [수리 완료] 32채널 악기별 반응형 런치패드
  */
 export default class MatrixPressSketch {
   constructor(container) {
@@ -54,12 +54,12 @@ export default class MatrixPressSketch {
         const x = padding + c * (padW + padding);
         const y = padding + r * (padH + padding);
 
-        // 💡 행별 악기 반응 매핑
+        // 💡 행별 4-Stem 소리 매핑
         let intensity = 0;
-        if (r === 3) intensity = bass * 2.0;       // 4번째 행: 베이스
-        else if (r === 2) intensity = drums * 2.0;  // 3번째 행: 드럼
-        else if (r === 1) intensity = vocals * 2.0; // 2번째 행: 보컬
-        else intensity = other * 2.0;               // 1번째 행: 기타/반주
+        if (r === 3) intensity = bass * 2.2;       // 4번째 행: 베이스
+        else if (r === 2) intensity = drums * 2.2;  // 3번째 행: 드럼
+        else if (r === 1) intensity = vocals * 2.2; // 2번째 행: 보컬
+        else intensity = other * 2.2;               // 1번째 행: 기타/반주
 
         const activeAlpha = Math.min(1.0, intensity);
 
@@ -69,14 +69,14 @@ export default class MatrixPressSketch {
         const hue = padIndex * 11 + this.time * 30;
         if (activeAlpha > 0.05) {
           this.ctx.shadowColor = `hsl(${hue}, 100%, 60%)`;
-          this.ctx.shadowBlur = activeAlpha * 30;
+          this.ctx.shadowBlur = activeAlpha * 35;
         }
 
-        this.ctx.strokeStyle = `hsl(${hue}, 100%, ${40 + activeAlpha * 50}%)`;
-        this.ctx.lineWidth = 2 + activeAlpha * 5;
+        this.ctx.strokeStyle = `hsl(${hue}, 100%, ${35 + activeAlpha * 55}%)`;
+        this.ctx.lineWidth = 2 + activeAlpha * 6;
         this.ctx.strokeRect(0, 0, padW, padH);
 
-        this.ctx.fillStyle = `hsla(${hue}, 100%, 50%, ${0.15 + activeAlpha * 0.7})`;
+        this.ctx.fillStyle = `hsla(${hue}, 100%, 50%, ${0.1 + activeAlpha * 0.8})`;
         this.ctx.fillRect(0, 0, padW, padH);
 
         this.ctx.restore();
@@ -85,9 +85,9 @@ export default class MatrixPressSketch {
 
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: `32 Channel Matrix Pads`,
+      particleCount: `32 Channel Pads`,
       isCovering: true,
-      activeFunction: "MatrixPress[Audio_Fixed]"
+      activeFunction: "MatrixPress[Render_Fixed]"
     };
   }
 
