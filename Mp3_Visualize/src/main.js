@@ -48,64 +48,78 @@ function stopAllActiveStems() {
     if (btnPlayMulti) btnPlayMulti.innerText = "▶️ 4-Stem 동시 재생 (Sync Play)";
 }
 
+// 💡 [안전 디코딩 헬퍼 함수]
+async function safeDecodeAudio(file) {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') {
+        await audioCtx.resume();
+    }
+    const arrayBuffer = await file.arrayBuffer();
+    return await audioCtx.decodeAudioData(arrayBuffer.slice(0));
+}
+
 // 💡 [스마트 자동 분류 처리 엔진]: 5개 MP3 안전 분류 및 디코딩
 batchMp3Input?.addEventListener('change', async (e) => {
     const files = Array.from(e.target.files);
     if (!files || files.length === 0) return;
 
-    // 기존 재생 중인 소리 즉시 정지
     stopAllActiveStems();
     if (audioPlayer) audioPlayer.pause();
 
-    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (batchStatusText) batchStatusText.innerText = "⏳ 5개 파일 분석 및 고속 디코딩 중...";
+    if (batchStatusText) batchStatusText.innerText = "⏳ 5개 MP3 오디오 초고속 해독 중...";
 
-    let loadedInfo = { main: false, vocals: false, drums: false, bass: false, other: false };
+    let loadedNames = { vocals: null, drums: null, bass: null, other: null, main: null };
 
     for (let file of files) {
         const name = file.name.toLowerCase();
         
-        // 4-Stem 분석기 생성 헬퍼
         const createStemAnalyser = () => {
             const analyser = audioCtx.createAnalyser();
             analyser.fftSize = 256;
             return analyser;
         };
 
-        if (name.includes('vocal') || name.includes('보컬')) {
-            const buffer = await file.arrayBuffer();
-            stemBuffers.vocals = await audioCtx.decodeAudioData(buffer);
-            stemAnalysers.vocals = createStemAnalyser();
-            loadedInfo.vocals = true;
-        } else if (name.includes('drum') || name.includes('드럼')) {
-            const buffer = await file.arrayBuffer();
-            stemBuffers.drums = await audioCtx.decodeAudioData(buffer);
-            stemAnalysers.drums = createStemAnalyser();
-            loadedInfo.drums = true;
-        } else if (name.includes('bass') || name.includes('베이스')) {
-            const buffer = await file.arrayBuffer();
-            stemBuffers.bass = await audioCtx.decodeAudioData(buffer);
-            stemAnalysers.bass = createStemAnalyser();
-            loadedInfo.bass = true;
-        } else if (name.includes('other') || name.includes('기타') || name.includes('inst')) {
-            const buffer = await file.arrayBuffer();
-            stemBuffers.other = await audioCtx.decodeAudioData(buffer);
-            stemAnalysers.other = createStemAnalyser();
-            loadedInfo.other = true;
-        } else if (!loadedInfo.main) {
-            // 원본 메인 MP3
-            audioPlayer.src = URL.createObjectURL(file);
-            audioPlayer.load();
-            loadedInfo.main = true;
+        try {
+            if (name.includes('vocal') || name.includes('보컬')) {
+                stemBuffers.vocals = await safeDecodeAudio(file);
+                stemAnalysers.vocals = createStemAnalyser();
+                loadedNames.vocals = file.name;
+            } else if (name.includes('drum') || name.includes('드럼')) {
+                stemBuffers.drums = await safeDecodeAudio(file);
+                stemAnalysers.drums = createStemAnalyser();
+                loadedNames.drums = file.name;
+            } else if (name.includes('bass') || name.includes('베이스')) {
+                stemBuffers.bass = await safeDecodeAudio(file);
+                stemAnalysers.bass = createStemAnalyser();
+                loadedNames.bass = file.name;
+            } else if (name.includes('other') || name.includes('기타') || name.includes('inst')) {
+                stemBuffers.other = await safeDecodeAudio(file);
+                stemAnalysers.other = createStemAnalyser();
+                loadedNames.other = file.name;
+            } else if (!loadedNames.main) {
+                audioPlayer.src = URL.createObjectURL(file);
+                audioPlayer.load();
+                loadedNames.main = file.name;
+            }
+        } catch (err) {
+            console.error(`[Audio Decode Error] ${file.name} 변환 실패:`, err);
         }
     }
 
+    // 시각적 상태 업데이터
+    let summaryHtml = "✅ <strong>인식 완료 목록:</strong><br>";
+    if (loadedNames.vocals) summaryHtml += `🎤 보컬: ${loadedNames.vocals}<br>`;
+    if (loadedNames.drums)  summaryHtml += `🥁 드럼: ${loadedNames.drums}<br>`;
+    if (loadedNames.bass)   summaryHtml += `🎸 베이스: ${loadedNames.bass}<br>`;
+    if (loadedNames.other)  summaryHtml += `🎹 기타: ${loadedNames.other}<br>`;
+
     if (batchStatusText) {
-        batchStatusText.innerText = `✅ 장전 완료! (메인:${loadedInfo.main?'O':'X'}, 보컬:${loadedInfo.vocals?'O':'X'}, 드럼:${loadedInfo.drums?'O':'X'}, 베이스:${loadedInfo.bass?'O':'X'}, 기타:${loadedInfo.other?'O':'X'})`;
+        batchStatusText.style.color = "#00ffcc";
+        batchStatusText.innerHTML = summaryHtml;
     }
 
-    // 4-Stem 분리 음원이 감지되면 4-Stem 동시 재생 자동 시작
-    if (loadedInfo.vocals || loadedInfo.drums) {
+    // 오디오 슬롯 준비 완료 시 즉시 자동 동시 재생
+    if (stemBuffers.vocals || stemBuffers.drums || stemBuffers.bass || stemBuffers.other) {
         toggleMultiStemPlayback();
     }
 });
@@ -117,12 +131,9 @@ async function loadStemFile(fileInputId, stemKey) {
     input.addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         
         try {
-            const arrayBuffer = await file.arrayBuffer();
-            stemBuffers[stemKey] = await audioCtx.decodeAudioData(arrayBuffer);
-            
+            stemBuffers[stemKey] = await safeDecodeAudio(file);
             const analyser = audioCtx.createAnalyser();
             analyser.fftSize = 256;
             stemAnalysers[stemKey] = analyser;
@@ -148,7 +159,6 @@ async function toggleMultiStemPlayback() {
     if (isMultiStemPlaying) {
         stopAllActiveStems();
     } else {
-        // 단일 오디오 플레이어 중지 (음 중복 차단)
         if (audioPlayer) audioPlayer.pause();
         if (deckPlayBtn) deckPlayBtn.innerText = "▶️ 음악 재생 (Play)";
 
@@ -170,7 +180,7 @@ async function toggleMultiStemPlayback() {
         });
 
         if (loadedCount === 0) {
-            alert("최소 1개 이상의 MP3 스템(보컬, 드럼 등) 파일을 로드해 주세요!");
+            alert("MP3 스템 파일 변환 중입니다. 1~2초 후 다시 [▶️ 4-Stem 동시 재생]을 눌러주세요!");
             return;
         }
 
@@ -314,11 +324,10 @@ function syncCosmicControls() {
 
 Object.values(cosmicControls).forEach(el => { el?.addEventListener('input', syncCosmicControls); });
 
-// 단일 음악 재생 시 4-Stem 정지
 if (deckPlayBtn && audioPlayer) {
     deckPlayBtn.addEventListener('click', () => {
         if (audioPlayer.paused) {
-            stopAllActiveStems(); // 4-Stem 재생 중이면 중지
+            stopAllActiveStems();
             audioPlayer.play().then(() => {
                 deckPlayBtn.innerText = "⏸️ 일시정지 (Pause)";
                 if (!isAudioAnalyzerConnected) {
@@ -360,7 +369,6 @@ if (recordBtn) {
     });
 }
 
-// 💡 피크 음압 추출 (Peak + RMS 가중치)
 function getStemVolume(analyser) {
     if (!analyser) return 0;
     const data = new Uint8Array(analyser.frequencyBinCount);
@@ -417,7 +425,6 @@ function renderEngineTicker() {
         if (compiledAudioData.customBands[2] !== undefined) compiledAudioData.treble = compiledAudioData.customBands[2];
     }
 
-    // 💡 4-Stem 매핑 데이터
     if (isMultiStemPlaying) {
         compiledAudioData.isMultiStem = true;
         compiledAudioData.vocalsVol = getStemVolume(stemAnalysers.vocals);
