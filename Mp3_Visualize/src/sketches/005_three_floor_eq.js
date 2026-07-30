@@ -1,6 +1,6 @@
 /**
  * src/sketches/005_three_floor_eq.js
- * - [4-Stem 전용] 네온 매트릭스 그리드 이퀄라이저
+ * - [수리 완결판] 드럼/보컬 비트 연동 솟구치는 네온 그리드
  */
 export default class ThreeFloorEqSketch {
   constructor(container) {
@@ -27,12 +27,12 @@ export default class ThreeFloorEqSketch {
 
     const globalSettings = window.cosmicEngineSettings || {};
     const gainVal = globalSettings.audioGain ?? 1.0;
-    const glowVal = globalSettings.glowIntensity ?? 0.85;
 
-    const vocals = (audioData?.vocalsVol || 0) * gainVal;
-    const drums  = (audioData?.drumsVol  || 0) * gainVal;
-    const bass   = (audioData?.bassVol   || 0) * gainVal;
-    const other  = (audioData?.otherVol  || 0) * gainVal;
+    const targetAudio = (audioData && audioData.vocalsVol !== undefined) ? audioData : (window.latestCompiledAudioData || {});
+    const vocals = (targetAudio.vocalsVol || 0) * gainVal;
+    const drums  = (targetAudio.drumsVol  || 0) * gainVal;
+    const bass   = (targetAudio.bassVol   || 0) * gainVal;
+    const other  = (targetAudio.otherVol  || 0) * gainVal;
 
     const renderW = this.canvas.width;
     const renderH = this.canvas.height;
@@ -50,26 +50,23 @@ export default class ThreeFloorEqSketch {
         const x = cellW * (c + 1.5);
         const y = cellH * (r + 1.5);
 
-        // 🎹 기타: 위치별 파동 계산
-        const distFromCenter = Math.sqrt(Math.pow(c - cols / 2, 2) + Math.pow(r - rows / 2, 2));
-        const wave = Math.sin(this.time * 4 - distFromCenter * 0.8) * other * 20;
+        // 🥁 드럼과 🎤 보컬에 직결된 블록 높이 변형
+        const audioBounce = (drums * 40) + ((c === 3 || c === 4) ? vocals * 60 : 0);
+        const wave = Math.sin(this.time * 3 + c + r) * (other * 15 + 3);
 
-        // 🥁 드럼 & 🎤 보컬: 크기 변형
-        let sizeBonus = drums * 25;
-        if (c === 3 || c === 4) sizeBonus += vocals * 35; // 중앙 열 보컬 반응
-
-        const boxW = Math.max(10, cellW * 0.7 + sizeBonus);
-        const boxH = Math.max(10, cellH * 0.7 + sizeBonus + wave);
+        const boxW = Math.max(12, cellW * 0.65 + audioBounce * 0.5);
+        const boxH = Math.max(12, cellH * 0.65 + audioBounce + wave);
 
         this.ctx.save();
         this.ctx.translate(x, y);
 
-        // 🎸 베이스: 네온 빛 폭발
+        // 🎸 베이스: 네온 테두리 폭발
         this.ctx.shadowColor = globalSettings.customColors?.gas2 || '#00f0ff';
-        this.ctx.shadowBlur = 4 + bass * 35 * glowVal;
+        this.ctx.shadowBlur = 4 + bass * 40;
 
-        this.ctx.strokeStyle = `hsla(${(c * 20 + r * 15 + this.time * 50) % 360}, 100%, 65%, 0.9)`;
-        this.ctx.lineWidth = 2 + bass * 4;
+        const hue = (c * 25 + r * 20 + this.time * 30) % 360;
+        this.ctx.strokeStyle = `hsla(${hue}, 100%, 65%, ${0.4 + bass * 0.6})`;
+        this.ctx.lineWidth = 2 + bass * 5;
         this.ctx.strokeRect(-boxW / 2, -boxH / 2, boxW, boxH);
 
         this.ctx.restore();
@@ -80,7 +77,7 @@ export default class ThreeFloorEqSketch {
       fps: 60,
       particleCount: `Grid: ${cols}x${rows}`,
       isCovering: true,
-      activeFunction: "ThreeFloorEq[4Stem_Active]"
+      activeFunction: "ThreeFloorEq[Audio_Fixed]"
     };
   }
 
