@@ -1,6 +1,6 @@
 /**
  * src/sketches/009_three_fireworks.js
- * - [수리 완결판] 드럼 타격 연동 불꽃 폭발 복원
+ * - [수리 완료] 연속 로켓 발사 및 드럼 폭발 불꽃 시뮬레이션
  */
 export default class ThreeFireworksSketch {
   constructor(container) {
@@ -9,6 +9,7 @@ export default class ThreeFireworksSketch {
     this.ctx = this.canvas.getContext('2d');
     this.container.appendChild(this.canvas);
     this.particles = [];
+    this.rockets = [];
     this.time = 0;
     this.resize();
   }
@@ -25,7 +26,7 @@ export default class ThreeFireworksSketch {
   spawnFirework(cx, cy, count, hue, speedMult) {
     for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const speed = (Math.random() * 8 + 3) * speedMult;
+      const speed = (Math.random() * 9 + 3) * speedMult;
       this.particles.push({
         x: cx, y: cy,
         vx: Math.cos(angle) * speed,
@@ -50,25 +51,43 @@ export default class ThreeFireworksSketch {
     const bass   = (targetAudio.bassVol   || 0) * gainVal;
     const other  = (targetAudio.otherVol  || 0) * gainVal;
 
-    const w = this.canvas.width;
-    const h = this.canvas.height;
+    const W = this.canvas.width;
+    const H = this.canvas.height;
 
     this.ctx.fillStyle = 'rgba(3, 5, 12, 0.25)';
-    this.ctx.fillRect(0, 0, w, h);
+    this.ctx.fillRect(0, 0, W, H);
 
-    // 🥁 드럼 타격 시 불꽃 자동 발사 (기본 지속 발사 임계값 완화)
-    if (drums > 0.03 || Math.random() < 0.08) {
-      const cx = Math.random() * (w * 0.8) + w * 0.1;
-      const cy = Math.random() * (h * 0.5) + h * 0.15;
-      const hue = (this.time * 80 + other * 120) % 360;
-      this.spawnFirework(cx, cy, Math.floor(20 + drums * 70), hue, 1.0 + bass * 0.8);
+    // 주기적 자동 로켓 발사 + 드럼 비트 피크 발사
+    if (drums > 0.05 || Math.random() < 0.05) {
+      this.rockets.push({
+        x: Math.random() * (W * 0.8) + W * 0.1,
+        y: H,
+        vy: -(Math.random() * 6 + 10),
+        targetY: Math.random() * (H * 0.4) + H * 0.1,
+        hue: (this.time * 90 + other * 100) % 360
+      });
     }
 
+    // 로켓 공중 상승
+    for (let i = this.rockets.length - 1; i >= 0; i--) {
+      const r = this.rockets[i];
+      r.y += r.vy;
+
+      this.ctx.fillStyle = '#ffffff';
+      this.ctx.fillRect(r.x, r.y, 3, 10);
+
+      if (r.y <= r.targetY) {
+        this.spawnFirework(r.x, r.y, Math.floor(30 + drums * 60), r.hue, 1.0 + bass);
+        this.rockets.splice(i, 1);
+      }
+    }
+
+    // 불꽃 입자 물리
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
       p.x += p.vx;
       p.y += p.vy;
-      p.vy += 0.1; // 중력
+      p.vy += 0.12; // 중력
       p.alpha -= p.decay;
 
       if (p.alpha <= 0) {
@@ -80,7 +99,7 @@ export default class ThreeFireworksSketch {
       this.ctx.globalAlpha = p.alpha;
       this.ctx.fillStyle = p.color;
       this.ctx.shadowColor = p.color;
-      this.ctx.shadowBlur = 8 + vocals * 12;
+      this.ctx.shadowBlur = 8 + vocals * 10;
 
       this.ctx.beginPath();
       this.ctx.arc(p.x, p.y, 2.5 + bass * 3, 0, Math.PI * 2);
@@ -92,7 +111,7 @@ export default class ThreeFireworksSketch {
       fps: 60,
       particleCount: `Sparks: ${this.particles.length}`,
       isCovering: true,
-      activeFunction: "ThreeFireworks[Render_Fixed]"
+      activeFunction: "ThreeFireworks[Render_Fixed_v2]"
     };
   }
 
