@@ -19,6 +19,91 @@ let isAudioAnalyzerConnected = false;
 
 const broadcast = new BroadcastChannel('cosmic_fft_channel');
 
+// 💡 4-Stem MP3 멀티 트랙 오디오 엔진 변수
+let audioCtx = null;
+const stemBuffers = { vocals: null, drums: null, bass: null, other: null };
+const stemSources = { vocals: null, drums: null, bass: null, other: null };
+const stemAnalysers = { vocals: null, drums: null, bass: null, other: null };
+let isMultiStemPlaying = false;
+
+// 💡 UI 입력 엘리먼트 바인딩
+const poemTextInput = document.getElementById('input-poem-text');
+const btnPlayMulti = document.getElementById('btn-play-multi-stems');
+
+// 시 문구 전역 데이터 세팅 및 실시간 수신
+window.cosmicEngineSettings = window.cosmicEngineSettings || {};
+window.cosmicEngineSettings.poemText = poemTextInput ? poemTextInput.value : "떠날 때의 님의 얼굴";
+
+poemTextInput?.addEventListener('input', (e) => {
+    window.cosmicEngineSettings.poemText = e.target.value || "떠날 때의 님의 얼굴";
+});
+
+// 💡 4개 MP3 스템 파일 각각 독립 로딩 및 분석기 바인딩
+async function loadStemFile(fileInputId, stemKey) {
+    const input = document.getElementById(fileInputId);
+    if (!input) return;
+    input.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        const arrayBuffer = await file.arrayBuffer();
+        stemBuffers[stemKey] = await audioCtx.decodeAudioData(arrayBuffer);
+        
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        stemAnalysers[stemKey] = analyser;
+    });
+}
+
+loadStemFile('file-stem-vocals', 'vocals');
+loadStemFile('file-stem-drums', 'drums');
+loadStemFile('file-stem-bass', 'bass');
+loadStemFile('file-stem-other', 'other');
+
+// 💡 4개 MP3 오차 없는 칼동기화 (Sync) 재생 / 일시정지 함수
+function toggleMultiStemPlayback() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    
+    if (isMultiStemPlaying) {
+        Object.keys(stemSources).forEach(key => {
+            if (stemSources[key]) {
+                try { stemSources[key].stop(); } catch(e){}
+                stemSources[key] = null;
+            }
+        });
+        isMultiStemPlaying = false;
+        if (btnPlayMulti) btnPlayMulti.innerText = "▶️ 4-Stem 동시 재생 (Sync Play)";
+    } else {
+        const startTargetTime = audioCtx.currentTime + 0.05;
+        let loadedCount = 0;
+
+        Object.keys(stemBuffers).forEach(key => {
+            if (stemBuffers[key]) {
+                loadedCount++;
+                const source = audioCtx.createBufferSource();
+                source.buffer = stemBuffers[key];
+                
+                source.connect(stemAnalysers[key]);
+                stemAnalysers[key].connect(audioCtx.destination);
+                
+                source.start(startTargetTime);
+                stemSources[key] = source;
+            }
+        });
+
+        if (loadedCount === 0) {
+            alert("최소 1개 이상의 MP3 스템(보컬, 드럼 등) 파일을 로드해 주세요!");
+            return;
+        }
+
+        isMultiStemPlaying = true;
+        if (btnPlayMulti) btnPlayMulti.innerText = "⏸️ 동시 일시정지 (Pause)";
+    }
+}
+
+btnPlayMulti?.addEventListener('click', toggleMultiStemPlayback);
+
 // 기동 초기 단계에서 브라우저 메모리에 복원된 최신 주파수 분할 테이블 마운트
 let initialRanges = { totalBands: 4, ranges: [] };
 const savedLatestConfig = localStorage.getItem('cosmic_fft_active_latest');
@@ -39,7 +124,8 @@ broadcast.onmessage = (e) => {
 
 const sketchDescriptions = {
     '001_p5_wave.js': `<strong style="color:#00ffcc; font-size:12px;">📊 [001호 파형] 오디오 웨이브</strong><br>• <strong>Volume(Gain)</strong>: 오디오 주파수 감도 및 파형 진동 폭 조절<br>• <strong>Scale(Glow)</strong>: 네온 라인의 굵기 및 발광 세기 튜닝`,
-    '005_three_floor_eq.js': `<strong style="color:#00ffcc; font-size:12px;">🎛️ [005호 그리드] 순수 기하학 네온 매트릭스</strong><br>• <strong>Shuffle(Seed)</strong>: 프레임 형상 일제 변환<br>• <strong>Offset(X, Y, Z)</strong>: 배경 이미지 위치 및 배율 줌 제어`
+    '005_three_floor_eq.js': `<strong style="color:#00ffcc; font-size:12px;">🎛️ [005호 그리드] 순수 기하학 네온 매트릭스</strong><br>• <strong>Shuffle(Seed)</strong>: 프레임 형상 일제 변환<br>• <strong>Offset(X, Y, Z)</strong>: 배경 이미지 위치 및 배율 줌 제어`,
+    '022_poem_typography.js': `<strong style="color:#00ffcc; font-size:12px;">✍️ [022호 시타이포] 4-Stem 모션 타이포그래피</strong><br>• <strong>보컬</strong>: 글자 튀오름 | <strong>드럼</strong>: 충격 펄스<br>• <strong>베이스</strong>: 네온 발광 | <strong>기타</strong>: 회전 파동`
 };
 
 function updateSketchManual(sketchName) {
@@ -91,7 +177,7 @@ imageInput?.addEventListener('change', (e) => {
     img.onload = () => { window.currentUploadedImageElement = img; };
 });
 
-// 외부 MP3 오디오 스트림 인젝터
+// 외부 MP3 오디오 스트림 인젝터 (단일 오디오 용)
 const audioInput = document.getElementById('file-audio') || document.getElementById('file-mp3') || document.querySelector('input[type="file"][accept*="audio"]');
 if (audioInput) {
     audioInput.addEventListener('change', (e) => {
@@ -142,6 +228,7 @@ const cosmicControls = {
 function syncCosmicControls() {
     if (!cosmicControls.numSeed) return;
     window.cosmicEngineSettings = {
+        ...window.cosmicEngineSettings, // 시 문구 데이터 보존
         seed: parseInt(cosmicControls.numSeed.value),
         scatterExponent: parseFloat(cosmicControls.numScatter.value) / 10,
         colorStyle: cosmicControls.color.value,
@@ -171,16 +258,12 @@ if (deckPlayBtn && audioPlayer) {
     });
 }
 
-// 💡 [핵심 보완]: 녹화 시작 클릭 시 0초 리셋 후 음악과 녹화를 동시 집행하는 이벤트 트리거
+// 녹화 시작 클릭 시 0초 리셋 후 음악과 녹화를 동시 집행하는 이벤트 트리거
 if (recordBtn) {
     recordBtn.addEventListener('click', () => {
-        // 1. 녹화 중이 아닐 때 (녹화 시작 동작)
         if (!recorder || !recorder.isRecording) {
             if (audioPlayer && audioPlayer.src) {
-                // 💡 [0초 처음으로 위치 강제 이동]
                 audioPlayer.currentTime = 0;
-                
-                // 음악 재생 및 분석기 체결
                 audioPlayer.play().then(() => {
                     if (deckPlayBtn) {
                         deckPlayBtn.innerText = "⏸️ 일시정지 (Pause)";
@@ -192,15 +275,13 @@ if (recordBtn) {
                 }).catch(err => console.warn("오디오 재생 트리거 차단:", err));
             }
 
-            // 💡 [비주얼 녹화 엔진 기동]
             if (recorder && typeof recorder.start === 'function') {
                 recorder.start();
             }
             
             recordBtn.innerText = "⏹️ 녹화 중지 (Stop)";
-            recordBtn.style.backgroundColor = "#e11d48"; // 녹화 중 붉은색 활성
+            recordBtn.style.backgroundColor = "#e11d48";
         } 
-        // 2. 이미 녹화 중일 때 (녹화 완료 및 저장 동작)
         else {
             if (recorder && typeof recorder.stop === 'function') {
                 recorder.stop();
@@ -211,9 +292,19 @@ if (recordBtn) {
             }
             
             recordBtn.innerText = "🔴 녹화 시작 (Record)";
-            recordBtn.style.backgroundColor = ""; // 원래 버튼 색상 복원
+            recordBtn.style.backgroundColor = "";
         }
     });
+}
+
+// 💡 스템별 순간 음압 추출 헬퍼 함수
+function getStemVolume(analyser) {
+    if (!analyser) return 0;
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteFrequencyData(data);
+    let sum = 0;
+    for (let i = 0; i < data.length; i++) sum += data[i];
+    return (sum / data.length) / 255.0;
 }
 
 function renderEngineTicker() {
@@ -221,6 +312,7 @@ function renderEngineTicker() {
 
     let compiledAudioData = { bass: 0, mid: 0, treble: 0, vol: 0, raw: new Uint8Array(256) };
     
+    // 1. 단일 오디오 재생 시 데이터 추출
     if (isAudioAnalyzerConnected && analyzer) {
         if (typeof analyzer.getAudioData === 'function') {
             compiledAudioData = analyzer.getAudioData();
@@ -255,6 +347,14 @@ function renderEngineTicker() {
         if (compiledAudioData.customBands[0] !== undefined) compiledAudioData.bass = compiledAudioData.customBands[0];
         if (compiledAudioData.customBands[1] !== undefined) compiledAudioData.mid = compiledAudioData.customBands[1];
         if (compiledAudioData.customBands[2] !== undefined) compiledAudioData.treble = compiledAudioData.customBands[2];
+    }
+
+    // 💡 2. 4-Stem 멀티 트랙 재생 시 악기별 음압 주입
+    if (isMultiStemPlaying) {
+        compiledAudioData.vocalsVol = getStemVolume(stemAnalysers.vocals);
+        compiledAudioData.drumsVol  = getStemVolume(stemAnalysers.drums);
+        compiledAudioData.bassVol   = getStemVolume(stemAnalysers.bass);
+        compiledAudioData.otherVol  = getStemVolume(stemAnalysers.other);
     }
 
     manager.update(compiledAudioData);
