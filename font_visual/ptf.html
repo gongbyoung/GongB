@@ -167,7 +167,7 @@
     .range-group {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
     }
 
     input[type="range"] {
@@ -184,12 +184,12 @@
     }
 
     .num-input-direct {
-      width: 62px !important;
+      width: 68px !important;
       background: #090a0f;
       color: #00ffcc !important;
       border: 1px solid var(--accent-color) !important;
       border-radius: 6px;
-      padding: 3px 6px !important;
+      padding: 3px 4px !important;
       text-align: center;
       font-weight: bold;
       font-size: 0.82rem !important;
@@ -435,15 +435,25 @@
           </select>
         </div>
 
+        <!-- 💡 내부 글자 크기 (소수점 입력) & 내부 자간 (Letter Spacing) 컨트롤 구역 -->
         <div class="form-row">
-          <!-- 💡 소수점 슬라이더 + 직접 입력 수치 상자 동기화 -->
           <div class="form-group">
-            <label for="contentFontSize">글자 크기 (px - 소수점 입력)</label>
+            <label for="contentFontSize">글자 크기 (px - 소수점)</label>
             <div class="range-group">
-              <input type="range" id="contentFontSize" min="1" max="50" step="0.1" value="16.0">
-              <input type="number" id="contentFontSizeNum" class="num-input-direct" min="1" max="50" step="0.1" value="16.0">
+              <input type="range" id="contentFontSize" min="1" max="50" step="0.05" value="16.0">
+              <input type="number" id="contentFontSizeNum" class="num-input-direct" min="1" max="50" step="0.05" value="16.0">
             </div>
           </div>
+          <div class="form-group">
+            <label for="contentLetterSpacing">내부 글자 자간 (px)</label>
+            <div class="range-group">
+              <input type="range" id="contentLetterSpacing" min="-5" max="20" step="0.1" value="0.0">
+              <input type="number" id="contentLetterSpacingNum" class="num-input-direct" min="-5" max="20" step="0.1" value="0.0">
+            </div>
+          </div>
+        </div>
+
+        <div class="form-row">
           <div class="form-group">
             <label for="contentLineHeight">내부 줄 간격</label>
             <div class="range-group">
@@ -451,9 +461,6 @@
               <span class="range-val" id="contentLineHeightVal">1.15</span>
             </div>
           </div>
-        </div>
-
-        <div class="form-row">
           <div class="form-group">
             <label for="animDuration">⏱️ 써지는 시간 (초)</label>
             <div class="range-group">
@@ -461,13 +468,14 @@
               <span class="range-val" id="animDurationVal">12s</span>
             </div>
           </div>
-          <div class="form-group">
-            <label for="contentColor">내부 글자 색상</label>
-            <input type="color" id="contentColor" value="#e2e8f0">
-          </div>
         </div>
 
-        <!-- 💡 자동 맞춤 버튼 -->
+        <div class="form-group">
+          <label for="contentColor">내부 글자 색상</label>
+          <input type="color" id="contentColor" value="#e2e8f0">
+        </div>
+
+        <!-- 자동 맞춤 버튼 -->
         <button class="btn btn-autofit" id="autoFitBtn" style="margin-top: 4px;">
           ✨ 시 1회 완독 글자 크기 자동 맞춤 (Auto-Fit)
         </button>
@@ -547,6 +555,8 @@
     const contentFontSelect = document.getElementById('contentFont');
     const contentFontSizeInput = document.getElementById('contentFontSize');
     const contentFontSizeNum = document.getElementById('contentFontSizeNum');
+    const contentLetterSpacingInput = document.getElementById('contentLetterSpacing');
+    const contentLetterSpacingNum = document.getElementById('contentLetterSpacingNum');
     const contentLineHeightInput = document.getElementById('contentLineHeight');
     const contentLineHeightVal = document.getElementById('contentLineHeightVal');
     const animDurationInput = document.getElementById('animDuration');
@@ -581,9 +591,9 @@
     bindRange(contentLineHeightInput, contentLineHeightVal);
     bindRange(animDurationInput, animDurationVal, 's');
 
-    // 💡 소수점 글자 크기 슬라이더 ↔ 숫자 박스 양방향 동기화
+    // 💡 내부 글자 크기 소수점 동기화
     contentFontSizeInput.addEventListener('input', () => {
-      contentFontSizeNum.value = parseFloat(contentFontSizeInput.value).toFixed(1);
+      contentFontSizeNum.value = parseFloat(contentFontSizeInput.value).toFixed(2);
       if (!isAnimationRunning) renderPreview();
     });
 
@@ -593,6 +603,21 @@
       if (val < 1) val = 1;
       if (val > 50) val = 50;
       contentFontSizeInput.value = val;
+      if (!isAnimationRunning) renderPreview();
+    });
+
+    // 💡 내부 글자 자간 (Letter Spacing) 소수점 동기화
+    contentLetterSpacingInput.addEventListener('input', () => {
+      contentLetterSpacingNum.value = parseFloat(contentLetterSpacingInput.value).toFixed(1);
+      if (!isAnimationRunning) renderPreview();
+    });
+
+    contentLetterSpacingNum.addEventListener('input', () => {
+      let val = parseFloat(contentLetterSpacingNum.value);
+      if (isNaN(val)) return;
+      if (val < -5) val = -5;
+      if (val > 20) val = 20;
+      contentLetterSpacingInput.value = val;
       if (!isAnimationRunning) renderPreview();
     });
 
@@ -627,7 +652,7 @@
       if (!isAnimationRunning) renderPreview();
     });
 
-    // 💡 [정밀 수용 용량 및 시 1회 배치 연산 엔진]
+    // 💡 [정밀 자간 및 소수점 배치 연산 엔진]
     function calculatePlacements() {
       const W = canvas.width;
       const H = canvas.height;
@@ -666,6 +691,7 @@
       const poemChars = cleanPoem.split('');
 
       const cFontSize = parseFloat(contentFontSizeInput.value) * (Math.min(W, H) / 1080);
+      const cLetterSpacing = parseFloat(contentLetterSpacingInput.value) * (Math.min(W, H) / 1080);
       const cLineHeight = parseFloat(contentLineHeightInput.value);
       const lineSpacing = cFontSize * cLineHeight;
 
@@ -673,7 +699,7 @@
 
       const placedChars = [];
       let charIdx = 0;
-      let totalMaskCapacity = 0; // 틀 내부의 총 수용 칸수
+      let totalMaskCapacity = 0;
 
       glyphs.forEach((g) => {
         maskCanvas.width = W;
@@ -734,7 +760,8 @@
                 placedChars.push({ char: poemChars[charIdx], x, y });
                 charIdx++;
               }
-              x += charWidth;
+              // 💡 글자 폭 + 내부 자간(Letter Spacing) 반영
+              x += charWidth + cLetterSpacing;
             } else {
               x += stepX;
             }
@@ -742,7 +769,6 @@
         }
       });
 
-      // 💡 시 분량 및 틀 수용 용량 정밀 분석 메시지
       const totalPoemChars = poemChars.length;
       let statHTML = `총 시 글자 수: <b>${totalPoemChars}자</b> / 틀 총 용량: <b>${totalMaskCapacity}칸</b><br>`;
 
@@ -753,22 +779,21 @@
         statHTML += `<span style="color:#10b981; font-weight:bold;">🎉 PERFECT! 시 1회 전체가 틀에 100% 빈틈없이 딱 맞아떨어집니다!</span>`;
       } else {
         const emptySpace = totalMaskCapacity - totalPoemChars;
-        statHTML += `<span style="color:#f59e0b;">ℹ️ 시 1회 전체가 다 써지고 틀에 ${emptySpace}자 분량의 빈 공간이 남습니다. (글자 크기를 조금 더 키워보세요)</span>`;
+        statHTML += `<span style="color:#f59e0b;">ℹ️ 시 1회 전체가 다 써지고 틀에 ${emptySpace}자 분량의 빈 공간이 남습니다.</span>`;
       }
       poemStatText.innerHTML = statHTML;
 
       return { placedChars, mFontSize, glyphs, totalMaskCapacity, totalPoemChars };
     }
 
-    // 💡 [글자 크기 자동 맞춤 알고리즘]
+    // 💡 [초정밀 Auto-Fit 알고리즘]
     function autoFitFontSize() {
       let bestSize = parseFloat(contentFontSizeInput.value);
       let minDiff = 99999;
 
-      // 2.0pt ~ 45.0pt 범위를 0.2pt 단위로 고속 탐색
-      for (let testSize = 2.0; testSize <= 45.0; testSize += 0.2) {
-        contentFontSizeInput.value = testSize.toFixed(1);
-        contentFontSizeNum.value = testSize.toFixed(1);
+      for (let testSize = 2.0; testSize <= 45.0; testSize += 0.05) {
+        contentFontSizeInput.value = testSize.toFixed(2);
+        contentFontSizeNum.value = testSize.toFixed(2);
         
         const res = calculatePlacements();
         if (res.totalMaskCapacity >= res.totalPoemChars) {
@@ -780,8 +805,8 @@
         }
       }
 
-      contentFontSizeInput.value = bestSize.toFixed(1);
-      contentFontSizeNum.value = bestSize.toFixed(1);
+      contentFontSizeInput.value = bestSize.toFixed(2);
+      contentFontSizeNum.value = bestSize.toFixed(2);
       renderPreview();
     }
 
@@ -953,6 +978,8 @@
       maskStrokeWidthVal.textContent = '1.5';
       contentFontSizeInput.value = '16.0';
       contentFontSizeNum.value = '16.0';
+      contentLetterSpacingInput.value = '0.0';
+      contentLetterSpacingNum.value = '0.0';
       contentLineHeightInput.value = '1.15';
       contentLineHeightVal.textContent = '1.15';
       animDurationInput.value = '12';
