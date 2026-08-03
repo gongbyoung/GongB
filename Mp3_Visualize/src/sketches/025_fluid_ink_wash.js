@@ -1,9 +1,9 @@
 /**
  * src/sketches/025_fluid_ink_wash.js
- * - [025호 수묵 잉크 블룸 Ver 26.0 - High-Speed Flow & Instant Scatter Response]
- * - Range (Scatter) UI 50 설정 시 내부 물리 속도 500 급 가속 반영
- * - 노이즈 시간축(Z-Axis) 수치 12배 보정으로 정지 현상 완전 해결
- * - Scale (Glow): 잉크 농도(Color Density) 실시간 연동
+ * - [025호 수묵 잉크 블룸 Ver 27.0 - Diverse Core Shapes & Dynamic Ink Pools]
+ * - 획마다 비대칭 두께 프로필(Bulge & Taper) 및 상하 독립 비대칭 팽창 적용
+ * - 가운데 진한 먹색 코어층 전용 3D 유동 연산 ➔ 각 획마다 완벽히 다채롭고 오가닉한 먹물 집적 형성
+ * - Range (Scatter) 1~500 속도 & Scale (Glow) 농도 실시간 연동 유지
  */
 
 export default class FluidInkWashSketch {
@@ -17,7 +17,7 @@ export default class FluidInkWashSketch {
     }
 
     this.time = 0;
-    this.version = "025호 수묵 잉크 블룸 Ver 26.0 (Fast Flow)";
+    this.version = "025호 수묵 잉크 블룸 Ver 27.0 (Diverse Core)";
     this.inkBands = [];
     this.loadedSeed = -1;
   }
@@ -92,7 +92,6 @@ export default class FluidInkWashSketch {
     return total / maxValue;
   }
 
-  // 💡 [핵심 보정]: pz 노이즈 시간 축 계수를 0.1에서 1.2로 끌어올려 고속 흐름 구현
   domainWarp2D(px, py, pz, warpStrength) {
     const qx = this.fbm3D(px * 0.002, py * 0.002, pz * 1.2);
     const qy = this.fbm3D(px * 0.002 + 5.2, py * 0.002 + 1.3, pz * 1.2);
@@ -114,6 +113,9 @@ export default class FluidInkWashSketch {
     return `${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}`;
   }
 
+  // =========================================================================
+  // 🎲 획마다 완전히 다른 비대칭 두께 & 중심 형태 시드 생성
+  // =========================================================================
   generateInkBands(seed, W, H) {
     this.inkBands = [];
 
@@ -127,18 +129,27 @@ export default class FluidInkWashSketch {
       const r1 = pseudoRand(seed + i * 1.7);
       const r2 = pseudoRand(seed + i * 3.3);
       const r3 = pseudoRand(seed + i * 5.1);
+      const r4 = pseudoRand(seed + i * 7.9);
 
       this.inkBands.push({
         startX: (-0.15 + r1 * 1.3) * W,
         startY: (-0.15 + r2 * 1.3) * H,
         length: (W * 0.6) + r3 * (W * 0.7),
         angle: (r3 - 0.5) * Math.PI * 0.8,
-        thickness: (80 + r2 * 160) * (Math.min(W, H) / 1000),
+        thickness: (90 + r2 * 150) * (Math.min(W, H) / 1000),
+        // 💡 획별 고유 형태 특성 파라미터
+        bulgeFreq: 1.5 + r1 * 3.5,        // 두께 굴곡 주기
+        asymmetry: 0.2 + r4 * 0.6,          // 상하 비대칭 치우침
+        coreWarpSeed: seed + i * 89.3,     // 중심 먹색 전용 고유 시드
+        poolPosition: 0.2 + r3 * 0.6,       // 먹물이 뭉클하게 고이는 주요 위치
         seedOffset: seed + i * 43.1
       });
     }
   }
 
+  // =========================================================================
+  // 🖌️ 다채로운 중심 코어 수묵 유체 렌더링
+  // =========================================================================
   drawWarpedInkBand(ctx, band, time, scatterMotion, densityMultiplier, baseColorRgb, vocalVol, drumVol, bassVol, otherVol, isDark, W, H) {
     ctx.save();
 
@@ -153,36 +164,63 @@ export default class FluidInkWashSketch {
     const perpX = -sinA;
     const perpY = cosA;
 
-    const currentThickness = band.thickness * (1.0 + instrumentPower * 1.2);
-    const segmentCount = 90;
+    const baseThickness = band.thickness * (1.0 + instrumentPower * 1.2);
+    const segmentCount = 95;
 
-    const layerScales = [1.0, 0.70, 0.45, 0.20];
+    const layerScales = [1.0, 0.68, 0.42, 0.18];
     const layerBlurs  = [22, 14, 7, 3];
 
     layerScales.forEach((layerScale, layerIdx) => {
-      const curThick = currentThickness * layerScale;
       const topPoints = [];
       const bottomPoints = [];
 
+      // 💡 중심 먹색 코어층(layerIdx >= 2)에 더 강렬하고 독창적인 변형 부여
+      const isCoreLayer = layerIdx >= 2;
+      const layerWarpStrength = isCoreLayer ? warpStrength * 1.35 : warpStrength;
+
       for (let i = 0; i <= segmentCount; i++) {
-        const t = i / segmentCount;
+        const t = i / segmentCount; // 0 ~ 1 (획 진행 비율)
         const dist = (t - 0.5) * band.length;
 
+        // 1) 획 양끝 뾰족해짐 + 특정 위치 먹물 고임(Pool) 두께 프로필 연산
+        const envelope = Math.sin(t * Math.PI); // 기본 획 양끝 테이퍼링
+        
+        // 획별 고유 주기로 울퉁불퉁해지는 노이즈
+        const thickNoise = this.fbm3D(t * band.bulgeFreq + band.seedOffset, band.seedOffset, time * 0.1);
+        
+        // 특정 위치(poolPosition)에서 먹물이 더 크게 뭉게지는 가중치
+        const poolDist = Math.abs(t - band.poolPosition);
+        const poolFactor = Math.exp(-poolDist * poolDist * 18.0) * 1.2;
+
+        // 최종 두께 계수
+        const localThick = baseThickness * layerScale * envelope * (0.35 + thickNoise * 0.8 + poolFactor);
+
+        // 2) 상하 비대칭 팽창 (한쪽으로 먹물이 쏠림)
+        const topRatio = 0.5 + (this.fbm3D(t * 2.5 + band.seedOffset, 12.0, time * 0.1) - 0.5) * band.asymmetry;
+        const botRatio = 1.0 - topRatio;
+
+        const curTopThick = localThick * topRatio * 2.0;
+        const curBotThick = localThick * botRatio * 2.0;
+
+        // 3) 중앙 기준선 좌표
         const bx = band.startX + cosA * dist + drumShakeX;
         const by = band.startY + sinA * dist + drumShakeY;
 
-        const rawTopX = bx + perpX * curThick;
-        const rawTopY = by + perpY * curThick;
-        const rawBotX = bx - perpX * curThick;
-        const rawBotY = by - perpY * curThick;
+        const rawTopX = bx + perpX * curTopThick;
+        const rawTopY = by + perpY * curTopThick;
+        const rawBotX = bx - perpX * curBotThick;
+        const rawBotY = by - perpY * curBotThick;
 
-        const warpedTop = this.domainWarp2D(rawTopX, rawTopY, time * 0.8 + band.seedOffset + layerIdx, warpStrength);
-        const warpedBot = this.domainWarp2D(rawBotX, rawBotY, time * 0.8 + band.seedOffset + 50 + layerIdx, warpStrength);
+        // 💡 4) 중심 코어층은 전용 시드로 도메인 워핑하여 외곽선과 다른 독창적 먹색 구도 형성
+        const timeOffset = isCoreLayer ? band.coreWarpSeed : band.seedOffset;
+        const warpedTop = this.domainWarp2D(rawTopX, rawTopY, time * 0.8 + timeOffset + layerIdx, layerWarpStrength);
+        const warpedBot = this.domainWarp2D(rawBotX, rawBotY, time * 0.8 + timeOffset + 40 + layerIdx, layerWarpStrength);
 
         topPoints.push(warpedTop);
         bottomPoints.push(warpedBot);
       }
 
+      // 유체 닫힌 패스 잇기
       ctx.beginPath();
       ctx.moveTo(topPoints[0].x, topPoints[0].y);
       for (let i = 1; i <= segmentCount; i++) {
@@ -193,12 +231,14 @@ export default class FluidInkWashSketch {
       }
       ctx.closePath();
 
-      const currentBlur = Math.max(2, Math.min(28, layerBlurs[layerIdx] * (curThick / 100)));
+      // 외곽 종이 스스륵 번짐 블러 필터 적용
+      const currentBlur = Math.max(2, Math.min(28, layerBlurs[layerIdx] * (baseThickness / 100)));
       ctx.filter = `blur(${currentBlur}px)`;
 
+      // 투명도 농담 (Scale Glow 연동)
       const baseAlpha = isDark
-        ? (0.08 + (layerIdx * 0.07) + instrumentPower * 0.10)
-        : (0.05 + (layerIdx * 0.06) + instrumentPower * 0.08);
+        ? (0.08 + (layerIdx * 0.08) + instrumentPower * 0.10)
+        : (0.05 + (layerIdx * 0.07) + instrumentPower * 0.08);
 
       const fillAlpha = Math.min(1.0, Math.max(0.001, baseAlpha * densityMultiplier));
 
@@ -209,6 +249,9 @@ export default class FluidInkWashSketch {
     ctx.restore();
   }
 
+  // =========================================================================
+  // 🔄 UPDATE RENDER LOOP
+  // =========================================================================
   update(audioData) {
     if (!this.ctx || !this.canvas) return;
 
@@ -219,15 +262,15 @@ export default class FluidInkWashSketch {
     const gainVal = globalSettings.audioGain ?? 1.0;
     const colorStyle = (globalSettings.colorStyle || 'monochrome').toLowerCase();
 
-    // ⚡ [Scatter 수치 읽기 & 증폭] UI 슬라이더 수치(0~50)를 1~500 물리속도로 매핑
+    // ⚡ [Scatter 1~500 매핑]
     const rawScatterInput = globalSettings.scatterExponent ?? globalSettings.scatter ?? globalSettings.range ?? 25;
     const scatterMotion = Math.max(1.0, Math.min(500.0, rawScatterInput * 10.0));
 
-    // 🎨 [Scale(Glow) 농도 읽기]
+    // 🎨 [Scale Glow 농도 매핑]
     const rawGlowInput = globalSettings.glowScale ?? globalSettings.glow ?? globalSettings.scale ?? 50;
     const densityMultiplier = Math.max(0.01, Math.min(5.0, rawGlowInput / 50.0));
 
-    // 오디오 수신
+    // 오디오 데이터 수신
     let vocalsVol = 0, drumsVol = 0, bassVol = 0, otherVol = 0;
     if (targetAudio && targetAudio.isMultiStem) {
       vocalsVol = (targetAudio.vocalsVol || 0) * gainVal;
@@ -241,8 +284,8 @@ export default class FluidInkWashSketch {
       otherVol  = (targetAudio.treble || 0) * 2.5 * gainVal;
     }
 
-    // ⚡ [시간 가속 계수 대폭 상향]: 슬라이더 위치에 따라 고속 이동
-    const speedFactor = scatterMotion / 20.0; // 500 일 때 25배 속도
+    // 시간 가속 계수
+    const speedFactor = scatterMotion / 20.0;
     const timeDelta = (0.015 + (vocalsVol * 0.03)) * speedFactor;
     this.time += timeDelta;
 
@@ -274,7 +317,7 @@ export default class FluidInkWashSketch {
     let getColors = (idx) => ({ base: "25, 30, 42" });
 
     if (colorStyle === 'monochrome' || colorStyle === 'earth') {
-      bgColor = "#f4f1ea";
+      bgColor = "#f4f1ea"; // 한지 바탕색
       isDark = false;
       getColors = (idx) => ({
         base: idx % 3 === 0 ? "20, 26, 38" : idx % 3 === 1 ? "42, 50, 68" : "58, 48, 40"
@@ -324,9 +367,9 @@ export default class FluidInkWashSketch {
 
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: `8 Bands (Scatter:${Math.round(scatterMotion)}, Density:${densityMultiplier.toFixed(2)})`,
+      particleCount: `8 Bands (Diverse Cores / Scatter:${Math.round(scatterMotion)})`,
       isCovering: true,
-      activeFunction: `FluidInkWash[FastFlow_${colorStyle.toUpperCase()}]`
+      activeFunction: `FluidInkWash[DiverseCore_${colorStyle.toUpperCase()}]`
     };
   }
 
