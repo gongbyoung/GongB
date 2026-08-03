@@ -22,7 +22,6 @@ const stemAnalysers = { vocals: null, drums: null, bass: null, other: null };
 let isMultiStemPlaying = false;
 
 const poemTextInput = document.getElementById('input-poem-text');
-const btnPlayMulti = document.getElementById('btn-play-multi-stems');
 const batchMp3Input = document.getElementById('file-batch-mp3');
 const batchStatusText = document.getElementById('batch-load-status');
 
@@ -41,7 +40,7 @@ function stopAllActiveStems() {
         }
     });
     isMultiStemPlaying = false;
-    if (btnPlayMulti) btnPlayMulti.innerText = "▶️ 4-Stem 동시 재생 (Sync Play)";
+    if (deckPlayBtn) deckPlayBtn.innerText = "▶️ 음악 재생 (Play)";
 }
 
 async function safeDecodeAudio(file) {
@@ -121,7 +120,6 @@ async function toggleMultiStemPlayback() {
         stopAllActiveStems();
     } else {
         if (audioPlayer) audioPlayer.pause();
-        if (deckPlayBtn) deckPlayBtn.innerText = "▶️ 음악 재생 (Play)";
 
         const startTargetTime = audioCtx.currentTime + 0.05;
         let loadedCount = 0;
@@ -143,11 +141,31 @@ async function toggleMultiStemPlayback() {
             return;
         }
         isMultiStemPlaying = true;
-        if (btnPlayMulti) btnPlayMulti.innerText = "⏸️ 동시 일시정지 (Pause)";
+        if (deckPlayBtn) deckPlayBtn.innerText = "⏸️ 음악 일시정지 (Pause)";
     }
 }
 
-btnPlayMulti?.addEventListener('click', toggleMultiStemPlayback);
+// 💡 [수리] '▶️ 음악 재생' 버튼 누르면 4개 스템 음원 자동 스마트 연결
+if (deckPlayBtn) {
+    deckPlayBtn.addEventListener('click', () => {
+        const hasStems = Object.values(stemBuffers).some(b => b !== null);
+        if (hasStems) {
+            toggleMultiStemPlayback();
+        } else if (audioPlayer) {
+            if (audioPlayer.paused) {
+                audioPlayer.play().then(() => {
+                    deckPlayBtn.innerText = "⏸️ 음악 일시정지 (Pause)";
+                    if (!isAudioAnalyzerConnected) {
+                        try { analyzer.connectAudioElement(audioPlayer); } catch (err) {}
+                        isAudioAnalyzerConnected = true;
+                    }
+                });
+            } else {
+                audioPlayer.pause(); deckPlayBtn.innerText = "▶️ 음악 재생 (Play)";
+            }
+        }
+    });
+}
 
 let initialRanges = { totalBands: 4, ranges: [] };
 const savedLatestConfig = localStorage.getItem('cosmic_fft_active_latest');
@@ -162,31 +180,7 @@ broadcast.onmessage = (e) => {
     }
 };
 
-const sketchDescriptions = {
-    '001_p5_wave.js': `<strong style="color:#00ffcc; font-size:12px;">📊 [001호 파형] 오디오 진동 파형</strong>`,
-    '002_three_cube.js': `<strong style="color:#00ffcc; font-size:12px;">🧊 [002호 큐브] 3D 회전 큐브 링</strong>`,
-    '005_three_floor_eq.js': `<strong style="color:#00ffcc; font-size:12px;">🎛️ [005호 그리드] 비트 반응형 이퀄라이저 매트릭스</strong>`,
-    '007_three_cosmic_nebula.js': `<strong style="color:#00ffcc; font-size:12px;">🌌 [007호 성운] 3D 우주 별빛 은하수</strong>`,
-    '009_three_fireworks.js': `<strong style="color:#00ffcc; font-size:12px;">🎆 [009호 불꽃] 드럼 비트 폭발 불꽃</strong>`,
-    '021_matrix_press.js': `<strong style="color:#00ffcc; font-size:12px;">🎚️ [021호 32채널] 악기별 반응 런치패드</strong>`
-};
-
-function updateSketchManual(sketchName) {
-    const panel = document.getElementById('sketch-description-panel');
-    if (!panel) return;
-    const cleanName = sketchName.split('/').pop();
-    panel.innerHTML = sketchDescriptions[cleanName] || `<strong style="color:#00ffcc; font-size:12px;">⚙️ [${cleanName.split('_')[0]}호 스케치 기동]</strong>`;
-}
-
 window.addEventListener('DOMContentLoaded', () => {
-    const listContainer = document.getElementById('sketch-list');
-    if (listContainer) {
-        const descPanel = document.createElement('div');
-        descPanel.id = 'sketch-description-panel';
-        descPanel.style.cssText = 'margin-top: 15px; padding: 12px; background: rgba(8, 12, 26, 0.96); border: 1px solid #00f0ff; border-radius: 6px; color: #d0e0ff; font-family: sans-serif; font-size: 11px; line-height: 1.6;';
-        listContainer.parentNode.insertBefore(descPanel, listContainer.nextSibling);
-    }
-    
     const hud = document.createElement('div');
     hud.id = 'diagnostic-hud-console';
     hud.style.cssText = 'position:fixed; top:15px; right:320px; z-index:9999; background:rgba(5,15,25,0.85); color:#00ffcc; font-family:monospace; font-size:11px; padding:12px; border:1px solid #00ffcc; border-radius:6px; pointer-events:none; width:240px;';
@@ -239,7 +233,6 @@ if (sketchListContainer) {
         try {
             await manager.switchSketch(targetSketch, analyzer);
             syncCosmicControls();
-            updateSketchManual(targetSketch);
         } catch(err) {
             console.error(`[Sketch Switch Error] ${targetSketch} 로딩 실패:`, err);
         }
@@ -259,139 +252,4 @@ Object.keys(ratioButtons).forEach(key => {
 
 const cosmicControls = {
     numSeed: document.getElementById('num-cosmic-seed'), numScatter: document.getElementById('num-cosmic-scatter'),
-    color: document.getElementById('select-cosmic-color'), numGlow: document.getElementById('num-cosmic-glow'),
-    numGain: document.getElementById('num-cosmic-gain'), pickGas1: document.getElementById('picker-gas1'),
-    pickGas2: document.getElementById('picker-gas2'), pickStar: document.getElementById('picker-star'),
-    numGauge: document.getElementById('num-cosmic-gauge')
-};
-
-function syncCosmicControls() {
-    if (!cosmicControls.numSeed) return;
-    window.cosmicEngineSettings = {
-        ...window.cosmicEngineSettings,
-        seed: parseInt(cosmicControls.numSeed.value),
-        scatterExponent: parseFloat(cosmicControls.numScatter.value) / 10,
-        colorStyle: cosmicControls.color.value,
-        glowIntensity: parseFloat(cosmicControls.numGlow.value) / 100,
-        audioGain: (parseFloat(cosmicControls.numGain.value) || 10) / 10,
-        customColors: { gas1: cosmicControls.pickGas1.value, gas2: cosmicControls.pickGas2.value, star: cosmicControls.pickStar.value },
-        gaugeValue: parseInt(cosmicControls.numGauge.value) / 100
-    };
-}
-
-Object.values(cosmicControls).forEach(el => { el?.addEventListener('input', syncCosmicControls); });
-
-if (deckPlayBtn && audioPlayer) {
-    deckPlayBtn.addEventListener('click', () => {
-        if (audioPlayer.paused) {
-            stopAllActiveStems();
-            audioPlayer.play().then(() => {
-                deckPlayBtn.innerText = "⏸️ 일시정지 (Pause)";
-                if (!isAudioAnalyzerConnected) {
-                    try { analyzer.connectAudioElement(audioPlayer); } catch (err) {}
-                    isAudioAnalyzerConnected = true;
-                }
-            });
-        } else {
-            audioPlayer.pause(); deckPlayBtn.innerText = "▶️ 음악 재생 (Play)";
-        }
-    });
-}
-
-if (recordBtn) {
-    recordBtn.addEventListener('click', () => {
-        if (!recorder || !recorder.isRecording) {
-            if (audioPlayer && audioPlayer.src) {
-                audioPlayer.currentTime = 0;
-                audioPlayer.play().then(() => {
-                    if (deckPlayBtn) deckPlayBtn.innerText = "⏸️ 일시정지 (Pause)";
-                    if (!isAudioAnalyzerConnected) {
-                        try { analyzer.connectAudioElement(audioPlayer); } catch (err) {}
-                        isAudioAnalyzerConnected = true;
-                    }
-                }).catch(err => console.warn("오디오 재생 오류:", err));
-            }
-            if (recorder && typeof recorder.start === 'function') recorder.start();
-            recordBtn.innerText = "⏹️ 녹화 중지 (Stop)";
-            recordBtn.style.backgroundColor = "#e11d48";
-        } else {
-            if (recorder && typeof recorder.stop === 'function') recorder.stop();
-            if (audioPlayer) {
-                audioPlayer.pause();
-                if (deckPlayBtn) deckPlayBtn.innerText = "▶️ 음악 재생 (Play)";
-            }
-            recordBtn.innerText = "🔴 녹화 시작 (Record)";
-            recordBtn.style.backgroundColor = "";
-        }
-    });
-}
-
-function getStemVolume(analyser) {
-    if (!analyser) return 0;
-    const data = new Uint8Array(analyser.frequencyBinCount);
-    analyser.getByteFrequencyData(data);
-    let maxVal = 0, sum = 0;
-    for (let i = 0; i < data.length; i++) {
-        if (data[i] > maxVal) maxVal = data[i];
-        sum += data[i];
-    }
-    const avg = (sum / data.length) / 255.0;
-    const peak = maxVal / 255.0;
-    return Math.min(1.0, (avg * 0.3 + peak * 0.7) * 4.0);
-}
-
-function renderEngineTicker() {
-    requestAnimationFrame(renderEngineTicker);
-
-    let compiledAudioData = { bass: 0, mid: 0, treble: 0, vol: 0, raw: new Uint8Array(256) };
-    
-    if (isAudioAnalyzerConnected && analyzer) {
-        if (typeof analyzer.getAudioData === 'function') {
-            compiledAudioData = analyzer.getAudioData();
-        } else if (analyzer.analyser) {
-            const bufferLength = analyzer.analyser.frequencyBinCount;
-            const dataArray = new Uint8Array(bufferLength);
-            analyzer.analyser.getByteFrequencyData(dataArray);
-            compiledAudioData.raw = dataArray;
-            
-            let b = 0, m = 0, t = 0;
-            for (let i = 0; i < 20; i++) b += dataArray[i];
-            for (let i = 20; i < 100; i++) m += dataArray[i];
-            for (let i = 100; i < 220; i++) t += dataArray[i];
-            compiledAudioData.bass = (b / 20) / 255.0;
-            compiledAudioData.mid = (m / 80) / 255.0;
-            compiledAudioData.treble = (t / 120) / 255.0;
-            compiledAudioData.vol = (b + m + t) / 220 / 255.0;
-        }
-    }
-
-    if (isMultiStemPlaying) {
-        compiledAudioData.isMultiStem = true;
-        compiledAudioData.vocalsVol = getStemVolume(stemAnalysers.vocals);
-        compiledAudioData.drumsVol  = getStemVolume(stemAnalysers.drums);
-        compiledAudioData.bassVol   = getStemVolume(stemAnalysers.bass);
-        compiledAudioData.otherVol  = getStemVolume(stemAnalysers.other);
-    } else {
-        compiledAudioData.isMultiStem = false;
-        compiledAudioData.vocalsVol = Math.min(1.0, compiledAudioData.mid * 3.5);
-        compiledAudioData.drumsVol  = Math.min(1.0, compiledAudioData.bass * 4.0);
-        compiledAudioData.bassVol   = Math.min(1.0, compiledAudioData.bass * 3.5);
-        compiledAudioData.otherVol  = Math.min(1.0, compiledAudioData.treble * 3.5);
-    }
-
-    window.latestCompiledAudioData = compiledAudioData;
-    manager.update(compiledAudioData);
-}
-
-const activeLi = document.querySelector('#sketch-list li.active');
-const initSketch = activeLi ? activeLi.getAttribute('data-sketch') : '001_p5_wave.js';
-syncCosmicControls();
-manager.switchSketch(initSketch, analyzer).then(() => {
-    updateSketchManual(initSketch);
-    renderEngineTicker();
-}).catch(err => {
-    console.error("초기 스케치 기동 에러:", err);
-    renderEngineTicker();
-});
-
-window.addEventListener('resize', () => manager.resize(stageWrapper.clientWidth, stageWrapper.clientHeight));
+    color: document
