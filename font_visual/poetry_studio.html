@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>획 단위 먹물 농담 002</title>
+  <title>실사 먹물 번짐 시화 스튜디오</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Nanum+Myeongjo:wght@400;700;800&family=Noto+Sans+KR:wght@300;400;700&display=swap" rel="stylesheet">
@@ -115,8 +115,8 @@
 <body>
 
   <header>
-    <h1>🖌️ 획(Stroke) 단위 정밀 먹물 농담 스튜디오</h1>
-    <div style="font-size:0.85rem; color:var(--text-muted);">클리핑 마스크 기반 획 내부 투명도 셰이더</div>
+    <h1>🖌️ 실사 불규칙 먹물 번짐 스튜디오</h1>
+    <div style="font-size:0.85rem; color:var(--text-muted);">디스플레이스먼트 노이즈 기반 한지 번짐 셰이더</div>
   </header>
 
   <div class="main-container">
@@ -141,28 +141,28 @@
         <input type="file" id="fontFile" accept=".ttf,.otf,.woff,.woff2">
       </div>
 
-      <!-- 3. 획 단위 농담 제어 UI -->
-      <div class="section-title">🖌️ 획(Stroke) 농담 & 번짐 제어</div>
+      <!-- 3. 실사 불규칙 먹물 번짐 제어 UI -->
+      <div class="section-title">🖌️ 실사 먹물 번짐 (Noise Bleed) 제어</div>
       
       <div class="form-row">
         <div class="form-group">
-          <label>획 테두리 굵기/선명도 <span id="strokeVal" class="value-badge">3px</span></label>
-          <input type="range" id="strokeWidth" min="1" max="12" step="0.5" value="3.0">
+          <label>번짐 반경 (Spread Radius) <span id="bleedVal" class="value-badge">25px</span></label>
+          <input type="range" id="bleedRadius" min="0" max="60" value="25">
         </div>
         <div class="form-group">
-          <label>획 내부 투명도 (중간 연함) <span id="coreVal" class="value-badge">30%</span></label>
-          <input type="range" id="strokeCore" min="0" max="100" value="30">
+          <label>번짐 불규칙성 (Random Edge) <span id="roughVal" class="value-badge">80%</span></label>
+          <input type="range" id="bleedRoughness" min="10" max="100" value="80">
         </div>
       </div>
 
       <div class="form-row">
         <div class="form-group">
-          <label>먹물 번짐 (Spread)</label>
-          <input type="range" id="bleed" min="0" max="30" value="8">
+          <label>먹물 스며듦 농도 (Alpha)</label>
+          <input type="range" id="bleedAlpha" min="10" max="90" value="50">
         </div>
         <div class="form-group">
-          <label>번짐 은은함 (Blur)</label>
-          <input type="range" id="blur" min="0" max="15" step="0.5" value="3.0">
+          <label>한지 섬유 번짐 (Blur)</label>
+          <input type="range" id="blur" min="0" max="20" step="0.5" value="5.0">
         </div>
       </div>
 
@@ -230,7 +230,7 @@
       </div>
 
       <div id="progressBox">
-        ⏳ 획 단위 정밀 렌더링 및 MP4 녹화 중... <span id="progressPercent">0%</span>
+        ⏳ 불규칙 먹물 번짐 연산 및 MP4 녹화 중... <span id="progressPercent">0%</span>
       </div>
 
     </div>
@@ -248,14 +248,11 @@
     const ctx = canvas.getContext('2d');
 
     // 3단계 오프스크린 캔버스 레이어
-    const fillCanvas = document.createElement('canvas'); // 연한 내부 채움용
-    const fillCtx = fillCanvas.getContext('2d');
+    const txtCanvas = document.createElement('canvas'); // 원본 텍스트
+    const txtCtx = txtCanvas.getContext('2d');
     
-    const strokeCanvas = document.createElement('canvas'); // 짙은 테두리용
-    const strokeCtx = strokeCanvas.getContext('2d');
-    
-    const bleedCanvas = document.createElement('canvas'); // 먹물 번짐용
-    const bleedCtx = bleedCanvas.getContext('2d');
+    const noiseCanvas = document.createElement('canvas'); // 노이즈 마스크
+    const noiseCtx = noiseCanvas.getContext('2d');
 
     let bgImg = null;
     let customFontName = null;
@@ -263,9 +260,9 @@
     const poemInput = document.getElementById('poemInput');
     const bgFile = document.getElementById('bgFile');
     const fontFile = document.getElementById('fontFile');
-    const strokeWidth = document.getElementById('strokeWidth');
-    const strokeCore = document.getElementById('strokeCore');
-    const bleed = document.getElementById('bleed');
+    const bleedRadius = document.getElementById('bleedRadius');
+    const bleedRoughness = document.getElementById('bleedRoughness');
+    const bleedAlpha = document.getElementById('bleedAlpha');
     const blur = document.getElementById('blur');
     const fontSize = document.getElementById('fontSize');
     const fontSelect = document.getElementById('fontSelect');
@@ -323,21 +320,27 @@
     });
 
     // 실시간 이벤트 바인딩
-    const inputs = [poemInput, strokeWidth, strokeCore, bleed, blur, fontSize, fontSelect, offsetX, offsetY, inkColor, bgColor, textDir];
+    const inputs = [poemInput, bleedRadius, bleedRoughness, bleedAlpha, blur, fontSize, fontSelect, offsetX, offsetY, inkColor, bgColor, textDir];
     inputs.forEach(el => el.addEventListener('input', () => {
       document.getElementById('sizeVal').textContent = fontSize.value + 'px';
-      document.getElementById('strokeVal').textContent = strokeWidth.value + 'px';
-      document.getElementById('coreVal').textContent = strokeCore.value + '%';
+      document.getElementById('bleedVal').textContent = bleedRadius.value + 'px';
+      document.getElementById('roughVal').textContent = bleedRoughness.value + '%';
       render(1.0);
     }));
 
-    // 💡 재설계된 획(Stroke) 농담 서브트랙션 셰이더 엔진
+    // Simple pseudo-random Perlin-like noise generator
+    function getNoise(x, y) {
+      const n = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+      return n - Math.floor(n);
+    }
+
+    // 💡 핵심: 실사 불규칙 디스플레이스먼트 먹물 번짐 엔진
     function render(progress = 1.0) {
       if (isRecording && progress === 1.0) return;
 
       const W = canvas.width, H = canvas.height;
 
-      // 1. 배경 렌더링
+      // 1. 배경 준비
       if (bgImg) {
         ctx.clearRect(0, 0, W, H);
         ctx.drawImage(bgImg, 0, 0, W, H);
@@ -349,11 +352,9 @@
       const text = poemInput.value.trim();
       if (!text) return;
 
-      // 오프스크린 캔버스 초기화
-      [fillCanvas, strokeCanvas, bleedCanvas].forEach(c => { c.width = W; c.height = H; });
-      fillCtx.clearRect(0, 0, W, H);
-      strokeCtx.clearRect(0, 0, W, H);
-      bleedCtx.clearRect(0, 0, W, H);
+      [txtCanvas, noiseCanvas].forEach(c => { c.width = W; c.height = H; });
+      txtCtx.clearRect(0, 0, W, H);
+      noiseCtx.clearRect(0, 0, W, H);
 
       const fSize = parseInt(fontSize.value);
       const offX = parseInt(offsetX.value);
@@ -361,32 +362,29 @@
       const activeFont = customFontName ? `"${customFontName}"` : fontSelect.value;
       const lines = text.split('\n');
 
-      const fontStr = `${fSize}px ${activeFont}`;
-      fillCtx.font = fontStr; 
-      strokeCtx.font = fontStr;
+      txtCtx.font = `${fSize}px ${activeFont}`;
+      txtCtx.fillStyle = inkColor.value;
       
       let allChars = [];
       const lineHeight = fSize * 1.55;
 
       if (textDir.value === 'horizontal') {
-        fillCtx.textAlign = 'center'; fillCtx.textBaseline = 'middle';
-        strokeCtx.textAlign = 'center'; strokeCtx.textBaseline = 'middle';
+        txtCtx.textAlign = 'center'; txtCtx.textBaseline = 'middle';
         const startY = (H / 2) - ((lines.length - 1) * lineHeight / 2) + offY;
 
         lines.forEach((line, lIdx) => {
           const chars = line.split('');
-          const totalW = fillCtx.measureText(line).width;
+          const totalW = txtCtx.measureText(line).width;
           let currX = (W / 2) - (totalW / 2) + offX;
 
           chars.forEach(ch => {
-            const chW = fillCtx.measureText(ch).width;
+            const chW = txtCtx.measureText(ch).width;
             allChars.push({ char: ch, x: currX + chW/2, y: startY + (lIdx * lineHeight) });
             currX += chW;
           });
         });
       } else {
-        fillCtx.textAlign = 'center'; fillCtx.textBaseline = 'middle';
-        strokeCtx.textAlign = 'center'; strokeCtx.textBaseline = 'middle';
+        txtCtx.textAlign = 'center'; txtCtx.textBaseline = 'middle';
         const totalW = lines.length * lineHeight;
         let startX = (W / 2) + (totalW / 2) - (lineHeight / 2) + offX;
 
@@ -401,61 +399,53 @@
       }
 
       const drawCount = Math.floor(progress * allChars.length);
-      const sWidth = parseFloat(strokeWidth.value);
-      const coreAlpha = parseInt(strokeCore.value) / 100.0;
 
-      // --- A. 획 내부 (Fill Canvas) - 연한 투명 채움 ---
-      fillCtx.fillStyle = inkColor.value;
-      fillCtx.globalAlpha = coreAlpha; // 핵심: 조절되는 투명도 적용!
+      // 원본 선명한 글자 그리기
       for (let i = 0; i < drawCount; i++) {
-        fillCtx.fillText(allChars[i].char, allChars[i].x, allChars[i].y);
+        txtCtx.fillText(allChars[i].char, allChars[i].x, allChars[i].y);
       }
 
-      // --- B. 획 테두리 (Stroke Canvas) - 펀치 오려내기 방식 ---
-      // 1) 윤곽선을 굵게 칠함
-      strokeCtx.strokeStyle = inkColor.value;
-      strokeCtx.lineWidth = sWidth * 2;
-      strokeCtx.lineJoin = 'round';
-      for (let i = 0; i < drawCount; i++) {
-        strokeCtx.strokeText(allChars[i].char, allChars[i].x, allChars[i].y);
-      }
-      
-      // 2) [핵심 로직] 테두리가 안쪽 살집을 덮지 못하도록 획 안쪽을 구멍 뚫어냄 (destination-out)
-      strokeCtx.globalCompositeOperation = 'destination-out';
-      strokeCtx.fillStyle = '#000000';
-      for (let i = 0; i < drawCount; i++) {
-        strokeCtx.fillText(allChars[i].char, allChars[i].x, allChars[i].y);
-      }
-      strokeCtx.globalCompositeOperation = 'source-over'; // 원복
-
-      // --- C. 먹물 번짐 (Bleed Layer) ---
-      const bleedVal = parseInt(bleed.value);
+      const radius = parseInt(bleedRadius.value);
+      const roughness = parseInt(bleedRoughness.value) / 100.0;
+      const alphaVal = parseInt(bleedAlpha.value) / 100.0;
       const blurVal = parseFloat(blur.value);
 
-      if (bleedVal > 0 && drawCount > 0) {
-        bleedCtx.save();
-        bleedCtx.filter = `blur(${blurVal}px)`;
-        bleedCtx.drawImage(strokeCanvas, 0, 0); // 오직 굵은 테두리 윤곽선만 아련하게 번지게 처리
-        bleedCtx.restore();
+      // 💡 [핵심 알고리즘] 불규칙 다방향 디스플레이스먼트 먹물 번짐 레이어 생성
+      if (radius > 0 && drawCount > 0) {
+        noiseCtx.save();
+        noiseCtx.fillStyle = inkColor.value;
+        noiseCtx.filter = `blur(${blurVal}px)`;
 
+        // 8방향으로 불규칙한 오프셋 거리를 생성하여 겹쳐 그림 (어떤 곳은 굵게, 어떤 곳은 얇게)
+        const passes = 12;
+        for (let p = 0; p < passes; p++) {
+          const angle = (p / passes) * Math.PI * 2;
+          // 노이즈 파동 함수로 굵기 불균일성 계산
+          const noiseFactor = (Math.sin(p * 3.5) * 0.5 + 0.5) * roughness + (1 - roughness);
+          const currentDist = radius * noiseFactor;
+
+          const dx = Math.cos(angle) * currentDist;
+          const dy = Math.sin(angle) * currentDist;
+
+          noiseCtx.globalAlpha = (alphaVal / passes) * (0.8 + Math.random() * 0.4);
+          noiseCtx.drawImage(txtCanvas, dx, dy);
+        }
+        noiseCtx.restore();
+
+        // 캔버스 본체에 불규칙 번짐 레이어 합성
         ctx.save();
-        ctx.globalAlpha = 0.4;
-        ctx.drawImage(bleedCanvas, -bleedVal/2, 0, W + bleedVal, H);
-        ctx.drawImage(bleedCanvas, bleedVal/2, 0, W - bleedVal, H);
-        ctx.drawImage(bleedCanvas, 0, -bleedVal/2, W, H + bleedVal);
-        ctx.drawImage(bleedCanvas, 0, bleedVal/2, W, H - bleedVal);
+        ctx.drawImage(noiseCanvas, 0, 0);
         ctx.restore();
       }
 
-      // --- D. 최종 합성 (배경 -> 연한 획 내부 -> 오려진 짙은 외곽선) ---
-      ctx.drawImage(fillCanvas, 0, 0);   // 1. 안쪽 살집 (투명도 0%~100% 조절됨)
-      ctx.drawImage(strokeCanvas, 0, 0); // 2. 안쪽이 뚫리고 외곽선만 남은 짙은 테두리
+      // 중앙의 진한 붓글씨 중심 획 오버레이 (사진처럼 '먹길 따로, 번짐 따로' 효과)
+      ctx.drawImage(txtCanvas, 0, 0);
     }
 
     // PNG 저장
     saveBtn.addEventListener('click', () => {
       const link = document.createElement('a');
-      link.download = '획농담_먹물시화_결과물.png';
+      link.download = '실사먹물_시화_결과물.png';
       link.href = canvas.toDataURL('image/png');
       link.click();
     });
@@ -481,7 +471,7 @@
         const blob = new Blob(chunks, { type: mimeType });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
-        link.download = `획농담_먹물시화_${Date.now()}.${mimeType.includes('mp4') ? 'mp4' : 'webm'}`;
+        link.download = `실사먹물_시화_${Date.now()}.${mimeType.includes('mp4') ? 'mp4' : 'webm'}`;
         link.href = url;
         link.click();
 
