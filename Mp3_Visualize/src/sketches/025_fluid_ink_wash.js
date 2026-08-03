@@ -1,9 +1,9 @@
 /**
  * src/sketches/025_fluid_ink_wash.js
- * - [025호 수묵 잉크 블룸 Ver 17.0 - True Unbound 3D Fluid Wash]
- * - 갇힌 덩어리 형태 완전 제거 ➔ 캔버스 +10% 마진 영역까지 가로지르는 거대 수묵 베일
- * - 3D Curl Noise 유체 필드 & Range (Scatter) 0.1~50.0 가변 3D 모션
- * - 겹치는 교집합에서만 깊은 먹색과 은은한 외곽 마름선 형성
+ * - [025호 수묵 잉크 블룸 Ver 18.0 - Multi-Pass Noise Density & Export Ratio]
+ * - 내부 노이즈 4중 중첩(Multi-Octave Density Sub-Veils): 색상 및 먹빛 농담 대폭 상향
+ * - 16:9, 9:16 Export 비율 및 +10% 오버스캔 마진 자동 대응
+ * - 관제탑 커스텀 색상(Gas1, Gas2, Star) 연동을 통한 풍부한 다채색 레이어링
  */
 
 export default class FluidInkWashSketch {
@@ -17,7 +17,7 @@ export default class FluidInkWashSketch {
     }
 
     this.time = 0;
-    this.version = "025호 수묵 잉크 블룸 Ver 17.0 (Unbound 3D)";
+    this.version = "025호 수묵 잉크 블룸 Ver 18.0 (Multi-Pass & Ratio)";
     this.inkStreams = [];
     this.loadedSeed = -1;
   }
@@ -34,7 +34,7 @@ export default class FluidInkWashSketch {
   }
 
   // =========================================================================
-  // 🧩 3D Perlin / FBM 공간 유체 노이즈 연산기
+  // 🧩 3D Perlin / FBM 공간 노이즈 연산기
   // =========================================================================
   fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
   lerp(t, a, b) { return a + t * (b - a); }
@@ -92,8 +92,16 @@ export default class FluidInkWashSketch {
     return total / maxValue;
   }
 
+  hexToRgb(hex) {
+    if (!hex) return "30, 36, 48";
+    let c = hex.replace('#', '');
+    if (c.length === 3) c = c.split('').map(x => x + x).join('');
+    const num = parseInt(c, 16);
+    return `${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}`;
+  }
+
   // =========================================================================
-  // 🎲 캔버스 전체 및 +10% 오버스캔 마진 가로지르는 거대 유체 스트림 생성
+  // 🎲 캔버스 및 오버스캔 영역 스트림 구조 생성
   // =========================================================================
   generateInkStreams(seed, W, H) {
     this.inkStreams = [];
@@ -103,19 +111,18 @@ export default class FluidInkWashSketch {
       return mask - Math.floor(mask);
     };
 
-    const count = 8; // 화면 전체를 커버하는 8개의 거대 유체 베일
+    const count = 9;
     for (let i = 0; i < count; i++) {
       const r1 = pseudoRand(seed + i * 1.7);
       const r2 = pseudoRand(seed + i * 3.3);
       const r3 = pseudoRand(seed + i * 5.1);
 
-      // +10% 오버스캔 영역 배치 ( 화면 밖 -10% ~ 110% 범위 )
       this.inkStreams.push({
         anchorX: (-0.1 + r1 * 1.2) * W,
         anchorY: (-0.1 + r2 * 1.2) * H,
-        z: (r3 - 0.5) * 400,
-        spanX: (W * 0.5) + r3 * (W * 0.7), // 캔버스 화면의 절반 이상을 덮는 대형 베일
-        spanY: (H * 0.4) + r1 * (H * 0.6),
+        z: (r3 - 0.5) * 380,
+        spanX: (W * 0.45) + r3 * (W * 0.65),
+        spanY: (H * 0.38) + r1 * (H * 0.58),
         rotZ: r2 * Math.PI * 2,
         seedOffset: seed + i * 43.7
       });
@@ -123,14 +130,14 @@ export default class FluidInkWashSketch {
   }
 
   // =========================================================================
-  // 🖌️ 화면 전체를 가로지르는 비대칭 3D 자유 유체 렌더링
+  // 🖌️ 내부 노이즈 4중 중첩 렌더링 (Density & Depth Fill)
   // =========================================================================
   drawUnboundInkStream(ctx, stream, time, scatterMotion, baseColorRgb, edgeRgb, vocalVol, drumVol, bassVol, otherVol, isDark, W, H) {
     ctx.save();
 
     const motionFactor = scatterMotion;
 
-    // 💡 [핵심 1] 3D Curl Noise 유동 (3D 공간 속에서 비대칭 독립 드리프트)
+    // 3D Curl Noise 유동
     const driftX = this.fbm3D(stream.seedOffset, time * 0.05, 0) * motionFactor * 18;
     const driftY = this.fbm3D(stream.seedOffset + 10, time * 0.05, 5) * motionFactor * 18;
     const driftZ = this.fbm3D(stream.seedOffset + 20, time * 0.05, 10) * motionFactor * 12;
@@ -140,11 +147,10 @@ export default class FluidInkWashSketch {
     const drumShakeY = (Math.cos(time * 40 + stream.seedOffset) * 0.5) * (drumVol * 12.0);
 
     // 🎸 베이스 유체 추진
-    const finalX = stream.anchorX + driftX + drumShakeX + Math.sin(time * 0.08 + stream.seedOffset) * (bassVol * 110);
-    const finalY = stream.anchorY + driftY + drumShakeY + Math.cos(time * 0.09 + stream.seedOffset) * (bassVol * 110);
+    const finalX = stream.anchorX + driftX + drumShakeX + Math.sin(time * 0.08 + stream.seedOffset) * (bassVol * 100);
+    const finalY = stream.anchorY + driftY + drumShakeY + Math.cos(time * 0.09 + stream.seedOffset) * (bassVol * 100);
     const finalZ = stream.z + driftZ;
 
-    // 3D 공간 투영
     const perspective = 1000 / (1000 + finalZ);
     ctx.translate(finalX, finalY);
 
@@ -155,50 +161,61 @@ export default class FluidInkWashSketch {
 
     // 🎤 보컬 호흡 확장
     const vocalExpand = 1.0 + (vocalVol * 1.0);
-    const spanX = stream.spanX * vocalExpand;
-    const spanY = stream.spanY * vocalExpand;
-
-    const nodeCount = 120;
-    const points = [];
-
-    // 💡 [핵심 2] 닫힌 원형이 아닌, 화면을 가로지르는 유기적 곡선 노드 연산
-    for (let i = 0; i < nodeCount; i++) {
-      const a = (i / nodeCount) * Math.PI * 2;
-
-      const nx = Math.cos(a) * 0.8 + stream.seedOffset;
-      const ny = Math.sin(a) * 0.8 + stream.seedOffset;
-      const nz = time * 0.05 * (motionFactor * 0.1);
-
-      const nVal3D = this.fbm3D(nx, ny, nz);
-      const distortStrength = 0.4 + (motionFactor / 50.0) * 0.7;
-
-      const px = Math.cos(a) * spanX * (0.6 + nVal3D * distortStrength);
-      const py = Math.sin(a) * spanY * (0.6 + nVal3D * distortStrength);
-
-      points.push({ x: px, y: py });
-    }
-
-    ctx.beginPath();
-    ctx.moveTo((points[0].x + points[nodeCount - 1].x) / 2, (points[0].y + points[nodeCount - 1].y) / 2);
-    for (let i = 0; i < nodeCount; i++) {
-      const curr = points[i];
-      const next = points[(i + 1) % nodeCount];
-      ctx.quadraticCurveTo(curr.x, curr.y, (curr.x + next.x) / 2, (curr.y + next.y) / 2);
-    }
-    ctx.closePath();
+    const baseSpanX = stream.spanX * vocalExpand;
+    const baseSpanY = stream.spanY * vocalExpand;
 
     ctx.filter = 'none';
 
-    // 💡 [핵심 3] 레이어 중첩(Multiply)에 의해 겹치는 구간만 깊은 흑색 형성
-    const fillAlpha = isDark ? (0.20 + bassVol * 0.15) : (0.13 + bassVol * 0.12);
-    ctx.fillStyle = `rgba(${baseColorRgb}, ${fillAlpha})`;
-    ctx.fill();
+    // 💡 [핵심]: 내부 색상 노이즈 4중 중첩 (Outer ~ Inner 4-Layer Sub-Veil Density)
+    const layerScales = [1.0, 0.75, 0.50, 0.25];
+    const nodeCount = 120;
 
-    // 은은하게 피어나는 교차 테두리 마름선
-    const strokeAlpha = isDark ? (0.4 + drumVol * 0.3) : (0.28 + drumVol * 0.22);
-    ctx.strokeStyle = `rgba(${edgeRgb}, ${strokeAlpha})`;
-    ctx.lineWidth = 1.0 + drumVol * 1.5;
-    ctx.stroke();
+    layerScales.forEach((scaleFactor, layerIdx) => {
+      const spanX = baseSpanX * scaleFactor;
+      const spanY = baseSpanY * scaleFactor;
+      const points = [];
+
+      for (let i = 0; i < nodeCount; i++) {
+        const a = (i / nodeCount) * Math.PI * 2;
+
+        const nx = Math.cos(a) * (0.8 + layerIdx * 0.2) + stream.seedOffset;
+        const ny = Math.sin(a) * (0.8 + layerIdx * 0.2) + stream.seedOffset;
+        const nz = time * 0.05 * (motionFactor * 0.1) + layerIdx * 0.5;
+
+        const nVal3D = this.fbm3D(nx, ny, nz);
+        const distortStrength = 0.35 + (motionFactor / 50.0) * 0.65;
+
+        const px = Math.cos(a) * spanX * (0.6 + nVal3D * distortStrength);
+        const py = Math.sin(a) * spanY * (0.6 + nVal3D * distortStrength);
+
+        points.push({ x: px, y: py });
+      }
+
+      ctx.beginPath();
+      ctx.moveTo((points[0].x + points[nodeCount - 1].x) / 2, (points[0].y + points[nodeCount - 1].y) / 2);
+      for (let i = 0; i < nodeCount; i++) {
+        const curr = points[i];
+        const next = points[(i + 1) % nodeCount];
+        ctx.quadraticCurveTo(curr.x, curr.y, (curr.x + next.x) / 2, (curr.y + next.y) / 2);
+      }
+      ctx.closePath();
+
+      // 내부로 갈수록 농도가 진해지는 노이즈 레이어링
+      const layerAlpha = isDark
+        ? (0.12 + (layerIdx * 0.08) + bassVol * 0.1)
+        : (0.08 + (layerIdx * 0.07) + bassVol * 0.08);
+
+      ctx.fillStyle = `rgba(${baseColorRgb}, ${layerAlpha})`;
+      ctx.fill();
+
+      // 가장 외곽 레이어(layerIdx === 0)에만 은은한 마름 테두리 적용
+      if (layerIdx === 0) {
+        const strokeAlpha = isDark ? (0.35 + drumVol * 0.3) : (0.25 + drumVol * 0.2);
+        ctx.strokeStyle = `rgba(${edgeRgb}, ${strokeAlpha})`;
+        ctx.lineWidth = 1.0 + drumVol * 1.5;
+        ctx.stroke();
+      }
+    });
 
     ctx.restore();
   }
@@ -215,6 +232,7 @@ export default class FluidInkWashSketch {
     const W = this.canvas.width;
     const H = this.canvas.height;
 
+    // 관제탑 설정값 읽기
     const globalSettings = window.cosmicEngineSettings || {};
     const seedVal = globalSettings.seed ?? 42;
     
@@ -246,7 +264,7 @@ export default class FluidInkWashSketch {
 
     this.ctx.save();
 
-    // 💡 [핵심 4] +10% 오버스캔 마진 클리핑 영역 설정 (화면 박을 넘나드는 자연스러운 흐름)
+    // 💡 [Export 비율 대응]: 10% 오버스캔 마진 설정
     const marginX = W * 0.10;
     const marginY = H * 0.10;
 
@@ -254,55 +272,59 @@ export default class FluidInkWashSketch {
     this.ctx.rect(-marginX, -marginY, W + marginX * 2, H + marginY * 2);
     this.ctx.clip();
 
-    // 🎨 4가지 컬러 스타일 팔레트
+    // 🎨 4가지 스타일 & 관제탑 커스텀 피커(Gas1, Gas2, Star) 색상 지정
     let bgColor = "#f4f1ea";
     let isDark = false;
+    
+    // 관제탑 커스텀 피커 수치
+    const customColors = globalSettings.customColors || {};
+    const customGas1 = this.hexToRgb(customColors.gas1);
+    const customGas2 = this.hexToRgb(customColors.gas2);
+    const customStar = this.hexToRgb(customColors.star);
+
     let getColors = (idx) => ({ base: "25, 30, 42", edge: "8, 10, 15" });
 
     if (colorStyle === 'monochrome' || colorStyle === 'earth') {
       bgColor = "#f4f1ea"; // 한지 바탕색
       isDark = false;
       getColors = (idx) => ({
-        base: idx % 2 === 0 ? "20, 24, 34" : "40, 48, 62",
+        base: idx % 3 === 0 ? "20, 26, 38" : idx % 3 === 1 ? "42, 50, 68" : "60, 48, 40",
         edge: "5, 8, 12"
       });
     } else if (colorStyle === 'pastel') {
       bgColor = "#f8f6f0";
       isDark = false;
-      const pastelBases = ["215, 120, 150", "110, 160, 200", "120, 185, 160", "180, 140, 200"];
-      const pastelEdges = ["150, 40, 70", "40, 85, 130", "50, 110, 85", "110, 60, 130"];
+      const pastelBases = [customGas1, customGas2, customStar, "180, 140, 200"];
       getColors = (idx) => ({
         base: pastelBases[idx % pastelBases.length],
-        edge: pastelEdges[idx % pastelEdges.length]
+        edge: "80, 70, 90"
       });
     } else if (colorStyle === 'neon') {
       bgColor = "#04050d";
       isDark = true;
-      const neonBases = ["0, 240, 255", "255, 0, 120", "120, 255, 100", "180, 100, 255"];
-      const neonEdges = ["220, 255, 255", "255, 200, 230", "220, 255, 200", "240, 220, 255"];
+      const neonBases = [customGas1, customGas2, customStar, "180, 100, 255"];
       getColors = (idx) => ({
         base: neonBases[idx % neonBases.length],
-        edge: neonEdges[idx % neonEdges.length]
+        edge: "220, 240, 255"
       });
     } else {
       bgColor = "#fdfbf7";
       isDark = false;
-      const fullBases = ["210, 35, 75", "15, 120, 180", "215, 145, 15", "95, 45, 160"];
-      const fullEdges = ["110, 5, 25", "2, 50, 100", "120, 65, 0", "40, 5, 80"];
+      const fullBases = ["210, 35, 75", "15, 120, 180", "215, 145, 15", "95, 45, 160", "30, 110, 90"];
       getColors = (idx) => ({
         base: fullBases[idx % fullBases.length],
-        edge: fullEdges[idx % fullEdges.length]
+        edge: "10, 20, 35"
       });
     }
 
-    // 배경 채우기
+    // 캔버스 배경 채우기
     this.ctx.fillStyle = bgColor;
     this.ctx.fillRect(-marginX, -marginY, W + marginX * 2, H + marginY * 2);
 
     // 합성 모드 (한지 multiply, 네온 screen)
     this.ctx.globalCompositeOperation = isDark ? 'screen' : 'multiply';
 
-    // 거대 유체 스트림 렌더링
+    // 수묵 유체 스트림 렌더링
     this.inkStreams.forEach((stream, idx) => {
       const colors = getColors(idx);
       this.drawUnboundInkStream(
@@ -326,9 +348,9 @@ export default class FluidInkWashSketch {
 
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: `8 Unbound 3D Streams (+10% Overscan)`,
+      particleCount: `9 Streams (4-Layer Density Noise)`,
       isCovering: true,
-      activeFunction: `FluidInkWash[Unbound3D_${colorStyle.toUpperCase()}]`
+      activeFunction: `FluidInkWash[MultiNoiseRatio_${colorStyle.toUpperCase()}]`
     };
   }
 
