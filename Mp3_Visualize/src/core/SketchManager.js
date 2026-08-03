@@ -1,53 +1,54 @@
 /**
  * src/core/SketchManager.js
- * - [Fix] SyntaxError: Unexpected token 'export' ➔ Dynamic ESM import() 적용
- * - This file handles dynamic loading and switching of creative sketches.
+ * - [Fix] TypeError: getContext is not a function 호환성 수리
+ * - canvas-stage가 <div> 컨테이너든 <canvas>든 안전하게 자동 판별
  */
 
 export class SketchManager {
-  constructor(canvasId) {
-    this.canvas = document.getElementById(canvasId);
-    if (!this.canvas) {
-      throw new Error(`[SketchManager Error] Canvas element with id "${canvasId}" not found.`);
+  constructor(containerId) {
+    this.container = typeof containerId === 'string' 
+      ? document.getElementById(containerId) 
+      : containerId;
+
+    if (!this.container) {
+      console.error(`[SketchManager Error] "${containerId}" 엘리먼트를 찾을 수 없습니다.`);
     }
-    this.ctx = this.canvas.getContext('2d');
+
+    // 💡 <canvas> 태그인지 <div> 컨테이너인지 안전하게 판별
+    this.isCanvas = this.container && this.container.tagName === 'CANVAS';
+    this.ctx = this.isCanvas ? this.container.getContext('2d') : null;
+
     this.currentSketch = null;
     this.currentFilename = null;
   }
 
   async switchSketch(filename, analyzer) {
-    // filename: "sketches/025_fluid_ink_wash.js"
     if (this.currentFilename === filename) return;
 
-    // Clean up the previous sketch
+    // 이전 스케치 안전하게 제거
     if (this.currentSketch) {
-      this.currentSketch.destroy();
+      if (typeof this.currentSketch.destroy === 'function') {
+        this.currentSketch.destroy();
+      }
       this.currentSketch = null;
     }
 
     this.currentFilename = filename;
 
-        const mainBtn = document.getElementById('btn-play-music');
-        mainBtn.innerText = "▶️ 음악 재생 (Play)";
-        mainBtn.classList.remove('btn-pause');
-
     try {
-      // 💡 [수리] 에러 원인 해결: 구형 script tag 동적 생성 대신
-      // 현대적이고 네이티브한 ES 모듈 동적 import() 구문을 사용합니다.
-      // The leading '../' assumes the manager is in src/core and filename starts with sketches/.
+      // ESM 모듈 동적 로드
       const SketchModule = await import(`../${filename}`);
       const SketchClass = SketchModule.default;
-      this.currentSketch = new SketchClass(this.ctx);
 
-      // Connect audio analyzer if the sketch supports it
+      // 스케치 생성 (컨테이너 타입에 따라 안전 전달)
+      this.currentSketch = new SketchClass(this.isCanvas ? this.ctx : this.container);
+
       if (this.currentSketch && typeof this.currentSketch.connectAudioAnalyzer === 'function') {
-          this.currentSketch.connectAudioAnalyzer(analyzer);
+        this.currentSketch.connectAudioAnalyzer(analyzer);
       }
 
       console.log(`[Success] 스케치 로드 완료: ${filename}`);
-
     } catch (error) {
-      // 콘솔에 빨간색 에러 메시지가 출력된 바로 그 위치입니다.
       console.error(`[Error] 스케치 로드 실패: (${filename}):`, error);
     }
   }
@@ -59,9 +60,9 @@ export class SketchManager {
   }
 
   resize(w, h) {
-    if (this.canvas) {
-      this.canvas.width = w;
-      this.canvas.height = h;
+    if (this.isCanvas && this.container) {
+      this.container.width = w;
+      this.container.height = h;
     }
     if (this.currentSketch && typeof this.currentSketch.resize === 'function') {
       this.currentSketch.resize(w, h);
