@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>004변칙 먹물 번짐 & 획 농담 스튜디오</title>
+  <title>005변칙 먹물 번짐 & 획 농담 스튜디오</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Nanum+Myeongjo:wght@400;700;800&family=Noto+Sans+KR:wght@300;400;700&display=swap" rel="stylesheet">
@@ -116,7 +116,7 @@
 
   <header>
     <h1>🖌️ 먹물 번짐 & 획 중간 농담 정밀 스튜디오</h1>
-    <div style="font-size:0.85rem; color:var(--text-muted);">경계 밀착 위치 이동 & 획 중심부 농담 감쇄 셰이더</div>
+    <div style="font-size:0.85rem; color:var(--text-muted);">안정적인 배경 로더 및 획 중심부 농담 감쇄 셰이더</div>
   </header>
 
   <div class="main-container">
@@ -177,7 +177,7 @@
         </div>
       </div>
 
-      <!-- 5. 위치 및 스타일 제어 (위치 이동 범위 -1000 ~ +1000px 로 확장) -->
+      <!-- 5. 위치 및 스타일 제어 -->
       <div class="section-title">📍 위치 & 스타일 설정</div>
       <div class="form-row">
         <div class="form-group">
@@ -194,7 +194,6 @@
         </div>
       </div>
 
-      <!-- 💡 가로/세로 위치를 경계 끝까지 붙일 수 있도록 조절 수치 확장 -->
       <div class="form-row">
         <div class="form-group">
           <label>가로 위치 (X Shift) <span id="xVal" class="value-badge">0px</span></label>
@@ -256,296 +255,293 @@
   </div>
 
   <script>
-    const canvas = document.getElementById('mainCanvas');
-    const ctx = canvas.getContext('2d');
+    (function() {
+      const canvas = document.getElementById('mainCanvas');
+      const ctx = canvas.getContext('2d');
 
-    // 오프스크린 레이어
-    const txtCanvas = document.createElement('canvas');
-    const txtCtx = txtCanvas.getContext('2d');
-    
-    const coreCanvas = document.createElement('canvas');
-    const coreCtx = coreCanvas.getContext('2d');
-
-    const spreadCanvas = document.createElement('canvas');
-    const spreadCtx = spreadCanvas.getContext('2d');
-
-    let bgImg = null;
-    let customFontName = null;
-
-    const poemInput = document.getElementById('poemInput');
-    const bgFile = document.getElementById('bgFile');
-    const fontFile = document.getElementById('fontFile');
-    const midFade = document.getElementById('midFade');
-    const edgeDensity = document.getElementById('edgeDensity');
-    const bleedRadius = document.getElementById('bleedRadius');
-    const radialRays = document.getElementById('radialRays');
-    const edgeRim = document.getElementById('edgeRim');
-    const blur = document.getElementById('blur');
-    const fontSize = document.getElementById('fontSize');
-    const fontSelect = document.getElementById('fontSelect');
-    const offsetX = document.getElementById('offsetX');
-    const offsetY = document.getElementById('offsetY');
-    const inkColor = document.getElementById('inkColor');
-    const bgColor = document.getElementById('bgColor');
-    const duration = document.getElementById('duration');
-    const durationNum = document.getElementById('durationNum');
-    const textDir = document.getElementById('textDir');
-
-    const startBtn = document.getElementById('startBtn');
-    const saveBtn = document.getElementById('saveBtn');
-    const progressBox = document.getElementById('progressBox');
-    const progressPercent = document.getElementById('progressPercent');
-
-    let isRecording = false;
-
-    // 슬라이더 동기화
-    duration.addEventListener('input', () => durationNum.value = duration.value);
-    durationNum.addEventListener('input', () => {
-      let val = parseInt(durationNum.value);
-      if (isNaN(val)) return;
-      if (val < 1) val = 1;
-      if (val > 600) val = 600;
-      duration.value = val;
-    });
-
-    // 배경 이미지 로딩
-    bgFile.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const img = new Image();
-        img.onload = () => {
-          bgImg = img; canvas.width = img.width; canvas.height = img.height; render(1.0);
-        };
-        img.src = ev.target.result;
-      };
-      reader.readAsDataURL(file);
-    });
-
-    // 로컬 폰트 로딩
-    fontFile.addEventListener('change', async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const fontName = 'CustomFont_' + Date.now();
-      const fontBuffer = await file.arrayBuffer();
-      const fontFace = new FontFace(fontName, fontBuffer);
-      await fontFace.load();
-      document.fonts.add(fontFace);
-      customFontName = fontName;
-      render(1.0);
-    });
-
-    // 실시간 이벤트 바인딩
-    const inputs = [poemInput, midFade, edgeDensity, bleedRadius, radialRays, edgeRim, blur, fontSize, fontSelect, offsetX, offsetY, inkColor, bgColor, textDir];
-    inputs.forEach(el => el.addEventListener('input', () => {
-      document.getElementById('sizeVal').textContent = fontSize.value + 'px';
-      document.getElementById('bleedVal').textContent = bleedRadius.value + 'px';
-      document.getElementById('midVal').textContent = midFade.value + '%';
-      document.getElementById('xVal').textContent = offsetX.value + 'px';
-      document.getElementById('yVal').textContent = offsetY.value + 'px';
-      render(1.0);
-    }));
-
-    // 💡 핵심: 획 중간 감쇄(Mid Fade) & 번짐 결합 렌더링 엔진
-    function render(progress = 1.0) {
-      if (isRecording && progress === 1.0) return;
-
-      const W = canvas.width, H = canvas.height;
-
-      // 1. 배경 준비
-      if (bgImg) {
-        ctx.clearRect(0, 0, W, H);
-        ctx.drawImage(bgImg, 0, 0, W, H);
-      } else {
-        ctx.fillStyle = bgColor.value;
-        ctx.fillRect(0, 0, W, H);
-      }
-
-      const text = poemInput.value.trim();
-      if (!text) return;
-
-      [txtCanvas, coreCanvas, spreadCanvas].forEach(c => { c.width = W; c.height = H; });
-      txtCtx.clearRect(0, 0, W, H);
-      coreCtx.clearRect(0, 0, W, H);
-      spreadCtx.clearRect(0, 0, W, H);
-
-      const fSize = parseInt(fontSize.value);
-      const offX = parseInt(offsetX.value);
-      const offY = parseInt(offsetY.value);
-      const activeFont = customFontName ? `"${customFontName}"` : fontSelect.value;
-      const lines = text.split('\n');
-
-      txtCtx.font = `${fSize}px ${activeFont}`;
-      txtCtx.fillStyle = inkColor.value;
+      const txtCanvas = document.createElement('canvas');
+      const txtCtx = txtCanvas.getContext('2d');
       
-      let allChars = [];
-      const lineHeight = fSize * 1.55;
+      const coreCanvas = document.createElement('canvas');
+      const coreCtx = coreCanvas.getContext('2d');
 
-      if (textDir.value === 'horizontal') {
-        txtCtx.textAlign = 'center'; txtCtx.textBaseline = 'middle';
-        const startY = (H / 2) - ((lines.length - 1) * lineHeight / 2) + offY;
+      const spreadCanvas = document.createElement('canvas');
+      const spreadCtx = spreadCanvas.getContext('2d');
 
-        lines.forEach((line, lIdx) => {
-          const chars = line.split('');
-          const totalW = txtCtx.measureText(line).width;
-          let currX = (W / 2) - (totalW / 2) + offX;
+      let bgImg = null;
+      let customFontName = null;
 
-          chars.forEach(ch => {
-            const chW = txtCtx.measureText(ch).width;
-            allChars.push({ char: ch, x: currX + chW/2, y: startY + (lIdx * lineHeight) });
-            currX += chW;
-          });
-        });
-      } else {
-        txtCtx.textAlign = 'center'; txtCtx.textBaseline = 'middle';
-        const totalW = lines.length * lineHeight;
-        let startX = (W / 2) + (totalW / 2) - (lineHeight / 2) + offX;
+      const poemInput = document.getElementById('poemInput');
+      const bgFile = document.getElementById('bgFile');
+      const fontFile = document.getElementById('fontFile');
+      const midFade = document.getElementById('midFade');
+      const edgeDensity = document.getElementById('edgeDensity');
+      const bleedRadius = document.getElementById('bleedRadius');
+      const radialRays = document.getElementById('radialRays');
+      const edgeRim = document.getElementById('edgeRim');
+      const blur = document.getElementById('blur');
+      const fontSize = document.getElementById('fontSize');
+      const fontSelect = document.getElementById('fontSelect');
+      const offsetX = document.getElementById('offsetX');
+      const offsetY = document.getElementById('offsetY');
+      const inkColor = document.getElementById('inkColor');
+      const bgColor = document.getElementById('bgColor');
+      const duration = document.getElementById('duration');
+      const durationNum = document.getElementById('durationNum');
+      const textDir = document.getElementById('textDir');
 
-        lines.forEach((line, lIdx) => {
-          const chars = line.split('');
-          const startY = (H / 2) - ((chars.length - 1) * (fSize * 1.1) / 2) + offY;
+      const startBtn = document.getElementById('startBtn');
+      const saveBtn = document.getElementById('saveBtn');
+      const progressBox = document.getElementById('progressBox');
+      const progressPercent = document.getElementById('progressPercent');
 
-          chars.forEach((ch, cIdx) => {
-            allChars.push({ char: ch, x: startX - (lIdx * lineHeight), y: startY + (cIdx * fSize * 1.1) });
-          });
-        });
-      }
+      let isRecording = false;
 
-      const drawCount = Math.floor(progress * allChars.length);
+      duration.addEventListener('input', () => durationNum.value = duration.value);
+      durationNum.addEventListener('input', () => {
+        let val = parseInt(durationNum.value);
+        if (isNaN(val)) return;
+        if (val < 1) val = 1;
+        if (val > 600) val = 600;
+        duration.value = val;
+      });
 
-      // A. 원본 전체 획 그리기
-      for (let i = 0; i < drawCount; i++) {
-        txtCtx.fillText(allChars[i].char, allChars[i].x, allChars[i].y);
-      }
+      // 안전한 배경 이미지 로더
+      bgFile.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const img = new Image();
+          img.onload = () => {
+            bgImg = img; 
+            canvas.width = img.width; 
+            canvas.height = img.height; 
+            render(1.0);
+          };
+          img.src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
 
-      // B. 💡 [핵심] 획 중간 영역(Mid Core) 오려내서 연하게 만들기
-      const fadeVal = parseInt(midFade.value) / 100.0;
-      if (fadeVal > 0 && drawCount > 0) {
-        coreCtx.drawImage(txtCanvas, 0, 0);
+      // 로컬 폰트 로더
+      fontFile.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        try {
+          const fontName = 'CustomFont_' + Date.now();
+          const fontBuffer = await file.arrayBuffer();
+          const fontFace = new FontFace(fontName, fontBuffer);
+          await fontFace.load();
+          document.fonts.add(fontFace);
+          customFontName = fontName;
+          render(1.0);
+        } catch (err) {
+          alert('폰트 로딩 실패: ' + err.message);
+        }
+      });
+
+      const inputs = [poemInput, midFade, edgeDensity, bleedRadius, radialRays, edgeRim, blur, fontSize, fontSelect, offsetX, offsetY, inkColor, bgColor, textDir];
+      inputs.forEach(el => el.addEventListener('input', () => {
+        document.getElementById('sizeVal').textContent = fontSize.value + 'px';
+        document.getElementById('bleedVal').textContent = bleedRadius.value + 'px';
+        document.getElementById('midVal').textContent = midFade.value + '%';
+        document.getElementById('xVal').textContent = offsetX.value + 'px';
+        document.getElementById('yVal').textContent = offsetY.value + 'px';
+        render(1.0);
+      }));
+
+      // 💡 오류 차단 안전 렌더링 엔진
+      function render(progress = 1.0) {
+        if (isRecording && progress === 1.0) return;
+
+        const W = canvas.width, H = canvas.height;
+
+        // 배경 안전 체크
+        if (bgImg && bgImg.complete && bgImg.naturalWidth !== 0) {
+          ctx.clearRect(0, 0, W, H);
+          ctx.drawImage(bgImg, 0, 0, W, H);
+        } else {
+          ctx.fillStyle = bgColor.value;
+          ctx.fillRect(0, 0, W, H);
+        }
+
+        const text = poemInput.value.trim();
+        if (!text) return;
+
+        [txtCanvas, coreCanvas, spreadCanvas].forEach(c => { c.width = W; c.height = H; });
+        txtCtx.clearRect(0, 0, W, H);
+        coreCtx.clearRect(0, 0, W, H);
+        spreadCtx.clearRect(0, 0, W, H);
+
+        const fSize = parseInt(fontSize.value);
+        const offX = parseInt(offsetX.value);
+        const offY = parseInt(offsetY.value);
+        const activeFont = customFontName ? `"${customFontName}"` : fontSelect.value;
+        const lines = text.split('\n');
+
+        txtCtx.font = `${fSize}px ${activeFont}`;
+        txtCtx.fillStyle = inkColor.value;
         
-        // 획의 중심부를 가우시안 축소 마스크로 추출
-        coreCtx.globalCompositeOperation = 'destination-out';
-        coreCtx.lineWidth = Math.max(2, fSize * 0.25);
-        coreCtx.strokeStyle = '#000000';
-        coreCtx.font = `${fSize}px ${activeFont}`;
-        coreCtx.textAlign = txtCtx.textAlign;
-        coreCtx.textBaseline = txtCtx.textBaseline;
+        let allChars = [];
+        const lineHeight = fSize * 1.55;
+
+        if (textDir.value === 'horizontal') {
+          txtCtx.textAlign = 'center'; txtCtx.textBaseline = 'middle';
+          const startY = (H / 2) - ((lines.length - 1) * lineHeight / 2) + offY;
+
+          lines.forEach((line, lIdx) => {
+            const chars = line.split('');
+            const totalW = txtCtx.measureText(line).width;
+            let currX = (W / 2) - (totalW / 2) + offX;
+
+            chars.forEach(ch => {
+              const chW = txtCtx.measureText(ch).width;
+              allChars.push({ char: ch, x: currX + chW/2, y: startY + (lIdx * lineHeight) });
+              currX += chW;
+            });
+          });
+        } else {
+          txtCtx.textAlign = 'center'; txtCtx.textBaseline = 'middle';
+          const totalW = lines.length * lineHeight;
+          let startX = (W / 2) + (totalW / 2) - (lineHeight / 2) + offX;
+
+          lines.forEach((line, lIdx) => {
+            const chars = line.split('');
+            const startY = (H / 2) - ((chars.length - 1) * (fSize * 1.1) / 2) + offY;
+
+            chars.forEach((ch, cIdx) => {
+              allChars.push({ char: ch, x: startX - (lIdx * lineHeight), y: startY + (cIdx * fSize * 1.1) });
+            });
+          });
+        }
+
+        const drawCount = Math.floor(progress * allChars.length);
 
         for (let i = 0; i < drawCount; i++) {
-          coreCtx.strokeText(allChars[i].char, allChars[i].x, allChars[i].y);
+          txtCtx.fillText(allChars[i].char, allChars[i].x, allChars[i].y);
         }
-        
-        // 오려낸 중심 영역에 투명도(Fade) 적용
-        txtCtx.save();
-        txtCtx.globalCompositeOperation = 'destination-out';
-        txtCtx.globalAlpha = fadeVal * 0.85; // 수치만큼 획 중간을 깎아냄
-        txtCtx.drawImage(coreCtx, 0, 0);
-        txtCtx.restore();
+
+        const fadeVal = parseInt(midFade.value) / 100.0;
+        if (fadeVal > 0 && drawCount > 0) {
+          coreCtx.drawImage(txtCanvas, 0, 0);
+          coreCtx.globalCompositeOperation = 'destination-out';
+          coreCtx.lineWidth = Math.max(2, fSize * 0.25);
+          coreCtx.strokeStyle = '#000000';
+          coreCtx.font = `${fSize}px ${activeFont}`;
+          coreCtx.textAlign = txtCtx.textAlign;
+          coreCtx.textBaseline = txtCtx.textBaseline;
+
+          for (let i = 0; i < drawCount; i++) {
+            coreCtx.strokeText(allChars[i].char, allChars[i].x, allChars[i].y);
+          }
+          
+          txtCtx.save();
+          txtCtx.globalCompositeOperation = 'destination-out';
+          txtCtx.globalAlpha = fadeVal * 0.85;
+          txtCtx.drawImage(coreCtx, 0, 0);
+          txtCtx.restore();
+        }
+
+        const radius = parseInt(bleedRadius.value);
+        const rayFactor = parseInt(radialRays.value) / 100.0;
+        const rimFactor = parseInt(edgeRim.value) / 100.0;
+        const blurVal = parseFloat(blur.value);
+
+        if (radius > 0 && drawCount > 0) {
+          spreadCtx.save();
+          spreadCtx.fillStyle = inkColor.value;
+          spreadCtx.filter = `blur(${blurVal}px)`;
+
+          const layers = 12;
+          for (let l = 1; l <= layers; l++) {
+            const rRatio = l / layers;
+            const currentR = radius * rRatio;
+
+            const numRays = 16 + Math.floor(rayFactor * 24);
+            for (let ray = 0; ray < numRays; ray++) {
+              const angle = (ray / numRays) * Math.PI * 2;
+              const dist = currentR * (Math.sin(angle * 5 + l) * 0.3 + 0.7);
+
+              const dx = Math.cos(angle) * dist;
+              const dy = Math.sin(angle) * dist;
+
+              let alpha = (1.0 - rRatio * 0.7) / layers;
+              if (l === layers && rimFactor > 0) alpha *= (1.0 + rimFactor * 2.0);
+
+              spreadCtx.globalAlpha = alpha;
+              spreadCtx.drawImage(txtCanvas, dx, dy);
+            }
+          }
+          spreadCtx.restore();
+
+          ctx.save();
+          ctx.drawImage(spreadCanvas, 0, 0);
+          ctx.restore();
+        }
+
+        ctx.drawImage(txtCanvas, 0, 0);
       }
 
-      // C. 먹물 번짐 (Spread) 연산
-      const radius = parseInt(bleedRadius.value);
-      const rayFactor = parseInt(radialRays.value) / 100.0;
-      const rimFactor = parseInt(edgeRim.value) / 100.0;
-      const blurVal = parseFloat(blur.value);
+      saveBtn.addEventListener('click', () => {
+        const link = document.createElement('a');
+        link.download = '획농담_먹물시화_결과물.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+      });
 
-      if (radius > 0 && drawCount > 0) {
-        spreadCtx.save();
-        spreadCtx.fillStyle = inkColor.value;
-        spreadCtx.filter = `blur(${blurVal}px)`;
+      startBtn.addEventListener('click', async () => {
+        if (isRecording) return;
+        isRecording = true;
+        progressBox.style.display = 'block';
 
-        const layers = 12;
-        for (let l = 1; l <= layers; l++) {
-          const rRatio = l / layers;
-          const currentR = radius * rRatio;
+        const dur = parseFloat(duration.value);
+        const totalMs = dur * 1000;
 
-          const numRays = 16 + Math.floor(rayFactor * 24);
-          for (let ray = 0; ray < numRays; ray++) {
-            const angle = (ray / numRays) * Math.PI * 2;
-            const dist = currentR * (Math.sin(angle * 5 + l) * 0.3 + 0.7);
+        const stream = canvas.captureStream(30);
+        let mimeType = 'video/mp4;codecs=avc1';
+        if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
 
-            const dx = Math.cos(angle) * dist;
-            const dy = Math.sin(angle) * dist;
+        const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8000000 });
+        const chunks = [];
+        recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
 
-            let alpha = (1.0 - rRatio * 0.7) / layers;
-            if (l === layers && rimFactor > 0) alpha *= (1.0 + rimFactor * 2.0);
+        recorder.onstop = () => {
+          const blob = new Blob(chunks, { type: mimeType });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.download = `획농담_먹물시화_${Date.now()}.${mimeType.includes('mp4') ? 'mp4' : 'webm'}`;
+          link.href = url;
+          link.click();
 
-            spreadCtx.globalAlpha = alpha;
-            spreadCtx.drawImage(txtCanvas, dx, dy);
+          isRecording = false;
+          progressBox.style.display = 'none';
+          render(1.0);
+        };
+
+        recorder.start();
+        const startTime = performance.now();
+
+        function drawFrame(now) {
+          const elapsed = now - startTime;
+          let progress = elapsed / totalMs;
+          if (progress > 1.0) progress = 1.0;
+
+          progressPercent.textContent = `${Math.floor(progress * 100)}%`;
+          render(progress);
+
+          if (progress < 1.0) {
+            requestAnimationFrame(drawFrame);
+          } else {
+            setTimeout(() => recorder.stop(), 1000);
           }
         }
-        spreadCtx.restore();
 
-        ctx.save();
-        ctx.drawImage(spreadCanvas, 0, 0);
-        ctx.restore();
-      }
+        requestAnimationFrame(drawFrame);
+      });
 
-      // D. 최종 획 덮기
-      ctx.drawImage(txtCanvas, 0, 0);
-    }
-
-    // PNG 저장
-    saveBtn.addEventListener('click', () => {
-      const link = document.createElement('a');
-      link.download = '획농담_먹물시화_결과물.png';
-      link.href = canvas.toDataURL('image/png');
-      link.click();
-    });
-
-    // MP4 비디오 녹화
-    startBtn.addEventListener('click', async () => {
-      if (isRecording) return;
-      isRecording = true;
-      progressBox.style.display = 'block';
-
-      const dur = parseFloat(duration.value);
-      const totalMs = dur * 1000;
-
-      const stream = canvas.captureStream(30);
-      let mimeType = 'video/mp4;codecs=avc1';
-      if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
-
-      const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8000000 });
-      const chunks = [];
-      recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
-
-      recorder.onstop = () => {
-        const blob = new Blob(chunks, { type: mimeType });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.download = `획농담_먹물시화_${Date.now()}.${mimeType.includes('mp4') ? 'mp4' : 'webm'}`;
-        link.href = url;
-        link.click();
-
-        isRecording = false;
-        progressBox.style.display = 'none';
-        render(1.0);
-      };
-
-      recorder.start();
-      const startTime = performance.now();
-
-      function drawFrame(now) {
-        const elapsed = now - startTime;
-        let progress = elapsed / totalMs;
-        if (progress > 1.0) progress = 1.0;
-
-        progressPercent.textContent = `${Math.floor(progress * 100)}%`;
-        render(progress);
-
-        if (progress < 1.0) {
-          requestAnimationFrame(drawFrame);
-        } else {
-          setTimeout(() => recorder.stop(), 1000);
-        }
-      }
-
-      requestAnimationFrame(drawFrame);
-    });
-
-    render(1.0);
+      render(1.0);
+    })();
   </script>
 </body>
 </html>
