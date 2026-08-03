@@ -1,12 +1,10 @@
 /**
  * src/sketches/026_kaleidoscope.js
- * - [026호 만화경 Ver 2.0 - Radial Tunnel Flow & Export Ratio]
- * - 회전 운동 완전 제거 ➔ 중심점 입출(Inward/Outward Radial Motion) 전면 개혁
- * - 🥁 드럼: 중심 방사 폭발 원/삼각/사각 팝업
- * - 🎸 베이스: 중심 수축/팽창 레이저 빔
- * - 🎤 보컬: 중심 방사 파동 나선(Radial Spiral Ripple)
- * - 🎹 기타/그외: 중심 흡입/분출 별 파티클
- * - 16:9 / 9:16 Export 비율 & +10% 오버스캔 마진 연동
+ * - [026호 만화경 Ver 3.0 - Solid Fill Volume Duplication & Ratio Framing]
+ * - 테두리선(Stroke) 100% 제거 ➔ 부드러운 다층 채우기(Fill Only)
+ * - 극단적 크기 차이 (거대 배경 쉐이프 ~ 미세 파티클)
+ * - 4-Stem 볼륨 상승 시 2~4중 동심원/동심도형 중복 충격파 팝업
+ * - 16:9, 9:16 Export 비율 변경 시 실시간 프레임 클리핑 연동
  */
 
 export default class KaleidoscopeSketch {
@@ -20,7 +18,7 @@ export default class KaleidoscopeSketch {
     }
 
     this.time = 0;
-    this.version = "026호 만화경 Ver 2.0 (Radial Tunnel Flow)";
+    this.version = "026호 만화경 Ver 3.0 (Fill Only & Dynamic Scale)";
     this.elements = [];
     this.loadedSeed = -1;
   }
@@ -45,7 +43,7 @@ export default class KaleidoscopeSketch {
   }
 
   // =========================================================================
-  // 🎲 방사형 입출 기하학 원소 생성
+  // 🎲 무작위성 및 다채로운 크기의 방사형 원소 생성
   // =========================================================================
   generateElements(seed) {
     this.elements = [];
@@ -55,57 +53,63 @@ export default class KaleidoscopeSketch {
       return mask - Math.floor(mask);
     };
 
-    // 1. 드럼 기하학 쉐이프 (원, 삼각, 사각)
-    for (let i = 0; i < 16; i++) {
+    // 1. 드럼 기하학 쉐이프 (거대 쉐이프 ~ 소형 쉐이프)
+    for (let i = 0; i < 22; i++) {
       const r1 = pseudoRand(seed + i * 2.1);
       const r2 = pseudoRand(seed + i * 4.3);
       const r3 = pseudoRand(seed + i * 6.7);
+      const r4 = pseudoRand(seed + i * 9.1);
+
+      // 크기 분포: 거대(0.15), 중간(0.35), 소형(0.50)
+      let sizeCategory = 30 + r3 * 50; // 기본
+      if (r4 < 0.18) sizeCategory = 180 + r3 * 220; // 💡 배경 거대 쉐이프
+      else if (r4 < 0.5) sizeCategory = 70 + r3 * 90;  // 중간 쉐이프
 
       this.elements.push({
         type: 'drumShape',
         shapeType: Math.floor(r1 * 3), // 0: 원, 1: 삼각, 2: 사각
-        radialProgress: r2,            // 0.0(중심) ~ 1.0(외곽) 방사 진행도
-        speed: 0.15 + r3 * 0.35,       // 방사 속도
-        angleSector: r1 * Math.PI,      // 섹터 내 고정 각도
-        baseSize: 15 + r3 * 30,
+        radialProgress: r2,
+        speed: 0.12 + r3 * 0.38,
+        angleSector: r1 * Math.PI,
+        baseSize: sizeCategory,
+        rotOffset: r4 * Math.PI * 2,
         seed: seed + i * 11.3
       });
     }
 
-    // 2. 베이스 직선 레이저 빔
-    for (let i = 0; i < 18; i++) {
+    // 2. 베이스 방사 띠
+    for (let i = 0; i < 20; i++) {
       const r1 = pseudoRand(seed + i * 3.1);
       const r2 = pseudoRand(seed + i * 5.7);
 
       this.elements.push({
         type: 'bassLine',
         radialProgress: r1,
-        lengthRatio: 0.12 + r2 * 0.35,
-        angleSector: (i / 18) * Math.PI,
+        lengthRatio: 0.15 + r2 * 0.45,
+        widthRatio: 8 + r1 * 25,
+        angleSector: (i / 20) * Math.PI,
         seed: seed + i * 17.1
       });
     }
 
-    // 3. 기타/그외 추상 별 파티클
-    for (let i = 0; i < 18; i++) {
+    // 3. 기타/그외 별 & 다이아몬드 파티클
+    for (let i = 0; i < 24; i++) {
       const r1 = pseudoRand(seed + i * 1.9);
       const r2 = pseudoRand(seed + i * 3.7);
+      const r3 = pseudoRand(seed + i * 5.3);
 
       this.elements.push({
         type: 'guitarStar',
         radialProgress: r1,
-        direction: r2 > 0.5 ? 1 : -1,  // 1: 밖으로, -1: 안으로
-        starPoints: r2 > 0.5 ? 5 : 4,
+        direction: r2 > 0.5 ? 1 : -1,
+        starPoints: r2 > 0.6 ? 5 : r2 > 0.3 ? 4 : 6,
         angleSector: r1 * Math.PI,
-        size: 10 + r2 * 22,
+        size: 12 + r3 * 45,
         seed: seed + i * 23.5
       });
     }
   }
 
-  // =========================================================================
-  // 🖌️ 도형 렌더링 도우미
-  // =========================================================================
   drawPolygon(ctx, x, y, radius, sides, angle = 0) {
     ctx.beginPath();
     for (let i = 0; i < sides; i++) {
@@ -120,7 +124,7 @@ export default class KaleidoscopeSketch {
 
   drawStar(ctx, x, y, radius, points, angle = 0) {
     ctx.beginPath();
-    const innerRadius = radius * 0.45;
+    const innerRadius = radius * 0.42;
     for (let i = 0; i < points * 2; i++) {
       const r = i % 2 === 0 ? radius : innerRadius;
       const a = angle + (i / (points * 2)) * Math.PI * 2;
@@ -145,12 +149,15 @@ export default class KaleidoscopeSketch {
     const gainVal = globalSettings.audioGain ?? 1.0;
     const colorStyle = (globalSettings.colorStyle || 'monochrome').toLowerCase();
 
-    // ⚡ [Range (Scatter)]: 거울 대칭 분할 수(6~16) 및 방사 속도 연동 (1~500)
+    // Export 비율 파악 ('full', '16:9', '9:16')
+    const exportRatio = (globalSettings.exportRatio || globalSettings.exportSetting || globalSettings.aspectRatio || 'full').toLowerCase();
+
+    // ⚡ [Scatter]: 1 ~ 500 속도
     const rawScatter = globalSettings.scatterExponent ?? globalSettings.scatter ?? globalSettings.range ?? 25;
     const scatterSpeed = Math.max(1.0, Math.min(500.0, rawScatter * 10.0));
-    const segments = Math.floor(6 + (Math.min(50, rawScatter) / 50) * 10); // 6 ~ 16 분할 만화경
+    const segments = Math.floor(6 + (Math.min(50, rawScatter) / 50) * 10);
 
-    // 🎨 [Scale (Glow)]: 크기 및 선 두께 연동
+    // 🎨 [Glow]: 크기 및 농도
     const rawGlow = globalSettings.glowScale ?? globalSettings.glow ?? globalSettings.scale ?? 50;
     const scaleFactor = Math.max(0.2, Math.min(3.5, rawGlow / 40.0));
 
@@ -160,13 +167,38 @@ export default class KaleidoscopeSketch {
     const bassVol   = (targetAudio.bassVol   ?? targetAudio.bass ?? 0) * gainVal;
     const otherVol  = (targetAudio.otherVol  ?? targetAudio.treble ?? 0) * gainVal;
 
-    // 시간 가속
-    const flowTimeDelta = (0.006 + vocalsVol * 0.015) * (scatterSpeed / 30.0);
-    this.time += flowTimeDelta;
+    this.time += (0.006 + vocalsVol * 0.015) * (scatterSpeed / 30.0);
 
     const W = this.canvas.width;
     const H = this.canvas.height;
-    const maxRadius = Math.sqrt(W * W + H * H) * 0.60;
+
+    // 💡 [16:9 / 9:16 레터박스 뷰포트 영점 계산]
+    let renderW = W;
+    let renderH = H;
+    let renderX = 0;
+    let renderY = 0;
+
+    if (exportRatio === '16:9') {
+      renderW = W;
+      renderH = W * (9 / 16);
+      if (renderH > H) {
+        renderH = H;
+        renderW = H * (16 / 9);
+      }
+      renderX = (W - renderW) / 2;
+      renderY = (H - renderH) / 2;
+    } else if (exportRatio === '9:16') {
+      renderH = H;
+      renderW = H * (9 / 16);
+      if (renderW > W) {
+        renderW = W;
+        renderH = W * (16 / 9);
+      }
+      renderX = (W - renderW) / 2;
+      renderY = (H - renderH) / 2;
+    }
+
+    const maxRadius = Math.sqrt(renderW * renderW + renderH * renderH) * 0.60;
 
     if (this.loadedSeed !== seedVal || this.width !== W || this.height !== H) {
       this.loadedSeed = seedVal;
@@ -175,12 +207,13 @@ export default class KaleidoscopeSketch {
 
     this.ctx.save();
 
-    // 💡 [Export 비율 대응]: +10% 오버스캔 클리핑
-    const marginX = W * 0.10;
-    const marginY = H * 0.10;
+    // 캔버스 전체 배경 (어두운 레터박스 영역)
+    this.ctx.fillStyle = "#000000";
+    this.ctx.fillRect(0, 0, W, H);
 
+    // 💡 선택한 16:9 / 9:16 프레임 내부만 클리핑
     this.ctx.beginPath();
-    this.ctx.rect(-marginX, -marginY, W + marginX * 2, H + marginY * 2);
+    this.ctx.rect(renderX, renderY, renderW, renderH);
     this.ctx.clip();
 
     // 🎨 팔레트 설정
@@ -211,23 +244,21 @@ export default class KaleidoscopeSketch {
       colorPalette = ["255, 60, 120", "0, 220, 255", "255, 200, 50", "150, 80, 255"];
     }
 
-    // 배경 채우기
+    // 선택 프레임 내부 배경 채우기
     this.ctx.fillStyle = bgColor;
-    this.ctx.fillRect(-marginX, -marginY, W + marginX * 2, H + marginY * 2);
+    this.ctx.fillRect(renderX, renderY, renderW, renderH);
 
-    // 중심점 기준 만화경 거울 변환
-    const centerX = W / 2;
-    const centerY = H / 2;
+    // 프레임 중앙 원점 배치
+    const centerX = renderX + renderW / 2;
+    const centerY = renderY + renderH / 2;
     this.ctx.translate(centerX, centerY);
 
-    // 💡 N분할 거울 대칭 반사 반복문 (회전 회전값 고정)
     const sectorAngle = (Math.PI * 2) / segments;
 
     for (let s = 0; s < segments; s++) {
       this.ctx.save();
       
       this.ctx.rotate(s * sectorAngle);
-      // 홀수 거울면 대칭 반사
       if (s % 2 === 1) {
         this.ctx.scale(1, -1);
       }
@@ -235,126 +266,136 @@ export default class KaleidoscopeSketch {
       this.ctx.globalCompositeOperation = isDark ? 'screen' : 'multiply';
 
       // ---------------------------------------------------------------------
-      // 1. 🥁 드럼 반응: 중심에서 밖으로 터져 나오는 원/삼각/사각
+      // 1. 🥁 드럼 반응: 볼륨에 따른 도형 다층 중복(Duplication) 폭발
       // ---------------------------------------------------------------------
-      const drumImpact = drumsVol * 1.5;
+      const drumImpact = drumsVol * 1.8;
+      // 볼륨이 높으면 2~4개 중첩 레이어 생성
+      const dupCount = Math.floor(1 + drumImpact * 2.5);
+
       this.elements.filter(e => e.type === 'drumShape').forEach((elem, idx) => {
         const color = colorPalette[idx % colorPalette.length];
         
-        // 중심 ➔ 외곽 방사형 무한 이동 수식
         let currentR = (elem.radialProgress + this.time * elem.speed * 0.8) % 1.0;
         if (currentR < 0) currentR += 1.0;
 
-        const dist = maxRadius * currentR * (1.0 + drumImpact * 0.3);
-        const size = elem.baseSize * scaleFactor * (0.3 + currentR * 1.2) * (1.0 + drumImpact * 0.8);
+        const dist = maxRadius * currentR * (1.0 + drumImpact * 0.2);
+        const baseS = elem.baseSize * scaleFactor * (0.35 + currentR * 1.1);
 
-        // 중심 근처 및 화면 외곽 페이드 인/아웃
         const alphaFade = Math.sin(currentR * Math.PI);
-        const finalAlpha = (isDark ? 0.85 : 0.65) * alphaFade;
-
-        this.ctx.strokeStyle = `rgba(${color}, ${finalAlpha})`;
-        this.ctx.fillStyle = `rgba(${color}, ${finalAlpha * 0.25})`;
-        this.ctx.lineWidth = (2.0 + drumImpact * 3.0) * scaleFactor;
 
         const px = Math.cos(elem.angleSector) * dist;
         const py = Math.sin(elem.angleSector) * dist;
 
-        if (elem.shapeType === 0) { // 원형
-          this.ctx.beginPath();
-          this.ctx.arc(px, py, size, 0, Math.PI * 2);
-          this.ctx.stroke();
-          this.ctx.fill();
-        } else if (elem.shapeType === 1) { // 삼각형
-          this.drawPolygon(this.ctx, px, py, size, 3, elem.angleSector);
-          this.ctx.stroke();
-          this.ctx.fill();
-        } else { // 사각형
-          this.drawPolygon(this.ctx, px, py, size, 4, elem.angleSector);
-          this.ctx.stroke();
-          this.ctx.fill();
+        // 💡 [핵심]: stroke 없이 오직 fill 기반 다층 중복 팝업!
+        for (let dup = 0; dup < dupCount; dup++) {
+          const layerScale = 1.0 + dup * (0.35 + drumImpact * 0.2);
+          const size = baseS * layerScale;
+          const fillAlpha = (isDark ? 0.35 : 0.22) * alphaFade * (1.0 / (dup + 1));
+
+          this.ctx.fillStyle = `rgba(${color}, ${fillAlpha})`;
+
+          if (elem.shapeType === 0) { // 원형
+            this.ctx.beginPath();
+            this.ctx.arc(px, py, size, 0, Math.PI * 2);
+            this.ctx.fill();
+          } else if (elem.shapeType === 1) { // 삼각형
+            this.drawPolygon(this.ctx, px, py, size, 3, elem.rotOffset + elem.angleSector);
+            this.ctx.fill();
+          } else { // 사각형
+            this.drawPolygon(this.ctx, px, py, size, 4, elem.rotOffset + elem.angleSector);
+            this.ctx.fill();
+          }
         }
       });
 
       // ---------------------------------------------------------------------
-      // 2. 🎸 베이스 반응: 중심 수축/팽창 방사형 레이저 빔
+      // 2. 🎸 베이스 반응: 중심 방사 채우기 띠 (Fill Band)
       // ---------------------------------------------------------------------
-      const bassExpand = bassVol * 1.6;
+      const bassExpand = bassVol * 1.8;
       this.elements.filter(e => e.type === 'bassLine').forEach((elem, idx) => {
         const color = colorPalette[(idx + 1) % colorPalette.length];
 
-        let currentR = (elem.radialProgress + this.time * 0.25) % 1.0;
+        let currentR = (elem.radialProgress + this.time * 0.22) % 1.0;
         const startR = maxRadius * currentR;
-        const length = maxRadius * elem.lengthRatio * (1.0 + bassExpand * 1.5);
+        const length = maxRadius * elem.lengthRatio * (1.0 + bassExpand * 1.4);
+        const width = elem.widthRatio * scaleFactor * (1.0 + bassExpand * 1.2);
 
         const alphaFade = Math.sin(currentR * Math.PI);
+        const fillAlpha = (isDark ? 0.40 : 0.25) * alphaFade;
 
         const x1 = Math.cos(elem.angleSector) * startR;
         const y1 = Math.sin(elem.angleSector) * startR;
         const x2 = Math.cos(elem.angleSector) * (startR + length);
         const y2 = Math.sin(elem.angleSector) * (startR + length);
 
-        this.ctx.strokeStyle = `rgba(${color}, ${(isDark ? 0.9 : 0.7) * alphaFade})`;
-        this.ctx.lineWidth = (1.5 + bassExpand * 4.0) * scaleFactor;
+        // 두꺼운 직사각형 띠 채우기
+        const perpAngle = elem.angleSector + Math.PI / 2;
+        const px = Math.cos(perpAngle) * (width / 2);
+        const py = Math.sin(perpAngle) * (width / 2);
 
+        this.ctx.fillStyle = `rgba(${color}, ${fillAlpha})`;
         this.ctx.beginPath();
-        this.ctx.moveTo(x1, y1);
-        this.ctx.lineTo(x2, y2);
-        this.ctx.stroke();
+        this.ctx.moveTo(x1 + px, y1 + py);
+        this.ctx.lineTo(x2 + px, y2 + py);
+        this.ctx.lineTo(x2 - px, y2 - py);
+        this.ctx.lineTo(x1 - px, y1 - py);
+        this.ctx.closePath();
+        this.ctx.fill();
       });
 
       // ---------------------------------------------------------------------
-      // 3. 🎤 보컬 반응: 중심에서 퍼져나가는 나선형 파동 (Radial Spiral Ripple)
+      // 3. 🎤 보컬 반응: 방사형 나선 구름 리플 (Spiral Ripple Fill)
       // ---------------------------------------------------------------------
       if (vocalsVol > 0.02) {
         const spiralColor = colorPalette[2 % colorPalette.length];
-        this.ctx.strokeStyle = `rgba(${spiralColor}, ${isDark ? 0.9 : 0.7})`;
-        this.ctx.lineWidth = (2.0 + vocalsVol * 3.5) * scaleFactor;
+        const spiralPoints = 60;
+        const rippleWidth = (15 + vocalsVol * 30) * scaleFactor;
 
-        this.ctx.beginPath();
-        const spiralPoints = 70;
-        for (let p = 0; p < spiralPoints; p++) {
-          const ratio = p / spiralPoints; // 0 (중심) ~ 1 (외곽)
-          
-          // 방사형으로 이동하는 파동 수식
-          const wave = Math.sin(ratio * 25.0 - this.time * 6.0) * (vocalsVol * 30.0 * scaleFactor);
+        this.ctx.fillStyle = `rgba(${spiralColor}, ${isDark ? 0.35 : 0.20})`;
+
+        for (let p = 0; p < spiralPoints; p += 2) {
+          const ratio = p / spiralPoints;
+          const wave = Math.sin(ratio * 20.0 - this.time * 6.0) * (vocalsVol * 35.0 * scaleFactor);
           const r = (ratio * maxRadius * 0.8) + wave;
-          const a = ratio * Math.PI * 3.0; // 나선 각도
+          const a = ratio * Math.PI * 3.0;
 
           const sx = Math.cos(a) * r;
           const sy = Math.sin(a) * r;
 
-          if (p === 0) this.ctx.moveTo(sx, sy);
-          else this.ctx.lineTo(sx, sy);
+          this.ctx.beginPath();
+          this.ctx.arc(sx, sy, rippleWidth * (0.5 + ratio * 0.8), 0, Math.PI * 2);
+          this.ctx.fill();
         }
-        this.ctx.stroke();
       }
 
       // ---------------------------------------------------------------------
-      // 4. 🎹 기타/그외 반응: 중심으로 빨려들거나 뿜어 나오는 별 파티클
+      // 4. 🎹 기타/그외 반응: 중첩 채우기 별 (Multi-Layer Fill Star)
       // ---------------------------------------------------------------------
       const otherGlow = otherVol * 1.8;
+      const starDupCount = Math.floor(1 + otherGlow * 2.0);
+
       this.elements.filter(e => e.type === 'guitarStar').forEach((elem, idx) => {
         const color = colorPalette[(idx + 2) % colorPalette.length];
 
-        // 방향(1: 밖으로, -1: 안으로)에 따른 방사형 위치 연산
         let currentR = (elem.radialProgress + this.time * 0.2 * elem.direction) % 1.0;
         if (currentR < 0) currentR += 1.0;
 
         const dist = maxRadius * currentR;
-        const size = elem.size * scaleFactor * (0.4 + currentR * 1.1) * (1.0 + otherGlow * 1.0);
+        const baseS = elem.size * scaleFactor * (0.4 + currentR * 1.1);
 
         const alphaFade = Math.sin(currentR * Math.PI);
 
         const px = Math.cos(elem.angleSector) * dist;
         const py = Math.sin(elem.angleSector) * dist;
 
-        this.ctx.strokeStyle = `rgba(${color}, ${(isDark ? 0.95 : 0.8) * alphaFade})`;
-        this.ctx.fillStyle = `rgba(${color}, ${(isDark ? 0.3 : 0.2) * alphaFade})`;
-        this.ctx.lineWidth = 1.5 * scaleFactor;
+        for (let dup = 0; dup < starDupCount; dup++) {
+          const size = baseS * (1.0 + dup * 0.4);
+          const fillAlpha = (isDark ? 0.45 : 0.28) * alphaFade * (1.0 / (dup + 1));
 
-        this.drawStar(this.ctx, px, py, size, elem.starPoints, elem.angleSector);
-        this.ctx.stroke();
-        this.ctx.fill();
+          this.ctx.fillStyle = `rgba(${color}, ${fillAlpha})`;
+          this.drawStar(this.ctx, px, py, size, elem.starPoints, elem.angleSector + dup * 0.2);
+          this.ctx.fill();
+        }
       });
 
       this.ctx.restore();
@@ -364,9 +405,9 @@ export default class KaleidoscopeSketch {
 
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: `Kaleidoscope Radial Tunnel (${segments} Mirrors)`,
+      particleCount: `Kaleidoscope Ver3 (${exportRatio.toUpperCase()} ${renderW}x${renderH})`,
       isCovering: true,
-      activeFunction: `Kaleidoscope[RadialFlow_${colorStyle.toUpperCase()}]`
+      activeFunction: `Kaleidoscope[RatioFill_${colorStyle.toUpperCase()}]`
     };
   }
 
