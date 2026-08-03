@@ -1,8 +1,8 @@
 /**
  * src/sketches/025_fluid_ink_wash.js
- * - [025호 수묵 잉크 블룸 Ver 4.0 - Individual Multi-Noise Engine]
- * - 덩어리별/레이어별 완전히 다르게 섞이는 무한 다채성 노이즈 믹스
- * - 제자리 고정 완벽 해제 (개별 유체 Drift) + 테두리 없는 알파 스며듦
+ * - [025호 수묵 잉크 블룸 Ver 5.0 - Authentic Asymmetric Ink Art]
+ * - 원형 톱니바퀴 공식 완전 폐기 ➔ 4가지 비대칭 유체 패치(Sweep, Petal, Ribbon, Cloud) 탑재
+ * - X/Y 비대칭 스케일링 + 도메인 워핑 좌표 마모 ➔ 진짜 수묵/알코올 잉크 질감 구현
  */
 
 export default class FluidInkWashSketch {
@@ -13,10 +13,9 @@ export default class FluidInkWashSketch {
     this.container.appendChild(this.canvas);
 
     this.time = 0;
-    this.version = "025호 수묵 잉크 블룸 Ver 4.0 (Diverse Noise Mix)";
+    this.version = "025호 수묵 잉크 블룸 Ver 5.0 (Authentic Organic)";
 
-    this.inkBlobs = [];
-    this.inkStreams = [];
+    this.inkPatches = [];
     this.loadedSeed = -1;
 
     this.init();
@@ -34,7 +33,7 @@ export default class FluidInkWashSketch {
   }
 
   // =========================================================================
-  // 🧩 5가지 순수 노이즈 원천 수식
+  // 🧩 FBM & Domain Warping 수학 엔진
   // =========================================================================
   pseudoRandom(x, y) {
     let n = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
@@ -55,32 +54,6 @@ export default class FluidInkWashSketch {
     return a + (b - a) * ux + (c - a) * uy + (a - b - c + d) * ux * uy;
   }
 
-  perlinNoise(x, y) {
-    return (this.valueNoise(x, y) + this.valueNoise(x * 2.1 + 1.3, y * 2.1 + 1.7) * 0.5) / 1.5;
-  }
-
-  simplexNoise(x, y) {
-    let xin = x * 0.866; let yin = y * 0.866;
-    let n1 = Math.sin(xin + Math.cos(yin * 1.4));
-    let n2 = Math.cos(yin + Math.sin(xin * 1.4));
-    return (n1 + n2) * 0.5 + 0.5;
-  }
-
-  worleyNoise(x, y) {
-    let ix = Math.floor(x); let iy = Math.floor(y);
-    let minDist = 1.0;
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        let cx = ix + dx; let cy = iy + dy;
-        let px = cx + this.pseudoRandom(cx, cy);
-        let py = cy + this.pseudoRandom(cx + 100, cy + 100);
-        let dist = Math.hypot(x - px, y - py);
-        if (dist < minDist) minDist = dist;
-      }
-    }
-    return Math.min(1.0, minDist);
-  }
-
   fbmNoise(x, y) {
     let value = 0; let amplitude = 0.5; let frequency = 1.0;
     for (let i = 0; i < 4; i++) {
@@ -90,124 +63,94 @@ export default class FluidInkWashSketch {
     return value;
   }
 
-  curlNoise(x, y) {
-    let eps = 0.1;
-    let n1 = this.perlinNoise(x, y + eps);
-    let n2 = this.perlinNoise(x, y - eps);
-    let n3 = this.perlinNoise(x + eps, y);
-    let n4 = this.perlinNoise(x - eps, y);
-    return { x: (n1 - n2) / (2 * eps), y: -(n3 - n4) / (2 * eps) };
+  domainWarp(x, y, time) {
+    let qx = this.fbmNoise(x + time * 0.05, y);
+    let qy = this.fbmNoise(x + 3.2, y + time * 0.05);
+    return this.fbmNoise(x + 2.5 * qx, y + 2.5 * qy);
   }
 
   // =========================================================================
-  // 🔀 [핵심] 개별 Blob 전용 맞춤형 노이즈 믹서
+  // 🎲 비대칭 수묵 패치 사전 생성 (4가지 형태 조합)
   // =========================================================================
-  sampleCustomNoise(x, y, time, weights) {
-    let nFbm = this.fbmNoise(x + time, y);
-    let nPerlin = this.perlinNoise(x, y + time);
-    let nSimplex = this.simplexNoise(x + time * 0.5, y + time * 0.5);
-    let nWorley = this.worleyNoise(x * 1.5, y * 1.5 + time);
-
-    let blended = (
-      nFbm * weights.fbm +
-      nPerlin * weights.perlin +
-      nSimplex * weights.simplex +
-      nWorley * weights.worley
-    ) / weights.totalWeight;
-
-    let curl = this.curlNoise(x * 0.6 + time * 0.2, y * 0.6 + time * 0.2);
-
-    return {
-      val: blended,
-      dx: (blended - 0.5) * 2.0 + curl.x * weights.curl,
-      dy: (this.fbmNoise(x + 3.1, y + time) - 0.5) * 2.0 + curl.y * weights.curl
-    };
-  }
-
-  // =========================================================================
-  // 🎲 개별 노이즈 레시피를 가진 잉크 구조 사전 생성
-  // =========================================================================
-  generateInkStructures(seed, W, H) {
-    this.inkBlobs = [];
-    this.inkStreams = [];
+  generateOrganicInkPatches(seed, W, H) {
+    this.inkPatches = [];
 
     const pseudoRand = (s) => {
       let mask = Math.sin(s * 12.9898 + 78.233) * 43758.5453;
       return mask - Math.floor(mask);
     };
 
-    const blobCount = 9;
-    for (let i = 0; i < blobCount; i++) {
-      const r1 = pseudoRand(seed + i * 1.3);
-      const r2 = pseudoRand(seed + i * 2.7);
-      const r3 = pseudoRand(seed + i * 4.1);
-      const r4 = pseudoRand(seed + i * 5.9);
+    const patchTypes = ['SWEEP', 'PETAL', 'RIBBON', 'CLOUD'];
+    const count = 12;
 
-      // 💡 [핵심]: 각 Blob마다 완전히 다르게 조합되는 노이즈 가중치 레시피
-      const wFbm = pseudoRand(seed + i * 10 + 1);
-      const wPerlin = pseudoRand(seed + i * 10 + 2);
-      const wSimplex = pseudoRand(seed + i * 10 + 3);
-      const wWorley = pseudoRand(seed + i * 10 + 4);
-      const wCurl = pseudoRand(seed + i * 10 + 5) * 1.5;
+    for (let i = 0; i < count; i++) {
+      const r1 = pseudoRand(seed + i * 1.7);
+      const r2 = pseudoRand(seed + i * 3.1);
+      const r3 = pseudoRand(seed + i * 4.9);
+      const r4 = pseudoRand(seed + i * 7.3);
+      const r5 = pseudoRand(seed + i * 9.1);
 
-      const totalW = wFbm + wPerlin + wSimplex + wWorley + 0.001;
-
-      this.inkBlobs.push({
-        baseX: (0.15 + r1 * 0.7) * W,
-        baseY: (0.2 + r2 * 0.6) * H,
-        baseRadius: (140 + r3 * 200) * (Math.min(W, H) / 1000),
-        seedOffset: seed + i * 17.3,
-        driftSpeed: 0.12 + r2 * 0.3,
-        noiseWeights: {
-          fbm: wFbm,
-          perlin: wPerlin,
-          simplex: wSimplex,
-          worley: wWorley,
-          curl: wCurl,
-          totalWeight: totalW
-        }
-      });
-    }
-
-    for (let s = 0; s < 6; s++) {
-      const r1 = pseudoRand(seed + s * 8.3);
-      const r2 = pseudoRand(seed + s * 9.7);
-
-      this.inkStreams.push({
-        startY: (0.1 + r1 * 0.8) * H,
-        amplitude: 40 + r2 * 100,
-        scale: 0.002 + r1 * 0.003
+      this.inkPatches.push({
+        type: patchTypes[i % patchTypes.length],
+        cx: (0.1 + r1 * 0.8) * W,
+        cy: (0.15 + r2 * 0.7) * H,
+        scaleX: 0.5 + r3 * 2.2,             // X축 비대칭 연장
+        scaleY: 0.4 + r4 * 1.8,             // Y축 비대칭 연장
+        baseRadius: (120 + r5 * 220) * (Math.min(W, H) / 1000),
+        angle: r3 * Math.PI * 2,           // 기울어짐 각도
+        driftSpeedX: (r1 - 0.5) * 60,      // 위치 이동 유동성
+        driftSpeedY: (r2 - 0.5) * 60,
+        seedOffset: seed + i * 23.5
       });
     }
   }
 
   // =========================================================================
-  // 🖌️ 경계선 없는 유체 잉크 렌더링
+  // 🖌️ 비대칭 수묵/알코올 잉크 블룸 렌더링 (Border-less Flow)
   // =========================================================================
-  drawSoftInkWash(ctx, cx, cy, radius, blobInfo, time, baseColorRgb, shatterVal) {
+  drawOrganicPatch(ctx, patch, time, baseColorRgb, vocalVol, drumVol, shatterVal) {
     ctx.save();
-    ctx.translate(cx, cy);
+    
+    // 유체 위치 이동(Drift) 연산
+    const driftX = Math.sin(time * 0.2 + patch.seedOffset) * patch.driftSpeedX * (shatterVal * 0.01);
+    const driftY = Math.cos(time * 0.25 + patch.seedOffset) * patch.driftSpeedY * (shatterVal * 0.01);
 
-    const points = 72;
+    ctx.translate(patch.cx + driftX, patch.cy + driftY);
+    ctx.rotate(patch.angle + Math.sin(time * 0.1) * 0.1);
+    ctx.scale(patch.scaleX, patch.scaleY); // 비대칭 찌그러짐 적용
+
+    const points = 90; // 높은 곡선 정밀도
     const angleStep = (Math.PI * 2) / points;
+    const baseR = patch.baseRadius * (1.0 + vocalVol * 1.5 + drumVol * 0.8);
 
-    for (let layer = 5; layer >= 1; layer--) {
-      const layerRadius = radius * (layer / 5);
-      const alpha = 0.04 + (6 - layer) * 0.025;
+    // 6단계 수묵 농담(濃淡) 레이어 겹침
+    for (let layer = 6; layer >= 1; layer--) {
+      const layerR = baseR * (layer / 6);
+      const alpha = 0.025 + (7 - layer) * 0.02;
 
       ctx.beginPath();
 
       for (let i = 0; i <= points; i++) {
         const a = (i % points) * angleStep;
 
-        // 💡 레이어 깊이마다 주파수를 다르게 주어 층별 농담 표현
-        const layerFreq = 1.0 + (5 - layer) * 0.3;
-        const sampleX = Math.cos(a) * layerFreq + blobInfo.seedOffset;
-        const sampleY = Math.sin(a) * layerFreq + time * 0.2;
+        // 도메인 워핑 유체 왜곡 수식
+        const sampleX = Math.cos(a) * 1.5 + patch.seedOffset;
+        const sampleY = Math.sin(a) * 1.5 + time * 0.15;
+        const warpVal = this.domainWarp(sampleX, sampleY, time);
 
-        const customNoise = this.sampleCustomNoise(sampleX, sampleY, time * 0.1, blobInfo.noiseWeights);
+        // 형태별 고유 비대칭 변형
+        let shapeDistort = 1.0;
+        if (patch.type === 'SWEEP') {
+          shapeDistort = 0.6 + Math.pow(Math.sin(a * 0.5), 2) * 1.2; // 한쪽이 길게 뻗는 구름
+        } else if (patch.type === 'PETAL') {
+          shapeDistort = 0.4 + Math.sin(a) * 0.8; // 물방울/꽃잎 형태
+        } else if (patch.type === 'RIBBON') {
+          shapeDistort = 0.3 + Math.abs(Math.cos(a * 2.0)) * 1.4; // 길쭉한 붓터치 띠
+        } else {
+          shapeDistort = 0.7 + warpVal * 0.8; // 은은한 안개 패치
+        }
 
-        const r = layerRadius * (0.65 + customNoise.val * 0.7);
+        const r = layerR * shapeDistort * (0.7 + warpVal * 0.6);
         const x = Math.cos(a) * r;
         const y = Math.sin(a) * r;
 
@@ -217,9 +160,10 @@ export default class FluidInkWashSketch {
 
       ctx.closePath();
 
-      const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, layerRadius * 1.2);
-      grad.addColorStop(0, `rgba(${baseColorRgb}, ${alpha * 1.6})`);
-      grad.addColorStop(0.7, `rgba(${baseColorRgb}, ${alpha * 0.8})`);
+      // 테두리 선(stroke) 없이 부드러운 방사형 복합 그라데이션만 채움
+      const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, layerR * 1.5);
+      grad.addColorStop(0, `rgba(${baseColorRgb}, ${alpha * 1.8})`);
+      grad.addColorStop(0.6, `rgba(${baseColorRgb}, ${alpha * 0.9})`);
       grad.addColorStop(1, `rgba(${baseColorRgb}, 0)`);
 
       ctx.fillStyle = grad;
@@ -241,21 +185,20 @@ export default class FluidInkWashSketch {
     const W = this.canvas.width;
     const H = this.canvas.height;
 
-    // 관제탑 컨트롤러 수치
+    // 관제탑 글로벌 수치 독출
     const globalSettings = window.cosmicEngineSettings || {};
     const seedVal = globalSettings.seed ?? 42;
-    const rangeVal = (globalSettings.scatterExponent ?? 2.2) * 0.003;
-    const shatterVal = (globalSettings.glowIntensity ?? 0.85) * 160;
+    const shatterVal = (globalSettings.glowIntensity ?? 0.85) * 150;
     const gainVal = globalSettings.audioGain ?? 1.0;
     const colorStyle = (globalSettings.colorStyle || 'monochrome').toLowerCase();
 
-    // 시드 변경 시 잉크 구조 및 독자 노이즈 레시피 재생성
+    // 시드 변경 시 비대칭 수묵 구조재 재생성
     if (this.loadedSeed !== seedVal || this.width !== W || this.height !== H) {
       this.loadedSeed = seedVal;
-      this.generateInkStructures(seedVal, W, H);
+      this.generateOrganicInkPatches(seedVal, W, H);
     }
 
-    // 4-Stem 오디오 수신
+    // 4-Stem 음압 감도 수신
     let vocalsVol = 0, drumsVol = 0, bassVol = 0, otherVol = 0;
     if (targetAudio && targetAudio.isMultiStem) {
       vocalsVol = (targetAudio.vocalsVol || 0) * gainVal;
@@ -271,86 +214,49 @@ export default class FluidInkWashSketch {
 
     this.ctx.save();
 
-    // 4가지 스타일 RGB 모드
-    let bgColor = "#f2eee5";
+    // 4가지 스타일 RGB 매핑
+    let bgColor = "#f4f1ea";
     let isDark = false;
-    let getRgb = (idx) => "25, 28, 36";
+    let getRgb = (idx) => "20, 24, 32";
 
     if (colorStyle === 'monochrome' || colorStyle === 'earth') {
-      bgColor = "#f2eee5";
+      bgColor = "#f4f1ea"; // 한지 바탕색
       isDark = false;
-      getRgb = (idx) => (idx % 2 === 0 ? "15, 18, 25" : "40, 45, 55");
+      getRgb = (idx) => (idx % 2 === 0 ? "15, 18, 26" : "38, 42, 52");
     } else if (colorStyle === 'pastel') {
-      bgColor = "#f6f4ed";
+      bgColor = "#f8f6f0";
       isDark = false;
-      const pastelRgbs = ["225, 150, 170", "140, 180, 210", "150, 200, 180", "210, 170, 220"];
+      const pastelRgbs = ["220, 140, 165", "130, 175, 210", "140, 195, 175", "200, 160, 215"];
       getRgb = (idx) => pastelRgbs[idx % pastelRgbs.length];
     } else if (colorStyle === 'neon') {
-      bgColor = "#04060d";
+      bgColor = "#04050d";
       isDark = true;
       const neonRgbs = ["0, 240, 255", "255, 0, 120", "120, 255, 100", "180, 100, 255"];
       getRgb = (idx) => neonRgbs[idx % neonRgbs.length];
     } else {
-      bgColor = "#f8f6f0";
+      bgColor = "#fdfbf7";
       isDark = false;
-      const fullRgbs = ["210, 50, 90", "20, 140, 200", "230, 160, 30", "110, 60, 180"];
+      const fullRgbs = ["210, 45, 85", "20, 135, 195", "225, 155, 25", "105, 55, 175"];
       getRgb = (idx) => fullRgbs[idx % fullRgbs.length];
     }
 
+    // 캔버스 바탕 채우기
     this.ctx.fillStyle = bgColor;
     this.ctx.fillRect(0, 0, W, H);
 
+    // 한지 스타일은 multiply, 네온은 screen 합성
     this.ctx.globalCompositeOperation = isDark ? 'screen' : 'multiply';
 
-    const vocalExpand = vocalsVol * 1.6;
-    const drumSurge = drumsVol * 1.2;
-
-    // 1. 배경 수묵 안개
-    this.inkStreams.forEach((st, idx) => {
+    // 12개 비대칭 수묵 패치 렌더링
+    this.inkPatches.forEach((patch, idx) => {
       const rgb = getRgb(idx);
-      this.ctx.fillStyle = `rgba(${rgb}, ${isDark ? 0.05 : 0.03})`;
-
-      this.ctx.beginPath();
-      for (let x = 0; x <= W; x += 20) {
-        const streamNoise = this.sampleCustomNoise(x * st.scale, idx, this.time * 0.2, {
-          fbm: 0.5, perlin: 0.5, simplex: 0, worley: 0, curl: 0.2, totalWeight: 1.0
-        });
-        const y = st.startY + streamNoise.dx * st.amplitude + Math.sin(this.time + idx) * (otherVol * 40);
-
-        if (x === 0) this.ctx.moveTo(x, y - 60);
-        this.ctx.lineTo(x, y);
-      }
-      this.ctx.lineTo(W, H);
-      this.ctx.lineTo(0, H);
-      this.ctx.closePath();
-      this.ctx.fill();
-    });
-
-    // 2. 9개 독자 노이즈 블룸 유동 렌더링
-    this.inkBlobs.forEach((blob, idx) => {
-      // 💡 Blob 각각의 개별 노이즈 레시피로 이동 위치(Drift) 샘플링
-      const posNoise = this.sampleCustomNoise(
-        blob.baseX * rangeVal,
-        blob.baseY * rangeVal,
-        this.time * blob.driftSpeed,
-        blob.noiseWeights
-      );
-
-      const currentShatter = shatterVal * (1.0 + drumsVol * 2.0);
-      const renderCx = blob.baseX + posNoise.dx * currentShatter;
-      const renderCy = blob.baseY + posNoise.dy * currentShatter;
-
-      const currentRadius = blob.baseRadius * (1.0 + vocalExpand + (idx % 2 === 0 ? drumSurge : 0));
-      const rgb = getRgb(idx);
-
-      this.drawSoftInkWash(
+      this.drawOrganicPatch(
         this.ctx,
-        renderCx,
-        renderCy,
-        currentRadius,
-        blob,
-        this.time * (0.8 + blob.driftSpeed) + (otherVol * 0.5),
+        patch,
+        this.time + idx * 10,
         rgb,
+        vocalsVol,
+        drumsVol,
         shatterVal
       );
     });
@@ -360,9 +266,9 @@ export default class FluidInkWashSketch {
     // HUD 진단 출력
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: `Individual Noise Recipes: 9 Diverse Ink Blooms`,
+      particleCount: `12 Asymmetric Ink Patches (No Circles)`,
       isCovering: true,
-      activeFunction: `FluidInkWash[Custom_Multi_Mix_${colorStyle.toUpperCase()}]`
+      activeFunction: `FluidInkWash[Organic_${colorStyle.toUpperCase()}]`
     };
   }
 
@@ -372,7 +278,6 @@ export default class FluidInkWashSketch {
     }
     this.canvas = null;
     this.ctx = null;
-    this.inkBlobs = [];
-    this.inkStreams = [];
+    this.inkPatches = [];
   }
 }
