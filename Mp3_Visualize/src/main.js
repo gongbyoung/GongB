@@ -145,7 +145,6 @@ async function toggleMultiStemPlayback() {
     }
 }
 
-// 💡 [수리] '▶️ 음악 재생' 버튼 누르면 4개 스템 음원 자동 스마트 연결
 if (deckPlayBtn) {
     deckPlayBtn.addEventListener('click', () => {
         const hasStems = Object.values(stemBuffers).some(b => b !== null);
@@ -159,7 +158,7 @@ if (deckPlayBtn) {
                         try { analyzer.connectAudioElement(audioPlayer); } catch (err) {}
                         isAudioAnalyzerConnected = true;
                     }
-                });
+                }).catch(e => console.warn("오디오 플레이 에러:", e));
             } else {
                 audioPlayer.pause(); deckPlayBtn.innerText = "▶️ 음악 재생 (Play)";
             }
@@ -167,58 +166,98 @@ if (deckPlayBtn) {
     });
 }
 
-let initialRanges = { totalBands: 4, ranges: [] };
-const savedLatestConfig = localStorage.getItem('cosmic_fft_active_latest');
-if (savedLatestConfig) {
-    try { initialRanges = JSON.parse(savedLatestConfig); } catch(e) {}
-}
-window.customFrequencyRanges = initialRanges;
-
-broadcast.onmessage = (e) => {
-    if (e.data && e.data.type === 'RANGE_UPDATE' && e.data.config) {
-        window.customFrequencyRanges = e.data.config;
+function getStemVolume(analyser) {
+    if (!analyser) return 0;
+    try {
+        const data = new Uint8Array(analyser.frequencyBinCount);
+        analyser.getByteFrequencyData(data);
+        let maxVal = 0, sum = 0;
+        for (let i = 0; i < data.length; i++) {
+            if (data[i] > maxVal) maxVal = data[i];
+            sum += data[i];
+        }
+        const avg = (sum / data.length) / 255.0;
+        const peak = maxVal / 255.0;
+        return Math.min(1.0, (avg * 0.3 + peak * 0.7) * 4.0);
+    } catch (e) {
+        return 0;
     }
+}
+
+// 💡 [수리] 60FPS 무한 에러 연사 완전 방어 루프
+function renderEngineTicker() {
+    requestAnimationFrame(renderEngineTicker);
+
+    let compiledAudioData = { bass: 0, mid: 0, treble: 0, vol: 0, raw: new Uint8Array(256) };
+    
+    try {
+        if (isAudioAnalyzerConnected && analyzer) {
+            if (typeof analyzer.getAudioData === 'function') {
+                compiledAudioData = analyzer.getAudioData();
+            } else if (analyzer.analyser) {
+                const bufferLength = analyzer.analyser.frequencyBinCount || 256;
+                const dataArray = new Uint8Array(bufferLength);
+                analyzer.analyser.getByteFrequencyData(dataArray);
+                compiledAudioData.raw = dataArray;
+                
+                let b = 0, m = 0, t = 0;
+                for (let i = 0; i < 20; i++) b += (dataArray[i] || 0);
+                for (let i = 20; i < 100; i++) m += (dataArray[i] || 0);
+                for (let i = 100; i < 220; i++) t += (dataArray[i] || 0);
+                compiledAudioData.bass = (b / 20) / 255.0;
+                compiledAudioData.mid = (m / 80) / 255.0;
+                compiledAudioData.treble = (t / 120) / 255.0;
+                compiledAudioData.vol = (b + m + t) / 220 / 255.0;
+            }
+        }
+
+        if (isMultiStemPlaying) {
+            compiledAudioData.isMultiStem = true;
+            compiledAudioData.vocalsVol = getStemVolume(stemAnalysers.vocals);
+            compiledAudioData.drumsVol  = getStemVolume(stemAnalysers.drums);
+            compiledAudioData.bassVol   = getStemVolume(stemAnalysers.bass);
+            compiledAudioData.otherVol  = getStemVolume(stemAnalysers.other);
+        } else {
+            compiledAudioData.isMultiStem = false;
+            compiledAudioData.vocalsVol = Math.min(1.0, (compiledAudioData.mid || 0) * 3.5);
+            compiledAudioData.drumsVol  = Math.min(1.0, (compiledAudioData.bass || 0) * 4.0);
+            compiledAudioData.bassVol   = Math.min(1.0, (compiledAudioData.bass || 0) * 3.5);
+            compiledAudioData.otherVol  = Math.min(1.0, (compiledAudioData.treble || 0) * 3.5);
+        }
+
+        window.latestCompiledAudioData = compiledAudioData;
+        
+        if (manager && typeof manager.update === 'function') {
+            manager.update(compiledAudioData);
+        }
+    } catch (err) {
+        // 콘솔 연쇄 폭발 억제
+    }
+}
+
+const cosmicControls = {
+    numSeed: document.getElementById('num-cosmic-seed'), numScatter: document.getElementById('num-cosmic-scatter'),
+    color: document.getElementById('select-cosmic-color'), numGlow: document.getElementById('num-cosmic-glow'),
+    numGain: document.getElementById('num-cosmic-gain'), pickGas1: document.getElementById('picker-gas1'),
+    pickGas2: document.getElementById('picker-gas2'), pickStar: document.getElementById('picker-star'),
+    numGauge: document.getElementById('num-cosmic-gauge')
 };
 
-window.addEventListener('DOMContentLoaded', () => {
-    const hud = document.createElement('div');
-    hud.id = 'diagnostic-hud-console';
-    hud.style.cssText = 'position:fixed; top:15px; right:320px; z-index:9999; background:rgba(5,15,25,0.85); color:#00ffcc; font-family:monospace; font-size:11px; padding:12px; border:1px solid #00ffcc; border-radius:6px; pointer-events:none; width:240px;';
-    document.body.appendChild(hud);
-    
-    setInterval(() => {
-        const diag = window.sketchDiagnostics || {};
-        const usedMemRaw = window.performance && window.performance.memory ? Math.round(window.performance.memory.usedJSHeapSize / 1024 / 1024) + ' MB' : 'N/A';
-        const activeLi = document.querySelector('#sketch-list li.active');
-        const currentFile = activeLi ? activeLi.getAttribute('data-sketch').split('/').pop() : 'None';
-        
-        hud.innerHTML = `
-            <div style="font-weight:bold; color:#ffff00; border-bottom:1px dashed #00ffcc; padding-bottom:4px; margin-bottom:4px;">📊 CORE SYSTEM DIAGNOSTICS</div>
-            <div>• RUNNING SKETCH: <span style="color:#fff">${currentFile}</span></div>
-            <div>• ENGINE FPS    : <span style="color:#fff">${diag.fps || 0} Frame</span></div>
-            <div>• MEMORY HEAP   : <span style="color:#fff">${usedMemRaw}</span></div>
-            <div>• ACTIVE SHAPE  : <span style="color:#fff">${diag.particleCount || 0} Pcs</span></div>
-            <div>• CORE FUNCTION : <span style="color:#ff00ff">${diag.activeFunction || 'Idle'}</span></div>
-        `;
-    }, 200);
-});
-
-imageInput?.addEventListener('change', (e) => {
-    const file = e.target.files[0]; if (!file) return;
-    const imgURL = URL.createObjectURL(file); const img = new Image(); img.src = imgURL;
-    img.onload = () => { window.currentUploadedImageElement = img; };
-});
-
-const audioInput = document.getElementById('file-audio') || document.getElementById('file-mp3') || document.querySelector('input[type="file"][accept*="audio"]');
-if (audioInput) {
-    audioInput.addEventListener('change', (e) => {
-        const file = e.target.files[0]; if (!file) return;
-        audioPlayer.src = URL.createObjectURL(file);
-        audioPlayer.load();
-        isAudioAnalyzerConnected = false;
-        if (deckPlayBtn) deckPlayBtn.innerText = "▶️ 음악 재생 (Play)";
-    });
+function syncCosmicControls() {
+    if (!cosmicControls.numSeed) return;
+    window.cosmicEngineSettings = {
+        ...window.cosmicEngineSettings,
+        seed: parseInt(cosmicControls.numSeed.value),
+        scatterExponent: parseFloat(cosmicControls.numScatter.value) / 10,
+        colorStyle: cosmicControls.color.value,
+        glowIntensity: parseFloat(cosmicControls.numGlow.value) / 100,
+        audioGain: (parseFloat(cosmicControls.numGain.value) || 10) / 10,
+        customColors: { gas1: cosmicControls.pickGas1.value, gas2: cosmicControls.pickGas2.value, star: cosmicControls.pickStar.value },
+        gaugeValue: parseInt(cosmicControls.numGauge.value) / 100
+    };
 }
+
+Object.values(cosmicControls).forEach(el => { el?.addEventListener('input', syncCosmicControls); });
 
 const sketchListContainer = document.getElementById('sketch-list');
 if (sketchListContainer) {
@@ -239,17 +278,13 @@ if (sketchListContainer) {
     });
 }
 
-const ratioButtons = { full: document.getElementById('btn-ratio-full'), i169: document.getElementById('btn-ratio-169'), i916: document.getElementById('btn-ratio-916') };
-Object.keys(ratioButtons).forEach(key => {
-    if (ratioButtons[key]) {
-        ratioButtons[key].addEventListener('click', (e) => {
-            Object.values(ratioButtons).forEach(b => b?.classList.remove('active')); e.currentTarget.classList.add('active');
-            stageWrapper.className = (key === 'full') ? 'ratio-full' : (key === 'i169') ? 'ratio-169' : 'ratio-916';
-            setTimeout(() => { manager.resize(stageWrapper.clientWidth, stageWrapper.clientHeight); }, 60);
-        });
-    }
+const activeLi = document.querySelector('#sketch-list li.active');
+const initSketch = activeLi ? activeLi.getAttribute('data-sketch') : '001_p5_wave.js';
+syncCosmicControls();
+manager.switchSketch(initSketch, analyzer).then(() => {
+    renderEngineTicker();
+}).catch(err => {
+    renderEngineTicker();
 });
 
-const cosmicControls = {
-    numSeed: document.getElementById('num-cosmic-seed'), numScatter: document.getElementById('num-cosmic-scatter'),
-    color: document
+window.addEventListener('resize', () => manager.resize(stageWrapper.clientWidth, stageWrapper.clientHeight));
