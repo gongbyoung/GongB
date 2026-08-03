@@ -1,9 +1,9 @@
 /**
  * src/sketches/025_fluid_ink_wash.js
- * - [025호 수묵 잉크 블룸 Ver 25.0 - Scatter Speed (1~500) & Glow Density]
- * - Range (Scatter): 유체 이동 속도 제어범위 1 ~ 500 확장
- * - Scale (Glow): 잉크 색상 농도(Color Density) 실시간 조절 연동
- * - Domain Warping 기반 유체 결 & 오디오 4-Stem 반응 유지
+ * - [025호 수묵 잉크 블룸 Ver 26.0 - High-Speed Flow & Instant Scatter Response]
+ * - Range (Scatter) UI 50 설정 시 내부 물리 속도 500 급 가속 반영
+ * - 노이즈 시간축(Z-Axis) 수치 12배 보정으로 정지 현상 완전 해결
+ * - Scale (Glow): 잉크 농도(Color Density) 실시간 연동
  */
 
 export default class FluidInkWashSketch {
@@ -17,7 +17,7 @@ export default class FluidInkWashSketch {
     }
 
     this.time = 0;
-    this.version = "025호 수묵 잉크 블룸 Ver 25.0 (Scatter 500 & Density)";
+    this.version = "025호 수묵 잉크 블룸 Ver 26.0 (Fast Flow)";
     this.inkBands = [];
     this.loadedSeed = -1;
   }
@@ -92,12 +92,13 @@ export default class FluidInkWashSketch {
     return total / maxValue;
   }
 
+  // 💡 [핵심 보정]: pz 노이즈 시간 축 계수를 0.1에서 1.2로 끌어올려 고속 흐름 구현
   domainWarp2D(px, py, pz, warpStrength) {
-    const qx = this.fbm3D(px * 0.002, py * 0.002, pz * 0.1);
-    const qy = this.fbm3D(px * 0.002 + 5.2, py * 0.002 + 1.3, pz * 0.1);
+    const qx = this.fbm3D(px * 0.002, py * 0.002, pz * 1.2);
+    const qy = this.fbm3D(px * 0.002 + 5.2, py * 0.002 + 1.3, pz * 1.2);
 
-    const rx = this.fbm3D(px * 0.002 + 4.0 * qx + 1.7, py * 0.002 + 4.0 * qy + 9.2, pz * 0.12);
-    const ry = this.fbm3D(px * 0.002 + 4.0 * qx + 8.3, py * 0.002 + 4.0 * qy + 2.8, pz * 0.12);
+    const rx = this.fbm3D(px * 0.002 + 4.0 * qx + 1.7, py * 0.002 + 4.0 * qy + 9.2, pz * 1.5);
+    const ry = this.fbm3D(px * 0.002 + 4.0 * qx + 8.3, py * 0.002 + 4.0 * qy + 2.8, pz * 1.5);
 
     return {
       x: px + rx * warpStrength,
@@ -113,9 +114,6 @@ export default class FluidInkWashSketch {
     return `${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}`;
   }
 
-  // =========================================================================
-  // 🎲 수묵 유체 밴드 생성
-  // =========================================================================
   generateInkBands(seed, W, H) {
     this.inkBands = [];
 
@@ -141,18 +139,12 @@ export default class FluidInkWashSketch {
     }
   }
 
-  // =========================================================================
-  // 🖌️ 수묵 유체 번짐 렌더링 (속도 1~500 & Glow 색상 농도 연동)
-  // =========================================================================
   drawWarpedInkBand(ctx, band, time, scatterMotion, densityMultiplier, baseColorRgb, vocalVol, drumVol, bassVol, otherVol, isDark, W, H) {
     ctx.save();
 
     const instrumentPower = (bassVol * 2.2) + (otherVol * 1.5);
-    
-    // ⚡ Range (Scatter) 1 ~ 500에 따른 유체 공간 뒤틀림 강도
-    const warpStrength = (80 + scatterMotion * 1.5) * (1.0 + instrumentPower * 1.2);
+    const warpStrength = (80 + scatterMotion * 1.2) * (1.0 + instrumentPower * 1.2);
 
-    // 🥁 드럼 반응
     const drumShakeX = (Math.sin(time * 45 + band.seedOffset) * 0.5) * (drumVol * 10.0);
     const drumShakeY = (Math.cos(time * 40 + band.seedOffset) * 0.5) * (drumVol * 10.0);
 
@@ -204,7 +196,6 @@ export default class FluidInkWashSketch {
       const currentBlur = Math.max(2, Math.min(28, layerBlurs[layerIdx] * (curThick / 100)));
       ctx.filter = `blur(${currentBlur}px)`;
 
-      // 🎨 [핵심]: Scale(Glow) 수치(densityMultiplier)로 투명도 / 농도 제어!
       const baseAlpha = isDark
         ? (0.08 + (layerIdx * 0.07) + instrumentPower * 0.10)
         : (0.05 + (layerIdx * 0.06) + instrumentPower * 0.08);
@@ -218,9 +209,6 @@ export default class FluidInkWashSketch {
     ctx.restore();
   }
 
-  // =========================================================================
-  // 🔄 UPDATE RENDER LOOP
-  // =========================================================================
   update(audioData) {
     if (!this.ctx || !this.canvas) return;
 
@@ -231,15 +219,13 @@ export default class FluidInkWashSketch {
     const gainVal = globalSettings.audioGain ?? 1.0;
     const colorStyle = (globalSettings.colorStyle || 'monochrome').toLowerCase();
 
-    // 1. ⚡ [Range (Scatter) 1 ~ 500 속도 매핑]
-    // globalSettings.scatterExponent 수치를 읽어 1.0 ~ 500.0 범위로 스케일링
-    const rawScatter = globalSettings.scatterExponent !== undefined ? globalSettings.scatterExponent * 10 : 250;
-    const scatterMotion = Math.max(1.0, Math.min(500.0, rawScatter));
+    // ⚡ [Scatter 수치 읽기 & 증폭] UI 슬라이더 수치(0~50)를 1~500 물리속도로 매핑
+    const rawScatterInput = globalSettings.scatterExponent ?? globalSettings.scatter ?? globalSettings.range ?? 25;
+    const scatterMotion = Math.max(1.0, Math.min(500.0, rawScatterInput * 10.0));
 
-    // 2. 🎨 [Scale (Glow) 색상 농도 매핑]
-    // glowScale / scale 슬라이더 수치(0~100)를 기반으로 농도 배율 계산 (기본값 50일 때 1.0x)
-    const rawGlow = globalSettings.glowScale ?? globalSettings.glow ?? globalSettings.scale ?? 50;
-    const densityMultiplier = Math.max(0.01, Math.min(5.0, rawGlow / 50.0));
+    // 🎨 [Scale(Glow) 농도 읽기]
+    const rawGlowInput = globalSettings.glowScale ?? globalSettings.glow ?? globalSettings.scale ?? 50;
+    const densityMultiplier = Math.max(0.01, Math.min(5.0, rawGlowInput / 50.0));
 
     // 오디오 수신
     let vocalsVol = 0, drumsVol = 0, bassVol = 0, otherVol = 0;
@@ -255,9 +241,9 @@ export default class FluidInkWashSketch {
       otherVol  = (targetAudio.treble || 0) * 2.5 * gainVal;
     }
 
-    // ⚡ Scatter 수치(1~500)에 비례하여 유체 시간 속도(Time Delta) 가속!
-    const speedFactor = scatterMotion / 50.0;
-    const timeDelta = (0.003 + (vocalsVol * 0.012)) * speedFactor;
+    // ⚡ [시간 가속 계수 대폭 상향]: 슬라이더 위치에 따라 고속 이동
+    const speedFactor = scatterMotion / 20.0; // 500 일 때 25배 속도
+    const timeDelta = (0.015 + (vocalsVol * 0.03)) * speedFactor;
     this.time += timeDelta;
 
     const W = this.canvas.width;
@@ -270,7 +256,6 @@ export default class FluidInkWashSketch {
 
     this.ctx.save();
 
-    // +10% 오버스캔 마진
     const marginX = W * 0.10;
     const marginY = H * 0.10;
 
@@ -278,7 +263,6 @@ export default class FluidInkWashSketch {
     this.ctx.rect(-marginX, -marginY, W + marginX * 2, H + marginY * 2);
     this.ctx.clip();
 
-    // 색상 팔레트
     let bgColor = "#f4f1ea";
     let isDark = false;
     
@@ -290,7 +274,7 @@ export default class FluidInkWashSketch {
     let getColors = (idx) => ({ base: "25, 30, 42" });
 
     if (colorStyle === 'monochrome' || colorStyle === 'earth') {
-      bgColor = "#f4f1ea"; // 한지 바탕
+      bgColor = "#f4f1ea";
       isDark = false;
       getColors = (idx) => ({
         base: idx % 3 === 0 ? "20, 26, 38" : idx % 3 === 1 ? "42, 50, 68" : "58, 48, 40"
@@ -312,14 +296,11 @@ export default class FluidInkWashSketch {
       getColors = (idx) => ({ base: fullBases[idx % fullBases.length] });
     }
 
-    // 캔버스 배경
     this.ctx.fillStyle = bgColor;
     this.ctx.fillRect(-marginX, -marginY, W + marginX * 2, H + marginY * 2);
 
-    // 합성 모드 (한지 multiply)
     this.ctx.globalCompositeOperation = isDark ? 'screen' : 'multiply';
 
-    // 수묵 도메인 워핑 유체 렌더링
     this.inkBands.forEach((band, idx) => {
       const colors = getColors(idx);
       this.drawWarpedInkBand(
@@ -345,7 +326,7 @@ export default class FluidInkWashSketch {
       fps: 60,
       particleCount: `8 Bands (Scatter:${Math.round(scatterMotion)}, Density:${densityMultiplier.toFixed(2)})`,
       isCovering: true,
-      activeFunction: `FluidInkWash[Scatter500_GlowDensity_${colorStyle.toUpperCase()}]`
+      activeFunction: `FluidInkWash[FastFlow_${colorStyle.toUpperCase()}]`
     };
   }
 
