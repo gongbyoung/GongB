@@ -1,8 +1,8 @@
 /**
  * src/core/SketchManager.js
- * - [001~025 전 스케치 100% 호환] 4-Stem & 단일 MP3 오디오 완벽 합성 어댑터
- * - 4개 분리 음원 재생 시 64채널 주파수 스펙트럼(spectrum) 및 음역대 변수 자동 생성
- * - 001~025 스케치 전체가 개별 수정 없이 오디오 반응 모션을 즉시 개시
+ * - [Fix] SyntaxError: Unexpected token '||' 구문 오류 수리 완료
+ * - ?? 연산자와 || 연산자 괄호 격리 및 Optional Chaining(?.) 적용
+ * - 001~025 전 스케치 4-Stem & 단일 MP3 오디오 스펙트럼 완벽 호환
  */
 
 export class SketchManager {
@@ -42,20 +42,23 @@ export class SketchManager {
   }
 
   // =========================================================================
-  // 💡 [핵심] 4-Stem 오디오 ➔ 001~025 호환 스펙트럼 배열 및 변수 완벽 합성
+  // 💡 [구문 수리 완료] 4-Stem & 단일 MP3 오디오 안전 규격 어댑터
   // =========================================================================
   normalizeAudioData(raw) {
     const data = raw || {};
 
-    // 1. 모든 4-Stem 음압 추출
-    const vocal = data.vocalsVol ?? data.vocalVol ?? data.vocals ?? data.vocal ?? (data.stems ? data.stems.vocals : 0) ?? 0;
-    const drum  = data.drumsVol  ?? data.drumVol  ?? data.drums  ?? data.drum  ?? (data.stems ? data.stems.drums : 0)  ?? 0;
-    const bass  = data.bassVol   ?? data.bass     ?? data.low    ?? (data.stems ? data.stems.bass : 0)   ?? 0;
-    const other = data.otherVol  ?? data.othersVol?? data.other  ?? data.guitar?? (data.stems ? data.stems.other : 0)  ?? 0;
+    // 1. 안전한 Optional Chaining과 ?? 연산자로 4-Stem 음압 추출
+    const vocal = data.vocalsVol ?? data.vocalVol ?? data.vocals ?? data.vocal ?? data.stems?.vocals ?? 0;
+    const drum  = data.drumsVol  ?? data.drumVol  ?? data.drums  ?? data.drum  ?? data.stems?.drums  ?? 0;
+    const bass  = data.bassVol   ?? data.bass     ?? data.low    ?? data.stems?.bass   ?? 0;
+    const other = data.otherVol  ?? data.othersVol?? data.other  ?? data.guitar?? data.stems?.other  ?? 0;
 
     const mid    = data.mid ?? vocal;
     const treble = data.treble ?? data.high ?? other;
-    const overall = data.overall ?? data.volume ?? ((vocal + drum + bass + other) / 4) || 0;
+    
+    // 💡 [Fix]: ?? 와 || 연산자 혼용으로 인한 SyntaxError 방지
+    const calcOverall = (vocal + drum + bass + other) / 4;
+    const overall = (data.overall ?? data.volume ?? calcOverall) || 0;
 
     // 2. 주파수 스펙트럼 배열(spectrum / frequencyData) 호환성 확보
     let spectrum = data.spectrum || data.frequencyData || data.freqData || data.dataArray;
