@@ -1,431 +1,3 @@
-
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>글그림 (시화) 에디터</title>
-    <style>
-        :root {
-            --bg-color: #1e1e24;
-            --panel-bg: #2b2b36;
-            --text-color: #f5f5f5;
-            --accent: #ff6b6b;
-        }
-        body {
-            margin: 0;
-            padding: 0;
-            font-family: 'Malgun Gothic', sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            display: flex;
-            height: 100vh;
-            overflow: hidden;
-        }
-        /* 사이드바 컨트롤 패널 */
-        #controls {
-            width: 320px;
-            background-color: var(--panel-bg);
-            padding: 20px;
-            box-sizing: border-box;
-            overflow-y: auto;
-            box-shadow: 2px 0 10px rgba(0,0,0,0.5);
-            z-index: 10;
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-        }
-        #controls h2 { margin-top: 0; font-size: 1.2rem; border-bottom: 1px solid #444; padding-bottom: 10px; }
-        .control-group { display: flex; flex-direction: column; gap: 5px; }
-        .control-group label { font-size: 0.85rem; color: #ccc; }
-        .control-row { display: flex; gap: 10px; }
-        .control-row > div { flex: 1; }
-        
-        input[type="text"], input[type="file"], textarea, select {
-            width: 100%; padding: 8px; box-sizing: border-box;
-            background: #1e1e24; border: 1px solid #444; color: #fff; border-radius: 4px;
-        }
-        textarea { height: 120px; resize: vertical; }
-        input[type="range"] { width: 100%; cursor: pointer; }
-        button {
-            padding: 10px; background-color: var(--accent); color: white;
-            border: none; border-radius: 4px; cursor: pointer; font-weight: bold;
-            transition: background 0.2s;
-        }
-        button:hover { background-color: #ff5252; }
-        #btn-save { background-color: #4ecdc4; margin-top: 10px; font-size: 1.1rem;}
-        #btn-save:hover { background-color: #3baba3; }
-
-        /* 캔버스 프리뷰 영역 */
-        #preview {
-            flex: 1;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
-            background: repeating-conic-gradient(#333 0% 25%, #222 0% 50%) 50% / 40px 40px;
-        }
-        canvas {
-            max-width: 100%;
-            max-height: 100%;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            object-fit: contain; /* 이미지를 화면에 가득 채우되 비율 유지 */
-        }
-    </style>
-</head>
-<body>
-
-    <div id="controls">
-        <h2>🖼️ 글그림 에디터</h2>
-        
-        <!-- 이미지 로드 -->
-        <div class="control-group">
-            <label>GitHub 이미지 URL (또는 웹 주소)</label>
-            <div style="display:flex; gap:5px;">
-                <input type="text" id="img-url" placeholder="https://raw.githubusercontent.com/..." value="">
-                <button id="btn-load-url">불러오기</button>
-            </div>
-        </div>
-        
-        <!-- 로컬 폰트 로드 -->
-        <div class="control-group">
-            <label>로컬 폰트 로딩 (.ttf, .otf)</label>
-            <input type="file" id="font-file" accept=".ttf,.otf,.woff,.woff2">
-        </div>
-
-        <!-- 시 입력 -->
-        <div class="control-group">
-            <label>시 (Poem)</label>
-            <textarea id="text-input" placeholder="여기에 시를 입력하세요.">얼굴 하나 야위어 가오.
-달이 차오르는 밤이면...</textarea>
-        </div>
-
-        <!-- 텍스트 속성 제어 -->
-        <div class="control-row">
-            <div class="control-group">
-                <label>글자 크기 (<span id="val-size">60</span>px)</label>
-                <input type="range" id="font-size" min="20" max="200" value="60">
-            </div>
-            <div class="control-group">
-                <label>글자 색상</label>
-                <input type="color" id="text-color" value="#ffffff" style="height:35px;">
-            </div>
-        </div>
-
-        <div class="control-row">
-            <div class="control-group">
-                <label>줄 간격 (<span id="val-line">1.5</span>)</label>
-                <input type="range" id="line-height" min="1.0" max="3.0" step="0.1" value="1.5">
-            </div>
-            <div class="control-group">
-                <label>글자 간격 (<span id="val-letter">0</span>px)</label>
-                <input type="range" id="letter-spacing" min="-20" max="50" value="0">
-            </div>
-        </div>
-
-        <!-- 방향 및 정렬 -->
-        <div class="control-row">
-            <div class="control-group">
-                <label>글쓰기 방향</label>
-                <select id="text-dir">
-                    <option value="horizontal">가로 쓰기</option>
-                    <option value="vertical">세로 쓰기</option>
-                </select>
-            </div>
-        </div>
-
-        <div class="control-row">
-            <div class="control-group">
-                <label>가로 정렬</label>
-                <select id="align-x">
-                    <option value="left">왼쪽</option>
-                    <option value="center" selected>가운데</option>
-                    <option value="right">오른쪽</option>
-                </select>
-            </div>
-            <div class="control-group">
-                <label>세로 정렬</label>
-                <select id="align-y">
-                    <option value="top">위</option>
-                    <option value="center" selected>중간</option>
-                    <option value="bottom">아래</option>
-                </select>
-            </div>
-        </div>
-
-        <button id="btn-save">이미지 저장하기 (Save)</button>
-    </div>
-
-    <div id="preview">
-        <canvas id="canvas"></canvas>
-    </div>
-
-    <script>
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
-        
-        let currentImage = null;
-        let customFontName = 'Malgun Gothic'; // 기본 폰트
-
-        // UI 요소들
-        const elImgUrl = document.getElementById('img-url');
-        const btnLoadUrl = document.getElementById('btn-load-url');
-        const elFontFile = document.getElementById('font-file');
-        const elText = document.getElementById('text-input');
-        const elSize = document.getElementById('font-size');
-        const elColor = document.getElementById('text-color');
-        const elLine = document.getElementById('line-height');
-        const elLetter = document.getElementById('letter-spacing');
-        const elDir = document.getElementById('text-dir');
-        const elAlignX = document.getElementById('align-x');
-        const elAlignY = document.getElementById('align-y');
-        const btnSave = document.getElementById('btn-save');
-
-        // URL에서 이미지 불러오기 (CORS 우회 적용)
-        btnLoadUrl.addEventListener('click', () => {
-            if(!elImgUrl.value) return;
-            const img = new Image();
-            img.crossOrigin = "anonymous"; // GitHub Raw 등에서 불러올 때 CORS 에러 방지
-            img.onload = () => {
-                currentImage = img;
-                canvas.width = img.width;
-                canvas.height = img.height;
-                draw();
-            };
-            img.onerror = () => alert("이미지를 불러올 수 없습니다. URL을 확인하거나 CORS 정책이 허용된 링크인지 확인하세요.");
-            img.src = elImgUrl.value;
-        });
-
-        // 로컬 폰트 적용하기
-        elFontFile.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            
-            try {
-                const fontName = 'CustomFont_' + Date.now();
-                const fontBuffer = await file.arrayBuffer();
-                const fontFace = new FontFace(fontName, fontBuffer);
-                await fontFace.load();
-                document.fonts.add(fontFace);
-                customFontName = fontName;
-                draw();
-            } catch (err) {
-                alert("폰트 로딩 실패: " + err.message);
-            }
-        });
-
-        // 입력 값 변경 시 실시간 렌더링을 위한 이벤트 바인딩
-        const inputs = [elText, elSize, elColor, elLine, elLetter, elDir, elAlignX, elAlignY];
-        inputs.forEach(input => {
-            input.addEventListener('input', (e) => {
-                // 수치 업데이트 UI
-                if(e.target === elSize) document.getElementById('val-size').innerText = e.target.value;
-                if(e.target === elLine) document.getElementById('val-line').innerText = e.target.value;
-                if(e.target === elLetter) document.getElementById('val-letter').innerText = e.target.value;
-                draw();
-            });
-        });
-
-        // 캔버스 그리기 메인 함수
-        function draw() {
-            if (!currentImage) {
-                // 이미지가 없을 때 빈 캔버스 세팅
-                canvas.width = 1000; canvas.height = 1000;
-                ctx.fillStyle = '#222';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-            } else {
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                ctx.drawImage(currentImage, 0, 0);
-            }
-
-            const text = elText.value;
-            if (!text.trim()) return;
-
-            const fontSize = parseInt(elSize.value);
-            const lineHeight = parseFloat(elLine.value);
-            const letterSpacing = parseInt(elLetter.value);
-            const alignX = elAlignX.value;
-            const alignY = elAlignY.value;
-            const dir = elDir.value;
-            const padding = 50; // 화면 여백
-
-            ctx.font = `${fontSize}px "${customFontName}"`;
-            ctx.fillStyle = elColor.value;
-            
-            const lines = text.split('\n');
-
-            if (dir === 'horizontal') {
-                // --- 가로 쓰기 ---
-                ctx.textAlign = alignX;
-                ctx.textBaseline = "top";
-                
-                // 블록 전체 높이 계산
-                const blockHeight = lines.length * (fontSize * lineHeight);
-                
-                // Y 시작점
-                let startY = padding;
-                if (alignY === 'center') startY = (canvas.height - blockHeight) / 2;
-                if (alignY === 'bottom') startY = canvas.height - blockHeight - padding;
-
-                // X 시작점
-                let startX = padding;
-                if (alignX === 'center') startX = canvas.width / 2;
-                if (alignX === 'right') startX = canvas.width - padding;
-
-                // 렌더링 (글자 간격 적용을 위해 직접 렌더링)
-                lines.forEach((line, i) => {
-                    const y = startY + (i * fontSize * lineHeight);
-                    if (letterSpacing === 0) {
-                        ctx.fillText(line, startX, y);
-                    } else {
-                        // 자간을 위한 커스텀 가로 쓰기
-                        let lineW = 0;
-                        for(let c of line) lineW += ctx.measureText(c).width + letterSpacing;
-                        lineW -= letterSpacing; // 마지막 간격 제거
-                        
-                        let currentX = startX;
-                        if(alignX === 'center') currentX = canvas.width/2 - lineW/2;
-                        if(alignX === 'right') currentX = canvas.width - padding - lineW;
-
-                        ctx.textAlign = 'left';
-                        for(let char of line) {
-                            ctx.fillText(char, currentX, y);
-                            currentX += ctx.measureText(char).width + letterSpacing;
-                        }
-                        ctx.textAlign = alignX; // 원래대로 복구
-                    }
-                });
-
-            } else {
-                // --- 세로 쓰기 (우측에서 좌측으로) ---
-                ctx.textAlign = "center";
-                ctx.textBaseline = "middle";
-
-                // 블록 가로 폭
-                const blockWidth = lines.length * (fontSize * lineHeight);
-                
-                // 최대 글자수 계산하여 블록 세로 높이 추정
-                let maxLen = 0;
-                lines.forEach(l => { if (l.length > maxLen) maxLen = l.length; });
-                const blockHeight = maxLen * (fontSize + letterSpacing);
-
-                // X 시작점 (우측에서 시작)
-                let startX = canvas.width - padding - (fontSize/2); // right 기준
-                if (alignX === 'center') startX = (canvas.width / 2) + (blockWidth / 2) - (fontSize/2);
-                if (alignX === 'left') startX = padding + blockWidth - (fontSize/2);
-
-                // Y 시작점
-                let startY = padding + (fontSize/2);
-                if (alignY === 'center') startY = (canvas.height - blockHeight) / 2 + (fontSize/2);
-                if (alignY === 'bottom') startY = canvas.height - padding - blockHeight + (fontSize/2);
-
-                lines.forEach((line, i) => {
-                    // 세로쓰기는 오른쪽 줄부터 왼쪽으로 진행
-                    const x = startX - (i * fontSize * lineHeight);
-                    for(let j = 0; j < line.length; j++) {
-                        const y = startY + (j * (fontSize + letterSpacing));
-                        ctx.fillText(line[j], x, y);
-                    }
-                });
-            }
-        }
-
-        // 이미지 저장 (다운로드)
-        btnSave.addEventListener('click', () => {
-            const link = document.createElement('a');
-            link.download = '글그림_시화.png';
-            link.href = canvas.toDataURL('image/png');
-            link.click();
-        });
-
-        // 초기 렌더링
-        draw();
-    </script>
-</body>
-</html>
-💡 주요 기능 및 사용 팁
-GitHub 이미지 로딩 (CORS 적용)
-
-ComfyUI에서 뽑은 이미지를 깃허브나 외부 링크로 가져오실 때 [https://raw.githubusercontent.com/](https://raw.githubusercontent.com/)... 같은 주소를 복사해 넣고 [불러오기]를 누르면 됩니다. 캔버스가 오염(Tainted)되지 않도록 crossOrigin = "anonymous" 속성을 처리해 두어 정상적으로 저장하기가 가능합니다.
-
-로컬 폰트 적용 (.ttf, .otf)
-
-시의 느낌을 살리는 명조체, 캘리그래피 폰트 파일이 컴퓨터에 있다면 [파일 선택] 버튼을 눌러 지정하세요. 자바스크립트의 FontFace API를 사용해 즉각적으로 브라우저 메모리에 로드되어 캔버스에 깨짐 없이 그려집니다.
-
-가로 쓰기 & 세로 쓰기 완벽 지원
-
-정지용 시인 특유의 고전적인 분위기를 연출할 수 있도록 세로 쓰기(우측에서 좌측으로 진행) 알고리즘을 직접 수학적으로 계산하여 캔버스에 구현했습니다.
-
-고해상도 이미지 유지 (캔버스 스케일링)
-
-모니터 화면에는 꽉 차게(비율 유지) 보이지만, 실제 Canvas 객체는 불러온 이미지의 원본 해상도를 그대로 따라갑니다. 따라서 하단의 [이미지 저장하기] 버튼을 누르면 ComfyUI에서 생성한 고해상도 그대로 글자가 선명하게 박힌 이미지를 얻을 수 있습니다.
-
-프론트엔드 작업(Canvas, p5.js 등)에 능숙하시니, 추후 이 코드를 베이스로 불꽃 흩날리는 파티클 효과나 애니메이션 자막 등을 추가하셔도 아주 멋진 결과물이 나올 것입니다! 작동해 보시고 필요한 추가 기능이 있다면 편하게 말씀해 주세요.
-
-이미지는 로컬에서 로딩할거야
-
-Your HTML file is ready
-HTML 아이콘
-poem_editor_local
- HTML 
-열기
-
-로컬 이미지 로딩 기능(파일 선택 및 FileReader 처리)과 지정해주신 모든 제어 기능(로컬 폰트, 가로/세로 쓰기, 폰트 크기, 줄/글자 간격, 가로/세로 정렬, 고해상도 저장)을 완벽하게 통합한 완성형 HTML 파일을 생성했습니다.
-
-🛠️ 주요 변경 및 반영사항
-로컬 이미지 파일 선택 (<input type="file">):
-
-네트워크 요청(CORS) 없이 컴퓨터 내의 ComfyUI 출력 이미지(.png, .jpg 등)를 선택하면 FileReader를 통해 즉시 고해상도로 캔버스에 로드됩니다.
-
-로컬 폰트 적용 (FontFace API):
-
-로컬에 가지고 계신 한글 명조체나 캘리그래피 폰트(.ttf, .otf)를 선택하면 브라우저 메모리에 수동 로드되어 깨짐 없이 시 구절이 반영됩니다.
-
-세로 쓰기 및 자간/행간 계산:
-
-고전 시화 느낌의 세로 쓰기(오른쪽 줄부터 왼쪽으로 진행)와 가로 쓰기를 모두 지원합니다.
-
-자간(글자 간격)과 행간(줄 간격) 수치를 조절할 때 캔버스에 실시간으로 반영됩니다.
-
-원본 해상도 유지 저장:
-
-화면엔 꽉 차게 보이지만 저장 버튼을 누르면 불러온 로컬 이미지의 원본 픽셀 해상도(4K, 8K 등) 그대로 깨끗하게 합성되어 저장됩니다.
-
-위 파일(poem_editor_local.html)을 다운로드하신 후 브라우저에서 열어서 바로 사용하실 수 있습니다!
-
-로컬에서 이미지 로딩하는데 에러나잖아
-
-첨부해주신 캡처 화면을 보니 원인이 정확히 확인되었습니다!
-
-웹 브라우저(Chrome/Edge 등)는 보안 정책(Same-Origin Policy 및 CORS) 때문에 http://나 https://로 열린 웹페이지에서 PC 로컬 경로(E:\Work\...)를 직접 불러오는 것을 엄격히 금지합니다.
-
-현재 기존 에디터 화면의 첫 번째 입력창은 GitHub URL 전용 입력창인데, 여기에 로컬 파일 경로를 넣고 불러오기를 눌러 에러 팝업(CORS 정책)이 발생한 것입니다.
-
-💡 해결 방법
-로컬 이미지 파일은 URL 주소를 텍스트로 입력하는 방식이 아니라, [파일 선택] 버튼을 눌러 파일 탐색기에서 직접 선택해야 브라우저 보안을 통과할 수 있습니다.
-
-수정된 아래 코드를 사용하시거나, 새로 생성된 파일(poem_editor_fixed.html)을 다운로드해서 사용해 보세요.
-HTML 아이콘
-poem_editor_fixed
- HTML 
-열기
-
-🛠️ 주요 수정 내역
-로컬 이미지 전용 업로더 변경:
-
-URL 입력창 대신 📁 로컬 배경 이미지 선택 버튼(input type="file")으로 전환되었습니다.
-
-FileReader API 적용:
-
-선택한 ComfyUI 결과물 이미지가 브라우저 내부 메모리(DataURL)로 직접 로드되므로, CORS나 로컬 경로 에러가 완전히 해결됩니다.
-
-새 파일로 실행하신 뒤 UI 좌측의 [로컬 배경 이미지 선택] 버튼을 눌러 이미지를 로드해 보세요!
-
-
-
-
-Gemini는 AI이며 인물 등에 관한 정보 제공 시 실수를 할 수 있습니다. 개인 정보 보호 및 Gemini새 창에서 열기
-
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -508,7 +80,7 @@ Gemini는 AI이며 인물 등에 관한 정보 제공 시 실수를 할 수 있�
             <div class="sub-title">로컬 이미지 & 한글 시 레이아웃 스튜디오</div>
         </div>
         
-        <!-- 로컬 이미지 로드 (파일 선택 방식) -->
+        <!-- 로컬 이미지 로드 -->
         <div class="control-group">
             <label>🖼️ 로컬 배경 이미지 선택</label>
             <input type="file" id="img-file" accept="image/*">
@@ -587,170 +159,170 @@ Gemini는 AI이며 인물 등에 관한 정보 제공 시 실수를 할 수 있�
     </div>
 
     <script>
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
-        const emptyHint = document.getElementById('empty-hint');
-        
-        let currentImage = null;
-        let customFontName = 'Malgun Gothic';
+        (function() {
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+            const emptyHint = document.getElementById('empty-hint');
+            
+            let currentImage = null;
+            let customFontName = 'Malgun Gothic';
 
-        const elImgFile = document.getElementById('img-file');
-        const elFontFile = document.getElementById('font-file');
-        const elText = document.getElementById('text-input');
-        const elSize = document.getElementById('font-size');
-        const elColor = document.getElementById('text-color');
-        const elLine = document.getElementById('line-height');
-        const elLetter = document.getElementById('letter-spacing');
-        const elDir = document.getElementById('text-dir');
-        const elAlignX = document.getElementById('align-x');
-        const elAlignY = document.getElementById('align-y');
-        const btnSave = document.getElementById('btn-save');
+            const elImgFile = document.getElementById('img-file');
+            const elFontFile = document.getElementById('font-file');
+            const elText = document.getElementById('text-input');
+            const elSize = document.getElementById('font-size');
+            const elColor = document.getElementById('text-color');
+            const elLine = document.getElementById('line-height');
+            const elLetter = document.getElementById('letter-spacing');
+            const elDir = document.getElementById('text-dir');
+            const elAlignX = document.getElementById('align-x');
+            const elAlignY = document.getElementById('align-y');
+            const btnSave = document.getElementById('btn-save');
 
-        // 로컬 이미지 로딩 (FileReader 사용 - 경로 보안 문제 완벽 우회)
-        elImgFile.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
+            // 로컬 이미지 로딩
+            elImgFile.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
 
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                const img = new Image();
-                img.onload = () => {
-                    currentImage = img;
-                    canvas.width = img.width;
-                    canvas.height = img.height;
-                    emptyHint.style.display = 'none';
-                    draw();
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        currentImage = img;
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+                        emptyHint.style.display = 'none';
+                        draw();
+                    };
+                    img.src = event.target.result;
                 };
-                img.src = event.target.result;
-            };
-            reader.readAsDataURL(file);
-        });
-
-        // 로컬 폰트 로딩
-        elFontFile.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            
-            try {
-                const fontName = 'CustomFont_' + Date.now();
-                const fontBuffer = await file.arrayBuffer();
-                const fontFace = new FontFace(fontName, fontBuffer);
-                await fontFace.load();
-                document.fonts.add(fontFace);
-                customFontName = fontName;
-                draw();
-            } catch (err) {
-                alert("폰트 파일 로딩에 실패했습니다: " + err.message);
-            }
-        });
-
-        // 실시간 렌더링 이벤트
-        const inputs = [elText, elSize, elColor, elLine, elLetter, elDir, elAlignX, elAlignY];
-        inputs.forEach(input => {
-            input.addEventListener('input', (e) => {
-                if(e.target === elSize) document.getElementById('val-size').innerText = e.target.value + 'px';
-                if(e.target === elLine) document.getElementById('val-line').innerText = e.target.value;
-                if(e.target === elLetter) document.getElementById('val-letter').innerText = e.target.value + 'px';
-                draw();
+                reader.readAsDataURL(file);
             });
-        });
 
-        function draw() {
-            if (!currentImage) {
-                canvas.width = 1000; canvas.height = 1000;
-                ctx.fillStyle = '#1c1c24'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-            } else {
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                ctx.drawImage(currentImage, 0, 0);
-            }
-
-            const text = elText.value;
-            if (!text.trim()) return;
-
-            const fontSize = parseInt(elSize.value);
-            const lineHeight = parseFloat(elLine.value);
-            const letterSpacing = parseInt(elLetter.value);
-            const alignX = elAlignX.value;
-            const alignY = elAlignY.value;
-            const dir = elDir.value;
-            const padding = Math.min(canvas.width, canvas.height) * 0.08;
-
-            ctx.font = `${fontSize}px "${customFontName}"`;
-            ctx.fillStyle = elColor.value;
-            
-            const lines = text.split('\n');
-
-            if (dir === 'horizontal') {
-                ctx.textAlign = alignX; ctx.textBaseline = "top";
-                const blockHeight = lines.length * (fontSize * lineHeight);
+            // 로컬 폰트 로딩
+            elFontFile.addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
                 
-                let startY = padding;
-                if (alignY === 'center') startY = (canvas.height - blockHeight) / 2;
-                if (alignY === 'bottom') startY = canvas.height - blockHeight - padding;
+                try {
+                    const fontName = 'CustomFont_' + Date.now();
+                    const fontBuffer = await file.arrayBuffer();
+                    const fontFace = new FontFace(fontName, fontBuffer);
+                    await fontFace.load();
+                    document.fonts.add(fontFace);
+                    customFontName = fontName;
+                    draw();
+                } catch (err) {
+                    alert("폰트 파일 로딩에 실패했습니다: " + err.message);
+                }
+            });
 
-                let startX = padding;
-                if (alignX === 'center') startX = canvas.width / 2;
-                if (alignX === 'right') startX = canvas.width - padding;
+            // 실시간 렌더링 이벤트
+            const inputs = [elText, elSize, elColor, elLine, elLetter, elDir, elAlignX, elAlignY];
+            inputs.forEach(input => {
+                input.addEventListener('input', (e) => {
+                    if(e.target === elSize) document.getElementById('val-size').innerText = e.target.value + 'px';
+                    if(e.target === elLine) document.getElementById('val-line').innerText = e.target.value;
+                    if(e.target === elLetter) document.getElementById('val-letter').innerText = e.target.value + 'px';
+                    draw();
+                });
+            });
 
-                lines.forEach((line, i) => {
-                    const y = startY + (i * fontSize * lineHeight);
-                    if (letterSpacing === 0) {
-                        ctx.fillText(line, startX, y);
-                    } else {
-                        let lineW = 0;
-                        for(let c of line) lineW += ctx.measureText(c).width + letterSpacing;
-                        lineW -= letterSpacing;
-                        
-                        let currentX = startX;
-                        if(alignX === 'center') currentX = canvas.width/2 - lineW/2;
-                        if(alignX === 'right') currentX = canvas.width - padding - lineW;
+            function draw() {
+                if (!currentImage) {
+                    canvas.width = 1000; canvas.height = 1000;
+                    ctx.fillStyle = '#1c1c24'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+                } else {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(currentImage, 0, 0);
+                }
 
-                        ctx.textAlign = 'left';
-                        for(let char of line) {
-                            ctx.fillText(char, currentX, y);
-                            currentX += ctx.measureText(char).width + letterSpacing;
+                const text = elText.value;
+                if (!text.trim()) return;
+
+                const fontSize = parseInt(elSize.value);
+                const lineHeight = parseFloat(elLine.value);
+                const letterSpacing = parseInt(elLetter.value);
+                const alignX = elAlignX.value;
+                const alignY = elAlignY.value;
+                const dir = elDir.value;
+                const padding = Math.min(canvas.width, canvas.height) * 0.08;
+
+                ctx.font = `${fontSize}px "${customFontName}"`;
+                ctx.fillStyle = elColor.value;
+                
+                const lines = text.split('\n');
+
+                if (dir === 'horizontal') {
+                    ctx.textAlign = alignX; ctx.textBaseline = "top";
+                    const blockHeight = lines.length * (fontSize * lineHeight);
+                    
+                    let startY = padding;
+                    if (alignY === 'center') startY = (canvas.height - blockHeight) / 2;
+                    if (alignY === 'bottom') startY = canvas.height - blockHeight - padding;
+
+                    let startX = padding;
+                    if (alignX === 'center') startX = canvas.width / 2;
+                    if (alignX === 'right') startX = canvas.width - padding;
+
+                    lines.forEach((line, i) => {
+                        const y = startY + (i * fontSize * lineHeight);
+                        if (letterSpacing === 0) {
+                            ctx.fillText(line, startX, y);
+                        } else {
+                            let lineW = 0;
+                            for(let c of line) lineW += ctx.measureText(c).width + letterSpacing;
+                            lineW -= letterSpacing;
+                            
+                            let currentX = startX;
+                            if(alignX === 'center') currentX = canvas.width/2 - lineW/2;
+                            if(alignX === 'right') currentX = canvas.width - padding - lineW;
+
+                            ctx.textAlign = 'left';
+                            for(let char of line) {
+                                ctx.fillText(char, currentX, y);
+                                currentX += ctx.measureText(char).width + letterSpacing;
+                            }
+                            ctx.textAlign = alignX;
                         }
-                        ctx.textAlign = alignX;
-                    }
-                });
+                    });
 
-            } else {
-                ctx.textAlign = "center"; ctx.textBaseline = "middle";
-                const blockWidth = lines.length * (fontSize * lineHeight);
-                
-                let maxLen = 0;
-                lines.forEach(l => { if (l.length > maxLen) maxLen = l.length; });
-                const blockHeight = maxLen * (fontSize + letterSpacing);
+                } else {
+                    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+                    const blockWidth = lines.length * (fontSize * lineHeight);
+                    
+                    let maxLen = 0;
+                    lines.forEach(l => { if (l.length > maxLen) maxLen = l.length; });
+                    const blockHeight = maxLen * (fontSize + letterSpacing);
 
-                let startX = canvas.width - padding - (fontSize/2);
-                if (alignX === 'center') startX = (canvas.width / 2) + (blockWidth / 2) - (fontSize/2);
-                if (alignX === 'left') startX = padding + blockWidth - (fontSize/2);
+                    let startX = canvas.width - padding - (fontSize/2);
+                    if (alignX === 'center') startX = (canvas.width / 2) + (blockWidth / 2) - (fontSize/2);
+                    if (alignX === 'left') startX = padding + blockWidth - (fontSize/2);
 
-                let startY = padding + (fontSize/2);
-                if (alignY === 'center') startY = (canvas.height - blockHeight) / 2 + (fontSize/2);
-                if (alignY === 'bottom') startY = canvas.height - padding - blockHeight + (fontSize/2);
+                    let startY = padding + (fontSize/2);
+                    if (alignY === 'center') startY = (canvas.height - blockHeight) / 2 + (fontSize/2);
+                    if (alignY === 'bottom') startY = canvas.height - padding - blockHeight + (fontSize/2);
 
-                lines.forEach((line, i) => {
-                    const x = startX - (i * fontSize * lineHeight);
-                    for(let j = 0; j < line.length; j++) {
-                        const y = startY + (j * (fontSize + letterSpacing));
-                        ctx.fillText(line[j], x, y);
-                    }
-                });
+                    lines.forEach((line, i) => {
+                        const x = startX - (i * fontSize * lineHeight);
+                        for(let j = 0; j < line.length; j++) {
+                            const y = startY + (j * (fontSize + letterSpacing));
+                            ctx.fillText(line[j], x, y);
+                        }
+                    });
+                }
             }
-        }
 
-        btnSave.addEventListener('click', () => {
-            if (!currentImage) { alert("배경 이미지를 먼저 선택해 주세요."); return; }
-            const link = document.createElement('a');
-            link.download = '정지용_글그림_시화.png';
-            link.href = canvas.toDataURL('image/png');
-            link.click();
-        });
+            btnSave.addEventListener('click', () => {
+                if (!currentImage) { alert("배경 이미지를 먼저 선택해 주세요."); return; }
+                const link = document.createElement('a');
+                link.download = '정지용_글그림_시화.png';
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            });
 
-        draw();
+            draw();
+        })();
     </script>
 </body>
 </html>
-poem_editor_fixed.html
-poem_editor_fixed.html 항목을 표시하는 중입니다.
