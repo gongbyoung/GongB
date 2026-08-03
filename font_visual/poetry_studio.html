@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>005변칙 먹물 번짐 & 획 농담 스튜디오</title>
+  <title>006변칙 먹물 번짐 & 획 농담 스튜디오</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Nanum+Myeongjo:wght@400;700;800&family=Noto+Sans+KR:wght@300;400;700&display=swap" rel="stylesheet">
@@ -116,7 +116,7 @@
 
   <header>
     <h1>🖌️ 먹물 번짐 & 획 중간 농담 정밀 스튜디오</h1>
-    <div style="font-size:0.85rem; color:var(--text-muted);">안정적인 배경 로더 및 획 중심부 농담 감쇄 셰이더</div>
+    <div style="font-size:0.85rem; color:var(--text-muted);">안전형 캔버스 버퍼 & 획 중심부 농담 감쇄 셰이더</div>
   </header>
 
   <div class="main-container">
@@ -259,6 +259,7 @@
       const canvas = document.getElementById('mainCanvas');
       const ctx = canvas.getContext('2d');
 
+      // 전역 오프스크린 캔버스 레이어 생성
       const txtCanvas = document.createElement('canvas');
       const txtCtx = txtCanvas.getContext('2d');
       
@@ -306,7 +307,7 @@
         duration.value = val;
       });
 
-      // 안전한 배경 이미지 로더
+      // 배경 이미지 파일 안전 로더
       bgFile.addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -324,7 +325,7 @@
         reader.readAsDataURL(file);
       });
 
-      // 로컬 폰트 로더
+      // 로컬 폰트 안전 로더
       fontFile.addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -351,16 +352,30 @@
         render(1.0);
       }));
 
-      // 💡 오류 차단 안전 렌더링 엔진
+      // 안전 드로잉 래퍼 함수 (TypeError 완전 차단)
+      function safeDrawImage(targetCtx, source, x = 0, y = 0, w, h) {
+        if (!source) return;
+        try {
+          if (w !== undefined && h !== undefined) {
+            targetCtx.drawImage(source, x, y, w, h);
+          } else {
+            targetCtx.drawImage(source, x, y);
+          }
+        } catch (e) {
+          console.warn('drawImage 스킵:', e);
+        }
+      }
+
+      // 💡 메인 렌더링 엔진
       function render(progress = 1.0) {
         if (isRecording && progress === 1.0) return;
 
         const W = canvas.width, H = canvas.height;
 
-        // 배경 안전 체크
+        // 1. 배경 안전 검사
         if (bgImg && bgImg.complete && bgImg.naturalWidth !== 0) {
           ctx.clearRect(0, 0, W, H);
-          ctx.drawImage(bgImg, 0, 0, W, H);
+          safeDrawImage(ctx, bgImg, 0, 0, W, H);
         } else {
           ctx.fillStyle = bgColor.value;
           ctx.fillRect(0, 0, W, H);
@@ -369,7 +384,12 @@
         const text = poemInput.value.trim();
         if (!text) return;
 
-        [txtCanvas, coreCanvas, spreadCanvas].forEach(c => { c.width = W; c.height = H; });
+        // 2. 오프스크린 캔버스 안전 동기화
+        [txtCanvas, coreCanvas, spreadCanvas].forEach(c => { 
+          if(c.width !== W) c.width = W; 
+          if(c.height !== H) c.height = H; 
+        });
+        
         txtCtx.clearRect(0, 0, W, H);
         coreCtx.clearRect(0, 0, W, H);
         spreadCtx.clearRect(0, 0, W, H);
@@ -422,9 +442,10 @@
           txtCtx.fillText(allChars[i].char, allChars[i].x, allChars[i].y);
         }
 
+        // 3. 획 중간 연함(Mid Fade) 오려내기 연산
         const fadeVal = parseInt(midFade.value) / 100.0;
         if (fadeVal > 0 && drawCount > 0) {
-          coreCtx.drawImage(txtCanvas, 0, 0);
+          safeDrawImage(coreCtx, txtCanvas, 0, 0);
           coreCtx.globalCompositeOperation = 'destination-out';
           coreCtx.lineWidth = Math.max(2, fSize * 0.25);
           coreCtx.strokeStyle = '#000000';
@@ -439,10 +460,11 @@
           txtCtx.save();
           txtCtx.globalCompositeOperation = 'destination-out';
           txtCtx.globalAlpha = fadeVal * 0.85;
-          txtCtx.drawImage(coreCtx, 0, 0);
+          safeDrawImage(txtCtx, coreCanvas, 0, 0);
           txtCtx.restore();
         }
 
+        // 4. 먹물 확산 (Spread) 연산
         const radius = parseInt(bleedRadius.value);
         const rayFactor = parseInt(radialRays.value) / 100.0;
         const rimFactor = parseInt(edgeRim.value) / 100.0;
@@ -470,17 +492,18 @@
               if (l === layers && rimFactor > 0) alpha *= (1.0 + rimFactor * 2.0);
 
               spreadCtx.globalAlpha = alpha;
-              spreadCtx.drawImage(txtCanvas, dx, dy);
+              safeDrawImage(spreadCtx, txtCanvas, dx, dy);
             }
           }
           spreadCtx.restore();
 
           ctx.save();
-          ctx.drawImage(spreadCanvas, 0, 0);
+          safeDrawImage(ctx, spreadCanvas, 0, 0);
           ctx.restore();
         }
 
-        ctx.drawImage(txtCanvas, 0, 0);
+        // 5. 최종 결합
+        safeDrawImage(ctx, txtCanvas, 0, 0);
       }
 
       saveBtn.addEventListener('click', () => {
