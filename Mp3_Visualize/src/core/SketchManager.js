@@ -1,80 +1,70 @@
+/**
+ * src/core/SketchManager.js
+ * - [Fix] SyntaxError: Unexpected token 'export' ➔ Dynamic ESM import() 적용
+ * - This file handles dynamic loading and switching of creative sketches.
+ */
+
 export class SketchManager {
-  constructor(canvasContainerId) {
-    this.container = document.getElementById(canvasContainerId);
-    this.currentSketch = null;       
-    this.animationFrameId = null;    
-    this.currentSketchId = null;     
+  constructor(canvasId) {
+    this.canvas = document.getElementById(canvasId);
+    if (!this.canvas) {
+      throw new Error(`[SketchManager Error] Canvas element with id "${canvasId}" not found.`);
+    }
+    this.ctx = this.canvas.getContext('2d');
+    this.currentSketch = null;
+    this.currentFilename = null;
   }
 
-async switchSketch(sketchFileName, audioAnalyzerInstance) {
-    if (this.currentSketchId === sketchFileName) return;
+  async switchSketch(filename, analyzer) {
+    // filename: "sketches/025_fluid_ink_wash.js"
+    if (this.currentFilename === filename) return;
 
-    // 1. 이전 스케치 메모리 파괴 및 청소
-    this.cleanup();
+    // Clean up the previous sketch
+    if (this.currentSketch) {
+      this.currentSketch.destroy();
+      this.currentSketch = null;
+    }
+
+    this.currentFilename = filename;
+
+        const mainBtn = document.getElementById('btn-play-music');
+        mainBtn.innerText = "▶️ 음악 재생 (Play)";
+        mainBtn.classList.remove('btn-pause');
 
     try {
-      // 💡 [핵심 교정] 
-      // 만약 sketchFileName에 이미 경로 기호가 섞여 들어오는 변수를 방지하기 위해,
-      // 오직 순수한 파일 이름만 남긴 뒤 확실하게 '../sketches/'를 강제로 붙여줍니다.
-      const pureFileName = sketchFileName.replace(/^.*[\\\/]/, ''); 
-      const modulePath = `../sketches/${pureFileName}`;
-      
-      console.log(`[🔍 Debug] 로드 시도 경로: ${modulePath}`); // 경로 확인용 로그 추가
-      
-      const sketchModule = await import(modulePath);
-      
-      // 2. 모듈 내부의 기본 export 클래스를 인스턴스화
-      this.currentSketch = new sketchModule.default(this.container);
-      this.currentSketchId = sketchFileName;
+      // 💡 [수리] 에러 원인 해결: 구형 script tag 동적 생성 대신
+      // 현대적이고 네이티브한 ES 모듈 동적 import() 구문을 사용합니다.
+      // The leading '../' assumes the manager is in src/core and filename starts with sketches/.
+      const SketchModule = await import(`../${filename}`);
+      const SketchClass = SketchModule.default;
+      this.currentSketch = new SketchClass(this.ctx);
 
-      this.currentSketch.init();
-      this.startLoop(audioAnalyzerInstance);
-
-      console.log(`[🎯 Success] 스케치 로드 완료: ${sketchFileName}`);
-    } catch (error) {
-      console.error(`[❌ Error] 스케치 로드 실패 (${sketchFileName}):`, error);
-    }
-  }
-
-  startLoop(analyzer) {
-    const loop = () => {
-      if (!this.currentSketch) return;
-
-      const audioData = analyzer.getAudioData();
-
-      if (typeof this.currentSketch.update === 'function') {
-        this.currentSketch.update(audioData);
+      // Connect audio analyzer if the sketch supports it
+      if (this.currentSketch && typeof this.currentSketch.connectAudioAnalyzer === 'function') {
+          this.currentSketch.connectAudioAnalyzer(analyzer);
       }
 
-      this.animationFrameId = requestAnimationFrame(loop);
-    };
+      console.log(`[Success] 스케치 로드 완료: ${filename}`);
 
-    this.animationFrameId = requestAnimationFrame(loop);
+    } catch (error) {
+      // 콘솔에 빨간색 에러 메시지가 출력된 바로 그 위치입니다.
+      console.error(`[Error] 스케치 로드 실패: (${filename}):`, error);
+    }
   }
 
-  cleanup() {
-    if (this.animationFrameId) {
-      cancelAnimationFrame(this.animationFrameId);
-      this.animationFrameId = null;
+  update(audioData) {
+    if (this.currentSketch && typeof this.currentSketch.update === 'function') {
+      this.currentSketch.update(audioData);
     }
-
-    if (this.currentSketch && typeof this.currentSketch.destroy === 'function') {
-      this.currentSketch.destroy();
-    }
-
-    if (this.container) {
-      this.container.innerHTML = '';
-    }
-
-    this.currentSketch = null;
-    this.currentSketchId = null;
-
-    console.log('[🧹 Clean-up] 이전 스케치 자원 및 WebGL 메모리 해제 완료');
   }
 
-  resize(width, height) {
+  resize(w, h) {
+    if (this.canvas) {
+      this.canvas.width = w;
+      this.canvas.height = h;
+    }
     if (this.currentSketch && typeof this.currentSketch.resize === 'function') {
-      this.currentSketch.resize(width, height);
+      this.currentSketch.resize(w, h);
     }
   }
 }
