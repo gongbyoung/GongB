@@ -1,10 +1,10 @@
 /**
  * src/sketches/025_fluid_ink_wash.js
- * - [025호 수묵 잉크 블룸 Ver 23.0 - Anti-Starfish Smooth Ink Wash]
- * - 불가사리/가시 뿔 현상 100% 제거 ➔ 완만하고 부드러운 대형 수묵 베일
- * - 🎸 기타/베이스: 부드러운 잉크 베일 부피 팽창 및 확산
- * - 🎤 보컬: 시간 축 유체 흐름 및 소용돌이 가속
- * - Range (Scatter) 0.1~50.0 제어 & 16:9, 9:16 Export 오버스캔 지원
+ * - [025호 수묵 잉크 블룸 Ver 24.0 - True Domain Warping Ink Flow]
+ * - 단순 원형 구도 100% 완전 파괴 ➔ 도메인 워핑(Domain Warping) 유체 공간 뒤틀림
+ * - 물속 먹물이 접히고 늘어나는 수묵 주름(Fluid Folds & Ribbons) 연출
+ * - 🎸 기타/베이스: 공간 뒤틀림 폭발 및 유체 팽창
+ * - 🎤 보컬: 시간 축 흘러가는 유체 결 속도 가속
  */
 
 export default class FluidInkWashSketch {
@@ -18,8 +18,8 @@ export default class FluidInkWashSketch {
     }
 
     this.time = 0;
-    this.version = "025호 수묵 잉크 블룸 Ver 23.0 (Smooth Wash)";
-    this.inkVeils = [];
+    this.version = "025호 수묵 잉크 블룸 Ver 24.0 (Domain Warping Flow)";
+    this.inkBands = [];
     this.loadedSeed = -1;
   }
 
@@ -35,7 +35,7 @@ export default class FluidInkWashSketch {
   }
 
   // =========================================================================
-  // 🧩 저주파 매끄러운 3D Perlin / FBM 공간 노이즈
+  // 🧩 3D Perlin / FBM 공간 노이즈 수학 엔진
   // =========================================================================
   fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
   lerp(t, a, b) { return a + t * (b - a); }
@@ -79,11 +79,10 @@ export default class FluidInkWashSketch {
     );
   }
 
-  // 💡 [핵심 수리]: frequency를 0.2로 낮추어 매끈하고 완만한 곡선 유도 (불가사리 뿔 방지)
   fbm3D(x, y, z) {
     let total = 0;
     let amplitude = 1.0;
-    let frequency = 0.22;
+    let frequency = 0.5;
     let maxValue = 0;
     for (let i = 0; i < 3; i++) {
       total += this.noise3D(x * frequency, y * frequency, z * frequency) * amplitude;
@@ -92,6 +91,20 @@ export default class FluidInkWashSketch {
       frequency *= 2.0;
     }
     return total / maxValue;
+  }
+
+  // 💡 [핵심 기술]: 도메인 워핑 2중 연산 함수 (원형 구도를 유체 주름으로 뒤틀기)
+  domainWarp2D(px, py, pz, warpStrength) {
+    const qx = this.fbm3D(px * 0.002, py * 0.002, pz * 0.1);
+    const qy = this.fbm3D(px * 0.002 + 5.2, py * 0.002 + 1.3, pz * 0.1);
+
+    const rx = this.fbm3D(px * 0.002 + 4.0 * qx + 1.7, py * 0.002 + 4.0 * qy + 9.2, pz * 0.12);
+    const ry = this.fbm3D(px * 0.002 + 4.0 * qx + 8.3, py * 0.002 + 4.0 * qy + 2.8, pz * 0.12);
+
+    return {
+      x: px + rx * warpStrength,
+      y: py + ry * warpStrength
+    };
   }
 
   hexToRgb(hex) {
@@ -103,117 +116,108 @@ export default class FluidInkWashSketch {
   }
 
   // =========================================================================
-  // 🎲 대형 수묵 베일 거점 생성
+  // 🎲 비대칭 수묵 유체 밴드 구조 생성 (+10% 오버스캔 영역)
   // =========================================================================
-  generateInkVeils(seed, W, H) {
-    this.inkVeils = [];
+  generateInkBands(seed, W, H) {
+    this.inkBands = [];
 
     const pseudoRand = (s) => {
       let mask = Math.sin(s * 12.9898 + 78.233) * 43758.5453;
       return mask - Math.floor(mask);
     };
 
-    const count = 7; // 화면 전체를 넓게 뒤덮는 7개의 수묵 베일
+    const count = 8; // 화면 전체를 가로지르는 8개의 유체 먹줄기 밴드
     for (let i = 0; i < count; i++) {
       const r1 = pseudoRand(seed + i * 1.7);
       const r2 = pseudoRand(seed + i * 3.3);
       const r3 = pseudoRand(seed + i * 5.1);
 
-      this.inkVeils.push({
-        anchorX: (-0.1 + r1 * 1.2) * W,
-        anchorY: (-0.1 + r2 * 1.2) * H,
-        z: (r3 - 0.5) * 320,
-        spanX: (W * 0.45) + r3 * (W * 0.55),
-        spanY: (H * 0.38) + r1 * (H * 0.52),
-        rotZ: r2 * Math.PI * 2,
+      this.inkBands.push({
+        startX: (-0.15 + r1 * 1.3) * W,
+        startY: (-0.15 + r2 * 1.3) * H,
+        length: (W * 0.6) + r3 * (W * 0.7),
+        angle: (r3 - 0.5) * Math.PI * 0.8,
+        thickness: (80 + r2 * 160) * (Math.min(W, H) / 1000),
         seedOffset: seed + i * 43.1
       });
     }
   }
 
   // =========================================================================
-  // 🖌️ 완만하고 부드러운 수묵 잉크 베일 렌더링 (Smooth Flow - No Spikes)
+  // 🖌️ 도메인 워핑 기반 수묵 유체 번짐 렌더링 (True Fluid Folds)
   // =========================================================================
-  drawSmoothInkVeil(ctx, veil, time, scatterMotion, baseColorRgb, vocalVol, drumVol, bassVol, otherVol, isDark) {
+  drawWarpedInkBand(ctx, band, time, scatterMotion, baseColorRgb, vocalVol, drumVol, bassVol, otherVol, isDark, W, H) {
     ctx.save();
 
-    // 🎸 [베이스/기타 오디오 반응]: 음압 상승 시 부드럽게 완만히 확산
-    const instrumentPower = (bassVol * 2.0) + (otherVol * 1.4);
-    const expandFactor = 1.0 + instrumentPower * 1.6;
+    // 🎸 [베이스/기타 오디오 반응]: 공간 뒤틀림 세기 및 부피 폭발
+    const instrumentPower = (bassVol * 2.2) + (otherVol * 1.5);
+    const warpStrength = (120 + scatterMotion * 6.5) * (1.0 + instrumentPower * 1.5);
 
-    // 🥁 [드럼 반응]: 순간 지터
-    const drumShakeX = (Math.sin(time * 45 + veil.seedOffset) * 0.5) * (drumVol * 8.0);
-    const drumShakeY = (Math.cos(time * 40 + veil.seedOffset) * 0.5) * (drumVol * 8.0);
+    // 🥁 [드럼 반응]: 순간 유체 충격 지터
+    const drumShakeX = (Math.sin(time * 45 + band.seedOffset) * 0.5) * (drumVol * 10.0);
+    const drumShakeY = (Math.cos(time * 40 + band.seedOffset) * 0.5) * (drumVol * 10.0);
 
-    // 3D 공간 드리프트
-    const driftX = this.fbm3D(veil.seedOffset, time * 0.04, 0) * scatterMotion * 12;
-    const driftY = this.fbm3D(veil.seedOffset + 10, time * 0.04, 5) * scatterMotion * 12;
-    const driftZ = this.fbm3D(veil.seedOffset + 20, time * 0.04, 10) * scatterMotion * 8;
+    const cosA = Math.cos(band.angle);
+    const sinA = Math.sin(band.angle);
+    const perpX = -sinA;
+    const perpY = cosA;
 
-    const finalX = veil.anchorX + driftX + drumShakeX;
-    const finalY = veil.anchorY + driftY + drumShakeY;
-    const finalZ = veil.z + driftZ;
+    const currentThickness = band.thickness * (1.0 + instrumentPower * 1.2);
+    const segmentCount = 90;
 
-    const perspective = 1000 / (1000 + finalZ);
-    ctx.translate(finalX, finalY);
+    // 💡 4개 다층 유체 결 (Outer Soft Diffusion ~ Inner Dense Core)
+    const layerScales = [1.0, 0.70, 0.45, 0.20];
+    const layerBlurs  = [22, 14, 7, 3];
 
-    // 🎤 [보컬 반응]: 유체 회전 가속
-    const vocalSwirl = (time * 0.03) + (vocalVol * Math.PI * 0.3);
-    ctx.rotate(veil.rotZ + vocalSwirl);
-    ctx.scale(perspective, perspective);
+    layerScales.forEach((layerScale, layerIdx) => {
+      const curThick = currentThickness * layerScale;
+      const topPoints = [];
+      const bottomPoints = [];
 
-    const rx = veil.spanX * expandFactor;
-    const ry = veil.spanY * expandFactor;
+      for (let i = 0; i <= segmentCount; i++) {
+        const t = i / segmentCount;
+        const dist = (t - 0.5) * band.length;
 
-    // 💡 완만한 수묵 베일 4중 블러층 (Outer Soft ~ Inner Core)
-    const layerFactors = [1.0, 0.72, 0.48, 0.24];
-    const layerBlurs   = [24, 15, 8, 3];
-    const nodeCount = 100;
+        // 중앙 기준선 위치
+        const bx = band.startX + cosA * dist + drumShakeX;
+        const by = band.startY + sinA * dist + drumShakeY;
 
-    layerFactors.forEach((layerScale, layerIdx) => {
-      const curRx = rx * layerScale;
-      const curRy = ry * layerScale;
-      const points = [];
+        // 윗선 / 아랫선
+        const rawTopX = bx + perpX * curThick;
+        const rawTopY = by + perpY * curThick;
+        const rawBotX = bx - perpX * curThick;
+        const rawBotY = by - perpY * curThick;
 
-      for (let i = 0; i < nodeCount; i++) {
-        const a = (i / nodeCount) * Math.PI * 2;
+        // 🎯 [도메인 워핑 적용]: 원형이 아닌 공간 자체를 유체 모양으로 뒤틀기
+        const warpedTop = this.domainWarp2D(rawTopX, rawTopY, time * 0.8 + band.seedOffset + layerIdx, warpStrength);
+        const warpedBot = this.domainWarp2D(rawBotX, rawBotY, time * 0.8 + band.seedOffset + 50 + layerIdx, warpStrength);
 
-        // 💡 [핵심 2]: 저주파 공간 샘플링으로 완만하고 곡선 형태의 수묵 윤곽 형성
-        const nx = Math.cos(a) * 0.35 + veil.seedOffset;
-        const ny = Math.sin(a) * 0.35 + veil.seedOffset;
-        const nz = time * 0.05 * (scatterMotion * 0.06) + layerIdx * 0.3;
-
-        const nVal3D = this.fbm3D(nx, ny, nz);
-        const distortStrength = 0.25 + (scatterMotion / 50.0) * 0.45;
-
-        const prx = curRx * (0.8 + nVal3D * distortStrength);
-        const pry = curRy * (0.8 + nVal3D * distortStrength);
-
-        points.push({ x: Math.cos(a) * prx, y: Math.sin(a) * pry });
+        topPoints.push(warpedTop);
+        bottomPoints.push(warpedBot);
       }
 
+      // 유체 닫힌 패스 잇기 (Top Forward + Bottom Reverse)
       ctx.beginPath();
-      ctx.moveTo((points[0].x + points[nodeCount - 1].x) / 2, (points[0].y + points[nodeCount - 1].y) / 2);
-      for (let i = 0; i < nodeCount; i++) {
-        const curr = points[i];
-        const next = points[(i + 1) % nodeCount];
-        ctx.quadraticCurveTo(curr.x, curr.y, (curr.x + next.x) / 2, (curr.y + next.y) / 2);
+      ctx.moveTo(topPoints[0].x, topPoints[0].y);
+      for (let i = 1; i <= segmentCount; i++) {
+        ctx.lineTo(topPoints[i].x, topPoints[i].y);
+      }
+      for (let i = segmentCount; i >= 0; i--) {
+        ctx.lineTo(bottomPoints[i].x, bottomPoints[i].y);
       }
       ctx.closePath();
 
-      // 외곽 종이 스며듦 블러 필터
-      const currentBlur = Math.max(2, Math.min(30, layerBlurs[layerIdx] * (curRx / 400)));
+      // 외곽 종이 스스륵 번짐 블러 필터 적용
+      const currentBlur = Math.max(2, Math.min(28, layerBlurs[layerIdx] * (curThick / 100)));
       ctx.filter = `blur(${currentBlur}px)`;
 
       // 투명도 농담 (중첩 시 자발적으로 어두워짐)
       const fillAlpha = isDark
-        ? (0.08 + (layerIdx * 0.07) + instrumentPower * 0.12)
-        : (0.05 + (layerIdx * 0.06) + instrumentPower * 0.10);
+        ? (0.08 + (layerIdx * 0.07) + instrumentPower * 0.10)
+        : (0.05 + (layerIdx * 0.06) + instrumentPower * 0.08);
 
       ctx.fillStyle = `rgba(${baseColorRgb}, ${fillAlpha})`;
       ctx.fill();
-
-      // 🎯 [핵심 3]: 가시/촉수를 만들던 stroke() 선은 완전히 없음!
     });
 
     ctx.restore();
@@ -232,7 +236,7 @@ export default class FluidInkWashSketch {
     const gainVal = globalSettings.audioGain ?? 1.0;
     const colorStyle = (globalSettings.colorStyle || 'monochrome').toLowerCase();
 
-    // 오디오 데이터 수신
+    // 오디오 수신
     let vocalsVol = 0, drumsVol = 0, bassVol = 0, otherVol = 0;
     if (targetAudio && targetAudio.isMultiStem) {
       vocalsVol = (targetAudio.vocalsVol || 0) * gainVal;
@@ -246,8 +250,8 @@ export default class FluidInkWashSketch {
       otherVol  = (targetAudio.treble || 0) * 2.5 * gainVal;
     }
 
-    // 보컬 반응 시 시간 가속
-    const timeDelta = 0.005 + (vocalsVol * 0.012);
+    // 🎤 [보컬 반응]: 시간 축 유체 흐름 속도 가속
+    const timeDelta = 0.005 + (vocalsVol * 0.015);
     this.time += timeDelta;
 
     const W = this.canvas.width;
@@ -259,7 +263,7 @@ export default class FluidInkWashSketch {
 
     if (this.loadedSeed !== seedVal || this.width !== W || this.height !== H) {
       this.loadedSeed = seedVal;
-      this.generateInkVeils(seedVal, W, H);
+      this.generateInkBands(seedVal, W, H);
     }
 
     this.ctx.save();
@@ -306,19 +310,19 @@ export default class FluidInkWashSketch {
       getColors = (idx) => ({ base: fullBases[idx % fullBases.length] });
     }
 
-    // 캔버스 배경
+    // 캔버스 배경 채우기
     this.ctx.fillStyle = bgColor;
     this.ctx.fillRect(-marginX, -marginY, W + marginX * 2, H + marginY * 2);
 
     // 합성 모드 (한지 multiply)
     this.ctx.globalCompositeOperation = isDark ? 'screen' : 'multiply';
 
-    // 수묵 베일 렌더링
-    this.inkVeils.forEach((veil, idx) => {
+    // 수묵 도메인 워핑 유체 렌더링
+    this.inkBands.forEach((band, idx) => {
       const colors = getColors(idx);
-      this.drawSmoothInkVeil(
+      this.drawWarpedInkBand(
         this.ctx,
-        veil,
+        band,
         this.time * 0.8,
         scatterMotion,
         colors.base,
@@ -326,7 +330,9 @@ export default class FluidInkWashSketch {
         drumsVol,
         bassVol,
         otherVol,
-        isDark
+        isDark,
+        W,
+        H
       );
     });
 
@@ -334,9 +340,9 @@ export default class FluidInkWashSketch {
 
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: `7 Smooth Ink Veils (No Starfish)`,
+      particleCount: `8 Warped Ink Bands (Domain Warping)`,
       isCovering: true,
-      activeFunction: `FluidInkWash[SmoothVeil_${colorStyle.toUpperCase()}]`
+      activeFunction: `FluidInkWash[DomainWarping_${colorStyle.toUpperCase()}]`
     };
   }
 
@@ -346,6 +352,6 @@ export default class FluidInkWashSketch {
     }
     this.canvas = null;
     this.ctx = null;
-    this.inkVeils = [];
+    this.inkBands = [];
   }
 }
