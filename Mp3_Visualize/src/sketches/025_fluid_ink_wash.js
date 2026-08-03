@@ -1,9 +1,9 @@
 /**
  * src/sketches/025_fluid_ink_wash.js
- * - [025호 수묵 잉크 블룸 Ver 21.0 - Water Ink Diffusion Physics]
- * - 🎸 기타/베이스: 음압 상승 시 잉크 촉수(Tendril)가 확 물속으로 폭발하듯 뻗어나감
- * - 🎤 보컬: 볼륨 상승 시 유체 흐름 속도(Time Delta) 및 소용돌이 회전 가속
- * - 물속 먹물 드롭(Ink Drop in Water) 미세 실타래 연출 적용
+ * - [025호 물속 잉크 번짐 Ver 22.0 - No Tendrils / Volumetric Ink Plume]
+ * - 말미잘 촉수 선(Stroke) 100% 제거 ➔ 부드럽게 피어나는 물속 먹물 구름(Ink Cloud)
+ * - 🎸 기타/베이스: 음압 상승 시 먹물 구름이 부드럽게 밖으로 뭉게뭉게 번짐
+ * - 🎤 보컬: 유체 회전 속도 및 퍼짐 시간 축(Time Delta) 가속
  */
 
 export default class FluidInkWashSketch {
@@ -17,8 +17,8 @@ export default class FluidInkWashSketch {
     }
 
     this.time = 0;
-    this.version = "025호 물속 잉크 번짐 Ver 21.0";
-    this.inkDrops = [];
+    this.version = "025호 물속 잉크 번짐 Ver 22.0 (Volumetric Plume)";
+    this.inkPlumes = [];
     this.loadedSeed = -1;
   }
 
@@ -34,7 +34,7 @@ export default class FluidInkWashSketch {
   }
 
   // =========================================================================
-  // 🧩 3D Curl Noise 유체 소용돌이 수식
+  // 🧩 3D Perlin / FBM 유체 공간 노이즈
   // =========================================================================
   fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
   lerp(t, a, b) { return a + t * (b - a); }
@@ -81,7 +81,7 @@ export default class FluidInkWashSketch {
   fbm3D(x, y, z) {
     let total = 0;
     let amplitude = 1.0;
-    let frequency = 0.6;
+    let frequency = 0.55;
     let maxValue = 0;
     for (let i = 0; i < 3; i++) {
       total += this.noise3D(x * frequency, y * frequency, z * frequency) * amplitude;
@@ -101,119 +101,117 @@ export default class FluidInkWashSketch {
   }
 
   // =========================================================================
-  // 🎲 물속 잉크 드롭 생태계 생성
+  // 🎲 물속 잉크 구름 거점 생성
   // =========================================================================
-  generateInkDrops(seed, W, H) {
-    this.inkDrops = [];
+  generateInkPlumes(seed, W, H) {
+    this.inkPlumes = [];
 
     const pseudoRand = (s) => {
       let mask = Math.sin(s * 12.9898 + 78.233) * 43758.5453;
       return mask - Math.floor(mask);
     };
 
-    const count = 7; // 물속에 떨어진 7개의 주요 잉크 피어남 지점
+    const count = 8;
     for (let i = 0; i < count; i++) {
       const r1 = pseudoRand(seed + i * 1.7);
       const r2 = pseudoRand(seed + i * 3.3);
       const r3 = pseudoRand(seed + i * 5.1);
 
-      // 각 잉크 드롭별 36개 미세 촉수(Filament Rays) 초기 구성
-      const tendrilCount = 36;
-      const tendrils = [];
-      for (let t = 0; t < tendrilCount; t++) {
-        const angle = (t / tendrilCount) * Math.PI * 2;
-        tendrils.push({
-          angle: angle,
-          lengthFactor: 0.5 + pseudoRand(seed + i * 10 + t) * 0.8,
-          curvePhase: pseudoRand(seed + i * 20 + t) * Math.PI * 2
-        });
-      }
-
-      this.inkDrops.push({
-        x: (0.1 + r1 * 0.8) * W,
-        y: (0.15 + r2 * 0.7) * H,
-        z: (r3 - 0.5) * 300,
-        baseRadius: (40 + r3 * 60) * (Math.min(W, H) / 1000),
-        tendrils: tendrils,
+      this.inkPlumes.push({
+        x: (-0.05 + r1 * 1.1) * W,
+        y: (-0.05 + r2 * 1.1) * H,
+        z: (r3 - 0.5) * 350,
+        baseRx: (160 + r3 * 220) * (Math.min(W, H) / 1000),
+        baseRy: (120 + r1 * 180) * (Math.min(W, H) / 1000),
+        rotZ: r2 * Math.PI * 2,
         seedOffset: seed + i * 43.1
       });
     }
   }
 
   // =========================================================================
-  // 🖌️ 오디오 스템 기반 물속 잉크 번짐 렌더링
+  // 🖌️ 물속 입체 먹물 구름 렌더링 (No Strokes!)
   // =========================================================================
-  drawWaterInkDiffusion(ctx, drop, time, scatterMotion, baseColorRgb, vocalVol, drumVol, bassVol, otherVol, isDark) {
+  drawWaterInkPlume(ctx, plume, time, scatterMotion, baseColorRgb, vocalVol, drumVol, bassVol, otherVol, isDark) {
     ctx.save();
 
-    ctx.translate(drop.x, drop.y);
+    // 🎸 [베이스/기타 오디오 반응]: 음압 상승 시 구름 부피 팽창
+    const instrumentPower = (bassVol * 2.0) + (otherVol * 1.5);
+    const expandFactor = 1.0 + instrumentPower * 1.8;
 
-    // 🎸 [베이스/기타 오디오 반응 1]: 베이스/기타 폭발 시 잉크가 확 뻗어나감 (Expansion Burst)
-    const instrumentPower = (bassVol * 2.2) + (otherVol * 1.8);
-    const dynamicRadius = drop.baseRadius * (1.0 + instrumentPower * 2.5);
+    // 🥁 [드럼 반응]: 타격 시 순간 지터
+    const drumShakeX = (Math.sin(time * 50 + plume.seedOffset) * 0.5) * (drumVol * 10.0);
+    const drumShakeY = (Math.cos(time * 45 + plume.seedOffset) * 0.5) * (drumVol * 10.0);
 
-    // 🥁 [드럼 반응]: 타격 순간 순간 미세 진동
-    const drumShake = (Math.sin(time * 60 + drop.seedOffset) * 0.5) * (drumVol * 8.0);
+    // 3D Curl Noise 드리프트
+    const driftX = this.fbm3D(plume.seedOffset, time * 0.05, 0) * scatterMotion * 14;
+    const driftY = this.fbm3D(plume.seedOffset + 10, time * 0.05, 5) * scatterMotion * 14;
+    const driftZ = this.fbm3D(plume.seedOffset + 20, time * 0.05, 10) * scatterMotion * 10;
 
-    // 💡 물속 미세 촉수 실타래 렌더링 (Ink Tendril Rays)
-    const tendrilPoints = [];
-    const tCount = drop.tendrils.length;
+    const finalX = plume.x + driftX + drumShakeX;
+    const finalY = plume.y + driftY + drumShakeY;
+    const finalZ = plume.z + driftZ;
 
-    for (let i = 0; i < tCount; i++) {
-      const t = drop.tendrils[i];
-      
-      // 🎤 [보컬 오디오 반응 2]: 보컬 볼륨에 맞춰 소용돌이 속도 및 기류 회전 가속
-      const vocalSwirl = Math.sin(time * 1.5 + t.curvePhase) * (vocalVol * 0.8);
-      const currentAngle = t.angle + vocalSwirl;
+    const perspective = 1000 / (1000 + finalZ);
+    ctx.translate(finalX, finalY);
 
-      // 3D Curl Noise로 물속에서 미끄러지듯 꺾이는 잉크 가닥
-      const nx = Math.cos(currentAngle) * 0.8 + drop.seedOffset;
-      const ny = Math.sin(currentAngle) * 0.8 + drop.seedOffset;
-      const nz = time * 0.08 * (scatterMotion * 0.08);
+    // 🎤 [보컬 반응]: 회전 및 흐름 가속
+    const vocalSwirl = (time * 0.04) + (vocalVol * Math.PI * 0.4);
+    ctx.rotate(plume.rotZ + vocalSwirl);
+    ctx.scale(perspective, perspective);
 
-      const noiseCurl = this.fbm3D(nx, ny, nz);
-      const reachLength = dynamicRadius * t.lengthFactor * (0.8 + noiseCurl * (1.0 + scatterMotion / 25.0));
+    const rx = plume.baseRx * expandFactor;
+    const ry = plume.baseRy * expandFactor;
 
-      const px = Math.cos(currentAngle) * (reachLength + drumShake);
-      const py = Math.sin(currentAngle) * (reachLength + drumShake);
+    // 💡 4개의 다층 유체 구름 블러층 (Outer Soft Diffusion ~ Inner Core)
+    const layerFactors = [1.0, 0.72, 0.48, 0.24];
+    const layerBlurs   = [22, 14, 8, 3]; // 외곽일수록 높은 블러 적용
+    const nodeCount = 120;
 
-      tendrilPoints.push({ x: px, y: py, noise: noiseCurl });
-    }
+    layerFactors.forEach((layerScale, layerIdx) => {
+      const curRx = rx * layerScale;
+      const curRy = ry * layerScale;
+      const points = [];
 
-    // 1) 잉크 실타래 외곽선 잇기
-    ctx.beginPath();
-    ctx.moveTo((tendrilPoints[0].x + tendrilPoints[tCount - 1].x) / 2, (tendrilPoints[0].y + tendrilPoints[tCount - 1].y) / 2);
-    for (let i = 0; i < tCount; i++) {
-      const curr = tendrilPoints[i];
-      const next = tendrilPoints[(i + 1) % tCount];
-      ctx.quadraticCurveTo(curr.x, curr.y, (curr.x + next.x) / 2, (curr.y + next.y) / 2);
-    }
-    ctx.closePath();
+      for (let i = 0; i < nodeCount; i++) {
+        const a = (i / nodeCount) * Math.PI * 2;
 
-    // 물속 부드러운 스며듦 블러
-    const blurAmount = Math.max(4, Math.min(22, dynamicRadius * 0.15));
-    ctx.filter = `blur(${blurAmount}px)`;
+        const nx = Math.cos(a) * (0.9 + layerIdx * 0.2) + plume.seedOffset;
+        const ny = Math.sin(a) * (0.9 + layerIdx * 0.2) + plume.seedOffset;
+        const nz = time * 0.06 * (scatterMotion * 0.08) + layerIdx * 0.4;
 
-    // 잉크 구름 면 채우기 (베이스/기타 볼륨이 클수록 짙어짐)
-    const fillAlpha = isDark ? (0.15 + instrumentPower * 0.25) : (0.10 + instrumentPower * 0.20);
-    ctx.fillStyle = `rgba(${baseColorRgb}, ${fillAlpha})`;
-    ctx.fill();
+        const nVal3D = this.fbm3D(nx, ny, nz);
+        const distortStrength = 0.35 + (scatterMotion / 50.0) * 0.65;
 
-    // 2) 물속 잉크 핵심 실선 줄기 렌더링 (Water Filaments)
-    ctx.filter = `blur(${Math.max(1, blurAmount * 0.3)}px)`;
-    for (let i = 0; i < tCount; i += 2) {
-      const p1 = tendrilPoints[i];
-      const p2 = tendrilPoints[(i + 1) % tCount];
+        const prx = curRx * (0.65 + nVal3D * distortStrength);
+        const pry = curRy * (0.65 + nVal3D * distortStrength);
+
+        points.push({ x: Math.cos(a) * prx, y: Math.sin(a) * pry });
+      }
 
       ctx.beginPath();
-      ctx.moveTo(0, 0); // 중심에서부터
-      ctx.quadraticCurveTo(p1.x * 0.5, p1.y * 0.5, p2.x, p2.y); // 사방으로 퍼지는 가닥
+      ctx.moveTo((points[0].x + points[nodeCount - 1].x) / 2, (points[0].y + points[nodeCount - 1].y) / 2);
+      for (let i = 0; i < nodeCount; i++) {
+        const curr = points[i];
+        const next = points[(i + 1) % nodeCount];
+        ctx.quadraticCurveTo(curr.x, curr.y, (curr.x + next.x) / 2, (curr.y + next.y) / 2);
+      }
+      ctx.closePath();
 
-      const filamentAlpha = isDark ? (0.25 + instrumentPower * 0.35) : (0.18 + instrumentPower * 0.30);
-      ctx.strokeStyle = `rgba(${baseColorRgb}, ${filamentAlpha})`;
-      ctx.lineWidth = 1.0 + instrumentPower * 2.0;
-      ctx.stroke();
-    }
+      // 외곽 스스륵 번짐 블러 필터 적용
+      const currentBlur = Math.max(2, Math.min(28, layerBlurs[layerIdx] * (curRx / 350)));
+      ctx.filter = `blur(${currentBlur}px)`;
+
+      // 투명도 농담 (내부로 갈수록 짙어짐)
+      const fillAlpha = isDark
+        ? (0.08 + (layerIdx * 0.07) + instrumentPower * 0.12)
+        : (0.05 + (layerIdx * 0.06) + instrumentPower * 0.10);
+
+      ctx.fillStyle = `rgba(${baseColorRgb}, ${fillAlpha})`;
+      ctx.fill();
+
+      // 🎯 [핵심]: 말미잘을 만들던 stroke() 선은 완전히 존재하지 않음!
+    });
 
     ctx.restore();
   }
@@ -245,8 +243,8 @@ export default class FluidInkWashSketch {
       otherVol  = (targetAudio.treble || 0) * 2.5 * gainVal;
     }
 
-    // 🎤 [보컬 반응]: 보컬 볼륨이 커질수록 시간 축 흐름 속도(Time Delta)가 더 빠르게 증가!
-    const timeDelta = 0.005 + (vocalsVol * 0.015);
+    // 보컬 반응 시 시간 가속
+    const timeDelta = 0.005 + (vocalsVol * 0.012);
     this.time += timeDelta;
 
     const W = this.canvas.width;
@@ -258,7 +256,7 @@ export default class FluidInkWashSketch {
 
     if (this.loadedSeed !== seedVal || this.width !== W || this.height !== H) {
       this.loadedSeed = seedVal;
-      this.generateInkDrops(seedVal, W, H);
+      this.generateInkPlumes(seedVal, W, H);
     }
 
     this.ctx.save();
@@ -283,7 +281,7 @@ export default class FluidInkWashSketch {
     let getColors = (idx) => ({ base: "25, 30, 42" });
 
     if (colorStyle === 'monochrome' || colorStyle === 'earth') {
-      bgColor = "#f4f1ea";
+      bgColor = "#f4f1ea"; // 한지 바탕색
       isDark = false;
       getColors = (idx) => ({
         base: idx % 3 === 0 ? "20, 26, 38" : idx % 3 === 1 ? "42, 50, 68" : "58, 48, 40"
@@ -305,19 +303,19 @@ export default class FluidInkWashSketch {
       getColors = (idx) => ({ base: fullBases[idx % fullBases.length] });
     }
 
-    // 배경 채우기
+    // 캔버스 배경 채우기
     this.ctx.fillStyle = bgColor;
     this.ctx.fillRect(-marginX, -marginY, W + marginX * 2, H + marginY * 2);
 
     // 합성 모드 (한지 multiply)
     this.ctx.globalCompositeOperation = isDark ? 'screen' : 'multiply';
 
-    // 물속 잉크 확산 렌더링
-    this.inkDrops.forEach((drop, idx) => {
+    // 물속 먹물 구름 렌더링
+    this.inkPlumes.forEach((plume, idx) => {
       const colors = getColors(idx);
-      this.drawWaterInkDiffusion(
+      this.drawWaterInkPlume(
         this.ctx,
-        drop,
+        plume,
         this.time * 0.8,
         scatterMotion,
         colors.base,
@@ -333,9 +331,9 @@ export default class FluidInkWashSketch {
 
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: `7 Water Ink Drops (Tendril Filaments)`,
+      particleCount: `8 Water Ink Plumes (No Tendril Lines)`,
       isCovering: true,
-      activeFunction: `FluidInkWash[WaterInkPhysics_${colorStyle.toUpperCase()}]`
+      activeFunction: `FluidInkWash[VolumetricPlume_${colorStyle.toUpperCase()}]`
     };
   }
 
@@ -345,6 +343,6 @@ export default class FluidInkWashSketch {
     }
     this.canvas = null;
     this.ctx = null;
-    this.inkDrops = [];
+    this.inkPlumes = [];
   }
 }
