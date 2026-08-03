@@ -81,9 +81,19 @@
     label { font-size: 0.8rem; font-weight: 500; color: var(--text-muted); display: flex; justify-content: space-between; }
     .value-badge { color: var(--accent-color); font-weight: 700; }
 
-    input[type="text"], input[type="file"], textarea, select {
+    input[type="text"], input[type="number"], input[type="file"], textarea, select {
       width: 100%; background: #090a0f; border: 1px solid var(--border-color); border-radius: 8px;
       padding: 8px 12px; color: #fff; font-size: 0.875rem; outline: none;
+    }
+
+    .num-direct {
+      width: 75px !important;
+      background: #090a0f;
+      color: #38bdf8 !important;
+      border: 1px solid var(--accent-color) !important;
+      text-align: center;
+      font-weight: bold;
+      padding: 4px 6px !important;
     }
 
     textarea { resize: vertical; min-height: 90px; line-height: 1.5; }
@@ -203,18 +213,18 @@
         <button class="btn btn-save" id="m1_saveBtn">💾 고해상도 시화 PNG 저장</button>
       </div>
 
-      <!-- MODE 2: 먹물 번짐 타이포그래피 (정밀 연산) -->
+      <!-- MODE 2: 먹물 번짐 타이포그래피 (정밀 마스크 알고리즘) -->
       <div id="m2_tab" class="tab-content">
         <div class="section-title">🖌️ 먹물 번짐 (Bleed Noise) 제어</div>
         
         <div class="form-row">
           <div class="form-group">
             <label>번짐 정도 (Spread) <span id="m2_bleedVal" class="value-badge">12</span></label>
-            <input type="range" id="m2_bleed" min="0" max="30" value="12">
+            <input type="range" id="m2_bleed" min="0" max="40" value="12">
           </div>
           <div class="form-group">
-            <label>한지 섬유 번짐 (Fiber Noise)</label>
-            <input type="range" id="m2_noiseScale" min="1" max="50" value="20">
+            <label>한지 결 농도 (Fiber Blur)</label>
+            <input type="range" id="m2_blur" min="0" max="15" step="0.5" value="4.0">
           </div>
         </div>
 
@@ -256,25 +266,29 @@
           </div>
         </div>
 
-        <div class="form-row">
-          <div class="form-group">
-            <label>⏱️ 써지는 시간 (초)</label>
-            <input type="range" id="m2_duration" min="2" max="60" value="10">
+        <!-- 💡 써지는 시간 (최대 600초 확장 + 숫자 직접 입력) -->
+        <div class="form-group">
+          <label>⏱️ 써지는 시간 (1초 ~ 600초)</label>
+          <div class="range-group">
+            <input type="range" id="m2_duration" min="1" max="600" value="10">
+            <input type="number" id="m2_durationNum" class="num-direct" min="1" max="600" value="10">
+            <span style="font-size:0.85rem; color:var(--text-muted);">초</span>
           </div>
-          <div class="form-group">
-            <label>글쓰기 방향</label>
-            <select id="m2_dir">
-              <option value="horizontal">가로 쓰기</option>
-              <option value="vertical">세로 쓰기 (우→좌)</option>
-            </select>
-          </div>
+        </div>
+
+        <div class="form-group">
+          <label>글쓰기 방향</label>
+          <select id="m2_dir">
+            <option value="horizontal">가로 쓰기</option>
+            <option value="vertical">세로 쓰기 (우→좌)</option>
+          </select>
         </div>
 
         <button class="btn btn-start" id="m2_startBtn">▶️ 먹 번짐 모션 시작 & MP4 녹화</button>
       </div>
 
       <div id="progressBox">
-        ⏳ 먹물 픽셀 번짐 연산 및 MP4 녹화 중... <span id="progressPercent">0%</span>
+        ⏳ 먹물 정밀 번짐 연산 및 MP4 녹화 중... <span id="progressPercent">0%</span>
       </div>
 
     </div>
@@ -292,9 +306,11 @@
     const canvas = document.getElementById('mainCanvas');
     const ctx = canvas.getContext('2d');
 
-    // 오프스크린 캔버스 (먹물 픽셀 번짐 연산용)
-    const offCanvas = document.createElement('canvas');
-    const offCtx = offCanvas.getContext('2d');
+    // 먹물 레이어 전용 오프스크린 캔버스들
+    const txtCanvas = document.createElement('canvas');
+    const txtCtx = txtCanvas.getContext('2d');
+    const bleedCanvas = document.createElement('canvas');
+    const bleedCtx = bleedCanvas.getContext('2d');
 
     const globalPoem = document.getElementById('globalPoem');
 
@@ -314,7 +330,7 @@
 
     // --- Mode 2 Elements ---
     const m2_bleed = document.getElementById('m2_bleed');
-    const m2_noiseScale = document.getElementById('m2_noiseScale');
+    const m2_blur = document.getElementById('m2_blur');
     const m2_size = document.getElementById('m2_size');
     const m2_font = document.getElementById('m2_font');
     const m2_offsetX = document.getElementById('m2_offsetX');
@@ -322,12 +338,25 @@
     const m2_inkColor = document.getElementById('m2_inkColor');
     const m2_bgColor = document.getElementById('m2_bgColor');
     const m2_duration = document.getElementById('m2_duration');
+    const m2_durationNum = document.getElementById('m2_durationNum');
     const m2_dir = document.getElementById('m2_dir');
 
     const progressBox = document.getElementById('progressBox');
     const progressPercent = document.getElementById('progressPercent');
 
     let isRecording = false;
+
+    // 💡 시간 입력 슬라이더 <-> 숫자창 동기화
+    m2_duration.addEventListener('input', () => {
+      m2_durationNum.value = m2_duration.value;
+    });
+    m2_durationNum.addEventListener('input', () => {
+      let val = parseInt(m2_durationNum.value);
+      if (isNaN(val)) return;
+      if (val < 1) val = 1;
+      if (val > 600) val = 600;
+      m2_duration.value = val;
+    });
 
     // 탭 전환
     function switchTab(tabId, btn) {
@@ -374,7 +403,7 @@
 
     // 실시간 이벤트 바인딩
     const inputs = [globalPoem, m1_size, m1_color, m1_offsetX, m1_offsetY, m1_lineHeight, m1_letterSpacing, m1_dir, m1_alignX,
-                    m2_bleed, m2_noiseScale, m2_size, m2_font, m2_offsetX, m2_offsetY, m2_inkColor, m2_bgColor, m2_dir];
+                    m2_bleed, m2_blur, m2_size, m2_font, m2_offsetX, m2_offsetY, m2_inkColor, m2_bgColor, m2_dir];
     inputs.forEach(el => el.addEventListener('input', () => {
       document.getElementById('m1_sizeVal').textContent = m1_size.value + 'px';
       document.getElementById('m2_sizeVal').textContent = m2_size.value + 'px';
@@ -388,7 +417,7 @@
       else renderMode2(1.0);
     }
 
-    // --- Mode 1: 정적 시화 ---
+    // --- Mode 1: 이미지 배경 시화 ---
     function renderMode1() {
       if (!m1_bgImg) {
         ctx.fillStyle = '#1c1c24'; ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -442,48 +471,50 @@
       }
     }
 
-    // --- Mode 2: 정밀 노이즈 먹물 번짐 (Perlin-like Pixel Bleed Engine) ---
+    // --- Mode 2: 정밀 국소 마스크 먹물 번짐 (Clean Localized Bleed Engine) ---
     function renderMode2(progress = 1.0) {
       const W = canvas.width, H = canvas.height;
-      
-      // 1. 한지 질감 배경
+
+      // 깨끗한 한지 배경 채우기
       ctx.fillStyle = m2_bgColor.value;
       ctx.fillRect(0, 0, W, H);
 
       const text = globalPoem.value.trim();
       if (!text) return;
 
-      offCanvas.width = W; offCanvas.height = H;
-      offCtx.clearRect(0, 0, W, H);
+      txtCanvas.width = W; txtCanvas.height = H;
+      bleedCanvas.width = W; bleedCanvas.height = H;
+      txtCtx.clearRect(0, 0, W, H);
+      bleedCtx.clearRect(0, 0, W, H);
 
       const fSize = parseInt(m2_size.value);
       const offX = parseInt(m2_offsetX.value);
       const offY = parseInt(m2_offsetY.value);
       const lines = text.split('\n');
 
-      offCtx.font = `${fSize}px ${m2_font.value}`;
-      offCtx.fillStyle = m2_inkColor.value;
+      txtCtx.font = `${fSize}px ${m2_font.value}`;
+      txtCtx.fillStyle = m2_inkColor.value;
 
       let allChars = [];
       const lineHeight = fSize * 1.55;
 
       if (m2_dir.value === 'horizontal') {
-        offCtx.textAlign = 'center'; offCtx.textBaseline = 'middle';
+        txtCtx.textAlign = 'center'; txtCtx.textBaseline = 'middle';
         const startY = (H / 2) - ((lines.length - 1) * lineHeight / 2) + offY;
 
         lines.forEach((line, lIdx) => {
           const chars = line.split('');
-          const totalW = offCtx.measureText(line).width;
+          const totalW = txtCtx.measureText(line).width;
           let currX = (W / 2) - (totalW / 2) + offX;
 
           chars.forEach(ch => {
-            const chW = offCtx.measureText(ch).width;
+            const chW = txtCtx.measureText(ch).width;
             allChars.push({ char: ch, x: currX + chW/2, y: startY + (lIdx * lineHeight) });
             currX += chW;
           });
         });
       } else {
-        offCtx.textAlign = 'center'; offCtx.textBaseline = 'middle';
+        txtCtx.textAlign = 'center'; txtCtx.textBaseline = 'middle';
         const totalW = lines.length * lineHeight;
         let startX = (W / 2) + (totalW / 2) - (lineHeight / 2) + offX;
 
@@ -497,51 +528,34 @@
         });
       }
 
+      // 진행률에 따라 순차 렌더링
       const drawCount = Math.floor(progress * allChars.length);
       for (let i = 0; i < drawCount; i++) {
-        offCtx.fillText(allChars[i].char, allChars[i].x, allChars[i].y);
+        txtCtx.fillText(allChars[i].char, allChars[i].x, allChars[i].y);
       }
 
-      // 2. 픽셀 레벨 먹물 번짐 연산 (Pixel Displacement & Bleed)
-      const bleedAmt = parseInt(m2_bleed.value);
-      if (bleedAmt > 0 && drawCount > 0) {
-        const srcData = offCtx.getImageData(0, 0, W, H);
-        const srcPixels = srcData.data;
-        
-        const bleedImgData = ctx.createImageData(W, H);
-        const destPixels = bleedImgData.data;
+      const bleedVal = parseInt(m2_bleed.value);
+      const blurVal = parseFloat(m2_blur.value);
 
-        const noiseScale = parseInt(m2_noiseScale.value) * 0.005;
+      // 💡 국소 마스크 알고리즘: 글자 테두리 영역에만 퍼지는 수채화 번짐 레이어
+      if (bleedVal > 0 && drawCount > 0) {
+        bleedCtx.save();
+        bleedCtx.filter = `blur(${blurVal}px)`;
+        bleedCtx.drawImage(txtCanvas, 0, 0);
+        bleedCtx.restore();
 
-        // 노이즈 오프셋 연산을 통한 먹물 번짐
-        for (let y = 0; y < H; y += 2) { // 성능 최적화를 위한 2px 스텝
-          for (let x = 0; x < W; x += 2) {
-            const idx = (y * W + x) * 4;
-            const alpha = srcPixels[idx + 3];
-
-            if (alpha > 20) {
-              // 먹물 테두리 근처 픽셀 불규칙 분산 연산
-              const angle = (Math.sin(x * noiseScale) + Math.cos(y * noiseScale)) * Math.PI;
-              const dist = (Math.random() * 0.6 + 0.4) * bleedAmt;
-
-              const nx = Math.floor(x + Math.cos(angle) * dist);
-              const ny = Math.floor(y + Math.sin(angle) * dist);
-
-              if (nx >= 0 && nx < W && ny >= 0 && ny < H) {
-                const targetIdx = (ny * W + nx) * 4;
-                destPixels[targetIdx] = srcPixels[idx];
-                destPixels[targetIdx + 1] = srcPixels[idx + 1];
-                destPixels[targetIdx + 2] = srcPixels[idx + 2];
-                destPixels[targetIdx + 3] = Math.floor(alpha * 0.45); // 스머징 먹물 투명도
-              }
-            }
-          }
-        }
-        ctx.putImageData(bleedImgData, 0, 0);
+        // 은은한 투명 먹물 번짐 합성 (글자 둘레 픽셀 오프셋 오버레이)
+        ctx.save();
+        ctx.globalAlpha = 0.35;
+        ctx.drawImage(bleedCanvas, -bleedVal/2, 0, W + bleedVal, H);
+        ctx.drawImage(bleedCanvas, bleedVal/2, 0, W - bleedVal, H);
+        ctx.drawImage(bleedCanvas, 0, -bleedVal/2, W, H + bleedVal);
+        ctx.drawImage(bleedCanvas, 0, bleedVal/2, W, H - bleedVal);
+        ctx.restore();
       }
 
-      // 짙은 붓글씨 원본 오버레이
-      ctx.drawImage(offCanvas, 0, 0);
+      // 선명한 짙은 먹선 중심 레이어 덮기
+      ctx.drawImage(txtCanvas, 0, 0);
     }
 
     // PNG 저장
