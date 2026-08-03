@@ -1,8 +1,9 @@
 /**
  * src/sketches/025_fluid_ink_wash.js
- * - [025호 수묵 잉크 블룸 Ver 8.0 - Safe Render Engine]
- * - 방어적 Canvas 렌더링 검증 적용 (IndexSizeError 및 NaN 예외 완벽 차단)
- * - 단일 수묵 베일 + 가장자리 은은한 마름 테두리선 채색
+ * - [025호 수묵 잉크 블룸 Ver 9.0 - True Ink Bleed & Soft Diffusion]
+ * - 각진 폴리곤 각짐 100% 소멸 ➔ 초고해상도 베지어 곡선(Quadratic Bezier) 적용
+ * - shadowBlur 기반 실시간 먹물 번짐(Ink Bleed Edge) 이식
+ * - 제자리 쿵쿵거림 해제 ➔ 유체 벡터 흐름 및 오디오 비트 번짐 축적
  */
 
 export default class FluidInkWashSketch {
@@ -13,9 +14,9 @@ export default class FluidInkWashSketch {
     this.container.appendChild(this.canvas);
 
     this.time = 0;
-    this.version = "025호 수묵 잉크 블룸 Ver 8.0 (Safe Engine)";
+    this.version = "025호 수묵 잉크 블룸 Ver 9.0 (True Bleed)";
 
-    this.inkVeils = [];
+    this.inkClouds = [];
     this.loadedSeed = -1;
 
     this.init();
@@ -32,156 +33,189 @@ export default class FluidInkWashSketch {
     this.canvas.height = this.height;
   }
 
-  pseudoRandom(x, y) {
-    let n = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
-    return n - Math.floor(n);
+  // =========================================================================
+  // 🧩 초고해상도 Smooth Quintic Perlin Noise (각짐 없는 순수 곡선연산)
+  // =========================================================================
+  fade(t) {
+    return t * t * t * (t * (t * 6 - 15) + 10); // 5차 S-Curve 보간
   }
 
-  valueNoise(x, y) {
-    let ix = Math.floor(x); let iy = Math.floor(y);
-    let fx = x - ix; let fy = y - iy;
-    let ux = fx * fx * (3.0 - 2.0 * fx);
-    let uy = fy * fy * (3.0 - 2.0 * fy);
-
-    let a = this.pseudoRandom(ix, iy);
-    let b = this.pseudoRandom(ix + 1, iy);
-    let c = this.pseudoRandom(ix, iy + 1);
-    let d = this.pseudoRandom(ix + 1, iy + 1);
-
-    return a + (b - a) * ux + (c - a) * uy + (a - b - c + d) * ux * uy;
+  lerp(t, a, b) {
+    return a + t * (b - a);
   }
 
-  fbmNoise(x, y) {
-    let value = 0; let amplitude = 0.5; let frequency = 1.0;
+  grad(hash, x, y) {
+    const h = hash & 7;
+    const u = h < 4 ? x : y;
+    const v = h < 4 ? y : x;
+    return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
+  }
+
+  smoothNoise2D(x, y) {
+    const p = [151,160,137,91,90,15,131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,8,99,37,240,21,10,23,190,6,148,247,120,234,75,0,26,197,62,94,252,219,203,117,35,11,32,57,177,33,88,237,149,56,87,174,20,125,136,171,168,68,175,74,165,71,134,139,48,27,166,77,146,158,231,83,111,229,122,60,211,133,230,220,105,92,41,55,46,245,40,244,102,143,54,65,25,63,161,1,216,80,73,209,76,132,187,208,89,18,169,200,196,135,130,116,188,159,86,164,100,109,198,173,186,3,64,52,217,226,250,124,123,5,202,38,147,118,126,255,82,85,212,207,206,59,227,47,16,58,17,182,189,28,42,223,183,170,213,119,248,152,2,44,154,163,70,221,153,101,155,167,43,172,9,129,22,39,253,19,98,108,110,79,113,224,232,178,185,112,104,218,246,97,228,251,34,242,193,238,210,144,12,191,179,162,241,81,51,145,235,249,14,239,107,49,192,214,31,181,199,106,157,184,84,204,176,115,121,50,45,127,4,150,254,138,236,205,93,222,114,67,29,24,72,243,141,128,195,78,66,215,61,156,180];
+    const perm = new Array(512);
+    for (let i = 0; i < 512; i++) perm[i] = p[i & 255];
+
+    const X = Math.floor(x) & 255;
+    const Y = Math.floor(y) & 255;
+    const xf = x - Math.floor(x);
+    const yf = y - Math.floor(y);
+
+    const u = this.fade(xf);
+    const v = this.fade(yf);
+
+    const aa = perm[perm[X] + Y];
+    const ab = perm[perm[X] + Y + 1];
+    const ba = perm[perm[X + 1] + Y];
+    const bb = perm[perm[X + 1] + Y + 1];
+
+    const x1 = this.lerp(u, this.grad(aa, xf, yf), this.grad(ba, xf - 1, yf));
+    const x2 = this.lerp(u, this.grad(ab, xf, yf - 1), this.grad(bb, xf - 1, yf - 1));
+
+    return this.lerp(v, x1, x2);
+  }
+
+  fbm(x, y) {
+    let total = 0;
+    let amplitude = 1.0;
+    let frequency = 1.0;
+    let maxValue = 0;
     for (let i = 0; i < 4; i++) {
-      value += amplitude * this.valueNoise(x * frequency, y * frequency);
-      frequency *= 2.0; amplitude *= 0.5;
+      total += this.smoothNoise2D(x * frequency, y * frequency) * amplitude;
+      maxValue += amplitude;
+      amplitude *= 0.5;
+      frequency *= 2.0;
     }
-    return value;
+    return total / maxValue;
   }
 
-  domainWarp2D(x, y, time) {
-    let qx = this.fbmNoise(x + time * 0.08, y + 1.2);
-    let qy = this.fbmNoise(x + 2.8, y + time * 0.08);
-    let rx = this.fbmNoise(x + 4.0 * qx + 1.7, y + 4.0 * qy + 9.2);
-    let ry = this.fbmNoise(x + 4.0 * qx + 8.3, y + 4.0 * qy + 2.8);
-    return {
-      x: isNaN(rx) ? 0 : rx - 0.5,
-      y: isNaN(ry) ? 0 : ry - 0.5
-    };
-  }
-
-  generateVeils(seed, W, H) {
-    this.inkVeils = [];
+  // =========================================================================
+  // 🎲 비대칭 수묵 구름 구조 생성 (Seed 기반)
+  // =========================================================================
+  generateInkClouds(seed, W, H) {
+    this.inkClouds = [];
 
     const pseudoRand = (s) => {
       let mask = Math.sin(s * 12.9898 + 78.233) * 43758.5453;
       return mask - Math.floor(mask);
     };
 
-    const veilCount = 8;
-    for (let i = 0; i < veilCount; i++) {
+    const count = 7;
+    for (let i = 0; i < count; i++) {
       const r1 = pseudoRand(seed + i * 1.7);
       const r2 = pseudoRand(seed + i * 3.3);
       const r3 = pseudoRand(seed + i * 5.1);
-      const r4 = pseudoRand(seed + i * 7.9);
 
-      this.inkVeils.push({
-        cx: (0.1 + r1 * 0.8) * W,
-        cy: (0.15 + r2 * 0.7) * H,
-        baseRadiusX: Math.max(50, (180 + r3 * 300) * (Math.min(W, H) / 1000)),
-        baseRadiusY: Math.max(50, (120 + r4 * 250) * (Math.min(W, H) / 1000)),
-        anchorCount: 100,
-        rotation: r1 * Math.PI * 2,
-        driftSpeedX: (r1 - 0.5) * 40,
-        driftSpeedY: (r2 - 0.5) * 40,
-        seedOffset: seed + i * 29.3
+      this.inkClouds.push({
+        x: (0.15 + r1 * 0.7) * W,
+        y: (0.2 + r2 * 0.6) * H,
+        baseRx: (160 + r3 * 260) * (Math.min(W, H) / 1000),
+        baseRy: (110 + r1 * 200) * (Math.min(W, H) / 1000),
+        angle: r2 * Math.PI * 2,
+        driftVx: (r1 - 0.5) * 0.8,
+        driftVy: (r2 - 0.5) * 0.8,
+        accumulatedExpansion: 0,
+        seedOffset: seed + i * 41.2
       });
     }
   }
 
-  drawSingleInkVeil(ctx, veil, time, baseColorRgb, edgeRgb, vocalVol, drumVol, bassVol, shatterVal, isDark) {
+  // =========================================================================
+  // 🖌️ 먹물 번짐(Ink Bleed & Soft Feathering) 곡선 렌더링
+  // =========================================================================
+  drawBleedingInkCloud(ctx, cloud, time, baseColorRgb, edgeRgb, vocalVol, drumVol, bassVol, shatterVal, isDark) {
     ctx.save();
 
-    const vVol = isNaN(vocalVol) ? 0 : vocalVol;
-    const dVol = isNaN(drumVol) ? 0 : drumVol;
-    const bVol = isNaN(bassVol) ? 0 : bassVol;
+    // 단순 제자리 크기 팽창 쿵쿵거림 해제 ➔ 비트에 맞춰 번짐 정도(Expansion) 축적
+    cloud.accumulatedExpansion += (drumVol * 0.8 + vocalVol * 0.4);
+    cloud.accumulatedExpansion *= 0.96; // 은은한 서서히 수축 복원
 
-    const driftX = Math.sin(time * 0.15 + veil.seedOffset) * veil.driftSpeedX * (shatterVal * 0.008);
-    const driftY = Math.cos(time * 0.18 + veil.seedOffset) * veil.driftSpeedY * (shatterVal * 0.008);
+    // 유체 위치 흐름 (Drift)
+    const driftX = Math.sin(time * 0.2 + cloud.seedOffset) * 40 + cloud.driftVx * time * 5;
+    const driftY = Math.cos(time * 0.25 + cloud.seedOffset) * 40 + cloud.driftVy * time * 5;
 
-    ctx.translate(veil.cx + driftX, veil.cy + driftY);
-    ctx.rotate(veil.rotation + Math.sin(time * 0.05) * 0.1);
+    ctx.translate(cloud.x + driftX, cloud.y + driftY);
+    ctx.rotate(cloud.angle + Math.sin(time * 0.1) * 0.15);
 
-    const radX = Math.max(10, veil.baseRadiusX * (1.0 + vVol * 1.2 + dVol * 0.5));
-    const radY = Math.max(10, veil.baseRadiusY * (1.0 + vVol * 1.2 + dVol * 0.5));
+    const rx = Math.max(20, cloud.baseRx + cloud.accumulatedExpansion * 20);
+    const ry = Math.max(20, cloud.baseRy + cloud.accumulatedExpansion * 15);
 
-    const N = veil.anchorCount;
-    const angleStep = (Math.PI * 2) / N;
+    const pointCount = 36; // 곡선 매김 점
+    const points = [];
 
-    ctx.beginPath();
+    for (let i = 0; i < pointCount; i++) {
+      const a = (i / pointCount) * Math.PI * 2;
+      const nx = Math.cos(a) * 1.5 + cloud.seedOffset;
+      const ny = Math.sin(a) * 1.5 + time * 0.1;
 
-    for (let i = 0; i <= N; i++) {
-      const a = (i % N) * angleStep;
+      const nVal = this.fbm(nx, ny);
+      const prx = rx * (0.7 + nVal * 0.6);
+      const pry = ry * (0.7 + nVal * 0.6);
 
-      const normX = Math.cos(a) * 1.5;
-      const normY = Math.sin(a) * 1.5;
-      const warp = this.domainWarp2D(normX + veil.seedOffset, normY + veil.seedOffset, time * 0.5);
-
-      const rX = Math.max(5, radX * (1.0 + warp.x * 1.2 + Math.sin(a * 2) * 0.3));
-      const rY = Math.max(5, radY * (1.0 + warp.y * 1.2 + Math.cos(a * 3) * 0.3));
-
-      const px = Math.cos(a) * rX;
-      const py = Math.sin(a) * rY;
-
-      if (i === 0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
+      points.push({
+        x: Math.cos(a) * prx,
+        y: Math.sin(a) * pry
+      });
     }
 
+    // 💡 [핵심]: 직선 대신 초고해상도 이차 베지어 곡선(quadraticCurveTo) 연결
+    ctx.beginPath();
+    ctx.moveTo((points[0].x + points[pointCount - 1].x) / 2, (points[0].y + points[pointCount - 1].y) / 2);
+
+    for (let i = 0; i < pointCount; i++) {
+      const curr = points[i];
+      const next = points[(i + 1) % pointCount];
+      const midX = (curr.x + next.x) / 2;
+      const midY = (curr.y + next.y) / 2;
+      ctx.quadraticCurveTo(curr.x, curr.y, midX, midY);
+    }
     ctx.closePath();
 
-    // 💡 [방어 연산] 0 이하 반경으로 인한 IndexSizeError 철저 차단
-    const maxGradRadius = Math.max(20, Math.max(radX, radY) * 1.5);
-    
-    if (Number.isFinite(maxGradRadius) && maxGradRadius > 0) {
-      const fillAlpha = isDark ? (0.12 + bVol * 0.15) : (0.08 + bVol * 0.12);
-      const radGrad = ctx.createRadialGradient(0, 0, 1, 0, 0, maxGradRadius);
-      radGrad.addColorStop(0, `rgba(${baseColorRgb}, ${fillAlpha * 1.8})`);
-      radGrad.addColorStop(0.5, `rgba(${baseColorRgb}, ${fillAlpha * 0.9})`);
-      radGrad.addColorStop(1, `rgba(${baseColorRgb}, 0)`);
+    // 💡 [먹물 번짐 실시간 이식]: Canvas shadowBlur로 한지 스머징 연출
+    const bleedGlow = 15 + bassVol * 30 + drumVol * 20;
+    ctx.shadowColor = `rgba(${edgeRgb}, ${isDark ? 0.6 : 0.4})`;
+    ctx.shadowBlur = bleedGlow;
 
-      ctx.fillStyle = radGrad;
-      ctx.fill();
-    }
+    // 수묵 투명 면 채우기
+    const fillAlpha = isDark ? (0.15 + bassVol * 0.2) : (0.09 + bassVol * 0.14);
+    ctx.fillStyle = `rgba(${baseColorRgb}, ${fillAlpha})`;
+    ctx.fill();
 
-    const edgeAlpha = isDark ? (0.35 + dVol * 0.4) : (0.28 + dVol * 0.35);
-    ctx.strokeStyle = `rgba(${edgeRgb}, ${edgeAlpha})`;
-    ctx.lineWidth = 1.0 + dVol * 1.2;
+    // 테두리 미세 번짐 마름선
+    const strokeAlpha = isDark ? (0.3 + drumVol * 0.4) : (0.2 + drumVol * 0.3);
+    ctx.strokeStyle = `rgba(${edgeRgb}, ${strokeAlpha})`;
+    ctx.lineWidth = 0.8 + drumVol * 1.0;
     ctx.stroke();
 
     ctx.restore();
   }
 
+  // =========================================================================
+  // 🔄 UPDATE RENDER LOOP
+  // =========================================================================
   update(audioData) {
     if (!this.ctx || !this.canvas) return;
 
     const targetAudio = (audioData && audioData.vocalsVol !== undefined) ? audioData : (window.latestCompiledAudioData || {});
 
-    this.time += 0.006;
+    this.time += 0.008;
     const W = this.canvas.width;
     const H = this.canvas.height;
 
+    // 관제탑 설정 수치
     const globalSettings = window.cosmicEngineSettings || {};
     const seedVal = globalSettings.seed ?? 42;
     const shatterVal = (globalSettings.glowIntensity ?? 0.85) * 150;
     const gainVal = globalSettings.audioGain ?? 1.0;
     const colorStyle = (globalSettings.colorStyle || 'monochrome').toLowerCase();
 
+    // 시드 변경 시 구름 구조 재생성
     if (this.loadedSeed !== seedVal || this.width !== W || this.height !== H) {
       this.loadedSeed = seedVal;
-      this.generateVeils(seedVal, W, H);
+      this.generateInkClouds(seedVal, W, H);
     }
 
+    // 4-Stem 음압 감도 수신
     let vocalsVol = 0, drumsVol = 0, bassVol = 0, otherVol = 0;
     if (targetAudio && targetAudio.isMultiStem) {
       vocalsVol = (targetAudio.vocalsVol || 0) * gainVal;
@@ -197,12 +231,13 @@ export default class FluidInkWashSketch {
 
     this.ctx.save();
 
+    // 🎨 4가지 스타일 색상 매핑
     let bgColor = "#f4f1ea";
     let isDark = false;
     let getColors = (idx) => ({ base: "25, 30, 42", edge: "10, 12, 18" });
 
     if (colorStyle === 'monochrome' || colorStyle === 'earth') {
-      bgColor = "#f4f1ea";
+      bgColor = "#f4f1ea"; // 한지 바탕
       isDark = false;
       getColors = (idx) => ({
         base: idx % 2 === 0 ? "20, 24, 34" : "45, 50, 62",
@@ -237,16 +272,19 @@ export default class FluidInkWashSketch {
       });
     }
 
+    // 바탕 채우기
     this.ctx.fillStyle = bgColor;
     this.ctx.fillRect(0, 0, W, H);
 
+    // 합성 모드 (한지 multiply, 네온 screen)
     this.ctx.globalCompositeOperation = isDark ? 'screen' : 'multiply';
 
-    this.inkVeils.forEach((veil, idx) => {
+    // 수묵 구름 렌더링
+    this.inkClouds.forEach((cloud, idx) => {
       const colors = getColors(idx);
-      this.drawSingleInkVeil(
+      this.drawBleedingInkCloud(
         this.ctx,
-        veil,
+        cloud,
         this.time * 0.8 + (otherVol * 0.5),
         colors.base,
         colors.edge,
@@ -262,9 +300,9 @@ export default class FluidInkWashSketch {
 
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: `8 Pure Organic Ink Veils (Safe Mode)`,
+      particleCount: `7 Bleeding Organic Clouds (No Polygons)`,
       isCovering: true,
-      activeFunction: `FluidInkWash[Safe_${colorStyle.toUpperCase()}]`
+      activeFunction: `FluidInkWash[TrueBleed_${colorStyle.toUpperCase()}]`
     };
   }
 
@@ -274,6 +312,6 @@ export default class FluidInkWashSketch {
     }
     this.canvas = null;
     this.ctx = null;
-    this.inkVeils = [];
+    this.inkClouds = [];
   }
 }
