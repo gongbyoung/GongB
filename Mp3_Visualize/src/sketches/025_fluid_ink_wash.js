@@ -1,8 +1,8 @@
 /**
  * src/sketches/025_fluid_ink_wash.js
- * - [025호 수묵 잉크 블룸 Ver 5.0 - Authentic Asymmetric Ink Art]
- * - 원형 톱니바퀴 공식 완전 폐기 ➔ 4가지 비대칭 유체 패치(Sweep, Petal, Ribbon, Cloud) 탑재
- * - X/Y 비대칭 스케일링 + 도메인 워핑 좌표 마모 ➔ 진짜 수묵/알코올 잉크 질감 구현
+ * - [025호 수묵 잉크 블룸 Ver 6.0 - Zero Banding & Bezier Spline Art]
+ * - concentric layer 루프 완전 제거 ➔ 계단 현상(층) 100% 소멸
+ * - 방사형 공식 폐기 ➔ 4가지 이질적 베지어/붓터치/연기 스플라인 형태 탑재
  */
 
 export default class FluidInkWashSketch {
@@ -13,7 +13,7 @@ export default class FluidInkWashSketch {
     this.container.appendChild(this.canvas);
 
     this.time = 0;
-    this.version = "025호 수묵 잉크 블룸 Ver 5.0 (Authentic Organic)";
+    this.version = "025호 수묵 잉크 블룸 Ver 6.0 (Seamless Diffusion)";
 
     this.inkPatches = [];
     this.loadedSeed = -1;
@@ -33,7 +33,7 @@ export default class FluidInkWashSketch {
   }
 
   // =========================================================================
-  // 🧩 FBM & Domain Warping 수학 엔진
+  // 🧩 FBM 유체 노이즈 수학 엔진
   // =========================================================================
   pseudoRandom(x, y) {
     let n = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
@@ -63,16 +63,10 @@ export default class FluidInkWashSketch {
     return value;
   }
 
-  domainWarp(x, y, time) {
-    let qx = this.fbmNoise(x + time * 0.05, y);
-    let qy = this.fbmNoise(x + 3.2, y + time * 0.05);
-    return this.fbmNoise(x + 2.5 * qx, y + 2.5 * qy);
-  }
-
   // =========================================================================
-  // 🎲 비대칭 수묵 패치 사전 생성 (4가지 형태 조합)
+  // 🎲 4가지 완전 이질적 형태 구조 생성 (방사형 방식 폐기)
   // =========================================================================
-  generateOrganicInkPatches(seed, W, H) {
+  generateInkStructures(seed, W, H) {
     this.inkPatches = [];
 
     const pseudoRand = (s) => {
@@ -80,95 +74,108 @@ export default class FluidInkWashSketch {
       return mask - Math.floor(mask);
     };
 
-    const patchTypes = ['SWEEP', 'PETAL', 'RIBBON', 'CLOUD'];
-    const count = 12;
+    const kinds = ['BRUSH_SWEEP', 'BEZIER_PATCH', 'SMOKE_TRAIL', 'FLUID_SPLASH'];
+    const count = 10;
 
     for (let i = 0; i < count; i++) {
       const r1 = pseudoRand(seed + i * 1.7);
       const r2 = pseudoRand(seed + i * 3.1);
       const r3 = pseudoRand(seed + i * 4.9);
       const r4 = pseudoRand(seed + i * 7.3);
-      const r5 = pseudoRand(seed + i * 9.1);
+
+      // 베지어 제어점 생성 (5개 오프셋)
+      const ctrlPoints = [];
+      for (let cp = 0; cp < 5; cp++) {
+        ctrlPoints.push({
+          angle: (cp / 5) * Math.PI * 2 + (pseudoRand(seed + i * 10 + cp) - 0.5) * 0.8,
+          distMult: 0.4 + pseudoRand(seed + i * 20 + cp) * 1.2
+        });
+      }
 
       this.inkPatches.push({
-        type: patchTypes[i % patchTypes.length],
+        kind: kinds[i % kinds.length],
         cx: (0.1 + r1 * 0.8) * W,
         cy: (0.15 + r2 * 0.7) * H,
-        scaleX: 0.5 + r3 * 2.2,             // X축 비대칭 연장
-        scaleY: 0.4 + r4 * 1.8,             // Y축 비대칭 연장
-        baseRadius: (120 + r5 * 220) * (Math.min(W, H) / 1000),
-        angle: r3 * Math.PI * 2,           // 기울어짐 각도
-        driftSpeedX: (r1 - 0.5) * 60,      // 위치 이동 유동성
-        driftSpeedY: (r2 - 0.5) * 60,
-        seedOffset: seed + i * 23.5
+        radius: (130 + r3 * 210) * (Math.min(W, H) / 1000),
+        angle: r4 * Math.PI * 2,
+        scaleX: 0.6 + r1 * 2.0,
+        scaleY: 0.4 + r2 * 1.5,
+        driftSpeedX: (r1 - 0.5) * 50,
+        driftSpeedY: (r2 - 0.5) * 50,
+        ctrlPoints: ctrlPoints,
+        seedOffset: seed + i * 31.4
       });
     }
   }
 
   // =========================================================================
-  // 🖌️ 비대칭 수묵/알코올 잉크 블룸 렌더링 (Border-less Flow)
+  // 🖌️ 단일 패스 연속 수묵 그라데이션 (계단 현상/층 100% 소멸)
   // =========================================================================
-  drawOrganicPatch(ctx, patch, time, baseColorRgb, vocalVol, drumVol, shatterVal) {
+  drawSmoothOrganicPatch(ctx, patch, time, baseColorRgb, vocalVol, drumVol, shatterVal) {
     ctx.save();
-    
-    // 유체 위치 이동(Drift) 연산
-    const driftX = Math.sin(time * 0.2 + patch.seedOffset) * patch.driftSpeedX * (shatterVal * 0.01);
-    const driftY = Math.cos(time * 0.25 + patch.seedOffset) * patch.driftSpeedY * (shatterVal * 0.01);
+
+    // 유동 드리프트 계산
+    const driftX = Math.sin(time * 0.15 + patch.seedOffset) * patch.driftSpeedX * (shatterVal * 0.01);
+    const driftY = Math.cos(time * 0.2 + patch.seedOffset) * patch.driftSpeedY * (shatterVal * 0.01);
 
     ctx.translate(patch.cx + driftX, patch.cy + driftY);
-    ctx.rotate(patch.angle + Math.sin(time * 0.1) * 0.1);
-    ctx.scale(patch.scaleX, patch.scaleY); // 비대칭 찌그러짐 적용
+    ctx.rotate(patch.angle + Math.sin(time * 0.08) * 0.1);
+    ctx.scale(patch.scaleX, patch.scaleY);
 
-    const points = 90; // 높은 곡선 정밀도
-    const angleStep = (Math.PI * 2) / points;
-    const baseR = patch.baseRadius * (1.0 + vocalVol * 1.5 + drumVol * 0.8);
+    const R = patch.radius * (1.0 + vocalVol * 1.4 + drumVol * 0.7);
 
-    // 6단계 수묵 농담(濃淡) 레이어 겹침
-    for (let layer = 6; layer >= 1; layer--) {
-      const layerR = baseR * (layer / 6);
-      const alpha = 0.025 + (7 - layer) * 0.02;
+    ctx.beginPath();
 
-      ctx.beginPath();
+    if (patch.kind === 'BRUSH_SWEEP') {
+      // 1. 대각선/수평 붓 터치 (S자 곡선 띠)
+      ctx.moveTo(-R * 1.8, -R * 0.3);
+      ctx.bezierCurveTo(-R * 0.8, -R * 1.2, R * 0.8, R * 1.2, R * 1.8, R * 0.3);
+      ctx.bezierCurveTo(R * 0.8, R * 0.8, -R * 0.8, -R * 0.4, -R * 1.8, -R * 0.3);
 
-      for (let i = 0; i <= points; i++) {
-        const a = (i % points) * angleStep;
+    } else if (patch.kind === 'BEZIER_PATCH') {
+      // 2. 비대칭 베지어 곡선 먹면 (불규칙 5점)
+      const pts = patch.ctrlPoints;
+      for (let p = 0; p < pts.length; p++) {
+        const curr = pts[p];
+        const next = pts[(p + 1) % pts.length];
 
-        // 도메인 워핑 유체 왜곡 수식
-        const sampleX = Math.cos(a) * 1.5 + patch.seedOffset;
-        const sampleY = Math.sin(a) * 1.5 + time * 0.15;
-        const warpVal = this.domainWarp(sampleX, sampleY, time);
+        const nVal = this.fbmNoise(Math.cos(curr.angle) + time * 0.1, Math.sin(curr.angle) + patch.seedOffset);
+        const rCurr = R * curr.distMult * (0.8 + nVal * 0.5);
 
-        // 형태별 고유 비대칭 변형
-        let shapeDistort = 1.0;
-        if (patch.type === 'SWEEP') {
-          shapeDistort = 0.6 + Math.pow(Math.sin(a * 0.5), 2) * 1.2; // 한쪽이 길게 뻗는 구름
-        } else if (patch.type === 'PETAL') {
-          shapeDistort = 0.4 + Math.sin(a) * 0.8; // 물방울/꽃잎 형태
-        } else if (patch.type === 'RIBBON') {
-          shapeDistort = 0.3 + Math.abs(Math.cos(a * 2.0)) * 1.4; // 길쭉한 붓터치 띠
-        } else {
-          shapeDistort = 0.7 + warpVal * 0.8; // 은은한 안개 패치
+        const x = Math.cos(curr.angle) * rCurr;
+        const y = Math.sin(curr.angle) * rCurr;
+
+        if (p === 0) ctx.moveTo(x, y);
+        else {
+          const prev = pts[(p - 1 + pts.length) % pts.length];
+          const cX = Math.cos((prev.angle + curr.angle) * 0.5) * rCurr * 0.8;
+          const cY = Math.sin((prev.angle + curr.angle) * 0.5) * rCurr * 0.8;
+          ctx.quadraticCurveTo(cX, cY, x, y);
         }
-
-        const r = layerR * shapeDistort * (0.7 + warpVal * 0.6);
-        const x = Math.cos(a) * r;
-        const y = Math.sin(a) * r;
-
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
       }
 
-      ctx.closePath();
+    } else if (patch.kind === 'SMOKE_TRAIL') {
+      // 3. 은은하게 퍼지는 연기 흐름
+      ctx.moveTo(-R * 0.5, -R * 1.5);
+      ctx.quadraticCurveTo(R * 1.2, 0, -R * 0.5, R * 1.5);
+      ctx.quadraticCurveTo(-R * 1.2, 0, -R * 0.5, -R * 1.5);
 
-      // 테두리 선(stroke) 없이 부드러운 방사형 복합 그라데이션만 채움
-      const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, layerR * 1.5);
-      grad.addColorStop(0, `rgba(${baseColorRgb}, ${alpha * 1.8})`);
-      grad.addColorStop(0.6, `rgba(${baseColorRgb}, ${alpha * 0.9})`);
-      grad.addColorStop(1, `rgba(${baseColorRgb}, 0)`);
-
-      ctx.fillStyle = grad;
-      ctx.fill();
+    } else {
+      // 4. 길쭉한 잉크 방울 스플래시
+      ctx.arc(-R * 0.3, 0, R * 0.8, 0, Math.PI * 2);
     }
+
+    ctx.closePath();
+
+    // 💡 [핵심] 단 하나의 연속 반사형 그라데이션으로 렌더링 (층/계단 현상 0%)
+    const radGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, R * 1.6);
+    radGrad.addColorStop(0, `rgba(${baseColorRgb}, 0.28)`);
+    radGrad.addColorStop(0.45, `rgba(${baseColorRgb}, 0.12)`);
+    radGrad.addColorStop(0.8, `rgba(${baseColorRgb}, 0.03)`);
+    radGrad.addColorStop(1, `rgba(${baseColorRgb}, 0)`);
+
+    ctx.fillStyle = radGrad;
+    ctx.fill();
 
     ctx.restore();
   }
@@ -185,17 +192,17 @@ export default class FluidInkWashSketch {
     const W = this.canvas.width;
     const H = this.canvas.height;
 
-    // 관제탑 글로벌 수치 독출
+    // 관제탑 설정 수치 독출
     const globalSettings = window.cosmicEngineSettings || {};
     const seedVal = globalSettings.seed ?? 42;
     const shatterVal = (globalSettings.glowIntensity ?? 0.85) * 150;
     const gainVal = globalSettings.audioGain ?? 1.0;
     const colorStyle = (globalSettings.colorStyle || 'monochrome').toLowerCase();
 
-    // 시드 변경 시 비대칭 수묵 구조재 재생성
+    // 시드 변경 시 구조 생성
     if (this.loadedSeed !== seedVal || this.width !== W || this.height !== H) {
       this.loadedSeed = seedVal;
-      this.generateOrganicInkPatches(seedVal, W, H);
+      this.generateInkStructures(seedVal, W, H);
     }
 
     // 4-Stem 음압 감도 수신
@@ -240,20 +247,20 @@ export default class FluidInkWashSketch {
       getRgb = (idx) => fullRgbs[idx % fullRgbs.length];
     }
 
-    // 캔버스 바탕 채우기
+    // 캔버스 배경 채우기
     this.ctx.fillStyle = bgColor;
     this.ctx.fillRect(0, 0, W, H);
 
-    // 한지 스타일은 multiply, 네온은 screen 합성
+    // 합성 모드 (한지 multiply, 네온 screen)
     this.ctx.globalCompositeOperation = isDark ? 'screen' : 'multiply';
 
-    // 12개 비대칭 수묵 패치 렌더링
+    // 10개 유기적 수묵 패치 렌더링
     this.inkPatches.forEach((patch, idx) => {
       const rgb = getRgb(idx);
-      this.drawOrganicPatch(
+      this.drawSmoothOrganicPatch(
         this.ctx,
         patch,
-        this.time + idx * 10,
+        this.time + idx * 5,
         rgb,
         vocalsVol,
         drumsVol,
@@ -266,9 +273,9 @@ export default class FluidInkWashSketch {
     // HUD 진단 출력
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: `12 Asymmetric Ink Patches (No Circles)`,
+      particleCount: `10 Continuous Bezier Patches (Zero Banding)`,
       isCovering: true,
-      activeFunction: `FluidInkWash[Organic_${colorStyle.toUpperCase()}]`
+      activeFunction: `FluidInkWash[Seamless_${colorStyle.toUpperCase()}]`
     };
   }
 
