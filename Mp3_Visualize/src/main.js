@@ -2,7 +2,7 @@ import { AudioAnalyzer } from './core/AudioAnalyzer.js';
 import { SketchManager } from './core/SketchManager.js';
 import { VideoRecorder } from './core/VideoRecorder.js';
 import { WordVisualMatcher } from './core/WordVisualMatcher.js';
-import { LyricSync } from './core/LyricSync.js';
+import { LyricSync } from './core/Lyricsync.js';
 
 const analyzer = new AudioAnalyzer();
 const manager = new SketchManager('canvas-stage');
