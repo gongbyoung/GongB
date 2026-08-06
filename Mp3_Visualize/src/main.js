@@ -1,6 +1,7 @@
 import { AudioAnalyzer } from './core/AudioAnalyzer.js';
 import { SketchManager } from './core/SketchManager.js';
 import { VideoRecorder } from './core/VideoRecorder.js';
+import { WordVisualMatcher } from './core/WordVisualMatcher.js';
 
 const analyzer = new AudioAnalyzer();
 const manager = new SketchManager('canvas-stage');
@@ -286,5 +287,15 @@ manager.switchSketch(initSketch, analyzer).then(() => {
 }).catch(err => {
     renderEngineTicker();
 });
+const wordMatcher = new WordVisualMatcher(manager, analyzer);
+
+poemTextInput?.addEventListener('input', (e) => {
+    const text = e.target.value || "떠날 때의 님의 얼굴";
+    window.cosmicEngineSettings.poemText = text;
+    wordMatcher.applyForText(text); // ← 이 한 줄이 핵심
+});
+
+// 페이지 로드 시 초기 문구에도 한 번 적용
+wordMatcher.applyForText(window.cosmicEngineSettings.poemText);
 
 window.addEventListener('resize', () => manager.resize(stageWrapper.clientWidth, stageWrapper.clientHeight));
