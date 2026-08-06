@@ -36,19 +36,17 @@ window.cosmicEngineSettings.exportRatio = "full";
 // =========================================================================
 const wordMatcher = new WordVisualMatcher(manager, analyzer);
 
+// 💡 LyricSync가 자막을 감지해도 틀글자(poemText)는 절대 건드리지 않도록 분리
 const lyricSync = new LyricSync({
-  wordMatcher,
-  getCurrentTime: () => {
-    if (isMultiStemPlaying && audioCtx) {
-      return audioCtx.currentTime - (window.stemStartTime || audioCtx.currentTime);
-    }
-    return audioPlayer ? audioPlayer.currentTime : 0;
-  },
-  onCueChange: (cue) => {
-    if (poemTextInput) poemTextInput.value = cue.text;
-    window.cosmicEngineSettings.poemText = cue.text;
-    window.currentSubtitleText = cue.text;
-  },
+    wordMatcher,
+    getCurrentTime: () => { ... },
+    onCueChange: (cue) => {
+        // poemTextInput.value = cue.text; // ❌ 삭제 (틀글자 입력창 보호)
+        // window.cosmicEngineSettings.poemText = cue.text; // ❌ 삭제 (틀글자 변수 보호)
+        
+        // 🎯 오직 실시간 자막 변수만 업데이트
+        window.currentSubtitleText = cue.text;
+    },
 });
 
 srtInput?.addEventListener('change', async (e) => {
