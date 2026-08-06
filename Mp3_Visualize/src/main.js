@@ -2,7 +2,7 @@ import { AudioAnalyzer } from './core/AudioAnalyzer.js';
 import { SketchManager } from './core/SketchManager.js';
 import { VideoRecorder } from './core/VideoRecorder.js';
 import { WordVisualMatcher } from './core/WordVisualMatcher.js';
-import { LyricSync } from './core/Lyricsync.js';
+import { LyricSync } from './core/LyricSync.js';
 
 const analyzer = new AudioAnalyzer();
 const manager = new SketchManager('canvas-stage');
@@ -36,17 +36,19 @@ window.cosmicEngineSettings.exportRatio = "full";
 // =========================================================================
 const wordMatcher = new WordVisualMatcher(manager, analyzer);
 
-// 💡 LyricSync가 자막을 감지해도 틀글자(poemText)는 절대 건드리지 않도록 분리
+// 🎯 [Fix] getCurrentTime의 ... 생략 구문을 실제 동작 로직으로 교체하여 문법 에러 수리
 const lyricSync = new LyricSync({
-    wordMatcher,
-    getCurrentTime: () => { ... },
-    onCueChange: (cue) => {
-        // poemTextInput.value = cue.text; // ❌ 삭제 (틀글자 입력창 보호)
-        // window.cosmicEngineSettings.poemText = cue.text; // ❌ 삭제 (틀글자 변수 보호)
-        
-        // 🎯 오직 실시간 자막 변수만 업데이트
-        window.currentSubtitleText = cue.text;
-    },
+  wordMatcher,
+  getCurrentTime: () => {
+    if (isMultiStemPlaying && audioCtx) {
+      return audioCtx.currentTime - (window.stemStartTime || audioCtx.currentTime);
+    }
+    return audioPlayer ? audioPlayer.currentTime : 0;
+  },
+  onCueChange: (cue) => {
+    // 💡 틀글자(poemText)는 건드리지 않고, 오직 실시간 자막 변수만 업데이트
+    window.currentSubtitleText = cue.text;
+  },
 });
 
 srtInput?.addEventListener('change', async (e) => {
@@ -84,24 +86,21 @@ async function safeDecodeAudio(file) {
 }
 
 // =========================================================================
-// 🎯 [핵심 수리] 메인 단일 MP3 업로드 감지 및 재생 경로(audioPlayer.src) 교체
+// 🎯 메인 단일 MP3 업로드 감지
 // =========================================================================
 mainMp3Input?.addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
 
-  // 1. 기존 분리 음원 재생 중지 및 스템 초기화
   stopAllActiveStems();
   Object.keys(stemBuffers).forEach(key => stemBuffers[key] = null);
 
-  // 2. 새로운 단일 MP3 블롭 URL 생성 및 audioPlayer 경로 교체
   const audioUrl = URL.createObjectURL(file);
   if (audioPlayer) {
     audioPlayer.src = audioUrl;
     audioPlayer.load();
   }
 
-  // 3. 오디오 분석기 연결 해제 후 재연결 준비
   isAudioAnalyzerConnected = false;
 
   if (batchStatusText) {
