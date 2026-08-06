@@ -30,9 +30,10 @@ const srtInput = document.getElementById('file-srt');
 
 window.cosmicEngineSettings = window.cosmicEngineSettings || {};
 window.cosmicEngineSettings.poemText = poemTextInput ? poemTextInput.value : "떠날 때의 님의 얼굴";
+window.cosmicEngineSettings.exportRatio = "full";
 
 // =========================================================================
-// 💡 [신규] 가사 단어 ↔ 스케치 자동 매칭 + SRT 타이밍 동기화
+// 💡 가사 단어 ↔ 스케치 자동 매칭 + SRT 타이밍 동기화
 // =========================================================================
 const wordMatcher = new WordVisualMatcher(manager, analyzer);
 
@@ -45,8 +46,9 @@ const lyricSync = new LyricSync({
         return audioPlayer ? audioPlayer.currentTime : 0;
     },
     onCueChange: (cue) => {
-        if (poemTextInput) poemTextInput.value = cue.text; // 입력창을 "현재 가사 표시창"으로 사용
+        if (poemTextInput) poemTextInput.value = cue.text;
         window.cosmicEngineSettings.poemText = cue.text;
+        window.currentSubtitleText = cue.text;
     },
 });
 
@@ -57,14 +59,13 @@ srtInput?.addEventListener('change', async (e) => {
     lyricSync.start();
 });
 
-// 수동 입력도 여전히 지원 (SRT 없이 직접 타이핑할 때)
 poemTextInput?.addEventListener('input', (e) => {
     const text = e.target.value || "떠날 때의 님의 얼굴";
     window.cosmicEngineSettings.poemText = text;
+    window.currentSubtitleText = text;
     wordMatcher.applyForText(text);
 });
 
-// 페이지 로드 시 초기 문구에도 한 번 적용
 wordMatcher.applyForText(window.cosmicEngineSettings.poemText);
 
 function stopAllActiveStems() {
@@ -157,7 +158,7 @@ async function toggleMultiStemPlayback() {
         if (audioPlayer) audioPlayer.pause();
 
         const startTargetTime = audioCtx.currentTime + 0.05;
-        window.stemStartTime = startTargetTime; // 💡 [신규] LyricSync가 currentTime을 계산할 때 사용
+        window.stemStartTime = startTargetTime;
         let loadedCount = 0;
 
         Object.keys(stemBuffers).forEach(key => {
@@ -220,11 +221,26 @@ function getStemVolume(analyser) {
     }
 }
 
-// 💡 [수리] 60FPS 무한 에러 연사 완전 방어 루프
+// 💡 [001 파형용] TimeDomain PCM 타임도메인 데이터 추출 함수
+function getMergedTimeDomainWaveform() {
+    const wave = new Float32Array(128);
+    let activeAnalysers = Object.values(stemAnalysers).filter(a => a !== null);
+    
+    if (activeAnalysers.length > 0) {
+        const temp = new Uint8Array(128);
+        activeAnalysers[0].getByteTimeDomainData(temp);
+        for (let i = 0; i < 128; i++) {
+            wave[i] = (temp[i] - 128) / 128.0;
+        }
+    }
+    return wave;
+}
+
+// 💡 60FPS 메인 렌더링 틱 엔진
 function renderEngineTicker() {
     requestAnimationFrame(renderEngineTicker);
 
-    let compiledAudioData = { bass: 0, mid: 0, treble: 0, vol: 0, raw: new Uint8Array(256) };
+    let compiledAudioData = { bass: 0, mid: 0, treble: 0, vol: 0, raw: new Uint8Array(256), waveform: new Float32Array(128) };
     
     try {
         if (isAudioAnalyzerConnected && analyzer) {
@@ -253,6 +269,7 @@ function renderEngineTicker() {
             compiledAudioData.drumsVol  = getStemVolume(stemAnalysers.drums);
             compiledAudioData.bassVol   = getStemVolume(stemAnalysers.bass);
             compiledAudioData.otherVol  = getStemVolume(stemAnalysers.other);
+            compiledAudioData.waveform  = getMergedTimeDomainWaveform();
         } else {
             compiledAudioData.isMultiStem = false;
             compiledAudioData.vocalsVol = Math.min(1.0, (compiledAudioData.mid || 0) * 3.5);
@@ -263,11 +280,12 @@ function renderEngineTicker() {
 
         window.latestCompiledAudioData = compiledAudioData;
         
+        // 🎯 [핵심] Manager로 정규화 오디오 전달
         if (manager && typeof manager.update === 'function') {
             manager.update(compiledAudioData);
         }
     } catch (err) {
-        // 콘솔 연쇄 폭발 억제
+        // 에러 방어
     }
 }
 
@@ -294,6 +312,15 @@ function syncCosmicControls() {
 }
 
 Object.values(cosmicControls).forEach(el => { el?.addEventListener('input', syncCosmicControls); });
+
+// 💡 Export 비율 버튼 (Full, 16:9, 9:16) 이벤트 바인딩
+document.querySelectorAll('.btn-export-ratio, [data-ratio]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        const ratio = e.currentTarget.getAttribute('data-ratio') || e.currentTarget.innerText.trim();
+        window.cosmicEngineSettings.exportRatio = ratio;
+        console.log(`[📐 Export Ratio Changed] ${ratio}`);
+    });
+});
 
 const sketchListContainer = document.getElementById('sketch-list');
 if (sketchListContainer) {
