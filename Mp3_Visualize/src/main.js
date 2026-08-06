@@ -2,6 +2,7 @@ import { AudioAnalyzer } from './core/AudioAnalyzer.js';
 import { SketchManager } from './core/SketchManager.js';
 import { VideoRecorder } from './core/VideoRecorder.js';
 import { WordVisualMatcher } from './core/WordVisualMatcher.js';
+import { LyricSync } from './core/LyricSync.js';
 
 const analyzer = new AudioAnalyzer();
 const manager = new SketchManager('canvas-stage');
@@ -25,13 +26,46 @@ let isMultiStemPlaying = false;
 const poemTextInput = document.getElementById('input-poem-text');
 const batchMp3Input = document.getElementById('file-batch-mp3');
 const batchStatusText = document.getElementById('batch-load-status');
+const srtInput = document.getElementById('file-srt');
 
 window.cosmicEngineSettings = window.cosmicEngineSettings || {};
 window.cosmicEngineSettings.poemText = poemTextInput ? poemTextInput.value : "떠날 때의 님의 얼굴";
 
-poemTextInput?.addEventListener('input', (e) => {
-    window.cosmicEngineSettings.poemText = e.target.value || "떠날 때의 님의 얼굴";
+// =========================================================================
+// 💡 [신규] 가사 단어 ↔ 스케치 자동 매칭 + SRT 타이밍 동기화
+// =========================================================================
+const wordMatcher = new WordVisualMatcher(manager, analyzer);
+
+const lyricSync = new LyricSync({
+    wordMatcher,
+    getCurrentTime: () => {
+        if (isMultiStemPlaying && audioCtx) {
+            return audioCtx.currentTime - (window.stemStartTime || audioCtx.currentTime);
+        }
+        return audioPlayer ? audioPlayer.currentTime : 0;
+    },
+    onCueChange: (cue) => {
+        if (poemTextInput) poemTextInput.value = cue.text; // 입력창을 "현재 가사 표시창"으로 사용
+        window.cosmicEngineSettings.poemText = cue.text;
+    },
 });
+
+srtInput?.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    await lyricSync.loadFromFile(file);
+    lyricSync.start();
+});
+
+// 수동 입력도 여전히 지원 (SRT 없이 직접 타이핑할 때)
+poemTextInput?.addEventListener('input', (e) => {
+    const text = e.target.value || "떠날 때의 님의 얼굴";
+    window.cosmicEngineSettings.poemText = text;
+    wordMatcher.applyForText(text);
+});
+
+// 페이지 로드 시 초기 문구에도 한 번 적용
+wordMatcher.applyForText(window.cosmicEngineSettings.poemText);
 
 function stopAllActiveStems() {
     Object.keys(stemSources).forEach(key => {
@@ -123,6 +157,7 @@ async function toggleMultiStemPlayback() {
         if (audioPlayer) audioPlayer.pause();
 
         const startTargetTime = audioCtx.currentTime + 0.05;
+        window.stemStartTime = startTargetTime; // 💡 [신규] LyricSync가 currentTime을 계산할 때 사용
         let loadedCount = 0;
 
         Object.keys(stemBuffers).forEach(key => {
@@ -287,15 +322,5 @@ manager.switchSketch(initSketch, analyzer).then(() => {
 }).catch(err => {
     renderEngineTicker();
 });
-const wordMatcher = new WordVisualMatcher(manager, analyzer);
-
-poemTextInput?.addEventListener('input', (e) => {
-    const text = e.target.value || "떠날 때의 님의 얼굴";
-    window.cosmicEngineSettings.poemText = text;
-    wordMatcher.applyForText(text); // ← 이 한 줄이 핵심
-});
-
-// 페이지 로드 시 초기 문구에도 한 번 적용
-wordMatcher.applyForText(window.cosmicEngineSettings.poemText);
 
 window.addEventListener('resize', () => manager.resize(stageWrapper.clientWidth, stageWrapper.clientHeight));
