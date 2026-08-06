@@ -1,8 +1,9 @@
 /**
  * src/core/SketchManager.js
- * - [Fix] SyntaxError: Unexpected token '||' 구문 오류 수리 완료
- * - ?? 연산자와 || 연산자 괄호 격리 및 Optional Chaining(?.) 적용
- * - 001~025 전 스케치 4-Stem & 단일 MP3 오디오 스펙트럼 완벽 호환
+ * - [Fix] main.js의 manager.update() 수신 메서드 추가
+ * - 001(파형): Real/Synthetic Waveform(TimeDomain) 데이터 완벽 보장
+ * - 017, 018, 019: volume, overall, energy, level, bass, mid, treble 호환
+ * - 004, 020: poemText, currentSubtitle, subtitles 동기화
  */
 
 export class SketchManager {
@@ -14,6 +15,7 @@ export class SketchManager {
     this.currentSketch = null;       
     this.animationFrameId = null;    
     this.currentSketchId = null;     
+    this.lastAudioData = null;
   }
 
   async switchSketch(sketchFileName, audioAnalyzerInstance) {
@@ -33,8 +35,6 @@ export class SketchManager {
         this.currentSketch.init();
       }
 
-      this.startLoop(audioAnalyzerInstance);
-
       console.log(`[🎯 Success] 스케치 로드 완료: ${cleanFileName}`);
     } catch (error) {
       console.error(`[❌ Error] 스케치 로드 실패 (${cleanFileName}):`, error);
@@ -42,12 +42,20 @@ export class SketchManager {
   }
 
   // =========================================================================
-  // 💡 [구문 수리 완료] 4-Stem & 단일 MP3 오디오 안전 규격 어댑터
+  // 💡 [핵심] main.js ticker에서 직접 호출하는 update() 데이터 수신부
   // =========================================================================
+  update(rawAudioData) {
+    if (!this.currentSketch) return;
+    const normalized = this.normalizeAudioData(rawAudioData);
+    if (typeof this.currentSketch.update === 'function') {
+      this.currentSketch.update(normalized);
+    }
+  }
+
   normalizeAudioData(raw) {
     const data = raw || {};
 
-    // 1. 안전한 Optional Chaining과 ?? 연산자로 4-Stem 음압 추출
+    // 1. 4-Stem 및 1곡 음압 추출
     const vocal = data.vocalsVol ?? data.vocalVol ?? data.vocals ?? data.vocal ?? data.stems?.vocals ?? 0;
     const drum  = data.drumsVol  ?? data.drumVol  ?? data.drums  ?? data.drum  ?? data.stems?.drums  ?? 0;
     const bass  = data.bassVol   ?? data.bass     ?? data.low    ?? data.stems?.bass   ?? 0;
@@ -56,12 +64,11 @@ export class SketchManager {
     const mid    = data.mid ?? vocal;
     const treble = data.treble ?? data.high ?? other;
     
-    // 💡 [Fix]: ?? 와 || 연산자 혼용으로 인한 SyntaxError 방지
     const calcOverall = (vocal + drum + bass + other) / 4;
-    const overall = (data.overall ?? data.volume ?? calcOverall) || 0;
+    const overall = (data.overall ?? data.volume ?? data.vol ?? calcOverall) || 0;
 
-    // 2. 주파수 스펙트럼 배열(spectrum / frequencyData) 호환성 확보
-    let spectrum = data.spectrum || data.frequencyData || data.freqData || data.dataArray;
+    // 2. 주파수 스펙트럼(spectrum) 정규화
+    let spectrum = data.spectrum || data.frequencyData || data.freqData || data.dataArray || data.raw;
 
     if (spectrum && spectrum.length > 0) {
       if (spectrum instanceof Uint8Array || (typeof spectrum[0] === 'number' && spectrum[0] > 1.0)) {
@@ -72,7 +79,6 @@ export class SketchManager {
         spectrum = normSpec;
       }
     } else {
-      // 3. 4-Stem 전용 재생 시 spectrum 배열이 없어 정지하던 스케치들을 위한 64채널 스펙트럼 합성
       const synSpec = new Float32Array(64);
       const t = Date.now() * 0.005;
       for (let i = 0; i < 64; i++) {
@@ -92,10 +98,28 @@ export class SketchManager {
       spectrum = synSpec;
     }
 
-    // 4. 모든 스케치가 요구하는 속성 통합 반환
+    // 3. 🎯 [001 파형 복구]: 실시간 TimeDomain PCM Waveform
+    let waveform = data.waveform || data.timeDomainData || data.pcmData;
+    if (!waveform || waveform.length === 0) {
+      const waveLen = 128;
+      const synWave = new Float32Array(waveLen);
+      const t = Date.now() * 0.008;
+      for (let i = 0; i < waveLen; i++) {
+        const phase = (i / waveLen) * Math.PI * 4;
+        synWave[i] = Math.sin(phase + t) * (0.3 + vocal * 0.7) +
+                     Math.sin(phase * 2 - t * 1.5) * (bass * 0.5);
+      }
+      waveform = synWave;
+    }
+
+    // 4. 🎯 [004, 020 자막/타이포 복구]
+    const poemText = window.cosmicEngineSettings?.poemText || window.poemText || "떠날 때의 님의 얼굴";
+    const currentSub = window.currentSubtitleText || window.currentSubtitle || poemText;
+    const srtList = window.currentSrtData || window.srtSubtitles || [];
+
     return {
       ...data,
-      // 4-Stem 개별 변수
+      // 4-Stem 속성
       vocalsVol: vocal,
       drumsVol: drum,
       bassVol: bass,
@@ -103,42 +127,30 @@ export class SketchManager {
       vocal: vocal,
       drum: drum,
       other: other,
-      // 기존 1곡 스케치 호환 변수
+      // 🎯 [017, 018, 019 구버전 호환 속성]
+      volume: overall,
+      overall: overall,
+      energy: overall,
+      level: overall,
       bass: Math.max(bass, drum),
       mid: Math.max(mid, vocal),
       treble: Math.max(treble, other),
-      volume: overall,
-      overall: overall,
-      // 배열 데이터 (001~025 파형 및 유체 연산 필수 요소)
+      low: Math.max(bass, drum),
+      high: Math.max(treble, other),
+      // 🎯 [001 배열 데이터]
       spectrum: spectrum,
       frequencyData: spectrum,
-      waveform: data.waveform || spectrum,
-      isMultiStem: true
+      waveform: waveform,
+      timeDomainData: waveform,
+      // 🎯 [004, 020 타이포/자막 속성]
+      poemText: poemText,
+      poem: poemText,
+      srtData: srtList,
+      subtitles: srtList,
+      currentSubtitle: currentSub,
+      subtitle: currentSub,
+      isMultiStem: data.isMultiStem ?? true
     };
-  }
-
-  startLoop(analyzer) {
-    const loop = () => {
-      if (!this.currentSketch) return;
-
-      let rawAudio = {};
-      if (analyzer && typeof analyzer.getAudioData === 'function') {
-        rawAudio = analyzer.getAudioData();
-      }
-      if (!rawAudio || Object.keys(rawAudio).length === 0 || (!rawAudio.vocalsVol && !rawAudio.bass && !rawAudio.spectrum)) {
-        rawAudio = window.latestCompiledAudioData || window.multiStemAudioData || window.audioData || {};
-      }
-
-      const normalizedAudio = this.normalizeAudioData(rawAudio);
-
-      if (typeof this.currentSketch.update === 'function') {
-        this.currentSketch.update(normalizedAudio);
-      }
-
-      this.animationFrameId = requestAnimationFrame(loop);
-    };
-
-    this.animationFrameId = requestAnimationFrame(loop);
   }
 
   cleanup() {
@@ -158,7 +170,7 @@ export class SketchManager {
     this.currentSketch = null;
     this.currentSketchId = null;
 
-    console.log('[🧹 Clean-up] 이전 스케치 자원 및 WebGL 메모리 해제 완료');
+    console.log('[🧹 Clean-up] 이전 스케치 자원 해제 완료');
   }
 
   resize(width, height) {
