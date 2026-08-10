@@ -1,9 +1,9 @@
 /**
  * src/sketches/018_cloud.js
- * - [버전] Ver 4.0 - 20260808 구름 백업 지정 및 대복합 리얼 스카이 엔진
+ * - [버전] Ver 4.5 - Per-Seed Noise Perturbation & Real Sky Engine
  * - 백업 지정 태그: 20260808구름 (언제든 이 지점으로 복구 가능)
- * - Shuffle (Seed)에 따라 뭉게구름, 물결 고적운(권적운), 새털구름, 거대 적란운, 대복합 층 구름 완전 분리
- * - 은빛 역광(Silver Lining) & 햇빛 빛 내림(Crepuscular Rays) 미학 연출
+ * - 0~500 모든 Seed 단계별 무작위 도메인 워핑, 공간 회전, 노이즈 혼합비 적용
+ * - 시드 값 하나하나마다 완전히 독창적이고 다채로운 구름 질감 구현
  */
 
 export default class CloudSketch {
@@ -16,7 +16,7 @@ export default class CloudSketch {
     this.width = 0;
     this.height = 0;
     this.time = 0;
-    this.version = "018호 리얼 다형성 구름 Ver 4.0 (백업지점: 20260808구름)";
+    this.version = "018호 리얼 다형성 구름 Ver 4.5 (Per-Seed Jitter / 백업지점: 20260808구름)";
 
     this.program = null;
     this.uniforms = {};
@@ -53,7 +53,7 @@ export default class CloudSketch {
       uniform float u_time;
       uniform float u_bass;
       
-      uniform float u_seed;          // Shuffle: 구름 생성 알고리즘 모드 및 시드
+      uniform float u_seed;          // Shuffle: 구름 생성 알고리즘 모드 및 무작위 시드
       uniform float u_numLayers;     // 레이어 중첩도
       uniform float u_scatter;       // Range: 구름 밀도
       uniform float u_glowScale;     // Scale: 구름 크기/줌
@@ -103,7 +103,7 @@ export default class CloudSketch {
         return v;
       }
 
-      // ☁️ [신규 1] 빌로우 노이즈 (Billow Noise - 둥글둥글 솟구치는 뭉게구름용)
+      // ☁️ 빌로우 노이즈 (Billow Noise - 솟구치는 뭉게구름)
       float billowNoise(vec2 p) {
         float v = 0.0;
         float a = 0.5;
@@ -117,7 +117,7 @@ export default class CloudSketch {
         return v;
       }
 
-      // ☁️ [신규 2] 물결 / 조개껍질 모양 고적운 파동 수식 (Mackerel Ripple Noise)
+      // ☁️ 물결 / 조개껍질 고적운 파동 수식 (Mackerel Sky)
       float mackerelRipple(vec2 p) {
         vec2 grid = p * 3.5;
         float ripple = sin(grid.x + noise(grid * 0.5) * 3.0) * cos(grid.y + noise(grid * 0.8) * 3.0);
@@ -126,9 +126,8 @@ export default class CloudSketch {
         return mix(ripple, detail, 0.4);
       }
 
-      // ☁️ [신규 3] 방향성 깃털/새털구름 수식 (Wispy Cirrus Stretch)
+      // ☁️ 방향성 깃털/새털구름 수식 (Cirrus Stretch)
       float cirrusNoise(vec2 p) {
-        // X축 방향으로 길게 찌그러뜨리는 도메인 워핑
         vec2 stretchedP = vec2(p.x * 0.25 - p.y * 0.8, p.y * 2.2 + p.x * 0.3);
         float warp = fbm(stretchedP + vec2(fbm(p * 1.5)));
         return pow(warp, 1.3);
@@ -141,14 +140,32 @@ export default class CloudSketch {
         if (horizonOffset <= 0.001) horizonOffset = 0.001;
         vec2 skyCoord = vec2(st.x / horizonOffset, 1.0 / horizonOffset);
 
-        // 줌 및 관제탑 Scale 연동
-        float zoomScale = mix(0.85, 0.08, clamp(u_glowScale, 0.0, 2.0));
-        vec2 baseUV = skyCoord * zoomScale;
-        float windSpeed = u_time * 0.022;
+        // 💡 [시드 미세 난수 추출 (Per-seed Hashes)]
+        float h1 = hash(vec2(u_seed * 0.131, u_seed * 0.713));
+        float h2 = hash(vec2(u_seed * 0.923, u_seed * 0.317));
+        float h3 = hash(vec2(u_seed * 0.457, u_seed * 0.881));
+        float h4 = hash(vec2(u_seed * 0.619, u_seed * 0.149));
 
-        // 💡 [Seed 핵심 분기]: Seed 값에 따라 완전히 다른 구름 유형 생성
+        // 시드별 무작위 공간 회전 행렬
+        float rotAngle = (h1 - 0.5) * 6.28318;
+        mat2 seedRot = mat2(cos(rotAngle), sin(rotAngle), -sin(rotAngle), cos(rotAngle));
+
+        // 관제탑 Scale 연동 + 시드별 미세 크기 무작위 보정
+        float zoomScale = mix(0.85, 0.08, clamp(u_glowScale, 0.0, 2.0)) * (0.8 + h2 * 0.4);
+        vec2 baseUV = (skyCoord + vec2((h3 - 0.5) * 15.0, (h4 - 0.5) * 15.0)) * seedRot * zoomScale;
+        float windSpeed = u_time * (0.018 + h1 * 0.012);
+
+        // 시드별 무작위 도메인 워핑 (가장자리 난류 뒤틀림)
+        vec2 warpOffset = vec2(
+          fbm(baseUV * 1.2 + vec2(h1 * 20.0, h2 * 20.0)),
+          fbm(baseUV * 1.2 + vec2(h3 * 20.0, h4 * 20.0))
+        ) * (0.2 + h4 * 0.8);
+
+        vec2 warpedUV = baseUV + warpOffset * (0.3 + h2 * 0.5);
+
+        // 시드 구간별 모드 구분 + 시드 난수 가중치 블렌딩
         float seedVal = mod(u_seed, 500.0);
-        float cloudTypeMode = floor(seedVal / 100.0); // 0, 1, 2, 3, 4 모드
+        float cloudTypeMode = floor(seedVal / 100.0);
 
         float accumulatedCloud = 0.0;
         float layerCount = clamp(u_numLayers, 1.0, 25.0);
@@ -158,42 +175,44 @@ export default class CloudSketch {
           if (fi > layerCount) break;
 
           vec2 layerOffset = vec2(
-            sin(fi * 13.57 + u_seed * 0.015) * 32.4,
-            cos(fi * 27.89 + u_seed * 0.015) * 28.1
+            sin(fi * 13.57 + u_seed * 0.317) * (20.0 + h1 * 25.0),
+            cos(fi * 27.89 + u_seed * 0.419) * (20.0 + h2 * 25.0)
           );
 
-          vec2 layerUV = baseUV * (1.0 + (fi - 1.0) * 0.14) + layerOffset + vec2(windSpeed * (0.7 + fi * 0.05), windSpeed * 0.03);
+          vec2 layerUV = warpedUV * (1.0 + (fi - 1.0) * (0.10 + h3 * 0.08)) + layerOffset + vec2(windSpeed * (0.7 + fi * 0.05), windSpeed * 0.03);
+
+          // 💡 4개 핵심 노이즈 수식 산출
+          float nFbm = fbm(layerUV);
+          float nMackerel = mackerelRipple(layerUV * (1.5 + h1 * 0.6));
+          float nCirrus = cirrusNoise(layerUV * (1.0 + h2 * 0.5));
+          float nBillow = billowNoise(layerUV * (0.8 + h3 * 0.4));
+
+          // 모드 기본 비율 + 시드 미세 혼합 비율
+          float wFbm = max(0.01, 1.0 - abs(cloudTypeMode - 0.0) + (h1 - 0.5) * 0.5);
+          float wMackerel = max(0.01, 1.0 - abs(cloudTypeMode - 1.0) + (h2 - 0.5) * 0.5);
+          float wCirrus = max(0.01, 1.0 - abs(cloudTypeMode - 2.0) + (h3 - 0.5) * 0.5);
+          float wBillow = max(0.01, 1.0 - abs(cloudTypeMode - 3.0) + (h4 - 0.5) * 0.5);
+          float wHybrid = max(0.01, 1.0 - abs(cloudTypeMode - 4.0) + (h1 - 0.5) * 0.5);
 
           float sampleVal = 0.0;
-
           if (cloudTypeMode < 0.5) {
-            // 0: 아기자기한 단일 뭉게구름 (Cumulus Fair-weather)
-            sampleVal = fbm(layerUV);
+            sampleVal = mix(nFbm, nBillow, h2 * 0.5);
           } else if (cloudTypeMode < 1.5) {
-            // 1: 사진 163925처럼 하늘 전체를 뒤덮는 물결/조개껍질 고적운 (Mackerel / Ripple Sky)
-            sampleVal = mackerelRipple(layerUV * 1.8);
+            sampleVal = mix(nMackerel, nFbm, h3 * 0.4);
           } else if (cloudTypeMode < 2.5) {
-            // 2: 사진 163733처럼 바람에 흩날리는 얇은 실타래 깃털구름 (Wispy Cirrus)
-            sampleVal = cirrusNoise(layerUV * 1.2);
+            sampleVal = mix(nCirrus, nFbm, h4 * 0.4);
           } else if (cloudTypeMode < 3.5) {
-            // 3: 사진 163738처럼 거대하고 웅장하게 솟구치는 적란운 (Cumulus Towers)
-            float bVal = billowNoise(layerUV * 0.9);
-            float fVal = fbm(layerUV * 1.5);
-            sampleVal = mix(bVal, fVal, 0.35);
+            sampleVal = mix(nBillow, nFbm, h1 * 0.4);
           } else {
-            // 4: 사진 132619처럼 상층부 깃털 + 하층부 뭉게구름 대복합 다층 스카이 (Hybrid Sky)
-            float cirrusLayer = cirrusNoise(layerUV * 2.0) * 0.6;
-            float cumulusLayer = billowNoise(layerUV * 0.8) * 0.7;
-            sampleVal = max(cirrusLayer, cumulusLayer);
+            sampleVal = max(nCirrus * (0.5 + h2 * 0.5), nBillow * (0.5 + h3 * 0.5));
           }
 
           accumulatedCloud = max(accumulatedCloud, sampleVal);
         }
 
-        // 밀도 제어 (Scatter 및 오디오 Bass 반응)
-        float densityThreshold = mix(0.58, 0.15, clamp(u_scatter, 0.0, 1.0));
+        // 밀도 제어 (Scatter 및 오디오 Bass 반응 + 시드 미세 밀도 차이)
+        float densityThreshold = mix(0.58, 0.15, clamp(u_scatter, 0.0, 1.0)) * (0.88 + h3 * 0.24);
         
-        // 고적운/새털구름 모드에서는 밀도 문턱값을 미세 조정
         if (cloudTypeMode >= 0.5 && cloudTypeMode < 2.5) {
           densityThreshold *= 0.85;
         }
@@ -223,17 +242,15 @@ export default class CloudSketch {
           currentSky = texture2D(u_bgTexture, bgUV).rgb;
         }
 
-        // ☀️ [역광 & 가장자리 발광 (Silver Lining)]: 구름 경계면 눈부심 효과
-        float lightSlope = fbm(baseUV + vec2(0.04, 0.04)) - accumulatedCloud;
+        // ☀️ 역광 & 가장자리 발광 (Silver Lining)
+        float lightSlope = fbm(warpedUV + vec2(0.04, 0.04)) - accumulatedCloud;
         float shadowFactor = clamp(0.38 + lightSlope * (2.2 * colorRichness), 0.0, 1.0);
 
-        // 테두리 강한 가장자리 빛
-        float edgeGlow = pow(clamp(1.0 - abs(finalDensity - 0.5) * 2.0, 0.0, 1.0), 3.0) * 0.45;
+        float edgeGlow = pow(clamp(1.0 - abs(finalDensity - 0.5) * 2.0, 0.0, 1.0), 3.0) * (0.35 + h1 * 0.3);
 
         vec3 shadowCol = mix(vec3(0.02, 0.04, 0.08), u_cloudShadow, clamp(colorRichness, 0.4, 1.5));
         vec3 cloudColor = mix(shadowCol, u_cloudLight, shadowFactor);
         
-        // 은빛 테두리 발광 합성
         cloudColor += u_cloudLight * edgeGlow * (1.0 + u_bass * u_gauge);
         cloudColor += vec3(u_bass * u_gauge * 0.12);
 
@@ -309,7 +326,6 @@ export default class CloudSketch {
     return program;
   }
 
-  // 💡 가이드 모달 팝업
   showGuideModal() {
     let popup = document.getElementById('cloud-standalone-modal');
     if (!popup) {
@@ -330,18 +346,19 @@ export default class CloudSketch {
         box-shadow: 0 0 30px rgba(0, 240, 255, 0.35); font-family: sans-serif;
       ">
         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1e293b; padding-bottom:10px; margin-bottom:12px;">
-          <span style="color:#00ffcc; font-size:14px; font-weight:bold;">☁️ 018호 리얼 구름 관제탑 조작 가이드</span>
+          <span style="color:#00ffcc; font-size:14px; font-weight:bold;">☁️ 018호 리얼 구름 Ver 4.5 가이드</span>
           <span id="btn-cloud-modal-x" style="color:#f43f5e; font-weight:bold; cursor:pointer; font-size:16px;">✕</span>
         </div>
 
         <div style="font-size:11px; line-height:1.6; max-height:60vh; overflow-y:auto; padding-right:5px;">
-          <div style="color:#facc15; font-weight:bold; margin-bottom:3px;">🔀 Shuffle (Seed) - 구름 유형 & 형태 대개혁</div>
+          <div style="color:#facc15; font-weight:bold; margin-bottom:3px;">🔀 Shuffle (Seed) - 500단계 무작위 구름 지터</div>
           <div style="background:#020617; padding:8px; border-radius:4px; border:1px solid #1e293b; margin-bottom:10px;">
-            • <strong>0 ~ 99</strong> ➔ 단일 맑은 하늘 뭉게구름 (Cumulus)<br>
-            • <strong>100 ~ 199</strong> ➔ 하늘 전체 물결/조개껍질 고적운 (Mackerel / Ripple)<br>
+            • <strong>0 ~ 99</strong> ➔ 맑은 하늘 단일 뭉게구름 (Cumulus)<br>
+            • <strong>100 ~ 199</strong> ➔ 하늘 전체 물결/조개껍질 고적운 (Mackerel)<br>
             • <strong>200 ~ 299</strong> ➔ 바람에 찢어지는 깃털/새털구름 (Wispy Cirrus)<br>
             • <strong>300 ~ 399</strong> ➔ 웅장하게 솟구치는 거대 적란운 (Cumulus Towers)<br>
-            • <strong>400 ~ 500</strong> ➔ 상층 깃털 + 하층 적운 대복합 다층 스카이 (Hybrid Sky)
+            • <strong>400 ~ 500</strong> ➔ 상층 깃털 + 하층 적운 대복합 하이브리드 (Hybrid)<br>
+            <span style="color:#00ffcc;">※ 1단위 변경 시마다 완전히 무작위인 구름 구도와 결이 생성됩니다.</span>
           </div>
 
           <div style="color:#facc15; font-weight:bold; margin-bottom:3px;">🎨 Color Style Palette - 하늘 & 구름 테마</div>
@@ -382,14 +399,15 @@ export default class CloudSketch {
     if (panel) {
       panel.innerHTML = `
         <div style="line-height:1.5; color:#d0e0ff; font-size:11px;">
-          <strong style="color:#00ffcc; font-size:12px;">☁️ [018호 구름 Ver 4.0] 가이드</strong><br>
+          <strong style="color:#00ffcc; font-size:12px;">☁️ [018호 구름 Ver 4.5] 가이드</strong><br>
           
-          <div style="margin-top:6px; color:#facc15; font-weight:bold; border-bottom:1px dashed #334155; padding-bottom:2px;">🔀 Shuffle (Seed) 구름 형태 유형</div>
+          <div style="margin-top:6px; color:#facc15; font-weight:bold; border-bottom:1px dashed #334155; padding-bottom:2px;">🔀 Shuffle (Seed) 무작위 지터</div>
           • 0~99: 단일 뭉게구름<br>
           • 100~199: 조개껍질 물결 고적운<br>
           • 200~299: 흩날리는 깃털 새털구름<br>
           • 300~399: 솟구치는 거대 적란운<br>
           • 400~500: 상/하층 대복합 하이브리드<br>
+          <span style="color:#00ffcc;">(Seed 1단위별 독창적 구도 생성)</span><br>
 
           <div style="margin-top:6px; color:#facc15; font-weight:bold; border-bottom:1px dashed #334155; padding-bottom:2px;">🎨 Color Style Palette 테마</div>
           • Neon: 파란 하늘 + 백구름<br>
@@ -534,9 +552,9 @@ export default class CloudSketch {
 
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: `Clouds [Layers:${Math.round(numLayers)} / Mode:${Math.floor(mod(seed, 500.0) / 100.0)} / Style:${colorStyle}]`,
+      particleCount: `Clouds [Seed:${seed} / Layers:${Math.round(numLayers)} / Style:${colorStyle}]`,
       isCovering: true,
-      activeFunction: "Cloud[Diverse_Sky_v4.0]"
+      activeFunction: "Cloud[PerSeed_Jitter_v4.5]"
     };
   }
 
