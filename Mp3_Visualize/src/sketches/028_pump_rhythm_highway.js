@@ -1,11 +1,9 @@
 /**
  * src/sketches/028_pump_rhythm_highway.js
- * - [028호 펌프 리듬 하이웨이 Ver 20.0 - Vertical Perspective Vocal Waveform]
- * - 🎤 VOCAL 파형: 상단 소실점 ~ 하단 판정선을 잇는 3D 원근 수직 꺽은선 그래프 (왼쪽 영역 Fill 채움)
- * - 🥁 DRUM (5 Lanes) : 드럼 5개 주파수 대역 분산
- * - 🎸 BASS (5 Lanes) : 베이스 5개 주파수 대역 분산
- * - 🎹 OTHER (1 Lane) : 기타/인스트 단독 레인
- * - 관제탑 노브(Volume, Range, Scale, Gauge, Shuffle) 완벽 연동
+ * - [028호 이미지 악기 무대 & 오디오 반응형 실시간 엔진 Ver 21.0]
+ * - 🖼️ 16:9 및 9:16 Export 비율에 맞춰 업로드된 두 장의 배경 이미지 자동 맵핑 및 렌더링
+ * - 🎸 중앙 현(Strings), 🥁 좌측 드럼(Drums), 🎹 우측 피아노/스피커(Other/Bass/Vocals) 실시간 주파수 진동 매칭
+ * - main.js 수정 ZERO (완전 독립형 스케치)
  */
 
 export default class PumpRhythmHighwaySketch {
@@ -19,16 +17,16 @@ export default class PumpRhythmHighwaySketch {
     }
 
     this.time = 0;
-    this.version = "028호 펌프 리듬 하이웨이 Ver 20.0 (Vertical Vocal Wave)";
+    this.version = "028호 이미지 악기 무대 & 오디오 반응형 Ver 21.0";
     
-    this.laneCount = 11; // 5(Drum) + 5(Bass) + 1(Other)
-    this.notes = [];
-    this.particles = [];
-    this.hitEffects = [];
-    
-    this.laneCooldowns = new Array(11).fill(0);
-    this.prevEnergies = new Float32Array(11);
-    this.vocalHistory = []; // 수직 파형 히스토리 버퍼
+    // 두 장의 배경 이미지 객체 로드
+    this.bg169 = new Image();
+    this.bg169.src = './z-image-turbo_01598_.jpg'; // 16:9 가로형 이미지
+
+    this.bg916 = new Image();
+    this.bg916.src = './Krea2_turbo_00788_.jpg'; // 9:16 세로형 이미지
+
+    this.stringVibration = [0, 0, 0, 0];
   }
 
   init() {
@@ -50,96 +48,6 @@ export default class PumpRhythmHighwaySketch {
     return `${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}`;
   }
 
-  getBandAverage(spectrum, startBin, endBin) {
-    if (!spectrum || spectrum.length === 0) return 0;
-    let sum = 0;
-    let count = 0;
-    const maxLen = Math.min(spectrum.length, endBin + 1);
-    for (let i = startBin; i <= maxLen; i++) {
-      sum += (spectrum[i] || 0);
-      count++;
-    }
-    return count > 0 ? (sum / count) : 0;
-  }
-
-  getGlobalShape(seed) {
-    const s = Math.abs(Math.floor(seed)) % 500;
-    if (s < 100) return 0;      // 0~99   : 직사각형
-    if (s < 200) return 1;      // 100~199: 라운드 사각
-    if (s < 300) return 2;      // 200~299: 원형
-    if (s < 400) return 3;      // 300~399: 다이아몬드
-    return 4;                   // 400~500: 별형
-  }
-
-  spawnHitParticles(x, y, color, count = 8, scaleFactor = 1.0) {
-    const finalCount = Math.floor(count * scaleFactor);
-    for (let i = 0; i < finalCount; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = (2 + Math.random() * 6) * scaleFactor;
-      this.particles.push({
-        x: x, y: y,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - 2.0,
-        size: (2 + Math.random() * 4) * scaleFactor,
-        color: color,
-        life: 1.0
-      });
-    }
-  }
-
-  spawnHitEffect(x, y, color, scaleFactor = 1.0) {
-    this.hitEffects.push({
-      x: x, y: y,
-      radius: 8 * scaleFactor,
-      maxRadius: 35 * scaleFactor,
-      color: color,
-      alpha: 1.0
-    });
-  }
-
-  drawNoteShape(ctx, shapeType, x, y, w, h, color) {
-    ctx.fillStyle = color;
-    ctx.beginPath();
-
-    switch (shapeType) {
-      case 1:
-        ctx.roundRect(x - w / 2, y - h / 2, w, h, Math.min(w, h) * 0.35);
-        ctx.fill();
-        break;
-      case 2:
-        ctx.arc(x, y, Math.min(w, h) * 0.48, 0, Math.PI * 2);
-        ctx.fill();
-        break;
-      case 3:
-        ctx.moveTo(x, y - h / 2);
-        ctx.lineTo(x + w / 2, y);
-        ctx.lineTo(x, y + h / 2);
-        ctx.lineTo(x - w / 2, y);
-        ctx.closePath();
-        ctx.fill();
-        break;
-      case 4:
-        {
-          const r = Math.min(w, h) * 0.55;
-          const ir = r * 0.45;
-          for (let i = 0; i < 10; i++) {
-            const cr = i % 2 === 0 ? r : ir;
-            const a = (i / 10) * Math.PI * 2 - Math.PI / 2;
-            const px = x + Math.cos(a) * cr;
-            const py = y + Math.sin(a) * cr;
-            if (i === 0) ctx.moveTo(px, py);
-            else ctx.lineTo(px, py);
-          }
-          ctx.closePath();
-          ctx.fill();
-        }
-        break;
-      default:
-        ctx.fillRect(x - w / 2, y - h / 2, w, h);
-        break;
-    }
-  }
-
   // =========================================================================
   // 🔄 UPDATE RENDER LOOP
   // =========================================================================
@@ -154,387 +62,116 @@ export default class PumpRhythmHighwaySketch {
     const colorStyle = (globalSettings.colorStyle || 'monochrome').toLowerCase();
     const gaugeVal = globalSettings.gaugeValue ?? 0.5;
 
+    // Export 비율 파악 ('16:9', '9:16', 'full')
     const exportRatio = (globalSettings.exportRatio || globalSettings.exportSetting || globalSettings.aspectRatio || 'full').toLowerCase();
 
-    // Range (Scatter): 노이즈 게이트 감도
-    const rawScatter = globalSettings.scatterExponent ?? globalSettings.scatter ?? globalSettings.range ?? 25;
-    const silenceGate = 0.01 + (rawScatter / 100.0) * 0.12;
-
-    // Scale (Glow): 크기 및 이펙트 규모
     const rawGlow = globalSettings.glowScale ?? globalSettings.glow ?? globalSettings.scale ?? 50;
     const scaleFactor = Math.max(0.3, Math.min(3.0, rawGlow / 40.0));
 
-    const noteSpeed = 0.018;
-
-    const rawDrumsV  = (targetAudio.drumsVol  ?? 0) * gainVal;
-    const rawBassV   = (targetAudio.bassVol   ?? 0) * gainVal;
-    const rawVocalsV = (targetAudio.vocalsVol ?? 0) * gainVal;
-    const rawOtherV  = (targetAudio.otherVol  ?? 0) * gainVal;
-
-    const passDrums  = rawDrumsV > silenceGate;
-    const passBass   = rawBassV > silenceGate;
-    const passOther  = rawOtherV > silenceGate;
-
-    const drumsSpec  = passDrums  ? (targetAudio.drumsSpectrum  || new Float32Array(64)) : new Float32Array(64);
-    const bassSpec   = passBass   ? (targetAudio.bassSpectrum   || new Float32Array(64)) : new Float32Array(64);
-    const otherSpec  = passOther  ? (targetAudio.otherSpectrum  || new Float32Array(64)) : new Float32Array(64);
-
-    // 보컬 볼륨 히스토리 누적 (최고 80개 세로 포인트)
-    this.vocalHistory.push(rawVocalsV * gainVal);
-    if (this.vocalHistory.length > 80) {
-      this.vocalHistory.shift();
-    }
+    // 4-Stem 음압 수신
+    const drumsVol  = (targetAudio.drumsVol  ?? 0) * gainVal;
+    const bassVol   = (targetAudio.bassVol   ?? 0) * gainVal;
+    const vocalsVol = (targetAudio.vocalsVol ?? 0) * gainVal;
+    const otherVol  = (targetAudio.otherVol  ?? 0) * gainVal;
 
     this.time += 0.016;
 
     const W = this.canvas.width;
     const H = this.canvas.height;
 
-    let renderW = W, renderH = H, renderX = 0, renderY = 0;
-    if (exportRatio === '16:9') {
-      renderW = W;
-      renderH = W * (9 / 16);
-      if (renderH > H) { renderH = H; renderW = H * (16 / 9); }
-      renderX = (W - renderW) / 2; renderY = (H - renderH) / 2;
-    } else if (exportRatio === '9:16') {
-      renderH = H;
-      renderW = H * (9 / 16);
-      if (renderW > W) { renderW = W; renderH = W * (16 / 9); }
-      renderX = (W - renderW) / 2; renderY = (H - renderH) / 2;
-    }
-
+    // 캔버스 초기화
     this.ctx.save();
-
-    this.ctx.fillStyle = "#000000";
+    this.ctx.fillStyle = "#1a1a1a";
     this.ctx.fillRect(0, 0, W, H);
 
-    this.ctx.beginPath();
-    this.ctx.rect(renderX, renderY, renderW, renderH);
-    this.ctx.clip();
-
-    const customColors = globalSettings.customColors || {};
-    const cGas1 = this.hexToRgb(customColors.gas1);
-    const cGas2 = this.hexToRgb(customColors.gas2);
-    const cStar = this.hexToRgb(customColors.star);
-
-    let colorDrums  = "255, 60, 80";   // Red Coral
-    let colorBass   = "0, 230, 255";   // Cyan Blue
-    let colorVocals = "255, 215, 0";   // Gold Yellow
-    let colorOther  = "190, 80, 255";  // Purple Magenta
-
-    if (colorStyle === 'pastel') {
-      colorDrums  = "240, 110, 130"; colorBass   = "90, 170, 230";
-      colorVocals = "230, 180, 80";  colorOther  = "170, 120, 220";
-    } else if (colorStyle === 'monochrome' || colorStyle === 'earth') {
-      colorDrums  = "220, 225, 240"; colorBass   = "180, 195, 215";
-      colorVocals = "240, 245, 255"; colorOther  = "150, 165, 185";
-    } else if (colorStyle === 'custom') {
-      colorDrums  = cGas1; colorBass = cGas2; colorVocals = cStar; colorOther = "180, 100, 255";
+    // ---------------------------------------------------------------------
+    // 🖼️ 1. 비율별 배경 이미지(Wallpaper) 렌더링 (16:9 또는 9:16)
+    // ---------------------------------------------------------------------
+    let targetBg = this.bg169;
+    if (exportRatio === '9:16') {
+      targetBg = this.bg916;
+    } else if (exportRatio === '16:9') {
+      targetBg = this.bg169;
+    } else {
+      // 'full' 또는 자동일 때 화면 비율에 따라 선택
+      targetBg = (W / H < 1.0) ? this.bg916 : this.bg169;
     }
 
-    const bgGrad = this.ctx.createLinearGradient(renderX, renderY, renderX, renderY + renderH);
-    bgGrad.addColorStop(0, "#101426");
-    bgGrad.addColorStop(0.5, "#050712");
-    bgGrad.addColorStop(1, "#020308");
+    if (targetBg && targetBg.complete && targetBg.naturalWidth > 0) {
+      // 비율을 유지하며 화면을 꽉 채우는 Cover 방식 드로잉
+      const imgAspect = targetBg.naturalWidth / targetBg.naturalHeight;
+      const canvasAspect = W / H;
+      let drawW = W, drawH = H, drawX = 0, drawY = 0;
 
-    this.ctx.fillStyle = bgGrad;
-    this.ctx.fillRect(renderX, renderY, renderW, renderH);
-
-    const centerX = renderX + renderW / 2;
-    const vanishY = renderY + renderH * 0.12;
-    const hitY = renderY + renderH * 0.84;
-
-    const topTrackW = renderW * (0.08 + gaugeVal * 0.32);
-    const bottomTrackW = renderW * 0.88;
-
-    // ---------------------------------------------------------------------
-    // 🎤 [핵심]: VOCAL 수직 꺽은선 파형 (상단 소실점 ~ 하단 판정선, 왼쪽 영역 Fill 채움)
-    // ---------------------------------------------------------------------
-    this.ctx.save();
-    const historyLen = this.vocalHistory.length;
-    if (historyLen > 1) {
-      const vocalNormPos = 0.72; // 트랙 내 보컬 파형 위치 배율
-
-      // 1. 왼쪽 영역 내부 속 채우기 (Fill Area)
-      this.ctx.fillStyle = `rgba(${colorVocals}, 0.10)`;
-      this.ctx.beginPath();
-
-      const topX_start = centerX - topTrackW * 0.5 + vocalNormPos * topTrackW;
-      const botX_start = centerX - bottomTrackW * 0.5 + vocalNormPos * bottomTrackW;
-
-      this.ctx.moveTo(topX_start, vanishY);
-
-      // 아래로 내려가는 수직 꺽은선 웨이브 경로
-      for (let i = 0; i < historyLen; i++) {
-        const p = i / (historyLen - 1);
-        const y = vanishY + p * (hitY - vanishY);
-        const curTrackW = topTrackW + p * (bottomTrackW - topTrackW);
-        const curX_base = centerX - curTrackW * 0.5 + vocalNormPos * curTrackW;
-        
-        const vol = this.vocalHistory[i];
-        const xOffset = vol * 38 * scaleFactor * (curTrackW / bottomTrackW);
-        const x = curX_base + xOffset;
-
-        this.ctx.lineTo(x, y);
+      if (canvasAspect > imgAspect) {
+        drawH = W / imgAspect;
+        drawY = (H - drawH) / 2;
+      } else {
+        drawW = H * imgAspect;
+        drawX = (W - drawW) / 2;
       }
+      this.ctx.drawImage(targetBg, drawX, drawY, drawW, drawH);
+    } else {
+      // 이미지가 로딩되는 동안의 단색 배경
+      this.ctx.fillStyle = "#2c2d30";
+      this.ctx.fillRect(0, 0, W, H);
+    }
 
-      this.ctx.lineTo(botX_start, hitY);
-      this.ctx.lineTo(topX_start, vanishY);
-      this.ctx.closePath();
-      this.ctx.fill();
+    // 어두운 오버레이 레이어 (오디오 반응 이펙트의 가인성을 높이기 위함)
+    this.ctx.fillStyle = "rgba(0, 0, 0, 0.22)";
+    this.ctx.fillRect(0, 0, W, H);
 
-      // 2. 꺽은선 외곽선 (Stroke Line)
-      this.ctx.strokeStyle = `rgba(${colorVocals}, 0.75)`;
-      this.ctx.lineWidth = 2.2 * scaleFactor;
+    // ---------------------------------------------------------------------
+    // 🎸 2. 중앙 현(Strings) 오디오 진동 반응 연출 (Bass & Other 연동)
+    // ---------------------------------------------------------------------
+    const centerX = W / 2;
+    const stringCount = 4;
+    const stringSpread = W * 0.12 * gaugeVal;
+
+    for (let i = 0; i < stringCount; i++) {
+      const norm = (i / (stringCount - 1) - 0.5); // -0.5 ~ 0.5
+      const baseX = centerX + norm * stringSpread;
+
+      const energy = (i % 2 === 0 ? bassVol : otherVol);
+      this.stringVibration[i] = this.stringVibration[i] * 0.8 + (energy * 18.0) * 0.2;
+
+      this.ctx.strokeStyle = `rgba(255, 220, 180, ${0.7 + energy * 0.3})`;
+      this.ctx.lineWidth = (2.5 + i * 0.5) * scaleFactor;
       this.ctx.beginPath();
 
-      for (let i = 0; i < historyLen; i++) {
-        const p = i / (historyLen - 1);
-        const y = vanishY + p * (hitY - vanishY);
-        const curTrackW = topTrackW + p * (bottomTrackW - topTrackW);
-        const curX_base = centerX - curTrackW * 0.5 + vocalNormPos * curTrackW;
-        
-        const vol = this.vocalHistory[i];
-        const xOffset = vol * 38 * scaleFactor * (curTrackW / bottomTrackW);
-        const x = curX_base + xOffset;
+      const segments = 30;
+      for (let s = 0; s <= segments; s++) {
+        const ratio = s / segments;
+        const y = ratio * H;
+        const sineWave = Math.sin(ratio * Math.PI * 4 + this.time * 10 + i) * this.stringVibration[i] * Math.sin(ratio * Math.PI);
+        const x = baseX + sineWave;
 
-        if (i === 0) this.ctx.moveTo(x, y);
+        if (s === 0) this.ctx.moveTo(x, y);
         else this.ctx.lineTo(x, y);
       }
       this.ctx.stroke();
     }
-    this.ctx.restore();
 
     // ---------------------------------------------------------------------
-    // 1. 11개 레인 주파수 산출 & 노트 생성 (5 Drum + 5 Bass + 1 Other)
+    // 🥁 3. 좌측 드럼 킷 및 스피커 박동 연출 (Drums 연동)
     // ---------------------------------------------------------------------
-    const curEnergies = new Float32Array(11);
-
-    if (passDrums) {
-      curEnergies[0] = this.getBandAverage(drumsSpec, 0, 1) * 3.5 * gainVal;
-      curEnergies[1] = this.getBandAverage(drumsSpec, 2, 4) * 3.5 * gainVal;
-      curEnergies[2] = this.getBandAverage(drumsSpec, 5, 9) * 3.5 * gainVal;
-      curEnergies[3] = this.getBandAverage(drumsSpec, 10, 18) * 3.5 * gainVal;
-      curEnergies[4] = this.getBandAverage(drumsSpec, 19, 35) * 3.5 * gainVal;
-    }
-
-    if (passBass) {
-      curEnergies[5] = this.getBandAverage(bassSpec, 0, 1) * 3.5 * gainVal;
-      curEnergies[6] = this.getBandAverage(bassSpec, 2, 3) * 3.5 * gainVal;
-      curEnergies[7] = this.getBandAverage(bassSpec, 4, 6) * 3.5 * gainVal;
-      curEnergies[8] = this.getBandAverage(bassSpec, 7, 10) * 3.5 * gainVal;
-      curEnergies[9] = this.getBandAverage(bassSpec, 11, 18) * 3.5 * gainVal;
-    }
-
-    if (passOther) {
-      curEnergies[10] = Math.max(rawOtherV * 1.5, this.getBandAverage(otherSpec, 10, 35) * 3.5 * gainVal);
-    }
-
-    for (let l = 0; l < this.laneCount; l++) {
-      if (this.laneCooldowns[l] > 0) this.laneCooldowns[l]--;
-    }
-
-    const stemGroups = [
-      { lanes: [0, 1, 2, 3, 4] }, // Drum (5)
-      { lanes: [5, 6, 7, 8, 9] }, // Bass (5)
-      { lanes: [10] }             // Other (1)
-    ];
-
-    const globalShapeType = this.getGlobalShape(seedVal);
-
-    stemGroups.forEach(group => {
-      let maxEnergy = 0;
-      let winnerLane = -1;
-
-      for (let l of group.lanes) {
-        if (curEnergies[l] > maxEnergy) {
-          maxEnergy = curEnergies[l];
-          winnerLane = l;
-        }
-      }
-
-      if (winnerLane !== -1) {
-        const energy = curEnergies[winnerLane];
-        const prevEnergy = this.prevEnergies[winnerLane];
-        const isSpike = (energy - prevEnergy) > 0.04;
-
-        if (isSpike && energy > (silenceGate * 2.5) && this.laneCooldowns[winnerLane] <= 0) {
-          this.notes.push({
-            lane: winnerLane,
-            progress: 0.0,
-            energy: energy,
-            shapeType: globalShapeType
-          });
-          this.laneCooldowns[winnerLane] = 10 + Math.floor(Math.random() * 4);
-        }
-      }
-
-      for (let l of group.lanes) {
-        this.prevEnergies[l] = curEnergies[l];
-      }
-    });
-
-    // ---------------------------------------------------------------------
-    // 2. 3D 원근 트랙 렌더링
-    // ---------------------------------------------------------------------
-    for (let i = 0; i <= this.laneCount; i++) {
-      const norm = i / this.laneCount;
-      const topX = centerX - (topTrackW * 0.5) + norm * topTrackW;
-      const bottomX = centerX - (bottomTrackW * 0.5) + norm * bottomTrackW;
-
-      const isGroupBorder = (i === 0 || i === 5 || i === 10 || i === 11);
-      this.ctx.strokeStyle = isGroupBorder ? `rgba(255, 255, 255, 0.50)` : `rgba(255, 255, 255, 0.12)`;
-      this.ctx.lineWidth = isGroupBorder ? 2.4 : 0.8;
-
+    if (drumsVol > 0.05) {
+      const pulseRadius = drumsVol * 45 * scaleFactor;
+      this.ctx.strokeStyle = `rgba(255, 80, 80, ${drumsVol * 0.8})`;
+      this.ctx.lineWidth = 3;
       this.ctx.beginPath();
-      this.ctx.moveTo(topX, vanishY);
-      this.ctx.lineTo(bottomX, renderY + renderH);
-      this.ctx.stroke();
-    }
-
-    const gridLines = 8;
-    this.ctx.strokeStyle = `rgba(255, 255, 255, 0.12)`;
-    this.ctx.lineWidth = 1.0;
-    for (let g = 0; g < gridLines; g++) {
-      const p = ((this.time * 1.5 + g / gridLines) % 1.0);
-      const gy = vanishY + p * (renderH - vanishY);
-      const gw = topTrackW + p * (bottomTrackW - topTrackW);
-
-      this.ctx.beginPath();
-      this.ctx.moveTo(centerX - gw * 0.5, gy);
-      this.ctx.lineTo(centerX + gw * 0.5, gy);
+      this.ctx.arc(W * 0.22, H * 0.45, pulseRadius, 0, Math.PI * 2);
       this.ctx.stroke();
     }
 
     // ---------------------------------------------------------------------
-    // 3. 상단 스템 라벨 렌더링 (DRUM, BASS, OTHER)
+    // 🎹 4. 우측 피아노 & 스피커 타격광 연출 (Vocals & Other 연동)
     // ---------------------------------------------------------------------
-    const labelY = vanishY - 8;
-    const stemLabels = [
-      { text: "DRUM", color: colorDrums, centerIdx: 2.0 },
-      { text: "BASS", color: colorBass, centerIdx: 7.0 },
-      { text: "OTHER", color: colorOther, centerIdx: 10.0 }
-    ];
-
-    const dynamicFontSize = Math.max(7, Math.min(13, (topTrackW / 11) * 0.95));
-    this.ctx.font = `900 ${dynamicFontSize}px sans-serif`;
-    this.ctx.textAlign = 'center';
-    this.ctx.textBaseline = 'bottom';
-
-    stemLabels.forEach(label => {
-      const norm = (label.centerIdx + 0.5) / this.laneCount;
-      const lx = centerX - (topTrackW * 0.5) + norm * topTrackW;
-
-      this.ctx.fillStyle = `rgba(${label.color}, 0.9)`;
-      this.ctx.fillText(label.text, lx, labelY);
-    });
-
-    // ---------------------------------------------------------------------
-    // 4. 하단 네온 판정선 (Hit Line) & 11개 페달
-    // ---------------------------------------------------------------------
-    const hitTrackW = topTrackW + 0.84 * (bottomTrackW - topTrackW);
-    const hitStartX = centerX - hitTrackW * 0.5;
-
-    this.ctx.shadowColor = `rgb(${colorBass})`;
-    this.ctx.shadowBlur = 10;
-    this.ctx.strokeStyle = `rgba(255, 255, 255, 0.9)`;
-    this.ctx.lineWidth = 3.5;
-
-    this.ctx.beginPath();
-    this.ctx.moveTo(hitStartX, hitY);
-    this.ctx.lineTo(centerX + hitTrackW * 0.5, hitY);
-    this.ctx.stroke();
-    this.ctx.shadowBlur = 0;
-
-    const laneW = hitTrackW / this.laneCount;
-
-    for (let l = 0; l < this.laneCount; l++) {
-      const btnX = hitStartX + (l + 0.5) * laneW;
-      const btnW = laneW * 0.78 * scaleFactor;
-      const btnH = 9 * scaleFactor;
-
-      let laneColor = colorDrums;
-      if (l === 10) laneColor = colorOther;
-      else if (l >= 5) laneColor = colorBass;
-
-      const isHitNow = curEnergies[l] > (silenceGate * 2.0);
-      this.ctx.fillStyle = isHitNow ? `rgba(${laneColor}, 0.95)` : `rgba(${laneColor}, 0.22)`;
-      this.ctx.fillRect(btnX - btnW * 0.5, hitY - btnH * 0.5, btnW, btnH);
-    }
-
-    // ---------------------------------------------------------------------
-    // 5. 노트 낙하 렌더링
-    // ---------------------------------------------------------------------
-    for (let i = this.notes.length - 1; i >= 0; i--) {
-      const note = this.notes[i];
-      note.progress += noteSpeed;
-
-      const p = note.progress;
-      const curY = vanishY + p * (hitY - vanishY);
-
-      const curTrackW = topTrackW + p * (bottomTrackW - topTrackW);
-      const curLaneW = curTrackW / this.laneCount;
-      const curStartX = centerX - curTrackW * 0.5;
-
-      const noteX = curStartX + (note.lane + 0.5) * curLaneW;
-      const noteW = curLaneW * 0.82 * scaleFactor;
-      const noteH = (8 + p * 14) * scaleFactor;
-
-      let curNoteColor = colorDrums;
-      if (note.lane === 10) curNoteColor = colorOther;
-      else if (note.lane >= 5) curNoteColor = colorBass;
-
-      const fillRGBA = `rgba(${curNoteColor}, ${Math.min(1.0, p * 2.0)})`;
-
-      this.ctx.shadowColor = `rgb(${curNoteColor})`;
-      this.ctx.shadowBlur = 8 * p;
-
-      this.drawNoteShape(this.ctx, note.shapeType, noteX, curY, noteW, noteH, fillRGBA);
-      this.ctx.shadowBlur = 0;
-
-      if (p >= 1.0) {
-        const hitX = curStartX + (note.lane + 0.5) * curLaneW;
-        this.spawnHitParticles(hitX, hitY, curNoteColor, 8, scaleFactor);
-        this.spawnHitEffect(hitX, hitY, curNoteColor, scaleFactor);
-
-        this.notes.splice(i, 1);
-      }
-    }
-
-    // ---------------------------------------------------------------------
-    // 6. 파티클 렌더링
-    // ---------------------------------------------------------------------
-    for (let i = this.hitEffects.length - 1; i >= 0; i--) {
-      const fx = this.hitEffects[i];
-      fx.radius += 2.5 * scaleFactor;
-      fx.alpha -= 0.06;
-
-      if (fx.alpha <= 0 || fx.radius >= fx.maxRadius) {
-        this.hitEffects.splice(i, 1);
-        continue;
-      }
-
-      this.ctx.strokeStyle = `rgba(${fx.color}, ${fx.alpha})`;
-      this.ctx.lineWidth = 3 * scaleFactor;
+    if (vocalsVol > 0.05 || otherVol > 0.05) {
+      const pianoPulse = Math.max(vocalsVol, otherVol);
+      this.ctx.fillStyle = `rgba(255, 215, 0, ${pianoPulse * 0.25})`;
       this.ctx.beginPath();
-      this.ctx.arc(fx.x, fx.y, fx.radius, 0, Math.PI * 2);
-      this.ctx.stroke();
-    }
-
-    for (let i = this.particles.length - 1; i >= 0; i--) {
-      const pt = this.particles[i];
-      pt.x += pt.vx;
-      pt.y += pt.vy;
-      pt.life -= 0.04;
-
-      if (pt.life <= 0) {
-        this.particles.splice(i, 1);
-        continue;
-      }
-
-      this.ctx.fillStyle = `rgba(${pt.color}, ${pt.life})`;
-      this.ctx.beginPath();
-      this.ctx.arc(pt.x, pt.y, pt.size * pt.life, 0, Math.PI * 2);
+      this.ctx.arc(W * 0.78, H * 0.35, pianoPulse * 60 * scaleFactor, 0, Math.PI * 2);
       this.ctx.fill();
     }
 
@@ -542,9 +179,9 @@ export default class PumpRhythmHighwaySketch {
 
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: `Vertical Vocal Wave (Notes:${this.notes.length})`,
+      particleCount: `Image Instruments Stage (Ratio:${exportRatio})`,
       isCovering: true,
-      activeFunction: `PumpHighwayVerticalVocal[11Lanes_${colorStyle.toUpperCase()}]`
+      activeFunction: `ImageStage[${exportRatio.toUpperCase()}]`
     };
   }
 
@@ -554,9 +191,5 @@ export default class PumpRhythmHighwaySketch {
     }
     this.canvas = null;
     this.ctx = null;
-    this.notes = [];
-    this.particles = [];
-    this.hitEffects = [];
-    this.vocalHistory = [];
   }
 }
