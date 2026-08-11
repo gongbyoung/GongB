@@ -1,10 +1,11 @@
 /**
  * src/sketches/028_pump_rhythm_highway.js
- * - [028호 펌프 리듬 하이웨이 Ver 2.0 - 4-Stem 12-Lane Precision Engine]
- * - 🎮 12개 레인: 4개 스템(Drums, Bass, Vocals, Other) x 3개 서브 대역 정밀 매핑
- * - 🎨 스템별 전용 고대비 노트 색상 (Red/Cyan/Gold/Purple) 및 그룹 헤더 표시
- * - 📐 16:9(가로) & 9:16(세로) Export 비율 자동 뷰포트 레터박스 완전 대응
- * - ⚡ 오디오 스템별 노트 낙하 & 하단 판정선(Hit Line) 스파크 폭발 연출
+ * - [028호 펌프 리듬 하이웨이 Ver 3.0 - Clean Highway & Dynamic Shapes]
+ * - 🎯 동일 악기 내 중복 노트 방지 (그룹별 Winner-Take-All 독립 노트 산출)
+ * - 🎛️ Gauge 슬라이더: 상단 트랙 원근 폭 실시간 조절 (어지러움 완전 방지)
+ * - 🔀 Shuffle (Seed): 노트 낙하 쉐이프 무작위화 (사각, 라운드, 원, 다이아, 별, 삼각)
+ * - 🎨 Color Style Palette 테마 완벽 연동
+ * - 🏷️ 상단 텍스트(DRUM, BASS, VOCAL, OTHER) 뭉침 방지 자동 스케일링
  */
 
 export default class PumpRhythmHighwaySketch {
@@ -18,7 +19,7 @@ export default class PumpRhythmHighwaySketch {
     }
 
     this.time = 0;
-    this.version = "028호 펌프 리듬 하이웨이 Ver 2.0 (4-Stem 12-Lanes)";
+    this.version = "028호 펌프 리듬 하이웨이 Ver 3.0 (Clean Highway)";
     
     this.laneCount = 12; // 4-Stem x 3-Lanes
     this.notes = [];
@@ -58,6 +59,12 @@ export default class PumpRhythmHighwaySketch {
     return count > 0 ? (sum / count) : 0;
   }
 
+  // 💡 Shuffle(Seed) 기반 레인별 노트 쉐이프 결정 (0: 사각, 1: 라운드사각, 2: 원, 3: 다이아몬드, 4: 별, 5: 삼각)
+  getShapeForLane(lane, seed) {
+    const pseudo = Math.abs(Math.sin(seed * 12.9898 + lane * 78.233) * 43758.5453);
+    return Math.floor(pseudo) % 6;
+  }
+
   spawnHitParticles(x, y, color, count = 6) {
     for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
@@ -76,11 +83,62 @@ export default class PumpRhythmHighwaySketch {
   spawnHitEffect(x, y, color) {
     this.hitEffects.push({
       x: x, y: y,
-      radius: 10,
-      maxRadius: 35,
+      radius: 8,
+      maxRadius: 32,
       color: color,
       alpha: 1.0
     });
+  }
+
+  // 🖌️ 다양한 쉐이프 렌더링 도우미
+  drawNoteShape(ctx, shapeType, x, y, w, h, color) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+
+    switch (shapeType) {
+      case 1: // 라운드 사각
+        ctx.roundRect(x - w / 2, y - h / 2, w, h, Math.min(w, h) * 0.3);
+        ctx.fill();
+        break;
+      case 2: // 원형
+        ctx.arc(x, y, Math.min(w, h) * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      case 3: // 다이아몬드
+        ctx.moveTo(x, y - h / 2);
+        ctx.lineTo(x + w / 2, y);
+        ctx.lineTo(x, y + h / 2);
+        ctx.lineTo(x - w / 2, y);
+        ctx.closePath();
+        ctx.fill();
+        break;
+      case 4: // 별형
+        {
+          const r = Math.min(w, h) * 0.55;
+          const ir = r * 0.45;
+          for (let i = 0; i < 10; i++) {
+            const cr = i % 2 === 0 ? r : ir;
+            const a = (i / 10) * Math.PI * 2 - Math.PI / 2;
+            const px = x + Math.cos(a) * cr;
+            const py = y + Math.sin(a) * cr;
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+          }
+          ctx.closePath();
+          ctx.fill();
+        }
+        break;
+      case 5: // 삼각형
+        ctx.moveTo(x, y - h / 2);
+        ctx.lineTo(x + w / 2, y + h / 2);
+        ctx.lineTo(x - w / 2, y + h / 2);
+        ctx.closePath();
+        ctx.fill();
+        break;
+      default: // 기본 직사각형
+        ctx.fillRect(x - w / 2, y - h / 2, w, h);
+        break;
+    }
   }
 
   // =========================================================================
@@ -95,13 +153,13 @@ export default class PumpRhythmHighwaySketch {
     const seedVal = globalSettings.seed ?? 42;
     const gainVal = globalSettings.audioGain ?? 1.0;
     const colorStyle = (globalSettings.colorStyle || 'monochrome').toLowerCase();
+    const gaugeVal = globalSettings.gaugeValue ?? 0.5; // Gauge UI 슬라이더
 
-    // Export 비율 파악 ('full', '16:9', '9:16')
     const exportRatio = (globalSettings.exportRatio || globalSettings.exportSetting || globalSettings.aspectRatio || 'full').toLowerCase();
 
-    // 관제탑 슬라이더 연동
+    // 관제탑 컨트롤러 수치
     const rawScatter = globalSettings.scatterExponent ?? globalSettings.scatter ?? globalSettings.range ?? 25;
-    const noteSpeed = (0.012 + (rawScatter / 50.0) * 0.025); // 노트 낙하 속도
+    const noteSpeed = (0.010 + (rawScatter / 50.0) * 0.025); // 노트 낙하 속도
 
     const rawGlow = globalSettings.glowScale ?? globalSettings.glow ?? globalSettings.scale ?? 50;
     const scaleFactor = Math.max(0.3, Math.min(3.0, rawGlow / 40.0));
@@ -112,7 +170,7 @@ export default class PumpRhythmHighwaySketch {
     const bassVol   = (targetAudio.bassVol   ?? targetAudio.bass ?? 0) * gainVal;
     const otherVol  = (targetAudio.otherVol  ?? targetAudio.treble ?? 0) * gainVal;
 
-    // 스펙트럼 데이터 수신
+    // 스펙트럼 수신
     const spectrum = targetAudio.bassSpectrum || targetAudio.spectrum || targetAudio.frequencyData || new Float32Array(64);
 
     this.time += 0.016;
@@ -120,7 +178,7 @@ export default class PumpRhythmHighwaySketch {
     const W = this.canvas.width;
     const H = this.canvas.height;
 
-    // 💡 [16:9 가로 / 9:16 세로 대응]: 뷰포트 레터박스 영점 계산
+    // 뷰포트 레터박스 영점 계산
     let renderW = W, renderH = H, renderX = 0, renderY = 0;
     if (exportRatio === '16:9') {
       renderW = W;
@@ -136,16 +194,19 @@ export default class PumpRhythmHighwaySketch {
 
     this.ctx.save();
 
-    // 캔버스 바탕
     this.ctx.fillStyle = "#000000";
     this.ctx.fillRect(0, 0, W, H);
 
-    // 선택 비율 영역 클리핑
     this.ctx.beginPath();
     this.ctx.rect(renderX, renderY, renderW, renderH);
     this.ctx.clip();
 
-    // 스템별 고해상도 색상 팔레트
+    // 🎨 Color Style Palette 테마 설정
+    const customColors = globalSettings.customColors || {};
+    const cGas1 = this.hexToRgb(customColors.gas1);
+    const cGas2 = this.hexToRgb(customColors.gas2);
+    const cStar = this.hexToRgb(customColors.star);
+
     let colorDrums  = "255, 60, 80";   // Red Coral
     let colorBass   = "0, 230, 255";   // Cyan Blue
     let colorVocals = "255, 215, 0";   // Gold Yellow
@@ -157,6 +218,8 @@ export default class PumpRhythmHighwaySketch {
     } else if (colorStyle === 'monochrome' || colorStyle === 'earth') {
       colorDrums  = "220, 225, 240"; colorBass   = "180, 195, 215";
       colorVocals = "240, 245, 255"; colorOther  = "150, 165, 185";
+    } else if (colorStyle === 'custom') {
+      colorDrums  = cGas1; colorBass = cGas2; colorVocals = cStar; colorOther = "180, 100, 255";
     }
 
     // 배경 그라데이션
@@ -172,65 +235,78 @@ export default class PumpRhythmHighwaySketch {
     const vanishY = renderY + renderH * 0.12;  // 상단 원근점
     const hitY = renderY + renderH * 0.84;     // 하단 판정선
 
-    const topTrackW = renderW * 0.14;    // 상단 트랙 폭
-    const bottomTrackW = renderW * 0.88; // 하단 트랙 폭
+    // 🎛️ [Gauge 연동]: 상단 트랙 폭을 Gauge 슬라이더로 조절 가능하게 변경 (어지러움 완화!)
+    const topTrackW = renderW * (0.08 + gaugeVal * 0.32); // Gauge 0.0일 때 8%, 1.0일 때 40%로 확대
+    const bottomTrackW = renderW * 0.88;
 
     // ---------------------------------------------------------------------
-    // 1. 4-Stem x 3-Lanes = 12개 레인 에너지 산출 & 노트 생성
+    // 1. 🎯 [핵심 수리]: 동일 악기 내 중복 노트 발생 완전 차단 (Winner-Take-All)
     // ---------------------------------------------------------------------
     const laneEnergies = new Float32Array(12);
 
-    // 스템별 3개 서브 대역 분할 연산
-    // Drums (Lane 0~2)
     laneEnergies[0] = Math.max(drumsVol * 1.5, this.getBandAverage(spectrum, 0, 2) * 3.5 * gainVal);
     laneEnergies[1] = Math.max(drumsVol * 1.2, this.getBandAverage(spectrum, 3, 6) * 3.0 * gainVal);
     laneEnergies[2] = Math.max(drumsVol * 1.0, this.getBandAverage(spectrum, 7, 12) * 3.0 * gainVal);
 
-    // Bass (Lane 3~5)
     laneEnergies[3] = Math.max(bassVol * 1.5, this.getBandAverage(spectrum, 0, 3) * 3.5 * gainVal);
     laneEnergies[4] = Math.max(bassVol * 1.3, this.getBandAverage(spectrum, 4, 8) * 3.0 * gainVal);
     laneEnergies[5] = Math.max(bassVol * 1.0, this.getBandAverage(spectrum, 9, 15) * 3.0 * gainVal);
 
-    // Vocals (Lane 6~8)
     laneEnergies[6] = Math.max(vocalsVol * 1.2, this.getBandAverage(spectrum, 12, 18) * 3.0 * gainVal);
     laneEnergies[7] = Math.max(vocalsVol * 1.5, this.getBandAverage(spectrum, 19, 28) * 3.5 * gainVal);
     laneEnergies[8] = Math.max(vocalsVol * 1.2, this.getBandAverage(spectrum, 29, 40) * 3.0 * gainVal);
 
-    // Other (Lane 9~11)
     laneEnergies[9]  = Math.max(otherVol * 1.2, this.getBandAverage(spectrum, 15, 24) * 3.0 * gainVal);
     laneEnergies[10] = Math.max(otherVol * 1.5, this.getBandAverage(spectrum, 25, 38) * 3.5 * gainVal);
     laneEnergies[11] = Math.max(otherVol * 1.2, this.getBandAverage(spectrum, 39, 55) * 3.0 * gainVal);
 
-    // 노트 생성 검사
+    // 쿨다운 차감
     for (let l = 0; l < this.laneCount; l++) {
-      if (this.laneCooldowns[l] > 0) {
-        this.laneCooldowns[l]--;
+      if (this.laneCooldowns[l] > 0) this.laneCooldowns[l]--;
+    }
+
+    // 💡 악기 스템 그룹별로 가장 높은 에너지 레인을 단 1개만 선별하여 노트 생성
+    const stemGroups = [
+      { lanes: [0, 1, 2] },  // Drums
+      { lanes: [3, 4, 5] },  // Bass
+      { lanes: [6, 7, 8] },  // Vocals
+      { lanes: [9, 10, 11] } // Other
+    ];
+
+    stemGroups.forEach(group => {
+      let maxEnergy = 0;
+      let winnerLane = -1;
+
+      for (let l of group.lanes) {
+        if (laneEnergies[l] > maxEnergy) {
+          maxEnergy = laneEnergies[l];
+          winnerLane = l;
+        }
       }
 
-      if (laneEnergies[l] > 0.12 && this.laneCooldowns[l] <= 0) {
+      // 악기 그룹 내에서 가장 에너지가 큰 레인 1개만 노출
+      if (winnerLane !== -1 && maxEnergy > 0.14 && this.laneCooldowns[winnerLane] <= 0) {
         this.notes.push({
-          lane: l,
+          lane: winnerLane,
           progress: 0.0,
-          energy: laneEnergies[l]
+          energy: maxEnergy,
+          shapeType: this.getShapeForLane(winnerLane, seedVal) // Shuffle 연동 쉐이프
         });
-        this.laneCooldowns[l] = 6 + Math.floor(Math.random() * 4);
+        this.laneCooldowns[winnerLane] = 8 + Math.floor(Math.random() * 4);
       }
-    }
+    });
 
     // ---------------------------------------------------------------------
     // 2. 3D 원근 트랙 & 4-Stem 그룹 가이드선 렌더링
     // ---------------------------------------------------------------------
-    this.ctx.lineWidth = 1.2;
-
     for (let i = 0; i <= this.laneCount; i++) {
       const norm = i / this.laneCount;
       const topX = centerX - (topTrackW * 0.5) + norm * topTrackW;
       const bottomX = centerX - (bottomTrackW * 0.5) + norm * bottomTrackW;
 
-      // 4-Stem 경계선(0, 3, 6, 9, 12)은 더 두껍게 표시
       const isGroupBorder = i % 3 === 0;
       this.ctx.strokeStyle = isGroupBorder ? `rgba(255, 255, 255, 0.45)` : `rgba(255, 255, 255, 0.12)`;
-      this.ctx.lineWidth = isGroupBorder ? 2.5 : 1.0;
+      this.ctx.lineWidth = isGroupBorder ? 2.2 : 0.8;
 
       this.ctx.beginPath();
       this.ctx.moveTo(topX, vanishY);
@@ -254,7 +330,7 @@ export default class PumpRhythmHighwaySketch {
     }
 
     // ---------------------------------------------------------------------
-    // 3. 4-Stem 스템명 표시 (DRUMS, BASS, VOCAL, OTHER)
+    // 3. 🎯 [핵심 수리]: 상단 4-Stem 스템명 뭉침 방지 자동 스케일링 렌더링
     // ---------------------------------------------------------------------
     const labelY = vanishY - 8;
     const stemLabels = [
@@ -264,14 +340,17 @@ export default class PumpRhythmHighwaySketch {
       { text: "OTHER", color: colorOther, centerIdx: 10 }
     ];
 
-    this.ctx.font = `900 ${Math.max(9, renderW * 0.012)}px sans-serif`;
+    // topTrackW 크기에 맞춰 폰트 크기 동적 조율
+    const dynamicFontSize = Math.max(7, Math.min(13, (topTrackW / 12) * 0.95));
+    this.ctx.font = `900 ${dynamicFontSize}px sans-serif`;
     this.ctx.textAlign = 'center';
     this.ctx.textBaseline = 'bottom';
 
     stemLabels.forEach(label => {
       const norm = (label.centerIdx + 0.5) / this.laneCount;
       const lx = centerX - (topTrackW * 0.5) + norm * topTrackW;
-      this.ctx.fillStyle = `rgba(${label.color}, 0.85)`;
+
+      this.ctx.fillStyle = `rgba(${label.color}, 0.9)`;
       this.ctx.fillText(label.text, lx, labelY);
     });
 
@@ -282,9 +361,9 @@ export default class PumpRhythmHighwaySketch {
     const hitStartX = centerX - hitTrackW * 0.5;
 
     this.ctx.shadowColor = `rgb(${colorBass})`;
-    this.ctx.shadowBlur = 12;
+    this.ctx.shadowBlur = 10;
     this.ctx.strokeStyle = `rgba(255, 255, 255, 0.9)`;
-    this.ctx.lineWidth = 4;
+    this.ctx.lineWidth = 3.5;
 
     this.ctx.beginPath();
     this.ctx.moveTo(hitStartX, hitY);
@@ -296,8 +375,8 @@ export default class PumpRhythmHighwaySketch {
 
     for (let l = 0; l < this.laneCount; l++) {
       const btnX = hitStartX + (l + 0.5) * laneW;
-      const btnW = laneW * 0.75 * scaleFactor;
-      const btnH = 10 * scaleFactor;
+      const btnW = laneW * 0.78 * scaleFactor;
+      const btnH = 9 * scaleFactor;
 
       let laneColor = colorDrums;
       if (l >= 9) laneColor = colorOther;
@@ -305,12 +384,12 @@ export default class PumpRhythmHighwaySketch {
       else if (l >= 3) laneColor = colorBass;
 
       const isCooling = this.laneCooldowns[l] > 0;
-      this.ctx.fillStyle = isCooling ? `rgba(${laneColor}, 0.95)` : `rgba(${laneColor}, 0.3)`;
+      this.ctx.fillStyle = isCooling ? `rgba(${laneColor}, 0.95)` : `rgba(${laneColor}, 0.25)`;
       this.ctx.fillRect(btnX - btnW * 0.5, hitY - btnH * 0.5, btnW, btnH);
     }
 
     // ---------------------------------------------------------------------
-    // 5. 노트 낙하 렌더링 & 판정선 타격 처리
+    // 5. 🔀 Shuffle 연동 다채로운 쉐이프 노트 낙하 및 판정선 타격 처리
     // ---------------------------------------------------------------------
     for (let i = this.notes.length - 1; i >= 0; i--) {
       const note = this.notes[i];
@@ -325,19 +404,20 @@ export default class PumpRhythmHighwaySketch {
 
       const noteX = curStartX + (note.lane + 0.5) * curLaneW;
       const noteW = curLaneW * 0.82 * scaleFactor;
-      const noteH = (7 + p * 16) * scaleFactor;
+      const noteH = (8 + p * 16) * scaleFactor;
 
-      // 스템별 지정 색상 가져오기
       let curNoteColor = colorDrums;
       if (note.lane >= 9) curNoteColor = colorOther;
       else if (note.lane >= 6) curNoteColor = colorVocals;
       else if (note.lane >= 3) curNoteColor = colorBass;
 
-      this.ctx.fillStyle = `rgba(${curNoteColor}, ${Math.min(1.0, p * 2.0)})`;
+      const fillRGBA = `rgba(${curNoteColor}, ${Math.min(1.0, p * 2.0)})`;
+
       this.ctx.shadowColor = `rgb(${curNoteColor})`;
       this.ctx.shadowBlur = 8 * p;
 
-      this.ctx.fillRect(noteX - noteW * 0.5, curY - noteH * 0.5, noteW, noteH);
+      // 💡 [Shuffle 쉐이프 렌더링]: 사각, 라운드, 원, 다이아, 별, 삼각
+      this.drawNoteShape(this.ctx, note.shapeType, noteX, curY, noteW, noteH, fillRGBA);
       this.ctx.shadowBlur = 0;
 
       // 🎯 판정선 타격 이벤트
@@ -391,9 +471,9 @@ export default class PumpRhythmHighwaySketch {
 
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: `4-Stem 12-Lane Highway (Notes:${this.notes.length} / Sparks:${this.particles.length})`,
+      particleCount: `Clean Highway (Gauge:${gaugeVal.toFixed(2)} / Seed:${seedVal})`,
       isCovering: true,
-      activeFunction: `PumpHighway4Stem[12Lanes_${colorStyle.toUpperCase()}]`
+      activeFunction: `PumpHighwayClean[12Lanes_${colorStyle.toUpperCase()}]`
     };
   }
 
