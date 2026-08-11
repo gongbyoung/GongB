@@ -1,8 +1,8 @@
 /**
  * src/sketches/028_pump_rhythm_highway.js
- * - [028호 이미지 악기 무대 & 오디오 반응형 실시간 엔진 Ver 22.0]
- * - 🖼️ 정확한 자산 파일명 연동: `./028_169_bg.jpg` 및 `./028_916_BG.jpg` 배경 자동 전환
- * - 🎸 중앙 메탈 현(Strings), 🥁 좌측 드럼(Drums), 🎹 우측 피아노/스피커(Vocals/Other/Bass) 실시간 진동 및 파동 리액션
+ * - [028호 이미지 악기 무대 & 오디오 반응형 실시간 엔진 Ver 23.0 - Asset Path Fix]
+ * - 🖼️ assets/ 폴더 및 .png 확장자 경로 정확히 연동 ('./assets/028_169_bg.png', './assets/028_916_BG.png')
+ * - 🎸 중앙 메탈 현(Strings), 좌측 드럼(Drums), 우측 피아노/스피커 실시간 오디오 반응
  * - main.js 수정 ZERO (완전 독립형 스케치)
  */
 
@@ -17,14 +17,14 @@ export default class PumpRhythmHighwaySketch {
     }
 
     this.time = 0;
-    this.version = "028호 이미지 악기 무대 Ver 22.0 (Asset Synced)";
+    this.version = "028호 이미지 악기 무대 Ver 23.0 (Path Fixed)";
     
-    // 정확한 자산 파일명으로 배경 이미지 로드
+    // 💡 assets 폴더 안의 정확한 .png 파일명으로 경로 수정
     this.bg169 = new Image();
-    this.bg169.src = './assets/028_169_bg.jpg';
+    this.bg169.src = './assets/028_169_bg.png';
 
     this.bg916 = new Image();
-    this.bg916.src = './assets/028_916_BG.jpg';
+    this.bg916.src = './assets/028_916_BG.png';
 
     this.stringVibration = [0, 0, 0, 0, 0];
   }
@@ -85,7 +85,7 @@ export default class PumpRhythmHighwaySketch {
     this.ctx.fillRect(0, 0, W, H);
 
     // ---------------------------------------------------------------------
-    // 🖼️ 1. 올바른 자산 파일명 기반 배경 이미지(Wallpaper) 렌더링
+    // 🖼️ 1. assets 폴더 기반 배경 이미지 렌더링
     // ---------------------------------------------------------------------
     let targetBg = this.bg169;
     if (exportRatio === '9:16') {
@@ -176,9 +176,9 @@ export default class PumpRhythmHighwaySketch {
 
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: `Asset Background Stage (Ratio:${exportRatio})`,
+      particleCount: `Asset Path Fixed Stage (Ratio:${exportRatio})`,
       isCovering: true,
-      activeFunction: `AssetStage[${exportRatio.toUpperCase()}]`
+      activeFunction: `AssetStageFixed[${exportRatio.toUpperCase()}]`
     };
   }
 
