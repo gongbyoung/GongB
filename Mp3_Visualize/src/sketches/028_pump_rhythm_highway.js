@@ -1,12 +1,12 @@
 /**
  * src/sketches/028_pump_rhythm_highway.js
- * - [028호 펌프 리듬 하이웨이 Ver 13.0 - 5:5:1:1 Stem Layout]
- * - 🥁 DRUM (5 Lanes) : drumsSpectrum 기반 5개 주파수 대역 분월
- * - 🎸 BASS (5 Lanes) : bassSpectrum 기반 5개 주파수 대역 분월
- * - 🎤 VOCAL (1 Lane) : vocalsSpectrum 기반 보컬 단독 레인
- * - 🎹 OTHER (1 Lane) : otherSpectrum 기반 기타/인스트 단독 레인
- * - 🚫 무음 구간 스템 완전 차단 (Noise Gate)
- * - 🎛️ Gauge (상단 폭), Shuffle (노트 쉐이프), Color Style Palette 연동
+ * - [028호 펌프 리듬 하이웨이 Ver 14.0 - Universal Control Tower Mapping]
+ * - 🔀 Shuffle (Seed) : 전체 노트 모양 일괄 통일 전환 (0~99: 사각 / 100~199: 라운드 / 200~299: 원 / 300~399: 다이아 / 400~500: 별)
+ * - 🎛️ Volume (Gain)   : 노트 생성 감도 (Sensitivity) 조절
+ * - 🎛️ Range (Scatter) : 노트 생성 최소 문턱값 (Noise Gate) 조절
+ * - 🎛️ Scale (Glow)    : 노트 전체 크기 및 발광 이펙트 규모 조절
+ * - 🎛️ Gauge           : 상단 원근 트랙 폭 (어지러움 조절)
+ * - 🥁 DRUM(5) : BASS(5) : VOCAL(1) : OTHER(1) 12개 레인 정밀 슬라이싱
  */
 
 export default class PumpRhythmHighwaySketch {
@@ -20,7 +20,7 @@ export default class PumpRhythmHighwaySketch {
     }
 
     this.time = 0;
-    this.version = "028호 펌프 리듬 하이웨이 Ver 13.0 (5:5:1:1 Layout)";
+    this.version = "028호 펌프 리듬 하이웨이 Ver 14.0 (Universal Control)";
     
     this.laneCount = 12; // 5(Drum) + 5(Bass) + 1(Vocal) + 1(Other)
     this.notes = [];
@@ -62,31 +62,37 @@ export default class PumpRhythmHighwaySketch {
     return count > 0 ? (sum / count) : 0;
   }
 
-  getShapeForLane(lane, seed) {
-    const pseudo = Math.abs(Math.sin(seed * 12.9898 + lane * 78.233) * 43758.5453);
-    return Math.floor(pseudo) % 6;
+  // 💡 Shuffle(Seed) 수치에 따라 전체 노트 쉐이프를 하나로 일괄 통일
+  getGlobalShape(seed) {
+    const s = mod(seed, 500);
+    if (s < 100) return 0;      // 0~99   : 직사각형
+    if (s < 200) return 1;      // 100~199: 라운드 사각
+    if (s < 300) return 2;      // 200~299: 원형
+    if (s < 400) return 3;      // 300~399: 다이아몬드
+    return 4;                   // 400~500: 별형
   }
 
-  spawnHitParticles(x, y, color, count = 6) {
-    for (let i = 0; i < count; i++) {
+  spawnHitParticles(x, y, color, count = 6, scaleFactor = 1.0) {
+    const finalCount = Math.floor(count * scaleFactor);
+    for (let i = 0; i < finalCount; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const speed = 2 + Math.random() * 5;
+      const speed = (2 + Math.random() * 5) * scaleFactor;
       this.particles.push({
         x: x, y: y,
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed - 1.5,
-        size: 2 + Math.random() * 3.5,
+        size: (2 + Math.random() * 3.5) * scaleFactor,
         color: color,
         life: 1.0
       });
     }
   }
 
-  spawnHitEffect(x, y, color) {
+  spawnHitEffect(x, y, color, scaleFactor = 1.0) {
     this.hitEffects.push({
       x: x, y: y,
-      radius: 8,
-      maxRadius: 32,
+      radius: 8 * scaleFactor,
+      maxRadius: 32 * scaleFactor,
       color: color,
       alpha: 1.0
     });
@@ -97,15 +103,15 @@ export default class PumpRhythmHighwaySketch {
     ctx.beginPath();
 
     switch (shapeType) {
-      case 1:
-        ctx.roundRect(x - w / 2, y - h / 2, w, h, Math.min(w, h) * 0.3);
+      case 1: // 라운드 사각
+        ctx.roundRect(x - w / 2, y - h / 2, w, h, Math.min(w, h) * 0.35);
         ctx.fill();
         break;
-      case 2:
-        ctx.arc(x, y, Math.min(w, h) * 0.45, 0, Math.PI * 2);
+      case 2: // 원형
+        ctx.arc(x, y, Math.min(w, h) * 0.48, 0, Math.PI * 2);
         ctx.fill();
         break;
-      case 3:
+      case 3: // 다이아몬드
         ctx.moveTo(x, y - h / 2);
         ctx.lineTo(x + w / 2, y);
         ctx.lineTo(x, y + h / 2);
@@ -113,9 +119,9 @@ export default class PumpRhythmHighwaySketch {
         ctx.closePath();
         ctx.fill();
         break;
-      case 4:
+      case 4: // 별형
         {
-          const r = Math.min(w, h) * 0.5;
+          const r = Math.min(w, h) * 0.55;
           const ir = r * 0.45;
           for (let i = 0; i < 10; i++) {
             const cr = i % 2 === 0 ? r : ir;
@@ -129,55 +135,53 @@ export default class PumpRhythmHighwaySketch {
           ctx.fill();
         }
         break;
-      case 5:
-        ctx.moveTo(x, y - h / 2);
-        ctx.lineTo(x + w / 2, y + h / 2);
-        ctx.lineTo(x - w / 2, y + h / 2);
-        ctx.closePath();
-        ctx.fill();
-        break;
-      default:
+      default: // 직사각형
         ctx.fillRect(x - w / 2, y - h / 2, w, h);
         break;
     }
   }
 
   // =========================================================================
-  // 🔄 UPDATE RENDER LOOP (5 : 5 : 1 : 1 Strict Mapping)
+  // 🔄 UPDATE RENDER LOOP (Universal Control Tower Binding)
   // =========================================================================
   update(audioData) {
     if (!this.ctx || !this.canvas) return;
 
     const targetAudio = audioData || {};
 
+    // 🎛️ 관제탑 컨트롤러 파라미터 연동
     const globalSettings = window.cosmicEngineSettings || {};
     const seedVal = globalSettings.seed ?? 42;
-    const gainVal = globalSettings.audioGain ?? 1.0;
+    const gainVal = globalSettings.audioGain ?? 1.0;          // Volume (Gain)
     const colorStyle = (globalSettings.colorStyle || 'monochrome').toLowerCase();
-    const gaugeVal = globalSettings.gaugeValue ?? 0.5;
+    const gaugeVal = globalSettings.gaugeValue ?? 0.5;         // Gauge (상단 트랙 폭)
 
     const exportRatio = (globalSettings.exportRatio || globalSettings.exportSetting || globalSettings.aspectRatio || 'full').toLowerCase();
 
+    // 🎛️ Range (Scatter): 노트 스폰 최소 문턱값 (Noise Gate Threshold)
     const rawScatter = globalSettings.scatterExponent ?? globalSettings.scatter ?? globalSettings.range ?? 25;
-    const noteSpeed = (0.015 + (rawScatter / 50.0) * 0.025);
+    const silenceGate = 0.01 + (rawScatter / 100.0) * 0.12; // 0.01 ~ 0.13 노이즈 게이트
 
+    // 🎛️ Scale (Glow): 노트 전체 크기 및 스파크 이펙트 규모
     const rawGlow = globalSettings.glowScale ?? globalSettings.glow ?? globalSettings.scale ?? 50;
     const scaleFactor = Math.max(0.3, Math.min(3.0, rawGlow / 40.0));
 
-    // 4-Stem 순수 음압 수신
+    // 노트 낙하 속도
+    const noteSpeed = 0.018;
+
+    // 4-Stem 순수 음압 수신 (Gain 연동)
     const rawDrumsV  = (targetAudio.drumsVol  ?? 0) * gainVal;
     const rawBassV   = (targetAudio.bassVol   ?? 0) * gainVal;
     const rawVocalsV = (targetAudio.vocalsVol ?? 0) * gainVal;
     const rawOtherV  = (targetAudio.otherVol  ?? 0) * gainVal;
 
-    // 무음 차단 게이트 (SILENCE_GATE)
-    const SILENCE_GATE = 0.03;
-    const passDrums  = rawDrumsV > SILENCE_GATE;
-    const passBass   = rawBassV > SILENCE_GATE;
-    const passVocals = rawVocalsV > SILENCE_GATE;
-    const passOther  = rawOtherV > SILENCE_GATE;
+    // 스템별 게이트 판정
+    const passDrums  = rawDrumsV > silenceGate;
+    const passBass   = rawBassV > silenceGate;
+    const passVocals = rawVocalsV > silenceGate;
+    const passOther  = rawOtherV > silenceGate;
 
-    // 스펙트럼 수신
+    // 스펙트럼 데이터 수신
     const drumsSpec  = passDrums  ? (targetAudio.drumsSpectrum  || new Float32Array(64)) : new Float32Array(64);
     const bassSpec   = passBass   ? (targetAudio.bassSpectrum   || new Float32Array(64)) : new Float32Array(64);
     const vocalsSpec = passVocals ? (targetAudio.vocalsSpectrum || new Float32Array(64)) : new Float32Array(64);
@@ -188,6 +192,7 @@ export default class PumpRhythmHighwaySketch {
     const W = this.canvas.width;
     const H = this.canvas.height;
 
+    // 뷰포트 레터박스 연산
     let renderW = W, renderH = H, renderX = 0, renderY = 0;
     if (exportRatio === '16:9') {
       renderW = W;
@@ -210,7 +215,7 @@ export default class PumpRhythmHighwaySketch {
     this.ctx.rect(renderX, renderY, renderW, renderH);
     this.ctx.clip();
 
-    // 팔레트 지정
+    // 🎨 Color Style Palette 테마 설정
     const customColors = globalSettings.customColors || {};
     const cGas1 = this.hexToRgb(customColors.gas1);
     const cGas2 = this.hexToRgb(customColors.gas2);
@@ -243,53 +248,52 @@ export default class PumpRhythmHighwaySketch {
     const vanishY = renderY + renderH * 0.12;
     const hitY = renderY + renderH * 0.84;
 
+    // 🎛️ Gauge 연동: 상단 원근 트랙 폭
     const topTrackW = renderW * (0.08 + gaugeVal * 0.32);
     const bottomTrackW = renderW * 0.88;
 
     // ---------------------------------------------------------------------
-    // 1. 🎯 [5 : 5 : 1 : 1 레인 주파수 산출]
+    // 1. 5:5:1:1 레인 정밀 주파수 연산
     // ---------------------------------------------------------------------
     const curEnergies = new Float32Array(12);
 
-    // DRUM (Lanes 0~4 : 5개 주파수 대역)
     if (passDrums) {
-      curEnergies[0] = this.getBandAverage(drumsSpec, 0, 1) * 3.5;  // Sub-Kick
-      curEnergies[1] = this.getBandAverage(drumsSpec, 2, 4) * 3.5;  // Low-Kick
-      curEnergies[2] = this.getBandAverage(drumsSpec, 5, 9) * 3.5;  // Mid-Snare
-      curEnergies[3] = this.getBandAverage(drumsSpec, 10, 18) * 3.5; // High-Tom
-      curEnergies[4] = this.getBandAverage(drumsSpec, 19, 35) * 3.5; // Cymbal/Hi-Hat
+      curEnergies[0] = this.getBandAverage(drumsSpec, 0, 1) * 3.5 * gainVal;
+      curEnergies[1] = this.getBandAverage(drumsSpec, 2, 4) * 3.5 * gainVal;
+      curEnergies[2] = this.getBandAverage(drumsSpec, 5, 9) * 3.5 * gainVal;
+      curEnergies[3] = this.getBandAverage(drumsSpec, 10, 18) * 3.5 * gainVal;
+      curEnergies[4] = this.getBandAverage(drumsSpec, 19, 35) * 3.5 * gainVal;
     }
 
-    // BASS (Lanes 5~9 : 5개 주파수 대역)
     if (passBass) {
-      curEnergies[5] = this.getBandAverage(bassSpec, 0, 1) * 3.5;  // Sub-Bass
-      curEnergies[6] = this.getBandAverage(bassSpec, 2, 3) * 3.5;  // Low-Bass
-      curEnergies[7] = this.getBandAverage(bassSpec, 4, 6) * 3.5;  // Mid-Bass
-      curEnergies[8] = this.getBandAverage(bassSpec, 7, 10) * 3.5; // Upper-Bass
-      curEnergies[9] = this.getBandAverage(bassSpec, 11, 18) * 3.5; // High-Bass
+      curEnergies[5] = this.getBandAverage(bassSpec, 0, 1) * 3.5 * gainVal;
+      curEnergies[6] = this.getBandAverage(bassSpec, 2, 3) * 3.5 * gainVal;
+      curEnergies[7] = this.getBandAverage(bassSpec, 4, 6) * 3.5 * gainVal;
+      curEnergies[8] = this.getBandAverage(bassSpec, 7, 10) * 3.5 * gainVal;
+      curEnergies[9] = this.getBandAverage(bassSpec, 11, 18) * 3.5 * gainVal;
     }
 
-    // VOCAL (Lane 10 : 1개 단독 레인)
     if (passVocals) {
-      curEnergies[10] = Math.max(rawVocalsV * 1.5, this.getBandAverage(vocalsSpec, 10, 32) * 3.5);
+      curEnergies[10] = Math.max(rawVocalsV * 1.5, this.getBandAverage(vocalsSpec, 10, 32) * 3.5 * gainVal);
     }
 
-    // OTHER (Lane 11 : 1개 단독 레인)
     if (passOther) {
-      curEnergies[11] = Math.max(rawOtherV * 1.5, this.getBandAverage(otherSpec, 10, 35) * 3.5);
+      curEnergies[11] = Math.max(rawOtherV * 1.5, this.getBandAverage(otherSpec, 10, 35) * 3.5 * gainVal);
     }
 
     for (let l = 0; l < this.laneCount; l++) {
       if (this.laneCooldowns[l] > 0) this.laneCooldowns[l]--;
     }
 
-    // 그룹별 노트 산출
     const stemGroups = [
-      { lanes: [0, 1, 2, 3, 4] }, // Drums (5 Lanes)
-      { lanes: [5, 6, 7, 8, 9] }, // Bass (5 Lanes)
-      { lanes: [10] },           // Vocals (1 Lane)
-      { lanes: [11] }            // Other (1 Lane)
+      { lanes: [0, 1, 2, 3, 4] },
+      { lanes: [5, 6, 7, 8, 9] },
+      { lanes: [10] },
+      { lanes: [11] }
     ];
+
+    // 🔀 Shuffle(Seed)에 따라 화면 전체 노트 모양을 동일하게 하나로 결정
+    const globalShapeType = this.getGlobalShape(seedVal);
 
     stemGroups.forEach(group => {
       let maxEnergy = 0;
@@ -305,14 +309,14 @@ export default class PumpRhythmHighwaySketch {
       if (winnerLane !== -1) {
         const energy = curEnergies[winnerLane];
         const prevEnergy = this.prevEnergies[winnerLane];
-        const isSpike = (energy - prevEnergy) > 0.05;
+        const isSpike = (energy - prevEnergy) > 0.04;
 
-        if (isSpike && energy > 0.12 && this.laneCooldowns[winnerLane] <= 0) {
+        if (isSpike && energy > (silenceGate * 2.5) && this.laneCooldowns[winnerLane] <= 0) {
           this.notes.push({
             lane: winnerLane,
             progress: 0.0,
             energy: energy,
-            shapeType: this.getShapeForLane(winnerLane, seedVal)
+            shapeType: globalShapeType // 💡 통일된 단일 쉐이프 적용
           });
           this.laneCooldowns[winnerLane] = 10 + Math.floor(Math.random() * 4);
         }
@@ -324,14 +328,13 @@ export default class PumpRhythmHighwaySketch {
     });
 
     // ---------------------------------------------------------------------
-    // 2. 3D 원근 트랙 & 그룹 경계선 렌더링
+    // 2. 3D 원근 트랙 렌더링
     // ---------------------------------------------------------------------
     for (let i = 0; i <= this.laneCount; i++) {
       const norm = i / this.laneCount;
       const topX = centerX - (topTrackW * 0.5) + norm * topTrackW;
       const bottomX = centerX - (bottomTrackW * 0.5) + norm * bottomTrackW;
 
-      // 스템 경계선 구분 (0, 5, 10, 11, 12)
       const isGroupBorder = (i === 0 || i === 5 || i === 10 || i === 11 || i === 12);
       this.ctx.strokeStyle = isGroupBorder ? `rgba(255, 255, 255, 0.50)` : `rgba(255, 255, 255, 0.12)`;
       this.ctx.lineWidth = isGroupBorder ? 2.4 : 0.8;
@@ -357,14 +360,14 @@ export default class PumpRhythmHighwaySketch {
     }
 
     // ---------------------------------------------------------------------
-    // 3. 상단 4-Stem 라벨 (5:5:1:1 칸 영역에 비례 배치)
+    // 3. 상단 스템 라벨 렌더링
     // ---------------------------------------------------------------------
     const labelY = vanishY - 8;
     const stemLabels = [
-      { text: "DRUM", color: colorDrums, centerIdx: 2.0 },  // 0~4번 중앙
-      { text: "BASS", color: colorBass, centerIdx: 7.0 },   // 5~9번 중앙
-      { text: "VOCAL", color: colorVocals, centerIdx: 10.0 },// 10번
-      { text: "OTHER", color: colorOther, centerIdx: 11.0 } // 11번
+      { text: "DRUM", color: colorDrums, centerIdx: 2.0 },
+      { text: "BASS", color: colorBass, centerIdx: 7.0 },
+      { text: "VOCAL", color: colorVocals, centerIdx: 10.0 },
+      { text: "OTHER", color: colorOther, centerIdx: 11.0 }
     ];
 
     const dynamicFontSize = Math.max(7, Math.min(13, (topTrackW / 12) * 0.95));
@@ -404,22 +407,22 @@ export default class PumpRhythmHighwaySketch {
       const btnW = laneW * 0.78 * scaleFactor;
       const btnH = 9 * scaleFactor;
 
-      let laneColor = colorDrums; // 0~4: DRUM
+      let laneColor = colorDrums;
       if (l === 11) laneColor = colorOther;
       else if (l === 10) laneColor = colorVocals;
       else if (l >= 5) laneColor = colorBass;
 
-      const isHitNow = curEnergies[l] > 0.15;
+      const isHitNow = curEnergies[l] > (silenceGate * 2.0);
       this.ctx.fillStyle = isHitNow ? `rgba(${laneColor}, 0.95)` : `rgba(${laneColor}, 0.22)`;
       this.ctx.fillRect(btnX - btnW * 0.5, hitY - btnH * 0.5, btnW, btnH);
 
       if (isHitNow && Math.random() < 0.25) {
-        this.spawnHitParticles(btnX, hitY, laneColor, 2);
+        this.spawnHitParticles(btnX, hitY, laneColor, 2, scaleFactor);
       }
     }
 
     // ---------------------------------------------------------------------
-    // 5. 노트 낙하 렌더링 & 판정선 타격 처리
+    // 5. 노트 낙하 렌더링 (Scale 연동 크기 스케일링)
     // ---------------------------------------------------------------------
     for (let i = this.notes.length - 1; i >= 0; i--) {
       const note = this.notes[i];
@@ -446,13 +449,14 @@ export default class PumpRhythmHighwaySketch {
       this.ctx.shadowColor = `rgb(${curNoteColor})`;
       this.ctx.shadowBlur = 8 * p;
 
+      // 💡 [통일 쉐이프 렌더링]
       this.drawNoteShape(this.ctx, note.shapeType, noteX, curY, noteW, noteH, fillRGBA);
       this.ctx.shadowBlur = 0;
 
       if (p >= 1.0) {
         const hitX = curStartX + (note.lane + 0.5) * curLaneW;
-        this.spawnHitParticles(hitX, hitY, curNoteColor, 8);
-        this.spawnHitEffect(hitX, hitY, curNoteColor);
+        this.spawnHitParticles(hitX, hitY, curNoteColor, 8, scaleFactor);
+        this.spawnHitEffect(hitX, hitY, curNoteColor, scaleFactor);
 
         this.notes.splice(i, 1);
       }
@@ -463,7 +467,7 @@ export default class PumpRhythmHighwaySketch {
     // ---------------------------------------------------------------------
     for (let i = this.hitEffects.length - 1; i >= 0; i--) {
       const fx = this.hitEffects[i];
-      fx.radius += 2.5;
+      fx.radius += 2.5 * scaleFactor;
       fx.alpha -= 0.06;
 
       if (fx.alpha <= 0 || fx.radius >= fx.maxRadius) {
@@ -472,7 +476,7 @@ export default class PumpRhythmHighwaySketch {
       }
 
       this.ctx.strokeStyle = `rgba(${fx.color}, ${fx.alpha})`;
-      this.ctx.lineWidth = 3;
+      this.ctx.lineWidth = 3 * scaleFactor;
       this.ctx.beginPath();
       this.ctx.arc(fx.x, fx.y, fx.radius, 0, Math.PI * 2);
       this.ctx.stroke();
@@ -499,9 +503,9 @@ export default class PumpRhythmHighwaySketch {
 
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: `5:5:1:1 Highway (Notes:${this.notes.length})`,
+      particleCount: `Universal Control Highway (Shape:${globalShapeType} / Gate:${silenceGate.toFixed(2)})`,
       isCovering: true,
-      activeFunction: `PumpHighway5511[12Lanes_${colorStyle.toUpperCase()}]`
+      activeFunction: `PumpHighwayUniversal[12Lanes_${colorStyle.toUpperCase()}]`
     };
   }
 
