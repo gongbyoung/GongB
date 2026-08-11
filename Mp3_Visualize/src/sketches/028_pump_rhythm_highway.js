@@ -1,6 +1,7 @@
 /**
  * src/sketches/028_pump_rhythm_highway.js
- * - [028호 펌프 리듬 하이웨이 Ver 14.0 - Universal Control Tower Mapping]
+ * - [028호 펌프 리듬 하이웨이 Ver 15.0 - Syntax Fix & Universal Control]
+ * - 🎯 ReferenceError(mod is not defined) 완벽 수리 ➔ 화면 검은 먹통 현상 해결
  * - 🔀 Shuffle (Seed) : 전체 노트 모양 일괄 통일 전환 (0~99: 사각 / 100~199: 라운드 / 200~299: 원 / 300~399: 다이아 / 400~500: 별)
  * - 🎛️ Volume (Gain)   : 노트 생성 감도 (Sensitivity) 조절
  * - 🎛️ Range (Scatter) : 노트 생성 최소 문턱값 (Noise Gate) 조절
@@ -20,7 +21,7 @@ export default class PumpRhythmHighwaySketch {
     }
 
     this.time = 0;
-    this.version = "028호 펌프 리듬 하이웨이 Ver 14.0 (Universal Control)";
+    this.version = "028호 펌프 리듬 하이웨이 Ver 15.0 (Syntax Fix)";
     
     this.laneCount = 12; // 5(Drum) + 5(Bass) + 1(Vocal) + 1(Other)
     this.notes = [];
@@ -62,9 +63,9 @@ export default class PumpRhythmHighwaySketch {
     return count > 0 ? (sum / count) : 0;
   }
 
-  // 💡 Shuffle(Seed) 수치에 따라 전체 노트 쉐이프를 하나로 일괄 통일
+  // 💡 [수리 완료]: mod 에러 방지 연산 수식
   getGlobalShape(seed) {
-    const s = mod(seed, 500);
+    const s = Math.abs(Math.floor(seed)) % 500;
     if (s < 100) return 0;      // 0~99   : 직사각형
     if (s < 200) return 1;      // 100~199: 라운드 사각
     if (s < 300) return 2;      // 200~299: 원형
@@ -142,46 +143,41 @@ export default class PumpRhythmHighwaySketch {
   }
 
   // =========================================================================
-  // 🔄 UPDATE RENDER LOOP (Universal Control Tower Binding)
+  // 🔄 UPDATE RENDER LOOP
   // =========================================================================
   update(audioData) {
     if (!this.ctx || !this.canvas) return;
 
     const targetAudio = audioData || {};
 
-    // 🎛️ 관제탑 컨트롤러 파라미터 연동
     const globalSettings = window.cosmicEngineSettings || {};
     const seedVal = globalSettings.seed ?? 42;
-    const gainVal = globalSettings.audioGain ?? 1.0;          // Volume (Gain)
+    const gainVal = globalSettings.audioGain ?? 1.0;
     const colorStyle = (globalSettings.colorStyle || 'monochrome').toLowerCase();
-    const gaugeVal = globalSettings.gaugeValue ?? 0.5;         // Gauge (상단 트랙 폭)
+    const gaugeVal = globalSettings.gaugeValue ?? 0.5;
 
     const exportRatio = (globalSettings.exportRatio || globalSettings.exportSetting || globalSettings.aspectRatio || 'full').toLowerCase();
 
-    // 🎛️ Range (Scatter): 노트 스폰 최소 문턱값 (Noise Gate Threshold)
+    // 🎛️ Range (Scatter): 노트 스폰 최소 문턱값 (Noise Gate)
     const rawScatter = globalSettings.scatterExponent ?? globalSettings.scatter ?? globalSettings.range ?? 25;
-    const silenceGate = 0.01 + (rawScatter / 100.0) * 0.12; // 0.01 ~ 0.13 노이즈 게이트
+    const silenceGate = 0.01 + (rawScatter / 100.0) * 0.12;
 
-    // 🎛️ Scale (Glow): 노트 전체 크기 및 스파크 이펙트 규모
+    // 🎛️ Scale (Glow): 노트 전체 크기 및 이펙트 규모
     const rawGlow = globalSettings.glowScale ?? globalSettings.glow ?? globalSettings.scale ?? 50;
     const scaleFactor = Math.max(0.3, Math.min(3.0, rawGlow / 40.0));
 
-    // 노트 낙하 속도
     const noteSpeed = 0.018;
 
-    // 4-Stem 순수 음압 수신 (Gain 연동)
     const rawDrumsV  = (targetAudio.drumsVol  ?? 0) * gainVal;
     const rawBassV   = (targetAudio.bassVol   ?? 0) * gainVal;
     const rawVocalsV = (targetAudio.vocalsVol ?? 0) * gainVal;
     const rawOtherV  = (targetAudio.otherVol  ?? 0) * gainVal;
 
-    // 스템별 게이트 판정
     const passDrums  = rawDrumsV > silenceGate;
     const passBass   = rawBassV > silenceGate;
     const passVocals = rawVocalsV > silenceGate;
     const passOther  = rawOtherV > silenceGate;
 
-    // 스펙트럼 데이터 수신
     const drumsSpec  = passDrums  ? (targetAudio.drumsSpectrum  || new Float32Array(64)) : new Float32Array(64);
     const bassSpec   = passBass   ? (targetAudio.bassSpectrum   || new Float32Array(64)) : new Float32Array(64);
     const vocalsSpec = passVocals ? (targetAudio.vocalsSpectrum || new Float32Array(64)) : new Float32Array(64);
@@ -192,7 +188,6 @@ export default class PumpRhythmHighwaySketch {
     const W = this.canvas.width;
     const H = this.canvas.height;
 
-    // 뷰포트 레터박스 연산
     let renderW = W, renderH = H, renderX = 0, renderY = 0;
     if (exportRatio === '16:9') {
       renderW = W;
@@ -215,7 +210,6 @@ export default class PumpRhythmHighwaySketch {
     this.ctx.rect(renderX, renderY, renderW, renderH);
     this.ctx.clip();
 
-    // 🎨 Color Style Palette 테마 설정
     const customColors = globalSettings.customColors || {};
     const cGas1 = this.hexToRgb(customColors.gas1);
     const cGas2 = this.hexToRgb(customColors.gas2);
@@ -248,12 +242,11 @@ export default class PumpRhythmHighwaySketch {
     const vanishY = renderY + renderH * 0.12;
     const hitY = renderY + renderH * 0.84;
 
-    // 🎛️ Gauge 연동: 상단 원근 트랙 폭
     const topTrackW = renderW * (0.08 + gaugeVal * 0.32);
     const bottomTrackW = renderW * 0.88;
 
     // ---------------------------------------------------------------------
-    // 1. 5:5:1:1 레인 정밀 주파수 연산
+    // 1. 주파수 산출 & 노트 생성
     // ---------------------------------------------------------------------
     const curEnergies = new Float32Array(12);
 
@@ -292,7 +285,6 @@ export default class PumpRhythmHighwaySketch {
       { lanes: [11] }
     ];
 
-    // 🔀 Shuffle(Seed)에 따라 화면 전체 노트 모양을 동일하게 하나로 결정
     const globalShapeType = this.getGlobalShape(seedVal);
 
     stemGroups.forEach(group => {
@@ -316,7 +308,7 @@ export default class PumpRhythmHighwaySketch {
             lane: winnerLane,
             progress: 0.0,
             energy: energy,
-            shapeType: globalShapeType // 💡 통일된 단일 쉐이프 적용
+            shapeType: globalShapeType
           });
           this.laneCooldowns[winnerLane] = 10 + Math.floor(Math.random() * 4);
         }
@@ -422,7 +414,7 @@ export default class PumpRhythmHighwaySketch {
     }
 
     // ---------------------------------------------------------------------
-    // 5. 노트 낙하 렌더링 (Scale 연동 크기 스케일링)
+    // 5. 노트 낙하 렌더링
     // ---------------------------------------------------------------------
     for (let i = this.notes.length - 1; i >= 0; i--) {
       const note = this.notes[i];
@@ -449,7 +441,6 @@ export default class PumpRhythmHighwaySketch {
       this.ctx.shadowColor = `rgb(${curNoteColor})`;
       this.ctx.shadowBlur = 8 * p;
 
-      // 💡 [통일 쉐이프 렌더링]
       this.drawNoteShape(this.ctx, note.shapeType, noteX, curY, noteW, noteH, fillRGBA);
       this.ctx.shadowBlur = 0;
 
@@ -463,7 +454,7 @@ export default class PumpRhythmHighwaySketch {
     }
 
     // ---------------------------------------------------------------------
-    // 6. 타격 충격파 & 스파크 렌더링
+    // 6. 파티클 렌더링
     // ---------------------------------------------------------------------
     for (let i = this.hitEffects.length - 1; i >= 0; i--) {
       const fx = this.hitEffects[i];
@@ -503,9 +494,9 @@ export default class PumpRhythmHighwaySketch {
 
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: `Universal Control Highway (Shape:${globalShapeType} / Gate:${silenceGate.toFixed(2)})`,
+      particleCount: `Pump Highway Fixed (Shape:${globalShapeType})`,
       isCovering: true,
-      activeFunction: `PumpHighwayUniversal[12Lanes_${colorStyle.toUpperCase()}]`
+      activeFunction: `PumpHighwayFixed[12Lanes_${colorStyle.toUpperCase()}]`
     };
   }
 
