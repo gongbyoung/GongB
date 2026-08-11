@@ -21,10 +21,10 @@ export default class PumpRhythmHighwaySketch {
     
     // 정확한 자산 파일명으로 배경 이미지 로드
     this.bg169 = new Image();
-    this.bg169.src = './028_169_bg.jpg';
+    this.bg169.src = './assets/028_169_bg.jpg';
 
     this.bg916 = new Image();
-    this.bg916.src = './028_916_BG.jpg';
+    this.bg916.src = './assets/028_916_BG.jpg';
 
     this.stringVibration = [0, 0, 0, 0, 0];
   }
