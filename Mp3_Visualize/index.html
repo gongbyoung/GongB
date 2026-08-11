@@ -1,202 +1,490 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Mp3 Visualizer Study Control Tower</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
-  
-  <!-- 💡 한국어 대표 웹 폰트 6종 사전 적재 -->
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Do+Hyeon&family=Gamja+Flower&family=Jua&family=Nanum+Gothic:wght@700;800&family=Noto+Sans+KR:wght@500;900&display=swap">
-  <link rel="stylesheet" href="css/style.css">
-  <style>
-    .right-sidebar { display: flex; flex-direction: column; gap: 5px !important; padding: 10px 16px !important; }
-    .control-group { margin-bottom: 5px !important; padding: 5px !important; }
-    h3 { margin-bottom: 5px !important; font-size: 14px !important; }
-    .center-canvas-zone { display: flex; align-items: center; justify-content: center; overflow: hidden; background-color: #060810; position: relative; }
-    #stage-wrapper { transition: all 0.3s ease; width: 100%; height: 100%; position: relative; }
-    .ratio-full { width: 100% !important; height: 100% !important; }
-    .ratio-169 { aspect-ratio: 16/9 !important; height: auto !important; width: 100% !important; }
-    .ratio-916 { aspect-ratio: 9/16 !important; height: 100% !important; width: auto !important; }
-    .slider-row { display: flex; align-items: center; gap: 8px; }
-    .slider-row input[type="range"] { flex: 1; }
-    .slider-row input[type="number"] { width: 50px !important; text-align: center; background: #0f172a; color: #fff; border: 1px solid #334155; border-radius: 4px; }
-    .offset-row { display: flex; gap: 6px; }
-    .offset-unit { flex: 1; display: flex; align-items: center; background: #0f172a; border: 1px solid #334155; padding: 2px 6px; border-radius: 4px; }
-    .offset-unit span { color: #00ffcc; font-size: 10px; font-weight: bold; margin-right: 4px; }
-    .offset-unit input { width: 100%; background: transparent; border: none; color: #fff; text-align: center; outline: none; }
-  </style>
-</head>
-<body>
-  <div class="main-layout">
-    <div class="left-sidebar">
-      <h3>🎵 Media Resources</h3>
+/**
+ * src/sketches/028_pump_rhythm_highway.js
+ * - [028호 펌프 리듬 하이웨이 Ver 3.0 - Clean Highway & Dynamic Shapes]
+ * - 🎯 동일 악기 내 중복 노트 방지 (그룹별 Winner-Take-All 독립 노트 산출)
+ * - 🎛️ Gauge 슬라이더: 상단 트랙 원근 폭 실시간 조절 (어지러움 완전 방지)
+ * - 🔀 Shuffle (Seed): 노트 낙하 쉐이프 무작위화 (사각, 라운드, 원, 다이아, 별, 삼각)
+ * - 🎨 Color Style Palette 테마 완벽 연동
+ * - 🏷️ 상단 텍스트(DRUM, BASS, VOCAL, OTHER) 뭉침 방지 자동 스케일링
+ */
 
-      <!-- 1. 시 제목 / 가사 입력창 -->
-      <div class="control-group">
-        <label style="color:#00ffcc; font-weight:bold; font-size:11px;">✍️ 시 문구 입력:</label>
-        <input type="text" id="input-poem-text" value="떠날 때의 님의 얼굴" placeholder="시 제목 또는 가사 입력" 
-               style="width: 100%; background: #020612; color: #fff; border: 1px solid #00f0ff; border-radius: 4px; padding: 6px; font-size: 12px; margin-top: 4px; outline:none;">
-      </div>
+export default class PumpRhythmHighwaySketch {
+  constructor(container) {
+    this.container = typeof container === 'string' ? document.getElementById(container) : container;
+    this.canvas = document.createElement('canvas');
+    this.ctx = this.canvas.getContext('2d');
+    
+    if (this.container) {
+      this.container.appendChild(this.canvas);
+    }
 
-      <!-- 💡 2. 폰트 선택 & TTF/OTF 파일 직접 커스텀 기능 -->
-      <div class="control-group" style="background:#081026; border:1px solid #38bdf8; border-radius:6px; padding:8px !important;">
-        <label style="color:#38bdf8; font-weight:bold; font-size:11px;">🔤 폰트 선택 & 사용자 폰트:</label>
-        <select id="select-poem-font" style="width: 100%; background: #0f172a; color: #fff; border: 1px solid #00f0ff; border-radius: 4px; padding: 5px; font-size: 11px; margin-top: 4px; outline:none;">
-          <option value="'Noto Sans KR'">Noto Sans KR (기본 산세리프)</option>
-          <option value="'Black Han Sans'">Black Han Sans (웅장한 헤드라인)</option>
-          <option value="'Do Hyeon'">Do Hyeon (도현체)</option>
-          <option value="'Jua'">Jua (주아체)</option>
-          <option value="'Gamja Flower'">Gamja Flower (감자꽃체)</option>
-          <option value="'Nanum Gothic'">Nanum Gothic (나눔고딕)</option>
-        </select>
+    this.time = 0;
+    this.version = "028호 펌프 리듬 하이웨이 Ver 3.0 (Clean Highway)";
+    
+    this.laneCount = 12; // 4-Stem x 3-Lanes
+    this.notes = [];
+    this.particles = [];
+    this.hitEffects = [];
+    this.laneCooldowns = new Array(12).fill(0);
+  }
 
-        <div style="margin-top:6px; font-size:10px;">
-          <label style="color:#facc15;">📁 내 컴퓨터 TTF/OTF 폰트 파일:</label>
-          <input type="file" id="file-custom-font" accept=".ttf,.otf,.woff,.woff2" style="width:100%; font-size:10px; margin-top:2px;">
-        </div>
-      </div>
+  init() {
+    this.resize();
+  }
 
-      <!-- 3. MP3 파일 전체 일괄 로더 -->
-      <div class="control-group" style="background:#09132b; border:1px solid #00ffcc; border-radius:6px; padding:8px !important;">
-        <label style="color:#facc15; font-weight:bold; font-size:11px;">⚡ MP3 파일 전체 일괄 선택 (자동 인식):</label>
-        <input type="file" id="file-batch-mp3" accept="audio/*" multiple style="width:100%; font-size:10px; margin-top:4px;">
-        <div id="batch-load-status" style="font-size:10px; color:#38bdf8; margin-top:4px; line-height:1.4;">💡 폴더 안의 5개 MP3 파일 전체 선택(Ctrl+A) 후 올라기 눌러주세요.</div>
-      </div>
+  resize(w, h) {
+    this.width = w || (this.container ? this.container.clientWidth : 800) || 800;
+    this.height = h || (this.container ? this.container.clientHeight : 600) || 600;
+    this.canvas.width = this.width;
+    this.canvas.height = this.height;
+  }
 
-      <!-- 보조 개별 업로드 UI -->
-      <div class="control-group">
-        <div class="file-input-wrapper"><span>🔊 메인 MP3:</span><input type="file" id="file-audio" accept="audio/*"></div>
-        <div class="file-input-wrapper"><span>📝 SRT:</span><input type="file" id="file-srt" accept=".srt"></div>
-        <div class="file-input-wrapper"><span>🖼️ BG:</span><input type="file" id="file-image" accept="image/*"></div>
-      </div>
-      <div class="control-group">
-        <button id="btn-play-music" class="action-master-btn">▶️ 단일 음악 재생 (Play)</button>
-      </div>
-      <audio id="audio-player" src="assets/sample.mp3"></audio>
+  hexToRgb(hex) {
+    if (!hex) return "0, 240, 255";
+    let c = hex.replace('#', '');
+    if (c.length === 3) c = c.split('').map(x => x + x).join('');
+    const num = parseInt(c, 16);
+    return `${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}`;
+  }
 
-      <h3>📂 Sketches</h3>
-      <ul class="sketches-list-wrapper" id="sketch-list">
-        <li class="sketch-btn active" data-sketch="001_p5_wave.js">001 파형</li>
-        <li class="sketch-btn" data-sketch="002_three_cube.js">002 큐브</li>
-        <li class="sketch-btn" data-sketch="003_glsl_noise.js">003 노이즈</li>
-        <li class="sketch-btn" data-sketch="004_three_typography.js">004 타이포</li>
-        <li class="sketch-btn" data-sketch="005_three_floor_eq.js">005 그리드</li>
-        <li class="sketch-btn" data-sketch="006_three_organic_flower.js">006 메이커</li>
-        <li class="sketch-btn" data-sketch="007_three_cosmic_nebula.js">007 성운</li>
-        <li class="sketch-btn" data-sketch="008_three_pendulum_wave.js">008 진자</li>
-        <li class="sketch-btn" data-sketch="009_three_fireworks.js">009 불꽃</li>
-        <li class="sketch-btn" data-sketch="010_p5_datawave_512.js">010 데이터</li>
-        <li class="sketch-btn" data-sketch="011_p5_ocean_wave.js">011 물보라</li>
-        <li class="sketch-btn" data-sketch="012_p5_ocean_wave_spaced.js">012 레이어</li>
-        <li class="sketch-btn" data-sketch="013_p5_ink_meteor_shower.js">013 유성우</li>
-        <li class="sketch-btn" data-sketch="014_p5_pendulums.js">014 오르브</li>
-        <li class="sketch-btn" data-sketch="015_three_p5_aurora.js">015 유체</li>
-        <li class="sketch-btn" data-sketch="016_p5_stylized_painter.js">016 화가</li>
-        <li class="sketch-btn" data-sketch="017_p5_fbm_cloud.js">017 구름</li>
-        <li class="sketch-btn" data-sketch="018_cloud.js">018 원구름</li>
-        <li class="sketch-btn" data-sketch="019_p5_512_circles.js">019 원반</li>
-        <li class="sketch-btn" data-sketch="020_p5_srt_canvas.js">020 자막</li>
-        <li class="sketch-btn" data-sketch="021_matrix_press.js">021 32채널</li>
-        <li class="sketch-btn" data-sketch="022_poem_typography.js">022 시타이포</li>
-        <li class="sketch-btn" data-sketch="023_poem_mask_packer.js">023 시마스크</li>
-        <li class="sketch-btn" data-sketch="024_Noize_algorism.js">024 노이즈</li>
-        <li class="sketch-btn" data-sketch="025_fluid_ink_wash.js">025 수묵잉크</li>
-        <li class="sketch-btn" data-sketch="026_kaleidoscope.js">026 만화경</li>
-        <li class="sketch-btn" data-sketch="027_guitar_speaker_stage.js">027 기타5줄</li>
-        <li class="sketch-btn" data-sketch="028_pump_rhythm_highway.js">028 리듬게임</li>
+  getBandAverage(spectrum, startBin, endBin) {
+    if (!spectrum || spectrum.length === 0) return 0;
+    let sum = 0;
+    let count = 0;
+    const maxLen = Math.min(spectrum.length, endBin + 1);
+    for (let i = startBin; i <= maxLen; i++) {
+      sum += (spectrum[i] || 0);
+      count++;
+    }
+    return count > 0 ? (sum / count) : 0;
+  }
 
-      </ul>
-    </div>
+  // 💡 Shuffle(Seed) 기반 레인별 노트 쉐이프 결정 (0: 사각, 1: 라운드사각, 2: 원, 3: 다이아몬드, 4: 별, 5: 삼각)
+  getShapeForLane(lane, seed) {
+    const pseudo = Math.abs(Math.sin(seed * 12.9898 + lane * 78.233) * 43758.5453);
+    return Math.floor(pseudo) % 6;
+  }
 
-    <div class="center-canvas-zone">
-      <div id="stage-wrapper" class="ratio-full">
-         <div id="canvas-stage" style="width:100%; height:100%;"></div>
-      </div>
-    </div>
+  spawnHitParticles(x, y, color, count = 6) {
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 2 + Math.random() * 6;
+      this.particles.push({
+        x: x, y: y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 1.5,
+        size: 2 + Math.random() * 4,
+        color: color,
+        life: 1.0
+      });
+    }
+  }
 
-    <div class="right-sidebar">
-      <h3>Cosmic Studio Tuning</h3>
-      <div class="control-group"><label>Shuffle (Seed)</label><div class="slider-row"><input type="range" id="num-cosmic-seed" min="1" max="500" value="42"><input type="number" id="val-cosmic-seed" value="42"></div></div>
-      <div class="control-group"><label>Range (Scatter)</label><div class="slider-row"><input type="range" id="num-cosmic-scatter" min="5" max="50" value="22"><input type="number" id="val-cosmic-scatter" value="22"></div></div>
-      <div class="control-group"><label>Scale (Glow)</label><div class="slider-row"><input type="range" id="num-cosmic-glow" min="10" max="250" value="85"><input type="number" id="val-cosmic-glow" value="85"></div></div>
-      <div class="control-group">
-  <label>Volume (Gain)</label>
-  <div class="slider-row">
-    <!-- 💡 최소 0.1, 중간값 10, 최대 20, 이동 단위 0.1 설정 -->
-    <input type="range" id="num-cosmic-gain" min="0.1" max="20" value="10" step="0.1">
-    <input type="number" id="val-cosmic-gain" value="10" step="0.1">
-  </div>
-</div>
-      <div class="control-group"><label>Gauge</label><div class="slider-row"><input type="range" id="num-cosmic-gauge" min="0" max="100" value="50"><input type="number" id="val-cosmic-gauge" value="50"></div></div>
-      <div class="control-group">
-        <label>Color Style Palette</label>
-        <select id="select-cosmic-color" style="width:100%; height:28px; background:#0f172a; color:#fff; border:1px solid #334155;">
-            <option value="neon">Neon</option>
-            <option value="pastel">Pastel</option>
-            <option value="monochrome">Monochrome</option>
-            <option value="earth">Earth</option>
-            <option value="custom">Custom</option>
-        </select>
-        <div style="display:flex; gap:5px; margin-top:5px;">
-            <input type="color" id="picker-gas1" value="#ff0055">
-            <input type="color" id="picker-gas2" value="#00ffcc">
-            <input type="color" id="picker-star" value="#ffffff">
-        </div>
-      </div>
-      <div class="control-group">
-        <label>3D Position Offset (X, Y, Z)</label>
-        <div class="offset-row">
-            <div class="offset-unit"><span>X</span><input type="number" id="num-offset-x" value="0"></div>
-            <div class="offset-unit"><span>Y</span><input type="number" id="num-offset-y" value="0"></div>
-            <div class="offset-unit"><span>Z</span><input type="number" id="num-offset-z" value="0"></div>
-        </div>
-      </div>
-      <button class="action-master-btn" id="btn-apply-cosmic">현재 수치 즉시 적용 (RESET)</button>
-      <h3>💾 Preset Save & Load</h3>
-      <div id="preset-status" style="font-size:10px; margin-bottom:5px;">상태: 대기 중</div>
-      <div class="preset-btn-row">
-        <button class="action-mini-btn" id="btn-save-preset">📂 디바이스 저장</button>
-        <button class="action-mini-btn" id="btn-load-preset">📁 불러오기</button>
-        <input type="file" id="hidden-preset-file-input" accept=".json" style="display:none;">
-      </div>
-      <h3>📹 Export Setting</h3>
-      <div class="preset-btn-row">
-        <button class="action-mini-btn" id="btn-ratio-full">Full</button>
-        <button class="action-mini-btn" id="btn-ratio-169">16:9</button>
-        <button class="action-mini-btn" id="btn-ratio-916">9:16</button>
-      </div>
-      <button class="record-master-btn" id="btn-record">🔴 녹화 시작 (Record)</button>
-    </div>
-  </div>
+  spawnHitEffect(x, y, color) {
+    this.hitEffects.push({
+      x: x, y: y,
+      radius: 8,
+      maxRadius: 32,
+      color: color,
+      alpha: 1.0
+    });
+  }
 
-  <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      function setupControlLink(sliderId, numberId) {
-        const slider = document.getElementById(sliderId);
-        const number = document.getElementById(numberId);
-        if (!slider || !number) return;
+  // 🖌️ 다양한 쉐이프 렌더링 도우미
+  drawNoteShape(ctx, shapeType, x, y, w, h, color) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
 
-        slider.addEventListener('input', () => { number.value = slider.value; });
-        number.addEventListener('input', () => {
-          let value = parseFloat(number.value);
-          if (isNaN(value)) return;
-          const min = parseFloat(slider.min); const max = parseFloat(slider.max);
-          if (value < min) value = min; if (value > max) value = max;
-          slider.value = value;
-          slider.dispatchEvent(new Event('input', { bubbles: true }));
-        });
+    switch (shapeType) {
+      case 1: // 라운드 사각
+        ctx.roundRect(x - w / 2, y - h / 2, w, h, Math.min(w, h) * 0.3);
+        ctx.fill();
+        break;
+      case 2: // 원형
+        ctx.arc(x, y, Math.min(w, h) * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      case 3: // 다이아몬드
+        ctx.moveTo(x, y - h / 2);
+        ctx.lineTo(x + w / 2, y);
+        ctx.lineTo(x, y + h / 2);
+        ctx.lineTo(x - w / 2, y);
+        ctx.closePath();
+        ctx.fill();
+        break;
+      case 4: // 별형
+        {
+          const r = Math.min(w, h) * 0.55;
+          const ir = r * 0.45;
+          for (let i = 0; i < 10; i++) {
+            const cr = i % 2 === 0 ? r : ir;
+            const a = (i / 10) * Math.PI * 2 - Math.PI / 2;
+            const px = x + Math.cos(a) * cr;
+            const py = y + Math.sin(a) * cr;
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+          }
+          ctx.closePath();
+          ctx.fill();
+        }
+        break;
+      case 5: // 삼각형
+        ctx.moveTo(x, y - h / 2);
+        ctx.lineTo(x + w / 2, y + h / 2);
+        ctx.lineTo(x - w / 2, y + h / 2);
+        ctx.closePath();
+        ctx.fill();
+        break;
+      default: // 기본 직사각형
+        ctx.fillRect(x - w / 2, y - h / 2, w, h);
+        break;
+    }
+  }
+
+  // =========================================================================
+  // 🔄 UPDATE RENDER LOOP
+  // =========================================================================
+  update(audioData) {
+    if (!this.ctx || !this.canvas) return;
+
+    const targetAudio = audioData || {};
+
+    const globalSettings = window.cosmicEngineSettings || {};
+    const seedVal = globalSettings.seed ?? 42;
+    const gainVal = globalSettings.audioGain ?? 1.0;
+    const colorStyle = (globalSettings.colorStyle || 'monochrome').toLowerCase();
+    const gaugeVal = globalSettings.gaugeValue ?? 0.5; // Gauge UI 슬라이더
+
+    const exportRatio = (globalSettings.exportRatio || globalSettings.exportSetting || globalSettings.aspectRatio || 'full').toLowerCase();
+
+    // 관제탑 컨트롤러 수치
+    const rawScatter = globalSettings.scatterExponent ?? globalSettings.scatter ?? globalSettings.range ?? 25;
+    const noteSpeed = (0.010 + (rawScatter / 50.0) * 0.025); // 노트 낙하 속도
+
+    const rawGlow = globalSettings.glowScale ?? globalSettings.glow ?? globalSettings.scale ?? 50;
+    const scaleFactor = Math.max(0.3, Math.min(3.0, rawGlow / 40.0));
+
+    // 4-Stem 개별 음압 수신
+    const vocalsVol = (targetAudio.vocalsVol ?? targetAudio.mid ?? 0) * gainVal;
+    const drumsVol  = (targetAudio.drumsVol  ?? targetAudio.bass ?? 0) * gainVal;
+    const bassVol   = (targetAudio.bassVol   ?? targetAudio.bass ?? 0) * gainVal;
+    const otherVol  = (targetAudio.otherVol  ?? targetAudio.treble ?? 0) * gainVal;
+
+    // 스펙트럼 수신
+    const spectrum = targetAudio.bassSpectrum || targetAudio.spectrum || targetAudio.frequencyData || new Float32Array(64);
+
+    this.time += 0.016;
+
+    const W = this.canvas.width;
+    const H = this.canvas.height;
+
+    // 뷰포트 레터박스 영점 계산
+    let renderW = W, renderH = H, renderX = 0, renderY = 0;
+    if (exportRatio === '16:9') {
+      renderW = W;
+      renderH = W * (9 / 16);
+      if (renderH > H) { renderH = H; renderW = H * (16 / 9); }
+      renderX = (W - renderW) / 2; renderY = (H - renderH) / 2;
+    } else if (exportRatio === '9:16') {
+      renderH = H;
+      renderW = H * (9 / 16);
+      if (renderW > W) { renderW = W; renderH = W * (16 / 9); }
+      renderX = (W - renderW) / 2; renderY = (H - renderH) / 2;
+    }
+
+    this.ctx.save();
+
+    this.ctx.fillStyle = "#000000";
+    this.ctx.fillRect(0, 0, W, H);
+
+    this.ctx.beginPath();
+    this.ctx.rect(renderX, renderY, renderW, renderH);
+    this.ctx.clip();
+
+    // 🎨 Color Style Palette 테마 설정
+    const customColors = globalSettings.customColors || {};
+    const cGas1 = this.hexToRgb(customColors.gas1);
+    const cGas2 = this.hexToRgb(customColors.gas2);
+    const cStar = this.hexToRgb(customColors.star);
+
+    let colorDrums  = "255, 60, 80";   // Red Coral
+    let colorBass   = "0, 230, 255";   // Cyan Blue
+    let colorVocals = "255, 215, 0";   // Gold Yellow
+    let colorOther  = "190, 80, 255";  // Purple Magenta
+
+    if (colorStyle === 'pastel') {
+      colorDrums  = "240, 110, 130"; colorBass   = "90, 170, 230";
+      colorVocals = "230, 180, 80";  colorOther  = "170, 120, 220";
+    } else if (colorStyle === 'monochrome' || colorStyle === 'earth') {
+      colorDrums  = "220, 225, 240"; colorBass   = "180, 195, 215";
+      colorVocals = "240, 245, 255"; colorOther  = "150, 165, 185";
+    } else if (colorStyle === 'custom') {
+      colorDrums  = cGas1; colorBass = cGas2; colorVocals = cStar; colorOther = "180, 100, 255";
+    }
+
+    // 배경 그라데이션
+    const bgGrad = this.ctx.createLinearGradient(renderX, renderY, renderX, renderY + renderH);
+    bgGrad.addColorStop(0, "#101426");
+    bgGrad.addColorStop(0.5, "#050712");
+    bgGrad.addColorStop(1, "#020308");
+
+    this.ctx.fillStyle = bgGrad;
+    this.ctx.fillRect(renderX, renderY, renderW, renderH);
+
+    const centerX = renderX + renderW / 2;
+    const vanishY = renderY + renderH * 0.12;  // 상단 원근점
+    const hitY = renderY + renderH * 0.84;     // 하단 판정선
+
+    // 🎛️ [Gauge 연동]: 상단 트랙 폭을 Gauge 슬라이더로 조절 가능하게 변경 (어지러움 완화!)
+    const topTrackW = renderW * (0.08 + gaugeVal * 0.32); // Gauge 0.0일 때 8%, 1.0일 때 40%로 확대
+    const bottomTrackW = renderW * 0.88;
+
+    // ---------------------------------------------------------------------
+    // 1. 🎯 [핵심 수리]: 동일 악기 내 중복 노트 발생 완전 차단 (Winner-Take-All)
+    // ---------------------------------------------------------------------
+    const laneEnergies = new Float32Array(12);
+
+    laneEnergies[0] = Math.max(drumsVol * 1.5, this.getBandAverage(spectrum, 0, 2) * 3.5 * gainVal);
+    laneEnergies[1] = Math.max(drumsVol * 1.2, this.getBandAverage(spectrum, 3, 6) * 3.0 * gainVal);
+    laneEnergies[2] = Math.max(drumsVol * 1.0, this.getBandAverage(spectrum, 7, 12) * 3.0 * gainVal);
+
+    laneEnergies[3] = Math.max(bassVol * 1.5, this.getBandAverage(spectrum, 0, 3) * 3.5 * gainVal);
+    laneEnergies[4] = Math.max(bassVol * 1.3, this.getBandAverage(spectrum, 4, 8) * 3.0 * gainVal);
+    laneEnergies[5] = Math.max(bassVol * 1.0, this.getBandAverage(spectrum, 9, 15) * 3.0 * gainVal);
+
+    laneEnergies[6] = Math.max(vocalsVol * 1.2, this.getBandAverage(spectrum, 12, 18) * 3.0 * gainVal);
+    laneEnergies[7] = Math.max(vocalsVol * 1.5, this.getBandAverage(spectrum, 19, 28) * 3.5 * gainVal);
+    laneEnergies[8] = Math.max(vocalsVol * 1.2, this.getBandAverage(spectrum, 29, 40) * 3.0 * gainVal);
+
+    laneEnergies[9]  = Math.max(otherVol * 1.2, this.getBandAverage(spectrum, 15, 24) * 3.0 * gainVal);
+    laneEnergies[10] = Math.max(otherVol * 1.5, this.getBandAverage(spectrum, 25, 38) * 3.5 * gainVal);
+    laneEnergies[11] = Math.max(otherVol * 1.2, this.getBandAverage(spectrum, 39, 55) * 3.0 * gainVal);
+
+    // 쿨다운 차감
+    for (let l = 0; l < this.laneCount; l++) {
+      if (this.laneCooldowns[l] > 0) this.laneCooldowns[l]--;
+    }
+
+    // 💡 악기 스템 그룹별로 가장 높은 에너지 레인을 단 1개만 선별하여 노트 생성
+    const stemGroups = [
+      { lanes: [0, 1, 2] },  // Drums
+      { lanes: [3, 4, 5] },  // Bass
+      { lanes: [6, 7, 8] },  // Vocals
+      { lanes: [9, 10, 11] } // Other
+    ];
+
+    stemGroups.forEach(group => {
+      let maxEnergy = 0;
+      let winnerLane = -1;
+
+      for (let l of group.lanes) {
+        if (laneEnergies[l] > maxEnergy) {
+          maxEnergy = laneEnergies[l];
+          winnerLane = l;
+        }
       }
 
-      setupControlLink('num-cosmic-seed', 'val-cosmic-seed');
-      setupControlLink('num-cosmic-scatter', 'val-cosmic-scatter');
-      setupControlLink('num-cosmic-glow', 'val-cosmic-glow');
-      setupControlLink('num-cosmic-gain', 'val-cosmic-gain');
-      setupControlLink('num-cosmic-gauge', 'val-cosmic-gauge');
+      // 악기 그룹 내에서 가장 에너지가 큰 레인 1개만 노출
+      if (winnerLane !== -1 && maxEnergy > 0.14 && this.laneCooldowns[winnerLane] <= 0) {
+        this.notes.push({
+          lane: winnerLane,
+          progress: 0.0,
+          energy: maxEnergy,
+          shapeType: this.getShapeForLane(winnerLane, seedVal) // Shuffle 연동 쉐이프
+        });
+        this.laneCooldowns[winnerLane] = 8 + Math.floor(Math.random() * 4);
+      }
     });
-  </script>
 
-  <script type="module" src="src/main.js"></script>
-</body>
-</html>
+    // ---------------------------------------------------------------------
+    // 2. 3D 원근 트랙 & 4-Stem 그룹 가이드선 렌더링
+    // ---------------------------------------------------------------------
+    for (let i = 0; i <= this.laneCount; i++) {
+      const norm = i / this.laneCount;
+      const topX = centerX - (topTrackW * 0.5) + norm * topTrackW;
+      const bottomX = centerX - (bottomTrackW * 0.5) + norm * bottomTrackW;
+
+      const isGroupBorder = i % 3 === 0;
+      this.ctx.strokeStyle = isGroupBorder ? `rgba(255, 255, 255, 0.45)` : `rgba(255, 255, 255, 0.12)`;
+      this.ctx.lineWidth = isGroupBorder ? 2.2 : 0.8;
+
+      this.ctx.beginPath();
+      this.ctx.moveTo(topX, vanishY);
+      this.ctx.lineTo(bottomX, renderY + renderH);
+      this.ctx.stroke();
+    }
+
+    // 수평 마디선
+    const gridLines = 8;
+    this.ctx.strokeStyle = `rgba(255, 255, 255, 0.12)`;
+    this.ctx.lineWidth = 1.0;
+    for (let g = 0; g < gridLines; g++) {
+      const p = ((this.time * 1.5 + g / gridLines) % 1.0);
+      const gy = vanishY + p * (renderH - vanishY);
+      const gw = topTrackW + p * (bottomTrackW - topTrackW);
+
+      this.ctx.beginPath();
+      this.ctx.moveTo(centerX - gw * 0.5, gy);
+      this.ctx.lineTo(centerX + gw * 0.5, gy);
+      this.ctx.stroke();
+    }
+
+    // ---------------------------------------------------------------------
+    // 3. 🎯 [핵심 수리]: 상단 4-Stem 스템명 뭉침 방지 자동 스케일링 렌더링
+    // ---------------------------------------------------------------------
+    const labelY = vanishY - 8;
+    const stemLabels = [
+      { text: "DRUM", color: colorDrums, centerIdx: 1 },
+      { text: "BASS", color: colorBass, centerIdx: 4 },
+      { text: "VOCAL", color: colorVocals, centerIdx: 7 },
+      { text: "OTHER", color: colorOther, centerIdx: 10 }
+    ];
+
+    // topTrackW 크기에 맞춰 폰트 크기 동적 조율
+    const dynamicFontSize = Math.max(7, Math.min(13, (topTrackW / 12) * 0.95));
+    this.ctx.font = `900 ${dynamicFontSize}px sans-serif`;
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'bottom';
+
+    stemLabels.forEach(label => {
+      const norm = (label.centerIdx + 0.5) / this.laneCount;
+      const lx = centerX - (topTrackW * 0.5) + norm * topTrackW;
+
+      this.ctx.fillStyle = `rgba(${label.color}, 0.9)`;
+      this.ctx.fillText(label.text, lx, labelY);
+    });
+
+    // ---------------------------------------------------------------------
+    // 4. 하단 네온 판정선 (Hit Line) & 12개 페달 버튼
+    // ---------------------------------------------------------------------
+    const hitTrackW = topTrackW + 0.84 * (bottomTrackW - topTrackW);
+    const hitStartX = centerX - hitTrackW * 0.5;
+
+    this.ctx.shadowColor = `rgb(${colorBass})`;
+    this.ctx.shadowBlur = 10;
+    this.ctx.strokeStyle = `rgba(255, 255, 255, 0.9)`;
+    this.ctx.lineWidth = 3.5;
+
+    this.ctx.beginPath();
+    this.ctx.moveTo(hitStartX, hitY);
+    this.ctx.lineTo(centerX + hitTrackW * 0.5, hitY);
+    this.ctx.stroke();
+    this.ctx.shadowBlur = 0;
+
+    const laneW = hitTrackW / this.laneCount;
+
+    for (let l = 0; l < this.laneCount; l++) {
+      const btnX = hitStartX + (l + 0.5) * laneW;
+      const btnW = laneW * 0.78 * scaleFactor;
+      const btnH = 9 * scaleFactor;
+
+      let laneColor = colorDrums;
+      if (l >= 9) laneColor = colorOther;
+      else if (l >= 6) laneColor = colorVocals;
+      else if (l >= 3) laneColor = colorBass;
+
+      const isCooling = this.laneCooldowns[l] > 0;
+      this.ctx.fillStyle = isCooling ? `rgba(${laneColor}, 0.95)` : `rgba(${laneColor}, 0.25)`;
+      this.ctx.fillRect(btnX - btnW * 0.5, hitY - btnH * 0.5, btnW, btnH);
+    }
+
+    // ---------------------------------------------------------------------
+    // 5. 🔀 Shuffle 연동 다채로운 쉐이프 노트 낙하 및 판정선 타격 처리
+    // ---------------------------------------------------------------------
+    for (let i = this.notes.length - 1; i >= 0; i--) {
+      const note = this.notes[i];
+      note.progress += noteSpeed;
+
+      const p = note.progress;
+      const curY = vanishY + p * (hitY - vanishY);
+
+      const curTrackW = topTrackW + p * (bottomTrackW - topTrackW);
+      const curLaneW = curTrackW / this.laneCount;
+      const curStartX = centerX - curTrackW * 0.5;
+
+      const noteX = curStartX + (note.lane + 0.5) * curLaneW;
+      const noteW = curLaneW * 0.82 * scaleFactor;
+      const noteH = (8 + p * 16) * scaleFactor;
+
+      let curNoteColor = colorDrums;
+      if (note.lane >= 9) curNoteColor = colorOther;
+      else if (note.lane >= 6) curNoteColor = colorVocals;
+      else if (note.lane >= 3) curNoteColor = colorBass;
+
+      const fillRGBA = `rgba(${curNoteColor}, ${Math.min(1.0, p * 2.0)})`;
+
+      this.ctx.shadowColor = `rgb(${curNoteColor})`;
+      this.ctx.shadowBlur = 8 * p;
+
+      // 💡 [Shuffle 쉐이프 렌더링]: 사각, 라운드, 원, 다이아, 별, 삼각
+      this.drawNoteShape(this.ctx, note.shapeType, noteX, curY, noteW, noteH, fillRGBA);
+      this.ctx.shadowBlur = 0;
+
+      // 🎯 판정선 타격 이벤트
+      if (p >= 1.0) {
+        const hitX = curStartX + (note.lane + 0.5) * curLaneW;
+        this.spawnHitParticles(hitX, hitY, curNoteColor, 8);
+        this.spawnHitEffect(hitX, hitY, curNoteColor);
+
+        this.notes.splice(i, 1);
+      }
+    }
+
+    // ---------------------------------------------------------------------
+    // 6. 타격 충격파 & 스파크 파티클 렌더링
+    // ---------------------------------------------------------------------
+    for (let i = this.hitEffects.length - 1; i >= 0; i--) {
+      const fx = this.hitEffects[i];
+      fx.radius += 2.5;
+      fx.alpha -= 0.06;
+
+      if (fx.alpha <= 0 || fx.radius >= fx.maxRadius) {
+        this.hitEffects.splice(i, 1);
+        continue;
+      }
+
+      this.ctx.strokeStyle = `rgba(${fx.color}, ${fx.alpha})`;
+      this.ctx.lineWidth = 3;
+      this.ctx.beginPath();
+      this.ctx.arc(fx.x, fx.y, fx.radius, 0, Math.PI * 2);
+      this.ctx.stroke();
+    }
+
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const pt = this.particles[i];
+      pt.x += pt.vx;
+      pt.y += pt.vy;
+      pt.life -= 0.04;
+
+      if (pt.life <= 0) {
+        this.particles.splice(i, 1);
+        continue;
+      }
+
+      this.ctx.fillStyle = `rgba(${pt.color}, ${pt.life})`;
+      this.ctx.beginPath();
+      this.ctx.arc(pt.x, pt.y, pt.size * pt.life, 0, Math.PI * 2);
+      this.ctx.fill();
+    }
+
+    this.ctx.restore();
+
+    window.sketchDiagnostics = {
+      fps: 60,
+      particleCount: `Clean Highway (Gauge:${gaugeVal.toFixed(2)} / Seed:${seedVal})`,
+      isCovering: true,
+      activeFunction: `PumpHighwayClean[12Lanes_${colorStyle.toUpperCase()}]`
+    };
+  }
+
+  destroy() {
+    if (this.canvas && this.canvas.parentNode) {
+      this.canvas.parentNode.removeChild(this.canvas);
+    }
+    this.canvas = null;
+    this.ctx = null;
+    this.notes = [];
+    this.particles = [];
+    this.hitEffects = [];
+  }
+}
