@@ -1,9 +1,10 @@
 /**
  * src/sketches/028_pump_rhythm_highway.js
- * - [028호 이미지 악기 무대 & 오디오 반응형 실시간 엔진 Ver 23.0 - Asset Path Fix]
- * - 🖼️ assets/ 폴더 및 .png 확장자 경로 정확히 연동 ('./assets/028_169_bg.png', './assets/028_916_BG.png')
- * - 🎸 중앙 메탈 현(Strings), 좌측 드럼(Drums), 우측 피아노/스피커 실시간 오디오 반응
- * - main.js 수정 ZERO (완전 독립형 스케치)
+ * - [028호 실제 악기 연주 시뮬레이터 & 비율 전환 가드 Ver 24.0]
+ * - 📐 16:9 / 9:16 / Full 비율 전환 시 뷰포트 레터박스 및 배경 이미지(.png) 완벽 실시간 전환
+ * - 🥁 드럼스틱 타격 연주 애니메이션 (Drums 비트 연동)
+ * - 🎹 피아노 건반 터치 연주 모션 (Other/Vocals 연동)
+ * - 🎸 중앙 메탈 현 진동 (Bass 연동)
  */
 
 export default class PumpRhythmHighwaySketch {
@@ -17,9 +18,9 @@ export default class PumpRhythmHighwaySketch {
     }
 
     this.time = 0;
-    this.version = "028호 이미지 악기 무대 Ver 23.0 (Path Fixed)";
+    this.version = "028호 악기 연주 시뮬레이터 Ver 24.0";
     
-    // 💡 assets 폴더 안의 정확한 .png 파일명으로 경로 수정
+    // assets 폴더 내의 정확한 .png 배경 이미지 로드
     this.bg169 = new Image();
     this.bg169.src = './assets/028_169_bg.png';
 
@@ -27,6 +28,8 @@ export default class PumpRhythmHighwaySketch {
     this.bg916.src = './assets/028_916_BG.png';
 
     this.stringVibration = [0, 0, 0, 0, 0];
+    this.drumHitPhase = 0;
+    this.pianoKeyFrame = 0;
   }
 
   init() {
@@ -57,12 +60,10 @@ export default class PumpRhythmHighwaySketch {
     const targetAudio = audioData || {};
 
     const globalSettings = window.cosmicEngineSettings || {};
-    const seedVal = globalSettings.seed ?? 42;
     const gainVal = globalSettings.audioGain ?? 1.0;
-    const colorStyle = (globalSettings.colorStyle || 'monochrome').toLowerCase();
     const gaugeVal = globalSettings.gaugeValue ?? 0.5;
 
-    // Export 비율 파악 ('16:9', '9:16', 'full')
+    // 💡 Export 비율 파악 ('16:9', '9:16', 'full')
     const exportRatio = (globalSettings.exportRatio || globalSettings.exportSetting || globalSettings.aspectRatio || 'full').toLowerCase();
 
     const rawGlow = globalSettings.glowScale ?? globalSettings.glow ?? globalSettings.scale ?? 50;
@@ -79,68 +80,80 @@ export default class PumpRhythmHighwaySketch {
     const W = this.canvas.width;
     const H = this.canvas.height;
 
-    // 캔버스 초기화
-    this.ctx.save();
-    this.ctx.fillStyle = "#1a1a1a";
-    this.ctx.fillRect(0, 0, W, H);
-
     // ---------------------------------------------------------------------
-    // 🖼️ 1. assets 폴더 기반 배경 이미지 렌더링
+    // 📐 [핵심]: 16:9 / 9:16 비율별 뷰포트 레터박스(Viewport Letterbox) 연산
     // ---------------------------------------------------------------------
+    let renderW = W, renderH = H, renderX = 0, renderY = 0;
     let targetBg = this.bg169;
-    if (exportRatio === '9:16') {
-      targetBg = this.bg916;
-    } else if (exportRatio === '16:9') {
+
+    if (exportRatio === '16:9') {
+      renderW = W;
+      renderH = W * (9 / 16);
+      if (renderH > H) { renderH = H; renderW = H * (16 / 9); }
+      renderX = (W - renderW) / 2;
+      renderY = (H - renderH) / 2;
       targetBg = this.bg169;
+    } else if (exportRatio === '9:16') {
+      renderH = H;
+      renderW = H * (9 / 16);
+      if (renderW > W) { renderW = W; renderH = W * (16 / 9); }
+      renderX = (W - renderW) / 2;
+      renderY = (H - renderH) / 2;
+      targetBg = this.bg916;
     } else {
+      // Full 모드일 때 화면 가로세로 비에 따라 자동 선택
       targetBg = (W / H < 1.0) ? this.bg916 : this.bg169;
     }
 
-    if (targetBg && targetBg.complete && targetBg.naturalWidth > 0) {
-      const imgAspect = targetBg.naturalWidth / targetBg.naturalHeight;
-      const canvasAspect = W / H;
-      let drawW = W, drawH = H, drawX = 0, drawY = 0;
+    this.ctx.save();
 
-      if (canvasAspect > imgAspect) {
-        drawH = W / imgAspect;
-        drawY = (H - drawH) / 2;
-      } else {
-        drawW = H * imgAspect;
-        drawX = (W - drawW) / 2;
-      }
-      this.ctx.drawImage(targetBg, drawX, drawY, drawW, drawH);
-    } else {
-      this.ctx.fillStyle = "#2c2d30";
-      this.ctx.fillRect(0, 0, W, H);
-    }
-
-    // 은은한 오버레이 레이어
-    this.ctx.fillStyle = "rgba(0, 0, 0, 0.15)";
+    // 외부 레터박스 영역 (검은색 처리)
+    this.ctx.fillStyle = "#0a0a0c";
     this.ctx.fillRect(0, 0, W, H);
 
+    // 뷰포트 영역 클리핑 (이 안쪽으로만 렌더링됨)
+    this.ctx.beginPath();
+    this.ctx.rect(renderX, renderY, renderW, renderH);
+    this.ctx.clip();
+
     // ---------------------------------------------------------------------
-    // 🎸 2. 중앙 메탈 현(Strings) 오디오 진동 반응 연출 (Bass & Other 연동)
+    // 🖼️ 2. 선택된 비율에 맞는 배경 이미지 렌더링
     // ---------------------------------------------------------------------
-    const centerX = W / 2;
+    if (targetBg && targetBg.complete && targetBg.naturalWidth > 0) {
+      this.ctx.drawImage(targetBg, renderX, renderY, renderW, renderH);
+    } else {
+      this.ctx.fillStyle = "#222327";
+      this.ctx.fillRect(renderX, renderY, renderW, renderH);
+    }
+
+    // 은은한 오버레이
+    this.ctx.fillStyle = "rgba(0, 0, 0, 0.10)";
+    this.ctx.fillRect(renderX, renderY, renderW, renderH);
+
+    const centerX = renderX + renderW / 2;
+
+    // ---------------------------------------------------------------------
+    // 🎸 3. 중앙 메탈 현(Strings) 진동 연출 (Bass 연동)
+    // ---------------------------------------------------------------------
     const stringCount = 5;
-    const stringSpread = W * 0.08 * gaugeVal;
+    const stringSpread = renderW * 0.08 * gaugeVal;
 
     for (let i = 0; i < stringCount; i++) {
       const norm = (i / (stringCount - 1) - 0.5);
       const baseX = centerX + norm * stringSpread;
 
       const energy = (i % 2 === 0 ? bassVol : otherVol);
-      this.stringVibration[i] = this.stringVibration[i] * 0.8 + (energy * 15.0) * 0.2;
+      this.stringVibration[i] = this.stringVibration[i] * 0.75 + (energy * 18.0) * 0.25;
 
-      this.ctx.strokeStyle = `rgba(255, 230, 200, ${0.6 + energy * 0.4})`;
-      this.ctx.lineWidth = (2.0 + i * 0.4) * scaleFactor;
+      this.ctx.strokeStyle = `rgba(255, 235, 210, ${0.7 + energy * 0.3})`;
+      this.ctx.lineWidth = (2.2 + i * 0.4) * scaleFactor;
       this.ctx.beginPath();
 
-      const segments = 35;
+      const segments = 40;
       for (let s = 0; s <= segments; s++) {
         const ratio = s / segments;
-        const y = ratio * H;
-        const sineWave = Math.sin(ratio * Math.PI * 6 + this.time * 12 + i) * this.stringVibration[i] * Math.sin(ratio * Math.PI);
+        const y = renderY + ratio * renderH;
+        const sineWave = Math.sin(ratio * Math.PI * 6 + this.time * 14 + i) * this.stringVibration[i] * Math.sin(ratio * Math.PI);
         const x = baseX + sineWave;
 
         if (s === 0) this.ctx.moveTo(x, y);
@@ -150,35 +163,63 @@ export default class PumpRhythmHighwaySketch {
     }
 
     // ---------------------------------------------------------------------
-    // 🥁 3. 좌측 드럼 킷 타격 리액션 (Drums 연동)
+    // 🥁 4. 드럼 연주 시뮬레이션 (드럼스틱 타격 모션 & 패드 울림)
     // ---------------------------------------------------------------------
-    if (drumsVol > 0.06) {
-      const pulseRadius = drumsVol * 50 * scaleFactor;
-      this.ctx.strokeStyle = `rgba(255, 60, 60, ${drumsVol * 0.85})`;
-      this.ctx.lineWidth = 3.5;
+    if (drumsVol > 0.05) {
+      this.drumHitPhase += drumsVol * 0.4;
+      
+      // 좌측 드럼 좌표 (배경 이미지 속 드럼 위치)
+      const drumX = renderX + renderW * 0.22;
+      const drumY = renderY + renderH * 0.45;
+
+      // 타격 충격파 링
+      this.ctx.strokeStyle = `rgba(255, 60, 60, ${drumsVol * 0.9})`;
+      this.ctx.lineWidth = 3.5 * scaleFactor;
       this.ctx.beginPath();
-      this.ctx.arc(W * 0.22, H * 0.42, pulseRadius, 0, Math.PI * 2);
+      this.ctx.arc(drumX, drumY, drumsVol * 55 * scaleFactor, 0, Math.PI * 2);
       this.ctx.stroke();
+
+      // 🥢 드럼스틱 연주 모션 (스틱이 드럼을 내리치는 애니메이션)
+      const stickAngle = -Math.PI / 4 + Math.sin(this.drumHitPhase * 8) * 0.35 * drumsVol;
+      this.ctx.save();
+      this.ctx.translate(drumX - 30, drumY - 40);
+      this.ctx.rotate(stickAngle);
+      this.ctx.fillStyle = "#e0a96d"; // 나무 색상 스틱
+      this.ctx.fillRect(0, -4, 80 * scaleFactor, 8 * scaleFactor);
+      this.ctx.restore();
     }
 
     // ---------------------------------------------------------------------
-    // 🎹 4. 우측 피아노 & 스피커 오디오 펄스 리액션 (Vocals & Other 연동)
+    // 🎹 5. 피아노 연주 시뮬레이션 (건반 터치 바운스 & 음표 광채)
     // ---------------------------------------------------------------------
-    if (vocalsVol > 0.06 || otherVol > 0.06) {
-      const rightPulse = Math.max(vocalsVol, otherVol);
-      this.ctx.fillStyle = `rgba(255, 215, 0, ${rightPulse * 0.22})`;
+    if (vocalsVol > 0.05 || otherVol > 0.05) {
+      const pianoPulse = Math.max(vocalsVol, otherVol);
+      const pianoX = renderX + renderW * 0.78;
+      const pianoY = renderY + renderH * 0.38;
+
+      // 피아노 건반 영역 빛 번짐
+      this.ctx.fillStyle = `rgba(255, 215, 0, ${pianoPulse * 0.28})`;
       this.ctx.beginPath();
-      this.ctx.arc(W * 0.78, H * 0.38, rightPulse * 70 * scaleFactor, 0, Math.PI * 2);
+      this.ctx.arc(pianoX, pianoY, pianoPulse * 75 * scaleFactor, 0, Math.PI * 2);
       this.ctx.fill();
+
+      // 🎹 건반 눌림 바운스 바 렌더링
+      this.ctx.fillStyle = `rgba(255, 255, 255, ${pianoPulse * 0.8})`;
+      const keyWidth = 8 * scaleFactor;
+      for (let k = 0; k < 6; k++) {
+        const kx = pianoX - 30 + k * 12;
+        const ky = pianoY + 15 + Math.sin(this.time * 15 + k) * pianoPulse * 12;
+        this.ctx.fillRect(kx, ky, keyWidth, 18 * scaleFactor);
+      }
     }
 
     this.ctx.restore();
 
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: `Asset Path Fixed Stage (Ratio:${exportRatio})`,
+      particleCount: `Instrument Playing Simulator (Ratio:${exportRatio})`,
       isCovering: true,
-      activeFunction: `AssetStageFixed[${exportRatio.toUpperCase()}]`
+      activeFunction: `InstrumentPlayer[${exportRatio.toUpperCase()}]`
     };
   }
 
