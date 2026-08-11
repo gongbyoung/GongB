@@ -1,10 +1,10 @@
 /**
  * src/sketches/027_guitar_speaker_stage.js
- * - [027호 오디오 반응형 기타 스피커 스테이지 Ver 6.0 - Independent Frequency Gear Engine]
- * - 🥁 좌측 드럼 2종: 킥 드럼(Sub-Bass) / 스네어탐(Low-Mid) 1:1 분리 구동
- * - 🥁 우측 드럼: 심벌&하이햇(High-Treble) 독립 구동
- * - 🔊 우측 스피커 2종: 대형 우퍼(Bass Cone) / 트위터(High Tweeter) 독립 구동
- * - 🎸 7현 3D 원근: Sub-Bass ~ Treble 7개 대역 1:1 매핑
+ * - [027호 오디오 반응형 기타 스피커 스테이지 Ver 7.0 - Full Band Live Stage]
+ * - 🥁 좌측: 5종 풀 세트 드럼 (킥, 스네어, 하이탐, 플로어탐, 심벌 1:1 분리)
+ * - 🎹 우측 상단: 14키 피아노 건반 (otherVol / 피아노 주파수 연동 눌림 & 발광)
+ * - 🔊 우측: 2개의 듀얼 스튜디오 모니터 스피커 (우퍼 / 트위터 독립 펌핑)
+ * - 🎸 중앙: 3D 원근 7현 (7개 주파수 대역 1:1 매핑 & 정적 시 완전 직선)
  */
 
 export default class GuitarSpeakerStageSketch {
@@ -18,12 +18,13 @@ export default class GuitarSpeakerStageSketch {
     }
 
     this.time = 0;
-    this.version = "027호 기타 스피커 스테이지 Ver 6.0 (Gear Split)";
+    this.version = "027호 기타 스피커 스테이지 Ver 7.0 (Full Band Live)";
     
     this.stringCount = 7;
     this.strings = [];
     this.particles = [];
     this.soundRings = [];
+    this.pianoKeyCount = 14;
   }
 
   init() {
@@ -93,110 +94,176 @@ export default class GuitarSpeakerStageSketch {
   }
 
   // =========================================================================
-  // 🖌️ 좌측 드럼 세트 (킥 드럼[저음] & 스네어탐[중음] 독립 구동)
+  // 🥁 5종 풀 세트 드럼 렌더링 (Kick, Snare, Hi-Tom, Floor-Tom, Cymbal)
   // =========================================================================
-  drawLeftDrumKit(ctx, x, y, size, kickPulse, snarePulse, color) {
+  draw5PieceDrumKit(ctx, x, y, size, kickP, snareP, tomP, cymbalP, color) {
     ctx.save();
     ctx.translate(x, y);
 
     const scale = size / 100;
 
-    // 1. 후면 스네어 & 탐탐 (snarePulse 반응)
-    const tomScale = scale * (1.0 + snarePulse * 0.15);
+    // 1. 심벌 스탠드 & 크래쉬 심벌 (상단 - cymbalP 반응)
+    const cymScale = scale * (1.0 + cymbalP * 0.2);
+    ctx.strokeStyle = `rgba(${color}, ${0.4 + cymbalP * 0.6})`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(0, -10 * scale);
+    ctx.lineTo(0, -45 * scale);
+    ctx.stroke();
+
+    ctx.fillStyle = `rgba(255, 215, 0, ${0.4 + cymbalP * 0.6})`;
+    ctx.beginPath();
+    ctx.ellipse(0, -45 * scale, 22 * cymScale, 6 * cymScale, 0, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+
+    // 2. 하이 탐 & 미드 탐 (상단 드럼 2개 - tomP 반응)
+    const tomScale = scale * (1.0 + tomP * 0.15);
     ctx.fillStyle = "#121622";
-    ctx.strokeStyle = `rgba(${color}, ${0.5 + snarePulse * 0.4})`;
+    ctx.strokeStyle = `rgba(${color}, ${0.5 + tomP * 0.4})`;
     ctx.lineWidth = 2;
 
+    // 하이 탐 (좌)
     ctx.beginPath();
-    ctx.ellipse(-18 * tomScale, -28 * tomScale, 18 * tomScale, 10 * tomScale, -0.1, 0, Math.PI * 2);
+    ctx.ellipse(-18 * tomScale, -22 * tomScale, 16 * tomScale, 9 * tomScale, -0.1, 0, Math.PI * 2);
     ctx.fill(); ctx.stroke();
 
+    // 플로어 탐 (우)
     ctx.beginPath();
-    ctx.ellipse(18 * tomScale, -32 * tomScale, 19 * tomScale, 11 * tomScale, 0.1, 0, Math.PI * 2);
+    ctx.ellipse(20 * tomScale, -24 * tomScale, 18 * tomScale, 10 * tomScale, 0.1, 0, Math.PI * 2);
     ctx.fill(); ctx.stroke();
 
-    // 2. 전면 대형 킥 드럼 (kickPulse 저음 반응)
-    const kickScale = scale * (1.0 + kickPulse * 0.22);
+    // 3. 스네어 드럼 (좌측 하단 - snareP 반응)
+    const snareScale = scale * (1.0 + snareP * 0.18);
+    ctx.beginPath();
+    ctx.ellipse(-28 * snareScale, -2 * snareScale, 19 * snareScale, 10 * snareScale, -0.2, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+
+    // 4. 메인 킥 드럼 (중앙 하단 - kickP 반응)
+    const kickScale = scale * (1.0 + kickP * 0.22);
     ctx.fillStyle = "#181d2a";
-    ctx.strokeStyle = `rgba(${color}, ${0.7 + kickPulse * 0.3})`;
+    ctx.strokeStyle = `rgba(${color}, ${0.7 + kickP * 0.3})`;
     ctx.lineWidth = 2.8;
 
     ctx.beginPath();
-    ctx.ellipse(-10 * kickScale, 5 * kickScale, 28 * kickScale, 24 * kickScale, -0.25, 0, Math.PI * 2);
+    ctx.ellipse(-2 * kickScale, 12 * kickScale, 26 * kickScale, 22 * kickScale, 0, 0, Math.PI * 2);
     ctx.fill(); ctx.stroke();
 
-    ctx.fillStyle = `rgba(${color}, ${0.2 + kickPulse * 0.5})`;
+    ctx.fillStyle = `rgba(${color}, ${0.2 + kickP * 0.5})`;
     ctx.beginPath();
-    ctx.ellipse(-10 * kickScale, 5 * kickScale, 21 * kickScale, 18 * kickScale, -0.25, 0, Math.PI * 2);
+    ctx.ellipse(-2 * kickScale, 12 * kickScale, 19 * kickScale, 16 * kickScale, 0, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.restore();
   }
 
   // =========================================================================
-  // 🖌️ 우측 드럼 & 스피커 (하이햇[고음] & 우퍼[저음]/트위터[초고음] 독립 구동)
+  // 🎹 피아노 건반 렌더링 (14 Keys - pianoPulse & 주파수 연동)
   // =========================================================================
-  drawRightSpeakerKit(ctx, x, y, size, wooferPulse, tweeterPulse, cymbalPulse, color) {
+  drawPianoKeys(ctx, x, y, width, height, pianoPulse, spectrum, color) {
+    ctx.save();
+    ctx.translate(x, y);
+
+    const keyW = width / this.pianoKeyCount;
+
+    // 건반 상단 베젤
+    ctx.fillStyle = "#121520";
+    ctx.strokeStyle = `rgba(${color}, 0.6)`;
+    ctx.lineWidth = 2;
+    ctx.fillRect(-2, -4, width + 4, 6);
+
+    // 14개 흰색 건반
+    for (let i = 0; i < this.pianoKeyCount; i++) {
+      const keyX = i * keyW;
+      const keyFreq = this.getBandAverage(spectrum, 10 + i * 2, 12 + i * 2) * 3.0;
+      const isPressed = keyFreq > 0.08 || (pianoPulse > 0.15 && i % 3 === 0);
+
+      const pressOffset = isPressed ? 3 : 0;
+
+      ctx.fillStyle = isPressed ? `rgba(${color}, 0.9)` : "#e2e8f0";
+      ctx.strokeStyle = "#1e293b";
+      ctx.lineWidth = 1;
+
+      ctx.fillRect(keyX, pressOffset, keyW - 1, height - pressOffset);
+      ctx.strokeRect(keyX, pressOffset, keyW - 1, height - pressOffset);
+
+      if (isPressed && Math.random() < 0.2) {
+        this.spawnSparks(x + keyX + keyW / 2, y + height, color, 2);
+      }
+    }
+
+    // 흑건 (Black Keys)
+    const blackKeyIndices = [1, 2, 4, 5, 6, 8, 9, 11, 12];
+    ctx.fillStyle = "#0f172a";
+    blackKeyIndices.forEach(idx => {
+      if (idx < this.pianoKeyCount - 1) {
+        const bkX = idx * keyW + keyW * 0.65;
+        ctx.fillRect(bkX, 0, keyW * 0.7, height * 0.6);
+      }
+    });
+
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // 🔊 듀얼 모니터 스피커 캐비닛 렌더링 (Left & Right Speakers)
+  // =========================================================================
+  drawDualSpeakers(ctx, x, y, size, wooferP, tweeterP, color) {
     ctx.save();
     ctx.translate(x, y);
 
     const scale = size / 100;
+    const spW = 32 * scale;
+    const spH = 48 * scale;
 
-    // 1. 후면 하이햇 & 심벌 드럼 (cymbalPulse 고음 반응)
-    const cymScale = scale * (1.0 + cymbalPulse * 0.15);
-    ctx.fillStyle = "#121622";
-    ctx.strokeStyle = `rgba(${color}, ${0.5 + cymbalPulse * 0.4})`;
-    ctx.lineWidth = 2;
-
-    ctx.beginPath();
-    ctx.ellipse(-26 * cymScale, -22 * cymScale, 18 * cymScale, 10 * cymScale, -0.1, 0, Math.PI * 2);
-    ctx.fill(); ctx.stroke();
-
-    ctx.beginPath();
-    ctx.ellipse(10 * cymScale, -28 * cymScale, 20 * cymScale, 11 * cymScale, 0.1, 0, Math.PI * 2);
-    ctx.fill(); ctx.stroke();
-
-    // 2. 전면 우측 스튜디오 모니터 스피커
-    const spW = 38 * scale;
-    const spH = 54 * scale;
-    const spX = 22 * scale;
-    const spY = 8 * scale;
-
+    // 1. 좌측 스피커 캐비닛 (우퍼 전용)
     ctx.save();
-    ctx.translate(spX, spY);
-    ctx.rotate(-0.12);
-
-    // 스피커 인클로저
+    ctx.translate(-spW * 0.65, 0);
     ctx.fillStyle = "#1a202c";
-    ctx.strokeStyle = `rgba(${color}, ${0.8 + wooferPulse * 0.2})`;
-    ctx.lineWidth = 2.8;
+    ctx.strokeStyle = `rgba(${color}, ${0.7 + wooferP * 0.3})`;
+    ctx.lineWidth = 2.5;
+
     ctx.beginPath();
-    ctx.roundRect(-spW / 2, -spH / 2, spW, spH, 6 * scale);
+    ctx.roundRect(-spW / 2, -spH / 2, spW, spH, 5 * scale);
     ctx.fill(); ctx.stroke();
 
-    // 상단 트위터 (tweeterPulse 초고음 독립 반응)
-    const tweeterR = (spW * 0.18) * (1.0 + tweeterPulse * 0.35);
-    ctx.fillStyle = `rgba(${color}, ${0.4 + tweeterPulse * 0.6})`;
+    const wR1 = (spW * 0.32) * (1.0 + wooferP * 0.25);
+    ctx.fillStyle = `rgba(${color}, ${0.2 + wooferP * 0.4})`;
     ctx.beginPath();
-    ctx.arc(0, -spH * 0.22, tweeterR, 0, Math.PI * 2);
-    ctx.fill();
-
-    // 하단 우퍼 콘 (wooferPulse 저음 독립 반응)
-    const wooferR = (spW * 0.32) * (1.0 + wooferPulse * 0.25);
-    ctx.fillStyle = `rgba(${color}, ${0.2 + wooferPulse * 0.4})`;
-    ctx.beginPath();
-    ctx.arc(0, spH * 0.18, wooferR, 0, Math.PI * 2);
+    ctx.arc(0, spH * 0.15, wR1, 0, Math.PI * 2);
     ctx.fill(); ctx.stroke();
 
-    ctx.fillStyle = `rgba(${color}, ${0.7 + wooferPulse * 0.3})`;
+    ctx.restore();
+
+    // 2. 우측 스피커 캐비닛 (트위터 전용)
+    ctx.save();
+    ctx.translate(spW * 0.65, 5 * scale);
+    ctx.fillStyle = "#161b26";
+    ctx.strokeStyle = `rgba(${color}, ${0.7 + tweeterP * 0.3})`;
+    ctx.lineWidth = 2.5;
+
     ctx.beginPath();
-    ctx.arc(0, spH * 0.18, wooferR * 0.38, 0, Math.PI * 2);
+    ctx.roundRect(-spW / 2, -spH / 2, spW, spH, 5 * scale);
+    ctx.fill(); ctx.stroke();
+
+    const tR2 = (spW * 0.18) * (1.0 + tweeterP * 0.35);
+    ctx.fillStyle = `rgba(${color}, ${0.5 + tweeterP * 0.5})`;
+    ctx.beginPath();
+    ctx.arc(0, -spH * 0.2, tR2, 0, Math.PI * 2);
     ctx.fill();
+
+    const wR2 = spW * 0.30;
+    ctx.fillStyle = `rgba(${color}, 0.2)`;
+    ctx.beginPath();
+    ctx.arc(0, spH * 0.15, wR2, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
 
     ctx.restore();
     ctx.restore();
   }
 
+  // =========================================================================
+  // 🔄 UPDATE RENDER LOOP
+  // =========================================================================
   update(audioData) {
     if (!this.ctx || !this.canvas) return;
 
@@ -221,7 +288,7 @@ export default class GuitarSpeakerStageSketch {
     const bassVol   = (targetAudio.bassVol   ?? targetAudio.bass ?? 0) * gainVal;
     const otherVol  = (targetAudio.otherVol  ?? targetAudio.treble ?? 0) * gainVal;
 
-    // 주파수 스펙트럼 (64 Bins)
+    // 스펙트럼 64 Bins
     const spectrum = targetAudio.bassSpectrum || targetAudio.spectrum || targetAudio.frequencyData || new Float32Array(64);
 
     this.time += 0.016 * (scatterSpeed / 50.0);
@@ -298,7 +365,7 @@ export default class GuitarSpeakerStageSketch {
     }
 
     // ---------------------------------------------------------------------
-    // 2. 🥁 🔊 드럼 & 스피커 부품별 주파수 세부 분리 구동
+    // 2. 🥁 🎹 🔊 무대 악기 구동 (5종 드럼 + 피아노 건반 + 듀얼 스피커)
     // ---------------------------------------------------------------------
     const leftKitX = renderX + renderW * 0.18;
     const rightKitX = renderX + renderW * 0.82;
@@ -306,21 +373,28 @@ export default class GuitarSpeakerStageSketch {
     const kitSize = 90 * scaleFactor;
 
     // 주파수 세부 대역 수치 계산
-    const kickEnergy    = this.getBandAverage(spectrum, 0, 3) * 3.0 * gainVal;   // 킥 드럼 (Sub-Bass)
-    const snareEnergy   = this.getBandAverage(spectrum, 4, 10) * 2.5 * gainVal;  // 스네어/탐탐 (Low-Mid)
-    const wooferEnergy  = Math.max(bassVol * 1.5, this.getBandAverage(spectrum, 1, 6) * 3.0 * gainVal); // 우퍼 (Bass)
-    const tweeterEnergy = Math.max(vocalsVol * 1.2, this.getBandAverage(spectrum, 25, 45) * 3.0 * gainVal); // 트위터 (Treble)
-    const cymbalEnergy  = Math.max(otherVol * 1.2, this.getBandAverage(spectrum, 30, 55) * 3.0 * gainVal);  // 심벌/하이햇 (Highs)
+    const kickEnergy    = this.getBandAverage(spectrum, 0, 3) * 3.0 * gainVal;   // 킥 드럼
+    const snareEnergy   = this.getBandAverage(spectrum, 4, 10) * 2.5 * gainVal;  // 스네어
+    const tomEnergy     = this.getBandAverage(spectrum, 8, 18) * 2.5 * gainVal;  // 탐탐
+    const cymbalEnergy  = Math.max(otherVol * 1.2, this.getBandAverage(spectrum, 30, 55) * 3.0 * gainVal); // 심벌
 
-    // 좌측 드럼 (킥 드럼 & 스네어탐 독립 구동)
-    this.drawLeftDrumKit(this.ctx, leftKitX, kitY, kitSize, kickEnergy, snareEnergy, mainColor);
+    const wooferEnergy  = Math.max(bassVol * 1.5, this.getBandAverage(spectrum, 1, 6) * 3.0 * gainVal);   // 스피커 우퍼
+    const tweeterEnergy = Math.max(vocalsVol * 1.2, this.getBandAverage(spectrum, 25, 45) * 3.0 * gainVal); // 스피커 트위터
 
-    // 우측 드럼 & 스피커 (우퍼, 트위터, 심벌 독립 구동)
-    this.drawRightSpeakerKit(this.ctx, rightKitX, kitY, kitSize, wooferEnergy, tweeterEnergy, cymbalEnergy, accentColor);
+    // ① 좌측 5종 풀 세트 드럼
+    this.draw5PieceDrumKit(this.ctx, leftKitX, kitY, kitSize, kickEnergy, snareEnergy, tomEnergy, cymbalEnergy, mainColor);
+
+    // ② 우측 상단 피아노 건반 (Piano Keyboard)
+    const pianoW = renderW * 0.22 * scaleFactor;
+    const pianoH = 22 * scaleFactor;
+    this.drawPianoKeys(this.ctx, rightKitX - pianoW / 2, kitY - kitSize * 0.35, pianoW, pianoH, otherVol * 1.8, spectrum, accentColor);
+
+    // ③ 우측 듀얼 스피커 캐비닛
+    this.drawDualSpeakers(this.ctx, rightKitX, kitY + kitSize * 0.15, kitSize, wooferEnergy, tweeterEnergy, accentColor);
 
     // 파동 링 발생
     if (wooferEnergy > 0.15 && Math.random() < 0.3) {
-      this.spawnSoundRing(rightKitX + kitSize * 0.22, kitY + kitSize * 0.08, accentColor, kitSize * 2.2);
+      this.spawnSoundRing(rightKitX - kitSize * 0.15, kitY + kitSize * 0.2, accentColor, kitSize * 2.2);
     }
     if (kickEnergy > 0.15 && Math.random() < 0.3) {
       this.spawnSoundRing(leftKitX, kitY, mainColor, kitSize * 2.0);
@@ -453,9 +527,9 @@ export default class GuitarSpeakerStageSketch {
 
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: `Gear Split Perspective (Sparks:${this.particles.length})`,
+      particleCount: `Full Live Stage (Drums:5 / Piano:14Keys / Speakers:Dual)`,
       isCovering: true,
-      activeFunction: `Guitar7StringStage[GearSplit_${colorStyle.toUpperCase()}]`
+      activeFunction: `Guitar7StringStage[FullLiveStage_${colorStyle.toUpperCase()}]`
     };
   }
 
