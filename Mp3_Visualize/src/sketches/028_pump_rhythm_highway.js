@@ -1,10 +1,9 @@
 /**
  * src/sketches/028_pump_rhythm_highway.js
- * - [028호 펌프 리듬 하이웨이 Ver 5.0 - Strict Audio Sync & Clean Notes]
- * - 🎯 무한 기둥 띠 완전 삭제: 화면을 가득 채우던 오류 수식을 제거하고 깔끔한 노트 블록으로 복구
- * - ⚡ 노이즈 게이트(Noise Gate): 무음 구간 및 잔음에서 노트 생성 완전 차단
- * - 🎵 4-Stem 12-Lane 피치 매핑: 음이 실제로 존재하는 순간만 정확히 스폰
- * - 📐 16:9 / 9:16 Export 및 Gauge 원근 폭 조절 지원
+ * - [028호 펌프 리듬 하이웨이 Ver 7.0 - Dynamic Delay Switch Engine]
+ * - 🎯 main.js의 가변 지연(028 선택 시 1.0초)과 정확히 맞물려 노트가 판정선 도착 시 100% 소리 출력
+ * - ⚡ 4개 스템 개별 주파수 정밀 온셋 분석
+ * - 📐 16:9 / 9:16 Export 및 Gauge 원근 폭 조율 지원
  */
 
 export default class PumpRhythmHighwaySketch {
@@ -18,7 +17,7 @@ export default class PumpRhythmHighwaySketch {
     }
 
     this.time = 0;
-    this.version = "028호 펌프 리듬 하이웨이 Ver 5.0 (Strict Sync)";
+    this.version = "028호 펌프 리듬 하이웨이 Ver 7.0 (Dynamic Delay Sync)";
     
     this.laneCount = 12; // 4-Stem x 3-Lanes
     this.notes = [];
@@ -65,7 +64,7 @@ export default class PumpRhythmHighwaySketch {
     return Math.floor(pseudo) % 6;
   }
 
-  spawnHitParticles(x, y, color, count = 5) {
+  spawnHitParticles(x, y, color, count = 6) {
     for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
       const speed = 2 + Math.random() * 5;
@@ -156,20 +155,22 @@ export default class PumpRhythmHighwaySketch {
 
     const exportRatio = (globalSettings.exportRatio || globalSettings.exportSetting || globalSettings.aspectRatio || 'full').toLowerCase();
 
-    const rawScatter = globalSettings.scatterExponent ?? globalSettings.scatter ?? globalSettings.range ?? 25;
-    const noteSpeed = (0.012 + (rawScatter / 50.0) * 0.025);
+    // 🎯 노트가 아래 판정선까지 낙하하는 시간: Exactly 1.0초
+    const noteSpeed = 1.0 / 60.0;
 
     const rawGlow = globalSettings.glowScale ?? globalSettings.glow ?? globalSettings.scale ?? 50;
     const scaleFactor = Math.max(0.3, Math.min(3.0, rawGlow / 40.0));
 
-    // 4-Stem 음압
-    const vocalsVol = (targetAudio.vocalsVol ?? targetAudio.mid ?? 0) * gainVal;
-    const drumsVol  = (targetAudio.drumsVol  ?? targetAudio.bass ?? 0) * gainVal;
-    const bassVol   = (targetAudio.bassVol   ?? targetAudio.bass ?? 0) * gainVal;
-    const otherVol  = (targetAudio.otherVol  ?? targetAudio.treble ?? 0) * gainVal;
+    // 4-Stem 개별 주파수 스펙트럼 수신
+    const drumsSpec  = targetAudio.drumsSpectrum  || new Float32Array(64);
+    const bassSpec   = targetAudio.bassSpectrum   || new Float32Array(64);
+    const vocalsSpec = targetAudio.vocalsSpectrum || new Float32Array(64);
+    const otherSpec  = targetAudio.otherSpectrum  || new Float32Array(64);
 
-    // 64채널 스펙트럼
-    const spectrum = targetAudio.bassSpectrum || targetAudio.spectrum || targetAudio.frequencyData || new Float32Array(64);
+    const drumsVol  = (targetAudio.drumsVol  ?? 0) * gainVal;
+    const bassVol   = (targetAudio.bassVol   ?? 0) * gainVal;
+    const vocalsVol = (targetAudio.vocalsVol ?? 0) * gainVal;
+    const otherVol  = (targetAudio.otherVol  ?? 0) * gainVal;
 
     this.time += 0.016;
 
@@ -235,29 +236,29 @@ export default class PumpRhythmHighwaySketch {
     const bottomTrackW = renderW * 0.88;
 
     // ---------------------------------------------------------------------
-    // 1. 12개 레인 정밀 피크 감지 & 노이즈 게이트 (Noise Gate Filter)
+    // 1. 4개 스템 개별 주파수 분석 & 온셋 피크 감지
     // ---------------------------------------------------------------------
     const curEnergies = new Float32Array(12);
 
-    // Drums (0~2)
-    curEnergies[0] = Math.max(drumsVol * 1.5, this.getBandAverage(spectrum, 0, 2) * 3.5 * gainVal);
-    curEnergies[1] = Math.max(drumsVol * 1.2, this.getBandAverage(spectrum, 3, 6) * 3.0 * gainVal);
-    curEnergies[2] = Math.max(drumsVol * 1.0, this.getBandAverage(spectrum, 7, 12) * 3.0 * gainVal);
+    // DRUMS (0~2)
+    curEnergies[0] = Math.max(drumsVol * 1.5, this.getBandAverage(drumsSpec, 0, 2) * 3.5 * gainVal);
+    curEnergies[1] = Math.max(drumsVol * 1.2, this.getBandAverage(drumsSpec, 3, 7) * 3.0 * gainVal);
+    curEnergies[2] = Math.max(drumsVol * 1.0, this.getBandAverage(drumsSpec, 8, 15) * 3.0 * gainVal);
 
-    // Bass (3~5)
-    curEnergies[3] = Math.max(bassVol * 1.5, this.getBandAverage(spectrum, 0, 3) * 3.5 * gainVal);
-    curEnergies[4] = Math.max(bassVol * 1.3, this.getBandAverage(spectrum, 4, 8) * 3.0 * gainVal);
-    curEnergies[5] = Math.max(bassVol * 1.0, this.getBandAverage(spectrum, 9, 15) * 3.0 * gainVal);
+    // BASS (3~5)
+    curEnergies[3] = Math.max(bassVol * 1.5, this.getBandAverage(bassSpec, 0, 3) * 3.5 * gainVal);
+    curEnergies[4] = Math.max(bassVol * 1.3, this.getBandAverage(bassSpec, 4, 8) * 3.0 * gainVal);
+    curEnergies[5] = Math.max(bassVol * 1.0, this.getBandAverage(bassSpec, 9, 15) * 3.0 * gainVal);
 
-    // Vocals (6~8)
-    curEnergies[6] = Math.max(vocalsVol * 1.2, this.getBandAverage(spectrum, 12, 18) * 3.0 * gainVal);
-    curEnergies[7] = Math.max(vocalsVol * 1.5, this.getBandAverage(spectrum, 19, 28) * 3.5 * gainVal);
-    curEnergies[8] = Math.max(vocalsVol * 1.2, this.getBandAverage(spectrum, 29, 40) * 3.0 * gainVal);
+    // VOCAL (6~8)
+    curEnergies[6] = Math.max(vocalsVol * 1.2, this.getBandAverage(vocalsSpec, 12, 18) * 3.0 * gainVal);
+    curEnergies[7] = Math.max(vocalsVol * 1.5, this.getBandAverage(vocalsSpec, 19, 28) * 3.5 * gainVal);
+    curEnergies[8] = Math.max(vocalsVol * 1.2, this.getBandAverage(vocalsSpec, 29, 40) * 3.0 * gainVal);
 
-    // Other (9~11)
-    curEnergies[9]  = Math.max(otherVol * 1.2, this.getBandAverage(spectrum, 15, 24) * 3.0 * gainVal);
-    curEnergies[10] = Math.max(otherVol * 1.5, this.getBandAverage(spectrum, 25, 38) * 3.5 * gainVal);
-    curEnergies[11] = Math.max(otherVol * 1.2, this.getBandAverage(spectrum, 39, 55) * 3.0 * gainVal);
+    // OTHER (9~11)
+    curEnergies[9]  = Math.max(otherVol * 1.2, this.getBandAverage(otherSpec, 15, 24) * 3.0 * gainVal);
+    curEnergies[10] = Math.max(otherVol * 1.5, this.getBandAverage(otherSpec, 25, 38) * 3.5 * gainVal);
+    curEnergies[11] = Math.max(otherVol * 1.2, this.getBandAverage(otherSpec, 39, 55) * 3.0 * gainVal);
 
     for (let l = 0; l < this.laneCount; l++) {
       if (this.laneCooldowns[l] > 0) this.laneCooldowns[l]--;
@@ -284,17 +285,16 @@ export default class PumpRhythmHighwaySketch {
       if (winnerLane !== -1) {
         const energy = curEnergies[winnerLane];
         const prevEnergy = this.prevEnergies[winnerLane];
-        const isSpike = (energy - prevEnergy) > 0.08; // 음이 솟구치는 타격 순간 (Attack Spike)
+        const isSpike = (energy - prevEnergy) > 0.08;
 
-        // 💡 [핵심]: 문턱값 0.22 미만의 잔음에서는 노트를 절대로 생성하지 않음 (노이즈 게이트)
-        if (isSpike && energy > 0.22 && this.laneCooldowns[winnerLane] <= 0) {
+        if (isSpike && energy > 0.20 && this.laneCooldowns[winnerLane] <= 0) {
           this.notes.push({
             lane: winnerLane,
             progress: 0.0,
             energy: energy,
             shapeType: this.getShapeForLane(winnerLane, seedVal)
           });
-          this.laneCooldowns[winnerLane] = 12 + Math.floor(Math.random() * 6); // 난사 방지 쿨다운
+          this.laneCooldowns[winnerLane] = 10 + Math.floor(Math.random() * 5);
         }
       }
 
@@ -336,7 +336,7 @@ export default class PumpRhythmHighwaySketch {
     }
 
     // ---------------------------------------------------------------------
-    // 3. 상단 라벨
+    // 3. 상단 스템 라벨
     // ---------------------------------------------------------------------
     const labelY = vanishY - 8;
     const stemLabels = [
@@ -388,7 +388,7 @@ export default class PumpRhythmHighwaySketch {
       else if (l >= 6) laneColor = colorVocals;
       else if (l >= 3) laneColor = colorBass;
 
-      const isHitNow = curEnergies[l] > 0.22;
+      const isHitNow = curEnergies[l] > 0.20;
       this.ctx.fillStyle = isHitNow ? `rgba(${laneColor}, 0.95)` : `rgba(${laneColor}, 0.22)`;
       this.ctx.fillRect(btnX - btnW * 0.5, hitY - btnH * 0.5, btnW, btnH);
     }
@@ -424,10 +424,10 @@ export default class PumpRhythmHighwaySketch {
       this.drawNoteShape(this.ctx, note.shapeType, noteX, curY, noteW, noteH, fillRGBA);
       this.ctx.shadowBlur = 0;
 
-      // 🎯 판정선 타격
+      // 🎯 정확히 1.0초 지연 소리와 맞물려 하단 판정선을 때리는 순간
       if (p >= 1.0) {
         const hitX = curStartX + (note.lane + 0.5) * curLaneW;
-        this.spawnHitParticles(hitX, hitY, curNoteColor, 7);
+        this.spawnHitParticles(hitX, hitY, curNoteColor, 8);
         this.spawnHitEffect(hitX, hitY, curNoteColor);
 
         this.notes.splice(i, 1);
@@ -475,9 +475,9 @@ export default class PumpRhythmHighwaySketch {
 
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: `Strict Sync Highway (Notes:${this.notes.length} / Sparks:${this.particles.length})`,
+      particleCount: `Dynamic Sync Highway (Notes:${this.notes.length})`,
       isCovering: true,
-      activeFunction: `PumpHighwayStrictSync[12Lanes_${colorStyle.toUpperCase()}]`
+      activeFunction: `PumpHighwayDynamicSync[12Lanes_${colorStyle.toUpperCase()}]`
     };
   }
 
