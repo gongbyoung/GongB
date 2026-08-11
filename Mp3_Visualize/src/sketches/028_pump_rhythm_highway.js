@@ -1,12 +1,10 @@
 /**
  * src/sketches/028_pump_rhythm_highway.js
- * - [028호 펌프 리듬 하이웨이 Ver 15.0 - Syntax Fix & Universal Control]
- * - 🎯 ReferenceError(mod is not defined) 완벽 수리 ➔ 화면 검은 먹통 현상 해결
- * - 🔀 Shuffle (Seed) : 전체 노트 모양 일괄 통일 전환 (0~99: 사각 / 100~199: 라운드 / 200~299: 원 / 300~399: 다이아 / 400~500: 별)
- * - 🎛️ Volume (Gain)   : 노트 생성 감도 (Sensitivity) 조절
- * - 🎛️ Range (Scatter) : 노트 생성 최소 문턱값 (Noise Gate) 조절
- * - 🎛️ Scale (Glow)    : 노트 전체 크기 및 발광 이펙트 규모 조절
- * - 🎛️ Gauge           : 상단 원근 트랙 폭 (어지러움 조절)
+ * - [028호 펌프 리듬 하이웨이 Ver 17.0 - Tuning Panel Direct Control]
+ * - 🎛️ Range (Scatter) : 분석 감도 (Sensitivity) 실시간 조절
+ * - 🎛️ Gauge           : 싱크 오프셋 (Sync Offset) 실시간 조절
+ * - 🔀 Shuffle (Seed)  : 노트 쉐이프 일괄 통일 (사각, 라운드, 원, 다이아, 별)
+ * - 🎛️ Scale (Glow)    : 노트 크기 및 타격 스파크 규모 조절
  * - 🥁 DRUM(5) : BASS(5) : VOCAL(1) : OTHER(1) 12개 레인 정밀 슬라이싱
  */
 
@@ -21,7 +19,7 @@ export default class PumpRhythmHighwaySketch {
     }
 
     this.time = 0;
-    this.version = "028호 펌프 리듬 하이웨이 Ver 15.0 (Syntax Fix)";
+    this.version = "028호 펌프 리듬 하이웨이 Ver 17.0 (Tuning Panel)";
     
     this.laneCount = 12; // 5(Drum) + 5(Bass) + 1(Vocal) + 1(Other)
     this.notes = [];
@@ -63,7 +61,6 @@ export default class PumpRhythmHighwaySketch {
     return count > 0 ? (sum / count) : 0;
   }
 
-  // 💡 [수리 완료]: mod 에러 방지 연산 수식
   getGlobalShape(seed) {
     const s = Math.abs(Math.floor(seed)) % 500;
     if (s < 100) return 0;      // 0~99   : 직사각형
@@ -73,16 +70,16 @@ export default class PumpRhythmHighwaySketch {
     return 4;                   // 400~500: 별형
   }
 
-  spawnHitParticles(x, y, color, count = 6, scaleFactor = 1.0) {
+  spawnHitParticles(x, y, color, count = 8, scaleFactor = 1.0) {
     const finalCount = Math.floor(count * scaleFactor);
     for (let i = 0; i < finalCount; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const speed = (2 + Math.random() * 5) * scaleFactor;
+      const speed = (2 + Math.random() * 6) * scaleFactor;
       this.particles.push({
         x: x, y: y,
         vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - 1.5,
-        size: (2 + Math.random() * 3.5) * scaleFactor,
+        vy: Math.sin(angle) * speed - 2.0,
+        size: (2 + Math.random() * 4) * scaleFactor,
         color: color,
         life: 1.0
       });
@@ -93,7 +90,7 @@ export default class PumpRhythmHighwaySketch {
     this.hitEffects.push({
       x: x, y: y,
       radius: 8 * scaleFactor,
-      maxRadius: 32 * scaleFactor,
+      maxRadius: 35 * scaleFactor,
       color: color,
       alpha: 1.0
     });
@@ -154,17 +151,18 @@ export default class PumpRhythmHighwaySketch {
     const seedVal = globalSettings.seed ?? 42;
     const gainVal = globalSettings.audioGain ?? 1.0;
     const colorStyle = (globalSettings.colorStyle || 'monochrome').toLowerCase();
-    const gaugeVal = globalSettings.gaugeValue ?? 0.5;
 
-    const exportRatio = (globalSettings.exportRatio || globalSettings.exportSetting || globalSettings.aspectRatio || 'full').toLowerCase();
-
-    // 🎛️ Range (Scatter): 노트 스폰 최소 문턱값 (Noise Gate)
+    // 🎛️ 관제탑 슬라이더 직접 연동
     const rawScatter = globalSettings.scatterExponent ?? globalSettings.scatter ?? globalSettings.range ?? 25;
-    const silenceGate = 0.01 + (rawScatter / 100.0) * 0.12;
+    const sensitivity = 0.01 + (rawScatter / 100.0) * 0.12; // Range 슬라이더 = 분석 감도
 
-    // 🎛️ Scale (Glow): 노트 전체 크기 및 이펙트 규모
+    const rawGauge = globalSettings.gaugeValue ?? 0.5;
+    const syncOffset = (rawGauge - 0.5) * 0.4; // Gauge 슬라이더 = 싱크 오프셋 (-0.2초 ~ +0.2초)
+
     const rawGlow = globalSettings.glowScale ?? globalSettings.glow ?? globalSettings.scale ?? 50;
     const scaleFactor = Math.max(0.3, Math.min(3.0, rawGlow / 40.0));
+
+    const exportRatio = (globalSettings.exportRatio || globalSettings.exportSetting || globalSettings.aspectRatio || 'full').toLowerCase();
 
     const noteSpeed = 0.018;
 
@@ -173,10 +171,10 @@ export default class PumpRhythmHighwaySketch {
     const rawVocalsV = (targetAudio.vocalsVol ?? 0) * gainVal;
     const rawOtherV  = (targetAudio.otherVol  ?? 0) * gainVal;
 
-    const passDrums  = rawDrumsV > silenceGate;
-    const passBass   = rawBassV > silenceGate;
-    const passVocals = rawVocalsV > silenceGate;
-    const passOther  = rawOtherV > silenceGate;
+    const passDrums  = rawDrumsV > sensitivity;
+    const passBass   = rawBassV > sensitivity;
+    const passVocals = rawVocalsV > sensitivity;
+    const passOther  = rawOtherV > sensitivity;
 
     const drumsSpec  = passDrums  ? (targetAudio.drumsSpectrum  || new Float32Array(64)) : new Float32Array(64);
     const bassSpec   = passBass   ? (targetAudio.bassSpectrum   || new Float32Array(64)) : new Float32Array(64);
@@ -242,11 +240,12 @@ export default class PumpRhythmHighwaySketch {
     const vanishY = renderY + renderH * 0.12;
     const hitY = renderY + renderH * 0.84;
 
-    const topTrackW = renderW * (0.08 + gaugeVal * 0.32);
+    // 고정 트랙 폭 및 싱크 오프셋 반영 판정선 위치
+    const topTrackW = renderW * 0.22;
     const bottomTrackW = renderW * 0.88;
 
     // ---------------------------------------------------------------------
-    // 1. 주파수 산출 & 노트 생성
+    // 1. 주파수 산출 & 노트 생성 (싱크 오프셋 적용)
     // ---------------------------------------------------------------------
     const curEnergies = new Float32Array(12);
 
@@ -303,10 +302,10 @@ export default class PumpRhythmHighwaySketch {
         const prevEnergy = this.prevEnergies[winnerLane];
         const isSpike = (energy - prevEnergy) > 0.04;
 
-        if (isSpike && energy > (silenceGate * 2.5) && this.laneCooldowns[winnerLane] <= 0) {
+        if (isSpike && energy > (sensitivity * 2.0) && this.laneCooldowns[winnerLane] <= 0) {
           this.notes.push({
             lane: winnerLane,
-            progress: 0.0,
+            progress: 0.0 + syncOffset, // 💡 싱크 오프셋 슬라이더로 출발점 미세 조절
             energy: energy,
             shapeType: globalShapeType
           });
@@ -404,13 +403,9 @@ export default class PumpRhythmHighwaySketch {
       else if (l === 10) laneColor = colorVocals;
       else if (l >= 5) laneColor = colorBass;
 
-      const isHitNow = curEnergies[l] > (silenceGate * 2.0);
+      const isHitNow = curEnergies[l] > (sensitivity * 2.0);
       this.ctx.fillStyle = isHitNow ? `rgba(${laneColor}, 0.95)` : `rgba(${laneColor}, 0.22)`;
       this.ctx.fillRect(btnX - btnW * 0.5, hitY - btnH * 0.5, btnW, btnH);
-
-      if (isHitNow && Math.random() < 0.25) {
-        this.spawnHitParticles(btnX, hitY, laneColor, 2, scaleFactor);
-      }
     }
 
     // ---------------------------------------------------------------------
@@ -494,9 +489,9 @@ export default class PumpRhythmHighwaySketch {
 
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: `Pump Highway Fixed (Shape:${globalShapeType})`,
+      particleCount: `Tuning Highway (Sens:${sensitivity.toFixed(3)} / Sync:${syncOffset.toFixed(2)})`,
       isCovering: true,
-      activeFunction: `PumpHighwayFixed[12Lanes_${colorStyle.toUpperCase()}]`
+      activeFunction: `PumpHighwayTuning[12Lanes_${colorStyle.toUpperCase()}]`
     };
   }
 
