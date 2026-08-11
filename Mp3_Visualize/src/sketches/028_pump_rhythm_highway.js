@@ -1,12 +1,10 @@
 /**
  * src/sketches/028_pump_rhythm_highway.js
- * - [028호 펌프 리듬 하이웨이 Ver 4.0 - True Onset Pitch & Hold Note Engine]
- * - 🎯 롱노트(Hold Note) 이식: 베이스/보컬의 길게 늘어지는 음을 3D 리본 테일로 연속 연출
- * - ⚡ 트랜지언트 피크(Onset) 감지: 로봇 같은 단순 연속 발사를 금지하고 진짜 연주 타격 시에만 노트 출격
- * - 🎵 12-Lane 피치 매핑: 악기별 3개 음역대 Pitch 변화 실시간 반응
- * - 🎛️ Gauge 슬라이더: 상단 트랙 원근 폭 실시간 조절
- * - 🔀 Shuffle (Seed): 노트 쉐이프 무작위화
- * - 🎨 Color Style Palette 테마 연동
+ * - [028호 펌프 리듬 하이웨이 Ver 5.0 - Strict Audio Sync & Clean Notes]
+ * - 🎯 무한 기둥 띠 완전 삭제: 화면을 가득 채우던 오류 수식을 제거하고 깔끔한 노트 블록으로 복구
+ * - ⚡ 노이즈 게이트(Noise Gate): 무음 구간 및 잔음에서 노트 생성 완전 차단
+ * - 🎵 4-Stem 12-Lane 피치 매핑: 음이 실제로 존재하는 순간만 정확히 스폰
+ * - 📐 16:9 / 9:16 Export 및 Gauge 원근 폭 조절 지원
  */
 
 export default class PumpRhythmHighwaySketch {
@@ -20,16 +18,15 @@ export default class PumpRhythmHighwaySketch {
     }
 
     this.time = 0;
-    this.version = "028호 펌프 리듬 하이웨이 Ver 4.0 (Hold Notes)";
+    this.version = "028호 펌프 리듬 하이웨이 Ver 5.0 (Strict Sync)";
     
     this.laneCount = 12; // 4-Stem x 3-Lanes
     this.notes = [];
     this.particles = [];
     this.hitEffects = [];
     
-    // 이전 프레임 음압 기록 (트랜지언트 온셋 감지용)
+    this.laneCooldowns = new Array(12).fill(0);
     this.prevEnergies = new Float32Array(12);
-    this.activeHoldNotes = new Array(12).fill(null);
   }
 
   init() {
@@ -68,14 +65,14 @@ export default class PumpRhythmHighwaySketch {
     return Math.floor(pseudo) % 6;
   }
 
-  spawnHitParticles(x, y, color, count = 4) {
+  spawnHitParticles(x, y, color, count = 5) {
     for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
       const speed = 2 + Math.random() * 5;
       this.particles.push({
         x: x, y: y,
         vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - 1.2,
+        vy: Math.sin(angle) * speed - 1.5,
         size: 2 + Math.random() * 3.5,
         color: color,
         life: 1.0
@@ -87,27 +84,26 @@ export default class PumpRhythmHighwaySketch {
     this.hitEffects.push({
       x: x, y: y,
       radius: 8,
-      maxRadius: 30,
+      maxRadius: 32,
       color: color,
       alpha: 1.0
     });
   }
 
-  // 🖌️ 숏노트 헤더 쉐이프 렌더링 도우미
-  drawNoteHeader(ctx, shapeType, x, y, w, h, color) {
+  drawNoteShape(ctx, shapeType, x, y, w, h, color) {
     ctx.fillStyle = color;
     ctx.beginPath();
 
     switch (shapeType) {
-      case 1: // 라운드 사각
+      case 1:
         ctx.roundRect(x - w / 2, y - h / 2, w, h, Math.min(w, h) * 0.3);
         ctx.fill();
         break;
-      case 2: // 원형
-        ctx.arc(x, y, Math.min(w, h) * 0.5, 0, Math.PI * 2);
+      case 2:
+        ctx.arc(x, y, Math.min(w, h) * 0.45, 0, Math.PI * 2);
         ctx.fill();
         break;
-      case 3: // 다이아몬드
+      case 3:
         ctx.moveTo(x, y - h / 2);
         ctx.lineTo(x + w / 2, y);
         ctx.lineTo(x, y + h / 2);
@@ -115,9 +111,9 @@ export default class PumpRhythmHighwaySketch {
         ctx.closePath();
         ctx.fill();
         break;
-      case 4: // 별형
+      case 4:
         {
-          const r = Math.min(w, h) * 0.55;
+          const r = Math.min(w, h) * 0.5;
           const ir = r * 0.45;
           for (let i = 0; i < 10; i++) {
             const cr = i % 2 === 0 ? r : ir;
@@ -131,14 +127,14 @@ export default class PumpRhythmHighwaySketch {
           ctx.fill();
         }
         break;
-      case 5: // 삼각형
+      case 5:
         ctx.moveTo(x, y - h / 2);
         ctx.lineTo(x + w / 2, y + h / 2);
         ctx.lineTo(x - w / 2, y + h / 2);
         ctx.closePath();
         ctx.fill();
         break;
-      default: // 기본 직사각형
+      default:
         ctx.fillRect(x - w / 2, y - h / 2, w, h);
         break;
     }
@@ -161,12 +157,12 @@ export default class PumpRhythmHighwaySketch {
     const exportRatio = (globalSettings.exportRatio || globalSettings.exportSetting || globalSettings.aspectRatio || 'full').toLowerCase();
 
     const rawScatter = globalSettings.scatterExponent ?? globalSettings.scatter ?? globalSettings.range ?? 25;
-    const noteSpeed = (0.010 + (rawScatter / 50.0) * 0.022); // 노트 낙하 속도
+    const noteSpeed = (0.012 + (rawScatter / 50.0) * 0.025);
 
     const rawGlow = globalSettings.glowScale ?? globalSettings.glow ?? globalSettings.scale ?? 50;
     const scaleFactor = Math.max(0.3, Math.min(3.0, rawGlow / 40.0));
 
-    // 4-Stem 개별 음압
+    // 4-Stem 음압
     const vocalsVol = (targetAudio.vocalsVol ?? targetAudio.mid ?? 0) * gainVal;
     const drumsVol  = (targetAudio.drumsVol  ?? targetAudio.bass ?? 0) * gainVal;
     const bassVol   = (targetAudio.bassVol   ?? targetAudio.bass ?? 0) * gainVal;
@@ -180,7 +176,6 @@ export default class PumpRhythmHighwaySketch {
     const W = this.canvas.width;
     const H = this.canvas.height;
 
-    // 뷰포트 레터박스 연산
     let renderW = W, renderH = H, renderX = 0, renderY = 0;
     if (exportRatio === '16:9') {
       renderW = W;
@@ -203,7 +198,7 @@ export default class PumpRhythmHighwaySketch {
     this.ctx.rect(renderX, renderY, renderW, renderH);
     this.ctx.clip();
 
-    // 🎨 Color Style Palette
+    // 팔레트 지정
     const customColors = globalSettings.customColors || {};
     const cGas1 = this.hexToRgb(customColors.gas1);
     const cGas2 = this.hexToRgb(customColors.gas2);
@@ -224,7 +219,6 @@ export default class PumpRhythmHighwaySketch {
       colorDrums  = cGas1; colorBass = cGas2; colorVocals = cStar; colorOther = "180, 100, 255";
     }
 
-    // 배경 그라데이션
     const bgGrad = this.ctx.createLinearGradient(renderX, renderY, renderX, renderY + renderH);
     bgGrad.addColorStop(0, "#101426");
     bgGrad.addColorStop(0.5, "#050712");
@@ -241,36 +235,39 @@ export default class PumpRhythmHighwaySketch {
     const bottomTrackW = renderW * 0.88;
 
     // ---------------------------------------------------------------------
-    // 1. 🎯 [핵심 수리 1]: 12개 레인 음압 & 트랜지언트 피크(Onset) 산출
+    // 1. 12개 레인 정밀 피크 감지 & 노이즈 게이트 (Noise Gate Filter)
     // ---------------------------------------------------------------------
     const curEnergies = new Float32Array(12);
 
-    // Drums (Lane 0~2)
+    // Drums (0~2)
     curEnergies[0] = Math.max(drumsVol * 1.5, this.getBandAverage(spectrum, 0, 2) * 3.5 * gainVal);
     curEnergies[1] = Math.max(drumsVol * 1.2, this.getBandAverage(spectrum, 3, 6) * 3.0 * gainVal);
     curEnergies[2] = Math.max(drumsVol * 1.0, this.getBandAverage(spectrum, 7, 12) * 3.0 * gainVal);
 
-    // Bass (Lane 3~5) - 롱노트 지원
-    curEnergies[3] = Math.max(bassVol * 1.6, this.getBandAverage(spectrum, 0, 3) * 3.8 * gainVal);
-    curEnergies[4] = Math.max(bassVol * 1.4, this.getBandAverage(spectrum, 4, 8) * 3.2 * gainVal);
-    curEnergies[5] = Math.max(bassVol * 1.1, this.getBandAverage(spectrum, 9, 15) * 3.2 * gainVal);
+    // Bass (3~5)
+    curEnergies[3] = Math.max(bassVol * 1.5, this.getBandAverage(spectrum, 0, 3) * 3.5 * gainVal);
+    curEnergies[4] = Math.max(bassVol * 1.3, this.getBandAverage(spectrum, 4, 8) * 3.0 * gainVal);
+    curEnergies[5] = Math.max(bassVol * 1.0, this.getBandAverage(spectrum, 9, 15) * 3.0 * gainVal);
 
-    // Vocals (Lane 6~8) - 롱노트 지원
+    // Vocals (6~8)
     curEnergies[6] = Math.max(vocalsVol * 1.2, this.getBandAverage(spectrum, 12, 18) * 3.0 * gainVal);
     curEnergies[7] = Math.max(vocalsVol * 1.5, this.getBandAverage(spectrum, 19, 28) * 3.5 * gainVal);
     curEnergies[8] = Math.max(vocalsVol * 1.2, this.getBandAverage(spectrum, 29, 40) * 3.0 * gainVal);
 
-    // Other (Lane 9~11)
+    // Other (9~11)
     curEnergies[9]  = Math.max(otherVol * 1.2, this.getBandAverage(spectrum, 15, 24) * 3.0 * gainVal);
     curEnergies[10] = Math.max(otherVol * 1.5, this.getBandAverage(spectrum, 25, 38) * 3.5 * gainVal);
     curEnergies[11] = Math.max(otherVol * 1.2, this.getBandAverage(spectrum, 39, 55) * 3.0 * gainVal);
 
-    // 스템 그룹별 피크 검사 및 롱노트 연장 처리
+    for (let l = 0; l < this.laneCount; l++) {
+      if (this.laneCooldowns[l] > 0) this.laneCooldowns[l]--;
+    }
+
     const stemGroups = [
-      { lanes: [0, 1, 2], isHoldable: false }, // Drums (숏노트 위주)
-      { lanes: [3, 4, 5], isHoldable: true },  // Bass (롱노트 지원)
-      { lanes: [6, 7, 8], isHoldable: true },  // Vocals (롱노트 지원)
-      { lanes: [9, 10, 11], isHoldable: true } // Other (롱노트 지원)
+      { lanes: [0, 1, 2] },  // Drums
+      { lanes: [3, 4, 5] },  // Bass
+      { lanes: [6, 7, 8] },  // Vocals
+      { lanes: [9, 10, 11] } // Other
     ];
 
     stemGroups.forEach(group => {
@@ -284,42 +281,25 @@ export default class PumpRhythmHighwaySketch {
         }
       }
 
-      for (let l of group.lanes) {
-        const energy = curEnergies[l];
-        const prevEnergy = this.prevEnergies[l];
-        const isSpike = (energy - prevEnergy) > 0.08; // 음역 타격 순간 (Attack Spike)
-        const isSustained = energy > 0.16;             // 음 지속 중
+      if (winnerLane !== -1) {
+        const energy = curEnergies[winnerLane];
+        const prevEnergy = this.prevEnergies[winnerLane];
+        const isSpike = (energy - prevEnergy) > 0.08; // 음이 솟구치는 타격 순간 (Attack Spike)
 
-        const activeHold = this.activeHoldNotes[l];
-
-        if (group.isHoldable && activeHold) {
-          if (isSustained) {
-            // 💡 [핵심]: 음이 지속되는 동안 롱노트의 꼬리(length)를 길게 연장!
-            activeHold.length += noteSpeed;
-          } else {
-            // 음이 끊어지면 롱노트 생성 종결
-            activeHold.isHolding = false;
-            this.activeHoldNotes[l] = null;
-          }
-        } else if (l === winnerLane && isSpike && energy > 0.14) {
-          // 💡 [신규 타격]: 새로운 노트 생성
-          const newNote = {
-            lane: l,
+        // 💡 [핵심]: 문턱값 0.22 미만의 잔음에서는 노트를 절대로 생성하지 않음 (노이즈 게이트)
+        if (isSpike && energy > 0.22 && this.laneCooldowns[winnerLane] <= 0) {
+          this.notes.push({
+            lane: winnerLane,
             progress: 0.0,
-            length: 0.0, // 0.0이면 숏노트, 음 지속 시 롱노트로 증가
-            isHolding: group.isHoldable,
             energy: energy,
-            shapeType: this.getShapeForLane(l, seedVal)
-          };
-
-          this.notes.push(newNote);
-
-          if (group.isHoldable) {
-            this.activeHoldNotes[l] = newNote;
-          }
+            shapeType: this.getShapeForLane(winnerLane, seedVal)
+          });
+          this.laneCooldowns[winnerLane] = 12 + Math.floor(Math.random() * 6); // 난사 방지 쿨다운
         }
+      }
 
-        this.prevEnergies[l] = energy;
+      for (let l of group.lanes) {
+        this.prevEnergies[l] = curEnergies[l];
       }
     });
 
@@ -341,7 +321,6 @@ export default class PumpRhythmHighwaySketch {
       this.ctx.stroke();
     }
 
-    // 마디선
     const gridLines = 8;
     this.ctx.strokeStyle = `rgba(255, 255, 255, 0.12)`;
     this.ctx.lineWidth = 1.0;
@@ -357,7 +336,7 @@ export default class PumpRhythmHighwaySketch {
     }
 
     // ---------------------------------------------------------------------
-    // 3. 상단 4-Stem 라벨 렌더링
+    // 3. 상단 라벨
     // ---------------------------------------------------------------------
     const labelY = vanishY - 8;
     const stemLabels = [
@@ -381,7 +360,7 @@ export default class PumpRhythmHighwaySketch {
     });
 
     // ---------------------------------------------------------------------
-    // 4. 하단 네온 판정선 (Hit Line) & 12개 레인 페달
+    // 4. 하단 네온 판정선 (Hit Line) & 12개 페달
     // ---------------------------------------------------------------------
     const hitTrackW = topTrackW + 0.84 * (bottomTrackW - topTrackW);
     const hitStartX = centerX - hitTrackW * 0.5;
@@ -409,103 +388,54 @@ export default class PumpRhythmHighwaySketch {
       else if (l >= 6) laneColor = colorVocals;
       else if (l >= 3) laneColor = colorBass;
 
-      const activeHold = this.activeHoldNotes[l];
-      const isPressing = activeHold || curEnergies[l] > 0.16;
-
-      this.ctx.fillStyle = isPressing ? `rgba(${laneColor}, 0.95)` : `rgba(${laneColor}, 0.25)`;
+      const isHitNow = curEnergies[l] > 0.22;
+      this.ctx.fillStyle = isHitNow ? `rgba(${laneColor}, 0.95)` : `rgba(${laneColor}, 0.22)`;
       this.ctx.fillRect(btnX - btnW * 0.5, hitY - btnH * 0.5, btnW, btnH);
     }
 
     // ---------------------------------------------------------------------
-    // 5. 🎯 [핵심 수리 2]: 숏노트 & 3D 롱노트(Hold Ribbon) 낙하 렌더링
+    // 5. 노트 낙하 렌더링 & 판정선 타격 처리
     // ---------------------------------------------------------------------
     for (let i = this.notes.length - 1; i >= 0; i--) {
       const note = this.notes[i];
       note.progress += noteSpeed;
 
-      const pHead = note.progress;                    // 머리 위치 (0.0 ~ 1.0)
-      const pTail = Math.max(0.0, pHead - note.length); // 꼬리 위치
+      const p = note.progress;
+      const curY = vanishY + p * (hitY - vanishY);
+
+      const curTrackW = topTrackW + p * (bottomTrackW - topTrackW);
+      const curLaneW = curTrackW / this.laneCount;
+      const curStartX = centerX - curTrackW * 0.5;
+
+      const noteX = curStartX + (note.lane + 0.5) * curLaneW;
+      const noteW = curLaneW * 0.82 * scaleFactor;
+      const noteH = (8 + p * 14) * scaleFactor;
 
       let curNoteColor = colorDrums;
       if (note.lane >= 9) curNoteColor = colorOther;
       else if (note.lane >= 6) curNoteColor = colorVocals;
       else if (note.lane >= 3) curNoteColor = colorBass;
 
-      // 💡 [3D 롱노트 리본 렌더링]
-      if (note.length > 0.02) {
-        const yHead = vanishY + pHead * (hitY - vanishY);
-        const yTail = vanishY + pTail * (hitY - vanishY);
+      const fillRGBA = `rgba(${curNoteColor}, ${Math.min(1.0, p * 2.0)})`;
 
-        const trackW_Head = topTrackW + pHead * (bottomTrackW - topTrackW);
-        const trackW_Tail = topTrackW + pTail * (bottomTrackW - topTrackW);
+      this.ctx.shadowColor = `rgb(${curNoteColor})`;
+      this.ctx.shadowBlur = 8 * p;
 
-        const laneW_Head = trackW_Head / this.laneCount;
-        const laneW_Tail = trackW_Tail / this.laneCount;
+      this.drawNoteShape(this.ctx, note.shapeType, noteX, curY, noteW, noteH, fillRGBA);
+      this.ctx.shadowBlur = 0;
 
-        const startX_Head = centerX - trackW_Head * 0.5;
-        const startX_Tail = centerX - trackW_Tail * 0.5;
+      // 🎯 판정선 타격
+      if (p >= 1.0) {
+        const hitX = curStartX + (note.lane + 0.5) * curLaneW;
+        this.spawnHitParticles(hitX, hitY, curNoteColor, 7);
+        this.spawnHitEffect(hitX, hitY, curNoteColor);
 
-        const xHead = startX_Head + (note.lane + 0.5) * laneW_Head;
-        const xTail = startX_Tail + (note.lane + 0.5) * laneW_Tail;
-
-        const wHead = laneW_Head * 0.76 * scaleFactor;
-        const wTail = laneW_Tail * 0.76 * scaleFactor;
-
-        // 롱노트 몸통 (3D 사다리꼴 패스)
-        this.ctx.fillStyle = `rgba(${curNoteColor}, 0.65)`;
-        this.ctx.beginPath();
-        this.ctx.moveTo(xTail - wTail * 0.5, yTail);
-        this.ctx.lineTo(xTail + wTail * 0.5, yTail);
-        this.ctx.lineTo(xHead + wHead * 0.5, yHead);
-        this.ctx.lineTo(xHead - wHead * 0.5, yHead);
-        this.ctx.closePath();
-        this.ctx.fill();
-
-        // 롱노트 외곽선 발광
-        this.ctx.strokeStyle = `rgba(${curNoteColor}, 0.95)`;
-        this.ctx.lineWidth = 2;
-        this.ctx.stroke();
-      }
-
-      // 💡 [노트 머리 헤더 렌더링]
-      if (pHead <= 1.0) {
-        const curY = vanishY + pHead * (hitY - vanishY);
-        const curTrackW = topTrackW + pHead * (bottomTrackW - topTrackW);
-        const curLaneW = curTrackW / this.laneCount;
-        const curStartX = centerX - curTrackW * 0.5;
-
-        const noteX = curStartX + (note.lane + 0.5) * curLaneW;
-        const noteW = curLaneW * 0.82 * scaleFactor;
-        const noteH = (8 + pHead * 14) * scaleFactor;
-
-        const fillRGBA = `rgba(${curNoteColor}, ${Math.min(1.0, pHead * 2.0)})`;
-
-        this.ctx.shadowColor = `rgb(${curNoteColor})`;
-        this.ctx.shadowBlur = 8 * pHead;
-
-        this.drawNoteHeader(this.ctx, note.shapeType, noteX, curY, noteW, noteH, fillRGBA);
-        this.ctx.shadowBlur = 0;
-      }
-
-      // 🎯 [판정선 지속 타격 연출]
-      if (pHead >= 1.0) {
-        const hitX = (centerX - (topTrackW + 0.84 * (bottomTrackW - topTrackW)) * 0.5) + (note.lane + 0.5) * laneW;
-        
-        // 롱노트가 지나가는 동안 타격 스파크 연속 방출
-        if (Math.random() < 0.4) {
-          this.spawnHitParticles(hitX, hitY, curNoteColor, 3);
-          this.spawnHitEffect(hitX, hitY, curNoteColor);
-        }
-      }
-
-      // 꼬리까지 완전히 판정선을 통과하면 노트 파기
-      if (pTail >= 1.0) {
         this.notes.splice(i, 1);
       }
     }
 
     // ---------------------------------------------------------------------
-    // 6. 타격 충격파 & 스파크 파티클 렌더링
+    // 6. 타격 충격파 & 스파크 렌더링
     // ---------------------------------------------------------------------
     for (let i = this.hitEffects.length - 1; i >= 0; i--) {
       const fx = this.hitEffects[i];
@@ -545,9 +475,9 @@ export default class PumpRhythmHighwaySketch {
 
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: `Hold Highway (Notes:${this.notes.length} / ActiveHolds:${this.activeHoldNotes.filter(h => h !== null).length})`,
+      particleCount: `Strict Sync Highway (Notes:${this.notes.length} / Sparks:${this.particles.length})`,
       isCovering: true,
-      activeFunction: `PumpHighwayHoldNotes[12Lanes_${colorStyle.toUpperCase()}]`
+      activeFunction: `PumpHighwayStrictSync[12Lanes_${colorStyle.toUpperCase()}]`
     };
   }
 
