@@ -1,10 +1,10 @@
 /**
  * src/sketches/028_pump_rhythm_highway.js
- * - [028호 펌프 리듬 하이웨이 Ver 19.0 - Full-Width Vocal Waveform Fill]
- * - 🎤 VOCAL 파형 그래프: 화면 최좌측 라인 ~ 최우측 라인 사이에 위치, 아래 방향으로 볼륨에 따라 출렁이며 왼쪽 영역 속을 채움(Fill)
+ * - [028호 펌프 리듬 하이웨이 Ver 20.0 - Vertical Perspective Vocal Waveform]
+ * - 🎤 VOCAL 파형: 상단 소실점 ~ 하단 판정선을 잇는 3D 원근 수직 꺽은선 그래프 (왼쪽 영역 Fill 채움)
  * - 🥁 DRUM (5 Lanes) : 드럼 5개 주파수 대역 분산
  * - 🎸 BASS (5 Lanes) : 베이스 5개 주파수 대역 분산
- * - 🎹 OTHER (1 Lane)  : 기타/인스트 단독 레인
+ * - 🎹 OTHER (1 Lane) : 기타/인스트 단독 레인
  * - 관제탑 노브(Volume, Range, Scale, Gauge, Shuffle) 완벽 연동
  */
 
@@ -19,7 +19,7 @@ export default class PumpRhythmHighwaySketch {
     }
 
     this.time = 0;
-    this.version = "028호 펌프 리듬 하이웨이 Ver 19.0 (Full-Width Vocal Fill)";
+    this.version = "028호 펌프 리듬 하이웨이 Ver 20.0 (Vertical Vocal Wave)";
     
     this.laneCount = 11; // 5(Drum) + 5(Bass) + 1(Other)
     this.notes = [];
@@ -28,7 +28,7 @@ export default class PumpRhythmHighwaySketch {
     
     this.laneCooldowns = new Array(11).fill(0);
     this.prevEnergies = new Float32Array(11);
-    this.vocalHistory = []; // 보컬 볼륨 히스토리 버퍼
+    this.vocalHistory = []; // 수직 파형 히스토리 버퍼
   }
 
   init() {
@@ -179,9 +179,9 @@ export default class PumpRhythmHighwaySketch {
     const bassSpec   = passBass   ? (targetAudio.bassSpectrum   || new Float32Array(64)) : new Float32Array(64);
     const otherSpec  = passOther  ? (targetAudio.otherSpectrum  || new Float32Array(64)) : new Float32Array(64);
 
-    // 보컬 볼륨 히스토리 누적 (최대 140포인트)
+    // 보컬 볼륨 히스토리 누적 (최고 80개 세로 포인트)
     this.vocalHistory.push(rawVocalsV * gainVal);
-    if (this.vocalHistory.length > 140) {
+    if (this.vocalHistory.length > 80) {
       this.vocalHistory.shift();
     }
 
@@ -247,50 +247,62 @@ export default class PumpRhythmHighwaySketch {
     const topTrackW = renderW * (0.08 + gaugeVal * 0.32);
     const bottomTrackW = renderW * 0.88;
 
-    // 하이웨이 트랙의 최좌측 외곽선 및 최우측 외곽선 좌표 범위 계산
-    const leftOuterNorm = 0 / this.laneCount;
-    const rightOuterNorm = 11 / this.laneCount;
-
-    const leftTopX = centerX - (topTrackW * 0.5) + leftOuterNorm * topTrackW;
-    const leftBotX = centerX - (bottomTrackW * 0.5) + leftOuterNorm * bottomTrackW;
-
-    const rightTopX = centerX - (topTrackW * 0.5) + rightOuterNorm * topTrackW;
-    const rightBotX = centerX - (bottomTrackW * 0.5) + rightOuterNorm * bottomTrackW;
-
     // ---------------------------------------------------------------------
-    // 🎤 [핵심]: VOCAL 배경 파형 그래프 (최좌측 라인 ~ 최우측 라인 사이, 아래 방향, 왼쪽 속 채움 Fill)
+    // 🎤 [핵심]: VOCAL 수직 꺽은선 파형 (상단 소실점 ~ 하단 판정선, 왼쪽 영역 Fill 채움)
     // ---------------------------------------------------------------------
     this.ctx.save();
-    const vocalBaseY = renderY + renderH * 0.32; // 파형 기준선 높이
-    const chartWidth = renderW * 0.72;
-    const chartStartX = centerX - chartWidth * 0.5;
-    const stepX = chartWidth / (this.vocalHistory.length - 1 || 1);
+    const historyLen = this.vocalHistory.length;
+    if (historyLen > 1) {
+      const vocalNormPos = 0.72; // 트랙 내 보컬 파형 위치 배율
 
-    // 1. 왼쪽 영역 내부 속 채우기 (Fill Area)
-    this.ctx.fillStyle = `rgba(${colorVocals}, 0.08)`;
-    this.ctx.beginPath();
-    this.ctx.moveTo(chartStartX, vocalBaseY);
-    for (let i = 0; i < this.vocalHistory.length; i++) {
-      const hx = chartStartX + i * stepX;
-      // 아래 방향으로 볼륨에 따라 처지는 파형
-      const hy = vocalBaseY + (this.vocalHistory[i] * 110 * scaleFactor) + Math.sin(i * 0.4 + this.time * 2.5) * 10;
-      this.ctx.lineTo(hx, hy);
-    }
-    this.ctx.lineTo(chartStartX + chartWidth, vocalBaseY);
-    this.ctx.closePath();
-    this.ctx.fill();
+      // 1. 왼쪽 영역 내부 속 채우기 (Fill Area)
+      this.ctx.fillStyle = `rgba(${colorVocals}, 0.10)`;
+      this.ctx.beginPath();
 
-    // 2. 파형 외곽선 (Stroke Line)
-    this.ctx.strokeStyle = `rgba(${colorVocals}, 0.65)`;
-    this.ctx.lineWidth = 2.2 * scaleFactor;
-    this.ctx.beginPath();
-    for (let i = 0; i < this.vocalHistory.length; i++) {
-      const hx = chartStartX + i * stepX;
-      const hy = vocalBaseY + (this.vocalHistory[i] * 110 * scaleFactor) + Math.sin(i * 0.4 + this.time * 2.5) * 10;
-      if (i === 0) this.ctx.moveTo(hx, hy);
-      else this.ctx.lineTo(hx, hy);
+      const topX_start = centerX - topTrackW * 0.5 + vocalNormPos * topTrackW;
+      const botX_start = centerX - bottomTrackW * 0.5 + vocalNormPos * bottomTrackW;
+
+      this.ctx.moveTo(topX_start, vanishY);
+
+      // 아래로 내려가는 수직 꺽은선 웨이브 경로
+      for (let i = 0; i < historyLen; i++) {
+        const p = i / (historyLen - 1);
+        const y = vanishY + p * (hitY - vanishY);
+        const curTrackW = topTrackW + p * (bottomTrackW - topTrackW);
+        const curX_base = centerX - curTrackW * 0.5 + vocalNormPos * curTrackW;
+        
+        const vol = this.vocalHistory[i];
+        const xOffset = vol * 38 * scaleFactor * (curTrackW / bottomTrackW);
+        const x = curX_base + xOffset;
+
+        this.ctx.lineTo(x, y);
+      }
+
+      this.ctx.lineTo(botX_start, hitY);
+      this.ctx.lineTo(topX_start, vanishY);
+      this.ctx.closePath();
+      this.ctx.fill();
+
+      // 2. 꺽은선 외곽선 (Stroke Line)
+      this.ctx.strokeStyle = `rgba(${colorVocals}, 0.75)`;
+      this.ctx.lineWidth = 2.2 * scaleFactor;
+      this.ctx.beginPath();
+
+      for (let i = 0; i < historyLen; i++) {
+        const p = i / (historyLen - 1);
+        const y = vanishY + p * (hitY - vanishY);
+        const curTrackW = topTrackW + p * (bottomTrackW - topTrackW);
+        const curX_base = centerX - curTrackW * 0.5 + vocalNormPos * curTrackW;
+        
+        const vol = this.vocalHistory[i];
+        const xOffset = vol * 38 * scaleFactor * (curTrackW / bottomTrackW);
+        const x = curX_base + xOffset;
+
+        if (i === 0) this.ctx.moveTo(x, y);
+        else this.ctx.lineTo(x, y);
+      }
+      this.ctx.stroke();
     }
-    this.ctx.stroke();
     this.ctx.restore();
 
     // ---------------------------------------------------------------------
@@ -530,9 +542,9 @@ export default class PumpRhythmHighwaySketch {
 
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: `Vocal Line Fill (Notes:${this.notes.length})`,
+      particleCount: `Vertical Vocal Wave (Notes:${this.notes.length})`,
       isCovering: true,
-      activeFunction: `PumpHighwayVocalFill[11Lanes_${colorStyle.toUpperCase()}]`
+      activeFunction: `PumpHighwayVerticalVocal[11Lanes_${colorStyle.toUpperCase()}]`
     };
   }
 
