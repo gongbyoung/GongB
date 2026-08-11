@@ -13,14 +13,14 @@ const stageWrapper = document.getElementById('stage-wrapper');
 const deckPlayBtn = document.getElementById('btn-play-music');
 
 let isAudioAnalyzerConnected = false;
-
 let audioCtx = null;
+let delayNode = null; // 가변 음향 지연 노드
+
 const stemBuffers = { vocals: null, drums: null, bass: null, other: null };
 const stemSources = { vocals: null, drums: null, bass: null, other: null };
 const stemAnalysers = { vocals: null, drums: null, bass: null, other: null };
 let isMultiStemPlaying = false;
 
-// DOM 요소 탐색 (다양한 ID 호환 대응)
 const poemTextInput = document.getElementById('input-poem-text') || document.getElementById('poem-input');
 const mainMp3Input = document.getElementById('file-main-mp3') || document.getElementById('file-main') || document.getElementById('file-mp3');
 const batchMp3Input = document.getElementById('file-batch-mp3');
@@ -31,12 +31,8 @@ window.cosmicEngineSettings = window.cosmicEngineSettings || {};
 window.cosmicEngineSettings.poemText = poemTextInput ? poemTextInput.value : "떠날 때의 님의 얼굴";
 window.cosmicEngineSettings.exportRatio = "full";
 
-// =========================================================================
-// 💡 가사 단어 ↔ 스케치 자동 매칭 + SRT 타이밍 동기화
-// =========================================================================
 const wordMatcher = new WordVisualMatcher(manager, analyzer);
 
-// 🎯 [Fix] getCurrentTime의 ... 생략 구문을 실제 동작 로직으로 교체하여 문법 에러 수리
 const lyricSync = new LyricSync({
   wordMatcher,
   getCurrentTime: () => {
@@ -46,7 +42,6 @@ const lyricSync = new LyricSync({
     return audioPlayer ? audioPlayer.currentTime : 0;
   },
   onCueChange: (cue) => {
-    // 💡 틀글자(poemText)는 건드리지 않고, 오직 실시간 자막 변수만 업데이트
     window.currentSubtitleText = cue.text;
   },
 });
@@ -78,16 +73,39 @@ function stopAllActiveStems() {
   if (deckPlayBtn) deckPlayBtn.innerText = "▶️ 음악 재생 (Play)";
 }
 
+async function initAudioContext() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === 'suspended') {
+    await audioCtx.resume();
+  }
+  if (!delayNode) {
+    delayNode = audioCtx.createDelay(2.0);
+    delayNode.delayTime.value = 0.0; // 💡 기본 상태: 0초 지연 (기존 모든 스케치 실시간 100% 작동)
+    delayNode.connect(audioCtx.destination);
+  }
+}
+
 async function safeDecodeAudio(file) {
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  if (audioCtx.state === 'suspended') await audioCtx.resume();
+  await initAudioContext();
   const arrayBuffer = await file.arrayBuffer();
   return await audioCtx.decodeAudioData(arrayBuffer.slice(0));
 }
 
-// =========================================================================
-// 🎯 메인 단일 MP3 업로드 감지
-// =========================================================================
+// 💡 스케치ID에 따른 dynamic delay 스위칭 함수
+function updateAudioDelayForSketch(sketchFileName) {
+  if (!delayNode) return;
+  if (sketchFileName && sketchFileName.includes('028')) {
+    delayNode.delayTime.value = 1.0; // 🎯 028번 펌프리듬 선택 시에만 1초 지연 싱크 가동
+    console.log("[🔊 Audio Sync] 028호 전용 1.0초 박자 지연 싱크 가동");
+  } else {
+    delayNode.delayTime.value = 0.0; // 🎯 001~027번 스케치는 0초 실시간 모드
+    console.log("[🔊 Audio Sync] 일반 스케치 전용 0.0초 실시간 모드 가동");
+  }
+}
+
+// 단일 MP3 업로드 감지
 mainMp3Input?.addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
@@ -107,13 +125,9 @@ mainMp3Input?.addEventListener('change', (e) => {
     batchStatusText.style.color = "#00ffcc";
     batchStatusText.innerHTML = `🎵 단일 MP3 로딩 완료: <strong>${file.name}</strong>`;
   }
-
-  console.log(`[🎵 Main MP3 Loaded] ${file.name} 적용 완료!`);
 });
 
-// =========================================================================
-// 🎯 4-Stem 분리 MP3 일괄 업로드 감지
-// =========================================================================
+// 4-Stem MP3 일괄 업로드 감지
 batchMp3Input?.addEventListener('change', async (e) => {
   const files = Array.from(e.target.files);
   if (!files || files.length === 0) return;
@@ -179,9 +193,8 @@ batchMp3Input?.addEventListener('change', async (e) => {
 });
 
 async function toggleMultiStemPlayback() {
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  if (audioCtx.state === 'suspended') await audioCtx.resume();
-  
+  await initAudioContext();
+
   if (isMultiStemPlaying) {
     stopAllActiveStems();
   } else {
@@ -196,8 +209,10 @@ async function toggleMultiStemPlayback() {
         loadedCount++;
         const source = audioCtx.createBufferSource();
         source.buffer = stemBuffers[key];
+        
         source.connect(stemAnalysers[key]);
-        stemAnalysers[key].connect(audioCtx.destination);
+        stemAnalysers[key].connect(delayNode);
+        
         source.start(startTargetTime);
         stemSources[key] = source;
       }
@@ -252,6 +267,22 @@ function getStemVolume(analyser) {
   }
 }
 
+function getStemSpectrum(analyser) {
+  if (!analyser) return new Float32Array(64);
+  try {
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteFrequencyData(data);
+    const spec = new Float32Array(64);
+    const step = Math.floor(data.length / 64) || 1;
+    for (let i = 0; i < 64; i++) {
+      spec[i] = (data[i * step] || 0) / 255.0;
+    }
+    return spec;
+  } catch (e) {
+    return new Float32Array(64);
+  }
+}
+
 function getMergedTimeDomainWaveform() {
   const wave = new Float32Array(128);
   let activeAnalysers = Object.values(stemAnalysers).filter(a => a !== null);
@@ -266,7 +297,7 @@ function getMergedTimeDomainWaveform() {
   return wave;
 }
 
-// 💡 60FPS 메인 렌더링 틱 엔진
+// 60FPS 메인 렌더링 틱 엔진
 function renderEngineTicker() {
   requestAnimationFrame(renderEngineTicker);
 
@@ -299,7 +330,14 @@ function renderEngineTicker() {
       compiledAudioData.drumsVol  = getStemVolume(stemAnalysers.drums);
       compiledAudioData.bassVol   = getStemVolume(stemAnalysers.bass);
       compiledAudioData.otherVol  = getStemVolume(stemAnalysers.other);
-      compiledAudioData.waveform  = getMergedTimeDomainWaveform();
+      
+      compiledAudioData.drumsSpectrum  = getStemSpectrum(stemAnalysers.drums);
+      compiledAudioData.bassSpectrum   = getStemSpectrum(stemAnalysers.bass);
+      compiledAudioData.vocalsSpectrum = getStemSpectrum(stemAnalysers.vocals);
+      compiledAudioData.otherSpectrum  = getStemSpectrum(stemAnalysers.other);
+
+      compiledAudioData.spectrum = compiledAudioData.bassSpectrum;
+      compiledAudioData.waveform = getMergedTimeDomainWaveform();
     } else {
       compiledAudioData.isMultiStem = false;
       compiledAudioData.vocalsVol = Math.min(1.0, (compiledAudioData.mid || 0) * 3.5);
@@ -346,10 +384,10 @@ document.querySelectorAll('.btn-export-ratio, [data-ratio]').forEach(btn => {
   btn.addEventListener('click', (e) => {
     const ratio = e.currentTarget.getAttribute('data-ratio') || e.currentTarget.innerText.trim();
     window.cosmicEngineSettings.exportRatio = ratio;
-    console.log(`[📐 Export Ratio Changed] ${ratio}`);
   });
 });
 
+// 🎯 [핵심 추가]: 스케치 전환 시 028번이면 1초 지연, 다른 스케치면 0초 지연 스위칭
 const sketchListContainer = document.getElementById('sketch-list');
 if (sketchListContainer) {
   sketchListContainer.addEventListener('click', async (e) => {
@@ -361,6 +399,7 @@ if (sketchListContainer) {
 
     const targetSketch = targetLi.getAttribute('data-sketch');
     try {
+      updateAudioDelayForSketch(targetSketch); // 💡 스케치별 delayTime 가변 스위칭
       await manager.switchSketch(targetSketch, analyzer);
       syncCosmicControls();
     } catch(err) {
@@ -372,6 +411,8 @@ if (sketchListContainer) {
 const activeLi = document.querySelector('#sketch-list li.active');
 const initSketch = activeLi ? activeLi.getAttribute('data-sketch') : '001_p5_wave.js';
 syncCosmicControls();
+updateAudioDelayForSketch(initSketch);
+
 manager.switchSketch(initSketch, analyzer).then(() => {
   renderEngineTicker();
 }).catch(err => {
