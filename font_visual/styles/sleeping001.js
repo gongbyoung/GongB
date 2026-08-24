@@ -1,11 +1,22 @@
 // styles/sleeping001.js
-// 수면 스타일: 극도로 차분하고 이완된 모션
-
 (function() {
     if (!window.TypoMotionStyles) window.TypoMotionStyles = {};
 
     window.TypoMotionStyles['sleeping001'] = {
         name: 'Sleeping 001',
+        backgroundColor: '#0a0a14',
+        textColor: 'rgba(255,255,255,0.2)',
+        glowColor: '#8888cc',
+        layout: function(leds, canvas, ctx) {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            leds.forEach(led => {
+                const angle = Math.random() * Math.PI * 2;
+                const dist = Math.random() * 60;
+                led.baseX = centerX + Math.cos(angle) * dist;
+                led.baseY = centerY + Math.sin(angle) * dist;
+            });
+        },
         presets: {
             'superSlowFade': {
                 name: '초느린 페이드',
@@ -20,8 +31,7 @@
                 apply: function(led, time, ctx, state) {
                     const duration = 1.0;
                     const t = Math.min(1, (time - led.start) / duration);
-                    const opacity = t;
-                    return { opacity: opacity, scale: 1, rotation: 0, offsetX: 0, offsetY: 0 };
+                    return { opacity: t, scale: 1, rotation: 0, offsetX: 0, offsetY: 0 };
                 }
             },
             'breathSlow': {
@@ -29,9 +39,7 @@
                 apply: function(led, time, ctx, state) {
                     const duration = 1.5;
                     const t = Math.min(1, (time - led.start) / duration);
-                    const scale = 1 + Math.sin(time * 1.2) * 0.03;
-                    const opacity = t;
-                    return { opacity: opacity, scale: scale, rotation: 0, offsetX: 0, offsetY: 0 };
+                    return { opacity: t, scale: 1 + Math.sin(time * 1.2) * 0.03, rotation: 0, offsetX: 0, offsetY: 0 };
                 }
             },
             'gentleDrift': {
@@ -39,9 +47,13 @@
                 apply: function(led, time, ctx, state) {
                     const duration = 0.8;
                     const t = Math.min(1, (time - led.start) / duration);
-                    const offsetX = Math.sin(time * 0.5) * 8;
-                    const offsetY = Math.cos(time * 0.7) * 6;
-                    return { opacity: 1, scale: 1, rotation: 0, offsetX: offsetX, offsetY: offsetY };
+                    return {
+                        opacity: 1,
+                        scale: 1,
+                        rotation: 0,
+                        offsetX: Math.sin(time * 0.5) * 8,
+                        offsetY: Math.cos(time * 0.7) * 6
+                    };
                 }
             },
             'slowRise': {
@@ -49,8 +61,7 @@
                 apply: function(led, time, ctx, state) {
                     const duration = 1.2;
                     const t = Math.min(1, (time - led.start) / duration);
-                    const offsetY = (1 - t) * 40;
-                    return { opacity: 1, scale: 1, rotation: 0, offsetX: 0, offsetY: offsetY };
+                    return { opacity: 1, scale: 1, rotation: 0, offsetX: 0, offsetY: (1 - t) * 40 };
                 }
             },
             'dimGlow': {
@@ -58,9 +69,7 @@
                 apply: function(led, time, ctx, state) {
                     const duration = 1.0;
                     const t = Math.min(1, (time - led.start) / duration);
-                    const opacity = t * 0.5;
-                    const scale = 1 + Math.sin(time * 1.5) * 0.02;
-                    return { opacity: opacity, scale: scale, rotation: 0, offsetX: 0, offsetY: 0 };
+                    return { opacity: t * 0.5, scale: 1 + Math.sin(time * 1.5) * 0.02, rotation: 0, offsetX: 0, offsetY: 0 };
                 }
             },
             'quietSpin': {
@@ -68,8 +77,7 @@
                 apply: function(led, time, ctx, state) {
                     const duration = 1.0;
                     const t = Math.min(1, (time - led.start) / duration);
-                    const rotation = (1 - t) * 30;
-                    return { opacity: 1, scale: 1, rotation: rotation, offsetX: 0, offsetY: 0 };
+                    return { opacity: 1, scale: 1, rotation: (1 - t) * 30, offsetX: 0, offsetY: 0 };
                 }
             },
             'peacefulAppear': {
@@ -77,9 +85,7 @@
                 apply: function(led, time, ctx, state) {
                     const duration = 0.6;
                     const t = Math.min(1, (time - led.start) / duration);
-                    const scale = 0.9 + 0.1 * t;
-                    const opacity = t;
-                    return { opacity: opacity, scale: scale, rotation: 0, offsetX: 0, offsetY: 0 };
+                    return { opacity: t, scale: 0.9 + 0.1 * t, rotation: 0, offsetX: 0, offsetY: 0 };
                 }
             }
         }
