@@ -1,11 +1,24 @@
 // styles/ballad001.js
-// 발라드 스타일: 부드럽고 감성적인 모션
-
 (function() {
     if (!window.TypoMotionStyles) window.TypoMotionStyles = {};
 
     window.TypoMotionStyles['ballad001'] = {
         name: 'Ballad 001',
+        backgroundColor: '#0d1a2d',
+        textColor: 'rgba(255,255,255,0.2)',
+        glowColor: '#aaccff',
+        layout: function(leds, canvas, ctx) {
+            const rows = 5;
+            const perRow = Math.ceil(leds.length / rows);
+            const spacingX = canvas.width / perRow;
+            const spacingY = canvas.height / rows;
+            leds.forEach((led, i) => {
+                const row = Math.floor(i / perRow);
+                const col = i % perRow;
+                led.baseX = col * spacingX + spacingX / 2;
+                led.baseY = row * spacingY + spacingY / 2 + Math.sin(col * 0.5) * 30;
+            });
+        },
         presets: {
             'slowFadeIn': {
                 name: '느린 페이드 인',
@@ -20,8 +33,7 @@
                 apply: function(led, time, ctx, state) {
                     const duration = 0.8;
                     const t = Math.min(1, (time - led.start) / duration);
-                    const offsetY = (1 - t) * 60;
-                    return { opacity: 1, scale: 1, rotation: 0, offsetX: 0, offsetY: offsetY };
+                    return { opacity: 1, scale: 1, rotation: 0, offsetX: 0, offsetY: (1 - t) * 60 };
                 }
             },
             'softScale': {
@@ -29,17 +41,7 @@
                 apply: function(led, time, ctx, state) {
                     const duration = 0.6;
                     const t = Math.min(1, (time - led.start) / duration);
-                    const scale = 0.7 + 0.3 * easeInOutCubic(t);
-                    return { opacity: 1, scale: scale, rotation: 0, offsetX: 0, offsetY: 0 };
-                }
-            },
-            'waveSoft': {
-                name: '부드러운 웨이브',
-                apply: function(led, time, ctx, state) {
-                    const duration = 0.6;
-                    const t = Math.min(1, (time - led.start) / duration);
-                    const offsetX = Math.sin(t * Math.PI * 3) * 20 * (1 - t);
-                    return { opacity: 1, scale: 1, rotation: 0, offsetX: offsetX, offsetY: 0 };
+                    return { opacity: 1, scale: 0.7 + 0.3 * easeInOutCubic(t), rotation: 0, offsetX: 0, offsetY: 0 };
                 }
             },
             'breathe': {
@@ -47,27 +49,7 @@
                 apply: function(led, time, ctx, state) {
                     const duration = 0.8;
                     const t = Math.min(1, (time - led.start) / duration);
-                    const scale = 0.9 + 0.1 * Math.sin(time * 3);
-                    return { opacity: 1, scale: scale, rotation: 0, offsetX: 0, offsetY: 0 };
-                }
-            },
-            'glowFade': {
-                name: '글로우 페이드',
-                apply: function(led, time, ctx, state) {
-                    const fadeDuration = 0.5;
-                    const t = Math.min(1, (time - led.start) / fadeDuration);
-                    const opacity = t;
-                    const scale = 1 + Math.sin(time * 4) * 0.02;
-                    return { opacity: opacity, scale: scale, rotation: 0, offsetX: 0, offsetY: 0 };
-                }
-            },
-            'softDrop': {
-                name: '부드러운 하강',
-                apply: function(led, time, ctx, state) {
-                    const duration = 0.7;
-                    const t = Math.min(1, (time - led.start) / duration);
-                    const offsetY = (1 - t) * -80;
-                    return { opacity: 1, scale: 1, rotation: 0, offsetX: 0, offsetY: offsetY };
+                    return { opacity: 1, scale: 0.9 + 0.1 * Math.sin(time * 3), rotation: 0, offsetX: 0, offsetY: 0 };
                 }
             },
             'gentleRotate': {
@@ -75,8 +57,15 @@
                 apply: function(led, time, ctx, state) {
                     const duration = 0.6;
                     const t = Math.min(1, (time - led.start) / duration);
-                    const rotation = (1 - t) * 180;
-                    return { opacity: 1, scale: 1, rotation: rotation, offsetX: 0, offsetY: 0 };
+                    return { opacity: 1, scale: 1, rotation: (1 - t) * 180, offsetX: 0, offsetY: 0 };
+                }
+            },
+            'glowFade': {
+                name: '글로우 페이드',
+                apply: function(led, time, ctx, state) {
+                    const duration = 0.5;
+                    const t = Math.min(1, (time - led.start) / duration);
+                    return { opacity: t, scale: 1 + Math.sin(time * 4) * 0.02, rotation: 0, offsetX: 0, offsetY: 0 };
                 }
             }
         }
