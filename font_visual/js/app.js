@@ -18,6 +18,11 @@ let audioCtx = null;
 let audioSource = null;
 let audioDest = null;
 
+// 전역 스타일 (스타일 파일에서 오버라이드 가능)
+let canvasBackgroundColor = '#000000';
+let inactiveTextColor = 'rgba(255,255,255,0.3)';
+let activeGlowColor = '#ffd700';
+
 // ==================== DOM 요소 ====================
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
@@ -100,7 +105,7 @@ function loadSRT(content) {
         cue.color = getColorForCue(idx, currentColorStyle);
     });
     buildAllLeds(cues);
-    assignInitialPositions();
+    applyCurrentStyleLayout();
     avoidOverlaps();
     setupTimeline();
     currentTime = 0;
@@ -138,7 +143,6 @@ function buildAllLeds(cues) {
         });
     });
 
-    // LED 개수에 따라 폰트 크기 자동 조정
     if (allLeds.length > 200) {
         currentFontSize = Math.min(80, Math.max(30, 80 * (200 / allLeds.length) * 1.5));
         fontSizeSlider.value = currentFontSize;
@@ -146,7 +150,26 @@ function buildAllLeds(cues) {
     }
 }
 
-// ==================== 위치 배치 ====================
+// ==================== 스타일 레이아웃 적용 ====================
+function applyCurrentStyleLayout() {
+    if (!currentStyleId || !window.TypoMotionStyles?.[currentStyleId]) {
+        // 기본 랜덤 배치
+        assignInitialPositions();
+        return;
+    }
+    const style = window.TypoMotionStyles[currentStyleId];
+    if (style.layout) {
+        style.layout(allLeds, canvas, ctx);
+    } else {
+        assignInitialPositions();
+    }
+    // 전역 스타일 적용
+    if (style.backgroundColor) canvasBackgroundColor = style.backgroundColor;
+    if (style.textColor) inactiveTextColor = style.textColor;
+    if (style.glowColor) activeGlowColor = style.glowColor;
+}
+
+// ==================== 위치 배치 (기본: 랜덤) ====================
 function assignInitialPositions() {
     const w = canvas.width;
     const h = canvas.height;
@@ -214,7 +237,11 @@ function avoidOverlaps() {
 }
 
 function reshufflePositions() {
-    assignInitialPositions();
+    if (currentStyleId && window.TypoMotionStyles?.[currentStyleId]?.layout) {
+        applyCurrentStyleLayout();
+    } else {
+        assignInitialPositions();
+    }
     avoidOverlaps();
     render();
     logEvent('셔플 실행');
@@ -250,7 +277,7 @@ function applyMotionPreset(led, time) {
 
 function render() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#000';
+    ctx.fillStyle = canvasBackgroundColor;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     if (allLeds.length === 0) {
@@ -268,8 +295,6 @@ function render() {
     ctx.textBaseline = 'middle';
     ctx.font = `${currentFontSize}px ${fontFamily}`;
 
-    const inactiveColor = 'rgba(255,255,255,0.3)';
-
     allLeds.forEach(led => {
         const isActive = isLedLit(led, currentTime);
         if (isActive) {
@@ -280,12 +305,12 @@ function render() {
             ctx.rotate((transform.rotation || 0) * Math.PI / 180);
             ctx.scale(transform.scale || 1, transform.scale || 1);
             ctx.fillStyle = led.color;
-            ctx.shadowColor = led.color;
-            ctx.shadowBlur = 15;
+            ctx.shadowColor = activeGlowColor;
+            ctx.shadowBlur = 20;
             ctx.fillText(led.char, 0, 0);
             ctx.restore();
         } else {
-            ctx.strokeStyle = inactiveColor;
+            ctx.strokeStyle = inactiveTextColor;
             ctx.lineWidth = 2;
             ctx.strokeText(led.char, led.x, led.y);
         }
@@ -457,7 +482,7 @@ aspectRatioSelect.addEventListener('change', () => {
         canvas.width = 720;
         canvas.height = 1280;
     }
-    assignInitialPositions();
+    applyCurrentStyleLayout();
     avoidOverlaps();
     render();
     logEvent(`화면 비율 변경: ${aspectRatioSelect.value}`);
@@ -484,6 +509,10 @@ styleSelect.addEventListener('change', () => {
         currentPresetId = '';
         presetSelect.disabled = true;
         presetSelect.innerHTML = '<option value="">-- 모션 선택 --</option>';
+        canvasBackgroundColor = '#000000';
+        inactiveTextColor = 'rgba(255,255,255,0.3)';
+        activeGlowColor = '#ffd700';
+        render();
         return;
     }
     loadStyle(styleId);
@@ -503,8 +532,11 @@ function loadStyle(styleId) {
 
 function applyStyle(styleId) {
     currentStyleId = styleId;
-    currentPresetId = '';           // ← 중요: 프리셋 ID 초기화
+    currentPresetId = '';
     populatePresetSelect(styleId);
+    applyCurrentStyleLayout();
+    avoidOverlaps();
+    render();
     logEvent(`스타일 적용: ${styleId}`);
     updateStatusPanel();
 }
@@ -520,7 +552,6 @@ function populatePresetSelect(styleId) {
         presetSelect.appendChild(opt);
     });
 
-    // 첫 번째 프리셋 자동 선택
     if (Object.keys(style.presets).length > 0) {
         const firstPresetId = Object.keys(style.presets)[0];
         presetSelect.value = firstPresetId;
@@ -529,7 +560,6 @@ function populatePresetSelect(styleId) {
     }
 
     updateStatusPanel();
-    render();  // 프리셋이 적용된 상태로 다시 그리기
 }
 
 // 프리셋 선택
