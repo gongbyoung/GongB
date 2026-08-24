@@ -1,4 +1,4 @@
-console.log('utils.js loaded');
+console.log('colorStyles.js loaded');
 //로딩 확인용
 
 
