@@ -82,3 +82,9 @@ function easeOutElastic(p) {
 function easeInOutCubic(p) {
     return p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
 }
+
+function easeInBack(p) {
+    const c1 = 1.70158;
+    const c3 = c1 + 1;
+    return c3 * p * p * p - c1 * p * p;
+}
