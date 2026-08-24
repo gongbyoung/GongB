@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SRT 타이포그래픽 모션 스튜디오</title>
+    <style>
+        :root {
+            --bg: #1e1e2e;
+            --panel: #2a2a3c;
+            --accent: #6c5ce7;
+            --text: #eee;
+            --border: #444;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #app {
+            display: flex;
+            width: 100%;
+            height: 100%;
+        }
+        .sidebar {
+            width: 280px;
+            background: var(--panel);
+            padding: 16px;
+            overflow-y: auto;
+            border-right: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+        .sidebar.right {
+            border-right: none;
+            border-left: 1px solid var(--border);
+        }
+        .center {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: #111;
+            min-width: 0;
+        }
+        canvas {
+            max-width: 100%;
+            max-height: 70vh;
+            border: 1px solid #333;
+            background: #000;
+            display: block;
+        }
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            width: 100%;
+            padding: 16px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        button, select, input[type="file"], input[type="number"], input[type="text"], input[type="color"] {
+            background: #3a3a4a;
+            color: var(--text);
+            border: 1px solid var(--border);
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover { background: #4a4a5a; }
+        input[type="color"] { padding: 0; width: 40px; height: 32px; }
+        label { display: block; margin: 8px 0 4px; font-size: 13px; color: #aaa; }
+        hr { margin: 16px 0; border: 0; border-top: 1px solid var(--border); }
+        h2, h3 { font-size: 16px; margin-bottom: 8px; }
+        .subtitle-item {
+            padding: 8px;
+            margin: 4px 0;
+            background: #333;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            border-left: 3px solid transparent;
+        }
+        .subtitle-item.selected {
+            border-left-color: var(--accent);
+            background: #3f3f55;
+        }
+        .subtitle-item .time {
+            font-size: 11px;
+            color: #aaa;
+        }
+        .property-editor input, .property-editor select {
+            width: 100%;
+            margin-bottom: 6px;
+        }
+        .property-editor .row {
+            display: flex;
+            gap: 8px;
+        }
+        .property-editor .row > * { flex: 1; }
+        #timeline {
+            flex: 1;
+            min-width: 200px;
+        }
+        #timeDisplay { font-family: monospace; }
+        .btn-primary {
+            background: var(--accent);
+            border-color: var(--accent);
+            font-weight: bold;
+        }
+        .btn-primary:hover { background: #7d6ff0; }
+        .btn-danger { background: #e74c3c; border-color: #e74c3c; }
+        .btn-danger:hover { background: #ff5e4a; }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- 왼쪽 패널: 프로젝트 및 전역 설정 -->
+        <div class="sidebar left">
+            <h2>📁 프로젝트</h2>
+            <label>SRT 자막 파일</label>
+            <input type="file" id="srtFile" accept=".srt">
+            <label>오디오 파일 (선택)</label>
+            <input type="file" id="audioFile" accept="audio/*">
+            <audio id="audio" style="display:none;"></audio>
+            <button id="loadSample" style="margin-top:8px;">샘플 SRT 로드</button>
+            <hr>
+            <h2>🎬 전역 설정</h2>
+            <label>전역 프리셋</label>
+            <select id="globalPreset"></select>
+            <button id="applyGlobalPreset" style="margin-top:8px;">모든 자막에 적용</button>
+            <hr>
+            <label>기본 폰트</label>
+            <select id="fontFamily">
+                <option value="Arial">Arial</option>
+                <option value="Helvetica">Helvetica</option>
+                <option value="Times New Roman">Times New Roman</option>
+                <option value="Georgia">Georgia</option>
+                <option value="Courier New">Courier New</option>
+                <option value="Verdana">Verdana</option>
+                <option value="Impact">Impact</option>
+                <option value="Noto Sans KR">Noto Sans KR</option>
+                <option value="Nanum Gothic">Nanum Gothic</option>
+                <option value="맑은 고딕">맑은 고딕</option>
+            </select>
+            <label>기본 폰트 크기</label>
+            <input type="number" id="fontSize" value="60" min="10" max="200">
+            <label>기본 색상</label>
+            <input type="color" id="textColor" value="#ffffff">
+            <label>테두리 색</label>
+            <input type="color" id="strokeColor" value="#000000">
+            <label>테두리 두께</label>
+            <input type="number" id="strokeWidth" value="0" min="0" max="20" step="0.5">
+            <label>그림자 흐림</label>
+            <input type="number" id="shadowBlur" value="0" min="0" max="50">
+            <label>그림자 색</label>
+            <input type="color" id="shadowColor" value="#000000">
+            <hr>
+            <h2>💾 내보내기</h2>
+            <label>내보낼 길이 (초)</label>
+            <input type="number" id="exportDuration" value="10" min="1" max="600">
+            <button id="exportBtn" class="btn-primary" style="width:100%; margin-top:8px;">MP4 저장</button>
+            <a id="downloadLink" style="display:none;"></a>
+        </div>
+
+        <!-- 중앙: 캔버스 및 재생 컨트롤 -->
+        <div class="center">
+            <canvas id="canvas" width="1280" height="720"></canvas>
+            <div class="controls">
+                <button id="playBtn">▶ 재생</button>
+                <button id="stopBtn">⏹ 정지</button>
+                <input type="range" id="timeline" min="0" max="100" step="0.01" value="0">
+                <span id="timeDisplay">0.00 / 0.00</span>
+            </div>
+        </div>
+
+        <!-- 오른쪽 패널: 자막 목록 및 선택 속성 -->
+        <div class="sidebar right">
+            <h2>📝 자막 목록</h2>
+            <div id="subtitleList" style="max-height:40vh; overflow-y:auto;"></div>
+            <div id="propertyEditor" class="property-editor">
+                <h3>선택된 자막 속성</h3>
+                <div id="selectedText" style="font-size:13px; color:#aaa; margin-bottom:8px;"></div>
+                <label>애니메이션 프리셋</label>
+                <select id="linePreset"></select>
+                <div class="row">
+                    <div>
+                        <label>X 위치</label>
+                        <input type="number" id="propX" step="1">
+                    </div>
+                    <div>
+                        <label>Y 위치</label>
+                        <input type="number" id="propY" step="1">
+                    </div>
+                </div>
+                <div class="row">
+                    <div>
+                        <label>크기(배율)</label>
+                        <input type="number" id="propScale" step="0.01">
+                    </div>
+                    <div>
+                        <label>회전(deg)</label>
+                        <input type="number" id="propRotation" step="1">
+                    </div>
+                </div>
+                <div class="row">
+                    <div>
+                        <label>비틀기 X(deg)</label>
+                        <input type="number" id="propSkewX" step="1">
+                    </div>
+                    <div>
+                        <label>비틀기 Y(deg)</label>
+                        <input type="number" id="propSkewY" step="1">
+                    </div>
+                </div>
+                <div class="row">
+                    <div>
+                        <label>입장 시간(초)</label>
+                        <input type="number" id="propEnterDur" step="0.01" min="0">
+                    </div>
+                    <div>
+                        <label>퇴장 시간(초)</label>
+                        <input type="number" id="propExitDur" step="0.01" min="0">
+                    </div>
+                </div>
+                <label>폰트</label>
+                <select id="propFontFamily"></select>
+                <label>폰트 크기</label>
+                <input type="number" id="propFontSize" min="10" max="200">
+                <label>색상</label>
+                <input type="color" id="propColor">
+                <label>테두리 색</label>
+                <input type="color" id="propStrokeColor">
+                <label>테두리 두께</label>
+                <input type="number" id="propStrokeWidth" min="0" max="20" step="0.5">
+                <label>그림자 흐림</label>
+                <input type="number" id="propShadowBlur" min="0" max="50">
+                <label>그림자 색</label>
+                <input type="color" id="propShadowColor">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==================== 유틸리티 ====================
+        function timeToSeconds(str) {
+            const parts = str.split(':');
+            if (parts.length === 3) {
+                const [h, m, s] = parts;
+                const [sec, ms] = s.split(',');
+                return parseInt(h) * 3600 + parseInt(m) * 60 + parseInt(sec) + (parseInt(ms || 0) / 1000);
+            }
+            return 0;
+        }
+
+        function parseSRT(content) {
+            const blocks = content.trim().split(/\n\s*\n/);
+            const subs = [];
+            blocks.forEach((block, idx) => {
+                const lines = block.trim().split('\n');
+                if (lines.length < 2) return;
+                const timeLine = lines.find(l => l.includes('-->'));
+                if (!timeLine) return;
+                const [startStr, endStr] = timeLine.split('-->').map(s => s.trim());
+                const start = timeToSeconds(startStr);
+                const end = timeToSeconds(endStr);
+                const text = lines.slice(1).join('\n').replace(/\{\\an\d\}/g, '').trim();
+                subs.push({
+                    id: idx,
+                    start,
+                    end,
+                    text,
+                    props: { ...defaultProps }
+                });
+            });
+            return subs;
+        }
+
+        function easeOutBounce(p) {
+            if (p < 1 / 2.75) return 7.5625 * p * p;
+            if (p < 2 / 2.75) return 7.5625 * (p -= 1.5 / 2.75) * p + 0.75;
+            if (p < 2.5 / 2.75) return 7.5625 * (p -= 2.25 / 2.75) * p + 0.9375;
+            return 7.5625 * (p -= 2.625 / 2.75) * p + 0.984375;
+        }
+
+        function easeOutElastic(p) {
+            if (p === 0 || p === 1) return p;
+            return Math.pow(2, -10 * p) * Math.sin((p - 0.075) * (2 * Math.PI) / 0.3) + 1;
+        }
+
+        function easeInBack(p) {
+            return p * p * (2.70158 * p - 1.70158);
+        }
+
+        function easeOutBack(p) {
+            return 1 + 2.70158 * Math.pow(p - 1, 3) + 1.70158 * Math.pow(p - 1, 2);
+        }
+
+        function easeInOutCubic(p) {
+            return p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+        }
+
+        // ==================== 기본 속성 ====================
+        const defaultProps = {
+            x: 640, y: 360,
+            scale: 1,
+            rotation: 0,
+            skewX: 0, skewY: 0,
+            fontFamily: 'Arial',
+            fontSize: 60,
+            color: '#ffffff',
+            strokeColor: '#000000',
+            strokeWidth: 0,
+            shadowBlur: 0,
+            shadowColor: '#000000',
+            enterDur: 0.5,
+            exitDur: 0.5,
+            animationPreset: 'fadeIn'
+        };
+
+        // ==================== 32개 프리셋 정의 ====================
+        const presets = [
+            { id: 'fadeIn', name: '1. 페이드 인/아웃',
+                enter: (t, p) => { t.opacity = p; },
+                exit: (t, p) => { t.opacity = 1 - p; } },
+            { id: 'slideUp', name: '2. 위로 슬라이드',
+                enter: (t, p) => { t.y = (1 - p) * -100; t.opacity = p; },
+                exit: (t, p) => { t.y = p * 100; t.opacity = 1 - p; } },
+            { id: 'slideDown', name: '3. 아래로 슬라이드',
+                enter: (t, p) => { t.y = (1 - p) * 100; t.opacity = p; },
+                exit: (t, p) => { t.y = p * -100; t.opacity = 1 - p; } },
+            { id: 'slideLeft', name: '4. 왼쪽 슬라이드',
+                enter: (t, p) => { t.x = (1 - p) * -150; t.opacity = p; },
+                exit: (t, p) => { t.x = p * -150; t.opacity = 1 - p; } },
+            { id: 'slideRight', name: '5. 오른쪽 슬라이드',
+                enter: (t, p) => { t.x = (1 - p) * 150; t.opacity = p; },
+                exit: (t, p) => { t.x = p * 150; t.opacity = 1 - p; } },
+            { id: 'zoomIn', name: '6. 줌 인',
+                enter: (t, p) => { t.scale = 0.2 + 0.8 * p; t.opacity = p; },
+                exit: (t, p) => { t.scale = 1 + 0.5 * p; t.opacity = 1 - p; } },
+            { id: 'zoomOut', name: '7. 줌 아웃',
+                enter: (t, p) => { t.scale = 2 - p; t.opacity = p; },
+                exit: (t, p) => { t.scale = 1 - 0.5 * p; t.opacity = 1 - p; } },
+            { id: 'rotateIn', name: '8. 회전 인',
+                enter: (t, p) => { t.rotation = (1 - p) * 360; t.opacity = p; },
+                exit: (t, p) => { t.rotation = p * 360; t.opacity = 1 - p; } },
+            { id: 'rotateOut', name: '9. 회전 아웃',
+                enter: (t, p) => { t.rotation = - (1 - p) * 360; t.opacity = p; },
+                exit: (t, p) => { t.rotation = - p * 360; t.opacity = 1 - p; } },
+            { id: 'blurIn', name: '10. 블러 인',
+                enter: (t, p) => { t.blur = (1 - p) * 10; t.opacity = p; },
+                exit: (t, p) => { t.blur = p * 10; t.opacity = 1 - p; } },
+            { id: 'typewriter', name: '11. 타자기',
+                enter: (t, p) => { const len = Math.floor(p * t.text.length); t.text = t.text.substring(0, len); t.opacity = 1; },
+                exit: (t, p) => { t.opacity = 1 - p; } },
+            { id: 'letterSpacing', name: '12. 글자 간격',
+                enter: (t, p) => { t.letterSpacing = (1 - p) * 50; t.opacity = p; },
+                exit: (t, p) => { t.letterSpacing = p * 50; t.opacity = 1 - p; } },
+            { id: 'slideUpZoom', name: '13. 위로 슬라이드 + 줌',
+                enter: (t, p) => { t.y = (1 - p) * -120; t.scale = 0.5 + 0.5 * p; t.opacity = p; },
+                exit: (t, p) => { t.y = p * 120; t.scale = 1 + 0.3 * p; t.opacity = 1 - p; } },
+            { id: 'slideDownZoom', name: '14. 아래로 슬라이드 + 줌',
+                enter: (t, p) => { t.y = (1 - p) * 120; t.scale = 0.5 + 0.5 * p; t.opacity = p; },
+                exit: (t, p) => { t.y = p * -120; t.scale = 1 + 0.3 * p; t.opacity = 1 - p; } },
+            { id: 'slideLeftRotate', name: '15. 왼쪽 슬라이드 + 회전',
+                enter: (t, p) => { t.x = (1 - p) * -200; t.rotation = (1 - p) * 180; t.opacity = p; },
+                exit: (t, p) => { t.x = p * -200; t.rotation = p * 180; t.opacity = 1 - p; } },
+            { id: 'slideRightRotate', name: '16. 오른쪽 슬라이드 + 회전',
+                enter: (t, p) => { t.x = (1 - p) * 200; t.rotation = (1 - p) * -180; t.opacity = p; },
+                exit: (t, p) => { t.x = p * 200; t.rotation = p * -180; t.opacity = 1 - p; } },
+            { id: 'fadeScaleRotate', name: '17. 페이드 + 스케일 + 회전',
+                enter: (t, p) => { t.opacity = p; t.scale = 0.3 + 0.7 * p; t.rotation = (1 - p) * 360; },
+                exit: (t, p) => { t.opacity = 1 - p; t.scale = 1 + 0.5 * p; t.rotation = p * -360; } },
+            { id: 'bounceIn', name: '18. 바운스 인',
+                enter: (t, p) => { const e = easeOutBounce(p); t.scale = e; t.opacity = p; },
+                exit: (t, p) => { t.opacity = 1 - p; } },
+            { id: 'elasticIn', name: '19. 탄성 인',
+                enter: (t, p) => { const e = easeOutElastic(p); t.scale = e; t.opacity = p; },
+                exit: (t, p) => { t.opacity = 1 - p; } },
+            { id: 'whipIn', name: '20. 휘핑 인',
+                enter: (t, p) => { t.rotation = (1 - p) * 720; t.scale = 0.5 + 0.5 * p; t.opacity = p; },
+                exit: (t, p) => { t.rotation = p * 720; t.opacity = 1 - p; } },
+            { id: 'flipIn', name: '21. 플립 인',
+                enter: (t, p) => { t.rotation = (1 - p) * 90; t.scale = Math.cos((1 - p) * Math.PI / 2) * 0.5 + 0.5; t.opacity = p; },
+                exit: (t, p) => { t.rotation = p * 90; t.opacity = 1 - p; } },
+            { id: 'dropIn', name: '22. 드롭 인',
+                enter: (t, p) => { const e = easeOutBounce(p); t.y = (1 - e) * -300; t.opacity = p; },
+                exit: (t, p) => { t.y = p * -300; t.opacity = 1 - p; } },
+            { id: 'popIn', name: '23. 팝 인',
+                enter: (t, p) => { t.scale = 0.8 + 0.2 * easeOutBack(p); t.opacity = p; },
+                exit: (t, p) => { t.scale = 1 + 0.2 * p; t.opacity = 1 - p; } },
+            { id: 'glitchIn', name: '24. 글리치 인',
+                enter: (t, p) => { t.x = (Math.random() - 0.5) * 30 * (1 - p); t.y = (Math.random() - 0.5) * 30 * (1 - p); t.opacity = p; },
+                exit: (t, p) => { t.x = (Math.random() - 0.5) * 30 * p; t.opacity = 1 - p; } },
+            { id: 'spinIn', name: '25. 스핀 인',
+                enter: (t, p) => { t.rotation = (1 - p) * 1080; t.scale = 0.3 + 0.7 * p; t.opacity = p; },
+                exit: (t, p) => { t.rotation = p * 1080; t.opacity = 1 - p; } },
+            { id: 'twirlIn', name: '26. 트월 인',
+                enter: (t, p) => { t.rotation = (1 - p) * 540; t.skewX = (1 - p) * 30; t.opacity = p; },
+                exit: (t, p) => { t.rotation = p * 540; t.skewX = p * 30; t.opacity = 1 - p; } },
+            { id: 'waveIn', name: '27. 웨이브 인',
+                enter: (t, p) => { t.y = Math.sin(p * Math.PI * 4) * 20 * (1 - p); t.opacity = p; },
+                exit: (t, p) => { t.y = Math.sin(p * Math.PI * 4) * 20 * p; t.opacity = 1 - p; } },
+            { id: 'shakeIn', name: '28. 쉐이크 인',
+                enter: (t, p) => { t.x = Math.sin(p * 30) * 15 * (1 - p); t.opacity = p; },
+                exit: (t, p) => { t.x = Math.sin(p * 30) * 15 * p; t.opacity = 1 - p; } },
+            { id: 'flyLeft', name: '29. 왼쪽에서 플라이',
+                enter: (t, p) => { t.x = (1 - p) * -800; t.opacity = p; },
+                exit: (t, p) => { t.x = p * -800; t.opacity = 1 - p; } },
+            { id: 'flyRight', name: '30. 오른쪽에서 플라이',
+                enter: (t, p) => { t.x = (1 - p) * 800; t.opacity = p; },
+                exit: (t, p) => { t.x = p * 800; t.opacity = 1 - p; } },
+            { id: 'flyTop', name: '31. 위에서 플라이',
+                enter: (t, p) => { t.y = (1 - p) * -600; t.opacity = p; },
+                exit: (t, p) => { t.y = p * -600; t.opacity = 1 - p; } },
+            { id: 'flyBottom', name: '32. 아래에서 플라이',
+                enter: (t, p) => { t.y = (1 - p) * 600; t.opacity = p; },
+                exit: (t, p) => { t.y = p * 600; t.opacity = 1 - p; } },
+        ];
+
+        // ==================== 상태 ====================
+        let subtitles = [];
+        let selectedCueIndex = -1;
+        let currentTime = 0;
+        let isPlaying = false;
+        let isRecording = false;
+        let mediaRecorder = null;
+        let recordedChunks = [];
+        let audioCtx = null;
+        let audioSource = null;
+        let audioDest = null;
+
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const timeline = document.getElementById('timeline');
+        const timeDisplay = document.getElementById('timeDisplay');
+        const subtitleList = document.getElementById('subtitleList');
+        const linePreset = document.getElementById('linePreset');
+        const globalPreset = document.getElementById('globalPreset');
+        const propFontFamily = document.getElementById('propFontFamily');
+
+        // 폰트 옵션 채우기
+        function populateFontSelect(select) {
+            const fonts = ['Arial', 'Helvetica', 'Times New Roman', 'Georgia', 'Courier New', 'Verdana', 'Impact', 'Noto Sans KR', 'Nanum Gothic', '맑은 고딕'];
+            select.innerHTML = '';
+            fonts.forEach(f => {
+                const opt = document.createElement('option');
+                opt.value = f;
+                opt.textContent = f;
+                select.appendChild(opt);
+            });
+        }
+        populateFontSelect(document.getElementById('fontFamily'));
+        populateFontSelect(propFontFamily);
+
+        // 프리셋 셀렉트 채우기
+        function populatePresetSelect(select) {
+            select.innerHTML = '';
+            presets.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                opt.textContent = p.name;
+                select.appendChild(opt);
+            });
+        }
+        populatePresetSelect(globalPreset);
+        populatePresetSelect(linePreset);
+
+        // ==================== SRT 로딩 ====================
+        document.getElementById('srtFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(ev) {
+                subtitles = parseSRT(ev.target.result);
+                selectedCueIndex = -1;
+                updateSubtitleList();
+                updateTimelineRange();
+                currentTime = 0;
+                render();
+            };
+            reader.readAsText(file);
+        });
+
+        document.getElementById('loadSample').addEventListener('click', function() {
+            const sample = `1
+00:00:00,000 --> 00:00:02,000
+안녕하세요!
+
+2
+00:00:02,500 --> 00:00:05,000
+타이포그래픽 모션
+
+3
+00:00:05,500 --> 00:00:08,000
+SRT 자막을 로드했습니다.
+
+4
+00:00:08,500 --> 00:00:12,000
+애프터이펙트 스타일
+
+5
+00:00:12,500 --> 00:00:16,000
+다빈치 리졸브 스타일
+
+6
+00:00:16,500 --> 00:00:20,000
+캡컷 스타일
+`;
+            subtitles = parseSRT(sample);
+            selectedCueIndex = -1;
+            updateSubtitleList();
+            updateTimelineRange();
+            currentTime = 0;
+            render();
+        });
+
+        // ==================== 오디오 ====================
+        document.getElementById('audioFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const audio = document.getElementById('audio');
+            audio.src = URL.createObjectURL(file);
+            audio.load();
+            if (audioCtx) {
+                audioCtx.close().catch(() => {});
+            }
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            audioSource = audioCtx.createMediaElementSource(audio);
+            audioDest = audioCtx.createMediaStreamDestination();
+            audioSource.connect(audioDest);
+            audioSource.connect(audioCtx.destination);
+        });
+
+        // ==================== 자막 목록 UI ====================
+        function updateSubtitleList() {
+            subtitleList.innerHTML = '';
+            subtitles.forEach((sub, idx) => {
+                const div = document.createElement('div');
+                div.className = 'subtitle-item' + (idx === selectedCueIndex ? ' selected' : '');
+                div.innerHTML = `<div>${sub.text}</div><div class="time">${sub.start.toFixed(2)}s - ${sub.end.toFixed(2)}s</div>`;
+                div.addEventListener('click', () => {
+                    selectedCueIndex = idx;
+                    updateSubtitleList();
+                    updatePropertyEditor();
+                    render();
+                });
+                subtitleList.appendChild(div);
+            });
+        }
+
+        // ==================== 속성 편집기 ====================
+        const propInputs = {
+            x: document.getElementById('propX'),
+            y: document.getElementById('propY'),
+            scale: document.getElementById('propScale'),
+            rotation: document.getElementById('propRotation'),
+            skewX: document.getElementById('propSkewX'),
+            skewY: document.getElementById('propSkewY'),
+            enterDur: document.getElementById('propEnterDur'),
+            exitDur: document.getElementById('propExitDur'),
+            fontSize: document.getElementById('propFontSize'),
+            color: document.getElementById('propColor'),
+            strokeColor: document.getElementById('propStrokeColor'),
+            strokeWidth: document.getElementById('propStrokeWidth'),
+            shadowBlur: document.getElementById('propShadowBlur'),
+            shadowColor: document.getElementById('propShadowColor')
+        };
+
+        function updatePropertyEditor() {
+            if (selectedCueIndex < 0 || selectedCueIndex >= subtitles.length) {
+                document.getElementById('selectedText').textContent = '자막을 선택하세요';
+                return;
+            }
+            const sub = subtitles[selectedCueIndex];
+            document.getElementById('selectedText').textContent = sub.text;
+            linePreset.value = sub.props.animationPreset;
+            propFontFamily.value = sub.props.fontFamily;
+            propInputs.x.value = sub.props.x;
+            propInputs.y.value = sub.props.y;
+            propInputs.scale.value = sub.props.scale;
+            propInputs.rotation.value = sub.props.rotation;
+            propInputs.skewX.value = sub.props.skewX;
+            propInputs.skewY.value = sub.props.skewY;
+            propInputs.enterDur.value = sub.props.enterDur;
+            propInputs.exitDur.value = sub.props.exitDur;
+            propInputs.fontSize.value = sub.props.fontSize;
+            propInputs.color.value = sub.props.color;
+            propInputs.strokeColor.value = sub.props.strokeColor;
+            propInputs.strokeWidth.value = sub.props.strokeWidth;
+            propInputs.shadowBlur.value = sub.props.shadowBlur;
+            propInputs.shadowColor.value = sub.props.shadowColor;
+        }
+
+        function updateSelectedCue() {
+            if (selectedCueIndex < 0 || selectedCueIndex >= subtitles.length) return;
+            const sub = subtitles[selectedCueIndex];
+            sub.props.animationPreset = linePreset.value;
+            sub.props.fontFamily = propFontFamily.value;
+            sub.props.x = parseFloat(propInputs.x.value) || 0;
+            sub.props.y = parseFloat(propInputs.y.value) || 0;
+            sub.props.scale = parseFloat(propInputs.scale.value) || 1;
+            sub.props.rotation = parseFloat(propInputs.rotation.value) || 0;
+            sub.props.skewX = parseFloat(propInputs.skewX.value) || 0;
+            sub.props.skewY = parseFloat(propInputs.skewY.value) || 0;
+            sub.props.enterDur = parseFloat(propInputs.enterDur.value) || 0;
+            sub.props.exitDur = parseFloat(propInputs.exitDur.value) || 0;
+            sub.props.fontSize = parseFloat(propInputs.fontSize.value) || 60;
+            sub.props.color = propInputs.color.value;
+            sub.props.strokeColor = propInputs.strokeColor.value;
+            sub.props.strokeWidth = parseFloat(propInputs.strokeWidth.value) || 0;
+            sub.props.shadowBlur = parseFloat(propInputs.shadowBlur.value) || 0;
+            sub.props.shadowColor = propInputs.shadowColor.value;
+            updateSubtitleList();
+            render();
+        }
+
+        // 모든 속성 입력에 이벤트 연결
+        Object.values(propInputs).forEach(input => input.addEventListener('input', updateSelectedCue));
+        linePreset.addEventListener('change', updateSelectedCue);
+        propFontFamily.addEventListener('change', updateSelectedCue);
+
+        // 전역 프리셋 적용
+        document.getElementById('applyGlobalPreset').addEventListener('click', () => {
+            const preset = globalPreset.value;
+            subtitles.forEach(sub => sub.props.animationPreset = preset);
+            if (selectedCueIndex >= 0) updatePropertyEditor();
+            render();
+        });
+
+        // ==================== 타임라인 ====================
+        function updateTimelineRange() {
+            const maxTime = Math.max(0, ...subtitles.map(s => s.end), 10);
+            timeline.max = maxTime;
+            timeline.value = currentTime;
+            updateTimeDisplay();
+        }
+
+        function updateTimeDisplay() {
+            const max = parseFloat(timeline.max) || 0;
+            timeDisplay.textContent = `${currentTime.toFixed(2)} / ${max.toFixed(2)}`;
+        }
+
+        timeline.addEventListener('input', () => {
+            currentTime = parseFloat(timeline.value);
+            updateTimeDisplay();
+            render();
+        });
+
+        // ==================== 재생 제어 ====================
+        document.getElementById('playBtn').addEventListener('click', () => {
+            if (isRecording) return;
+            if (subtitles.length === 0) return;
+            isPlaying = true;
+            if (audioCtx && document.getElementById('audio').src) {
+                audioCtx.resume();
+                const audio = document.getElementById('audio');
+                audio.currentTime = currentTime;
+                audio.play();
+            }
+        });
+
+        document.getElementById('stopBtn').addEventListener('click', () => {
+            isPlaying = false;
+            isRecording = false;
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+            const audio = document.getElementById('audio');
+            audio.pause();
+            if (audioCtx) audioCtx.suspend();
+        });
+
+        // ==================== 렌더링 ====================
+        function drawTextWithSpacing(context, text, x, y, spacing) {
+            const totalWidth = context.measureText(text).width + spacing * (text.length - 1);
+            let startX = x - totalWidth / 2;
+            context.textAlign = 'left';
+            for (let i = 0; i < text.length; i++) {
+                const char = text[i];
+                const charWidth = context.measureText(char).width;
+                const charX = startX + charWidth / 2;
+                context.fillText(char, charX, y);
+                if (context.lineWidth > 0) context.strokeText(char, charX, y);
+                startX += charWidth + spacing;
+            }
+        }
+
+        function render() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            for (const cue of subtitles) {
+                if (currentTime >= cue.start && currentTime <= cue.end) {
+                    const local = currentTime - cue.start;
+                    const dur = cue.end - cue.start;
+                    const props = cue.props;
+                    const enterDur = Math.min(props.enterDur, dur / 2) || 0.1;
+                    const exitDur = Math.min(props.exitDur, dur / 2) || 0.1;
+                    let phase = 'hold';
+                    let p = 0;
+                    if (local < enterDur) {
+                        phase = 'enter';
+                        p = local / enterDur;
+                    } else if (local > dur - exitDur) {
+                        phase = 'exit';
+                        p = (local - (dur - exitDur)) / exitDur;
+                    }
+
+                    let t = {
+                        opacity: 1,
+                        x: 0,
+                        y: 0,
+                        scale: 1,
+                        rotation: 0,
+                        skewX: 0,
+                        skewY: 0,
+                        blur: 0,
+                        letterSpacing: 0,
+                        text: cue.text
+                    };
+
+                    const preset = presets.find(p => p.id === props.animationPreset) || presets[0];
+                    if (phase === 'enter') preset.enter(t, p);
+                    if (phase === 'exit') preset.exit(t, p);
+
+                    const x = props.x + t.x;
+                    const y = props.y + t.y;
+                    const scale = props.scale * t.scale;
+                    const rotation = props.rotation + t.rotation;
+                    const skewX = props.skewX + t.skewX;
+                    const skewY = props.skewY + t.skewY;
+                    const opacity = Math.max(0, Math.min(1, t.opacity));
+                    const fontSize = props.fontSize;
+                    const fontFamily = props.fontFamily;
+                    const color = props.color;
+                    const strokeColor = props.strokeColor;
+                    const strokeWidth = props.strokeWidth;
+                    const shadowBlur = props.shadowBlur;
+                    const shadowColor = props.shadowColor;
+
+                    ctx.save();
+                    ctx.globalAlpha = opacity;
+                    ctx.translate(x, y);
+                    if (skewX || skewY) {
+                        ctx.transform(1, Math.tan(skewY * Math.PI / 180), Math.tan(skewX * Math.PI / 180), 1, 0, 0);
+                    }
+                    ctx.rotate(rotation * Math.PI / 180);
+                    ctx.scale(scale, scale);
+                    if (t.blur > 0 && typeof ctx.filter !== 'undefined') {
+                        ctx.filter = `blur(${t.blur}px)`;
+                    }
+                    ctx.font = `${fontSize}px ${fontFamily}`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.lineWidth = strokeWidth;
+                    ctx.strokeStyle = strokeColor;
+                    ctx.fillStyle = color;
+                    if (shadowBlur > 0) {
+                        ctx.shadowBlur = shadowBlur;
+                        ctx.shadowColor = shadowColor;
+                    }
+                    if (t.letterSpacing !== 0) {
+                        drawTextWithSpacing(ctx, t.text, 0, 0, t.letterSpacing);
+                    } else {
+                        ctx.fillText(t.text, 0, 0);
+                        if (strokeWidth > 0) ctx.strokeText(t.text, 0, 0);
+                    }
+                    ctx.restore();
+                    ctx.filter = 'none';
+                }
+            }
+            updateTimeDisplay();
+        }
+
+        // ==================== 애니메이션 루프 ====================
+        let lastFrameTime = performance.now();
+        function animationLoop(now) {
+            const dt = (now - lastFrameTime) / 1000;
+            lastFrameTime = now;
+
+            if (isPlaying && !isRecording) {
+                currentTime += dt;
+                const max = parseFloat(timeline.max);
+                if (currentTime >= max) {
+                    currentTime = max;
+                    isPlaying = false;
+                    const audio = document.getElementById('audio');
+                    audio.pause();
+                    if (audioCtx) audioCtx.suspend();
+                }
+                timeline.value = currentTime;
+                render();
+            }
+
+            if (isRecording) {
+                currentTime += dt;
+                const endTime = parseFloat(document.getElementById('exportDuration').value);
+                if (currentTime >= endTime) {
+                    currentTime = endTime;
+                    render();
+                    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                        mediaRecorder.stop();
+                    }
+                    isRecording = false;
+                    isPlaying = false;
+                    const audio = document.getElementById('audio');
+                    audio.pause();
+                    if (audioCtx) audioCtx.suspend();
+                } else {
+                    timeline.value = currentTime;
+                    render();
+                }
+            }
+
+            requestAnimationFrame(animationLoop);
+        }
+        requestAnimationFrame(animationLoop);
+
+        // ==================== 내보내기 ====================
+        function getSupportedMimeType() {
+            const types = [
+                'video/mp4;codecs=avc1.42E01E',
+                'video/mp4',
+                'video/webm;codecs=vp9',
+                'video/webm;codecs=vp8',
+                'video/webm'
+            ];
+            for (const t of types) {
+                if (window.MediaRecorder && MediaRecorder.isTypeSupported(t)) return t;
+            }
+            return 'video/webm';
+        }
+
+        document.getElementById('exportBtn').addEventListener('click', async () => {
+            if (isRecording) return;
+            if (subtitles.length === 0) { alert('SRT 자막을 먼저 로드하세요.'); return; }
+            const endTime = parseFloat(document.getElementById('exportDuration').value);
+            if (isNaN(endTime) || endTime <= 0) { alert('내보낼 시간을 올바르게 입력하세요.'); return; }
+
+            // 오디오 컨텍스트 재개
+            if (audioCtx && audioCtx.state === 'suspended') await audioCtx.resume();
+
+            currentTime = 0;
+            timeline.value = 0;
+            isPlaying = true;
+            isRecording = true;
+            recordedChunks = [];
+
+            const canvasStream = canvas.captureStream(60);
+            let combinedStream = canvasStream;
+            if (audioDest && audioDest.stream.getAudioTracks().length > 0) {
+                combinedStream = new MediaStream();
+                canvasStream.getVideoTracks().forEach(track => combinedStream.addTrack(track));
+                audioDest.stream.getAudioTracks().forEach(track => combinedStream.addTrack(track));
+            }
+
+            const mimeType = getSupportedMimeType();
+            mediaRecorder = new MediaRecorder(combinedStream, {
+                mimeType,
+                videoBitsPerSecond: 8_000_000
+            });
+
+            mediaRecorder.ondataavailable = e => {
+                if (e.data.size > 0) recordedChunks.push(e.data);
+            };
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(recordedChunks, { type: mimeType });
+                const url = URL.createObjectURL(blob);
+                const a = document.getElementById('downloadLink');
+                a.href = url;
+                a.download = `typography_${Date.now()}.${mimeType.includes('mp4') ? 'mp4' : 'webm'}`;
+                a.click();
+                URL.revokeObjectURL(url);
+                isRecording = false;
+                isPlaying = false;
+            };
+
+            mediaRecorder.start(1000);
+
+            // 오디오 재생
+            const audio = document.getElementById('audio');
+            if (audio.src && audioCtx) {
+                audio.currentTime = 0;
+                audio.play().catch(() => {});
+            }
+        });
+
+        // 초기화
+        updateSubtitleList();
+        updateTimelineRange();
+        render();
+    </script>
+</body>
+</html>
