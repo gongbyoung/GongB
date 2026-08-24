@@ -24,15 +24,32 @@ text
 
 ---
 
-## 🌐 전역 객체
+## 전역 객체
+- `window.TypoMotionStyles`: 스타일 저장소
+- 각 스타일: `{ name, backgroundColor, textColor, glowColor, layout, presets }`
 
-| 이름 | 타입 | 설명 |
-|------|------|------|
-| `window.TypoMotionStyles` | `Object` | 스타일 파일들이 등록되는 글로벌 스토어 |
-| `window.TypoMotionStyles[styleId]` | `Object` | 특정 스타일의 정보와 프리셋들 |
-| `window.TypoMotionStyles[styleId].presets` | `Object` | 모션 프리셋 모음 (키: 프리셋 id) |
-| `window.TypoMotionStyles[styleId].presets[presetId]` | `Object` | 단일 모션 프리셋 |
-
+## 스타일 파일 작성 템플릿
+```javascript
+(function() {
+    if (!window.TypoMotionStyles) window.TypoMotionStyles = {};
+    window.TypoMotionStyles['styleId'] = {
+        name: '표시 이름',
+        backgroundColor: '#000000',
+        textColor: 'rgba(255,255,255,0.3)',
+        glowColor: '#ffd700',
+        layout: function(leds, canvas, ctx) {
+            // 배치 로직
+        },
+        presets: {
+            'presetId': {
+                name: '프리셋 이름',
+                apply: function(led, time, ctx, state) {
+                    return { opacity, scale, rotation, offsetX, offsetY };
+                }
+            }
+        }
+    };
+})();
 ### 스타일 객체 예시
 
 ```javascript
