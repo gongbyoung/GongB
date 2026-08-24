@@ -1,4 +1,6 @@
 console.log('utils.js loaded');
+//에러확인용
+
 // 공통 유틸리티
 
 
