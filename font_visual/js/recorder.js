@@ -15,7 +15,7 @@ function getSupportedMimeType() {
     return 'video/webm';
 }
 
-async function startRecording(canvas, audioEl, audioCtx, audioDest, maxTime) {
+async function startRecording(canvas, audioEl, audioCtx, audioDest, maxTime, onComplete) {
     if (audioCtx && audioCtx.state === 'suspended') await audioCtx.resume();
 
     const canvasStream = canvas.captureStream(60);
@@ -46,6 +46,7 @@ async function startRecording(canvas, audioEl, audioCtx, audioDest, maxTime) {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+        if (onComplete) onComplete();
     };
 
     mediaRecorder.start(1000);
