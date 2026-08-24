@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jamo Kinetic Typography Studio</title>
+    <title>자모 LED 키네틱 타이포그래피</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -55,6 +55,7 @@
             align-items: center;
             gap: 10px;
             margin-left: auto;
+            flex-wrap: wrap;
         }
         .time-display {
             font-family: monospace;
@@ -66,6 +67,18 @@
             flex: 1;
             min-width: 150px;
             cursor: pointer;
+        }
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: #0f3460;
+            padding: 6px 12px;
+            border-radius: 6px;
+        }
+        .slider-container label {
+            font-size: 13px;
+            white-space: nowrap;
         }
         .main-area {
             flex: 1;
@@ -109,7 +122,7 @@
 </head>
 <body>
     <header>
-        <h1>🎵 자모 키네틱 타이포</h1>
+        <h1>🎵 자모 LED 키네틱 타이포</h1>
         <input type="file" id="srtFile" accept=".srt">
         <input type="file" id="audioFile" accept="audio/*">
         <button id="loadSample">샘플 SRT</button>
@@ -126,6 +139,12 @@
                 <option value="'Gulim', sans-serif">굴림</option>
                 <option value="'Arial', sans-serif">Arial</option>
             </select>
+            <div class="slider-container">
+                <label for="scatterSlider">흩어짐:</label>
+                <input type="range" id="scatterSlider" min="0" max="100" value="50" step="1">
+                <span id="scatterValue">50</span>
+            </div>
+            <button id="shuffleBtn">🔀 셔플</button>
             <button id="saveBtn" class="save-btn">💾 MP4 저장</button>
         </div>
     </header>
@@ -204,9 +223,12 @@
         const timeDisplay = document.getElementById('timeDisplay');
         const currentSentenceEl = document.getElementById('currentSentence');
         const fontSelect = document.getElementById('fontSelect');
+        const scatterSlider = document.getElementById('scatterSlider');
+        const scatterValueSpan = document.getElementById('scatterValue');
+        const shuffleBtn = document.getElementById('shuffleBtn');
 
         let cues = [];
-        let uniqueComponents = []; // [{ char, intervals: [{start,end}], fullLitTime }] (fullLitTime is max start time of its components)
+        let uniqueComponents = []; // [{ char, intervals: [{start,end}], x, y, baseX, baseY, scatterOffsetX, scatterOffsetY }]
         let currentTime = 0;
         let isPlaying = false;
         let isRecording = false;
@@ -215,6 +237,7 @@
         let audioCtx = null;
         let audioSource = null;
         let audioDest = null;
+        let scatterAmount = 0.5; // 0 to 1
 
         // ==================== SRT 및 오디오 로딩 ====================
         document.getElementById('srtFile').addEventListener('change', function(e) {
@@ -269,6 +292,7 @@
         function loadSRT(content) {
             cues = parseSRT(content);
             buildComponentIntervals();
+            assignRandomPositions();
             setupTimeline();
             currentTime = 0;
             updateTimeDisplay();
@@ -277,40 +301,94 @@
 
         // ==================== 자모 컴포넌트 인터벌 구축 ====================
         function buildComponentIntervals() {
-            const componentMap = new Map(); // key(문자) -> { char, intervals: [] }
+            const componentMap = new Map();
 
             cues.forEach(cue => {
                 const chars = Array.from(cue.text);
                 chars.forEach(char => {
-                    if (char.trim() === '') return; // 공백은 무시
+                    if (char.trim() === '') return;
                     const components = decomposeKorean(char);
                     const numComponents = components.length;
                     const syllableDuration = cue.end - cue.start;
                     const step = syllableDuration / numComponents;
-                    const fullLitTime = cue.start + (numComponents - 1) * step; // 모든 컴포넌트가 켜지는 시각
+                    const fullLitTime = cue.start + (numComponents - 1) * step;
 
                     components.forEach((comp, idx) => {
                         if (!componentMap.has(comp)) {
                             componentMap.set(comp, { char: comp, intervals: [] });
                         }
                         const entry = componentMap.get(comp);
-                        // 각 컴포넌트의 시작은 cue.start + idx * step, 끝은 cue.end
                         entry.intervals.push({
                             start: cue.start + idx * step,
                             end: cue.end,
-                            fullLitTime: fullLitTime // 이 컴포넌트가 속한 음절의 완전 점등 시각
+                            fullLitTime: fullLitTime
                         });
                     });
                 });
             });
 
-            // Map을 배열로 변환하고 등장 순서(첫 등장 start 기준)로 정렬
             uniqueComponents = Array.from(componentMap.values());
             uniqueComponents.forEach(entry => {
                 entry.intervals.sort((a, b) => a.start - b.start);
                 entry.firstStart = entry.intervals[0]?.start || 0;
             });
             uniqueComponents.sort((a, b) => a.firstStart - b.firstStart);
+        }
+
+        // ==================== 랜덤 위치 배치 ====================
+        function assignRandomPositions() {
+            const margin = 30;
+            const usableWidth = canvas.width - 2 * margin;
+            const usableHeight = canvas.height - 2 * margin;
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+
+            uniqueComponents.forEach(entry => {
+                // 기본 위치는 중심에서 랜덤 각도로 랜덤 거리
+                const angle = Math.random() * Math.PI * 2;
+                const dist = Math.random() * Math.min(usableWidth, usableHeight) * 0.5; // 최대 반경
+                const baseX = centerX + Math.cos(angle) * dist;
+                const baseY = centerY + Math.sin(angle) * dist;
+
+                // 클램프
+                entry.baseX = Math.min(Math.max(baseX, margin), canvas.width - margin);
+                entry.baseY = Math.min(Math.max(baseY, margin), canvas.height - margin);
+
+                // 산란 오프셋 (나중에 scatterAmount에 따라 적용)
+                const scatterDist = (Math.random() * 2 - 1) * 150; // -150 ~ 150
+                const scatterAngle = Math.random() * Math.PI * 2;
+                entry.scatterOffsetX = Math.cos(scatterAngle) * scatterDist;
+                entry.scatterOffsetY = Math.sin(scatterAngle) * scatterDist;
+
+                updateEntryPosition(entry);
+            });
+        }
+
+        function updateEntryPosition(entry) {
+            const spreadFactor = scatterAmount * 1.0; // 0이면 중앙, 1이면 최대 산란
+            const x = entry.baseX + entry.scatterOffsetX * spreadFactor;
+            const y = entry.baseY + entry.scatterOffsetY * spreadFactor;
+            entry.x = Math.min(Math.max(x, 20), canvas.width - 20);
+            entry.y = Math.min(Math.max(y, 20), canvas.height - 20);
+        }
+
+        function reshufflePositions() {
+            uniqueComponents.forEach(entry => {
+                const angle = Math.random() * Math.PI * 2;
+                const dist = Math.random() * Math.min(canvas.width, canvas.height) * 0.4;
+                const centerX = canvas.width / 2;
+                const centerY = canvas.height / 2;
+                entry.baseX = Math.min(Math.max(centerX + Math.cos(angle) * dist, 30), canvas.width - 30);
+                entry.baseY = Math.min(Math.max(centerY + Math.sin(angle) * dist, 30), canvas.height - 30);
+
+                const scatterDist = (Math.random() * 2 - 1) * 200;
+                const scatterAngle = Math.random() * Math.PI * 2;
+                entry.scatterOffsetX = Math.cos(scatterAngle) * scatterDist;
+                entry.scatterOffsetY = Math.sin(scatterAngle) * scatterDist;
+
+                updateEntryPosition(entry);
+            });
+            render();
         }
 
         // ==================== 타임라인 및 재생 ====================
@@ -356,6 +434,20 @@
         audio.addEventListener('pause', () => { if (!isRecording) isPlaying = false; });
         audio.addEventListener('play', () => { isPlaying = true; });
 
+        // ==================== 산란 및 셔플 UI ====================
+        scatterSlider.addEventListener('input', () => {
+            scatterAmount = scatterSlider.value / 100;
+            scatterValueSpan.textContent = scatterSlider.value;
+            uniqueComponents.forEach(entry => updateEntryPosition(entry));
+            render();
+        });
+
+        shuffleBtn.addEventListener('click', reshufflePositions);
+
+        fontSelect.addEventListener('change', () => {
+            render();
+        });
+
         // ==================== 렌더링 ====================
         function isComponentActive(compEntry, time) {
             return compEntry.intervals.some(interval => time >= interval.start && time <= interval.end);
@@ -376,12 +468,7 @@
             }
 
             const fontFamily = fontSelect.value;
-            const cols = Math.ceil(Math.sqrt(uniqueComponents.length * (canvas.width / canvas.height)));
-            const rows = Math.ceil(uniqueComponents.length / cols);
-            const cellWidth = canvas.width / cols;
-            const cellHeight = canvas.height / rows;
-            const fontSize = Math.min(cellWidth, cellHeight) * 0.7;
-
+            const fontSize = Math.min(40, Math.max(18, (canvas.width / uniqueComponents.length) * 3)); // 적절한 크기
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.font = `${fontSize}px ${fontFamily}`;
@@ -389,12 +476,9 @@
             const activeColor = '#ffd700';
             const inactiveColor = 'rgba(255,255,255,0.3)';
 
-            uniqueComponents.forEach((entry, index) => {
-                const col = index % cols;
-                const row = Math.floor(index / cols);
-                const x = col * cellWidth + cellWidth / 2;
-                const y = row * cellHeight + cellHeight / 2;
-
+            uniqueComponents.forEach(entry => {
+                const x = entry.x;
+                const y = entry.y;
                 const isActive = isComponentActive(entry, currentTime);
 
                 if (isActive) {
@@ -414,7 +498,6 @@
         }
 
         function updateCurrentSentence() {
-            // 현재 활성화된 큐 찾기
             const activeCue = cues.find(cue => currentTime >= cue.start && currentTime <= cue.end);
             if (!activeCue) {
                 currentSentenceEl.textContent = '';
@@ -425,7 +508,7 @@
             let html = '';
             chars.forEach(char => {
                 if (char.trim() === '') {
-                    html += ' '; // 공백은 그대로
+                    html += ' ';
                     return;
                 }
                 const components = decomposeKorean(char);
@@ -433,7 +516,6 @@
                 const syllableDuration = activeCue.end - activeCue.start;
                 const step = syllableDuration / numComp;
                 const fullLitTime = activeCue.start + (numComp - 1) * step;
-                // 현재 시간이 fullLitTime 이상이면 해당 음절이 완전히 점등된 것으로 간주
                 const isLit = currentTime >= fullLitTime;
                 html += isLit ? `<span class="lit">${char}</span>` : char;
             });
@@ -549,11 +631,6 @@
                 audioEl.currentTime = 0;
                 audioEl.play().catch(() => {});
             }
-        });
-
-        // ==================== 폰트 변경 시 즉시 반영 ====================
-        fontSelect.addEventListener('change', () => {
-            render();
         });
 
         // ==================== 초기화 ====================
