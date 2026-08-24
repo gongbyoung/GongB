@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>자모 LED 키네틱 타이포그래피002</title>
+    <title>자모 LED 키네틱 타이포그래피 (색상 스타일)</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -112,8 +112,7 @@
             pointer-events: none;
         }
         .current-sentence .lit {
-            color: #ffd700;
-            text-shadow: 0 0 10px rgba(255,215,0,0.7);
+            text-shadow: 0 0 10px rgba(255,255,255,0.7);
         }
         .font-picker-row {
             display: flex;
@@ -124,7 +123,7 @@
 </head>
 <body>
     <header>
-        <h1>🎵 자모 LED 키네틱 타이포 (색 유지)</h1>
+        <h1>🎵 자모 LED 키네틱 타이포 (색상 스타일)</h1>
         <input type="file" id="srtFile" accept=".srt">
         <input type="file" id="audioFile" accept="audio/*">
         <button id="loadSample">샘플 SRT</button>
@@ -136,6 +135,13 @@
             <select id="aspectRatio">
                 <option value="16:9">16:9</option>
                 <option value="9:16">9:16</option>
+            </select>
+            <select id="colorStyle" title="색상 스타일">
+                <option value="harmony" selected>🌟 추천 (하모니)</option>
+                <option value="monochrome">⚫ 흑백</option>
+                <option value="pastel">🎀 파스텔톤</option>
+                <option value="neon">💡 네온컬러</option>
+                <option value="primary">🔴 원색계열</option>
             </select>
             <div class="font-picker-row">
                 <select id="fontSelect">
@@ -201,7 +207,7 @@
                     .replace(/\{\\.*?\}/g, '')
                     .replace(/<[^>]*>/g, '')
                     .trim();
-                cues.push({ start, end, text, color: getCueColor(idx) });
+                cues.push({ start, end, text, color: null });
             });
             return cues;
         }
@@ -233,12 +239,57 @@
             return [syllable];
         }
 
-        // ==================== 구절별 색상 생성 ====================
-        function getCueColor(index) {
-            // HSL을 사용해 인덱스별로 뚜렷이 다른 색 생성 (골든 앵글)
-            const hue = (index * 137.508) % 360;
-            return `hsl(${hue}, 80%, 65%)`;
+        // ==================== 색상 스타일 ====================
+        const colorStyleSelect = document.getElementById('colorStyle');
+        let currentColorStyle = 'harmony';
+
+        function getColorForCue(index, style) {
+            switch (style) {
+                case 'monochrome':
+                    // 흑백: 밝은 회색 → 흰색, 주로 흰색 계열
+                    const monoColors = ['#ffffff', '#dddddd', '#bbbbbb', '#999999', '#777777'];
+                    return monoColors[index % monoColors.length];
+                case 'pastel':
+                    const pastelColors = [
+                        '#ffb3ba', '#ffdfba', '#ffffba', '#baffc9', '#bae1ff',
+                        '#d4baff', '#ffb3e6', '#b3ffd9', '#ffccb3', '#cce0ff'
+                    ];
+                    return pastelColors[index % pastelColors.length];
+                case 'neon':
+                    const neonColors = [
+                        '#ff00ff', '#00ffff', '#ff3300', '#00ff00', '#ff6600',
+                        '#cc00ff', '#00ffcc', '#ff0099', '#99ff00', '#0066ff'
+                    ];
+                    return neonColors[index % neonColors.length];
+                case 'primary':
+                    const primaryColors = [
+                        '#ff0000', '#0000ff', '#ffff00', '#00ff00', '#ff00ff',
+                        '#ff8000', '#8000ff', '#00ff80', '#ff0080', '#80ff00'
+                    ];
+                    return primaryColors[index % primaryColors.length];
+                case 'harmony':
+                default:
+                    // 추천: 골든 앵글 기반 HSL, 채도와 명도 조절
+                    const hue = (index * 137.508) % 360;
+                    return `hsl(${hue}, 70%, 70%)`;
+            }
         }
+
+        function applyColorStyleToCues() {
+            cues.forEach((cue, idx) => {
+                cue.color = getColorForCue(idx, currentColorStyle);
+            });
+            // LED 색상 갱신
+            allLeds.forEach(led => {
+                led.color = cues[led.cueIdx].color;
+            });
+            render();
+        }
+
+        colorStyleSelect.addEventListener('change', function() {
+            currentColorStyle = this.value;
+            applyColorStyleToCues();
+        });
 
         // ==================== 전역 상태 ====================
         const canvas = document.getElementById('canvas');
@@ -259,7 +310,7 @@
         const aspectRatioSelect = document.getElementById('aspectRatio');
 
         let cues = [];
-        let allLeds = []; // [{ char, cueIdx, charIdx, compIdx, start, end, fullLitTime, color, x, y, baseX, baseY }]
+        let allLeds = [];
         let currentTime = 0;
         let isPlaying = false;
         let isRecording = false;
@@ -324,6 +375,7 @@
 
         function loadSRT(content) {
             cues = parseSRT(content);
+            applyColorStyleToCues();
             buildAllLeds();
             assignInitialPositions();
             avoidOverlaps();
@@ -361,7 +413,6 @@
                 });
             });
 
-            // LED 개수가 많으면 폰트 크기 자동 축소
             if (allLeds.length > 200) {
                 currentFontSize = Math.min(80, Math.max(30, 80 * (200 / allLeds.length) * 1.5));
                 fontSizeSlider.value = currentFontSize;
@@ -566,7 +617,6 @@
 
         // ==================== 렌더링 ====================
         function isLedLit(led, time) {
-            // LED는 한번 켜지면 계속 켜진 상태 유지 (start 시간 이후)
             return time >= led.start;
         }
 
@@ -628,7 +678,11 @@
                 const step = (activeCue.end - activeCue.start) / numComp;
                 const fullLitTime = activeCue.start + (numComp - 1) * step;
                 const isLit = currentTime >= fullLitTime;
-                html += isLit ? `<span style="color:${activeCue.color};">${char}</span>` : char;
+                if (isLit) {
+                    html += `<span style="color:${activeCue.color};">${char}</span>`;
+                } else {
+                    html += char;
+                }
             });
             currentSentenceEl.innerHTML = html;
         }
