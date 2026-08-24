@@ -65,6 +65,10 @@ body{background:#0a0a0a;color:#eee;font-family:Inter,Noto Sans KR,sans-serif;dis
 <div class="field"><label>Y</label><input id="yPos" type="range" min="0" max="1920" value="960"></div>
 <div class="field"><label>회전</label><input id="rot" type="range" min="-180" max="180" value="0"></div>
 </div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+<div class="field"><label>자간 (letter-spacing)</label><input id="letterSpacing" type="range" min="-20" max="100" value="12"></div>
+<div class="field"><label>행간</label><input id="lineSpacing" type="range" min="0" max="200" value="0"></div>
+</div>
 <div class="field"><label>모션</label><select id="motionSel"></select></div>
 <div id="motionGrid" class="grid"></div>
 <div style="display:flex;gap:6px;margin-top:10px">
@@ -78,7 +82,7 @@ const motions=[
 {id:'slam',name:'Slam Pop Shake'},{id:'bounce',name:'Bounce Drop'},{id:'elastic',name:'Elastic'},{id:'hammer',name:'Hammer Hit'},{id:'whipL',name:'Whip Left'},{id:'velR',name:'Velocity Right'},{id:'stagUp',name:'Stagger Up'},{id:'train',name:'Train Rush'},{id:'flipX',name:'Flip X'},{id:'flipY',name:'Flip Y'},{id:'vortex',name:'Vortex'},{id:'tilt',name:'Tilt'},{id:'glitch',name:'Glitch'},{id:'wave',name:'Wave'},{id:'jitter',name:'Jitter'},{id:'chroma',name:'Chroma'},{id:'pulse',name:'Pulse'},{id:'cascade',name:'Cascade'},{id:'zoomBlur',name:'Zoom Blur'},{id:'stretch',name:'Stretch'},{id:'fall',name:'Fall'},{id:'float',name:'Float'},{id:'pendulum',name:'Pendulum'},{id:'spring',name:'Spring'},{id:'karaoke',name:'Karaoke Wipe'},{id:'outline',name:'Outline to Fill'},{id:'blurIn',name:'Blur In'},{id:'splitRot',name:'Split Rotate'},{id:'typewriter',name:'Typewriter'},{id:'rubber',name:'Rubber'},{id:'scatter',name:'Scatter'},{id:'orbit',name:'Orbit'},{id:'fire',name:'Fire Up'},{id:'neon',name:'Neon'}
 ];
 let srtLines=[],selected=0,isPlaying=false,loop=false,progress=0,globalTime=0,totalDuration=0,exporting=false;
-let state={font:'Noto Sans KR',size:92,x:540,y:960,rot:0,skewX:0,skewY:0,color:'#ffffff',strokeColor:'#000000',strokeOn:true,shadowOn:true,motion:'slam',stagger:0.06};
+let state={font:'Noto Sans KR',size:92,x:540,y:960,rot:0,skewX:0,skewY:0,color:'#ffffff',strokeColor:'#000000',strokeOn:true,shadowOn:true,motion:'slam',stagger:0.06,letterSpacing:12, lineSpacing:0};
 const audio=document.getElementById('audio');
 
 function parseSRT(txt){
@@ -135,10 +139,16 @@ function drawAtTime(timeMs){
 ctx.fillStyle=document.getElementById('bgColor').value||'#000';
 ctx.fillRect(0,0,canvas.width,canvas.height);
 let line=getActiveLine(timeMs);
-if(!line) return; // 시간 사이 공백엔 아무것도 안 그림 - 타임코드도 안 그림!
-let p=Math.min(1,(timeMs-line.start)/600); // IN progress
+if(!line) return;
+let p=Math.min(1,(timeMs-line.start)/600);
 let chars=[...line.text];
-ctx.textAlign='center'; ctx.textBaseline='middle';
+ctx.textBaseline='middle';
+// 정확한 폭 계산으로 겹침 해결
+ctx.font=`800 ${line.size}px ${state.font}, sans-serif`;
+let charWidths=chars.map(ch=>ctx.measureText(ch).width);
+let totalW=charWidths.reduce((a,b)=>a+b,0) + (chars.length-1)*state.letterSpacing;
+let startX=line.x - totalW/2;
+let accumX=0;
 chars.forEach((ch,i)=>{
 let charP=Math.min(1,Math.max(0,(p - i*state.stagger)/0.6));
 let e=ease(charP, line.motion==='elastic'?'elastic':'back');
@@ -158,14 +168,16 @@ case 'scatter': ox=(1-e)*(Math.random()-0.5)*600; oy=(1-e)*(Math.random()-0.5)*6
 case 'orbit': let ang=timeMs*0.005+i*0.5; ox=Math.cos(ang)*100*(1-e*0.5); oy=Math.sin(ang)*100*(1-e*0.5); break;
 default: oy=(1-e)*50; alpha=e;
 }
-let cx=line.x+ox+(i-chars.length/2)*(line.size*0.55);
+let cx=startX + accumX + charWidths[i]/2 + ox;
 let cy=line.y+oy;
 ctx.save(); ctx.globalAlpha=alpha; ctx.translate(cx,cy); ctx.rotate((rot+line.rot)*Math.PI/180); ctx.scale(sc,sc);
 ctx.font=`800 ${line.size}px ${state.font}, sans-serif`;
 if(state.shadowOn){ctx.shadowColor='rgba(0,0,0,0.8)';ctx.shadowBlur=20;}
 ctx.fillStyle=state.color;
+ctx.textAlign='center';
 if(state.strokeOn){ctx.strokeStyle=state.strokeColor;ctx.lineWidth=8;ctx.lineJoin='round';ctx.strokeText(ch,0,0);}
 ctx.fillText(ch,0,0); ctx.restore();
+accumX+=charWidths[i]+state.letterSpacing;
 });
 }
 function drawLoop(){
@@ -247,13 +259,15 @@ exportStep();
 });
 
 document.getElementById('editText').addEventListener('input',()=>saveLine());
-['fontSel','sizeSel','xPos','yPos','rot'].forEach(id=>{
+['fontSel','sizeSel','xPos','yPos','rot','letterSpacing','lineSpacing'].forEach(id=>{
 document.getElementById(id).addEventListener('input',e=>{
 if(id==='fontSel') state.font=e.target.value;
 if(id==='sizeSel') state.size=parseFloat(e.target.value);
 if(id==='xPos') state.x=parseFloat(e.target.value);
 if(id==='yPos') state.y=parseFloat(e.target.value);
 if(id==='rot') state.rot=parseFloat(e.target.value);
+if(id==='letterSpacing') state.letterSpacing=parseFloat(e.target.value);
+if(id==='lineSpacing') state.lineSpacing=parseFloat(e.target.value);
 saveLine();
 });
 });
