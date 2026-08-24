@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SRT 글자 채우기 비주얼라이저</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background: #1a1a2e;
+            color: #eee;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+        header {
+            background: #16213e;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            border-bottom: 1px solid #333;
+            z-index: 10;
+        }
+        header h1 {
+            font-size: 20px;
+            margin-right: 20px;
+            color: #ffd700;
+        }
+        button, input[type="file"] {
+            background: #0f3460;
+            color: white;
+            border: 1px solid #533483;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        button:hover {
+            background: #533483;
+            border-color: #7b5ea7;
+        }
+        input[type="file"] {
+            padding: 6px;
+        }
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-left: auto;
+        }
+        .time-display {
+            font-family: monospace;
+            background: #0a0a1a;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+        #timeline {
+            flex: 1;
+            min-width: 150px;
+            cursor: pointer;
+        }
+        .main-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: #0d1117;
+            position: relative;
+            min-height: 0;
+        }
+        canvas {
+            max-width: 100%;
+            max-height: 70vh;
+            border: 1px solid #333;
+            background: #000;
+            border-radius: 8px;
+            box-shadow: 0 0 30px rgba(0,0,0,0.5);
+        }
+        .current-lyric {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.8);
+            padding: 12px 24px;
+            border-radius: 20px;
+            font-size: 24px;
+            font-weight: bold;
+            color: #ffd700;
+            text-align: center;
+            max-width: 80%;
+            pointer-events: none;
+            z-index: 5;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>🎤 SRT 글자 채우기</h1>
+        <input type="file" id="srtFile" accept=".srt">
+        <input type="file" id="audioFile" accept="audio/*">
+        <button id="loadSample">샘플 SRT</button>
+        <div class="controls">
+            <button id="playBtn">▶ 재생</button>
+            <button id="stopBtn">⏹ 정지</button>
+            <input type="range" id="timeline" min="0" max="100" step="0.01" value="0">
+            <span class="time-display" id="timeDisplay">00:00.00</span>
+        </div>
+    </header>
+
+    <div class="main-area">
+        <canvas id="canvas" width="1200" height="700"></canvas>
+        <div class="current-lyric" id="currentLyric"></div>
+    </div>
+
+    <audio id="audio" style="display:none;"></audio>
+
+    <script>
+        // ==================== 유틸리티 ====================
+        function timeToSeconds(str) {
+            const parts = str.split(':');
+            if (parts.length === 3) {
+                const [h, m, s] = parts;
+                const [sec, ms] = s.split(',');
+                return parseInt(h) * 3600 + parseInt(m) * 60 + parseInt(sec) + (parseInt(ms || 0) / 1000);
+            }
+            return 0;
+        }
+
+        function parseSRT(content) {
+            const blocks = content.trim().split(/\n\s*\n/);
+            const cues = [];
+            blocks.forEach((block, idx) => {
+                const lines = block.trim().split('\n');
+                if (lines.length < 2) return;
+                const timeLineIndex = lines.findIndex(l => l.includes('-->'));
+                if (timeLineIndex === -1) return;
+                const timeLine = lines[timeLineIndex];
+                const [startStr, endStr] = timeLine.split('-->').map(s => s.trim());
+                const start = timeToSeconds(startStr);
+                const end = timeToSeconds(endStr);
+                const text = lines.slice(timeLineIndex + 1)
+                    .join('\n')
+                    .replace(/\{\\.*?\}/g, '')
+                    .replace(/<[^>]*>/g, '')
+                    .trim();
+                cues.push({ start, end, text });
+            });
+            return cues;
+        }
+
+        function formatTime(seconds) {
+            if (isNaN(seconds) || seconds < 0) seconds = 0;
+            const min = Math.floor(seconds / 60);
+            const sec = Math.floor(seconds % 60);
+            const ms = Math.floor((seconds % 1) * 100);
+            return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}.${String(ms).padStart(2, '0')}`;
+        }
+
+        // ==================== 상태 ====================
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const audio = document.getElementById('audio');
+        const timeline = document.getElementById('timeline');
+        const timeDisplay = document.getElementById('timeDisplay');
+        const currentLyricEl = document.getElementById('currentLyric');
+
+        let cues = [];
+        let uniqueChars = []; // [{ char, intervals: [{start,end}], firstIndex }]
+        let currentTime = 0;
+        let isPlaying = false;
+        let lastFrameTime = performance.now();
+
+        // ==================== SRT 및 오디오 로딩 ====================
+        document.getElementById('srtFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(ev) {
+                loadSRT(ev.target.result);
+            };
+            reader.readAsText(file);
+        });
+
+        document.getElementById('loadSample').addEventListener('click', function() {
+            const sample = `1
+00:00:00,000 --> 00:00:03,000
+안녕하세요
+
+2
+00:00:03,500 --> 00:00:07,000
+오늘은 즐거운 날
+
+3
+00:00:07,500 --> 00:00:11,000
+함께 노래해요
+
+4
+00:00:11,500 --> 00:00:15,000
+라라라 라라라
+
+5
+00:00:15,500 --> 00:00:20,000
+신나는 음악과 함께
+`;
+            loadSRT(sample);
+        });
+
+        document.getElementById('audioFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            audio.src = URL.createObjectURL(file);
+            audio.load();
+        });
+
+        function loadSRT(content) {
+            cues = parseSRT(content);
+            extractUniqueChars();
+            setupTimeline();
+            currentTime = 0;
+            updateTimeDisplay();
+            render();
+        }
+
+        // ==================== 고유 문자 추출 ====================
+        function extractUniqueChars() {
+            const charMap = new Map(); // char -> { firstIndex, intervals: [] }
+            cues.forEach(cue => {
+                const chars = Array.from(cue.text).filter(c => c.trim() !== '');
+                chars.forEach(char => {
+                    if (!charMap.has(char)) {
+                        charMap.set(char, {
+                            char,
+                            intervals: [],
+                            firstIndex: charMap.size // first appearance order
+                        });
+                    }
+                    const entry = charMap.get(char);
+                    entry.intervals.push({ start: cue.start, end: cue.end });
+                });
+            });
+
+            uniqueChars = Array.from(charMap.values()).sort((a, b) => a.firstIndex - b.firstIndex);
+
+            // intervals 정렬
+            uniqueChars.forEach(entry => {
+                entry.intervals.sort((a, b) => a.start - b.start);
+            });
+        }
+
+        // ==================== 타임라인 ====================
+        function setupTimeline() {
+            const maxTime = cues.length > 0 ? Math.max(...cues.map(c => c.end)) : 0;
+            timeline.max = maxTime;
+            timeline.value = 0;
+            document.getElementById('timeDisplay').textContent = '00:00.00';
+        }
+
+        function updateTimeDisplay() {
+            timeDisplay.textContent = formatTime(currentTime);
+        }
+
+        timeline.addEventListener('input', () => {
+            currentTime = parseFloat(timeline.value);
+            updateTimeDisplay();
+            render();
+        });
+
+        // ==================== 재생 제어 ====================
+        document.getElementById('playBtn').addEventListener('click', () => {
+            if (cues.length === 0) return;
+            isPlaying = true;
+            if (audio.src) {
+                audio.currentTime = currentTime;
+                audio.play().catch(() => {});
+            }
+        });
+
+        document.getElementById('stopBtn').addEventListener('click', () => {
+            isPlaying = false;
+            audio.pause();
+            if (audio.src) audio.currentTime = currentTime;
+        });
+
+        audio.addEventListener('timeupdate', () => {
+            currentTime = audio.currentTime;
+            timeline.value = currentTime;
+            updateTimeDisplay();
+        });
+
+        audio.addEventListener('pause', () => { isPlaying = false; });
+        audio.addEventListener('play', () => { isPlaying = true; });
+
+        // ==================== 렌더링 ====================
+        function isCharActive(charEntry, time) {
+            return charEntry.intervals.some(interval => time >= interval.start && time <= interval.end);
+        }
+
+        function getCharFillProgress(charEntry, time) {
+            // 간단히 활성화 여부만 반환. 페이드 인/아웃은 추가 가능.
+            return isCharActive(charEntry, time) ? 1 : 0;
+        }
+
+        function render() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (uniqueChars.length === 0) {
+                ctx.fillStyle = '#666';
+                ctx.font = '24px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('SRT 파일을 로드하세요', canvas.width/2, canvas.height/2);
+                return;
+            }
+
+            // 레이아웃 계산: 그리드
+            const cols = Math.ceil(Math.sqrt(uniqueChars.length * (canvas.width / canvas.height)));
+            const rows = Math.ceil(uniqueChars.length / cols);
+            const cellWidth = canvas.width / cols;
+            const cellHeight = canvas.height / rows;
+            const fontSize = Math.min(cellWidth, cellHeight) * 0.7;
+
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.font = `${fontSize}px 'Noto Sans KR', '맑은 고딕', Arial, sans-serif`;
+
+            const activeColor = '#ffd700';
+            const inactiveColor = 'rgba(255,255,255,0.25)';
+
+            uniqueChars.forEach((entry, index) => {
+                const col = index % cols;
+                const row = Math.floor(index / cols);
+                const x = col * cellWidth + cellWidth / 2;
+                const y = row * cellHeight + cellHeight / 2;
+
+                const isActive = isCharActive(entry, currentTime);
+                const fillProgress = getCharFillProgress(entry, currentTime);
+
+                if (isActive) {
+                    // 활성화: 채워진 색
+                    ctx.fillStyle = activeColor;
+                    ctx.shadowColor = activeColor;
+                    ctx.shadowBlur = 15;
+                    ctx.fillText(entry.char, x, y);
+                    ctx.shadowBlur = 0;
+                } else {
+                    // 비활성화: 외곽선만
+                    ctx.strokeStyle = inactiveColor;
+                    ctx.lineWidth = 2;
+                    ctx.strokeText(entry.char, x, y);
+                }
+            });
+
+            // 현재 가사 표시
+            updateCurrentLyric();
+        }
+
+        function updateCurrentLyric() {
+            const activeCue = cues.find(cue => currentTime >= cue.start && currentTime <= cue.end);
+            if (activeCue) {
+                currentLyricEl.textContent = activeCue.text;
+            } else {
+                currentLyricEl.textContent = '';
+            }
+        }
+
+        // ==================== 애니메이션 루프 ====================
+        function animationLoop(now) {
+            const dt = (now - lastFrameTime) / 1000;
+            lastFrameTime = now;
+
+            if (isPlaying) {
+                currentTime += dt;
+                const maxTime = parseFloat(timeline.max);
+                if (currentTime >= maxTime) {
+                    currentTime = maxTime;
+                    isPlaying = false;
+                    audio.pause();
+                }
+                timeline.value = currentTime;
+                updateTimeDisplay();
+            }
+
+            render();
+            requestAnimationFrame(animationLoop);
+        }
+        requestAnimationFrame(animationLoop);
+
+        // ==================== 초기화 ====================
+        function init() {
+            setupTimeline();
+            render();
+        }
+
+        init();
+    </script>
+</body>
+</html>
