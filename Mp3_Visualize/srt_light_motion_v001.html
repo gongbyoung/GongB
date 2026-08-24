@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>자모 LED 키네틱 타이포그래피 (음절별 복제)</title>
+    <title>자모 LED 키네틱 타이포그래피002</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -124,7 +124,7 @@
 </head>
 <body>
     <header>
-        <h1>🎵 자모 LED 키네틱 타이포 (음절별)</h1>
+        <h1>🎵 자모 LED 키네틱 타이포 (색 유지)</h1>
         <input type="file" id="srtFile" accept=".srt">
         <input type="file" id="audioFile" accept="audio/*">
         <button id="loadSample">샘플 SRT</button>
@@ -201,7 +201,7 @@
                     .replace(/\{\\.*?\}/g, '')
                     .replace(/<[^>]*>/g, '')
                     .trim();
-                cues.push({ start, end, text });
+                cues.push({ start, end, text, color: getCueColor(idx) });
             });
             return cues;
         }
@@ -233,6 +233,13 @@
             return [syllable];
         }
 
+        // ==================== 구절별 색상 생성 ====================
+        function getCueColor(index) {
+            // HSL을 사용해 인덱스별로 뚜렷이 다른 색 생성 (골든 앵글)
+            const hue = (index * 137.508) % 360;
+            return `hsl(${hue}, 80%, 65%)`;
+        }
+
         // ==================== 전역 상태 ====================
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
@@ -252,7 +259,7 @@
         const aspectRatioSelect = document.getElementById('aspectRatio');
 
         let cues = [];
-        let allLeds = []; // [{ char, syllableIndex, componentIndex, start, end, fullLitTime, x, y, baseX, baseY }]
+        let allLeds = []; // [{ char, cueIdx, charIdx, compIdx, start, end, fullLitTime, color, x, y, baseX, baseY }]
         let currentTime = 0;
         let isPlaying = false;
         let isRecording = false;
@@ -347,13 +354,14 @@
                             start: cue.start + compIdx * step,
                             end: cue.end,
                             fullLitTime,
+                            color: cue.color,
                             x: 0, y: 0, baseX: 0, baseY: 0
                         });
                     });
                 });
             });
 
-            // 전체 LED 개수가 화면에 너무 많으면 폰트 크기가 작아질 수 있으니, 적절히 조절 (현재는 자동)
+            // LED 개수가 많으면 폰트 크기 자동 축소
             if (allLeds.length > 200) {
                 currentFontSize = Math.min(80, Math.max(30, 80 * (200 / allLeds.length) * 1.5));
                 fontSizeSlider.value = currentFontSize;
@@ -365,7 +373,7 @@
         function assignInitialPositions() {
             const w = canvas.width;
             const h = canvas.height;
-            const margin = 30;
+            const margin = Math.max(30, currentFontSize / 2 + 5);
             const centerX = w / 2;
             const centerY = h / 2;
             const maxRadius = Math.min(w, h) * 0.45;
@@ -375,18 +383,18 @@
                 const dist = Math.random() * maxRadius;
                 led.baseX = centerX + Math.cos(angle) * dist;
                 led.baseY = centerY + Math.sin(angle) * dist;
-                updateLedPosition(led);
+                updateLedPosition(led, margin);
             });
         }
 
-        function updateLedPosition(led) {
+        function updateLedPosition(led, margin) {
             const spreadFactor = scatterAmount;
             const centerX = canvas.width / 2;
             const centerY = canvas.height / 2;
             const x = centerX + (led.baseX - centerX) * spreadFactor;
             const y = centerY + (led.baseY - centerY) * spreadFactor;
-            led.x = Math.min(Math.max(x, 20), canvas.width - 20);
-            led.y = Math.min(Math.max(y, 20), canvas.height - 20);
+            led.x = Math.min(Math.max(x, margin), canvas.width - margin);
+            led.y = Math.min(Math.max(y, margin), canvas.height - margin);
         }
 
         // ==================== 겹침 회피 ====================
@@ -394,6 +402,7 @@
             if (allLeds.length < 2) return;
             ctx.font = `${currentFontSize}px ${currentFont}`;
             const widths = allLeds.map(led => ctx.measureText(led.char).width);
+            const margin = Math.max(20, currentFontSize / 2 + 5);
 
             const iterations = 300;
             const pushForce = 0.4;
@@ -416,10 +425,10 @@
                             a.y -= ny * overlap * pushForce;
                             b.x += nx * overlap * pushForce;
                             b.y += ny * overlap * pushForce;
-                            a.x = Math.min(Math.max(a.x, 20), canvas.width - 20);
-                            a.y = Math.min(Math.max(a.y, 20), canvas.height - 20);
-                            b.x = Math.min(Math.max(b.x, 20), canvas.width - 20);
-                            b.y = Math.min(Math.max(b.y, 20), canvas.height - 20);
+                            a.x = Math.min(Math.max(a.x, margin), canvas.width - margin);
+                            a.y = Math.min(Math.max(a.y, margin), canvas.height - margin);
+                            b.x = Math.min(Math.max(b.x, margin), canvas.width - margin);
+                            b.y = Math.min(Math.max(b.y, margin), canvas.height - margin);
                             moved = true;
                         }
                     }
@@ -541,7 +550,7 @@
         scatterSlider.addEventListener('input', () => {
             scatterAmount = scatterSlider.value / 100;
             scatterValueSpan.textContent = scatterSlider.value;
-            allLeds.forEach(led => updateLedPosition(led));
+            allLeds.forEach(led => updateLedPosition(led, Math.max(20, currentFontSize / 2 + 5)));
             avoidOverlaps();
             render();
         });
@@ -556,8 +565,9 @@
         shuffleBtn.addEventListener('click', reshufflePositions);
 
         // ==================== 렌더링 ====================
-        function isLedActive(led, time) {
-            return time >= led.start && time <= led.end;
+        function isLedLit(led, time) {
+            // LED는 한번 켜지면 계속 켜진 상태 유지 (start 시간 이후)
+            return time >= led.start;
         }
 
         function render() {
@@ -579,14 +589,13 @@
             ctx.textBaseline = 'middle';
             ctx.font = `${currentFontSize}px ${fontFamily}`;
 
-            const activeColor = '#ffd700';
             const inactiveColor = 'rgba(255,255,255,0.3)';
 
             allLeds.forEach(led => {
-                const isActive = isLedActive(led, currentTime);
+                const isActive = isLedLit(led, currentTime);
                 if (isActive) {
-                    ctx.fillStyle = activeColor;
-                    ctx.shadowColor = activeColor;
+                    ctx.fillStyle = led.color;
+                    ctx.shadowColor = led.color;
                     ctx.shadowBlur = 15;
                     ctx.fillText(led.char, led.x, led.y);
                     ctx.shadowBlur = 0;
@@ -619,7 +628,7 @@
                 const step = (activeCue.end - activeCue.start) / numComp;
                 const fullLitTime = activeCue.start + (numComp - 1) * step;
                 const isLit = currentTime >= fullLitTime;
-                html += isLit ? `<span class="lit">${char}</span>` : char;
+                html += isLit ? `<span style="color:${activeCue.color};">${char}</span>` : char;
             });
             currentSentenceEl.innerHTML = html;
         }
