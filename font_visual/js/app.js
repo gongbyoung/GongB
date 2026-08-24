@@ -1,3 +1,8 @@
+console.log('app.js loaded');
+//로딩확인용
+
+
+
 // 전역 상태
 let allLeds = [];
 let currentTime = 0;
