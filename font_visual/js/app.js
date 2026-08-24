@@ -503,6 +503,7 @@ function loadStyle(styleId) {
 
 function applyStyle(styleId) {
     currentStyleId = styleId;
+    currentPresetId = '';           // ← 중요: 프리셋 ID 초기화
     populatePresetSelect(styleId);
     logEvent(`스타일 적용: ${styleId}`);
     updateStatusPanel();
@@ -518,7 +519,17 @@ function populatePresetSelect(styleId) {
         opt.textContent = style.presets[key].name;
         presetSelect.appendChild(opt);
     });
-    logEvent(`프리셋 목록 업데이트 (${Object.keys(style.presets).length}개)`);
+
+    // 첫 번째 프리셋 자동 선택
+    if (Object.keys(style.presets).length > 0) {
+        const firstPresetId = Object.keys(style.presets)[0];
+        presetSelect.value = firstPresetId;
+        currentPresetId = firstPresetId;
+        logEvent(`자동 프리셋 선택: ${style.presets[firstPresetId].name}`);
+    }
+
+    updateStatusPanel();
+    render();  // 프리셋이 적용된 상태로 다시 그리기
 }
 
 // 프리셋 선택
