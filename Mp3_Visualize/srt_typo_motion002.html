@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SRT 타이포그래픽 모션 스튜디오</title>
+    <title>SRT 키네틱 타이포그래피 스튜디오</title>
     <style>
         :root {
             --bg: #1e1e2e;
@@ -264,12 +264,19 @@
             blocks.forEach((block, idx) => {
                 const lines = block.trim().split('\n');
                 if (lines.length < 2) return;
-                const timeLine = lines.find(l => l.includes('-->'));
-                if (!timeLine) return;
+                const timeLineIndex = lines.findIndex(l => l.includes('-->'));
+                if (timeLineIndex === -1) return;
+                const timeLine = lines[timeLineIndex];
                 const [startStr, endStr] = timeLine.split('-->').map(s => s.trim());
                 const start = timeToSeconds(startStr);
                 const end = timeToSeconds(endStr);
-                const text = lines.slice(1).join('\n').replace(/\{\\an\d\}/g, '').trim();
+                // 텍스트는 timeLine 이후의 모든 줄
+                const textLines = lines.slice(timeLineIndex + 1);
+                // SRT 태그 제거 ({\an8}, {\pos(...)} 등)
+                const text = textLines.join('\n')
+                    .replace(/\{\\.*?\}/g, '')
+                    .replace(/<[^>]*>/g, '')
+                    .trim();
                 subs.push({
                     id: idx,
                     start,
@@ -305,6 +312,24 @@
             return p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
         }
 
+        function easeInOutBack(p) {
+            const c1 = 1.70158;
+            const c2 = c1 * 1.525;
+            return p < 0.5
+                ? (Math.pow(2 * p, 2) * ((c2 + 1) * 2 * p - c2)) / 2
+                : (Math.pow(2 * p - 2, 2) * ((c2 + 1) * (p * 2 - 2) + c2) + 2) / 2;
+        }
+
+        function easeOutQuart(p) {
+            return 1 - Math.pow(1 - p, 4);
+        }
+
+        function easeInQuart(p) {
+            return p * p * p * p;
+        }
+
+        function lerp(a, b, t) { return a + (b - a) * t; }
+
         // ==================== 기본 속성 ====================
         const defaultProps = {
             x: 640, y: 360,
@@ -320,107 +345,802 @@
             shadowColor: '#000000',
             enterDur: 0.5,
             exitDur: 0.5,
-            animationPreset: 'fadeIn'
+            animationPreset: 'fadeIn',
+            perChar: true, // 기본은 글자 단위
+            holdMotion: 'none' // 'none', 'float', 'pulse', 'wave', 'shake', 'spin', 'bounce'
         };
 
-        // ==================== 32개 프리셋 정의 ====================
+        // ==================== 프리셋 정의 ====================
+        // 각 프리셋은 mode: 'whole' 또는 'char'
+        // char 모드에서는 enter/hold/exit 함수가 (t, p, index, count, char) 형태
+        // 반환값: { x, y, scale, rotation, skewX, skewY, opacity, blur, letterSpacing }
         const presets = [
-            { id: 'fadeIn', name: '1. 페이드 인/아웃',
+            // ===== 기존 기본 프리셋 (whole 모드) =====
+            { id: 'fadeIn', name: '1. 페이드 인/아웃', mode: 'whole',
                 enter: (t, p) => { t.opacity = p; },
+                hold: (t, time) => {},
                 exit: (t, p) => { t.opacity = 1 - p; } },
-            { id: 'slideUp', name: '2. 위로 슬라이드',
+            { id: 'slideUp', name: '2. 위로 슬라이드', mode: 'whole',
                 enter: (t, p) => { t.y = (1 - p) * -100; t.opacity = p; },
+                hold: (t, time) => {},
                 exit: (t, p) => { t.y = p * 100; t.opacity = 1 - p; } },
-            { id: 'slideDown', name: '3. 아래로 슬라이드',
+            { id: 'slideDown', name: '3. 아래로 슬라이드', mode: 'whole',
                 enter: (t, p) => { t.y = (1 - p) * 100; t.opacity = p; },
+                hold: (t, time) => {},
                 exit: (t, p) => { t.y = p * -100; t.opacity = 1 - p; } },
-            { id: 'slideLeft', name: '4. 왼쪽 슬라이드',
+            { id: 'slideLeft', name: '4. 왼쪽 슬라이드', mode: 'whole',
                 enter: (t, p) => { t.x = (1 - p) * -150; t.opacity = p; },
+                hold: (t, time) => {},
                 exit: (t, p) => { t.x = p * -150; t.opacity = 1 - p; } },
-            { id: 'slideRight', name: '5. 오른쪽 슬라이드',
+            { id: 'slideRight', name: '5. 오른쪽 슬라이드', mode: 'whole',
                 enter: (t, p) => { t.x = (1 - p) * 150; t.opacity = p; },
+                hold: (t, time) => {},
                 exit: (t, p) => { t.x = p * 150; t.opacity = 1 - p; } },
-            { id: 'zoomIn', name: '6. 줌 인',
+            { id: 'zoomIn', name: '6. 줌 인', mode: 'whole',
                 enter: (t, p) => { t.scale = 0.2 + 0.8 * p; t.opacity = p; },
+                hold: (t, time) => {},
                 exit: (t, p) => { t.scale = 1 + 0.5 * p; t.opacity = 1 - p; } },
-            { id: 'zoomOut', name: '7. 줌 아웃',
+            { id: 'zoomOut', name: '7. 줌 아웃', mode: 'whole',
                 enter: (t, p) => { t.scale = 2 - p; t.opacity = p; },
+                hold: (t, time) => {},
                 exit: (t, p) => { t.scale = 1 - 0.5 * p; t.opacity = 1 - p; } },
-            { id: 'rotateIn', name: '8. 회전 인',
+            { id: 'rotateIn', name: '8. 회전 인', mode: 'whole',
                 enter: (t, p) => { t.rotation = (1 - p) * 360; t.opacity = p; },
+                hold: (t, time) => {},
                 exit: (t, p) => { t.rotation = p * 360; t.opacity = 1 - p; } },
-            { id: 'rotateOut', name: '9. 회전 아웃',
+            { id: 'rotateOut', name: '9. 회전 아웃', mode: 'whole',
                 enter: (t, p) => { t.rotation = - (1 - p) * 360; t.opacity = p; },
+                hold: (t, time) => {},
                 exit: (t, p) => { t.rotation = - p * 360; t.opacity = 1 - p; } },
-            { id: 'blurIn', name: '10. 블러 인',
+            { id: 'blurIn', name: '10. 블러 인', mode: 'whole',
                 enter: (t, p) => { t.blur = (1 - p) * 10; t.opacity = p; },
+                hold: (t, time) => {},
                 exit: (t, p) => { t.blur = p * 10; t.opacity = 1 - p; } },
-            { id: 'typewriter', name: '11. 타자기',
-                enter: (t, p) => { const len = Math.floor(p * t.text.length); t.text = t.text.substring(0, len); t.opacity = 1; },
-                exit: (t, p) => { t.opacity = 1 - p; } },
-            { id: 'letterSpacing', name: '12. 글자 간격',
-                enter: (t, p) => { t.letterSpacing = (1 - p) * 50; t.opacity = p; },
-                exit: (t, p) => { t.letterSpacing = p * 50; t.opacity = 1 - p; } },
-            { id: 'slideUpZoom', name: '13. 위로 슬라이드 + 줌',
-                enter: (t, p) => { t.y = (1 - p) * -120; t.scale = 0.5 + 0.5 * p; t.opacity = p; },
-                exit: (t, p) => { t.y = p * 120; t.scale = 1 + 0.3 * p; t.opacity = 1 - p; } },
-            { id: 'slideDownZoom', name: '14. 아래로 슬라이드 + 줌',
-                enter: (t, p) => { t.y = (1 - p) * 120; t.scale = 0.5 + 0.5 * p; t.opacity = p; },
-                exit: (t, p) => { t.y = p * -120; t.scale = 1 + 0.3 * p; t.opacity = 1 - p; } },
-            { id: 'slideLeftRotate', name: '15. 왼쪽 슬라이드 + 회전',
-                enter: (t, p) => { t.x = (1 - p) * -200; t.rotation = (1 - p) * 180; t.opacity = p; },
-                exit: (t, p) => { t.x = p * -200; t.rotation = p * 180; t.opacity = 1 - p; } },
-            { id: 'slideRightRotate', name: '16. 오른쪽 슬라이드 + 회전',
-                enter: (t, p) => { t.x = (1 - p) * 200; t.rotation = (1 - p) * -180; t.opacity = p; },
-                exit: (t, p) => { t.x = p * 200; t.rotation = p * -180; t.opacity = 1 - p; } },
-            { id: 'fadeScaleRotate', name: '17. 페이드 + 스케일 + 회전',
-                enter: (t, p) => { t.opacity = p; t.scale = 0.3 + 0.7 * p; t.rotation = (1 - p) * 360; },
-                exit: (t, p) => { t.opacity = 1 - p; t.scale = 1 + 0.5 * p; t.rotation = p * -360; } },
-            { id: 'bounceIn', name: '18. 바운스 인',
-                enter: (t, p) => { const e = easeOutBounce(p); t.scale = e; t.opacity = p; },
-                exit: (t, p) => { t.opacity = 1 - p; } },
-            { id: 'elasticIn', name: '19. 탄성 인',
-                enter: (t, p) => { const e = easeOutElastic(p); t.scale = e; t.opacity = p; },
-                exit: (t, p) => { t.opacity = 1 - p; } },
-            { id: 'whipIn', name: '20. 휘핑 인',
-                enter: (t, p) => { t.rotation = (1 - p) * 720; t.scale = 0.5 + 0.5 * p; t.opacity = p; },
-                exit: (t, p) => { t.rotation = p * 720; t.opacity = 1 - p; } },
-            { id: 'flipIn', name: '21. 플립 인',
-                enter: (t, p) => { t.rotation = (1 - p) * 90; t.scale = Math.cos((1 - p) * Math.PI / 2) * 0.5 + 0.5; t.opacity = p; },
-                exit: (t, p) => { t.rotation = p * 90; t.opacity = 1 - p; } },
-            { id: 'dropIn', name: '22. 드롭 인',
-                enter: (t, p) => { const e = easeOutBounce(p); t.y = (1 - e) * -300; t.opacity = p; },
-                exit: (t, p) => { t.y = p * -300; t.opacity = 1 - p; } },
-            { id: 'popIn', name: '23. 팝 인',
-                enter: (t, p) => { t.scale = 0.8 + 0.2 * easeOutBack(p); t.opacity = p; },
-                exit: (t, p) => { t.scale = 1 + 0.2 * p; t.opacity = 1 - p; } },
-            { id: 'glitchIn', name: '24. 글리치 인',
-                enter: (t, p) => { t.x = (Math.random() - 0.5) * 30 * (1 - p); t.y = (Math.random() - 0.5) * 30 * (1 - p); t.opacity = p; },
-                exit: (t, p) => { t.x = (Math.random() - 0.5) * 30 * p; t.opacity = 1 - p; } },
-            { id: 'spinIn', name: '25. 스핀 인',
-                enter: (t, p) => { t.rotation = (1 - p) * 1080; t.scale = 0.3 + 0.7 * p; t.opacity = p; },
-                exit: (t, p) => { t.rotation = p * 1080; t.opacity = 1 - p; } },
-            { id: 'twirlIn', name: '26. 트월 인',
-                enter: (t, p) => { t.rotation = (1 - p) * 540; t.skewX = (1 - p) * 30; t.opacity = p; },
-                exit: (t, p) => { t.rotation = p * 540; t.skewX = p * 30; t.opacity = 1 - p; } },
-            { id: 'waveIn', name: '27. 웨이브 인',
-                enter: (t, p) => { t.y = Math.sin(p * Math.PI * 4) * 20 * (1 - p); t.opacity = p; },
-                exit: (t, p) => { t.y = Math.sin(p * Math.PI * 4) * 20 * p; t.opacity = 1 - p; } },
-            { id: 'shakeIn', name: '28. 쉐이크 인',
-                enter: (t, p) => { t.x = Math.sin(p * 30) * 15 * (1 - p); t.opacity = p; },
-                exit: (t, p) => { t.x = Math.sin(p * 30) * 15 * p; t.opacity = 1 - p; } },
-            { id: 'flyLeft', name: '29. 왼쪽에서 플라이',
-                enter: (t, p) => { t.x = (1 - p) * -800; t.opacity = p; },
-                exit: (t, p) => { t.x = p * -800; t.opacity = 1 - p; } },
-            { id: 'flyRight', name: '30. 오른쪽에서 플라이',
-                enter: (t, p) => { t.x = (1 - p) * 800; t.opacity = p; },
-                exit: (t, p) => { t.x = p * 800; t.opacity = 1 - p; } },
-            { id: 'flyTop', name: '31. 위에서 플라이',
-                enter: (t, p) => { t.y = (1 - p) * -600; t.opacity = p; },
-                exit: (t, p) => { t.y = p * -600; t.opacity = 1 - p; } },
-            { id: 'flyBottom', name: '32. 아래에서 플라이',
-                enter: (t, p) => { t.y = (1 - p) * 600; t.opacity = p; },
-                exit: (t, p) => { t.y = p * 600; t.opacity = 1 - p; } },
+
+            // ===== 키네틱 타이포그래피 (char 모드) =====
+            { id: 'kineticTypewriter', name: '11. 글자별 타이핑', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const charProgress = Math.max(0, Math.min(1, p * count - i));
+                    t.opacity = charProgress > 0 ? 1 : 0;
+                    if (charProgress > 0) t.scale = 0.5 + 0.5 * charProgress;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    t.opacity = 1;
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    const charProgress = Math.max(0, Math.min(1, p * count - i));
+                    t.opacity = 1 - charProgress;
+                    return t;
+                } },
+            { id: 'kineticWave', name: '12. 파도 웨이브', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const delay = i * 0.05;
+                    const progress = Math.max(0, Math.min(1, p - delay));
+                    t.y = Math.sin(progress * Math.PI * 4) * 30 * (1 - progress);
+                    t.opacity = progress;
+                    t.rotation = Math.sin(progress * Math.PI * 6) * 20 * (1 - progress);
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    const phase = time * 5 + i * 0.5;
+                    t.y = Math.sin(phase) * 8;
+                    t.rotation = Math.sin(phase * 1.3) * 3;
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    const delay = i * 0.03;
+                    const progress = Math.max(0, Math.min(1, p - delay));
+                    t.y = Math.sin(progress * Math.PI * 4) * 30 * progress;
+                    t.opacity = 1 - progress;
+                    return t;
+                } },
+            { id: 'kineticBounceLetters', name: '13. 글자별 바운스', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const delay = i * 0.03;
+                    const progress = Math.max(0, Math.min(1, p - delay));
+                    const bounce = easeOutBounce(progress);
+                    t.y = (1 - bounce) * -80;
+                    t.scale = 0.5 + 0.5 * bounce;
+                    t.opacity = progress > 0 ? 1 : 0;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    t.y = Math.sin(time * 6 + i) * 5;
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    const progress = Math.max(0, Math.min(1, p));
+                    t.y = progress * -60;
+                    t.opacity = 1 - progress;
+                    return t;
+                } },
+            { id: 'kineticSpinIn', name: '14. 글자별 회전 인', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const delay = i * 0.04;
+                    const progress = Math.max(0, Math.min(1, p - delay));
+                    t.rotation = (1 - progress) * 720;
+                    t.scale = 0.3 + 0.7 * progress;
+                    t.opacity = progress;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    t.rotation = Math.sin(time * 2 + i) * 5;
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    const progress = Math.max(0, Math.min(1, p));
+                    t.rotation = progress * 720;
+                    t.opacity = 1 - progress;
+                    return t;
+                } },
+            { id: 'kineticFlyInLeft', name: '15. 왼쪽에서 플라이 인', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const delay = i * 0.02;
+                    const progress = Math.max(0, Math.min(1, p - delay));
+                    t.x = (1 - progress) * -400;
+                    t.opacity = progress;
+                    t.rotation = (1 - progress) * -30;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    t.x = Math.sin(time * 3 + i) * 5;
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    t.x = p * -400;
+                    t.opacity = 1 - p;
+                    return t;
+                } },
+            { id: 'kineticFlyInRight', name: '16. 오른쪽에서 플라이 인', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const delay = i * 0.02;
+                    const progress = Math.max(0, Math.min(1, p - delay));
+                    t.x = (1 - progress) * 400;
+                    t.opacity = progress;
+                    t.rotation = (1 - progress) * 30;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    t.x = Math.sin(time * 3 + i) * 5;
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    t.x = p * 400;
+                    t.opacity = 1 - p;
+                    return t;
+                } },
+            { id: 'kineticDrop', name: '17. 드롭 인 (바운스)', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const delay = i * 0.01;
+                    const progress = Math.max(0, Math.min(1, p - delay));
+                    const bounce = easeOutBounce(progress);
+                    t.y = (1 - bounce) * -300;
+                    t.scale = 0.5 + 0.5 * bounce;
+                    t.opacity = progress > 0 ? 1 : 0;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    t.y = Math.sin(time * 4 + i) * 4;
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    t.y = p * -300;
+                    t.opacity = 1 - p;
+                    return t;
+                } },
+            { id: 'kineticElastic', name: '18. 탄성 인 (글자별)', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const delay = i * 0.03;
+                    const progress = Math.max(0, Math.min(1, p - delay));
+                    const elastic = easeOutElastic(progress);
+                    t.scale = elastic;
+                    t.opacity = progress > 0 ? 1 : 0;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    t.scale = 1 + Math.sin(time * 5 + i) * 0.05;
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    t.scale = 1 + p * 0.5;
+                    t.opacity = 1 - p;
+                    return t;
+                } },
+            { id: 'kineticTwist', name: '19. 꼬임 회전', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const delay = i * 0.04;
+                    const progress = Math.max(0, Math.min(1, p - delay));
+                    t.rotation = (1 - progress) * 1080;
+                    t.skewX = (1 - progress) * 30;
+                    t.opacity = progress;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    t.rotation = Math.sin(time * 4 + i) * 10;
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    t.rotation = p * 1080;
+                    t.skewX = p * 30;
+                    t.opacity = 1 - p;
+                    return t;
+                } },
+            { id: 'kineticBlurZoom', name: '20. 블러 줌 인', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const delay = i * 0.02;
+                    const progress = Math.max(0, Math.min(1, p - delay));
+                    t.scale = 0.2 + 0.8 * progress;
+                    t.blur = (1 - progress) * 15;
+                    t.opacity = progress;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    t.blur = 0;
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    t.blur = p * 15;
+                    t.opacity = 1 - p;
+                    return t;
+                } },
+            { id: 'kineticWaveLetters', name: '21. 글자 물결', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const delay = i * 0.02;
+                    const progress = Math.max(0, Math.min(1, p - delay));
+                    t.y = Math.sin(progress * Math.PI * 6) * 20 * (1 - progress);
+                    t.rotation = Math.sin(progress * Math.PI * 8) * 15 * (1 - progress);
+                    t.opacity = progress;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    t.y = Math.sin(time * 10 + i * 2) * 6;
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    t.y = Math.sin(p * Math.PI * 6) * 20 * p;
+                    t.opacity = 1 - p;
+                    return t;
+                } },
+            { id: 'kineticPop', name: '22. 팝 인 (글자별)', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const delay = i * 0.02;
+                    const progress = Math.max(0, Math.min(1, p - delay));
+                    t.scale = 0.8 + 0.2 * easeOutBack(progress);
+                    t.opacity = progress;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    t.scale = 1 + Math.sin(time * 7 + i) * 0.03;
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    t.scale = 1 + 0.2 * p;
+                    t.opacity = 1 - p;
+                    return t;
+                } },
+            { id: 'kineticShake', name: '23. 글자별 흔들기', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const progress = Math.max(0, Math.min(1, p));
+                    t.x = Math.sin(progress * 30 + i) * 15 * (1 - progress);
+                    t.opacity = progress;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    t.x = Math.sin(time * 20 + i) * 2;
+                    t.rotation = Math.sin(time * 15 + i) * 1;
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    t.x = Math.sin(p * 30 + i) * 15 * p;
+                    t.opacity = 1 - p;
+                    return t;
+                } },
+            { id: 'kineticGlitch', name: '24. 글리치 (글자별)', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const progress = Math.max(0, Math.min(1, p));
+                    if (progress < 0.5) {
+                        t.x = (Math.random() - 0.5) * 40 * (1 - progress);
+                        t.y = (Math.random() - 0.5) * 40 * (1 - progress);
+                    }
+                    t.opacity = progress;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    if (Math.floor(time * 10) % 3 === 0) {
+                        t.x = (Math.random() - 0.5) * 5;
+                        t.y = (Math.random() - 0.5) * 5;
+                    }
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    if (p < 0.5) {
+                        t.x = (Math.random() - 0.5) * 40 * p;
+                        t.y = (Math.random() - 0.5) * 40 * p;
+                    }
+                    t.opacity = 1 - p;
+                    return t;
+                } },
+            { id: 'kinetic3DFlip', name: '25. 3D 플립 (글자별)', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const delay = i * 0.03;
+                    const progress = Math.max(0, Math.min(1, p - delay));
+                    t.rotation = (1 - progress) * 90;
+                    t.scale = Math.cos((1 - progress) * Math.PI / 2) * 0.5 + 0.5;
+                    t.opacity = progress;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    t.rotation = Math.sin(time * 3 + i) * 5;
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    t.rotation = p * 90;
+                    t.opacity = 1 - p;
+                    return t;
+                } },
+            { id: 'kineticRollIn', name: '26. 굴러 들어오기', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const delay = i * 0.02;
+                    const progress = Math.max(0, Math.min(1, p - delay));
+                    t.rotation = (1 - progress) * 360;
+                    t.x = (1 - progress) * -200;
+                    t.opacity = progress;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    t.rotation = Math.sin(time * 5 + i) * 5;
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    t.rotation = p * 360;
+                    t.x = p * -200;
+                    t.opacity = 1 - p;
+                    return t;
+                } },
+            { id: 'kineticSlither', name: '27. 뱀처럼 기어들기', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const progress = Math.max(0, Math.min(1, p));
+                    const delay = i * 0.05;
+                    const charProgress = Math.max(0, Math.min(1, progress - delay));
+                    t.y = Math.sin(charProgress * Math.PI * 8) * 40 * (1 - charProgress);
+                    t.x = charProgress * 200;
+                    t.opacity = charProgress;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    t.y = Math.sin(time * 8 + i * 0.5) * 3;
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    t.opacity = 1 - p;
+                    return t;
+                } },
+            { id: 'kineticStaggerFade', name: '28. 지연 페이드', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const delay = i * 0.1;
+                    const progress = Math.max(0, Math.min(1, p - delay));
+                    t.opacity = progress;
+                    t.y = (1 - progress) * -20;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    t.opacity = 1;
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    const delay = (count - i) * 0.1;
+                    const progress = Math.max(0, Math.min(1, p - delay));
+                    t.opacity = 1 - progress;
+                    t.y = progress * -20;
+                    return t;
+                } },
+            { id: 'kineticClimbUp', name: '29. 위로 기어오르기', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const delay = i * 0.02;
+                    const progress = Math.max(0, Math.min(1, p - delay));
+                    t.y = (1 - progress) * 200;
+                    t.rotation = (1 - progress) * -15;
+                    t.opacity = progress;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    t.y = Math.sin(time * 3 + i) * 5;
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    t.y = p * 200;
+                    t.opacity = 1 - p;
+                    return t;
+                } },
+            { id: 'kineticCollide', name: '30. 글자 충돌', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const delay = i * 0.02;
+                    const progress = Math.max(0, Math.min(1, p - delay));
+                    t.x = (1 - progress) * (i % 2 === 0 ? -300 : 300);
+                    t.rotation = (1 - progress) * (i % 2 === 0 ? -45 : 45);
+                    t.opacity = progress;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    t.x = Math.sin(time * 5 + i) * 3;
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    t.x = p * (i % 2 === 0 ? -300 : 300);
+                    t.opacity = 1 - p;
+                    return t;
+                } },
+            { id: 'kineticZoomPerChar', name: '31. 글자별 줌 인/아웃', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const delay = i * 0.03;
+                    const progress = Math.max(0, Math.min(1, p - delay));
+                    t.scale = 0.1 + 0.9 * progress;
+                    t.opacity = progress;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    t.scale = 1 + Math.sin(time * 4 + i) * 0.1;
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    t.scale = 1 - 0.9 * p;
+                    t.opacity = 1 - p;
+                    return t;
+                } },
+            { id: 'kineticRotatePerChar', name: '32. 글자별 회전 인/아웃', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const delay = i * 0.02;
+                    const progress = Math.max(0, Math.min(1, p - delay));
+                    t.rotation = (1 - progress) * 540;
+                    t.scale = 0.5 + 0.5 * progress;
+                    t.opacity = progress;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    t.rotation = Math.sin(time * 4 + i) * 5;
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    t.rotation = p * 540;
+                    t.opacity = 1 - p;
+                    return t;
+                } },
+            { id: 'kineticBlurPerChar', name: '33. 글자별 블러 인/아웃', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const delay = i * 0.03;
+                    const progress = Math.max(0, Math.min(1, p - delay));
+                    t.blur = (1 - progress) * 12;
+                    t.opacity = progress;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    t.blur = 0;
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    t.blur = p * 12;
+                    t.opacity = 1 - p;
+                    return t;
+                } },
+            { id: 'kineticSkewPerChar', name: '34. 글자별 비틀기', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const delay = i * 0.02;
+                    const progress = Math.max(0, Math.min(1, p - delay));
+                    t.skewX = (1 - progress) * 50;
+                    t.skewY = (1 - progress) * 20;
+                    t.opacity = progress;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    t.skewX = Math.sin(time * 5 + i) * 5;
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    t.skewX = p * 50;
+                    t.skewY = p * 20;
+                    t.opacity = 1 - p;
+                    return t;
+                } },
+            { id: 'kineticBounceUp', name: '35. 글자별 위로 바운스', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const delay = i * 0.04;
+                    const progress = Math.max(0, Math.min(1, p - delay));
+                    const bounce = easeOutBounce(progress);
+                    t.y = (1 - bounce) * -150;
+                    t.opacity = progress > 0 ? 1 : 0;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    t.y = Math.sin(time * 6 + i) * 10;
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    t.y = p * -150;
+                    t.opacity = 1 - p;
+                    return t;
+                } },
+            { id: 'kineticDropBounce', name: '36. 글자별 아래로 바운스', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const delay = i * 0.04;
+                    const progress = Math.max(0, Math.min(1, p - delay));
+                    const bounce = easeOutBounce(progress);
+                    t.y = (1 - bounce) * 150;
+                    t.opacity = progress > 0 ? 1 : 0;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    t.y = Math.sin(time * 6 + i) * 8;
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    t.y = p * 150;
+                    t.opacity = 1 - p;
+                    return t;
+                } },
+            { id: 'kineticWaveContinuous', name: '37. 연속 웨이브', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const progress = Math.max(0, Math.min(1, p));
+                    t.y = Math.sin(progress * Math.PI * 10 + i) * 20 * (1 - progress);
+                    t.opacity = progress;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    t.y = Math.sin(time * 10 + i * 0.8) * 8;
+                    t.rotation = Math.sin(time * 12 + i) * 3;
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    t.y = Math.sin(p * Math.PI * 10 + i) * 20 * p;
+                    t.opacity = 1 - p;
+                    return t;
+                } },
+            { id: 'kineticPulseScale', name: '38. 펄스 스케일', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const progress = Math.max(0, Math.min(1, p));
+                    t.scale = 0.8 + 0.2 * progress;
+                    t.opacity = progress;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    t.scale = 1 + Math.sin(time * 8 + i) * 0.1;
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    t.scale = 1 - 0.2 * p;
+                    t.opacity = 1 - p;
+                    return t;
+                } },
+            { id: 'kineticRotateWave', name: '39. 회전 웨이브', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const progress = Math.max(0, Math.min(1, p));
+                    t.rotation = Math.sin(progress * Math.PI * 6 + i) * 45 * (1 - progress);
+                    t.opacity = progress;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    t.rotation = Math.sin(time * 6 + i * 0.5) * 8;
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    t.rotation = Math.sin(p * Math.PI * 6 + i) * 45 * p;
+                    t.opacity = 1 - p;
+                    return t;
+                } },
+            { id: 'kineticVerticalWave', name: '40. 수직 파도', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const progress = Math.max(0, Math.min(1, p));
+                    t.y = Math.sin(i * 0.8) * 30 * (1 - progress);
+                    t.opacity = progress;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    t.y = Math.sin(time * 9 + i) * 6;
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    t.y = Math.sin(i * 0.8) * 30 * p;
+                    t.opacity = 1 - p;
+                    return t;
+                } },
+            { id: 'kineticScatter', name: '41. 흩어지며 등장', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const progress = Math.max(0, Math.min(1, p));
+                    const angle = (i / count) * Math.PI * 2;
+                    const dist = (1 - progress) * 300;
+                    t.x = Math.cos(angle) * dist;
+                    t.y = Math.sin(angle) * dist;
+                    t.opacity = progress;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    const angle = (i / count) * Math.PI * 2;
+                    const dist = p * 300;
+                    t.x = Math.cos(angle) * dist;
+                    t.y = Math.sin(angle) * dist;
+                    t.opacity = 1 - p;
+                    return t;
+                } },
+            { id: 'kineticSpiralIn', name: '42. 나선형 등장', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const progress = Math.max(0, Math.min(1, p));
+                    const angle = progress * Math.PI * 4 + i * 0.5;
+                    const radius = (1 - progress) * 200;
+                    t.x = Math.cos(angle) * radius;
+                    t.y = Math.sin(angle) * radius;
+                    t.rotation = angle * 180 / Math.PI;
+                    t.opacity = progress;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    t.x = Math.cos(time * 2 + i) * 5;
+                    t.y = Math.sin(time * 2 + i) * 5;
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    const angle = p * Math.PI * 4 + i * 0.5;
+                    const radius = p * 200;
+                    t.x = Math.cos(angle) * radius;
+                    t.y = Math.sin(angle) * radius;
+                    t.rotation = angle * 180 / Math.PI;
+                    t.opacity = 1 - p;
+                    return t;
+                } },
+            { id: 'kineticTypewriterElastic', name: '43. 탄성 타이핑', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const progress = Math.max(0, Math.min(1, p * count - i));
+                    if (progress > 0) {
+                        const elastic = easeOutElastic(progress);
+                        t.scale = elastic;
+                        t.opacity = 1;
+                    } else {
+                        t.opacity = 0;
+                    }
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    const progress = Math.max(0, Math.min(1, p * count - i));
+                    t.opacity = 1 - progress;
+                    return t;
+                } },
+            { id: 'kineticRandomIn', name: '44. 랜덤 등장', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const progress = Math.max(0, Math.min(1, p - Math.random() * 0.5));
+                    t.x = (Math.random() - 0.5) * 300 * (1 - progress);
+                    t.y = (Math.random() - 0.5) * 300 * (1 - progress);
+                    t.rotation = (Math.random() - 0.5) * 360 * (1 - progress);
+                    t.opacity = progress;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    t.x = (Math.random() - 0.5) * 300 * p;
+                    t.y = (Math.random() - 0.5) * 300 * p;
+                    t.opacity = 1 - p;
+                    return t;
+                } },
+            { id: 'kineticFadeScaleRotate', name: '45. 페이드+스케일+회전', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const progress = Math.max(0, Math.min(1, p - i * 0.02));
+                    t.opacity = progress;
+                    t.scale = 0.3 + 0.7 * progress;
+                    t.rotation = (1 - progress) * 360;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    t.rotation = Math.sin(time * 3 + i) * 5;
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    t.opacity = 1 - p;
+                    t.scale = 1 + 0.5 * p;
+                    t.rotation = p * -360;
+                    return t;
+                } },
+            { id: 'kineticExplosionIn', name: '46. 폭발 등장', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const progress = Math.max(0, Math.min(1, p));
+                    const angle = (i / count) * Math.PI * 2;
+                    const dist = (1 - progress) * 400;
+                    t.x = Math.cos(angle) * dist;
+                    t.y = Math.sin(angle) * dist;
+                    t.scale = 1 + (1 - progress) * 2;
+                    t.opacity = progress;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    const angle = (i / count) * Math.PI * 2;
+                    const dist = p * 400;
+                    t.x = Math.cos(angle) * dist;
+                    t.y = Math.sin(angle) * dist;
+                    t.opacity = 1 - p;
+                    return t;
+                } },
+            { id: 'kineticImplosion', name: '47. 내파 등장', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const progress = Math.max(0, Math.min(1, p));
+                    const angle = (i / count) * Math.PI * 2;
+                    const dist = (1 - progress) * 200;
+                    t.x = -Math.cos(angle) * dist;
+                    t.y = -Math.sin(angle) * dist;
+                    t.scale = 2 - progress;
+                    t.opacity = progress;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    t.x = 0;
+                    t.y = 0;
+                    t.scale = 1 - p;
+                    t.opacity = 1 - p;
+                    return t;
+                } },
+            { id: 'kineticSpring', name: '48. 스프링 등장', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const delay = i * 0.02;
+                    const progress = Math.max(0, Math.min(1, p - delay));
+                    t.scale = 0.5 + 0.5 * easeOutBack(progress);
+                    t.rotation = (1 - progress) * 30;
+                    t.opacity = progress;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    t.scale = 1 + Math.sin(time * 6 + i) * 0.02;
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    t.scale = 1 + 0.5 * p;
+                    t.opacity = 1 - p;
+                    return t;
+                } },
+            { id: 'kineticWobble', name: '49. 워블', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const progress = Math.max(0, Math.min(1, p));
+                    t.rotation = Math.sin(progress * Math.PI * 8 + i) * 15 * (1 - progress);
+                    t.skewX = Math.sin(progress * Math.PI * 6) * 10 * (1 - progress);
+                    t.opacity = progress;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    t.rotation = Math.sin(time * 8 + i * 0.5) * 5;
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    t.rotation = Math.sin(p * Math.PI * 8 + i) * 15 * p;
+                    t.opacity = 1 - p;
+                    return t;
+                } },
+            { id: 'kineticFloatIn', name: '50. 떠오르며 등장', mode: 'char',
+                enter: (t, p, i, count) => {
+                    const progress = Math.max(0, Math.min(1, p - i * 0.03));
+                    t.y = (1 - progress) * 200;
+                    t.opacity = progress;
+                    t.scale = 0.8 + 0.2 * progress;
+                    return t;
+                },
+                hold: (t, time, i) => {
+                    t.y = Math.sin(time * 5 + i) * 8;
+                    return t;
+                },
+                exit: (t, p, i, count) => {
+                    t.y = p * 200;
+                    t.opacity = 1 - p;
+                    return t;
+                } },
         ];
 
         // ==================== 상태 ====================
@@ -620,12 +1340,10 @@ SRT 자막을 로드했습니다.
             render();
         }
 
-        // 모든 속성 입력에 이벤트 연결
         Object.values(propInputs).forEach(input => input.addEventListener('input', updateSelectedCue));
         linePreset.addEventListener('change', updateSelectedCue);
         propFontFamily.addEventListener('change', updateSelectedCue);
 
-        // 전역 프리셋 적용
         document.getElementById('applyGlobalPreset').addEventListener('click', () => {
             const preset = globalPreset.value;
             subtitles.forEach(sub => sub.props.animationPreset = preset);
@@ -675,18 +1393,32 @@ SRT 자막을 로드했습니다.
         });
 
         // ==================== 렌더링 ====================
-        function drawTextWithSpacing(context, text, x, y, spacing) {
-            const totalWidth = context.measureText(text).width + spacing * (text.length - 1);
-            let startX = x - totalWidth / 2;
-            context.textAlign = 'left';
-            for (let i = 0; i < text.length; i++) {
-                const char = text[i];
-                const charWidth = context.measureText(char).width;
-                const charX = startX + charWidth / 2;
-                context.fillText(char, charX, y);
-                if (context.lineWidth > 0) context.strokeText(char, charX, y);
-                startX += charWidth + spacing;
+        function drawCharacter(ctx, char, x, y, transform) {
+            ctx.save();
+            ctx.globalAlpha = Math.max(0, Math.min(1, transform.opacity ?? 1));
+            ctx.translate(x + (transform.x || 0), y + (transform.y || 0));
+            if (transform.skewX || transform.skewY) {
+                ctx.transform(1, Math.tan(transform.skewY * Math.PI / 180), Math.tan(transform.skewX * Math.PI / 180), 1, 0, 0);
             }
+            ctx.rotate((transform.rotation || 0) * Math.PI / 180);
+            ctx.scale(transform.scale || 1, transform.scale || 1);
+            if (transform.blur > 0 && typeof ctx.filter !== 'undefined') {
+                ctx.filter = `blur(${transform.blur}px)`;
+            }
+            ctx.font = transform.font;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.lineWidth = transform.strokeWidth || 0;
+            ctx.strokeStyle = transform.strokeColor || '#000';
+            ctx.fillStyle = transform.color || '#fff';
+            if (transform.shadowBlur > 0) {
+                ctx.shadowBlur = transform.shadowBlur;
+                ctx.shadowColor = transform.shadowColor;
+            }
+            ctx.fillText(char, 0, 0);
+            if (ctx.lineWidth > 0) ctx.strokeText(char, 0, 0);
+            ctx.restore();
+            ctx.filter = 'none';
         }
 
         function render() {
@@ -711,67 +1443,106 @@ SRT 자막을 로드했습니다.
                         p = (local - (dur - exitDur)) / exitDur;
                     }
 
-                    let t = {
-                        opacity: 1,
-                        x: 0,
-                        y: 0,
-                        scale: 1,
-                        rotation: 0,
-                        skewX: 0,
-                        skewY: 0,
-                        blur: 0,
-                        letterSpacing: 0,
-                        text: cue.text
-                    };
+                    const preset = presets.find(pr => pr.id === props.animationPreset) || presets[0];
 
-                    const preset = presets.find(p => p.id === props.animationPreset) || presets[0];
-                    if (phase === 'enter') preset.enter(t, p);
-                    if (phase === 'exit') preset.exit(t, p);
+                    // 글자 단위 모드 여부
+                    if (preset.mode === 'char') {
+                        const chars = cue.text.split('');
+                        const charCount = chars.length;
+                        // 전체 텍스트 폭 측정
+                        ctx.font = `${props.fontSize}px ${props.fontFamily}`;
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        const totalWidth = ctx.measureText(cue.text).width;
+                        const startX = props.x - totalWidth / 2;
+                        let currentX = startX;
 
-                    const x = props.x + t.x;
-                    const y = props.y + t.y;
-                    const scale = props.scale * t.scale;
-                    const rotation = props.rotation + t.rotation;
-                    const skewX = props.skewX + t.skewX;
-                    const skewY = props.skewY + t.skewY;
-                    const opacity = Math.max(0, Math.min(1, t.opacity));
-                    const fontSize = props.fontSize;
-                    const fontFamily = props.fontFamily;
-                    const color = props.color;
-                    const strokeColor = props.strokeColor;
-                    const strokeWidth = props.strokeWidth;
-                    const shadowBlur = props.shadowBlur;
-                    const shadowColor = props.shadowColor;
+                        for (let i = 0; i < charCount; i++) {
+                            const char = chars[i];
+                            const charWidth = ctx.measureText(char).width;
+                            const charCenterX = currentX + charWidth / 2;
+                            const charCenterY = props.y;
 
-                    ctx.save();
-                    ctx.globalAlpha = opacity;
-                    ctx.translate(x, y);
-                    if (skewX || skewY) {
-                        ctx.transform(1, Math.tan(skewY * Math.PI / 180), Math.tan(skewX * Math.PI / 180), 1, 0, 0);
-                    }
-                    ctx.rotate(rotation * Math.PI / 180);
-                    ctx.scale(scale, scale);
-                    if (t.blur > 0 && typeof ctx.filter !== 'undefined') {
-                        ctx.filter = `blur(${t.blur}px)`;
-                    }
-                    ctx.font = `${fontSize}px ${fontFamily}`;
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.lineWidth = strokeWidth;
-                    ctx.strokeStyle = strokeColor;
-                    ctx.fillStyle = color;
-                    if (shadowBlur > 0) {
-                        ctx.shadowBlur = shadowBlur;
-                        ctx.shadowColor = shadowColor;
-                    }
-                    if (t.letterSpacing !== 0) {
-                        drawTextWithSpacing(ctx, t.text, 0, 0, t.letterSpacing);
+                            const charTransform = {
+                                x: 0, y: 0, scale: 1, rotation: 0,
+                                skewX: 0, skewY: 0, opacity: 1,
+                                blur: 0, letterSpacing: 0,
+                                font: `${props.fontSize}px ${props.fontFamily}`,
+                                color: props.color,
+                                strokeColor: props.strokeColor,
+                                strokeWidth: props.strokeWidth,
+                                shadowBlur: props.shadowBlur,
+                                shadowColor: props.shadowColor
+                            };
+
+                            // 프리셋 적용
+                            if (phase === 'enter') {
+                                preset.enter(charTransform, p, i, charCount);
+                            } else if (phase === 'exit') {
+                                preset.exit(charTransform, p, i, charCount);
+                            } else {
+                                if (preset.hold) preset.hold(charTransform, local, i, charCount);
+                            }
+
+                            // 기본 속성 (위치, 회전 등) 적용
+                            charTransform.x += props.x - charCenterX;
+                            charTransform.y += props.y - charCenterY;
+                            charTransform.rotation += props.rotation;
+                            charTransform.skewX += props.skewX;
+                            charTransform.skewY += props.skewY;
+                            charTransform.scale *= props.scale;
+
+                            drawCharacter(ctx, char, charCenterX, charCenterY, charTransform);
+                            currentX += charWidth;
+                        }
                     } else {
-                        ctx.fillText(t.text, 0, 0);
-                        if (strokeWidth > 0) ctx.strokeText(t.text, 0, 0);
+                        // 기존 whole 모드
+                        const wholeTransform = {
+                            x: 0, y: 0, scale: 1, rotation: 0,
+                            skewX: 0, skewY: 0, opacity: 1,
+                            blur: 0, letterSpacing: 0,
+                            font: `${props.fontSize}px ${props.fontFamily}`,
+                            color: props.color,
+                            strokeColor: props.strokeColor,
+                            strokeWidth: props.strokeWidth,
+                            shadowBlur: props.shadowBlur,
+                            shadowColor: props.shadowColor
+                        };
+
+                        if (phase === 'enter') {
+                            preset.enter(wholeTransform, p);
+                        } else if (phase === 'exit') {
+                            preset.exit(wholeTransform, p);
+                        } else {
+                            if (preset.hold) preset.hold(wholeTransform, local);
+                        }
+
+                        ctx.save();
+                        ctx.globalAlpha = Math.max(0, Math.min(1, wholeTransform.opacity ?? 1));
+                        ctx.translate(props.x + (wholeTransform.x || 0), props.y + (wholeTransform.y || 0));
+                        if (wholeTransform.skewX || wholeTransform.skewY) {
+                            ctx.transform(1, Math.tan(wholeTransform.skewY * Math.PI / 180), Math.tan(wholeTransform.skewX * Math.PI / 180), 1, 0, 0);
+                        }
+                        ctx.rotate((props.rotation + (wholeTransform.rotation || 0)) * Math.PI / 180);
+                        ctx.scale(props.scale * (wholeTransform.scale || 1), props.scale * (wholeTransform.scale || 1));
+                        if (wholeTransform.blur > 0 && typeof ctx.filter !== 'undefined') {
+                            ctx.filter = `blur(${wholeTransform.blur}px)`;
+                        }
+                        ctx.font = `${props.fontSize}px ${props.fontFamily}`;
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.lineWidth = props.strokeWidth;
+                        ctx.strokeStyle = props.strokeColor;
+                        ctx.fillStyle = props.color;
+                        if (props.shadowBlur > 0) {
+                            ctx.shadowBlur = props.shadowBlur;
+                            ctx.shadowColor = props.shadowColor;
+                        }
+                        ctx.fillText(cue.text, 0, 0);
+                        if (props.strokeWidth > 0) ctx.strokeText(cue.text, 0, 0);
+                        ctx.restore();
+                        ctx.filter = 'none';
                     }
-                    ctx.restore();
-                    ctx.filter = 'none';
                 }
             }
             updateTimeDisplay();
@@ -842,7 +1613,6 @@ SRT 자막을 로드했습니다.
             const endTime = parseFloat(document.getElementById('exportDuration').value);
             if (isNaN(endTime) || endTime <= 0) { alert('내보낼 시간을 올바르게 입력하세요.'); return; }
 
-            // 오디오 컨텍스트 재개
             if (audioCtx && audioCtx.state === 'suspended') await audioCtx.resume();
 
             currentTime = 0;
@@ -882,7 +1652,6 @@ SRT 자막을 로드했습니다.
 
             mediaRecorder.start(1000);
 
-            // 오디오 재생
             const audio = document.getElementById('audio');
             if (audio.src && audioCtx) {
                 audio.currentTime = 0;
