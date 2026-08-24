@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>자모 LED 키네틱 타이포그래피001</title>
+    <title>자모 LED 키네틱 타이포그래피 (음절별 복제)</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -124,7 +124,7 @@
 </head>
 <body>
     <header>
-        <h1>🎵 자모 LED 키네틱 타이포</h1>
+        <h1>🎵 자모 LED 키네틱 타이포 (음절별)</h1>
         <input type="file" id="srtFile" accept=".srt">
         <input type="file" id="audioFile" accept="audio/*">
         <button id="loadSample">샘플 SRT</button>
@@ -252,7 +252,7 @@
         const aspectRatioSelect = document.getElementById('aspectRatio');
 
         let cues = [];
-        let uniqueComponents = [];
+        let allLeds = []; // [{ char, syllableIndex, componentIndex, start, end, fullLitTime, x, y, baseX, baseY }]
         let currentTime = 0;
         let isPlaying = false;
         let isRecording = false;
@@ -317,7 +317,7 @@
 
         function loadSRT(content) {
             cues = parseSRT(content);
-            buildComponentIntervals();
+            buildAllLeds();
             assignInitialPositions();
             avoidOverlaps();
             setupTimeline();
@@ -326,43 +326,42 @@
             render();
         }
 
-        // ==================== 자모 컴포넌트 인터벌 구축 ====================
-        function buildComponentIntervals() {
-            const componentMap = new Map();
-
-            cues.forEach(cue => {
+        // ==================== 음절별 자모 LED 생성 ====================
+        function buildAllLeds() {
+            allLeds = [];
+            cues.forEach((cue, cueIdx) => {
                 const chars = Array.from(cue.text);
-                chars.forEach(char => {
+                chars.forEach((char, charIdx) => {
                     if (char.trim() === '') return;
                     const components = decomposeKorean(char);
                     const numComponents = components.length;
-                    const syllableDuration = cue.end - cue.start;
-                    const step = syllableDuration / numComponents;
+                    const step = (cue.end - cue.start) / numComponents;
                     const fullLitTime = cue.start + (numComponents - 1) * step;
 
-                    components.forEach((comp, idx) => {
-                        if (!componentMap.has(comp)) {
-                            componentMap.set(comp, { char: comp, intervals: [] });
-                        }
-                        const entry = componentMap.get(comp);
-                        entry.intervals.push({
-                            start: cue.start + idx * step,
+                    components.forEach((comp, compIdx) => {
+                        allLeds.push({
+                            char: comp,
+                            cueIdx,
+                            charIdx,
+                            compIdx,
+                            start: cue.start + compIdx * step,
                             end: cue.end,
-                            fullLitTime: fullLitTime
+                            fullLitTime,
+                            x: 0, y: 0, baseX: 0, baseY: 0
                         });
                     });
                 });
             });
 
-            uniqueComponents = Array.from(componentMap.values());
-            uniqueComponents.forEach(entry => {
-                entry.intervals.sort((a, b) => a.start - b.start);
-                entry.firstStart = entry.intervals[0]?.start || 0;
-            });
-            uniqueComponents.sort((a, b) => a.firstStart - b.firstStart);
+            // 전체 LED 개수가 화면에 너무 많으면 폰트 크기가 작아질 수 있으니, 적절히 조절 (현재는 자동)
+            if (allLeds.length > 200) {
+                currentFontSize = Math.min(80, Math.max(30, 80 * (200 / allLeds.length) * 1.5));
+                fontSizeSlider.value = currentFontSize;
+                fontSizeValueSpan.textContent = Math.round(currentFontSize);
+            }
         }
 
-        // ==================== 랜덤 위치 배치 (기존 스타일) ====================
+        // ==================== 랜덤 위치 배치 ====================
         function assignInitialPositions() {
             const w = canvas.width;
             const h = canvas.height;
@@ -371,68 +370,56 @@
             const centerY = h / 2;
             const maxRadius = Math.min(w, h) * 0.45;
 
-            uniqueComponents.forEach(entry => {
+            allLeds.forEach(led => {
                 const angle = Math.random() * Math.PI * 2;
                 const dist = Math.random() * maxRadius;
-                entry.baseX = centerX + Math.cos(angle) * dist;
-                entry.baseY = centerY + Math.sin(angle) * dist;
-
-                // 클램프
-                entry.baseX = Math.min(Math.max(entry.baseX, margin), w - margin);
-                entry.baseY = Math.min(Math.max(entry.baseY, margin), h - margin);
-
-                updateEntryPosition(entry);
+                led.baseX = centerX + Math.cos(angle) * dist;
+                led.baseY = centerY + Math.sin(angle) * dist;
+                updateLedPosition(led);
             });
         }
 
-        function updateEntryPosition(entry) {
+        function updateLedPosition(led) {
             const spreadFactor = scatterAmount;
             const centerX = canvas.width / 2;
             const centerY = canvas.height / 2;
-            // baseX/Y는 이미 중심에서 일정 반경 내에 있음. scatterAmount가 0이면 중심으로.
-            const x = centerX + (entry.baseX - centerX) * spreadFactor;
-            const y = centerY + (entry.baseY - centerY) * spreadFactor;
-            entry.x = Math.min(Math.max(x, 20), canvas.width - 20);
-            entry.y = Math.min(Math.max(y, 20), canvas.height - 20);
+            const x = centerX + (led.baseX - centerX) * spreadFactor;
+            const y = centerY + (led.baseY - centerY) * spreadFactor;
+            led.x = Math.min(Math.max(x, 20), canvas.width - 20);
+            led.y = Math.min(Math.max(y, 20), canvas.height - 20);
         }
 
         // ==================== 겹침 회피 ====================
         function avoidOverlaps() {
-            if (uniqueComponents.length < 2) return;
+            if (allLeds.length < 2) return;
             ctx.font = `${currentFontSize}px ${currentFont}`;
-            // 각 컴포넌트의 대략적인 폭 계산
-            const widths = uniqueComponents.map(entry => {
-                return ctx.measureText(entry.char).width;
-            });
+            const widths = allLeds.map(led => ctx.measureText(led.char).width);
 
-            const iterations = 200;
-            const pushForce = 0.5;
+            const iterations = 300;
+            const pushForce = 0.4;
 
             for (let iter = 0; iter < iterations; iter++) {
                 let moved = false;
-                for (let i = 0; i < uniqueComponents.length; i++) {
-                    for (let j = i + 1; j < uniqueComponents.length; j++) {
-                        const entryA = uniqueComponents[i];
-                        const entryB = uniqueComponents[j];
-                        const dx = entryB.x - entryA.x;
-                        const dy = entryB.y - entryA.y;
+                for (let i = 0; i < allLeds.length; i++) {
+                    for (let j = i + 1; j < allLeds.length; j++) {
+                        const a = allLeds[i];
+                        const b = allLeds[j];
+                        const dx = b.x - a.x;
+                        const dy = b.y - a.y;
                         const dist = Math.sqrt(dx * dx + dy * dy);
-                        const minDist = (widths[i] + widths[j]) / 2 + 2; // 여유 2px
+                        const minDist = (widths[i] + widths[j]) / 2 + 3;
                         if (dist < minDist && dist > 0) {
                             const overlap = (minDist - dist) / 2;
                             const nx = dx / dist;
                             const ny = dy / dist;
-                            // 반대 방향으로 이동
-                            entryA.x -= nx * overlap * pushForce;
-                            entryA.y -= ny * overlap * pushForce;
-                            entryB.x += nx * overlap * pushForce;
-                            entryB.y += ny * overlap * pushForce;
-
-                            // 클램프
-                            entryA.x = Math.min(Math.max(entryA.x, 20), canvas.width - 20);
-                            entryA.y = Math.min(Math.max(entryA.y, 20), canvas.height - 20);
-                            entryB.x = Math.min(Math.max(entryB.x, 20), canvas.width - 20);
-                            entryB.y = Math.min(Math.max(entryB.y, 20), canvas.height - 20);
+                            a.x -= nx * overlap * pushForce;
+                            a.y -= ny * overlap * pushForce;
+                            b.x += nx * overlap * pushForce;
+                            b.y += ny * overlap * pushForce;
+                            a.x = Math.min(Math.max(a.x, 20), canvas.width - 20);
+                            a.y = Math.min(Math.max(a.y, 20), canvas.height - 20);
+                            b.x = Math.min(Math.max(b.x, 20), canvas.width - 20);
+                            b.y = Math.min(Math.max(b.y, 20), canvas.height - 20);
                             moved = true;
                         }
                     }
@@ -468,6 +455,7 @@
             if (customFont) {
                 currentFont = `'${customFont}', sans-serif`;
                 fontSelect.value = currentFont;
+                avoidOverlaps();
                 render();
             }
         });
@@ -553,7 +541,7 @@
         scatterSlider.addEventListener('input', () => {
             scatterAmount = scatterSlider.value / 100;
             scatterValueSpan.textContent = scatterSlider.value;
-            uniqueComponents.forEach(entry => updateEntryPosition(entry));
+            allLeds.forEach(led => updateLedPosition(led));
             avoidOverlaps();
             render();
         });
@@ -568,8 +556,8 @@
         shuffleBtn.addEventListener('click', reshufflePositions);
 
         // ==================== 렌더링 ====================
-        function isComponentActive(compEntry, time) {
-            return compEntry.intervals.some(interval => time >= interval.start && time <= interval.end);
+        function isLedActive(led, time) {
+            return time >= led.start && time <= led.end;
         }
 
         function render() {
@@ -577,7 +565,7 @@
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            if (uniqueComponents.length === 0) {
+            if (allLeds.length === 0) {
                 ctx.fillStyle = '#666';
                 ctx.font = '24px sans-serif';
                 ctx.textAlign = 'center';
@@ -594,21 +582,18 @@
             const activeColor = '#ffd700';
             const inactiveColor = 'rgba(255,255,255,0.3)';
 
-            uniqueComponents.forEach(entry => {
-                const x = entry.x;
-                const y = entry.y;
-                const isActive = isComponentActive(entry, currentTime);
-
+            allLeds.forEach(led => {
+                const isActive = isLedActive(led, currentTime);
                 if (isActive) {
                     ctx.fillStyle = activeColor;
                     ctx.shadowColor = activeColor;
                     ctx.shadowBlur = 15;
-                    ctx.fillText(entry.char, x, y);
+                    ctx.fillText(led.char, led.x, led.y);
                     ctx.shadowBlur = 0;
                 } else {
                     ctx.strokeStyle = inactiveColor;
                     ctx.lineWidth = 2;
-                    ctx.strokeText(entry.char, x, y);
+                    ctx.strokeText(led.char, led.x, led.y);
                 }
             });
 
@@ -631,8 +616,7 @@
                 }
                 const components = decomposeKorean(char);
                 const numComp = components.length;
-                const syllableDuration = activeCue.end - activeCue.start;
-                const step = syllableDuration / numComp;
+                const step = (activeCue.end - activeCue.start) / numComp;
                 const fullLitTime = activeCue.start + (numComp - 1) * step;
                 const isLit = currentTime >= fullLitTime;
                 html += isLit ? `<span class="lit">${char}</span>` : char;
