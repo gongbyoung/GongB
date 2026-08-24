@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SRT 싱크 메이커</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background: #1a1a2e;
+            color: #eee;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+        header {
+            background: #16213e;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            border-bottom: 1px solid #333;
+        }
+        header h1 {
+            font-size: 20px;
+            margin-right: 20px;
+            color: #ffd700;
+        }
+        button, select, input[type="file"], input[type="text"] {
+            background: #0f3460;
+            color: white;
+            border: 1px solid #533483;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        button:hover {
+            background: #533483;
+            border-color: #7b5ea7;
+        }
+        input[type="file"] {
+            padding: 6px;
+        }
+        .audio-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: auto;
+        }
+        .time-display {
+            font-family: monospace;
+            background: #0a0a1a;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+        .main-area {
+            flex: 1;
+            display: flex;
+            flex-direction: row;
+            min-height: 0;
+        }
+        .lyric-display {
+            flex: 2;
+            padding: 20px;
+            overflow-y: auto;
+            background: #0d1117;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .current-lyric {
+            font-size: 48px;
+            font-weight: bold;
+            text-align: center;
+            color: #ffd700;
+            text-shadow: 0 0 20px rgba(255,215,0,0.5);
+            transition: all 0.1s;
+            min-height: 80px;
+            max-width: 90%;
+            word-wrap: break-word;
+        }
+        .lyric-list {
+            width: 100%;
+            max-width: 600px;
+            margin-top: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .lyric-line-item {
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .lyric-line-item.active {
+            background: #533483;
+            color: #fff;
+            font-weight: bold;
+        }
+        .lyric-line-item:hover {
+            background: #2a2a4a;
+        }
+        .sidebar {
+            flex: 1;
+            background: #16213e;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            min-width: 300px;
+            border-left: 1px solid #333;
+        }
+        .sidebar h2 {
+            font-size: 18px;
+            color: #ffd700;
+        }
+        textarea {
+            flex: 1;
+            background: #0a0a1a;
+            color: #eee;
+            border: 1px solid #533483;
+            border-radius: 6px;
+            padding: 12px;
+            font-size: 16px;
+            resize: vertical;
+            min-height: 200px;
+        }
+        .timeline-container {
+            padding: 10px 20px;
+            background: #0a0a1a;
+            border-top: 1px solid #333;
+        }
+        canvas#timelineCanvas {
+            width: 100%;
+            height: 80px;
+            background: #111;
+            border-radius: 6px;
+            cursor: crosshair;
+        }
+        .button-row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .btn-primary {
+            background: #e94560;
+            border-color: #e94560;
+            font-weight: bold;
+        }
+        .btn-primary:hover {
+            background: #ff5e7e;
+            border-color: #ff5e7e;
+        }
+        .btn-success {
+            background: #2ecc71;
+            border-color: #2ecc71;
+            color: #000;
+            font-weight: bold;
+        }
+        .btn-success:hover {
+            background: #3ddc84;
+        }
+        .marker-info {
+            font-size: 13px;
+            color: #aaa;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>🎵 SRT 싱크 메이커</h1>
+        <input type="file" id="mp3File" accept="audio/*">
+        <div class="audio-controls">
+            <button id="playBtn">▶ 재생</button>
+            <button id="pauseBtn">⏸ 일시정지</button>
+            <span class="time-display" id="timeDisplay">00:00.00</span>
+            <span class="time-display" id="totalDuration">/ 00:00.00</span>
+        </div>
+    </header>
+
+    <div class="main-area">
+        <div class="lyric-display">
+            <div class="current-lyric" id="currentLyric">가사를 입력하세요</div>
+            <div class="lyric-list" id="lyricList"></div>
+        </div>
+        <div class="sidebar">
+            <h2>가사 입력 (한 줄 = 한 자막)</h2>
+            <textarea id="lyricInput" placeholder="가사를 한 줄씩 입력하세요..."></textarea>
+            <div class="button-row">
+                <button id="applyLyrics">가사 적용</button>
+                <button id="setSyncBtn" class="btn-primary">⏱ 싱크 설정 (현재 줄 시작)</button>
+                <button id="autoSyncBtn">자동 싱크 (다음 줄로)</button>
+                <button id="saveSrtBtn" class="btn-success">💾 SRT 저장</button>
+            </div>
+            <div class="marker-info" id="markerInfo">마커를 클릭하면 시간이 설정됩니다.</div>
+        </div>
+    </div>
+
+    <div class="timeline-container">
+        <canvas id="timelineCanvas" width="1200" height="80"></canvas>
+        <div style="display:flex; justify-content:space-between; margin-top:4px;">
+            <span id="timelineStart">0:00</span>
+            <span id="timelineEnd">0:00</span>
+        </div>
+    </div>
+
+    <audio id="audio" style="display:none;"></audio>
+
+    <script>
+        // ==================== 상태 ====================
+        const audio = document.getElementById('audio');
+        const canvas = document.getElementById('timelineCanvas');
+        const ctx = canvas.getContext('2d');
+        const lyricInput = document.getElementById('lyricInput');
+        const currentLyricEl = document.getElementById('currentLyric');
+        const lyricListEl = document.getElementById('lyricList');
+        const timeDisplay = document.getElementById('timeDisplay');
+        const totalDurationEl = document.getElementById('totalDuration');
+        const markerInfo = document.getElementById('markerInfo');
+
+        let lyrics = []; // { text, start, end }
+        let currentLyricIndex = -1; // 현재 재생 중인 가사 인덱스
+        let selectedLyricIndex = 0; // 싱크 설정 시 대상 인덱스
+        let isPlaying = false;
+        let fileName = 'song';
+
+        // ==================== 오디오 로드 ====================
+        document.getElementById('mp3File').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            fileName = file.name.replace(/\.[^.]+$/, '') || 'song';
+            const url = URL.createObjectURL(file);
+            audio.src = url;
+            audio.load();
+            audio.addEventListener('loadedmetadata', () => {
+                totalDurationEl.textContent = formatTime(audio.duration);
+                drawTimeline();
+            });
+        });
+
+        // ==================== 재생 컨트롤 ====================
+        document.getElementById('playBtn').addEventListener('click', () => {
+            audio.play();
+            isPlaying = true;
+        });
+        document.getElementById('pauseBtn').addEventListener('click', () => {
+            audio.pause();
+            isPlaying = false;
+        });
+
+        audio.addEventListener('timeupdate', () => {
+            updateTimeDisplay();
+            updateCurrentLyric();
+            drawTimeline();
+        });
+
+        audio.addEventListener('play', () => { isPlaying = true; });
+        audio.addEventListener('pause', () => { isPlaying = false; });
+
+        // ==================== 가사 관리 ====================
+        document.getElementById('applyLyrics').addEventListener('click', () => {
+            const lines = lyricInput.value.split('\n').filter(line => line.trim() !== '');
+            lyrics = lines.map((text, i) => ({
+                text: text.trim(),
+                start: (i > 0) ? lyrics[i-1]?.end || 0 : 0,
+                end: 0
+            }));
+            if (lyrics.length > 0) {
+                lyrics[0].start = 0;
+                lyrics[lyrics.length-1].end = audio.duration || 0;
+                // 중간 end는 다음 start와 같게 초기화
+                for (let i = 0; i < lyrics.length - 1; i++) {
+                    lyrics[i].end = lyrics[i+1].start;
+                }
+            }
+            selectedLyricIndex = 0;
+            updateLyricList();
+            updateCurrentLyric();
+            drawTimeline();
+        });
+
+        // 가사 리스트 표시
+        function updateLyricList() {
+            lyricListEl.innerHTML = '';
+            lyrics.forEach((lyric, index) => {
+                const div = document.createElement('div');
+                div.className = 'lyric-line-item';
+                if (index === currentLyricIndex) div.classList.add('active');
+                div.textContent = `${index+1}. ${lyric.text}`;
+                div.addEventListener('click', () => {
+                    selectedLyricIndex = index;
+                    const time = lyric.start || 0;
+                    audio.currentTime = time;
+                    updateCurrentLyric();
+                    drawTimeline();
+                });
+                lyricListEl.appendChild(div);
+            });
+        }
+
+        // 현재 가사 표시
+        function updateCurrentLyric() {
+            const currentTime = audio.currentTime;
+            let found = -1;
+            for (let i = 0; i < lyrics.length; i++) {
+                if (currentTime >= lyrics[i].start && (i === lyrics.length-1 || currentTime < lyrics[i].end)) {
+                    found = i;
+                    break;
+                }
+            }
+            currentLyricIndex = found;
+            if (found >= 0) {
+                currentLyricEl.textContent = lyrics[found].text;
+            } else {
+                currentLyricEl.textContent = '';
+            }
+            updateLyricList();
+        }
+
+        // ==================== 싱크 설정 ====================
+        document.getElementById('setSyncBtn').addEventListener('click', () => {
+            if (lyrics.length === 0) return;
+            const currentTime = audio.currentTime;
+            if (selectedLyricIndex < lyrics.length) {
+                lyrics[selectedLyricIndex].start = currentTime;
+                // 이전 가사의 end를 현재 start로 업데이트
+                if (selectedLyricIndex > 0) {
+                    lyrics[selectedLyricIndex-1].end = currentTime;
+                }
+                // 다음 가사가 있으면 그 start는 현재 시간으로 설정할 수도 있지만 일단 두기
+                markerInfo.textContent = `가사 ${selectedLyricIndex+1} 시작: ${formatTime(currentTime)}`;
+                drawTimeline();
+                // 다음 가사로 이동 (자동)
+                if (selectedLyricIndex < lyrics.length - 1) {
+                    selectedLyricIndex++;
+                }
+            }
+        });
+
+        // 자동 싱크: 현재 가사에 시작 설정하고 다음 줄로
+        document.getElementById('autoSyncBtn').addEventListener('click', () => {
+            if (lyrics.length === 0) return;
+            const currentTime = audio.currentTime;
+            if (selectedLyricIndex < lyrics.length) {
+                lyrics[selectedLyricIndex].start = currentTime;
+                if (selectedLyricIndex > 0) {
+                    lyrics[selectedLyricIndex-1].end = currentTime;
+                }
+                markerInfo.textContent = `자동 싱크: ${selectedLyricIndex+1} 시작 ${formatTime(currentTime)}`;
+                selectedLyricIndex++;
+                drawTimeline();
+            }
+        });
+
+        // ==================== 타임라인 캔버스 ====================
+        function drawTimeline() {
+            const width = canvas.width;
+            const height = canvas.height;
+            ctx.clearRect(0, 0, width, height);
+            
+            // 배경
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(0, 0, width, height);
+
+            const duration = audio.duration || 0;
+            if (duration <= 0) {
+                ctx.fillStyle = '#666';
+                ctx.font = '14px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('MP3 파일을 로드하세요', width/2, height/2);
+                return;
+            }
+
+            // 시간 눈금
+            ctx.strokeStyle = '#444';
+            ctx.fillStyle = '#888';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'center';
+            for (let i = 0; i <= 10; i++) {
+                const x = (i / 10) * width;
+                const time = (i / 10) * duration;
+                ctx.beginPath();
+                ctx.moveTo(x, height-20);
+                ctx.lineTo(x, height);
+                ctx.stroke();
+                ctx.fillText(formatTime(time).slice(0,5), x, height-22);
+            }
+
+            // 가사 마커 (start: 파란색, end: 빨간색)
+            lyrics.forEach((lyric, index) => {
+                if (lyric.start !== undefined && lyric.start !== null) {
+                    const x = (lyric.start / duration) * width;
+                    ctx.strokeStyle = '#4fc3f7';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, height);
+                    ctx.stroke();
+                    ctx.fillStyle = '#4fc3f7';
+                    ctx.font = 'bold 10px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(`S${index+1}`, x, 12);
+                }
+                if (lyric.end !== undefined && lyric.end !== null && lyric.end > 0) {
+                    const x = (lyric.end / duration) * width;
+                    ctx.strokeStyle = '#ff6b6b';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, height);
+                    ctx.stroke();
+                    ctx.fillStyle = '#ff6b6b';
+                    ctx.font = 'bold 10px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(`E${index+1}`, x, height-8);
+                }
+            });
+
+            // 플레이헤드 (노란색)
+            const playX = (audio.currentTime / duration) * width;
+            ctx.strokeStyle = '#ffd700';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(playX, 0);
+            ctx.lineTo(playX, height);
+            ctx.stroke();
+            ctx.fillStyle = '#ffd700';
+            ctx.beginPath();
+            ctx.arc(playX, height-10, 6, 0, 2*Math.PI);
+            ctx.fill();
+
+            // 현재 선택된 가사 하이라이트
+            if (selectedLyricIndex >= 0 && selectedLyricIndex < lyrics.length) {
+                const lyric = lyrics[selectedLyricIndex];
+                if (lyric.start !== undefined && lyric.start !== null) {
+                    const x = (lyric.start / duration) * width;
+                    ctx.fillStyle = 'rgba(255,215,0,0.3)';
+                    ctx.fillRect(x-2, 0, 4, height);
+                }
+            }
+
+            // 타임라인 시작/종료 표시
+            document.getElementById('timelineStart').textContent = formatTime(0);
+            document.getElementById('timelineEnd').textContent = formatTime(duration);
+        }
+
+        // 캔버스 클릭 시 시간 이동
+        canvas.addEventListener('click', function(e) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const x = (e.clientX - rect.left) * scaleX;
+            const duration = audio.duration || 0;
+            if (duration > 0) {
+                const time = (x / canvas.width) * duration;
+                audio.currentTime = time;
+                updateTimeDisplay();
+                updateCurrentLyric();
+                drawTimeline();
+            }
+        });
+
+        // 마커 근처 클릭 시 해당 마커 시간으로 이동 + 해당 가사 선택
+        canvas.addEventListener('dblclick', function(e) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const x = (e.clientX - rect.left) * scaleX;
+            const duration = audio.duration || 0;
+            if (duration <= 0) return;
+            const clickTime = (x / canvas.width) * duration;
+            // 가장 가까운 마커 찾기
+            let closest = null;
+            let minDist = Infinity;
+            lyrics.forEach((lyric, index) => {
+                const times = [lyric.start, lyric.end].filter(t => t !== undefined && t !== null && t > 0);
+                times.forEach(t => {
+                    const dist = Math.abs(t - clickTime);
+                    if (dist < minDist) {
+                        minDist = dist;
+                        closest = { index, time: t, type: (t === lyric.start) ? 'start' : 'end' };
+                    }
+                });
+            });
+            if (closest) {
+                selectedLyricIndex = closest.index;
+                audio.currentTime = closest.time;
+                markerInfo.textContent = `가사 ${closest.index+1} ${closest.type} 시간: ${formatTime(closest.time)}`;
+                updateCurrentLyric();
+                drawTimeline();
+            }
+        });
+
+        // ==================== 시간 표시 ====================
+        function formatTime(seconds) {
+            if (isNaN(seconds) || seconds < 0) seconds = 0;
+            const min = Math.floor(seconds / 60);
+            const sec = Math.floor(seconds % 60);
+            const ms = Math.floor((seconds % 1) * 100);
+            return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}.${String(ms).padStart(2, '0')}`;
+        }
+
+        function updateTimeDisplay() {
+            timeDisplay.textContent = formatTime(audio.currentTime);
+        }
+
+        // ==================== SRT 저장 ====================
+        document.getElementById('saveSrtBtn').addEventListener('click', () => {
+            if (lyrics.length === 0) {
+                alert('가사를 먼저 입력하고 적용하세요.');
+                return;
+            }
+            // SRT 형식 생성
+            let srtContent = '';
+            lyrics.forEach((lyric, index) => {
+                if (lyric.start === undefined || lyric.end === undefined || lyric.start >= lyric.end) {
+                    // 스킵 또는 경고
+                    return;
+                }
+                const startTime = formatSrtTime(lyric.start);
+                const endTime = formatSrtTime(lyric.end);
+                srtContent += `${index+1}\n`;
+                srtContent += `${startTime} --> ${endTime}\n`;
+                srtContent += `${lyric.text}\n\n`;
+            });
+            if (srtContent.trim() === '') {
+                alert('유효한 싱크가 없습니다. 시작/종료 시간을 설정하세요.');
+                return;
+            }
+            const blob = new Blob([srtContent], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${fileName}.srt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+
+        function formatSrtTime(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = Math.floor(seconds % 60);
+            const ms = Math.floor((seconds % 1) * 1000);
+            return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')},${String(ms).padStart(3, '0')}`;
+        }
+
+        // ==================== 초기화 ====================
+        function init() {
+            updateTimeDisplay();
+            drawTimeline();
+        }
+
+        audio.addEventListener('loadedmetadata', () => {
+            totalDurationEl.textContent = formatTime(audio.duration);
+            drawTimeline();
+        });
+
+        // 캔버스 리사이즈 처리
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            canvas.width = container.clientWidth;
+            canvas.height = 80;
+            drawTimeline();
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        init();
+    </script>
+</body>
+</html>
