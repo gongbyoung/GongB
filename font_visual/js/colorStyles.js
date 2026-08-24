@@ -1,12 +1,7 @@
-console.log('colorStyles.js loaded');
-//로딩 확인용
-
-
 // js/colorStyles.js
 // 색상 스타일 정의 및 반환
 
 function getColorForCue(index, styleName) {
-    // 스타일별 색상 팔레트 정의
     const monoColors = [
         '#ffffff', '#dddddd', '#bbbbbb', '#999999', '#777777'
     ];
@@ -37,7 +32,6 @@ function getColorForCue(index, styleName) {
             return primaryColors[index % primaryColors.length];
         case 'harmony':
         default:
-            // 골든 앵글 기반 HSL (추천)
             const hue = (index * 137.508) % 360;
             return `hsl(${hue}, 70%, 70%)`;
     }
