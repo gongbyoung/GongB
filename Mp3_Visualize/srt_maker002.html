@@ -67,12 +67,12 @@
         .lyric-display {
             flex: 2;
             padding: 20px;
-            overflow-y: auto;
             background: #0d1117;
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
+            justify-content: flex-start;
+            overflow: hidden;
         }
         .current-lyric {
             font-size: 48px;
@@ -84,14 +84,22 @@
             min-height: 80px;
             max-width: 90%;
             word-wrap: break-word;
+            position: sticky;
+            top: 0;
+            background: #0d1117;
+            z-index: 1;
+            padding: 10px 0;
         }
         .lyric-list {
             width: 100%;
             max-width: 600px;
-            margin-top: 20px;
+            margin-top: 10px;
             display: flex;
             flex-direction: column;
             gap: 4px;
+            overflow-y: auto;
+            max-height: calc(100vh - 250px);
+            flex: 1;
         }
         .lyric-line-item {
             padding: 8px 12px;
@@ -225,9 +233,9 @@
         const totalDurationEl = document.getElementById('totalDuration');
         const markerInfo = document.getElementById('markerInfo');
 
-        let lyrics = []; // { text, start, end }
-        let currentLyricIndex = -1; // 현재 재생 중인 가사 인덱스
-        let selectedLyricIndex = 0; // 싱크 설정 시 대상 인덱스
+        let lyrics = [];
+        let currentLyricIndex = -1;
+        let selectedLyricIndex = 0;
         let isPlaying = false;
         let fileName = 'song';
 
@@ -275,7 +283,6 @@
             if (lyrics.length > 0) {
                 lyrics[0].start = 0;
                 lyrics[lyrics.length-1].end = audio.duration || 0;
-                // 중간 end는 다음 start와 같게 초기화
                 for (let i = 0; i < lyrics.length - 1; i++) {
                     lyrics[i].end = lyrics[i+1].start;
                 }
@@ -286,7 +293,6 @@
             drawTimeline();
         });
 
-        // 가사 리스트 표시
         function updateLyricList() {
             lyricListEl.innerHTML = '';
             lyrics.forEach((lyric, index) => {
@@ -305,7 +311,6 @@
             });
         }
 
-        // 현재 가사 표시
         function updateCurrentLyric() {
             const currentTime = audio.currentTime;
             let found = -1;
@@ -330,21 +335,17 @@
             const currentTime = audio.currentTime;
             if (selectedLyricIndex < lyrics.length) {
                 lyrics[selectedLyricIndex].start = currentTime;
-                // 이전 가사의 end를 현재 start로 업데이트
                 if (selectedLyricIndex > 0) {
                     lyrics[selectedLyricIndex-1].end = currentTime;
                 }
-                // 다음 가사가 있으면 그 start는 현재 시간으로 설정할 수도 있지만 일단 두기
                 markerInfo.textContent = `가사 ${selectedLyricIndex+1} 시작: ${formatTime(currentTime)}`;
                 drawTimeline();
-                // 다음 가사로 이동 (자동)
                 if (selectedLyricIndex < lyrics.length - 1) {
                     selectedLyricIndex++;
                 }
             }
         });
 
-        // 자동 싱크: 현재 가사에 시작 설정하고 다음 줄로
         document.getElementById('autoSyncBtn').addEventListener('click', () => {
             if (lyrics.length === 0) return;
             const currentTime = audio.currentTime;
@@ -365,7 +366,6 @@
             const height = canvas.height;
             ctx.clearRect(0, 0, width, height);
             
-            // 배경
             ctx.fillStyle = '#1a1a2e';
             ctx.fillRect(0, 0, width, height);
 
@@ -378,7 +378,6 @@
                 return;
             }
 
-            // 시간 눈금
             ctx.strokeStyle = '#444';
             ctx.fillStyle = '#888';
             ctx.font = '10px sans-serif';
@@ -393,7 +392,6 @@
                 ctx.fillText(formatTime(time).slice(0,5), x, height-22);
             }
 
-            // 가사 마커 (start: 파란색, end: 빨간색)
             lyrics.forEach((lyric, index) => {
                 if (lyric.start !== undefined && lyric.start !== null) {
                     const x = (lyric.start / duration) * width;
@@ -423,7 +421,6 @@
                 }
             });
 
-            // 플레이헤드 (노란색)
             const playX = (audio.currentTime / duration) * width;
             ctx.strokeStyle = '#ffd700';
             ctx.lineWidth = 3;
@@ -436,7 +433,6 @@
             ctx.arc(playX, height-10, 6, 0, 2*Math.PI);
             ctx.fill();
 
-            // 현재 선택된 가사 하이라이트
             if (selectedLyricIndex >= 0 && selectedLyricIndex < lyrics.length) {
                 const lyric = lyrics[selectedLyricIndex];
                 if (lyric.start !== undefined && lyric.start !== null) {
@@ -446,12 +442,10 @@
                 }
             }
 
-            // 타임라인 시작/종료 표시
             document.getElementById('timelineStart').textContent = formatTime(0);
             document.getElementById('timelineEnd').textContent = formatTime(duration);
         }
 
-        // 캔버스 클릭 시 시간 이동
         canvas.addEventListener('click', function(e) {
             const rect = canvas.getBoundingClientRect();
             const scaleX = canvas.width / rect.width;
@@ -466,7 +460,6 @@
             }
         });
 
-        // 마커 근처 클릭 시 해당 마커 시간으로 이동 + 해당 가사 선택
         canvas.addEventListener('dblclick', function(e) {
             const rect = canvas.getBoundingClientRect();
             const scaleX = canvas.width / rect.width;
@@ -474,7 +467,6 @@
             const duration = audio.duration || 0;
             if (duration <= 0) return;
             const clickTime = (x / canvas.width) * duration;
-            // 가장 가까운 마커 찾기
             let closest = null;
             let minDist = Infinity;
             lyrics.forEach((lyric, index) => {
@@ -496,7 +488,6 @@
             }
         });
 
-        // ==================== 시간 표시 ====================
         function formatTime(seconds) {
             if (isNaN(seconds) || seconds < 0) seconds = 0;
             const min = Math.floor(seconds / 60);
@@ -515,11 +506,9 @@
                 alert('가사를 먼저 입력하고 적용하세요.');
                 return;
             }
-            // SRT 형식 생성
             let srtContent = '';
             lyrics.forEach((lyric, index) => {
                 if (lyric.start === undefined || lyric.end === undefined || lyric.start >= lyric.end) {
-                    // 스킵 또는 경고
                     return;
                 }
                 const startTime = formatSrtTime(lyric.start);
@@ -551,7 +540,6 @@
             return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')},${String(ms).padStart(3, '0')}`;
         }
 
-        // ==================== 초기화 ====================
         function init() {
             updateTimeDisplay();
             drawTimeline();
@@ -562,7 +550,6 @@
             drawTimeline();
         });
 
-        // 캔버스 리사이즈 처리
         function resizeCanvas() {
             const container = canvas.parentElement;
             canvas.width = container.clientWidth;
