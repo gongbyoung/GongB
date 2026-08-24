@@ -1,3 +1,7 @@
+console.log('utils.js loaded');
+//로딩 확인용
+
+
 // js/colorStyles.js
 // 색상 스타일 정의 및 반환
 
