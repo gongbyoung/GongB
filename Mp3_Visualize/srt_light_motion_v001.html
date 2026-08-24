@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SRT 글자 채우기 비주얼라이저</title>
+    <title>Jamo Kinetic Typography Studio</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -30,7 +30,7 @@
             margin-right: 20px;
             color: #ffd700;
         }
-        button, input[type="file"] {
+        button, input[type="file"], select {
             background: #0f3460;
             color: white;
             border: 1px solid #533483;
@@ -46,6 +46,9 @@
         }
         input[type="file"] {
             padding: 6px;
+        }
+        select {
+            padding: 8px;
         }
         .controls {
             display: flex;
@@ -77,33 +80,36 @@
         }
         canvas {
             max-width: 100%;
-            max-height: 70vh;
+            max-height: 60vh;
             border: 1px solid #333;
             background: #000;
             border-radius: 8px;
             box-shadow: 0 0 30px rgba(0,0,0,0.5);
         }
-        .current-lyric {
-            position: absolute;
-            bottom: 30px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0,0,0,0.8);
-            padding: 12px 24px;
+        .current-sentence {
+            margin-top: 20px;
+            background: rgba(0,0,0,0.7);
+            padding: 15px 25px;
             border-radius: 20px;
-            font-size: 24px;
+            font-size: 28px;
             font-weight: bold;
-            color: #ffd700;
+            color: #aaa;
             text-align: center;
-            max-width: 80%;
+            max-width: 90%;
+            min-height: 50px;
+            white-space: pre-wrap;
+            word-break: keep-all;
             pointer-events: none;
-            z-index: 5;
+        }
+        .current-sentence .lit {
+            color: #ffd700;
+            text-shadow: 0 0 10px rgba(255,215,0,0.7);
         }
     </style>
 </head>
 <body>
     <header>
-        <h1>🎤 SRT 글자 채우기</h1>
+        <h1>🎵 자모 키네틱 타이포</h1>
         <input type="file" id="srtFile" accept=".srt">
         <input type="file" id="audioFile" accept="audio/*">
         <button id="loadSample">샘플 SRT</button>
@@ -112,12 +118,21 @@
             <button id="stopBtn">⏹ 정지</button>
             <input type="range" id="timeline" min="0" max="100" step="0.01" value="0">
             <span class="time-display" id="timeDisplay">00:00.00</span>
+            <select id="fontSelect">
+                <option value="'Noto Sans KR', 'Malgun Gothic', sans-serif">Noto Sans KR</option>
+                <option value="'Malgun Gothic', sans-serif">맑은 고딕</option>
+                <option value="'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif">Apple Gothic</option>
+                <option value="'Nanum Gothic', sans-serif">나눔고딕</option>
+                <option value="'Gulim', sans-serif">굴림</option>
+                <option value="'Arial', sans-serif">Arial</option>
+            </select>
+            <button id="saveBtn" class="save-btn">💾 MP4 저장</button>
         </div>
     </header>
 
     <div class="main-area">
         <canvas id="canvas" width="1200" height="700"></canvas>
-        <div class="current-lyric" id="currentLyric"></div>
+        <div class="current-sentence" id="currentSentence"></div>
     </div>
 
     <audio id="audio" style="display:none;"></audio>
@@ -164,19 +179,42 @@
             return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}.${String(ms).padStart(2, '0')}`;
         }
 
-        // ==================== 상태 ====================
+        // ==================== 한글 자모 분해 ====================
+        const CHO = ["ㄱ","ㄲ","ㄴ","ㄷ","ㄸ","ㄹ","ㅁ","ㅂ","ㅃ","ㅅ","ㅆ","ㅇ","ㅈ","ㅉ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
+        const JUNG = ["ㅏ","ㅐ","ㅑ","ㅒ","ㅓ","ㅔ","ㅕ","ㅖ","ㅗ","ㅘ","ㅙ","ㅚ","ㅛ","ㅜ","ㅝ","ㅞ","ㅟ","ㅠ","ㅡ","ㅢ","ㅣ"];
+        const JONG = ["","ㄱ","ㄲ","ㄳ","ㄴ","ㄵ","ㄶ","ㄷ","ㄹ","ㄺ","ㄻ","ㄼ","ㄽ","ㄾ","ㄿ","ㅀ","ㅁ","ㅂ","ㅄ","ㅅ","ㅆ","ㅇ","ㅈ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
+
+        function decomposeKorean(syllable) {
+            const code = syllable.charCodeAt(0);
+            if (code >= 0xAC00 && code <= 0xD7A3) {
+                const offset = code - 0xAC00;
+                const choIdx = Math.floor(offset / (21 * 28));
+                const jungIdx = Math.floor((offset % (21 * 28)) / 28);
+                const jongIdx = offset % 28;
+                return [CHO[choIdx], JUNG[jungIdx], ...(jongIdx > 0 ? [JONG[jongIdx]] : [])];
+            }
+            return [syllable]; // 한글이 아닌 문자는 그대로 반환
+        }
+
+        // ==================== 전역 상태 ====================
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const audio = document.getElementById('audio');
         const timeline = document.getElementById('timeline');
         const timeDisplay = document.getElementById('timeDisplay');
-        const currentLyricEl = document.getElementById('currentLyric');
+        const currentSentenceEl = document.getElementById('currentSentence');
+        const fontSelect = document.getElementById('fontSelect');
 
         let cues = [];
-        let uniqueChars = []; // [{ char, intervals: [{start,end}], firstIndex }]
+        let uniqueComponents = []; // [{ char, intervals: [{start,end}], fullLitTime }] (fullLitTime is max start time of its components)
         let currentTime = 0;
         let isPlaying = false;
-        let lastFrameTime = performance.now();
+        let isRecording = false;
+        let mediaRecorder = null;
+        let recordedChunks = [];
+        let audioCtx = null;
+        let audioSource = null;
+        let audioDest = null;
 
         // ==================== SRT 및 오디오 로딩 ====================
         document.getElementById('srtFile').addEventListener('change', function(e) {
@@ -218,49 +256,68 @@
             if (!file) return;
             audio.src = URL.createObjectURL(file);
             audio.load();
+            if (audioCtx) {
+                audioCtx.close().catch(() => {});
+            }
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            audioSource = audioCtx.createMediaElementSource(audio);
+            audioDest = audioCtx.createMediaStreamDestination();
+            audioSource.connect(audioDest);
+            audioSource.connect(audioCtx.destination);
         });
 
         function loadSRT(content) {
             cues = parseSRT(content);
-            extractUniqueChars();
+            buildComponentIntervals();
             setupTimeline();
             currentTime = 0;
             updateTimeDisplay();
             render();
         }
 
-        // ==================== 고유 문자 추출 ====================
-        function extractUniqueChars() {
-            const charMap = new Map(); // char -> { firstIndex, intervals: [] }
+        // ==================== 자모 컴포넌트 인터벌 구축 ====================
+        function buildComponentIntervals() {
+            const componentMap = new Map(); // key(문자) -> { char, intervals: [] }
+
             cues.forEach(cue => {
-                const chars = Array.from(cue.text).filter(c => c.trim() !== '');
+                const chars = Array.from(cue.text);
                 chars.forEach(char => {
-                    if (!charMap.has(char)) {
-                        charMap.set(char, {
-                            char,
-                            intervals: [],
-                            firstIndex: charMap.size // first appearance order
+                    if (char.trim() === '') return; // 공백은 무시
+                    const components = decomposeKorean(char);
+                    const numComponents = components.length;
+                    const syllableDuration = cue.end - cue.start;
+                    const step = syllableDuration / numComponents;
+                    const fullLitTime = cue.start + (numComponents - 1) * step; // 모든 컴포넌트가 켜지는 시각
+
+                    components.forEach((comp, idx) => {
+                        if (!componentMap.has(comp)) {
+                            componentMap.set(comp, { char: comp, intervals: [] });
+                        }
+                        const entry = componentMap.get(comp);
+                        // 각 컴포넌트의 시작은 cue.start + idx * step, 끝은 cue.end
+                        entry.intervals.push({
+                            start: cue.start + idx * step,
+                            end: cue.end,
+                            fullLitTime: fullLitTime // 이 컴포넌트가 속한 음절의 완전 점등 시각
                         });
-                    }
-                    const entry = charMap.get(char);
-                    entry.intervals.push({ start: cue.start, end: cue.end });
+                    });
                 });
             });
 
-            uniqueChars = Array.from(charMap.values()).sort((a, b) => a.firstIndex - b.firstIndex);
-
-            // intervals 정렬
-            uniqueChars.forEach(entry => {
+            // Map을 배열로 변환하고 등장 순서(첫 등장 start 기준)로 정렬
+            uniqueComponents = Array.from(componentMap.values());
+            uniqueComponents.forEach(entry => {
                 entry.intervals.sort((a, b) => a.start - b.start);
+                entry.firstStart = entry.intervals[0]?.start || 0;
             });
+            uniqueComponents.sort((a, b) => a.firstStart - b.firstStart);
         }
 
-        // ==================== 타임라인 ====================
+        // ==================== 타임라인 및 재생 ====================
         function setupTimeline() {
             const maxTime = cues.length > 0 ? Math.max(...cues.map(c => c.end)) : 0;
             timeline.max = maxTime;
             timeline.value = 0;
-            document.getElementById('timeDisplay').textContent = '00:00.00';
         }
 
         function updateTimeDisplay() {
@@ -273,7 +330,6 @@
             render();
         });
 
-        // ==================== 재생 제어 ====================
         document.getElementById('playBtn').addEventListener('click', () => {
             if (cues.length === 0) return;
             isPlaying = true;
@@ -285,8 +341,10 @@
 
         document.getElementById('stopBtn').addEventListener('click', () => {
             isPlaying = false;
+            isRecording = false;
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
             audio.pause();
-            if (audio.src) audio.currentTime = currentTime;
+            if (audioCtx) audioCtx.suspend();
         });
 
         audio.addEventListener('timeupdate', () => {
@@ -295,17 +353,12 @@
             updateTimeDisplay();
         });
 
-        audio.addEventListener('pause', () => { isPlaying = false; });
+        audio.addEventListener('pause', () => { if (!isRecording) isPlaying = false; });
         audio.addEventListener('play', () => { isPlaying = true; });
 
         // ==================== 렌더링 ====================
-        function isCharActive(charEntry, time) {
-            return charEntry.intervals.some(interval => time >= interval.start && time <= interval.end);
-        }
-
-        function getCharFillProgress(charEntry, time) {
-            // 간단히 활성화 여부만 반환. 페이드 인/아웃은 추가 가능.
-            return isCharActive(charEntry, time) ? 1 : 0;
+        function isComponentActive(compEntry, time) {
+            return compEntry.intervals.some(interval => time >= interval.start && time <= interval.end);
         }
 
         function render() {
@@ -313,71 +366,87 @@
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            if (uniqueChars.length === 0) {
+            if (uniqueComponents.length === 0) {
                 ctx.fillStyle = '#666';
                 ctx.font = '24px sans-serif';
                 ctx.textAlign = 'center';
                 ctx.fillText('SRT 파일을 로드하세요', canvas.width/2, canvas.height/2);
+                updateCurrentSentence();
                 return;
             }
 
-            // 레이아웃 계산: 그리드
-            const cols = Math.ceil(Math.sqrt(uniqueChars.length * (canvas.width / canvas.height)));
-            const rows = Math.ceil(uniqueChars.length / cols);
+            const fontFamily = fontSelect.value;
+            const cols = Math.ceil(Math.sqrt(uniqueComponents.length * (canvas.width / canvas.height)));
+            const rows = Math.ceil(uniqueComponents.length / cols);
             const cellWidth = canvas.width / cols;
             const cellHeight = canvas.height / rows;
             const fontSize = Math.min(cellWidth, cellHeight) * 0.7;
 
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.font = `${fontSize}px 'Noto Sans KR', '맑은 고딕', Arial, sans-serif`;
+            ctx.font = `${fontSize}px ${fontFamily}`;
 
             const activeColor = '#ffd700';
-            const inactiveColor = 'rgba(255,255,255,0.25)';
+            const inactiveColor = 'rgba(255,255,255,0.3)';
 
-            uniqueChars.forEach((entry, index) => {
+            uniqueComponents.forEach((entry, index) => {
                 const col = index % cols;
                 const row = Math.floor(index / cols);
                 const x = col * cellWidth + cellWidth / 2;
                 const y = row * cellHeight + cellHeight / 2;
 
-                const isActive = isCharActive(entry, currentTime);
-                const fillProgress = getCharFillProgress(entry, currentTime);
+                const isActive = isComponentActive(entry, currentTime);
 
                 if (isActive) {
-                    // 활성화: 채워진 색
                     ctx.fillStyle = activeColor;
                     ctx.shadowColor = activeColor;
                     ctx.shadowBlur = 15;
                     ctx.fillText(entry.char, x, y);
                     ctx.shadowBlur = 0;
                 } else {
-                    // 비활성화: 외곽선만
                     ctx.strokeStyle = inactiveColor;
                     ctx.lineWidth = 2;
                     ctx.strokeText(entry.char, x, y);
                 }
             });
 
-            // 현재 가사 표시
-            updateCurrentLyric();
+            updateCurrentSentence();
         }
 
-        function updateCurrentLyric() {
+        function updateCurrentSentence() {
+            // 현재 활성화된 큐 찾기
             const activeCue = cues.find(cue => currentTime >= cue.start && currentTime <= cue.end);
-            if (activeCue) {
-                currentLyricEl.textContent = activeCue.text;
-            } else {
-                currentLyricEl.textContent = '';
+            if (!activeCue) {
+                currentSentenceEl.textContent = '';
+                return;
             }
+
+            const chars = Array.from(activeCue.text);
+            let html = '';
+            chars.forEach(char => {
+                if (char.trim() === '') {
+                    html += ' '; // 공백은 그대로
+                    return;
+                }
+                const components = decomposeKorean(char);
+                const numComp = components.length;
+                const syllableDuration = activeCue.end - activeCue.start;
+                const step = syllableDuration / numComp;
+                const fullLitTime = activeCue.start + (numComp - 1) * step;
+                // 현재 시간이 fullLitTime 이상이면 해당 음절이 완전히 점등된 것으로 간주
+                const isLit = currentTime >= fullLitTime;
+                html += isLit ? `<span class="lit">${char}</span>` : char;
+            });
+            currentSentenceEl.innerHTML = html;
         }
 
         // ==================== 애니메이션 루프 ====================
+        let lastFrameTime = performance.now();
         function animationLoop(now) {
             const dt = (now - lastFrameTime) / 1000;
             lastFrameTime = now;
 
-            if (isPlaying) {
+            if (isPlaying && !isRecording) {
                 currentTime += dt;
                 const maxTime = parseFloat(timeline.max);
                 if (currentTime >= maxTime) {
@@ -389,17 +458,109 @@
                 updateTimeDisplay();
             }
 
+            if (isRecording) {
+                currentTime += dt;
+                const maxTime = parseFloat(timeline.max);
+                if (currentTime >= maxTime) {
+                    currentTime = maxTime;
+                    render();
+                    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                        mediaRecorder.stop();
+                    }
+                    isRecording = false;
+                    isPlaying = false;
+                    audio.pause();
+                    if (audioCtx) audioCtx.suspend();
+                } else {
+                    timeline.value = currentTime;
+                    updateTimeDisplay();
+                }
+            }
+
             render();
             requestAnimationFrame(animationLoop);
         }
         requestAnimationFrame(animationLoop);
+
+        // ==================== MP4 저장 ====================
+        function getSupportedMimeType() {
+            const types = [
+                'video/mp4;codecs=avc1.42E01E',
+                'video/mp4',
+                'video/webm;codecs=vp9',
+                'video/webm;codecs=vp8',
+                'video/webm'
+            ];
+            for (const t of types) {
+                if (window.MediaRecorder && MediaRecorder.isTypeSupported(t)) return t;
+            }
+            return 'video/webm';
+        }
+
+        document.getElementById('saveBtn').addEventListener('click', async () => {
+            if (isRecording) return;
+            if (cues.length === 0) { alert('SRT 자막을 먼저 로드하세요.'); return; }
+            const maxTime = parseFloat(timeline.max);
+            if (maxTime <= 0) return;
+
+            if (audioCtx && audioCtx.state === 'suspended') await audioCtx.resume();
+
+            currentTime = 0;
+            timeline.value = 0;
+            isPlaying = true;
+            isRecording = true;
+            recordedChunks = [];
+
+            const canvasStream = canvas.captureStream(60);
+            let combinedStream = canvasStream;
+            if (audioDest && audioDest.stream.getAudioTracks().length > 0) {
+                combinedStream = new MediaStream();
+                canvasStream.getVideoTracks().forEach(track => combinedStream.addTrack(track));
+                audioDest.stream.getAudioTracks().forEach(track => combinedStream.addTrack(track));
+            }
+
+            const mimeType = getSupportedMimeType();
+            mediaRecorder = new MediaRecorder(combinedStream, {
+                mimeType,
+                videoBitsPerSecond: 8_000_000
+            });
+
+            mediaRecorder.ondataavailable = e => {
+                if (e.data.size > 0) recordedChunks.push(e.data);
+            };
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(recordedChunks, { type: mimeType });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `kinetic_${Date.now()}.${mimeType.includes('mp4') ? 'mp4' : 'webm'}`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                isRecording = false;
+                isPlaying = false;
+            };
+
+            mediaRecorder.start(1000);
+
+            const audioEl = document.getElementById('audio');
+            if (audioEl.src && audioCtx) {
+                audioEl.currentTime = 0;
+                audioEl.play().catch(() => {});
+            }
+        });
+
+        // ==================== 폰트 변경 시 즉시 반영 ====================
+        fontSelect.addEventListener('change', () => {
+            render();
+        });
 
         // ==================== 초기화 ====================
         function init() {
             setupTimeline();
             render();
         }
-
         init();
     </script>
 </body>
