@@ -3,6 +3,7 @@
 
 // ==================== 전역 상태 ====================
 let allLeds = [];
+let cues = [];
 let currentTime = 0;
 let currentFont = "'Noto Sans KR', 'Malgun Gothic', sans-serif";
 let currentFontSize = 80;
@@ -43,32 +44,70 @@ const stopBtn = document.getElementById('stopBtn');
 const srtFileInput = document.getElementById('srtFile');
 const audioFileInput = document.getElementById('audioFile');
 const loadSampleBtn = document.getElementById('loadSample');
+const logContent = document.getElementById('logContent');
+const statusContent = document.getElementById('statusContent');
+
+// ==================== 로그 및 상태 ====================
+let logEntries = [];
+
+function logEvent(message) {
+    const timestamp = new Date().toLocaleTimeString();
+    logEntries.push(`[${timestamp}] ${message}`);
+    updateLogPanel();
+}
+
+function updateLogPanel() {
+    if (logContent) {
+        logContent.innerHTML = logEntries.map(entry => `<div>${entry}</div>`).join('');
+        logContent.scrollTop = logContent.scrollHeight;
+    }
+}
+
+function updateStatusPanel() {
+    if (!statusContent) return;
+
+    const styleName = currentStyleId ? (window.TypoMotionStyles?.[currentStyleId]?.name || currentStyleId) : '선택 안됨';
+    const presetName = currentPresetId ? (window.TypoMotionStyles?.[currentStyleId]?.presets?.[currentPresetId]?.name || currentPresetId) : '선택 안됨';
+
+    const statusHtml = `
+        <div class="status-item"><span class="label">재생 상태</span><span class="value">${isPlaying ? '▶ 재생 중' : '⏸ 정지'}</span></div>
+        <div class="status-item"><span class="label">현재 시간</span><span class="value">${formatTime(currentTime)}</span></div>
+        <div class="status-item"><span class="label">전체 길이</span><span class="value">${formatTime(parseFloat(timeline.max) || 0)}</span></div>
+        <div class="status-item"><span class="label">LED 개수</span><span class="value">${allLeds.length}</span></div>
+        <div class="status-item"><span class="label">타이포 스타일</span><span class="value">${styleName}</span></div>
+        <div class="status-item"><span class="label">모션 프리셋</span><span class="value">${presetName}</span></div>
+        <div class="status-item"><span class="label">색상 스타일</span><span class="value">${currentColorStyle}</span></div>
+        <div class="status-item"><span class="label">폰트</span><span class="value">${currentFont}</span></div>
+        <div class="status-item"><span class="label">폰트 크기</span><span class="value">${currentFontSize}px</span></div>
+        <div class="status-item"><span class="label">흩어짐</span><span class="value">${Math.round(scatterAmount * 100)}%</span></div>
+    `;
+    statusContent.innerHTML = statusHtml;
+}
 
 // ==================== 초기화 ====================
 function init() {
     setupTimeline();
     updateTimeDisplay();
     render();
+    logEvent('앱 초기화 완료');
+    updateStatusPanel();
 }
 
 // ==================== SRT 로딩 ====================
 function loadSRT(content) {
-    // SRT 파싱
-    const cues = parseSRT(content);
-    // 색상 적용
+    cues = parseSRT(content);
     cues.forEach((cue, idx) => {
         cue.color = getColorForCue(idx, currentColorStyle);
     });
-    // LED 생성
     buildAllLeds(cues);
-    // 초기 배치
     assignInitialPositions();
     avoidOverlaps();
-    // 타임라인 설정
     setupTimeline();
     currentTime = 0;
     updateTimeDisplay();
     render();
+    logEvent(`SRT 로드: ${cues.length}개 큐, ${allLeds.length}개 LED`);
+    updateStatusPanel();
 }
 
 // ==================== LED 생성 ====================
@@ -178,6 +217,7 @@ function reshufflePositions() {
     assignInitialPositions();
     avoidOverlaps();
     render();
+    logEvent('셔플 실행');
 }
 
 // ==================== 타임라인 ====================
@@ -219,6 +259,7 @@ function render() {
         ctx.textAlign = 'center';
         ctx.fillText('SRT 파일을 로드하세요', canvas.width / 2, canvas.height / 2);
         updateCurrentSentence();
+        updateStatusPanel();
         return;
     }
 
@@ -251,41 +292,9 @@ function render() {
     });
 
     updateCurrentSentence();
+    updateStatusPanel();
 }
 
-function updateCurrentSentence() {
-    // 현재 활성화된 큐 찾기
-    const activeCue = allLeds.length > 0 ? allLeds.find(led => led.start <= currentTime && currentTime <= led.end) : null;
-    if (!activeCue) {
-        currentSentenceEl.textContent = '';
-        return;
-    }
-    // activeCue의 cueIdx로 원래 큐 찾기 (현재 allLeds에 cue 정보가 없으므로, 직접 찾기 어려움)
-    // 간단히 현재 시간에 해당하는 첫 번째 LED의 cueIdx를 사용
-    // 실제로는 cues 배열을 따로 저장하는 것이 좋음 (아래에서 처리)
-    // 임시로 빈 문자열 처리
-    currentSentenceEl.textContent = '';
-}
-
-// cues 배열을 따로 저장하도록 수정 필요
-let cues = [];
-
-// loadSRT에서 cues를 업데이트하도록 수정
-function loadSRT(content) {
-    cues = parseSRT(content);
-    cues.forEach((cue, idx) => {
-        cue.color = getColorForCue(idx, currentColorStyle);
-    });
-    buildAllLeds(cues);
-    assignInitialPositions();
-    avoidOverlaps();
-    setupTimeline();
-    currentTime = 0;
-    updateTimeDisplay();
-    render();
-}
-
-// updateCurrentSentence에서 cues 사용
 function updateCurrentSentence() {
     const activeCue = cues.find(cue => currentTime >= cue.start && currentTime <= cue.end);
     if (!activeCue) {
@@ -363,6 +372,7 @@ srtFileInput.addEventListener('change', (e) => {
     const reader = new FileReader();
     reader.onload = (ev) => loadSRT(ev.target.result);
     reader.readAsText(file);
+    logEvent('SRT 파일 선택됨');
 });
 
 // 샘플 SRT
@@ -388,6 +398,7 @@ loadSampleBtn.addEventListener('click', () => {
 신나는 음악과 함께
 `;
     loadSRT(sample);
+    logEvent('샘플 SRT 로드');
 });
 
 // 오디오 파일 로드
@@ -404,6 +415,7 @@ audioFileInput.addEventListener('change', (e) => {
     audioDest = audioCtx.createMediaStreamDestination();
     audioSource.connect(audioDest);
     audioSource.connect(audioCtx.destination);
+    logEvent(`오디오 로드: ${file.name}`);
 });
 
 // 재생/정지
@@ -414,6 +426,8 @@ playBtn.addEventListener('click', () => {
         audio.currentTime = currentTime;
         audio.play().catch(() => {});
     }
+    logEvent('재생 시작');
+    updateStatusPanel();
 });
 
 stopBtn.addEventListener('click', () => {
@@ -422,6 +436,8 @@ stopBtn.addEventListener('click', () => {
     if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
     audio.pause();
     if (audioCtx) audioCtx.suspend();
+    logEvent('정지');
+    updateStatusPanel();
 });
 
 // 타임라인
@@ -429,6 +445,7 @@ timeline.addEventListener('input', () => {
     currentTime = parseFloat(timeline.value);
     updateTimeDisplay();
     render();
+    updateStatusPanel();
 });
 
 // 화면 비율
@@ -443,6 +460,7 @@ aspectRatioSelect.addEventListener('change', () => {
     assignInitialPositions();
     avoidOverlaps();
     render();
+    logEvent(`화면 비율 변경: ${aspectRatioSelect.value}`);
 });
 
 // 색상 스타일
@@ -455,6 +473,7 @@ colorStyleSelect.addEventListener('change', () => {
         led.color = cues[led.cueIdx].color;
     });
     render();
+    logEvent(`색상 스타일 변경: ${currentColorStyle}`);
 });
 
 // 타이포 스타일 로드
@@ -479,11 +498,14 @@ function loadStyle(styleId) {
     script.src = `styles/${styleId}.js`;
     script.onload = () => applyStyle(styleId);
     document.head.appendChild(script);
+    logEvent(`타이포 스타일 로드 요청: ${styleId}`);
 }
 
 function applyStyle(styleId) {
     currentStyleId = styleId;
     populatePresetSelect(styleId);
+    logEvent(`스타일 적용: ${styleId}`);
+    updateStatusPanel();
 }
 
 function populatePresetSelect(styleId) {
@@ -496,11 +518,14 @@ function populatePresetSelect(styleId) {
         opt.textContent = style.presets[key].name;
         presetSelect.appendChild(opt);
     });
+    logEvent(`프리셋 목록 업데이트 (${Object.keys(style.presets).length}개)`);
 }
 
 // 프리셋 선택
 presetSelect.addEventListener('change', () => {
     currentPresetId = presetSelect.value;
+    logEvent(`모션 프리셋 선택: ${presetSelect.value}`);
+    updateStatusPanel();
 });
 
 // 폰트
@@ -508,6 +533,7 @@ fontSelect.addEventListener('change', () => {
     currentFont = fontSelect.value;
     avoidOverlaps();
     render();
+    logEvent(`폰트 변경: ${currentFont}`);
 });
 
 applyFontBtn.addEventListener('click', () => {
@@ -517,6 +543,7 @@ applyFontBtn.addEventListener('click', () => {
         fontSelect.value = currentFont;
         avoidOverlaps();
         render();
+        logEvent(`폰트 적용: ${customFont}`);
     }
 });
 
@@ -540,6 +567,7 @@ systemFontsBtn.addEventListener('click', async () => {
                 fontSelect.appendChild(opt);
             });
             alert(`${fontList.length}개의 시스템 폰트를 추가했습니다.`);
+            logEvent('시스템 폰트 목록 추가');
         } catch (err) {
             alert('시스템 폰트를 불러올 수 없습니다: ' + err.message);
         }
@@ -555,6 +583,7 @@ scatterSlider.addEventListener('input', () => {
     allLeds.forEach(led => updateLedPosition(led, Math.max(20, currentFontSize / 2 + 5)));
     avoidOverlaps();
     render();
+    updateStatusPanel();
 });
 
 fontSizeSlider.addEventListener('input', () => {
@@ -562,6 +591,7 @@ fontSizeSlider.addEventListener('input', () => {
     fontSizeValueSpan.textContent = currentFontSize;
     avoidOverlaps();
     render();
+    updateStatusPanel();
 });
 
 shuffleBtn.addEventListener('click', reshufflePositions);
@@ -613,6 +643,8 @@ saveBtn.addEventListener('click', async () => {
         URL.revokeObjectURL(url);
         isRecording = false;
         isPlaying = false;
+        logEvent('MP4 저장 완료');
+        updateStatusPanel();
     };
 
     mediaRecorder.start(1000);
@@ -621,6 +653,8 @@ saveBtn.addEventListener('click', async () => {
         audio.currentTime = 0;
         audio.play().catch(() => {});
     }
+    logEvent('MP4 저장 시작');
+    updateStatusPanel();
 });
 
 // ==================== 초기화 실행 ====================
