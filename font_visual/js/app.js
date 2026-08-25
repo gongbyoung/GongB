@@ -21,7 +21,7 @@ let audioDest = null;
 let currentUnit = 'jamo';      // 진행 단위
 let rangeAmount = 0.5;         // 범위 (0 ~ 1)
 let intensityAmount = 0.5;     // 강도 (0 ~ 1)
-let trailAmount = 0;           // 잔상 (0 ~ 1) [신규]
+let trailAmount = 0;           // 잔상 (0 ~ 1)
 
 // 전역 스타일 (스타일 파일에서 오버라이드 가능)
 let canvasBackgroundColor = '#000000';
@@ -51,9 +51,9 @@ const rangeNumber = document.getElementById('rangeNumber');
 const intensitySlider = document.getElementById('intensitySlider');
 const intensityValueSpan = document.getElementById('intensityValue');
 const intensityNumber = document.getElementById('intensityNumber');
-const trailSlider = document.getElementById('trailSlider'); // [신규]
-const trailValueSpan = document.getElementById('trailValue'); // [신규]
-const trailNumber = document.getElementById('trailNumber'); // [신규]
+const trailSlider = document.getElementById('trailSlider');
+const trailValueSpan = document.getElementById('trailValue');
+const trailNumber = document.getElementById('trailNumber');
 const unitSelect = document.getElementById('unitSelect');
 const shuffleBtn = document.getElementById('shuffleBtn');
 const aspectRatioSelect = document.getElementById('aspectRatio');
@@ -105,7 +105,7 @@ function updateStatusPanel() {
         <div class="status-item"><span class="label">흩어짐</span><span class="value">${Math.round(scatterAmount * 100)}%</span></div>
         <div class="status-item"><span class="label">범위</span><span class="value">${Math.round(rangeAmount * 100)}%</span></div>
         <div class="status-item"><span class="label">강도</span><span class="value">${Math.round(intensityAmount * 100)}%</span></div>
-        <div class="status-item"><span class="label">잔상</span><span class="value">${Math.round(trailAmount * 100)}%</span></div> <!-- [신규] -->
+        <div class="status-item"><span class="label">잔상</span><span class="value">${Math.round(trailAmount * 100)}%</span></div>
     `;
     statusContent.innerHTML = statusHtml;
 }
@@ -136,13 +136,12 @@ function loadSRT(content) {
     updateStatusPanel();
 }
 
-// ==================== LED 생성 (단위별 분해 수정) ====================
+// ==================== LED 생성 (단위별 분해) ====================
 function buildAllLeds(cues) {
     allLeds = [];
     cues.forEach((cue, cueIdx) => {
         let units = [];
         
-        // 선택된 단위(자/모음, 글자, 단어, 문장)에 따라 분해
         if (currentUnit === 'jamo') {
             units = Array.from(cue.text).flatMap(char => decomposeKorean(char));
         } else if (currentUnit === 'char') {
@@ -159,7 +158,7 @@ function buildAllLeds(cues) {
 
         units.forEach((unit, unitIdx) => {
             allLeds.push({
-                char: unit, // 단위가 단어/문장이면 문자열이 들어감
+                char: unit,
                 cueIdx,
                 charIdx: unitIdx,
                 compIdx: 0,
@@ -289,6 +288,11 @@ function updateTimeDisplay() {
 }
 
 // ==================== 렌더링 (잔상 효과 포함) ====================
+// ★★★ [추가됨] 누락되었던 isLedLit 함수 ★★★
+function isLedLit(led, time) {
+    return time >= led.start;
+}
+
 // 헬퍼 함수: Hex 색상을 RGBA로 변환 (잔상용)
 function hexToRgba(hex, alpha) {
     let r = 0, g = 0, b = 0;
@@ -303,11 +307,9 @@ function hexToRgba(hex, alpha) {
 function render() {
     // 잔상(트레일) 효과 처리
     if (trailAmount > 0) {
-        // 이전 프레임을 완전히 지우지 않고, 반투명한 배경을 덧그려 잔상을 남깁니다.
         ctx.fillStyle = hexToRgba(canvasBackgroundColor, 1 - trailAmount);
         ctx.fillRect(0, 0, canvas.width, canvas.height);
     } else {
-        // 잔상이 없으면 완전히 지웁니다.
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.fillStyle = canvasBackgroundColor;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -329,6 +331,7 @@ function render() {
     ctx.font = `${currentFontSize}px ${fontFamily}`;
 
     allLeds.forEach(led => {
+        // ★★★ [정상 작동] isLedLit 함수가 정의되었으므로 에러가 나지 않습니다 ★★★
         const isActive = isLedLit(led, currentTime);
         if (isActive) {
             const transform = applyMotionPreset(led, currentTime);
@@ -707,7 +710,6 @@ intensityNumber.addEventListener('input', () => {
     intensitySlider.dispatchEvent(new Event('input'));
 });
 
-// [신규] 잔상 이벤트 리스너
 trailSlider.addEventListener('input', () => {
     trailAmount = trailSlider.value / 100;
     trailValueSpan.textContent = trailSlider.value;
