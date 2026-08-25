@@ -18,10 +18,10 @@ let audioCtx = null;
 let audioSource = null;
 let audioDest = null;
 
-// [신규] 추가된 전역 상태
-let currentUnit = 'jamo';   // 진행 단위
-let rangeAmount = 0.5;      // 범위 (0 ~ 1)
-let intensityAmount = 0.5;  // 강도 (0 ~ 1)
+let currentUnit = 'jamo';      // 진행 단위
+let rangeAmount = 0.5;         // 범위 (0 ~ 1)
+let intensityAmount = 0.5;     // 강도 (0 ~ 1)
+let trailAmount = 0;           // 잔상 (0 ~ 1) [신규]
 
 // 전역 스타일 (스타일 파일에서 오버라이드 가능)
 let canvasBackgroundColor = '#000000';
@@ -41,17 +41,20 @@ const applyFontBtn = document.getElementById('applyFontBtn');
 const systemFontsBtn = document.getElementById('systemFontsBtn');
 const scatterSlider = document.getElementById('scatterSlider');
 const scatterValueSpan = document.getElementById('scatterValue');
-const scatterNumber = document.getElementById('scatterNumber'); // [신규]
+const scatterNumber = document.getElementById('scatterNumber');
 const fontSizeSlider = document.getElementById('fontSizeSlider');
 const fontSizeValueSpan = document.getElementById('fontSizeValue');
-const fontSizeNumber = document.getElementById('fontSizeNumber'); // [신규]
-const rangeSlider = document.getElementById('rangeSlider'); // [신규]
-const rangeValueSpan = document.getElementById('rangeValue'); // [신규]
-const rangeNumber = document.getElementById('rangeNumber'); // [신규]
-const intensitySlider = document.getElementById('intensitySlider'); // [신규]
-const intensityValueSpan = document.getElementById('intensityValue'); // [신규]
-const intensityNumber = document.getElementById('intensityNumber'); // [신규]
-const unitSelect = document.getElementById('unitSelect'); // [신규]
+const fontSizeNumber = document.getElementById('fontSizeNumber');
+const rangeSlider = document.getElementById('rangeSlider');
+const rangeValueSpan = document.getElementById('rangeValue');
+const rangeNumber = document.getElementById('rangeNumber');
+const intensitySlider = document.getElementById('intensitySlider');
+const intensityValueSpan = document.getElementById('intensityValue');
+const intensityNumber = document.getElementById('intensityNumber');
+const trailSlider = document.getElementById('trailSlider'); // [신규]
+const trailValueSpan = document.getElementById('trailValue'); // [신규]
+const trailNumber = document.getElementById('trailNumber'); // [신규]
+const unitSelect = document.getElementById('unitSelect');
 const shuffleBtn = document.getElementById('shuffleBtn');
 const aspectRatioSelect = document.getElementById('aspectRatio');
 const colorStyleSelect = document.getElementById('colorStyle');
@@ -95,13 +98,14 @@ function updateStatusPanel() {
         <div class="status-item"><span class="label">LED 개수</span><span class="value">${allLeds.length}</span></div>
         <div class="status-item"><span class="label">타이포 스타일</span><span class="value">${styleName}</span></div>
         <div class="status-item"><span class="label">모션 프리셋</span><span class="value">${presetName}</span></div>
-        <div class="status-item"><span class="label">진행 단위</span><span class="value">${currentUnit}</span></div> <!-- [신규] -->
+        <div class="status-item"><span class="label">진행 단위</span><span class="value">${currentUnit}</span></div>
         <div class="status-item"><span class="label">색상 스타일</span><span class="value">${currentColorStyle}</span></div>
         <div class="status-item"><span class="label">폰트</span><span class="value">${currentFont}</span></div>
         <div class="status-item"><span class="label">폰트 크기</span><span class="value">${currentFontSize}px</span></div>
         <div class="status-item"><span class="label">흩어짐</span><span class="value">${Math.round(scatterAmount * 100)}%</span></div>
-        <div class="status-item"><span class="label">범위</span><span class="value">${Math.round(rangeAmount * 100)}%</span></div> <!-- [신규] -->
-        <div class="status-item"><span class="label">강도</span><span class="value">${Math.round(intensityAmount * 100)}%</span></div> <!-- [신규] -->
+        <div class="status-item"><span class="label">범위</span><span class="value">${Math.round(rangeAmount * 100)}%</span></div>
+        <div class="status-item"><span class="label">강도</span><span class="value">${Math.round(intensityAmount * 100)}%</span></div>
+        <div class="status-item"><span class="label">잔상</span><span class="value">${Math.round(trailAmount * 100)}%</span></div> <!-- [신규] -->
     `;
     statusContent.innerHTML = statusHtml;
 }
@@ -284,29 +288,30 @@ function updateTimeDisplay() {
     timeDisplay.textContent = formatTime(currentTime);
 }
 
-// ==================== 렌더링 ====================
-function isLedLit(led, time) {
-    return time >= led.start;
-}
-
-function applyMotionPreset(led, time) {
-    if (!currentStyleId || !currentPresetId || !window.TypoMotionStyles?.[currentStyleId]?.presets?.[currentPresetId]) {
-        return { opacity: 1, scale: 1, rotation: 0, offsetX: 0, offsetY: 0 };
+// ==================== 렌더링 (잔상 효과 포함) ====================
+// 헬퍼 함수: Hex 색상을 RGBA로 변환 (잔상용)
+function hexToRgba(hex, alpha) {
+    let r = 0, g = 0, b = 0;
+    if (hex.length === 4) {
+        r = parseInt(hex[1]+hex[1], 16); g = parseInt(hex[2]+hex[2], 16); b = parseInt(hex[3]+hex[3], 16);
+    } else if (hex.length === 7) {
+        r = parseInt(hex.substring(1,3), 16); g = parseInt(hex.substring(3,5), 16); b = parseInt(hex.substring(5,7), 16);
     }
-    const preset = window.TypoMotionStyles[currentStyleId].presets[currentPresetId];
-    return preset.apply(led, time, ctx, {
-        currentFont,
-        currentFontSize,
-        scatterAmount,
-        rangeAmount,        // [신규] 범위 전달
-        intensityAmount     // [신규] 강도 전달
-    });
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 function render() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = canvasBackgroundColor;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // 잔상(트레일) 효과 처리
+    if (trailAmount > 0) {
+        // 이전 프레임을 완전히 지우지 않고, 반투명한 배경을 덧그려 잔상을 남깁니다.
+        ctx.fillStyle = hexToRgba(canvasBackgroundColor, 1 - trailAmount);
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    } else {
+        // 잔상이 없으면 완전히 지웁니다.
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = canvasBackgroundColor;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
 
     if (allLeds.length === 0) {
         ctx.fillStyle = '#666';
@@ -418,7 +423,6 @@ function animationLoop(now) {
 requestAnimationFrame(animationLoop);
 
 // ==================== 이벤트 리스너 ====================
-// SRT 파일 로드
 srtFileInput.addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -428,7 +432,6 @@ srtFileInput.addEventListener('change', (e) => {
     logEvent('SRT 파일 선택됨');
 });
 
-// 샘플 SRT
 loadSampleBtn.addEventListener('click', () => {
     const sample = `1
 00:00:00,000 --> 00:00:03,000
@@ -454,7 +457,6 @@ loadSampleBtn.addEventListener('click', () => {
     logEvent('샘플 SRT 로드');
 });
 
-// 오디오 파일 로드
 audioFileInput.addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -471,7 +473,6 @@ audioFileInput.addEventListener('change', (e) => {
     logEvent(`오디오 로드: ${file.name}`);
 });
 
-// 재생/정지
 playBtn.addEventListener('click', () => {
     if (allLeds.length === 0) return;
     isPlaying = true;
@@ -493,7 +494,6 @@ stopBtn.addEventListener('click', () => {
     updateStatusPanel();
 });
 
-// 타임라인
 timeline.addEventListener('input', () => {
     currentTime = parseFloat(timeline.value);
     updateTimeDisplay();
@@ -501,7 +501,6 @@ timeline.addEventListener('input', () => {
     updateStatusPanel();
 });
 
-// 화면 비율
 aspectRatioSelect.addEventListener('change', () => {
     if (aspectRatioSelect.value === '16:9') {
         canvas.width = 1280;
@@ -516,7 +515,6 @@ aspectRatioSelect.addEventListener('change', () => {
     logEvent(`화면 비율 변경: ${aspectRatioSelect.value}`);
 });
 
-// 색상 스타일
 colorStyleSelect.addEventListener('change', () => {
     currentColorStyle = colorStyleSelect.value;
     cues.forEach((cue, idx) => {
@@ -529,7 +527,6 @@ colorStyleSelect.addEventListener('change', () => {
     logEvent(`색상 스타일 변경: ${currentColorStyle}`);
 });
 
-// 타이포 스타일 로드
 styleSelect.addEventListener('change', () => {
     const styleId = styleSelect.value;
     if (!styleId) {
@@ -577,7 +574,6 @@ function applyStyle(styleId) {
 
     populatePresetSelect(styleId);
     applyCurrentStyleLayout();
-    // avoidOverlaps(); // [수정됨] 스타일 고유의 배치(격자 등)를 유지하기 위해 주석 처리
     render();
     logEvent(`스타일 적용: ${styleId}`);
     updateStatusPanel();
@@ -607,14 +603,12 @@ function populatePresetSelect(styleId) {
     updateStatusPanel();
 }
 
-// 프리셋 선택
 presetSelect.addEventListener('change', () => {
     currentPresetId = presetSelect.value;
     logEvent(`모션 프리셋 선택: ${presetSelect.value}`);
     updateStatusPanel();
 });
 
-// 폰트
 fontSelect.addEventListener('change', () => {
     currentFont = fontSelect.value;
     avoidOverlaps();
@@ -662,7 +656,6 @@ systemFontsBtn.addEventListener('click', async () => {
     }
 });
 
-// 흩어짐 (슬라이더 & 숫자 입력 연동)
 scatterSlider.addEventListener('input', () => {
     scatterAmount = scatterSlider.value / 100;
     scatterValueSpan.textContent = scatterSlider.value;
@@ -677,7 +670,6 @@ scatterNumber.addEventListener('input', () => {
     scatterSlider.dispatchEvent(new Event('input'));
 });
 
-// 글자 크기 (슬라이더 & 숫자 입력 연동)
 fontSizeSlider.addEventListener('input', () => {
     currentFontSize = parseInt(fontSizeSlider.value);
     fontSizeValueSpan.textContent = currentFontSize;
@@ -691,7 +683,6 @@ fontSizeNumber.addEventListener('input', () => {
     fontSizeSlider.dispatchEvent(new Event('input'));
 });
 
-// [신규] 범위 (슬라이더 & 숫자 입력 연동)
 rangeSlider.addEventListener('input', () => {
     rangeAmount = rangeSlider.value / 100;
     rangeValueSpan.textContent = rangeSlider.value;
@@ -704,7 +695,6 @@ rangeNumber.addEventListener('input', () => {
     rangeSlider.dispatchEvent(new Event('input'));
 });
 
-// [신규] 강도 (슬라이더 & 숫자 입력 연동)
 intensitySlider.addEventListener('input', () => {
     intensityAmount = intensitySlider.value / 100;
     intensityValueSpan.textContent = intensitySlider.value;
@@ -717,7 +707,19 @@ intensityNumber.addEventListener('input', () => {
     intensitySlider.dispatchEvent(new Event('input'));
 });
 
-// [신규] 진행 단위 변경
+// [신규] 잔상 이벤트 리스너
+trailSlider.addEventListener('input', () => {
+    trailAmount = trailSlider.value / 100;
+    trailValueSpan.textContent = trailSlider.value;
+    trailNumber.value = trailSlider.value;
+    render();
+    updateStatusPanel();
+});
+trailNumber.addEventListener('input', () => {
+    trailSlider.value = trailNumber.value;
+    trailSlider.dispatchEvent(new Event('input'));
+});
+
 unitSelect.addEventListener('change', () => {
     currentUnit = unitSelect.value;
     if (cues.length > 0) {
@@ -734,7 +736,6 @@ unitSelect.addEventListener('change', () => {
 
 shuffleBtn.addEventListener('click', reshufflePositions);
 
-// MP4 저장
 saveBtn.addEventListener('click', async () => {
     if (isRecording) return;
     if (allLeds.length === 0) {
