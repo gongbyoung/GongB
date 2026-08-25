@@ -18,6 +18,11 @@ let audioCtx = null;
 let audioSource = null;
 let audioDest = null;
 
+// [신규] 추가된 전역 상태
+let currentUnit = 'jamo';   // 진행 단위
+let rangeAmount = 0.5;      // 범위 (0 ~ 1)
+let intensityAmount = 0.5;  // 강도 (0 ~ 1)
+
 // 전역 스타일 (스타일 파일에서 오버라이드 가능)
 let canvasBackgroundColor = '#000000';
 let inactiveTextColor = 'rgba(255,255,255,0.3)';
@@ -36,8 +41,17 @@ const applyFontBtn = document.getElementById('applyFontBtn');
 const systemFontsBtn = document.getElementById('systemFontsBtn');
 const scatterSlider = document.getElementById('scatterSlider');
 const scatterValueSpan = document.getElementById('scatterValue');
+const scatterNumber = document.getElementById('scatterNumber'); // [신규]
 const fontSizeSlider = document.getElementById('fontSizeSlider');
 const fontSizeValueSpan = document.getElementById('fontSizeValue');
+const fontSizeNumber = document.getElementById('fontSizeNumber'); // [신규]
+const rangeSlider = document.getElementById('rangeSlider'); // [신규]
+const rangeValueSpan = document.getElementById('rangeValue'); // [신규]
+const rangeNumber = document.getElementById('rangeNumber'); // [신규]
+const intensitySlider = document.getElementById('intensitySlider'); // [신규]
+const intensityValueSpan = document.getElementById('intensityValue'); // [신규]
+const intensityNumber = document.getElementById('intensityNumber'); // [신규]
+const unitSelect = document.getElementById('unitSelect'); // [신규]
 const shuffleBtn = document.getElementById('shuffleBtn');
 const aspectRatioSelect = document.getElementById('aspectRatio');
 const colorStyleSelect = document.getElementById('colorStyle');
@@ -81,10 +95,13 @@ function updateStatusPanel() {
         <div class="status-item"><span class="label">LED 개수</span><span class="value">${allLeds.length}</span></div>
         <div class="status-item"><span class="label">타이포 스타일</span><span class="value">${styleName}</span></div>
         <div class="status-item"><span class="label">모션 프리셋</span><span class="value">${presetName}</span></div>
+        <div class="status-item"><span class="label">진행 단위</span><span class="value">${currentUnit}</span></div> <!-- [신규] -->
         <div class="status-item"><span class="label">색상 스타일</span><span class="value">${currentColorStyle}</span></div>
         <div class="status-item"><span class="label">폰트</span><span class="value">${currentFont}</span></div>
         <div class="status-item"><span class="label">폰트 크기</span><span class="value">${currentFontSize}px</span></div>
         <div class="status-item"><span class="label">흩어짐</span><span class="value">${Math.round(scatterAmount * 100)}%</span></div>
+        <div class="status-item"><span class="label">범위</span><span class="value">${Math.round(rangeAmount * 100)}%</span></div> <!-- [신규] -->
+        <div class="status-item"><span class="label">강도</span><span class="value">${Math.round(intensityAmount * 100)}%</span></div> <!-- [신규] -->
     `;
     statusContent.innerHTML = statusHtml;
 }
@@ -115,30 +132,38 @@ function loadSRT(content) {
     updateStatusPanel();
 }
 
-// ==================== LED 생성 ====================
+// ==================== LED 생성 (단위별 분해 수정) ====================
 function buildAllLeds(cues) {
     allLeds = [];
     cues.forEach((cue, cueIdx) => {
-        const chars = Array.from(cue.text);
-        chars.forEach((char, charIdx) => {
-            if (char.trim() === '') return;
-            const components = decomposeKorean(char);
-            const numComponents = components.length;
-            const step = (cue.end - cue.start) / numComponents;
-            const fullLitTime = cue.start + (numComponents - 1) * step;
+        let units = [];
+        
+        // 선택된 단위(자/모음, 글자, 단어, 문장)에 따라 분해
+        if (currentUnit === 'jamo') {
+            units = Array.from(cue.text).flatMap(char => decomposeKorean(char));
+        } else if (currentUnit === 'char') {
+            units = Array.from(cue.text);
+        } else if (currentUnit === 'word') {
+            units = cue.text.split(' ').filter(w => w.trim() !== '');
+        } else if (currentUnit === 'sentence') {
+            units = [cue.text.trim()];
+        }
 
-            components.forEach((comp, compIdx) => {
-                allLeds.push({
-                    char: comp,
-                    cueIdx,
-                    charIdx,
-                    compIdx,
-                    start: cue.start + compIdx * step,
-                    end: cue.end,
-                    fullLitTime,
-                    color: cue.color,
-                    x: 0, y: 0, baseX: 0, baseY: 0
-                });
+        const numUnits = units.length;
+        const step = (cue.end - cue.start) / numUnits;
+        const fullLitTime = cue.start + (numUnits - 1) * step;
+
+        units.forEach((unit, unitIdx) => {
+            allLeds.push({
+                char: unit, // 단위가 단어/문장이면 문자열이 들어감
+                cueIdx,
+                charIdx: unitIdx,
+                compIdx: 0,
+                start: cue.start + unitIdx * step,
+                end: cue.end,
+                fullLitTime,
+                color: cue.color,
+                x: 0, y: 0, baseX: 0, baseY: 0
             });
         });
     });
@@ -147,10 +172,11 @@ function buildAllLeds(cues) {
         currentFontSize = Math.min(80, Math.max(30, 80 * (200 / allLeds.length) * 1.5));
         fontSizeSlider.value = currentFontSize;
         fontSizeValueSpan.textContent = Math.round(currentFontSize);
+        fontSizeNumber.value = currentFontSize;
     }
 }
 
-// 수정된 applyCurrentStyleLayout 함수
+// ==================== 스타일 레이아웃 적용 ====================
 function applyCurrentStyleLayout() {
     if (!currentStyleId || !window.TypoMotionStyles?.[currentStyleId]) {
         assignInitialPositions();
@@ -159,16 +185,11 @@ function applyCurrentStyleLayout() {
     const style = window.TypoMotionStyles[currentStyleId];
     if (style.layout) {
         style.layout(allLeds, canvas, ctx);
-        
-        // ★★★ 이 3줄이 반드시 추가되어야 합니다! ★★★
         const margin = Math.max(20, currentFontSize / 2 + 5);
-        allLeds.forEach(led => updateLedPosition(led, margin)); 
-        
+        allLeds.forEach(led => updateLedPosition(led, margin));
     } else {
         assignInitialPositions();
     }
-    
-    // 전역 스타일 적용
     if (style.backgroundColor) canvasBackgroundColor = style.backgroundColor;
     if (style.textColor) inactiveTextColor = style.textColor;
     if (style.glowColor) activeGlowColor = style.glowColor;
@@ -276,7 +297,9 @@ function applyMotionPreset(led, time) {
     return preset.apply(led, time, ctx, {
         currentFont,
         currentFontSize,
-        scatterAmount
+        scatterAmount,
+        rangeAmount,        // [신규] 범위 전달
+        intensityAmount     // [신규] 강도 전달
     });
 }
 
@@ -530,7 +553,16 @@ function loadStyle(styleId) {
     }
     const script = document.createElement('script');
     script.src = `styles/${styleId}.js`;
-    script.onload = () => applyStyle(styleId);
+    script.onload = () => {
+        if (window.TypoMotionStyles && window.TypoMotionStyles[styleId]) {
+            applyStyle(styleId);
+        } else {
+            logEvent(`경고: ${styleId} 스타일이 정의되지 않았습니다. (파일이 아닌 폴더일 수 있습니다)`);
+        }
+    };
+    script.onerror = () => {
+        logEvent(`경고: ${styleId} 스타일 파일을 찾을 수 없습니다.`);
+    };
     document.head.appendChild(script);
     logEvent(`타이포 스타일 로드 요청: ${styleId}`);
 }
@@ -538,7 +570,6 @@ function loadStyle(styleId) {
 function applyStyle(styleId) {
     currentStyleId = styleId;
     currentPresetId = '';
-    
     if (!window.TypoMotionStyles[styleId]) {
         logEvent(`스타일 로드 실패: ${styleId} (객체가 정의되지 않음)`);
         return;
@@ -546,22 +577,17 @@ function applyStyle(styleId) {
 
     populatePresetSelect(styleId);
     applyCurrentStyleLayout();
-    
-    // avoidOverlaps();  <-- ★ 이 부분을 주석 처리하거나 삭제하세요!
-    
+    // avoidOverlaps(); // [수정됨] 스타일 고유의 배치(격자 등)를 유지하기 위해 주석 처리
     render();
     logEvent(`스타일 적용: ${styleId}`);
     updateStatusPanel();
 }
 
-
-
 function populatePresetSelect(styleId) {
     presetSelect.disabled = false;
     presetSelect.innerHTML = '<option value="">-- 모션 선택 --</option>';
-   const style = window.TypoMotionStyles[styleId];
+    const style = window.TypoMotionStyles[styleId];
 
-    // ★ 이 줄이 반드시 들어가 있어야 합니다!
     if (!style) return; 
 
     const presets = style.presets || {};
@@ -636,22 +662,74 @@ systemFontsBtn.addEventListener('click', async () => {
     }
 });
 
-// 흩어짐/글자 크기
+// 흩어짐 (슬라이더 & 숫자 입력 연동)
 scatterSlider.addEventListener('input', () => {
     scatterAmount = scatterSlider.value / 100;
     scatterValueSpan.textContent = scatterSlider.value;
+    scatterNumber.value = scatterSlider.value;
     allLeds.forEach(led => updateLedPosition(led, Math.max(20, currentFontSize / 2 + 5)));
     avoidOverlaps();
     render();
     updateStatusPanel();
 });
+scatterNumber.addEventListener('input', () => {
+    scatterSlider.value = scatterNumber.value;
+    scatterSlider.dispatchEvent(new Event('input'));
+});
 
+// 글자 크기 (슬라이더 & 숫자 입력 연동)
 fontSizeSlider.addEventListener('input', () => {
     currentFontSize = parseInt(fontSizeSlider.value);
     fontSizeValueSpan.textContent = currentFontSize;
+    fontSizeNumber.value = currentFontSize;
     avoidOverlaps();
     render();
     updateStatusPanel();
+});
+fontSizeNumber.addEventListener('input', () => {
+    fontSizeSlider.value = fontSizeNumber.value;
+    fontSizeSlider.dispatchEvent(new Event('input'));
+});
+
+// [신규] 범위 (슬라이더 & 숫자 입력 연동)
+rangeSlider.addEventListener('input', () => {
+    rangeAmount = rangeSlider.value / 100;
+    rangeValueSpan.textContent = rangeSlider.value;
+    rangeNumber.value = rangeSlider.value;
+    render();
+    updateStatusPanel();
+});
+rangeNumber.addEventListener('input', () => {
+    rangeSlider.value = rangeNumber.value;
+    rangeSlider.dispatchEvent(new Event('input'));
+});
+
+// [신규] 강도 (슬라이더 & 숫자 입력 연동)
+intensitySlider.addEventListener('input', () => {
+    intensityAmount = intensitySlider.value / 100;
+    intensityValueSpan.textContent = intensitySlider.value;
+    intensityNumber.value = intensitySlider.value;
+    render();
+    updateStatusPanel();
+});
+intensityNumber.addEventListener('input', () => {
+    intensitySlider.value = intensityNumber.value;
+    intensitySlider.dispatchEvent(new Event('input'));
+});
+
+// [신규] 진행 단위 변경
+unitSelect.addEventListener('change', () => {
+    currentUnit = unitSelect.value;
+    if (cues.length > 0) {
+        buildAllLeds(cues);
+        applyCurrentStyleLayout();
+        avoidOverlaps();
+        setupTimeline();
+        currentTime = 0;
+        render();
+        logEvent(`진행 단위 변경: ${currentUnit}`);
+        updateStatusPanel();
+    }
 });
 
 shuffleBtn.addEventListener('click', reshufflePositions);
