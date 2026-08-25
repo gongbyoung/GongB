@@ -539,7 +539,6 @@ function applyStyle(styleId) {
     currentStyleId = styleId;
     currentPresetId = '';
     
-    // ★ 추가: 스타일 객체가 없으면 로드 실패 로그만 남기고 중단
     if (!window.TypoMotionStyles[styleId]) {
         logEvent(`스타일 로드 실패: ${styleId} (객체가 정의되지 않음)`);
         return;
@@ -547,11 +546,16 @@ function applyStyle(styleId) {
 
     populatePresetSelect(styleId);
     applyCurrentStyleLayout();
-    avoidOverlaps();
+    
+    // avoidOverlaps();  <-- ★ 이 부분을 주석 처리하거나 삭제하세요!
+    
     render();
     logEvent(`스타일 적용: ${styleId}`);
     updateStatusPanel();
 }
+
+
+
 function populatePresetSelect(styleId) {
     presetSelect.disabled = false;
     presetSelect.innerHTML = '<option value="">-- 모션 선택 --</option>';
