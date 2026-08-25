@@ -293,6 +293,21 @@ function isLedLit(led, time) {
     return time >= led.start;
 }
 
+function applyMotionPreset(led, time) {
+    if (!currentStyleId || !currentPresetId || !window.TypoMotionStyles?.[currentStyleId]?.presets?.[currentPresetId]) {
+        return { opacity: 1, scale: 1, rotation: 0, offsetX: 0, offsetY: 0 };
+    }
+    const preset = window.TypoMotionStyles[currentStyleId].presets[currentPresetId];
+    return preset.apply(led, time, ctx, {
+        currentFont,
+        currentFontSize,
+        scatterAmount,
+        rangeAmount,
+        intensityAmount,
+        trailAmount
+    });
+}
+
 // 헬퍼 함수: Hex 색상을 RGBA로 변환 (잔상용)
 function hexToRgba(hex, alpha) {
     let r = 0, g = 0, b = 0;
