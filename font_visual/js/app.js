@@ -10,7 +10,7 @@ let currentFontSize = 80;
 let scatterAmount = 0.5;
 let currentColorStyle = 'harmony';
 let currentStyleId = '';
-let currentPresetId = '';
+let currentPresetId = ''; // 이 변수는 이제 "기본(강제) 프리셋"으로 사용됨
 let isPlaying = false;
 let isRecording = false;
 let mediaRecorder = null;
@@ -18,14 +18,14 @@ let audioCtx = null;
 let audioSource = null;
 let audioDest = null;
 
-let currentUnit = 'jamo';      // 진행 단위
-let rangeAmount = 0.5;         // 범위 (0 ~ 1)
-let intensityAmount = 0.5;     // 강도 (0 ~ 1)
-let trailAmount = 0;           // 잔상 (0 ~ 1)
+let currentUnit = 'jamo';      
+let rangeAmount = 0.5;         
+let intensityAmount = 0.5;     
+let trailAmount = 0;           
 
-// 전역 스타일 (스타일 파일에서 오버라이드 가능)
+// 전역 스타일
 let canvasBackgroundColor = '#000000';
-let inactiveTextColor = 'rgba(255,255,255,0.3)';
+let inactiveTextColor = 'transparent'; // <-- 여기만 'transparent'로 수정
 let activeGlowColor = '#ffd700';
 
 // ==================== DOM 요소 ====================
@@ -89,7 +89,7 @@ function updateStatusPanel() {
     if (!statusContent) return;
 
     const styleName = currentStyleId ? (window.TypoMotionStyles?.[currentStyleId]?.name || currentStyleId) : '선택 안됨';
-    const presetName = currentPresetId ? (window.TypoMotionStyles?.[currentStyleId]?.presets?.[currentPresetId]?.name || currentPresetId) : '선택 안됨';
+    const presetName = currentPresetId ? (window.TypoMotionStyles?.[currentStyleId]?.presets?.[currentPresetId]?.name || currentPresetId) : '자동 배정';
 
     const statusHtml = `
         <div class="status-item"><span class="label">재생 상태</span><span class="value">${isPlaying ? '▶ 재생 중' : '⏸ 정지'}</span></div>
@@ -119,12 +119,23 @@ function init() {
     updateStatusPanel();
 }
 
-// ==================== SRT 로딩 ====================
+// ==================== SRT 로딩 (자동 모션 부여 추가!) ====================
 function loadSRT(content) {
     cues = parseSRT(content);
+    
+    // ★★★ [수정됨] SRT 줄(큐)마다 자동으로 프리셋을 순환/부여하는 로직 ★★★
+    const presetKeys = Object.keys(window.TypoMotionStyles[currentStyleId]?.presets || {});
+    
     cues.forEach((cue, idx) => {
         cue.color = getColorForCue(idx, currentColorStyle);
+        if (presetKeys.length > 0) {
+            // 자동 순환 배정 (1번 줄은 1번 모션, 2번 줄은 2번 모션...)
+            cue.presetId = presetKeys[idx % presetKeys.length];
+        } else {
+            cue.presetId = null; // 프리셋이 없으면 null
+        }
     });
+
     buildAllLeds(cues);
     applyCurrentStyleLayout();
     avoidOverlaps();
@@ -132,7 +143,7 @@ function loadSRT(content) {
     currentTime = 0;
     updateTimeDisplay();
     render();
-    logEvent(`SRT 로드: ${cues.length}개 큐, ${allLeds.length}개 LED`);
+    logEvent(`SRT 로드: ${cues.length}개 큐, ${allLeds.length}개 LED (자동 모션 부여 완료)`);
     updateStatusPanel();
 }
 
@@ -287,17 +298,22 @@ function updateTimeDisplay() {
     timeDisplay.textContent = formatTime(currentTime);
 }
 
-// ==================== 렌더링 (잔상 효과 포함) ====================
-// ★★★ [추가됨] 누락되었던 isLedLit 함수 ★★★
+// ==================== 렌더링 ====================
 function isLedLit(led, time) {
     return time >= led.start;
 }
 
+// ★★★ [수정됨] 이제 각 SRT 줄(큐)에 부여된 모션을 자동으로 찾아서 적용합니다 ★★★
 function applyMotionPreset(led, time) {
-    if (!currentStyleId || !currentPresetId || !window.TypoMotionStyles?.[currentStyleId]?.presets?.[currentPresetId]) {
+    // 현재 시간대에 해당하는 큐(줄)를 찾습니다.
+    const activeCue = cues.find(cue => time >= cue.start && time <= cue.end);
+    // 해당 줄에 부여된 프리셋 ID를 가져옵니다. (없으면 전역으로 선택된 프리셋 사용)
+    const presetId = activeCue ? activeCue.presetId : currentPresetId;
+
+    if (!currentStyleId || !presetId || !window.TypoMotionStyles?.[currentStyleId]?.presets?.[presetId]) {
         return { opacity: 1, scale: 1, rotation: 0, offsetX: 0, offsetY: 0 };
     }
-    const preset = window.TypoMotionStyles[currentStyleId].presets[currentPresetId];
+    const preset = window.TypoMotionStyles[currentStyleId].presets[presetId];
     return preset.apply(led, time, ctx, {
         currentFont,
         currentFontSize,
@@ -308,7 +324,7 @@ function applyMotionPreset(led, time) {
     });
 }
 
-// 헬퍼 함수: Hex 색상을 RGBA로 변환 (잔상용)
+// 헬퍼 함수: Hex 색상을 RGBA로 변환
 function hexToRgba(hex, alpha) {
     let r = 0, g = 0, b = 0;
     if (hex.length === 4) {
@@ -320,7 +336,6 @@ function hexToRgba(hex, alpha) {
 }
 
 function render() {
-    // 잔상(트레일) 효과 처리
     if (trailAmount > 0) {
         ctx.fillStyle = hexToRgba(canvasBackgroundColor, 1 - trailAmount);
         ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -346,7 +361,39 @@ function render() {
     ctx.font = `${currentFontSize}px ${fontFamily}`;
 
     allLeds.forEach(led => {
-        // ★★★ [정상 작동] isLedLit 함수가 정의되었으므로 에러가 나지 않습니다 ★★★
+        const isActive = isLedLit(led, currentTime);
+        if (isActive) {
+            const transform = applyMotionPreset(led, currentTime);
+            ctx.save();
+            ctx.globalAlpha = transform.opacity;
+            ctx.translate(led.x + (transform.offsetX || 0), led.y + (transform.offsetY || 0));
+            ctx.rotate((transform.rotation || 0) * Math.PI / 180);
+            ctx.scale(transform.scale || 1, transform.scale || 1);
+            ctx.fillStyle = led.color;
+            ctx.shadowColor = activeGlowColor;
+            ctx.shadowBlur = 20;
+            ctx.fillText(led.char, 0, 0);
+            ctx.restore();
+        } else {
+            // ★ 수정됨: 비활성 글자는 투명일 때 아예 그리지 않음 (SRT 시간에 맞는 자막만 딱 나옴)
+            if (inactiveTextColor !== 'transparent') { 
+                ctx.strokeStyle = inactiveTextColor;
+                ctx.lineWidth = 2;
+                ctx.strokeText(led.char, led.x, led.y);
+            }
+        }
+    });
+
+    updateCurrentSentence();
+    updateStatusPanel();
+}
+
+    const fontFamily = currentFont;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `${currentFontSize}px ${fontFamily}`;
+
+    allLeds.forEach(led => {
         const isActive = isLedLit(led, currentTime);
         if (isActive) {
             const transform = applyMotionPreset(led, currentTime);
@@ -585,6 +632,7 @@ function loadStyle(styleId) {
 function applyStyle(styleId) {
     currentStyleId = styleId;
     currentPresetId = '';
+    
     if (!window.TypoMotionStyles[styleId]) {
         logEvent(`스타일 로드 실패: ${styleId} (객체가 정의되지 않음)`);
         return;
@@ -592,6 +640,15 @@ function applyStyle(styleId) {
 
     populatePresetSelect(styleId);
     applyCurrentStyleLayout();
+    
+    // ★★★ [수정됨] 스타일이 바뀌면 기존 SRT 줄들의 프리셋도 다시 자동 부여! ★★★
+    if (cues.length > 0) {
+        const presetKeys = Object.keys(window.TypoMotionStyles[styleId].presets || {});
+        cues.forEach((cue, idx) => {
+            cue.presetId = presetKeys.length > 0 ? presetKeys[idx % presetKeys.length] : null;
+        });
+    }
+    
     render();
     logEvent(`스타일 적용: ${styleId}`);
     updateStatusPanel();
@@ -599,7 +656,7 @@ function applyStyle(styleId) {
 
 function populatePresetSelect(styleId) {
     presetSelect.disabled = false;
-    presetSelect.innerHTML = '<option value="">-- 모션 선택 --</option>';
+    presetSelect.innerHTML = '<option value="">-- 자동 배정 (줄마다 순환) --</option>';
     const style = window.TypoMotionStyles[styleId];
 
     if (!style) return; 
@@ -611,19 +668,22 @@ function populatePresetSelect(styleId) {
         opt.textContent = presets[key].name;
         presetSelect.appendChild(opt);
     });
-
-    if (Object.keys(presets).length > 0) {
-        const firstPresetId = Object.keys(presets)[0];
-        presetSelect.value = firstPresetId;
-        currentPresetId = firstPresetId;
-        logEvent(`자동 프리셋 선택: ${presets[firstPresetId].name}`);
-    }
     updateStatusPanel();
 }
 
+// 프리셋 선택 (수동 선택 시 전체에 강제 적용, 비우면 자동 배정)
 presetSelect.addEventListener('change', () => {
     currentPresetId = presetSelect.value;
-    logEvent(`모션 프리셋 선택: ${presetSelect.value}`);
+    logEvent(`모션 프리셋 선택: ${presetSelect.value || '자동 배정'}`);
+    if (cues.length > 0) {
+        const style = window.TypoMotionStyles[currentStyleId];
+        const presetKeys = Object.keys(style?.presets || {});
+        cues.forEach((cue, idx) => {
+            // 수동 선택 시 모든 줄에 해당 프리셋을 적용, 자동일 경우 다시 순환 배정
+            cue.presetId = currentPresetId || (presetKeys.length > 0 ? presetKeys[idx % presetKeys.length] : null);
+        });
+        render();
+    }
     updateStatusPanel();
 });
 
