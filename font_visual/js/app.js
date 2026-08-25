@@ -538,6 +538,13 @@ function loadStyle(styleId) {
 function applyStyle(styleId) {
     currentStyleId = styleId;
     currentPresetId = '';
+    
+    // ★ 추가: 스타일 객체가 없으면 로드 실패 로그만 남기고 중단
+    if (!window.TypoMotionStyles[styleId]) {
+        logEvent(`스타일 로드 실패: ${styleId} (객체가 정의되지 않음)`);
+        return;
+    }
+
     populatePresetSelect(styleId);
     applyCurrentStyleLayout();
     avoidOverlaps();
@@ -545,25 +552,32 @@ function applyStyle(styleId) {
     logEvent(`스타일 적용: ${styleId}`);
     updateStatusPanel();
 }
-
 function populatePresetSelect(styleId) {
     presetSelect.disabled = false;
     presetSelect.innerHTML = '<option value="">-- 모션 선택 --</option>';
     const style = window.TypoMotionStyles[styleId];
-    Object.keys(style.presets).forEach(key => {
+    
+    // ★ 추가: 스타일이 없다면 프리셋을 비우고 종료
+    if (!style) {
+        console.error(`스타일 '${styleId}'를 찾을 수 없습니다.`);
+        return;
+    }
+
+    // ★ 추가: presets가 없다면 빈 객체로 처리
+    const presets = style.presets || {};
+    Object.keys(presets).forEach(key => {
         const opt = document.createElement('option');
         opt.value = key;
-        opt.textContent = style.presets[key].name;
+        opt.textContent = presets[key].name;
         presetSelect.appendChild(opt);
     });
 
-    if (Object.keys(style.presets).length > 0) {
-        const firstPresetId = Object.keys(style.presets)[0];
+    if (Object.keys(presets).length > 0) {
+        const firstPresetId = Object.keys(presets)[0];
         presetSelect.value = firstPresetId;
         currentPresetId = firstPresetId;
-        logEvent(`자동 프리셋 선택: ${style.presets[firstPresetId].name}`);
+        logEvent(`자동 프리셋 선택: ${presets[firstPresetId].name}`);
     }
-
     updateStatusPanel();
 }
 
