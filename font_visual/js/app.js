@@ -160,9 +160,9 @@ function applyCurrentStyleLayout() {
     if (style.layout) {
         style.layout(allLeds, canvas, ctx);
         
-        // ★ 여기에 추가! (스타일 레이아웃이 적용된 baseX, baseY를 실제 x,y 좌표로 변환)
+        // ★★★ 이 3줄이 반드시 추가되어야 합니다! ★★★
         const margin = Math.max(20, currentFontSize / 2 + 5);
-        allLeds.forEach(led => updateLedPosition(led, margin));
+        allLeds.forEach(led => updateLedPosition(led, margin)); 
         
     } else {
         assignInitialPositions();
@@ -555,15 +555,11 @@ function applyStyle(styleId) {
 function populatePresetSelect(styleId) {
     presetSelect.disabled = false;
     presetSelect.innerHTML = '<option value="">-- 모션 선택 --</option>';
-    const style = window.TypoMotionStyles[styleId];
-    
-    // ★ 추가: 스타일이 없다면 프리셋을 비우고 종료
-    if (!style) {
-        console.error(`스타일 '${styleId}'를 찾을 수 없습니다.`);
-        return;
-    }
+   const style = window.TypoMotionStyles[styleId];
 
-    // ★ 추가: presets가 없다면 빈 객체로 처리
+    // ★ 이 줄이 반드시 들어가 있어야 합니다!
+    if (!style) return; 
+
     const presets = style.presets || {};
     Object.keys(presets).forEach(key => {
         const opt = document.createElement('option');
