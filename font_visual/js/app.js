@@ -363,7 +363,6 @@ function render() {
             ctx.fillText(led.char, 0, 0);
             ctx.restore();
         } else {
-            // ★ 비활성 글자는 투명일 때 아예 그리지 않음
             if (inactiveTextColor !== 'transparent') { 
                 ctx.strokeStyle = inactiveTextColor;
                 ctx.lineWidth = 2;
