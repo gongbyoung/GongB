@@ -150,19 +150,24 @@ function buildAllLeds(cues) {
     }
 }
 
-// ==================== 스타일 레이아웃 적용 ====================
+// 수정된 applyCurrentStyleLayout 함수
 function applyCurrentStyleLayout() {
     if (!currentStyleId || !window.TypoMotionStyles?.[currentStyleId]) {
-        // 기본 랜덤 배치
         assignInitialPositions();
         return;
     }
     const style = window.TypoMotionStyles[currentStyleId];
     if (style.layout) {
         style.layout(allLeds, canvas, ctx);
+        
+        // ★ 여기에 추가! (스타일 레이아웃이 적용된 baseX, baseY를 실제 x,y 좌표로 변환)
+        const margin = Math.max(20, currentFontSize / 2 + 5);
+        allLeds.forEach(led => updateLedPosition(led, margin));
+        
     } else {
         assignInitialPositions();
     }
+    
     // 전역 스타일 적용
     if (style.backgroundColor) canvasBackgroundColor = style.backgroundColor;
     if (style.textColor) inactiveTextColor = style.textColor;
