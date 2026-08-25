@@ -25,7 +25,7 @@ let trailAmount = 0;
 
 // 전역 스타일
 let canvasBackgroundColor = '#000000';
-let inactiveTextColor = 'transparent'; // <-- 여기만 'transparent'로 수정
+let inactiveTextColor = 'transparent'; 
 let activeGlowColor = '#ffd700';
 
 // ==================== DOM 요소 ====================
@@ -119,19 +119,16 @@ function init() {
     updateStatusPanel();
 }
 
-// ==================== SRT 로딩 (자동 모션 부여 추가!) ====================
+// ==================== SRT 로딩 ====================
 function loadSRT(content) {
     cues = parseSRT(content);
     
-    const presetKeys = Object.keys(window.TypoMotionStyles[currentStyleId]?.presets || {});
-    
+    const style = window.TypoMotionStyles[currentStyleId];
+    const presetKeys = Object.keys(style?.presets || {});
+
     cues.forEach((cue, idx) => {
         cue.color = getColorForCue(idx, currentColorStyle);
-        if (presetKeys.length > 0) {
-            cue.presetId = presetKeys[idx % presetKeys.length];
-        } else {
-            cue.presetId = null; 
-        }
+        cue.presetId = presetKeys.length > 0 ? presetKeys[idx % presetKeys.length] : null;
     });
 
     buildAllLeds(cues);
@@ -145,7 +142,7 @@ function loadSRT(content) {
     updateStatusPanel();
 }
 
-// ==================== LED 생성 (단위별 분해) ====================
+// ==================== LED 생성 ====================
 function buildAllLeds(cues) {
     allLeds = [];
     cues.forEach((cue, cueIdx) => {
@@ -188,7 +185,7 @@ function buildAllLeds(cues) {
     }
 }
 
-// ==================== 스타일 레이아웃 적용 ====================
+// ==================== 스타일 레이아웃 ====================
 function applyCurrentStyleLayout() {
     if (!currentStyleId || !window.TypoMotionStyles?.[currentStyleId]) {
         assignInitialPositions();
@@ -207,7 +204,6 @@ function applyCurrentStyleLayout() {
     if (style.glowColor) activeGlowColor = style.glowColor;
 }
 
-// ==================== 위치 배치 (기본: 랜덤) ====================
 function assignInitialPositions() {
     const w = canvas.width;
     const h = canvas.height;
@@ -235,7 +231,6 @@ function updateLedPosition(led, margin) {
     led.y = Math.min(Math.max(y, margin), canvas.height - margin);
 }
 
-// ==================== 겹침 회피 ====================
 function avoidOverlaps() {
     if (allLeds.length < 2) return;
     ctx.font = `${currentFontSize}px ${currentFont}`;
@@ -285,7 +280,6 @@ function reshufflePositions() {
     logEvent('셔플 실행');
 }
 
-// ==================== 타임라인 ====================
 function setupTimeline() {
     const maxTime = allLeds.length > 0 ? Math.max(...allLeds.map(led => led.end)) : 0;
     timeline.max = maxTime || 0;
@@ -296,12 +290,11 @@ function updateTimeDisplay() {
     timeDisplay.textContent = formatTime(currentTime);
 }
 
-// ==================== 렌더링 ====================
+// ==================== 렌더링 (단 하나만 존재!) ====================
 function isLedLit(led, time) {
     return time >= led.start;
 }
 
-// ★★★ [수정됨] 이제 각 SRT 줄(큐)에 부여된 모션을 자동으로 찾아서 적용합니다 ★★★
 function applyMotionPreset(led, time) {
     const activeCue = cues.find(cue => time >= cue.start && time <= cue.end);
     const presetId = activeCue ? activeCue.presetId : currentPresetId;
@@ -320,7 +313,6 @@ function applyMotionPreset(led, time) {
     });
 }
 
-// 헬퍼 함수: Hex 색상을 RGBA로 변환
 function hexToRgba(hex, alpha) {
     let r = 0, g = 0, b = 0;
     if (hex.length === 4) {
@@ -331,7 +323,6 @@ function hexToRgba(hex, alpha) {
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-// ★★★ [수정됨] 중복 코드가 제거된 완벽한 render 함수 ★★★
 function render() {
     if (trailAmount > 0) {
         ctx.fillStyle = hexToRgba(canvasBackgroundColor, 1 - trailAmount);
@@ -372,7 +363,7 @@ function render() {
             ctx.fillText(led.char, 0, 0);
             ctx.restore();
         } else {
-            // ★ 수정됨: 비활성 글자는 투명일 때 아예 그리지 않음
+            // ★ 비활성 글자는 투명일 때 아예 그리지 않음
             if (inactiveTextColor !== 'transparent') { 
                 ctx.strokeStyle = inactiveTextColor;
                 ctx.lineWidth = 2;
@@ -637,7 +628,6 @@ function populatePresetSelect(styleId) {
     updateStatusPanel();
 }
 
-// 프리셋 선택 (수동 선택 시 전체에 강제 적용, 비우면 자동 배정)
 presetSelect.addEventListener('change', () => {
     currentPresetId = presetSelect.value;
     logEvent(`모션 프리셋 선택: ${presetSelect.value || '자동 배정'}`);
