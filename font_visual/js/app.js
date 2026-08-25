@@ -10,7 +10,7 @@ let currentFontSize = 80;
 let scatterAmount = 0.5;
 let currentColorStyle = 'harmony';
 let currentStyleId = '';
-let currentPresetId = ''; // 이 변수는 이제 "기본(강제) 프리셋"으로 사용됨
+let currentPresetId = ''; 
 let isPlaying = false;
 let isRecording = false;
 let mediaRecorder = null;
@@ -123,16 +123,14 @@ function init() {
 function loadSRT(content) {
     cues = parseSRT(content);
     
-    // ★★★ [수정됨] SRT 줄(큐)마다 자동으로 프리셋을 순환/부여하는 로직 ★★★
     const presetKeys = Object.keys(window.TypoMotionStyles[currentStyleId]?.presets || {});
     
     cues.forEach((cue, idx) => {
         cue.color = getColorForCue(idx, currentColorStyle);
         if (presetKeys.length > 0) {
-            // 자동 순환 배정 (1번 줄은 1번 모션, 2번 줄은 2번 모션...)
             cue.presetId = presetKeys[idx % presetKeys.length];
         } else {
-            cue.presetId = null; // 프리셋이 없으면 null
+            cue.presetId = null; 
         }
     });
 
@@ -305,9 +303,7 @@ function isLedLit(led, time) {
 
 // ★★★ [수정됨] 이제 각 SRT 줄(큐)에 부여된 모션을 자동으로 찾아서 적용합니다 ★★★
 function applyMotionPreset(led, time) {
-    // 현재 시간대에 해당하는 큐(줄)를 찾습니다.
     const activeCue = cues.find(cue => time >= cue.start && time <= cue.end);
-    // 해당 줄에 부여된 프리셋 ID를 가져옵니다. (없으면 전역으로 선택된 프리셋 사용)
     const presetId = activeCue ? activeCue.presetId : currentPresetId;
 
     if (!currentStyleId || !presetId || !window.TypoMotionStyles?.[currentStyleId]?.presets?.[presetId]) {
@@ -335,6 +331,7 @@ function hexToRgba(hex, alpha) {
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+// ★★★ [수정됨] 중복 코드가 제거된 완벽한 render 함수 ★★★
 function render() {
     if (trailAmount > 0) {
         ctx.fillStyle = hexToRgba(canvasBackgroundColor, 1 - trailAmount);
@@ -375,42 +372,12 @@ function render() {
             ctx.fillText(led.char, 0, 0);
             ctx.restore();
         } else {
-            // ★ 수정됨: 비활성 글자는 투명일 때 아예 그리지 않음 (SRT 시간에 맞는 자막만 딱 나옴)
+            // ★ 수정됨: 비활성 글자는 투명일 때 아예 그리지 않음
             if (inactiveTextColor !== 'transparent') { 
                 ctx.strokeStyle = inactiveTextColor;
                 ctx.lineWidth = 2;
                 ctx.strokeText(led.char, led.x, led.y);
             }
-        }
-    });
-
-    updateCurrentSentence();
-    updateStatusPanel();
-}
-
-    const fontFamily = currentFont;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.font = `${currentFontSize}px ${fontFamily}`;
-
-    allLeds.forEach(led => {
-        const isActive = isLedLit(led, currentTime);
-        if (isActive) {
-            const transform = applyMotionPreset(led, currentTime);
-            ctx.save();
-            ctx.globalAlpha = transform.opacity;
-            ctx.translate(led.x + (transform.offsetX || 0), led.y + (transform.offsetY || 0));
-            ctx.rotate((transform.rotation || 0) * Math.PI / 180);
-            ctx.scale(transform.scale || 1, transform.scale || 1);
-            ctx.fillStyle = led.color;
-            ctx.shadowColor = activeGlowColor;
-            ctx.shadowBlur = 20;
-            ctx.fillText(led.char, 0, 0);
-            ctx.restore();
-        } else {
-            ctx.strokeStyle = inactiveTextColor;
-            ctx.lineWidth = 2;
-            ctx.strokeText(led.char, led.x, led.y);
         }
     });
 
@@ -641,7 +608,6 @@ function applyStyle(styleId) {
     populatePresetSelect(styleId);
     applyCurrentStyleLayout();
     
-    // ★★★ [수정됨] 스타일이 바뀌면 기존 SRT 줄들의 프리셋도 다시 자동 부여! ★★★
     if (cues.length > 0) {
         const presetKeys = Object.keys(window.TypoMotionStyles[styleId].presets || {});
         cues.forEach((cue, idx) => {
@@ -679,7 +645,6 @@ presetSelect.addEventListener('change', () => {
         const style = window.TypoMotionStyles[currentStyleId];
         const presetKeys = Object.keys(style?.presets || {});
         cues.forEach((cue, idx) => {
-            // 수동 선택 시 모든 줄에 해당 프리셋을 적용, 자동일 경우 다시 순환 배정
             cue.presetId = currentPresetId || (presetKeys.length > 0 ? presetKeys[idx % presetKeys.length] : null);
         });
         render();
