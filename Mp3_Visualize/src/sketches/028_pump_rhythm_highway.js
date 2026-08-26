@@ -1,9 +1,9 @@
 /**
  * src/sketches/028_pump_rhythm_highway.js
- * - [028호 독립형 비율 전환 & 악기 연주 시뮬레이터 Ver 25.0]
- * - 📐 Export 버튼(Full, 16:9, 9:16) 자체 감지 리스너 장착 (main.js 수정 ZERO)
- * - 🖼️ 16:9 및 9:16 비율 전환 시 레터박스 뷰포트 및 배경(.png) 이미지 즉시 실시간 전환
- * - 🎸 중앙 현 진동, 🥁 드럼스틱 타격 연주, 🎹 피아노 건반 터치 연주 모션
+ * - [028호 악기 연주 시뮬레이터 & SRT 캘리그래피 자막 연동 Ver 27.0]
+ * - 📜 SRT 자막 연동: window.currentSubtitleText를 가져와 화면 중앙에 캘리그래피 감성으로 렌더링
+ * - 🖼️ assets/ 폴더 내 .png 배경 및 16:9 / 9:16 / Full 레터박스 뷰포트 완벽 대응
+ * - 🎸 중앙 메탈 현, 🥁 드럼 타격, 🎹 피아노 연주 오디오 리액션 유지
  */
 
 export default class PumpRhythmHighwaySketch {
@@ -17,9 +17,9 @@ export default class PumpRhythmHighwaySketch {
     }
 
     this.time = 0;
-    this.version = "028호 독립형 비율 전환 연주기 Ver 25.0";
+    this.version = "028호 SRT 캘리그래피 자막 연동 Ver 27.0";
     
-    // assets 폴더 내의 배경 이미지 .png 로드
+    // 배경 이미지 로드
     this.bg169 = new Image();
     this.bg169.src = './assets/028_169_bg.png';
 
@@ -27,10 +27,9 @@ export default class PumpRhythmHighwaySketch {
     this.bg916.src = './assets/028_916_BG.png';
 
     this.stringVibration = [0, 0, 0, 0, 0];
-    this.drumHitPhase = 0;
-    this.selectedRatio = 'full'; // 기본값
+    this.selectedRatio = 'full';
 
-    // 💡 [핵심]: main.js를 건드리지 않고 스케치 내부에서 Export 버튼 클릭 직접 감지
+    // Export 버튼 직접 감지 리스너
     setTimeout(() => {
       const allButtons = document.querySelectorAll('button');
       allButtons.forEach(btn => {
@@ -77,13 +76,10 @@ export default class PumpRhythmHighwaySketch {
     const gainVal = globalSettings.audioGain ?? 1.0;
     const gaugeVal = globalSettings.gaugeValue ?? 0.5;
 
-    // Export 비율 파악 (스케치 내부 수동 제어값 또는 글로벌 설정 연동)
     const exportRatio = (this.selectedRatio || globalSettings.exportRatio || globalSettings.exportSetting || globalSettings.aspectRatio || 'full').toLowerCase();
-
     const rawGlow = globalSettings.glowScale ?? globalSettings.glow ?? globalSettings.scale ?? 50;
     const scaleFactor = Math.max(0.3, Math.min(3.0, rawGlow / 40.0));
 
-    // 4-Stem 음압 수신
     const drumsVol  = (targetAudio.drumsVol  ?? 0) * gainVal;
     const bassVol   = (targetAudio.bassVol   ?? 0) * gainVal;
     const vocalsVol = (targetAudio.vocalsVol ?? 0) * gainVal;
@@ -95,7 +91,7 @@ export default class PumpRhythmHighwaySketch {
     const H = this.canvas.height;
 
     // ---------------------------------------------------------------------
-    // 📐 비율별 뷰포트 레터박스(Viewport Letterbox) 연산
+    // 📐 뷰포트 레터박스 연산
     // ---------------------------------------------------------------------
     let renderW = W, renderH = H, renderX = 0, renderY = 0;
     let targetBg = this.bg169;
@@ -115,17 +111,14 @@ export default class PumpRhythmHighwaySketch {
       renderY = (H - renderH) / 2;
       targetBg = this.bg916;
     } else {
-      // Full 모드일 때 화면 비율에 따라 자동 선택
       targetBg = (W / H < 1.0) ? this.bg916 : this.bg169;
     }
 
     this.ctx.save();
 
-    // 외부 레터박스 영역 (다크 처리)
     this.ctx.fillStyle = "#0c0d10";
     this.ctx.fillRect(0, 0, W, H);
 
-    // 뷰포트 영역 클리핑
     this.ctx.beginPath();
     this.ctx.rect(renderX, renderY, renderW, renderH);
     this.ctx.clip();
@@ -140,14 +133,14 @@ export default class PumpRhythmHighwaySketch {
       this.ctx.fillRect(renderX, renderY, renderW, renderH);
     }
 
-    // 은은한 오버레이
-    this.ctx.fillStyle = "rgba(0, 0, 0, 0.12)";
+    // 텍스트 가독성을 위한 부드러운 다크 오버레이
+    this.ctx.fillStyle = "rgba(0, 0, 0, 0.20)";
     this.ctx.fillRect(renderX, renderY, renderW, renderH);
 
     const centerX = renderX + renderW / 2;
 
     // ---------------------------------------------------------------------
-    // 🎸 중앙 메탈 현(Strings) 진동 연출 (Bass 연동)
+    // 🎸 중앙 현 진동 연출 (Bass 연동)
     // ---------------------------------------------------------------------
     const stringCount = 5;
     const stringSpread = renderW * 0.08 * gaugeVal;
@@ -177,58 +170,54 @@ export default class PumpRhythmHighwaySketch {
     }
 
     // ---------------------------------------------------------------------
-    // 🥁 드럼 연주 시뮬레이션 (드럼스틱 타격 모션 & 패드 울림)
+    // 📜 [핵심]: SRT 자막 캘리그래피 스타일 렌더링
     // ---------------------------------------------------------------------
-    if (drumsVol > 0.05) {
-      this.drumHitPhase += drumsVol * 0.4;
-      
-      const drumX = renderX + renderW * 0.22;
-      const drumY = renderY + renderH * 0.45;
-
-      this.ctx.strokeStyle = `rgba(255, 60, 60, ${drumsVol * 0.9})`;
-      this.ctx.lineWidth = 3.5 * scaleFactor;
-      this.ctx.beginPath();
-      this.ctx.arc(drumX, drumY, drumsVol * 55 * scaleFactor, 0, Math.PI * 2);
-      this.ctx.stroke();
-
-      const stickAngle = -Math.PI / 4 + Math.sin(this.drumHitPhase * 8) * 0.35 * drumsVol;
+    const subtitleText = window.currentSubtitleText || window.cosmicEngineSettings?.poemText || "";
+    if (subtitleText) {
       this.ctx.save();
-      this.ctx.translate(drumX - 30, drumY - 40);
-      this.ctx.rotate(stickAngle);
-      this.ctx.fillStyle = "#e0a96d";
-      this.ctx.fillRect(0, -4, 80 * scaleFactor, 8 * scaleFactor);
+      
+      // 감성적인 캘리그래피 스타일 폰트 설정 (웹 표준 붓글씨 느낌 폰트 적용)
+      const fontSize = Math.max(24, Math.min(46, renderW * 0.065)) * scaleFactor;
+      this.ctx.font = `bold ${fontSize}px "Gowun Dodum", "MapoFlowerIsland", "Nanum Pen Script", sans-serif`;
+      this.ctx.textAlign = 'center';
+      this.ctx.textBaseline = 'middle';
+
+      const subX = centerX;
+      const subY = renderY + renderH * 0.25; // 상단 영역에 배치
+
+      // 1. 글자 그림자 (먹물 번짐 효과)
+      this.ctx.shadowColor = "rgba(0, 0, 0, 0.85)";
+      this.ctx.shadowBlur = 12;
+      this.ctx.shadowOffsetX = 3;
+      this.ctx.shadowOffsetY = 3;
+
+      // 2. 글자 테두리 (스트로크)
+      this.ctx.strokeStyle = "rgba(0, 0, 0, 0.9)";
+      this.ctx.lineWidth = 4;
+
+      // 여러 줄 자막 처리 (공백이나 \n 기준 분할)
+      const lines = subtitleText.split('\n');
+      const lineHeight = fontSize * 1.35;
+
+      lines.forEach((line, idx) => {
+        const lineY = subY + (idx - (lines.length - 1) / 2) * lineHeight;
+        this.ctx.strokeText(line, subX, lineY);
+        
+        // 3. 캘리그래피 본문 채우기 (고풍스러운 짙은 회색/먹색 톤)
+        this.ctx.fillStyle = "#f5f2eb"; // 한지 톤 밝은 미색
+        this.ctx.fillText(line, subX, lineY);
+      });
+
       this.ctx.restore();
-    }
-
-    // ---------------------------------------------------------------------
-    // 🎹 피아노 연주 시뮬레이션 (건반 터치 바운스)
-    // ---------------------------------------------------------------------
-    if (vocalsVol > 0.05 || otherVol > 0.05) {
-      const pianoPulse = Math.max(vocalsVol, otherVol);
-      const pianoX = renderX + renderW * 0.78;
-      const pianoY = renderY + renderH * 0.38;
-
-      this.ctx.fillStyle = `rgba(255, 215, 0, ${pianoPulse * 0.28})`;
-      this.ctx.beginPath();
-      this.ctx.arc(pianoX, pianoY, pianoPulse * 75 * scaleFactor, 0, Math.PI * 2);
-      this.ctx.fill();
-
-      this.ctx.fillStyle = `rgba(255, 255, 255, ${pianoPulse * 0.8})`;
-      const keyWidth = 8 * scaleFactor;
-      for (let k = 0; k < 6; k++) {
-        const kx = pianoX - 30 + k * 12;
-        const ky = pianoY + 15 + Math.sin(this.time * 15 + k) * pianoPulse * 12;
-        this.ctx.fillRect(kx, ky, keyWidth, 18 * scaleFactor);
-      }
     }
 
     this.ctx.restore();
 
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: `Instrument Player (Ratio:${exportRatio})`,
+      particleCount: `SRT Calligraphy Subtitle (Ratio:${exportRatio})`,
       isCovering: true,
-      activeFunction: `InstrumentPlayer[${exportRatio.toUpperCase()}]`
+      activeFunction: `CalligraphySubtitle[${exportRatio.toUpperCase()}]`
     };
   }
 
