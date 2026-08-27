@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SRT 캘리그라피 스튜디오 (Opentype.js & 흑백 마스크 피팅 v13.0)</title>
-  
+  <title>SRT 캘리그라피 스튜디오 (Opentype.js 실제 붓글씨 스트로크 엔진 v15.0)</title>
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Dongle:wght@300;400;700&family=Gaegu:wght@300;400;700&family=Nanum+Brush+Script&family=Nanum+Pen+Script&family=Yeon+Sung&family=Gowun+Batang:wght@400;700&display=swap" rel="stylesheet">
-  
-  <!-- Opentype.js CDN (벡터 폰트 파싱 및 획 추출 라이브러리) -->
+
+  <!-- Opentype.js CDN (벡터 폰트 파싱 및 실제 획 외곽선 추출) -->
   <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
 
   <!-- MP4 비디오 인코딩 라이브러리 CDN -->
@@ -52,10 +52,13 @@
     .srt-list-container { max-height: 120px; overflow-y: auto; background: #141418; border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px; }
     .srt-item { padding: 6px 10px; border-bottom: 1px solid #22222a; font-size: 0.8rem; cursor: pointer; display: flex; justify-content: space-between; }
     .progress-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(4px); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; display: none; }
-    .progress-box { background: var(--panel-bg); padding: 30px; border-radius: 12px; text-align: center; width: 340px; }
+    .progress-box { background: var(--panel-bg); padding: 30px; border-radius: 12px; text-align: center; width: 360px; }
     .progress-bar-bg { width: 100%; height: 10px; background: #111; border-radius: 5px; margin: 15px 0; overflow: hidden; }
     .progress-bar-fill { width: 0%; height: 100%; background: var(--accent-gradient); }
     svg.filters { position: absolute; width: 0; height: 0; }
+    .font-status { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
+    .font-status.ready { color: #7cd992; }
+    .font-status.loading { color: #ffcf6b; }
   </style>
 </head>
 <body>
@@ -71,12 +74,12 @@
 
   <header>
     <h1>🖌️ SRT 캘리그라피 스튜디오</h1>
-    <span style="font-size: 0.85rem; color: var(--text-muted);">Opentype.js & 흑백 마스크 피팅 v13.0</span>
+    <span style="font-size: 0.85rem; color: var(--text-muted);">Opentype.js 스트로크 & 화면비율 선택 v15.0</span>
   </header>
 
   <div class="main-container">
     <div class="sidebar">
-      
+
       <div class="control-group">
         <div class="section-title">📂 1. SRT 자막 로딩 & 편집</div>
         <label for="srt-input" class="btn-file" id="srt-label">📁 SRT 자막 파일 불러오기 (.srt)</label>
@@ -87,26 +90,36 @@
         <button class="btn-secondary" id="btn-apply-srt" style="width:100%; margin-top:4px;">✏️ 자막 적용하기</button>
       </div>
 
-      <!-- 2. 커스텀 흑백 마스크 이미지 업로드 (신규) -->
+      <!-- 📐 영상 화면 비율 선택 -->
       <div class="control-group">
-        <div class="section-title">🖼️ 2. 커스텀 흑백 마스크 이미지 피팅</div>
-        <label for="mask-file-input" class="btn-file" id="mask-label">
-          🖼️ 흑백 마스크 이미지 업로드 (.png / .jpg)
-        </label>
-        <input type="file" id="mask-file-input" accept="image/*">
-        
-        <label for="engine-mode">쓰기 구현 방식</label>
-        <select id="engine-mode">
-          <option value="image-mask-fit" selected>🔳 흑백 마스크 이미지 영역에 텍스트 꽉 채우기</option>
-          <option value="copybook-handwriting">🖋️ 펜글씨 교본 획순 손글씨 쓰기</option>
-          <option value="geometric-shape">🔷 보이지 않는 기하학 도형 틀 피팅</option>
-          <option value="static">📌 완성 작품 고정 보기</option>
+        <div class="section-title">📐 2. 캔버스 영상 화면 비율</div>
+        <label for="aspect-ratio-select">비디오 해상도 비율 선택</label>
+        <select id="aspect-ratio-select">
+          <option value="16:9" selected>🖥️ 16:9 가로형 (1920 x 1080 Full HD)</option>
+          <option value="9:16">📱 9:16 세로 숏폼 (1080 x 1920 Reels/Shorts)</option>
         </select>
       </div>
 
       <div class="control-group">
-        <div class="section-title">🖌️ 3. Opentype.js 필체 & 쓰기 조율</div>
-        
+        <div class="section-title">🖼️ 3. 커스텀 흑백 마스크 이미지 피팅</div>
+        <label for="mask-file-input" class="btn-file" id="mask-label">
+          🖼️ 흑백 마스크 이미지 업로드 (.png / .jpg)
+        </label>
+        <input type="file" id="mask-file-input" accept="image/*">
+
+        <label for="engine-mode">쓰기 구현 방식</label>
+        <select id="engine-mode">
+          <option value="image-mask-fit" selected>🔳 흑백 마스크 이미지 영역에 붓글씨 채우기</option>
+          <option value="copybook-handwriting">🖋️ 펜글씨 교본 획순 손글씨 쓰기</option>
+          <option value="geometric-shape">🔷 기하학 도형 틀에 붓글씨 채우기</option>
+          <option value="static">📌 완성 작품 고정 보기</option>
+        </select>
+        <div class="font-status loading" id="font-status">⏳ 붓글씨 폰트 로딩 중...</div>
+      </div>
+
+      <div class="control-group">
+        <div class="section-title">🖌️ 4. 필체 & 쓰기 속도 조율</div>
+
         <label for="font-family">캘리그라피 붓글씨 서체</label>
         <select id="font-family">
           <option value="'Nanum Brush Script', cursive" selected>나눔붓글씨 (전통 서예 붓글씨)</option>
@@ -123,8 +136,8 @@
       </div>
 
       <div class="control-group">
-        <div class="section-title">🔷 4. 기하학 도형 틀 선택</div>
-        
+        <div class="section-title">🔷 5. 기하학 도형 틀 선택</div>
+
         <label for="shape-frame-select">기하학 도형 틀 선택</label>
         <select id="shape-frame-select">
           <option value="diamond" selected>🔷 다이아몬드 / 마름모</option>
@@ -143,17 +156,17 @@
       </div>
 
       <div class="control-group">
-        <div class="section-title">🎨 5. 서체 강약 & 밀도 조율</div>
-        
-        <label for="param-tightness">글자 밀집도 <span class="val" id="val-tightness">아주 촘촘함</span></label>
+        <div class="section-title">🎨 6. 서체 강약 & 밀도 조율</div>
+
+        <label for="param-tightness">글자 밀집도 <span class="val" id="val-tightness">보통</span></label>
         <input type="range" id="param-tightness" min="0.5" max="1.1" step="0.05" value="0.75">
 
-        <label for="param-contrast">글자 크기 강약 대비 <span class="val" id="val-contrast">2.4x</span></label>
+        <label for="param-contrast">첫 글자 강약 대비 <span class="val" id="val-contrast">2.4x</span></label>
         <input type="range" id="param-contrast" min="1.2" max="3.5" step="0.1" value="2.4">
       </div>
 
       <div class="control-group">
-        <div class="section-title">🖼️ 6. 배경 및 먹물 색상</div>
+        <div class="section-title">🖼️ 7. 배경 및 먹물 색상</div>
         <label for="bg-style">배경 스타일</label>
         <select id="bg-style">
           <option value="hanji" selected>전통 한지 (Rice Paper)</option>
@@ -167,7 +180,7 @@
       </div>
 
       <div class="control-group">
-        <div class="section-title">📜 7. 로드된 자막 목록</div>
+        <div class="section-title">📜 8. 로드된 자막 목록</div>
         <div class="srt-list-container" id="srt-list"></div>
       </div>
 
@@ -186,10 +199,12 @@
         </div>
 
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 5px;">
-          <div style="font-size: 0.85rem; color: var(--text-muted);">
-            해상도: 1920x1080 (Full HD) | Opentype.js & WebCodecs MP4
+          <div style="font-size: 0.85rem; color: var(--text-muted);" id="res-indicator">
+            해상도: 1920x1080 (16:9 Full HD) | Opentype.js 실제 스트로크 엔진
           </div>
-          <button class="btn-action" id="btn-export">🎬 H.264 MP4 영상 저장</button>
+          <button class="btn-action" id="btn-export">
+            🔴 녹화 시작 ➔ 처음부터 인코딩 후 MP4 자동 저장
+          </button>
         </div>
       </div>
     </div>
@@ -197,14 +212,17 @@
 
   <div class="progress-overlay" id="progress-modal">
     <div class="progress-box">
-      <h3 style="margin-bottom: 10px; font-size: 1.1rem;">📽️ MP4 영상 렌더링 중...</h3>
-      <p style="font-size: 0.85rem; color: var(--text-muted);" id="progress-text">마스크 피팅 비디오 인코딩 진행 중</p>
+      <h3 style="margin-bottom: 10px; font-size: 1.1rem;">📽️ 처음부터 자동 녹화 중...</h3>
+      <p style="font-size: 0.85rem; color: var(--text-muted);" id="progress-text">0.0초부터 렌더링 인코딩 진행 중</p>
       <div class="progress-bar-bg"><div class="progress-bar-fill" id="progress-fill"></div></div>
       <span id="progress-percent" style="font-weight: bold; font-size: 1.1rem; color: var(--accent-color);">0%</span>
     </div>
   </div>
 
   <script>
+    /* =========================================================================================
+       상태 변수
+    ========================================================================================= */
     let srtData = [];
     let totalDuration = 0;
     let currentTime = 0;
@@ -223,7 +241,10 @@
     const timeSlider = document.getElementById('time-slider');
     const timeDisplay = document.getElementById('time-display');
     const btnExport = document.getElementById('btn-export');
-    
+
+    const aspectRatioSelect = document.getElementById('aspect-ratio-select');
+    const resIndicator = document.getElementById('res-indicator');
+
     const maskFileInput = document.getElementById('mask-file-input');
     const maskLabel = document.getElementById('mask-label');
     const engineModeSelect = document.getElementById('engine-mode');
@@ -235,66 +256,554 @@
     const inkColorInput = document.getElementById('ink-color');
     const paramTightness = document.getElementById('param-tightness');
     const paramContrast = document.getElementById('param-contrast');
+    const fontStatusEl = document.getElementById('font-status');
 
     const progressModal = document.getElementById('progress-modal');
     const progressFill = document.getElementById('progress-fill');
     const progressPercent = document.getElementById('progress-percent');
     const progressText = document.getElementById('progress-text');
 
+    // 오프스크린 잉크 합성용 캔버스
     const maskCanvas = document.createElement('canvas');
     maskCanvas.width = 1920; maskCanvas.height = 1080;
     const maskCtx = maskCanvas.getContext('2d');
 
-    let loadedMaskImage = null;
+    let loadedMaskImage = null;          
+    let currentMaskAlphaImage = null;    
+    const maskBoundsCache = new Map();   
+    const shapeMaskCache = {};           
 
-    function createDefaultMaskImage() {
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = 1920; tempCanvas.height = 1080;
-      const tCtx = tempCanvas.getContext('2d');
+    /* =========================================================================================
+       📐 캔버스 화면 비율 (16:9 / 9:16) 변경
+    ========================================================================================= */
+    function updateCanvasDimensions() {
+      const ratio = aspectRatioSelect.value;
+      let w = 1920, h = 1080;
+      if (ratio === '9:16') {
+        w = 1080; h = 1920;
+        resIndicator.textContent = '해상도: 1080x1920 (9:16 세로 숏폼/릴스) | Opentype.js 실제 스트로크';
+      } else {
+        w = 1920; h = 1080;
+        resIndicator.textContent = '해상도: 1920x1080 (16:9 Full HD) | Opentype.js 실제 스트로크';
+      }
 
-      tCtx.fillStyle = '#000000'; tCtx.fillRect(0, 0, 1920, 1080);
-      tCtx.fillStyle = '#ffffff';
-      tCtx.beginPath();
-      tCtx.moveTo(960, 240);
-      tCtx.lineTo(1380, 540);
-      tCtx.lineTo(960, 840);
-      tCtx.lineTo(540, 540);
-      tCtx.closePath();
-      tCtx.fill();
+      canvas.width = w; canvas.height = h;
+      maskCanvas.width = w; maskCanvas.height = h;
 
-      const img = new Image();
-      img.src = tempCanvas.toDataURL();
-      img.onload = () => { loadedMaskImage = img; renderFrame(currentTime); };
+      maskBoundsCache.clear();
+      preloadShapeMasks();
+      if (loadedMaskImage) {
+        normalizeMaskAlpha(loadedMaskImage).then(img => {
+          currentMaskAlphaImage = img;
+          renderFrame(currentTime);
+        });
+      } else {
+        renderFrame(currentTime);
+      }
     }
 
-    maskFileInput.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      maskLabel.textContent = `🖼️ ${file.name}`;
-      const reader = new FileReader();
-      reader.onload = (evt) => {
-        const img = new Image();
-        img.onload = () => { loadedMaskImage = img; renderFrame(currentTime); };
-        img.src = evt.target.result;
-      };
-      reader.readAsDataURL(file);
-    });
+    aspectRatioSelect.addEventListener('change', updateCanvasDimensions);
 
-    paramFinishPct.addEventListener('input', (e) => {
-      document.getElementById('val-finish-pct').textContent = `${e.target.value}% 시간 내 완성`;
-      renderFrame(currentTime);
-    });
-    paramTightness.addEventListener('input', (e) => {
-      document.getElementById('val-tightness').textContent = e.target.value < 0.7 ? '매우 촘촘' : '보통';
-      renderFrame(currentTime);
-    });
-    paramContrast.addEventListener('input', (e) => {
-      document.getElementById('val-contrast').textContent = e.target.value + 'x';
-      renderFrame(currentTime);
-    });
-    [engineModeSelect, shapeFrameSelect, paramShowGuide, fontFamilySelect, bgStyleSelect, inkColorInput].forEach(el => {
-      el.addEventListener('change', () => renderFrame(currentTime));
-    });
+    /* =========================================================================================
+       Opentype.js 폰트 로딩
+    ========================================================================================= */
+    const FONT_URLS = {
+      "'Nanum Brush Script', cursive": "https://raw.githubusercontent.com/google/fonts/main/ofl/nanumbrushscript/NanumBrushScript-Regular.ttf",
+      "'Yeon Sung', cursive": "https://raw.githubusercontent.com/google/fonts/main/ofl/yeonsung/YeonSung-Regular.ttf",
+      "'Dongle', sans-serif": "https://raw.githubusercontent.com/google/fonts/main/ofl/dongle/Dongle-Regular.ttf",
+      "'Gaegu', cursive": "https://raw.githubusercontent.com/google/fonts/main/ofl/gaegu/Gaegu-Regular.ttf",
+      "'Nanum Pen Script', cursive": "https://raw.githubusercontent.com/google/fonts/main/ofl/nanumpenscript/NanumPenScript-Regular.ttf"
+    };
+
+    const fontObjectCache = {};   
+    const glyphDataCache = new Map(); 
+    let currentFont = null;
+    let currentFontKey = null;
+
+    function loadOpentypeFont(familyValue) {
+      if (fontObjectCache[familyValue]) return fontObjectCache[familyValue];
+      const url = FONT_URLS[familyValue];
+      const p = new Promise((resolve, reject) => {
+        opentype.load(url, (err, font) => {
+          if (err) reject(err); else resolve(font);
+        });
+      });
+      fontObjectCache[familyValue] = p;
+      return p;
+    }
+
+    async function ensureFontLoaded() {
+      const key = fontFamilySelect.value;
+      if (currentFontKey === key && currentFont) return currentFont;
+      fontStatusEl.textContent = '⏳ 붓글씨 폰트 로딩 중...';
+      fontStatusEl.className = 'font-status loading';
+      try {
+        const font = await loadOpentypeFont(key);
+        if (fontFamilySelect.value !== key) return currentFont;
+        currentFont = font;
+        currentFontKey = key;
+        glyphDataCache.clear();
+        fontStatusEl.textContent = '✅ 붓글씨 폰트 준비 완료';
+        fontStatusEl.className = 'font-status ready';
+        renderFrame(currentTime);
+      } catch (e) {
+        console.error('폰트 로딩 실패:', e);
+        fontStatusEl.textContent = '⚠️ 폰트 로딩 실패 (네트워크 확인)';
+        fontStatusEl.className = 'font-status loading';
+      }
+      return currentFont;
+    }
+
+    /* =========================================================================================
+       글자 -> 벡터 외곽선(contour) -> 붓 스트로크 데이터 변환
+    ========================================================================================= */
+    function flattenGlyphPath(commands) {
+      const contours = [];
+      let current = [];
+      let startX = 0, startY = 0, curX = 0, curY = 0;
+      const STEPS = 10;
+      const pushCurrent = () => { if (current.length > 1) contours.push(current); current = []; };
+
+      commands.forEach(cmd => {
+        if (cmd.type === 'M') {
+          pushCurrent();
+          curX = cmd.x; curY = cmd.y; startX = curX; startY = curY;
+          current.push({ x: curX, y: curY });
+        } else if (cmd.type === 'L') {
+          curX = cmd.x; curY = cmd.y;
+          current.push({ x: curX, y: curY });
+        } else if (cmd.type === 'C') {
+          const p0 = { x: curX, y: curY }, p1 = { x: cmd.x1, y: cmd.y1 }, p2 = { x: cmd.x2, y: cmd.y2 }, p3 = { x: cmd.x, y: cmd.y };
+          for (let i = 1; i <= STEPS; i++) {
+            const t = i / STEPS, mt = 1 - t;
+            const x = mt*mt*mt*p0.x + 3*mt*mt*t*p1.x + 3*mt*t*t*p2.x + t*t*t*p3.x;
+            const y = mt*mt*mt*p0.y + 3*mt*mt*t*p1.y + 3*mt*t*t*p2.y + t*t*t*p3.y;
+            current.push({ x, y });
+          }
+          curX = cmd.x; curY = cmd.y;
+        } else if (cmd.type === 'Q') {
+          const p0 = { x: curX, y: curY }, p1 = { x: cmd.x1, y: cmd.y1 }, p2 = { x: cmd.x, y: cmd.y };
+          for (let i = 1; i <= STEPS; i++) {
+            const t = i / STEPS, mt = 1 - t;
+            const x = mt*mt*p0.x + 2*mt*t*p1.x + t*t*p2.x;
+            const y = mt*mt*p0.y + 2*mt*t*p1.y + t*t*p2.y;
+            current.push({ x, y });
+          }
+          curX = cmd.x; curY = cmd.y;
+        } else if (cmd.type === 'Z') {
+          current.push({ x: startX, y: startY });
+          curX = startX; curY = startY;
+        }
+      });
+      pushCurrent();
+      return contours;
+    }
+
+    function contourLength(pts) {
+      let len = 0;
+      for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
+      return len;
+    }
+
+    function commandsToSvgD(commands) {
+      return commands.map(c => {
+        switch (c.type) {
+          case 'M': return `M ${c.x} ${c.y}`;
+          case 'L': return `L ${c.x} ${c.y}`;
+          case 'C': return `C ${c.x1} ${c.y1} ${c.x2} ${c.y2} ${c.x} ${c.y}`;
+          case 'Q': return `Q ${c.x1} ${c.y1} ${c.x} ${c.y}`;
+          case 'Z': return 'Z';
+          default: return '';
+        }
+      }).join(' ');
+    }
+
+    function getGlyphBrushData(char, fontSize) {
+      const key = `${currentFontKey}|${char.codePointAt(0)}|${fontSize.toFixed(1)}`;
+      if (glyphDataCache.has(key)) return glyphDataCache.get(key);
+
+      const path = currentFont.getPath(char, 0, 0, fontSize);
+      let bbox;
+      try { bbox = path.getBoundingBox(); } catch (e) { bbox = { x1: 0, y1: -fontSize*0.5, x2: fontSize*0.3, y2: 0 }; }
+      if (!isFinite(bbox.x1) || !isFinite(bbox.y1)) bbox = { x1: 0, y1: -fontSize*0.5, x2: fontSize*0.3, y2: 0 };
+
+      const rawContours = flattenGlyphPath(path.commands);
+      const contours = rawContours.map(pts => {
+        let minX = Infinity, minY = Infinity;
+        pts.forEach(p => { if (p.x < minX) minX = p.x; if (p.y < minY) minY = p.y; });
+        return { points: pts, length: contourLength(pts), minX, minY };
+      });
+      contours.sort((a, b) => (a.minY - b.minY) || (a.minX - b.minX));
+
+      const totalLength = contours.reduce((s, c) => s + c.length, 0);
+      const data = {
+        contours,
+        totalLength: totalLength > 0 ? totalLength : fontSize * 0.2,
+        bbox,
+        svgD: commandsToSvgD(path.commands),
+        isBlank: rawContours.length === 0
+      };
+      glyphDataCache.set(key, data);
+      return data;
+    }
+
+    /* =========================================================================================
+       붓 스트로크 렌더링
+    ========================================================================================= */
+    function stampSegment(targetCtx, p0, p1, distSoFar, contourLen, baseWidth, seed) {
+      const segLen = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+      const steps = Math.max(1, Math.ceil(segLen / 2));
+      for (let s = 0; s <= steps; s++) {
+        const t = s / steps;
+        const px = p0.x + (p1.x - p0.x) * t;
+        const py = p0.y + (p1.y - p0.y) * t;
+        const localDist = distSoFar + segLen * t;
+        const travelT = contourLen > 0 ? Math.min(1, localDist / contourLen) : 1;
+        const taper = Math.sin(Math.min(1, travelT) * Math.PI);
+        const jitter = 0.85 + seededRandom(seed + localDist * 0.37) * 0.3;
+        const r = Math.max(0.6, (baseWidth / 2) * (0.35 + 0.75 * taper) * jitter);
+        targetCtx.globalAlpha = 0.85 + seededRandom(seed + localDist * 0.13) * 0.15;
+        targetCtx.beginPath();
+        targetCtx.arc(px, py, r, 0, Math.PI * 2);
+        targetCtx.fill();
+      }
+      targetCtx.globalAlpha = 1;
+    }
+
+    function drawBrushGlyph(targetCtx, glyphData, centerX, centerY, revealLength, fullyDone, seed, brushScale) {
+      if (glyphData.isBlank) return;
+      const bbox = glyphData.bbox;
+      const gcx = (bbox.x1 + bbox.x2) / 2;
+      const gcy = (bbox.y1 + bbox.y2) / 2;
+      const offX = centerX - gcx;
+      const offY = centerY - gcy;
+
+      targetCtx.save();
+      targetCtx.translate(offX, offY);
+
+      if (fullyDone) {
+        try {
+          const p2d = new Path2D(glyphData.svgD);
+          targetCtx.fill(p2d, 'nonzero');
+        } catch (e) {}
+        targetCtx.restore();
+        return;
+      }
+
+      let remaining = revealLength;
+      const baseWidth = Math.max(3, (bbox.y2 - bbox.y1) * 0.045 * brushScale);
+
+      for (const contour of glyphData.contours) {
+        if (remaining <= 0) break;
+        const drawLen = Math.min(contour.length, remaining);
+        remaining -= drawLen;
+
+        const pts = contour.points;
+        let acc = 0;
+        for (let i = 1; i < pts.length; i++) {
+          const segLen = Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
+          if (acc + segLen > drawLen) {
+            const localT = segLen > 0 ? (drawLen - acc) / segLen : 0;
+            const ex = pts[i-1].x + (pts[i].x - pts[i-1].x) * localT;
+            const ey = pts[i-1].y + (pts[i].y - pts[i-1].y) * localT;
+            stampSegment(targetCtx, pts[i-1], { x: ex, y: ey }, acc, contour.length, baseWidth, seed);
+            break;
+          } else {
+            stampSegment(targetCtx, pts[i-1], pts[i], acc, contour.length, baseWidth, seed);
+            acc += segLen;
+          }
+        }
+      }
+      targetCtx.restore();
+    }
+
+    function computeCharPlan(chars, sizes) {
+      let cum = 0;
+      const plan = chars.map((ch, i) => {
+        let data = null, length;
+        if (ch !== ' ') {
+          data = getGlyphBrushData(ch, sizes[i]);
+          length = Math.max(data.totalLength, sizes[i] * 0.2);
+        } else {
+          length = sizes[i] * 0.3;
+        }
+        cum += length;
+        return { ch, data, length, cumEnd: cum };
+      });
+      return { plan, totalLen: cum || 1 };
+    }
+
+    /* =========================================================================================
+       레이아웃: 마스크 안 세로 배치 / 교본 격자 배치
+    ========================================================================================= */
+    function layoutColumn(chars, bounds, tightness, contrast) {
+      const availH = bounds.h * 0.85;
+      const availW = bounds.w * 0.85;
+      const n = chars.length || 1;
+      const weightSum = (chars[0] && chars[0] !== ' ' ? contrast : 1) + Math.max(0, n - 1);
+
+      let unit = availH / (weightSum + (n - 1) * tightness * 0.3);
+      unit = Math.min(unit, availW / Math.max(1, contrast * 0.95));
+      unit = Math.max(16, unit);
+
+      const centerX = bounds.x + bounds.w / 2;
+      const sizes = chars.map((ch, i) => (i === 0 && ch !== ' ') ? unit * contrast : unit);
+      const totalH = sizes.reduce((a, b) => a + b, 0) + (n - 1) * unit * tightness * 0.3;
+
+      let y = bounds.y + bounds.h / 2 - totalH / 2;
+      const positions = sizes.map(sz => {
+        const cy = y + sz / 2;
+        y += sz + unit * tightness * 0.3;
+        return { x: centerX, y: cy, size: sz };
+      });
+      return { positions, sizes };
+    }
+
+    function layoutGrid(chars, canvasW, canvasH, fontSize) {
+      const margin = Math.min(canvasW, canvasH) * 0.1;
+      const availW = canvasW - margin * 2;
+      const cell = fontSize * 1.4;
+      const cols = Math.max(1, Math.floor(availW / cell));
+      const rows = Math.ceil(chars.length / cols);
+      const totalW = Math.min(chars.length, cols) * cell;
+      const totalH = rows * cell;
+      const startX = canvasW / 2 - totalW / 2 + cell / 2;
+      const startY = canvasH / 2 - totalH / 2 + cell / 2;
+      const positions = chars.map((ch, i) => {
+        const col = i % cols, row = Math.floor(i / cols);
+        return { x: startX + col * cell, y: startY + row * cell, size: fontSize, cell };
+      });
+      return positions;
+    }
+
+    /* =========================================================================================
+       마스크 준비
+    ========================================================================================= */
+    function normalizeMaskAlpha(img) {
+      return new Promise(resolve => {
+        const w = canvas.width, h = canvas.height;
+        const off = document.createElement('canvas');
+        off.width = w; off.height = h;
+        const octx = off.getContext('2d');
+        octx.drawImage(img, 0, 0, w, h);
+        const imgData = octx.getImageData(0, 0, w, h);
+        const d = imgData.data;
+        for (let i = 0; i < d.length; i += 4) {
+          const brightness = (d[i] + d[i+1] + d[i+2]) / 3;
+          const srcAlpha = d[i+3];
+          const a = srcAlpha < 10 ? 0 : brightness;
+          d[i] = 255; d[i+1] = 255; d[i+2] = 255; d[i+3] = a;
+        }
+        octx.putImageData(imgData, 0, 0);
+        const outImg = new Image();
+        outImg.onload = () => resolve(outImg);
+        outImg.src = off.toDataURL();
+      });
+    }
+
+    function makeShapeMaskImage(shapeType) {
+      return new Promise(resolve => {
+        const w = canvas.width, h = canvas.height;
+        const off = document.createElement('canvas');
+        off.width = w; off.height = h;
+        const octx = off.getContext('2d');
+        octx.clearRect(0, 0, w, h);
+        octx.fillStyle = '#ffffff';
+        const cx = w / 2, cy = h / 2;
+        const minDim = Math.min(w, h);
+        const r = minDim * 0.4;
+
+        octx.beginPath();
+        switch (shapeType) {
+          case 'circle':
+            octx.arc(cx, cy, r, 0, Math.PI * 2);
+            break;
+          case 'triangle':
+            octx.moveTo(cx, cy - r); octx.lineTo(cx + r, cy + r * 0.8); octx.lineTo(cx - r, cy + r * 0.8); octx.closePath();
+            break;
+          case 'inv-triangle':
+            octx.moveTo(cx - r, cy - r * 0.8); octx.lineTo(cx + r, cy - r * 0.8); octx.lineTo(cx, cy + r); octx.closePath();
+            break;
+          case 'horizontal-rect':
+            octx.rect(cx - w * 0.4, cy - h * 0.25, w * 0.8, h * 0.5);
+            break;
+          case 'diamond':
+          default:
+            octx.moveTo(cx, cy - r); octx.lineTo(cx + r * 0.9, cy); octx.lineTo(cx, cy + r); octx.lineTo(cx - r * 0.9, cy); octx.closePath();
+            break;
+        }
+        octx.fill();
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.src = off.toDataURL();
+      });
+    }
+
+    async function preloadShapeMasks() {
+      const types = ['diamond', 'circle', 'triangle', 'inv-triangle', 'horizontal-rect'];
+      for (const t of types) shapeMaskCache[t] = await makeShapeMaskImage(t);
+      if (!currentMaskAlphaImage) currentMaskAlphaImage = shapeMaskCache['diamond'];
+    }
+
+    function getMaskBounds(img) {
+      if (maskBoundsCache.has(img)) return maskBoundsCache.get(img);
+      const w = canvas.width, h = canvas.height;
+      const off = document.createElement('canvas');
+      off.width = w; off.height = h;
+      const octx = off.getContext('2d');
+      octx.drawImage(img, 0, 0, w, h);
+      const data = octx.getImageData(0, 0, w, h).data;
+      let minX = w, minY = h, maxX = 0, maxY = 0, found = false;
+      for (let y = 0; y < h; y += 4) {
+        for (let x = 0; x < w; x += 4) {
+          const a = data[(y * w + x) * 4 + 3];
+          if (a > 128) {
+            found = true;
+            if (x < minX) minX = x; if (x > maxX) maxX = x;
+            if (y < minY) minY = y; if (y > maxY) maxY = y;
+          }
+        }
+      }
+      const bounds = found ? { x: minX, y: minY, w: Math.max(40, maxX - minX), h: Math.max(40, maxY - minY) } : { x: w*0.3, y: h*0.3, w: w*0.4, h: h*0.4 };
+      maskBoundsCache.set(img, bounds);
+      return bounds;
+    }
+
+    /* =========================================================================================
+       모드별 렌더링
+    ========================================================================================= */
+    function renderMaskFitMode(chars, writeProgress, maskImg, inkColor, tightness, contrast, seed, guideMode) {
+      if (!maskImg) return;
+      const w = canvas.width, h = canvas.height;
+      const bounds = getMaskBounds(maskImg);
+      const { positions, sizes } = layoutColumn(chars, bounds, tightness, contrast);
+      const { plan, totalLen } = computeCharPlan(chars, sizes);
+      const inkRevealed = writeProgress * totalLen;
+
+      maskCtx.clearRect(0, 0, w, h);
+      maskCtx.fillStyle = inkColor;
+
+      plan.forEach((item, i) => {
+        if (item.ch === ' ') return;
+        const pos = positions[i];
+        if (inkRevealed >= item.cumEnd) {
+          drawBrushGlyph(maskCtx, item.data, pos.x, pos.y, 0, true, seed + i * 13, 1);
+        } else if (inkRevealed > item.cumEnd - item.length) {
+          const revealLen = inkRevealed - (item.cumEnd - item.length);
+          drawBrushGlyph(maskCtx, item.data, pos.x, pos.y, revealLen, false, seed + i * 13, 1);
+        }
+      });
+
+      maskCtx.globalCompositeOperation = 'destination-in';
+      maskCtx.drawImage(maskImg, 0, 0, w, h);
+      maskCtx.globalCompositeOperation = 'source-over';
+
+      ctx.drawImage(maskCanvas, 0, 0);
+
+      if (guideMode === 'guide-shape') {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255, 107, 55, 0.5)';
+        ctx.lineWidth = 2; ctx.setLineDash([6, 6]);
+        ctx.strokeRect(bounds.x, bounds.y, bounds.w, bounds.h);
+        ctx.restore();
+      } else if (guideMode === 'subtle-axis') {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(28,25,23,0.25)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(bounds.x + bounds.w / 2, bounds.y);
+        ctx.lineTo(bounds.x + bounds.w / 2, bounds.y + bounds.h);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    function renderCopybookMode(chars, writeProgress, inkColor, seed, guideMode) {
+      const fontSize = Math.min(canvas.width, canvas.height) * 0.12;
+      const positions = layoutGrid(chars, canvas.width, canvas.height, fontSize);
+      const sizes = positions.map(() => fontSize);
+      const { plan, totalLen } = computeCharPlan(chars, sizes);
+      const inkRevealed = writeProgress * totalLen;
+
+      if (guideMode !== 'none') {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(120,90,60,0.35)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash(guideMode === 'guide-shape' ? [6, 6] : []);
+        positions.forEach(p => {
+          const half = p.cell / 2 * 0.92;
+          ctx.strokeRect(p.x - half, p.y - half, half * 2, half * 2);
+          if (guideMode === 'subtle-axis') {
+            ctx.beginPath();
+            ctx.moveTo(p.x - half, p.y); ctx.lineTo(p.x + half, p.y);
+            ctx.moveTo(p.x, p.y - half); ctx.lineTo(p.x, p.y + half);
+            ctx.stroke();
+          }
+        });
+        ctx.restore();
+      }
+
+      ctx.fillStyle = inkColor;
+      plan.forEach((item, i) => {
+        if (item.ch === ' ') return;
+        const pos = positions[i];
+        if (inkRevealed >= item.cumEnd) {
+          drawBrushGlyph(ctx, item.data, pos.x, pos.y, 0, true, seed + i * 13, 1.1);
+        } else if (inkRevealed > item.cumEnd - item.length) {
+          const revealLen = inkRevealed - (item.cumEnd - item.length);
+          drawBrushGlyph(ctx, item.data, pos.x, pos.y, revealLen, false, seed + i * 13, 1.1);
+        }
+      });
+    }
+
+    function renderStaticFinal(chars, inkColor, tightness, contrast, seed, guideMode) {
+      const maskImg = currentMaskAlphaImage || shapeMaskCache['diamond'];
+      renderMaskFitMode(chars, 1, maskImg, inkColor, tightness, contrast, seed, guideMode);
+    }
+
+    function renderCalligraphyFrame(subtitleObj, timeSec) {
+      if (!subtitleObj || !currentFont) return;
+      const engineMode = engineModeSelect.value;
+      const inkColor = inkColorInput.value;
+      const tightness = parseFloat(paramTightness.value);
+      const contrast = parseFloat(paramContrast.value);
+      const finishPct = parseInt(paramFinishPct.value) / 100;
+      const guideMode = paramShowGuide.value;
+
+      const duration = Math.max(0.5, subtitleObj.end - subtitleObj.start);
+      const elapsed = Math.max(0, timeSec - subtitleObj.start);
+      const writeDuration = duration * finishPct;
+      const writeProgress = Math.min(1, elapsed / writeDuration);
+      const text = subtitleObj.text.trim();
+      const chars = Array.from(text.replace(/\n/g, ' '));
+      const seed = (parseInt(subtitleObj.id) || 1) * 97 + text.length;
+
+      ctx.save();
+      try { ctx.filter = 'blur(0.3px) url(#ink-bleed-filter)'; } catch (e) {}
+
+      if (engineMode === 'static') {
+        renderStaticFinal(chars, inkColor, tightness, contrast, seed, guideMode);
+      } else if (engineMode === 'copybook-handwriting') {
+        renderCopybookMode(chars, writeProgress, inkColor, seed, guideMode);
+      } else if (engineMode === 'geometric-shape') {
+        const maskImg = shapeMaskCache[shapeFrameSelect.value] || shapeMaskCache['diamond'];
+        renderMaskFitMode(chars, writeProgress, maskImg, inkColor, tightness, contrast, seed, guideMode);
+      } else {
+        const maskImg = currentMaskAlphaImage || shapeMaskCache['diamond'];
+        renderMaskFitMode(chars, writeProgress, maskImg, inkColor, tightness, contrast, seed, guideMode);
+      }
+
+      ctx.filter = 'none';
+      ctx.restore();
+    }
+
+    /* =========================================================================================
+       SRT 파싱 & 배경
+    ========================================================================================= */
+    function seededRandom(seed) {
+      let x = Math.sin(seed++) * 10000;
+      return x - Math.floor(x);
+    }
 
     const demoSRT = `1
 00:00:00,500 --> 00:00:04,500
@@ -311,7 +820,7 @@
     function parseSRTTime(timeStr) {
       if (!timeStr) return 0;
       const parts = timeStr.trim().replace(',', '.').split(':');
-      return (parseFloat(parts[0])||0)*3600 + (parseFloat(parts[1])||0)*60 + (parseFloat(parts[2])||0);
+      return (parseFloat(parts[0]) || 0) * 3600 + (parseFloat(parts[1]) || 0) * 60 + (parseFloat(parts[2]) || 0);
     }
 
     function parseSRT(text) {
@@ -353,9 +862,7 @@
       reader.readAsText(file);
     });
 
-    btnApplySrt.addEventListener('click', () => {
-      loadSRTData(srtTextarea.value);
-    });
+    btnApplySrt.addEventListener('click', () => loadSRTData(srtTextarea.value));
 
     function updateSRTListUI() {
       srtListEl.innerHTML = '';
@@ -379,145 +886,64 @@
       return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(ms).padStart(2, '0')}`;
     }
 
-    function seededRandom(seed) {
-      let x = Math.sin(seed++) * 10000;
-      return x - Math.floor(x);
-    }
-
     function drawBackground() {
       const style = bgStyleSelect.value;
       const w = canvas.width, h = canvas.height;
 
-      if (style === 'transparent') { ctx.clearRect(0,0,w,h); return; }
-      if (style === 'black') { ctx.fillStyle='#000'; ctx.fillRect(0,0,w,h); return; }
-      if (style === 'dark-paper') { ctx.fillStyle='#16161a'; ctx.fillRect(0,0,w,h); return; }
+      if (style === 'transparent') { ctx.clearRect(0, 0, w, h); return; }
+      if (style === 'black') { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, w, h); return; }
+      if (style === 'dark-paper') { ctx.fillStyle = '#16161a'; ctx.fillRect(0, 0, w, h); return; }
 
-      const grad = ctx.createRadialGradient(w/2, h/2, 100, w/2, h/2, w/1.1);
+      const grad = ctx.createRadialGradient(w/2, h/2, 100, w/2, h/2, Math.max(w, h)/1.1);
       grad.addColorStop(0, '#f8f4eb');
       grad.addColorStop(1, '#e3d7c3');
       ctx.fillStyle = grad;
-      ctx.fillRect(0,0,w,h);
+      ctx.fillRect(0, 0, w, h);
 
       ctx.fillStyle = 'rgba(80, 60, 40, 0.035)';
       for (let i = 0; i < 400; i++) {
         const x = seededRandom(i * 1.3) * w;
         const y = seededRandom(i * 2.7) * h;
         const r = seededRandom(i * 3.1) * 2.2 + 0.4;
-        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
       }
-    }
-
-    function renderImageMaskFittingMode(text, writeProgress, font, inkColor, tightness, contrast, guideMode, seed) {
-      if (!loadedMaskImage) return;
-
-      const centerX = canvas.width / 2;
-      const centerY = canvas.height / 2;
-
-      ctx.save();
-
-      maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
-      maskCtx.drawImage(loadedMaskImage, 0, 0, 1920, 1080);
-
-      if (guideMode === 'guide-shape') {
-        ctx.save();
-        ctx.strokeStyle = 'rgba(255, 107, 55, 0.5)';
-        ctx.lineWidth = 2; ctx.setLineDash([6, 6]);
-        ctx.strokeRect(centerX - 420, centerY - 300, 840, 600);
-        ctx.restore();
-      }
-
-      maskCtx.globalCompositeOperation = 'source-in';
-
-      const chars = text.replace(/\n/g, ' ').split('').filter(c => c !== '');
-      const firstSize = Math.round(180 * contrast * 0.85);
-      const subSize = Math.round(80);
-      const lineGap = subSize * tightness * 1.1;
-
-      const totalH = firstSize + (chars.length - 1) * lineGap;
-      let curY = centerY - totalH / 2 + firstSize * 0.4;
-
-      maskCtx.textBaseline = 'middle';
-      maskCtx.textAlign = 'center';
-
-      chars.forEach((char, idx) => {
-        if (char === ' ') { curY += lineGap * 0.5; return; }
-        const isFirst = (idx === 0);
-        const fontSize = isFirst ? firstCharSize : subSize;
-
-        maskCtx.save();
-        maskCtx.font = `${isFirst ? '900' : '700'} ${fontSize}px ${font}`;
-        maskCtx.fillStyle = inkColor;
-
-        const offsetX = isFirst ? 0 : (seededRandom(seed++) - 0.5) * 12;
-        maskCtx.translate(centerX + offsetX, curY);
-        maskCtx.fillText(char, 0, 0);
-        maskCtx.restore();
-
-        curY += isFirst ? (fontSize * 0.85 + lineGap * 0.3) : lineGap;
-      });
-
-      maskCtx.globalCompositeOperation = 'source-over';
-
-      if (writeProgress >= 1.0) {
-        ctx.drawImage(maskCanvas, 0, 0);
-      } else {
-        ctx.save();
-        const sweepY = (centerY - 380) + writeProgress * 760;
-
-        ctx.beginPath();
-        ctx.rect(0, 0, canvas.width, sweepY);
-        ctx.clip();
-
-        ctx.drawImage(maskCanvas, 0, 0);
-        ctx.restore();
-
-        ctx.save();
-        ctx.fillStyle = inkColor; ctx.globalAlpha = 0.9;
-        ctx.beginPath();
-        ctx.arc(centerX, sweepY, 8, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      }
-
-      ctx.restore();
-    }
-
-    function renderCalligraphyFrame(subtitleObj, timeSec) {
-      if (!subtitleObj) return;
-
-      const font = fontFamilySelect.value;
-      const engineMode = engineModeSelect.value;
-      const shapeType = shapeFrameSelect.value;
-      const guideMode = paramShowGuide.value;
-      const inkColor = inkColorInput.value;
-      const tightness = parseFloat(paramTightness.value);
-      const contrast = parseFloat(paramContrast.value);
-      const finishPct = parseInt(paramFinishPct.value) / 100;
-
-      const duration = Math.max(0.5, subtitleObj.end - subtitleObj.start);
-      const elapsed = Math.max(0, timeSec - subtitleObj.start);
-
-      const writeDuration = duration * finishPct;
-      const writeProgress = Math.min(1.0, Math.max(0.0, elapsed / writeDuration));
-
-      const text = subtitleObj.text.trim();
-      const seed = parseInt(subtitleObj.id) * 97 + text.length;
-
-      ctx.filter = 'blur(0.3px) url(#ink-bleed-filter)';
-
-      renderImageMaskFittingMode(text, writeProgress, font, inkColor, tightness, contrast, guideMode, seed);
-
-      ctx.filter = 'none';
     }
 
     function renderFrame(timeSec) {
       drawBackground();
-      const activeSubtitle = srtData.find(item => timeSec >= item.start && timeSec <= item.end);
-      if (activeSubtitle) {
-        renderCalligraphyFrame(activeSubtitle, timeSec);
+      if (!currentFont) {
+        ctx.save();
+        ctx.fillStyle = 'rgba(120,100,80,0.7)';
+        ctx.font = '32px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('붓글씨 폰트를 불러오는 중입니다...', canvas.width / 2, canvas.height / 2);
+        ctx.restore();
+      } else {
+        const activeSubtitle = srtData.find(item => timeSec >= item.start && timeSec <= item.end);
+        if (activeSubtitle) renderCalligraphyFrame(activeSubtitle, timeSec);
       }
       timeDisplay.textContent = `${formatTime(timeSec)} / ${formatTime(totalDuration)}`;
     }
+
+    /* =========================================================================================
+       컨트롤 이벤트 배선
+    ========================================================================================= */
+    paramFinishPct.addEventListener('input', (e) => {
+      document.getElementById('val-finish-pct').textContent = `${e.target.value}% 시간 내 완성`;
+      renderFrame(currentTime);
+    });
+    paramTightness.addEventListener('input', (e) => {
+      document.getElementById('val-tightness').textContent = e.target.value < 0.7 ? '매우 촘촘' : (e.target.value > 0.95 ? '여유롭게' : '보통');
+      renderFrame(currentTime);
+    });
+    paramContrast.addEventListener('input', (e) => {
+      document.getElementById('val-contrast').textContent = e.target.value + 'x';
+      renderFrame(currentTime);
+    });
+    [engineModeSelect, shapeFrameSelect, paramShowGuide, bgStyleSelect, inkColorInput].forEach(el => {
+      el.addEventListener('change', () => renderFrame(currentTime));
+    });
+    fontFamilySelect.addEventListener('change', () => ensureFontLoaded());
 
     function animate(timestamp) {
       if (!isPlaying) return;
@@ -554,15 +980,26 @@
       renderFrame(currentTime);
     });
 
+    /* =========================================================================================
+       🔴 녹화 및 H.264 MP4 자동 저장 프로세스
+    ========================================================================================= */
     btnExport.addEventListener('click', async () => {
       if (srtData.length === 0) { alert('SRT 자막 파일이 로드되지 않았습니다.'); return; }
+      await ensureFontLoaded();
+      if (!currentFont) { alert('붓글씨 폰트가 아직 로딩되지 않았습니다. 잠시 후 다시 시도해주세요.'); return; }
 
+      // 1. 기존 재생 정지 및 시간 0.0초로 초기화
       pause();
+      currentTime = 0;
+      timeSlider.value = 0;
+      renderFrame(0);
+
       progressModal.style.display = 'flex';
 
       const fps = 30;
       const totalFrames = Math.ceil(totalDuration * fps);
-      const width = canvas.width, height = canvas.height;
+      const width = canvas.width;
+      const height = canvas.height;
 
       try {
         const muxer = new Mp4Muxer.Muxer({
@@ -577,14 +1014,17 @@
         });
 
         videoEncoder.configure({
-          codec: 'avc1.42E01E',
+          codec: 'avc1.42E01E', // H.264 Baseline Profile
           width, height,
-          bitrate: 6_500_000,
+          bitrate: 8_000_000,
           framerate: fps
         });
 
+        // 2. 0.0초부터 마지막 시간까지 프레임 순회 인코딩
         for (let i = 0; i < totalFrames; i++) {
           const frameTime = i / fps;
+          currentTime = frameTime;
+          timeSlider.value = frameTime;
           renderFrame(frameTime);
 
           const videoFrame = new VideoFrame(canvas, { timestamp: Math.round(frameTime * 1e6) });
@@ -594,25 +1034,27 @@
           const pct = Math.round(((i + 1) / totalFrames) * 100);
           progressFill.style.width = `${pct}%`;
           progressPercent.textContent = `${pct}%`;
-          progressText.textContent = `마스크 피팅 비디오 인코딩 중 (${i + 1} / ${totalFrames})`;
+          progressText.textContent = `처음부터 렌더링 중 (${formatTime(frameTime)} / ${formatTime(totalDuration)})`;
 
-          if (i % 10 === 0) await new Promise(r => setTimeout(r, 0));
+          if (i % 8 === 0) await new Promise(r => setTimeout(r, 0));
         }
 
         await videoEncoder.flush();
         muxer.finalize();
 
+        // 3. 인코딩 완료 후 MP4 바이너리 다운로드
         const { buffer } = muxer.target;
         const blob = new Blob([buffer], { type: 'video/mp4' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `calligraphy_mask_fit_${Date.now()}.mp4`;
+        const ratioName = aspectRatioSelect.value.replace(':', '_');
+        a.download = `calligraphy_stroke_${ratioName}_${Date.now()}.mp4`;
         a.click();
         URL.revokeObjectURL(url);
 
-        progressText.textContent = 'MP4 비디오 다운로드 완료!';
-        setTimeout(() => progressModal.style.display = 'none', 1000);
+        progressText.textContent = '🎬 H.264 MP4 비디오 다운로드 완료!';
+        setTimeout(() => { progressModal.style.display = 'none'; }, 1000);
 
       } catch (err) {
         alert(`MP4 저장 중 오류 발생: ${err.message}`);
@@ -620,7 +1062,11 @@
       }
     });
 
-    createDefaultMaskImage();
+    /* =========================================================================================
+       초기화
+    ========================================================================================= */
+    updateCanvasDimensions();
+    ensureFontLoaded();
     loadSRTData(demoSRT);
   </script>
 </body>
