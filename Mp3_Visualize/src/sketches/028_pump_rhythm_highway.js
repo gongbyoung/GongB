@@ -1,8 +1,7 @@
 /**
  * src/sketches/028_pump_rhythm_highway.js
- * - [캘리그래피 자막 전용 클린 스케치]
- * - SRT 자막을 붓글씨(먹물 번짐) 스타일로 화면 중앙에 깔끔하게 렌더링
- * - 음악 비트에 맞춰 글자가 은은하게 반응
+ * - [붓글씨 자막 전용 클린 스케치 - Syntax Fix]
+ * - SRT 자막을 붓글씨(먹물 번짐) 스타일로 화면 중앙에 렌더링
  */
 
 export default class CalligraphySubtitleSketch {
@@ -16,7 +15,7 @@ export default class CalligraphySubtitleSketch {
     }
 
     this.time = 0;
-    this.version = "붓글씨 자막 전용 클린 스케치";
+    this.version = "붓글씨 자막 전용 클린 스케치 (Fixed)";
   }
 
   init() {
@@ -56,13 +55,12 @@ export default class CalligraphySubtitleSketch {
     this.ctx.fillStyle = radialGrad;
     this.ctx.fillRect(0, 0, W, H);
 
-    // 3. SRT 자막 텍스트 가져오기 (메인 인터페이스에서 로드된 자막 텍스트)
+    // 3. SRT 자막 텍스트 가져오기
     const subtitleText = window.currentSubtitleText || window.cosmicEngineSettings?.poemText || "상단에서 SRT 자막 파일을 로딩해주세요.";
 
     // 4. 붓글씨(캘리그래피) 스타일 텍스트 렌더링
     if (subtitleText) {
       const baseFontSize = Math.max(32, Math.min(64, W * 0.07));
-      // 음악 박자에 맞춰 글자가 살짝 숨쉬듯 커지는 효과
       const pulse = 1.0 + (vol * 0.05);
       const fontSize = baseFontSize * pulse;
 
@@ -79,11 +77,11 @@ export default class CalligraphySubtitleSketch {
       lines.forEach((line, idx) => {
         const lineY = centerY + (idx - (lines.length - 1) / 2) * lineHeight;
 
-        // 붓글씨 특유의 두꺼운 먹물 번짐 효과를 내기 위한 다중 오프셋 스트로크
+        // 💡 [수정 완료]: 문법 에러가 났던 대괄호 배열 형태 수정 완료
         const offsets = [
-          {-2, -2}, {2, -2}, {-2, 2}, {2, 2},
-          {-3, 0}, {3, 0}, {0, -3}, {0, 3},
-          {-1, -1}, {1, -1}, {-1, 1}, {1, 1}
+          [-2, -2], [2, -2], [-2, 2], [2, 2],
+          [-3, 0], [3, 0], [0, -3], [0, 3],
+          [-1, -1], [1, -1], [-1, 1], [1, 1]
         ];
 
         this.ctx.fillStyle = "rgba(0, 0, 0, 0.9)";
@@ -97,7 +95,7 @@ export default class CalligraphySubtitleSketch {
         this.ctx.shadowOffsetX = 4;
         this.ctx.shadowOffsetY = 4;
 
-        // 본문 텍스트 (고풍스러운 한지 미색)
+        // 본문 텍스트 (한지 미색)
         this.ctx.fillStyle = "#faf6ed";
         this.ctx.fillText(line, centerX, lineY);
 
