@@ -14,7 +14,7 @@ const deckPlayBtn = document.getElementById('btn-play-music');
 
 let isAudioAnalyzerConnected = false;
 let audioCtx = null;
-let delayNode = null; // 가변 음향 지연 노드
+let delayNode = null;
 
 const stemBuffers = { vocals: null, drums: null, bass: null, other: null };
 const stemSources = { vocals: null, drums: null, bass: null, other: null };
@@ -22,7 +22,8 @@ const stemAnalysers = { vocals: null, drums: null, bass: null, other: null };
 let isMultiStemPlaying = false;
 
 const poemTextInput = document.getElementById('input-poem-text') || document.getElementById('poem-input');
-const mainMp3Input = document.getElementById('file-main-mp3') || document.getElementById('file-main') || document.getElementById('file-mp3');
+// 💡 [수정]: 메인 MP3 인풋을 ID뿐만 아니라 일반 파일 인풋 전체로 유연하게 탐색하도록 확장
+const mainMp3Input = document.getElementById('file-main-mp3') || document.getElementById('file-main') || document.getElementById('file-mp3') || document.querySelector('input[type="file"]:not(#file-srt):not(#file-batch-mp3)');
 const batchMp3Input = document.getElementById('file-batch-mp3');
 const batchStatusText = document.getElementById('batch-load-status');
 const srtInput = document.getElementById('file-srt');
@@ -97,10 +98,8 @@ function updateAudioDelayForSketch(sketchFileName) {
   if (!delayNode) return;
   if (sketchFileName && sketchFileName.includes('028')) {
     delayNode.delayTime.value = 1.0;
-    console.log("[🔊 Audio Sync] 028호 전용 1.0초 박자 지연 싱크 가동");
   } else {
     delayNode.delayTime.value = 0.0;
-    console.log("[🔊 Audio Sync] 일반 스케치 전용 0.0초 실시간 모드 가동");
   }
 }
 
@@ -168,20 +167,7 @@ batchMp3Input?.addEventListener('change', async (e) => {
         }
         loadedNames.main = file.name;
       }
-    } catch (err) {
-      console.error(`[Audio Decode Error] ${file.name} 변환 실패:`, err);
-    }
-  }
-
-  let summaryHtml = "✅ <strong>인식 완료 목록:</strong><br>";
-  if (loadedNames.vocals) summaryHtml += `🎤 보컬: ${loadedNames.vocals}<br>`;
-  if (loadedNames.drums)  summaryHtml += `🥁 드럼: ${loadedNames.drums}<br>`;
-  if (loadedNames.bass)   summaryHtml += `🎸 베이스: ${loadedNames.bass}<br>`;
-  if (loadedNames.other)  summaryHtml += `🎹 기타: ${loadedNames.other}<br>`;
-
-  if (batchStatusText) {
-    batchStatusText.style.color = "#00ffcc";
-    batchStatusText.innerHTML = summaryHtml;
+    } catch (err) {}
   }
 
   if (stemBuffers.vocals || stemBuffers.drums || stemBuffers.bass || stemBuffers.other) {
@@ -215,10 +201,7 @@ async function toggleMultiStemPlayback() {
       }
     });
 
-    if (loadedCount === 0) {
-      alert("MP3 스템 파일 변환 중입니다. 잠시 후 다시 시작해주세요!");
-      return;
-    }
+    if (loadedCount === 0) return;
     isMultiStemPlaying = true;
     if (deckPlayBtn) deckPlayBtn.innerText = "⏸️ 음악 일시정지 (Pause)";
   }
@@ -237,7 +220,7 @@ if (deckPlayBtn) {
             try { analyzer.connectAudioElement(audioPlayer); } catch (err) {}
             isAudioAnalyzerConnected = true;
           }
-        }).catch(e => console.warn("오디오 플레이 에러:", e));
+        }).catch(e => {});
       } else {
         audioPlayer.pause();
         deckPlayBtn.innerText = "▶️ 음악 재생 (Play)";
@@ -259,9 +242,7 @@ function getStemVolume(analyser) {
     const avg = (sum / data.length) / 255.0;
     const peak = maxVal / 255.0;
     return Math.min(1.0, (avg * 0.3 + peak * 0.7) * 4.0);
-  } catch (e) {
-    return 0;
-  }
+  } catch (e) { return 0; }
 }
 
 function getStemSpectrum(analyser) {
@@ -275,15 +256,12 @@ function getStemSpectrum(analyser) {
       spec[i] = (data[i * step] || 0) / 255.0;
     }
     return spec;
-  } catch (e) {
-    return new Float32Array(64);
-  }
+  } catch (e) { return new Float32Array(64); }
 }
 
 function getMergedTimeDomainWaveform() {
   const wave = new Float32Array(128);
   let activeAnalysers = Object.values(stemAnalysers).filter(a => a !== null);
-  
   if (activeAnalysers.length > 0) {
     const temp = new Uint8Array(128);
     activeAnalysers[0].getByteTimeDomainData(temp);
@@ -381,14 +359,12 @@ document.querySelectorAll('.btn-export-ratio, [data-ratio]').forEach(btn => {
   });
 });
 
-// 🔒 스케치 고정 가드 적용
 const originalSwitchSketch = manager.switchSketch.bind(manager);
 manager.switchSketch = async function(sketchName, ...args) {
   const currentActiveLi = document.querySelector('#sketch-list li.active');
   const lockedSketch = currentActiveLi ? currentActiveLi.getAttribute('data-sketch') : null;
 
   if (lockedSketch && lockedSketch.includes('028') && sketchName && !String(sketchName).includes('028')) {
-    console.warn(`[🔒 Main Sketch Lock] 외부 모듈에 의한 ${sketchName} 강제 전환 차단됨. 현재 스케치 고정 유지!`);
     return; 
   }
   return originalSwitchSketch(sketchName, ...args);
@@ -408,9 +384,7 @@ if (sketchListContainer) {
       updateAudioDelayForSketch(targetSketch);
       await originalSwitchSketch(targetSketch, analyzer);
       syncCosmicControls();
-    } catch(err) {
-      console.error(`[Sketch Switch Error] ${targetSketch} 로딩 실패:`, err);
-    }
+    } catch(err) {}
   });
 }
 
