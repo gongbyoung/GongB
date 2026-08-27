@@ -1,327 +1,291 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <title>SRT 유기적 캘리그라피 레이아웃 생성기</title>
-    <style>
-        body {
-            font-family: 'Malgun Gothic', sans-serif;
-            background-color: #121212;
-            color: #fff;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            margin: 0;
-        }
-        .container {
-            text-align: center;
-            background: #1e1e1e;
-            padding: 24px;
-            border-radius: 16px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-        }
-        h2 {
-            margin-top: 0;
-            color: #f4ebd0;
-        }
-        canvas {
-            background-color: #f4eee1; /* 전통 한지 느낌의 배경색 */
-            border-radius: 8px;
-            box-shadow: inset 0 0 40px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-            display: block;
-            width: 1280px;
-            height: 720px;
-            max-width: 100%;
-            height: auto;
-        }
-        .controls {
-            display: flex;
-            gap: 12px;
-            justify-content: center;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-        input[type="file"] {
-            background: #2d2d2d;
-            padding: 10px;
-            border-radius: 6px;
-            border: 1px solid #444;
-            color: #fff;
-            cursor: pointer;
-        }
-        button {
-            background: #d63031;
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            font-size: 16px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: bold;
-            font-family: inherit;
-            transition: background 0.2s;
-        }
-        button:hover {
-            background: #ff7675;
-        }
-        button:disabled {
-            background: #444;
-            color: #888;
-            cursor: not-allowed;
-        }
-        .status {
-            margin-top: 15px;
-            font-size: 15px;
-            color: #aaa;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <title>Canvas & Opentype Calligram Packer</title>
+  <!-- Opentype.js CDN 로드 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/opentype.js/1.3.4/opentype.min.js"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #1e1e24;
+      color: #f0f0f0;
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .controls {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    button, input, select {
+      padding: 8px 16px;
+      border-radius: 6px;
+      border: 1px solid #444;
+      background: #2b2b36;
+      color: #fff;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #3d3d4d;
+    }
+    .canvas-container {
+      display: flex;
+      gap: 20px;
+      background: #141419;
+      padding: 16px;
+      border-radius: 12px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    }
+    canvas {
+      border: 1px solid #333;
+      border-radius: 8px;
+      background: #fff;
+    }
+  </style>
 </head>
 <body>
 
-<div class="container">
-    <h2>SRT 곡선 레이아웃 캘리그라피 영상 제작기</h2>
-    <canvas id="canvas" width="1920" height="1080"></canvas>
-    
-    <div class="controls">
-        <input type="file" id="srtFile" accept=".srt">
-        <button id="playBtn" disabled>미리보기 재생</button>
-        <button id="recordBtn" disabled>H.264 MP4 영상 저장</button>
+  <h2>실루엣 마스크 기반 캘리그라피 패킹 엔진</h2>
+
+  <div class="controls">
+    <select id="shapeSelect">
+      <option value="heart">하트 (Heart)</option>
+      <option value="circle">원형 (Circle)</option>
+      <option value="star">별 (Star)</option>
+    </select>
+    <input type="text" id="textInput" value="달빛 바람 소리 꽃잎 구름 새벽 별빛 침묵 바다 사랑 봄날 기억" style="width: 320px;" />
+    <button id="btnRun">패킹 시작</button>
+  </div>
+
+  <div class="canvas-container">
+    <div>
+      <div style="text-align:center; margin-bottom:6px; color:#aaa; font-size:12px;">마스크 실루엣</div>
+      <canvas id="maskCanvas" width="500" height="500"></canvas>
     </div>
-    <div class="status" id="status">SRT 자막 파일을 업로드해주세요.</div>
-</div>
+    <div>
+      <div style="text-align:center; margin-bottom:6px; color:#aaa; font-size:12px;">캘리그램 완성본</div>
+      <canvas id="mainCanvas" width="500" height="500"></canvas>
+    </div>
+  </div>
 
 <script>
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const srtFileInput = document.getElementById('srtFile');
-    const playBtn = document.getElementById('playBtn');
-    const recordBtn = document.getElementById('recordBtn');
-    const statusEl = document.getElementById('status');
+const WIDTH = 500;
+const HEIGHT = 500;
 
-    let subtitles = [];
-    let animationId = null;
-    let startTime = 0;
-    let totalDuration = 0;
-    let isPlaying = false;
+const maskCanvas = document.getElementById('maskCanvas');
+const maskCtx = maskCanvas.getContext('2d');
 
-    // SRT 파일 파싱
-    srtFileInput.addEventListener('change', function(e) {
-        const file = e.target.files[0];
-        if (!file) return;
+const mainCanvas = document.getElementById('mainCanvas');
+const mainCtx = mainCanvas.getContext('2d');
 
-        const reader = new FileReader();
-        reader.onload = function(event) {
-            subtitles = parseSRT(event.target.result);
-            if (subtitles.length > 0) {
-                totalDuration = subtitles[subtitles.length - 1].end + 2.0;
-                playBtn.disabled = false;
-                recordBtn.disabled = false;
-                statusEl.innerText = `자막 로드 완료! (총 ${subtitles.length}개 문장, 재생 시간: ${totalDuration.toFixed(1)}초)`;
-                drawStaticScene("재생 버튼을 눌러 시작하세요.");
-            } else {
-                statusEl.innerText = "유효한 SRT 자막을 찾지 못했습니다.";
-            }
-        };
-        reader.readAsText(file, "UTF-8");
-    });
+let loadedFont = null;
+let occupancyGrid = null; // 0: 외부/사용불가, 1: 배치가능 내부, 2: 이미 채워짐
 
-    function parseSRT(data) {
-        const pattern = /(\d+)\r?\n(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\r?\n([\s\S]*?)(?=\r?\n\r?\n|\s*$)/g;
-        let subs = [];
-        let match;
-        while ((match = pattern.exec(data)) !== null) {
-            subs.push({
-                id: parseInt(match[1]),
-                start: timeToSeconds(match[2]),
-                end: timeToSeconds(match[3]),
-                text: match[4].trim().replace(/\r?\n/g, ' ')
+// 1. 기본 웹 폰트 로드 (구글 Noto Sans / 실서비스에서는 캘리그라피 TTF/OTF 파일 URL 사용)
+const FONT_URL = 'https://fonts.gstatic.com/ea/notosanskr/v2/NotoSansKR-Bold.otf';
+
+opentype.load(FONT_URL, (err, font) => {
+  if (err) {
+    console.error('폰트 로드 실패, 기본 폰트로 대체 필요:', err);
+    alert('웹폰트를 불러오는 중 문제가 발생했습니다.');
+  } else {
+    loadedFont = font;
+    drawMask();
+    runPacking();
+  }
+});
+
+// 2. 프리셋 실루엣 마스크 렌더링
+function drawMask() {
+  maskCtx.fillStyle = '#ffffff';
+  maskCtx.fillRect(0, 0, WIDTH, HEIGHT);
+  maskCtx.fillStyle = '#000000';
+
+  const shape = document.getElementById('shapeSelect').value;
+  maskCtx.beginPath();
+
+  if (shape === 'heart') {
+    maskCtx.moveTo(250, 420);
+    maskCtx.bezierCurveTo(250, 390, 80, 270, 80, 170);
+    maskCtx.bezierCurveTo(80, 80, 180, 80, 250, 160);
+    maskCtx.bezierCurveTo(320, 80, 420, 80, 420, 170);
+    maskCtx.bezierCurveTo(420, 270, 250, 390, 250, 420);
+  } else if (shape === 'circle') {
+    maskCtx.arc(250, 250, 190, 0, Math.PI * 2);
+  } else if (shape === 'star') {
+    const cx = 250, cy = 250, spikes = 5, outerRadius = 200, innerRadius = 90;
+    let rot = Math.PI / 2 * 3;
+    let x = cx, y = cy;
+    const step = Math.PI / spikes;
+
+    maskCtx.moveTo(cx, cy - outerRadius);
+    for (let i = 0; i < spikes; i++) {
+      x = cx + Math.cos(rot) * outerRadius;
+      y = cy + Math.sin(rot) * outerRadius;
+      maskCtx.lineTo(x, y);
+      rot += step;
+
+      x = cx + Math.cos(rot) * innerRadius;
+      y = cy + Math.sin(rot) * innerRadius;
+      maskCtx.lineTo(x, y);
+      rot += step;
+    }
+    maskCtx.lineTo(cx, cy - outerRadius);
+  }
+  maskCtx.closePath();
+  maskCtx.fill();
+
+  // 픽셀 데이터 읽어 격자 맵 생성
+  initOccupancyGrid();
+}
+
+// 3. 점유 격자 맵 초기화 (1px 단위)
+function initOccupancyGrid() {
+  const imgData = maskCtx.getImageData(0, 0, WIDTH, HEIGHT);
+  const data = imgData.data;
+  occupancyGrid = new Uint8Array(WIDTH * HEIGHT);
+
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i], g = data[i+1], b = data[i+2];
+    const isInside = (r < 128 && g < 128 && b < 128); // 검은색 영역
+    occupancyGrid[i / 4] = isInside ? 1 : 0;
+  }
+}
+
+// 4. 단어가 마스크 내부에 안전하게 들어가는지 검사
+function canPlaceWord(x, y, bbox) {
+  const minX = Math.floor(x + bbox.x1);
+  const maxX = Math.ceil(x + bbox.x2);
+  const minY = Math.floor(y + bbox.y1);
+  const maxY = Math.ceil(y + bbox.y2);
+
+  // 캔버스 경계 체크
+  if (minX < 0 || maxX >= WIDTH || minY < 0 || maxY >= HEIGHT) {
+    return false;
+  }
+
+  // 글자 바운딩 박스 내 샘플링 검사
+  const step = 2; // 성능과 정밀도 균형
+  for (let py = minY; py <= maxY; py += step) {
+    for (let px = minX; px <= maxX; px += step) {
+      const idx = py * WIDTH + px;
+      if (occupancyGrid[idx] !== 1) { // 마스크 외부이거나 이미 채워진 공간
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+// 5. 배치된 단어 영역 점유 처리
+function markOccupied(x, y, bbox) {
+  const minX = Math.max(0, Math.floor(x + bbox.x1) - 2);
+  const maxX = Math.min(WIDTH - 1, Math.ceil(x + bbox.x2) + 2);
+  const minY = Math.max(0, Math.floor(y + bbox.y1) - 2);
+  const maxY = Math.min(HEIGHT - 1, Math.ceil(y + bbox.y2) + 2);
+
+  for (let py = minY; py <= maxY; py++) {
+    for (let px = minX; px <= maxX; px++) {
+      occupancyGrid[py * WIDTH + px] = 2;
+    }
+  }
+}
+
+// 6. 메인 패킹 루프
+function runPacking() {
+  if (!loadedFont || !occupancyGrid) return;
+
+  // 캔버스 초기화
+  mainCtx.fillStyle = '#ffffff';
+  mainCtx.fillRect(0, 0, WIDTH, HEIGHT);
+
+  const rawText = document.getElementById('textInput').value;
+  const words = rawText.split(/\s+/).filter(w => w.trim().length > 0);
+
+  // 시각적 위계를 위해 단어 목록을 크기별로 정렬/순환
+  const fontSizes = [54, 42, 34, 26, 20, 16, 13];
+
+  let placedCount = 0;
+
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i];
+    let placed = false;
+
+    // 큰 폰트 크기부터 순차적으로 시도
+    for (let s = 0; s < fontSizes.length; s++) {
+      const fontSize = fontSizes[s];
+      const path = loadedFont.getPath(word, 0, 0, fontSize);
+      const bbox = path.getBoundingBox();
+
+      // 마스크 중앙부터 바깥쪽으로 나선형(Spiral) 좌표 탐색
+      const centerX = WIDTH / 2;
+      const centerY = HEIGHT / 2;
+      const maxRadius = Math.min(WIDTH, HEIGHT) / 2;
+
+      for (let r = 0; r < maxRadius; r += 6) {
+        for (let theta = 0; theta < Math.PI * 2; theta += 0.35) {
+          const testX = Math.round(centerX + r * Math.cos(theta));
+          const testY = Math.round(centerY + r * Math.sin(theta));
+
+          if (canPlaceWord(testX, testY, bbox)) {
+            // 글자 렌더링
+            loadedFont.draw(mainCtx, word, testX, testY, fontSize, {
+              fill: '#1a1a1a'
             });
+
+            // 점유 맵 업데이트
+            markOccupied(testX, testY, bbox);
+            placed = true;
+            placedCount++;
+            break;
+          }
         }
-        return subs;
+        if (placed) break;
+      }
+      if (placed) break;
     }
+  }
 
-    function timeToSeconds(timeStr) {
-        const [h, m, sMs] = timeStr.split(':');
-        const [s, ms] = sMs.split(',');
-        return parseInt(h) * 3600 + parseInt(m) * 60 + parseInt(s) + parseInt(ms) / 1000;
+  // 7. 남은 미세 빈틈(Gap)에 먹 번짐/포인트 점 찍기
+  fillMicroGaps(mainCtx);
+}
+
+// 8. 잔여 빈틈 채우기 (캘리그라피 붓 튐 / 먹점 효과)
+function fillMicroGaps(ctx) {
+  ctx.fillStyle = '#2c2c2c';
+  for (let y = 10; y < HEIGHT - 10; y += 8) {
+    for (let x = 10; x < WIDTH - 10; x += 8) {
+      const idx = y * WIDTH + x;
+      // 마스크 내부(1)이지만 글자가 들어가지 못한 빈 공간
+      if (occupancyGrid[idx] === 1) {
+        // 주변 4방향 검사 후 작은 점 찍기
+        const dotRadius = Math.random() * 1.5 + 0.8;
+        ctx.beginPath();
+        ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
+        ctx.fill();
+        occupancyGrid[idx] = 2;
+      }
     }
+  }
+}
 
-    function drawStaticScene(message) {
-        ctx.fillStyle = "#f4eee1";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
-        ctx.fillStyle = "#2c2c2c";
-        ctx.font = "bold 50px 'Malgun Gothic', sans-serif";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(message, canvas.width / 2, canvas.height / 2);
-    }
+// 이벤트 리스너 바인딩
+document.getElementById('btnRun').addEventListener('click', () => {
+  drawMask();
+  runPacking();
+});
 
-    // 재생 루프 관리
-    function startPlayback(isRecording = false, onFinish = null) {
-        if (isPlaying) return;
-        isPlaying = true;
-        startTime = performance.now();
-
-        function loop(now) {
-            const elapsed = (now - startTime) / 1000;
-
-            if (elapsed >= totalDuration) {
-                cancelAnimationFrame(animationId);
-                isPlaying = false;
-                drawStaticScene("재생 완료");
-                if (onFinish) onFinish();
-                return;
-            }
-
-            renderFrame(elapsed);
-            
-            if (isPlaying) {
-                animationId = requestAnimationFrame(loop);
-            }
-        }
-        animationId = requestAnimationFrame(loop);
-    }
-
-    // 핵심: 보이지 않는 곡선 틀을 기반으로 글자마다 위치, 크기, 각도를 변형하여 배치하는 렌더링 함수
-    function renderFrame(currentTime) {
-        ctx.fillStyle = "#f4eee1";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        const currentSub = subtitles.find(sub => currentTime >= sub.start && currentTime <= sub.end);
-
-        if (currentSub) {
-            const duration = currentSub.end - currentSub.start;
-            const subElapsed = currentTime - currentSub.start;
-            
-            // 자막 재생 시간 중 앞의 75% 동안 글자들이 순차적으로 나타남
-            const progress = Math.min(1, subElapsed / (duration * 0.75));
-            const chars = Array.from(currentSub.text);
-            const totalChars = chars.length;
-            const visibleCharsCount = Math.floor(totalChars * progress);
-
-            ctx.save();
-            
-            const centerX = canvas.width / 2;
-            const centerY = canvas.height / 2;
-            
-            // 전체 문장의 대략적인 폭을 고려해 시작점 설정
-            const baseFontSize = 95;
-            const spacing = 75; // 글자 간 간격 기본값
-            const totalWidth = totalChars * spacing;
-            const startX = centerX - totalWidth / 2;
-
-            for (let i = 0; i <= visibleCharsCount && i < totalChars; i++) {
-                const char = chars[i];
-                if (char === ' ') continue;
-
-                // [보이지 않는 틀(Path) 수학적 변형 로직]
-                // 1. X 위치: 기본 간격에 약간의 유기적 분산 부여
-                const x = startX + (i * spacing);
-                
-                // 2. Y 위치 (곡선 베이스라인 적용): 사인파를 활용해 전체 문장이 물결처럼 완만한 호를 그리도록 배치
-                const curveY = centerY + Math.sin((i / totalChars) * Math.PI) * -35;
-                
-                // 3. 글자별 변형 값 생성 (글자 인덱스 기반 고유 변형 - 크기, 회전, 미세 위치 오프셋)
-                // Math.sin 패턴을 활용해 문장 중앙으로 갈수록 글자가 살짝 커지고, 끝으로 갈수록 작아지거나 회전함
-                const scaleVariation = 1 + Math.sin(i * 1.5) * 0.15; // 0.85배 ~ 1.15배 크기 변형
-                const rotationAngle = Math.sin(i * 0.8) * 0.08; // 살짝 기우뚱한 각도 변형 (-4도 ~ +4도)
-                const yJitter = Math.cos(i * 2.0) * 12; // 상하로 들쑥날쑥한 수제 느낌의 오프셋
-
-                const finalY = curveY + yJitter;
-
-                ctx.save();
-                ctx.translate(x, finalY);
-                ctx.rotate(rotationAngle);
-                ctx.scale(scaleVariation, scaleVariation);
-
-                // 캘리그라피 느낌의 묵직한 붓글씨 스타일 렌더링 (그림자로 입체감 및 붓 퍼짐 효과 부여)
-                ctx.font = `bold ${baseFontSize}px 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif`;
-                ctx.textAlign = "center";
-                ctx.textBaseline = "middle";
-
-                // 먹물 번짐/그림자 효과
-                ctx.shadowColor = "rgba(0, 0, 0, 0.25)";
-                ctx.shadowBlur = 4;
-                ctx.shadowOffsetX = 3;
-                ctx.shadowOffsetY = 3;
-
-                ctx.fillStyle = "#1a1a1a";
-                ctx.fillText(char, 0, 0);
-
-                ctx.restore();
-            }
-
-            ctx.restore();
-        }
-    }
-
-    playBtn.addEventListener('click', () => {
-        if (isPlaying) return;
-        startPlayback(false);
-        statusEl.innerText = "재생 중...";
-    });
-
-    // 비디오 녹화 (H.264 / WebM)
-    recordBtn.addEventListener('click', () => {
-        if (isPlaying) return;
-        
-        statusEl.innerText = "영상을 녹화 중입니다. 끝날 때까지 창을 닫지 마세요...";
-        playBtn.disabled = true;
-        recordBtn.disabled = true;
-
-        const stream = canvas.captureStream(30);
-        let options = { mimeType: 'video/webm;codecs=h264' };
-        if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-            options = { mimeType: 'video/webm' };
-        }
-
-        let mediaRecorder;
-        try {
-            mediaRecorder = new MediaRecorder(stream, options);
-        } catch (e) {
-            mediaRecorder = new MediaRecorder(stream);
-        }
-
-        let recordedChunks = [];
-
-        mediaRecorder.ondataavailable = function(e) {
-            if (e.data.size > 0) {
-                recordedChunks.push(e.data);
-            }
-        };
-
-        mediaRecorder.onstop = function() {
-            const blob = new Blob(recordedChunks, { type: 'video/mp4' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.style.display = 'none';
-            a.href = url;
-            a.download = 'custom_layout_calligraphy.mp4';
-            document.body.appendChild(a);
-            a.click();
-            
-            setTimeout(() => {
-                document.body.removeChild(a);
-                window.URL.revokeObjectURL(url);
-            }, 100);
-
-            statusEl.innerText = "녹화 완료! 영상 파일이 다운로드되었습니다.";
-            playBtn.disabled5 = false; // fixed typo in logic mentally
-            playBtn.disabled = false;
-            recordBtn.disabled = false;
-        };
-
-        mediaRecorder.start();
-        
-        startPlayback(true, () => {
-            mediaRecorder.stop();
-        });
-    });
+document.getElementById('shapeSelect').addEventListener('change', () => {
+  drawMask();
+  runPacking();
+});
 </script>
-
 </body>
 </html>
