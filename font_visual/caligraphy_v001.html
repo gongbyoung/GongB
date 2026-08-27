@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SRT 캘리그라피 자막 영상 생성기</title>
+  
+  <!-- 캘리그라피 웹 폰트 로드 (구글 폰트) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Dongle:wght@400;700&family=Gaegu:wght@400;700&family=Nanum+Brush+Script&family=Nanum+Pen+Script&family=Yeon+Sung&display=swap" rel="stylesheet">
+  
+  <!-- MP4 인코딩을 위한 MP4 Muxer 라이브러리 CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.1.0/build/mp4-muxer.min.js"></script>
+  <style>
+    :root {
+      --bg-dark: #121214;
+      --panel-bg: #1e1e24;
+      --panel-border: #2d2d38;
+      --accent-color: #e65c00;
+      --accent-gradient: linear-gradient(135deg, #FF512F, #DD2476);
+      --text-main: #f0f0f5;
+      --text-muted: #a0a0b0;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+    /* 헤더 스타일 */
+    header {
+      background: #18181c;
+      padding: 12px 24px;
+      border-bottom: 1px solid var(--panel-border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    header h1 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      background: var(--accent-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    /* 레이아웃 메인 구역 */
+    .main-container {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+    /* 좌측 설정 패널 */
+    .sidebar {
+      width: 360px;
+      background: var(--panel-bg);
+      border-right: 1px solid var(--panel-border);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      overflow-y: auto;
+    }
+    .section-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--accent-color);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    label {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      display: flex;
+      justify-content: space-between;
+    }
+    label span.val {
+      color: var(--text-main);
+      font-weight: 600;
+    }
+    input[type="file"] {
+      display: none;
+    }
+    .btn-file {
+      display: block;
+      padding: 12px;
+      background: #2a2a36;
+      border: 1px dashed #444456;
+      border-radius: 8px;
+      text-align: center;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: all 0.2s;
+    }
+    .btn-file:hover {
+      border-color: var(--accent-color);
+      background: #323242;
+    }
+    select, input[type="range"], input[type="color"] {
+      width: 100%;
+      padding: 8px;
+      background: #16161a;
+      border: 1px solid var(--panel-border);
+      border-radius: 6px;
+      color: var(--text-main);
+      font-size: 0.9rem;
+    }
+    input[type="range"] {
+      padding: 0;
+      accent-color: var(--accent-color);
+      cursor: pointer;
+    }
+    /* 중앙 캔버스 미리보기 구역 */
+    .preview-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: #0a0a0c;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      position: relative;
+    }
+    .canvas-wrapper {
+      position: relative;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7);
+      border-radius: 8px;
+      overflow: hidden;
+      max-width: 100%;
+      max-height: 70vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000;
+    }
+    canvas {
+      display: block;
+      max-width: 100%;
+      max-height: 70vh;
+      object-fit: contain;
+    }
+    /* 하단 플레이어 / 타임라인 컨트롤 */
+    .player-controls {
+      width: 100%;
+      max-width: 960px;
+      margin-top: 15px;
+      background: var(--panel-bg);
+      padding: 14px 20px;
+      border-radius: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      border: 1px solid var(--panel-border);
+    }
+    .timeline-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .time-display {
+      font-family: monospace;
+      font-size: 0.9rem;
+      color: var(--accent-color);
+      min-width: 120px;
+    }
+    .btn-group {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    button.btn-action {
+      background: var(--accent-gradient);
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.1s, opacity 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    button.btn-action:hover {
+      opacity: 0.9;
+    }
+    button.btn-action:active {
+      transform: scale(0.98);
+    }
+    button.btn-secondary {
+      background: #2b2b38;
+      border: 1px solid var(--panel-border);
+      color: var(--text-main);
+      padding: 10px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    button.btn-secondary:hover {
+      background: #363646;
+    }
+    /* 자막 목록 패널 */
+    .srt-list-container {
+      max-height: 180px;
+      overflow-y: auto;
+      background: #141418;
+      border: 1px solid var(--panel-border);
+      border-radius: 6px;
+      padding: 8px;
+    }
+    .srt-item {
+      padding: 6px 10px;
+      border-bottom: 1px solid #22222a;
+      font-size: 0.8rem;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+    }
+    .srt-item:hover, .srt-item.active {
+      background: #252533;
+      color: var(--accent-color);
+    }
+    /* 인코딩 프로그레스 모달 */
+    .progress-overlay {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.85);
+      backdrop-filter: blur(4px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      display: none;
+    }
+    .progress-box {
+      background: var(--panel-bg);
+      padding: 30px;
+      border-radius: 12px;
+      border: 1px solid var(--panel-border);
+      text-align: center;
+      width: 340px;
+    }
+    .progress-bar-bg {
+      width: 100%;
+      height: 10px;
+      background: #111;
+      border-radius: 5px;
+      margin: 15px 0;
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      width: 0%;
+      height: 100%;
+      background: var(--accent-gradient);
+      transition: width 0.1s linear;
+    }
+    /* 먹물 번짐 효과를 위한 SVG 필터 (화면에 숨김) */
+    svg.filters {
+      position: absolute;
+      width: 0;
+      height: 0;
+    }
+  </style>
+</head>
+<body>
+  <!-- 먹물 번짐 / 붓글씨 질감용 SVG 필터 정의 -->
+  <svg class="filters">
+    <defs>
+      <filter id="ink-bleed-filter">
+        <!-- 노이즈 생성으로 붓의 거친 가장자리 구현 -->
+        <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="3" result="noise" />
+        <feDisplacementMap in="SourceGraphic" in2="noise" scale="3.5" xChannelSelector="R" yChannelSelector="G" />
+      </filter>
+    </defs>
+  </svg>
+  <header>
+    <h1>🖌️ SRT 캘리그라피 자막 MP4 생성기</h1>
+    <span style="font-size: 0.85rem; color: var(--text-muted);">WebCodecs H.264 렌더링 지원</span>
+  </header>
+  <div class="main-container">
+    <!-- 좌측 설정 사이드바 -->
+    <div class="sidebar">
+      
+      <!-- 파일 업로드 -->
+      <div class="control-group">
+        <div class="section-title">📄 SRT 자막 파일</div>
+        <label for="srt-input" class="btn-file" id="srt-label">
+          📁 SRT 자막 불러오기 (.srt)
+        </label>
+        <input type="file" id="srt-input" accept=".srt">
+      </div>
+      <!-- 폰트 & 스타일 설정 -->
+      <div class="control-group">
+        <div class="section-title">🎨 캘리그라피 폰트 설정</div>
+        <label>붓글씨 서체</label>
+        <select id="font-family">
+          <option value="'Nanum Brush Script', cursive" selected>나눔붓글씨 (추천)</option>
+          <option value="'Yeon Sung', cursive">연성체 (예술적 곡선)</option>
+          <option value="'Dongle', sans-serif">동글체 (귀여운 필체)</option>
+          <option value="'Gaegu', cursive">개구체 (자연스러운 손글씨)</option>
+          <option value="'Nanum Pen Script', cursive">나눔펜글씨</option>
+        </select>
+      </div>
+      <!-- 구도 & 변형 설정 -->
+      <div class="control-group">
+        <div class="section-title">📐 틀을 벗어난 파격 구도 설정</div>
+        
+        <label>글자 회전/기울기 랜덤도 <span class="val" id="val-rotation">15°</span></label>
+        <input type="range" id="param-rotation" min="0" max="30" value="15">
+        <label>글자 크기 변화 폭 <span class="val" id="val-scale">30%</span></label>
+        <input type="range" id="param-scale" min="0" max="60" value="30">
+        <label>줄간 지그재그(파격 배치) <span class="val" id="val-stagger">40px</span></label>
+        <input type="range" id="param-stagger" min="0" max="100" value="40">
+        <label>붓 획 늘림 (Calligraphy Tail) <span class="val" id="val-tail">켜짐</span></label>
+        <select id="param-tail">
+          <option value="true" selected>강렬한 획 늘림 활성화</option>
+          <option value="false">비활성화</option>
+        </select>
+      </div>
+      <!-- 배경 & 색상 -->
+      <div class="control-group">
+        <div class="section-title">🖼️ 배경 및 먹물 색상</div>
+        <label>배경 스타일</label>
+        <select id="bg-style">
+          <option value="hanji" selected>전통 한지 (Rice Paper)</option>
+          <option value="dark-paper">어두운 먹종이 (Dark Paper)</option>
+          <option value="transparent">투명 배경 (자막용)</option>
+          <option value="black">단색 검정</option>
+        </select>
+        <label>먹물 색상</label>
+        <input type="color" id="ink-color" value="#1c1917">
+      </div>
+      <!-- 자막 목록 -->
+      <div class="control-group">
+        <div class="section-title">📜 자막 목록</div>
+        <div class="srt-list-container" id="srt-list">
+          <div style="color: #666; font-size: 0.8rem; text-align: center; padding: 20px;">
+            SRT 파일을 로드하면 자막 목록이 표시됩니다.
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- 중앙 미리보기 및 조작 구역 -->
+    <div class="preview-area">
+      
+      <div class="canvas-wrapper">
+        <canvas id="calligraphy-canvas" width="1920" height="1080"></canvas>
+      </div>
+      <div class="player-controls">
+        <div class="timeline-row">
+          <button class="btn-secondary" id="btn-play">▶ 재생</button>
+          <input type="range" id="time-slider" min="0" max="100" value="0" step="0.01" style="flex:1;">
+          <div class="time-display" id="time-display">00:00.00 / 00:00.00</div>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 5px;">
+          <div style="font-size: 0.85rem; color: var(--text-muted);">
+            해상도: 1920x1080 (Full HD) | 30 FPS
+          </div>
+          <button class="btn-action" id="btn-export">
+            🎬 H.264 MP4 영상 저장
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- 비동기 인코딩 진행 상황 모달 -->
+  <div class="progress-overlay" id="progress-modal">
+    <div class="progress-box">
+      <h3 style="margin-bottom: 10px; font-size: 1.1rem;">📽️ MP4 영상 렌더링 중...</h3>
+      <p style="font-size: 0.85rem; color: var(--text-muted);" id="progress-text">프레임 생성 및 H.264 인코딩 진행 중</p>
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="progress-fill"></div>
+      </div>
+      <span id="progress-percent" style="font-weight: bold; font-size: 1.1rem; color: var(--accent-color);">0%</span>
+    </div>
+  </div>
+  <script>
+    /**
+     * 비즈니스 로직 및 코어 엔진
+     * 초보자도 쉽게 이해할 수 있도록 구조화된 주석 작성
+     */
+    // 1. 상태 변수 정의
+    let srtData = [];             // 파싱된 SRT 자막 데이터 저장 배열 [{id, start, end, text}]
+    let totalDuration = 0;        // 전체 영상 길이 (초)
+    let currentTime = 0;          // 현재 재생 시각 (초)
+    let isPlaying = false;        // 재생 중 여부
+    let animationFrameId = null;  // requestAnimationFrame ID
+    let lastTimestamp = 0;
+    // DOM 요소 참조
+    const canvas = document.getElementById('calligraphy-canvas');
+    const ctx = canvas.getContext('2d');
+    const srtInput = document.getElementById('srt-input');
+    const srtLabel = document.getElementById('srt-label');
+    const srtListEl = document.getElementById('srt-list');
+    const btnPlay = document.getElementById('btn-play');
+    const timeSlider = document.getElementById('time-slider');
+    const timeDisplay = document.getElementById('time-display');
+    const btnExport = document.getElementById('btn-export');
+    const fontFamilySelect = document.getElementById('font-family');
+    const bgStyleSelect = document.getElementById('bg-style');
+    const inkColorInput = document.getElementById('ink-color');
+    const progressModal = document.getElementById('progress-modal');
+    const progressFill = document.getElementById('progress-fill');
+    const progressPercent = document.getElementById('progress-percent');
+    const progressText = document.getElementById('progress-text');
+    // 파라미터 조절 요소
+    const paramRotation = document.getElementById('param-rotation');
+    const paramScale = document.getElementById('param-scale');
+    const paramStagger = document.getElementById('param-stagger');
+    const paramTail = document.getElementById('param-tail');
+    // 파라미터 변경 시 UI 텍스트 갱신 및 재렌더링
+    paramRotation.addEventListener('input', (e) => {
+      document.getElementById('val-rotation').textContent = e.target.value + '°';
+      renderFrame(currentTime);
+    });
+    paramScale.addEventListener('input', (e) => {
+      document.getElementById('val-scale').textContent = e.target.value + '%';
+      renderFrame(currentTime);
+    });
+    paramStagger.addEventListener('input', (e) => {
+      document.getElementById('val-stagger').textContent = e.target.value + 'px';
+      renderFrame(currentTime);
+    });
+    paramTail.addEventListener('change', () => renderFrame(currentTime));
+    fontFamilySelect.addEventListener('change', () => renderFrame(currentTime));
+    bgStyleSelect.addEventListener('change', () => renderFrame(currentTime));
+    inkColorInput.addEventListener('input', () => renderFrame(currentTime));
+    // 샘플 데모 자막 (사용자가 파일 선택 안했을 때 기본 제공)
+    const demoSRT = `1
+00:00:00,500 --> 00:00:04,000
+옷고름 너어는
+고아의 설움.
+2
+00:00:04,500 --> 00:00:08,000
+바람에 흔들리는
+작은 등불 같아라`;
+    // 2. SRT 파서 (시간 문자열 -> 초 변환)
+    function parseSRTTime(timeStr) {
+      if (!timeStr) return 0;
+      const parts = timeStr.trim().replace(',', '.').split(':');
+      const hours = parseFloat(parts[0]) || 0;
+      const minutes = parseFloat(parts[1]) || 0;
+      const seconds = parseFloat(parts[2]) || 0;
+      return hours * 3600 + minutes * 60 + seconds;
+    }
+    function parseSRT(text) {
+      const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+      const blocks = normalized.split('\n\n');
+      const result = [];
+      for (let block of blocks) {
+        const lines = block.trim().split('\n');
+        if (lines.length >= 3) {
+          const timeMatch = lines[1].match(/(.*?)\s*-->\s*(.*)/);
+          if (timeMatch) {
+            const start = parseSRTTime(timeMatch[1]);
+            const end = parseSRTTime(timeMatch[2]);
+            const subtitleText = lines.slice(2).join('\n');
+            result.push({
+              id: lines[0],
+              start,
+              end,
+              text: subtitleText
+            });
+          }
+        }
+      }
+      return result;
+    }
+    // SRT 로드 처리
+    srtInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      srtLabel.textContent = `📄 ${file.name}`;
+      
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        loadSRTData(event.target.result);
+      };
+      reader.readAsText(file);
+    });
+    function loadSRTData(rawText) {
+      srtData = parseSRT(rawText);
+      if (srtData.length > 0) {
+        totalDuration = srtData[srtData.length - 1].end + 1.0; // 여유 1초
+      } else {
+        totalDuration = 10;
+      }
+      timeSlider.max = totalDuration;
+      updateSRTListUI();
+      renderFrame(0);
+    }
+    function updateSRTListUI() {
+      srtListEl.innerHTML = '';
+      srtData.forEach((item, idx) => {
+        const div = document.createElement('div');
+        div.className = 'srt-item';
+        div.innerHTML = `<span>#${item.id} (${formatTime(item.start)})</span> <span>${item.text.replace('\n', ' / ')}</span>`;
+        div.addEventListener('click', () => {
+          currentTime = item.start;
+          timeSlider.value = currentTime;
+          renderFrame(currentTime);
+        });
+        srtListEl.appendChild(div);
+      });
+    }
+    function formatTime(sec) {
+      const m = Math.floor(sec / 60);
+      const s = Math.floor(sec % 60);
+      const ms = Math.floor((sec % 1) * 100);
+      return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(ms).padStart(2, '0')}`;
+    }
+    // 3. 캘리그라피 시드 기반 난수 생성기 (동일 문장에서는 항상 동일한 붓터치 모양 유지를 위해)
+    function seededRandom(seed) {
+      let x = Math.sin(seed++) * 10000;
+      return x - Math.floor(x);
+    }
+    // 4. 배경 그리기 함수 (한지 한지 질감 및 배경 패턴)
+    function drawBackground() {
+      const style = bgStyleSelect.value;
+      const width = canvas.width;
+      const height = canvas.height;
+      if (style === 'transparent') {
+        ctx.clearRect(0, 0, width, height);
+        return;
+      }
+      if (style === 'black') {
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, width, height);
+        return;
+      }
+      if (style === 'dark-paper') {
+        ctx.fillStyle = '#18181b';
+        ctx.fillRect(0, 0, width, height);
+        return;
+      }
+      // 기본: 전통 한지 (Hanji Rice Paper) 생성
+      const grad = ctx.createRadialGradient(width/2, height/2, 100, width/2, height/2, width/1.2);
+      grad.addColorStop(0, '#faf6ee');
+      grad.addColorStop(1, '#e6decb');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, width, height);
+      // 한지 미세 티끌/섬유 질감 인공 생성
+      ctx.fillStyle = 'rgba(100, 80, 50, 0.04)';
+      for (let i = 0; i < 500; i++) {
+        const x = seededRandom(i * 1.1) * width;
+        const y = seededRandom(i * 2.2) * height;
+        const r = seededRandom(i * 3.3) * 2 + 0.5;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    // 5. 핵심: 캘리그라피 붓글씨 파격 구도 렌더링 엔진
+    function renderCalligraphyText(text, seedOffset = 100) {
+      if (!text) return;
+      const lines = text.split('\n');
+      const selectedFont = fontFamilySelect.value;
+      const inkColor = inkColorInput.value;
+      const maxRotDegree = parseFloat(paramRotation.value);
+      const scaleVarPercent = parseFloat(paramScale.value) / 100;
+      const staggerPx = parseFloat(paramStagger.value);
+      const enableTail = paramTail.value === 'true';
+      const baseFontSize = 130; // 기준 폰트 크기
+      ctx.textBaseline = 'middle';
+      // 텍스트 블록의 전체 높이 계산
+      const lineGap = baseFontSize * 1.5;
+      const totalBlockHeight = lines.length * lineGap;
+      const startY = (canvas.height - totalBlockHeight) / 2 + baseFontSize / 2;
+      // 먹물 번짐 효과 적용 (SVG 필터)
+      ctx.filter = 'url(#ink-bleed-filter)';
+      lines.forEach((lineText, lineIdx) => {
+        let seed = seedOffset + lineIdx * 50;
+        // 줄별 오프셋 및 회전 (틀을 벗어난 파격 구도)
+        const lineStaggerX = (seededRandom(seed++) - 0.5) * staggerPx * 2;
+        const lineStaggerY = (seededRandom(seed++) - 0.5) * 30;
+        const lineAngle = (seededRandom(seed++) - 0.5) * (maxRotDegree * 0.4) * (Math.PI / 180);
+        ctx.save();
+        
+        // 화면 중앙을 기준으로 줄 배치
+        const currentCenterY = startY + lineIdx * lineGap + lineStaggerY;
+        const currentCenterX = canvas.width / 2 + lineStaggerX;
+        ctx.translate(currentCenterX, currentCenterY);
+        ctx.rotate(lineAngle);
+        // 글자별 폭 계산
+        ctx.font = `700 ${baseFontSize}px ${selectedFont}`;
+        const totalLineWidth = ctx.measureText(lineText).width;
+        let cursorX = -totalLineWidth / 2;
+        // 음절(글자) 단위 파격 변형 및 렌더링
+        const characters = lineText.split('');
+        characters.forEach((char, charIdx) => {
+          if (char === ' ') {
+            cursorX += baseFontSize * 0.4;
+            return;
+          }
+          ctx.save();
+          // 글자별 독립적인 랜덤 스케일, 회전, 위치 변형
+          const charScale = 1.0 + (seededRandom(seed++) - 0.5) * scaleVarPercent * 2;
+          const charRot = (seededRandom(seed++) - 0.5) * maxRotDegree * (Math.PI / 180);
+          const charOffsetY = (seededRandom(seed++) - 0.5) * 25;
+          const fontPx = Math.round(baseFontSize * charScale);
+          ctx.font = `700 ${fontPx}px ${selectedFont}`;
+          ctx.fillStyle = inkColor;
+          const charWidth = ctx.measureText(char).width;
+          // 글자 위치 이동 후 그리기
+          ctx.translate(cursorX + charWidth / 2, charOffsetY);
+          ctx.rotate(charRot);
+          // 주 텍스트 채우기 (먹물 농도 효과를 위해 2회 중첩 렌더링)
+          ctx.globalAlpha = 0.95;
+          ctx.fillText(char, -charWidth / 2, 0);
+          // 미세한 붓 농담(농묵/담묵) 표현을 위한 추가 획
+          ctx.globalAlpha = 0.3;
+          ctx.fillText(char, -charWidth / 2 + (seededRandom(seed++) - 0.5) * 2, (seededRandom(seed++) - 0.5) * 2);
+          ctx.restore();
+          // 붓 획 늘림 (Calligraphy Tail Stroke) 효과 (문장의 마지막 글자나 특정 글자에)
+          if (enableTail && (charIdx === characters.length - 1 || seededRandom(seed++) > 0.7)) {
+            ctx.save();
+            ctx.strokeStyle = inkColor;
+            ctx.lineWidth = 6 + seededRandom(seed++) * 8;
+            ctx.lineCap = 'round';
+            ctx.globalAlpha = 0.85;
+            ctx.beginPath();
+            const startTailX = cursorX + charWidth * 0.8;
+            const startTailY = charOffsetY + 15;
+            const endTailX = startTailX + 60 + seededRandom(seed++) * 90;
+            const endTailY = startTailY + (seededRandom(seed++) - 0.3) * 40;
+            const controlX = (startTailX + endTailX) / 2;
+            const controlY = startTailY + 30;
+            ctx.moveTo(startTailX, startTailY);
+            ctx.quadraticCurveTo(controlX, controlY, endTailX, endTailY);
+            ctx.stroke();
+            ctx.restore();
+          }
+          cursorX += charWidth * 0.95; // 글자 간격 약간 조여 붓글씨 밀도 증가
+        });
+        // 먹물 튀김(Ink Splatter) 효과
+        ctx.fillStyle = inkColor;
+        for (let s = 0; s < 3; s++) {
+          if (seededRandom(seed++) > 0.5) {
+            const spX = (seededRandom(seed++) - 0.5) * totalLineWidth;
+            const spY = (seededRandom(seed++) - 0.5) * 80;
+            const spR = seededRandom(seed++) * 3 + 1;
+            ctx.beginPath();
+            ctx.arc(spX, spY, spR, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+        ctx.restore();
+      });
+      // 필터 원복
+      ctx.filter = 'none';
+    }
+    // 6. 프레임 렌더링 함수
+    function renderFrame(timeSec) {
+      drawBackground();
+      // 현재 시간에 해당되는 자막 찾기
+      const activeSubtitle = srtData.find(item => timeSec >= item.start && timeSec <= item.end);
+      if (activeSubtitle) {
+        // 자막별 시드 고유화
+        renderCalligraphyText(activeSubtitle.text, activeSubtitle.id * 100);
+      }
+      timeDisplay.textContent = `${formatTime(timeSec)} / ${formatTime(totalDuration)}`;
+    }
+    // 7. 타임라인 애니메이션 루프
+    function animate(timestamp) {
+      if (!isPlaying) return;
+      if (!lastTimestamp) lastTimestamp = timestamp;
+      const delta = (timestamp - lastTimestamp) / 1000;
+      lastTimestamp = timestamp;
+      currentTime += delta;
+      if (currentTime > totalDuration) {
+        currentTime = totalDuration;
+        pause();
+      }
+      timeSlider.value = currentTime;
+      renderFrame(currentTime);
+      if (isPlaying) {
+        animationFrameId = requestAnimationFrame(animate);
+      }
+    }
+    function play() {
+      if (isPlaying) return;
+      isPlaying = true;
+      btnPlay.textContent = '⏸ 일시정지';
+      lastTimestamp = 0;
+      animationFrameId = requestAnimationFrame(animate);
+    }
+    function pause() {
+      isPlaying = false;
+      btnPlay.textContent = '▶ 재생';
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+    }
+    btnPlay.addEventListener('click', () => {
+      if (isPlaying) pause();
+      else play();
+    });
+    timeSlider.addEventListener('input', (e) => {
+      currentTime = parseFloat(e.target.value);
+      renderFrame(currentTime);
+    });
+    // 8. MP4 (H.264) 비디오 저장 엔진 (WebCodecs + Mp4Muxer)
+    btnExport.addEventListener('click', async () => {
+      if (srtData.length === 0) {
+        alert('SRT 자막 데이터가 없습니다. 먼저 SRT 파일을 로드해 주세요.');
+        return;
+      }
+      pause();
+      progressModal.style.display = 'flex';
+      progressFill.style.width = '0%';
+      progressPercent.textContent = '0%';
+      const fps = 30;
+      const duration = totalDuration;
+      const totalFrames = Math.ceil(duration * fps);
+      const width = canvas.width;
+      const height = canvas.height;
+      try {
+        // Mp4Muxer 타겟 생성
+        const muxer = new Mp4Muxer.Muxer({
+          target: new Mp4Muxer.ArrayBufferTarget(),
+          video: {
+            codec: 'avc', // H.264 AVC 코덱
+            width: width,
+            height: height
+          },
+          fastStart: 'in-memory'
+        });
+        // WebCodecs VideoEncoder 설정
+        const videoEncoder = new VideoEncoder({
+          output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+          error: (e) => console.error('VideoEncoder 에러:', e)
+        });
+        videoEncoder.configure({
+          codec: 'avc1.42E01E', // Baseline H.264 (호환성 최상)
+          width: width,
+          height: height,
+          bitrate: 6_000_000, // 6 Mbps High Quality
+          framerate: fps
+        });
+        // 프레임 오프라인 렌더링 루프 (화면 렉 없이 정밀하게 프레임 추출)
+        for (let frameIdx = 0; frameIdx < totalFrames; frameIdx++) {
+          const frameTime = frameIdx / fps;
+          
+          // 해당 타임스탬프 프레임 렌더링
+          renderFrame(frameTime);
+          // Canvas에서 VideoFrame 객체 생성
+          const videoFrame = new VideoFrame(canvas, {
+            timestamp: Math.round(frameTime * 1e6) // microsecond 단위
+          });
+          // H.264 비디오 인코더에 전달
+          const isKeyFrame = frameIdx % (fps * 2) === 0; // 2초마다 키프레임 생성
+          videoEncoder.encode(videoFrame, { keyFrame: isKeyFrame });
+          videoFrame.close();
+          // 진행률 업데이트
+          const pct = Math.round(((frameIdx + 1) / totalFrames) * 100);
+          progressFill.style.width = `${pct}%`;
+          progressPercent.textContent = `${pct}%`;
+          progressText.textContent = `프레임 렌더링 중 (${frameIdx + 1} / ${totalFrames})`;
+          // 브라우저 UI 응답성 유지를 위한 미세 지연
+          if (frameIdx % 10 === 0) {
+            await new Promise(r => setTimeout(r, 0));
+          }
+        }
+        // 인코더 완료 대기
+        await videoEncoder.flush();
+        muxer.finalize();
+        // 생성된 MP4 ArrayBuffer를 Blob으로 변환하여 파일 다운로드
+        const { buffer } = muxer.target;
+        const blob = new Blob([buffer], { type: 'video/mp4' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `calligraphy_subtitle_${Date.now()}.mp4`;
+        a.click();
+        URL.revokeObjectURL(url);
+        progressText.textContent = 'MP4 비디오 저장 완료!';
+        setTimeout(() => {
+          progressModal.style.display = 'none';
+        }, 1000);
+      } catch (err) {
+        console.error('MP4 인코딩 중 오류 발생:', err);
+        alert(`MP4 인코딩 실패: ${err.message}\n(크롬/엣지 최신 브라우저를 사용해 주세요.)`);
+        progressModal.style.display = 'none';
+      }
+    });
+    // 앱 초기화: 샘플 SRT 기본 로드
+    loadSRTData(demoSRT);
+  </script>
+</body>
+</html>
