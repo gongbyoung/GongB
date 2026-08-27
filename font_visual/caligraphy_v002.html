@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>SRT 캘리그라피 영상 제작기</title>
+    <!-- 캘리그라피 느낌을 위한 구글 손글씨 폰트 로드 -->
+    <link href="https://fonts.googleapis.com/css2?family=Nanum+Pen+Script&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Nanum Pen Script', 'Malgun Gothic', sans-serif;
+            background-color: #121212;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .container {
+            text-align: center;
+            background: #1e1e1e;
+            padding: 24px;
+            border-radius: 16px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        }
+        h2 {
+            margin-top: 0;
+            color: #f4ebd0;
+        }
+        canvas {
+            background-color: #f8f4e6; /* 한지 느낌의 미백색 배경 */
+            border-radius: 8px;
+            box-shadow: inset 0 0 30px rgba(0,0,0,0.08);
+            margin-bottom: 20px;
+            display: block;
+            width: 1280px;
+            height: 720px;
+            max-width: 100%;
+            height: auto;
+        }
+        .controls {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        input[type="file"] {
+            background: #2d2d2d;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid #444;
+            color: #fff;
+            cursor: pointer;
+        }
+        button {
+            background: #ff4757;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            font-family: inherit;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: #ff6b81;
+        }
+        button:disabled {
+            background: #444;
+            color: #888;
+            cursor: not-allowed;
+        }
+        .status {
+            margin-top: 15px;
+            font-size: 15px;
+            color: #aaa;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>SRT 캘리그라피 영상 생성 & 녹화기</h2>
+    <!-- 실제 렌더링 영역 (16:9 비율 풀HD 해상도 기준) -->
+    <canvas id="canvas" width="1920" height="1080"></canvas>
+    
+    <div class="controls">
+        <input type="file" id="srtFile" accept=".srt">
+        <button id="playBtn" disabled>재생 및 미리보기</button>
+        <button id="recordBtn" disabled>H.264 MP4 영상 저장</button>
+    </div>
+    <div class="status" id="status">SRT 자막 파일을 업로드해주세요.</div>
+</div>
+
+<script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const srtFileInput = document.getElementById('srtFile');
+    const playBtn = document.getElementById('playBtn');
+    const recordBtn = document.getElementById('recordBtn');
+    const statusEl = document.getElementById('status');
+
+    let subtitles = [];
+    let animationId = null;
+    let startTime = 0;
+    let totalDuration = 0;
+    let isPlaying = false;
+
+    // 1. SRT 파일 파싱 함수
+    srtFileInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            subtitles = parseSRT(event.target.result);
+            if (subtitles.length > 0) {
+                totalDuration = subtitles[subtitles.length - 1].end + 2.0; // 여유 시간 2초
+                playBtn.disabled = false;
+                recordBtn.disabled = false;
+                statusEl.innerText = `자막 로드 완료! (총 ${subtitles.length}개 문장, 재생 시간: ${totalDuration.toFixed(1)}초)`;
+                drawStaticScene("재생 버튼을 눌러 시작하세요.");
+            } else {
+                statusEl.innerText = "유효한 SRT 자막을 찾지 못했습니다.";
+            }
+        };
+        reader.readAsText(file, "UTF-8");
+    });
+
+    function parseSRT(data) {
+        const pattern = /(\d+)\r?\n(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\r?\n([\s\S]*?)(?=\r?\n\r?\n|\s*$)/g;
+        let subs = [];
+        let match;
+        while ((match = pattern.exec(data)) !== null) {
+            subs.push({
+                id: parseInt(match[1]),
+                start: timeToSeconds(match[2]),
+                end: timeToSeconds(match[3]),
+                text: match[4].trim().replace(/\r?\n/g, ' ')
+            });
+        }
+        return subs;
+    }
+
+    function timeToSeconds(timeStr) {
+        const [h, m, sMs] = timeStr.split(':');
+        const [s, ms] = sMs.split(',');
+        return parseInt(h) * 3600 + parseInt(m) * 60 + parseInt(s) + parseInt(ms) / 1000;
+    }
+
+    // 정적 화면 그리기
+    function drawStaticScene(message) {
+        ctx.fillStyle = "#f8f4e6";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        ctx.fillStyle = "#333333";
+        ctx.font = "bold 60px 'Nanum Pen Script', sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(message, canvas.width / 2, canvas.height / 2);
+    }
+
+    // 2. 애니메이션 및 렌더링 루프
+    function startPlayback(isRecording = false, onFinish = null) {
+        if (isPlaying) return;
+        isPlaying = true;
+        startTime = performance.now();
+
+        function loop(now) {
+            const elapsed = (now - startTime) / 1000;
+
+            if (elapsed >= totalDuration) {
+                cancelAnimationFrame(animationId);
+                isPlaying = false;
+                drawStaticScene("재생 완료");
+                if (onFinish) onFinish();
+                return;
+            }
+
+            renderFrame(elapsed);
+            
+            if (isPlaying) {
+                animationId = requestAnimationFrame(loop);
+            }
+        }
+        animationId = requestAnimationFrame(loop);
+    }
+
+    function renderFrame(currentTime) {
+        // 배경 초기화 (한지 느낌)
+        ctx.fillStyle = "#f8f4e6";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // 현재 시간에 해당하는 자막 찾기
+        const currentSub = subtitles.find(sub => currentTime >= sub.start && currentTime <= sub.end);
+
+        if (currentSub) {
+            const duration = currentSub.end - currentSub.start;
+            const subElapsed = currentTime - currentSub.start;
+            
+            // 글자가 써지는 속도 (자막 전체 시간의 앞쪽 70% 동안 글자가 써지고, 나머지 30%는 유지)
+            const writeProgress = Math.min(1, subElapsed / (duration * 0.7));
+
+            ctx.save();
+            ctx.font = "bold 110px 'Nanum Pen Script', sans-serif";
+            ctx.fillStyle = "#111111";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+
+            const text = currentSub.text;
+            const textMetrics = ctx.measureText(text);
+            const textWidth = textMetrics.width;
+            const textHeight = 150;
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+
+            // 펜글씨/붓글씨처럼 왼쪽에서 오른쪽으로 차례대로 나타나도록 클립 영역 적용
+            const currentClipWidth = textWidth * writeProgress;
+
+            ctx.beginPath();
+            ctx.rect(centerX - textWidth / 2, centerY - textHeight, currentClipWidth, textHeight * 2);
+            ctx.clip();
+
+            // 텍스트 렌더링
+            ctx.fillText(text, centerX, centerY);
+
+            // 펜촉 끝부분 효과 (아직 글 쓰는 중일 때)
+            if (writeProgress < 1) {
+                const penX = (centerX - textWidth / 2) + currentClipWidth;
+                ctx.fillStyle = "rgba(40, 40, 40, 0.7)";
+                ctx.beginPath();
+                ctx.arc(penX, centerY + 20, 6, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            ctx.restore();
+        }
+    }
+
+    // 버튼 이벤트 연결
+    playBtn.addEventListener('click', () => {
+        if (isPlaying) return;
+        startPlayback(false);
+        statusEl.innerText = "재생 중...";
+    });
+
+    // 3. H.264 / WebM 비디오 녹화 기능
+    recordBtn.addEventListener('click', () => {
+        if (isPlaying) return;
+        
+        statusEl.innerText = "영상을 녹화 중입니다. 끝날 때까지 창을 닫지 마세요...";
+        playBtn.disabled = true;
+        recordBtn.disabled = true;
+
+        const stream = canvas.captureStream(30); // 30 FPS 스트림 캡처
+        let options = { mimeType: 'video/webm;codecs=h264' };
+        if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+            options = { mimeType: 'video/webm' }; // 브라우저에 따라 기본 웹엠 포맷 사용
+        }
+
+        let mediaRecorder;
+        try {
+            mediaRecorder = new MediaRecorder(stream, options);
+        } catch (e) {
+            mediaRecorder = new MediaRecorder(stream);
+        }
+
+        let recordedChunks = [];
+
+        mediaRecorder.ondataavailable = function(e) {
+            if (e.data.size > 0) {
+                recordedChunks.push(e.data);
+            }
+        };
+
+        mediaRecorder.onstop = function() {
+            const blob = new Blob(recordedChunks, { type: 'video/mp4' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = 'calligraphy_subtitle.mp4';
+            document.body.appendChild(a);
+            a.click();
+            
+            setTimeout(() => {
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+            }, 100);
+
+            statusEl.innerText = "녹화 완료! 영상 파일이 다운로드되었습니다.";
+            playBtn.disabled = false;
+            recordBtn.disabled = false;
+        };
+
+        mediaRecorder.start();
+        
+        // 재생 시작과 동시에 녹화 시작, 끝나면 녹화 중지
+        startPlayback(true, () => {
+            mediaRecorder.stop();
+        });
+    });
+</script>
+
+</body>
+</html>
