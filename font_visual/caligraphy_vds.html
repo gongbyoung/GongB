@@ -1,389 +1,847 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>캘리그라피 SRT 플레이어 + 자동 녹화</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Nanum+Brush+Script&display=swap" rel="stylesheet">
-    
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background: #1a1a1a; color: #eee; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
-        .container { max-width: 1000px; width: 100%; background: #2d2d2d; border-radius: 20px; padding: 30px; box-shadow: 0 10px 30px rgba(0,0,0,0.6); }
-        h1 { text-align: center; font-weight: 300; letter-spacing: 2px; margin-bottom: 20px; color: #ffd700; font-size: 1.8rem; }
-        .canvas-wrapper { position: relative; background: #0a0a0a; border-radius: 12px; overflow: hidden; width: 100%; margin-bottom: 20px; background-color: #fef9f0; }
-        #canvas { display: block; width: 100%; height: auto; background: #fef9f0; cursor: default; }
-        .controls { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 15px 0; padding-bottom: 15px; border-bottom: 1px solid #444; }
-        .controls button { background: #444; border: none; color: white; padding: 10px 20px; border-radius: 30px; font-size: 1rem; cursor: pointer; transition: 0.2s; font-weight: 500; }
-        .controls button:hover { background: #666; }
-        .controls button.primary { background: #ffd700; color: #1a1a1a; }
-        .controls button.record { background: #e67e22; }
-        .file-input-wrapper { display: flex; align-items: center; gap: 12px; background: #3a3a3a; padding: 6px 16px; border-radius: 30px; }
-        .file-input-wrapper label { cursor: pointer; color: #ffd700; font-weight: 500; }
-        #fileInput { display: none; }
-        .settings-panel { background: #222; padding: 20px; border-radius: 10px; margin-bottom: 15px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
-        .setting-item { display: flex; flex-direction: column; gap: 5px; }
-        .setting-item label { font-size: 0.9rem; color: #aaa; }
-        .setting-item input[type="range"] { width: 100%; cursor: pointer; }
-        .ratio-buttons { display: flex; gap: 10px; margin-bottom: 15px; }
-        .ratio-buttons button { flex: 1; background: #444; border: none; color: #eee; padding: 10px; border-radius: 8px; cursor: pointer; font-weight: bold; }
-        .ratio-buttons button.active { background: #ffd700; color: #1a1a1a; }
-        #status { text-align: center; font-size: 0.9rem; color: #aaa; margin-top: 10px; min-height: 1.5rem; }
-        #timeDisplay { font-family: monospace; font-size: 1.1rem; color: #ffd700; background: #222; padding: 4px 12px; border-radius: 20px; }
-        .info { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
-        .download-link { color: #4ecdc4; text-decoration: none; font-weight: 500; padding: 6px 14px; background: #2a2a2a; border-radius: 20px; border: 1px solid #4ecdc4; display: inline-block; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SRT 캘리그라피 스튜디오 (안정화 + 자동녹화 v20.0)</title>
+
+  <!-- 캘리그라피 웹 폰트 로드 -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Dongle:wght@300;400;700&family=Gaegu:wght@300;400;700&family=Nanum+Brush+Script&family=Nanum+Pen+Script&family=Yeon+Sung&display=swap" rel="stylesheet">
+
+  <!-- Opentype.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
+
+  <style>
+    /* 기존 스타일 유지 */
+    :root { --bg-dark: #121214; --panel-bg: #1e1e24; --panel-border: #2d2d38; --accent-color: #ff6b35; --accent-gradient: linear-gradient(135deg, #ff6b35, #f72585); --text-main: #f0f0f5; --text-muted: #a0a0b0; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Pretendard', sans-serif; background-color: var(--bg-dark); color: var(--text-main); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+    header { background: #18181c; padding: 12px 24px; border-bottom: 1px solid var(--panel-border); display: flex; justify-content: space-between; align-items: center; }
+    header h1 { font-size: 1.25rem; font-weight: 700; background: var(--accent-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .main-container { display: flex; flex: 1; overflow: hidden; }
+    .sidebar { width: 390px; background: var(--panel-bg); border-right: 1px solid var(--panel-border); padding: 20px; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; }
+    .section-title { font-size: 0.9rem; font-weight: 700; color: var(--accent-color); text-transform: uppercase; margin-bottom: 6px; }
+    .control-group { display: flex; flex-direction: column; gap: 6px; }
+    label { font-size: 0.82rem; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
+    label span.val { color: var(--text-main); font-weight: 600; }
+    input[type="file"] { display: none; }
+    .btn-file { display: block; padding: 12px; background: #2a2a36; border: 2px dashed var(--accent-color); border-radius: 8px; text-align: center; cursor: pointer; font-size: 0.9rem; font-weight: 600; color: var(--text-main); }
+    textarea.srt-textarea { width: 100%; height: 85px; background: #141418; border: 1px solid var(--panel-border); border-radius: 6px; color: var(--text-main); font-family: monospace; font-size: 0.78rem; padding: 8px; resize: vertical; margin-top: 4px; }
+    select, input[type="range"], input[type="color"] { width: 100%; padding: 8px; background: #16161a; border: 1px solid var(--panel-border); border-radius: 6px; color: var(--text-main); font-size: 0.85rem; margin-bottom: 4px; }
+    input[type="range"] { padding: 0; accent-color: var(--accent-color); cursor: pointer; }
+    .preview-area { flex: 1; display: flex; flex-direction: column; background: #0a0a0c; align-items: center; justify-content: center; padding: 20px; position: relative; }
+    .canvas-wrapper { position: relative; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8); border-radius: 8px; overflow: hidden; max-width: 100%; max-height: 70vh; display: flex; align-items: center; justify-content: center; background: #000; }
+    canvas { display: block; max-width: 100%; max-height: 70vh; object-fit: contain; }
+    .player-controls { width: 100%; max-width: 960px; margin-top: 15px; background: var(--panel-bg); padding: 14px 20px; border-radius: 10px; display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--panel-border); }
+    .timeline-row { display: flex; align-items: center; gap: 12px; }
+    .time-display { font-family: monospace; font-size: 0.9rem; color: var(--accent-color); min-width: 120px; }
+    button.btn-action { background: var(--accent-gradient); color: white; border: none; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; }
+    button.btn-secondary { background: #2b2b38; border: 1px solid var(--panel-border); color: var(--text-main); padding: 10px 16px; border-radius: 6px; cursor: pointer; }
+    .srt-list-container { max-height: 120px; overflow-y: auto; background: #141418; border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px; }
+    .srt-item { padding: 6px 10px; border-bottom: 1px solid #22222a; font-size: 0.8rem; cursor: pointer; display: flex; justify-content: space-between; }
+    .progress-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(4px); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; display: none; }
+    .progress-box { background: var(--panel-bg); padding: 30px; border-radius: 12px; text-align: center; width: 360px; }
+    .progress-bar-bg { width: 100%; height: 10px; background: #111; border-radius: 5px; margin: 15px 0; overflow: hidden; }
+    .progress-bar-fill { width: 0%; height: 100%; background: var(--accent-gradient); }
+    .font-status { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
+    .font-status.ready { color: #7cd992; }
+    .font-status.loading { color: #ffcf6b; }
+  </style>
 </head>
 <body>
-<div class="container">
-    <h1>✍️ 캘리그라피 편집기 (자동 녹화)</h1>
-    <div class="ratio-buttons">
-        <button id="ratio16" class="active" onclick="setRatio('16:9')">가로 16:9</button>
-        <button id="ratio916" onclick="setRatio('9:16')">세로 9:16</button>
+
+  <header>
+    <h1>🖌️ SRT 캘리그라피 스튜디오 v20</h1>
+    <span style="font-size: 0.85rem; color: var(--text-muted);">안정화 + 0초 자동녹화 + 자동종료</span>
+  </header>
+
+  <div class="main-container">
+    <div class="sidebar">
+      <div class="control-group">
+        <div class="section-title">📂 1. SRT 자막 로딩 & 편집</div>
+        <label for="srt-input" class="btn-file" id="srt-label">📁 SRT 자막 파일 불러오기 (.srt)</label>
+        <input type="file" id="srt-input" accept=".srt">
+        <label style="margin-top: 6px;">SRT 자막 직접 입력/수정</label>
+        <textarea id="srt-textarea" class="srt-textarea"></textarea>
+        <button class="btn-secondary" id="btn-apply-srt" style="width:100%; margin-top:4px;">✏️ 자막 적용하기</button>
+      </div>
+
+      <div class="control-group">
+        <div class="section-title">📐 2. 캔버스 영상 화면 비율</div>
+        <select id="aspect-ratio-select">
+          <option value="16:9" selected>🖥️ 16:9 가로형 (1920 x 1080)</option>
+          <option value="9:16">📱 9:16 세로 숏폼 (1080 x 1920)</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <div class="section-title">🖼️ 3. 쓰기 방식 및 커스텀 마스크</div>
+        <select id="engine-mode">
+          <option value="geometric-shape" selected>🔷 기하학 도형 틀에 붓글씨 채우기</option>
+          <option value="image-mask-fit">🔳 흑백 마스크 이미지 영역에 붓글씨 채우기</option>
+          <option value="copybook-handwriting">🖋️ 펜글씨 교본 획순 손글씨 쓰기</option>
+          <option value="static">📌 완성 작품 고정 보기</option>
+        </select>
+
+        <label for="mask-file-input" class="btn-file" id="mask-label">🖼️ 흑백 마스크 이미지 업로드</label>
+        <input type="file" id="mask-file-input" accept="image/*">
+        <div class="font-status loading" id="font-status">⏳ 붓글씨 폰트 로딩 중...</div>
+      </div>
+
+      <div class="control-group">
+        <div class="section-title">🖌️ 4. 필체 & 쓰기 속도 조율</div>
+        <select id="font-family">
+          <option value="'Nanum Brush Script', cursive" selected>나눔붓글씨 (전통 서예 붓글씨)</option>
+          <option value="'Yeon Sung', cursive">연성체 (유려한 곡선 필체)</option>
+          <option value="'Dongle', sans-serif">동글체 (아기자기한 손글씨)</option>
+          <option value="'Gaegu', cursive">개구체 (자연스러운 캘리)</option>
+          <option value="'Nanum Pen Script', cursive">나눔펜글씨 (감성 펜글씨)</option>
+        </select>
+        <label for="param-finish-pct">문장 쓰기 완성 구간 <span class="val" id="val-finish-pct">70%</span></label>
+        <input type="range" id="param-finish-pct" min="50" max="85" step="1" value="70">
+      </div>
+
+      <div class="control-group">
+        <div class="section-title">🔷 5. 기하학 도형 틀 & 채우기 스타일</div>
+        <select id="shape-frame-select">
+          <option value="inv-triangle" selected>🔻 역삼각형</option>
+          <option value="diamond">🔷 다이아몬드</option>
+          <option value="circle">⭕ 원형</option>
+          <option value="triangle">🔺 정삼각형</option>
+          <option value="horizontal-rect">▭ 가로 직사각형</option>
+        </select>
+        <select id="shape-layout-style">
+          <option value="multiline-fit" selected>📜 행 단위 자동 분할 채우기</option>
+          <option value="single-column">🖌️ 세로 1열 중심 배치</option>
+        </select>
+        <select id="param-show-guide">
+          <option value="guide-shape" selected>📐 윤곽 가이드선 표시</option>
+          <option value="subtle-axis">🖌️ 세로 먹선 축 표시</option>
+          <option value="none">❌ 투명</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <div class="section-title">🎨 6. 서체 강약 & 밀도 조율</div>
+        <label for="param-tightness">글자 밀집도 <span class="val" id="val-tightness">보통</span></label>
+        <input type="range" id="param-tightness" min="0.5" max="1.1" step="0.05" value="0.75">
+        <label for="param-contrast">첫 행 강약 대비 <span class="val" id="val-contrast">2.4x</span></label>
+        <input type="range" id="param-contrast" min="1.2" max="3.5" step="0.1" value="2.4">
+      </div>
+
+      <div class="control-group">
+        <div class="section-title">🖼️ 7. 배경 및 먹물 색상</div>
+        <select id="bg-style">
+          <option value="hanji" selected>전통 한지</option>
+          <option value="dark-paper">어두운 먹종이</option>
+          <option value="transparent">투명 배경</option>
+          <option value="black">단색 검정</option>
+        </select>
+        <input type="color" id="ink-color" value="#1c1917">
+      </div>
+
+      <div class="control-group">
+        <div class="section-title">📜 8. 로드된 자막 목록</div>
+        <div class="srt-list-container" id="srt-list"></div>
+      </div>
     </div>
 
-    <div class="canvas-wrapper">
-        <canvas id="canvas" width="1280" height="720"></canvas>
-    </div>
+    <div class="preview-area">
+      <div class="canvas-wrapper">
+        <canvas id="calligraphy-canvas" width="1920" height="1080"></canvas>
+      </div>
 
-    <div class="info">
-        <span id="timeDisplay">00:00.000</span>
-        <span id="subtitleStatus">⏸ 대기 중</span>
-    </div>
-
-    <div class="controls">
-        <div class="file-input-wrapper">
-            <label for="fileInput">📂 SRT 선택</label>
-            <input type="file" id="fileInput" accept=".srt">
+      <div class="player-controls">
+        <div class="timeline-row">
+          <button class="btn-secondary" id="btn-play">▶ 재생</button>
+          <input type="range" id="time-slider" min="0" max="100" value="0" step="0.01" style="flex:1;">
+          <div class="time-display" id="time-display">00:00.00 / 00:00.00</div>
         </div>
-        <button id="playBtn" class="primary">▶ 재생</button>
-        <button id="pauseBtn">⏸ 일시정지</button>
-        <button id="stopBtn">⏹ 정지</button>
-        <button id="recordBtn" class="record">🎥 녹화 시작</button>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 5px;">
+          <div style="font-size: 0.85rem; color: var(--text-muted);" id="res-indicator">해상도: 1920x1080 | 안정화 엔진</div>
+          <button class="btn-action" id="btn-export">🔴 녹화 시작 (0초부터 자동 재생, 끝나면 자동 저장)</button>
+        </div>
+      </div>
     </div>
+  </div>
 
-    <div class="settings-panel">
-        <div class="setting-item"><label>전체 크기 (캔버스 95% 이내)</label><input type="range" id="marginSlider" min="50" max="95" value="95"></div>
-        <div class="setting-item"><label>전체 글자 크기</label><input type="range" id="fontSlider" min="50" max="200" value="100"></div>
-        <div class="setting-item"><label>자간</label><input type="range" id="letterSlider" min="0" max="100" value="10"></div>
-        <div class="setting-item"><label>줄간</label><input type="range" id="lineSlider" min="100" max="250" value="120"></div>
-        <div class="setting-item"><label>가로세로비율(글자 신축)</label><input type="range" id="ratioSlider" min="50" max="200" value="100"></div>
+  <div class="progress-overlay" id="progress-modal">
+    <div class="progress-box">
+      <h3 style="margin-bottom: 10px; font-size: 1.1rem;">📽️ 자동 녹화 중...</h3>
+      <p style="font-size: 0.85rem; color: var(--text-muted);" id="progress-text">0.0초부터 자동 재생 및 녹화 진행 중</p>
+      <div class="progress-bar-bg"><div class="progress-bar-fill" id="progress-fill"></div></div>
+      <span id="progress-percent" style="font-weight: bold; font-size: 1.1rem; color: var(--accent-color);">0%</span>
     </div>
+  </div>
 
-    <div id="status">SRT 파일을 로드해주세요.</div>
-    <div id="downloadArea" style="text-align:center; margin-top:12px;"></div>
-</div>
+  <script>
+    /* 상태 변수 및 핵심 로직은 유지 */
+    let srtData = [];
+    let totalDuration = 0;
+    let currentTime = 0;
+    let isPlaying = false;
+    let animationFrameId = null;
+    let lastTimestamp = 0;
 
-<script>
-    (function() {
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
-        
-        let W = 1280, H = 720;
-        let currentRatio = '16:9';
-        let totalDuration = 0; // [수정] 전체 SRT 길이 저장
+    const canvas = document.getElementById('calligraphy-canvas');
+    const ctx = canvas.getContext('2d');
+    const srtInput = document.getElementById('srt-input');
+    const srtLabel = document.getElementById('srt-label');
+    const srtTextarea = document.getElementById('srt-textarea');
+    const btnApplySrt = document.getElementById('btn-apply-srt');
+    const srtListEl = document.getElementById('srt-list');
+    const btnPlay = document.getElementById('btn-play');
+    const timeSlider = document.getElementById('time-slider');
+    const timeDisplay = document.getElementById('time-display');
+    const btnExport = document.getElementById('btn-export');
 
-        let settings = { margin: 0.95, fontScale: 1.0, letterSpacing: 0.1, lineHeight: 1.2, charWidthScale: 1.0 };
+    const aspectRatioSelect = document.getElementById('aspect-ratio-select');
+    const maskFileInput = document.getElementById('mask-file-input');
+    const engineModeSelect = document.getElementById('engine-mode');
+    const shapeFrameSelect = document.getElementById('shape-frame-select');
+    const shapeLayoutStyleSelect = document.getElementById('shape-layout-style');
+    const paramShowGuide = document.getElementById('param-show-guide');
+    const fontFamilySelect = document.getElementById('font-family');
+    const paramFinishPct = document.getElementById('param-finish-pct');
+    const bgStyleSelect = document.getElementById('bg-style');
+    const inkColorInput = document.getElementById('ink-color');
+    const paramTightness = document.getElementById('param-tightness');
+    const paramContrast = document.getElementById('param-contrast');
+    const fontStatusEl = document.getElementById('font-status');
 
-        let subtitles = [];
-        let currentTime = 0;
-        let isPlaying = false;
-        let animationId = null;
-        let startTime = 0;
-        let pausedTime = 0;
-        let activeText = "";
-        let currentProgress = 0;
+    const progressModal = document.getElementById('progress-modal');
+    const progressFill = document.getElementById('progress-fill');
+    const progressPercent = document.getElementById('progress-percent');
+    const progressText = document.getElementById('progress-text');
 
-        let mediaRecorder = null;
-        let recordedChunks = [];
-        let isRecording = false;
-        let stream = null;
+    const maskCanvas = document.createElement('canvas');
+    const maskCtx = maskCanvas.getContext('2d');
 
-        const playBtn = document.getElementById('playBtn');
-        const pauseBtn = document.getElementById('pauseBtn');
-        const stopBtn = document.getElementById('stopBtn');
-        const recordBtn = document.getElementById('recordBtn');
-        const timeDisplay = document.getElementById('timeDisplay');
-        const subtitleStatus = document.getElementById('subtitleStatus');
-        const statusDiv = document.getElementById('status');
-        const downloadArea = document.getElementById('downloadArea');
-        const fileInput = document.getElementById('fileInput');
+    let loadedMaskImage = null;
+    let currentMaskAlphaImage = null;
+    const maskBoundsCache = new Map();
+    const shapeMaskCache = {};
 
-        const marginSlider = document.getElementById('marginSlider');
-        const fontSlider = document.getElementById('fontSlider');
-        const letterSlider = document.getElementById('letterSlider');
-        const lineSlider = document.getElementById('lineSlider');
-        const ratioSlider = document.getElementById('ratioSlider');
+    function updateCanvasDimensions() {
+      const ratio = aspectRatioSelect.value;
+      let w = 1920, h = 1080;
+      if (ratio === '9:16') { w = 1080; h = 1920; }
+      canvas.width = w; canvas.height = h;
+      maskCanvas.width = w; maskCanvas.height = h;
+      maskBoundsCache.clear();
+      preloadShapeMasks().then(() => renderFrame(currentTime));
+    }
 
-        function setRatio(ratio) {
-            currentRatio = ratio;
-            document.getElementById('ratio16').classList.toggle('active', ratio === '16:9');
-            document.getElementById('ratio916').classList.toggle('active', ratio === '9:16');
-            if (ratio === '16:9') { W = 1280; H = 720; } else { W = 720; H = 1280; }
-            canvas.width = W; canvas.height = H;
-            canvas.style.aspectRatio = ratio;
-            pause(); currentTime = 0; pausedTime = 0;
-            timeDisplay.textContent = '00:00.000';
-            drawCanvas();
+    aspectRatioSelect.addEventListener('change', updateCanvasDimensions);
+
+    const FONT_URLS = {
+      "'Nanum Brush Script', cursive": "https://raw.githubusercontent.com/google/fonts/main/ofl/nanumbrushscript/NanumBrushScript-Regular.ttf",
+      "'Yeon Sung', cursive": "https://raw.githubusercontent.com/google/fonts/main/ofl/yeonsung/YeonSung-Regular.ttf",
+      "'Dongle', sans-serif": "https://raw.githubusercontent.com/google/fonts/main/ofl/dongle/Dongle-Regular.ttf",
+      "'Gaegu', cursive": "https://raw.githubusercontent.com/google/fonts/main/ofl/gaegu/Gaegu-Regular.ttf",
+      "'Nanum Pen Script', cursive": "https://raw.githubusercontent.com/google/fonts/main/ofl/nanumpenscript/NanumPenScript-Regular.ttf"
+    };
+
+    const fontObjectCache = {};
+    const glyphDataCache = new Map();
+    let currentFont = null;
+    let currentFontKey = null;
+
+    function loadOpentypeFont(familyValue) {
+      if (fontObjectCache[familyValue]) return fontObjectCache[familyValue];
+      const url = FONT_URLS[familyValue];
+      const p = new Promise((resolve, reject) => {
+        opentype.load(url, (err, font) => { if (err) reject(err); else resolve(font); });
+      });
+      fontObjectCache[familyValue] = p;
+      return p;
+    }
+
+    async function ensureFontLoaded() {
+      const key = fontFamilySelect.value;
+      if (currentFontKey === key && currentFont) return currentFont;
+      fontStatusEl.textContent = '⏳ 붓글씨 폰트 로딩 중...';
+      fontStatusEl.className = 'font-status loading';
+      try {
+        const font = await loadOpentypeFont(key);
+        currentFont = font;
+        currentFontKey = key;
+        glyphDataCache.clear();
+        fontStatusEl.textContent = '✅ 붓글씨 폰트 준비 완료';
+        fontStatusEl.className = 'font-status ready';
+        renderFrame(currentTime);
+      } catch (e) {
+        fontStatusEl.textContent = '⚠️ 폰트 로딩 실패 (네트워크 확인)';
+      }
+      return currentFont;
+    }
+
+    function flattenGlyphPath(commands) { /* 이전 코드와 동일, 생략 가능 */ 
+      const contours = [];
+      let current = [];
+      let startX = 0, startY = 0, curX = 0, curY = 0;
+      const STEPS = 10;
+      const pushCurrent = () => { if (current.length > 1) contours.push(current); current = []; };
+      commands.forEach(cmd => {
+        if (cmd.type === 'M') { pushCurrent(); curX = cmd.x; curY = cmd.y; startX = curX; startY = curY; current.push({ x: curX, y: curY }); }
+        else if (cmd.type === 'L') { curX = cmd.x; curY = cmd.y; current.push({ x: curX, y: curY }); }
+        else if (cmd.type === 'C') {
+          const p0 = { x: curX, y: curY }, p1 = { x: cmd.x1, y: cmd.y1 }, p2 = { x: cmd.x2, y: cmd.y2 }, p3 = { x: cmd.x, y: cmd.y };
+          for (let i = 1; i <= STEPS; i++) { const t = i / STEPS, mt = 1 - t; const x = mt*mt*mt*p0.x + 3*mt*mt*t*p1.x + 3*mt*t*t*p2.x + t*t*t*p3.x; const y = mt*mt*mt*p0.y + 3*mt*mt*t*p1.y + 3*mt*t*t*p2.y + t*t*t*p3.y; current.push({ x, y }); }
+          curX = cmd.x; curY = cmd.y;
+        } else if (cmd.type === 'Q') {
+          const p0 = { x: curX, y: curY }, p1 = { x: cmd.x1, y: cmd.y1 }, p2 = { x: cmd.x, y: cmd.y };
+          for (let i = 1; i <= STEPS; i++) { const t = i / STEPS, mt = 1 - t; const x = mt*mt*p0.x + 2*mt*t*p1.x + t*t*p2.x; const y = mt*mt*p0.y + 2*mt*t*p1.y + t*t*p2.y; current.push({ x, y }); }
+          curX = cmd.x; curY = cmd.y;
+        } else if (cmd.type === 'Z') { current.push({ x: startX, y: startY }); curX = startX; curY = startY; }
+      });
+      pushCurrent();
+      return contours;
+    }
+
+    function contourLength(pts) { let len = 0; for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y); return len; }
+    function commandsToSvgD(commands) { return commands.map(c => { switch (c.type) { case 'M': return `M ${c.x} ${c.y}`; case 'L': return `L ${c.x} ${c.y}`; case 'C': return `C ${c.x1} ${c.y1} ${c.x2} ${c.y2} ${c.x} ${c.y}`; case 'Q': return `Q ${c.x1} ${c.y1} ${c.x} ${c.y}`; case 'Z': return 'Z'; default: return ''; } }).join(' '); }
+
+    function getGlyphBrushData(char, fontSize) {
+      const key = `${currentFontKey}|${char.codePointAt(0)}|${fontSize.toFixed(1)}`;
+      if (glyphDataCache.has(key)) return glyphDataCache.get(key);
+      const path = currentFont.getPath(char, 0, 0, fontSize);
+      let bbox; try { bbox = path.getBoundingBox(); } catch (e) { bbox = { x1: 0, y1: -fontSize*0.5, x2: fontSize*0.3, y2: 0 }; }
+      const rawContours = flattenGlyphPath(path.commands);
+      const contours = rawContours.map(pts => {
+        let minX = Infinity, minY = Infinity;
+        pts.forEach(p => { if (p.x < minX) minX = p.x; if (p.y < minY) minY = p.y; });
+        return { points: pts, length: contourLength(pts), minX, minY };
+      });
+      contours.sort((a, b) => (a.minY - b.minY) || (a.minX - b.minX));
+      const totalLength = contours.reduce((s, c) => s + c.length, 0);
+      const data = { contours, totalLength: totalLength > 0 ? totalLength : fontSize * 0.2, bbox, svgD: commandsToSvgD(path.commands), isBlank: rawContours.length === 0 };
+      glyphDataCache.set(key, data);
+      return data;
+    }
+
+    function stampSegment(targetCtx, p0, p1, distSoFar, contourLen, baseWidth, seed) {
+      const segLen = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+      const steps = Math.max(1, Math.ceil(segLen / 2));
+      for (let s = 0; s <= steps; s++) {
+        const t = s / steps;
+        const px = p0.x + (p1.x - p0.x) * t;
+        const py = p0.y + (p1.y - p0.y) * t;
+        const localDist = distSoFar + segLen * t;
+        const travelT = contourLen > 0 ? Math.min(1, localDist / contourLen) : 1;
+        const taper = Math.sin(Math.min(1, travelT) * Math.PI);
+        const jitter = 0.85 + seededRandom(seed + localDist * 0.37) * 0.3;
+        const r = Math.max(0.6, (baseWidth / 2) * (0.35 + 0.75 * taper) * jitter);
+        targetCtx.globalAlpha = 0.85 + seededRandom(seed + localDist * 0.13) * 0.15;
+        targetCtx.beginPath();
+        targetCtx.arc(px, py, r, 0, Math.PI * 2);
+        targetCtx.fill();
+      }
+      targetCtx.globalAlpha = 1;
+    }
+
+    function drawBrushGlyph(targetCtx, glyphData, centerX, centerY, revealLength, fullyDone, seed, brushScale) {
+      if (glyphData.isBlank) return;
+      const bbox = glyphData.bbox;
+      const gcx = (bbox.x1 + bbox.x2) / 2;
+      const gcy = (bbox.y1 + bbox.y2) / 2;
+      const offX = centerX - gcx;
+      const offY = centerY - gcy;
+      targetCtx.save();
+      targetCtx.translate(offX, offY);
+      if (fullyDone) { try { const p2d = new Path2D(glyphData.svgD); targetCtx.fill(p2d, 'nonzero'); } catch (e) {} targetCtx.restore(); return; }
+      let remaining = revealLength;
+      const baseWidth = Math.max(3, (bbox.y2 - bbox.y1) * 0.045 * brushScale);
+      for (const contour of glyphData.contours) {
+        if (remaining <= 0) break;
+        const drawLen = Math.min(contour.length, remaining);
+        remaining -= drawLen;
+        const pts = contour.points;
+        let acc = 0;
+        for (let i = 1; i < pts.length; i++) {
+          const segLen = Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
+          if (acc + segLen > drawLen) {
+            const localT = segLen > 0 ? (drawLen - acc) / segLen : 0;
+            const ex = pts[i-1].x + (pts[i].x - pts[i-1].x) * localT;
+            const ey = pts[i-1].y + (pts[i].y - pts[i-1].y) * localT;
+            stampSegment(targetCtx, pts[i-1], { x: ex, y: ey }, acc, contour.length, baseWidth, seed);
+            break;
+          } else {
+            stampSegment(targetCtx, pts[i-1], pts[i], acc, contour.length, baseWidth, seed);
+            acc += segLen;
+          }
         }
-        window.setRatio = setRatio;
+      }
+      targetCtx.restore();
+    }
 
-        marginSlider.oninput = () => { settings.margin = marginSlider.value / 100; drawCanvas(); };
-        fontSlider.oninput = () => { settings.fontScale = fontSlider.value / 100; drawCanvas(); };
-        letterSlider.oninput = () => { settings.letterSpacing = letterSlider.value / 100; drawCanvas(); };
-        lineSlider.oninput = () => { settings.lineHeight = lineSlider.value / 100; drawCanvas(); };
-        ratioSlider.oninput = () => { settings.charWidthScale = ratioSlider.value / 100; drawCanvas(); };
+    function getShapeWidthAtT(shapeType, t, bounds) {
+      t = Math.max(0, Math.min(1, t));
+      const w = bounds.w;
+      switch (shapeType) {
+        case 'inv-triangle': return w * (0.95 - 0.75 * t);
+        case 'triangle': return w * (0.20 + 0.75 * t);
+        case 'diamond': return w * (0.25 + 0.70 * (1 - 2 * Math.abs(t - 0.5)));
+        case 'circle': { const dy = (t - 0.5) * 2; return w * Math.sqrt(Math.max(0, 1 - dy * dy)) * 0.92; }
+        case 'horizontal-rect': default: return w * 0.88;
+      }
+    }
 
-        function parseSRT(content) {
-            const entries = [];
-            const blocks = content.trim().split(/\n\s*\n/);
-            for (const block of blocks) {
-                const lines = block.split('\n').filter(line => line.trim() !== '');
-                if (lines.length < 3) continue;
-                const index = parseInt(lines[0]);
-                const timeLine = lines[1];
-                const timeMatch = timeLine.match(/(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2}),(\d{3})/);
-                if (!timeMatch) continue;
-                const start = toMs(timeMatch[1], timeMatch[2], timeMatch[3], timeMatch[4]);
-                const end = toMs(timeMatch[5], timeMatch[6], timeMatch[7], timeMatch[8]);
-                const text = lines.slice(2).join(' ');
-                entries.push({ index, startMs: start, endMs: end, text: text.trim() });
-            }
-            entries.sort((a, b) => a.startMs - b.startMs);
-            return entries;
-        }
+    function layoutShapeText(text, shapeType, bounds, tightness, contrast, layoutStyle) {
+      if (layoutStyle === 'single-column') { /* 이전 코드 유지 */
+        const chars = Array.from(text.replace(/\n/g, ' '));
+        const availH = bounds.h * 0.85;
+        const availW = bounds.w * 0.85;
+        const n = chars.length || 1;
+        const weightSum = (chars[0] && chars[0] !== ' ' ? contrast : 1) + Math.max(0, n - 1);
+        let unit = availH / (weightSum + (n - 1) * tightness * 0.3);
+        unit = Math.min(unit, availW / Math.max(1, contrast * 0.95));
+        unit = Math.max(16, unit);
+        const centerX = bounds.x + bounds.w / 2;
+        const sizes = chars.map((ch, i) => (i === 0 && ch !== ' ') ? unit * contrast : unit);
+        const totalH = sizes.reduce((a, b) => a + b, 0) + (n - 1) * unit * tightness * 0.3;
+        let y = bounds.y + bounds.h / 2 - totalH / 2;
+        const positions = sizes.map(sz => { const cy = y + sz / 2; y += sz + unit * tightness * 0.3; return { x: centerX, y: cy, size: sz }; });
+        return { positions, sizes, rawChars: chars };
+      }
 
-        function toMs(h, m, s, ms) { return parseInt(h) * 3600000 + parseInt(m) * 60000 + parseInt(s) * 1000 + parseInt(ms); }
+      let lines = text.split('\n').filter(l => l.trim().length > 0);
+      if (lines.length === 1 && text.includes(' ')) lines = text.split(' ').filter(l => l.trim().length > 0);
+      if (lines.length === 0) lines = [text];
 
-        function drawCalligraphy(text, progress) {
-            ctx.clearRect(0, 0, W, H);
-            const grad = ctx.createRadialGradient(W/2, H/2, 100, W/2, H/2, 600);
-            grad.addColorStop(0, '#fdfbf5'); grad.addColorStop(1, '#f2ead8');
-            ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
-
-            const chars = text.split('');
-            const baseFontSize = Math.min(W, H) * 0.15 * settings.fontScale;
-            const spacing = baseFontSize * settings.letterSpacing;
-            const lineHeight = baseFontSize * settings.lineHeight;
-
-            ctx.font = `bold ${baseFontSize}px 'Nanum Brush Script', cursive`;
-            ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
-            ctx.fillStyle = '#1a1a1a'; ctx.shadowColor = 'rgba(0,0,0,0.15)'; ctx.shadowBlur = 2; ctx.shadowOffsetY = 2;
-
-            const allowedWidth = W * settings.margin;
-            const lines = [];
-            let currentLine = ""; let currentLineWidth = 0;
-
-            for (let i = 0; i < chars.length; i++) {
-                let ch = chars[i];
-                let chW = ctx.measureText(ch).width * settings.charWidthScale + spacing;
-                if (currentLineWidth + chW > allowedWidth && currentLine !== "") {
-                    lines.push(currentLine); currentLine = ch; currentLineWidth = chW;
-                } else { currentLine += ch; currentLineWidth += chW; }
-            }
-            if (currentLine !== "") lines.push(currentLine);
-
-            const totalHeight = lines.length * lineHeight;
-            const startY = (H - totalHeight) / 2 + lineHeight / 2;
-            const totalChars = lines.join('').length;
-            const visibleChars = progress * totalChars;
-            
-            let globalCharIndex = 0;
-            
-            for (let l = 0; l < lines.length; l++) {
-                const line = lines[l];
-                let lineWidth = 0;
-                for (let ch of line) lineWidth += ctx.measureText(ch).width * settings.charWidthScale + spacing;
-                lineWidth -= spacing;
-                let currentX = (W - lineWidth) / 2;
-                const currentY = startY + (l * lineHeight);
-
-                for (let i = 0; i < line.length; i++) {
-                    const ch = line[i];
-                    let alpha = 0;
-                    if (globalCharIndex < visibleChars) alpha = 1;
-                    else if (globalCharIndex === Math.floor(visibleChars)) alpha = visibleChars - Math.floor(visibleChars);
-                    
-                    if (alpha > 0) {
-                        const rot = (globalCharIndex % 2 === 0 ? -0.03 : 0.03);
-                        const yOff = (globalCharIndex % 3 === 0 ? 0 : (globalCharIndex % 2 === 0 ? 5 : -5));
-                        ctx.save(); ctx.translate(currentX, currentY + yOff); ctx.rotate(rot);
-                        ctx.scale(settings.charWidthScale, 1); ctx.globalAlpha = alpha;
-                        ctx.fillText(ch, 0, 0); ctx.restore();
-                    }
-                    const chWidth = ctx.measureText(ch).width * settings.charWidthScale;
-                    currentX += chWidth + spacing;
-                    globalCharIndex++;
-                }
-            }
-            ctx.globalAlpha = 1;
-        }
-
-        function drawCanvas() {
-            if (activeText) drawCalligraphy(activeText, currentProgress);
-            else drawCalligraphy("", 1);
-        }
-
-        function animate(timestamp) {
-            if (!isPlaying) return;
-            const elapsed = timestamp - startTime + pausedTime;
-            currentTime = elapsed;
-
-            // [수정 2] SRT 전체 길이에 도달하면 자동 녹화 중지 및 저장
-            if (isRecording && totalDuration > 0 && currentTime >= totalDuration) {
-                pause(); // 재생 정지
-                isRecording = false;
-                recordBtn.textContent = '🎥 녹화 시작';
-                statusDiv.textContent = '✅ 자막 종료로 녹화가 자동 저장되었습니다.';
-                
-                if (mediaRecorder && mediaRecorder.state === 'recording') {
-                    mediaRecorder.stop(); // onstop 이벤트에서 다운로드 링크 생성
-                }
-                return; // 애니메이션 루프 종료
-            }
-
-            let active = null;
-            let progress = 0;
-            for (const sub of subtitles) {
-                if (currentTime >= sub.startMs && currentTime < sub.endMs) {
-                    active = sub;
-                    const duration = sub.endMs - sub.startMs;
-                    const passed = currentTime - sub.startMs;
-                    progress = Math.min(passed / duration, 1);
-                    break;
-                }
-            }
-
-            if (active) {
-                activeText = active.text; currentProgress = progress;
-                drawCalligraphy(activeText, progress);
-                subtitleStatus.textContent = `✍️ ${activeText} (${Math.round(progress*100)}%)`;
-                statusDiv.textContent = `자막 #${active.index} 재생 중`;
-            } else {
-                activeText = ""; currentProgress = 0;
-                drawCanvas();
-                subtitleStatus.textContent = '⏸ 대기 중';
-            }
-
-            const sec = Math.floor(currentTime / 1000);
-            const ms = Math.floor(currentTime % 1000);
-            timeDisplay.textContent = `${String(sec).padStart(2, '0')}:${String(Math.floor(ms/10)).padStart(2, '0')}.${String(ms % 100).padStart(2, '0')}`;
-            animationId = requestAnimationFrame(animate);
-        }
-
-        function play() {
-            if (subtitles.length === 0) { statusDiv.textContent = '⚠️ SRT 파일을 먼저 로드하세요.'; return; }
-            if (isPlaying) return;
-            isPlaying = true;
-            if (currentTime === 0) pausedTime = 0;
-            else pausedTime = currentTime;
-            startTime = performance.now() - pausedTime;
-            animate(startTime);
-            playBtn.textContent = '▶ 재생 중';
-        }
-
-        function pause() {
-            if (!isPlaying) return;
-            isPlaying = false;
-            if (animationId) { cancelAnimationFrame(animationId); animationId = null; }
-            pausedTime = currentTime;
-            playBtn.textContent = '▶ 재생';
-        }
-
-        function stop() {
-            if (isPlaying) pause();
-            currentTime = 0; pausedTime = 0;
-            timeDisplay.textContent = '00:00.000';
-            activeText = ""; drawCanvas();
-            playBtn.textContent = '▶ 재생';
-        }
-
-        playBtn.addEventListener('click', play);
-        pauseBtn.addEventListener('click', pause);
-        stopBtn.addEventListener('click', stop);
-
-        fileInput.addEventListener('change', function(e) {
-            const file = this.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = function(ev) {
-                subtitles = parseSRT(ev.target.result);
-                if (subtitles.length === 0) { statusDiv.textContent = '⚠️ 유효한 SRT가 아닙니다.'; return; }
-                
-                // [수정 1] 전체 길이 계산 (자동 녹화 종료용)
-                totalDuration = subtitles[subtitles.length - 1].endMs;
-                
-                statusDiv.textContent = `✅ ${subtitles.length}개 자막 로드 완료`;
-                stop();
-            };
-            reader.readAsText(file, 'UTF-8');
-            this.value = '';
+      const N = lines.length;
+      const positions = [];
+      const sizes = [];
+      lines.forEach((lineText, lineIdx) => {
+        const t = N === 1 ? 0.5 : (lineIdx + 0.5) / N;
+        const availW = getShapeWidthAtT(shapeType, t, bounds);
+        const y = bounds.y + bounds.h * (N === 1 ? 0.5 : (0.12 + 0.76 * t));
+        const chars = Array.from(lineText);
+        const m = chars.length || 1;
+        let baseSize = availW / Math.max(1, m * 0.95);
+        const maxH = (bounds.h * 0.8) / (N * 1.1);
+        baseSize = Math.min(baseSize, maxH);
+        baseSize = Math.max(22, baseSize);
+        if (lineIdx === 0 && contrast > 1.0) baseSize *= Math.min(1.4, contrast * 0.5 + 0.5);
+        const charSpacing = baseSize * tightness * 0.9;
+        const totalLineWidth = (m - 1) * charSpacing;
+        const startX = bounds.x + bounds.w / 2 - totalLineWidth / 2;
+        chars.forEach((ch, charIdx) => {
+          const cx = startX + charIdx * charSpacing;
+          positions.push({ x: cx, y, ch });
+          sizes.push(baseSize);
         });
+      });
+      return { positions, sizes, rawChars: positions.map(p => p.ch) };
+    }
 
-        // [수정 3] 녹화 시작 버튼: 처음부터 재생 및 자동 녹화
-        recordBtn.addEventListener('click', function() {
-            if (subtitles.length === 0) { statusDiv.textContent = '⚠️ SRT 파일을 먼저 로드하세요.'; return; }
+    function computeCharPlan(chars, sizes) {
+      let cum = 0;
+      const plan = chars.map((ch, i) => {
+        let data = null, length;
+        if (ch !== ' ') { data = getGlyphBrushData(ch, sizes[i]); length = Math.max(data.totalLength, sizes[i] * 0.2); }
+        else { length = sizes[i] * 0.3; }
+        cum += length;
+        return { ch, data, length, cumEnd: cum };
+      });
+      return { plan, totalLen: cum || 1 };
+    }
 
-            if (isRecording) { // 수동 중지
-                if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
-                isRecording = false;
-                recordBtn.textContent = '🎥 녹화 시작';
-                statusDiv.textContent = '녹화 중지, 인코딩 중...';
-                return;
-            }
+    function layoutGrid(chars, canvasW, canvasH, fontSize) { /* 이전 코드 유지 */
+      const margin = Math.min(canvasW, canvasH) * 0.1;
+      const availW = canvasW - margin * 2;
+      const cell = fontSize * 1.4;
+      const cols = Math.max(1, Math.floor(availW / cell));
+      const rows = Math.ceil(chars.length / cols);
+      const totalW = Math.min(chars.length, cols) * cell;
+      const totalH = rows * cell;
+      const startX = canvasW / 2 - totalW / 2 + cell / 2;
+      const startY = canvasH / 2 - totalH / 2 + cell / 2;
+      return chars.map((ch, i) => { const col = i % cols, row = Math.floor(i / cols); return { x: startX + col * cell, y: startY + row * cell, size: fontSize, cell }; });
+    }
 
-            // 1. 시작점(0초)으로 초기화
-            stop(); 
+    function normalizeMaskAlpha(img) { /* 이전 코드 유지 */
+      return new Promise(resolve => {
+        const w = canvas.width, h = canvas.height;
+        const off = document.createElement('canvas');
+        off.width = w; off.height = h;
+        const octx = off.getContext('2d');
+        octx.drawImage(img, 0, 0, w, h);
+        const imgData = octx.getImageData(0, 0, w, h);
+        const d = imgData.data;
+        for (let i = 0; i < d.length; i += 4) { const brightness = (d[i] + d[i+1] + d[i+2]) / 3; const srcAlpha = d[i+3]; const a = srcAlpha < 10 ? 0 : brightness; d[i] = 255; d[i+1] = 255; d[i+2] = 255; d[i+3] = a; }
+        octx.putImageData(imgData, 0, 0);
+        const outImg = new Image(); outImg.onload = () => resolve(outImg); outImg.src = off.toDataURL();
+      });
+    }
 
-            // 2. 녹화기 초기화
-            if (!stream) stream = canvas.captureStream(30);
-            if (!mediaRecorder) {
-                const mimeTypes = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm;codecs=h264'];
-                let mimeType = '';
-                for (const mt of mimeTypes) {
-                    if (MediaRecorder.isTypeSupported(mt)) { mimeType = mt; break; }
-                }
-                if (!mimeType) { statusDiv.textContent = '⚠️ 이 브라우저는 녹화를 지원하지 않습니다.'; return; }
-                mediaRecorder = new MediaRecorder(stream, { mimeType: mimeType });
-                mediaRecorder.ondataavailable = function(e) { if (e.data.size > 0) recordedChunks.push(e.data); };
-                mediaRecorder.onstop = function() {
-                    const blob = new Blob(recordedChunks, { type: mimeType });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `calligraphy_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.webm`;
-                    a.textContent = '📥 다운로드 (WebM)';
-                    a.className = 'download-link';
-                    downloadArea.innerHTML = '';
-                    downloadArea.appendChild(a);
-                    recordedChunks = [];
-                    statusDiv.textContent = '✅ 녹화 완료! 다운로드 링크가 생성되었습니다.';
-                };
-            }
+    function traceShapePath(octx, shapeType, w, h) { /* 이전 코드 유지 */ 
+      const cx = w / 2, cy = h / 2; const minDim = Math.min(w, h); const r = minDim * 0.4;
+      octx.beginPath();
+      switch (shapeType) {
+        case 'circle': octx.arc(cx, cy, r, 0, Math.PI * 2); break;
+        case 'triangle': octx.moveTo(cx, cy - r); octx.lineTo(cx + r, cy + r * 0.8); octx.lineTo(cx - r, cy + r * 0.8); octx.closePath(); break;
+        case 'inv-triangle': octx.moveTo(cx - r, cy - r * 0.8); octx.lineTo(cx + r, cy - r * 0.8); octx.lineTo(cx, cy + r); octx.closePath(); break;
+        case 'horizontal-rect': octx.rect(cx - w * 0.4, cy - h * 0.25, w * 0.8, h * 0.5); break;
+        case 'diamond': default: octx.moveTo(cx, cy - r); octx.lineTo(cx + r * 0.9, cy); octx.lineTo(cx, cy + r); octx.lineTo(cx - r * 0.9, cy); octx.closePath(); break;
+      }
+    }
 
-            // 3. 녹화 시작 및 처음부터 재생
-            recordedChunks = [];
-            mediaRecorder.start(100);
-            isRecording = true;
-            recordBtn.textContent = '⏹ 녹화 중지';
-            statusDiv.textContent = '🔴 녹화 중... (처음부터 재생)';
+    function makeShapeMaskImage(shapeType) {
+      return new Promise(resolve => {
+        const w = canvas.width, h = canvas.height;
+        const off = document.createElement('canvas');
+        off.width = w; off.height = h;
+        const octx = off.getContext('2d');
+        octx.clearRect(0, 0, w, h); octx.fillStyle = '#ffffff';
+        traceShapePath(octx, shapeType, w, h); octx.fill();
+        const img = new Image(); img.onload = () => resolve(img); img.src = off.toDataURL();
+      });
+    }
 
-            play(); // 현재 시간 0부터 시작
-        });
+    async function preloadShapeMasks() {
+      const types = ['diamond', 'circle', 'triangle', 'inv-triangle', 'horizontal-rect'];
+      for (const t of types) shapeMaskCache[t] = await makeShapeMaskImage(t);
+      if (!currentMaskAlphaImage) currentMaskAlphaImage = shapeMaskCache['inv-triangle'];
+    }
 
-        (function init() {
-            drawCanvas();
-            ctx.fillStyle = '#aaa'; ctx.font = "24px 'Nanum Brush Script', cursive";
-            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText('📂 SRT 파일을 로드해주세요', W/2, H/2);
-        })();
+    function getMaskBounds(img) { /* 이전 코드 유지 */
+      if (maskBoundsCache.has(img)) return maskBoundsCache.get(img);
+      const w = canvas.width, h = canvas.height;
+      const off = document.createElement('canvas');
+      off.width = w; off.height = h;
+      const octx = off.getContext('2d');
+      octx.drawImage(img, 0, 0, w, h);
+      const data = octx.getImageData(0, 0, w, h).data;
+      let minX = w, minY = h, maxX = 0, maxY = 0, found = false;
+      for (let y = 0; y < h; y += 4) { for (let x = 0; x < w; x += 4) { const a = data[(y * w + x) * 4 + 3]; if (a > 128) { found = true; if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; } } }
+      const bounds = found ? { x: minX, y: minY, w: Math.max(40, maxX - minX), h: Math.max(40, maxY - minY) } : { x: w*0.3, y: h*0.3, w: w*0.4, h: h*0.4 };
+      maskBoundsCache.set(img, bounds);
+      return bounds;
+    }
 
-        window.addEventListener('beforeunload', function() {
-            if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
-        });
-    })();
-</script>
+    function drawGuideFrame(guideMode, activeShapeType) { /* 이전 코드 유지 */
+      if (guideMode === 'none') return;
+      const w = canvas.width, h = canvas.height;
+      ctx.save();
+      if (guideMode === 'guide-shape') {
+        ctx.strokeStyle = 'rgba(255, 107, 55, 0.85)'; ctx.lineWidth = 3; ctx.setLineDash([10, 10]);
+        if (activeShapeType) { traceShapePath(ctx, activeShapeType, w, h); ctx.stroke(); }
+        else { const bounds = getMaskBounds(currentMaskAlphaImage); ctx.strokeRect(bounds.x, bounds.y, bounds.w, bounds.h); }
+      } else if (guideMode === 'subtle-axis') {
+        ctx.strokeStyle = 'rgba(255, 107, 55, 0.4)'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]);
+        ctx.beginPath(); ctx.moveTo(w / 2, 0); ctx.lineTo(w / 2, h); ctx.moveTo(0, h / 2); ctx.lineTo(w, h / 2); ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function renderMaskFitMode(text, writeProgress, maskImg, inkColor, tightness, contrast, seed, shapeType) {
+      if (!maskImg) return;
+      const w = canvas.width, h = canvas.height;
+      const bounds = getMaskBounds(maskImg);
+      const layoutStyle = shapeLayoutStyleSelect.value;
+      const { positions, sizes, rawChars } = layoutShapeText(text, shapeType || 'inv-triangle', bounds, tightness, contrast, layoutStyle);
+      const targetChars = rawChars || Array.from(text.replace(/\n/g, ' '));
+      const { plan, totalLen } = computeCharPlan(targetChars, sizes);
+      const inkRevealed = writeProgress * totalLen;
+
+      maskCtx.clearRect(0, 0, w, h);
+      maskCtx.fillStyle = inkColor;
+
+      plan.forEach((item, i) => {
+        if (item.ch === ' ') return;
+        const pos = positions[i];
+        if (inkRevealed >= item.cumEnd) { drawBrushGlyph(maskCtx, item.data, pos.x, pos.y, 0, true, seed + i * 13, 1); }
+        else if (inkRevealed > item.cumEnd - item.length) { const revealLen = inkRevealed - (item.cumEnd - item.length); drawBrushGlyph(maskCtx, item.data, pos.x, pos.y, revealLen, false, seed + i * 13, 1); }
+      });
+      maskCtx.globalCompositeOperation = 'destination-in';
+      maskCtx.drawImage(maskImg, 0, 0, w, h);
+      maskCtx.globalCompositeOperation = 'source-over';
+      ctx.drawImage(maskCanvas, 0, 0);
+    }
+
+    function renderCopybookMode(chars, writeProgress, inkColor, seed) { /* 이전 코드 유지 */
+      const fontSize = Math.min(canvas.width, canvas.height) * 0.12;
+      const positions = layoutGrid(chars, canvas.width, canvas.height, fontSize);
+      const sizes = positions.map(() => fontSize);
+      const { plan, totalLen } = computeCharPlan(chars, sizes);
+      const inkRevealed = writeProgress * totalLen;
+      ctx.fillStyle = inkColor;
+      plan.forEach((item, i) => {
+        if (item.ch === ' ') return;
+        const pos = positions[i];
+        if (inkRevealed >= item.cumEnd) { drawBrushGlyph(ctx, item.data, pos.x, pos.y, 0, true, seed + i * 13, 1.1); }
+        else if (inkRevealed > item.cumEnd - item.length) { const revealLen = inkRevealed - (item.cumEnd - item.length); drawBrushGlyph(ctx, item.data, pos.x, pos.y, revealLen, false, seed + i * 13, 1.1); }
+      });
+    }
+
+    function renderStaticFinal(text, inkColor, tightness, contrast, seed) {
+      const maskImg = currentMaskAlphaImage || shapeMaskCache['inv-triangle'];
+      renderMaskFitMode(text, 1, maskImg, inkColor, tightness, contrast, seed, shapeFrameSelect.value);
+    }
+
+    function renderCalligraphyFrame(subtitleObj, timeSec) { /* 이전 코드 유지 */
+      if (!subtitleObj || !currentFont) return;
+      const engineMode = engineModeSelect.value;
+      const inkColor = inkColorInput.value;
+      const tightness = parseFloat(paramTightness.value);
+      const contrast = parseFloat(paramContrast.value);
+      const finishPct = parseInt(paramFinishPct.value) / 100;
+      const duration = Math.max(0.5, subtitleObj.end - subtitleObj.start);
+      const elapsed = Math.max(0, timeSec - subtitleObj.start);
+      const writeDuration = duration * finishPct;
+      const writeProgress = Math.min(1, elapsed / writeDuration);
+      const text = subtitleObj.text.trim();
+      const chars = Array.from(text.replace(/\n/g, ' '));
+      const seed = (parseInt(subtitleObj.id) || 1) * 97 + text.length;
+
+      ctx.save();
+      /* SVG 필터 제거 (안정화) */
+      if (engineMode === 'static') { renderStaticFinal(text, inkColor, tightness, contrast, seed); }
+      else if (engineMode === 'copybook-handwriting') { renderCopybookMode(chars, writeProgress, inkColor, seed); }
+      else if (engineMode === 'geometric-shape') {
+        const shapeKey = shapeFrameSelect.value;
+        const maskImg = shapeMaskCache[shapeKey] || shapeMaskCache['inv-triangle'];
+        renderMaskFitMode(text, writeProgress, maskImg, inkColor, tightness, contrast, seed, shapeKey);
+      } else {
+        const maskImg = currentMaskAlphaImage || shapeMaskCache['inv-triangle'];
+        renderMaskFitMode(text, writeProgress, maskImg, inkColor, tightness, contrast, seed, null);
+      }
+      ctx.restore();
+    }
+
+    function seededRandom(seed) { let x = Math.sin(seed++) * 10000; return x - Math.floor(x); }
+
+    const demoSRT = `1\n00:00:00,000 --> 00:00:04,500\n황혼이 오늘도 바다가 되어\n\n2\n00:00:05,000 --> 00:00:08,500\n잠기고 잠기고\n\n3\n00:00:09,000 --> 00:00:13,000\n오늘이 가장 행복한 날`;
+
+    function parseSRTTime(timeStr) { if (!timeStr) return 0; const parts = timeStr.trim().replace(',', '.').split(':'); return (parseFloat(parts[0]) || 0) * 3600 + (parseFloat(parts[1]) || 0) * 60 + (parseFloat(parts[2]) || 0); }
+    function parseSRT(text) {
+      const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+      const blocks = normalized.split('\n\n');
+      const result = [];
+      for (let block of blocks) {
+        const lines = block.trim().split('\n');
+        if (lines.length >= 3) {
+          const timeMatch = lines[1].match(/(.*?)\s*-->\s*(.*)/);
+          if (timeMatch) result.push({ id: lines[0], start: parseSRTTime(timeMatch[1]), end: parseSRTTime(timeMatch[2]), text: lines.slice(2).join('\n') });
+        }
+      }
+      return result;
+    }
+
+    function loadSRTData(rawText) {
+      srtTextarea.value = rawText;
+      srtData = parseSRT(rawText);
+      totalDuration = srtData.length > 0 ? srtData[srtData.length - 1].end + 1.0 : 10;
+      timeSlider.max = totalDuration;
+      updateSRTListUI();
+      renderFrame(0);
+    }
+
+    srtInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      srtLabel.textContent = `📄 ${file.name}`;
+      const reader = new FileReader();
+      reader.onload = (evt) => loadSRTData(evt.target.result);
+      reader.readAsText(file);
+    });
+
+    btnApplySrt.addEventListener('click', () => loadSRTData(srtTextarea.value));
+
+    function updateSRTListUI() {
+      srtListEl.innerHTML = '';
+      srtData.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'srt-item';
+        div.innerHTML = `<span>#${item.id} (${formatTime(item.start)})</span> <span>${item.text.replace('\n', ' / ')}</span>`;
+        div.addEventListener('click', () => { currentTime = item.start; timeSlider.value = currentTime; renderFrame(currentTime); });
+        srtListEl.appendChild(div);
+      });
+    }
+
+    function formatTime(sec) {
+      const m = Math.floor(sec / 60);
+      const s = Math.floor(sec % 60);
+      const ms = Math.floor((sec % 1) * 100);
+      return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(ms).padStart(2, '0')}`;
+    }
+
+    function drawBackground() {
+      const style = bgStyleSelect.value;
+      const w = canvas.width, h = canvas.height;
+      if (style === 'transparent') { ctx.clearRect(0, 0, w, h); return; }
+      if (style === 'black') { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, w, h); return; }
+      if (style === 'dark-paper') { ctx.fillStyle = '#16161a'; ctx.fillRect(0, 0, w, h); return; }
+      const grad = ctx.createRadialGradient(w/2, h/2, 100, w/2, h/2, Math.max(w, h)/1.1);
+      grad.addColorStop(0, '#f8f4eb'); grad.addColorStop(1, '#e3d7c3');
+      ctx.fillStyle = grad; ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = 'rgba(80, 60, 40, 0.035)';
+      for (let i = 0; i < 400; i++) {
+        const x = seededRandom(i * 1.3) * w;
+        const y = seededRandom(i * 2.7) * h;
+        const r = seededRandom(i * 3.1) * 2.2 + 0.4;
+        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+
+    function renderFrame(timeSec) {
+      drawBackground();
+      if (!currentFont) {
+        ctx.save(); ctx.fillStyle = 'rgba(120,100,80,0.7)'; ctx.font = '32px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText('붓글씨 폰트를 불러오는 중입니다...', canvas.width / 2, canvas.height / 2); ctx.restore();
+      } else {
+        const engineMode = engineModeSelect.value;
+        const guideMode = paramShowGuide.value;
+        const activeShapeType = (engineMode === 'geometric-shape') ? shapeFrameSelect.value : null;
+        drawGuideFrame(guideMode, activeShapeType);
+        const activeSubtitle = srtData.find(item => timeSec >= item.start && timeSec <= item.end);
+        if (activeSubtitle) renderCalligraphyFrame(activeSubtitle, timeSec);
+      }
+      timeDisplay.textContent = `${formatTime(timeSec)} / ${formatTime(totalDuration)}`;
+    }
+
+    paramFinishPct.addEventListener('input', (e) => { document.getElementById('val-finish-pct').textContent = `${e.target.value}%`; renderFrame(currentTime); });
+    paramTightness.addEventListener('input', (e) => { document.getElementById('val-tightness').textContent = e.target.value < 0.7 ? '매우 촘촘' : (e.target.value > 0.95 ? '여유롭게' : '보통'); renderFrame(currentTime); });
+    paramContrast.addEventListener('input', (e) => { document.getElementById('val-contrast').textContent = e.target.value + 'x'; renderFrame(currentTime); });
+
+    shapeFrameSelect.addEventListener('change', () => { engineModeSelect.value = 'geometric-shape'; renderFrame(currentTime); });
+
+    maskFileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0]; if (!file) return;
+      maskLabel.textContent = `🖼️ ${file.name}`;
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const img = new Image();
+        img.onload = async () => {
+          loadedMaskImage = img;
+          currentMaskAlphaImage = await normalizeMaskAlpha(img);
+          engineModeSelect.value = 'image-mask-fit';
+          renderFrame(currentTime);
+        };
+        img.src = evt.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    [engineModeSelect, shapeLayoutStyleSelect, paramShowGuide, bgStyleSelect, inkColorInput].forEach(el => el.addEventListener('change', () => renderFrame(currentTime)));
+    fontFamilySelect.addEventListener('change', () => ensureFontLoaded());
+
+    function animate(timestamp) {
+      if (!isPlaying) return;
+      if (!lastTimestamp) lastTimestamp = timestamp;
+      const delta = (timestamp - lastTimestamp) / 1000;
+      lastTimestamp = timestamp;
+      currentTime += delta;
+      
+      /* [수정] 녹화 중 SRT 전체 시간에 도달하면 자동으로 종료하고 저장 */
+      if (isRecording && currentTime >= totalDuration) {
+        currentTime = totalDuration;
+        timeSlider.value = currentTime;
+        renderFrame(currentTime);
+        stopRecording(); // 자동 녹화 중지 및 저장
+        return;
+      }
+
+      if (currentTime > totalDuration) { currentTime = totalDuration; pause(); }
+      timeSlider.value = currentTime;
+      renderFrame(currentTime);
+      if (isPlaying) animationFrameId = requestAnimationFrame(animate);
+    }
+
+    function play() {
+      if (isPlaying) return;
+      isPlaying = true;
+      btnPlay.textContent = '⏸ 일시정지';
+      lastTimestamp = 0;
+      animationFrameId = requestAnimationFrame(animate);
+    }
+
+    function pause() {
+      isPlaying = false;
+      btnPlay.textContent = '▶ 재생';
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    }
+
+    btnPlay.addEventListener('click', () => isPlaying ? pause() : play());
+    timeSlider.addEventListener('input', (e) => { currentTime = parseFloat(e.target.value); renderFrame(currentTime); });
+
+    /* =========================================================================================
+       [핵심 변경] MediaRecorder 기반 자동 녹화 및 저장 (WebCodecs 제거로 안정화)
+    ========================================================================================= */
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let isRecording = false;
+    let stream = null;
+
+    function startRecording() {
+      // 0초로 초기화
+      pause();
+      currentTime = 0;
+      timeSlider.value = 0;
+      renderFrame(0);
+
+      // 녹화 준비
+      if (!stream) stream = canvas.captureStream(30);
+      const mimeTypes = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm;codecs=h264', 'video/mp4'];
+      let mimeType = '';
+      for (const mt of mimeTypes) {
+        if (MediaRecorder.isTypeSupported(mt)) { mimeType = mt; break; }
+      }
+      if (!mimeType) { alert('이 브라우저는 녹화를 지원하지 않습니다.'); return; }
+
+      recordedChunks = [];
+      mediaRecorder = new MediaRecorder(stream, { mimeType: mimeType, videoBitsPerSecond: 8000000 });
+      mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(recordedChunks, { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `calligraphy_${aspectRatioSelect.value.replace(':', '_')}_${Date.now()}.webm`;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        // UI 초기화
+        progressModal.style.display = 'none';
+        isRecording = false;
+        btnExport.textContent = '🔴 녹화 시작 (0초부터 자동 재생)';
+        btnExport.style.opacity = '1';
+        statusMsg('녹화 완료! 자동 다운로드 되었습니다.');
+      };
+
+      mediaRecorder.start(100);
+      isRecording = true;
+      play(); // 0초부터 재생 시작
+
+      // 진행률 모달 표시
+      progressModal.style.display = 'flex';
+      progressFill.style.width = '0%';
+      progressPercent.textContent = '0%';
+      progressText.textContent = '0.0초부터 자동 재생 및 녹화 진행 중';
+    }
+
+    function stopRecording() {
+      if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+      }
+      pause();
+      progressText.textContent = '🎬 녹화 종료, 파일 저장 중...';
+      progressFill.style.width = '100%';
+      progressPercent.textContent = '100%';
+    }
+
+    function statusMsg(msg) {
+      progressText.textContent = msg;
+    }
+
+    btnExport.addEventListener('click', startRecording);
+
+    updateCanvasDimensions();
+    ensureFontLoaded();
+    loadSRTData(demoSRT);
+  </script>
 </body>
 </html>
