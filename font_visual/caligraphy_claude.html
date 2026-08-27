@@ -192,7 +192,7 @@
           <div style="font-size: 0.85rem; color: var(--text-muted);">
             해상도: 1920x1080 (Full HD) | Opentype.js 실제 스트로크 엔진
           </div>
-          <button class="btn-action" id="btn-export">🎬 H.264 MP4 영상 저장</button>
+          <button class="btn-action" id="btn-export">⏺ 녹화 시작 (처음부터 MP4 저장)</button>
         </div>
       </div>
     </div>
@@ -200,8 +200,8 @@
 
   <div class="progress-overlay" id="progress-modal">
     <div class="progress-box">
-      <h3 style="margin-bottom: 10px; font-size: 1.1rem;">📽️ MP4 영상 렌더링 중...</h3>
-      <p style="font-size: 0.85rem; color: var(--text-muted);" id="progress-text">붓글씨 스트로크 비디오 인코딩 진행 중</p>
+      <h3 style="margin-bottom: 10px; font-size: 1.1rem;">⏺ 처음부터 녹화 중...</h3>
+      <p style="font-size: 0.85rem; color: var(--text-muted);" id="progress-text">타임라인 00:00부터 붓글씨 스트로크를 다시 그리며 인코딩 중</p>
       <div class="progress-bar-bg"><div class="progress-bar-fill" id="progress-fill"></div></div>
       <span id="progress-percent" style="font-weight: bold; font-size: 1.1rem; color: var(--accent-color);">0%</span>
     </div>
@@ -963,7 +963,20 @@
       if (!currentFont) { alert('붓글씨 폰트가 아직 로딩되지 않았습니다. 잠시 후 다시 시도해주세요.'); return; }
 
       pause();
+
+      // 녹화 시작 시점의 재생 위치를 기억해뒀다가, 녹화가 끝나면 그대로 복원한다.
+      // (녹화 자체는 항상 타임라인 00:00부터 시작 — 현재 재생 위치와 무관)
+      const playheadBeforeRecording = currentTime;
+
+      btnExport.disabled = true;
+      btnExport.textContent = '⏺ 녹화 중...';
       progressModal.style.display = 'flex';
+
+      // 화면상으로도 확실히 처음(00:00)으로 되돌린 뒤 녹화를 시작한다.
+      currentTime = 0;
+      timeSlider.value = 0;
+      renderFrame(0);
+      await new Promise(r => setTimeout(r, 50)); // 첫 프레임이 화면에 실제로 반영될 시간을 확보
 
       const fps = 30;
       const totalFrames = Math.ceil(totalDuration * fps);
@@ -990,6 +1003,10 @@
 
         for (let i = 0; i < totalFrames; i++) {
           const frameTime = i / fps;
+
+          // 인코딩용 렌더링 + 화면 미리보기도 함께 처음(00:00)부터 순서대로 갱신
+          currentTime = frameTime;
+          timeSlider.value = frameTime;
           renderFrame(frameTime);
 
           const videoFrame = new VideoFrame(canvas, { timestamp: Math.round(frameTime * 1e6) });
@@ -999,7 +1016,7 @@
           const pct = Math.round(((i + 1) / totalFrames) * 100);
           progressFill.style.width = `${pct}%`;
           progressPercent.textContent = `${pct}%`;
-          progressText.textContent = `붓글씨 스트로크 비디오 인코딩 중 (${i + 1} / ${totalFrames})`;
+          progressText.textContent = `00:00부터 녹화 중 - 붓글씨 스트로크 인코딩 (${i + 1} / ${totalFrames})`;
 
           if (i % 10 === 0) await new Promise(r => setTimeout(r, 0));
         }
@@ -1022,6 +1039,13 @@
       } catch (err) {
         alert(`MP4 저장 중 오류 발생: ${err.message}`);
         progressModal.style.display = 'none';
+      } finally {
+        // 녹화가 끝났으니(성공/실패 무관) 미리보기를 녹화 시작 전 재생 위치로 복원
+        currentTime = playheadBeforeRecording;
+        timeSlider.value = playheadBeforeRecording;
+        renderFrame(playheadBeforeRecording);
+        btnExport.disabled = false;
+        btnExport.textContent = '⏺ 녹화 시작 (처음부터 MP4 저장)';
       }
     });
 
