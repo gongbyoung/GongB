@@ -22,8 +22,6 @@ const stemAnalysers = { vocals: null, drums: null, bass: null, other: null };
 let isMultiStemPlaying = false;
 
 const poemTextInput = document.getElementById('input-poem-text') || document.getElementById('poem-input');
-// 💡 [수정]: 메인 MP3 인풋을 ID뿐만 아니라 일반 파일 인풋 전체로 유연하게 탐색하도록 확장
-const mainMp3Input = document.getElementById('file-main-mp3') || document.getElementById('file-main') || document.getElementById('file-mp3') || document.querySelector('input[type="file"]:not(#file-srt):not(#file-batch-mp3)');
 const batchMp3Input = document.getElementById('file-batch-mp3');
 const batchStatusText = document.getElementById('batch-load-status');
 const srtInput = document.getElementById('file-srt');
@@ -103,25 +101,34 @@ function updateAudioDelayForSketch(sketchFileName) {
   }
 }
 
-mainMp3Input?.addEventListener('change', (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
+// 💡 [핵심 수리]: 페이지 내 모든 파일 업로드 창을 감시하여 오디오 파일(.mp3 등)이 선택되면 무조건 메인 오디오로 장착
+document.querySelectorAll('input[type="file"]').forEach(input => {
+  if (input.id === 'file-srt' || input.id === 'file-batch-mp3') return;
 
-  stopAllActiveStems();
-  Object.keys(stemBuffers).forEach(key => stemBuffers[key] = null);
+  input.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
 
-  const audioUrl = URL.createObjectURL(file);
-  if (audioPlayer) {
-    audioPlayer.src = audioUrl;
-    audioPlayer.load();
-  }
+    // 업로드된 파일이 오디오 형식이거나 mp3 확장자인 경우
+    if (file.type.includes('audio') || file.name.toLowerCase().endsWith('.mp3') || file.name.toLowerCase().endsWith('.wav')) {
+      stopAllActiveStems();
+      Object.keys(stemBuffers).forEach(key => stemBuffers[key] = null);
 
-  isAudioAnalyzerConnected = false;
+      const audioUrl = URL.createObjectURL(file);
+      if (audioPlayer) {
+        audioPlayer.src = audioUrl;
+        audioPlayer.load();
+        console.log("[🎵 User Audio Loaded successfully]:", file.name);
+      }
 
-  if (batchStatusText) {
-    batchStatusText.style.color = "#00ffcc";
-    batchStatusText.innerHTML = `🎵 단일 MP3 로딩 완료: <strong>${file.name}</strong>`;
-  }
+      isAudioAnalyzerConnected = false;
+
+      if (batchStatusText) {
+        batchStatusText.style.color = "#00ffcc";
+        batchStatusText.innerHTML = `🎵 선택한 음악 로딩 완료: <strong>${file.name}</strong>`;
+      }
+    }
+  });
 });
 
 batchMp3Input?.addEventListener('change', async (e) => {
@@ -229,49 +236,6 @@ if (deckPlayBtn) {
   });
 }
 
-function getStemVolume(analyser) {
-  if (!analyser) return 0;
-  try {
-    const data = new Uint8Array(analyser.frequencyBinCount);
-    analyser.getByteFrequencyData(data);
-    let maxVal = 0, sum = 0;
-    for (let i = 0; i < data.length; i++) {
-      if (data[i] > maxVal) maxVal = data[i];
-      sum += data[i];
-    }
-    const avg = (sum / data.length) / 255.0;
-    const peak = maxVal / 255.0;
-    return Math.min(1.0, (avg * 0.3 + peak * 0.7) * 4.0);
-  } catch (e) { return 0; }
-}
-
-function getStemSpectrum(analyser) {
-  if (!analyser) return new Float32Array(64);
-  try {
-    const data = new Uint8Array(analyser.frequencyBinCount);
-    analyser.getByteFrequencyData(data);
-    const spec = new Float32Array(64);
-    const step = Math.floor(data.length / 64) || 1;
-    for (let i = 0; i < 64; i++) {
-      spec[i] = (data[i * step] || 0) / 255.0;
-    }
-    return spec;
-  } catch (e) { return new Float32Array(64); }
-}
-
-function getMergedTimeDomainWaveform() {
-  const wave = new Float32Array(128);
-  let activeAnalysers = Object.values(stemAnalysers).filter(a => a !== null);
-  if (activeAnalysers.length > 0) {
-    const temp = new Uint8Array(128);
-    activeAnalysers[0].getByteTimeDomainData(temp);
-    for (let i = 0; i < 128; i++) {
-      wave[i] = (temp[i] - 128) / 128.0;
-    }
-  }
-  return wave;
-}
-
 function renderEngineTicker() {
   requestAnimationFrame(renderEngineTicker);
 
@@ -300,18 +264,6 @@ function renderEngineTicker() {
 
     if (isMultiStemPlaying) {
       compiledAudioData.isMultiStem = true;
-      compiledAudioData.vocalsVol = getStemVolume(stemAnalysers.vocals);
-      compiledAudioData.drumsVol  = getStemVolume(stemAnalysers.drums);
-      compiledAudioData.bassVol   = getStemVolume(stemAnalysers.bass);
-      compiledAudioData.otherVol  = getStemVolume(stemAnalysers.other);
-      
-      compiledAudioData.drumsSpectrum  = getStemSpectrum(stemAnalysers.drums);
-      compiledAudioData.bassSpectrum   = getStemSpectrum(stemAnalysers.bass);
-      compiledAudioData.vocalsSpectrum = getStemSpectrum(stemAnalysers.vocals);
-      compiledAudioData.otherSpectrum  = getStemSpectrum(stemAnalysers.other);
-
-      compiledAudioData.spectrum = compiledAudioData.bassSpectrum;
-      compiledAudioData.waveform = getMergedTimeDomainWaveform();
     } else {
       compiledAudioData.isMultiStem = false;
       compiledAudioData.vocalsVol = Math.min(1.0, (compiledAudioData.mid || 0) * 3.5);
