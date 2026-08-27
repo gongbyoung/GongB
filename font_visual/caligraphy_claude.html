@@ -994,8 +994,22 @@
           error: (e) => console.error(e)
         });
 
+        // 1920x1080@30fps를 지원하는 가장 낮은 레벨부터 순서대로 시도 (하드웨어/브라우저별 지원 폭이 달라서)
+        const codecCandidates = [
+          'avc1.64002A', // High Profile, Level 4.2
+          'avc1.640028', // High Profile, Level 4.0
+          'avc1.640033', // High Profile, Level 5.1
+          'avc1.4d0028'  // Main Profile, Level 4.0
+        ];
+        let chosenCodec = null;
+        for (const codec of codecCandidates) {
+          const support = await VideoEncoder.isConfigSupported({ codec, width, height, bitrate: 6_500_000, framerate: fps });
+          if (support.supported) { chosenCodec = codec; break; }
+        }
+        if (!chosenCodec) throw new Error('이 브라우저/기기에서는 1920x1080 해상도의 H.264 하드웨어/소프트웨어 인코더를 지원하지 않습니다.');
+
         videoEncoder.configure({
-          codec: 'avc1.42E01E',
+          codec: chosenCodec,
           width, height,
           bitrate: 6_500_000,
           framerate: fps
