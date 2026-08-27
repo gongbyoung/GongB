@@ -87,7 +87,6 @@ function updateLogPanel() {
 
 function updateStatusPanel() {
     if (!statusContent) return;
-
     const styleName = currentStyleId ? (window.TypoMotionStyles?.[currentStyleId]?.name || currentStyleId) : '선택 안됨';
     const presetName = currentPresetId ? (window.TypoMotionStyles?.[currentStyleId]?.presets?.[currentPresetId]?.name || currentPresetId) : '자동 배정';
 
@@ -290,7 +289,7 @@ function updateTimeDisplay() {
     timeDisplay.textContent = formatTime(currentTime);
 }
 
-// ==================== 렌더링 (단 하나만 존재!) ====================
+// ==================== 렌더링 ====================
 function isLedLit(led, time) {
     return time >= led.start;
 }
