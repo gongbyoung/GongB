@@ -50,7 +50,7 @@
             display: block;
             width: 100%;
             height: 100%;
-            background: #fef9f0;  /* 모조지 느낌 */
+            background: #fef9f0;
             cursor: default;
         }
         .controls {
@@ -221,25 +221,20 @@
         // ========== SRT 파싱 ==========
         function parseSRT(content) {
             const entries = [];
-            // 블록 분리 (빈 줄 기준)
             const blocks = content.trim().split(/\n\s*\n/);
             for (const block of blocks) {
                 const lines = block.split('\n').filter(line => line.trim() !== '');
                 if (lines.length < 3) continue;
-                // 첫 줄은 인덱스 (숫자)
                 const index = parseInt(lines[0]);
                 if (isNaN(index)) continue;
-                // 시간 라인: 00:00:01,234 --> 00:00:02,345
                 const timeLine = lines[1];
                 const timeMatch = timeLine.match(/(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2}),(\d{3})/);
                 if (!timeMatch) continue;
                 const start = toMs(timeMatch[1], timeMatch[2], timeMatch[3], timeMatch[4]);
                 const end = toMs(timeMatch[5], timeMatch[6], timeMatch[7], timeMatch[8]);
-                // 나머지 줄은 텍스트 (여러 줄일 수 있음)
                 const text = lines.slice(2).join(' ');
                 entries.push({ index, startMs: start, endMs: end, text: text.trim() });
             }
-            // 시간순 정렬
             entries.sort((a, b) => a.startMs - b.startMs);
             return entries;
         }
@@ -248,21 +243,10 @@
             return parseInt(h) * 3600000 + parseInt(m) * 60000 + parseInt(s) * 1000 + parseInt(ms);
         }
 
-        // ========== 캘리그라피 그리기 ==========
-        // 각 문장에 대해 고유한 변형 시드를 생성 (인덱스 기반)
-        function getSeed(index) {
-            return index * 137 + 42;  // 간단한 시드
-        }
-
-        // pseudo-random based on seed
-        function seededRandom(seed) {
-            const x = Math.sin(seed) * 43758.5453123;
-            return x - Math.floor(x);
-        }
-
-        // 텍스트를 캔버스에 캘리그라피 스타일로 그림 (progress 0~1)
-        function drawCalligraphy(text, progress, seed) {
+        // ========== 캘리그라피 그리기 (겹침 제거 버전) ==========
+        function drawCalligraphy(text, progress) {
             ctx.clearRect(0, 0, W, H);
+            
             // 배경 (모조지 느낌)
             const grad = ctx.createRadialGradient(W/2, H/2, 100, W/2, H/2, 600);
             grad.addColorStop(0, '#fef9f0');
@@ -270,87 +254,79 @@
             ctx.fillStyle = grad;
             ctx.fillRect(0, 0, W, H);
 
-            // 여백 및 크기 계산
-            const maxWidth = W * 0.8;
-            const maxHeight = H * 0.7;
-            const fontSize = Math.min(maxWidth / text.length * 1.2, maxHeight, 180);
+            const chars = text.split('');
+            
+            // 폰트 설정 (깔끔한 궁서체/명조체 계열 - 견본 스타일에 맞춤)
+            const fontFamily = "'궁서', 'Nanum Myeongjo', 'Nanum Pen Script', serif";
+            const baseFontSize = Math.min(150, (W * 0.7) / Math.max(chars.length, 1) * 0.6);
+            
             ctx.textBaseline = 'middle';
             ctx.textAlign = 'center';
+            ctx.fillStyle = '#1a1a1a';
+            ctx.shadowColor = 'rgba(0,0,0,0.08)';
+            ctx.shadowBlur = 4;
+            ctx.font = `bold ${baseFontSize}px ${fontFamily}`;
 
-            // 각 글자마다 변형 적용
-            const chars = text.split('');
-            const totalWidth = chars.reduce((sum, ch) => sum + ctx.measureText(ch).width, 0);
-            // 실제 렌더링 위치 (중앙 정렬)
-            let startX = (W - totalWidth) / 2;
+            // 글자 간격(자간) 계산 - 겹치지 않도록 넉넉히 벌림
+            const letterSpacing = baseFontSize * 0.35; 
+            let totalWidth = 0;
+            for (let ch of chars) {
+                totalWidth += ctx.measureText(ch).width + letterSpacing;
+            }
+            totalWidth -= letterSpacing; // 마지막 글자 간격 제거
+
+            // 시작 X 좌표 (중앙 정렬)
+            let currentX = (W - totalWidth) / 2;
             const baseY = H / 2;
 
-            // progress에 따른 마스크 (왼쪽에서 오른쪽으로 드러남)
-            // clip 영역을 progress 비율로 설정
+            // progress에 따른 마스킹 (왼쪽에서 오른쪽으로 자연스럽게)
             ctx.save();
             const clipWidth = progress * W;
             ctx.beginPath();
             ctx.rect(0, 0, clipWidth, H);
             ctx.clip();
 
-            // 글자별로 그리기
-            let currentX = startX;
-            const rng = seededRandom(seed);
+            // 각 글자 그리기 (겹침 없이)
             for (let i = 0; i < chars.length; i++) {
                 const ch = chars[i];
                 if (ch === ' ') {
-                    // 공백은 건너뛰되 약간의 간격
-                    currentX += ctx.measureText(' ').width * 0.8;
+                    currentX += ctx.measureText(' ').width + letterSpacing;
                     continue;
                 }
-                // 각 글자에 변형: 회전, y축 이동, 크기 변형
-                const rot = (rng * 0.3 - 0.15) + (i * 0.02);  // -0.15 ~ 0.15 rad
-                const yOff = (rng * 20 - 10) + (i * 0.5);
-                const scale = 0.9 + rng * 0.2;  // 0.9~1.1
+
+                // 아주 미세한 각도만 줘서 손맛을 더함 (겹치지 않게 최소화, 0.02rad 이하)
+                const rot = (i % 2 === 0 ? -1 : 1) * 0.015; 
+                const yOff = (i % 3 === 0 ? 0 : (i % 2 === 0 ? -5 : 5)); // 약간의 높낮이
 
                 ctx.save();
                 ctx.translate(currentX, baseY + yOff);
                 ctx.rotate(rot);
-                ctx.scale(scale, 1);
 
-                // 폰트 설정 – 고정 폰트가 아니라 다양한 스타일을 섞음
-                // '궁서', '바탕', '돋움', '맑은 고딕' 등에서 랜덤 선택
-                const fontFamilies = ['궁서', '바탕', '돋움', '맑은 고딕', 'Georgia', 'Times New Roman'];
-                const fontIdx = Math.floor((seed + i * 7) % fontFamilies.length);
-                const fontStyle = 'bold';
-                ctx.font = `${fontStyle} ${fontSize}px "${fontFamilies[fontIdx]}", serif`;
-                ctx.fillStyle = '#1a1a1a';
-                ctx.shadowColor = 'rgba(0,0,0,0.1)';
-                ctx.shadowBlur = 2;
-
-                // 글자 그림자 효과 (약간의 입체감)
+                // 글자 자체의 기본 드로잉
                 ctx.fillText(ch, 0, 0);
-                ctx.shadowBlur = 0;
-                // 테두리 (획) 효과로 붓 느낌
-                ctx.strokeStyle = '#2a2a2a';
-                ctx.lineWidth = 0.5;
+                
+                // 붓 느낌을 위한 살짝의 테두리
+                ctx.strokeStyle = 'rgba(42,42,42,0.3)';
+                ctx.lineWidth = 1;
                 ctx.strokeText(ch, 0, 0);
 
                 ctx.restore();
 
-                // 다음 글자 위치로 이동 (measureText로 정확한 너비)
-                const chWidth = ctx.measureText(ch).width * scale;
-                currentX += chWidth + 4; // 자간
+                // 다음 글자로 이동 (글자 너비 + 간격)
+                const chWidth = ctx.measureText(ch).width;
+                currentX += chWidth + letterSpacing;
             }
 
             ctx.restore(); // clip 해제
-
-            // progress가 1이면 완전히 보임
         }
 
         // ========== 애니메이션 루프 ==========
         function animate(timestamp) {
             if (!isPlaying) return;
 
-            // 현재 시간 계산
             const elapsed = timestamp - startTime + pausedTime;
             currentTime = elapsed;
 
-            // 현재 자막 찾기
             let active = null;
             let progress = 0;
             for (const sub of subtitles) {
@@ -364,24 +340,26 @@
             }
 
             if (active) {
-                const seed = active.index * 1000 + 333;
-                drawCalligraphy(active.text, progress, seed);
+                drawCalligraphy(active.text, progress);
                 subtitleStatus.textContent = `✍️ ${active.text} (${Math.round(progress*100)}%)`;
                 statusDiv.textContent = `자막 #${active.index} 재생 중`;
             } else {
-                // 자막이 없으면 빈 화면 또는 마지막 자막 유지?
-                // 여기서는 빈 화면으로
                 ctx.clearRect(0, 0, W, H);
+                // 빈 배경만 그려줌
+                const grad = ctx.createRadialGradient(W/2, H/2, 100, W/2, H/2, 600);
+                grad.addColorStop(0, '#fef9f0');
+                grad.addColorStop(1, '#f5efe6');
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, W, H);
+                
                 subtitleStatus.textContent = '⏸ 대기 중';
                 statusDiv.textContent = '자막 구간이 아닙니다';
             }
 
-            // 시간 표시
             const sec = Math.floor(currentTime / 1000);
             const ms = Math.floor(currentTime % 1000);
             timeDisplay.textContent = `${String(sec).padStart(2, '0')}:${String(Math.floor(ms/10)).padStart(2, '0')}.${String(ms % 100).padStart(2, '0')}`;
 
-            // 다음 프레임
             animationId = requestAnimationFrame(animate);
         }
 
@@ -393,14 +371,9 @@
             }
             if (isPlaying) return;
             isPlaying = true;
-            startTime = performance.now();
-            // pausedTime은 이미 누적된 시간 (정지 시 0으로 리셋)
             if (currentTime === 0) pausedTime = 0;
-            else pausedTime = currentTime; // 이어서 재생
-            // 현재 시간을 기준으로 startTime 조정
-            // 하지만 pausedTime을 그대로 사용하면 됨
+            else pausedTime = currentTime; 
             startTime = performance.now() - pausedTime;
-            // 녹화 중이면 mediaRecorder는 계속 동작
             animate(startTime);
             playBtn.textContent = '▶ 재생 중';
             statusDiv.textContent = '재생 중...';
@@ -427,7 +400,6 @@
             timeDisplay.textContent = '00:00.000';
             subtitleStatus.textContent = '⏹ 정지';
             ctx.clearRect(0, 0, W, H);
-            // 배경 다시 그리기
             const grad = ctx.createRadialGradient(W/2, H/2, 100, W/2, H/2, 600);
             grad.addColorStop(0, '#fef9f0');
             grad.addColorStop(1, '#f5efe6');
@@ -450,17 +422,14 @@
                     return;
                 }
                 statusDiv.textContent = `✅ ${subtitles.length}개 자막 로드 완료`;
-                // 초기화
                 stop();
-                // 첫 자막 미리보기 (선택사항)
                 if (subtitles.length > 0) {
-                    const seed = subtitles[0].index * 1000 + 333;
-                    drawCalligraphy(subtitles[0].text, 1, seed);
+                    drawCalligraphy(subtitles[0].text, 1);
                     subtitleStatus.textContent = `📖 ${subtitles[0].text}`;
                 }
             };
             reader.readAsText(file, 'UTF-8');
-            this.value = ''; // 재선택 가능
+            this.value = '';
         });
 
         // ========== 버튼 이벤트 ==========
@@ -471,7 +440,6 @@
         // ========== 녹화 (MediaRecorder) ==========
         recordBtn.addEventListener('click', function() {
             if (isRecording) {
-                // 녹화 중지
                 if (mediaRecorder && mediaRecorder.state === 'recording') {
                     mediaRecorder.stop();
                 }
@@ -481,18 +449,11 @@
                 return;
             }
 
-            // 녹화 시작
             if (!stream) {
-                stream = canvas.captureStream(30); // 30fps
+                stream = canvas.captureStream(30);
             }
             if (!mediaRecorder) {
-                // H.264 지원 확인 (기본은 webm)
-                const mimeTypes = [
-                    'video/webm;codecs=vp9',
-                    'video/webm;codecs=vp8',
-                    'video/webm;codecs=h264',
-                    'video/mp4'
-                ];
+                const mimeTypes = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm;codecs=h264', 'video/mp4'];
                 let mimeType = '';
                 for (const mt of mimeTypes) {
                     if (MediaRecorder.isTypeSupported(mt)) {
@@ -511,7 +472,6 @@
                     }
                 };
                 mediaRecorder.onstop = function() {
-                    // Blob 생성
                     const blob = new Blob(recordedChunks, { type: mimeType });
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
@@ -523,20 +483,17 @@
                     downloadArea.appendChild(a);
                     recordedChunks = [];
                     statusDiv.textContent = '✅ 녹화 완료! 다운로드 링크가 생성되었습니다.';
-                    // 스트림 해제? (선택)
                 };
             }
 
-            // 녹화 시작
             recordedChunks = [];
-            mediaRecorder.start(100); // 100ms 간격 데이터 수집
+            mediaRecorder.start(100);
             isRecording = true;
             recordBtn.textContent = '⏹ 녹화 중지';
             statusDiv.textContent = '🔴 녹화 중... (재생/일시정지 가능)';
         });
 
         // ========== 초기화 ==========
-        // 빈 캔버스 배경
         (function init() {
             const grad = ctx.createRadialGradient(W/2, H/2, 100, W/2, H/2, 600);
             grad.addColorStop(0, '#fef9f0');
@@ -550,7 +507,6 @@
             ctx.fillText('📂 SRT 파일을 로드해주세요', W/2, H/2);
         })();
 
-        // 페이지 이탈 시 녹화 중이면 정리
         window.addEventListener('beforeunload', function() {
             if (mediaRecorder && mediaRecorder.state === 'recording') {
                 mediaRecorder.stop();
