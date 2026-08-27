@@ -2,75 +2,105 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <title>Canvas & Opentype Calligram Packer</title>
-  <!-- Opentype.js CDN 로드 -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/opentype.js/1.3.4/opentype.min.js"></script>
+  <title>캘리그램 패킹 생성기</title>
+  <!-- Opentype.js 최신 CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #1e1e24;
-      color: #f0f0f0;
+      background: #18181b;
+      color: #f4f4f5;
       margin: 0;
-      padding: 20px;
+      padding: 24px;
       display: flex;
       flex-direction: column;
       align-items: center;
     }
+    h2 { margin: 0 0 16px 0; font-size: 22px; }
+    .status-badge {
+      font-size: 13px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      background: #27272a;
+      color: #fbbf24;
+      margin-bottom: 14px;
+    }
+    .status-badge.ready {
+      background: #14532d;
+      color: #4ade80;
+    }
     .controls {
       display: flex;
-      gap: 12px;
-      margin-bottom: 16px;
+      gap: 10px;
+      margin-bottom: 20px;
       flex-wrap: wrap;
       justify-content: center;
     }
-    button, input, select {
-      padding: 8px 16px;
+    input, select, button {
+      padding: 9px 14px;
       border-radius: 6px;
-      border: 1px solid #444;
-      background: #2b2b36;
+      border: 1px solid #3f3f46;
+      background: #27272a;
       color: #fff;
       font-size: 14px;
+      outline: none;
+    }
+    button {
+      background: #4f46e5;
+      border: none;
+      font-weight: 600;
       cursor: pointer;
+      transition: background 0.2s;
     }
-    button:hover {
-      background: #3d3d4d;
-    }
+    button:hover { background: #4338ca; }
+    button:disabled { background: #52525b; cursor: not-allowed; }
     .canvas-container {
       display: flex;
       gap: 20px;
-      background: #141419;
+      background: #09090b;
       padding: 16px;
       border-radius: 12px;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      border: 1px solid #27272a;
     }
     canvas {
-      border: 1px solid #333;
+      border: 1px solid #27272a;
       border-radius: 8px;
-      background: #fff;
+      background: #ffffff;
+    }
+    .label {
+      text-align: center;
+      margin-bottom: 8px;
+      color: #a1a1aa;
+      font-size: 13px;
     }
   </style>
 </head>
 <body>
 
-  <h2>실루엣 마스크 기반 캘리그라피 패킹 엔진</h2>
+  <h2>실루엣 마스크 캘리그라피 패킹</h2>
+  <div id="status" class="status-badge">⏳ 폰트 리소스 로딩 중...</div>
 
   <div class="controls">
+    <select id="fontSelect">
+      <option value="https://cdn.jsdelivr.net/gh/sun-typeface/SUIT@2/fonts/otf/SUIT-ExtraBold.otf">SUIT 볼드체</option>
+      <option value="https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff">Gmarket 산스체</option>
+    </select>
     <select id="shapeSelect">
-      <option value="heart">하트 (Heart)</option>
       <option value="circle">원형 (Circle)</option>
+      <option value="heart">하트 (Heart)</option>
       <option value="star">별 (Star)</option>
     </select>
-    <input type="text" id="textInput" value="달빛 바람 소리 꽃잎 구름 새벽 별빛 침묵 바다 사랑 봄날 기억" style="width: 320px;" />
-    <button id="btnRun">패킹 시작</button>
+    <input type="text" id="textInput" value="달빛 바람 소리 꽃잎 구름 새벽 별빛 침묵 바다 사랑 봄날 기억 흔적 고요 시간 울림" style="width: 380px;" />
+    <button id="btnRun" disabled>패킹 시작</button>
   </div>
 
   <div class="canvas-container">
     <div>
-      <div style="text-align:center; margin-bottom:6px; color:#aaa; font-size:12px;">마스크 실루엣</div>
+      <div class="label">마스크 실루엣</div>
       <canvas id="maskCanvas" width="500" height="500"></canvas>
     </div>
     <div>
-      <div style="text-align:center; margin-bottom:6px; color:#aaa; font-size:12px;">캘리그램 완성본</div>
+      <div class="label">캘리그램 패킹 결과</div>
       <canvas id="mainCanvas" width="500" height="500"></canvas>
     </div>
   </div>
@@ -80,35 +110,50 @@ const WIDTH = 500;
 const HEIGHT = 500;
 
 const maskCanvas = document.getElementById('maskCanvas');
-const maskCtx = maskCanvas.getContext('2d');
+const maskCtx = maskCanvas.getContext('2d', { willReadFrequently: true });
 
 const mainCanvas = document.getElementById('mainCanvas');
 const mainCtx = mainCanvas.getContext('2d');
 
+const statusEl = document.getElementById('status');
+const btnRun = document.getElementById('btnRun');
+const fontSelect = document.getElementById('fontSelect');
+const shapeSelect = document.getElementById('shapeSelect');
+
 let loadedFont = null;
-let occupancyGrid = null; // 0: 외부/사용불가, 1: 배치가능 내부, 2: 이미 채워짐
+let occupancyGrid = null;
 
-// 1. 기본 웹 폰트 로드 (구글 Noto Sans / 실서비스에서는 캘리그라피 TTF/OTF 파일 URL 사용)
-const FONT_URL = 'https://fonts.gstatic.com/ea/notosanskr/v2/NotoSansKR-Bold.otf';
+// 1. ArrayBuffer 방식으로 폰트 안전 로드 (CORS 문제 방지)
+async function loadFontAuto(url) {
+  statusEl.className = 'status-badge';
+  statusEl.textContent = '⏳ 폰트 다운로드 및 파싱 중...';
+  btnRun.disabled = true;
 
-opentype.load(FONT_URL, (err, font) => {
-  if (err) {
-    console.error('폰트 로드 실패, 기본 폰트로 대체 필요:', err);
-    alert('웹폰트를 불러오는 중 문제가 발생했습니다.');
-  } else {
-    loadedFont = font;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
+    const buffer = await res.arrayBuffer();
+    loadedFont = opentype.parse(buffer);
+
+    statusEl.className = 'status-badge ready';
+    statusEl.textContent = '✓ 폰트 준비 완료';
+    btnRun.disabled = false;
+
     drawMask();
     runPacking();
+  } catch (err) {
+    console.error('폰트 로드 실패:', err);
+    statusEl.textContent = '❌ 폰트 로드 실패. 다른 폰트를 선택해보세요.';
   }
-});
+}
 
-// 2. 프리셋 실루엣 마스크 렌더링
+// 2. 실루엣 마스크 드로잉
 function drawMask() {
   maskCtx.fillStyle = '#ffffff';
   maskCtx.fillRect(0, 0, WIDTH, HEIGHT);
   maskCtx.fillStyle = '#000000';
 
-  const shape = document.getElementById('shapeSelect').value;
+  const shape = shapeSelect.value;
   maskCtx.beginPath();
 
   if (shape === 'heart') {
@@ -131,7 +176,6 @@ function drawMask() {
       y = cy + Math.sin(rot) * outerRadius;
       maskCtx.lineTo(x, y);
       rot += step;
-
       x = cx + Math.cos(rot) * innerRadius;
       y = cy + Math.sin(rot) * innerRadius;
       maskCtx.lineTo(x, y);
@@ -142,41 +186,37 @@ function drawMask() {
   maskCtx.closePath();
   maskCtx.fill();
 
-  // 픽셀 데이터 읽어 격자 맵 생성
   initOccupancyGrid();
 }
 
-// 3. 점유 격자 맵 초기화 (1px 단위)
+// 3. 점유 격자 맵 초기화
 function initOccupancyGrid() {
   const imgData = maskCtx.getImageData(0, 0, WIDTH, HEIGHT);
   const data = imgData.data;
   occupancyGrid = new Uint8Array(WIDTH * HEIGHT);
 
   for (let i = 0; i < data.length; i += 4) {
-    const r = data[i], g = data[i+1], b = data[i+2];
-    const isInside = (r < 128 && g < 128 && b < 128); // 검은색 영역
+    const isInside = data[i] < 128 && data[i+1] < 128 && data[i+2] < 128;
     occupancyGrid[i / 4] = isInside ? 1 : 0;
   }
 }
 
-// 4. 단어가 마스크 내부에 안전하게 들어가는지 검사
+// 4. 배치 영역 충돌 판별
 function canPlaceWord(x, y, bbox) {
   const minX = Math.floor(x + bbox.x1);
   const maxX = Math.ceil(x + bbox.x2);
   const minY = Math.floor(y + bbox.y1);
   const maxY = Math.ceil(y + bbox.y2);
 
-  // 캔버스 경계 체크
   if (minX < 0 || maxX >= WIDTH || minY < 0 || maxY >= HEIGHT) {
     return false;
   }
 
-  // 글자 바운딩 박스 내 샘플링 검사
-  const step = 2; // 성능과 정밀도 균형
+  // 글자 바운딩 박스 내부 픽셀 검사
+  const step = 2;
   for (let py = minY; py <= maxY; py += step) {
     for (let px = minX; px <= maxX; px += step) {
-      const idx = py * WIDTH + px;
-      if (occupancyGrid[idx] !== 1) { // 마스크 외부이거나 이미 채워진 공간
+      if (occupancyGrid[py * WIDTH + px] !== 1) {
         return false;
       }
     }
@@ -184,12 +224,13 @@ function canPlaceWord(x, y, bbox) {
   return true;
 }
 
-// 5. 배치된 단어 영역 점유 처리
+// 5. 점유 영역 마킹
 function markOccupied(x, y, bbox) {
-  const minX = Math.max(0, Math.floor(x + bbox.x1) - 2);
-  const maxX = Math.min(WIDTH - 1, Math.ceil(x + bbox.x2) + 2);
-  const minY = Math.max(0, Math.floor(y + bbox.y1) - 2);
-  const maxY = Math.min(HEIGHT - 1, Math.ceil(y + bbox.y2) + 2);
+  const pad = 2;
+  const minX = Math.max(0, Math.floor(x + bbox.x1) - pad);
+  const maxX = Math.min(WIDTH - 1, Math.ceil(x + bbox.x2) + pad);
+  const minY = Math.max(0, Math.floor(y + bbox.y1) - pad);
+  const maxY = Math.min(HEIGHT - 1, Math.ceil(y + bbox.y2) + pad);
 
   for (let py = minY; py <= maxY; py++) {
     for (let px = minX; px <= maxX; px++) {
@@ -198,52 +239,40 @@ function markOccupied(x, y, bbox) {
   }
 }
 
-// 6. 메인 패킹 루프
+// 6. 패킹 실행
 function runPacking() {
   if (!loadedFont || !occupancyGrid) return;
 
-  // 캔버스 초기화
   mainCtx.fillStyle = '#ffffff';
   mainCtx.fillRect(0, 0, WIDTH, HEIGHT);
 
   const rawText = document.getElementById('textInput').value;
   const words = rawText.split(/\s+/).filter(w => w.trim().length > 0);
-
-  // 시각적 위계를 위해 단어 목록을 크기별로 정렬/순환
-  const fontSizes = [54, 42, 34, 26, 20, 16, 13];
-
-  let placedCount = 0;
+  const fontSizes = [56, 44, 34, 26, 20, 15, 12];
 
   for (let i = 0; i < words.length; i++) {
     const word = words[i];
     let placed = false;
 
-    // 큰 폰트 크기부터 순차적으로 시도
     for (let s = 0; s < fontSizes.length; s++) {
       const fontSize = fontSizes[s];
       const path = loadedFont.getPath(word, 0, 0, fontSize);
       const bbox = path.getBoundingBox();
 
-      // 마스크 중앙부터 바깥쪽으로 나선형(Spiral) 좌표 탐색
       const centerX = WIDTH / 2;
       const centerY = HEIGHT / 2;
       const maxRadius = Math.min(WIDTH, HEIGHT) / 2;
 
-      for (let r = 0; r < maxRadius; r += 6) {
-        for (let theta = 0; theta < Math.PI * 2; theta += 0.35) {
+      // 나선형 좌표 스캔
+      for (let r = 0; r < maxRadius; r += 5) {
+        for (let theta = 0; theta < Math.PI * 2; theta += 0.3) {
           const testX = Math.round(centerX + r * Math.cos(theta));
           const testY = Math.round(centerY + r * Math.sin(theta));
 
           if (canPlaceWord(testX, testY, bbox)) {
-            // 글자 렌더링
-            loadedFont.draw(mainCtx, word, testX, testY, fontSize, {
-              fill: '#1a1a1a'
-            });
-
-            // 점유 맵 업데이트
+            loadedFont.draw(mainCtx, word, testX, testY, fontSize, { fill: '#18181b' });
             markOccupied(testX, testY, bbox);
             placed = true;
-            placedCount++;
             break;
           }
         }
@@ -253,39 +282,42 @@ function runPacking() {
     }
   }
 
-  // 7. 남은 미세 빈틈(Gap)에 먹 번짐/포인트 점 찍기
-  fillMicroGaps(mainCtx);
+  fillGaps();
 }
 
-// 8. 잔여 빈틈 채우기 (캘리그라피 붓 튐 / 먹점 효과)
-function fillMicroGaps(ctx) {
-  ctx.fillStyle = '#2c2c2c';
-  for (let y = 10; y < HEIGHT - 10; y += 8) {
-    for (let x = 10; x < WIDTH - 10; x += 8) {
+// 7. 남은 잔여 공간 점 찍기
+function fillGaps() {
+  mainCtx.fillStyle = '#27272a';
+  for (let y = 10; y < HEIGHT - 10; y += 7) {
+    for (let x = 10; x < WIDTH - 10; x += 7) {
       const idx = y * WIDTH + x;
-      // 마스크 내부(1)이지만 글자가 들어가지 못한 빈 공간
       if (occupancyGrid[idx] === 1) {
-        // 주변 4방향 검사 후 작은 점 찍기
-        const dotRadius = Math.random() * 1.5 + 0.8;
-        ctx.beginPath();
-        ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
-        ctx.fill();
+        mainCtx.beginPath();
+        mainCtx.arc(x, y, Math.random() * 1.5 + 0.8, 0, Math.PI * 2);
+        mainCtx.fill();
         occupancyGrid[idx] = 2;
       }
     }
   }
 }
 
-// 이벤트 리스너 바인딩
-document.getElementById('btnRun').addEventListener('click', () => {
+// 이벤트 바인딩
+btnRun.addEventListener('click', () => {
   drawMask();
   runPacking();
 });
 
-document.getElementById('shapeSelect').addEventListener('change', () => {
+shapeSelect.addEventListener('change', () => {
   drawMask();
   runPacking();
 });
+
+fontSelect.addEventListener('change', (e) => {
+  loadFontAuto(e.target.value);
+});
+
+// 초기 실행
+loadFontAuto(fontSelect.value);
 </script>
 </body>
 </html>
