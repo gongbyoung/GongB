@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SRT 캘리그라피 스튜디오 (초고속 MP4 인코딩 v22.0)</title>
+  <title>SRT 캘리그라피 스튜디오 (실시간 60fps 고속 반응속도 v25.0)</title>
 
   <!-- 캘리그라피 웹 폰트 로드 -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -75,7 +75,7 @@
 
   <header>
     <h1>🖌️ SRT 캘리그라피 스튜디오</h1>
-    <span style="font-size: 0.85rem; color: var(--text-muted);">초고속 MP4 인코딩 v22.0</span>
+    <span style="font-size: 0.85rem; color: var(--text-muted);">실시간 60fps 고속 반응속도 v25.0</span>
   </header>
 
   <div class="main-container">
@@ -178,7 +178,7 @@
       </div>
 
       <div class="control-group">
-        <div class="section-title">🖼️ 7. 배경 및 먹물 색상</div>
+        <div class="section-title">🖼️ 7. 배경, 먹물 & 반응속도 필터</div>
         <label for="bg-style">배경 스타일</label>
         <select id="bg-style">
           <option value="hanji" selected>전통 한지 (Rice Paper)</option>
@@ -189,6 +189,12 @@
 
         <label for="ink-color">먹물 색상</label>
         <input type="color" id="ink-color" value="#1c1917">
+
+        <label for="filter-mode-select">먹물 번짐 필터 모드 (반응속도 제어)</label>
+        <select id="filter-mode-select">
+          <option value="fast" selected>⚡ 실시간 고속 모드 (60fps 매끄러운 반응속도 - 권장)</option>
+          <option value="high-quality">🎨 고품질 수묵화 번짐 모드 (SVG 렌더링 디테일)</option>
+        </select>
       </div>
 
       <div class="control-group">
@@ -265,6 +271,7 @@
     const paramFinishPct = document.getElementById('param-finish-pct');
     const bgStyleSelect = document.getElementById('bg-style');
     const inkColorInput = document.getElementById('ink-color');
+    const filterModeSelect = document.getElementById('filter-mode-select');
     const paramTightness = document.getElementById('param-tightness');
     const paramContrast = document.getElementById('param-contrast');
     const fontStatusEl = document.getElementById('font-status');
@@ -454,10 +461,10 @@
       return data;
     }
 
-    /* 🚀 성능 최적화: stroke 스탬핑 배치 렌더링 */
+    /* 🚀 60fps 초고속 스탬핑 스텝 최적화 */
     function stampSegment(targetCtx, p0, p1, distSoFar, contourLen, baseWidth, seed) {
       const segLen = Math.hypot(p1.x - p0.x, p1.y - p0.y);
-      const steps = Math.max(1, Math.ceil(segLen / 2));
+      const steps = Math.max(1, Math.ceil(segLen / 3.5));
       
       targetCtx.save();
       targetCtx.globalAlpha = 0.9;
@@ -913,6 +920,7 @@
       if (!subtitleObj || !currentFont) return;
       const engineMode = engineModeSelect.value;
       const inkColor = inkColorInput.value;
+      const filterMode = filterModeSelect ? filterModeSelect.value : 'fast';
       const tightness = parseFloat(paramTightness.value);
       const contrast = parseFloat(paramContrast.value);
       const finishPct = parseInt(paramFinishPct.value) / 100;
@@ -926,7 +934,11 @@
       const seed = (parseInt(subtitleObj.id) || 1) * 97 + text.length;
 
       ctx.save();
-      try { ctx.filter = 'blur(0.3px) url(#ink-bleed-filter)'; } catch (e) {}
+      if (filterMode === 'high-quality') {
+        try { ctx.filter = 'blur(0.3px) url(#ink-bleed-filter)'; } catch (e) {}
+      } else {
+        try { ctx.filter = 'blur(0.3px)'; } catch (e) {}
+      }
 
       if (engineMode === 'static') {
         renderStaticFinal(text, inkColor, tightness, contrast, seed);
@@ -1018,7 +1030,6 @@
       return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(ms).padStart(2, '0')}`;
     }
 
-    /* 🚀 성능 최적화: 배경 오프스크린 캔버스 캐싱 */
     let cachedBgCanvas = null;
     let cachedBgKey = '';
 
@@ -1128,7 +1139,7 @@
       reader.readAsDataURL(file);
     });
 
-    [engineModeSelect, shapeCropSelect, shapeLayoutStyleSelect, paramShowGuide, bgStyleSelect, inkColorInput].forEach(el => {
+    [engineModeSelect, shapeCropSelect, shapeLayoutStyleSelect, paramShowGuide, bgStyleSelect, inkColorInput, filterModeSelect].forEach(el => {
       if (el) el.addEventListener('change', () => {
         if (el === bgStyleSelect) cachedBgCanvas = null;
         renderFrame(currentTime);
@@ -1173,12 +1184,11 @@
 
     async function getSupportedH264Codec(width, height) {
       const candidates = [
-        'avc1.42E02A',
         'avc1.64002A',
         'avc1.4d402a',
-        'avc1.42E033',
-        'avc1.42E01F',
-        'avc1.42001E'
+        'avc1.42E02A',
+        'avc1.640033',
+        'avc1.42E028'
       ];
 
       for (const codec of candidates) {
@@ -1192,13 +1202,118 @@
               framerate: 30
             });
             if (support && support.supported) {
-              console.log('선택된 호환 H.264 코덱:', codec);
+              console.log('선택된 1080p 고해상도 H.264 코덱:', codec);
               return codec;
             }
           }
         } catch (e) {}
       }
-      return 'avc1.42E02A';
+      return 'avc1.64002A';
+    }
+
+    async function exportWithWebCodecs(fps, totalFrames, width, height, codecStr) {
+      const muxer = new Mp4Muxer.Muxer({
+        target: new Mp4Muxer.ArrayBufferTarget(),
+        video: { codec: 'avc', width, height },
+        fastStart: 'in-memory'
+      });
+
+      let encoderError = null;
+
+      const videoEncoder = new VideoEncoder({
+        output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+        error: (e) => {
+          console.error('VideoEncoder 하드웨어 인코더 에러:', e);
+          encoderError = e;
+        }
+      });
+
+      videoEncoder.configure({
+        codec: codecStr,
+        width, height,
+        bitrate: 8_000_000,
+        framerate: fps
+      });
+
+      for (let i = 0; i < totalFrames; i++) {
+        if (encoderError) {
+          throw new Error(`하드웨어 인코더 오류: ${encoderError.message || encoderError}`);
+        }
+
+        const frameTime = i / fps;
+        currentTime = frameTime;
+        renderFrame(frameTime);
+
+        const videoFrame = new VideoFrame(canvas, { timestamp: Math.round(frameTime * 1e6) });
+        videoEncoder.encode(videoFrame, { keyFrame: i % (fps * 2) === 0 });
+        videoFrame.close();
+
+        if (videoEncoder.encodeQueueSize > 5) {
+          await new Promise(resolve => {
+            const checkQueue = () => {
+              if (videoEncoder.encodeQueueSize <= 2) {
+                videoEncoder.ondequeue = null;
+                resolve();
+              }
+            };
+            videoEncoder.ondequeue = checkQueue;
+            setTimeout(resolve, 60);
+          });
+        }
+
+        const pct = Math.round(((i + 1) / totalFrames) * 100);
+        progressFill.style.width = `${pct}%`;
+        progressPercent.textContent = `${pct}%`;
+        progressText.textContent = `초고속 MP4 인코딩 중 (${formatTime(frameTime)} / ${formatTime(totalDuration)})`;
+
+        if (i % 20 === 0) await new Promise(r => setTimeout(r, 0));
+      }
+
+      await videoEncoder.flush();
+      muxer.finalize();
+
+      const { buffer } = muxer.target;
+      return new Blob([buffer], { type: 'video/mp4' });
+    }
+
+    async function exportWithMediaRecorder(fps, totalFrames) {
+      return new Promise((resolve, reject) => {
+        const stream = canvas.captureStream(fps);
+        let mimeType = 'video/mp4;codecs=avc1';
+        if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/mp4';
+        if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm;codecs=vp9';
+        if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
+
+        const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8_000_000 });
+        const chunks = [];
+
+        recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+        recorder.onstop = () => {
+          const blob = new Blob(chunks, { type: mimeType });
+          resolve({ blob, extension: mimeType.includes('webm') ? 'webm' : 'mp4' });
+        };
+        recorder.onerror = (e) => reject(e.error || new Error('MediaRecorder 실패'));
+
+        recorder.start();
+
+        let frameIdx = 0;
+        const interval = setInterval(() => {
+          if (frameIdx >= totalFrames) {
+            clearInterval(interval);
+            recorder.stop();
+            return;
+          }
+          const frameTime = frameIdx / fps;
+          currentTime = frameTime;
+          renderFrame(frameTime);
+
+          const pct = Math.round(((frameIdx + 1) / totalFrames) * 100);
+          progressFill.style.width = `${pct}%`;
+          progressPercent.textContent = `${pct}%`;
+          progressText.textContent = `안정 보장 모드로 녹화 중 (${formatTime(frameTime)} / ${formatTime(totalDuration)})`;
+          frameIdx++;
+        }, 1000 / fps);
+      });
     }
 
     btnExport.addEventListener('click', async () => {
@@ -1223,66 +1338,27 @@
 
       try {
         const codecStr = await getSupportedH264Codec(width, height);
+        let videoBlob, downloadExt = 'mp4';
 
-        const muxer = new Mp4Muxer.Muxer({
-          target: new Mp4Muxer.ArrayBufferTarget(),
-          video: { codec: 'avc', width, height },
-          fastStart: 'in-memory'
-        });
-
-        let encoderError = null;
-
-        const videoEncoder = new VideoEncoder({
-          output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
-          error: (e) => {
-            console.error('VideoEncoder 하드웨어 인코더 에러:', e);
-            encoderError = e;
-          }
-        });
-
-        videoEncoder.configure({
-          codec: codecStr,
-          width, height,
-          bitrate: 8_000_000,
-          framerate: fps
-        });
-
-        for (let i = 0; i < totalFrames; i++) {
-          if (encoderError) {
-            throw new Error(`인코더 동작 중 발생: ${encoderError.message || encoderError}`);
-          }
-
-          const frameTime = i / fps;
-          currentTime = frameTime;
-          renderFrame(frameTime);
-
-          const videoFrame = new VideoFrame(canvas, { timestamp: Math.round(frameTime * 1e6) });
-          videoEncoder.encode(videoFrame, { keyFrame: i % (fps * 2) === 0 });
-          videoFrame.close();
-
-          const pct = Math.round(((i + 1) / totalFrames) * 100);
-          progressFill.style.width = `${pct}%`;
-          progressPercent.textContent = `${pct}%`;
-          progressText.textContent = `처음부터 고속 렌더링 중 (${formatTime(frameTime)} / ${formatTime(totalDuration)})`;
-
-          // UI 멈춤 방지 및 렌더링 스레드 부드럽게 유지 (15 프레임마다 이벤트 루프 양도)
-          if (i % 15 === 0) await new Promise(r => setTimeout(r, 0));
+        try {
+          videoBlob = await exportWithWebCodecs(fps, totalFrames, width, height, codecStr);
+        } catch (webcodecsErr) {
+          console.warn('WebCodecs 오류 발생 ➔ MediaRecorder 호환 모드로 자동 전환:', webcodecsErr);
+          progressText.textContent = 'MediaRecorder 안전 모드로 자동 전환 중...';
+          const fallbackRes = await exportWithMediaRecorder(fps, totalFrames);
+          videoBlob = fallbackRes.blob;
+          downloadExt = fallbackRes.extension;
         }
 
-        await videoEncoder.flush();
-        muxer.finalize();
-
-        const { buffer } = muxer.target;
-        const blob = new Blob([buffer], { type: 'video/mp4' });
-        const url = URL.createObjectURL(blob);
+        const url = URL.createObjectURL(videoBlob);
         const a = document.createElement('a');
         a.href = url;
         const ratioName = aspectRatioSelect.value.replace(':', '_');
-        a.download = `calligraphy_stroke_${ratioName}_${Date.now()}.mp4`;
+        a.download = `calligraphy_stroke_${ratioName}_${Date.now()}.${downloadExt}`;
         a.click();
         URL.revokeObjectURL(url);
 
-        progressText.textContent = '🎬 H.264 MP4 비디오 다운로드 완료!';
+        progressText.textContent = `🎬 비디오 저장 완료! (.${downloadExt})`;
         setTimeout(() => { progressModal.style.display = 'none'; }, 1000);
 
       } catch (err) {
