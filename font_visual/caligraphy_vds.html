@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>캘리그라피 SRT 플레이어 + 녹화</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            background: #1a1a1a;
+            color: #eee;
+            font-family: 'Segoe UI', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 900px;
+            width: 100%;
+            background: #2d2d2d;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+        }
+        h1 {
+            text-align: center;
+            font-weight: 300;
+            letter-spacing: 2px;
+            margin-bottom: 20px;
+            color: #ffd700;
+            font-size: 1.8rem;
+        }
+        .canvas-wrapper {
+            position: relative;
+            background: #0a0a0a;
+            border-radius: 12px;
+            overflow: hidden;
+            aspect-ratio: 16 / 9;
+            width: 100%;
+            margin-bottom: 20px;
+        }
+        #canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            background: #fef9f0;  /* 모조지 느낌 */
+            cursor: default;
+        }
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+            margin: 15px 0;
+        }
+        .controls button {
+            background: #444;
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 30px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: 0.2s;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .controls button:hover {
+            background: #666;
+            transform: scale(1.02);
+        }
+        .controls button:active {
+            transform: scale(0.96);
+        }
+        .controls button.primary {
+            background: #ffd700;
+            color: #1a1a1a;
+        }
+        .controls button.primary:hover {
+            background: #ffe44d;
+        }
+        .controls button.danger {
+            background: #e74c3c;
+        }
+        .controls button.danger:hover {
+            background: #c0392b;
+        }
+        .controls button.record {
+            background: #e67e22;
+        }
+        .controls button.record:hover {
+            background: #d35400;
+        }
+        .file-input-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: #3a3a3a;
+            padding: 6px 16px;
+            border-radius: 30px;
+        }
+        .file-input-wrapper label {
+            cursor: pointer;
+            color: #ffd700;
+            font-weight: 500;
+        }
+        #fileInput {
+            display: none;
+        }
+        #status {
+            text-align: center;
+            font-size: 0.9rem;
+            color: #aaa;
+            margin-top: 10px;
+            min-height: 1.5rem;
+        }
+        #timeDisplay {
+            font-family: monospace;
+            font-size: 1.1rem;
+            color: #ffd700;
+            background: #222;
+            padding: 4px 12px;
+            border-radius: 20px;
+        }
+        .info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .download-link {
+            color: #4ecdc4;
+            text-decoration: none;
+            font-weight: 500;
+            padding: 6px 14px;
+            background: #2a2a2a;
+            border-radius: 20px;
+            border: 1px solid #4ecdc4;
+            display: inline-block;
+        }
+        .download-link:hover {
+            background: #4ecdc4;
+            color: #1a1a1a;
+        }
+        @media (max-width: 600px) {
+            .container { padding: 15px; }
+            .controls button { padding: 6px 12px; font-size: 0.8rem; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>✍️ 캘리그라피 SRT 플레이어</h1>
+
+    <div class="canvas-wrapper">
+        <canvas id="canvas" width="1280" height="720"></canvas>
+    </div>
+
+    <div class="info">
+        <span id="timeDisplay">00:00.000</span>
+        <span id="subtitleStatus">⏸ 대기 중</span>
+    </div>
+
+    <div class="controls">
+        <div class="file-input-wrapper">
+            <label for="fileInput">📂 SRT 선택</label>
+            <input type="file" id="fileInput" accept=".srt">
+        </div>
+        <button id="playBtn" class="primary">▶ 재생</button>
+        <button id="pauseBtn">⏸ 일시정지</button>
+        <button id="stopBtn">⏹ 정지</button>
+        <button id="recordBtn" class="record">🎥 녹화 시작</button>
+    </div>
+
+    <div id="status">SRT 파일을 로드해주세요.</div>
+    <div id="downloadArea" style="text-align:center; margin-top:12px;"></div>
+</div>
+
+<script>
+    (function() {
+        // ========== DOM ==========
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const fileInput = document.getElementById('fileInput');
+        const playBtn = document.getElementById('playBtn');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const recordBtn = document.getElementById('recordBtn');
+        const timeDisplay = document.getElementById('timeDisplay');
+        const statusDiv = document.getElementById('status');
+        const subtitleStatus = document.getElementById('subtitleStatus');
+        const downloadArea = document.getElementById('downloadArea');
+
+        const W = 1280, H = 720;
+        canvas.width = W; canvas.height = H;
+
+        // ========== 상태 ==========
+        let subtitles = [];            // [{ index, startMs, endMs, text }]
+        let currentTime = 0;           // ms
+        let isPlaying = false;
+        let animationId = null;
+        let startTime = 0;             // performance.now() 기준
+        let pausedTime = 0;            // 일시정지 시 저장
+
+        // 녹화 관련
+        let mediaRecorder = null;
+        let recordedChunks = [];
+        let isRecording = false;
+        let stream = null;
+
+        // ========== SRT 파싱 ==========
+        function parseSRT(content) {
+            const entries = [];
+            // 블록 분리 (빈 줄 기준)
+            const blocks = content.trim().split(/\n\s*\n/);
+            for (const block of blocks) {
+                const lines = block.split('\n').filter(line => line.trim() !== '');
+                if (lines.length < 3) continue;
+                // 첫 줄은 인덱스 (숫자)
+                const index = parseInt(lines[0]);
+                if (isNaN(index)) continue;
+                // 시간 라인: 00:00:01,234 --> 00:00:02,345
+                const timeLine = lines[1];
+                const timeMatch = timeLine.match(/(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2}),(\d{3})/);
+                if (!timeMatch) continue;
+                const start = toMs(timeMatch[1], timeMatch[2], timeMatch[3], timeMatch[4]);
+                const end = toMs(timeMatch[5], timeMatch[6], timeMatch[7], timeMatch[8]);
+                // 나머지 줄은 텍스트 (여러 줄일 수 있음)
+                const text = lines.slice(2).join(' ');
+                entries.push({ index, startMs: start, endMs: end, text: text.trim() });
+            }
+            // 시간순 정렬
+            entries.sort((a, b) => a.startMs - b.startMs);
+            return entries;
+        }
+
+        function toMs(h, m, s, ms) {
+            return parseInt(h) * 3600000 + parseInt(m) * 60000 + parseInt(s) * 1000 + parseInt(ms);
+        }
+
+        // ========== 캘리그라피 그리기 ==========
+        // 각 문장에 대해 고유한 변형 시드를 생성 (인덱스 기반)
+        function getSeed(index) {
+            return index * 137 + 42;  // 간단한 시드
+        }
+
+        // pseudo-random based on seed
+        function seededRandom(seed) {
+            const x = Math.sin(seed) * 43758.5453123;
+            return x - Math.floor(x);
+        }
+
+        // 텍스트를 캔버스에 캘리그라피 스타일로 그림 (progress 0~1)
+        function drawCalligraphy(text, progress, seed) {
+            ctx.clearRect(0, 0, W, H);
+            // 배경 (모조지 느낌)
+            const grad = ctx.createRadialGradient(W/2, H/2, 100, W/2, H/2, 600);
+            grad.addColorStop(0, '#fef9f0');
+            grad.addColorStop(1, '#f5efe6');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, W, H);
+
+            // 여백 및 크기 계산
+            const maxWidth = W * 0.8;
+            const maxHeight = H * 0.7;
+            const fontSize = Math.min(maxWidth / text.length * 1.2, maxHeight, 180);
+            ctx.textBaseline = 'middle';
+            ctx.textAlign = 'center';
+
+            // 각 글자마다 변형 적용
+            const chars = text.split('');
+            const totalWidth = chars.reduce((sum, ch) => sum + ctx.measureText(ch).width, 0);
+            // 실제 렌더링 위치 (중앙 정렬)
+            let startX = (W - totalWidth) / 2;
+            const baseY = H / 2;
+
+            // progress에 따른 마스크 (왼쪽에서 오른쪽으로 드러남)
+            // clip 영역을 progress 비율로 설정
+            ctx.save();
+            const clipWidth = progress * W;
+            ctx.beginPath();
+            ctx.rect(0, 0, clipWidth, H);
+            ctx.clip();
+
+            // 글자별로 그리기
+            let currentX = startX;
+            const rng = seededRandom(seed);
+            for (let i = 0; i < chars.length; i++) {
+                const ch = chars[i];
+                if (ch === ' ') {
+                    // 공백은 건너뛰되 약간의 간격
+                    currentX += ctx.measureText(' ').width * 0.8;
+                    continue;
+                }
+                // 각 글자에 변형: 회전, y축 이동, 크기 변형
+                const rot = (rng * 0.3 - 0.15) + (i * 0.02);  // -0.15 ~ 0.15 rad
+                const yOff = (rng * 20 - 10) + (i * 0.5);
+                const scale = 0.9 + rng * 0.2;  // 0.9~1.1
+
+                ctx.save();
+                ctx.translate(currentX, baseY + yOff);
+                ctx.rotate(rot);
+                ctx.scale(scale, 1);
+
+                // 폰트 설정 – 고정 폰트가 아니라 다양한 스타일을 섞음
+                // '궁서', '바탕', '돋움', '맑은 고딕' 등에서 랜덤 선택
+                const fontFamilies = ['궁서', '바탕', '돋움', '맑은 고딕', 'Georgia', 'Times New Roman'];
+                const fontIdx = Math.floor((seed + i * 7) % fontFamilies.length);
+                const fontStyle = 'bold';
+                ctx.font = `${fontStyle} ${fontSize}px "${fontFamilies[fontIdx]}", serif`;
+                ctx.fillStyle = '#1a1a1a';
+                ctx.shadowColor = 'rgba(0,0,0,0.1)';
+                ctx.shadowBlur = 2;
+
+                // 글자 그림자 효과 (약간의 입체감)
+                ctx.fillText(ch, 0, 0);
+                ctx.shadowBlur = 0;
+                // 테두리 (획) 효과로 붓 느낌
+                ctx.strokeStyle = '#2a2a2a';
+                ctx.lineWidth = 0.5;
+                ctx.strokeText(ch, 0, 0);
+
+                ctx.restore();
+
+                // 다음 글자 위치로 이동 (measureText로 정확한 너비)
+                const chWidth = ctx.measureText(ch).width * scale;
+                currentX += chWidth + 4; // 자간
+            }
+
+            ctx.restore(); // clip 해제
+
+            // progress가 1이면 완전히 보임
+        }
+
+        // ========== 애니메이션 루프 ==========
+        function animate(timestamp) {
+            if (!isPlaying) return;
+
+            // 현재 시간 계산
+            const elapsed = timestamp - startTime + pausedTime;
+            currentTime = elapsed;
+
+            // 현재 자막 찾기
+            let active = null;
+            let progress = 0;
+            for (const sub of subtitles) {
+                if (currentTime >= sub.startMs && currentTime < sub.endMs) {
+                    active = sub;
+                    const duration = sub.endMs - sub.startMs;
+                    const passed = currentTime - sub.startMs;
+                    progress = Math.min(passed / duration, 1);
+                    break;
+                }
+            }
+
+            if (active) {
+                const seed = active.index * 1000 + 333;
+                drawCalligraphy(active.text, progress, seed);
+                subtitleStatus.textContent = `✍️ ${active.text} (${Math.round(progress*100)}%)`;
+                statusDiv.textContent = `자막 #${active.index} 재생 중`;
+            } else {
+                // 자막이 없으면 빈 화면 또는 마지막 자막 유지?
+                // 여기서는 빈 화면으로
+                ctx.clearRect(0, 0, W, H);
+                subtitleStatus.textContent = '⏸ 대기 중';
+                statusDiv.textContent = '자막 구간이 아닙니다';
+            }
+
+            // 시간 표시
+            const sec = Math.floor(currentTime / 1000);
+            const ms = Math.floor(currentTime % 1000);
+            timeDisplay.textContent = `${String(sec).padStart(2, '0')}:${String(Math.floor(ms/10)).padStart(2, '0')}.${String(ms % 100).padStart(2, '0')}`;
+
+            // 다음 프레임
+            animationId = requestAnimationFrame(animate);
+        }
+
+        // ========== 컨트롤 ==========
+        function play() {
+            if (subtitles.length === 0) {
+                statusDiv.textContent = '⚠️ SRT 파일을 먼저 로드하세요.';
+                return;
+            }
+            if (isPlaying) return;
+            isPlaying = true;
+            startTime = performance.now();
+            // pausedTime은 이미 누적된 시간 (정지 시 0으로 리셋)
+            if (currentTime === 0) pausedTime = 0;
+            else pausedTime = currentTime; // 이어서 재생
+            // 현재 시간을 기준으로 startTime 조정
+            // 하지만 pausedTime을 그대로 사용하면 됨
+            startTime = performance.now() - pausedTime;
+            // 녹화 중이면 mediaRecorder는 계속 동작
+            animate(startTime);
+            playBtn.textContent = '▶ 재생 중';
+            statusDiv.textContent = '재생 중...';
+        }
+
+        function pause() {
+            if (!isPlaying) return;
+            isPlaying = false;
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+                animationId = null;
+            }
+            pausedTime = currentTime;
+            playBtn.textContent = '▶ 재생';
+            statusDiv.textContent = '일시정지';
+        }
+
+        function stop() {
+            if (isPlaying) {
+                pause();
+            }
+            currentTime = 0;
+            pausedTime = 0;
+            timeDisplay.textContent = '00:00.000';
+            subtitleStatus.textContent = '⏹ 정지';
+            ctx.clearRect(0, 0, W, H);
+            // 배경 다시 그리기
+            const grad = ctx.createRadialGradient(W/2, H/2, 100, W/2, H/2, 600);
+            grad.addColorStop(0, '#fef9f0');
+            grad.addColorStop(1, '#f5efe6');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, W, H);
+            statusDiv.textContent = '정지됨';
+            playBtn.textContent = '▶ 재생';
+        }
+
+        // ========== 파일 로드 ==========
+        fileInput.addEventListener('change', function(e) {
+            const file = this.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(ev) {
+                const content = ev.target.result;
+                subtitles = parseSRT(content);
+                if (subtitles.length === 0) {
+                    statusDiv.textContent = '⚠️ 유효한 SRT가 아닙니다.';
+                    return;
+                }
+                statusDiv.textContent = `✅ ${subtitles.length}개 자막 로드 완료`;
+                // 초기화
+                stop();
+                // 첫 자막 미리보기 (선택사항)
+                if (subtitles.length > 0) {
+                    const seed = subtitles[0].index * 1000 + 333;
+                    drawCalligraphy(subtitles[0].text, 1, seed);
+                    subtitleStatus.textContent = `📖 ${subtitles[0].text}`;
+                }
+            };
+            reader.readAsText(file, 'UTF-8');
+            this.value = ''; // 재선택 가능
+        });
+
+        // ========== 버튼 이벤트 ==========
+        playBtn.addEventListener('click', play);
+        pauseBtn.addEventListener('click', pause);
+        stopBtn.addEventListener('click', stop);
+
+        // ========== 녹화 (MediaRecorder) ==========
+        recordBtn.addEventListener('click', function() {
+            if (isRecording) {
+                // 녹화 중지
+                if (mediaRecorder && mediaRecorder.state === 'recording') {
+                    mediaRecorder.stop();
+                }
+                isRecording = false;
+                recordBtn.textContent = '🎥 녹화 시작';
+                statusDiv.textContent = '녹화 중지, 인코딩 중...';
+                return;
+            }
+
+            // 녹화 시작
+            if (!stream) {
+                stream = canvas.captureStream(30); // 30fps
+            }
+            if (!mediaRecorder) {
+                // H.264 지원 확인 (기본은 webm)
+                const mimeTypes = [
+                    'video/webm;codecs=vp9',
+                    'video/webm;codecs=vp8',
+                    'video/webm;codecs=h264',
+                    'video/mp4'
+                ];
+                let mimeType = '';
+                for (const mt of mimeTypes) {
+                    if (MediaRecorder.isTypeSupported(mt)) {
+                        mimeType = mt;
+                        break;
+                    }
+                }
+                if (!mimeType) {
+                    statusDiv.textContent = '⚠️ 이 브라우저는 녹화를 지원하지 않습니다.';
+                    return;
+                }
+                mediaRecorder = new MediaRecorder(stream, { mimeType: mimeType });
+                mediaRecorder.ondataavailable = function(e) {
+                    if (e.data.size > 0) {
+                        recordedChunks.push(e.data);
+                    }
+                };
+                mediaRecorder.onstop = function() {
+                    // Blob 생성
+                    const blob = new Blob(recordedChunks, { type: mimeType });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `calligraphy_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.webm`;
+                    a.textContent = '📥 다운로드 (WebM)';
+                    a.className = 'download-link';
+                    downloadArea.innerHTML = '';
+                    downloadArea.appendChild(a);
+                    recordedChunks = [];
+                    statusDiv.textContent = '✅ 녹화 완료! 다운로드 링크가 생성되었습니다.';
+                    // 스트림 해제? (선택)
+                };
+            }
+
+            // 녹화 시작
+            recordedChunks = [];
+            mediaRecorder.start(100); // 100ms 간격 데이터 수집
+            isRecording = true;
+            recordBtn.textContent = '⏹ 녹화 중지';
+            statusDiv.textContent = '🔴 녹화 중... (재생/일시정지 가능)';
+        });
+
+        // ========== 초기화 ==========
+        // 빈 캔버스 배경
+        (function init() {
+            const grad = ctx.createRadialGradient(W/2, H/2, 100, W/2, H/2, 600);
+            grad.addColorStop(0, '#fef9f0');
+            grad.addColorStop(1, '#f5efe6');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, W, H);
+            ctx.fillStyle = '#aaa';
+            ctx.font = '24px serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('📂 SRT 파일을 로드해주세요', W/2, H/2);
+        })();
+
+        // 페이지 이탈 시 녹화 중이면 정리
+        window.addEventListener('beforeunload', function() {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+            }
+        });
+    })();
+</script>
+</body>
+</html>
