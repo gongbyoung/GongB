@@ -387,7 +387,54 @@ document.querySelectorAll('.btn-export-ratio, [data-ratio]').forEach(btn => {
   });
 });
 
-// 🎯 [핵심 추가]: 스케치 전환 시 028번이면 1초 지연, 다른 스케치면 0초 지연 스위칭
+// 🎯 [수정 완료]: 스케치 강제 이탈 방지 가드가 적용된 최종 라우터 부근 코드
+const cosmicControls = {
+  numSeed: document.getElementById('num-cosmic-seed'), numScatter: document.getElementById('num-cosmic-scatter'),
+  color: document.getElementById('select-cosmic-color'), numGlow: document.getElementById('num-cosmic-glow'),
+  numGain: document.getElementById('num-cosmic-gain'), pickGas1: document.getElementById('picker-gas1'),
+  pickGas2: document.getElementById('picker-gas2'), pickStar: document.getElementById('picker-star'),
+  numGauge: document.getElementById('num-cosmic-gauge')
+};
+
+function syncCosmicControls() {
+  if (!cosmicControls.numSeed) return;
+  window.cosmicEngineSettings = {
+    ...window.cosmicEngineSettings,
+    seed: parseInt(cosmicControls.numSeed.value),
+    scatterExponent: parseFloat(cosmicControls.numScatter.value) / 10,
+    colorStyle: cosmicControls.color.value,
+    glowIntensity: parseFloat(cosmicControls.numGlow.value) / 100,
+    audioGain: (parseFloat(cosmicControls.numGain.value) || 10) / 10,
+    customColors: { gas1: cosmicControls.pickGas1.value, gas2: cosmicControls.pickGas2.value, star: cosmicControls.pickStar.value },
+    gaugeValue: parseInt(cosmicControls.numGauge.value) / 100
+  };
+}
+
+Object.values(cosmicControls).forEach(el => { el?.addEventListener('input', syncCosmicControls); });
+
+document.querySelectorAll('.btn-export-ratio, [data-ratio]').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    const ratio = e.currentTarget.getAttribute('data-ratio') || e.currentTarget.innerText.trim();
+    window.cosmicEngineSettings.exportRatio = ratio;
+  });
+});
+
+// 🔒 [강력 방어 가드]: 자막(SRT)이나 외부 모듈이 manager.switchSketch를 가로채는 것을 원천 차단
+const originalSwitchSketch = manager.switchSketch.bind(manager);
+manager.switchSketch = async function(sketchName, ...args) {
+  // 현재 활성화된 UI li 요소의 스케치 이름을 확인
+  const currentActiveLi = document.querySelector('#sketch-list li.active');
+  const lockedSketch = currentActiveLi ? currentActiveLi.getAttribute('data-sketch') : null;
+
+  // 만약 사용자가 028번(또는 현재 선택된 스케치)을 켜두었는데 외부에서 다른 걸 띄우려 하면 캔슬
+  if (lockedSketch && lockedSketch.includes('028') && sketchName && !String(sketchName).includes('028')) {
+    console.warn(`[🔒 Main Sketch Lock] 외부 모듈에 의한 ${sketchName} 강제 전환 차단됨. 현재 스케치 고정 유지!`);
+    return; 
+  }
+  return originalSwitchSketch(sketchName, ...args);
+};
+
+// 🎯 스케치 리스트 클릭 수동 전환
 const sketchListContainer = document.getElementById('sketch-list');
 if (sketchListContainer) {
   sketchListContainer.addEventListener('click', async (e) => {
@@ -399,8 +446,8 @@ if (sketchListContainer) {
 
     const targetSketch = targetLi.getAttribute('data-sketch');
     try {
-      updateAudioDelayForSketch(targetSketch); // 💡 스케치별 delayTime 가변 스위칭
-      await manager.switchSketch(targetSketch, analyzer);
+      updateAudioDelayForSketch(targetSketch);
+      await originalSwitchSketch(targetSketch, analyzer);
       syncCosmicControls();
     } catch(err) {
       console.error(`[Sketch Switch Error] ${targetSketch} 로딩 실패:`, err);
@@ -409,11 +456,11 @@ if (sketchListContainer) {
 }
 
 const activeLi = document.querySelector('#sketch-list li.active');
-const initSketch = activeLi ? activeLi.getAttribute('data-sketch') : '001_p5_wave.js';
+const initSketch = activeLi ? activeLi.getAttribute('data-sketch') : '028_pump_rhythm_highway.js';
 syncCosmicControls();
 updateAudioDelayForSketch(initSketch);
 
-manager.switchSketch(initSketch, analyzer).then(() => {
+originalSwitchSketch(initSketch, analyzer).then(() => {
   renderEngineTicker();
 }).catch(err => {
   renderEngineTicker();
