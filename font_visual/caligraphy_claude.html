@@ -156,7 +156,22 @@
       </div>
 
       <div class="control-group">
-        <div class="section-title">🖼️ 6. 배경 및 먹물 색상</div>
+        <div class="section-title">🖌️ 6. 글자 모양 변형 스타일</div>
+        <label for="char-style-select">획 변형 스타일</label>
+        <select id="char-style-select">
+          <option value="none" selected>✒️ 기본 (변형 없음)</option>
+          <option value="round-bulge">⚪ 각진 부분 둥글고 크게 (유선형)</option>
+          <option value="seal-fill">🔳 전서체처럼 틀에 꽉 채우기</option>
+          <option value="flowing-tail">🌊 획 끝을 다음 줄까지 흐르게</option>
+          <option value="flat-stretch">➡️ 아래 가로획(ㄴㅡㅠㅛ) 오른쪽으로 늘이기</option>
+          <option value="tall-slim">🕴️ 세로로 길게 (키다리)</option>
+          <option value="puffy-counter">🍩 속공간(ㅁㅇㅎㅂ) 부풀리기</option>
+          <option value="bulbous-ends">🔘 시작/끝 혹부리처럼 뭉치기</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <div class="section-title">🖼️ 7. 배경 및 먹물 색상</div>
         <label for="bg-style">배경 스타일</label>
         <select id="bg-style">
           <option value="hanji" selected>전통 한지 (Rice Paper)</option>
@@ -170,7 +185,7 @@
       </div>
 
       <div class="control-group">
-        <div class="section-title">📜 7. 로드된 자막 목록</div>
+        <div class="section-title">📜 8. 로드된 자막 목록</div>
         <div class="srt-list-container" id="srt-list"></div>
       </div>
 
@@ -241,6 +256,7 @@
     const inkColorInput = document.getElementById('ink-color');
     const paramTightness = document.getElementById('param-tightness');
     const paramContrast = document.getElementById('param-contrast');
+    const charStyleSelect = document.getElementById('char-style-select');
     const fontStatusEl = document.getElementById('font-status');
 
     const progressModal = document.getElementById('progress-modal');
@@ -374,10 +390,163 @@
       }).join(' ');
     }
 
+    /* =========================================================================================
+       글자 모양 변형 스타일 (7종) - 벡터 윤곽선(contour) 좌표를 직접 변형해서 만든다.
+    ========================================================================================= */
+    function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+    function closeIfNeeded(points) {
+      if (points.length === 0) return points;
+      const first = points[0], last = points[points.length - 1];
+      if (Math.hypot(first.x - last.x, first.y - last.y) > 0.01) return points.concat([first]);
+      return points;
+    }
+
+    // Chaikin 코너 커팅: 뾰족한 모서리를 반복적으로 깎아내 둥글고 유선형인 곡선으로 만든다.
+    function chaikinSmooth(points, iterations) {
+      let pts = points;
+      for (let iter = 0; iter < iterations; iter++) {
+        const next = [];
+        const n = pts.length;
+        for (let i = 0; i < n - 1; i++) {
+          const p0 = pts[i], p1 = pts[i+1];
+          next.push({ x: p0.x*0.75 + p1.x*0.25, y: p0.y*0.75 + p1.y*0.25 });
+          next.push({ x: p0.x*0.25 + p1.x*0.75, y: p0.y*0.25 + p1.y*0.75 });
+        }
+        next.push(pts[n-1]);
+        pts = next;
+      }
+      return pts;
+    }
+
+    function signedArea(points) {
+      let a = 0;
+      for (let i = 0; i < points.length - 1; i++) a += points[i].x * points[i+1].y - points[i+1].x * points[i].y;
+      return a / 2;
+    }
+
+    function contourCentroid(points) {
+      let cx = 0, cy = 0;
+      points.forEach(p => { cx += p.x; cy += p.y; });
+      const n = points.length || 1;
+      return { x: cx / n, y: cy / n };
+    }
+
+    function scaleContourPoints(points, cx, cy, sx, sy) {
+      return points.map(p => ({ x: cx + (p.x - cx) * sx, y: cy + (p.y - cy) * sy }));
+    }
+
+    function recomputeBBox(contours) {
+      let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+      contours.forEach(c => c.points.forEach(p => {
+        if (p.x < x1) x1 = p.x; if (p.x > x2) x2 = p.x;
+        if (p.y < y1) y1 = p.y; if (p.y > y2) y2 = p.y;
+      }));
+      if (!isFinite(x1)) return { x1: 0, y1: 0, x2: 1, y2: 1 };
+      return { x1, y1, x2, y2 };
+    }
+
+    function contoursToPolygonSvgD(contours) {
+      return contours.map(c => {
+        if (c.points.length < 2) return '';
+        let d = `M ${c.points[0].x} ${c.points[0].y} `;
+        for (let i = 1; i < c.points.length; i++) d += `L ${c.points[i].x} ${c.points[i].y} `;
+        return d + 'Z';
+      }).join(' ');
+    }
+
+    // orderedContours: [{points}] (필순 정렬된 상태) -> 스타일이 적용된 {contours, flourish, bbox, taperMode, extraWidthMul}
+    function applyGlyphStyle(orderedContours, fontSize, styleType, seedVal) {
+      let contours = orderedContours.map(c => ({ points: c.points.slice() }));
+      let taperMode = 'normal';
+      let flourish = null;
+      let extraWidthMul = 1;
+
+      if (styleType === 'round-bulge') {
+        // 1. ㄱㄴㅁㅂ 같은 각진 부분을 둥글고 크게, 직선도 유선형으로
+        contours = contours.map(c => ({ points: chaikinSmooth(closeIfNeeded(c.points), 2) }));
+        extraWidthMul = 1.3;
+
+      } else if (styleType === 'seal-fill') {
+        // 2. 도장 전서체처럼 모양틀(정사각형에 가깝게)에 꽉 채우고 두껍게
+        const bb = recomputeBBox(contours);
+        const w = Math.max(1, bb.x2 - bb.x1), h = Math.max(1, bb.y2 - bb.y1);
+        const target = fontSize * 0.92;
+        const sx = clamp(target / w, 0.75, 1.9);
+        const sy = clamp(target / h, 0.75, 1.9);
+        const ccx = (bb.x1 + bb.x2) / 2, ccy = (bb.y1 + bb.y2) / 2;
+        contours = contours.map(c => ({ points: scaleContourPoints(c.points, ccx, ccy, sx, sy) }));
+        extraWidthMul = 1.55;
+
+      } else if (styleType === 'flowing-tail') {
+        // 3. 획의 윗/아랫부분을 길게 회전시켜 다음 줄까지 닿는 흐르는 꼬리를 추가
+        let bottomPt = null;
+        contours.forEach(c => c.points.forEach(p => { if (!bottomPt || p.y > bottomPt.y) bottomPt = p; }));
+        if (bottomPt) {
+          const tailLen = fontSize * 1.15;
+          const steps = 14;
+          const swing = fontSize * 0.3 * (seededRandom(seedVal) > 0.5 ? 1 : -1);
+          const pts = [];
+          for (let i = 0; i <= steps; i++) {
+            const t = i / steps;
+            pts.push({ x: bottomPt.x + Math.sin(t * Math.PI * 0.5) * swing, y: bottomPt.y + tailLen * t });
+          }
+          flourish = { points: pts };
+        }
+
+      } else if (styleType === 'flat-stretch') {
+        // 4. 아래쪽 획이 ㄴ,ㅡ,ㅠ,ㅛ처럼 가로로 납작하면 오른쪽으로 늘림
+        const bb = recomputeBBox(contours);
+        const bottomBand = bb.y1 + (bb.y2 - bb.y1) * 0.6;
+        contours = contours.map(c => {
+          let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+          c.points.forEach(p => { if (p.x<minX)minX=p.x; if(p.x>maxX)maxX=p.x; if(p.y<minY)minY=p.y; if(p.y>maxY)maxY=p.y; });
+          const w = maxX - minX, h = Math.max(1, maxY - minY);
+          const isFlatBottom = (w / h > 1.7) && (minY > bottomBand);
+          if (!isFlatBottom) return c;
+          const anchorX = minX;
+          return { points: c.points.map(p => ({ x: anchorX + (p.x - anchorX) * 1.7, y: p.y })) };
+        });
+
+      } else if (styleType === 'tall-slim') {
+        // 5. 세로 방향만 길게 빼서 키다리 아저씨처럼
+        const bb = recomputeBBox(contours);
+        const ccx = (bb.x1 + bb.x2) / 2, ccy = (bb.y1 + bb.y2) / 2;
+        contours = contours.map(c => ({ points: scaleContourPoints(c.points, ccx, ccy, 0.82, 1.55) }));
+
+      } else if (styleType === 'puffy-counter') {
+        // 6. ㅁ,ㅇ,ㅎ,ㅂ처럼 속공간(구멍)이 있는 글자는 그 공간을 부풀림
+        const closedPts = contours.map(c => closeIfNeeded(c.points));
+        const areas = closedPts.map(pts => signedArea(pts));
+        let outerIdx = 0, maxAbs = 0;
+        areas.forEach((a, i) => { if (Math.abs(a) > maxAbs) { maxAbs = Math.abs(a); outerIdx = i; } });
+        const outerSign = Math.sign(areas[outerIdx]) || 1;
+        contours = contours.map((c, i) => {
+          if (i === outerIdx) return c;
+          const sameSign = (Math.sign(areas[i]) || 1) === outerSign;
+          if (sameSign) return c;
+          const cc = contourCentroid(c.points);
+          return { points: scaleContourPoints(c.points, cc.x, cc.y, 1.45, 1.45) };
+        });
+
+      } else if (styleType === 'bulbous-ends') {
+        // 7. 시작점/끝점에 두껍게 획을 뭉쳐서 혹부리처럼
+        taperMode = 'bulbous';
+        extraWidthMul = 1.1;
+      }
+
+      const finalContours = contours.map(c => ({ points: c.points, length: contourLength(c.points) }));
+      if (flourish) flourish.length = contourLength(flourish.points);
+      const bbox = recomputeBBox(finalContours.length ? finalContours : orderedContours);
+
+      return { contours: finalContours, flourish, bbox, taperMode, extraWidthMul };
+    }
+
     // 획 순서 추정: 완벽한 실제 필순 데이터는 없으므로, 윤곽선의 좌상단 좌표를 기준으로
     // "위->아래, 왼쪽->오른쪽" 순으로 정렬해 자연스러운 한글 쓰기 흐름에 근접시킨다.
     function getGlyphBrushData(char, fontSize) {
-      const key = `${currentFontKey}|${char.codePointAt(0)}|${fontSize.toFixed(1)}`;
+      const styleType = charStyleSelect.value;
+      const key = `${currentFontKey}|${char.codePointAt(0)}|${fontSize.toFixed(1)}|${styleType}`;
       if (glyphDataCache.has(key)) return glyphDataCache.get(key);
 
       const path = currentFont.getPath(char, 0, 0, fontSize);
@@ -385,21 +554,40 @@
       try { bbox = path.getBoundingBox(); } catch (e) { bbox = { x1: 0, y1: -fontSize*0.5, x2: fontSize*0.3, y2: 0 }; }
       if (!isFinite(bbox.x1) || !isFinite(bbox.y1)) bbox = { x1: 0, y1: -fontSize*0.5, x2: fontSize*0.3, y2: 0 };
 
-      const rawContours = flattenGlyphPath(path.commands);
-      const contours = rawContours.map(pts => {
+      const rawContourPointArrays = flattenGlyphPath(path.commands);
+      if (rawContourPointArrays.length === 0) {
+        const blank = { contours: [], totalLength: fontSize * 0.2, bbox, svgD: '', isBlank: true, taperMode: 'normal', extraWidthMul: 1, flourishStartIndex: -1 };
+        glyphDataCache.set(key, blank);
+        return blank;
+      }
+
+      const orderedContours = rawContourPointArrays.map(pts => {
         let minX = Infinity, minY = Infinity;
         pts.forEach(p => { if (p.x < minX) minX = p.x; if (p.y < minY) minY = p.y; });
-        return { points: pts, length: contourLength(pts), minX, minY };
+        return { points: pts, minX, minY };
       });
-      contours.sort((a, b) => (a.minY - b.minY) || (a.minX - b.minX));
+      orderedContours.sort((a, b) => (a.minY - b.minY) || (a.minX - b.minX));
+
+      const seedVal = char.codePointAt(0) * 7 + Math.round(fontSize);
+      const styled = applyGlyphStyle(orderedContours, fontSize, styleType, seedVal);
+
+      let contours = styled.contours;
+      let flourishStartIndex = -1;
+      if (styled.flourish) {
+        flourishStartIndex = contours.length;
+        contours = contours.concat([{ points: styled.flourish.points, length: styled.flourish.length }]);
+      }
 
       const totalLength = contours.reduce((s, c) => s + c.length, 0);
       const data = {
         contours,
         totalLength: totalLength > 0 ? totalLength : fontSize * 0.2,
-        bbox,
-        svgD: commandsToSvgD(path.commands),
-        isBlank: rawContours.length === 0
+        bbox: styled.bbox,
+        svgD: contoursToPolygonSvgD(styled.contours),
+        isBlank: false,
+        taperMode: styled.taperMode,
+        extraWidthMul: styled.extraWidthMul,
+        flourishStartIndex
       };
       glyphDataCache.set(key, data);
       return data;
@@ -411,7 +599,7 @@
        - 미세한 지터로 손글씨 특유의 불규칙함 표현
        - 완전히 쓰인 글자는 원본 벡터 외곽선으로 깔끔하게 채워 마감(먹이 자리잡은 느낌)
     ========================================================================================= */
-    function stampSegment(targetCtx, p0, p1, distSoFar, contourLen, baseWidth, seed) {
+    function stampSegment(targetCtx, p0, p1, distSoFar, contourLen, baseWidth, seed, taperMode) {
       const segLen = Math.hypot(p1.x - p0.x, p1.y - p0.y);
       const steps = Math.max(1, Math.ceil(segLen / 2));
       for (let s = 0; s <= steps; s++) {
@@ -420,15 +608,39 @@
         const py = p0.y + (p1.y - p0.y) * t;
         const localDist = distSoFar + segLen * t;
         const travelT = contourLen > 0 ? Math.min(1, localDist / contourLen) : 1;
-        const taper = Math.sin(Math.min(1, travelT) * Math.PI);
+        let taper;
+        if (taperMode === 'bulbous') {
+          // 7. 시작점/끝점(t=0,1)을 두껍게, 중간을 가늘게 - 정상 테이퍼의 역
+          taper = 0.55 + 0.85 * (1 - Math.sin(Math.min(1, travelT) * Math.PI));
+        } else {
+          taper = 0.35 + 0.75 * Math.sin(Math.min(1, travelT) * Math.PI);
+        }
         const jitter = 0.85 + seededRandom(seed + localDist * 0.37) * 0.3;
-        const r = Math.max(0.6, (baseWidth / 2) * (0.35 + 0.75 * taper) * jitter);
+        const r = Math.max(0.6, (baseWidth / 2) * taper * jitter);
         targetCtx.globalAlpha = 0.85 + seededRandom(seed + localDist * 0.13) * 0.15;
         targetCtx.beginPath();
         targetCtx.arc(px, py, r, 0, Math.PI * 2);
         targetCtx.fill();
       }
       targetCtx.globalAlpha = 1;
+    }
+
+    function stampContourPortion(targetCtx, contour, drawLen, baseWidth, seed, taperMode) {
+      const pts = contour.points;
+      let acc = 0;
+      for (let i = 1; i < pts.length; i++) {
+        const segLen = Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
+        if (acc + segLen > drawLen) {
+          const localT = segLen > 0 ? (drawLen - acc) / segLen : 0;
+          const ex = pts[i-1].x + (pts[i].x - pts[i-1].x) * localT;
+          const ey = pts[i-1].y + (pts[i].y - pts[i-1].y) * localT;
+          stampSegment(targetCtx, pts[i-1], { x: ex, y: ey }, acc, contour.length, baseWidth, seed, taperMode);
+          return;
+        } else {
+          stampSegment(targetCtx, pts[i-1], pts[i], acc, contour.length, baseWidth, seed, taperMode);
+          acc += segLen;
+        }
+      }
     }
 
     function drawBrushGlyph(targetCtx, glyphData, centerX, centerY, revealLength, fullyDone, seed, brushScale) {
@@ -442,38 +654,28 @@
       targetCtx.save();
       targetCtx.translate(offX, offY);
 
+      const baseWidth = Math.max(3, (bbox.y2 - bbox.y1) * 0.045 * brushScale) * (glyphData.extraWidthMul || 1);
+
       if (fullyDone) {
         try {
           const p2d = new Path2D(glyphData.svgD);
           targetCtx.fill(p2d, 'nonzero');
         } catch (e) { /* Path2D 미지원 브라우저 대비 - 조용히 무시 */ }
+        // 흐르는 꼬리(스타일 3)는 채우기 폴리곤에 포함되지 않으므로 완성 상태에서도 항상 스탬핑해서 보여준다.
+        if (glyphData.flourishStartIndex >= 0) {
+          const fc = glyphData.contours[glyphData.flourishStartIndex];
+          stampContourPortion(targetCtx, fc, fc.length, baseWidth, seed + 999, glyphData.taperMode);
+        }
         targetCtx.restore();
         return;
       }
 
       let remaining = revealLength;
-      const baseWidth = Math.max(3, (bbox.y2 - bbox.y1) * 0.045 * brushScale);
-
       for (const contour of glyphData.contours) {
         if (remaining <= 0) break;
         const drawLen = Math.min(contour.length, remaining);
         remaining -= drawLen;
-
-        const pts = contour.points;
-        let acc = 0;
-        for (let i = 1; i < pts.length; i++) {
-          const segLen = Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
-          if (acc + segLen > drawLen) {
-            const localT = segLen > 0 ? (drawLen - acc) / segLen : 0;
-            const ex = pts[i-1].x + (pts[i].x - pts[i-1].x) * localT;
-            const ey = pts[i-1].y + (pts[i].y - pts[i-1].y) * localT;
-            stampSegment(targetCtx, pts[i-1], { x: ex, y: ey }, acc, contour.length, baseWidth, seed);
-            break;
-          } else {
-            stampSegment(targetCtx, pts[i-1], pts[i], acc, contour.length, baseWidth, seed);
-            acc += segLen;
-          }
-        }
+        stampContourPortion(targetCtx, contour, drawLen, baseWidth, seed, glyphData.taperMode);
       }
       targetCtx.restore();
     }
@@ -499,25 +701,79 @@
     /* =========================================================================================
        레이아웃: 마스크(이미지/도형) 안에 세로 한 줄로 배치, 또는 교본 격자 배치
     ========================================================================================= */
-    function layoutColumn(chars, bounds, tightness, contrast) {
-      const availH = bounds.h * 0.85;
-      const availW = bounds.w * 0.85;
+    // 마스크(도형/이미지)의 실제 모양을 y좌표별로 스캔해서 각 높이에서의 폭과 중심 x를 구한다.
+    // 다이아몬드/삼각형처럼 위아래로 뾰족해지는 도형은 폭이 좁아지므로, 이 정보 없이 사각
+    // 바운딩박스만으로 글자를 배치하면 뾰족한 부분에서 글자가 도형 밖으로 나가 마스크에 잘려버린다.
+    function sampleShapeRows(maskImg, bounds, numSamples) {
+      const off = document.createElement('canvas');
+      off.width = 1920; off.height = 1080;
+      const octx = off.getContext('2d');
+      octx.drawImage(maskImg, 0, 0, 1920, 1080);
+      const data = octx.getImageData(0, 0, 1920, 1080).data;
+      const rows = [];
+      for (let i = 0; i < numSamples; i++) {
+        const y = Math.min(1079, Math.round(bounds.y + (i + 0.5) / numSamples * bounds.h));
+        let minX = null, maxX = null;
+        for (let x = Math.max(0, bounds.x - 4); x < Math.min(1920, bounds.x + bounds.w + 4); x += 2) {
+          const a = data[(y * 1920 + x) * 4 + 3];
+          if (a > 128) { if (minX === null) minX = x; maxX = x; }
+        }
+        rows.push({ y, width: minX !== null ? (maxX - minX) : 0, cx: minX !== null ? (minX + maxX) / 2 : bounds.x + bounds.w / 2 });
+      }
+      return rows;
+    }
+
+    // 도형 전체 높이 중, 폭이 충분히 넓게 유지되는 "안전하게 글자가 다 들어가는 구간"만 골라낸다.
+    // (뾰족한 꼭짓점 근처는 제외하고, 가장 넓은 중간 부분에 글자를 배치)
+    function computeSafeBand(rows) {
+      const maxW = Math.max(1, ...rows.map(r => r.width));
+      const threshold = maxW * 0.55;
+      let y0 = null, y1 = null, minWidth = maxW;
+      rows.forEach(r => {
+        if (r.width >= threshold) {
+          if (y0 === null) y0 = r.y;
+          y1 = r.y;
+          if (r.width < minWidth) minWidth = r.width;
+        }
+      });
+      if (y0 === null) { y0 = rows[0].y; y1 = rows[rows.length - 1].y; minWidth = maxW; }
+      return { y0, y1, minWidth, maxWidth: maxW };
+    }
+
+    function localCenterXAt(rows, y) {
+      if (rows.length === 0) return 960;
+      if (y <= rows[0].y) return rows[0].cx;
+      if (y >= rows[rows.length - 1].y) return rows[rows.length - 1].cx;
+      for (let i = 1; i < rows.length; i++) {
+        if (y <= rows[i].y) {
+          const r0 = rows[i-1], r1 = rows[i];
+          const t = (y - r0.y) / Math.max(1, r1.y - r0.y);
+          return r0.cx + (r1.cx - r0.cx) * t;
+        }
+      }
+      return rows[rows.length - 1].cx;
+    }
+
+    function layoutColumn(chars, bounds, tightness, contrast, rows, band) {
+      const availH = Math.max(20, (band.y1 - band.y0)) * 0.94;
+      const availW = Math.max(20, band.minWidth) * 0.88;
       const n = chars.length || 1;
       const weightSum = (chars[0] && chars[0] !== ' ' ? contrast : 1) + Math.max(0, n - 1);
 
       let unit = availH / (weightSum + (n - 1) * tightness * 0.3);
       unit = Math.min(unit, availW / Math.max(1, contrast * 0.95));
-      unit = Math.max(16, unit);
+      unit = Math.max(14, unit);
 
-      const centerX = bounds.x + bounds.w / 2;
       const sizes = chars.map((ch, i) => (i === 0 && ch !== ' ') ? unit * contrast : unit);
       const totalH = sizes.reduce((a, b) => a + b, 0) + (n - 1) * unit * tightness * 0.3;
 
-      let y = bounds.y + bounds.h / 2 - totalH / 2;
+      const bandCenterY = (band.y0 + band.y1) / 2;
+      let y = bandCenterY - totalH / 2;
       const positions = sizes.map(sz => {
         const cy = y + sz / 2;
+        const cx = localCenterXAt(rows, cy);
         y += sz + unit * tightness * 0.3;
-        return { x: centerX, y: cy, size: sz };
+        return { x: cx, y: cy, size: sz };
       });
       return { positions, sizes };
     }
@@ -630,6 +886,16 @@
       return bounds;
     }
 
+    const shapeRowsCache = new Map();
+    function getShapeRowsAndBand(maskImg, bounds) {
+      if (shapeRowsCache.has(maskImg)) return shapeRowsCache.get(maskImg);
+      const rows = sampleShapeRows(maskImg, bounds, 48);
+      const band = computeSafeBand(rows);
+      const result = { rows, band };
+      shapeRowsCache.set(maskImg, result);
+      return result;
+    }
+
     maskFileInput.addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (!file) return;
@@ -653,7 +919,8 @@
     function renderMaskFitMode(chars, writeProgress, maskImg, inkColor, tightness, contrast, seed, guideMode) {
       if (!maskImg) return;
       const bounds = getMaskBounds(maskImg);
-      const { positions, sizes } = layoutColumn(chars, bounds, tightness, contrast);
+      const { rows, band } = getShapeRowsAndBand(maskImg, bounds);
+      const { positions, sizes } = layoutColumn(chars, bounds, tightness, contrast, rows, band);
       const { plan, totalLen } = computeCharPlan(chars, sizes);
       const inkRevealed = writeProgress * totalLen;
 
@@ -679,17 +946,30 @@
 
       if (guideMode === 'guide-shape') {
         ctx.save();
-        ctx.strokeStyle = 'rgba(255, 107, 55, 0.5)';
+        // 실제 도형/이미지 실루엣 자체를 옅게 오버레이해서 "가이드 틀 모양"이 사각형이 아니라
+        // 진짜 도형 윤곽임을 눈으로 바로 확인할 수 있게 한다.
+        ctx.globalAlpha = 0.16;
+        ctx.drawImage(maskImg, 0, 0, 1920, 1080);
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = 'rgba(255, 107, 55, 0.55)';
         ctx.lineWidth = 2; ctx.setLineDash([6, 6]);
         ctx.strokeRect(bounds.x, bounds.y, bounds.w, bounds.h);
+        // 글자가 실제로 배치되는 "안전 구간"은 청록색 실선으로 별도 표시
+        ctx.strokeStyle = 'rgba(80, 220, 200, 0.6)';
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(bounds.x, band.y0); ctx.lineTo(bounds.x + bounds.w, band.y0);
+        ctx.moveTo(bounds.x, band.y1); ctx.lineTo(bounds.x + bounds.w, band.y1);
+        ctx.stroke();
         ctx.restore();
       } else if (guideMode === 'subtle-axis') {
         ctx.save();
         ctx.strokeStyle = 'rgba(28,25,23,0.25)';
         ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.moveTo(bounds.x + bounds.w / 2, bounds.y);
-        ctx.lineTo(bounds.x + bounds.w / 2, bounds.y + bounds.h);
+        rows.forEach((r, i) => {
+          if (i === 0) ctx.moveTo(r.cx, r.y); else ctx.lineTo(r.cx, r.y);
+        });
         ctx.stroke();
         ctx.restore();
       }
@@ -917,7 +1197,7 @@
       document.getElementById('val-contrast').textContent = e.target.value + 'x';
       renderFrame(currentTime);
     });
-    [engineModeSelect, shapeFrameSelect, paramShowGuide, bgStyleSelect, inkColorInput].forEach(el => {
+    [engineModeSelect, shapeFrameSelect, paramShowGuide, bgStyleSelect, inkColorInput, charStyleSelect].forEach(el => {
       el.addEventListener('change', () => renderFrame(currentTime));
     });
     fontFamilySelect.addEventListener('change', () => ensureFontLoaded());
