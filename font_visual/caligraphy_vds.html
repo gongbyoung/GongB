@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SRT 캘리그라피 세션 스튜디오 (v26)</title>
+  <title>SRT 캘리그라피 스튜디오 v27 (드래그 배치 & 비파괴 편집)</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Nanum+Brush+Script&display=swap" rel="stylesheet">
@@ -17,8 +17,8 @@
     .main-container { display: flex; flex: 1; overflow: hidden; }
     .sidebar { width: 380px; background: var(--panel-bg); border-right: 1px solid var(--panel-border); padding: 20px; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; }
     .preview-area { flex: 1; display: flex; flex-direction: column; background: #0a0a0c; align-items: center; justify-content: center; padding: 20px; position: relative; }
-    .canvas-wrapper { position: relative; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8); border-radius: 8px; overflow: hidden; max-width: 100%; max-height: 70vh; }
-    canvas { display: block; max-width: 100%; max-height: 70vh; object-fit: contain; }
+    .canvas-wrapper { position: relative; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8); border-radius: 8px; overflow: hidden; max-width: 100%; max-height: 70vh; cursor: grab; }
+    canvas { display: block; max-width: 100%; max-height: 70vh; object-fit: contain; pointer-events: none; } /* 캔버스 자체 클릭 방지, wrapper에서 드래그 처리 */
     
     .player-controls { width: 100%; max-width: 960px; margin-top: 15px; background: var(--panel-bg); padding: 14px 20px; border-radius: 10px; display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--panel-border); }
     .timeline-row { display: flex; align-items: center; gap: 12px; }
@@ -26,7 +26,6 @@
     button.btn-action { background: var(--accent-gradient); color: white; border: none; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; }
     button.btn-secondary { background: #2b2b38; border: 1px solid var(--panel-border); color: var(--text-main); padding: 10px 16px; border-radius: 6px; cursor: pointer; }
 
-    /* 컨트롤 CSS */
     .section-title { font-size: 0.9rem; font-weight: 700; color: var(--accent-color); text-transform: uppercase; margin-bottom: 6px; }
     select, input[type="range"], input[type="color"], input[type="number"], input[type="text"], textarea { width: 100%; padding: 8px; background: #16161a; border: 1px solid var(--panel-border); border-radius: 6px; color: var(--text-main); font-size: 0.85rem; margin-bottom: 4px; }
     label { font-size: 0.82rem; color: var(--text-muted); display: flex; justify-content: space-between; margin-top: 6px; }
@@ -36,7 +35,6 @@
     .srt-item { padding: 6px 10px; border-bottom: 1px solid #22222a; font-size: 0.8rem; cursor: pointer; display: flex; justify-content: space-between; }
     .srt-item.active { background: rgba(255, 107, 55, 0.2); border-left: 3px solid var(--accent-color); }
 
-    /* LOG */
     #log-panel { position: fixed; right: 10px; top: 10px; width: 300px; max-height: 90vh; background: rgba(30, 30, 36, 0.95); border: 1px solid var(--panel-border); border-radius: 8px; padding: 15px; overflow-y: auto; z-index: 999; font-size: 0.8rem; }
     #log-panel h3 { color: var(--accent-color); margin-bottom: 10px; font-size: 1rem; border-bottom: 1px solid #444; padding-bottom: 5px; }
     .log-entry { border-bottom: 1px dashed #333; padding: 5px 0; color: var(--text-muted); }
@@ -51,12 +49,11 @@
 </head>
 <body>
   <header>
-    <h1>🖌️ SRT 캘리그라피 세션 스튜디오 v26</h1>
+    <h1>🖌️ SRT 캘리그라피 스튜디오 v27 (드래그 배치)</h1>
   </header>
 
   <div class="main-container">
     <div class="sidebar">
-      <!-- 1. 폰트 로딩 및 SRT -->
       <div class="section-title">📂 1. 폰트 & SRT 로딩</div>
       <label for="ttf-input" class="btn-file">📁 나만의 TTF 폰트 불러오기</label>
       <input type="file" id="ttf-input" accept=".ttf, .otf">
@@ -67,15 +64,19 @@
       <textarea id="srt-textarea" class="srt-textarea" placeholder="SRT 내용 입력"></textarea>
       <button class="btn-secondary" id="btn-apply-srt" style="width:100%;">✏️ 자막 적용하기</button>
 
-      <!-- 2. 비율 -->
       <div class="section-title">📐 2. 캔버스 비율</div>
       <select id="aspect-ratio-select">
         <option value="16:9" selected>16:9 가로형 (1920x1080)</option>
         <option value="9:16">9:16 세로형 (1080x1920)</option>
       </select>
 
-      <!-- 3. 글로벌 세션 설정 -->
-      <div class="section-title">🎛️ 3. 선택된 자막 세션 설정</div>
+      <!-- 드래그 가이드 안내 -->
+      <div style="background: #2a2a36; padding: 10px; border-radius: 6px; font-size: 0.8rem; color: #aaa; border: 1px solid #444;">
+        💡 <strong>편집 팁:</strong> 캔버스의 글씨(틀)를 마우스로 직접 끌어서(X/Y) 위치를 변경할 수 있습니다.<br>
+        편집 시에는 잘리지 않으며, 녹화할 때만 도형 안으로 잘립니다.
+      </div>
+
+      <div class="section-title">🎛️ 3. 선택된 세션 설정</div>
       <div id="session-controls" style="display: none;">
         <label>선택된 세션 ID</label>
         <input type="text" id="session-id" readonly>
@@ -88,26 +89,18 @@
 
         <label>크기 배율 <span id="val-scale">1.0x</span></label>
         <input type="range" id="session-scale" min="0.5" max="2.0" step="0.1" value="1.0">
-        
-        <label>세션 마스크 (기본 역삼각형)</label>
-        <select id="session-mask">
-          <option value="default">기본 역삼각형</option>
-        </select>
       </div>
-      <div style="font-size: 0.8rem; color: #777;">* SRT 목록에서 자막을 클릭하면 이곳에서 개별 설정이 가능합니다.</div>
 
-      <!-- 4. 마스크 업로드 -->
       <div class="section-title">🖼️ 4. 흑백 마스크 업로드 (공용)</div>
       <label for="mask-file-input" class="btn-file">🖼️ 흑백 마스크 이미지 (.png / .jpg)</label>
       <input type="file" id="mask-file-input" accept="image/*">
 
-      <!-- 5. 붓 터치 및 강도 (모든 세션 공통 적용) -->
       <div class="section-title">🖌️ 5. 붓 터치 스타일 & POWER</div>
       <select id="morph-style">
         <option value="none">✨ 기본</option>
-        <option value="soft-bubble">🥚 둥글둥글 (부드러운 먹)</option>
-        <option value="sharp-spike">🗡️ 뾰족한 선 (거친 빠른 붓)</option>
-        <option value="contrast-dynamic">🦁 강약 (중요 단어 크게)</option>
+        <option value="soft-bubble">🥚 둥글둥글</option>
+        <option value="sharp-spike">🗡️ 뾰족한 선</option>
+        <option value="contrast-dynamic">🦁 강약 (첫 단어 강조)</option>
         <option value="ink-shade">💧 농담 (먹 번짐)</option>
         <option value="deform-free">🧬 변형 (키다리/혹부리)</option>
         <option value="curved-flow">🌊 구도 (곡선 배치)</option>
@@ -116,12 +109,10 @@
       <label>POWER (강도) <span id="val-power">1.0x</span></label>
       <input type="range" id="power-slider" min="0.1" max="3.0" step="0.1" value="1.0">
 
-      <!-- 6. 줄간격 -->
       <div class="section-title">📏 6. 줄간격</div>
       <label>줄간격 <span id="val-line">1.2x</span></label>
       <input type="range" id="line-slider" min="0.5" max="2.0" step="0.1" value="1.2">
 
-      <!-- 7. 배경 & 색상 -->
       <div class="section-title">🖼️ 7. 배경 & 색상</div>
       <select id="bg-style">
         <option value="hanji" selected>전통 한지</option>
@@ -131,14 +122,12 @@
       </select>
       <input type="color" id="ink-color" value="#1c1917">
 
-      <!-- 8. 자막 목록 -->
       <div class="section-title">📜 8. 세션(SRT) 목록</div>
       <div class="srt-list-container" id="srt-list"></div>
     </div>
 
-    <!-- 미리보기 및 플레이어 -->
     <div class="preview-area">
-      <div class="canvas-wrapper">
+      <div class="canvas-wrapper" id="canvas-wrapper">
         <canvas id="calligraphy-canvas" width="1920" height="1080"></canvas>
       </div>
       
@@ -149,36 +138,33 @@
           <div class="time-display" id="time-display">00:00.00 / 00:00.00</div>
         </div>
         <div style="display: flex; justify-content: space-between; align-items: center;">
-          <div id="res-indicator" style="font-size:0.85rem; color:var(--text-muted);">해상도: 1920x1080 | 가이드 라인: 편집 시 표시, 녹화 시 숨김</div>
+          <div id="res-indicator" style="font-size:0.85rem; color:var(--text-muted);">해상도: 1920x1080 | 편집 시 미리보기 / 녹화 시 마스크 적용</div>
           <button class="btn-action" id="btn-export">🔴 녹화 시작 (자동 재생 후 저장)</button>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- LOG 패널 -->
   <div id="log-panel">
     <h3>📊 렌더링 LOG</h3>
     <div id="log-messages"></div>
   </div>
 
-  <!-- 초기 안내 모달 -->
   <div class="intro-overlay" id="intro-modal">
     <div class="intro-box">
       <h2>📖 사용 방법 안내</h2>
       <ol>
         <li>SRT 자막을 업로드하거나 입력합니다.</li>
-        <li>좌측 목록에서 자막을 하나 선택하면, 해당 자막의 세션 설정이 나타납니다. (위치, 크기, 마스크 변경 가능)</li>
-        <li>흑백 마스크 이미지를 업로드하면 모든 세션의 기본 마스크로 사용됩니다. (기본값: 역삼각형)</li>
-        <li>좌측에서 붓 스타일, POWER(강도), 줄간격을 조정합니다.</li>
-        <li>미리보기에서는 가이드라인이 항상 보이며, <strong>녹화 버튼을 누르면 가이드라인은 자동으로 숨겨지고</strong> 0초부터 자동 재생되어 파일이 저장됩니다.</li>
+        <li>좌측 목록에서 자막을 선택하면 세션 설정이 나타납니다.</li>
+        <li><strong>캔버스의 글자를 마우스로 직접 드래그하여 위치를 잡습니다.</strong> (가이드 박스는 중앙을 알려주는 참조선입니다)</li>
+        <li>마스크를 업로드하면 해당 도형 안에만 먹물이 칠해집니다. (편집 중에는 잘리지 않고, 녹화 시에만 잘립니다)</li>
+        <li>붓 스타일과 POWER를 조절한 뒤, 녹화 버튼을 누르면 자동으로 저장됩니다.</li>
       </ol>
       <button class="intro-close-btn" onclick="document.getElementById('intro-modal').style.display='none'">🚀 시작하기</button>
     </div>
   </div>
 
   <script>
-    // 로그 함수
     function logMessage(msg) {
       const logDiv = document.getElementById('log-messages');
       const div = document.createElement('div');
@@ -190,10 +176,12 @@
 
     const canvas = document.getElementById('calligraphy-canvas');
     const ctx = canvas.getContext('2d');
+    const wrapper = document.getElementById('canvas-wrapper');
     
     let srtData = [], totalDuration = 0, currentTime = 0, isPlaying = false, animationFrameId = null, lastTimestamp = 0;
     let currentFont = null;
-    let selectedSessionIndex = 0; // 현재 선택된 SRT 세션
+    let selectedSessionIndex = 0;
+    let isRecording = false;
 
     const maskCanvas = document.createElement('canvas');
     const maskCtx = maskCanvas.getContext('2d');
@@ -201,33 +189,70 @@
     let currentMaskAlphaImage = null;
     const maskBoundsCache = new Map();
     
-    // 슬라이더 및 컨트롤
     const powerSlider = document.getElementById('power-slider');
     const lineSlider = document.getElementById('line-slider');
     const morphStyleSelect = document.getElementById('morph-style');
     const power = () => parseFloat(powerSlider.value);
     const lineHeightMul = () => parseFloat(lineSlider.value);
 
-    // 녹화 상태
-    let isRecording = false;
+    // [핵심 수정 1] 마우스 드래그 배치 로직
+    let isDragging = false;
+    let dragStartX = 0, dragStartY = 0, dragStartSessionX = 0, dragStartSessionY = 0;
 
-    // ========== 1. 사용자 지정 TTF 폰트 로딩 ==========
+    wrapper.addEventListener('mousedown', (e) => {
+      if (isRecording || !srtData[selectedSessionIndex]) return;
+      isDragging = true;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      dragStartSessionX = srtData[selectedSessionIndex].session.x;
+      dragStartSessionY = srtData[selectedSessionIndex].session.y;
+      wrapper.style.cursor = 'grabbing';
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      
+      const dx = (e.clientX - dragStartX) * scaleX;
+      const dy = (e.clientY - dragStartY) * scaleY;
+
+      srtData[selectedSessionIndex].session.x = dragStartSessionX + dx;
+      srtData[selectedSessionIndex].session.y = dragStartSessionY + dy;
+
+      // 슬라이더 UI 업데이트
+      document.getElementById('session-x').value = Math.round(srtData[selectedSessionIndex].session.x);
+      document.getElementById('session-y').value = Math.round(srtData[selectedSessionIndex].session.y);
+      document.getElementById('val-x').textContent = Math.round(srtData[selectedSessionIndex].session.x);
+      document.getElementById('val-y').textContent = Math.round(srtData[selectedSessionIndex].session.y);
+
+      renderFrame(currentTime);
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        wrapper.style.cursor = 'grab';
+        logMessage(`세션 #${srtData[selectedSessionIndex].id} 위치 변경: X: ${Math.round(srtData[selectedSessionIndex].session.x)}, Y: ${Math.round(srtData[selectedSessionIndex].session.y)}`);
+      }
+    });
+
+    // TTF 로딩
     document.getElementById('ttf-input').addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (!file) return;
       const reader = new FileReader();
       reader.onload = (evt) => {
-        const arrayBuffer = evt.target.result;
-        const font = opentype.parse(arrayBuffer);
-        currentFont = font;
-        document.getElementById('font-status').textContent = `✅ 커스텀 폰트 적용: ${file.name}`;
+        currentFont = opentype.parse(evt.target.result);
+        document.getElementById('font-status').textContent = `✅ 커스텀 폰트: ${file.name}`;
         logMessage(`<strong>[폰트]</strong> ${file.name} 로딩 성공`);
         renderFrame(currentTime);
       };
       reader.readAsArrayBuffer(file);
     });
 
-    // ========== 2. 마스크 처리 (이미지만 사용) ==========
+    // 마스크 처리
     function normalizeMaskAlpha(img) {
       return new Promise(resolve => {
         const w = canvas.width, h = canvas.height;
@@ -278,7 +303,6 @@
       return bounds;
     }
 
-    // 기본 역삼각형 마스크 생성
     function getDefaultMask() {
       const w = canvas.width, h = canvas.height;
       const off = document.createElement('canvas');
@@ -293,29 +317,34 @@
       octx.fill();
       return off;
     }
-    
-    // 가이드라인 (편집 시에만 그려짐)
+
+    // [핵심 수정 2] 가이드라인: 이제 "중심"을 표시하는 십자선과 박스로 변경 (글자를 자르지 않음)
     function drawGuideFrame() {
-      if (isRecording) return; // 녹화 중에는 숨김
+      if (isRecording) return; 
       ctx.save();
-      ctx.strokeStyle = 'rgba(255, 107, 55, 0.8)';
+      ctx.strokeStyle = 'rgba(255, 107, 55, 0.6)';
       ctx.lineWidth = 2;
       ctx.setLineDash([8, 8]);
-      
+
       const mask = currentMaskAlphaImage || getDefaultMask();
       const bounds = getMaskBounds(mask);
+      
+      // 모양 틀 박스
       ctx.strokeRect(bounds.x, bounds.y, bounds.w, bounds.h);
       
-      // 가운데 축
-      ctx.strokeStyle = 'rgba(255, 107, 55, 0.3)';
+      // 정확한 중심 십자선
+      const centerX = bounds.x + bounds.w / 2;
+      const centerY = bounds.y + bounds.h / 2;
+      ctx.strokeStyle = 'rgba(255, 107, 55, 0.9)';
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.moveTo(canvas.width/2, 0); ctx.lineTo(canvas.width/2, canvas.height);
-      ctx.moveTo(0, canvas.height/2); ctx.lineTo(canvas.width, canvas.height/2);
+      ctx.moveTo(centerX, bounds.y); ctx.lineTo(centerX, bounds.y + bounds.h);
+      ctx.moveTo(bounds.x, centerY); ctx.lineTo(bounds.x + bounds.w, centerY);
       ctx.stroke();
+
       ctx.restore();
     }
 
-    // ========== 3. 붓 스타일 엔진 (기존 + POWER 적용) ==========
     function getStyleParams(style) {
       const p = power();
       let sp = { width: 1.0, jitter: 1.0, alpha: 1.0, size: 1.0, curve: 0, deform: false };
@@ -331,6 +360,7 @@
       return sp;
     }
 
+    // ... (기존 브러시 렌더링 함수들: stampSegment, flattenGlyphPath, etc - 생략하지 않고 그대로 유지해야 함)
     function stampSegment(targetCtx, p0, p1, distSoFar, contourLen, baseWidth, seed, sp) {
       const segLen = Math.hypot(p1.x - p0.x, p1.y - p0.y);
       const steps = Math.max(1, Math.ceil(segLen / 2));
@@ -360,7 +390,6 @@
     function seededRandom(seed){let x=Math.sin(seed++)*10000;return x-Math.floor(x);}
     function computeCharPlan(chars, sizes) { let cum=0; const plan=chars.map((ch,i)=>{let data=null,length;if(ch!==' '){data=getGlyphBrushData(ch,sizes[i]);length=Math.max(data.totalLength,sizes[i]*0.2);}else{length=sizes[i]*0.3;}cum+=length;return{ch,data,length,cumEnd:cum};});return{plan,totalLen:cum||1};}
 
-    // ========== 4. 레이아웃 및 렌더링 (세션 변수 적용) ==========
     function layoutSessionText(text, bounds, tightness, contrast, sp, session) {
       let lines = text.split('\n').filter(l => l.trim().length > 0);
       if (lines.length === 1 && text.includes(' ')) lines = text.split(' ').filter(l => l.trim().length > 0);
@@ -449,13 +478,12 @@
       targetCtx.restore();
     }
 
-    // 마스크 렌더링 (사용자 업로드 마스크 + 세션 위치/크기)
-    function renderMaskFitMode(text, writeProgress, maskImg, inkColor, sp, session) {
+    // [핵심 수정 3] 편집 모드에서는 자르지 않고, 녹화 모드에서만 마스크 적용
+    function renderMaskFitMode(text, writeProgress, maskImg, inkColor, sp, session, applyClip) {
       if (!maskImg) return;
       const w = canvas.width, h = canvas.height;
       const bounds = getMaskBounds(maskImg);
       
-      // 세션 설정에 따른 마스크 위치 변형
       const offsetX = session.x || 0;
       const offsetY = session.y || 0;
       const scale = session.scale || 1.0;
@@ -479,18 +507,22 @@
         if (inkRevealed >= item.cumEnd) drawBrushGlyph(maskCtx, item.data, pos.x, pos.y, 0, true, i*13, 1, sp, item.ch);
         else if (inkRevealed > item.cumEnd - item.length) drawBrushGlyph(maskCtx, item.data, pos.x, pos.y, inkRevealed - (item.cumEnd - item.length), false, i*13, 1, sp, item.ch);
       });
-      maskCtx.globalCompositeOperation = 'destination-in';
-      maskCtx.drawImage(maskImg, 0, 0, w, h);
-      maskCtx.globalCompositeOperation = 'source-over';
+
+      if (applyClip) {
+        // 녹화 시에만 잘라냄
+        maskCtx.globalCompositeOperation = 'destination-in';
+        maskCtx.drawImage(maskImg, 0, 0, w, h);
+        maskCtx.globalCompositeOperation = 'source-over';
+      }
+      
       ctx.drawImage(maskCanvas, 0, 0);
     }
 
-    // 프레임 렌더링
     function renderFrame(timeSec) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       drawBackground();
       
-      if (!isRecording) drawGuideFrame(); // 녹화 중이 아닐 때만 가이드
+      if (!isRecording) drawGuideFrame(); 
 
       if (!currentFont) return;
       const sp = getStyleParams(morphStyleSelect.value);
@@ -500,10 +532,10 @@
       const text = activeSubtitle.text.trim();
       const duration = Math.max(0.5, activeSubtitle.end - activeSubtitle.start);
       const writeProgress = Math.min(1, (timeSec - activeSubtitle.start) / (duration * 0.7));
-      const seed = (parseInt(activeSubtitle.id) || 1) * 97 + text.length;
-
       const maskImg = currentMaskAlphaImage || getDefaultMask();
-      renderMaskFitMode(text, writeProgress, maskImg, document.getElementById('ink-color').value, sp, activeSubtitle.session || {x:0, y:0, scale:1});
+
+      // 편집중(isRecording=false)일 때는 applyClip=false, 녹화중일 때는 true
+      renderMaskFitMode(text, writeProgress, maskImg, document.getElementById('ink-color').value, sp, activeSubtitle.session || {x:0, y:0, scale:1}, isRecording);
     }
 
     function drawBackground() {
@@ -515,7 +547,7 @@
       else {ctx.fillStyle='#000';ctx.fillRect(0,0,canvas.width,canvas.height);} 
     }
 
-    // ========== 5. SRT 관리 및 세션 바인딩 ==========
+    // SRT 및 세션
     function parseSRT(text){
       const n=text.replace(/\r/g,'\n');
       const b=n.split('\n\n');
@@ -525,13 +557,12 @@
         if(l.length>=3){
           const tm=l[1].match(/(.*?)\s*-->\s*(.*)/);
           if(tm){
-            // 세션 기본값 부여
             r.push({
               id:l[0],
               start:parseTime(tm[1]),
               end:parseTime(tm[2]),
               text:l.slice(2).join('\n'),
-              session: { x: 0, y: 0, scale: 1.0, maskId: 'default' } // 개별 세션 설정
+              session: { x: 0, y: 0, scale: 1.0 }
             });
           }
         }
@@ -567,43 +598,37 @@
       });
     }
 
-    // 세션 컨트롤 로드
     function loadSessionControls(idx) {
       const session = srtData[idx].session;
       document.getElementById('session-id').value = `세션 #${srtData[idx].id}`;
       document.getElementById('session-x').value = session.x;
       document.getElementById('session-y').value = session.y;
       document.getElementById('session-scale').value = session.scale;
-      document.getElementById('val-x').textContent = session.x;
-      document.getElementById('val-y').textContent = session.y;
+      document.getElementById('val-x').textContent = Math.round(session.x);
+      document.getElementById('val-y').textContent = Math.round(session.y);
       document.getElementById('val-scale').textContent = session.scale.toFixed(1) + 'x';
       document.getElementById('session-controls').style.display = 'block';
     }
 
-    // 세션 컨트롤 이벤트
     document.getElementById('session-x').addEventListener('input', (e) => {
       const v = parseInt(e.target.value);
       document.getElementById('val-x').textContent = v;
       srtData[selectedSessionIndex].session.x = v;
       renderFrame(currentTime);
-      logMessage(`세션 #${srtData[selectedSessionIndex].id} 위치 X: ${v} 변경`);
     });
     document.getElementById('session-y').addEventListener('input', (e) => {
       const v = parseInt(e.target.value);
       document.getElementById('val-y').textContent = v;
       srtData[selectedSessionIndex].session.y = v;
       renderFrame(currentTime);
-      logMessage(`세션 #${srtData[selectedSessionIndex].id} 위치 Y: ${v} 변경`);
     });
     document.getElementById('session-scale').addEventListener('input', (e) => {
       const v = parseFloat(e.target.value);
       document.getElementById('val-scale').textContent = v.toFixed(1) + 'x';
       srtData[selectedSessionIndex].session.scale = v;
       renderFrame(currentTime);
-      logMessage(`세션 #${srtData[selectedSessionIndex].id} 크기: ${v} 변경`);
     });
 
-    // ========== 6. 플레이어 & 녹화 (가이드 숨김 처리 포함) ==========
     function togglePlay(){ if(isPlaying){pause();}else{play();} }
     function play(){if(isPlaying)return;isPlaying=true;lastTimestamp=0;animationFrameId=requestAnimationFrame(animate);}
     function pause(){isPlaying=false;if(animationFrameId)cancelAnimationFrame(animationFrameId);}
@@ -614,8 +639,6 @@
     function startRecording(){
       pause();
       currentTime = 0;
-      
-      // 녹화 시작 시 가이드라인 숨김 처리
       isRecording = true;
       renderFrame(0);
 
@@ -637,7 +660,6 @@
         a.click();
         URL.revokeObjectURL(url);
         
-        // 녹화 종료 후 가이드라인 복구
         isRecording = false;
         renderFrame(currentTime);
         logMessage('✅ 녹화 완료! 파일이 저장되었습니다.');
@@ -645,7 +667,7 @@
 
       mediaRecorder.start(100);
       play();
-      logMessage('🔴 녹화 시작! (가이드라인이 숨겨졌습니다.)');
+      logMessage('🔴 녹화 시작! (가이드라인이 숨겨지고 마스크가 적용됩니다.)');
     }
 
     function stopRecording(){
@@ -653,7 +675,6 @@
       pause();
     }
 
-    // ========== 7. 이벤트 리스너 및 초기화 ==========
     document.getElementById('btn-play').addEventListener('click', togglePlay);
     document.getElementById('btn-export').addEventListener('click', startRecording);
     document.getElementById('time-slider').addEventListener('input', (e)=>{ currentTime = parseFloat(e.target.value); renderFrame(currentTime); });
@@ -661,25 +682,21 @@
     document.getElementById('btn-apply-srt').addEventListener('click',()=>loadSRTData(document.getElementById('srt-textarea').value));
     document.getElementById('aspect-ratio-select').addEventListener('change',()=>{const r=document.getElementById('aspect-ratio-select').value;canvas.width=r==='9:16'?1080:1920;canvas.height=r==='9:16'?1920:1080;maskCanvas.width=canvas.width;maskCanvas.height=canvas.height;renderFrame(currentTime);});
     
-    morphStyleSelect.addEventListener('change',()=>{logMessage(`스타일이 <strong>${morphStyleSelect.options[morphStyleSelect.selectedIndex].text}</strong>(으)로 변경되었습니다.`);renderFrame(currentTime);});
-    powerSlider.addEventListener('input',(e)=>{document.getElementById('val-power').textContent=e.target.value+'x';logMessage(`POWER 강도가 <strong>${e.target.value}x</strong>로 변경되었습니다.`);renderFrame(currentTime);});
-    lineSlider.addEventListener('input',(e)=>{document.getElementById('val-line').textContent=e.target.value+'x';logMessage(`줄간격이 <strong>${e.target.value}x</strong>로 변경되었습니다.`);renderFrame(currentTime);});
+    morphStyleSelect.addEventListener('change',()=>{logMessage(`스타일 변경: ${morphStyleSelect.options[morphStyleSelect.selectedIndex].text}`);renderFrame(currentTime);});
+    powerSlider.addEventListener('input',(e)=>{document.getElementById('val-power').textContent=e.target.value+'x';renderFrame(currentTime);});
+    lineSlider.addEventListener('input',(e)=>{document.getElementById('val-line').textContent=e.target.value+'x';renderFrame(currentTime);});
 
-    // 기본 폰트 설정 (나눔붓글씨)
     (async () => {
       try {
         const font = await new Promise((resolve, reject) => opentype.load("https://raw.githubusercontent.com/google/fonts/main/ofl/nanumbrushscript/NanumBrushScript-Regular.ttf", (err, f) => err ? reject(err) : resolve(f)));
         currentFont = font;
         document.getElementById('font-status').textContent = '✅ 기본 나눔붓글씨 준비 완료';
-        logMessage('<strong>[폰트]</strong> 기본 나눔붓글씨 로딩 성공');
       } catch (e) {
         document.getElementById('font-status').textContent = '⚠️ 기본 폰트 실패, TTF 업로드 필요';
-        logMessage('<strong>[폰트]</strong> 기본 폰트 로딩 실패. TTF를 업로드하세요.');
       }
       renderFrame(0);
     })();
 
-    // 샘플 SRT
     const demoSRT = `1\n00:00:00,000 --> 00:00:04,500\n황혼이 오늘도 바다가 되어\n\n2\n00:00:05,000 --> 00:00:08,500\n잠기고 잠기고\n\n3\n00:00:09,000 --> 00:00:13,000\n오늘이 가장 행복한 날`;
     loadSRTData(demoSRT);
 
