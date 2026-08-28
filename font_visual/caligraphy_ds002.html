@@ -3,33 +3,160 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>실시간 붓터치 캘리그라피</title>
+    <title>Calligraphy Generator v1.0</title>
     <style>
-        body { background-color: #f4f4f4; font-family: 'Noto Sans KR', sans-serif; margin: 0; display: flex; height: 100vh; overflow: hidden; }
-        .controls-panel { width: 350px; background: white; border-right: 2px solid #ddd; padding: 20px; overflow-y: auto; }
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* 왼쪽 패널 */
+        .controls-panel {
+            width: 350px;
+            background: white;
+            border-right: 2px solid #ddd;
+            padding: 20px;
+            overflow-y: auto;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.05);
+        }
+
+        .version-title {
+            font-size: 22px;
+            font-weight: 900;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 3px solid #2196F3;
+            color: #333;
+        }
+
         h2 { margin-top: 0; font-size: 18px; border-bottom: 2px solid #eee; padding-bottom: 10px; }
-        .control-group { margin-bottom: 15px; border: 1px solid #eee; border-radius: 8px; padding: 10px; background: #fafafa; }
+        
+        .control-group {
+            margin-bottom: 15px;
+            border: 1px solid #eee;
+            border-radius: 8px;
+            padding: 10px;
+            background: #fafafa;
+        }
+
         .control-group label { display: block; font-size: 14px; font-weight: bold; margin-bottom: 5px; }
         .input-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
         .input-row input[type="range"] { flex: 1; }
         .input-row input[type="number"] { width: 60px; padding: 5px; border: 1px solid #ccc; border-radius: 4px; text-align: center; }
+
         select, input[type="text"] { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+
         button { width: 100%; padding: 12px; margin-top: 5px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
         .btn-generate { background-color: #4CAF50; color: white; }
         .btn-save-img { background-color: #2196F3; color: white; }
         .btn-save-video { background-color: #ff9800; color: white; }
-        .main-area { flex: 1; display: flex; flex-direction: column; padding: 20px; }
-        .canvas-container { flex: 1; background: white; border: 2px solid #ddd; border-radius: 10px; display: flex; justify-content: center; align-items: center; overflow: hidden; margin-bottom: 20px; }
-        canvas { max-width: 100%; max-height: 100%; }
-        .log-panel { height: 200px; background: #1e1e1e; color: #00ff00; font-family: 'Courier New', monospace; font-size: 13px; padding: 15px; border-radius: 10px; overflow-y: auto; }
-        .log-panel h3 { margin-top: 0; color: white; border-bottom: 1px solid #444; padding-bottom: 5px;}
-        .log-entry { margin-bottom: 5px; border-bottom: 1px dashed #333; padding-bottom: 5px; }
+
+        /* 중앙 및 오른쪽 영역 */
+        .main-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .canvas-container {
+            flex: 1;
+            padding: 20px;
+            background: white;
+            margin: 20px;
+            border: 2px dashed #2196F3; /* 캔버스 경계 파란 점선 */
+            border-radius: 10px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        canvas {
+            max-width: 100%;
+            max-height: 100%;
+            /* 캔버스 자체에도 파란 테두리 표시 */
+            border: 1px solid rgba(33, 150, 243, 0.3); 
+            box-sizing: border-box;
+        }
+
+        /* 오른쪽 로그 패널 */
+        .log-panel {
+            width: 300px;
+            background: #1e1e1e;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            padding: 20px;
+            border-left: 2px solid #444;
+            overflow-y: auto;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+        }
+
+        .log-panel h3 { margin-top: 0; color: white; border-bottom: 1px solid #444; padding-bottom: 10px;}
+        .log-entry { margin-bottom: 5px; border-bottom: 1px dashed #333; padding-bottom: 5px; font-size: 12px; }
+
+        /* 팝업 모달 스타일 */
+        #overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: opacity 0.5s ease;
+        }
+
+        #popup {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            max-width: 500px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            text-align: center;
+        }
+
+        #popup h1 { margin-top: 0; color: #2196F3; }
+        #popup p { line-height: 1.6; font-size: 16px; text-align: left; }
+        #popup button {
+            width: auto;
+            padding: 10px 30px;
+            background: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
 
+    <!-- 로딩 시 팝업 -->
+    <div id="overlay">
+        <div id="popup">
+            <h1>🎨 캘리그라피 생성기</h1>
+            <h2 style="color: #555;">버전 1.0</h2>
+            <hr>
+            <p>
+                <b>📖 사용 방법</b><br><br>
+                1. 왼쪽 패널에서 문장을 입력합니다.<br>
+                2. 문장이 배치될 전체 모양(원, 별 등)을 선택합니다.<br>
+                3. 각 슬라이더를 움직여 획 두께, 글자 크기, 기울기를 조정합니다.<br>
+                4. 캔버스 내부에서 마우스를 움직이면 팝업이 사라지고 실시간으로 조정할 수 있습니다.<br><br>
+                <i>※ 본 팝업은 조작을 시작하면 자동으로 닫힙니다.</i>
+            </p>
+            <button onclick="closePopup()">닫기</button>
+        </div>
+    </div>
+
     <div class="controls-panel">
-        <h2>🎛️ 붓터치 제어판</h2>
+        <div class="version-title">🎛️ Calligraphy v1.0</div>
+
         <div class="control-group">
             <label>문장 입력</label>
             <input type="text" id="textInput" value="나 산 은" oninput="generateArt()">
@@ -45,7 +172,7 @@
                 <option value="star">별모양</option>
             </select>
             <div class="input-row">
-                <label>문장 반지름(퍼짐)</label>
+                <label>문장 반지름</label>
                 <input type="range" id="layoutRadiusRange" min="100" max="500" value="250" oninput="syncInput('layoutRadiusRange', 'layoutRadiusNum')">
                 <input type="number" id="layoutRadiusNum" value="250" oninput="syncInput('layoutRadiusNum', 'layoutRadiusRange'); generateArt()">
             </div>
@@ -60,30 +187,25 @@
         </div>
 
         <div class="control-group">
-            <label>캘리그라피 붓터치 설정</label>
+            <label>붓터치 설정</label>
             <div class="input-row">
-                <label>획 굵기 (최대)</label>
+                <label>획 굵기</label>
                 <input type="range" id="thicknessRange" min="5" max="50" value="18" oninput="syncInput('thicknessRange', 'thicknessNum')">
                 <input type="number" id="thicknessNum" value="18" oninput="syncInput('thicknessNum', 'thicknessRange'); generateArt()">
             </div>
             <div class="input-row">
-                <label>글자 크기 배율</label>
+                <label>크기 배율</label>
                 <input type="range" id="scaleRange" min="20" max="200" value="100" oninput="syncInput('scaleRange', 'scaleNum')">
                 <input type="number" id="scaleNum" value="100" oninput="syncInput('scaleNum', 'scaleRange'); generateArt()">
             </div>
             <div class="input-row">
-                <label>기울기(랜덤)</label>
+                <label>기울기</label>
                 <input type="range" id="tiltRange" min="0" max="100" value="30" oninput="syncInput('tiltRange', 'tiltNum')">
                 <input type="number" id="tiltNum" value="30" oninput="syncInput('tiltNum', 'tiltRange'); generateArt()">
             </div>
-            <div class="input-row">
-                <label>획 길이 왜곡(강약)</label>
-                <input type="range" id="powerRange" min="0" max="100" value="50" oninput="syncInput('powerRange', 'powerNum')">
-                <input type="number" id="powerNum" value="50" oninput="syncInput('powerNum', 'powerRange'); generateArt()">
-            </div>
         </div>
 
-        <button class="btn-generate" onclick="generateArt()">🎨 캘리그라피 생성</button>
+        <button class="btn-generate" onclick="generateArt()">🎨 다시 생성</button>
         <button class="btn-save-img" onclick="saveAsPNG()">💾 PNG 저장</button>
         <button class="btn-save-video" onclick="saveAsVideo()">🎬 영상 저장 (WebM)</button>
     </div>
@@ -92,15 +214,43 @@
         <div class="canvas-container">
             <canvas id="canvas" width="1000" height="800"></canvas>
         </div>
-        <div class="log-panel" id="logPanel">
-            <h3>📋 렌더링 로그</h3>
-        </div>
+    </div>
+
+    <!-- 오른쪽 로그 패널 -->
+    <div class="log-panel" id="logPanel">
+        <h3>📋 시스템 로그</h3>
     </div>
 
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const logPanel = document.getElementById('logPanel');
+        
+        // 팝업 관련 로직
+        const overlay = document.getElementById('overlay');
+        
+        function closePopup() {
+            overlay.style.opacity = '0';
+            setTimeout(() => {
+                overlay.style.display = 'none';
+            }, 500);
+            // 팝업을 닫으면 로그를 남김
+            addLog("팝업이 닫혔습니다. 조작을 시작하세요.");
+        }
+
+        // 조작 시작 시 팝업 자동 닫기
+        ['mousemove', 'keydown', 'click', 'touchstart'].forEach(event => {
+            window.addEventListener(event, () => {
+                if (overlay.style.display !== 'none') {
+                    closePopup();
+                }
+            }, { once: false });
+        });
+
+        // 타이틀 버전 표시 및 로그 초기화
+        document.title = "Calligraphy Generator v1.0";
+        addLog("시스템 부팅 완료. 버전 1.0 로드됨.");
+        addLog("캔버스 경계가 파란 점선으로 표시되었습니다.");
         
         function syncInput(sourceId, targetId) {
             document.getElementById(targetId).value = document.getElementById(sourceId).value;
@@ -128,13 +278,17 @@
             return { isHangul: false, char };
         }
 
+        const CHO = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
+        const JUNG = ['ㅏ', 'ㅐ', 'ㅑ', 'ㅒ', 'ㅓ', 'ㅔ', 'ㅕ', 'ㅖ', 'ㅗ', 'ㅘ', 'ㅙ', 'ㅚ', 'ㅛ', 'ㅜ', 'ㅝ', 'ㅞ', 'ㅟ', 'ㅠ', 'ㅡ', 'ㅢ', 'ㅣ'];
+        const JONG = ['', 'ㄱ', 'ㄲ', 'ㄳ', 'ㄴ', 'ㄵ', 'ㄶ', 'ㄷ', 'ㄹ', 'ㄺ', 'ㄻ', 'ㄼ', 'ㄽ', 'ㄾ', 'ㄿ', 'ㅀ', 'ㅁ', 'ㅂ', 'ㅄ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
+
         // 문장 분포 계산
         function getLayoutPosition(index, total, type, centerX, centerY, radius) {
             const angle = (index / total) * Math.PI * 2;
             switch(type) {
                 case 'circle': return { x: centerX + Math.cos(angle) * radius, y: centerY + Math.sin(angle) * radius };
                 case 'triangle': {
-                    let r = radius * (1 - 0.2 * Math.abs(Math.cos(angle * 1.5))); // 3각형 느낌
+                    let r = radius * (1 - 0.2 * Math.abs(Math.cos(angle * 1.5)));
                     return { x: centerX + Math.cos(angle) * r, y: centerY + Math.sin(angle) * r };
                 }
                 case 'reverseTriangle': {
@@ -149,44 +303,25 @@
             }
         }
 
-        // 🖌️ 실제 붓터치 렌더링 (베지어 곡선 + 두께 변화)
         function drawCalligraphyStroke(p1, p2, ctrlPoints, thickness, power) {
-            // 1. 곡선 그리기
             ctx.beginPath();
             ctx.moveTo(p1.x, p1.y);
             
-            // 2차 베지어 곡선 연결
             for(let i=0; i<ctrlPoints.length; i++) {
                 ctx.quadraticCurveTo(ctrlPoints[i].x, ctrlPoints[i].y, 
                     i === ctrlPoints.length - 1 ? p2.x : ctrlPoints[i+1].x, 
                     i === ctrlPoints.length - 1 ? p2.y : ctrlPoints[i+1].y);
             }
 
-            // 2. 붓터치 두께 변화를 위한 그라디언트 및 스트로크
-            // 실제 붓은 획의 처음은 가늘고, 중간은 굵고, 끝은 다시 가늘어짐
-            const gradient = ctx.createLinearGradient(p1.x, p1.y, p2.x, p2.y);
-            gradient.addColorStop(0, 'rgba(0,0,0, 0)'); // 시작 부분은 얇게 (투명도로 표현)
-            gradient.addColorStop(0.1, 'rgba(0,0,0, 1)');
-            gradient.addColorStop(0.5, 'rgba(0,0,0, 1)'); // 중간은 진하게
-            gradient.addColorStop(0.9, 'rgba(0,0,0, 1)');
-            gradient.addColorStop(1, 'rgba(0,0,0, 0.2)'); // 끝은 흐리게
-
-            ctx.strokeStyle = gradient;
-            
-            // 두께 변형: 시작점은 얇고 끝으로 갈수록 굵어졌다가 얇아지도록
-            // 마우스 이벤트가 아닌 정적 렌더링이므로, 근사치로 두께를 고정하고 
-            // 실제로는 붓터치를 3번 겹쳐 그리는 방식으로 표현
             let lineWidth = thickness;
             
-            // 획을 여러 번 겹쳐 그려 붓의 질감과 두께 변화를 줌
             for (let i = 0; i < 4; i++) {
-                ctx.lineWidth = lineWidth * (1 - i * 0.15); // 두께를 점점 줄여가며 겹침
-                ctx.strokeStyle = `rgba(0, 0, 0, ${0.3 + i * 0.2})`; // 투명도 조절
+                ctx.lineWidth = lineWidth * (1 - i * 0.15);
+                ctx.strokeStyle = `rgba(0, 0, 0, ${0.3 + i * 0.2})`;
                 ctx.stroke();
             }
         }
 
-        // ⚙️ 글자 생성
         function generateArt() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
@@ -199,77 +334,65 @@
             const thickness = parseInt(document.getElementById('thicknessNum').value);
             const scale = parseInt(document.getElementById('scaleNum').value) / 100;
             const tiltAmt = parseInt(document.getElementById('tiltNum').value) / 100;
-            const powerAmt = parseInt(document.getElementById('powerNum').value) / 100;
 
             const chars = text.split('');
             const total = chars.length;
 
-            logPanel.innerHTML = '<h3>📋 렌더링 로그</h3>';
-            addLog(`입력: ${text} / 모양: ${layoutType} / 두께: ${thickness} / 크기: ${scale * 100}%`);
+            logPanel.innerHTML = '<h3>📋 시스템 로그</h3>';
+            addLog(`✅ 렌더링 실행. 입력: "${text}" / 분포: ${layoutType}`);
 
             chars.forEach((char, index) => {
                 const pos = getLayoutPosition(index, total, layoutType, centerX, centerY, layoutRadius);
-                
-                // 랜덤 기울기
-                const tilt = (Math.random() * 2 - 1) * tiltAmt * 0.4; // -0.4 ~ 0.4 라디안
+                const tilt = (Math.random() * 2 - 1) * tiltAmt * 0.4; 
                 
                 if (decomposeHangul(char).isHangul) {
                     const d = decomposeHangul(char);
-                    // 랜덤 강약
-                    const p = 1 + (Math.random() * 2 - 1) * powerAmt;
                     
-                    // 글자 획 렌더링 (실제 스타일 근사)
-                    const size = 100 * scale * p;
+                    const size = 100 * scale; // scale 적용
                     const x = pos.x;
                     const y = pos.y;
 
-                    // 붓터치로 그려질 획 정의 (여기서부터가 실제 캘리그라피의 핵심)
-                    // '나', '산', '은' 등의 구조를 파악해 곡선 생성
                     ctx.save();
                     ctx.translate(x, y);
-                    ctx.rotate(tilt); // 글자 기울기
+                    ctx.rotate(tilt);
 
-                    // 획 1: 왼쪽 세로 획 (ㄴ, ㅅ 등)
                     drawCalligraphyStroke(
                         {x: -size*0.4, y: -size*0.5}, 
                         {x: -size*0.4, y: size*0.6}, 
                         [{x: -size*0.45, y: 0}], 
-                        thickness, powerAmt
+                        thickness, 1
                     );
 
-                    // 획 2: 오른쪽 모음 (ㅏ, ㅗ, ㅜ)
                     drawCalligraphyStroke(
                         {x: size*0.2, y: -size*0.4}, 
                         {x: size*0.2, y: size*0.6}, 
                         [{x: size*0.25, y: 0}], 
-                        thickness, powerAmt
+                        thickness, 1
                     );
-                    // 모음 가로 획
+
                     drawCalligraphyStroke(
                         {x: size*0.2, y: 0}, 
                         {x: size*0.7, y: 0}, 
                         [{x: size*0.45, y: -size*0.05}], 
-                        thickness, powerAmt
+                        thickness, 1
                     );
 
-                    // 종성 (받침)
                     if (d.jong > 0) {
                         drawCalligraphyStroke(
                             {x: -size*0.3, y: size*0.6}, 
                             {x: size*0.6, y: size*0.6}, 
                             [{x: size*0.1, y: size*0.65}], 
-                            thickness, powerAmt
+                            thickness, 1
                         );
                     }
 
                     ctx.restore();
-                    addLog(`- "${char}" (${CHO[d.cho]},${JUNG[d.jung]},${JONG[d.jong]}) / 위치: (${Math.round(x)}, ${Math.round(y)}) / 기울기: ${(tilt * 57.3).toFixed(1)}도`);
+                    addLog(`- "${char}": [초:${CHO[d.cho]}, 중:${JUNG[d.jung]}, 종:${JONG[d.jong]}] / 좌표(${Math.round(x)}, ${Math.round(y)}) / 기울기: ${(tilt * 57.3).toFixed(1)}도`);
                 } else {
                     ctx.font = `bold ${80 * scale}px Arial`;
                     ctx.fillText(char, pos.x, pos.y);
                 }
             });
-            addLog("✅ 캘리그라피 렌더링 완료");
         }
 
         function saveAsPNG() {
@@ -277,12 +400,14 @@
             link.download = 'calligraphy.png';
             link.href = canvas.toDataURL('image/png');
             link.click();
+            addLog("💾 이미지가 저장되었습니다.");
         }
 
         function saveAsVideo() {
             const stream = canvas.captureStream(30);
             const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
             const chunks = [];
+
             recorder.ondataavailable = e => chunks.push(e.data);
             recorder.onstop = () => {
                 const blob = new Blob(chunks, { type: 'video/webm' });
@@ -292,8 +417,12 @@
                 a.download = 'calligraphy.webm';
                 a.click();
                 URL.revokeObjectURL(url);
+                addLog("🎬 영상(WebM)이 저장되었습니다.");
             };
+
             recorder.start();
+            addLog("🎬 영상 녹화 시작 (3초)...");
+            
             let progress = 0;
             const interval = setInterval(() => {
                 generateArt();
