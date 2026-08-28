@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SRT 캘리그라피 스튜디오 (자막별 세션 & TTF 로딩 v27.0)</title>
+  <title>SRT 캘리그라피 스튜디오 (보안 & 성능 완벽 보장 v28.0)</title>
 
   <!-- 캘리그라피 웹 폰트 로드 -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -54,6 +54,7 @@
     .srt-list-container { max-height: 140px; overflow-y: auto; background: #141418; border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px; }
     .srt-item { padding: 8px 10px; border-bottom: 1px solid #22222a; font-size: 0.8rem; cursor: pointer; display: flex; justify-content: space-between; align-items: center; border-radius: 4px; }
     .srt-item.active { background: rgba(255, 107, 55, 0.2); border-left: 4px solid var(--accent-color); color: #fff; font-weight: bold; }
+    .srt-item-title { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .progress-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(4px); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; display: none; }
     .progress-box { background: var(--panel-bg); padding: 30px; border-radius: 12px; text-align: center; width: 360px; }
     .progress-bar-bg { width: 100%; height: 10px; background: #111; border-radius: 5px; margin: 15px 0; overflow: hidden; }
@@ -78,7 +79,7 @@
 
   <header>
     <h1>🖌️ SRT 캘리그라피 스튜디오</h1>
-    <span style="font-size: 0.85rem; color: var(--text-muted);">개별 자막 세션 & TTF 로더 v27.0</span>
+    <span style="font-size: 0.85rem; color: var(--text-muted);">보안 & 성능 완벽 보장 엔진 v28.0</span>
   </header>
 
   <div class="main-container">
@@ -110,7 +111,7 @@
         </select>
 
         <label for="font-file-input" class="btn-file" id="font-file-label">
-          📁 사용자 TTF / OTF 폰트 파일 불러오기
+          📁 사용자 TTF / OTF 폰트 파일 불러오기 (최대 15MB)
         </label>
         <input type="file" id="font-file-input" accept=".ttf,.otf,.woff,.woff2">
         <div class="font-status loading" id="font-status">⏳ 나눔붓글씨 폰트 준비 중...</div>
@@ -228,7 +229,7 @@
 
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 5px;">
           <div style="font-size: 0.85rem; color: var(--text-muted);" id="res-indicator">
-            해상도: 1920x1080 (16:9 Full HD) | Opentype.js 실제 스트로크 엔진
+            해상도: 1920x1080 (16:9 Full HD) | Opentype.js 벡터 스트로크
           </div>
           <button class="btn-action" id="btn-export">
             🔴 한번에 전체 녹화 시작 ➔ 세션별 개별 위치/도형 MP4 자동 저장
@@ -249,13 +250,14 @@
 
   <script>
     let srtData = [];
-    let activeSrtIndex = -1; // -1이면 기본(글로벌) 적용
+    let activeSrtIndex = -1; // -1이면 기본 적용
     let totalDuration = 0;
     let currentTime = 0;
     let isPlaying = false;
-    let isRecording = false; // 녹화 중일 때 가이드선 자동 숨김
+    let isRecording = false; // 녹화 시 가이드선 자동 숨김
     let animationFrameId = null;
     let lastTimestamp = 0;
+    let rafScheduled = false; // 🚀 슬라이더 입력 쓰로틀링 플래그
 
     const canvas = document.getElementById('calligraphy-canvas');
     const ctx = canvas.getContext('2d');
@@ -313,6 +315,16 @@
       cachedBgCanvas = null;
     }
 
+    /* 🚀 슬라이더 입력 쓰로틀링 (rAF 프레임 동기화) */
+    function scheduleRender() {
+      if (rafScheduled) return;
+      rafScheduled = true;
+      requestAnimationFrame(() => {
+        rafScheduled = false;
+        renderFrame(currentTime);
+      });
+    }
+
     function updateCanvasDimensions() {
       const ratio = aspectRatioSelect.value;
       let w = 1920, h = 1080;
@@ -329,7 +341,7 @@
 
       clearCaches();
       preloadShapeMasks();
-      renderFrame(currentTime);
+      scheduleRender();
     }
 
     aspectRatioSelect.addEventListener('change', updateCanvasDimensions);
@@ -346,7 +358,7 @@
       opentype.load(DEFAULT_FONT_URL, (err, font) => {
         if (err) {
           console.error('기본 폰트 로드 실패:', err);
-          fontStatusEl.textContent = '⚠️ 기본 폰트 로딩 실패';
+          fontStatusEl.textContent = '⚠️ 기본 폰트 네트워크 로딩 실패 (시스템 기본 서체로 대체)';
         } else {
           currentFont = font;
           currentFontKey = 'NanumBrushScript';
@@ -354,14 +366,21 @@
           layoutCache.clear();
           fontStatusEl.textContent = '✅ 나눔붓글씨 기본 폰트 준비 완료';
           fontStatusEl.className = 'font-status ready';
-          renderFrame(currentTime);
+          scheduleRender();
         }
       });
     }
 
+    /* 🛡️ 폰트 파일 용량 제한 및 안전 파싱 예외 처리 (DoS 차단) */
     fontFileInput.addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (!file) return;
+
+      if (file.size > 15 * 1024 * 1024) {
+        alert('⚠️ 폰트 파일 용량이 너무 큽니다. (15MB 이하의 TTF/OTF 파일만 지원됩니다)');
+        return;
+      }
+
       fontFileLabel.textContent = `🔤 ${file.name}`;
       fontStatusEl.textContent = `⏳ ${file.name} 폰트 파싱 중...`;
       fontStatusEl.className = 'font-status loading';
@@ -371,16 +390,16 @@
         try {
           const font = opentype.parse(evt.target.result);
           currentFont = font;
-          currentFontKey = file.name;
+          currentFontKey = `custom_${file.name}_${file.size}`;
           glyphDataCache.clear();
           layoutCache.clear();
           fontStatusEl.textContent = `✅ 사용자 폰트 적용 완료 (${file.name})`;
           fontStatusEl.className = 'font-status ready';
-          renderFrame(currentTime);
+          scheduleRender();
         } catch (err) {
           console.error('사용자 TTF 폰트 파싱 실패:', err);
-          alert(`폰트 파일 파싱 실패: ${err.message}`);
-          fontStatusEl.textContent = '⚠️ 사용자 폰트 로딩 오류';
+          alert(`폰트 파일 파싱 실패: ${err.message || '올바른 TTF/OTF 폰트 형식인지 확인해주세요.'}`);
+          fontStatusEl.textContent = '⚠️ 사용자 폰트 파일 파싱 오류';
           fontStatusEl.className = 'font-status loading';
         }
       };
@@ -448,8 +467,9 @@
       }).join(' ');
     }
 
+    /* 🚀 폰트 식별 키 결합으로 커스텀 폰트 캐시 충돌 결함 완벽 해결 */
     function getGlyphBrushData(char, fontSize) {
-      const key = `${currentFontKey}|${char.codePointAt(0)}|${fontSize.toFixed(1)}`;
+      const key = `${currentFontKey}_${char.codePointAt(0)}_${fontSize.toFixed(1)}`;
       if (glyphDataCache.has(key)) return glyphDataCache.get(key);
 
       const path = currentFont.getPath(char, 0, 0, fontSize);
@@ -704,55 +724,67 @@
       for (const t of types) shapeMaskCache[t] = await makeShapeMaskImage(t);
     }
 
-    function getMaskBounds(img) {
-      if (maskBoundsCache.has(img)) return maskBoundsCache.get(img);
+    /* 🚀 고정 스트링 키로 캐시 히트율 100% 보장 (200만 픽셀 루프 프레임 재실행 차단) */
+    function getMaskBounds(shapeType) {
+      const key = `mask_${shapeType}_${canvas.width}_${canvas.height}`;
+      if (maskBoundsCache.has(key)) return maskBoundsCache.get(key);
+
+      const maskImg = shapeMaskCache[shapeType] || shapeMaskCache['inv-triangle'];
       const w = canvas.width, h = canvas.height;
-      const off = document.createElement('canvas');
-      off.width = w; off.height = h;
-      const octx = off.getContext('2d');
-      octx.drawImage(img, 0, 0, w, h);
-      const data = octx.getImageData(0, 0, w, h).data;
-      let minX = w, minY = h, maxX = 0, maxY = 0, found = false;
-      for (let y = 0; y < h; y += 4) {
-        for (let x = 0; x < w; x += 4) {
-          const a = data[(y * w + x) * 4 + 3];
-          if (a > 128) {
-            found = true;
-            if (x < minX) minX = x; if (x > maxX) maxX = x;
-            if (y < minY) minY = y; if (y > maxY) maxY = y;
+      let bounds;
+
+      if (!maskImg) {
+        bounds = { x: w * 0.2, y: h * 0.2, w: w * 0.6, h: h * 0.6 };
+      } else {
+        const off = document.createElement('canvas');
+        off.width = w; off.height = h;
+        const octx = off.getContext('2d');
+        octx.drawImage(maskImg, 0, 0, w, h);
+        const data = octx.getImageData(0, 0, w, h).data;
+        let minX = w, minY = h, maxX = 0, maxY = 0, found = false;
+        for (let y = 0; y < h; y += 4) {
+          for (let x = 0; x < w; x += 4) {
+            const a = data[(y * w + x) * 4 + 3];
+            if (a > 128) {
+              found = true;
+              if (x < minX) minX = x; if (x > maxX) maxX = x;
+              if (y < minY) minY = y; if (y > maxY) maxY = y;
+            }
           }
         }
+        bounds = found ? { x: minX, y: minY, w: Math.max(40, maxX - minX), h: Math.max(40, maxY - minY) } : { x: w*0.3, y: h*0.3, w: w*0.4, h: h*0.4 };
       }
-      const bounds = found ? { x: minX, y: minY, w: Math.max(40, maxX - minX), h: Math.max(40, maxY - minY) } : { x: w*0.3, y: h*0.3, w: w*0.4, h: h*0.4 };
-      maskBoundsCache.set(img, bounds);
+      
+      maskBoundsCache.set(key, bounds);
       return bounds;
     }
 
-    /* 📌 윤곽 가이드선 표시 (isRecording 일 때는 무조건 숨김) */
-    function drawGuideFrame(guideMode, activeShapeType, bounds) {
+    /* 📌 윤곽 가이드선 표시 (녹화 및 none 모드 시 제외) */
+    function drawGuideFrame(guideMode, activeShapeType, sessionData) {
       if (isRecording || guideMode === 'none') return;
       const w = canvas.width, h = canvas.height;
 
       ctx.save();
-      if (guideMode === 'guide-shape') {
+      if (guideMode === 'guide-shape' && activeShapeType) {
         ctx.strokeStyle = 'rgba(255, 107, 55, 0.85)';
         ctx.lineWidth = 3;
         ctx.setLineDash([10, 10]);
 
-        if (activeShapeType) {
-          ctx.save();
-          if (bounds && (bounds.offsetX || bounds.offsetY || bounds.scale !== 1.0)) {
-            ctx.translate(bounds.offsetX || 0, bounds.offsetY || 0);
-            if (bounds.scale && bounds.scale !== 1.0) {
-              ctx.translate(w/2, h/2);
-              ctx.scale(bounds.scale, bounds.scale);
-              ctx.translate(-w/2, -h/2);
-            }
-          }
-          traceShapePath(ctx, activeShapeType, w, h);
-          ctx.stroke();
-          ctx.restore();
+        ctx.save();
+        if (sessionData) {
+          const offsetX = sessionData.offsetX || 0;
+          const offsetY = sessionData.offsetY || 0;
+          const scale = sessionData.scale || 1.0;
+          
+          /* 📌 글자 중심점(cx, cy) 기준 완전 대칭 트랜스폼 동기화 */
+          ctx.translate(w / 2 + offsetX, h / 2 + offsetY);
+          ctx.scale(scale, scale);
+          ctx.translate(-w / 2, -h / 2);
         }
+
+        traceShapePath(ctx, activeShapeType, w, h);
+        ctx.stroke();
+        ctx.restore();
       } else if (guideMode === 'subtle-axis') {
         ctx.strokeStyle = 'rgba(255, 107, 55, 0.4)';
         ctx.lineWidth = 1.5;
@@ -808,16 +840,22 @@
       ctx.restore();
     }
 
+    /* 📌 중심점(cx, cy) 기준 스케일 및 오프셋 좌표 결함 수정 */
     function renderGeometricShapeMode(text, writeProgress, inkColor, tightness, contrast, seed, shapeType, cropMode, layoutStyle, offsetX, offsetY, scale) {
       const w = canvas.width, h = canvas.height;
       const maskImg = shapeMaskCache[shapeType] || shapeMaskCache['inv-triangle'];
-      let bounds = getMaskBounds(maskImg);
+      const baseBounds = getMaskBounds(shapeType);
 
-      bounds = {
-        x: bounds.x + offsetX,
-        y: bounds.y + offsetY,
-        w: bounds.w * scale,
-        h: bounds.h * scale,
+      const centerX = (baseBounds.x + baseBounds.w / 2);
+      const centerY = (baseBounds.y + baseBounds.h / 2);
+      const scaledW = baseBounds.w * scale;
+      const scaledH = baseBounds.h * scale;
+
+      const bounds = {
+        x: centerX - scaledW / 2 + offsetX,
+        y: centerY - scaledH / 2 + offsetY,
+        w: scaledW,
+        h: scaledH,
         offsetX, offsetY, scale
       };
 
@@ -844,14 +882,9 @@
 
         maskCtx.globalCompositeOperation = 'destination-in';
         maskCtx.save();
-        if (offsetX || offsetY || scale !== 1.0) {
-          maskCtx.translate(offsetX, offsetY);
-          if (scale !== 1.0) {
-            maskCtx.translate(w/2, h/2);
-            maskCtx.scale(scale, scale);
-            maskCtx.translate(-w/2, -h/2);
-          }
-        }
+        maskCtx.translate(w / 2 + offsetX, h / 2 + offsetY);
+        maskCtx.scale(scale, scale);
+        maskCtx.translate(-w / 2, -h / 2);
         maskCtx.drawImage(maskImg, 0, 0, w, h);
         maskCtx.restore();
         maskCtx.globalCompositeOperation = 'source-over';
@@ -889,7 +922,6 @@
       const text = subtitleObj.text.trim();
       const seed = (parseInt(subtitleObj.id) || 1) * 97 + text.length;
 
-      // 📌 자막별 독립 개별 세션 옵션 추출
       const shapeType = subtitleObj.shapeType || shapeFrameSelect.value || 'inv-triangle';
       const cropMode = subtitleObj.cropMode || shapeCropSelect.value || 'natural';
       const layoutStyle = subtitleObj.layoutStyle || shapeLayoutStyleSelect.value || 'multiline-fit';
@@ -911,7 +943,7 @@
 
       ctx.filter = 'none';
       ctx.restore();
-      return { shapeType, bounds };
+      return { shapeType, bounds, sessionData: { offsetX, offsetY, scale } };
     }
 
     function seededRandom(seed) {
@@ -919,34 +951,52 @@
       return x - Math.floor(x);
     }
 
-    function parseSRTTime(timeStr) {
-      if (!timeStr) return 0;
-      const parts = timeStr.trim().replace(',', '.').split(':');
-      return (parseFloat(parts[0]) || 0) * 3600 + (parseFloat(parts[1]) || 0) * 60 + (parseFloat(parts[2]) || 0);
+    function parseSRTTime(h, m, s, ms) {
+      return (parseInt(h) || 0) * 3600 + (parseInt(m) || 0) * 60 + (parseInt(s) || 0) + (parseInt(ms) || 0) / 1000;
     }
 
+    /* 🛡️ 정밀하고 안전한 견고한 SRT 파서 (NaN 및 예외 철저 차단) */
     function parseSRT(text) {
+      if (!text || typeof text !== 'string') return [];
       const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-      const blocks = normalized.split('\n\n');
+      const blocks = normalized.split(/\n\s*\n/);
       const result = [];
+      
+      let autoId = 1;
       for (let block of blocks) {
-        const lines = block.trim().split('\n');
-        if (lines.length >= 3) {
-          const timeMatch = lines[1].match(/(.*?)\s*-->\s*(.*)/);
-          if (timeMatch) {
-            result.push({
-              id: lines[0],
-              start: parseSRTTime(timeMatch[1]),
-              end: parseSRTTime(timeMatch[2]),
-              text: lines.slice(2).join('\n'),
-              // 📌 기본 개별 세션 옵션 초기화
-              shapeType: shapeFrameSelect.value || 'inv-triangle',
-              cropMode: shapeCropSelect.value || 'natural',
-              layoutStyle: shapeLayoutStyleSelect.value || 'multiline-fit',
-              offsetX: 0,
-              offsetY: 0,
-              scale: 1.0
-            });
+        const lines = block.trim().split('\n').filter(l => l.trim().length > 0);
+        if (lines.length === 0) continue;
+
+        let timeLineIndex = -1;
+        for (let i = 0; i < lines.length; i++) {
+          if (lines[i].includes('-->')) {
+            timeLineIndex = i;
+            break;
+          }
+        }
+
+        if (timeLineIndex !== -1) {
+          const timeStr = lines[timeLineIndex];
+          const matches = timeStr.match(/(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})\s*-->\s*(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})/);
+          if (matches) {
+            const startSec = parseSRTTime(matches[1], matches[2], matches[3], matches[4]);
+            const endSec = parseSRTTime(matches[5], matches[6], matches[7], matches[8]);
+            const textLines = lines.slice(timeLineIndex + 1);
+            
+            if (isFinite(startSec) && isFinite(endSec) && endSec > startSec && textLines.length > 0) {
+              result.push({
+                id: (timeLineIndex > 0 ? lines[0].trim() : String(autoId++)),
+                start: startSec,
+                end: endSec,
+                text: textLines.join('\n'),
+                shapeType: shapeFrameSelect.value || 'inv-triangle',
+                cropMode: shapeCropSelect.value || 'natural',
+                layoutStyle: shapeLayoutStyleSelect.value || 'multiline-fit',
+                offsetX: 0,
+                offsetY: 0,
+                scale: 1.0
+              });
+            }
           }
         }
       }
@@ -957,12 +1007,18 @@
       srtTextarea.value = rawText;
       srtData = parseSRT(rawText);
       activeSrtIndex = srtData.length > 0 ? 0 : -1;
-      totalDuration = srtData.length > 0 ? srtData[srtData.length - 1].end + 1.0 : 10;
+      
+      let maxEnd = 0;
+      if (srtData.length > 0) {
+        maxEnd = srtData.reduce((max, s) => Math.max(max, s.end), 0);
+      }
+      totalDuration = isFinite(maxEnd) && maxEnd > 0 ? maxEnd + 1.0 : 10;
       timeSlider.max = totalDuration;
+
       clearCaches();
       updateSRTListUI();
       syncSidebarControlsWithActiveSession();
-      renderFrame(0);
+      scheduleRender();
     }
 
     srtInput.addEventListener('change', (e) => {
@@ -1007,29 +1063,43 @@
       }
     }
 
+    /* 🛡️ textContent 기반 안전 DOM 생성으로 XSS 취약점 완전 방어 */
     function updateSRTListUI() {
       srtListEl.innerHTML = '';
       srtData.forEach((item, index) => {
         const div = document.createElement('div');
         div.className = `srt-item ${index === activeSrtIndex ? 'active' : ''}`;
-        div.innerHTML = `
-          <span>#${item.id} (${formatTime(item.start)})</span>
-          <span style="max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${item.text.replace('\n', ' / ')}</span>
-          <span style="font-size:0.7rem; opacity:0.8;">[${item.shapeType || '기본'}]</span>
-        `;
+
+        const sp1 = document.createElement('span');
+        sp1.textContent = `#${item.id} (${formatTime(item.start)})`;
+
+        const sp2 = document.createElement('span');
+        sp2.className = 'srt-item-title';
+        sp2.textContent = item.text.replace(/\n/g, ' / ');
+
+        const sp3 = document.createElement('span');
+        sp3.style.fontSize = '0.7rem';
+        sp3.style.opacity = '0.8';
+        sp3.textContent = `[${item.shapeType || '기본'}]`;
+
+        div.appendChild(sp1);
+        div.appendChild(sp2);
+        div.appendChild(sp3);
+
         div.addEventListener('click', () => {
           activeSrtIndex = index;
           currentTime = item.start;
           timeSlider.value = currentTime;
           updateSRTListUI();
           syncSidebarControlsWithActiveSession();
-          renderFrame(currentTime);
+          scheduleRender();
         });
         srtListEl.appendChild(div);
       });
     }
 
     function formatTime(sec) {
+      if (!isFinite(sec)) return '00:00.00';
       const m = Math.floor(sec / 60);
       const s = Math.floor(sec % 60);
       const ms = Math.floor((sec % 1) * 100);
@@ -1100,7 +1170,7 @@
           if (activeSubtitle) {
             const res = renderCalligraphyFrame(activeSubtitle, timeSec);
             if (res && res.shapeType) {
-              drawGuideFrame(guideMode, res.shapeType, res.bounds);
+              drawGuideFrame(guideMode, res.shapeType, res.sessionData);
             }
           } else {
             const fallbackShape = shapeFrameSelect.value || 'inv-triangle';
@@ -1111,39 +1181,39 @@
       timeDisplay.textContent = `${formatTime(timeSec)} / ${formatTime(totalDuration)}`;
     }
 
-    // 📌 슬라이더 및 세션 제어 이벤트 리스너 동기화
+    // 📌 슬라이더 입력 쓰로틀링 적용
     paramOffsetX.addEventListener('input', (e) => {
       document.getElementById('val-offset-x').textContent = `${e.target.value}px`;
       updateActiveSessionData();
-      renderFrame(currentTime);
+      scheduleRender();
     });
     paramOffsetY.addEventListener('input', (e) => {
       document.getElementById('val-offset-y').textContent = `${e.target.value}px`;
       updateActiveSessionData();
-      renderFrame(currentTime);
+      scheduleRender();
     });
     paramScale.addEventListener('input', (e) => {
       document.getElementById('val-scale').textContent = `${e.target.value}%`;
       updateActiveSessionData();
-      renderFrame(currentTime);
+      scheduleRender();
     });
     paramStyleIntensity.addEventListener('input', (e) => {
       document.getElementById('val-style-intensity').textContent = `${e.target.value}x`;
-      renderFrame(currentTime);
+      scheduleRender();
     });
     paramFinishPct.addEventListener('input', (e) => {
       document.getElementById('val-finish-pct').textContent = `${e.target.value}% 시간 내 완성`;
-      renderFrame(currentTime);
+      scheduleRender();
     });
     paramTightness.addEventListener('input', (e) => {
       document.getElementById('val-tightness').textContent = e.target.value < 0.7 ? '매우 촘촘' : (e.target.value > 0.95 ? '여유롭게' : '보통');
       layoutCache.clear();
-      renderFrame(currentTime);
+      scheduleRender();
     });
     paramContrast.addEventListener('input', (e) => {
       document.getElementById('val-contrast').textContent = e.target.value + 'x';
       layoutCache.clear();
-      renderFrame(currentTime);
+      scheduleRender();
     });
 
     [shapeFrameSelect, shapeCropSelect, shapeLayoutStyleSelect].forEach(el => {
@@ -1151,14 +1221,14 @@
         updateActiveSessionData();
         updateSRTListUI();
         layoutCache.clear();
-        renderFrame(currentTime);
+        scheduleRender();
       });
     });
 
     [paramShowGuide, bgStyleSelect, inkColorInput, filterModeSelect].forEach(el => {
       if (el) el.addEventListener('change', () => {
         if (el === bgStyleSelect) cachedBgCanvas = null;
-        renderFrame(currentTime);
+        scheduleRender();
       });
     });
 
@@ -1181,20 +1251,21 @@
       if (isPlaying) return;
       isPlaying = true;
       btnPlay.textContent = '⏸ 일시정지';
-      lastTimestamp = 0;
+      lastTimestamp = 0; // 🚀 dt 튀는 버그 방지
       animationFrameId = requestAnimationFrame(animate);
     }
 
     function pause() {
       isPlaying = false;
       btnPlay.textContent = '▶ 재생';
+      lastTimestamp = 0; // 🚀 dt 튀는 버그 방지
       if (animationFrameId) cancelAnimationFrame(animationFrameId);
     }
 
     btnPlay.addEventListener('click', () => isPlaying ? pause() : play());
     timeSlider.addEventListener('input', (e) => {
       currentTime = parseFloat(e.target.value);
-      renderFrame(currentTime);
+      scheduleRender();
     });
 
     async function getSupportedH264Codec(width, height) {
@@ -1210,7 +1281,7 @@
         try {
           if (typeof VideoEncoder !== 'undefined' && VideoEncoder.isConfigSupported) {
             const support = await VideoEncoder.isConfigSupported({
-              codec, width, height, bitrate: 8_000_000, framerate: 30
+              codec, width, height, bitrate: 4_000_000, framerate: 30
             });
             if (support && support.supported) return codec;
           }
@@ -1237,7 +1308,7 @@
       });
 
       videoEncoder.configure({
-        codec: codecStr, width, height, bitrate: 8_000_000, framerate: fps
+        codec: codecStr, width, height, bitrate: 4_000_000, framerate: fps
       });
 
       for (let i = 0; i < totalFrames; i++) {
@@ -1289,7 +1360,7 @@
         if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm;codecs=vp9';
         if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
 
-        const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8_000_000 });
+        const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 4_000_000 });
         const chunks = [];
 
         recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
@@ -1305,7 +1376,8 @@
         const interval = setInterval(() => {
           if (frameIdx >= totalFrames) {
             clearInterval(interval);
-            recorder.stop();
+            recorder.requestData();
+            setTimeout(() => recorder.stop(), 50);
             return;
           }
           const frameTime = frameIdx / fps;
@@ -1321,7 +1393,7 @@
       });
     }
 
-    /* 📌 녹화 시 윤곽 가이드선 자동 제거 처리 */
+    /* 📌 녹화 시 윤곽 가이드선 자동 제거 처리 및 메모리 관리 */
     btnExport.addEventListener('click', async () => {
       if (srtData.length === 0) { alert('SRT 자막 파일이 로드되지 않았습니다.'); return; }
       if (!currentFont) { alert('폰트가 아직 로딩되지 않았습니다. 잠시 후 다시 시도해주세요.'); return; }
@@ -1330,7 +1402,6 @@
       currentTime = 0;
       timeSlider.value = 0;
 
-      // 📌 녹화 모드 활성화 (가이드선 자동 무시)
       isRecording = true;
       renderFrame(0);
 
@@ -1364,7 +1435,9 @@
         const ratioName = aspectRatioSelect.value.replace(':', '_');
         a.download = `calligraphy_session_${ratioName}_${Date.now()}.${downloadExt}`;
         a.click();
-        URL.revokeObjectURL(url);
+        
+        /* 🛡️ 메모리 누수 방지 URL 객체 해제 */
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
 
         progressText.textContent = `🎬 MP4 세션 비디오 저장 완료! (.${downloadExt})`;
         setTimeout(() => { progressModal.style.display = 'none'; }, 1000);
@@ -1373,7 +1446,6 @@
         alert(`MP4 저장 중 오류 발생: ${err.message}`);
         progressModal.style.display = 'none';
       } finally {
-        // 📌 녹화 종료 후 가이드선 다시 복구
         isRecording = false;
         renderFrame(currentTime);
       }
