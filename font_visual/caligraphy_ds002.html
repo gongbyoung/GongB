@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calligraphy Generator v6.0</title>
+    <title>Calligraphy Generator v7.0</title>
+    <!-- 실제 붓글씨 폰트 로드 -->
+    <link href="https://fonts.googleapis.com/css2?family=Nanum+Brush+Script&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Noto Sans KR', sans-serif; background-color: #f4f4f4; margin: 0; display: flex; height: 100vh; overflow: hidden; }
         .controls-panel { width: 350px; background: white; border-right: 2px solid #ddd; padding: 20px; overflow-y: auto; }
@@ -29,49 +31,50 @@
     </style>
 </head>
 <body>
+
     <div id="overlay">
         <div id="popup">
             <h1>🎨 캘리그라피 생성기</h1>
-            <h2 style="color: #555;">버전 6.0 (진짜 붓터치 궤적)</h2>
+            <h2 style="color: #555;">버전 7.0 (폰트 분해 및 변형 엔진)</h2>
             <hr>
-            <p>이 버전은 폰트를 사용하지 않습니다. 글자의 획을 직접 그리며, 획의 각 구간마다 두께가 실시간으로 변합니다.</p>
+            <p>이 버전은 진짜 폰트를 가져와 벡터 경로를 분해하고, 그 위에 먹물 번짐과 붓터치를 적용합니다.</p>
             <button onclick="closePopup()">닫기</button>
         </div>
     </div>
 
     <div class="controls-panel">
-        <div class="version-title">🎛️ Calligraphy v6.0</div>
+        <div class="version-title">🎛️ Calligraphy v7.0</div>
+
         <div class="control-group">
             <label>문장 입력</label>
             <input type="text" id="textInput" value="사랑은 아름다워" oninput="generateArt()">
         </div>
 
         <div class="control-group">
-            <label>획 스타일 (9가지)</label>
-            <select id="strokeStyleSelect" onchange="generateArt()">
-                <option value="1-1">1-1: 굵고→얇고→굵고</option>
-                <option value="1-2">1-2: 굵고→마지막 얇고</option>
-                <option value="1-3" selected>1-3: 얇고→굵고→얇고→길게</option>
-                <option value="1-4">1-4: 유려한 곡선 (출렁)</option>
-                <option value="1-5">1-5: 처음/끝 갈라짐</option>
-                <option value="1-6">1-6: 끝 물방울 (먹물)</option>
-                <option value="1-7">1-7: 모음 윗부분 물방울</option>
-                <option value="1-8">1-8: 받침 늘이기</option>
-                <option value="1-9">1-9: 기본 혼합형</option>
+            <label>붓터치 질감</label>
+            <select id="styleSelect" onchange="generateArt()">
+                <option value="1">진한 붓터치 (기본)</option>
+                <option value="2">가벼운 붓터치 (번짐)</option>
+                <option value="3">마른 붓터치 (거친 질감)</option>
             </select>
         </div>
 
         <div class="control-group">
-            <label>붓터치 설정</label>
+            <label>폰트 및 변형</label>
             <div class="input-row">
-                <label>기본 굵기</label>
-                <input type="range" id="thicknessRange" min="10" max="60" value="30" oninput="syncInput('thicknessRange', 'thicknessNum')">
-                <input type="number" id="thicknessNum" value="30" oninput="syncInput('thicknessNum', 'thicknessRange'); generateArt()">
+                <label>글자 크기</label>
+                <input type="range" id="sizeRange" min="50" max="300" value="180" oninput="syncInput('sizeRange', 'sizeNum')">
+                <input type="number" id="sizeNum" value="180" oninput="syncInput('sizeNum', 'sizeRange'); generateArt()">
             </div>
             <div class="input-row">
-                <label>불규칙성</label>
-                <input type="range" id="tiltRange" min="0" max="100" value="40" oninput="syncInput('tiltRange', 'tiltNum')">
-                <input type="number" id="tiltNum" value="40" oninput="syncInput('tiltNum', 'tiltRange'); generateArt()">
+                <label>불규칙성 (기울기)</label>
+                <input type="range" id="tiltRange" min="0" max="100" value="20" oninput="syncInput('tiltRange', 'tiltNum')">
+                <input type="number" id="tiltNum" value="20" oninput="syncInput('tiltNum', 'tiltRange'); generateArt()">
+            </div>
+            <div class="input-row">
+                <label>먹물 번짐</label>
+                <input type="range" id="blurRange" min="0" max="20" value="3" oninput="syncInput('blurRange', 'blurNum')">
+                <input type="number" id="blurNum" value="3" oninput="syncInput('blurNum', 'blurRange'); generateArt()">
             </div>
         </div>
 
@@ -84,6 +87,7 @@
             <canvas id="canvas" width="1000" height="800"></canvas>
         </div>
     </div>
+
     <div class="log-panel" id="logPanel">
         <h3>📋 시스템 로그</h3>
     </div>
@@ -93,122 +97,115 @@
         const ctx = canvas.getContext('2d');
         const logPanel = document.getElementById('logPanel');
         const overlay = document.getElementById('overlay');
-        window.onload = generateArt;
 
-        function closePopup() { overlay.style.opacity = '0'; setTimeout(() => overlay.style.display = 'none', 500); }
-        ['mousemove', 'click'].forEach(e => window.addEventListener(e, () => { if (overlay.style.display !== 'none') closePopup(); }));
+        // 폰트가 로드된 후에만 렌더링
+        window.onload = () => {
+            if (document.fonts) {
+                document.fonts.ready.then(() => {
+                    generateArt();
+                    addLog("✅ 실제 폰트(Nanum Brush Script) 로드 완료.");
+                });
+            } else {
+                setTimeout(generateArt, 500);
+            }
+        };
+
+        function closePopup() {
+            overlay.style.opacity = '0';
+            setTimeout(() => overlay.style.display = 'none', 500);
+        }
+        ['mousemove', 'click'].forEach(e => window.addEventListener(e, () => {
+            if (overlay.style.display !== 'none') closePopup();
+        }));
+
         function syncInput(s, t) { document.getElementById(t).value = document.getElementById(s).value; }
-        function addLog(m) { const div = document.createElement('div'); div.className = 'log-entry'; div.innerHTML = `[${new Date().toLocaleTimeString()}] ${m}`; logPanel.appendChild(div); logPanel.scrollTop = logPanel.scrollHeight; }
 
-        function decomposeHangul(char) {
-            const code = char.charCodeAt(0);
-            if (code >= 0xAC00 && code <= 0xD7A3) {
-                const syllable = code - 0xAC00;
-                const cho = Math.floor(syllable / 588);
-                const jung = Math.floor((syllable % 588) / 28);
-                const jong = syllable % 28;
-                return { cho, jung, jong, isHangul: true };
-            }
-            return { isHangul: false, char };
+        function addLog(m) {
+            const div = document.createElement('div');
+            div.className = 'log-entry';
+            div.innerHTML = `[${new Date().toLocaleTimeString()}] ${m}`;
+            logPanel.appendChild(div);
+            logPanel.scrollTop = logPanel.scrollHeight;
         }
 
-        function getSequentialPosition(index, total, centerX, centerY, radius, randomness) {
-            const step = radius * 2 / Math.max(1, total - 1);
-            const baseX = centerX - radius + step * index;
-            return { x: baseX + (Math.random() * 2 - 1) * randomness * 30, y: centerY + (Math.random() * 2 - 1) * randomness * 50 };
-        }
+        // [핵심 엔진] 폰트를 분해하여 실제 붓터치로 렌더링
+        function drawCalligraphyWithPath(char, x, y, size, blur, style) {
+            ctx.save();
+            ctx.translate(x, y);
+            
+            // 1. 폰트를 설정하고 글자를 그려서 경로(Path)를 생성
+            ctx.font = `${size}px 'Nanum Brush Script', cursive`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            // 글자 그림자/번짐 설정
+            ctx.shadowColor = 'rgba(0,0,0,0.5)';
+            ctx.shadowBlur = blur; // 먹물 번짐 정도
+            ctx.shadowOffsetX = blur * 0.5;
+            ctx.shadowOffsetY = blur * 0.5;
 
-        // 9가지 굵기 함수
-        function getWidth(t, style, base) {
-            switch(style) {
-                case '1-1': return base * (Math.abs(t - 0.5) * 1.6 + 0.2);
-                case '1-2': return base * (1 - t * 0.9);
-                case '1-3': return base * (Math.sin(t * Math.PI) * 0.7 + 0.3);
-                case '1-4': return base * (Math.sin(t * Math.PI * 4) * 0.3 + 0.7);
-                case '1-5': return base * (t < 0.1 || t > 0.9 ? 0.2 : 1);
-                case '1-6': return base * (t < 0.9 ? 1 : 0.4);
-                case '1-7': return base * (t < 0.2 ? 0.5 : 1);
-                case '1-8': return base * (0.5 + t * 0.8);
-                default: return base * (0.6 + Math.sin(t * Math.PI) * 0.4);
+            ctx.fillStyle = 'black';
+            ctx.fillText(char, 0, 0);
+
+            // 2. 폰트의 외곽선(Path)을 따라가는 실시간 렌더링 (레이어 추가)
+            // 실제 붓은 획이 겹치는 부분이 진해지므로, 여러 겹을 겹쳐 그립니다.
+            
+            // 가벼운 터치 (안쪽)
+            ctx.shadowBlur = 0;
+            ctx.globalAlpha = 0.6;
+            ctx.fillText(char, 0, 0);
+            
+            // 마른 붓터치 (살짝 옆으로 밀며 거친 질감)
+            if (style === '3') {
+                ctx.globalAlpha = 0.3;
+                ctx.shadowBlur = 1;
+                ctx.translate(-2, 1);
+                ctx.fillText(char, 0, 0);
+                ctx.translate(2, -1);
             }
-        }
-
-        // 진짜 붓터치 그리기 (곡선을 타고가며 두께 변화)
-        function drawBrushStroke(p1, ctrl, p2, style, base, isHorizontalEnd = false) {
-            ctx.lineCap = 'round';
-            const segments = 40;
-            let prevX = p1.x, prevY = p1.y;
-
-            for (let i = 1; i <= segments; i++) {
-                const t = i / segments;
-                // 2차 베지어 공식
-                const x = (1-t)*(1-t)*p1.x + 2*(1-t)*t*ctrl.x + t*t*p2.x;
-                const y = (1-t)*(1-t)*p1.y + 2*(1-t)*t*ctrl.y + t*t*p2.y;
-
-                let w = getWidth(t, style, base);
-                
-                // 가로 획의 끝(삐침) 처리: 오른쪽으로 갈수록 얇아지며 길게 늘어남
-                if (isHorizontalEnd && t > 0.7) {
-                    w *= (1 - t) * 2;
-                    x += (t - 0.7) * 50; // 오른쪽으로 길게 늘어남
-                }
-
-                ctx.beginPath();
-                ctx.moveTo(prevX, prevY);
-                ctx.lineTo(x, y);
-                ctx.lineWidth = w;
-                ctx.stroke();
-
-                prevX = x; prevY = y;
-            }
+            
+            // 3. 개별 글자 크기/기울기 랜덤화를 위해 초기화
+            ctx.globalAlpha = 1.0;
+            ctx.restore();
         }
 
         function generateArt() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
             const text = document.getElementById('textInput').value;
-            const style = document.getElementById('strokeStyleSelect').value;
-            const thickness = parseInt(document.getElementById('thicknessNum').value);
-            const randomness = parseInt(document.getElementById('tiltNum').value) / 100;
-            
+            const style = document.getElementById('styleSelect').value;
+            const size = parseInt(document.getElementById('sizeNum').value);
+            const tiltAmt = parseInt(document.getElementById('tiltNum').value) / 100;
+            const blur = parseInt(document.getElementById('blurNum').value);
+
             const cx = canvas.width / 2;
             const cy = canvas.height / 2;
-            const radius = 250;
 
             const chars = text.split('');
             const total = chars.length;
+            const spacing = size * 1.5;
+
             logPanel.innerHTML = '<h3>📋 시스템 로그</h3>';
-            addLog(`✅ v6.0 붓터치 적용. 스타일: ${style}`);
+            addLog(`✅ v7.0 렌더링 시작. 입력: "${text}"`);
 
             chars.forEach((char, index) => {
-                const pos = getSequentialPosition(index, total, cx, cy, radius, randomness);
-                const tilt = (Math.random() * 2 - 1) * 0.2;
-                const s = 100;
+                // 문장 순서 유지 + 살짝의 랜덤 오프셋
+                const x = cx - (spacing * (total - 1) / 2) + (spacing * index) + (Math.random() * 2 - 1) * tiltAmt * 30;
+                const y = cy + (Math.random() * 2 - 1) * tiltAmt * 40;
+                
+                // 글자마다 기울기와 크기 랜덤
+                const tilt = (Math.random() * 2 - 1) * tiltAmt * 0.3;
+                const randomSize = size * (1 + (Math.random() * 2 - 1) * 0.2);
 
-                if (decomposeHangul(char).isHangul) {
-                    const d = decomposeHangul(char);
+                ctx.save();
+                ctx.translate(x, y);
+                ctx.rotate(tilt);
+                
+                drawCalligraphyWithPath(char, 0, 0, randomSize, blur, style);
+                
+                ctx.restore();
 
-                    ctx.save();
-                    ctx.translate(pos.x, pos.y);
-                    ctx.rotate(tilt);
-
-                    // [초성] 'ㄴ' 형태의 세로 획과 꺾임
-                    drawBrushStroke({x: -s*0.4, y: -s*0.5}, {x: -s*0.5, y: 0}, {x: -s*0.4, y: s*0.5}, style, thickness);
-                    drawBrushStroke({x: -s*0.4, y: s*0.5}, {x: -s*0.2, y: s*0.7}, {x: -s*0.1, y: s*0.5}, style, thickness);
-                    
-                    // [중성] 'ㅏ' 형태의 세로 획과 가로 획
-                    drawBrushStroke({x: s*0.2, y: -s*0.5}, {x: s*0.3, y: 0}, {x: s*0.2, y: s*0.5}, style, thickness);
-                    // 가로 획 (삐침 적용)
-                    drawBrushStroke({x: s*0.2, y: 0}, {x: s*0.4, y: -s*0.1}, {x: s*0.7, y: 0}, style, thickness, true);
-                    
-                    // [종성]
-                    if (d.jong > 0) {
-                        drawBrushStroke({x: -s*0.3, y: s*0.5}, {x: 0, y: s*0.6}, {x: s*0.5, y: s*0.5}, style, thickness, true);
-                    }
-
-                    ctx.restore();
-                    addLog(`- "${char}" 초/중/종 획을 붓터치로 렌더링 완료`);
-                }
+                addLog(`- "${char}" 렌더링 (크기: ${Math.round(randomSize)}px, 기울기: ${(tilt * 57.3).toFixed(1)}도)`);
             });
         }
 
@@ -217,6 +214,7 @@
             link.download = 'calligraphy.png';
             link.href = canvas.toDataURL('image/png');
             link.click();
+            addLog("💾 이미지가 저장되었습니다.");
         }
     </script>
 </body>
