@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>한글 캘리그라피 생성기</title>
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: #f7f3ee;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+        }
+        .controls {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            width: 800px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            align-items: center;
+        }
+        input[type="text"] { padding: 10px; font-size: 16px; width: 250px; }
+        select, button { padding: 10px; font-size: 16px; cursor: pointer; }
+        button { background-color: #4CAF50; color: white; border: none; border-radius: 5px; }
+        button:hover { background-color: #45a049; }
+        
+        /* 옵션 슬라이더 */
+        .option-group { display: flex; flex-direction: column; gap: 5px; }
+        .option-row { display: flex; justify-content: space-between; font-size: 14px; }
+        input[type="range"] { width: 100px; }
+
+        canvas {
+            background-color: white;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 컨트롤 패널 -->
+    <div class="controls">
+        <div class="option-group">
+            <label>문장 입력</label>
+            <input type="text" id="textInput" value="캘리그라피" />
+        </div>
+        
+        <div class="option-group">
+            <label>문장 분포(9가지)</label>
+            <select id="layoutSelect">
+                <option value="circle">원</option>
+                <option value="triangle">삼각형</option>
+                <option value="reverseTriangle">역삼각형</option>
+                <option value="diamond">마름모</option>
+                <option value="star">별모양</option>
+                <option value="top">ㅗ (상단)</option>
+                <option value="bottom">ㅜ (하단)</option>
+                <option value="left">ㅓ (좌측)</option>
+                <option value="right">ㅏ (우측)</option>
+            </select>
+        </div>
+
+        <div class="option-group">
+            <label>글자 형태</label>
+            <select id="styleSelect">
+                <option value="circle">원형 왜곡</option>
+                <option value="triangle">삼각형 왜곡</option>
+                <option value="square">사각형 왜곡</option>
+                <option value="none">자연스러움</option>
+            </select>
+        </div>
+
+        <div class="option-group">
+            <label>랜덤 크기 강도</label>
+            <input type="range" id="randomScale" min="0" max="100" value="50">
+            <div class="option-row"><span>0</span><span>100</span></div>
+        </div>
+
+        <div class="option-group">
+            <label>글자 간격</label>
+            <input type="range" id="spacing" min="10" max="200" value="80">
+            <div class="option-row"><span>넓게</span><span>좁게</span></div>
+        </div>
+
+        <div class="option-group">
+            <label>획 굵기 (붓터치)</label>
+            <input type="range" id="thickness" min="1" max="30" value="12">
+        </div>
+
+        <button onclick="generateArt()">다시 생성하기</button>
+        <button onclick="saveAsPNG()">PNG로 저장</button>
+        <button onclick="saveAsVideo()">영상으로 저장 (WebM)</button>
+    </div>
+
+    <canvas id="canvas" width="1000" height="800"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // 1. 유니코드로 한글 초성/중성/종성 분해
+        function decomposeHangul(char) {
+            const code = char.charCodeAt(0);
+            if (code >= 0xAC00 && code <= 0xD7A3) {
+                const syllable = code - 0xAC00;
+                const cho = Math.floor(syllable / 588);
+                const jung = Math.floor((syllable % 588) / 28);
+                const jong = syllable % 28;
+                return { cho, jung, jong, isHangul: true };
+            }
+            return { isHangul: false, char };
+        }
+
+        // 2. 글자 모양 왜곡 (원, 삼각형, 사각형) - Point 좌표를 변형
+        function distortPoint(x, y, type, gridSize) {
+            const cx = gridSize / 2, cy = gridSize / 2;
+            let dx = x - cx, dy = y - cy;
+            let dist = Math.sqrt(dx*dx + dy*dy);
+
+            if (type === 'circle') {
+                // 원형으로 끌어당기기
+                let angle = Math.atan2(dy, dx);
+                let targetR = gridSize / 2.2;
+                let newDist = dist * 0.5 + targetR * 0.5;
+                return { x: cx + Math.cos(angle) * newDist, y: cy + Math.sin(angle) * newDist };
+            } else if (type === 'triangle') {
+                // 삼각형 면적으로 투영 (간단한 수학적 근사)
+                let angle = Math.atan2(dy, dx);
+                // 120도 간격으로 삼각형 꼭짓점 방향으로 밀어냄
+                let vertexAngle = Math.floor(((angle + Math.PI) / (2 * Math.PI)) * 3) * (2 * Math.PI / 3);
+                let closestVX = cx + Math.cos(vertexAngle) * (gridSize / 1.5);
+                let closestVY = cy + Math.sin(vertexAngle) * (gridSize / 1.5);
+                return { x: x * 0.6 + closestVX * 0.4, y: y * 0.6 + closestVY * 0.4 };
+            } else if (type === 'square') {
+                // 사각형 테두리로 투영
+                let maxX = gridSize / 2.2, maxY = gridSize / 2.2;
+                let scale = Math.max(Math.abs(dx)/maxX, Math.abs(dy)/maxY);
+                let newDist = dist / scale;
+                let angle = Math.atan2(dy, dx);
+                return { x: cx + Math.cos(angle) * newDist, y: cy + Math.sin(angle) * newDist };
+            }
+            return { x, y }; // none
+        }
+
+        // 3. 문장 분포 (9가지 배열)
+        function getLayoutPosition(index, total, type, width, height) {
+            const cx = width / 2, cy = height / 2;
+            const radius = Math.min(width, height) / 3;
+            
+            switch(type) {
+                case 'circle': {
+                    const angle = (index / total) * Math.PI * 2 - Math.PI / 2;
+                    return { x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius };
+                }
+                case 'triangle': {
+                    const angle = (index / total) * Math.PI * 2 - Math.PI / 2;
+                    let r = radius * (0.8 + 0.2 * Math.cos(3 * angle)); // 3중 대칭
+                    return { x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r };
+                }
+                case 'reverseTriangle': {
+                    const angle = (index / total) * Math.PI * 2 + Math.PI / 2;
+                    let r = radius * (0.8 + 0.2 * Math.cos(3 * angle));
+                    return { x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r };
+                }
+                case 'diamond': {
+                    let t = (index / (total - 1)) * 2 - 1; // -1 to 1
+                    return { x: cx + t * radius * 1.2, y: cy + (Math.abs(t) - 0.5) * radius * (Math.random() > 0.5 ? 1 : -1) };
+                }
+                case 'star': {
+                    const angle = (index / total) * Math.PI * 2 - Math.PI / 2;
+                    let r = radius * (Math.cos(5 * angle) * 0.2 + 0.8);
+                    return { x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r };
+                }
+                case 'top': { // ㅗ
+                    return { x: (index / (total - 1)) * width * 0.8 + width * 0.1, y: cy - 100 };
+                }
+                case 'bottom': { // ㅜ
+                    return { x: (index / (total - 1)) * width * 0.8 + width * 0.1, y: cy + 150 };
+                }
+                case 'left': { // ㅓ
+                    return { x: cx - 200, y: (index / (total - 1)) * height * 0.6 + height * 0.2 };
+                }
+                case 'right': { // ㅏ
+                    return { x: cx + 200, y: (index / (total - 1)) * height * 0.6 + height * 0.2 };
+                }
+            }
+        }
+
+        // 4. Float Curve (자연스러운 크기 곡선) - 사인파 기반
+        function getFloatCurveScale(index, total, type) {
+            if (type === 'random') return 0.8 + Math.random() * 0.4;
+            // 중앙이 볼록한 곡선
+            return 0.7 + 0.5 * Math.sin((index / (total - 1)) * Math.PI); 
+        }
+
+        // 5. 메인 생성 함수
+        function generateArt() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            const text = document.getElementById('textInput').value;
+            const layoutType = document.getElementById('layoutSelect').value;
+            const styleType = document.getElementById('styleSelect').value;
+            const randomScaleVal = parseFloat(document.getElementById('randomScale').value) / 100;
+            const spacingVal = parseInt(document.getElementById('spacing').value);
+            const thicknessVal = parseInt(document.getElementById('thickness').value);
+
+            const chars = text.split('');
+            const total = chars.length;
+
+            ctx.fillStyle = '#111';
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            chars.forEach((char, index) => {
+                const decomposed = decomposeHangul(char);
+                const layoutPos = getLayoutPosition(index, total, layoutType, canvas.width, canvas.height);
+                const scaleCurve = getFloatCurveScale(index, total, 'sin'); // 사인 곡선 적용
+                
+                // 랜덤 크기 + 곡선 크기 적용
+                let baseScale = scaleCurve * (1 + (Math.random() * 2 - 1) * randomScaleVal);
+                
+                if (decomposed.isHangul) {
+                    // 한글일 경우: 초성(ㄱ,ㄴ..), 중성(ㅏ,ㅗ..), 종성(ㄱ,ㅁ..)을 그리는 로직
+                    drawHangulGlyph(decomposed, layoutPos.x, layoutPos.y, spacingVal * 0.1, baseScale, styleType, thicknessVal);
+                } else {
+                    // 영어 등은 간단히 텍스트로
+                    ctx.font = `bold ${80 * baseScale}px Arial`;
+                    ctx.fillText(char, layoutPos.x, layoutPos.y);
+                }
+            });
+        }
+
+        // 캘리그라피 획 그리기 (단일 획 기반)
+        function drawHangulGlyph(decomp, x, y, size, scale, styleType, thickness) {
+            // 초/중/종성의 대략적인 좌표 (여기서는 단순 도형으로 표현, 실제로는 SVG 폰트 데이터를 불러와야 함)
+            // 이 예제에서는 실제 획을 그리기 위해 간단한 수학적 랜덤 커브를 사용했습니다.
+            
+            const strokeCount = 3 + (decomp.jong > 0 ? 1 : 0); // 글자 복잡도
+            ctx.lineWidth = thickness; // 붓터치 굵기
+
+            for (let i = 0; i < strokeCount; i++) {
+                // 획의 시작점과 끝점을 랜덤하게 생성 (실제 캘리그라피는 획 순서가 중요)
+                // 여기서는 구조적으로 초성은 왼쪽, 중성은 오른쪽에 배치했다고 가정
+                let sx, sy, ex, ey;
+                if (i === 0) { sx = x - size; sy = y - size; ex = x - size; ey = y + size; } // 초성(ㄱ,ㄴ 세로 획)
+                else if (i === 1) { sx = x - size; sy = y - size; ex = x; ey = y; } // 초성 가로 획
+                else if (i === 2) { sx = x; sy = y - size * 2; ex = x; ey = y + size * 2; } // 중성(ㅏ 세로 획)
+                else { sx = x; sy = y + size * 2; ex = x + size; ey = y + size * 2; } // 종성(ㄴ 가로 획)
+
+                // 왜곡 (원, 삼각, 사각) 적용
+                const p1 = distortPoint(sx, sy, styleType, size * 5);
+                const p2 = distortPoint(ex, ey, styleType, size * 5);
+
+                // 컨트롤 포인트 (베지어 곡선을 위한 랜덤 오프셋)
+                const ctrlX = (p1.x + p2.x) / 2 + (Math.random() * 20 - 10);
+                const ctrlY = (p1.y + p2.y) / 2 + (Math.random() * 20 - 10);
+
+                ctx.beginPath();
+                ctx.moveTo(p1.x, p1.y);
+                ctx.quadraticCurveTo(ctrlX, ctrlY, p2.x, p2.y);
+                ctx.stroke();
+            }
+        }
+
+        // 저장 기능
+        function saveAsPNG() {
+            const link = document.createElement('a');
+            link.download = 'calligraphy.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+
+        // 영상 저장 (WebM) - MediaRecorder API 사용
+        function saveAsVideo() {
+            const stream = canvas.captureStream(30); // 30fps
+            const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+            const chunks = [];
+
+            recorder.ondataavailable = e => chunks.push(e.data);
+            recorder.onstop = () => {
+                const blob = new Blob(chunks, { type: 'video/webm' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'calligraphy.webm';
+                a.click();
+                URL.revokeObjectURL(url);
+            };
+
+            // 글자 쓰는 애니메이션 만들기 (프레임 단위로 점점 그리기)
+            // 여기서는 3초 동안 천천히 그려지는 효과를 주기 위해 setInterval을 사용했습니다.
+            recorder.start();
+            
+            let progress = 0;
+            const animationInterval = setInterval(() => {
+                generateArt();
+                progress++;
+                if (progress > 90) { // 3초 후 종료
+                    clearInterval(animationInterval);
+                    recorder.stop();
+                }
+            }, 33); // 33ms = 30fps
+        }
+
+        // 초기 실행
+        window.onload = generateArt;
+    </script>
+</body>
+</html>
