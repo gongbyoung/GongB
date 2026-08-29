@@ -39,7 +39,7 @@
         return Math.abs(hash);
     }
 
-    window.TypoMotionStyles['calligraphy001'] = {
+    window.TypoMotionStyles['you002'] = {
         name: '감성 캘리그라피 (Ink Brush)',
         backgroundColor: '#f5f3ee', // 화선지 백색
         textColor: '#1a1818',       // 먹색
