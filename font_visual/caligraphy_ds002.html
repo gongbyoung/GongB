@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SRT 캘리그라피 스튜디오 v2.1 (조형 원리 적용)</title>
+    <title>SRT 캘리그라피 스튜디오 v2.2</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Nanum+Brush+Script&display=swap" rel="stylesheet">
@@ -15,7 +15,7 @@
         body { font-family: 'Pretendard', sans-serif; background-color: var(--bg-dark); color: var(--text-main); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
         header { background: #18181c; padding: 15px 24px; border-bottom: 1px solid var(--panel-border); }
         .main-container { display: flex; flex: 1; overflow: hidden; }
-        .sidebar { width: 400px; background: var(--panel-bg); border-right: 1px solid var(--panel-border); padding: 20px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+        .sidebar { width: 350px; background: var(--panel-bg); border-right: 1px solid var(--panel-border); padding: 20px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
         .preview-area { flex: 1; display: flex; flex-direction: column; background: #f4ecd8; align-items: center; justify-content: center; padding: 20px; position: relative; }
         .canvas-wrapper { position: relative; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2); border-radius: 8px; overflow: hidden; max-width: 100%; max-height: 80vh; cursor: grab; background: #f4ecd8; }
         canvas { display: block; max-width: 100%; max-height: 80vh; object-fit: contain; pointer-events: none; }
@@ -39,13 +39,16 @@
         #log-panel h3 { color: var(--accent-color); margin-bottom: 10px; font-size: 1rem; border-bottom: 1px solid #444; padding-bottom: 5px; }
         .log-entry { border-bottom: 1px dashed #333; padding: 5px 0; color: var(--text-muted); }
         .log-entry strong { color: #4ecdc4; }
-        details { background: #222; padding: 10px; border-radius: 6px; margin-bottom: 10px; cursor: pointer; }
+
+        /* 압축된 UI 그룹 */
+        details { background: #222; padding: 10px; border-radius: 6px; margin-bottom: 8px; cursor: pointer; }
         summary { font-weight: bold; color: var(--accent-color); margin-bottom: 10px; }
+        .sub-group { border-left: 2px solid #444; padding-left: 10px; margin-bottom: 10px; }
     </style>
 </head>
 <body>
     <header>
-        <h1>🖌️ SRT 캘리그라피 스튜디오 v2.1 (조형 원리 적용)</h1>
+        <h1>🖌️ SRT 캘리그라피 스튜디오 v2.2 (뒤집힘 수정)</h1>
     </header>
 
     <div class="main-container">
@@ -65,65 +68,70 @@
             <textarea id="srt-textarea" style="height: 80px; background: #141418;"></textarea>
             <button class="btn-action" id="btn-apply-srt" style="width:100%; margin-bottom: 10px;">✏️ 자막 적용하기 (렌더링)</button>
 
-            <!-- 탈네모틀 그리드 기반 -->
+            <!-- 전역 설정 (실시간) -->
             <details open>
-                <summary>🎨 2. 전체 비례 & 강약 (대표 글자)</summary>
-                <label>획 굵기 (POWER) <span id="val-g-stroke">1.0x</span></label>
-                <input type="range" id="global-stroke" min="0.1" max="5.0" step="0.1" value="2.0">
-                <label>먹 번짐 (Blur) <span id="val-g-blur">1.0</span></label>
-                <input type="range" id="global-blur" min="0.0" max="5.0" step="0.1" value="1.5">
-                <label>전체 기울기 (필획 기운) <span id="val-g-shear">0.0</span></label>
+                <summary>🎨 2. 전역 변형 (기본값 = 원본 폰트)</summary>
+                <label>전체 글자 크기 <span id="val-size">150</span></label>
+                <input type="range" id="global-size" min="80" max="300" step="1" value="150">
+                
+                <label>자간 거리 (글자 간격) <span id="val-spacing">30</span></label>
+                <input type="range" id="global-spacing" min="0" max="120" step="1" value="30">
+                
+                <label>획 굵기 (붓터치) <span id="val-stroke">1.0x</span></label>
+                <input type="range" id="global-stroke" min="0.5" max="4.0" step="0.1" value="1.0">
+                
+                <label>먹 번짐 (Blur) <span id="val-blur">0.0</span></label>
+                <input type="range" id="global-blur" min="0.0" max="5.0" step="0.1" value="0.0">
+                
+                <label>전체 기울기 (필획) <span id="val-shear">0.0</span></label>
                 <input type="range" id="global-shear" min="-0.5" max="0.5" step="0.01" value="0.0">
-                <label>전체 확대/축소 <span id="val-g-scale">1.0x</span></label>
-                <input type="range" id="global-scale" min="0.5" max="2.0" step="0.05" value="1.0">
             </details>
 
-            <details>
-                <summary>🔷 3. 초성 변형 (그리드 이탈)</summary>
-                <label>초성 이동 X <span id="val-c-x">0</span></label>
-                <input type="range" id="cho-x" min="-150" max="150" step="1" value="0">
-                <label>초성 이동 Y <span id="val-c-y">0</span></label>
-                <input type="range" id="cho-y" min="-150" max="150" step="1" value="0">
-                <label>초성 크기 X <span id="val-c-sx">1.0</span></label>
-                <input type="range" id="cho-sx" min="0.5" max="2.5" step="0.05" value="1.0">
-                <label>초성 크기 Y <span id="val-c-sy">1.0</span></label>
-                <input type="range" id="cho-sy" min="0.5" max="2.5" step="0.05" value="0.9">
-                <label>초성 회전 <span id="val-c-r">0.0</span></label>
-                <input type="range" id="cho-r" min="-0.5" max="0.5" step="0.01" value="-0.1">
-            </details>
+            <!-- 초/중/종 설정 (압축) -->
+            <details open>
+                <summary>🔠 3. 초성 / 중성 / 종성 변형</summary>
+                
+                <div class="sub-group">
+                    <div class="section-title">🔷 초성 (자음)</div>
+                    <label>이동 X <span id="val-c-x">0</span> | 이동 Y <span id="val-c-y">0</span></label>
+                    <input type="range" id="cho-x" min="-150" max="150" step="1" value="0">
+                    <input type="range" id="cho-y" min="-150" max="150" step="1" value="0" style="margin-top: 5px;">
+                    
+                    <label>크기 X <span id="val-c-sx">1.0</span> | 크기 Y <span id="val-c-sy">1.0</span> | 회전 <span id="val-c-r">0.0</span></label>
+                    <input type="range" id="cho-sx" min="0.5" max="2.5" step="0.05" value="1.0">
+                    <input type="range" id="cho-sy" min="0.5" max="2.5" step="0.05" value="1.0" style="margin-top: 5px;">
+                    <input type="range" id="cho-r" min="-0.5" max="0.5" step="0.01" value="0.0" style="margin-top: 5px;">
+                </div>
 
-            <details>
-                <summary>🟩 4. 중성 변형 (모음 늘이기)</summary>
-                <label>중성 이동 X <span id="val-j-x">0</span></label>
-                <input type="range" id="jung-x" min="-150" max="150" step="1" value="0">
-                <label>중성 이동 Y <span id="val-j-y">0</span></label>
-                <input type="range" id="jung-y" min="-150" max="150" step="1" value="0">
-                <label>중성 크기 X <span id="val-j-sx">1.0</span></label>
-                <input type="range" id="jung-sx" min="0.5" max="3.0" step="0.05" value="1.4">
-                <label>중성 크기 Y <span id="val-j-sy">1.0</span></label>
-                <input type="range" id="jung-sy" min="0.5" max="2.5" step="0.05" value="1.1">
-                <label>중성 회전 <span id="val-j-r">0.0</span></label>
-                <input type="range" id="jung-r" min="-0.5" max="0.5" step="0.01" value="0.1">
-            </details>
+                <div class="sub-group">
+                    <div class="section-title">🟩 중성 (모음)</div>
+                    <label>이동 X <span id="val-j-x">0</span> | 이동 Y <span id="val-j-y">0</span></label>
+                    <input type="range" id="jung-x" min="-150" max="150" step="1" value="0">
+                    <input type="range" id="jung-y" min="-150" max="150" step="1" value="0" style="margin-top: 5px;">
+                    
+                    <label>크기 X <span id="val-j-sx">1.0</span> | 크기 Y <span id="val-j-sy">1.0</span> | 회전 <span id="val-j-r">0.0</span></label>
+                    <input type="range" id="jung-sx" min="0.5" max="2.5" step="0.05" value="1.0">
+                    <input type="range" id="jung-sy" min="0.5" max="2.5" step="0.05" value="1.0" style="margin-top: 5px;">
+                    <input type="range" id="jung-r" min="-0.5" max="0.5" step="0.01" value="0.0" style="margin-top: 5px;">
+                </div>
 
-            <details>
-                <summary>🟦 5. 종성 변형 (받침 누르기)</summary>
-                <label>종성 이동 X <span id="val-jg-x">0</span></label>
-                <input type="range" id="jong-x" min="-150" max="150" step="1" value="0">
-                <label>종성 이동 Y <span id="val-jg-y">0</span></label>
-                <input type="range" id="jong-y" min="-150" max="150" step="1" value="0">
-                <label>종성 크기 X <span id="val-jg-sx">1.0</span></label>
-                <input type="range" id="jong-sx" min="0.5" max="2.0" step="0.05" value="1.1">
-                <label>종성 크기 Y <span id="val-jg-sy">1.0</span></label>
-                <input type="range" id="jong-sy" min="0.5" max="2.0" step="0.05" value="0.8">
-                <label>종성 회전 <span id="val-jg-r">0.0</span></label>
-                <input type="range" id="jong-r" min="-0.5" max="0.5" step="0.01" value="0.0">
+                <div class="sub-group">
+                    <div class="section-title">🟦 종성 (받침)</div>
+                    <label>이동 X <span id="val-jg-x">0</span> | 이동 Y <span id="val-jg-y">0</span></label>
+                    <input type="range" id="jong-x" min="-150" max="150" step="1" value="0">
+                    <input type="range" id="jong-y" min="-150" max="150" step="1" value="0" style="margin-top: 5px;">
+                    
+                    <label>크기 X <span id="val-jg-sx">1.0</span> | 크기 Y <span id="val-jg-sy">1.0</span> | 회전 <span id="val-jg-r">0.0</span></label>
+                    <input type="range" id="jong-sx" min="0.5" max="2.5" step="0.05" value="1.0">
+                    <input type="range" id="jong-sy" min="0.5" max="2.5" step="0.05" value="1.0" style="margin-top: 5px;">
+                    <input type="range" id="jong-r" min="-0.5" max="0.5" step="0.01" value="0.0" style="margin-top: 5px;">
+                </div>
             </details>
 
             <label for="mask-file-input" class="btn-file" style="margin-top:10px;">🖼️ 마스크 이미지 (선택)</label>
             <input type="file" id="mask-file-input" accept="image/*">
             
-            <div class="section-title" style="margin-top:15px;">📜 6. 세션 목록</div>
+            <div class="section-title" style="margin-top:15px;">📜 4. 세션 목록</div>
             <div class="srt-list-container" id="srt-list"></div>
         </div>
 
@@ -158,36 +166,50 @@
         let hasMask = false;
         let currentMaskAlphaImage = null;
         
+        // [핵심 수정] 기본값은 원본 폰트 유지 (0, 1)
         let settings = {
-            global: { stroke: 2.0, blur: 1.5, shear: 0.0, scale: 1.0 },
-            cho: { x: 0, y: 0, sx: 1.0, sy: 0.9, rot: -0.1 },
-            jung: { x: 0, y: 0, sx: 1.4, sy: 1.1, rot: 0.1 },
-            jong: { x: 0, y: 0, sx: 1.1, sy: 0.8, rot: 0.0 }
+            global: { size: 150, spacing: 30, stroke: 1.0, blur: 0.0, shear: 0.0 },
+            cho: { x: 0, y: 0, sx: 1.0, sy: 1.0, rot: 0.0 },
+            jung: { x: 0, y: 0, sx: 1.0, sy: 1.0, rot: 0.0 },
+            jong: { x: 0, y: 0, sx: 1.0, sy: 1.0, rot: 0.0 }
         };
 
-        // UI 바인딩
-        document.getElementById('global-stroke').addEventListener('input', (e) => { settings.global.stroke = parseFloat(e.target.value); document.getElementById('val-g-stroke').textContent = e.target.value+'x'; });
-        document.getElementById('global-blur').addEventListener('input', (e) => { settings.global.blur = parseFloat(e.target.value); document.getElementById('val-g-blur').textContent = e.target.value; });
-        document.getElementById('global-shear').addEventListener('input', (e) => { settings.global.shear = parseFloat(e.target.value); document.getElementById('val-g-shear').textContent = e.target.value; });
-        document.getElementById('global-scale').addEventListener('input', (e) => { settings.global.scale = parseFloat(e.target.value); document.getElementById('val-g-scale').textContent = e.target.value+'x'; });
+        // 실시간 업데이트 바인딩
+        function bindRealTime(id, key, subKey, labelId) {
+            document.getElementById(id).addEventListener('input', (e) => {
+                settings[key][subKey] = parseFloat(e.target.value);
+                if (labelId) document.getElementById(labelId).textContent = e.target.value;
+                renderFrame(currentTime); // 실시간 렌더링
+            });
+        }
 
-        document.getElementById('cho-x').addEventListener('input', (e) => { settings.cho.x = parseFloat(e.target.value); document.getElementById('val-c-x').textContent = e.target.value; });
-        document.getElementById('cho-y').addEventListener('input', (e) => { settings.cho.y = parseFloat(e.target.value); document.getElementById('val-c-y').textContent = e.target.value; });
-        document.getElementById('cho-sx').addEventListener('input', (e) => { settings.cho.sx = parseFloat(e.target.value); document.getElementById('val-c-sx').textContent = e.target.value; });
-        document.getElementById('cho-sy').addEventListener('input', (e) => { settings.cho.sy = parseFloat(e.target.value); document.getElementById('val-c-sy').textContent = e.target.value; });
-        document.getElementById('cho-r').addEventListener('input', (e) => { settings.cho.rot = parseFloat(e.target.value); document.getElementById('val-c-r').textContent = e.target.value; });
+        // 전역 바인딩
+        bindRealTime('global-size', 'global', 'size', 'val-size');
+        bindRealTime('global-spacing', 'global', 'spacing', 'val-spacing');
+        bindRealTime('global-stroke', 'global', 'stroke', 'val-stroke');
+        bindRealTime('global-blur', 'global', 'blur', 'val-blur');
+        bindRealTime('global-shear', 'global', 'shear', 'val-shear');
 
-        document.getElementById('jung-x').addEventListener('input', (e) => { settings.jung.x = parseFloat(e.target.value); document.getElementById('val-j-x').textContent = e.target.value; });
-        document.getElementById('jung-y').addEventListener('input', (e) => { settings.jung.y = parseFloat(e.target.value); document.getElementById('val-j-y').textContent = e.target.value; });
-        document.getElementById('jung-sx').addEventListener('input', (e) => { settings.jung.sx = parseFloat(e.target.value); document.getElementById('val-j-sx').textContent = e.target.value; });
-        document.getElementById('jung-sy').addEventListener('input', (e) => { settings.jung.sy = parseFloat(e.target.value); document.getElementById('val-j-sy').textContent = e.target.value; });
-        document.getElementById('jung-r').addEventListener('input', (e) => { settings.jung.rot = parseFloat(e.target.value); document.getElementById('val-j-r').textContent = e.target.value; });
+        // 초성 바인딩
+        bindRealTime('cho-x', 'cho', 'x', 'val-c-x');
+        bindRealTime('cho-y', 'cho', 'y', 'val-c-y');
+        bindRealTime('cho-sx', 'cho', 'sx', 'val-c-sx');
+        bindRealTime('cho-sy', 'cho', 'sy', 'val-c-sy');
+        bindRealTime('cho-r', 'cho', 'rot', 'val-c-r');
 
-        document.getElementById('jong-x').addEventListener('input', (e) => { settings.jong.x = parseFloat(e.target.value); document.getElementById('val-jg-x').textContent = e.target.value; });
-        document.getElementById('jong-y').addEventListener('input', (e) => { settings.jong.y = parseFloat(e.target.value); document.getElementById('val-jg-y').textContent = e.target.value; });
-        document.getElementById('jong-sx').addEventListener('input', (e) => { settings.jong.sx = parseFloat(e.target.value); document.getElementById('val-jg-sx').textContent = e.target.value; });
-        document.getElementById('jong-sy').addEventListener('input', (e) => { settings.jong.sy = parseFloat(e.target.value); document.getElementById('val-jg-sy').textContent = e.target.value; });
-        document.getElementById('jong-r').addEventListener('input', (e) => { settings.jong.rot = parseFloat(e.target.value); document.getElementById('val-jg-r').textContent = e.target.value; });
+        // 중성 바인딩
+        bindRealTime('jung-x', 'jung', 'x', 'val-j-x');
+        bindRealTime('jung-y', 'jung', 'y', 'val-j-y');
+        bindRealTime('jung-sx', 'jung', 'sx', 'val-j-sx');
+        bindRealTime('jung-sy', 'jung', 'sy', 'val-j-sy');
+        bindRealTime('jung-r', 'jung', 'rot', 'val-j-r');
+
+        // 종성 바인딩
+        bindRealTime('jong-x', 'jong', 'x', 'val-jg-x');
+        bindRealTime('jong-y', 'jong', 'y', 'val-jg-y');
+        bindRealTime('jong-sx', 'jong', 'sx', 'val-jg-sx');
+        bindRealTime('jong-sy', 'jong', 'sy', 'val-jg-sy');
+        bindRealTime('jong-r', 'jong', 'rot', 'val-jg-r');
 
         function logMessage(msg) {
             const logDiv = document.getElementById('log-messages');
@@ -223,7 +245,7 @@
             } catch(e) { return null; }
         }
 
-        // [핵심 로직] 탈네모틀 자동 그리드 + 사용자 편차
+        // [핵심 수정] 뒤집힘 완전 해결 엔진
         function renderFrame(timeSec) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.fillStyle = '#f4ecd8';
@@ -240,126 +262,142 @@
             if (!activeSubtitle) return;
             const text = activeSubtitle.text.trim();
 
-            // 전역 필획 기운 (Shear)
+            // 전역 기울기 (필획)
             ctx.save();
             ctx.translate(canvas.width / 2, canvas.height / 2);
-            ctx.transform(1, settings.global.shear, 0, 1, 0, 0); 
-            ctx.scale(settings.global.scale, settings.global.scale);
+            ctx.transform(1, settings.global.shear, 0, 1, 0, 0);
             ctx.translate(-canvas.width / 2, -canvas.height / 2);
 
             let currentX = canvas.width * 0.1;
-            const baseSize = 200; 
-            const lineHeight = baseSize * 1.6;
+            const fontSize = settings.global.size;
+            const lineHeight = fontSize * 1.6;
             let currentY = canvas.height / 2 - lineHeight / 2;
 
             for (let char of text) {
                 if (char === '\n') { currentY += lineHeight; currentX = canvas.width * 0.1; continue; }
                 
-                let width = currentFont.getAdvanceWidth(char, baseSize);
-                const parts = decomposeHangul(char);
+                let charWidth = currentFont.getAdvanceWidth(char, fontSize) + settings.global.spacing;
 
                 ctx.save();
+                // 1. 글자의 기준점(Origin) 이동
                 ctx.translate(currentX, currentY);
-                ctx.scale(1, -1); // Y축 반전
-
-                // 그리드 엔진 (조형적 비례 자동 계산)
-                // '한'의 BBox를 가져와서 초/중/종의 기본 위치를 계산합니다.
-                let fullPath = getGlyphPath(char, baseSize);
-                let fullBBox = null;
-                try { fullBBox = currentFont.getPath(char, 0, 0, baseSize).getBoundingBox(); } catch(e) { fullBBox = {x1:0, x2:100, y1:-100, y2:0}; }
                 
-                const gridW = fullBBox.x2 - fullBBox.x1;
-                const gridH = fullBBox.y2 - fullBBox.y1;
+                // 2. [핵심] 좌표 뒤집기 (Opentype.js는 Y축이 위가 +)
+                ctx.scale(1, -1);
 
-                // 자모 분리가 가능한 한글
+                // 3. 전체 글자의 중심(BBox) 계산하여 Origin을 글자의 정중앙으로 이동
+                let fullPath = getGlyphPath(char, fontSize);
+                if (!fullPath) { ctx.restore(); currentX += charWidth; continue; }
+                let fullBBox = fullPath.getBoundingBox();
+                let centerX = (fullBBox.x1 + fullBBox.x2) / 2;
+                let centerY = (fullBBox.y1 + fullBBox.y2) / 2;
+                
+                // Center로 이동
+                ctx.translate(-centerX, -centerY);
+
+                let parts = decomposeHangul(char);
+
+                // 4. 초성, 중성, 종성의 중심 좌표를 계산하고 사용자 설정만큼 이동/회전/스케일
                 if (parts.cho && parts.jung) {
                     
-                    // 1. 초성 (좌상단/상단)
-                    let choPath = getGlyphPath(parts.cho, baseSize);
+                    // 초성
+                    let choPath = getGlyphPath(parts.cho, fontSize);
                     if (choPath) {
-                        let choBBox;
-                        try { choBBox = currentFont.getPath(parts.cho, 0, 0, baseSize).getBoundingBox(); } catch(e) { choBBox = {x1:0, x2:50, y1:-100, y2:0}; }
-                        let choBaseX = (choBBox.x1 + choBBox.x2) / 2;
-                        let choBaseY = (choBBox.y1 + choBBox.y2) / 2;
+                        let choBBox = choPath.getBoundingBox();
+                        let choCX = (choBBox.x1 + choBBox.x2) / 2;
+                        let choCY = (choBBox.y1 + choBBox.y2) / 2;
                         
                         ctx.save();
-                        ctx.translate(-choBaseX + settings.cho.x, -choBaseY + settings.cho.y);
+                        ctx.translate(choCX + settings.cho.x, choCY + settings.cho.y);
                         ctx.rotate(settings.cho.rot);
                         ctx.scale(settings.cho.sx, settings.cho.sy);
+                        
                         ctx.fillStyle = '#1c1917';
                         ctx.shadowColor = 'rgba(0,0,0,0.4)';
                         ctx.shadowBlur = settings.global.blur;
                         ctx.lineJoin = 'round';
                         ctx.lineCap = 'round';
-                        // 3중 레이어(강약)
-                        ctx.lineWidth = settings.global.stroke * 2.5; ctx.globalAlpha = 0.3; ctx.stroke(choPath);
-                        ctx.lineWidth = settings.global.stroke * 1.0; ctx.globalAlpha = 0.7; ctx.stroke(choPath);
-                        ctx.fill(choPath); ctx.globalAlpha = 1.0;
+                        ctx.lineWidth = settings.global.stroke * 2;
+                        ctx.globalAlpha = 0.3;
+                        ctx.stroke(choPath);
+                        ctx.lineWidth = settings.global.stroke;
+                        ctx.globalAlpha = 0.8;
+                        ctx.stroke(choPath);
+                        ctx.fill(choPath);
+                        ctx.globalAlpha = 1.0;
                         ctx.restore();
                     }
 
-                    // 2. 중성 (우측/중단)
-                    let jungPath = getGlyphPath(parts.jung, baseSize);
+                    // 중성
+                    let jungPath = getGlyphPath(parts.jung, fontSize);
                     if (jungPath) {
-                        let jungBBox;
-                        try { jungBBox = currentFont.getPath(parts.jung, 0, 0, baseSize).getBoundingBox(); } catch(e) { jungBBox = {x1:0, x2:50, y1:-100, y2:0}; }
-                        let jungBaseX = (jungBBox.x1 + jungBBox.x2) / 2;
-                        let jungBaseY = (jungBBox.y1 + jungBBox.y2) / 2;
+                        let jungBBox = jungPath.getBoundingBox();
+                        let jungCX = (jungBBox.x1 + jungBBox.x2) / 2;
+                        let jungCY = (jungBBox.y1 + jungBBox.y2) / 2;
                         
                         ctx.save();
-                        // 모음은 오른쪽이나 아래쪽에 배치되므로 기본 시프트를 줍니다.
-                        ctx.translate(-jungBaseX + gridW * 0.35 + settings.jung.x, -jungBaseY - gridH * 0.15 + settings.jung.y);
+                        ctx.translate(jungCX + settings.jung.x, jungCY + settings.jung.y);
                         ctx.rotate(settings.jung.rot);
                         ctx.scale(settings.jung.sx, settings.jung.sy);
+                        
                         ctx.fillStyle = '#1c1917';
                         ctx.shadowBlur = settings.global.blur;
                         ctx.lineJoin = 'round';
-                        ctx.lineWidth = settings.global.stroke * 2.5; ctx.globalAlpha = 0.3; ctx.stroke(jungPath);
-                        ctx.lineWidth = settings.global.stroke * 1.0; ctx.globalAlpha = 0.7; ctx.stroke(jungPath);
-                        ctx.fill(jungPath); ctx.globalAlpha = 1.0;
+                        ctx.lineWidth = settings.global.stroke * 2;
+                        ctx.globalAlpha = 0.3;
+                        ctx.stroke(jungPath);
+                        ctx.lineWidth = settings.global.stroke;
+                        ctx.globalAlpha = 0.8;
+                        ctx.stroke(jungPath);
+                        ctx.fill(jungPath);
+                        ctx.globalAlpha = 1.0;
                         ctx.restore();
                     }
 
-                    // 3. 종성 (하단 받침)
+                    // 종성
                     if (parts.jong) {
-                        let jongPath = getGlyphPath(parts.jong, baseSize);
+                        let jongPath = getGlyphPath(parts.jong, fontSize);
                         if (jongPath) {
-                            let jongBBox;
-                            try { jongBBox = currentFont.getPath(parts.jong, 0, 0, baseSize).getBoundingBox(); } catch(e) { jongBBox = {x1:0, x2:50, y1:-100, y2:0}; }
-                            let jongBaseX = (jongBBox.x1 + jongBBox.x2) / 2;
-                            let jongBaseY = (jongBBox.y1 + jongBBox.y2) / 2;
+                            let jongBBox = jongPath.getBoundingBox();
+                            let jongCX = (jongBBox.x1 + jongBBox.x2) / 2;
+                            let jongCY = (jongBBox.y1 + jongBBox.y2) / 2;
                             
                             ctx.save();
-                            // 받침은 아래에 배치
-                            ctx.translate(-jongBaseX + gridW * 0.15 + settings.jong.x, -jongBaseY + gridH * 0.75 + settings.jong.y);
+                            ctx.translate(jongCX + settings.jong.x, jongCY + settings.jong.y);
                             ctx.rotate(settings.jong.rot);
                             ctx.scale(settings.jong.sx, settings.jong.sy);
+                            
                             ctx.fillStyle = '#1c1917';
                             ctx.shadowBlur = settings.global.blur;
                             ctx.lineJoin = 'round';
-                            ctx.lineWidth = settings.global.stroke * 2.5; ctx.globalAlpha = 0.3; ctx.stroke(jongPath);
-                            ctx.lineWidth = settings.global.stroke * 1.0; ctx.globalAlpha = 0.7; ctx.stroke(jongPath);
-                            ctx.fill(jongPath); ctx.globalAlpha = 1.0;
+                            ctx.lineWidth = settings.global.stroke * 2;
+                            ctx.globalAlpha = 0.3;
+                            ctx.stroke(jongPath);
+                            ctx.lineWidth = settings.global.stroke;
+                            ctx.globalAlpha = 0.8;
+                            ctx.stroke(jongPath);
+                            ctx.fill(jongPath);
+                            ctx.globalAlpha = 1.0;
                             ctx.restore();
                         }
                     }
                 } 
-                // 영어, 숫자 등
+                // 자모 분해 불가 (숫자, 영어 등)
                 else if (fullPath) {
                     ctx.fillStyle = '#1c1917';
                     ctx.shadowBlur = settings.global.blur;
                     ctx.lineJoin = 'round';
-                    ctx.lineWidth = settings.global.stroke * 2.0;
+                    ctx.lineWidth = settings.global.stroke * 2;
                     ctx.fill(fullPath);
                 }
 
                 ctx.restore(); // Y축 복원
 
-                currentX += width;
+                currentX += charWidth;
                 if (currentX > canvas.width * 0.9) { currentX = canvas.width * 0.1; currentY += lineHeight; }
             }
 
-            ctx.restore(); // 전역 변형 복원
+            ctx.restore(); // 전역 기울기 복원
 
             if (isRecording && hasMask && currentMaskAlphaImage) {
                 ctx.globalCompositeOperation = 'destination-in';
