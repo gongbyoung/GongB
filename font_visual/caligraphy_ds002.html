@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SRT 캘리그라피 스튜디오 v1.005 (에러 수정 완료)</title>
+  <title>SRT 캘리그라피 스튜디오 v1.006 (자간 계산 수정)</title>
   
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -44,7 +44,7 @@
 </head>
 <body>
   <header>
-    <h1>🖌️ SRT 캘리그라피 스튜디오 v1.005 (완전 안정화)</h1>
+    <h1>🖌️ SRT 캘리그라피 스튜디오 v1.006 (자간 자동 계산)</h1>
   </header>
 
   <div class="main-container">
@@ -65,10 +65,8 @@
       <input type="file" id="srt-input" accept=".srt">
       <textarea id="srt-textarea" style="height: 100px; background: #141418;"></textarea>
 
-      <!-- 적용 버튼 (여기 눌러야만 실행됨) -->
       <button class="btn-action" id="btn-apply-srt" style="width:100%; margin-bottom: 10px;">✏️ 자막 적용하기</button>
 
-      <!-- 접을 수 있는 변형 설정 -->
       <details style="background: #222; padding: 10px; border-radius: 6px; margin-bottom: 10px;">
         <summary style="cursor:pointer; font-weight: bold; color: var(--accent-color); margin-bottom: 10px;">🎨 붓터치 설정 (적용 버튼을 눌러야 반영)</summary>
         
@@ -85,7 +83,6 @@
         <input type="range" id="rhythm-slider" min="0.0" max="1.0" step="0.1" value="0.5">
       </details>
 
-      <!-- 세션 설정 -->
       <div class="section-title">🎛️ 선택된 세션</div>
       <div id="session-controls" style="display: none;">
         <label>위치 X <span id="val-x">0</span></label>
@@ -159,44 +156,24 @@
     const rhythm = () => parseFloat(rhythmSlider.value);
 
     function getStyleParams() {
-      return {
-        power: power(),
-        start: startPressure(),
-        smooth: smoothVal(),
-        rhythm: rhythm()
-      };
+      return { power: power(), start: startPressure(), smooth: smoothVal(), rhythm: rhythm() };
     }
 
-    // Path2D를 진짜 붓처럼 유선형(곡선을 부드럽게) 변형
+    // 진짜 붓의 흐름: Path2D 변형
     function createMorphPath(glyphData, size, sp) {
       const path = currentFont.getPath(glyphData.char, 0, 0, size);
       const commands = path.commands;
       
       let d = '';
       let cx = 0, cy = 0, sx = 0, sy = 0;
-      const STEPS = 8 + Math.floor(sp.smooth * 12); // 유선형: 샘플링 수 증가
+      const STEPS = 8 + Math.floor(sp.smooth * 12); 
 
       commands.forEach(c => {
-        if (c.type === 'M') { 
-          cx = c.x; cy = c.y; sx = cx; sy = cy;
-          d += `M ${cx} ${cy} `;
-        }
-        else if (c.type === 'L') { 
-          cx = c.x; cy = c.y; 
-          d += `L ${cx} ${cy} `;
-        }
-        else if (c.type === 'C') {
-          d += `C ${c.x1} ${c.y1} ${c.x2} ${c.y2} ${c.x} ${c.y} `;
-          cx = c.x; cy = c.y;
-        }
-        else if (c.type === 'Q') {
-          d += `Q ${c.x1} ${c.y1} ${c.x} ${c.y} `;
-          cx = c.x; cy = c.y;
-        }
-        else if (c.type === 'Z') { 
-          d += 'Z '; 
-          cx = sx; cy = sy; 
-        }
+        if (c.type === 'M') { cx = c.x; cy = c.y; sx = cx; sy = cy; d += `M ${cx} ${cy} `; }
+        else if (c.type === 'L') { cx = c.x; cy = c.y; d += `L ${cx} ${cy} `; }
+        else if (c.type === 'C') { d += `C ${c.x1} ${c.y1} ${c.x2} ${c.y2} ${c.x} ${c.y} `; cx = c.x; cy = c.y; }
+        else if (c.type === 'Q') { d += `Q ${c.x1} ${c.y1} ${c.x} ${c.y} `; cx = c.x; cy = c.y; }
+        else if (c.type === 'Z') { d += 'Z '; cx = sx; cy = sy; }
       });
 
       return new Path2D(d);
@@ -210,11 +187,8 @@
       const bbox = path.getBoundingBox();
       
       let svgD = "";
-      try {
-        svgD = path.toPathData ? path.toPathData() : commandsToSvgD(path.commands);
-      } catch (e) {
-        svgD = commandsToSvgD(path.commands);
-      }
+      try { svgD = path.toPathData ? path.toPathData() : commandsToSvgD(path.commands); }
+      catch (e) { svgD = commandsToSvgD(path.commands); }
       const p2d = new Path2D(svgD);
       
       const data = { p2d, bbox, char, isBlank: false };
@@ -225,25 +199,25 @@
     function commandsToSvgD(commands) {
       return commands.map(c => {
         switch(c.type) {
-          case 'M': return `M ${c.x} ${c.y}`;
-          case 'L': return `L ${c.x} ${c.y}`;
+          case 'M': return `M ${c.x} ${c.y}`; case 'L': return `L ${c.x} ${c.y}`;
           case 'C': return `C ${c.x1} ${c.y1} ${c.x2} ${c.y2} ${c.x} ${c.y}`;
-          case 'Q': return `Q ${c.x1} ${c.y1} ${c.x} ${c.y}`;
-          case 'Z': return 'Z';
-          default: return '';
+          case 'Q': return `Q ${c.x1} ${c.y1} ${c.x} ${c.y}`; case 'Z': return 'Z'; default: return '';
         }
       }).join(' ');
     }
 
+    // [핵심 수정] 글자의 실제 너비를 계산하여 겹침 방지
     function computeCharPlan(chars, sizes) {
       let cum = 0;
       const plan = chars.map((ch, i) => {
         let data = null, length;
         if (ch !== ' ') {
           data = getGlyphBrushData(ch, sizes[i]);
-          length = 300;
+          // path의 실제 너비를 계산해서 자간을 확보 (겹침 방지)
+          const w = (data.bbox.x2 - data.bbox.x1) * 1.2; 
+          length = w;
         } else {
-          length = sizes[i] * 0.3;
+          length = sizes[i] * 0.5;
         }
         cum += length;
         return { ch, data, length, cumEnd: cum };
@@ -266,7 +240,9 @@
         let baseSize = bounds.w / Math.max(1, lineText.length * 0.95) * globalScale;
         baseSize = Math.min(baseSize, (bounds.h * 0.8) / (N * lineHeight)); 
         baseSize = Math.max(22, baseSize);
-        const charSpacing = baseSize * tightness * 0.9;
+        
+        // [핵심 수정] 줄 전체의 실제 너비를 측정하여 중앙 정렬 + 글자가 겹치지 않도록 배치
+        const charSpacing = baseSize * 1.35; // 기본 자간
         const totalLineWidth = (lineText.length - 1) * charSpacing;
         const startX = (bounds.x + bounds.w / 2 - totalLineWidth / 2) * globalScale + offsetX;
 
@@ -280,7 +256,7 @@
       return { positions, sizes, rawChars: positions.map(p => p.ch) };
     }
 
-    // 진짜 붓의 흐름 렌더링 (다층 Stroke로 획 굵기 변화)
+    // 렌더링
     function renderMaskFitMode(text, writeProgress, maskImg, inkColor, sp, session, applyClip) {
       if (!maskImg || !currentFont) return;
       const w = canvas.width, h = canvas.height;
@@ -304,7 +280,6 @@
         maskCtx.rotate(pos.rot || 0);
         maskCtx.translate(-pos.x, -pos.y);
 
-        // 진짜 붓 변형 적용 (유선형)
         const morphedPath = createMorphPath(item.data, sizes[i], sp);
         const startWidth = 1.0 * sp.start * sp.power;
         const midWidth = 2.5 * sp.power;
@@ -313,17 +288,14 @@
         maskCtx.lineCap = 'round';
         maskCtx.lineJoin = 'round';
 
-        // [1] 시작은 가늘게
         maskCtx.lineWidth = startWidth;
         maskCtx.globalAlpha = 0.8;
         maskCtx.stroke(morphedPath);
 
-        // [2] 중간은 두껍게 (겹쳐 그리기)
         maskCtx.lineWidth = midWidth;
         maskCtx.globalAlpha = 0.4;
         maskCtx.stroke(morphedPath);
 
-        // [3] 진한 먹으로 채우기
         maskCtx.lineWidth = endWidth;
         maskCtx.globalAlpha = 1.0;
         maskCtx.fill(morphedPath, 'nonzero');
@@ -404,33 +376,33 @@
       });
     }
 
-    // SRT 및 세션
+    // SRT 파싱 및 세션
     function parseSRT(text){ const n=text.replace(/\r/g,'\n'); const b=n.split('\n\n'); const r=[]; for(let bl of b){ const l=bl.trim().split('\n'); if(l.length>=3){ const tm=l[1].match(/(.*?)\s*-->\s*(.*)/); if(tm){ r.push({ id:l[0], start:parseTime(tm[1]), end:parseTime(tm[2]), text:l.slice(2).join('\n'), session:{x:0,y:0,scale:1.0} }); } } } return r; }
     function parseTime(t){ if(!t) return 0; const p=t.trim().replace(',','.').split(':'); return(+p[0]||0)*3600+(+p[1]||0)*60+(+p[2]||0); }
     
     function loadSRTData(rawText){
       document.getElementById('srt-textarea').value=rawText;
-      srtData=parseSRT(rawText);
-      totalDuration=srtData.length>0?srtData[srtData.length-1].end+1.0:10;
-      document.getElementById('time-slider').max=totalDuration;
+      srtData = parseSRT(rawText);
+      totalDuration = srtData.length>0 ? srtData[srtData.length-1].end+1.0 : 10;
+      document.getElementById('time-slider').max = totalDuration;
       updateSRTListUI();
-      selectedSessionIndex=0;
+      selectedSessionIndex = 0;
       loadSessionControls(0);
-      
       logMessage("✅ 자막이 적용되었습니다. 렌더링을 시작합니다.");
-      renderFrame(0); // [핵심] 여기서만 렌더링!
+      renderFrame(0);
     }
 
     function updateSRTListUI(){ const el=document.getElementById('srt-list'); el.innerHTML=''; srtData.forEach((i,idx)=>{ const d=document.createElement('div'); d.className='srt-item'+(idx===selectedSessionIndex?' active':''); d.innerHTML=`<span>#${i.id}</span> <span>${i.text.replace('\n',' ')}</span>`; d.onclick=()=>{ selectedSessionIndex=idx; loadSessionControls(idx); updateSRTListUI(); }; el.appendChild(d); }); }
-    
-    // [에러 수정] 세션 존재 여부 확인 후 로드
     function loadSessionControls(idx){
-      if (!srtData[idx]) return; 
-      const session = srtData[idx].session || {x:0, y:0, scale:1.0}; // 객체 초기화
-      document.getElementById('session-x').value=session.x; 
-      document.getElementById('session-y').value=session.y; 
-      document.getElementById('session-scale').value=session.scale; 
-      document.getElementById('session-controls').style.display='block'; 
+      if (!srtData[idx]) return;
+      const session = srtData[idx].session || {x:0, y:0, scale:1.0};
+      document.getElementById('session-x').value = session.x;
+      document.getElementById('session-y').value = session.y;
+      document.getElementById('session-scale').value = session.scale;
+      document.getElementById('session-controls').style.display='block';
+      document.getElementById('val-x').textContent = Math.round(session.x);
+      document.getElementById('val-y').textContent = Math.round(session.y);
+      document.getElementById('val-scale').textContent = session.scale.toFixed(1) + 'x';
     }
 
     document.getElementById('btn-apply-srt').addEventListener('click', () => loadSRTData(document.getElementById('srt-textarea').value));
