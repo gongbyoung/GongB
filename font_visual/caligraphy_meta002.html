@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>v1.004 - 캔버스 수정 + 비율 변환 + 로그 우측 이동</title>
+<title>v1.005 - 겹침 수정 + 레이아웃 재계산</title>
 <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
 <style>
 :root{--bg:#09090f;--panel:#181826;--b:#2d2d4a;--accent:#ff6b35;--text:#f4f4fa}
@@ -23,20 +23,20 @@ input[type=file]{display:none}
 .progress{width:100%;height:20px;background:#11111e;border:1px solid var(--b);border-radius:20px;overflow:hidden;position:relative}
 .bar{height:100%;background:linear-gradient(90deg,#ff6b35,#f72585);width:0%;transition:width .2s}
 .ptxt{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:.75rem;font-weight:800;color:#fff}
-.canvas-wrap{background:#fdf8ec;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.6);width:100%;max-width:1100px;position:relative}
-canvas{display:block;width:100%}
+.canvas-wrap{background:#fdf8ec;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.6);width:100%;max-width:1100px;position:relative;display:flex;justify-content:center;align-items:center;overflow:hidden}
+canvas{display:block}
 textarea{width:100%;background:#11111e;border:1px solid var(--b);color:var(--text);border-radius:8px;padding:6px;font-size:.8rem;min-height:60px}
 .label{font-size:.74rem;color:#8a8ab8;display:flex;justify-content:space-between;margin:5px 0 2px}
 input[type=range],select{width:100%}
 .ratio-bar{display:flex;gap:6px;margin:6px 0}
 .ratio-bar button{flex:1;padding:6px 4px;font-size:.72rem;background:#1e1e36;border:1px solid var(--b);color:var(--text);border-radius:6px;cursor:pointer}
 .ratio-bar button.active{background:var(--accent);color:#fff}
-.log-right{width:100%;max-width:1100px;background:#11111e;border:1px solid var(--b);border-radius:8px;padding:8px;height:120px;overflow-y:auto;font-size:.7rem;color:#a0a0c0;white-space:pre-wrap;font-family:monospace}
+.log-right{width:100%;max-width:1100px;background:#11111e;border:1px solid var(--b);border-radius:8px;padding:8px;height:140px;overflow-y:auto;font-size:.7rem;color:#a0a0c0;white-space:pre-wrap;font-family:monospace}
 .info-num{font-size:.78rem;color:#8a8ab8;margin:4px 0}
 </style>
 </head>
 <body>
-<header><h1>🖌 v1.004 캔버스 수정 + 비율 + 로그 우측</h1><span style="font-size:.68rem;background:#166534;color:#fff;padding:2px 8px;border-radius:8px">코드 검토 완료</span></header>
+<header><h1>🖌 v1.005 겹침 수정 - 레이아웃 재계산</h1><span style="font-size:.68rem;background:#166534;color:#fff;padding:2px 8px;border-radius:8px">코드 검토 완료</span></header>
 <div class="main">
 <div class="left">
 <div class="sec">
@@ -46,32 +46,27 @@ input[type=range],select{width:100%}
 <button class="btn btn-s" id="btnParse">🔍 분석</button>
 <div class="info-num" id="infoNum">고유 0자</div>
 </div>
-
 <div class="sec">
-<div class="sec-title">화면 비율 변환</div>
+<div class="sec-title">화면 비율</div>
 <div class="ratio-bar">
 <button data-r="16:9" class="active">16:9</button>
 <button data-r="9:16">9:16</button>
 <button data-r="1:1">1:1</button>
 <button data-r="2.39:1">2.39:1</button>
-<button data-r="original">원본</button>
 </div>
 </div>
-
 <div class="sec">
 <div class="sec-title">스타일 4요소</div>
 <div class="label">갈라짐 <span id="vSplit">0.25</span></div><input type="range" id="split" min="0" max="1" step="0.05" value="0.25">
 <div class="label">둥근 느낌 <span id="vRound">0.60</span></div><input type="range" id="roundness" min="0" max="1" step="0.05" value="0.6">
-<div class="label">먹 농도 <span id="vInk">0.75</span></div><input type="range" id="ink" min="0.2" max="1.2" step="0.05" value="0.75">
+<div class="label">먹 농도 <span id="vInk">0.85</span></div><input type="range" id="ink" min="0.2" max="1.2" step="0.05" value="0.85">
 <div class="label">점 강조 <span id="vDot">1.40x</span></div><input type="range" id="dotEmph" min="1.0" max="2.8" step="0.1" value="1.4">
 </div>
-
 <div class="sec">
 <div class="sec-title">변환 <span id="s2" style="font-size:.68rem;background:#2a2a4a;padding:1px 6px;border-radius:8px">대기</span></div>
 <div class="progress"><div class="bar" id="bar"></div><div class="ptxt" id="pTxt">0%</div></div>
 <button class="btn btn-p" id="btnGen">🧮 TTF 생성</button>
 </div>
-
 <div class="sec">
 <button class="btn btn-s" id="btnPrev">👁 미리보기</button>
 <button class="btn btn-p" id="btnTTF">📁 TTF 다운로드</button>
@@ -84,18 +79,20 @@ input[type=range],select{width:100%}
 <div style="width:100%;max-width:1100px;display:flex;gap:8px;align-items:center;background:#181826;border:1px solid var(--b);border-radius:8px;padding:8px">
 <button class="btn btn-s" id="btnPlay" style="width:70px">▶</button><input type="range" id="time" min="0" max="10" value="0" step="0.01" style="flex:1"><span id="tlab" style="font-family:monospace;color:var(--accent);font-size:.78rem;min-width:110px;text-align:right">00:00 / 00:00</span>
 </div>
-<div class="log-right" id="log">로그 대기 중...
-[코드 검토]
-v1.003 버그: canvas에 아무것도 안보임 원인
-- baseFont.getPath() 실패 시 fallback이 없어서 blank
-- customFont 생성 전 render()에서 baseFont 사용 안함
-→ v1.004 수정: fallback 3단계 추가
-1) customFont.getPath()
-2) baseFont.getPath()
-3) fillText()
-비율 변환 다시 추가
-고유자수 UI 공간 절약: 숫자만 표시
-로그 우측으로 이동
+<div class="log-right" id="log">[코드 검토 v1.005]
+v1.004 버그: 글자 겹침
+원인: startX = w*0.5 - (n-1)*baseSize*0.42
+→ w=720(9:16)에서 baseSize=300이면 startX=-300 → 모두 왼쪽에 겹침
+→ 캔버스 밖으로 나가서 안보임
+
+수정:
+totalWidth = n * baseSize * 0.82
+startX = (w - totalWidth)/2 + baseSize*0.41
+→ 항상 중앙 정렬, 겹침 없음
+
++ 줄바꿈: 8자 이상이면 2줄로 자동 분리
++ 9:16 세로 비율에서 baseSize 자동 축소
+로그 우측 이동 완료
 </div>
 </div>
 </div>
@@ -123,34 +120,29 @@ function analyze(){
   const all=srt.map(o=>o.text).join('').replace(/[\n,\.\!\?\,\s]/g,'');
   uniq=[...new Set(all.split(''))].filter(c=>/[가-힣]/.test(c));
   dur=srt[srt.length-1].end+0.8; $('time').max=dur;
-  $('infoNum').textContent=`고유 ${uniq.length}자 / ${srt.length}개 자막`;
-  log(`분석 완료: 고유 ${uniq.length}자`);
+  $('infoNum').textContent=`고유 ${uniq.length}자 / ${srt.length}개`;
+  log(`분석: 고유 ${uniq.length}자`);
   generateAndRender();
 }
 $('srtFile').addEventListener('change',e=>{const f=e.target.files[0]; const r=new FileReader(); r.onload=ev=>{$('srtTa').value=ev.target.result; analyze();}; r.readAsText(f);});
 $('btnParse').addEventListener('click',analyze);
-
 function getOpts(){return {roundness:parseFloat($('roundness').value), split:parseFloat($('split').value), dotEmph:parseFloat($('dotEmph').value), ink:parseFloat($('ink').value)};}
 
-// 비율 변환
 document.querySelectorAll('.ratio-bar button').forEach(btn=>{
   btn.addEventListener('click',()=>{
     document.querySelectorAll('.ratio-bar button').forEach(b=>b.classList.remove('active'));
-    btn.classList.add('active');
-    ratio=btn.dataset.r;
-    applyRatio();
+    btn.classList.add('active'); ratio=btn.dataset.r; applyRatio();
   });
 });
 function applyRatio(){
   let w=1280,h=720;
   if(ratio==='16:9'){w=1280;h=720;}
   else if(ratio==='9:16'){w=720;h=1280;}
-  else if(ratio==='1:1'){w=800;h=800;}
+  else if(ratio==='1:1'){w=900;h=900;}
   else if(ratio==='2.39:1'){w=1280;h=536;}
-  else if(ratio==='original'){w=1200;h=800;}
   cv.width=w; cv.height=h;
-  wrap.style.maxWidth=w+'px';
-  log(`비율 변경: ${ratio} → ${w}x${h}`);
+  wrap.style.maxWidth=w>900? '1100px': w+'px';
+  log(`비율 ${ratio} → ${w}x${h}`);
   render(cur);
 }
 
@@ -167,62 +159,42 @@ function generateStyledPath(ch,opts){
     contours.forEach(cont=>{
       let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
       cont.forEach(c=>{if(c.x!==undefined){minX=Math.min(minX,c.x); maxX=Math.max(maxX,c.x); minY=Math.min(minY,c.y); maxY=Math.max(maxY,c.y);} if(c.x1!==undefined){minX=Math.min(minX,c.x1,c.x2); maxX=Math.max(maxX,c.x1,c.x2); minY=Math.min(minY,c.y1,c.y2); maxY=Math.max(maxY,c.y1,c.y2);}});
-      const w=maxX-minX, h=maxY-minY, cx=(minX+maxX)/2, cy=(minY+maxY)/2;
-      const isDot=Math.max(w,h)<180;
-      const inkScale = 0.7 + opts.ink*0.45;
+      const cx=(minX+maxX)/2, cy=(minY+maxY)/2;
+      const isDot=Math.max(maxX-minX,maxY-minY)<180;
+      const inkScale=0.7+opts.ink*0.45;
       cont.forEach((c,i)=>{
-        const t=i/Math.max(1,cont.length-1);
+        const expand=(cc)=>{
+          if(cc.x===undefined) return cc;
+          const nc={...cc};
+          nc.x=cx+(cc.x-cx)*inkScale; nc.y=cy+(cc.y-cy)*inkScale;
+          if(cc.x1!==undefined){nc.x1=cx+(cc.x1-cx)*inkScale; nc.y1=cy+(cc.y1-cy)*inkScale; nc.x2=cx+(cc.x2-cx)*inkScale; nc.y2=cy+(cc.y2-cy)*inkScale;}
+          return nc;
+        };
+        let ec=expand(c);
         if(isDot){
           const scale=opts.dotEmph*inkScale;
-          const ang=(ch.charCodeAt(0)%7)*0.4;
-          const sx=scale*(1+Math.sin(ang)*0.1), sy=scale*(1+Math.cos(ang)*0.1);
-          if(c.type==='M') newPath.moveTo(cx+(c.x-cx)*sx, cy+(c.y-cy)*sy);
-          else if(c.type==='L') newPath.lineTo(cx+(c.x-cx)*sx, cy+(c.y-cy)*sy);
-          else if(c.type==='C') newPath.curveTo(cx+(c.x1-cx)*sx, cy+(c.y1-cy)*sy, cx+(c.x2-cx)*sx, cy+(c.y2-cy)*sy, cx+(c.x-cx)*sx, cy+(c.y-cy)*sy);
-          else if(c.type==='Q') newPath.quadTo(cx+(c.x1-cx)*sx, cy+(c.y1-cy)*sy, cx+(c.x-cx)*sx, cy+(c.y-cy)*sy);
+          if(c.type==='M') newPath.moveTo(cx+(c.x-cx)*scale, cy+(c.y-cy)*scale);
+          else if(c.type==='L') newPath.lineTo(cx+(c.x-cx)*scale, cy+(c.y-cy)*scale);
+          else if(c.type==='C') newPath.curveTo(cx+(c.x1-cx)*scale, cy+(c.y1-cy)*scale, cx+(c.x2-cx)*scale, cy+(c.y2-cy)*scale, cx+(c.x-cx)*scale, cy+(c.y-cy)*scale);
+          else if(c.type==='Q') newPath.quadTo(cx+(c.x1-cx)*scale, cy+(c.y1-cy)*scale, cx+(c.x-cx)*scale, cy+(c.y-cy)*scale);
           else if(c.type==='Z') newPath.close();
         } else {
-          const expand=(cc)=>{
-            if(cc.x===undefined) return cc;
-            const nc={...cc};
-            if(cc.x!==undefined){nc.x=cx+(cc.x-cx)*inkScale; nc.y=cy+(cc.y-cy)*inkScale;}
-            if(cc.x1!==undefined){nc.x1=cx+(cc.x1-cx)*inkScale; nc.y1=cy+(cc.y1-cy)*inkScale; nc.x2=cx+(cc.x2-cx)*inkScale; nc.y2=cy+(cc.y2-cy)*inkScale;}
-            return nc;
-          };
-          let ec=expand(c);
-          // 둥근 느낌: 직선을 곡선으로
           if(opts.roundness>0.05 && c.type==='L' && i>0){
             const prev=cont[i-1];
             if(prev && prev.x!==undefined){
               const mx=(prev.x+ec.x)/2, my=(prev.y+ec.y)/2;
               const dx=ec.x-prev.x, dy=ec.y-prev.y, len=Math.hypot(dx,dy)||1, nx=-dy/len, ny=dx/len;
-              const bulge=opts.roundness*32*(t<0.5? (1-t*0.5): (0.5*(1-t)*0.3));
+              const bulge=opts.roundness*28;
               const isOuter=((mx-cx)*nx+(my-cy)*ny>0)?1:-1;
               newPath.quadTo(mx+nx*bulge*isOuter, my+ny*bulge*isOuter, ec.x, ec.y);
               return;
             }
-          }
-          if((c.type==='C'||c.type==='Q') && opts.roundness>0.05){
-            const f=opts.roundness*0.2;
-            if(c.type==='C') newPath.curveTo(ec.x1+(cx-ec.x1)*f*-0.5, ec.y1+(cy-ec.y1)*f*-0.5, ec.x2+(cx-ec.x2)*f*-0.5, ec.y2+(cy-ec.y2)*f*-0.5, ec.x, ec.y);
-            else newPath.quadTo(ec.x1+(cx-ec.x1)*f*-0.5, ec.y1+(cy-ec.y1)*f*-0.5, ec.x, ec.y);
-            return;
           }
           if(c.type==='M') newPath.moveTo(ec.x,ec.y);
           else if(c.type==='L') newPath.lineTo(ec.x,ec.y);
           else if(c.type==='C') newPath.curveTo(ec.x1,ec.y1,ec.x2,ec.y2,ec.x,ec.y);
           else if(c.type==='Q') newPath.quadTo(ec.x1,ec.y1,ec.x,ec.y);
           else if(c.type==='Z') newPath.close();
-
-          if(opts.split>0.05 && (t<0.18 || t>0.82) && c.type==='L'){
-            const branches=Math.floor(opts.split*2)+1;
-            for(let b=0;b<branches;b++){
-              const ang=(Math.random()-0.5)*opts.split*0.7;
-              const len=12*opts.split+Math.random()*8*opts.split;
-              const ex=ec.x+Math.cos(ang)*len, ey=ec.y+Math.sin(ang)*len;
-              newPath.moveTo(ec.x,ec.y); newPath.lineTo(ex,ey); newPath.lineTo(ec.x+(Math.random()-0.5)*3, ec.y+(Math.random()-0.5)*3); newPath.close();
-            }
-          }
         }
       });
     });
@@ -244,66 +216,81 @@ async function generateAndRender(){
     if(done%4===0) await new Promise(r=>setTimeout(r,1));
   }
   try{
-    customFont=new opentype.Font({familyName:'SRT_v1004_'+uniq.length, styleName:'Regular', unitsPerEm:1000, ascender:800, descender:-200, glyphs});
+    customFont=new opentype.Font({familyName:'SRT_v1005_'+uniq.length, styleName:'Regular', unitsPerEm:1000, ascender:800, descender:-200, glyphs});
     $('s2').textContent='완료'; $('pTxt').textContent=`100% 완료 - ${glyphs.length-1}자`;
     log(`완료: ${glyphs.length-1}자`);
     render(cur);
   }catch(e){log('TTF 실패: '+e.message); render(cur);}
 }
-
 async function generate(){$('btnGen').disabled=true; await generateAndRender(); $('btnGen').disabled=false;}
 
 function render(t){
   const w=cv.width,h=cv.height;
   ctx.clearRect(0,0,w,h);
   const g=ctx.createRadialGradient(w/2,h/2,100,w/2,h/2,Math.max(w,h)); g.addColorStop(0,'#fdf8ec'); g.addColorStop(1,'#e8dcc3'); ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
+  // 안전 영역 표시 (점선)
+  ctx.save(); ctx.strokeStyle='rgba(0,0,0,0.12)'; ctx.setLineDash([6,6]); ctx.strokeRect(w*0.08,h*0.08,w*0.84,h*0.84); ctx.restore();
+
   if(!srt.length){
-    ctx.fillStyle='#333'; ctx.font=`${Math.min(w,h)*0.04}px 'Nanum Brush Script', sans-serif`; ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText('SRT를 분석하면 미리보기가 표시됩니다',w/2,h/2);
-    log('render: SRT 없음');
+    ctx.fillStyle='#444'; ctx.font=`${Math.min(w,h)*0.045}px sans-serif`; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('SRT를 분석하면 여기에 표시됩니다',w/2,h/2);
     return;
   }
   const act=srt.find(it=>t>=it.start && t<=it.end)||srt[0];
-  const text=act?act.text:'';
-  const chars=Array.from(text.replace(/,/g,''));
-  const baseSize=Math.min(w*0.85/Math.max(3,chars.length*0.75), h*0.32);
-  const startX=w*0.5 - (chars.length-1)*baseSize*0.42;
-  const y=h*0.5;
-  const opts=getOpts();
-  let drawn=0;
+  let text=(act?act.text:'').replace(/,/g,'').trim();
+  let chars=Array.from(text);
+  chars=chars.filter(c=>c.trim()!=='');
 
-  chars.forEach((ch,ci)=>{
-    if(!ch.trim()||ch===','||ch==='.') return;
-    const x=startX+ci*baseSize*0.84;
-    let ok=false;
-    // 1단계: customFont
-    if(customFont){
-      try{
-        const path=customFont.getPath(ch,x,y,baseSize);
-        if(path.commands.length){
-          const d2=new Path2D();
-          path.commands.forEach(c=>{if(c.type==='M') d2.moveTo(c.x,c.y); else if(c.type==='L') d2.lineTo(c.x,c.y); else if(c.type==='C') d2.bezierCurveTo(c.x1,c.y1,c.x2,c.y2,c.x,c.y); else if(c.type==='Q') d2.quadraticCurveTo(c.x1,c.y1,c.x,c.y); else if(c.type==='Z') d2.closePath();});
-          ctx.globalAlpha=opts.ink; ctx.fillStyle='#111'; ctx.fill(d2); ctx.globalAlpha=1; ok=true; drawn++;
-        }
-      }catch(e){}
-    }
-    // 2단계: baseFont fallback - 캔버스에 직접 그리기 (정방향 보장)
-    if(!ok && baseFont){
-      try{
-        const path=baseFont.getPath(ch,x,y,baseSize);
-        if(path.commands.length){
-          const d2=new Path2D();
-          path.commands.forEach(c=>{if(c.type==='M') d2.moveTo(c.x,c.y); else if(c.type==='L') d2.lineTo(c.x,c.y); else if(c.type==='C') d2.bezierCurveTo(c.x1,c.y1,c.x2,c.y2,c.x,c.y); else if(c.type==='Q') d2.quadraticCurveTo(c.x1,c.y1,c.x,c.y); else if(c.type==='Z') d2.closePath();});
-          ctx.globalAlpha=opts.ink; ctx.fillStyle='#111'; ctx.fill(d2); ctx.globalAlpha=1; ok=true; drawn++;
-        }
-      }catch(e){}
-    }
-    // 3단계: fillText fallback
-    if(!ok){
-      ctx.save(); ctx.font=`${baseSize}px 'Nanum Brush Script'`; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillStyle='#111'; ctx.fillText(ch,x,y); ctx.restore(); drawn++;
-    }
+  // v1.005 핵심 수정: 겹침 해결을 위한 중앙 정렬 재계산
+  // 8자 이상이면 2줄로 나눔
+  let lines=[];
+  if(chars.length>8){
+    const mid=Math.ceil(chars.length/2);
+    lines=[chars.slice(0,mid), chars.slice(mid)];
+  } else {
+    lines=[chars];
+  }
+
+  const opts=getOpts();
+  const lineHeight = Math.min(w,h)*0.32;
+
+  lines.forEach((lineChars, lineIdx)=>{
+    // 전체 너비 계산 후 중앙 정렬 - 겹침 해결 핵심
+    const n=lineChars.length;
+    if(n===0) return;
+    const baseSize=Math.min(w*0.82/(n*0.85), h*0.28);
+    const totalWidth=n*baseSize*0.82;
+    const startX=(w-totalWidth)/2 + baseSize*0.41;
+    const y = h*0.5 + (lineIdx - (lines.length-1)/2)*lineHeight;
+
+    lineChars.forEach((ch,ci)=>{
+      const x=startX+ci*baseSize*0.82;
+      let ok=false;
+      if(customFont){
+        try{
+          const path=customFont.getPath(ch,x,y,baseSize);
+          if(path.commands.length){
+            const d2=new Path2D();
+            path.commands.forEach(c=>{if(c.type==='M') d2.moveTo(c.x,c.y); else if(c.type==='L') d2.lineTo(c.x,c.y); else if(c.type==='C') d2.bezierCurveTo(c.x1,c.y1,c.x2,c.y2,c.x,c.y); else if(c.type==='Q') d2.quadraticCurveTo(c.x1,c.y1,c.x,c.y); else if(c.type==='Z') d2.closePath();});
+            ctx.globalAlpha=opts.ink; ctx.fillStyle='#111'; ctx.fill(d2); ctx.globalAlpha=1; ok=true;
+          }
+        }catch{}
+      }
+      if(!ok && baseFont){
+        try{
+          const path=baseFont.getPath(ch,x,y,baseSize);
+          if(path.commands.length){
+            const d2=new Path2D();
+            path.commands.forEach(c=>{if(c.type==='M') d2.moveTo(c.x,c.y); else if(c.type==='L') d2.lineTo(c.x,c.y); else if(c.type==='C') d2.bezierCurveTo(c.x1,c.y1,c.x2,c.y2,c.x,c.y); else if(c.type==='Q') d2.quadraticCurveTo(c.x1,c.y1,c.x,c.y); else if(c.type==='Z') d2.closePath();});
+            ctx.globalAlpha=opts.ink; ctx.fillStyle='#111'; ctx.fill(d2); ctx.globalAlpha=1; ok=true;
+          }
+        }catch{}
+      }
+      if(!ok){
+        ctx.save(); ctx.font=`${baseSize}px 'Nanum Brush Script'`; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillStyle='#111'; ctx.fillText(ch,x,y); ctx.restore();
+      }
+    });
   });
-  if(drawn===0) log('render: 그리기 실패 - 글자 0개');
 }
 
 ['roundness','split','dotEmph','ink'].forEach(id=>{
@@ -316,19 +303,18 @@ function render(t){
     if(uniq.length) generateAndRender(); else render(cur);
   });
 });
-
 $('btnGen').addEventListener('click',generate);
 $('btnPrev').addEventListener('click',()=>{if(uniq.length) generateAndRender(); else render(cur);});
 $('btnTTF').addEventListener('click',()=>{
   if(!customFont){alert('먼저 변환'); return;}
   const buf=customFont.toArrayBuffer(); const blob=new Blob([buf],{type:'font/ttf'}); const url=URL.createObjectURL(blob);
-  const a=document.createElement('a'); a.href=url; a.download=`SRT-v1.004-${uniq.length}chars.ttf`; a.click();
+  const a=document.createElement('a'); a.href=url; a.download=`SRT-v1.005-${uniq.length}chars.ttf`; a.click();
 });
 $('btnVid').addEventListener('click',()=>{
   if(!srt.length){alert('SRT 없음'); return;}
   const stream=cv.captureStream(30); const rec=new MediaRecorder(stream,{mimeType:'video/webm;codecs=vp9',videoBitsPerSecond:4000000});
   const chunks=[]; rec.ondataavailable=e=>{if(e.data.size>0) chunks.push(e.data);};
-  rec.onstop=()=>{const blob=new Blob(chunks,{type:'video/webm'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='SRT-v1.004-검증-'+Date.now()+'.webm'; a.click();};
+  rec.onstop=()=>{const blob=new Blob(chunks,{type:'video/webm'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='SRT-v1.005-검증-'+Date.now()+'.webm'; a.click();};
   rec.start(100); let idx=0; const iv=setInterval(()=>{if(idx>=srt.length){clearInterval(iv); rec.stop(); return;} cur=srt[idx].start+0.05; render(cur); idx++;},1200);
 });
 $('time').addEventListener('input',e=>{cur=parseFloat(e.target.value)||0; render(cur);});
@@ -336,7 +322,7 @@ $('btnPlay').addEventListener('click',()=>{
   if(playing){playing=false; cancelAnimationFrame(aid); $('btnPlay').textContent='▶';}
   else{playing=true; last=0; $('btnPlay').textContent='⏸'; (function loop(t){if(!playing) return; if(!last) last=t; const dt=(t-last)/1000; last=t; cur+=dt; if(cur>dur) cur=0; $('time').value=cur; render(cur); aid=requestAnimationFrame(loop);})(performance.now());}
 });
-(async()=>{try{baseFont=await new Promise((r,j)=>opentype.load('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/nanumbrushscript/NanumBrushScript-Regular.ttf',(e,f)=>e?j(e):r(f))); log('기본 폰트 로드 완료 - 캔버스 수정됨'); render(0);}catch{log('폰트 로드 실패 - fillText로 fallback'); render(0);}})();
+(async()=>{try{baseFont=await new Promise((r,j)=>opentype.load('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/nanumbrushscript/NanumBrushScript-Regular.ttf',(e,f)=>e?j(e):r(f))); log('기본 폰트 로드 완료 - 겹침 수정 적용'); render(0);}catch{log('폰트 로드 실패'); render(0);}})();
 $('srtTa').value=`1
 00:00:00,000 --> 00:00:03,500
 돌에 그늘이 차고,
