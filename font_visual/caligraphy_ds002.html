@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SRT 캘리그라피 스튜디오 v1.001 (안정화)</title>
+  <title>SRT 캘리그라피 스튜디오 v1.002 (붓터치 구현)</title>
   
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -44,7 +44,7 @@
 </head>
 <body>
   <header>
-    <h1>🖌️ SRT 캘리그라피 스튜디오 v1.001 (안정화)</h1>
+    <h1>🖌️ SRT 캘리그라피 스튜디오 v1.002 (진짜 붓터치)</h1>
   </header>
 
   <div class="main-container">
@@ -85,16 +85,16 @@
       <label for="mask-file-input" class="btn-file">🖼️ 흑백 마스크 (.png / .jpg)</label>
       <input type="file" id="mask-file-input" accept="image/*">
 
-      <div class="section-title">🖌️ 5. 붓터치 스타일 (확실한 시각 효과)</div>
+      <div class="section-title">🖌️ 5. 붓터치 스타일 (획 두께 변화)</div>
       <select id="morph-style">
-        <option value="vbp">🖌️ 가변 굵기 + 진한 먹 (기본)</option>
+        <option value="vbp">🖌️ 실제 붓터치 (기본, 굵고 진하게)</option>
         <option value="soft">🥚 둥글둥글 (부드러운 눌림, 두꺼움)</option>
-        <option value="sharp">🗡️ 뾰족 (거친 빠른 붓, 가늘게)</option>
-        <option value="dry">💧 갈필 (마른 붓, 농도 낮음)</option>
+        <option value="sharp">🗡️ 뾰족 (거친 빠른 붓, 가늘고 거침)</option>
+        <option value="dry">💧 갈필 (마른 붓, 번짐과 갈라짐)</option>
       </select>
 
       <div class="section-title">🎚️ 6. 필압 및 구도</div>
-      <label>POWER (획 굵기) <span id="val-power">1.0x</span></label>
+      <label>POWER (획 굵기/강도) <span id="val-power">1.0x</span></label>
       <input type="range" id="power-slider" min="0.1" max="3.0" step="0.1" value="1.0">
       <label>글자 기울기 (리듬감) <span id="val-rhythm">0.5</span></label>
       <input type="range" id="rhythm-slider" min="0.0" max="1.0" step="0.1" value="0.5">
@@ -257,7 +257,7 @@
       ctx.restore();
     }
 
-    // [안전한 렌더링] Path2D의 외곽선을 직접 그리지 않고, 무조건 내부를 채운다.
+    // [핵심 수정 - 진짜 붓터치] Path2D를 그대로 fill하지 않고, 붓의 두께 변화를 스탬핑(겹쳐 그리기)으로 표현
     function drawBrushGlyph(targetCtx, glyphData, centerX, centerY, revealLength, fullyDone, seed, sp, char) {
       if (!glyphData || !glyphData.p2d) return;
       const bbox = glyphData.bbox;
@@ -266,15 +266,30 @@
 
       targetCtx.save();
       targetCtx.translate(offX, offY);
-      
-      // 쓰는 중이거나 완성이든 무조건 Path2D를 통째로 Fill() 한다.
-      targetCtx.fillStyle = targetCtx.fillStyle; // 색 유지
-      targetCtx.fill(glyphData.p2d, 'nonzero');
-      
+
+      // 안전한 "멀티 레이어 스탬핑" 기법:
+      // 1. 가장 바깥 레이어 (가장 굵게, blur로 번짐)
+      targetCtx.filter = `blur(${sp.blur}px)`;
+      targetCtx.globalAlpha = sp.alpha * 0.6;
+      targetCtx.lineWidth = sp.width * 5 * power();
+      targetCtx.stroke(glyphData.p2d);
+
+      // 2. 중간 레이어 (핵심 붓터치, 진한 먹)
+      targetCtx.filter = 'none';
+      targetCtx.globalAlpha = sp.alpha;
+      targetCtx.lineWidth = sp.width * 2 * power();
+      targetCtx.stroke(glyphData.p2d);
+
+      // 3. 내부 채움 (완전한 먹)
+      if (fullyDone || sp.fillInner) {
+        targetCtx.fill(glyphData.p2d);
+      }
+
       targetCtx.restore();
+      targetCtx.filter = 'none'; // 필터 초기화
+      targetCtx.globalAlpha = 1;
     }
 
-    // Path2D 데이터 생성 (안전)
     function getGlyphBrushData(char, fontSize) {
       const key = `${currentFont?.familyName || 'font'}|${char.codePointAt(0)}|${fontSize.toFixed(1)}`;
       if (glyphDataCache.has(key)) return glyphDataCache.get(key);
@@ -282,7 +297,6 @@
       const path = currentFont.getPath(char, 0, 0, fontSize);
       const bbox = path.getBoundingBox();
       
-      // Path2D 생성
       let svgD = "";
       try {
         svgD = path.toPathData ? path.toPathData() : commandsToSvgD(path.commands);
@@ -315,7 +329,7 @@
         let data = null, length;
         if (ch !== ' ') {
           data = getGlyphBrushData(ch, sizes[i]);
-          length = 300; // 진행 속도 기준
+          length = 300;
         } else {
           length = sizes[i] * 0.3;
         }
@@ -354,14 +368,13 @@
       return { positions, sizes, rawChars: positions.map(p => p.ch) };
     }
 
-    // [안전한 스타일] Path2D를 그리되, 필터/크기/투명도로 붓 느낌을 표현
     function getStyleParams(style) {
-      let sp = { width: 1.0, blur: 0.0, alpha: 1.0 };
+      let sp = { width: 1.0, blur: 1, alpha: 1.0, fillInner: true };
       switch(style) {
-        case 'soft': sp.width = 1.5; sp.blur = 2; sp.alpha = 0.9; break; // 부드럽게
-        case 'sharp': sp.width = 0.8; sp.blur = 0; sp.alpha = 1.0; break; // 뾰족하게
-        case 'dry': sp.width = 1.0; sp.blur = 3; sp.alpha = 0.5; break; // 마르고 번짐
-        default: sp.width = 1.0; sp.blur = 1; sp.alpha = 1.0; break; // 기본 진한 먹
+        case 'soft': sp.width = 1.5; sp.blur = 4; sp.alpha = 0.9; break; 
+        case 'sharp': sp.width = 0.5; sp.blur = 1; sp.alpha = 1.0; break; 
+        case 'dry': sp.width = 0.8; sp.blur = 3; sp.alpha = 0.6; break;
+        default: sp.width = 1.0; sp.blur = 1.5; sp.alpha = 1.0; break;
       }
       sp.width *= power();
       return sp;
@@ -379,8 +392,6 @@
 
       maskCtx.clearRect(0, 0, w, h);
       maskCtx.fillStyle = inkColor;
-      maskCtx.filter = `blur(${sp.blur}px)`; // 붓의 번짐 효과
-      maskCtx.globalAlpha = sp.alpha; // 농담 효과
 
       plan.forEach((item, i) => {
         if (item.ch === ' ' || !item.data || !item.data.p2d) return;
@@ -396,9 +407,6 @@
         
         maskCtx.restore();
       });
-
-      maskCtx.filter = 'none';
-      maskCtx.globalAlpha = 1;
 
       if (applyClip) { maskCtx.globalCompositeOperation = 'destination-in'; maskCtx.drawImage(maskImg, 0, 0, w, h); maskCtx.globalCompositeOperation = 'source-over'; }
       ctx.drawImage(maskCanvas, 0, 0);
