@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SRT 캘리그라피 스튜디오 v1.010</title>
+  <title>SRT 캘리그라피 스튜디오 v1.011 (최종 결실)</title>
   
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -18,8 +18,8 @@
     .main-container { display: flex; flex: 1; overflow: hidden; }
     .sidebar { width: 280px; background: var(--panel-bg); border-right: 1px solid var(--panel-border); padding: 20px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
     .preview-area { flex: 1; display: flex; flex-direction: column; background: #f4ecd8; align-items: center; justify-content: center; padding: 20px; position: relative; }
-    .canvas-wrapper { position: relative; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2); border-radius: 8px; overflow: hidden; max-width: 100%; max-height: 70vh; cursor: grab; background: #f4ecd8; }
-    canvas { display: block; max-width: 100%; max-height: 70vh; object-fit: contain; pointer-events: none; }
+    .canvas-wrapper { position: relative; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2); border-radius: 8px; overflow: hidden; max-width: 100%; max-height: 80vh; cursor: grab; background: #f4ecd8; }
+    canvas { display: block; max-width: 100%; max-height: 80vh; object-fit: contain; pointer-events: none; }
     
     .player-controls { width: 100%; max-width: 960px; margin-top: 15px; background: var(--panel-bg); padding: 14px 20px; border-radius: 10px; display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--panel-border); }
     .timeline-row { display: flex; align-items: center; gap: 12px; }
@@ -46,7 +46,7 @@
 </head>
 <body>
   <header>
-    <h1>🖌️ SRT 캘리그라피 스튜디오 v1.010 (좌표계 수정)</h1>
+    <h1>🖌️ SRT 캘리그라피 스튜디오 v1.011 (진짜 캘리그라피)</h1>
   </header>
 
   <div class="main-container">
@@ -67,26 +67,20 @@
       <button class="btn-action" id="btn-apply-srt" style="width:100%; margin-bottom: 10px;">✏️ 자막 적용하기 (렌더링)</button>
 
       <details open>
-        <summary>🎨 2. 붓터치 설정</summary>
+        <summary>🎨 2. 붓터치 강도</summary>
         <label>획 굵기 (POWER) <span id="val-power">1.0x</span></label>
-        <input type="range" id="power-slider" min="0.1" max="3.0" step="0.1" value="1.0">
-        <label>획 시작 굵기 <span id="val-start">1.0x</span></label>
-        <input type="range" id="start-slider" min="0.1" max="2.0" step="0.1" value="1.0">
-        <label>유선형 (부드러움) <span id="val-smooth">0.5</span></label>
-        <input type="range" id="smooth-slider" min="0.0" max="1.0" step="0.1" value="0.5">
-        <label>글자 기울기 <span id="val-rhythm">0.5</span></label>
-        <input type="range" id="rhythm-slider" min="0.0" max="1.0" step="0.1" value="0.5">
+        <input type="range" id="power-slider" min="0.1" max="5.0" step="0.1" value="2.0">
+        <label>번짐 (먹 퍼짐) <span id="val-smooth">1.0</span></label>
+        <input type="range" id="smooth-slider" min="0.0" max="3.0" step="0.1" value="1.0">
       </details>
 
       <details>
-        <summary>🎛️ 3. 세션 위치/크기</summary>
+        <summary>🎛️ 3. 세션 위치</summary>
         <div id="session-controls">
           <label>위치 X <span id="val-x">0</span></label>
           <input type="range" id="session-x" min="-500" max="500" step="10" value="0">
           <label>위치 Y <span id="val-y">0</span></label>
           <input type="range" id="session-y" min="-500" max="500" step="10" value="0">
-          <label>크기 <span id="val-scale">1.0x</span></label>
-          <input type="range" id="session-scale" min="0.5" max="2.0" step="0.1" value="1.0">
         </div>
       </details>
 
@@ -132,10 +126,9 @@
     const canvas = document.getElementById('calligraphy-canvas');
     const ctx = canvas.getContext('2d');
     const wrapper = document.getElementById('canvas-wrapper');
-
-    // [핵심 수정 1] 마스크 캔버스도 메인 캔버스와 동일한 크기로 동기화
     const maskCanvas = document.createElement('canvas');
     const maskCtx = maskCanvas.getContext('2d');
+
     function syncCanvasSize() {
       maskCanvas.width = canvas.width;
       maskCanvas.height = canvas.height;
@@ -148,41 +141,31 @@
     let isRecording = false;
     let currentMaskAlphaImage = null;
     let hasMask = false;
-
+    
     const powerSlider = document.getElementById('power-slider');
-    const startSlider = document.getElementById('start-slider');
     const smoothSlider = document.getElementById('smooth-slider');
-    const rhythmSlider = document.getElementById('rhythm-slider');
     
     const power = () => parseFloat(powerSlider.value);
-    const startPressure = () => parseFloat(startSlider.value);
-    const smoothVal = () => parseFloat(smoothSlider.value);
-    const rhythm = () => parseFloat(rhythmSlider.value);
-
-    function getStyleParams() {
-      return { power: power(), start: startPressure(), smooth: smoothVal(), rhythm: rhythm() };
-    }
+    const smooth = () => parseFloat(smoothSlider.value);
 
     function getActiveBounds() {
-      return { x: canvas.width * 0.1, y: canvas.height * 0.1, w: canvas.width * 0.8, h: canvas.height * 0.8 };
+      return { x: canvas.width * 0.05, y: canvas.height * 0.05, w: canvas.width * 0.9, h: canvas.height * 0.9 };
     }
 
-    function seededRandom(seed){let x=Math.sin(seed++)*10000;return x-Math.floor(x);}
-
-    // [핵심 수정 2] Advance Width 기반 절대 겹치지 않는 배치
-    function layoutSessionText(text, bounds, sp, session) {
+    // [핵심 1] 곡선 배치 및 랜덤 크기
+    function layoutSessionText(text, bounds, session) {
       let cleanText = text.replace(/\r/g, '').replace(/\n/g, ' ');
-      const maxWidth = bounds.w * 0.9;
-      const offsetX = session.x || 0; const offsetY = session.y || 0; const globalScale = session.scale || 1.0;
+      const offsetX = session.x || 0; 
+      const offsetY = session.y || 0; 
       
-      let fontSize = bounds.w / Math.max(1, cleanText.length * 0.65);
-      fontSize = Math.min(fontSize, bounds.h / 4);
-      fontSize = Math.max(40, fontSize * globalScale);
+      const maxWidth = bounds.w * 0.95;
+      const maxHeight = bounds.h * 0.9;
+      const fontSize = Math.max(100, Math.min(bounds.w / cleanText.length * 1.5, bounds.h / 2)) * (session.scale || 1.0);
 
       let lines = [];
       let currentLine = "";
       let currentWidth = 0;
-      
+
       for (let char of cleanText) {
         let charWidth = currentFont.getAdvanceWidth(char, fontSize);
         if (currentWidth + charWidth > maxWidth && currentLine !== "") {
@@ -196,10 +179,9 @@
       }
       if (currentLine) lines.push(currentLine);
 
-      const lineHeight = fontSize * 1.15;
-      const totalHeight = lines.length * lineHeight;
-      const startY = (bounds.y + bounds.h / 2 - totalHeight / 2) + offsetY;
-
+      const lineHeight = fontSize * 1.2;
+      const startY = (bounds.y + bounds.h / 2 - (lines.length * lineHeight) / 2) + offsetY;
+      
       const positions = [];
       const sizes = [];
 
@@ -211,15 +193,26 @@
         let currentX = (bounds.x + bounds.w / 2 - totalLineWidth / 2) + offsetX;
         
         lineChars.forEach((ch, idx) => {
-          let rot = (seededRandom(idx + lineIdx) - 0.5) * 0.2 * sp.rhythm;
-          positions.push({ x: currentX, y: startY + lineIdx * lineHeight, ch, rot });
-          sizes.push(fontSize);
+          // [핵심 2] 물결치는 곡선 배치
+          const waveOffset = Math.sin(idx * 0.8 + lineIdx) * 15; 
+          // [핵심 3] 랜덤한 글자 크기 (강약)
+          const sizeMul = 0.8 + seededRandom(idx * 3.7 + lineIdx * 9.1) * 0.7; 
+          
+          positions.push({ 
+            x: currentX, 
+            y: startY + lineIdx * lineHeight + waveOffset, 
+            ch, 
+            rot: (seededRandom(idx + lineIdx) - 0.5) * 0.1 
+          });
+          sizes.push(fontSize * sizeMul);
           currentX += lineWidths[idx];
         });
       });
 
       return { positions, sizes };
     }
+
+    function seededRandom(seed){let x=Math.sin(seed++)*10000;return x-Math.floor(x);}
 
     function getGlyphPathData(char, fontSize) {
       const key = `${currentFont?.familyName || 'font'}|${char.codePointAt(0)}|${fontSize.toFixed(1)}`;
@@ -252,21 +245,19 @@
       }).join(' ');
     }
 
+    // [핵심 4] 진짜 붓 터치 렌더링 (레이어 및 블러)
     function renderFrame(timeSec) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       drawBackground();
       if (!isRecording) drawGuideFrame();
       if (!currentFont) return;
       
-      const sp = getStyleParams();
       const activeSubtitle = srtData.find(item => timeSec >= item.start && timeSec <= item.end);
       if (!activeSubtitle) return;
       const text = activeSubtitle.text.trim();
-      const duration = Math.max(0.5, activeSubtitle.end - activeSubtitle.start);
-      const writeProgress = Math.min(1, (timeSec - activeSubtitle.start) / (duration * 0.7));
       
       const bounds = getActiveBounds();
-      const { positions, sizes } = layoutSessionText(text, bounds, sp, activeSubtitle.session || {x:0, y:0, scale:1});
+      const { positions, sizes } = layoutSessionText(text, bounds, activeSubtitle.session || {x:0, y:0, scale:1.0});
       
       maskCtx.clearRect(0, 0, canvas.width, canvas.height);
       maskCtx.fillStyle = '#1c1917';
@@ -282,26 +273,26 @@
         maskCtx.save();
         maskCtx.translate(pos.x, pos.y);
         maskCtx.rotate(pos.rot || 0);
-        
-        // [핵심 수정 3] Opentype.js는 Y축이 위가 +이므로, Canvas의 아래가 +로 변환해줘야 함!
-        // 이 코드가 없어서 모든 글자가 (0,0) 기준으로 뒤집혀 뭉쳐 보였습니다.
         maskCtx.scale(1, -1); 
 
-        maskCtx.shadowColor = 'rgba(0, 0, 0, 0.4)';
-        maskCtx.shadowBlur = 2 + sp.smooth * 6;
-        maskCtx.globalAlpha = 0.9;
+        // [핵심 5] 번짐 및 입체감
+        maskCtx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+        maskCtx.shadowBlur = 5 + smooth() * 15; 
         
-        maskCtx.fill(data.p2d, 'nonzero');
-        
-        maskCtx.lineJoin = 'round';
-        maskCtx.lineCap = 'round';
-        
-        maskCtx.lineWidth = sp.power * 2.0;
-        maskCtx.globalAlpha = 0.8;
+        // 1. 가장자리 흐린 층
+        maskCtx.globalAlpha = 0.4;
+        maskCtx.lineWidth = power() * 5;
         maskCtx.stroke(data.p2d);
 
-        maskCtx.lineWidth = sp.power * 1.0;
+        // 2. 중간 굵기 층
+        maskCtx.globalAlpha = 0.7;
+        maskCtx.lineWidth = power() * 2.5;
+        maskCtx.stroke(data.p2d);
+
+        // 3. 핵심 진한 층
         maskCtx.globalAlpha = 1.0;
+        maskCtx.fill(data.p2d, 'nonzero');
+        maskCtx.lineWidth = power();
         maskCtx.stroke(data.p2d);
 
         maskCtx.restore();
@@ -358,7 +349,7 @@
       updateSRTListUI();
       selectedSessionIndex = 0;
       loadSessionControls(0);
-      logMessage("✅ 자막 적용 완료 (Y축 좌표계 수정됨)");
+      logMessage("✅ 렌더링 준비 완료");
       renderFrame(0);
     }
 
@@ -369,22 +360,17 @@
       const session = srtData[idx].session || {x:0, y:0, scale:1.0};
       document.getElementById('session-x').value = session.x;
       document.getElementById('session-y').value = session.y;
-      document.getElementById('session-scale').value = session.scale;
       document.getElementById('val-x').textContent = Math.round(session.x);
       document.getElementById('val-y').textContent = Math.round(session.y);
-      document.getElementById('val-scale').textContent = session.scale.toFixed(1) + 'x';
     }
 
     document.getElementById('btn-apply-srt').addEventListener('click', () => loadSRTData(document.getElementById('srt-textarea').value));
     
     document.getElementById('session-x').addEventListener('input',(e)=>{ if(srtData[selectedSessionIndex]){ srtData[selectedSessionIndex].session.x=parseInt(e.target.value); document.getElementById('val-x').textContent=e.target.value; }});
     document.getElementById('session-y').addEventListener('input',(e)=>{ if(srtData[selectedSessionIndex]){ srtData[selectedSessionIndex].session.y=parseInt(e.target.value); document.getElementById('val-y').textContent=e.target.value; }});
-    document.getElementById('session-scale').addEventListener('input',(e)=>{ if(srtData[selectedSessionIndex]){ srtData[selectedSessionIndex].session.scale=parseFloat(e.target.value); document.getElementById('val-scale').textContent=e.target.value; }});
 
     document.getElementById('power-slider').addEventListener('input',(e)=>{ document.getElementById('val-power').textContent=e.target.value+'x'; });
-    document.getElementById('start-slider').addEventListener('input',(e)=>{ document.getElementById('val-start').textContent=e.target.value+'x'; });
     document.getElementById('smooth-slider').addEventListener('input',(e)=>{ document.getElementById('val-smooth').textContent=e.target.value; });
-    document.getElementById('rhythm-slider').addEventListener('input',(e)=>{ document.getElementById('val-rhythm').textContent=e.target.value; });
 
     document.getElementById('ttf-input').addEventListener('change', (e) => {
       const file = e.target.files[0]; if(!file) return;
