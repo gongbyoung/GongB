@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>v1.002 - 원천 수정 - charToGlyph로 뒤집힘 해결</title>
+<title>v1.003 - 스타일 4요소 완전 재구현</title>
 <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
 <style>
 :root{--bg:#09090f;--panel:#181826;--b:#2d2d4a;--accent:#ff6b35;--text:#f4f4fa}
@@ -11,7 +11,7 @@
 body{font-family:Pretendard,system-ui;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column}
 header{height:54px;background:#141424;border-bottom:1px solid var(--b);display:flex;align-items:center;padding:0 14px;gap:10px}
 .main{flex:1;display:flex;overflow:hidden}
-.left{width:500px;background:var(--panel);border-right:1px solid var(--b);overflow-y:auto;padding:12px}
+.left{width:520px;background:var(--panel);border-right:1px solid var(--b);overflow-y:auto;padding:12px}
 .right{flex:1;background:#07070d;display:flex;flex-direction:column;align-items:center;padding:14px;gap:10px;overflow-y:auto}
 .btn{border:none;border-radius:10px;padding:10px 12px;font-weight:800;cursor:pointer}
 .btn-p{background:linear-gradient(135deg,#ff6b35,#f72585);color:#fff;width:100%}
@@ -23,18 +23,18 @@ input[type=file]{display:none}
 .progress{width:100%;height:24px;background:#11111e;border:1px solid var(--b);border-radius:20px;overflow:hidden;position:relative}
 .bar{height:100%;background:linear-gradient(90deg,#ff6b35,#f72585);width:0%;transition:width .2s}
 .ptxt{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:.8rem;font-weight:800;color:#fff}
-.log{width:100%;height:80px;background:#11111e;border:1px solid var(--b);border-radius:8px;padding:6px 8px;overflow-y:auto;font-size:.7rem;color:#a0a0c0;white-space:pre-wrap}
+.log{width:100%;height:70px;background:#11111e;border:1px solid var(--b);border-radius:8px;padding:6px 8px;overflow-y:auto;font-size:.7rem;color:#a0a0c0;white-space:pre-wrap}
 .chip{display:inline-block;padding:2px 7px;border-radius:20px;background:#252545;border:1px solid #3a3a5e;font-size:.7rem;margin:2px}
 .canvas-wrap{background:#fdf8ec;border-radius:14px;box-shadow:0 16px 50px rgba(0,0,0,.6);width:100%;max-width:1200px}
 canvas{display:block;width:100%}
 textarea{width:100%;background:#11111e;border:1px solid var(--b);color:var(--text);border-radius:8px;padding:7px;font-size:.81rem;min-height:70px}
 .label{font-size:.76rem;color:#8a8ab8;display:flex;justify-content:space-between;margin:6px 0 2px}
 input[type=range],select{width:100%}
-.codebox{width:100%;background:#0f0f1a;border:1px solid var(--b);border-radius:8px;padding:8px;font-family:monospace;font-size:.68rem;color:#a0a0c0;white-space:pre-wrap;max-height:120px;overflow-y:auto}
+.desc{font-size:.68rem;color:#6a6a8a;line-height:1.4;margin-bottom:4px}
 </style>
 </head>
 <body>
-<header><h1>🖌 v1.002 뒤집힘 원천 수정 - charToGlyph 사용</h1><span style="font-size:.7rem;background:#166534;color:#fff;padding:2px 8px;border-radius:10px">코드 검토 완료</span></header>
+<header><h1>🖌 v1.003 스타일 4요소 재구현</h1><span style="font-size:.68rem;background:#166534;color:#fff;padding:2px 8px;border-radius:8px">검증 후 공유</span></header>
 <div class="main">
 <div class="left">
 <div class="sec">
@@ -44,28 +44,26 @@ input[type=range],select{width:100%}
 <button class="btn btn-s" id="btnParse">🔍 분석</button>
 <div id="uniqBox"></div>
 </div>
+
 <div class="sec">
-<div class="sec-title">스타일 - 실시간 반영</div>
-<div class="label">둥근 느낌 <span id="vRound">0.55</span></div><input type="range" id="roundness" min="0" max="1" step="0.05" value="0.55">
-<div class="label">갈라짐·비백 <span id="vSplit">0.15</span></div><input type="range" id="split" min="0" max="0.85" step="0.05" value="0.15">
-<div class="label">점 강조 <span id="vDot">1.30x</span></div><input type="range" id="dotEmph" min="1.0" max="2.5" step="0.1" value="1.3">
-<div class="label">먹 농도 <span id="vInk">0.92</span></div><input type="range" id="ink" min="0.3" max="1.0" step="0.05" value="0.92">
+<div class="sec-title">스타일 4요소 - 방향성 반영</div>
+<div class="desc">● 갈라짐: 획의 처음/끝을 여러 갈래로 나누기</div>
+<div class="label">갈라짐·비백 <span id="vSplit">0.25</span></div><input type="range" id="split" min="0" max="1" step="0.05" value="0.25">
+<div class="desc">● 둥근 느낌: 직선을 중심보다 외곽으로 곡선, 처음~중간 굵게</div>
+<div class="label">둥근 느낌 <span id="vRound">0.60</span></div><input type="range" id="roundness" min="0" max="1" step="0.05" value="0.6">
+<div class="desc">● 먹 농도: 전체 획 굵기</div>
+<div class="label">먹 농도 <span id="vInk">0.75</span></div><input type="range" id="ink" min="0.2" max="1.2" step="0.05" value="0.75">
+<div class="desc">● 점 강조: 획의 처음/끝을 동그랗게, 모양 조금씩 다르게</div>
+<div class="label">점 강조 <span id="vDot">1.40x</span></div><input type="range" id="dotEmph" min="1.0" max="2.8" step="0.1" value="1.4">
 </div>
+
 <div class="sec">
 <div class="sec-title">STEP2 변환 <span id="s2" style="font-size:.7rem;background:#2a2a4a;padding:2px 8px;border-radius:10px">대기</span></div>
 <div class="progress"><div class="bar" id="bar"></div><div class="ptxt" id="pTxt">0%</div></div>
 <button class="btn btn-p" id="btnGen">🧮 TTF 생성</button>
 <div class="log" id="log"></div>
-<div class="codebox" id="codeReview">
-// v1.001 버그:
-// baseFont.getPath() → 캔버스 좌표 (Y 아래)
-// → 그대로 Glyph.path (폰트 좌표 Y 위)에 넣음 → 뒤집힘
-// 
-// v1.002 수정:
-// baseFont.charToGlyph(ch).path → 폰트 원본 좌표 (Y 위, 1000 units)
-// → 그대로 유지 + 미세 변형 → 올바른 TTF
 </div>
-</div>
+
 <div class="sec">
 <div class="sec-title">STEP3 검증</div>
 <button class="btn btn-s" id="btnPrev">👁 미리보기</button>
@@ -73,6 +71,7 @@ input[type=range],select{width:100%}
 <button class="btn btn-s" id="btnVid">🔴 영상 검증</button>
 </div>
 </div>
+
 <div class="right">
 <div class="canvas-wrap"><canvas id="cv" width="1200" height="800"></canvas></div>
 <div style="width:100%;max-width:1200px;background:#181826;border:1px solid var(--b);border-radius:10px;padding:10px;display:flex;gap:8px;align-items:center">
@@ -113,49 +112,118 @@ $('btnParse').addEventListener('click',analyze);
 
 function getOpts(){return {roundness:parseFloat($('roundness').value), split:parseFloat($('split').value), dotEmph:parseFloat($('dotEmph').value), ink:parseFloat($('ink').value)};}
 
-function generateStyledPath_v1002(ch,opts){
+// v1.003 핵심: 4요소 완전 재구현
+function generateStyledPath_v1003(ch,opts){
   if(!baseFont) return null;
   try{
-    // 핵심 수정: charToGlyph().path 사용 - 폰트 원본 좌표계 (Y 위, 1000 units)
     const glyph=baseFont.charToGlyph(ch);
     const origPath=glyph.path;
     if(!origPath.commands.length) return null;
 
     // contour 분리
-    const contours=[]; let cur=[];
-    origPath.commands.forEach(c=>{if(c.type==='M'){if(cur.length) contours.push(cur); cur=[c];} else cur.push(c);});
-    if(cur.length) contours.push(cur);
+    const contours=[]; let curC=[];
+    origPath.commands.forEach(c=>{if(c.type==='M'){if(curC.length) contours.push(curC); curC=[c];} else curC.push(c);});
+    if(curC.length) contours.push(curC);
 
     const newPath=new opentype.Path();
+    
     contours.forEach(cont=>{
+      // 바운딩 박스
       let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
       cont.forEach(c=>{if(c.x!==undefined){minX=Math.min(minX,c.x); maxX=Math.max(maxX,c.x); minY=Math.min(minY,c.y); maxY=Math.max(maxY,c.y);} if(c.x1!==undefined){minX=Math.min(minX,c.x1,c.x2); maxX=Math.max(maxX,c.x1,c.x2); minY=Math.min(minY,c.y1,c.y2); maxY=Math.max(maxY,c.y1,c.y2);}});
-      const w=maxX-minX, h=maxY-minY;
-      const isDot=Math.max(w,h)<150; // 1000 units 기준 150 이하 = 점
-      const cx=(minX+maxX)/2, cy=(minY+maxY)/2;
+      const w=maxX-minX, h=maxY-minY, cx=(minX+maxX)/2, cy=(minY+maxY)/2;
+      const isDot=Math.max(w,h)<180;
+
+      // 1. 먹 농도: 전체 굵기 - 중심에서 바깥으로 확장/축소
+      // ink 0.2~1.2 → 0.5가 기준, 1.2면 20% 두껍게, 0.2면 30% 얇게
+      const inkScale = 0.7 + opts.ink*0.45; // 0.79 ~ 1.24
 
       cont.forEach((c,i)=>{
-        const t=i/Math.max(1,cont.length-1);
+        const t=i/Math.max(1,cont.length-1); // 0=시작, 1=끝
+        
         if(isDot){
-          const scale=opts.dotEmph;
-          if(c.type==='M') newPath.moveTo(cx+(c.x-cx)*scale, cy+(c.y-cy)*scale);
-          else if(c.type==='L') newPath.lineTo(cx+(c.x-cx)*scale, cy+(c.y-cy)*scale);
-          else if(c.type==='C') newPath.curveTo(cx+(c.x1-cx)*scale, cy+(c.y1-cy)*scale, cx+(c.x2-cx)*scale, cy+(c.y2-cy)*scale, cx+(c.x-cx)*scale, cy+(c.y-cy)*scale);
-          else if(c.type==='Q') newPath.quadTo(cx+(c.x1-cx)*scale, cy+(c.y1-cy)*scale, cx+(c.x-cx)*scale, cy+(c.y-cy)*scale);
+          // 점 강조: 동그랗게, 모양 조금씩 다르게
+          const scale = opts.dotEmph * inkScale;
+          // 모양 다르게: 각 점마다 약간 타원형으로
+          const angle = (ch.charCodeAt(0)%10)*0.3;
+          const sx = scale * (1+Math.sin(angle)*0.12);
+          const sy = scale * (1+Math.cos(angle)*0.12);
+          if(c.type==='M') newPath.moveTo(cx+(c.x-cx)*sx, cy+(c.y-cy)*sy);
+          else if(c.type==='L') newPath.lineTo(cx+(c.x-cx)*sx, cy+(c.y-cy)*sy);
+          else if(c.type==='C') newPath.curveTo(cx+(c.x1-cx)*sx, cy+(c.y1-cy)*sy, cx+(c.x2-cx)*sx, cy+(c.y2-cy)*sy, cx+(c.x-cx)*sx, cy+(c.y-cy)*sy);
+          else if(c.type==='Q') newPath.quadTo(cx+(c.x1-cx)*sx, cy+(c.y1-cy)*sy, cx+(c.x-cx)*sx, cy+(c.y-cy)*sy);
           else if(c.type==='Z') newPath.close();
         } else {
-          // 갈라짐: 끝부분 20%에서 확률적으로 선분 생략
-          const isSplitEnd = t>0.8 && Math.random() < opts.split*0.5;
-          if(isSplitEnd && c.type==='L'){
-            newPath.moveTo(c.x,c.y);
-          } else {
-            // 둥근 느낌: 제어점을 중심 쪽으로 약간 당김
-            const f=opts.roundness*0.18;
-            if(c.type==='M') newPath.moveTo(c.x,c.y);
-            else if(c.type==='L') newPath.lineTo(c.x,c.y);
-            else if(c.type==='C') newPath.curveTo(c.x1+(cx-c.x1)*f, c.y1+(cy-c.y1)*f, c.x2+(cx-c.x2)*f, c.y2+(cy-c.y2)*f, c.x, c.y);
-            else if(c.type==='Q') newPath.quadTo(c.x1+(cx-c.x1)*f, c.y1+(cy-c.y1)*f, c.x, c.y);
-            else if(c.type==='Z') newPath.close();
+          // 일반 획
+          // 먹 농도 적용
+          const expand = (c)=>{
+            if(c.x===undefined) return c;
+            const nx={...c};
+            if(c.x!==undefined){ nx.x = cx + (c.x-cx)*inkScale; nx.y = cy + (c.y-cy)*inkScale; }
+            if(c.x1!==undefined){ nx.x1 = cx + (c.x1-cx)*inkScale; nx.y1 = cy + (c.y1-cy)*inkScale; nx.x2 = cx + (c.x2-cx)*inkScale; nx.y2 = cy + (c.y2-cy)*inkScale; }
+            return nx;
+          };
+          let ec = expand(c);
+
+          // 둥근 느낌: 직선을 곡선으로, 처음~중간 굵게
+          // t=0~0.5 구간에서 외곽으로 볼록하게
+          if(opts.roundness>0.05){
+            if(c.type==='L' && i>0){
+              const prev=cont[i-1];
+              if(prev && prev.x!==undefined){
+                const mx=(prev.x+ec.x)/2, my=(prev.y+ec.y)/2;
+                // 중심보다 외곽으로 곡선 - 외곽 방향 계산
+                const dx=ec.x-prev.x, dy=ec.y-prev.y;
+                const len=Math.hypot(dx,dy)||1;
+                const nx=-dy/len, ny=dx/len;
+                // t가 0~0.5면 바깥으로, 0.5~1이면 안으로 - 처음부터 중간까지 굵게
+                const bulge = opts.roundness * 35 * (t<0.5 ? (1-t*0.5) : (0.5*(1-t)*0.3));
+                // 외곽 방향으로 컨트롤 포인트 이동
+                const isOuter = (mx-cx)*nx + (my-cy)*ny > 0 ? 1 : -1;
+                newPath.quadTo(mx+nx*bulge*isOuter, my+ny*bulge*isOuter, ec.x, ec.y);
+                return;
+              }
+            }
+            if((c.type==='C' || c.type==='Q')){
+              const f=opts.roundness*0.22;
+              // 제어점을 외곽으로
+              if(c.type==='C'){
+                newPath.curveTo(ec.x1+(cx-ec.x1)*f*-0.5, ec.y1+(cy-ec.y1)*f*-0.5, ec.x2+(cx-ec.x2)*f*-0.5, ec.y2+(cy-ec.y2)*f*-0.5, ec.x, ec.y);
+                return;
+              } else {
+                newPath.quadTo(ec.x1+(cx-ec.x1)*f*-0.5, ec.y1+(cy-ec.y1)*f*-0.5, ec.x, ec.y);
+                return;
+              }
+            }
+          }
+
+          // 기본 그리기
+          if(c.type==='M') newPath.moveTo(ec.x,ec.y);
+          else if(c.type==='L') newPath.lineTo(ec.x,ec.y);
+          else if(c.type==='C') newPath.curveTo(ec.x1,ec.y1,ec.x2,ec.y2,ec.x,ec.y);
+          else if(c.type==='Q') newPath.quadTo(ec.x1,ec.y1,ec.x,ec.y);
+          else if(c.type==='Z') newPath.close();
+
+          // 갈라짐·비백: 획의 처음과 끝부분만 여러 갈래로 나누기
+          if(opts.split>0.05){
+            const isStart = t<0.18;
+            const isEnd = t>0.82;
+            if((isStart || isEnd) && c.type==='L'){
+              // 갈래 추가 - 원래 획 외에 1~2개 더
+              const branches = Math.floor(opts.split*2.5)+1; // 0~3개
+              for(let b=0;b<branches;b++){
+                const ang = (Math.random()-0.5)*opts.split*0.8; // -0.4~0.4 라디안
+                const len = 15*opts.split + Math.random()*10*opts.split;
+                const ex = ec.x + Math.cos(ang)*len;
+                const ey = ec.y + Math.sin(ang)*len;
+                // 갈라진 획은 moveTo로 시작해서 짧게
+                // TTF에서는 작은 삼각형으로 표현
+                newPath.moveTo(ec.x,ec.y);
+                newPath.lineTo(ex,ey);
+                newPath.lineTo(ec.x+ (Math.random()-0.5)*4, ec.y+(Math.random()-0.5)*4);
+                newPath.close();
+              }
+            }
           }
         }
       });
@@ -171,19 +239,16 @@ async function generateAndRender(){
   const glyphs=[]; const notdef=new opentype.Glyph({name:'.notdef',unicode:0,advanceWidth:1000,path:new opentype.Path()}); glyphs.push(notdef);
   let done=0;
   for(const ch of uniq){
-    const mp=generateStyledPath_v1002(ch,opts);
-    if(mp){
-      const g=new opentype.Glyph({name:ch,unicode:ch.charCodeAt(0),advanceWidth:1000,path:mp});
-      glyphs.push(g);
-    }
+    const mp=generateStyledPath_v1003(ch,opts);
+    if(mp){glyphs.push(new opentype.Glyph({name:ch,unicode:ch.charCodeAt(0),advanceWidth:1000,path:mp}));}
     done++; const pct=Math.round(done/uniq.length*100);
     $('bar').style.width=pct+'%'; $('pTxt').textContent=`${pct}% - ${ch}`;
     if(done%5===0) await new Promise(r=>setTimeout(r,1));
   }
   try{
-    customFont=new opentype.Font({familyName:'SRT_v1002_'+uniq.length, styleName:'Regular', unitsPerEm:1000, ascender:800, descender:-200, glyphs});
+    customFont=new opentype.Font({familyName:'SRT_v1003_'+uniq.length, styleName:'Regular', unitsPerEm:1000, ascender:800, descender:-200, glyphs});
     $('s2').textContent='완료'; $('pTxt').textContent=`100% 완료 - ${glyphs.length-1}자`;
-    log(`완료: ${glyphs.length-1}자 - 뒤집힘 수정 적용`);
+    log(`완료: 둥근${opts.roundness} 갈라짐${opts.split} 먹${opts.ink} 점${opts.dotEmph}x`);
     render(cur);
   }catch(e){log('TTF 실패: '+e.message);}
 }
@@ -235,13 +300,13 @@ $('btnPrev').addEventListener('click',()=>{if(uniq.length) generateAndRender(); 
 $('btnTTF').addEventListener('click',()=>{
   if(!customFont){alert('먼저 변환'); return;}
   const buf=customFont.toArrayBuffer(); const blob=new Blob([buf],{type:'font/ttf'}); const url=URL.createObjectURL(blob);
-  const a=document.createElement('a'); a.href=url; a.download=`SRT-v1.002-${uniq.length}chars.ttf`; a.click();
+  const a=document.createElement('a'); a.href=url; a.download=`SRT-v1.003-${uniq.length}chars.ttf`; a.click();
 });
 $('btnVid').addEventListener('click',()=>{
   if(!srt.length){alert('SRT 없음'); return;}
   const stream=cv.captureStream(30); const rec=new MediaRecorder(stream,{mimeType:'video/webm;codecs=vp9',videoBitsPerSecond:4000000});
   const chunks=[]; rec.ondataavailable=e=>{if(e.data.size>0) chunks.push(e.data);};
-  rec.onstop=()=>{const blob=new Blob(chunks,{type:'video/webm'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='SRT-v1.002-검증-'+Date.now()+'.webm'; a.click();};
+  rec.onstop=()=>{const blob=new Blob(chunks,{type:'video/webm'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='SRT-v1.003-검증-'+Date.now()+'.webm'; a.click();};
   rec.start(100); let idx=0; const iv=setInterval(()=>{if(idx>=srt.length){clearInterval(iv); rec.stop(); return;} cur=srt[idx].start+0.05; render(cur); idx++;},1200);
 });
 $('time').addEventListener('input',e=>{cur=parseFloat(e.target.value)||0; render(cur);});
@@ -249,7 +314,7 @@ $('btnPlay').addEventListener('click',()=>{
   if(playing){playing=false; cancelAnimationFrame(aid); $('btnPlay').textContent='▶';}
   else{playing=true; last=0; $('btnPlay').textContent='⏸'; (function loop(t){if(!playing) return; if(!last) last=t; const dt=(t-last)/1000; last=t; cur+=dt; if(cur>dur) cur=0; $('time').value=cur; render(cur); aid=requestAnimationFrame(loop);})(performance.now());}
 });
-(async()=>{try{baseFont=await new Promise((r,j)=>opentype.load('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/nanumbrushscript/NanumBrushScript-Regular.ttf',(e,f)=>e?j(e):r(f))); log('기본 폰트 로드 완료 - v1.002 charToGlyph 수정');}catch{log('폰트 로드 실패');}})();
+(async()=>{try{baseFont=await new Promise((r,j)=>opentype.load('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/nanumbrushscript/NanumBrushScript-Regular.ttf',(e,f)=>e?j(e):r(f))); log('기본 폰트 로드 완료 - v1.003 4요소 재구현');}catch{log('폰트 로드 실패');}})();
 $('srtTa').value=`1
 00:00:00,000 --> 00:00:03,500
 돌에 그늘이 차고,
