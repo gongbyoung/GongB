@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SRT 캘리그라피 스튜디오 v1.004 (완전 안정화)</title>
+  <title>SRT 캘리그라피 스튜디오 v1.005 (에러 수정 완료)</title>
   
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -16,7 +16,7 @@
     body { font-family: 'Pretendard', sans-serif; background-color: var(--bg-dark); color: var(--text-main); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
     header { background: #18181c; padding: 12px 24px; border-bottom: 1px solid var(--panel-border); }
     .main-container { display: flex; flex: 1; overflow: hidden; }
-    .sidebar { width: 320px; background: var(--panel-bg); border-right: 1px solid var(--panel-border); padding: 20px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+    .sidebar { width: 300px; background: var(--panel-bg); border-right: 1px solid var(--panel-border); padding: 20px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
     .preview-area { flex: 1; display: flex; flex-direction: column; background: #f4ecd8; align-items: center; justify-content: center; padding: 20px; position: relative; }
     .canvas-wrapper { position: relative; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2); border-radius: 8px; overflow: hidden; max-width: 100%; max-height: 70vh; cursor: grab; background: #f4ecd8; }
     canvas { display: block; max-width: 100%; max-height: 70vh; object-fit: contain; pointer-events: none; }
@@ -44,7 +44,7 @@
 </head>
 <body>
   <header>
-    <h1>🖌️ SRT 캘리그라피 스튜디오 v1.004 (진짜 붓의 흐름)</h1>
+    <h1>🖌️ SRT 캘리그라피 스튜디오 v1.005 (완전 안정화)</h1>
   </header>
 
   <div class="main-container">
@@ -54,6 +54,13 @@
       <input type="file" id="ttf-input" accept=".ttf, .otf">
       <div class="font-status" id="font-status" style="font-size: 0.8rem; color: #7cd992; margin-bottom: 10px;">기본 나눔붓글씨 사용 중</div>
       
+      <div class="section-title">📐 비율 선택</div>
+      <select id="aspect-ratio-select">
+        <option value="16:9" selected>16:9 가로 (1920x1080)</option>
+        <option value="9:16">9:16 세로 (1080x1920)</option>
+      </select>
+
+      <div class="section-title">📂 SRT 로딩</div>
       <label for="srt-input" class="btn-file">📁 SRT 파일 불러오기</label>
       <input type="file" id="srt-input" accept=".srt">
       <textarea id="srt-textarea" style="height: 100px; background: #141418;"></textarea>
@@ -89,7 +96,6 @@
         <input type="range" id="session-scale" min="0.5" max="2.0" step="0.1" value="1.0">
       </div>
       
-      <!-- 마스크 (필요 시만) -->
       <label for="mask-file-input" class="btn-file" style="margin-top:10px;">🖼️ 흑백 마스크 (.png / .jpg)</label>
       <input type="file" id="mask-file-input" accept="image/*">
 
@@ -161,14 +167,14 @@
       };
     }
 
-    // 진짜 붓의 흐름: Path2D를 변형하여 시작점은 얇고 중간은 두껍게, 유선형으로
+    // Path2D를 진짜 붓처럼 유선형(곡선을 부드럽게) 변형
     function createMorphPath(glyphData, size, sp) {
       const path = currentFont.getPath(glyphData.char, 0, 0, size);
       const commands = path.commands;
       
       let d = '';
       let cx = 0, cy = 0, sx = 0, sy = 0;
-      const STEPS = 8 + Math.floor(sp.smooth * 12); 
+      const STEPS = 8 + Math.floor(sp.smooth * 12); // 유선형: 샘플링 수 증가
 
       commands.forEach(c => {
         if (c.type === 'M') { 
@@ -274,7 +280,7 @@
       return { positions, sizes, rawChars: positions.map(p => p.ch) };
     }
 
-    // 진짜 붓의 흐름 렌더링 (다층 Stroke로 획의 굵기 변화를 표현)
+    // 진짜 붓의 흐름 렌더링 (다층 Stroke로 획 굵기 변화)
     function renderMaskFitMode(text, writeProgress, maskImg, inkColor, sp, session, applyClip) {
       if (!maskImg || !currentFont) return;
       const w = canvas.width, h = canvas.height;
@@ -298,13 +304,12 @@
         maskCtx.rotate(pos.rot || 0);
         maskCtx.translate(-pos.x, -pos.y);
 
-        // 진짜 붓 변형 적용 (유선형, 굵기 변화)
+        // 진짜 붓 변형 적용 (유선형)
         const morphedPath = createMorphPath(item.data, sizes[i], sp);
         const startWidth = 1.0 * sp.start * sp.power;
         const midWidth = 2.5 * sp.power;
         const endWidth = 0.8 * sp.power;
 
-        // 붓 질감을 위한 다층 렌더링
         maskCtx.lineCap = 'round';
         maskCtx.lineJoin = 'round';
 
@@ -318,7 +323,7 @@
         maskCtx.globalAlpha = 0.4;
         maskCtx.stroke(morphedPath);
 
-        // [3] 진한 먹으로 채우기 (완성도)
+        // [3] 진한 먹으로 채우기
         maskCtx.lineWidth = endWidth;
         maskCtx.globalAlpha = 1.0;
         maskCtx.fill(morphedPath, 'nonzero');
@@ -417,13 +422,22 @@
     }
 
     function updateSRTListUI(){ const el=document.getElementById('srt-list'); el.innerHTML=''; srtData.forEach((i,idx)=>{ const d=document.createElement('div'); d.className='srt-item'+(idx===selectedSessionIndex?' active':''); d.innerHTML=`<span>#${i.id}</span> <span>${i.text.replace('\n',' ')}</span>`; d.onclick=()=>{ selectedSessionIndex=idx; loadSessionControls(idx); updateSRTListUI(); }; el.appendChild(d); }); }
-    function loadSessionControls(idx){ const session=srtData[idx].session; document.getElementById('session-x').value=session.x; document.getElementById('session-y').value=session.y; document.getElementById('session-scale').value=session.scale; document.getElementById('session-controls').style.display='block'; }
+    
+    // [에러 수정] 세션 존재 여부 확인 후 로드
+    function loadSessionControls(idx){
+      if (!srtData[idx]) return; 
+      const session = srtData[idx].session || {x:0, y:0, scale:1.0}; // 객체 초기화
+      document.getElementById('session-x').value=session.x; 
+      document.getElementById('session-y').value=session.y; 
+      document.getElementById('session-scale').value=session.scale; 
+      document.getElementById('session-controls').style.display='block'; 
+    }
 
     document.getElementById('btn-apply-srt').addEventListener('click', () => loadSRTData(document.getElementById('srt-textarea').value));
     
-    document.getElementById('session-x').addEventListener('input',(e)=>{ srtData[selectedSessionIndex].session.x=parseInt(e.target.value); document.getElementById('val-x').textContent=e.target.value; });
-    document.getElementById('session-y').addEventListener('input',(e)=>{ srtData[selectedSessionIndex].session.y=parseInt(e.target.value); document.getElementById('val-y').textContent=e.target.value; });
-    document.getElementById('session-scale').addEventListener('input',(e)=>{ srtData[selectedSessionIndex].session.scale=parseFloat(e.target.value); document.getElementById('val-scale').textContent=e.target.value; });
+    document.getElementById('session-x').addEventListener('input',(e)=>{ if(srtData[selectedSessionIndex]){ srtData[selectedSessionIndex].session.x=parseInt(e.target.value); document.getElementById('val-x').textContent=e.target.value; }});
+    document.getElementById('session-y').addEventListener('input',(e)=>{ if(srtData[selectedSessionIndex]){ srtData[selectedSessionIndex].session.y=parseInt(e.target.value); document.getElementById('val-y').textContent=e.target.value; }});
+    document.getElementById('session-scale').addEventListener('input',(e)=>{ if(srtData[selectedSessionIndex]){ srtData[selectedSessionIndex].session.scale=parseFloat(e.target.value); document.getElementById('val-scale').textContent=e.target.value; }});
 
     document.getElementById('power-slider').addEventListener('input',(e)=>{ document.getElementById('val-power').textContent=e.target.value+'x'; });
     document.getElementById('start-slider').addEventListener('input',(e)=>{ document.getElementById('val-start').textContent=e.target.value+'x'; });
