@@ -1,148 +1,203 @@
-// styles/calligraphy001.js
+// styles/you002.js
 (function() {
     if (!window.TypoMotionStyles) window.TypoMotionStyles = {};
 
-    // 캘리그라피 먹 번짐 및 질감 캐시용 오프스크린 캔버스 버퍼
-    let paperCanvas = null;
-    let paperCtx = null;
-
-    // 한지/화선지 질감 초기화
-    function initPaperTexture(width, height) {
-        if (!paperCanvas || paperCanvas.width !== width || paperCanvas.height !== height) {
-            paperCanvas = document.createElement('canvas');
-            paperCanvas.width = width;
-            paperCanvas.height = height;
-            paperCtx = paperCanvas.getContext('2d');
-
-            // 미세 먹 섬유질 및 화선지 그레인 노이즈 생성
-            const imgData = paperCtx.createImageData(width, height);
-            const data = imgData.data;
-            for (let i = 0; i < data.length; i += 4) {
-                const grain = (Math.random() - 0.5) * 12;
-                data[i] = 245 + grain;     // R
-                data[i + 1] = 243 + grain; // G
-                data[i + 2] = 238 + grain; // B (전통 화선지 톤)
-                data[i + 3] = 255;
-            }
-            paperCtx.putImageData(imgData, 0, 0);
+    // 1. 유니코드 기반 한글 음절 구조 분석 (논문: 한글 활자디자인 조형적 비례 연구 기반)
+    function analyzeHangul(char) {
+        if (!char) return { type: 'etc', weight: 1.0, isWide: false };
+        const code = char.charCodeAt(0);
+        if (code < 0xAC00 || code > 0xD7A3) {
+            // 특수문자, 알파벳, 한자, 공백 등
+            return { type: 'symbol', weight: 0.6, isWide: false };
         }
+        const syllableIndex = code - 0xAC00;
+        const jong = syllableIndex % 28;
+        const jung = Math.floor((syllableIndex - jong) / 28) % 21;
+        const cho = Math.floor(Math.floor((syllableIndex - jong) / 28) / 21);
+
+        // 중성 형태 판별 (가로모임: ㅗ, ㅛ, ㅜ, ㅠ, ㅡ / 세로모임: ㅏ, ㅑ, ㅓ, ㅕ, ㅣ / 복합)
+        const isHorizontalVowel = [8, 12, 13, 17, 18].includes(jung); // ㅗ, ㅜ, ㅡ 계열
+        const hasBatchim = jong > 0;
+
+        return {
+            type: 'hangul',
+            cho: cho,
+            jung: jung,
+            jong: jong,
+            hasBatchim: hasBatchim,
+            isHorizontalVowel: isHorizontalVowel,
+            // 종성 유무 및 모음 형태에 따른 무게(Weight) 배분
+            weight: hasBatchim ? 1.35 : 1.0,
+            isWide: isHorizontalVowel
+        };
     }
 
-    // 간단한 해시 함수: 글자마다 고유하되 일관된 변형값 생성
-    function getHash(str, idx) {
-        let hash = 0;
-        const key = str + '_' + idx;
-        for (let i = 0; i < key.length; i++) {
-            hash = (hash << 5) - hash + key.charCodeAt(i);
-            hash |= 0;
+    // 일관된 유기적 변형(Organic Variance)을 위한 해시 함수
+    function getVariance(str, index) {
+        let val = 0;
+        const seed = (str || 'calli') + '_' + index;
+        for (let i = 0; i < seed.length; i++) {
+            val = (val << 5) - val + seed.charCodeAt(i);
+            val |= 0;
         }
-        return Math.abs(hash);
+        return (Math.abs(val) % 1000) / 1000; // 0.0 ~ 1.0 반환
     }
 
     window.TypoMotionStyles['you002'] = {
-        name: '감성 캘리그라피 (Ink Brush)',
-        backgroundColor: '#f5f3ee', // 화선지 백색
-        textColor: '#1a1818',       // 먹색
-        glowColor: '#7a1c1c',        // 낙관(인장) 주홍색
+        name: '글쓰기 (서예 조형학)',
+        backgroundColor: '#f7f5f0', // 은은한 한지/화선지 미색
+        textColor: 'rgba(28, 26, 26, 0.25)', // 마르기 전 연한 먹빛 (비활성)
+        glowColor: '#8a1f1f',        // 전통 전각(인장) 주홍색
 
-        // 1. 조형적 캘리그라피 배치 로직 (구도 설계)
+        // 2. 조형 배치 (Layout): 탈네모틀 비례 및 속공간 파고들기
         layout: function(leds, canvas, ctx) {
-            initPaperTexture(canvas.width, canvas.height);
+            if (!leds || leds.length === 0) return;
 
+            const total = leds.length;
             const centerX = canvas.width / 2;
             const centerY = canvas.height / 2;
-            const total = leds.length;
-            if (total === 0) return;
 
-            // 전체 문장에서 핵심 강조 글자(Primary Focus) 결정
-            // 레퍼런스처럼 문장의 중간~후반 핵심 명사를 크게 강조
-            const emphasisCenter = Math.floor(total * 0.45);
+            // 큐(문장) 단위로 그룹핑하여 조형적 군집(Cluster) 형성
+            const cues = {};
+            leds.forEach(led => {
+                const cIdx = led.cueIdx || 0;
+                if (!cues[cIdx]) cues[cIdx] = [];
+                cues[cIdx].push(led);
+            });
 
-            let currentX = centerX - (total * 30);
-            let currentY = centerY;
+            Object.keys(cues).forEach(cIdx => {
+                const group = cues[cIdx];
+                const groupLen = group.length;
+                if (groupLen === 0) return;
 
-            leds.forEach((led, i) => {
-                const h = getHash(led.char || '', i);
-                const distFromEmphasis = Math.abs(i - emphasisCenter);
+                // 문장 내 감정 강조점(Focal Point) 탐색: 글자 수가 긴 명사나 중심 글자
+                const focusIdx = Math.min(Math.floor(groupLen * 0.4), groupLen - 1);
 
-                // 핵심 강조 글자 판별 (거리 기준)
-                const isEmphasis = distFromEmphasis <= 1;
-                
-                // 스케일 가중치: 강조 단어는 2.2배 이상 거대하게, 앞뒤 보조어는 축소
-                led.customScale = isEmphasis ? 2.3 : (0.75 + (h % 30) * 0.01);
-                
-                // 손글씨 특유의 미세한 Y축 불규칙 흐름 (Baseline Variation)
-                const organicYOffset = Math.sin(i * 1.8) * 18 + ((h % 40) - 20);
-                
-                // 레퍼런스 특유의 겹침(Interlocking) 구조: 간격을 타이트하게 파고듦
-                const spacing = (led.customScale * 48) * 0.72;
+                // 기준 폰트 크기 산출
+                const baseSize = Math.min(canvas.width / (groupLen * 0.8), 85);
 
-                led.baseX = currentX + spacing;
-                led.baseY = currentY + organicYOffset;
+                // 중심 배치를 위한 전체 폭 사전 계산
+                let totalWidth = 0;
+                const charMetrics = group.map((led, i) => {
+                    const info = analyzeHangul(led.char);
+                    const v = getVariance(led.char, i);
+                    
+                    // 핵심어는 최대 1.9배까지 확대, 보조 조사는 0.7배 축소 (극단적 스케일 대비)
+                    const dist = Math.abs(i - focusIdx);
+                    let scale = (dist === 0) ? 1.85 : (dist === 1 ? 1.25 : 0.75 + v * 0.3);
+                    
+                    // 받침이 있는 글자는 속공간 확보를 위해 추가 면적 부여
+                    if (info.hasBatchim) scale *= 1.1;
 
-                // 세로형 배열이나 지그재그 행간 처리를 위한 인덱스 오프셋
-                if (i > 0 && i % 4 === 0 && total > 6) {
-                    currentX -= spacing * 2.8;
-                    currentY += 75;
-                } else {
-                    currentX += spacing;
-                }
+                    const width = baseSize * scale * (info.isWide ? 0.95 : 0.75);
+                    totalWidth += width;
+                    return { info, scale, width, v };
+                });
 
-                // 캘리 고유 기울기 (Slant & Organic Tilt)
-                led.customAngle = ((h % 20) - 10) * (Math.PI / 180);
+                // 캘리그라피 군집 시작 X좌표 (화면 정중앙 기준 정렬)
+                let cursorX = centerX - (totalWidth * 0.5);
+
+                group.forEach((led, i) => {
+                    const m = charMetrics[i];
+                    
+                    // 논문 응용: '기준선 탈피' (Y축 흐름선 - 필맥의 기운생동)
+                    // 중심 글자는 아래로 묵직하게 가라앉고, 보조 글자는 위/아래로 넘나듦
+                    const baselineShift = (m.scale > 1.4) 
+                        ? (m.scale - 1.0) * 18 
+                        : Math.sin(i * 1.5) * 24 + ((m.v - 0.5) * 20);
+
+                    // 캘리그라피 속공간 맞물림: 글자 간격을 인위적으로 15%~20% 좁혀 파고듦
+                    const interlockingOffset = m.width * 0.15;
+                    
+                    led.baseX = cursorX + (m.width / 2) - interlockingOffset;
+                    led.baseY = centerY + baselineShift;
+                    
+                    // 스타일 커스텀 파라미터 저장
+                    led.calliScale = m.scale;
+                    // 자연스러운 붓의 꺾임 각도 (-8도 ~ +8도)
+                    led.calliAngle = ((m.v - 0.5) * 16) * (Math.PI / 180);
+                    led.calliWeight = m.info.weight;
+
+                    cursorX += m.width - interlockingOffset;
+                });
             });
         },
 
+        // 3. 서예 모션 프리셋: 전통 서예의 3단계 필획 (기필-행필-수필)
         presets: {
-            // 프리셋 1: 먹물이 서서히 스며들며 피어나는 동양화 붓글씨 모션
-            'inkBleed': {
-                name: '먹 번짐 피어오름 (Ink Bleed)',
+            'calliWriting': {
+                name: '일필휘지 (기필·행필·수필)',
                 apply: function(led, time, ctx, state) {
-                    const cueDuration = (led.end - led.start) || 1.5;
-                    const elapsed = time - led.start;
-                    const progress = Math.min(Math.max(elapsed / cueDuration, 0), 1);
+                    const start = led.start;
+                    const end = led.end;
+                    const duration = Math.max(end - start, 0.4);
+                    const elapsed = time - start;
+                    const progress = Math.min(Math.max(elapsed / duration, 0), 1);
 
-                    // 비활성 구간
-                    if (time < led.start) {
+                    // 아직 등장하지 않은 글자
+                    if (time < start) {
                         return { opacity: 0, scale: 0, rotation: 0, offsetX: 0, offsetY: 0 };
                     }
 
-                    // 수묵화 붓글씨 물리 시뮬레이션:
-                    // 1. 착지(Impact): 붓이 닿으며 순간적으로 납작해짐 (Squash)
-                    // 2. 번짐(Absorption): 획이 자리잡으며 정교한 라인으로 수렴
-                    let scaleFactor = led.customScale || 1.0;
-                    let opacity = 1;
+                    const intensity = (state.intensityAmount !== undefined ? state.intensityAmount : 50) / 50;
+                    const range = (state.rangeAmount !== undefined ? state.rangeAmount : 50) / 50;
+
+                    let opacity = 1.0;
+                    let scale = led.calliScale || 1.0;
+                    let rotation = led.calliAngle || 0;
                     let offsetX = 0;
                     let offsetY = 0;
-                    let rotation = led.customAngle || 0;
 
-                    if (progress < 0.25) {
-                        // 붓이 종이에 닿아 먹물이 퍼지는 단계
-                        const p = progress / 0.25;
-                        const impactSquash = Math.sin(p * Math.PI);
-                        scaleFactor *= (0.7 + p * 0.3 + impactSquash * 0.25);
-                        opacity = Math.pow(p, 1.8);
-                        offsetY = -15 * (1 - p); // 위에서 먹물이 스며내려옴
+                    // [단계 1: 기필(起筆) - 0.0 ~ 0.2]
+                    // 붓이 종이에 닿기 전 멈칫(Anticipation) 후 묵직하게 내리찍음 (Squash & Impact)
+                    if (progress < 0.2) {
+                        const p = progress / 0.2;
+                        // 오버슈트 탄성 곡선: 위에서 아래로 내려오며 종이를 누름
+                        const dropIn = Math.sin(p * Math.PI * 0.5);
+                        const squash = Math.sin(p * Math.PI);
+
+                        offsetY = (1 - dropIn) * -35 * range;
+                        // 기필 시 붓털이 눌리는 물리 현상 (가로 확장, 세로 압축)
+                        scale *= (0.6 + 0.4 * dropIn + squash * 0.3 * intensity);
+                        rotation += (1 - p) * -0.2;
+                        opacity = Math.pow(p, 1.4);
+
+                        // 먹물이 화선지에 번지는 효과 연출 (그림자 이용)
+                        ctx.shadowColor = 'rgba(20, 18, 18, 0.6)';
+                        ctx.shadowBlur = (1 - p) * 20 * intensity;
+                    }
+                    // [단계 2: 행필(行筆) - 0.2 ~ 0.85]
+                    // 획이 미끄러지듯 그어지며 살아 숨쉬는 곡선 궤적 유지 (Staging & 필맥)
+                    else if (progress < 0.85) {
+                        const p = (progress - 0.2) / 0.65;
+                        // 미세한 필맥의 호흡 (Breathing Oscillations)
+                        const breath = Math.sin(p * Math.PI * 2);
+                        offsetY = breath * 2.5 * intensity;
+                        rotation += breath * 0.03;
                         
-                        // 먹물 번짐 효과: 활성 단계에서 캔버스 컨텍스트 블러/필터 연동
-                        ctx.shadowColor = 'rgba(20, 18, 18, 0.45)';
-                        ctx.shadowBlur = (1 - p) * 16 * (state.intensityAmount || 0.6);
-                    } else if (progress < 0.9) {
-                        // 붓글씨 완성 및 미세한 숨결 모션 (Staging)
-                        const p = (progress - 0.25) / 0.65;
-                        const breathing = Math.sin(p * Math.PI * 2) * 1.5;
-                        offsetY = breathing;
-                        ctx.shadowColor = 'transparent';
+                        ctx.shadowColor = 'rgba(20, 18, 18, 0.15)';
+                        ctx.shadowBlur = 3;
+                    }
+                    // [단계 3: 수필(收筆) - 0.85 ~ 1.0]
+                    // 붓끝을 회수하며 힘을 거둠 (Follow Through & 회봉)
+                    else {
+                        const p = (progress - 0.85) / 0.15;
+                        // 획의 끝에서 붓을 살짝 들어올리는 모션
+                        offsetY = -p * 6 * range;
+                        scale *= (1.0 - p * 0.08);
                         ctx.shadowBlur = 0;
-                    } else {
-                        // 서서히 여운을 남기며 다음 획으로 연결 (Follow Through)
-                        const p = (progress - 0.9) / 0.1;
-                        opacity = 1 - p * 0.2;
+                    }
+
+                    // 전역 잔상(Trail) 및 강도 파라미터 연동
+                    if (state.scatterAmount > 0) {
+                        const scatter = state.scatterAmount * 15;
+                        offsetX += (Math.random() - 0.5) * scatter;
+                        offsetY += (Math.random() - 0.5) * scatter;
                     }
 
                     return {
                         opacity: opacity,
-                        scale: scaleFactor,
+                        scale: scale,
                         rotation: rotation,
                         offsetX: offsetX,
                         offsetY: offsetY
@@ -150,47 +205,38 @@
                 }
             },
 
-            // 프리셋 2: 역동적이고 날카로운 획갈림(비백) 캘리 모션
-            'dynamicStroke': {
-                name: '갈필 파갈 (Fast Brush Stroke)',
+            'boldContrast': {
+                name: '갈필 먹번짐 (High Contrast)',
                 apply: function(led, time, ctx, state) {
                     const elapsed = time - led.start;
-                    const duration = (led.end - led.start) || 1.2;
+                    const duration = Math.max(led.end - led.start, 0.3);
                     const progress = Math.min(Math.max(elapsed / duration, 0), 1);
 
                     if (time < led.start) {
                         return { opacity: 0, scale: 0, rotation: 0, offsetX: 0, offsetY: 0 };
                     }
 
-                    let scaleFactor = led.customScale || 1.0;
-                    let rotation = led.customAngle || 0;
-                    let offsetX = 0;
+                    let scale = (led.calliScale || 1.0);
+                    let rotation = led.calliAngle || 0;
                     let offsetY = 0;
 
-                    const intensity = state.intensityAmount || 0.7;
-
-                    if (progress < 0.2) {
-                        // 강한 붓의 탄성 오버슈트 (Anticipation & Snap)
-                        const p = progress / 0.2;
-                        const snap = Math.sin(p * Math.PI * 0.5);
-                        offsetX = (1 - snap) * 45 * intensity;
-                        rotation += (1 - snap) * -0.25;
-                        scaleFactor *= (1.4 - snap * 0.4);
+                    if (progress < 0.25) {
+                        const p = progress / 0.25;
+                        // 거친 붓의 급격한 낙하 및 튀어오름
+                        const pop = Math.sin(p * Math.PI * 1.5) * Math.exp(-p * 3);
+                        scale *= (1.0 + pop * 0.6);
+                        offsetY = (1 - p) * -50;
                     }
 
                     return {
-                        opacity: progress > 0.85 ? mapLinear(progress, 0.85, 1.0, 1, 0) : 1,
-                        scale: scaleFactor,
+                        opacity: progress > 0.9 ? 1 - (progress - 0.9) / 0.1 : 1,
+                        scale: scale,
                         rotation: rotation,
-                        offsetX: offsetX,
+                        offsetX: 0,
                         offsetY: offsetY
                     };
                 }
             }
         }
     };
-
-    function mapLinear(val, inMin, inMax, outMin, outMax) {
-        return outMin + (outMax - outMin) * ((val - inMin) / (inMax - inMin));
-    }
 })();
