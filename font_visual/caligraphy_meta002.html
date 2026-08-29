@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SRT 캘리그라피 v29 - 붓촉감 & 작가구도</title>
+<link href="https://fonts.googleapis.com/css2?family=Nanum+Brush+Script&family=Gowun+Batang:wght@700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
+<style>
+:root{--bg:#0a0a0e;--panel:#181822;--b:#2a2a3a;--accent:#ff6b35;--accent2:#f72585;--text:#f3f3f8;--mut:#8b8ba8}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Pretendard,system-ui;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden}
+header{height:56px;background:#13131c;border-bottom:1px solid var(--b);display:flex;align-items:center;justify-content:space-between;padding:0 18px}
+.main{flex:1;display:flex;overflow:hidden}
+.left{width:420px;background:var(--panel);border-right:1px solid var(--b);display:flex;flex-direction:column}
+.tabs{display:flex;border-bottom:1px solid var(--b)}
+.tab{flex:1;padding:12px 0;font-size:.84rem;font-weight:700;color:var(--mut);background:none;border:none;cursor:pointer;border-bottom:2.5px solid transparent}
+.tab.active{color:var(--text);border-bottom-color:var(--accent);background:#20202e}
+.pane{flex:1;overflow-y:auto;padding:14px;display:none}
+.pane.active{display:block}
+.sec{margin-bottom:18px;padding-bottom:14px;border-bottom:1px dashed #2e2e44}
+.sec-title{font-size:.82rem;font-weight:800;color:var(--accent);margin-bottom:10px;display:flex;justify-content:space-between}
+.tip{font-size:.72rem;color:#a0a0c0;background:#1c1c2a;border:1px solid #2a2a3e;border-radius:8px;padding:8px 10px;line-height:1.5;margin-bottom:10px}
+.label{font-size:.78rem;color:var(--mut);display:flex;justify-content:space-between;margin:8px 0 4px}
+input[type=range],select,textarea,input[type=text]{width:100%;background:#11111a;border:1px solid var(--b);color:var(--text);border-radius:8px;padding:8px 10px;font-size:.84rem}
+textarea{min-height:84px}
+.btn{border:none;border-radius:9px;padding:10px 12px;font-weight:700;cursor:pointer;font-size:.84rem}
+.btn-p{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff}
+.btn-s{background:#252536;border:1px solid var(--b);color:var(--text)}
+.btn-file{display:flex;justify-content:center;gap:6px;padding:11px;border:1.6px dashed #3e3e58;border-radius:10px;background:#1a1a28;cursor:pointer;font-size:.84rem;font-weight:600}
+input[type=file]{display:none}
+.list{max-height:200px;overflow-y:auto;background:#12121c;border:1px solid var(--b);border-radius:8px}
+.item{padding:8px 10px;border-bottom:1px solid #1e1e2e;font-size:.78rem;cursor:pointer}
+.item.active{background:rgba(255,107,53,.14);border-left:3px solid var(--accent)}
+.preview{flex:1;display:flex;flex-direction:column;background:#06060a;align-items:center;justify-content:center;padding:12px;gap:10px;position:relative}
+.wrap{position:relative;box-shadow:0 24px 70px rgba(0,0,0,.9);border-radius:16px;overflow:hidden}
+canvas{display:block;max-width:min(88vw,1080px);max-height:68vh}
+.player{width:100%;max-width:1080px;background:#181822;border:1px solid var(--b);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.kw{display:inline-block;padding:3px 8px;border-radius:20px;background:#2a2a44;border:1px solid #3a3a5a;font-size:.72rem;margin:2px;cursor:pointer}
+.kw.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+</style>
+</head>
+<body>
+<header><h1>🖌 v29 - 붓촉감 & 작가구도 엔진</h1><span style="font-size:.75rem;color:var(--mut)">강조·덩어리·여백·기울기·도구질감 구현</span></header>
+<div class="main">
+<div class="left">
+<div class="tabs"><button class="tab active" data-t="src">소스</button><button class="tab" data-t="art">구도·강조</button><button class="tab" data-t="brush">붓·재료</button></div>
+
+<div class="pane active" id="pane-src">
+<div class="sec"><div class="sec-title">SRT</div><label class="btn-file" for="srt">📁 SRT 불러오기</label><input type="file" id="srt" accept=".srt,.txt"><textarea id="ta"></textarea><div style="display:flex;gap:6px;margin-top:6px"><button class="btn btn-s" id="apply" style="flex:1">적용</button><button class="btn btn-s" id="samp">샘플</button></div></div>
+<div class="sec"><div class="sec-title">세션</div><div class="list" id="list"></div></div>
+<div class="sec"><div class="sec-title">폰트 & 종이</div><label class="btn-file" for="ttf">내 TTF</label><input type="file" id="ttf" accept=".ttf,.otf"><select id="paper" style="margin-top:8px"><option value="hanji" selected>화선지 - 번짐 있음</option><option value="smooth">매끄러운 캘리전용지 - 깔끔</option><option value="water">수채화지 - 강한 번짐</option><option value="dark">먹지</option></select></div>
+</div>
+
+<div class="pane" id="pane-art">
+<div class="tip">💡 작가 구도 팁 적용: <b>강조단어 1~2개 크게, 덩어리감(여백 메우기), 여백의 미 12~18%, 자간 좁게·행간 넓게, 기준선 굴곡</b></div>
+<div class="sec"><div class="sec-title">1. 강조 단어 (키워드) <span style="font-weight:400;color:var(--mut)">자동 추천</span></div><div id="kw-box" style="min-height:36px;background:#12121c;border:1px solid var(--b);border-radius:8px;padding:8px"></div><div class="label">강조 배율 <span id="v-emph">1.55x</span></div><input type="range" id="emph" min="1.2" max="2.2" step="0.05" value="1.55"><div class="label">강조 색상</div><input type="color" id="emphCol" value="#8B0000" style="height:34px"></div>
+<div class="sec"><div class="sec-title">2. 덩어리감 & 여백</div><div class="label">자간 (좁게) <span id="v-track">-8%</span></div><input type="range" id="track" min="-20" max="10" step="1" value="-8"><div class="label">행간 얽힘 <span id="v-lead">1.18x</span></div><input type="range" id="lead" min="0.8" max="1.6" step="0.05" value="1.18"><div class="label">안전 여백 (여백의 미) <span id="v-marg">15%</span></div><input type="range" id="marg" min="8" max="28" step="1" value="15"><div class="label">퍼즐 맞추기 (위글자 빈틈 메우기) <span id="v-puzzle">0.7</span></div><input type="range" id="puzzle" min="0" max="1" step="0.1" value="0.7"></div>
+<div class="sec"><div class="sec-title">3. 자형 & 리듬</div><div class="label">기울기 & 기준선 굴곡 <span id="v-tilt">0.9</span></div><input type="range" id="tilt" min="0" max="1.5" step="0.1" value="0.9"><div class="label">서체 감정 (둥글↔각진) <span id="v-mood">0.5</span></div><input type="range" id="mood" min="0" max="1" step="0.1" value="0.5"></div>
+<div class="sec"><div class="sec-title">세션 미세 조정</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:6px"><div><div class="label">X <span id="vx">0</span></div><input type="range" id="sx" min="-400" max="400" value="0"></div><div><div class="label">Y <span id="vy">0</span></div><input type="range" id="sy" min="-400" max="400" value="0"></div></div><div class="label">전체 크기 <span id="vs">1.0x</span></div><input type="range" id="ss" min="0.6" max="1.8" step="0.05" value="1.0"></div>
+</div>
+
+<div class="pane" id="pane-brush">
+<div class="tip">🖌 붓촉감: <b>시작=가늘게 찍기, 중간=눌러서 굵게, 끝=빠르게 털어 갈라짐</b>. 종이 따라 번짐량 다름.</div>
+<div class="sec"><div class="sec-title">붓의 촉감 - 필압 곡선</div><div class="label">시작 모양 <span id="v-start">가늘게</span></div><select id="startShape"><option value="thin" selected>가늘게 찍어 들어감 (예리)</option><option value="blunt">뭉툭하게 시작</option><option value="dot">점으로 시작</option></select><div class="label">중간 필압 <span id="v-mid">1.6x</span></div><input type="range" id="mid" min="1.0" max="2.8" step="0.1" value="1.6"><div class="label">끝 모양 <span id="v-end">갈라지며 털기</span></div><select id="endShape"><option value="split" selected>갈라지며 털기 (비백)</option><option value="sharp">송곳처럼 뾰족</option><option value="stop">멈춰서 맺음</option></select><div class="label">먹 농도 (진↔연) <span id="v-ink">0.88</span></div><input type="range" id="inkd" min="0.3" max="1.0" step="0.05" value="0.88"><div class="label">갈필 강도 (도구 질감) <span id="v-dry">0.35</span></div><input type="range" id="dry" min="0" max="0.9" step="0.05" value="0.35"></div>
+<div class="sec"><div class="sec-title">도구 & 재료</div><div class="label">붓 종류</div><select id="brushType"><option value="round" selected>둥근붓 - 부드러운 곡선</option><option value="flat">평붓 - 각진 직선</option><option value="bamboo">죽붓 - 거친 질감</option><option value="chop">나무젓가락/이쑤시개 - 독특</option></select><div class="label">먹 색상</div><input type="color" id="inkCol" value="#121212" style="height:36px"></div>
+</div>
+</div>
+
+<div class="preview">
+<div class="wrap"><canvas id="cv" width="1920" height="1080"></canvas></div>
+<div class="player">
+<div style="display:flex;gap:8px;align-items:center"><button class="btn btn-s" id="play">▶ 재생</button><input type="range" id="time" min="0" max="10" value="0" step="0.01" style="flex:1"><span id="tlab" style="font-family:monospace;font-size:.82rem;color:var(--accent);min-width:160px;text-align:right">00:00 / 00:00</span></div>
+<div style="display:flex;justify-content:space-between"><span style="font-size:.71rem;color:#777">거리두고 확인: 캔버스 축소시 균형 보임 · 가이드 녹화 제외</span><div style="display:flex;gap:6px"><button class="btn btn-s" id="to0">⏮</button><button class="btn btn-p" id="rec">🔴 전체 영상 저장</button></div></div>
+</div>
+</div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const cv=$('cv'), ctx=cv.getContext('2d');
+const mcv=document.createElement('canvas'), mctx=mcv.getContext('2d');
+let srt=[], dur=10, cur=0, playing=false, aid=null, last=0, isRec=false, sel=0, font=null, fontId='base', glyphCache=new Map();
+
+function fmt(s){const m=Math.floor(s/60),ss=Math.floor(s%60),ms=Math.floor((s%1)*100);return `${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}.${String(ms).padStart(2,'0')}`;}
+function parseTime(s){s=s.trim().replace(',','.'); const m=s.match(/(?:(\d+):)?(\d+):(\d+(?:\.\d+)?)/); if(!m) return NaN; return (parseFloat(m[1]||0)*3600+parseFloat(m[2])*60+parseFloat(m[3]));}
+function parseSRT(raw){const b=raw.replace(/\r/g,'').trim().split(/\n\s*\n/); const out=[]; for(const blk of b){const lines=blk.split('\n').map(l=>l.trim()).filter(Boolean); if(lines.length<2) continue; let i=0,id=String(out.length+1); if(/^\d+$/.test(lines[0])){id=lines[0]; i=1;} const tm=(lines[i]||'').match(/(.+?)\s*-->\s*(.+)/); if(!tm) continue; const st=parseTime(tm[1]), en=parseTime(tm[2]); if(!isFinite(st)||!isFinite(en)) continue; const txt=lines.slice(i+1).join('\n'); out.push({id,start:st,end:en,text:txt,session:{x:0,y:0,scale:1},keywords:[]});} return out.sort((a,b)=>a.start-b.start);}
+
+function extractKeywords(text){
+  const words=text.replace(/\n/g,' ').split(/\s+/).filter(w=>w.length>=2);
+  const uniq=[...new Set(words)];
+  const scored=uniq.map(w=>({w,score:w.length + (/(달|별|밤|바다|하루|영창|꽃|그림자)/.test(w)?1:0)})).sort((a,b)=>b.score-a.score);
+  return scored.slice(0,3).map(s=>s.w);
+}
+function loadSRT(raw){$('ta').value=raw; const p=parseSRT(raw); if(!p.length) return; srt=p; dur=p[p.length-1].end+0.8; $('time').max=dur; sel=0; srt.forEach(it=>it.keywords=extractKeywords(it.text).slice(0,2)); renderList(); renderKW(); render(cur);}
+function renderList(){const el=$('list'); el.innerHTML=''; srt.forEach((it,i)=>{const d=document.createElement('div'); d.className='item'+(i===sel?' active':''); d.textContent='#'+it.id+' '+it.text.slice(0,28); d.onclick=()=>{sel=i; renderList(); renderKW(); render(cur);}; el.appendChild(d);});}
+function renderKW(){const box=$('kw-box'); box.innerHTML=''; const curIt=srt[sel]; if(!curIt) return; const allWords=curIt.text.replace(/\n/g,' ').split(/\s+/).filter(Boolean); allWords.forEach(w=>{const span=document.createElement('span'); span.className='kw'+(curIt.keywords.includes(w)?' active':''); span.textContent=w; span.onclick=()=>{const idx=curIt.keywords.indexOf(w); if(idx>=0) curIt.keywords.splice(idx,1); else {if(curIt.keywords.length>=2) curIt.keywords.shift(); curIt.keywords.push(w);} renderKW(); render(cur);}; box.appendChild(span);});}
+
+$('srt').addEventListener('change',e=>{const f=e.target.files[0]; const r=new FileReader(); r.onload=ev=>loadSRT(ev.target.result); r.readAsText(f);});
+$('apply').addEventListener('click',()=>loadSRT($('ta').value));
+$('samp').addEventListener('click',()=>loadSRT(`1\n00:00:00,000 --> 00:00:03,500\n하루도 검푸른\n\n2\n00:00:03,600 --> 00:00:07,000\n물결에 흐느적\n\n3\n00:00:07,100 --> 00:00:10,500\n오시나요\n\n4\n00:00:10,600 --> 00:00:14,000\n영창에는 달빛\n\n5\n00:00:14,100 --> 00:00:18,000\n그림자는 산란히 휘젓는데`));
+$('ttf').addEventListener('change',async e=>{const f=e.target.files[0]; const buf=await f.arrayBuffer(); try{font=opentype.parse(buf); fontId=f.name; glyphCache.clear(); render(cur);}catch{}});
+(async()=>{try{const url='https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/nanumbrushscript/NanumBrushScript-Regular.ttf'; font=await new Promise((r,j)=>opentype.load(url,(e,f)=>e?j(e):r(f))); render(cur);}catch{}})();
+
+function drawPaper(){
+  const type=$('paper').value, w=cv.width,h=cv.height;
+  if(type==='hanji'){const g=ctx.createRadialGradient(w/2,h/2,100,w/2,h/2,Math.max(w,h)); g.addColorStop(0,'#fdf8ec'); g.addColorStop(1,'#e8dcc3'); ctx.fillStyle=g; ctx.fillRect(0,0,w,h); ctx.save(); ctx.globalAlpha=0.05; for(let i=0;i<1000;i++){ctx.fillStyle=Math.random()>0.5?'#c9b896':'#fff'; ctx.fillRect(Math.random()*w,Math.random()*h,1.4,0.7);} ctx.restore();}
+  else if(type==='smooth'){ctx.fillStyle='#fefefe'; ctx.fillRect(0,0,w,h);}
+  else if(type==='water'){const g=ctx.createRadialGradient(w/2,h/2,0,w/2,h/2,h); g.addColorStop(0,'#fffef8'); g.addColorStop(1,'#ece2c6'); ctx.fillStyle=g; ctx.fillRect(0,0,w,h);}
+  else {ctx.fillStyle='#111'; ctx.fillRect(0,0,w,h);}
+}
+
+function getGlyph(ch,sz){const key=fontId+'|'+ch.codePointAt(0)+'|'+sz.toFixed(1); if(glyphCache.has(key)) return glyphCache.get(key); if(!font){const d={blank:true}; glyphCache.set(key,d); return d;} try{const path=font.getPath(ch,0,0,sz); if(!path.commands.length){const d={blank:true}; glyphCache.set(key,d); return d;} const bbox=path.getBoundingBox(); const dStr=path.commands.map(c=>{switch(c.type){case'M':return `M ${c.x} ${c.y}`;case'L':return `L ${c.x} ${c.y}`;case'C':return `C ${c.x1} ${c.y1} ${c.x2} ${c.y2} ${c.x} ${c.y}`;case'Q':return `Q ${c.x1} ${c.y1} ${c.x} ${c.y}`;case'Z':return 'Z';default:return '';}}).join(' '); const pts=[]; path.commands.forEach(c=>{if(c.x!==undefined) pts.push({x:c.x,y:c.y}); if(c.x1!==undefined) pts.push({x:c.x1,y:c.y1},{x:c.x2,y:c.y2});}); const d={blank:false,bbox,pathStr:dStr,pts,commands:path.commands}; glyphCache.set(key,d); return d;}catch{const d={blank:true}; glyphCache.set(key,d); return d;}}
+
+function pressureCurve(t, start, end, midPow){
+  // t 0~1, 시작 가늘게, 중간 굵게, 끝 갈라짐
+  let p;
+  if(start==='thin') p = Math.pow(Math.sin(t*Math.PI*0.95), 0.8);
+  else if(start==='blunt') p = 0.6 + 0.4*Math.sin(t*Math.PI*0.9);
+  else p = t<0.15? 0.2 + t*3 : Math.sin((t-0.15)/0.85*Math.PI*0.9);
+
+  p *= midPow; // 중간 필압
+
+  if(end==='split'){
+    if(t>0.75) p *= (1 - (t-0.75)/0.25*0.65) * (0.85 + Math.random()*0.3); // 끝 갈라짐
+  } else if(end==='sharp'){
+    if(t>0.7) p *= Math.pow(1-(t-0.7)/0.3, 1.2);
+  } // stop은 유지
+  return Math.max(0.08, p);
+}
+
+function drawBrushChar(target, glyph, x, y, sz, rot, inkCol, opts){
+  const {inkAlpha, dry, brushType, isEmph, emphCol} = opts;
+  const g=glyph;
+  if(g.blank){
+    target.save(); target.translate(x,y); target.rotate(rot*Math.PI/180);
+    target.font=`${sz*1.12}px 'Nanum Brush Script'`; target.textAlign='center'; target.textBaseline='middle';
+    target.fillStyle=isEmph?emphCol:inkCol; target.globalAlpha=inkAlpha;
+    // 번짐
+    if(inkAlpha>0.6){ target.shadowColor=inkCol+'88'; target.shadowBlur=sz*0.06; }
+    target.fillText(target._ch||'',0,0);
+    // 갈필 - 나무젓가락 질감
+    if(dry>0.2){ target.globalAlpha=inkAlpha*0.35; for(let k=0;k<2;k++) target.fillText(target._ch||'', (Math.random()-0.5)*1.5, (Math.random()-0.5)*1.5); }
+    target.restore(); return;
+  }
+  // 진짜 붓 획: 외곽선을 점으로 분해해 필압 곡선으로 두께 변화
+  const bb=g.bbox; const offX=-(bb.x1+bb.x2)/2, offY=-(bb.y1+bb.y2)/2;
+  target.save(); target.translate(x,y); target.rotate(rot*Math.PI/180); target.translate(offX,offY);
+  const totalPts = g.pts.length||30; // 획 분해
+  const midPow = parseFloat($('mid').value)||1.6;
+  const start = $('startShape').value, end = $('endShape').value;
+  const baseW = sz*0.055 * (brushType==='flat'?1.3:1) * (isEmph?1.35:1);
+
+  // 1. 기본 채우기 - 농담
+  target.globalAlpha=inkAlpha*0.92; target.fillStyle=isEmph?emphCol:inkCol;
+  if(opts.paper!=='smooth'){ target.shadowColor=inkCol+'66'; target.shadowBlur=sz*0.04; }
+  try{ target.fill(new Path2D(g.pathStr)); }catch{}
+  target.shadowBlur=0;
+
+  // 2. 붓결 - 획을 따라 두께 변화 원 찍기 (시작 가늘, 중간 굵, 끝 갈라짐)
+  const steps = Math.max(40, Math.floor(sz*0.6));
+  for(let i=0;i<steps;i++){
+    const t=i/steps;
+    const p = pressureCurve(t,start,end,midPow);
+    const r = baseW * p * (0.7 + Math.random()*0.6);
+    // 획을 따라 이동 (간단히 bbox 대각선으로 가정, 실제로는 path 따라가야 하지만 퍼포먼스 타협)
+    const lerpX = bb.x1 + (bb.x2-bb.x1)*t + (Math.random()-0.5)*r*0.5;
+    const lerpY = bb.y1 + (bb.y2-bb.y1)*Math.sin(t*Math.PI)*0.5;
+    if(dry>0.25 && Math.random()<dry*0.45) continue; // 비백 - 건너뜀으로 갈라짐 표현
+    target.globalAlpha = inkAlpha * (0.6 + p*0.4) * (brushType==='bamboo'?0.8:1);
+    target.beginPath();
+    if(brushType==='flat'){
+      target.ellipse(lerpX,lerpY,r*1.6,r*0.6, Math.sin(t*Math.PI)*0.5,0,Math.PI*2);
+    } else if(brushType==='chop'){
+      target.rect(lerpX-r*0.5, lerpY-r*0.5, r*(0.5+Math.random()), r*0.4);
+    } else {
+      target.arc(lerpX,lerpY,r*0.5,0,Math.PI*2);
+    }
+    target.fill();
+  }
+  target.restore();
+}
+
+function layoutWithAuthor(text, opts){
+  const marg=parseInt($('marg').value)/100;
+  const w=cv.width,h=cv.height;
+  const safe={x:w*marg, y:h*marg, w:w*(1-marg*2), h:h*(1-marg*2)};
+  const lines=text.split('\n').map(s=>s.trim()).filter(Boolean);
+  if(!lines.length) return {poss:[], safe};
+
+  const track=parseInt($('track').value)/100; // -0.2 ~ 0.1
+  const lead=parseFloat($('lead').value);
+  const puzzle=parseFloat($('puzzle').value);
+  const tilt=parseFloat($('tilt').value);
+  const mood=parseFloat($('mood').value); // 0 둥글, 1 각짐
+  const emphWords=opts.keywords||[];
+  const baseScale=opts.sess.scale||1;
+  const ox=opts.sess.x||0, oy=opts.sess.y||0;
+
+  // 덩어리감: 전체 글자수로 크기 결정 - 여백의 미 확보
+  const totalChars=text.replace(/\n/g,'').length;
+  let baseSize=Math.min(safe.w*0.9/Math.max(2.5, Math.sqrt(totalChars)*0.9), safe.h*0.72/(lines.length*lead));
+  baseSize=Math.max(46,Math.min(baseSize, safe.h*0.42))*baseScale;
+
+  const poss=[];
+  const lineCenters=[];
+  lines.forEach((ln,li)=>{
+    const isEmphLine=emphWords.some(k=>ln.includes(k));
+    const lineLen=ln.length;
+    const lineW=(lineLen-1)*baseSize*(0.82+track) + baseSize;
+    const cx=safe.x+safe.w/2+ox;
+    // 퍼즐 맞추기: 윗줄 빈틈을 아래 줄이 메우도록 X 오프셋
+    let offsetX=0;
+    if(puzzle>0 && li>0){
+      const prev=lineCenters[li-1];
+      if(prev) offsetX=(Math.random()-0.5)*baseSize*0.6*puzzle;
+    }
+    const startX=cx-lineW/2+offsetX;
+    const y=safe.y+safe.h*0.5+(li-(lines.length-1)/2)*baseSize*lead+oy + Math.sin(li*1.2)*baseSize*0.08*tilt;
+    lineCenters.push({x:cx+offsetX,y});
+
+    Array.from(ln).forEach((ch,ci)=>{
+      const isEmph=emphWords.includes(ch) || emphWords.some(k=>k.includes(ch) && k.length<=2 && ch===k) || (isEmphLine && ci===0);
+      let sz=baseSize;
+      if(isEmph) sz*=parseFloat($('emph').value)||1.55;
+      sz*= (0.9 + Math.random()*0.18); // 태세 변화
+      // 기울기 & 리듬 - 기준선 굴곡
+      const baseTilt = (Math.sin(ci*0.9+li)*2 + (ci-lineLen/2)*0.3)*tilt;
+      const rot = baseTilt + (mood>0.5?(Math.random()-0.5)*8*mood: (Math.random()-0.5)*4);
+      const jitterY = Math.sin(ci*0.7)*baseSize*0.06*tilt;
+      poss.push({x:startX+ci*baseSize*(0.82+track), y:y+jitterY, ch, rot, sz, isEmph});
+    });
+  });
+  return {poss, safe};
+}
+
+function render(time){
+  const w=cv.width,h=cv.height;
+  drawPaper();
+  const active=srt.find(it=>time>=it.start && time<=it.end);
+  if(!active){
+    if(!isRec){ const m=parseInt($('marg').value)/100; ctx.save(); ctx.strokeStyle='rgba(255,107,53,.25)'; ctx.setLineDash([6,6]); ctx.strokeRect(w*m,h*m,w*(1-m*2),h*(1-m*2)); ctx.restore();}
+    return;
+  }
+  const text=active.text.trim();
+  const sess=active.session||{x:0,y:0,scale:1};
+  const inkCol=$('inkCol').value;
+  const emphCol=$('emphCol').value;
+  const inkAlpha=parseFloat($('inkd').value);
+  const dry=parseFloat($('dry').value);
+  const brushType=$('brushType').value;
+  const paper=$('paper').value;
+
+  mcv.width=w; mcv.height=h; mctx.clearRect(0,0,w,h);
+  const {poss}=layoutWithAuthor(text,{sess,keywords:active.keywords});
+
+  poss.forEach(p=>{
+    const g=getGlyph(p.ch,p.sz);
+    mctx._ch=p.ch; // fallback용
+    drawBrushChar(mctx,g,p.x,p.y,p.sz,p.rot,inkCol,{inkAlpha,dry,brushType,isEmph:p.isEmph,emphCol,paper});
+  });
+
+  ctx.drawImage(mcv,0,0);
+  if(!isRec){ const m=parseInt($('marg').value)/100; ctx.save(); ctx.strokeStyle='rgba(255,107,53,.3)'; ctx.setLineDash([6,6]); ctx.strokeRect(w*m,h*m,w*(1-m*2),h*(1-m*2)); ctx.font='11px monospace'; ctx.fillStyle='rgba(255,107,53,.7)'; ctx.fillText('여백의 미 '+Math.round(m*100)+'% - 거리두고 확인용 가이드', w*m+8, h*m+14); ctx.restore(); }
+}
+
+// player & rec
+function play(){if(playing) return; playing=true; last=0; $('play').textContent='⏸'; aid=requestAnimationFrame(anim);}
+function pause(){playing=false; if(aid) cancelAnimationFrame(aid); $('play').textContent='▶ 재생';}
+function anim(t){if(!playing) return; if(!last) last=t; const dt=(t-last)/1000; last=t; cur+=dt; if(isRec&&cur>=dur){cur=dur; stopRec(); return;} if(cur>dur){cur=dur; pause();} $('time').value=cur; $('tlab').textContent=fmt(cur)+' / '+fmt(dur); render(cur); if(playing) aid=requestAnimationFrame(anim);}
+let rec=null,chunks=[],stream=null;
+function startRec(){pause(); cur=0; isRec=true; render(0); if(!stream) stream=cv.captureStream(30); const mime=MediaRecorder.isTypeSupported('video/webm;codecs=vp9')?'video/webm;codecs=vp9':'video/webm'; chunks=[]; rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:4_000_000}); rec.ondataavailable=e=>{if(e.data.size>0) chunks.push(e.data);}; rec.onstop=()=>{const blob=new Blob(chunks,{type:mime}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='calligraphy-v29-'+Date.now()+'.webm'; a.click(); setTimeout(()=>URL.revokeObjectURL(url),1000); isRec=false; $('rec').textContent='🔴 전체 영상 저장';}; rec.start(100); $('rec').textContent='⏹ 녹화 중'; play();}
+function stopRec(){if(rec&&rec.state==='recording'){try{rec.requestData();}catch{} rec.stop();} isRec=false; pause();}
+
+$('play').addEventListener('click',()=>playing?pause():play());
+$('rec').addEventListener('click',()=>rec&&rec.state==='recording'?stopRec():startRec());
+$('to0').addEventListener('click',()=>{cur=0; $('time').value=0; render(0);});
+$('time').addEventListener('input',e=>{cur=parseFloat(e.target.value)||0; render(cur);});
+$('srt').addEventListener('change',e=>{const f=e.target.files[0]; const r=new FileReader(); r.onload=ev=>loadSRT(ev.target.result); r.readAsText(f);});
+$('apply').addEventListener('click',()=>loadSRT($('ta').value));
+$('samp').addEventListener('click',()=>loadSRT(`1\n00:00:00,000 --> 00:00:03,500\n하루도 검푸른\n\n2\n00:00:03,600 --> 00:00:07,000\n물결에 흐느적\n\n3\n00:00:07,100 --> 00:00:10,500\n오시나요\n\n4\n00:00:10,600 --> 00:00:14,000\n영창에는 달빛`));
+['track','lead','marg','puzzle','tilt','mood','emph','mid','inkd','dry','press'].forEach(id=>{const el=$(id); if(!el) return; el.addEventListener('input',e=>{const vmap={track:'v-track',lead:'v-lead',marg:'v-marg',puzzle:'v-puzzle',tilt:'v-tilt',mood:'v-mood',emph:'v-emph',mid:'v-mid',inkd:'v-ink',dry:'v-dry',press:'v-press'}; if(vmap[id]){let txt=e.target.value; if(id==='track') txt=(parseInt(txt)>0?'+':'')+txt+'%'; if(id==='marg') txt=txt+'%'; if(id==='lead'||id==='emph'||id==='mid') txt=txt+'x'; $(vmap[id]).textContent=txt;} render(cur);});});
+['startShape','endShape','brushType','paper','inkCol','emphCol','layout'].forEach(id=>{$(id).addEventListener('change',()=>render(cur));});
+[['sx','vx'],['sy','vy'],['ss','vs']].forEach(([a,b])=>{$(a).addEventListener('input',e=>{const v=a==='ss'?parseFloat(e.target.value):parseInt(e.target.value); $(b).textContent=a==='ss'?v.toFixed(2)+'x':v; if(srt[sel]){if(a==='sx') srt[sel].session.x=v; if(a==='sy') srt[sel].session.y=v; if(a==='ss') srt[sel].session.scale=v;} render(cur);});});
+document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active')); document.querySelectorAll('.pane').forEach(x=>x.classList.remove('active')); b.classList.add('active'); $('pane-'+b.dataset.t).classList.add('active');}));
+
+loadSRT(`1\n00:00:00,000 --> 00:00:03,500\n하루도 검푸른\n\n2\n00:00:03,600 --> 00:00:07,000\n물결에 흐느적\n\n3\n00:00:07,100 --> 00:00:10,500\n오시나요\n\n4\n00:00:10,600 --> 00:00:14,000\n영창에는 달빛\n\n5\n00:00:14,100 --> 00:00:18,000\n그림자는 산란히 휘젓는데`);
+</script>
+</body>
+</html>
