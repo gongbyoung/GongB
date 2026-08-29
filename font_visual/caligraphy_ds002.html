@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SRT 캘리그라피 스튜디오 v32 (가변 스트로크)</title>
+  <title>SRT 캘리그라피 스튜디오 v33 (진한 먹 + 가변 붓 선)</title>
   
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -50,7 +50,7 @@
 </head>
 <body>
   <header>
-    <h1>🖌️ SRT 캘리그라피 스튜디오 v32 (가변 스트로크)</h1>
+    <h1>🖌️ SRT 캘리그라피 스튜디오 v33 (진한 먹 + 가변 붓)</h1>
   </header>
 
   <div class="main-container">
@@ -96,7 +96,7 @@
 
       <div class="section-title">🖌️ 5. 붓터치 스타일</div>
       <select id="morph-style">
-        <option value="vbp">🖌️ 가변 굵기 붓 (기본)</option>
+        <option value="vbp">🖌️ 가변 굵기 붓 (기본, 진하게 채움)</option>
         <option value="soft">🥚 둥글둥글 (부드러운 눌림)</option>
         <option value="sharp">🗡️ 뾰족 (거친 빠른 붓)</option>
         <option value="dry">💧 갈필 (마른 붓)</option>
@@ -286,46 +286,66 @@
       ctx.restore();
     }
 
-    // [핵심 수정] Path2D 기반 가변 굵기 렌더링
-    function getGlyphPathData(char, fontSize) {
+    // [핵심 수정 1] Path2D를 그대로 사용하되, 명령어를 분해하여 "진한 채움"과 "가변 굵기"를 혼합
+    function commandsToPts(commands, fontSize) {
+      let pts = [];
+      let cx = 0, cy = 0, sx = 0, sy = 0;
+      const SEGMENTS = 12; // 곡선 정밀도 향상
+
+      commands.forEach(c => {
+        if (c.type === 'M') { cx = c.x; cy = c.y; sx = cx; sy = cy; pts.push({x: cx, y: cy}); }
+        else if (c.type === 'L') { cx = c.x; cy = c.y; pts.push({x: cx, y: cy}); }
+        else if (c.type === 'C') {
+          for (let i = 1; i <= SEGMENTS; i++) {
+            const t = i / SEGMENTS, mt = 1 - t;
+            pts.push({
+              x: mt*mt*mt*cx + 3*mt*mt*t*c.x1 + 3*mt*t*t*c.x2 + t*t*t*c.x,
+              y: mt*mt*mt*cy + 3*mt*mt*t*c.y1 + 3*mt*t*t*c.y2 + t*t*t*c.y
+            });
+          }
+          cx = c.x; cy = c.y;
+        }
+        else if (c.type === 'Q') {
+          for (let i = 1; i <= SEGMENTS; i++) {
+            const t = i / SEGMENTS, mt = 1 - t;
+            pts.push({
+              x: mt*mt*cx + 2*mt*t*c.x1 + t*t*c.x,
+              y: mt*mt*cy + 2*mt*t*c.y1 + t*t*c.y
+            });
+          }
+          cx = c.x; cy = c.y;
+        }
+        else if (c.type === 'Z') { pts.push({x: sx, y: sy}); cx = sx; cy = sy; }
+      });
+      return pts;
+    }
+
+    function getGlyphBrushData(char, fontSize) {
       const key = `${currentFont?.familyName || 'font'}|${char.codePointAt(0)}|${fontSize.toFixed(1)}`;
       if (glyphDataCache.has(key)) return glyphDataCache.get(key);
       
       const path = currentFont.getPath(char, 0, 0, fontSize);
       const bbox = path.getBoundingBox();
+      const commands = path.commands;
+      const pts = commandsToPts(commands, fontSize);
+
+      if (pts.length < 4) {
+        logMessage(`<strong>[오류]</strong> '${char}' 글자가 너무 짧아 스킵되었습니다.`);
+        const emptyData = { contours: [], totalLength: 0, bbox, isBlank: true };
+        glyphDataCache.set(key, emptyData);
+        return emptyData;
+      }
       
-      // Path2D 생성 (외곽선 데이터를 그대로 사용)
-      const svgD = path.toPathData ? path.toPathData() : commandsToSvgD(path.commands);
-      const p2d = new Path2D(svgD);
-      
-      const data = { p2d, bbox, isBlank: p2d === null };
+      // 총 길이 계산 (진행률용)
+      let totalLength = 0;
+      for (let i = 1; i < pts.length; i++) totalLength += Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
+
+      const data = { contours: pts, totalLength, bbox, isBlank: false, svgD: path.toPathData ? path.toPathData() : commandsToSvgD(commands) };
       glyphDataCache.set(key, data);
       return data;
     }
 
-    // 명령어를 SVG D로 변환
-    function commandsToSvgD(commands) {
-      return commands.map(c => {
-        switch(c.type) {
-          case 'M': return `M ${c.x} ${c.y}`;
-          case 'L': return `L ${c.x} ${c.y}`;
-          case 'C': return `C ${c.x1} ${c.y1} ${c.x2} ${c.y2} ${c.x} ${c.y}`;
-          case 'Q': return `Q ${c.x1} ${c.y1} ${c.x} ${c.y}`;
-          case 'Z': return 'Z';
-          default: return '';
-        }
-      }).join(' ');
-    }
-
-    // [핵심 수정] 압력 프로파일 (시작: 가늘게, 중간: 두껍게, 끝: 가늘게 및 갈라짐)
-    function pressure(t) {
-      let p = Math.pow(Math.sin(t * Math.PI * 0.88), 0.82);
-      p = 0.22 + p * 1.38;
-      if (t > 0.80) p *= (1 - (t - 0.80) / 0.20 * 0.70);
-      return Math.max(0.10, p);
-    }
-
-    // [핵심 수정] 가변 굵기 브러시로 Path2D 스트로크
+    // [핵심 수정 2] "가변 굵기 선" 그리기 (내부가 비어 보이지 않음)
     function drawBrushGlyph(targetCtx, data, centerX, centerY, revealLength, fullyDone, seed, sp, char) {
       if (data.isBlank) return;
       const bbox = data.bbox;
@@ -334,59 +354,57 @@
 
       targetCtx.save();
       targetCtx.translate(offX, offY);
-      
       targetCtx.lineCap = 'round';
       targetCtx.lineJoin = 'round';
 
-      // Path2D의 명령어를 추출하여 각 세그먼트를 따라가며 그린다.
-      // (실제로 Path2D 전체를 자를 수 없으므로, 완성된 경우와 진행 중인 경우를 분리)
-      
-      // 완성된 경우: 굵은 붓으로 한 번에 그리되, 브러시 두께를 조절
-      if (fullyDone) {
-        // Stroke의 두께를 전체 평균 압력으로 지정
-        const avgPress = 1.0; 
-        targetCtx.lineWidth = 40 * sp.width * power(); // 평균 획 굵기
-        targetCtx.globalAlpha = 1.0;
-        targetCtx.stroke(data.p2d);
-        targetCtx.restore();
-        return;
+      // 1. 완성된 경우: Path2D를 채워서 내부까지 진하게 (먹물)
+      if (fullyDone && sp.mode === 'fill') {
+        try {
+          const p2d = new Path2D(data.svgD);
+          targetCtx.fill(p2d, 'nonzero');
+          targetCtx.restore();
+          return;
+        } catch(e) {}
       }
 
-      // [핵심] 진행 중일 때 (획을 써 내려가는 느낌)
-      // Path2D 전체를 그대로 stroke하면 필압 변화가 없으므로, 
-      // Canvas의 'clip' + 'dash array'를 이용하여 "진행률"을 흉내내고, 굵기는 시간에 따라 변화시킨다.
-      
-      const dashOffset = data.totalLength - revealLength; // 진행률에 따른 오프셋
-      const lineWidth = Math.max(1, 40 * sp.width * power()); // 브러시 기본 두께
+      // 2. 진행 중이거나(쓰는 중) 가변 굵기 모드: 중심선을 따라가며 굵기를 실시간 변경
+      const pts = data.contours;
+      const baseW = 40 * sp.width * power();
+      let acc = 0;
 
-      // Brush Stroke를 여러 개의 계층으로 나누어 "누르는 느낌"을 만든다.
-      // 1. 얇게 시작
-      targetCtx.lineWidth = lineWidth * 0.6;
-      targetCtx.globalAlpha = 0.8;
-      
-      ctx.save();
-      ctx.setLineDash([revealLength, data.totalLength]);
-      ctx.lineDashOffset = 0;
-      ctx.stroke(data.p2d);
-      ctx.restore();
+      for (let i = 1; i < pts.length; i++) {
+        const p0 = pts[i-1], p1 = pts[i];
+        const segLen = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+        const t = data.totalLength > 0 ? (acc / data.totalLength) : 0; // 진행률
 
-      // 2. 중간에 두껍게
-      ctx.save();
-      ctx.lineWidth = lineWidth * 1.2;
-      ctx.globalAlpha = 0.5;
-      ctx.setLineDash([revealLength * 0.6, data.totalLength]);
-      ctx.lineDashOffset = data.totalLength * 0.2;
-      ctx.stroke(data.p2d);
-      ctx.restore();
+        // 필압 공식 (시작: 얇게, 중간: 두껍게, 끝: 갈라짐)
+        let p = Math.pow(Math.sin(t * Math.PI * 0.88), 0.82);
+        p = 0.22 + p * 1.38;
+        if (t > 0.80) p *= (1 - (t - 0.80) / 0.20 * 0.70);
+        p = Math.max(0.10, p);
+        
+        const lineWidth = Math.max(1, baseW * p);
+        targetCtx.lineWidth = lineWidth;
+        targetCtx.globalAlpha = sp.alpha * (t > 0.85 ? 0.7 : 1.0); // 끝 갈필 느낌
+
+        // 선 긋기
+        targetCtx.beginPath();
+        targetCtx.moveTo(p0.x, p0.y);
+        targetCtx.lineTo(p1.x, p1.y);
+        targetCtx.stroke();
+
+        acc += segLen;
+        if (acc >= revealLength) break; // 진행 중인 경우 해당 지점까지만 그림
+      }
 
       targetCtx.restore();
+      targetCtx.globalAlpha = 1;
     }
 
-    // Path2D의 총 길이를 계산 (획이 그려지는 속도 조절용)
-    function estimatePathLength(p2d) {
-      // 실제 길이를 알 수 없으므로 폰트 크기에 비례한 값을 반환.
-      // (더 정확한 구현은 명령어를 분해해야 함)
-      return 500; // 임시값 (풀 렌더링 시 사용)
+    function commandsToSvgD(commands) {
+      return commands.map(c => {
+        switch(c.type) { case 'M': return `M ${c.x} ${c.y}`; case 'L': return `L ${c.x} ${c.y}`; case 'C': return `C ${c.x1} ${c.y1} ${c.x2} ${c.y2} ${c.x} ${c.y}`; case 'Q': return `Q ${c.x1} ${c.y1} ${c.x} ${c.y}`; case 'Z': return 'Z'; default: return ''; }
+      }).join(' ');
     }
 
     function computeCharPlan(chars, sizes) {
@@ -394,8 +412,8 @@
       const plan = chars.map((ch, i) => {
         let data = null, length;
         if (ch !== ' ') {
-          data = getGlyphPathData(ch, sizes[i]);
-          length = 500; // 임시 길이
+          data = getGlyphBrushData(ch, sizes[i]);
+          length = Math.max(data.totalLength, sizes[i] * 0.2);
         } else {
           length = sizes[i] * 0.3;
         }
@@ -434,6 +452,19 @@
       return { positions, sizes, rawChars: positions.map(p => p.ch) };
     }
 
+    // 스타일 파라미터
+    function getStyleParams(style) {
+      let sp = { width: 1.0, alpha: 1.0, mode: 'stroke' };
+      switch(style) {
+        case 'soft': sp.width = 2.2; sp.alpha = 0.8; sp.mode = 'stroke'; break;
+        case 'sharp': sp.width = 0.6; sp.alpha = 1.0; sp.mode = 'stroke'; break;
+        case 'dry': sp.width = 1.2; sp.alpha = 0.7; sp.mode = 'stroke'; break;
+        default: sp.width = 1.0; sp.alpha = 1.0; sp.mode = 'fill'; break; // 기본은 완성 시 채우기
+      }
+      sp.width *= power();
+      return sp;
+    }
+
     function renderMaskFitMode(text, writeProgress, maskImg, inkColor, sp, session, applyClip) {
       if (!maskImg || !currentFont) return;
       const w = canvas.width, h = canvas.height;
@@ -464,19 +495,6 @@
 
       if (applyClip) { maskCtx.globalCompositeOperation = 'destination-in'; maskCtx.drawImage(maskImg, 0, 0, w, h); maskCtx.globalCompositeOperation = 'source-over'; }
       ctx.drawImage(maskCanvas, 0, 0);
-    }
-
-    // 스타일 파라미터 결정
-    function getStyleParams(style) {
-      let sp = { width: 1.0 };
-      switch(style) {
-        case 'soft': sp.width = 2.0; break; // 둥글게
-        case 'sharp': sp.width = 0.5; break; // 뾰족하게
-        case 'dry': sp.width = 0.8; break; // 갈필
-        default: sp.width = 1.0;
-      }
-      sp.width *= power();
-      return sp;
     }
 
     function renderFrame(timeSec) {
