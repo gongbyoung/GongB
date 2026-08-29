@@ -1,423 +1,452 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SRT 캘리그라피 스튜디오 v1.011 (최종 결실)</title>
-  
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Nanum+Brush+Script&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SRT 캘리그라피 스튜디오 v2.0 (자모 변형 엔진)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Nanum+Brush+Script&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
 
-  <style>
-    :root { --bg-dark: #121214; --panel-bg: #1e1e24; --panel-border: #2d2d38; --accent-color: #ff6b35; --accent-gradient: linear-gradient(135deg, #ff6b35, #f72585); --text-main: #f0f0f5; --text-muted: #a0a0b0; }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Pretendard', sans-serif; background-color: var(--bg-dark); color: var(--text-main); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
-    header { background: #18181c; padding: 12px 24px; border-bottom: 1px solid var(--panel-border); }
-    .main-container { display: flex; flex: 1; overflow: hidden; }
-    .sidebar { width: 280px; background: var(--panel-bg); border-right: 1px solid var(--panel-border); padding: 20px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
-    .preview-area { flex: 1; display: flex; flex-direction: column; background: #f4ecd8; align-items: center; justify-content: center; padding: 20px; position: relative; }
-    .canvas-wrapper { position: relative; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2); border-radius: 8px; overflow: hidden; max-width: 100%; max-height: 80vh; cursor: grab; background: #f4ecd8; }
-    canvas { display: block; max-width: 100%; max-height: 80vh; object-fit: contain; pointer-events: none; }
-    
-    .player-controls { width: 100%; max-width: 960px; margin-top: 15px; background: var(--panel-bg); padding: 14px 20px; border-radius: 10px; display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--panel-border); }
-    .timeline-row { display: flex; align-items: center; gap: 12px; }
-    .time-display { font-family: monospace; font-size: 0.9rem; color: var(--accent-color); min-width: 120px; }
-    button.btn-action { background: var(--accent-gradient); color: white; border: none; padding: 12px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 1.05rem; }
-    button.btn-secondary { background: #2b2b38; border: 1px solid var(--panel-border); color: var(--text-main); padding: 12px 16px; border-radius: 6px; cursor: pointer; }
+    <style>
+        :root { --bg-dark: #121214; --panel-bg: #1e1e24; --panel-border: #2d2d38; --accent-color: #ff6b35; --text-main: #f0f0f5; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Pretendard', sans-serif; background-color: var(--bg-dark); color: var(--text-main); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        header { background: #18181c; padding: 15px 24px; border-bottom: 1px solid var(--panel-border); }
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        .sidebar { width: 380px; background: var(--panel-bg); border-right: 1px solid var(--panel-border); padding: 20px; display: flex; flex-direction: column; gap: 15px; overflow-y: auto; }
+        .preview-area { flex: 1; display: flex; flex-direction: column; background: #f4ecd8; align-items: center; justify-content: center; padding: 20px; position: relative; }
+        .canvas-wrapper { position: relative; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2); border-radius: 8px; overflow: hidden; max-width: 100%; max-height: 80vh; cursor: grab; background: #f4ecd8; }
+        canvas { display: block; max-width: 100%; max-height: 80vh; object-fit: contain; pointer-events: none; }
 
-    select, input[type="range"], input[type="text"], textarea { width: 100%; padding: 8px; background: #16161a; border: 1px solid var(--panel-border); border-radius: 6px; color: var(--text-main); font-size: 0.85rem; margin-bottom: 4px; }
-    label { font-size: 0.82rem; color: var(--text-muted); display: flex; justify-content: space-between; margin-top: 6px; }
-    input[type="file"] { display: none; }
-    .btn-file { display: block; padding: 10px; background: #2a2a36; border: 1px solid var(--panel-border); border-radius: 6px; text-align: center; cursor: pointer; font-size: 0.85rem; font-weight: 600; color: var(--text-main); }
-    .srt-list-container { max-height: 150px; overflow-y: auto; background: #141418; border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px; }
-    .srt-item { padding: 6px 10px; border-bottom: 1px solid #22222a; font-size: 0.8rem; cursor: pointer; display: flex; justify-content: space-between; }
-    .srt-item.active { background: rgba(255, 107, 55, 0.2); border-left: 3px solid var(--accent-color); }
+        .player-controls { width: 100%; max-width: 960px; margin-top: 15px; background: var(--panel-bg); padding: 14px 20px; border-radius: 10px; display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--panel-border); }
+        .timeline-row { display: flex; align-items: center; gap: 12px; }
+        .time-display { font-family: monospace; font-size: 0.9rem; color: var(--accent-color); min-width: 120px; }
+        button.btn-action { background: linear-gradient(135deg, #ff6b35, #f72585); color: white; border: none; padding: 12px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 1.05rem; }
+        button.btn-secondary { background: #2b2b38; border: 1px solid var(--panel-border); color: var(--text-main); padding: 12px 16px; border-radius: 6px; cursor: pointer; }
 
-    #log-panel { position: fixed; right: 10px; top: 10px; width: 280px; max-height: 80vh; background: rgba(30, 30, 36, 0.95); border: 1px solid var(--panel-border); border-radius: 8px; padding: 15px; overflow-y: auto; z-index: 999; font-size: 0.8rem; }
-    #log-panel h3 { color: var(--accent-color); margin-bottom: 10px; font-size: 1rem; border-bottom: 1px solid #444; padding-bottom: 5px; }
-    .log-entry { border-bottom: 1px dashed #333; padding: 5px 0; color: var(--text-muted); }
-    .log-entry strong { color: #4ecdc4; }
-    
-    details { background: #222; padding: 10px; border-radius: 6px; margin-bottom: 10px; cursor: pointer; }
-    summary { font-weight: bold; color: var(--accent-color); margin-bottom: 10px; }
-  </style>
+        .section-title { font-size: 0.9rem; font-weight: 700; color: var(--accent-color); text-transform: uppercase; margin-bottom: 6px; }
+        select, input[type="range"], input[type="text"], textarea { width: 100%; padding: 8px; background: #16161a; border: 1px solid var(--panel-border); border-radius: 6px; color: var(--text-main); font-size: 0.85rem; margin-bottom: 4px; }
+        label { font-size: 0.82rem; color: var(--text-muted); display: flex; justify-content: space-between; margin-top: 6px; }
+        input[type="file"] { display: none; }
+        .btn-file { display: block; padding: 10px; background: #2a2a36; border: 1px solid var(--panel-border); border-radius: 6px; text-align: center; cursor: pointer; font-size: 0.85rem; font-weight: 600; color: var(--text-main); }
+        .srt-list-container { max-height: 150px; overflow-y: auto; background: #141418; border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px; }
+        .srt-item { padding: 6px 10px; border-bottom: 1px solid #22222a; font-size: 0.8rem; cursor: pointer; display: flex; justify-content: space-between; }
+        .srt-item.active { background: rgba(255, 107, 55, 0.2); border-left: 3px solid var(--accent-color); }
+
+        #log-panel { position: fixed; right: 10px; top: 10px; width: 280px; max-height: 80vh; background: rgba(30, 30, 36, 0.95); border: 1px solid var(--panel-border); border-radius: 8px; padding: 15px; overflow-y: auto; z-index: 999; font-size: 0.8rem; }
+        #log-panel h3 { color: var(--accent-color); margin-bottom: 10px; font-size: 1rem; border-bottom: 1px solid #444; padding-bottom: 5px; }
+        .log-entry { border-bottom: 1px dashed #333; padding: 5px 0; color: var(--text-muted); }
+        .log-entry strong { color: #4ecdc4; }
+
+        /* UI 접기/펼치기 */
+        details { background: #222; padding: 10px; border-radius: 6px; margin-bottom: 10px; cursor: pointer; }
+        summary { font-weight: bold; color: var(--accent-color); margin-bottom: 10px; }
+    </style>
 </head>
 <body>
-  <header>
-    <h1>🖌️ SRT 캘리그라피 스튜디오 v1.011 (진짜 캘리그라피)</h1>
-  </header>
+    <header>
+        <h1>🖌️ SRT 캘리그라피 스튜디오 v2.0 (자모 변형 엔진)</h1>
+    </header>
 
-  <div class="main-container">
-    <div class="sidebar">
-      <div class="section-title">📂 1. 기본</div>
-      <label for="ttf-input" class="btn-file">📁 TTF 폰트</label>
-      <input type="file" id="ttf-input" accept=".ttf, .otf">
-      <div class="font-status" id="font-status" style="font-size: 0.8rem; color: #7cd992; margin-bottom: 10px;">기본 나눔붓글씨 사용 중</div>
-      
-      <select id="aspect-ratio-select">
-        <option value="16:9" selected>🖥️ 16:9 가로</option>
-        <option value="9:16">📱 9:16 세로</option>
-      </select>
+    <div class="main-container">
+        <div class="sidebar">
+            <div class="section-title">📂 1. 로드</div>
+            <label for="ttf-input" class="btn-file">📁 TTF 폰트</label>
+            <input type="file" id="ttf-input" accept=".ttf, .otf">
+            <div class="font-status" id="font-status" style="font-size: 0.8rem; color: #7cd992; margin-bottom: 10px;">기본 나눔붓글씨 사용 중</div>
+            
+            <select id="aspect-ratio-select">
+                <option value="16:9" selected>🖥️ 16:9 가로</option>
+                <option value="9:16">📱 9:16 세로</option>
+            </select>
 
-      <label for="srt-input" class="btn-file">📁 SRT 파일</label>
-      <input type="file" id="srt-input" accept=".srt">
-      <textarea id="srt-textarea" style="height: 80px; background: #141418;"></textarea>
-      <button class="btn-action" id="btn-apply-srt" style="width:100%; margin-bottom: 10px;">✏️ 자막 적용하기 (렌더링)</button>
+            <label for="srt-input" class="btn-file">📁 SRT 파일</label>
+            <input type="file" id="srt-input" accept=".srt">
+            <textarea id="srt-textarea" style="height: 80px; background: #141418;"></textarea>
+            <button class="btn-action" id="btn-apply-srt" style="width:100%; margin-bottom: 10px;">✏️ 자막 적용하기 (렌더링)</button>
 
-      <details open>
-        <summary>🎨 2. 붓터치 강도</summary>
-        <label>획 굵기 (POWER) <span id="val-power">1.0x</span></label>
-        <input type="range" id="power-slider" min="0.1" max="5.0" step="0.1" value="2.0">
-        <label>번짐 (먹 퍼짐) <span id="val-smooth">1.0</span></label>
-        <input type="range" id="smooth-slider" min="0.0" max="3.0" step="0.1" value="1.0">
-      </details>
+            <!-- 전역 설정 -->
+            <details open>
+                <summary>🎨 2. 전역 캘리그라피 변형</summary>
+                <label>전체 확대/축소 <span id="val-g-scale">1.0x</span></label>
+                <input type="range" id="global-scale" min="0.5" max="2.0" step="0.05" value="1.0">
+                <label>전체 기울기 <span id="val-g-rot">0.0</span></label>
+                <input type="range" id="global-rot" min="-0.4" max="0.4" step="0.01" value="0.0">
+                <label>획 굵기 (POWER) <span id="val-g-stroke">1.0x</span></label>
+                <input type="range" id="global-stroke" min="0.1" max="5.0" step="0.1" value="2.0">
+                <label>먹 번짐 (Blur) <span id="val-g-blur">0.0</span></label>
+                <input type="range" id="global-blur" min="0.0" max="4.0" step="0.1" value="0.5">
+            </details>
 
-      <details>
-        <summary>🎛️ 3. 세션 위치</summary>
-        <div id="session-controls">
-          <label>위치 X <span id="val-x">0</span></label>
-          <input type="range" id="session-x" min="-500" max="500" step="10" value="0">
-          <label>위치 Y <span id="val-y">0</span></label>
-          <input type="range" id="session-y" min="-500" max="500" step="10" value="0">
+            <!-- 초성 (Choseong) -->
+            <details>
+                <summary>🔷 3. 초성 변형</summary>
+                <label>초성 이동 X <span id="val-c-x">0</span></label>
+                <input type="range" id="cho-x" min="-100" max="100" step="1" value="-30">
+                <label>초성 이동 Y <span id="val-c-y">0</span></label>
+                <input type="range" id="cho-y" min="-100" max="100" step="1" value="-20">
+                <label>초성 크기 X <span id="val-c-sx">1.0</span></label>
+                <input type="range" id="cho-sx" min="0.5" max="2.0" step="0.05" value="1.0">
+                <label>초성 크기 Y <span id="val-c-sy">1.0</span></label>
+                <input type="range" id="cho-sy" min="0.5" max="2.0" step="0.05" value="0.9">
+                <label>초성 회전 <span id="val-c-r">0.0</span></label>
+                <input type="range" id="cho-r" min="-0.5" max="0.5" step="0.01" value="-0.1">
+            </details>
+
+            <!-- 중성 (Jungseong) -->
+            <details>
+                <summary>🟩 4. 중성 변형 (모음)</summary>
+                <label>중성 이동 X <span id="val-j-x">0</span></label>
+                <input type="range" id="jung-x" min="-100" max="100" step="1" value="20">
+                <label>중성 이동 Y <span id="val-j-y">0</span></label>
+                <input type="range" id="jung-y" min="-100" max="100" step="1" value="0">
+                <label>중성 크기 X <span id="val-j-sx">1.0</span></label>
+                <input type="range" id="jung-sx" min="0.5" max="2.5" step="0.05" value="1.3">
+                <label>중성 크기 Y <span id="val-j-sy">1.0</span></label>
+                <input type="range" id="jung-sy" min="0.5" max="2.5" step="0.05" value="1.1">
+                <label>중성 회전 <span id="val-j-r">0.0</span></label>
+                <input type="range" id="jung-r" min="-0.5" max="0.5" step="0.01" value="0.1">
+            </details>
+
+            <!-- 종성 (Jongseong) -->
+            <details>
+                <summary>🟦 5. 종성 변형 (받침)</summary>
+                <label>종성 이동 X <span id="val-jg-x">0</span></label>
+                <input type="range" id="jong-x" min="-100" max="100" step="1" value="0">
+                <label>종성 이동 Y <span id="val-jg-y">0</span></label>
+                <input type="range" id="jong-y" min="-100" max="100" step="1" value="60">
+                <label>종성 크기 X <span id="val-jg-sx">1.0</span></label>
+                <input type="range" id="jong-sx" min="0.5" max="2.0" step="0.05" value="1.1">
+                <label>종성 크기 Y <span id="val-jg-sy">1.0</span></label>
+                <input type="range" id="jong-sy" min="0.5" max="2.0" step="0.05" value="0.8">
+                <label>종성 회전 <span id="val-jg-r">0.0</span></label>
+                <input type="range" id="jong-r" min="-0.5" max="0.5" step="0.01" value="0.0">
+            </details>
+
+            <label for="mask-file-input" class="btn-file" style="margin-top:10px;">🖼️ 마스크 이미지 (선택)</label>
+            <input type="file" id="mask-file-input" accept="image/*">
+            
+            <div class="section-title" style="margin-top:15px;">📜 6. 세션 목록</div>
+            <div class="srt-list-container" id="srt-list"></div>
         </div>
-      </details>
 
-      <label for="mask-file-input" class="btn-file" style="margin-top:10px;">🖼️ 마스크 이미지 (선택)</label>
-      <input type="file" id="mask-file-input" accept="image/*">
-      
-      <div class="section-title" style="margin-top:15px;">📜 4. 세션 목록</div>
-      <div class="srt-list-container" id="srt-list"></div>
+        <div class="preview-area">
+            <div class="canvas-wrapper" id="canvas-wrapper">
+                <canvas id="calligraphy-canvas" width="1920" height="1080"></canvas>
+            </div>
+            <div class="player-controls">
+                <div class="timeline-row">
+                    <button class="btn-secondary" id="btn-play">▶ 재생</button>
+                    <input type="range" id="time-slider" min="0" max="100" value="0" step="0.01" style="flex:1;">
+                    <div class="time-display" id="time-display">00:00.00 / 00:00.00</div>
+                </div>
+                <button class="btn-action" id="btn-export">🔴 녹화 시작 (자동 저장)</button>
+            </div>
+        </div>
     </div>
 
-    <div class="preview-area">
-      <div class="canvas-wrapper" id="canvas-wrapper">
-        <canvas id="calligraphy-canvas" width="1920" height="1080"></canvas>
-      </div>
-      <div class="player-controls">
-        <div class="timeline-row">
-          <button class="btn-secondary" id="btn-play">▶ 재생</button>
-          <input type="range" id="time-slider" min="0" max="100" value="0" step="0.01" style="flex:1;">
-          <div class="time-display" id="time-display">00:00.00 / 00:00.00</div>
-        </div>
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <button class="btn-action" id="btn-export">🔴 녹화 시작 (자동 저장)</button>
-        </div>
-      </div>
+    <div id="log-panel">
+        <h3>📊 렌더링 LOG</h3>
+        <div id="log-messages"></div>
     </div>
-  </div>
 
-  <div id="log-panel">
-    <h3>📊 렌더링 LOG</h3>
-    <div id="log-messages"></div>
-  </div>
-
-  <script>
-    function logMessage(msg) {
-      const logDiv = document.getElementById('log-messages');
-      const div = document.createElement('div');
-      div.className = 'log-entry';
-      div.innerHTML = msg;
-      logDiv.prepend(div);
-      if(logDiv.children.length > 30) logDiv.removeChild(logDiv.lastChild);
-    }
-
-    const canvas = document.getElementById('calligraphy-canvas');
-    const ctx = canvas.getContext('2d');
-    const wrapper = document.getElementById('canvas-wrapper');
-    const maskCanvas = document.createElement('canvas');
-    const maskCtx = maskCanvas.getContext('2d');
-
-    function syncCanvasSize() {
-      maskCanvas.width = canvas.width;
-      maskCanvas.height = canvas.height;
-    }
-    syncCanvasSize();
-
-    let srtData = [], totalDuration = 0, currentTime = 0, isPlaying = false, animationFrameId = null, lastTimestamp = 0;
-    let currentFont = null;
-    let selectedSessionIndex = 0;
-    let isRecording = false;
-    let currentMaskAlphaImage = null;
-    let hasMask = false;
-    
-    const powerSlider = document.getElementById('power-slider');
-    const smoothSlider = document.getElementById('smooth-slider');
-    
-    const power = () => parseFloat(powerSlider.value);
-    const smooth = () => parseFloat(smoothSlider.value);
-
-    function getActiveBounds() {
-      return { x: canvas.width * 0.05, y: canvas.height * 0.05, w: canvas.width * 0.9, h: canvas.height * 0.9 };
-    }
-
-    // [핵심 1] 곡선 배치 및 랜덤 크기
-    function layoutSessionText(text, bounds, session) {
-      let cleanText = text.replace(/\r/g, '').replace(/\n/g, ' ');
-      const offsetX = session.x || 0; 
-      const offsetY = session.y || 0; 
-      
-      const maxWidth = bounds.w * 0.95;
-      const maxHeight = bounds.h * 0.9;
-      const fontSize = Math.max(100, Math.min(bounds.w / cleanText.length * 1.5, bounds.h / 2)) * (session.scale || 1.0);
-
-      let lines = [];
-      let currentLine = "";
-      let currentWidth = 0;
-
-      for (let char of cleanText) {
-        let charWidth = currentFont.getAdvanceWidth(char, fontSize);
-        if (currentWidth + charWidth > maxWidth && currentLine !== "") {
-          lines.push(currentLine);
-          currentLine = char;
-          currentWidth = charWidth;
-        } else {
-          currentLine += char;
-          currentWidth += charWidth;
-        }
-      }
-      if (currentLine) lines.push(currentLine);
-
-      const lineHeight = fontSize * 1.2;
-      const startY = (bounds.y + bounds.h / 2 - (lines.length * lineHeight) / 2) + offsetY;
-      
-      const positions = [];
-      const sizes = [];
-
-      lines.forEach((lineText, lineIdx) => {
-        let lineChars = Array.from(lineText);
-        let lineWidths = lineChars.map(ch => currentFont.getAdvanceWidth(ch, fontSize));
-        let totalLineWidth = lineWidths.reduce((a, b) => a + b, 0);
-
-        let currentX = (bounds.x + bounds.w / 2 - totalLineWidth / 2) + offsetX;
+    <script>
+        const canvas = document.getElementById('calligraphy-canvas');
+        const ctx = canvas.getContext('2d');
+        const maskCanvas = document.createElement('canvas');
+        const maskCtx = maskCanvas.getContext('2d');
         
-        lineChars.forEach((ch, idx) => {
-          // [핵심 2] 물결치는 곡선 배치
-          const waveOffset = Math.sin(idx * 0.8 + lineIdx) * 15; 
-          // [핵심 3] 랜덤한 글자 크기 (강약)
-          const sizeMul = 0.8 + seededRandom(idx * 3.7 + lineIdx * 9.1) * 0.7; 
-          
-          positions.push({ 
-            x: currentX, 
-            y: startY + lineIdx * lineHeight + waveOffset, 
-            ch, 
-            rot: (seededRandom(idx + lineIdx) - 0.5) * 0.1 
-          });
-          sizes.push(fontSize * sizeMul);
-          currentX += lineWidths[idx];
+        let srtData = [], totalDuration = 0, currentTime = 0, isPlaying = false, animationFrameId = null, lastTimestamp = 0;
+        let currentFont = null;
+        let hasMask = false;
+        let currentMaskAlphaImage = null;
+        
+        // 전역, 초성, 중성, 종성 설정 객체
+        let settings = {
+            global: { scale: 1.0, rot: 0.0, stroke: 2.0, blur: 0.5 },
+            cho: { x: -30, y: -20, sx: 1.0, sy: 0.9, rot: -0.1 },
+            jung: { x: 20, y: 0, sx: 1.3, sy: 1.1, rot: 0.1 },
+            jong: { x: 0, y: 60, sx: 1.1, sy: 0.8, rot: 0.0 }
+        };
+
+        // UI 값 가져오기 및 바인딩
+        function bindUI(id, callback) {
+            const el = document.getElementById(id);
+            el.addEventListener('input', (e) => callback(parseFloat(e.target.value)));
+            return el;
+        }
+
+        // 전역
+        document.getElementById('global-scale').addEventListener('input', (e) => { settings.global.scale = parseFloat(e.target.value); document.getElementById('val-g-scale').textContent = e.target.value+'x'; });
+        document.getElementById('global-rot').addEventListener('input', (e) => { settings.global.rot = parseFloat(e.target.value); document.getElementById('val-g-rot').textContent = e.target.value; });
+        document.getElementById('global-stroke').addEventListener('input', (e) => { settings.global.stroke = parseFloat(e.target.value); document.getElementById('val-g-stroke').textContent = e.target.value+'x'; });
+        document.getElementById('global-blur').addEventListener('input', (e) => { settings.global.blur = parseFloat(e.target.value); document.getElementById('val-g-blur').textContent = e.target.value; });
+
+        // 초성
+        document.getElementById('cho-x').addEventListener('input', (e) => { settings.cho.x = parseFloat(e.target.value); document.getElementById('val-c-x').textContent = e.target.value; });
+        document.getElementById('cho-y').addEventListener('input', (e) => { settings.cho.y = parseFloat(e.target.value); document.getElementById('val-c-y').textContent = e.target.value; });
+        document.getElementById('cho-sx').addEventListener('input', (e) => { settings.cho.sx = parseFloat(e.target.value); document.getElementById('val-c-sx').textContent = e.target.value; });
+        document.getElementById('cho-sy').addEventListener('input', (e) => { settings.cho.sy = parseFloat(e.target.value); document.getElementById('val-c-sy').textContent = e.target.value; });
+        document.getElementById('cho-r').addEventListener('input', (e) => { settings.cho.rot = parseFloat(e.target.value); document.getElementById('val-c-r').textContent = e.target.value; });
+
+        // 중성
+        document.getElementById('jung-x').addEventListener('input', (e) => { settings.jung.x = parseFloat(e.target.value); document.getElementById('val-j-x').textContent = e.target.value; });
+        document.getElementById('jung-y').addEventListener('input', (e) => { settings.jung.y = parseFloat(e.target.value); document.getElementById('val-j-y').textContent = e.target.value; });
+        document.getElementById('jung-sx').addEventListener('input', (e) => { settings.jung.sx = parseFloat(e.target.value); document.getElementById('val-j-sx').textContent = e.target.value; });
+        document.getElementById('jung-sy').addEventListener('input', (e) => { settings.jung.sy = parseFloat(e.target.value); document.getElementById('val-j-sy').textContent = e.target.value; });
+        document.getElementById('jung-r').addEventListener('input', (e) => { settings.jung.rot = parseFloat(e.target.value); document.getElementById('val-j-r').textContent = e.target.value; });
+
+        // 종성
+        document.getElementById('jong-x').addEventListener('input', (e) => { settings.jong.x = parseFloat(e.target.value); document.getElementById('val-jg-x').textContent = e.target.value; });
+        document.getElementById('jong-y').addEventListener('input', (e) => { settings.jong.y = parseFloat(e.target.value); document.getElementById('val-jg-y').textContent = e.target.value; });
+        document.getElementById('jong-sx').addEventListener('input', (e) => { settings.jong.sx = parseFloat(e.target.value); document.getElementById('val-jg-sx').textContent = e.target.value; });
+        document.getElementById('jong-sy').addEventListener('input', (e) => { settings.jong.sy = parseFloat(e.target.value); document.getElementById('val-jg-sy').textContent = e.target.value; });
+        document.getElementById('jong-r').addEventListener('input', (e) => { settings.jong.rot = parseFloat(e.target.value); document.getElementById('val-jg-r').textContent = e.target.value; });
+
+        // 로그
+        function logMessage(msg) {
+            const logDiv = document.getElementById('log-messages');
+            const div = document.createElement('div');
+            div.className = 'log-entry';
+            div.innerHTML = msg;
+            logDiv.prepend(div);
+        }
+
+        // 유니코드 -> 자모 분리
+        const CHO = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
+        const JUNG = ['ㅏ', 'ㅐ', 'ㅑ', 'ㅒ', 'ㅓ', 'ㅔ', 'ㅕ', 'ㅖ', 'ㅗ', 'ㅘ', 'ㅙ', 'ㅚ', 'ㅛ', 'ㅜ', 'ㅝ', 'ㅞ', 'ㅟ', 'ㅠ', 'ㅡ', 'ㅢ', 'ㅣ'];
+        const JONG = ['', 'ㄱ', 'ㄲ', 'ㄳ', 'ㄴ', 'ㄵ', 'ㄶ', 'ㄷ', 'ㄹ', 'ㄺ', 'ㄻ', 'ㄼ', 'ㄽ', 'ㄾ', 'ㄿ', 'ㅀ', 'ㅁ', 'ㅂ', 'ㅄ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
+
+        function decomposeHangul(char) {
+            const code = char.charCodeAt(0);
+            if (code >= 0xAC00 && code <= 0xD7A3) {
+                const L = Math.floor((code - 0xAC00) / 588);
+                const V = Math.floor((code - 0xAC00 - L * 588) / 28);
+                const T = Math.floor((code - 0xAC00 - L * 588 - V * 28));
+                return { cho: CHO[L], jung: JUNG[V], jong: JONG[T] };
+            }
+            return { cho: null, jung: null, jong: null };
+        }
+
+        // Path2D 얻기 (안전)
+        function getGlyphPath(char, size) {
+            try {
+                const path = currentFont.getPath(char, 0, 0, size);
+                const svgD = path.toPathData ? path.toPathData() : path.commands.map(c => {
+                    switch(c.type) { case 'M': return `M ${c.x} ${c.y}`; case 'L': return `L ${c.x} ${c.y}`; case 'C': return `C ${c.x1} ${c.y1} ${c.x2} ${c.y2} ${c.x} ${c.y}`; case 'Q': return `Q ${c.x1} ${c.y1} ${c.x} ${c.y}`; case 'Z': return 'Z'; default: return ''; }
+                }).join(' ');
+                return new Path2D(svgD);
+            } catch(e) {
+                return null;
+            }
+        }
+
+        // 렌더링 엔진
+        function renderFrame(timeSec) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // 배경 (한지 고정)
+            ctx.fillStyle = '#f4ecd8';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (!isRecording) {
+                ctx.strokeStyle = 'rgba(80, 120, 80, 0.6)';
+                ctx.setLineDash([8, 8]);
+                ctx.strokeRect(canvas.width * 0.05, canvas.height * 0.05, canvas.width * 0.9, canvas.height * 0.9);
+            }
+            
+            if (!currentFont) return;
+
+            const activeSubtitle = srtData.find(item => timeSec >= item.start && timeSec <= item.end);
+            if (!activeSubtitle) return;
+            const text = activeSubtitle.text.trim();
+
+            // 전역 변형 적용
+            ctx.save();
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+            ctx.scale(settings.global.scale, settings.global.scale);
+            ctx.rotate(settings.global.rot);
+            ctx.translate(-canvas.width / 2, -canvas.height / 2);
+
+            // 글자 배치 (getAdvanceWidth 기반)
+            let currentX = canvas.width * 0.1;
+            const fontSize = 150;
+            const lineHeight = fontSize * 1.5;
+            let currentY = canvas.height / 2 - lineHeight / 2;
+
+            for (let char of text) {
+                if (char === '\n') { currentY += lineHeight; currentX = canvas.width * 0.1; continue; }
+                
+                let width = currentFont.getAdvanceWidth(char, fontSize);
+
+                // [핵심 로직] 자모 분리 및 변형
+                const parts = decomposeHangul(char);
+                let singleCharPath = getGlyphPath(char, fontSize);
+
+                ctx.save();
+                ctx.translate(currentX, currentY);
+                ctx.scale(1, -1); // [필수] Y축 뒤집기
+
+                // 머리(초성), 몸통(중성), 발(종성)을 각각 변형하여 그리기
+                if (parts.cho && parts.jung) {
+                    // 초성
+                    let choPath = getGlyphPath(parts.cho, fontSize);
+                    if (choPath) {
+                        ctx.save();
+                        ctx.translate(settings.cho.x, settings.cho.y);
+                        ctx.rotate(settings.cho.rot);
+                        ctx.scale(settings.cho.sx, settings.cho.sy);
+                        
+                        ctx.fillStyle = '#1c1917';
+                        ctx.shadowColor = 'rgba(0,0,0,0.4)';
+                        ctx.shadowBlur = settings.global.blur;
+                        ctx.lineJoin = 'round';
+                        ctx.lineCap = 'round';
+                        ctx.fill(choPath);
+                        ctx.lineWidth = settings.global.stroke;
+                        ctx.stroke(choPath);
+                        ctx.restore();
+                    }
+
+                    // 중성
+                    let jungPath = getGlyphPath(parts.jung, fontSize);
+                    if (jungPath) {
+                        ctx.save();
+                        ctx.translate(settings.jung.x, settings.jung.y);
+                        ctx.rotate(settings.jung.rot);
+                        ctx.scale(settings.jung.sx, settings.jung.sy);
+                        
+                        ctx.fillStyle = '#1c1917';
+                        ctx.shadowBlur = settings.global.blur;
+                        ctx.lineJoin = 'round';
+                        ctx.fill(jungPath);
+                        ctx.lineWidth = settings.global.stroke;
+                        ctx.stroke(jungPath);
+                        ctx.restore();
+                    }
+
+                    // 종성 (받침)
+                    if (parts.jong) {
+                        let jongPath = getGlyphPath(parts.jong, fontSize);
+                        if (jongPath) {
+                            ctx.save();
+                            ctx.translate(settings.jong.x, settings.jong.y);
+                            ctx.rotate(settings.jong.rot);
+                            ctx.scale(settings.jong.sx, settings.jong.sy);
+                            
+                            ctx.fillStyle = '#1c1917';
+                            ctx.shadowBlur = settings.global.blur;
+                            ctx.lineJoin = 'round';
+                            ctx.fill(jongPath);
+                            ctx.lineWidth = settings.global.stroke;
+                            ctx.stroke(jongPath);
+                            ctx.restore();
+                        }
+                    }
+                } 
+                // 자모 분해가 안 되는 글자 (숫자, 영어 등)
+                else if (singleCharPath) {
+                    ctx.fillStyle = '#1c1917';
+                    ctx.shadowBlur = settings.global.blur;
+                    ctx.lineJoin = 'round';
+                    ctx.fill(singleCharPath);
+                    ctx.lineWidth = settings.global.stroke;
+                    ctx.stroke(singleCharPath);
+                }
+
+                ctx.restore(); // Y축 복원
+
+                currentX += width;
+                if (currentX > canvas.width * 0.9) { currentX = canvas.width * 0.1; currentY += lineHeight; }
+            }
+
+            ctx.restore(); // 전역 변형 복원
+
+            // 마스크 적용
+            if (isRecording && hasMask && currentMaskAlphaImage) {
+                ctx.globalCompositeOperation = 'destination-in';
+                ctx.drawImage(currentMaskAlphaImage, 0, 0, canvas.width, canvas.height);
+                ctx.globalCompositeOperation = 'source-over';
+            }
+        }
+
+        // ========== 일반 로직 (로드, 재생, 녹화 등) ==========
+        function parseSRT(text){ const n=text.replace(/\r/g,'\n'); const b=n.split('\n\n'); const r=[]; for(let bl of b){ const l=bl.trim().split('\n'); if(l.length>=3){ const tm=l[1].match(/(.*?)\s*-->\s*(.*)/); if(tm){ r.push({ id:l[0], start:parseTime(tm[1]), end:parseTime(tm[2]), text:l.slice(2).join('\n'), session:{x:0,y:0,scale:1.0} }); } } } return r; }
+        function parseTime(t){ if(!t) return 0; const p=t.trim().replace(',','.').split(':'); return(+p[0]||0)*3600+(+p[1]||0)*60+(+p[2]||0); }
+        
+        function loadSRTData(rawText){
+            document.getElementById('srt-textarea').value=rawText;
+            srtData = parseSRT(rawText);
+            totalDuration = srtData.length>0 ? srtData[srtData.length-1].end+1.0 : 10;
+            document.getElementById('time-slider').max = totalDuration;
+            
+            const el = document.getElementById('srt-list');
+            el.innerHTML = '';
+            srtData.forEach((i, idx) => {
+                const d = document.createElement('div');
+                d.className = 'srt-item';
+                d.innerHTML = `<span>#${i.id}</span> <span>${i.text.replace('\n',' ')}</span>`;
+                el.appendChild(d);
+            });
+
+            logMessage("✅ 자막 적용 완료");
+            renderFrame(0);
+        }
+
+        document.getElementById('btn-apply-srt').addEventListener('click', () => loadSRTData(document.getElementById('srt-textarea').value));
+
+        document.getElementById('ttf-input').addEventListener('change', (e) => {
+            const file = e.target.files[0]; if(!file) return;
+            const reader = new FileReader();
+            reader.onload = (evt) => { 
+                try { currentFont = opentype.parse(evt.target.result); logMessage(`폰트: ${file.name} 적용 완료`); renderFrame(0); }
+                catch(err) { logMessage("⚠️ 폰트 로드 실패"); }
+            };
+            reader.readAsArrayBuffer(file);
         });
-      });
 
-      return { positions, sizes };
-    }
+        // 재생, 일시정지, 녹화
+        function togglePlay(){ if(isPlaying){pause();}else{play();} }
+        function play(){ if(isPlaying)return; isPlaying=true; lastTimestamp=0; animationFrameId=requestAnimationFrame(animate); }
+        function pause(){ isPlaying=false; if(animationFrameId)cancelAnimationFrame(animationFrameId); }
+        function animate(t){ if(!isPlaying)return; if(!lastTimestamp)lastTimestamp=t; const d=(t-lastTimestamp)/1000; lastTimestamp=t; currentTime+=d; if(currentTime>totalDuration){ currentTime=totalDuration; pause(); } document.getElementById('time-slider').value=currentTime; renderFrame(currentTime); if(isPlaying)animationFrameId=requestAnimationFrame(animate); }
+        document.getElementById('btn-play').addEventListener('click', togglePlay);
 
-    function seededRandom(seed){let x=Math.sin(seed++)*10000;return x-Math.floor(x);}
-
-    function getGlyphPathData(char, fontSize) {
-      const key = `${currentFont?.familyName || 'font'}|${char.codePointAt(0)}|${fontSize.toFixed(1)}`;
-      if (glyphDataCache.has(key)) return glyphDataCache.get(key);
-      
-      let p2d = null;
-      try {
-        const path = currentFont.getPath(char, 0, 0, fontSize);
-        const svgD = path.toPathData ? path.toPathData() : commandsToSvgD(path.commands);
-        p2d = new Path2D(svgD);
-      } catch(e) {
-        p2d = null;
-      }
-      
-      const data = { p2d, char, isBlank: p2d === null };
-      glyphDataCache.set(key, data);
-      return data;
-    }
-
-    function commandsToSvgD(commands) {
-      return commands.map(c => {
-        switch(c.type) {
-          case 'M': return `M ${c.x} ${c.y}`;
-          case 'L': return `L ${c.x} ${c.y}`;
-          case 'C': return `C ${c.x1} ${c.y1} ${c.x2} ${c.y2} ${c.x} ${c.y}`;
-          case 'Q': return `Q ${c.x1} ${c.y1} ${c.x} ${c.y}`;
-          case 'Z': return 'Z';
-          default: return '';
+        let mediaRecorder=null,recordedChunks=[],stream=null, isRecording=false;
+        function startRecording(){
+            pause(); currentTime=0; isRecording=true; renderFrame(0); 
+            if(!stream)stream=canvas.captureStream(30);
+            recordedChunks=[];
+            mediaRecorder=new MediaRecorder(stream,{mimeType:'video/webm',videoBitsPerSecond:8000000});
+            mediaRecorder.ondataavailable=e=>{ if(e.data.size>0)recordedChunks.push(e.data); };
+            mediaRecorder.onstop=()=>{
+                const blob=new Blob(recordedChunks,{type:'video/webm'});
+                const url=URL.createObjectURL(blob);
+                const a=document.createElement('a'); a.href=url; a.download=`calligraphy_${Date.now()}.webm`; a.click();
+                URL.revokeObjectURL(url); isRecording=false; renderFrame(currentTime); logMessage("✅ 녹화 저장 완료");
+            };
+            mediaRecorder.start(100); play(); logMessage("🔴 녹화 시작");
         }
-      }).join(' ');
-    }
+        document.getElementById('btn-export').addEventListener('click', startRecording);
+        document.getElementById('aspect-ratio-select').addEventListener('change', () => { 
+            const r = document.getElementById('aspect-ratio-select').value;
+            canvas.width = r==='9:16'?1080:1920; canvas.height = r==='9:16'?1920:1080;
+            renderFrame(0);
+        });
 
-    // [핵심 4] 진짜 붓 터치 렌더링 (레이어 및 블러)
-    function renderFrame(timeSec) {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      drawBackground();
-      if (!isRecording) drawGuideFrame();
-      if (!currentFont) return;
-      
-      const activeSubtitle = srtData.find(item => timeSec >= item.start && timeSec <= item.end);
-      if (!activeSubtitle) return;
-      const text = activeSubtitle.text.trim();
-      
-      const bounds = getActiveBounds();
-      const { positions, sizes } = layoutSessionText(text, bounds, activeSubtitle.session || {x:0, y:0, scale:1.0});
-      
-      maskCtx.clearRect(0, 0, canvas.width, canvas.height);
-      maskCtx.fillStyle = '#1c1917';
-      maskCtx.strokeStyle = '#1c1917';
+        // 폰트 초기 로드
+        (async()=>{ 
+            try{ 
+                const font=await new Promise((resolve,reject)=>opentype.load("https://raw.githubusercontent.com/google/fonts/main/ofl/nanumbrushscript/NanumBrushScript-Regular.ttf",(err,f)=>err?reject(err):resolve(f))); 
+                currentFont=font; document.getElementById('font-status').textContent='✅ 기본 나눔붓글씨 준비 완료'; 
+            }catch(e){ document.getElementById('font-status').textContent='⚠️ 기본 폰트 실패'; }
+            renderFrame(0); 
+        })();
 
-      positions.forEach((pos, i) => {
-        const ch = pos.ch;
-        if (ch === ' ') return;
-        
-        const data = getGlyphPathData(ch, sizes[i]);
-        if (!data.p2d) return;
-
-        maskCtx.save();
-        maskCtx.translate(pos.x, pos.y);
-        maskCtx.rotate(pos.rot || 0);
-        maskCtx.scale(1, -1); 
-
-        // [핵심 5] 번짐 및 입체감
-        maskCtx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-        maskCtx.shadowBlur = 5 + smooth() * 15; 
-        
-        // 1. 가장자리 흐린 층
-        maskCtx.globalAlpha = 0.4;
-        maskCtx.lineWidth = power() * 5;
-        maskCtx.stroke(data.p2d);
-
-        // 2. 중간 굵기 층
-        maskCtx.globalAlpha = 0.7;
-        maskCtx.lineWidth = power() * 2.5;
-        maskCtx.stroke(data.p2d);
-
-        // 3. 핵심 진한 층
-        maskCtx.globalAlpha = 1.0;
-        maskCtx.fill(data.p2d, 'nonzero');
-        maskCtx.lineWidth = power();
-        maskCtx.stroke(data.p2d);
-
-        maskCtx.restore();
-      });
-
-      if (isRecording && hasMask && currentMaskAlphaImage) {
-        maskCtx.globalCompositeOperation = 'destination-in'; 
-        maskCtx.drawImage(currentMaskAlphaImage, 0, 0, canvas.width, canvas.height); 
-        maskCtx.globalCompositeOperation = 'source-over'; 
-      }
-      
-      ctx.drawImage(maskCanvas, 0, 0);
-    }
-
-    function drawBackground() {
-      ctx.fillStyle = '#f4ecd8'; 
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-    }
-
-    function drawGuideFrame() {
-      if (isRecording) return; 
-      ctx.save();
-      ctx.strokeStyle = 'rgba(80, 120, 80, 0.6)'; 
-      ctx.lineWidth = 2; ctx.setLineDash([8, 8]);
-      const bounds = getActiveBounds();
-      ctx.strokeRect(bounds.x, bounds.y, bounds.w, bounds.h);
-      ctx.restore();
-    }
-
-    function normalizeMaskAlpha(img) {
-      return new Promise(resolve => {
-        const w = canvas.width, h = canvas.height;
-        const off = document.createElement('canvas'); off.width = w; off.height = h;
-        const octx = off.getContext('2d'); octx.drawImage(img, 0, 0, w, h);
-        const imgData = octx.getImageData(0, 0, w, h); const d = imgData.data;
-        for (let i = 0; i < d.length; i += 4) {
-          const brightness = (d[i] + d[i+1] + d[i+2]) / 3; const srcAlpha = d[i+3];
-          const a = srcAlpha < 10 ? 0 : brightness;
-          d[i] = 255; d[i+1] = 255; d[i+2] = 255; d[i+3] = a;
-        }
-        octx.putImageData(imgData, 0, 0);
-        const outImg = new Image(); outImg.onload = () => resolve(outImg); outImg.src = off.toDataURL();
-      });
-    }
-
-    function parseSRT(text){ const n=text.replace(/\r/g,'\n'); const b=n.split('\n\n'); const r=[]; for(let bl of b){ const l=bl.trim().split('\n'); if(l.length>=3){ const tm=l[1].match(/(.*?)\s*-->\s*(.*)/); if(tm){ r.push({ id:l[0], start:parseTime(tm[1]), end:parseTime(tm[2]), text:l.slice(2).join('\n'), session:{x:0,y:0,scale:1.0} }); } } } return r; }
-    function parseTime(t){ if(!t) return 0; const p=t.trim().replace(',','.').split(':'); return(+p[0]||0)*3600+(+p[1]||0)*60+(+p[2]||0); }
-    
-    function loadSRTData(rawText){
-      document.getElementById('srt-textarea').value=rawText;
-      srtData = parseSRT(rawText);
-      totalDuration = srtData.length>0 ? srtData[srtData.length-1].end+1.0 : 10;
-      document.getElementById('time-slider').max = totalDuration;
-      updateSRTListUI();
-      selectedSessionIndex = 0;
-      loadSessionControls(0);
-      logMessage("✅ 렌더링 준비 완료");
-      renderFrame(0);
-    }
-
-    function updateSRTListUI(){ const el=document.getElementById('srt-list'); el.innerHTML=''; srtData.forEach((i,idx)=>{ const d=document.createElement('div'); d.className='srt-item'+(idx===selectedSessionIndex?' active':''); d.innerHTML=`<span>#${i.id}</span> <span>${i.text.replace('\n',' ')}</span>`; d.onclick=()=>{ selectedSessionIndex=idx; loadSessionControls(idx); updateSRTListUI(); }; el.appendChild(d); }); }
-    
-    function loadSessionControls(idx){
-      if (!srtData[idx]) return;
-      const session = srtData[idx].session || {x:0, y:0, scale:1.0};
-      document.getElementById('session-x').value = session.x;
-      document.getElementById('session-y').value = session.y;
-      document.getElementById('val-x').textContent = Math.round(session.x);
-      document.getElementById('val-y').textContent = Math.round(session.y);
-    }
-
-    document.getElementById('btn-apply-srt').addEventListener('click', () => loadSRTData(document.getElementById('srt-textarea').value));
-    
-    document.getElementById('session-x').addEventListener('input',(e)=>{ if(srtData[selectedSessionIndex]){ srtData[selectedSessionIndex].session.x=parseInt(e.target.value); document.getElementById('val-x').textContent=e.target.value; }});
-    document.getElementById('session-y').addEventListener('input',(e)=>{ if(srtData[selectedSessionIndex]){ srtData[selectedSessionIndex].session.y=parseInt(e.target.value); document.getElementById('val-y').textContent=e.target.value; }});
-
-    document.getElementById('power-slider').addEventListener('input',(e)=>{ document.getElementById('val-power').textContent=e.target.value+'x'; });
-    document.getElementById('smooth-slider').addEventListener('input',(e)=>{ document.getElementById('val-smooth').textContent=e.target.value; });
-
-    document.getElementById('ttf-input').addEventListener('change', (e) => {
-      const file = e.target.files[0]; if(!file) return;
-      const reader = new FileReader();
-      reader.onload = (evt) => { currentFont = opentype.parse(evt.target.result); logMessage(`폰트: ${file.name} 적용 완료. [자막 적용]을 눌러주세요.`); };
-      reader.readAsArrayBuffer(file);
-    });
-
-    document.getElementById('mask-file-input').addEventListener('change', async (e) => {
-      const file = e.target.files[0]; if(!file) return;
-      const img = new Image();
-      img.onload = async () => { currentMaskAlphaImage = await normalizeMaskAlpha(img); hasMask = true; logMessage("마스크 적용 완료."); };
-      img.src = URL.createObjectURL(file);
-    });
-
-    document.getElementById('aspect-ratio-select').addEventListener('change',()=>{ const r=document.getElementById('aspect-ratio-select').value; canvas.width=r==='9:16'?1080:1920; canvas.height=r==='9:16'?1920:1080; syncCanvasSize(); logMessage("비율 변경. [자막 적용]을 눌러주세요."); });
-
-    function togglePlay(){ if(isPlaying){pause();}else{play();} }
-    function play(){ if(isPlaying)return; isPlaying=true; lastTimestamp=0; animationFrameId=requestAnimationFrame(animate); }
-    function pause(){ isPlaying=false; if(animationFrameId)cancelAnimationFrame(animationFrameId); }
-    function animate(t){ if(!isPlaying)return; if(!lastTimestamp)lastTimestamp=t; const d=(t-lastTimestamp)/1000; lastTimestamp=t; currentTime+=d; if(isRecording&&currentTime>=totalDuration){ currentTime=totalDuration; stopRecording(); return; } if(currentTime>totalDuration){ currentTime=totalDuration; pause(); } document.getElementById('time-slider').value=currentTime; document.getElementById('time-display').textContent=`${formatTime(currentTime)} / ${formatTime(totalDuration)}`; renderFrame(currentTime); if(isPlaying)animationFrameId=requestAnimationFrame(animate); }
-    function formatTime(s){ const m=Math.floor(s/60),ss=Math.floor(s%60),ms=Math.floor((s%1)*100); return`${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}.${String(ms).padStart(2,'0')}`; }
-
-    let mediaRecorder=null,recordedChunks=[],stream=null;
-    function startRecording(){ pause(); currentTime=0; isRecording=true; renderFrame(0); if(!stream)stream=canvas.captureStream(30); const mimeTypes=['video/webm;codecs=vp9','video/webm;codecs=vp8']; let mimeType=''; for(const m of mimeTypes){ if(MediaRecorder.isTypeSupported(m)){ mimeType=m; break; } } if(!mimeType){ alert('녹화 미지원'); isRecording=false; return; } recordedChunks=[]; mediaRecorder=new MediaRecorder(stream,{mimeType:mimeType,videoBitsPerSecond:8000000}); mediaRecorder.ondataavailable=e=>{ if(e.data.size>0)recordedChunks.push(e.data); }; mediaRecorder.onstop=()=>{ const blob=new Blob(recordedChunks,{type:mimeType}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`calligraphy_${Date.now()}.webm`; a.click(); URL.revokeObjectURL(url); isRecording=false; renderFrame(currentTime); logMessage('✅ 녹화 저장 완료!'); }; mediaRecorder.start(100); play(); logMessage('🔴 녹화 시작!'); }
-    function stopRecording(){ if(mediaRecorder&&mediaRecorder.state==='recording')mediaRecorder.stop(); pause(); }
-
-    document.getElementById('btn-play').addEventListener('click', togglePlay);
-    document.getElementById('btn-export').addEventListener('click', startRecording);
-    document.getElementById('time-slider').addEventListener('input',(e)=>{ currentTime=parseFloat(e.target.value); renderFrame(currentTime); });
-    document.getElementById('srt-input').addEventListener('change',(e)=>{ const file=e.target.files[0]; if(!file)return; const reader=new FileReader(); reader.onload=(evt)=>loadSRTData(evt.target.result); reader.readAsText(file); });
-
-    const glyphDataCache = new Map(); 
-    (async()=>{ 
-      try{ 
-        const font=await new Promise((resolve,reject)=>opentype.load("https://raw.githubusercontent.com/google/fonts/main/ofl/nanumbrushscript/NanumBrushScript-Regular.ttf",(err,f)=>err?reject(err):resolve(f))); 
-        currentFont=font; 
-        document.getElementById('font-status').textContent='✅ 기본 나눔붓글씨 준비 완료'; 
-        logMessage("<strong>[폰트]</strong> 나눔붓글씨 로딩 성공");
-      }catch(e){ 
-        document.getElementById('font-status').textContent='⚠️ 기본 폰트 실패, TTF 업로드 필요'; 
-      } 
-      renderFrame(0); 
-    })();
-
-    const demoSRT = `1\n00:00:00,000 --> 00:00:04,500\n황혼이 오늘도 바다가 되어\n\n2\n00:00:05,000 --> 00:00:08,500\n잠기고 잠기고\n\n3\n00:00:09,000 --> 00:00:13,000\n오늘이 가장 행복한 날`;
-    loadSRTData(demoSRT);
-  </script>
+        const demoSRT = `1\n00:00:00,000 --> 00:00:04,500\n황혼이 오늘도 바다가 되어\n\n2\n00:00:05,000 --> 00:00:08,500\n잠기고 잠기고\n\n3\n00:00:09,000 --> 00:00:13,000\n오늘이 가장 행복한 날`;
+        loadSRTData(demoSRT);
+    </script>
 </body>
 </html>
