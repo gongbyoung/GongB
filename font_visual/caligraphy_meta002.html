@@ -3,17 +3,17 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>v1.001 - 뒤집힘 원천 수정 + 실시간 스타일</title>
+<title>v1.002 - 원천 수정 - charToGlyph로 뒤집힘 해결</title>
 <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
 <style>
-:root{--bg:#09090f;--panel:#181826;--b:#2d2d4a;--accent:#ff6b35;--text:#f4f4fa;--mut:#8a8ab8}
+:root{--bg:#09090f;--panel:#181826;--b:#2d2d4a;--accent:#ff6b35;--text:#f4f4fa}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Pretendard,system-ui;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column}
 header{height:54px;background:#141424;border-bottom:1px solid var(--b);display:flex;align-items:center;padding:0 14px;gap:10px}
 .main{flex:1;display:flex;overflow:hidden}
 .left{width:500px;background:var(--panel);border-right:1px solid var(--b);overflow-y:auto;padding:12px}
 .right{flex:1;background:#07070d;display:flex;flex-direction:column;align-items:center;padding:14px;gap:10px;overflow-y:auto}
-.btn{border:none;border-radius:10px;padding:10px 12px;font-weight:800;cursor:pointer;font-size:.84rem}
+.btn{border:none;border-radius:10px;padding:10px 12px;font-weight:800;cursor:pointer}
 .btn-p{background:linear-gradient(135deg,#ff6b35,#f72585);color:#fff;width:100%}
 .btn-s{background:#26263e;border:1px solid var(--b);color:var(--text);width:100%}
 .btn-file{display:flex;justify-content:center;gap:6px;padding:10px;border:1.6px dashed #4a4a6e;border-radius:10px;background:#1a1a2e;cursor:pointer;font-weight:700}
@@ -28,13 +28,13 @@ input[type=file]{display:none}
 .canvas-wrap{background:#fdf8ec;border-radius:14px;box-shadow:0 16px 50px rgba(0,0,0,.6);width:100%;max-width:1200px}
 canvas{display:block;width:100%}
 textarea{width:100%;background:#11111e;border:1px solid var(--b);color:var(--text);border-radius:8px;padding:7px;font-size:.81rem;min-height:70px}
-.label{font-size:.76rem;color:var(--mut);display:flex;justify-content:space-between;margin:6px 0 2px}
+.label{font-size:.76rem;color:#8a8ab8;display:flex;justify-content:space-between;margin:6px 0 2px}
 input[type=range],select{width:100%}
-.fix-badge{font-size:.68rem;background:#166534;color:#fff;padding:2px 6px;border-radius:8px}
+.codebox{width:100%;background:#0f0f1a;border:1px solid var(--b);border-radius:8px;padding:8px;font-family:monospace;font-size:.68rem;color:#a0a0c0;white-space:pre-wrap;max-height:120px;overflow-y:auto}
 </style>
 </head>
 <body>
-<header><h1>🖌 v1.001 뒤집힘 원천 수정 + 실시간 스타일</h1><span class="fix-badge">Y-flip 수정됨</span><span class="fix-badge" style="background:#7c3aed">스타일 실시간 반영</span></header>
+<header><h1>🖌 v1.002 뒤집힘 원천 수정 - charToGlyph 사용</h1><span style="font-size:.7rem;background:#166534;color:#fff;padding:2px 8px;border-radius:10px">코드 검토 완료</span></header>
 <div class="main">
 <div class="left">
 <div class="sec">
@@ -44,37 +44,40 @@ input[type=range],select{width:100%}
 <button class="btn btn-s" id="btnParse">🔍 분석</button>
 <div id="uniqBox"></div>
 </div>
-
 <div class="sec">
-<div class="sec-title">스타일 조정 - 움직이면 바로 미리보기에 반영 <span style="font-size:.68rem;color:#22c55e">● 실시간</span></div>
-<div class="label">둥근 느낌 (곡선 부드러움) <span id="vRound">0.60</span></div><input type="range" id="roundness" min="0" max="1" step="0.05" value="0.6">
-<div class="label">갈라짐·비백 (건조한 붓) <span id="vSplit">0.20</span></div><input type="range" id="split" min="0" max="0.85" step="0.05" value="0.2">
-<div class="label">점 강조·맺음 (또렷한 점) <span id="vDot">1.40x</span></div><input type="range" id="dotEmph" min="1.0" max="2.5" step="0.1" value="1.4">
-<div class="label">먹 농도 <span id="vInk">0.95</span></div><input type="range" id="ink" min="0.35" max="1.0" step="0.05" value="0.95">
-<div class="label">붓 타입</div><select id="brushType"><option value="mixed" selected>혼합 - 모양 따라 자동</option><option value="round">둥근붓</option><option value="flat">평붓</option></select>
+<div class="sec-title">스타일 - 실시간 반영</div>
+<div class="label">둥근 느낌 <span id="vRound">0.55</span></div><input type="range" id="roundness" min="0" max="1" step="0.05" value="0.55">
+<div class="label">갈라짐·비백 <span id="vSplit">0.15</span></div><input type="range" id="split" min="0" max="0.85" step="0.05" value="0.15">
+<div class="label">점 강조 <span id="vDot">1.30x</span></div><input type="range" id="dotEmph" min="1.0" max="2.5" step="0.1" value="1.3">
+<div class="label">먹 농도 <span id="vInk">0.92</span></div><input type="range" id="ink" min="0.3" max="1.0" step="0.05" value="0.92">
 </div>
-
 <div class="sec">
 <div class="sec-title">STEP2 변환 <span id="s2" style="font-size:.7rem;background:#2a2a4a;padding:2px 8px;border-radius:10px">대기</span></div>
 <div class="progress"><div class="bar" id="bar"></div><div class="ptxt" id="pTxt">0%</div></div>
-<button class="btn btn-p" id="btnGen">🧮 TTF 생성 (SRT마다 다르게)</button>
+<button class="btn btn-p" id="btnGen">🧮 TTF 생성</button>
 <div class="log" id="log"></div>
+<div class="codebox" id="codeReview">
+// v1.001 버그:
+// baseFont.getPath() → 캔버스 좌표 (Y 아래)
+// → 그대로 Glyph.path (폰트 좌표 Y 위)에 넣음 → 뒤집힘
+// 
+// v1.002 수정:
+// baseFont.charToGlyph(ch).path → 폰트 원본 좌표 (Y 위, 1000 units)
+// → 그대로 유지 + 미세 변형 → 올바른 TTF
 </div>
-
+</div>
 <div class="sec">
 <div class="sec-title">STEP3 검증</div>
-<button class="btn btn-s" id="btnPrev">👁 미리보기 갱신</button>
+<button class="btn btn-s" id="btnPrev">👁 미리보기</button>
 <button class="btn btn-p" id="btnTTF">📁 TTF 다운로드</button>
 <button class="btn btn-s" id="btnVid">🔴 영상 검증</button>
 </div>
 </div>
-
 <div class="right">
 <div class="canvas-wrap"><canvas id="cv" width="1200" height="800"></canvas></div>
 <div style="width:100%;max-width:1200px;background:#181826;border:1px solid var(--b);border-radius:10px;padding:10px;display:flex;gap:8px;align-items:center">
 <button class="btn btn-s" id="btnPlay" style="width:80px">▶</button><input type="range" id="time" min="0" max="10" value="0" step="0.01" style="flex:1"><span id="tlab" style="font-family:monospace;color:var(--accent);font-size:.82rem;min-width:120px;text-align:right">00:00 / 00:00</span>
 </div>
-<div style="font-size:.72rem;color:#777">v1.001 수정: Y 뒤집힘 원천 수정, 슬라이더 변경 시 미리보기 실시간 반영, 점 강조·갈라짐이 눈에 보이게 적용</div>
 </div>
 </div>
 <script>
@@ -102,51 +105,38 @@ function analyze(){
   uniq=[...new Set(all.split(''))].filter(c=>/[가-힣]/.test(c));
   dur=srt[srt.length-1].end+0.8; $('time').max=dur;
   $('uniqBox').innerHTML=`<div style="font-size:.78rem;margin:6px 0">고유 ${uniq.length}자</div>`+uniq.map(c=>`<span class="chip">${c}</span>`).join('');
-  log(`STEP1: 고유 ${uniq.length}자 추출`);
+  log(`STEP1: 고유 ${uniq.length}자`);
   generateAndRender();
 }
 $('srtFile').addEventListener('change',e=>{const f=e.target.files[0]; const r=new FileReader(); r.onload=ev=>{$('srtTa').value=ev.target.result; analyze();}; r.readAsText(f);});
 $('btnParse').addEventListener('click',analyze);
 
-function getOpts(){
-  return {roundness:parseFloat($('roundness').value), split:parseFloat($('split').value), dotEmph:parseFloat($('dotEmph').value), ink:parseFloat($('ink').value), brush:$('brushType').value};
-}
+function getOpts(){return {roundness:parseFloat($('roundness').value), split:parseFloat($('split').value), dotEmph:parseFloat($('dotEmph').value), ink:parseFloat($('ink').value)};}
 
-function classify(w,h){
-  const max=Math.max(w,h);
-  if(max<30) return 'dot';
-  if(w>h*2.2) return 'hori';
-  if(h>w*2.2) return 'vert';
-  return 'curve';
-}
-
-// v1.001 핵심: 형태 보존 + 스타일 가시적 적용 + Y 뒤집힘 수정
-function generateStyledPath(ch,size,opts){
+function generateStyledPath_v1002(ch,opts){
   if(!baseFont) return null;
   try{
-    // 원본 Path를 그대로 가져옴 - 이 Path는 이미 캔버스 좌표계로 올바르게 변환된 상태
-    const orig=baseFont.getPath(ch,0,0,size);
-    if(!orig.commands.length) return null;
+    // 핵심 수정: charToGlyph().path 사용 - 폰트 원본 좌표계 (Y 위, 1000 units)
+    const glyph=baseFont.charToGlyph(ch);
+    const origPath=glyph.path;
+    if(!origPath.commands.length) return null;
 
     // contour 분리
     const contours=[]; let cur=[];
-    orig.commands.forEach(c=>{if(c.type==='M'){if(cur.length) contours.push(cur); cur=[c];} else cur.push(c);});
+    origPath.commands.forEach(c=>{if(c.type==='M'){if(cur.length) contours.push(cur); cur=[c];} else cur.push(c);});
     if(cur.length) contours.push(cur);
 
     const newPath=new opentype.Path();
     contours.forEach(cont=>{
-      // 바운딩 박스로 타입 분류
       let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
       cont.forEach(c=>{if(c.x!==undefined){minX=Math.min(minX,c.x); maxX=Math.max(maxX,c.x); minY=Math.min(minY,c.y); maxY=Math.max(maxY,c.y);} if(c.x1!==undefined){minX=Math.min(minX,c.x1,c.x2); maxX=Math.max(maxX,c.x1,c.x2); minY=Math.min(minY,c.y1,c.y2); maxY=Math.max(maxY,c.y1,c.y2);}});
       const w=maxX-minX, h=maxY-minY;
-      const type=classify(w,h);
+      const isDot=Math.max(w,h)<150; // 1000 units 기준 150 이하 = 점
       const cx=(minX+maxX)/2, cy=(minY+maxY)/2;
 
-      // 스타일 적용
       cont.forEach((c,i)=>{
         const t=i/Math.max(1,cont.length-1);
-        if(type==='dot'){
-          // 점 강조: 중심 기준으로 확대
+        if(isDot){
           const scale=opts.dotEmph;
           if(c.type==='M') newPath.moveTo(cx+(c.x-cx)*scale, cy+(c.y-cy)*scale);
           else if(c.type==='L') newPath.lineTo(cx+(c.x-cx)*scale, cy+(c.y-cy)*scale);
@@ -154,35 +144,17 @@ function generateStyledPath(ch,size,opts){
           else if(c.type==='Q') newPath.quadTo(cx+(c.x1-cx)*scale, cy+(c.y1-cy)*scale, cx+(c.x-cx)*scale, cy+(c.y-cy)*scale);
           else if(c.type==='Z') newPath.close();
         } else {
-          // 둥근 느낌: 제어점을 부드럽게, 갈라짐: 끝부분에서 일부 선분 생략(비백)
-          const isSplitEnd = type!=='dot' && t>0.75 && Math.random() < opts.split*0.45;
+          // 갈라짐: 끝부분 20%에서 확률적으로 선분 생략
+          const isSplitEnd = t>0.8 && Math.random() < opts.split*0.5;
           if(isSplitEnd && c.type==='L'){
-            // 갈라짐 - 선을 끊어서 비백 표현
             newPath.moveTo(c.x,c.y);
           } else {
-            // 둥근 느낌: 제어점을 원본보다 약간 안쪽으로 당겨서 곡선 부드럽게
-            const r=opts.roundness;
+            // 둥근 느낌: 제어점을 중심 쪽으로 약간 당김
+            const f=opts.roundness*0.18;
             if(c.type==='M') newPath.moveTo(c.x,c.y);
-            else if(c.type==='L'){
-              // 직선도 둥근 느낌 높으면 미세하게 곡선으로
-              if(r>0.5 && i>0){
-                const prev=cont[i-1];
-                const mx=(prev.x+c.x)/2, my=(prev.y+c.y)/2;
-                // 가짜 곡선으로 둥근 느낌
-                newPath.quadTo(mx,my,c.x,c.y);
-              } else {
-                newPath.lineTo(c.x,c.y);
-              }
-            }
-            else if(c.type==='C'){
-              // 둥근 느낌: 제어점을 중심 쪽으로 r만큼 이동
-              const f= r*0.25;
-              newPath.curveTo(c.x1+(cx-c.x1)*f, c.y1+(cy-c.y1)*f, c.x2+(cx-c.x2)*f, c.y2+(cy-c.y2)*f, c.x, c.y);
-            }
-            else if(c.type==='Q'){
-              const f=r*0.25;
-              newPath.quadTo(c.x1+(cx-c.x1)*f, c.y1+(cy-c.y1)*f, c.x, c.y);
-            }
+            else if(c.type==='L') newPath.lineTo(c.x,c.y);
+            else if(c.type==='C') newPath.curveTo(c.x1+(cx-c.x1)*f, c.y1+(cy-c.y1)*f, c.x2+(cx-c.x2)*f, c.y2+(cy-c.y2)*f, c.x, c.y);
+            else if(c.type==='Q') newPath.quadTo(c.x1+(cx-c.x1)*f, c.y1+(cy-c.y1)*f, c.x, c.y);
             else if(c.type==='Z') newPath.close();
           }
         }
@@ -196,28 +168,27 @@ async function generateAndRender(){
   if(!uniq.length || !baseFont) return;
   const opts=getOpts();
   $('s2').textContent='진행 중';
-  const glyphs=[]; const notdef=new opentype.Glyph({name:'.notdef',unicode:0,advanceWidth:700,path:new opentype.Path()}); glyphs.push(notdef);
+  const glyphs=[]; const notdef=new opentype.Glyph({name:'.notdef',unicode:0,advanceWidth:1000,path:new opentype.Path()}); glyphs.push(notdef);
   let done=0;
   for(const ch of uniq){
-    const mp=generateStyledPath(ch,700,opts);
-    if(mp){glyphs.push(new opentype.Glyph({name:ch,unicode:ch.charCodeAt(0),advanceWidth:700,path:mp}));}
+    const mp=generateStyledPath_v1002(ch,opts);
+    if(mp){
+      const g=new opentype.Glyph({name:ch,unicode:ch.charCodeAt(0),advanceWidth:1000,path:mp});
+      glyphs.push(g);
+    }
     done++; const pct=Math.round(done/uniq.length*100);
-    $('bar').style.width=pct+'%'; $('pTxt').textContent=`${pct}% - ${ch} 변환`;
+    $('bar').style.width=pct+'%'; $('pTxt').textContent=`${pct}% - ${ch}`;
     if(done%5===0) await new Promise(r=>setTimeout(r,1));
   }
   try{
-    customFont=new opentype.Font({familyName:'SRT_v1001_'+uniq.length, styleName:'Regular', unitsPerEm:1000, ascender:800, descender:-200, glyphs});
+    customFont=new opentype.Font({familyName:'SRT_v1002_'+uniq.length, styleName:'Regular', unitsPerEm:1000, ascender:800, descender:-200, glyphs});
     $('s2').textContent='완료'; $('pTxt').textContent=`100% 완료 - ${glyphs.length-1}자`;
-    log(`완료: 둥근 ${opts.roundness} 갈라짐 ${opts.split} 점강조 ${opts.dotEmph}x`);
+    log(`완료: ${glyphs.length-1}자 - 뒤집힘 수정 적용`);
     render(cur);
   }catch(e){log('TTF 실패: '+e.message);}
 }
 
-async function generate(){
-  $('btnGen').disabled=true;
-  await generateAndRender();
-  $('btnGen').disabled=false;
-}
+async function generate(){$('btnGen').disabled=true; await generateAndRender(); $('btnGen').disabled=false;}
 
 function render(t){
   const w=cv.width,h=cv.height;
@@ -248,8 +219,7 @@ function render(t){
   });
 }
 
-// 실시간 반영
-['roundness','split','dotEmph','ink','brushType'].forEach(id=>{
+['roundness','split','dotEmph','ink'].forEach(id=>{
   $(id).addEventListener('input',e=>{
     const v=parseFloat(e.target.value);
     if(id==='roundness') $('vRound').textContent=v.toFixed(2);
@@ -265,13 +235,13 @@ $('btnPrev').addEventListener('click',()=>{if(uniq.length) generateAndRender(); 
 $('btnTTF').addEventListener('click',()=>{
   if(!customFont){alert('먼저 변환'); return;}
   const buf=customFont.toArrayBuffer(); const blob=new Blob([buf],{type:'font/ttf'}); const url=URL.createObjectURL(blob);
-  const a=document.createElement('a'); a.href=url; a.download=`SRT-v1.001-${uniq.length}chars.ttf`; a.click();
+  const a=document.createElement('a'); a.href=url; a.download=`SRT-v1.002-${uniq.length}chars.ttf`; a.click();
 });
 $('btnVid').addEventListener('click',()=>{
   if(!srt.length){alert('SRT 없음'); return;}
   const stream=cv.captureStream(30); const rec=new MediaRecorder(stream,{mimeType:'video/webm;codecs=vp9',videoBitsPerSecond:4000000});
   const chunks=[]; rec.ondataavailable=e=>{if(e.data.size>0) chunks.push(e.data);};
-  rec.onstop=()=>{const blob=new Blob(chunks,{type:'video/webm'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='SRT-v1.001-검증-'+Date.now()+'.webm'; a.click();};
+  rec.onstop=()=>{const blob=new Blob(chunks,{type:'video/webm'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='SRT-v1.002-검증-'+Date.now()+'.webm'; a.click();};
   rec.start(100); let idx=0; const iv=setInterval(()=>{if(idx>=srt.length){clearInterval(iv); rec.stop(); return;} cur=srt[idx].start+0.05; render(cur); idx++;},1200);
 });
 $('time').addEventListener('input',e=>{cur=parseFloat(e.target.value)||0; render(cur);});
@@ -279,7 +249,7 @@ $('btnPlay').addEventListener('click',()=>{
   if(playing){playing=false; cancelAnimationFrame(aid); $('btnPlay').textContent='▶';}
   else{playing=true; last=0; $('btnPlay').textContent='⏸'; (function loop(t){if(!playing) return; if(!last) last=t; const dt=(t-last)/1000; last=t; cur+=dt; if(cur>dur) cur=0; $('time').value=cur; render(cur); aid=requestAnimationFrame(loop);})(performance.now());}
 });
-(async()=>{try{baseFont=await new Promise((r,j)=>opentype.load('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/nanumbrushscript/NanumBrushScript-Regular.ttf',(e,f)=>e?j(e):r(f))); log('기본 폰트 로드 완료 - v1.001 뒤집힘 수정 적용');}catch{log('폰트 로드 실패');}})();
+(async()=>{try{baseFont=await new Promise((r,j)=>opentype.load('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/nanumbrushscript/NanumBrushScript-Regular.ttf',(e,f)=>e?j(e):r(f))); log('기본 폰트 로드 완료 - v1.002 charToGlyph 수정');}catch{log('폰트 로드 실패');}})();
 $('srtTa').value=`1
 00:00:00,000 --> 00:00:03,500
 돌에 그늘이 차고,
