@@ -1,270 +1,196 @@
-// styles/you004.js - YOU 004 한획쓰기 (진짜 붓글씨)
-// ㄱ, ㅏ, ㅁ을 한 획에 이어서 쓰는 진짜 한획쓰기 엔진
+// styles/calligraphy001.js
 (function() {
     if (!window.TypoMotionStyles) window.TypoMotionStyles = {};
 
-    // === 자모 한획 경로 정의 ===
-    // 각 자모를 0~1 정규화된 좌표에서 한 번에 그리는 경로
-    // 전서체 느낌: 직선 + 곡선, 모서리는 둥글게
-    const JAMO_ONE_STROKE_PATHS = {
-        // 초성
-        'ㄱ': [{x:0.1,y:0.2},{x:0.9,y:0.2},{x:0.9,y:0.9}], // 가로 -> 세로
-        'ㄴ': [{x:0.2,y:0.1},{x:0.2,y:0.9},{x:0.9,y:0.9}],
-        'ㄷ': [{x:0.1,y:0.15},{x:0.9,y:0.15},{x:0.1,y:0.5},{x:0.9,y:0.5},{x:0.9,y:0.9},{x:0.1,y:0.9}],
-        'ㄹ': [{x:0.1,y:0.1},{x:0.9,y:0.1},{x:0.9,y:0.45},{x:0.1,y:0.45},{x:0.1,y:0.9},{x:0.9,y:0.9}],
-        'ㅁ': [{x:0.1,y:0.1},{x:0.9,y:0.1},{x:0.9,y:0.9},{x:0.1,y:0.9},{x:0.1,y:0.1}],
-        'ㅂ': [{x:0.1,y:0.1},{x:0.9,y:0.1},{x:0.9,y:0.9},{x:0.1,y:0.9},{x:0.1,y:0.1},{x:0.1,y:0.5},{x:0.9,y:0.5}],
-        'ㅅ': [{x:0.05,y:0.5},{x:0.5,y:0.1},{x:0.95,y:0.5},{x:0.5,y:0.5},{x:0.5,y:0.9}],
-        'ㅇ': [{x:0.5,y:0.05},{x:0.9,y:0.2},{x:0.9,y:0.8},{x:0.5,y:0.95},{x:0.1,y:0.8},{x:0.1,y:0.2},{x:0.5,y:0.05}],
-        'ㅈ': [{x:0.05,y:0.5},{x:0.5,y:0.1},{x:0.95,y:0.5},{x:0.5,y:0.5},{x:0.5,y:0.9},{x:0.3,y:0.7},{x:0.7,y:0.7}],
-        'ㅊ': [{x:0.05,y:0.5},{x:0.5,y:0.1},{x:0.95,y:0.5},{x:0.5,y:0.5},{x:0.5,y:0.9},{x:0.2,y:0.3},{x:0.8,y:0.3}],
-        'ㅋ': [{x:0.1,y:0.2},{x:0.9,y:0.2},{x:0.1,y:0.5},{x:0.9,y:0.5},{x:0.1,y:0.8},{x:0.9,y:0.8}],
-        'ㅌ': [{x:0.1,y:0.15},{x:0.9,y:0.15},{x:0.5,y:0.15},{x:0.5,y:0.9},{x:0.1,y:0.5},{x:0.9,y:0.5}],
-        'ㅍ': [{x:0.1,y:0.1},{x:0.9,y:0.1},{x:0.9,y:0.9},{x:0.1,y:0.9},{x:0.1,y:0.5},{x:0.9,y:0.5},{x:0.5,y:0.1},{x:0.5,y:0.9}],
-        'ㅎ': [{x:0.1,y:0.2},{x:0.9,y:0.2},{x:0.5,y:0.2},{x:0.5,y:0.6},{x:0.1,y:0.6},{x:0.9,y:0.6},{x:0.5,y:0.6},{x:0.5,y:0.95},{x:0.3,y:0.85},{x:0.7,y:0.85}],
+    // 캘리그라피 먹 번짐 및 질감 캐시용 오프스크린 캔버스 버퍼
+    let paperCanvas = null;
+    let paperCtx = null;
 
-        // 중성 - 한획으로 이어쓰기
-        'ㅏ': [{x:0.3,y:0.05},{x:0.3,y:0.95},{x:0.3,y:0.5},{x:0.85,y:0.5}], // 세로 + 가로
-        'ㅓ': [{x:0.7,y:0.05},{x:0.7,y:0.95},{x:0.15,y:0.5},{x:0.7,y:0.5}],
-        'ㅗ': [{x:0.05,y:0.6},{x:0.95,y:0.6},{x:0.5,y:0.6},{x:0.5,y:0.95}],
-        'ㅜ': [{x:0.05,y:0.4},{x:0.95,y:0.4},{x:0.5,y:0.4},{x:0.5,y:0.05}],
-        'ㅡ': [{x:0.05,y:0.5},{x:0.95,y:0.5}],
-        'ㅣ': [{x:0.5,y:0.05},{x:0.5,y:0.95}],
-        'ㅑ': [{x:0.3,y:0.05},{x:0.3,y:0.95},{x:0.3,y:0.3},{x:0.85,y:0.3},{x:0.3,y:0.65},{x:0.85,y:0.65}],
-        'ㅕ': [{x:0.7,y:0.05},{x:0.7,y:0.95},{x:0.15,y:0.3},{x:0.7,y:0.3},{x:0.15,y:0.65},{x:0.7,y:0.65}],
-        'ㅛ': [{x:0.05,y:0.35},{x:0.95,y:0.35},{x:0.05,y:0.6},{x:0.95,y:0.6},{x:0.5,y:0.6},{x:0.5,y:0.95}],
-        'ㅠ': [{x:0.05,y:0.4},{x:0.95,y:0.4},{x:0.05,y:0.65},{x:0.95,y:0.65},{x:0.5,y:0.65},{x:0.5,y:0.05}],
+    // 한지/화선지 질감 초기화
+    function initPaperTexture(width, height) {
+        if (!paperCanvas || paperCanvas.width !== width || paperCanvas.height !== height) {
+            paperCanvas = document.createElement('canvas');
+            paperCanvas.width = width;
+            paperCanvas.height = height;
+            paperCtx = paperCanvas.getContext('2d');
 
-        // 받침도 한획으로
-        'ㄲ': [{x:0.1,y:0.1},{x:0.5,y:0.1},{x:0.5,y:0.9},{x:0.6,y:0.1},{x:0.9,y:0.1},{x:0.9,y:0.9}],
-    };
-
-    // 한글 음절 -> 초중종성 분해 후 각각 한획 경로로 변환
-    function getHangeulStrokePath(syllable) {
-        const CHO = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
-        const JUNG = ['ㅏ','ㅐ','ㅑ','ㅒ','ㅓ','ㅔ','ㅕ','ㅖ','ㅗ','ㅘ','ㅙ','ㅚ','ㅛ','ㅜ','ㅝ','ㅞ','ㅟ','ㅠ','ㅡ','ㅢ','ㅣ'];
-        const JONG = ['','ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','ㅀ','ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
-        
-        const code = syllable.charCodeAt(0);
-        if (code < 0xAC00 || code > 0xD7A3) return null;
-        const base = code - 0xAC00;
-        const cho = CHO[Math.floor(base / (21*28))];
-        const jung = JUNG[Math.floor((base % (21*28)) / 28)];
-        const jong = JONG[base % 28];
-
-        // 각 자모의 경로를 한 글자 공간 안에서 배치
-        // 초성: 왼쪽 위, 중성: 오른쪽, 종성: 아래
-        const paths = [];
-        
-        if (JAMO_ONE_STROKE_PATHS[cho]) {
-            const p = JAMO_ONE_STROKE_PATHS[cho].map(pt => ({
-                x: pt.x * 0.55 + 0.02,
-                y: pt.y * 0.55 + 0.02,
-                jamo: 'cho'
-            }));
-            paths.push(...p, {break:true}); // 한획 끝나고 붓을 뗌
+            // 미세 먹 섬유질 및 화선지 그레인 노이즈 생성
+            const imgData = paperCtx.createImageData(width, height);
+            const data = imgData.data;
+            for (let i = 0; i < data.length; i += 4) {
+                const grain = (Math.random() - 0.5) * 12;
+                data[i] = 245 + grain;     // R
+                data[i + 1] = 243 + grain; // G
+                data[i + 2] = 238 + grain; // B (전통 화선지 톤)
+                data[i + 3] = 255;
+            }
+            paperCtx.putImageData(imgData, 0, 0);
         }
-        if (JAMO_ONE_STROKE_PATHS[jung]) {
-            // 중성은 초성 오른쪽에
-            const isVerticalJung = ['ㅏ','ㅓ','ㅑ','ㅕ','ㅣ'].includes(jung);
-            const p = JAMO_ONE_STROKE_PATHS[jung].map(pt => ({
-                x: isVerticalJung ? pt.x * 0.42 + 0.58 : pt.x * 0.9 + 0.05,
-                y: isVerticalJung ? pt.y * 0.9 + 0.05 : pt.y * 0.55 + 0.02,
-                jamo: 'jung'
-            }));
-            paths.push(...p, {break:true});
-        }
-        if (jong && JAMO_ONE_STROKE_PATHS[jong]) {
-            const p = JAMO_ONE_STROKE_PATHS[jong].map(pt => ({
-                x: pt.x * 0.9 + 0.05,
-                y: pt.y * 0.35 + 0.62,
-                jamo: 'jong'
-            }));
-            paths.push(...p);
-        }
-        
-        return paths;
     }
 
-    window.TypoMotionStyles['you004'] = {
-        name: 'YOU 004 - 한획쓰기',
-        description: 'ㄱ,ㅏ,ㅁ을 한 획에 이어서 쓰는 진짜 붓글씨. 폰트 무시하고 경로로 그림',
+    // 간단한 해시 함수: 글자마다 고유하되 일관된 변형값 생성
+    function getHash(str, idx) {
+        let hash = 0;
+        const key = str + '_' + idx;
+        for (let i = 0; i < key.length; i++) {
+            hash = (hash << 5) - hash + key.charCodeAt(i);
+            hash |= 0;
+        }
+        return Math.abs(hash);
+    }
+
+    window.TypoMotionStyles['calligraphy001'] = {
+        name: '감성 캘리그라피 (Ink Brush)',
+        backgroundColor: '#f5f3ee', // 화선지 백색
+        textColor: '#1a1818',       // 먹색
+        glowColor: '#7a1c1c',        // 낙관(인장) 주홍색
+
+        // 1. 조형적 캘리그라피 배치 로직 (구도 설계)
+        layout: function(leds, canvas, ctx) {
+            initPaperTexture(canvas.width, canvas.height);
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const total = leds.length;
+            if (total === 0) return;
+
+            // 전체 문장에서 핵심 강조 글자(Primary Focus) 결정
+            // 레퍼런스처럼 문장의 중간~후반 핵심 명사를 크게 강조
+            const emphasisCenter = Math.floor(total * 0.45);
+
+            let currentX = centerX - (total * 30);
+            let currentY = centerY;
+
+            leds.forEach((led, i) => {
+                const h = getHash(led.char || '', i);
+                const distFromEmphasis = Math.abs(i - emphasisCenter);
+
+                // 핵심 강조 글자 판별 (거리 기준)
+                const isEmphasis = distFromEmphasis <= 1;
+                
+                // 스케일 가중치: 강조 단어는 2.2배 이상 거대하게, 앞뒤 보조어는 축소
+                led.customScale = isEmphasis ? 2.3 : (0.75 + (h % 30) * 0.01);
+                
+                // 손글씨 특유의 미세한 Y축 불규칙 흐름 (Baseline Variation)
+                const organicYOffset = Math.sin(i * 1.8) * 18 + ((h % 40) - 20);
+                
+                // 레퍼런스 특유의 겹침(Interlocking) 구조: 간격을 타이트하게 파고듦
+                const spacing = (led.customScale * 48) * 0.72;
+
+                led.baseX = currentX + spacing;
+                led.baseY = currentY + organicYOffset;
+
+                // 세로형 배열이나 지그재그 행간 처리를 위한 인덱스 오프셋
+                if (i > 0 && i % 4 === 0 && total > 6) {
+                    currentX -= spacing * 2.8;
+                    currentY += 75;
+                } else {
+                    currentX += spacing;
+                }
+
+                // 캘리 고유 기울기 (Slant & Organic Tilt)
+                led.customAngle = ((h % 20) - 10) * (Math.PI / 180);
+            });
+        },
+
         presets: {
-            'oneStroke': {
-                name: '한획쓰기 (한글)',
+            // 프리셋 1: 먹물이 서서히 스며들며 피어나는 동양화 붓글씨 모션
+            'inkBleed': {
+                name: '먹 번짐 피어오름 (Ink Bleed)',
                 apply: function(led, time, ctx, state) {
-                    // 한 글자당 1.2초에 걸쳐 한획으로
-                    const t = Math.min(1, Math.max(0, (time - led.start) / 1.2));
-                    // 붓글씨는 처음엔 느리게, 끝엔 꾹
-                    const e = t < 0.5 ? 2*t*t : -1 + (4 - 2*t)*t;
-                    
+                    const cueDuration = (led.end - led.start) || 1.5;
+                    const elapsed = time - led.start;
+                    const progress = Math.min(Math.max(elapsed / cueDuration, 0), 1);
+
+                    // 비활성 구간
+                    if (time < led.start) {
+                        return { opacity: 0, scale: 0, rotation: 0, offsetX: 0, offsetY: 0 };
+                    }
+
+                    // 수묵화 붓글씨 물리 시뮬레이션:
+                    // 1. 착지(Impact): 붓이 닿으며 순간적으로 납작해짐 (Squash)
+                    // 2. 번짐(Absorption): 획이 자리잡으며 정교한 라인으로 수렴
+                    let scaleFactor = led.customScale || 1.0;
+                    let opacity = 1;
+                    let offsetX = 0;
+                    let offsetY = 0;
+                    let rotation = led.customAngle || 0;
+
+                    if (progress < 0.25) {
+                        // 붓이 종이에 닿아 먹물이 퍼지는 단계
+                        const p = progress / 0.25;
+                        const impactSquash = Math.sin(p * Math.PI);
+                        scaleFactor *= (0.7 + p * 0.3 + impactSquash * 0.25);
+                        opacity = Math.pow(p, 1.8);
+                        offsetY = -15 * (1 - p); // 위에서 먹물이 스며내려옴
+                        
+                        // 먹물 번짐 효과: 활성 단계에서 캔버스 컨텍스트 블러/필터 연동
+                        ctx.shadowColor = 'rgba(20, 18, 18, 0.45)';
+                        ctx.shadowBlur = (1 - p) * 16 * (state.intensityAmount || 0.6);
+                    } else if (progress < 0.9) {
+                        // 붓글씨 완성 및 미세한 숨결 모션 (Staging)
+                        const p = (progress - 0.25) / 0.65;
+                        const breathing = Math.sin(p * Math.PI * 2) * 1.5;
+                        offsetY = breathing;
+                        ctx.shadowColor = 'transparent';
+                        ctx.shadowBlur = 0;
+                    } else {
+                        // 서서히 여운을 남기며 다음 획으로 연결 (Follow Through)
+                        const p = (progress - 0.9) / 0.1;
+                        opacity = 1 - p * 0.2;
+                    }
+
                     return {
-                        opacity: 1,
-                        scale: 1,
-                        rotation: 0,
-                        offsetX: 0,
-                        offsetY: 0,
-                        strokeProgress: t, // 0~1: 획이 얼마나 그려졌는지
-                        isOneStroke: true,
-                        char: led.char
+                        opacity: opacity,
+                        scale: scaleFactor,
+                        rotation: rotation,
+                        offsetX: offsetX,
+                        offsetY: offsetY
                     };
                 }
             },
-            'oneStrokeSeal': {
-                name: '한획쓰기 전서체',
+
+            // 프리셋 2: 역동적이고 날카로운 획갈림(비백) 캘리 모션
+            'dynamicStroke': {
+                name: '갈필 파갈 (Fast Brush Stroke)',
                 apply: function(led, time, ctx, state) {
-                    const t = Math.min(1, Math.max(0, (time - led.start) / 1.8));
-                    const e = typeof easeOutElastic === 'function' ? easeOutElastic(t) : t;
-                    
+                    const elapsed = time - led.start;
+                    const duration = (led.end - led.start) || 1.2;
+                    const progress = Math.min(Math.max(elapsed / duration, 0), 1);
+
+                    if (time < led.start) {
+                        return { opacity: 0, scale: 0, rotation: 0, offsetX: 0, offsetY: 0 };
+                    }
+
+                    let scaleFactor = led.customScale || 1.0;
+                    let rotation = led.customAngle || 0;
+                    let offsetX = 0;
+                    let offsetY = 0;
+
+                    const intensity = state.intensityAmount || 0.7;
+
+                    if (progress < 0.2) {
+                        // 강한 붓의 탄성 오버슈트 (Anticipation & Snap)
+                        const p = progress / 0.2;
+                        const snap = Math.sin(p * Math.PI * 0.5);
+                        offsetX = (1 - snap) * 45 * intensity;
+                        rotation += (1 - snap) * -0.25;
+                        scaleFactor *= (1.4 - snap * 0.4);
+                    }
+
                     return {
-                        opacity: 1,
-                        scale: 0.85 + e * 0.15,
-                        rotation: (1 - e) * 2,
-                        offsetX: 0,
-                        offsetY: (1 - e) * -10,
-                        strokeProgress: t,
-                        isOneStroke: true,
-                        isSeal: true,
-                        char: led.char
-                    };
-                }
-            },
-            'oneStrokeFast': {
-                name: '한획쓰기 흘림',
-                apply: function(led, time, ctx, state) {
-                    const t = Math.min(1, Math.max(0, (time - led.start) / 0.7));
-                    return {
-                        opacity: 1,
-                        scale: 1,
-                        rotation: (1 - t) * -8,
-                        offsetX: (1 - t) * -20,
-                        offsetY: 0,
-                        strokeProgress: t,
-                        isOneStroke: true,
-                        isCursive: true,
-                        char: led.char
+                        opacity: progress > 0.85 ? mapLinear(progress, 0.85, 1.0, 1, 0) : 1,
+                        scale: scaleFactor,
+                        rotation: rotation,
+                        offsetX: offsetX,
+                        offsetY: offsetY
                     };
                 }
             }
         }
     };
 
-    // === 진짜 한획쓰기 렌더러 ===
-    window.drawOneStrokeChar = function(ctx, ch, x, y, size, progress, options) {
-        options = options || {};
-        const path = getHangeulStrokePath(ch);
-        if (!path) {
-            // 한글이 아니면 그냥 일반 글자
-            ctx.save();
-            ctx.font = `900 ${size}px Noto Serif KR, serif`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillStyle = '#111';
-            ctx.fillText(ch, x, y);
-            ctx.restore();
-            return;
-        }
-
-        // progress 0~1을 전체 경로 길이에 매핑
-        // path에는 {break:true}가 있어서 붓을 떼는 지점 표시
-        let totalPoints = path.filter(p => !p.break).length;
-        let drawCount = Math.floor(progress * totalPoints);
-        
-        // 붓 설정: 전서체는 두껍고 뭉툭하게
-        ctx.save();
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        
-        let currentStroke = [];
-        let drawn = 0;
-        let lastPos = null;
-
-        for (let i = 0; i < path.length; i++) {
-            const pt = path[i];
-            if (pt.break) {
-                // 붓을 뗌 - 지금까지 모은 획을 그림
-                if (currentStroke.length > 1 && drawn < drawCount) {
-                    drawSingleBrushStroke(ctx, currentStroke, x, y, size, options, Math.min(1, (drawCount - drawn) / currentStroke.length));
-                }
-                drawn += currentStroke.length;
-                currentStroke = [];
-                lastPos = null;
-                continue;
-            }
-            
-            if (drawn + currentStroke.length >= drawCount) break;
-            currentStroke.push(pt);
-        }
-        
-        // 마지막 획
-        if (currentStroke.length > 1) {
-            drawSingleBrushStroke(ctx, currentStroke, x, y, size, options, 1);
-        }
-
-        ctx.restore();
-    };
-
-    function drawSingleBrushStroke(ctx, stroke, cx, cy, size, options, localProgress) {
-        if (stroke.length < 2) return;
-        
-        const ptsToDraw = Math.floor(stroke.length * localProgress);
-        if (ptsToDraw < 2) return;
-
-        ctx.beginPath();
-        
-        // 붓의 굵기: 시작은 가늘고, 중간은 두껍고, 끝은 다시 가늘게 (전서체 특징)
-        // pressure 곡선
-        const baseThick = options.isSeal ? size * 0.09 : size * 0.06;
-        
-        // 경로를 따라 그리기
-        for (let i = 0; i < ptsToDraw; i++) {
-            const pt = stroke[i];
-            const px = cx + (pt.x - 0.5) * size;
-            const py = cy + (pt.y - 0.5) * size;
-            
-            if (i === 0) {
-                ctx.moveTo(px, py);
-            } else {
-                // 곡선으로 부드럽게
-                const prev = stroke[i-1];
-                const prevX = cx + (prev.x - 0.5) * size;
-                const prevY = cy + (prev.y - 0.5) * size;
-                const midX = (prevX + px) / 2;
-                const midY = (prevY + py) / 2;
-                ctx.quadraticCurveTo(prevX, prevY, midX, midY);
-            }
-        }
-
-        // 붓의 농담
-        let thick = baseThick;
-        if (options.isSeal) thick = baseThick * (0.9 + Math.sin(localProgress * Math.PI) * 0.3);
-        if (options.isCursive) thick = baseThick * (1.2 - localProgress * 0.4);
-
-        ctx.lineWidth = thick;
-        
-        if (options.isSeal) {
-            ctx.strokeStyle = '#0a0a0a';
-            ctx.shadowColor = 'rgba(0,0,0,0.25)';
-            ctx.shadowBlur = size * 0.02;
-        } else {
-            ctx.strokeStyle = '#111';
-        }
-        
-        ctx.stroke();
-
-        // 붓 끝의 먹 방울 (전서체 특징)
-        if (localProgress > 0.92 && options.isSeal) {
-            const last = stroke[ptsToDraw - 1];
-            const lx = cx + (last.x - 0.5) * size;
-            const ly = cy + (last.y - 0.5) * size;
-            ctx.beginPath();
-            ctx.arc(lx, ly, thick * 0.55, 0, Math.PI * 2);
-            ctx.fillStyle = '#0a0a0a';
-            ctx.fill();
-        }
+    function mapLinear(val, inMin, inMax, outMin, outMax) {
+        return outMin + (outMax - outMin) * ((val - inMin) / (inMax - inMin));
     }
-
-    // 외부에서 경로 접근 가능하게
-    window.JAMO_ONE_STROKE_PATHS = JAMO_ONE_STROKE_PATHS;
-    window.getHangeulStrokePath = getHangeulStrokePath;
 })();
