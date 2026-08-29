@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SRT 캘리그라피 스튜디오 v1.008 (NaN차단)</title>
+  <title>SRT 캘리그라피 스튜디오 v1.009</title>
   
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -16,7 +16,7 @@
     body { font-family: 'Pretendard', sans-serif; background-color: var(--bg-dark); color: var(--text-main); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
     header { background: #18181c; padding: 12px 24px; border-bottom: 1px solid var(--panel-border); }
     .main-container { display: flex; flex: 1; overflow: hidden; }
-    .sidebar { width: 290px; background: var(--panel-bg); border-right: 1px solid var(--panel-border); padding: 20px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+    .sidebar { width: 280px; background: var(--panel-bg); border-right: 1px solid var(--panel-border); padding: 20px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
     .preview-area { flex: 1; display: flex; flex-direction: column; background: #f4ecd8; align-items: center; justify-content: center; padding: 20px; position: relative; }
     .canvas-wrapper { position: relative; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2); border-radius: 8px; overflow: hidden; max-width: 100%; max-height: 70vh; cursor: grab; background: #f4ecd8; }
     canvas { display: block; max-width: 100%; max-height: 70vh; object-fit: contain; pointer-events: none; }
@@ -46,7 +46,7 @@
 </head>
 <body>
   <header>
-    <h1>🖌️ SRT 캘리그라피 스튜디오 v1.008</h1>
+    <h1>🖌️ SRT 캘리그라피 스튜디오 v1.009 (완전 안정화)</h1>
   </header>
 
   <div class="main-container">
@@ -158,57 +158,82 @@
     }
 
     function getActiveBounds() {
-      return { 
-        x: canvas.width * 0.1, 
-        y: canvas.height * 0.1, 
-        w: canvas.width * 0.8, 
-        h: canvas.height * 0.8 
-      };
+      return { x: canvas.width * 0.1, y: canvas.height * 0.1, w: canvas.width * 0.8, h: canvas.height * 0.8 };
     }
 
-    function createMorphPath(glyphData, size, sp) {
-      const path = currentFont.getPath(glyphData.char, 0, 0, size);
-      const commands = path.commands;
+    // [핵심] 자동 줄바꿈 & 절대 겹치지 않는 배치 (AdvanceWidth 사용)
+    function layoutSessionText(text, bounds, sp, session) {
+      let cleanText = text.replace(/\r/g, '').replace(/\n/g, ' ');
+      const maxWidth = bounds.w * 0.9;
+      const offsetX = session.x || 0; const offsetY = session.y || 0; const globalScale = session.scale || 1.0;
       
-      let d = '';
-      let cx = 0, cy = 0, sx = 0, sy = 0;
-      const STEPS = 8 + Math.floor(sp.smooth * 12); 
+      // 글자 크기 결정 (한 줄 최대 길이 대비)
+      let fontSize = bounds.w / Math.max(1, cleanText.length * 0.65);
+      fontSize = Math.min(fontSize, bounds.h / 4);
+      fontSize = Math.max(40, fontSize * globalScale); // 최소 크기 보장
 
-      commands.forEach(c => {
-        if (c.type === 'M') { cx = c.x; cy = c.y; sx = cx; sy = cy; d += `M ${cx} ${cy} `; }
-        else if (c.type === 'L') { cx = c.x; cy = c.y; d += `L ${cx} ${cy} `; }
-        else if (c.type === 'C') { d += `C ${c.x1} ${c.y1} ${c.x2} ${c.y2} ${c.x} ${c.y} `; cx = c.x; cy = c.y; }
-        else if (c.type === 'Q') { d += `Q ${c.x1} ${c.y1} ${c.x} ${c.y} `; cx = c.x; cy = c.y; }
-        else if (c.type === 'Z') { d += 'Z '; cx = sx; cy = sy; }
+      // 줄바꿈 로직
+      let lines = [];
+      let currentLine = "";
+      let currentWidth = 0;
+      
+      for (let char of cleanText) {
+        let charWidth = currentFont.getAdvanceWidth(char, fontSize); // 절대 NaN이 없는 정확한 값
+        if (currentWidth + charWidth > maxWidth && currentLine !== "") {
+          lines.push(currentLine);
+          currentLine = char;
+          currentWidth = charWidth;
+        } else {
+          currentLine += char;
+          currentWidth += charWidth;
+        }
+      }
+      if (currentLine) lines.push(currentLine);
+
+      const lineHeight = fontSize * 1.15;
+      const totalHeight = lines.length * lineHeight;
+      const startY = (bounds.y + bounds.h / 2 - totalHeight / 2) + offsetY;
+
+      const positions = [];
+      const sizes = [];
+
+      lines.forEach((lineText, lineIdx) => {
+        let totalLineWidth = 0;
+        let lineChars = Array.from(lineText);
+        let lineWidths = lineChars.map(ch => currentFont.getAdvanceWidth(ch, fontSize));
+        totalLineWidth = lineWidths.reduce((a, b) => a + b, 0);
+
+        // 중앙 정렬
+        let currentX = (bounds.x + bounds.w / 2 - totalLineWidth / 2) + offsetX;
+        
+        lineChars.forEach((ch, idx) => {
+          let rot = (seededRandom(idx + lineIdx) - 0.5) * 0.2 * sp.rhythm;
+          positions.push({ x: currentX, y: startY + lineIdx * lineHeight, ch, rot });
+          sizes.push(fontSize);
+          currentX += lineWidths[idx];
+        });
       });
 
-      return new Path2D(d);
+      return { positions, sizes };
     }
 
-    // [핵심 수정] NaN 방지를 위한 강력한 try-catch 적용
-    function getGlyphBrushData(char, fontSize) {
+    function seededRandom(seed){let x=Math.sin(seed++)*10000;return x-Math.floor(x);}
+
+    // [핵심] Path2D를 안전하게 가져오기
+    function getGlyphPathData(char, fontSize) {
       const key = `${currentFont?.familyName || 'font'}|${char.codePointAt(0)}|${fontSize.toFixed(1)}`;
       if (glyphDataCache.has(key)) return glyphDataCache.get(key);
       
-      let bbox = { x1: 0, y1: -fontSize * 0.5, x2: fontSize * 0.5, y2: 0 };
       let p2d = null;
-      let svgD = "";
-
       try {
         const path = currentFont.getPath(char, 0, 0, fontSize);
-        try { bbox = path.getBoundingBox(); } catch(e) {}
-        try { svgD = path.toPathData ? path.toPathData() : commandsToSvgD(path.commands); } catch(e) { svgD = commandsToSvgD(path.commands); }
-        
-        // bbox가 NaN이면 기본값으로 대체
-        if (!isFinite(bbox.x1) || !isFinite(bbox.x2)) bbox = { x1: 0, y1: -fontSize * 0.5, x2: fontSize * 0.5, y2: 0 };
+        const svgD = path.toPathData ? path.toPathData() : commandsToSvgD(path.commands);
         p2d = new Path2D(svgD);
       } catch(e) {
-        // 폰트 로드 실패 시에도 절대 NaN이 되지 않도록 처리
         p2d = null;
-        bbox = { x1: 0, y1: -fontSize * 0.5, x2: fontSize * 0.5, y2: 0 };
       }
-
-      const data = { p2d, bbox, char, isBlank: p2d === null };
+      
+      const data = { p2d, char, isBlank: p2d === null };
       glyphDataCache.set(key, data);
       return data;
     }
@@ -216,135 +241,17 @@
     function commandsToSvgD(commands) {
       return commands.map(c => {
         switch(c.type) {
-          case 'M': return `M ${c.x} ${c.y}`; case 'L': return `L ${c.x} ${c.y}`;
+          case 'M': return `M ${c.x} ${c.y}`;
+          case 'L': return `L ${c.x} ${c.y}`;
           case 'C': return `C ${c.x1} ${c.y1} ${c.x2} ${c.y2} ${c.x} ${c.y}`;
-          case 'Q': return `Q ${c.x1} ${c.y1} ${c.x} ${c.y}`; case 'Z': return 'Z'; default: return '';
+          case 'Q': return `Q ${c.x1} ${c.y1} ${c.x} ${c.y}`;
+          case 'Z': return 'Z';
+          default: return '';
         }
       }).join(' ');
     }
 
-    // [핵심 수정] 너비 계산에 유효성 검사 추가
-    function layoutSessionText(text, bounds, sp, session) {
-      let lines = text.split('\n').filter(l => l.trim().length > 0);
-      if (lines.length === 1 && text.includes(' ')) lines = text.split(' ').filter(l => l.trim().length > 0);
-      const N = lines.length; const positions = [], sizes = [];
-      const lineHeight = 1.1;
-      const offsetX = session.x || 0; const offsetY = session.y || 0; const globalScale = session.scale || 1.0;
-
-      lines.forEach((lineText, lineIdx) => {
-        const t = N === 1 ? 0.5 : (lineIdx + 0.5) / N;
-        const y = (bounds.y + bounds.h * (N === 1 ? 0.5 : (0.12 + 0.76 * t))) * globalScale + offsetY;
-        let baseSize = bounds.w / Math.max(1, lineText.length * 0.95) * globalScale;
-        baseSize = Math.min(baseSize, (bounds.h * 0.8) / (N * lineHeight)); 
-        baseSize = Math.max(30, baseSize);
-
-        let chars = Array.from(lineText);
-        let totalLineWidth = 0;
-        let charData = chars.map(ch => {
-            if (ch === ' ') { return { data: null, w: baseSize * 0.3 }; }
-            let data = getGlyphBrushData(ch, baseSize);
-            let dataW;
-            try {
-                // 유효성 검사: NaN이면 기본 폭 사용
-                dataW = (isFinite(data.bbox.x2) && isFinite(data.bbox.x1)) ? (data.bbox.x2 - data.bbox.x1) : (baseSize * 0.5);
-            } catch(e) {
-                dataW = baseSize * 0.5;
-            }
-            let w = dataW * 1.2 + baseSize * 0.1; 
-            totalLineWidth += w;
-            return { data, w };
-        });
-
-        let currentX = (bounds.x + bounds.w / 2 - totalLineWidth / 2) * globalScale + offsetX;
-
-        chars.forEach((ch, idx) => {
-            let rot = (seededRandom(idx + lineIdx) - 0.5) * 0.2 * sp.rhythm;
-            positions.push({ x: currentX, y, ch, rot });
-            sizes.push(baseSize);
-            currentX += charData[idx].w;
-        });
-      });
-      return { positions, sizes };
-    }
-
-    function seededRandom(seed){let x=Math.sin(seed++)*10000;return x-Math.floor(x);}
-
-    function computeCharPlan(chars, sizes) {
-      let cum = 0;
-      const plan = chars.map((ch, i) => {
-        let data = null, length;
-        if (ch !== ' ') {
-          try { data = getGlyphBrushData(ch, sizes[i]); } catch(e) { data = null; }
-          length = 300;
-        } else {
-          length = sizes[i] * 0.3;
-        }
-        cum += length;
-        return { ch, data, length, cumEnd: cum };
-      });
-      return { plan, totalLen: cum || 1 };
-    }
-
-    function renderMaskFitMode(text, writeProgress, inkColor, sp, session, applyClip) {
-      if (!currentFont) return;
-      const w = canvas.width, h = canvas.height;
-      
-      const bounds = getActiveBounds();
-      const offsetX = session.x || 0; const offsetY = session.y || 0; const scale = session.scale || 1.0;
-      const transformedBounds = { x: bounds.x + offsetX, y: bounds.y + offsetY, w: bounds.w * scale, h: bounds.h * scale };
-      const { positions, sizes } = layoutSessionText(text, transformedBounds, sp, session);
-      const { plan, totalLen } = computeCharPlan(positions.map(p=>p.ch), sizes);
-      const inkRevealed = writeProgress * totalLen;
-
-      maskCtx.clearRect(0, 0, w, h);
-      maskCtx.fillStyle = inkColor;
-      maskCtx.strokeStyle = inkColor;
-
-      plan.forEach((item, i) => {
-        if (item.ch === ' ' || !item.data || !item.data.p2d) return;
-        const pos = positions[i];
-        
-        maskCtx.save();
-        maskCtx.translate(pos.x, pos.y);
-        maskCtx.rotate(pos.rot || 0);
-        maskCtx.translate(-pos.x, -pos.y);
-
-        try {
-          const morphedPath = createMorphPath(item.data, sizes[i], sp);
-          const startWidth = 1.0 * sp.start * sp.power;
-          const midWidth = 2.5 * sp.power;
-          const endWidth = 0.8 * sp.power;
-
-          maskCtx.lineCap = 'round';
-          maskCtx.lineJoin = 'round';
-
-          maskCtx.lineWidth = startWidth;
-          maskCtx.globalAlpha = 0.8;
-          maskCtx.stroke(morphedPath);
-
-          maskCtx.lineWidth = midWidth;
-          maskCtx.globalAlpha = 0.4;
-          maskCtx.stroke(morphedPath);
-
-          maskCtx.lineWidth = endWidth;
-          maskCtx.globalAlpha = 1.0;
-          maskCtx.fill(morphedPath, 'nonzero');
-          maskCtx.stroke(morphedPath);
-        } catch(e) {
-          // 렌더링 중 오류가 발생해도 프로그램이 죽지 않도록 처리
-        }
-
-        maskCtx.restore();
-      });
-
-      if (applyClip && hasMask && currentMaskAlphaImage) {
-        maskCtx.globalCompositeOperation = 'destination-in'; 
-        maskCtx.drawImage(currentMaskAlphaImage, 0, 0, w, h); 
-        maskCtx.globalCompositeOperation = 'source-over'; 
-      }
-      ctx.drawImage(maskCanvas, 0, 0);
-    }
-
+    // [핵심] 진한 먹물 + 붓터치 렌더링 (Fill 고정)
     function renderFrame(timeSec) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       drawBackground();
@@ -358,7 +265,55 @@
       const duration = Math.max(0.5, activeSubtitle.end - activeSubtitle.start);
       const writeProgress = Math.min(1, (timeSec - activeSubtitle.start) / (duration * 0.7));
       
-      renderMaskFitMode(text, writeProgress, '#1c1917', sp, activeSubtitle.session || {x:0, y:0, scale:1}, isRecording);
+      const bounds = getActiveBounds();
+      const { positions, sizes } = layoutSessionText(text, bounds, sp, activeSubtitle.session || {x:0, y:0, scale:1});
+      
+      maskCtx.clearRect(0, 0, canvas.width, canvas.height);
+      maskCtx.fillStyle = '#1c1917'; // 먹색 고정
+      maskCtx.strokeStyle = '#1c1917';
+
+      // 각 글자 그리기
+      positions.forEach((pos, i) => {
+        const ch = pos.ch;
+        if (ch === ' ') return;
+        
+        const data = getGlyphPathData(ch, sizes[i]);
+        if (!data.p2d) return;
+
+        maskCtx.save();
+        maskCtx.translate(pos.x, pos.y);
+        maskCtx.rotate(pos.rot || 0);
+        maskCtx.translate(-pos.x, -pos.y);
+
+        // 붓터치 표현 (다층 구조 & 그림자)
+        maskCtx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+        maskCtx.shadowBlur = 2 + sp.smooth * 6; // 유선형 값이 높을 수록 번짐
+        maskCtx.globalAlpha = 0.9;
+        maskCtx.fill(data.p2d, 'nonzero'); // 먼저 채우고
+        
+        maskCtx.lineJoin = 'round';
+        maskCtx.lineCap = 'round';
+        
+        // 두께 레이어 (POWER 적용)
+        maskCtx.lineWidth = sp.power * 2.0;
+        maskCtx.globalAlpha = 0.8;
+        maskCtx.stroke(data.p2d); // 가장자리를 둥글게 두껍게
+
+        maskCtx.lineWidth = sp.power * 1.0;
+        maskCtx.globalAlpha = 1.0;
+        maskCtx.stroke(data.p2d);
+
+        maskCtx.restore();
+      });
+
+      // 마스크 클리핑
+      if (isRecording && hasMask && currentMaskAlphaImage) {
+        maskCtx.globalCompositeOperation = 'destination-in'; 
+        maskCtx.drawImage(currentMaskAlphaImage, 0, 0, canvas.width, canvas.height); 
+        maskCtx.globalCompositeOperation = 'source-over'; 
+      }
+      
+      ctx.drawImage(maskCanvas, 0, 0);
     }
 
     function drawBackground() {
@@ -403,7 +358,7 @@
       updateSRTListUI();
       selectedSessionIndex = 0;
       loadSessionControls(0);
-      logMessage("✅ 자막 적용 완료 (NaN 에러 차단됨)");
+      logMessage("✅ 자막 적용 완료");
       renderFrame(0);
     }
 
