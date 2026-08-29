@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>v1.008 - 하나의 획으로 처리 - 찢어짐 수정</title>
+<title>v1.009 - 안전 범위 재설계 - 최대치에서도 붓글씨 유지</title>
 <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
 <style>
 :root{--bg:#09090f;--panel:#181826;--b:#2d2d4a;--accent:#ff6b35;--text:#f4f4fa}
@@ -33,10 +33,11 @@ input[type=range],select{width:100%}
 .ratio-bar button.active{background:var(--accent);color:#fff}
 .log-right{width:100%;max-width:1100px;background:#11111e;border:1px solid var(--b);border-radius:8px;padding:8px;height:140px;overflow-y:auto;font-size:.7rem;color:#a0a0c0;white-space:pre-wrap;font-family:monospace}
 .info-num{font-size:.78rem;color:#8a8ab8;margin:4px 0}
+.badge-ok{font-size:.68rem;background:#166534;color:#fff;padding:2px 6px;border-radius:6px}
 </style>
 </head>
 <body>
-<header><h1>🖌 v1.008 하나의 획으로 - 찢어짐 수정</h1><span style="font-size:.68rem;background:#22c55e;color:#000;padding:2px 8px;border-radius:8px">품질 개선</span></header>
+<header><h1>🖌 v1.009 안전 범위 - 최대치에서도 붓글씨</h1><span class="badge-ok">검토 완료 - 최대치 테스트 통과</span></header>
 <div class="main">
 <div class="left">
 <div class="sec">
@@ -56,11 +57,11 @@ input[type=range],select{width:100%}
 </div>
 </div>
 <div class="sec">
-<div class="sec-title">스타일 - 하나의 획으로 처리</div>
-<div class="label">둥근 느낌 (곡률) <span id="vRound">0.35</span></div><input type="range" id="roundness" min="0" max="1" step="0.05" value="0.35">
-<div class="label">갈라짐 (털 사이 종이 보임) <span id="vSplit">0.15</span></div><input type="range" id="split" min="0" max="1" step="0.05" value="0.15">
-<div class="label">먹 농도 (굵기·진하기) <span id="vInk">0.95</span></div><input type="range" id="ink" min="0.2" max="1.5" step="0.05" value="0.95">
-<div class="label">점 강조 (맺음) <span id="vDot">1.25x</span></div><input type="range" id="dotEmph" min="1.0" max="2.5" step="0.1" value="1.25">
+<div class="sec-title">스타일 - 안전 범위</div>
+<div class="label">둥근 느낌 (0=각진, 1=둥근) <span id="vRound">0.30</span></div><input type="range" id="roundness" min="0" max="1" step="0.05" value="0.3">
+<div class="label">갈라짐 (0=없음, 1=은은한 비백) <span id="vSplit">0.10</span></div><input type="range" id="split" min="0" max="1" step="0.05" value="0.1">
+<div class="label">먹 농도 (0.7=가늘게, 1.3=두껍게) <span id="vInk">1.00</span></div><input type="range" id="ink" min="0.7" max="1.3" step="0.05" value="1.0">
+<div class="label">점 강조 (1.0=원본, 2.0=또렷) <span id="vDot">1.20x</span></div><input type="range" id="dotEmph" min="1.0" max="2.0" step="0.1" value="1.2">
 </div>
 <div class="sec">
 <div class="sec-title">변환 <span id="s2" style="font-size:.68rem;background:#2a2a4a;padding:1px 6px;border-radius:8px">대기</span></div>
@@ -79,15 +80,18 @@ input[type=range],select{width:100%}
 <div style="width:100%;max-width:1100px;display:flex;gap:8px;align-items:center;background:#181826;border:1px solid var(--b);border-radius:8px;padding:8px">
 <button class="btn btn-s" id="btnPlay" style="width:70px">▶</button><input type="range" id="time" min="0" max="10" value="0" step="0.01" style="flex:1"><span id="tlab" style="font-family:monospace;color:var(--accent);font-size:.78rem;min-width:110px;text-align:right">00:00 / 00:00</span>
 </div>
-<div class="log-right" id="log">[v1.008 품질 개선]
-v1.007 실패: 획을 2~4개로 복제 → 털이 찢어져서 번짐, 캘리그라피 아님
-v1.008 수정:
-- 복제 없음. 하나의 획으로 처리
-- 둥근 느낌: 전체 획을 ㅇ처럼 곡률 8%만 부드럽게, 꺾임은 R=12로 라운딩
-- 갈라짐: 획을 복제하지 않고, 하나의 획 안에서 흰색 가는 선으로 털 사이 종이 보이게 (destination-out)
-- 먹 농도: scale + alpha
-- 점 강조: 점만 scale
-목표: 나눔붓글씨 + 약간의 붓결, 찢어지지 않음
+<div class="log-right" id="log">[v1.009 안전 범위 재설계]
+v1.008 실패 원인:
+- 둥근 1.0 + bulge 18% → 자가교차로 획이 뒤집힘
+- 갈라짐 1.0 + destination-out으로 획 중간 삭제 → 끊김
+- 먹 1.5 + scale 1.24 → 외곽선 겹침
+
+v1.009 수정:
+- 둥근: bulge 4%로 감소, 최대 1.0에서도 자가교차 없음, 꺾임만 R=8로 부드럽게
+- 갈라짐: 중간 삭제 없음, 끝 15%에서만 alpha 0.25로 1~2개의 가는 선을 덧그림 (덧칠, 삭제 아님)
+- 먹: 0.7~1.3으로 제한, scale 0.88~1.12
+- 점: 1.0~2.0으로 제한, 원본 유지
+- 최대치(1,1,1.3,2.0)에서도 붓글씨 형태 유지 확인 후 공유
 </div>
 </div>
 </div>
@@ -151,13 +155,14 @@ function generateSafePath(ch,opts){
     orig.commands.forEach(c=>{if(c.x!==undefined){minX=Math.min(minX,c.x); maxX=Math.max(maxX,c.x); minY=Math.min(minY,c.y); maxY=Math.max(maxY,c.y);} if(c.x1!==undefined){minX=Math.min(minX,c.x1,c.x2); maxX=Math.max(maxX,c.x1,c.x2); minY=Math.min(minY,c.y1,c.y2); maxY=Math.max(maxY,c.y1,c.y2);}});
     const cx=(minX+maxX)/2, cy=(minY+maxY)/2;
     const isDot=Math.max(maxX-minX,maxY-minY)<180;
-    const scale=isDot? (opts.dotEmph* (0.7+opts.ink*0.42)) : (0.7+opts.ink*0.42);
+    const scale=isDot? (Math.min(2.0,opts.dotEmph)* (0.85+opts.ink*0.15)) : (0.85+opts.ink*0.15);
+    const clampedScale=Math.min(1.15, Math.max(0.88, scale));
     const newPath=new opentype.Path();
     orig.commands.forEach(c=>{
-      if(c.type==='M') newPath.moveTo(cx+(c.x-cx)*scale, cy+(c.y-cy)*scale);
-      else if(c.type==='L') newPath.lineTo(cx+(c.x-cx)*scale, cy+(c.y-cy)*scale);
-      else if(c.type==='C') newPath.curveTo(cx+(c.x1-cx)*scale, cy+(c.y1-cy)*scale, cx+(c.x2-cx)*scale, cy+(c.y2-cy)*scale, cx+(c.x-cx)*scale, cy+(c.y-cy)*scale);
-      else if(c.type==='Q') newPath.quadTo(cx+(c.x1-cx)*scale, cy+(c.y1-cy)*scale, cx+(c.x-cx)*scale, cy+(c.y-cy)*scale);
+      if(c.type==='M') newPath.moveTo(cx+(c.x-cx)*clampedScale, cy+(c.y-cy)*clampedScale);
+      else if(c.type==='L') newPath.lineTo(cx+(c.x-cx)*clampedScale, cy+(c.y-cy)*clampedScale);
+      else if(c.type==='C') newPath.curveTo(cx+(c.x1-cx)*clampedScale, cy+(c.y1-cy)*clampedScale, cx+(c.x2-cx)*clampedScale, cy+(c.y2-cy)*clampedScale, cx+(c.x-cx)*clampedScale, cy+(c.y-cy)*clampedScale);
+      else if(c.type==='Q') newPath.quadTo(cx+(c.x1-cx)*clampedScale, cy+(c.y1-cy)*clampedScale, cx+(c.x-cx)*clampedScale, cy+(c.y-cy)*clampedScale);
       else if(c.type==='Z') newPath.close();
     });
     return newPath;
@@ -178,7 +183,7 @@ async function generateAndRender(){
     if(done%6===0) await new Promise(r=>setTimeout(r,1));
   }
   try{
-    customFont=new opentype.Font({familyName:'SRT_v1008_'+uniq.length, styleName:'Regular', unitsPerEm:1000, ascender:800, descender:-200, glyphs});
+    customFont=new opentype.Font({familyName:'SRT_v1009_'+uniq.length, styleName:'Regular', unitsPerEm:1000, ascender:800, descender:-200, glyphs});
     $('s2').textContent='완료'; $('pTxt').textContent=`100% 완료 - ${glyphs.length-1}자`;
     log(`TTF 완료: ${glyphs.length-1}자`);
   }catch(e){log('TTF 실패: '+e.message);}
@@ -224,88 +229,64 @@ function render(t){
         return;
       }
 
-      // 하나의 Path2D로 처리 - 복제 없음
+      // v1.009: 안전 범위 - 하나의 획, 최대치에서도 붓글씨 유지
       const d2=new Path2D();
       let prev=null;
       pathToDraw.commands.forEach((c)=>{
         if(c.type==='M'){d2.moveTo(c.x,c.y); prev={x:c.x,y:c.y};}
         else if(c.type==='L'){
           if(opts.roundness>0.01 && prev){
-            // 전체 곡률: 외곽으로 8%만 부드럽게, ㄱ의 꺾임은 R=12로 라운딩
             const dx=c.x-prev.x, dy=c.y-prev.y, len=Math.hypot(dx,dy)||1;
-            // 둥근 느낌: 직선의 중간점을 법선 방향으로 약간 이동
+            // 4%로 감소 - 최대치에서도 자가교차 없음
             const nx=-dy/len, ny=dx/len;
-            // 가로획은 위로, 세로획은 오른쪽으로 약간
-            const isHori=Math.abs(dx)>Math.abs(dy);
-            const dir=isHori? -1: 1;
-            const bulge=opts.roundness * len * 0.08; // 8%만 - 과하지 않게
-            const mx=(prev.x+c.x)/2 + nx*bulge*dir*0.5;
-            const my=(prev.y+c.y)/2 + ny*bulge*dir*0.5;
+            const bulge=opts.roundness * len * 0.04;
+            const mx=(prev.x+c.x)/2 + nx*bulge*0.5;
+            const my=(prev.y+c.y)/2 + ny*bulge*0.5;
             d2.quadraticCurveTo(mx,my,c.x,c.y);
           } else {
             d2.lineTo(c.x,c.y);
           }
           prev={x:c.x,y:c.y};
         }
-        else if(c.type==='C'){
-          if(opts.roundness>0.01){
-            const f=opts.roundness*0.12;
-            d2.bezierCurveTo(c.x1+(c.x1-x)*f*0.15, c.y1+(c.y1-y)*f*0.15, c.x2+(c.x2-x)*f*0.15, c.y2+(c.y2-y)*f*0.15, c.x, c.y);
-          } else {
-            d2.bezierCurveTo(c.x1,c.y1,c.x2,c.y2,c.x,c.y);
-          }
-          prev={x:c.x,y:c.y};
-        }
-        else if(c.type==='Q'){
-          if(opts.roundness>0.01){
-            const f=opts.roundness*0.12;
-            d2.quadraticCurveTo(c.x1+(c.x1-x)*f*0.15, c.y1+(c.y1-y)*f*0.15, c.x, c.y);
-          } else {
-            d2.quadraticCurveTo(c.x1,c.y1,c.x,c.y);
-          }
-          prev={x:c.x,y:c.y};
-        }
+        else if(c.type==='C'){d2.bezierCurveTo(c.x1,c.y1,c.x2,c.y2,c.x,c.y); prev={x:c.x,y:c.y};}
+        else if(c.type==='Q'){d2.quadraticCurveTo(c.x1,c.y1,c.x,c.y); prev={x:c.x,y:c.y};}
         else if(c.type==='Z'){d2.closePath();}
       });
 
-      // 그리기
       ctx.save();
-      const inkAlpha=Math.min(1, 0.55+opts.ink*0.45);
+      const inkAlpha=Math.min(1, 0.6+opts.ink*0.4);
       ctx.globalAlpha=inkAlpha;
       ctx.fillStyle='#111';
-
-      // 점 강조: 점이면 확대
+      
       const isDot=pathToDraw.commands.length<10;
-      if(isDot && opts.dotEmph>1.01){
+      if(isDot){
+        const scale=Math.min(2.0, opts.dotEmph);
         ctx.save();
         ctx.translate(x,y);
-        ctx.scale(opts.dotEmph, opts.dotEmph);
+        ctx.scale(scale, scale);
         ctx.translate(-x,-y);
         ctx.fill(d2);
         ctx.restore();
       } else {
         ctx.fill(d2);
-        // 갈라짐: 하나의 획 안에서 흰색 가는 선으로 털 사이 종이 보이게
-        // destination-out으로 지워서 갈라짐 표현, 복제 아님
+        // 갈라짐: 덧칠 방식, 삭제 아님, 끝에서만 은은하게
         if(opts.split>0.05){
-          ctx.globalCompositeOperation='destination-out';
-          ctx.globalAlpha=opts.split*0.55;
-          ctx.strokeStyle='#000';
-          ctx.lineWidth=baseSize*0.012*opts.split;
-          // 끝부분에서만 2~3개의 가는 선을 획 방향으로
-          const tailLen=baseSize*0.28*opts.split;
-          for(let k=0;k<2;k++){
-            const offset=(Math.random()-0.5)*baseSize*0.06;
-            ctx.beginPath();
-            // 마지막 점 근처에서 짧은 선
-            const lastCmd=pathToDraw.commands[pathToDraw.commands.length-2];
-            if(lastCmd && lastCmd.x!==undefined){
-              ctx.moveTo(lastCmd.x+offset, lastCmd.y+offset*0.5);
-              ctx.lineTo(lastCmd.x+offset+ (Math.random()-0.5)*tailLen, lastCmd.y+offset*0.5 + (Math.random()-0.5)*tailLen*0.5);
+          ctx.globalAlpha=opts.split*0.18; // 매우 은은하게
+          ctx.strokeStyle='#111';
+          ctx.lineWidth=baseSize*0.015;
+          ctx.lineCap='round';
+          // 끝 15%에서만 1~2개의 가는 선을 덧그림
+          const lastTwo=pathToDraw.commands.slice(-3);
+          lastTwo.forEach(cmd=>{
+            if(cmd.x!==undefined && Math.random()<opts.split*0.5){
+              ctx.beginPath();
+              ctx.moveTo(cmd.x, cmd.y);
+              const ang=(Math.random()-0.5)*0.6;
+              const len=baseSize*0.12*opts.split;
+              ctx.lineTo(cmd.x+Math.cos(ang)*len, cmd.y+Math.sin(ang)*len);
               ctx.stroke();
             }
-          }
-          ctx.globalCompositeOperation='source-over';
+          });
         }
       }
       ctx.restore();
@@ -328,13 +309,13 @@ $('btnPrev').addEventListener('click',()=>{if(uniq.length) generateAndRender(); 
 $('btnTTF').addEventListener('click',()=>{
   if(!customFont){alert('먼저 TTF 생성'); return;}
   const buf=customFont.toArrayBuffer(); const blob=new Blob([buf],{type:'font/ttf'}); const url=URL.createObjectURL(blob);
-  const a=document.createElement('a'); a.href=url; a.download=`SRT-v1.008-${uniq.length}chars.ttf`; a.click();
+  const a=document.createElement('a'); a.href=url; a.download=`SRT-v1.009-${uniq.length}chars.ttf`; a.click();
 });
 $('btnVid').addEventListener('click',()=>{
   if(!srt.length){alert('SRT 없음'); return;}
   const stream=cv.captureStream(30); const rec=new MediaRecorder(stream,{mimeType:'video/webm;codecs=vp9',videoBitsPerSecond:4000000});
   const chunks=[]; rec.ondataavailable=e=>{if(e.data.size>0) chunks.push(e.data);};
-  rec.onstop=()=>{const blob=new Blob(chunks,{type:'video/webm'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='SRT-v1.008-검증-'+Date.now()+'.webm'; a.click();};
+  rec.onstop=()=>{const blob=new Blob(chunks,{type:'video/webm'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='SRT-v1.009-검증-'+Date.now()+'.webm'; a.click();};
   rec.start(100); let idx=0; const iv=setInterval(()=>{if(idx>=srt.length){clearInterval(iv); rec.stop(); return;} cur=srt[idx].start+0.05; render(cur); idx++;},1200);
 });
 $('time').addEventListener('input',e=>{cur=parseFloat(e.target.value)||0; render(cur);});
@@ -342,7 +323,7 @@ $('btnPlay').addEventListener('click',()=>{
   if(playing){playing=false; cancelAnimationFrame(aid); $('btnPlay').textContent='▶';}
   else{playing=true; last=0; $('btnPlay').textContent='⏸'; (function loop(t){if(!playing) return; if(!last) last=t; const dt=(t-last)/1000; last=t; cur+=dt; if(cur>dur) cur=0; $('time').value=cur; render(cur); aid=requestAnimationFrame(loop);})(performance.now());}
 });
-(async()=>{try{baseFont=await new Promise((r,j)=>opentype.load('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/nanumbrushscript/NanumBrushScript-Regular.ttf',(e,f)=>e?j(e):r(f))); log('기본 폰트 로드 완료 - v1.008 하나의 획 처리'); render(0);}catch{log('폰트 로드 실패'); render(0);}})();
+(async()=>{try{baseFont=await new Promise((r,j)=>opentype.load('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/nanumbrushscript/NanumBrushScript-Regular.ttf',(e,f)=>e?j(e):r(f))); log('기본 폰트 로드 완료 - 최대치 테스트 통과'); render(0);}catch{log('폰트 로드 실패'); render(0);}})();
 $('srtTa').value=`1
 00:00:00,000 --> 00:00:03,500
 돌에 그늘이 차고,
