@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SRT 캘리그라피 스튜디오 v34 (전체 화면 정상화)</title>
+  <title>SRT 캘리그라피 스튜디오 v1.001 (안정화)</title>
   
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11,7 +11,7 @@
   <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
 
   <style>
-    :root { --bg-dark: #121214; --panel-bg: #1e1e24; --panel-border: #2d2d38; --accent-color: #ff6b35; --text-main: #f0f0f5; --text-muted: #a0a0b0; }
+    :root { --bg-dark: #121214; --panel-bg: #1e1e24; --panel-border: #2d2d38; --accent-color: #ff6b35; --accent-gradient: linear-gradient(135deg, #ff6b35, #f72585); --text-main: #f0f0f5; --text-muted: #a0a0b0; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Pretendard', sans-serif; background-color: var(--bg-dark); color: var(--text-main); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
     header { background: #18181c; padding: 12px 24px; border-bottom: 1px solid var(--panel-border); }
@@ -24,7 +24,7 @@
     .player-controls { width: 100%; max-width: 960px; margin-top: 15px; background: var(--panel-bg); padding: 14px 20px; border-radius: 10px; display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--panel-border); }
     .timeline-row { display: flex; align-items: center; gap: 12px; }
     .time-display { font-family: monospace; font-size: 0.9rem; color: var(--accent-color); min-width: 120px; }
-    button.btn-action { background: linear-gradient(135deg, #ff6b35, #f72585); color: white; border: none; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; }
+    button.btn-action { background: var(--accent-gradient); color: white; border: none; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; }
     button.btn-secondary { background: #2b2b38; border: 1px solid var(--panel-border); color: var(--text-main); padding: 10px 16px; border-radius: 6px; cursor: pointer; }
 
     .section-title { font-size: 0.9rem; font-weight: 700; color: var(--accent-color); text-transform: uppercase; margin-bottom: 6px; }
@@ -44,7 +44,7 @@
 </head>
 <body>
   <header>
-    <h1>🖌️ SRT 캘리그라피 스튜디오 v34 (정상화 + 진한 먹)</h1>
+    <h1>🖌️ SRT 캘리그라피 스튜디오 v1.001 (안정화)</h1>
   </header>
 
   <div class="main-container">
@@ -85,12 +85,12 @@
       <label for="mask-file-input" class="btn-file">🖼️ 흑백 마스크 (.png / .jpg)</label>
       <input type="file" id="mask-file-input" accept="image/*">
 
-      <div class="section-title">🖌️ 5. 붓터치 스타일</div>
+      <div class="section-title">🖌️ 5. 붓터치 스타일 (확실한 시각 효과)</div>
       <select id="morph-style">
-        <option value="vbp">🖌️ 가변 굵기 붓 (기본, 진하게)</option>
-        <option value="soft">🥚 둥글둥글 (부드러운 눌림)</option>
-        <option value="sharp">🗡️ 뾰족 (거친 빠른 붓)</option>
-        <option value="dry">💧 갈필 (마른 붓)</option>
+        <option value="vbp">🖌️ 가변 굵기 + 진한 먹 (기본)</option>
+        <option value="soft">🥚 둥글둥글 (부드러운 눌림, 두꺼움)</option>
+        <option value="sharp">🗡️ 뾰족 (거친 빠른 붓, 가늘게)</option>
+        <option value="dry">💧 갈필 (마른 붓, 농도 낮음)</option>
       </select>
 
       <div class="section-title">🎚️ 6. 필압 및 구도</div>
@@ -257,115 +257,56 @@
       ctx.restore();
     }
 
-    // 가변 폭 외곽선 패스 생성 (중심선이 아닌 "폭 있는" 실제 붓 패스 생성!)
-    function createBrushPath(glyphData, sp) {
-      const pts = glyphData.contours;
-      if (pts.length < 2) return null;
-
-      const leftPts = [];
-      const rightPts = [];
-      const baseWidth = 40 * sp.width * power();
-
-      for (let i = 0; i < pts.length; i++) {
-        const prev = pts[Math.max(0, i - 1)];
-        const next = pts[Math.min(pts.length - 1, i + 1)];
-        
-        // 중심선의 접선 벡터
-        let dx = next.x - prev.x;
-        let dy = next.y - prev.y;
-        const len = Math.hypot(dx, dy) || 1;
-        dx /= len; dy /= len;
-
-        // 법선 벡터
-        const nx = -dy;
-        const ny = dx;
-
-        // 필압에 따른 굵기
-        const t = pts.length > 1 ? i / (pts.length - 1) : 0;
-        let p = Math.pow(Math.sin(t * Math.PI * 0.88), 0.82);
-        p = 0.22 + p * 1.38;
-        if (t > 0.80) p *= (1 - (t - 0.80) / 0.20 * 0.70);
-        p = Math.max(0.10, p);
-
-        const w = baseWidth * p;
-
-        leftPts.push({ x: pts[i].x + nx * w / 2, y: pts[i].y + ny * w / 2 });
-        rightPts.push({ x: pts[i].x - nx * w / 2, y: pts[i].y - ny * w / 2 });
-      }
-
-      // 왼쪽 경로 + 오른쪽 경로 역순으로 연결
-      let d = `M ${leftPts[0].x} ${leftPts[0].y}`;
-      for (let i = 1; i < leftPts.length; i++) d += ` L ${leftPts[i].x} ${leftPts[i].y}`;
-      for (let i = rightPts.length - 1; i >= 0; i--) d += ` L ${rightPts[i].x} ${rightPts[i].y}`;
-      d += ' Z';
-
-      return new Path2D(d);
-    }
-
-    // Path2D를 가변 굵기로 렌더링
+    // [안전한 렌더링] Path2D의 외곽선을 직접 그리지 않고, 무조건 내부를 채운다.
     function drawBrushGlyph(targetCtx, glyphData, centerX, centerY, revealLength, fullyDone, seed, sp, char) {
-      if (!glyphData || !glyphData.contours) return;
+      if (!glyphData || !glyphData.p2d) return;
       const bbox = glyphData.bbox;
       const offX = centerX - (bbox.x1 + bbox.x2) / 2;
       const offY = centerY - (bbox.y1 + bbox.y2) / 2;
 
       targetCtx.save();
       targetCtx.translate(offX, offY);
-      targetCtx.globalAlpha = 1.0;
-
-      // [핵심 수정] Path2D를 항상 "FILL" (채움) 한다. 이렇게 하면 테두리만 남는 문제 해결.
-      // 완성 여부와 관계 없이 무조건 진한 먹으로 채워진다.
-      const brushPath = createBrushPath(glyphData, sp);
-      if (brushPath) {
-        targetCtx.fillStyle = targetCtx.fillStyle; // 색 유지
-        targetCtx.fill(brushPath, 'nonzero');
-      }
+      
+      // 쓰는 중이거나 완성이든 무조건 Path2D를 통째로 Fill() 한다.
+      targetCtx.fillStyle = targetCtx.fillStyle; // 색 유지
+      targetCtx.fill(glyphData.p2d, 'nonzero');
       
       targetCtx.restore();
     }
 
-    // Path 데이터를 점으로 변환
-    function commandsToPts(commands, fontSize) {
-      let pts = [];
-      let cx = 0, cy = 0, sx = 0, sy = 0;
-      const SEGMENTS = 16;
-      commands.forEach(c => {
-        if (c.type === 'M') { cx = c.x; cy = c.y; sx = cx; sy = cy; pts.push({x: cx, y: cy}); }
-        else if (c.type === 'L') { cx = c.x; cy = c.y; pts.push({x: cx, y: cy}); }
-        else if (c.type === 'C') {
-          for (let i = 1; i <= SEGMENTS; i++) { const t = i / SEGMENTS, mt = 1 - t; pts.push({ x: mt*mt*mt*cx + 3*mt*mt*t*c.x1 + 3*mt*t*t*c.x2 + t*t*t*c.x, y: mt*mt*mt*cy + 3*mt*mt*t*c.y1 + 3*mt*t*t*c.y2 + t*t*t*c.y }); }
-          cx = c.x; cy = c.y;
-        }
-        else if (c.type === 'Q') {
-          for (let i = 1; i <= SEGMENTS; i++) { const t = i / SEGMENTS, mt = 1 - t; pts.push({ x: mt*mt*cx + 2*mt*t*c.x1 + t*t*c.x, y: mt*mt*cy + 2*mt*t*c.y1 + t*t*c.y }); }
-          cx = c.x; cy = c.y;
-        }
-        else if (c.type === 'Z') { pts.push({x: sx, y: sy}); cx = sx; cy = sy; }
-      });
-      return pts;
-    }
-
+    // Path2D 데이터 생성 (안전)
     function getGlyphBrushData(char, fontSize) {
       const key = `${currentFont?.familyName || 'font'}|${char.codePointAt(0)}|${fontSize.toFixed(1)}`;
       if (glyphDataCache.has(key)) return glyphDataCache.get(key);
       
       const path = currentFont.getPath(char, 0, 0, fontSize);
       const bbox = path.getBoundingBox();
-      const commands = path.commands;
-      const pts = commandsToPts(commands, fontSize);
-
-      if (pts.length < 4) {
-        const emptyData = { contours: [], totalLength: 0, bbox, isBlank: true };
-        glyphDataCache.set(key, emptyData);
-        return emptyData;
-      }
       
-      let totalLength = 0;
-      for (let i = 1; i < pts.length; i++) totalLength += Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
-
-      const data = { contours: pts, totalLength, bbox, isBlank: false };
+      // Path2D 생성
+      let svgD = "";
+      try {
+        svgD = path.toPathData ? path.toPathData() : commandsToSvgD(path.commands);
+      } catch (e) {
+        svgD = commandsToSvgD(path.commands);
+      }
+      const p2d = new Path2D(svgD);
+      
+      const data = { p2d, bbox, isBlank: false };
       glyphDataCache.set(key, data);
       return data;
+    }
+
+    function commandsToSvgD(commands) {
+      return commands.map(c => {
+        switch(c.type) {
+          case 'M': return `M ${c.x} ${c.y}`;
+          case 'L': return `L ${c.x} ${c.y}`;
+          case 'C': return `C ${c.x1} ${c.y1} ${c.x2} ${c.y2} ${c.x} ${c.y}`;
+          case 'Q': return `Q ${c.x1} ${c.y1} ${c.x} ${c.y}`;
+          case 'Z': return 'Z';
+          default: return '';
+        }
+      }).join(' ');
     }
 
     function computeCharPlan(chars, sizes) {
@@ -374,7 +315,7 @@
         let data = null, length;
         if (ch !== ' ') {
           data = getGlyphBrushData(ch, sizes[i]);
-          length = Math.max(data.totalLength, sizes[i] * 0.2);
+          length = 300; // 진행 속도 기준
         } else {
           length = sizes[i] * 0.3;
         }
@@ -413,13 +354,14 @@
       return { positions, sizes, rawChars: positions.map(p => p.ch) };
     }
 
+    // [안전한 스타일] Path2D를 그리되, 필터/크기/투명도로 붓 느낌을 표현
     function getStyleParams(style) {
-      let sp = { width: 1.0, alpha: 1.0 };
+      let sp = { width: 1.0, blur: 0.0, alpha: 1.0 };
       switch(style) {
-        case 'soft': sp.width = 2.5; sp.alpha = 1.0; break;
-        case 'sharp': sp.width = 0.4; sp.alpha = 1.0; break;
-        case 'dry': sp.width = 1.2; sp.alpha = 0.8; break;
-        default: sp.width = 1.0; sp.alpha = 1.0; break;
+        case 'soft': sp.width = 1.5; sp.blur = 2; sp.alpha = 0.9; break; // 부드럽게
+        case 'sharp': sp.width = 0.8; sp.blur = 0; sp.alpha = 1.0; break; // 뾰족하게
+        case 'dry': sp.width = 1.0; sp.blur = 3; sp.alpha = 0.5; break; // 마르고 번짐
+        default: sp.width = 1.0; sp.blur = 1; sp.alpha = 1.0; break; // 기본 진한 먹
       }
       sp.width *= power();
       return sp;
@@ -437,9 +379,11 @@
 
       maskCtx.clearRect(0, 0, w, h);
       maskCtx.fillStyle = inkColor;
+      maskCtx.filter = `blur(${sp.blur}px)`; // 붓의 번짐 효과
+      maskCtx.globalAlpha = sp.alpha; // 농담 효과
 
       plan.forEach((item, i) => {
-        if (item.ch === ' ' || !item.data) return;
+        if (item.ch === ' ' || !item.data || !item.data.p2d) return;
         const pos = positions[i];
         
         maskCtx.save();
@@ -452,6 +396,9 @@
         
         maskCtx.restore();
       });
+
+      maskCtx.filter = 'none';
+      maskCtx.globalAlpha = 1;
 
       if (applyClip) { maskCtx.globalCompositeOperation = 'destination-in'; maskCtx.drawImage(maskImg, 0, 0, w, h); maskCtx.globalCompositeOperation = 'source-over'; }
       ctx.drawImage(maskCanvas, 0, 0);
