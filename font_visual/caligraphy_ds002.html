@@ -3,8 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SRT 캘리그라피 스튜디오 v3.0 (물리 기반 붓 엔진)</title>
-    
+    <title>SRT 캘리그라피 스튜디오 v3.1 (6대 결합형)</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Nanum+Brush+Script&display=swap" rel="stylesheet">
@@ -16,7 +15,7 @@
         body { font-family: 'Pretendard', sans-serif; background-color: var(--bg-dark); color: var(--text-main); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
         header { background: #18181c; padding: 15px 24px; border-bottom: 1px solid var(--panel-border); }
         .main-container { display: flex; flex: 1; overflow: hidden; }
-        .sidebar { width: 300px; background: var(--panel-bg); border-right: 1px solid var(--panel-border); padding: 20px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+        .sidebar { width: 340px; background: var(--panel-bg); border-right: 1px solid var(--panel-border); padding: 20px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
         .preview-area { flex: 1; display: flex; flex-direction: column; background: #f4ecd8; align-items: center; justify-content: center; padding: 20px; position: relative; }
         .canvas-wrapper { position: relative; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2); border-radius: 8px; overflow: hidden; max-width: 100%; max-height: 80vh; cursor: grab; background: #f4ecd8; }
         canvas { display: block; max-width: 100%; max-height: 80vh; object-fit: contain; pointer-events: none; }
@@ -27,6 +26,7 @@
         button.btn-action { background: linear-gradient(135deg, #ff6b35, #f72585); color: white; border: none; padding: 12px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 1.05rem; }
         button.btn-secondary { background: #2b2b38; border: 1px solid var(--panel-border); color: var(--text-main); padding: 12px 16px; border-radius: 6px; cursor: pointer; }
 
+        .section-title { font-size: 0.9rem; font-weight: 700; color: var(--accent-color); text-transform: uppercase; margin-bottom: 6px; }
         select, input[type="range"], input[type="text"], textarea { width: 100%; padding: 8px; background: #16161a; border: 1px solid var(--panel-border); border-radius: 6px; color: var(--text-main); font-size: 0.85rem; margin-bottom: 4px; }
         label { font-size: 0.82rem; color: var(--text-muted); display: flex; justify-content: space-between; margin-top: 6px; }
         input[type="file"] { display: none; }
@@ -43,7 +43,7 @@
 </head>
 <body>
     <header>
-        <h1>🖌️ SRT 캘리그라피 스튜디오 v3.0 (물리 엔진)</h1>
+        <h1>🖌️ SRT 캘리그라피 스튜디오 v3.1 (6대 결합 유형 자동 배치)</h1>
     </header>
 
     <div class="main-container">
@@ -63,7 +63,7 @@
             <textarea id="srt-textarea" style="height: 80px; background: #141418;"></textarea>
             <button class="btn-action" id="btn-apply-srt" style="width:100%; margin-bottom: 10px;">✏️ 자막 적용하기</button>
 
-            <div class="section-title">🎨 붓 물리 엔진 설정</div>
+            <div class="section-title">🎨 물리 엔진 설정</div>
             <label>붓털 개수 <span id="val-bristles">18</span></label>
             <input type="range" id="bristle-count" min="5" max="40" step="1" value="18">
             
@@ -73,9 +73,18 @@
             <label>전체 기울기 <span id="val-shear">0.0</span></label>
             <input type="range" id="global-shear" min="-0.5" max="0.5" step="0.01" value="0.0">
             
-            <label>먹 농도(알파) <span id="val-alpha">1.0</span></label>
-            <input type="range" id="global-alpha" min="0.3" max="1.0" step="0.05" value="1.0">
+            <div class="section-title">🔠 초성 수동 조정 (그리드 위 추가 이동)</div>
+            <input type="range" id="cho-x" min="-100" max="100" step="1" value="0" placeholder="X">
+            <input type="range" id="cho-y" min="-100" max="100" step="1" value="0" placeholder="Y">
+            
+            <div class="section-title">🟩 중성 수동 조정 (그리드 위 추가 이동)</div>
+            <input type="range" id="jung-x" min="-100" max="100" step="1" value="0" placeholder="X">
+            <input type="range" id="jung-y" min="-100" max="100" step="1" value="0" placeholder="Y">
 
+            <div class="section-title">🟦 종성 수동 조정 (그리드 위 추가 이동)</div>
+            <input type="range" id="jong-x" min="-100" max="100" step="1" value="0" placeholder="X">
+            <input type="range" id="jong-y" min="-100" max="100" step="1" value="0" placeholder="Y">
+            
             <label for="mask-file-input" class="btn-file" style="margin-top:10px;">🖼️ 마스크 (선택)</label>
             <input type="file" id="mask-file-input" accept="image/*">
             
@@ -114,40 +123,28 @@
         let hasMask = false;
         let currentMaskAlphaImage = null;
 
-        // [핵심] 물리 엔진 설정 (Bristle, Pressure)
+        // [핵심] 물리 엔진 설정
         let engine = {
             bristleCount: 18,
             baseRadius: 16,
-            alpha: 1.0,
             shear: 0.0
         };
 
-        // [핵심] 스타일러스/터치 좌표를 저장할 배열
-        let allPoints = [];
+        // [핵심] 수동 오프셋 (0이 기본)
+        let offsets = { cho: { x: 0, y: 0 }, jung: { x: 0, y: 0 }, jong: { x: 0, y: 0 } };
 
         // UI 바인딩
-        document.getElementById('bristle-count').addEventListener('input', (e) => {
-            engine.bristleCount = parseInt(e.target.value); 
-            document.getElementById('val-bristles').textContent = e.target.value;
-            renderFrame(currentTime);
-        });
-        document.getElementById('base-radius').addEventListener('input', (e) => {
-            engine.baseRadius = parseInt(e.target.value); 
-            document.getElementById('val-radius').textContent = e.target.value;
-            renderFrame(currentTime);
-        });
-        document.getElementById('global-alpha').addEventListener('input', (e) => {
-            engine.alpha = parseFloat(e.target.value); 
-            document.getElementById('val-alpha').textContent = e.target.value;
-            renderFrame(currentTime);
-        });
-        document.getElementById('global-shear').addEventListener('input', (e) => {
-            engine.shear = parseFloat(e.target.value); 
-            document.getElementById('val-shear').textContent = e.target.value;
-            renderFrame(currentTime);
-        });
+        document.getElementById('bristle-count').addEventListener('input', (e) => { engine.bristleCount = parseInt(e.target.value); document.getElementById('val-bristles').textContent = e.target.value; renderFrame(currentTime); });
+        document.getElementById('base-radius').addEventListener('input', (e) => { engine.baseRadius = parseInt(e.target.value); document.getElementById('val-radius').textContent = e.target.value; renderFrame(currentTime); });
+        document.getElementById('global-shear').addEventListener('input', (e) => { engine.shear = parseFloat(e.target.value); document.getElementById('val-shear').textContent = e.target.value; renderFrame(currentTime); });
 
-        // 로그
+        document.getElementById('cho-x').addEventListener('input', (e) => { offsets.cho.x = parseFloat(e.target.value); renderFrame(currentTime); });
+        document.getElementById('cho-y').addEventListener('input', (e) => { offsets.cho.y = parseFloat(e.target.value); renderFrame(currentTime); });
+        document.getElementById('jung-x').addEventListener('input', (e) => { offsets.jung.x = parseFloat(e.target.value); renderFrame(currentTime); });
+        document.getElementById('jung-y').addEventListener('input', (e) => { offsets.jung.y = parseFloat(e.target.value); renderFrame(currentTime); });
+        document.getElementById('jong-x').addEventListener('input', (e) => { offsets.jong.x = parseFloat(e.target.value); renderFrame(currentTime); });
+        document.getElementById('jong-y').addEventListener('input', (e) => { offsets.jong.y = parseFloat(e.target.value); renderFrame(currentTime); });
+
         function logMessage(msg) {
             const logDiv = document.getElementById('log-messages');
             const div = document.createElement('div');
@@ -156,12 +153,45 @@
             logDiv.prepend(div);
         }
 
-        // [핵심 1] 베지어 곡선을 위한 중간점(Midpoint) 계산 로직
+        // [핵심 1] 6대 결합 유형 분류
+        function getSyllableType(cho, jung, jong) {
+            const vertical = ['ㅏ', 'ㅐ', 'ㅑ', 'ㅒ', 'ㅓ', 'ㅔ', 'ㅕ', 'ㅖ', 'ㅣ'];
+            const horizontal = ['ㅗ', 'ㅛ', 'ㅜ', 'ㅠ', 'ㅡ'];
+            const compound = ['ㅘ', 'ㅙ', 'ㅚ', 'ㅝ', 'ㅞ', 'ㅟ', 'ㅢ'];
+
+            if (vertical.includes(jung)) return jong ? 'Type4' : 'Type1'; // 좌우상-하 vs 좌우
+            if (horizontal.includes(jung)) return jong ? 'Type5' : 'Type2'; // 3단 직렬 vs 상하
+            if (compound.includes(jung)) return jong ? 'Type6' : 'Type3'; // 감쌈+하단 vs 감쌈
+            return 'Type1'; // 예외 처리
+        }
+
+        // [핵심 2] 6가지 유형에 따른 그리드 좌표 (0.0 ~ 1.0)
+        function getGridPositions(type) {
+            // X 비율, Y 비율 (글자 박스 기준)
+            switch(type) {
+                case 'Type1': // 좌우 결합 (받침 X)
+                    return { cho: { x: 0.25, y: 0.5 }, jung: { x: 0.75, y: 0.5 }, jong: null };
+                case 'Type2': // 상하 결합 (받침 X)
+                    return { cho: { x: 0.5, y: 0.25 }, jung: { x: 0.5, y: 0.75 }, jong: null };
+                case 'Type3': // 복합 감쌈 (받침 X)
+                    return { cho: { x: 0.35, y: 0.35 }, jung: { x: 0.75, y: 0.75 }, jong: null };
+                case 'Type4': // 좌우상-하 (받침 O)
+                    return { cho: { x: 0.25, y: 0.25 }, jung: { x: 0.75, y: 0.25 }, jong: { x: 0.5, y: 0.75 } };
+                case 'Type5': // 3단 직렬 (받침 O)
+                    return { cho: { x: 0.5, y: 0.16 }, jung: { x: 0.5, y: 0.5 }, jong: { x: 0.5, y: 0.84 } };
+                case 'Type6': // 복합 감쌈-하단 (받침 O)
+                    return { cho: { x: 0.35, y: 0.25 }, jung: { x: 0.75, y: 0.65 }, jong: { x: 0.5, y: 0.9 } };
+                default: 
+                    return { cho: { x: 0.5, y: 0.5 }, jung: { x: 0.5, y: 0.5 }, jong: null };
+            }
+        }
+
+        // [핵심 3] 베지어 곡선을 위한 중간점 계산
         function getMidPoint(p1, p2) {
             return { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
         }
 
-        // [핵심 2] 초기화된 붓털들 (Multi-bristle)
+        // [핵심 4] 초기화된 붓털들
         function initBristles() {
             const bristles = [];
             for (let i = 0; i < engine.bristleCount; i++) {
@@ -170,19 +200,19 @@
                 bristles.push({
                     ox: Math.cos(angle) * dist,
                     oy: Math.sin(angle) * dist,
-                    alpha: 0.1 + Math.random() * 0.3 // 먹의 농담
+                    alpha: 0.1 + Math.random() * 0.3
                 });
             }
             return bristles;
         }
 
-        // [핵심 3] 글자의 벡터 경로를 추출하여 "점(Point) 배열"로 변환
+        // [핵심 5] 글자의 벡터 경로 추출
         function getPointsFromGlyph(char, size) {
             try {
                 const path = currentFont.getPath(char, 0, 0, size);
                 let pts = [];
                 let cx = 0, cy = 0, sx = 0, sy = 0;
-                const STEPS = 10; // 곡선을 세분화하여 부드러운 선을 만든다.
+                const STEPS = 10;
 
                 path.commands.forEach(c => {
                     if (c.type === 'M') { cx = c.x; cy = c.y; sx = cx; sy = cy; pts.push({x: cx, y: cy}); }
@@ -214,30 +244,24 @@
             } catch(e) { return []; }
         }
 
-        // [핵심 4] 물리 기반 브러시 렌더링 (중간점 베지어 + 붓털)
+        // [핵심 6] 물리 기반 브러시 렌더링
         function drawPhysicsStroke(targetCtx, pts, strokeSize, seed) {
             if (pts.length < 2) return;
 
-            // 압력 산출을 위한 초기화
-            let pressure = 0.6; // 기본 압력
-            let lastTime = 0;
+            let pressure = 0.6;
             let lastPoint = pts[0];
-
-            const bristles = initBristles(); // 18개의 붓털 초기화
+            const bristles = initBristles();
 
             for (let i = 0; i < pts.length; i++) {
                 const current = pts[i];
 
-                // [속도 기반 가상 필압 계산]
                 if (i > 0) {
                     const dist = Math.hypot(current.x - lastPoint.x, current.y - lastPoint.y);
                     const velocity = dist / 10;
-                    // 속도가 빠르면 압력이 낮아짐 (가늘어짐)
                     pressure = Math.max(0.2, Math.min(1.0, 1.2 - velocity * 0.1));
                 }
                 lastPoint = current;
 
-                // 3점 이상 모였을 때 베지어 곡선 적용
                 if (i > 1) {
                     const p0 = pts[i - 2];
                     const p1 = pts[i - 1];
@@ -248,13 +272,12 @@
                     
                     const currentRadius = strokeSize * pressure;
 
-                    // 붓털 랜더링 (Bristles)
                     bristles.forEach(b => {
                         const offsetX = b.ox * currentRadius;
                         const offsetY = b.oy * currentRadius;
 
                         targetCtx.beginPath();
-                        targetCtx.strokeStyle = `rgba(30, 30, 30, ${b.alpha * engine.alpha})`;
+                        targetCtx.strokeStyle = `rgba(30, 30, 30, ${b.alpha})`;
                         targetCtx.lineWidth = Math.max(0.8, pressure * 2.5);
                         targetCtx.lineCap = 'round';
                         targetCtx.lineJoin = 'round';
@@ -270,11 +293,9 @@
             }
         }
 
-        // [핵심 5] 렌더링 메인
+        // [핵심 7] 렌더링 메인
         function renderFrame(timeSec) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            // 한지 배경
             ctx.fillStyle = '#f4ecd8';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -289,34 +310,87 @@
             if (!activeSubtitle) return;
             const text = activeSubtitle.text.trim();
 
-            // 전체 기울기 적용
             ctx.save();
             ctx.translate(canvas.width / 2, canvas.height / 2);
             ctx.transform(1, engine.shear, 0, 1, 0, 0);
             ctx.translate(-canvas.width / 2, -canvas.height / 2);
 
-            // 글자 배치 및 렌더링 (물리 브러시)
             let currentX = canvas.width * 0.1;
             const fontSize = 180;
             const lineHeight = fontSize * 1.6;
             let currentY = canvas.height / 2 - lineHeight / 2;
 
+            // [유니코드 분해]
+            const CHO = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
+            const JUNG = ['ㅏ', 'ㅐ', 'ㅑ', 'ㅒ', 'ㅓ', 'ㅔ', 'ㅕ', 'ㅖ', 'ㅗ', 'ㅘ', 'ㅙ', 'ㅚ', 'ㅛ', 'ㅜ', 'ㅝ', 'ㅞ', 'ㅟ', 'ㅠ', 'ㅡ', 'ㅢ', 'ㅣ'];
+            const JONG = ['', 'ㄱ', 'ㄲ', 'ㄳ', 'ㄴ', 'ㄵ', 'ㄶ', 'ㄷ', 'ㄹ', 'ㄺ', 'ㄻ', 'ㄼ', 'ㄽ', 'ㄾ', 'ㄿ', 'ㅀ', 'ㅁ', 'ㅂ', 'ㅄ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
+
             for (let char of text) {
                 if (char === '\n') { currentY += lineHeight; currentX = canvas.width * 0.1; continue; }
                 
-                let charWidth = currentFont.getAdvanceWidth(char, fontSize) + 30; // 자간
+                let charWidth = currentFont.getAdvanceWidth(char, fontSize) + 30; 
 
-                // [핵심] Opentype 좌표계를 캔버스 좌표계로 변환 (Y축 뒤집기)
                 ctx.save();
                 ctx.translate(currentX, currentY);
-                ctx.scale(1, -1);
+                ctx.scale(1, -1); // Y축 뒤집기
 
-                // [핵심] 글자의 점(Point) 추출
-                const glyphPoints = getPointsFromGlyph(char, fontSize);
+                // [1] 전체 글자의 BBox를 구해 그리드를 설정
+                let fullBBox;
+                try { fullBBox = currentFont.getPath(char, 0, 0, fontSize).getBoundingBox(); } catch(e) { fullBBox = {x1: 0, y1: -fontSize, x2: fontSize, y2: 0}; }
 
-                // [핵심] 물리 엔진으로 점들을 그리기
-                if (glyphPoints.length > 0) {
-                    drawPhysicsStroke(ctx, glyphPoints, engine.baseRadius);
+                // [2] 유니코드 분해
+                const code = char.charCodeAt(0);
+                let parts = { cho: null, jung: null, jong: null };
+                if (code >= 0xAC00 && code <= 0xD7A3) {
+                    const L = Math.floor((code - 0xAC00) / 588);
+                    const V = Math.floor((code - 0xAC00 - L * 588) / 28);
+                    const T = Math.floor((code - 0xAC00 - L * 588 - V * 28));
+                    parts = { cho: CHO[L], jung: JUNG[V], jong: JONG[T] };
+                }
+
+                // [3] 6대 결합 유형 판별 및 그리드 좌표 가져오기
+                if (parts.cho && parts.jung) {
+                    const type = getSyllableType(parts.cho, parts.jung, parts.jong);
+                    const grid = getGridPositions(type);
+
+                    const fullW = fullBBox.x2 - fullBBox.x1;
+                    const fullH = fullBBox.y2 - fullBBox.y1;
+
+                    const drawComponent = (compChar, gridPos, offset) => {
+                        if (!compChar) return;
+                        const pts = getPointsFromGlyph(compChar, fontSize);
+                        if (pts.length === 0) return;
+
+                        // 자모의 중심점
+                        let compBBox;
+                        try { compBBox = currentFont.getPath(compChar, 0, 0, fontSize).getBoundingBox(); } catch(e) { compBBox = {x1: 0, y1: -fontSize, x2: fontSize, y2: 0}; }
+                        const compCX = (compBBox.x1 + compBBox.x2) / 2;
+                        const compCY = (compBBox.y1 + compBBox.y2) / 2;
+
+                        // 그리드 상의 목표 중심 좌표 (BBox 전체에서의 비율)
+                        const targetX = fullBBox.x1 + (gridPos.x * fullW);
+                        const targetY = fullBBox.y1 + (gridPos.y * fullH);
+
+                        // 이동 오프셋 계산 + 사용자 수동 오프셋
+                        const moveX = (targetX - compCX) + offset.x;
+                        const moveY = (targetY - compCY) + offset.y;
+
+                        ctx.save();
+                        ctx.translate(moveX, moveY);
+                        drawPhysicsStroke(ctx, pts, engine.baseRadius);
+                        ctx.restore();
+                    };
+
+                    drawComponent(parts.cho, grid.cho, offsets.cho);
+                    drawComponent(parts.jung, grid.jung, offsets.jung);
+                    if (parts.jong) {
+                        drawComponent(parts.jong, grid.jong, offsets.jong);
+                    }
+
+                } else {
+                    // 영어, 숫자 등 자모 분해가 안 되는 글자는 전체를 그대로 그리기
+                    const pts = getPointsFromGlyph(char, fontSize);
+                    if (pts.length > 0) drawPhysicsStroke(ctx, pts, engine.baseRadius);
                 }
 
                 ctx.restore(); // 좌표계 복원
@@ -327,15 +401,6 @@
 
             ctx.restore(); // 기울기 복원
 
-            // [핵심 6] 먹 번짐 (Ink Bleed)
-            if (!isRecording) {
-                ctx.filter = 'blur(1.5px)';
-                ctx.globalCompositeOperation = 'multiply';
-                ctx.drawImage(canvas, 0, 0);
-                ctx.globalCompositeOperation = 'source-over';
-                ctx.filter = 'none';
-            }
-
             if (isRecording && hasMask && currentMaskAlphaImage) {
                 ctx.globalCompositeOperation = 'destination-in';
                 ctx.drawImage(currentMaskAlphaImage, 0, 0, canvas.width, canvas.height);
@@ -343,7 +408,7 @@
             }
         }
 
-        // 기본 함수
+        // 파싱 및 기타 기본 함수
         function parseSRT(text){ const n=text.replace(/\r/g,'\n'); const b=n.split('\n\n'); const r=[]; for(let bl of b){ const l=bl.trim().split('\n'); if(l.length>=3){ const tm=l[1].match(/(.*?)\s*-->\s*(.*)/); if(tm){ r.push({ id:l[0], start:parseTime(tm[1]), end:parseTime(tm[2]), text:l.slice(2).join('\n') }); } } } return r; }
         function parseTime(t){ if(!t) return 0; const p=t.trim().replace(',','.').split(':'); return(+p[0]||0)*3600+(+p[1]||0)*60+(+p[2]||0); }
         
@@ -360,7 +425,7 @@
                 d.innerHTML = `<span>#${i.id}</span> <span>${i.text.replace('\n',' ')}</span>`;
                 el.appendChild(d);
             });
-            logMessage("✅ 자막 적용 완료");
+            logMessage("✅ 자막 적용 완료 (6대 결합 유형 배치)");
             renderFrame(0);
         }
 
