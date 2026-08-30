@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SRT 캘리그라피 스튜디오 v1.034 Pro Fix</title>
+    <title>SRT 캘리그라피 스튜디오 v1.036 (SRT 로딩 수정)</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Nanum+Brush+Script&display=swap" rel="stylesheet">
@@ -46,9 +46,10 @@
         .char-controls.active { display: block; }
 
         .style-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 8px; }
-        .style-check { background: #2a2a36; border: 1px solid #444; border-radius: 6px; padding: 6px 2px; text-align: center; cursor: pointer; font-size: 0.75rem; user-select: none; }
+        .style-check { background: #2a2a36; border: 1px solid #444; border-radius: 6px; padding: 6px; text-align: center; cursor: pointer; font-size: 0.75rem; }
         .style-check:hover { border-color: var(--accent-color); }
         .style-check.active { background: var(--accent-color); color: white; border-color: var(--accent-color); font-weight: bold; }
+        .style-check input { display: none; }
 
         #log-panel { position: fixed; right: 300px; top: 10px; width: 240px; max-height: 80vh; background: rgba(30, 30, 36, 0.95); border: 1px solid var(--panel-border); border-radius: 8px; padding: 12px; overflow-y: auto; z-index: 999; font-size: 0.75rem; }
         #log-panel h3 { color: var(--accent-color); margin-bottom: 8px; font-size: 0.95rem; border-bottom: 1px solid #444; padding-bottom: 4px; }
@@ -57,7 +58,7 @@
 </head>
 <body>
     <header>
-        <h1>🖌️ SRT 캘리그라피 스튜디오 v1.034 Pro Fix</h1>
+        <h1>🖌️ SRT 캘리그라피 스튜디오 v1.036 (SRT 로딩 수정)</h1>
     </header>
     <div class="main-container">
         <!-- 좌측 패널 -->
@@ -67,15 +68,15 @@
             <input type="file" id="ttf-input" accept=".ttf, .otf">
             <div id="font-status" style="font-size: 0.75rem; color: #7cd992;">기본 나눔붓글씨 로드 완료</div>
             <select id="aspect-ratio-select">
-                <option value="16:9" selected>🖥️ 16:9 가로 (1920x1080)</option>
-                <option value="9:16">📱 9:16 세로 쇼츠 (1080x1920)</option>
+                <option value="16:9" selected>🖥️ 16:9 가로</option>
+                <option value="9:16">📱 9:16 세로 쇼츠</option>
             </select>
             <label for="srt-input" class="btn-file">📁 SRT 파일 불러오기</label>
             <input type="file" id="srt-input" accept=".srt">
-            <textarea id="srt-textarea" style="height: 55px;"></textarea>
+            <textarea id="srt-textarea" style="height: 55px;" placeholder="또는 SRT 내용을 직접 입력하세요"></textarea>
             <button class="btn-action" id="btn-apply-srt" style="width:100%;">자막 분석 적용</button>
 
-            <div class="section-title">🎨 전체 문장 붓터치 (중복 조합)</div>
+            <div class="section-title">🎨 전체 문장 붓터치 (중복 선택)</div>
             <div id="global-style-grid" class="style-grid"></div>
 
             <div class="section-title">🎚️ 전역 수동 조정</div>
@@ -84,7 +85,7 @@
             <label>전체 기울기 <span id="val-shear">-0.08</span></label>
             <input type="range" id="global-shear" min="-0.3" max="0.3" step="0.01" value="-0.08">
             
-            <div class="section-title">🔷 메쉬 왜곡 (Bilinear FFD)</div>
+            <div class="section-title">🔷 메쉬 왜곡 (수동)</div>
             <label>초성 강조 <span id="val-cho-warp">0.20</span></label>
             <input type="range" id="cho-warp" min="-0.5" max="0.8" step="0.05" value="0.20">
             <label>중성 신장 <span id="val-jung-warp">0.15</span></label>
@@ -94,7 +95,7 @@
 
             <div class="section-title">📤 에셋 추출</div>
             <button class="btn-secondary" id="btn-svg" style="width:100%;">📐 실벡터 SVG 추출</button>
-            <button class="btn-action" id="btn-offline" style="width:100%; margin-top: 4px;">🔴 60FPS 무손실 WebM (ZIP 폴백)</button>
+            <button class="btn-action" id="btn-offline" style="width:100%; margin-top: 4px;">🔴 60FPS 무손실 WebM</button>
             
             <label for="mask-file-input" class="btn-file" style="margin-top:6px;">🖼️ 화선지 마스크</label>
             <input type="file" id="mask-file-input" accept="image/*">
@@ -127,7 +128,7 @@
             <div id="char-controls" class="char-controls">
                 <div class="section-title" id="char-target-title" style="font-size: 0.8rem; margin-bottom: 8px;">글자 변형</div>
                 
-                <label>이 글자의 붓터치 조합</label>
+                <label>이 글자에 적용할 붓터치</label>
                 <div id="char-style-grid" class="style-grid"></div>
 
                 <label>개별 X 이동 <span id="val-c-x">0px</span></label>
@@ -151,7 +152,6 @@
     </div>
 
     <script>
-        // 9가지 붓터치 스타일 정의
         const styleList = [
             { id: 'soft', name: '둥글둥글' },
             { id: 'sharp', name: '뾰족' },
@@ -165,21 +165,19 @@
         ];
 
         const styleParams = {
-            soft:     { spacing: 0.85, shear: -0.04, bristles: 24, whiskerLen: 4,  infillDepth: 0.50, choWarp: 0.25, jungWarp: 0.10, jongWarp: 0.20 },
-            sharp:    { spacing: 0.94, shear: -0.12, bristles: 8,  whiskerLen: 20, infillDepth: 0.30, choWarp: 0.10, jungWarp: 0.30, jongWarp: 0.15 },
-            contrast: { spacing: 0.88, shear: -0.08, bristles: 16, whiskerLen: 12, infillDepth: 0.70, choWarp: 0.40, jungWarp: 0.05, jongWarp: 0.45 },
+            soft:     { spacing: 0.85, shear: -0.04, bristles: 24, whiskerLen: 4,  infillDepth: 0.5,  choWarp: 0.25, jungWarp: 0.10, jongWarp: 0.20 },
+            sharp:    { spacing: 0.94, shear: -0.12, bristles: 8,  whiskerLen: 20, infillDepth: 0.3,  choWarp: 0.10, jungWarp: 0.30, jongWarp: 0.15 },
+            contrast: { spacing: 0.88, shear: -0.08, bristles: 16, whiskerLen: 12, infillDepth: 0.7,  choWarp: 0.40, jungWarp: 0.05, jongWarp: 0.45 },
             ink:      { spacing: 0.88, shear: -0.08, bristles: 18, whiskerLen: 10, infillDepth: 0.95, choWarp: 0.20, jungWarp: 0.15, jongWarp: 0.25 },
-            deform:   { spacing: 0.90, shear: -0.08, bristles: 14, whiskerLen: 8,  infillDepth: 0.60, choWarp: 0.50, jungWarp: 0.40, jongWarp: 0.30 },
-            curve:    { spacing: 0.80, shear: -0.02, bristles: 16, whiskerLen: 10, infillDepth: 0.60, choWarp: 0.10, jungWarp: 0.50, jongWarp: 0.10 },
-            seal:     { spacing: 0.72, shear: 0.00,  bristles: 32, whiskerLen: 0,  infillDepth: 0.90, choWarp: 0.70, jungWarp: 0.70, jongWarp: 0.70 },
+            deform:   { spacing: 0.90, shear: -0.08, bristles: 14, whiskerLen: 8,  infillDepth: 0.6,  choWarp: 0.50, jungWarp: 0.40, jongWarp: 0.30 },
+            curve:    { spacing: 0.80, shear: -0.02, bristles: 16, whiskerLen: 10, infillDepth: 0.6,  choWarp: 0.10, jungWarp: 0.50, jongWarp: 0.10 },
+            seal:     { spacing: 0.72, shear: 0.00,  bristles: 32, whiskerLen: 0,  infillDepth: 0.9,  choWarp: 0.80, jungWarp: 0.80, jongWarp: 0.80 },
             dry:      { spacing: 0.92, shear: -0.05, bristles: 8,  whiskerLen: 24, infillDepth: 0.25, choWarp: 0.15, jungWarp: 0.10, jongWarp: 0.20 },
-            bold:     { spacing: 0.82, shear: -0.10, bristles: 26, whiskerLen: 8,  infillDepth: 0.90, choWarp: 0.30, jungWarp: 0.20, jongWarp: 0.35 }
+            bold:     { spacing: 0.82, shear: -0.10, bristles: 26, whiskerLen: 8,  infillDepth: 0.9,  choWarp: 0.30, jungWarp: 0.20, jongWarp: 0.35 }
         };
 
-        const defaultSettings = { spacing: 0.88, shear: -0.08, bristles: 16, whiskerLen: 12, infillDepth: 0.70, choWarp: 0.20, jungWarp: 0.15, jongWarp: 0.25 };
-        let settings = { ...defaultSettings };
+        let settings = { spacing: 0.88, shear: -0.08, bristles: 16, whiskerLen: 12, infillDepth: 0.70, choWarp: 0.20, jungWarp: 0.15, jongWarp: 0.25 };
         let selectedGlobalStyles = [];
-
         let charOverrides = {};
         let selectedCharIndex = null;
         let lastBuiltText = "";
@@ -201,6 +199,7 @@
         let isRecording = false, mediaRecorder = null, recordedChunks = [], stream = null;
         let lastRenderedPaths = [], lastBrushStrokes = [];
 
+        // 스타일 체크박스 그리드 생성 함수
         function createStyleGrid(containerId, callback) {
             const container = document.getElementById(containerId);
             container.innerHTML = '';
@@ -219,7 +218,9 @@
         }
 
         function calculateSettings(selectedIds) {
-            if (selectedIds.length === 0) return { ...defaultSettings };
+            if (selectedIds.length === 0) {
+                return { spacing: 0.88, shear: -0.08, bristles: 16, whiskerLen: 12, infillDepth: 0.70, choWarp: 0.20, jungWarp: 0.15, jongWarp: 0.25 };
+            }
             const keys = ['spacing', 'shear', 'bristles', 'whiskerLen', 'infillDepth', 'choWarp', 'jungWarp', 'jongWarp'];
             let sum = {}; keys.forEach(k => sum[k] = 0);
             selectedIds.forEach(id => {
@@ -231,11 +232,9 @@
             return result;
         }
 
-        // 전역 스타일 콜백
         createStyleGrid('global-style-grid', (selected) => {
             selectedGlobalStyles = selected;
             settings = { ...settings, ...calculateSettings(selected) };
-            
             document.getElementById('global-spacing').value = settings.spacing;
             document.getElementById('val-spacing').textContent = settings.spacing.toFixed(2);
             document.getElementById('global-shear').value = settings.shear;
@@ -246,28 +245,16 @@
             document.getElementById('val-jung-warp').textContent = settings.jungWarp.toFixed(2);
             document.getElementById('jong-warp').value = settings.jongWarp;
             document.getElementById('val-jong-warp').textContent = settings.jongWarp.toFixed(2);
-            
             renderFrame(currentTime);
-            logMessage(`전역 붓터치 조합: ${selected.length ? selected.join('+') : '기본'}`);
+            logMessage(`전역 붓터치 조합 적용: ${selected.length}개 선택`);
         });
 
-        // [버그 ② 수정] 개별 글자 스타일 콜백: 스타일 변경 시 슬라이더와 데이터 즉시 동기화
         createStyleGrid('char-style-grid', (selected) => {
             if (selectedCharIndex === null) return;
             if (!charOverrides[selectedCharIndex]) {
-                charOverrides[selectedCharIndex] = { dx: 0, dy: 0, scale: 1.0 };
+                charOverrides[selectedCharIndex] = { dx: 0, dy: 0, scale: 1.0, styles: [] };
             }
             charOverrides[selectedCharIndex].styles = selected;
-            
-            if (selected.length > 0) {
-                const computed = calculateSettings(selected);
-                charOverrides[selectedCharIndex].whiskerLen = Math.round(computed.whiskerLen);
-                charOverrides[selectedCharIndex].infillDepth = parseFloat(computed.infillDepth.toFixed(2));
-            } else {
-                delete charOverrides[selectedCharIndex].whiskerLen;
-                delete charOverrides[selectedCharIndex].infillDepth;
-            }
-            syncCharControls();
             renderFrame(currentTime);
         });
 
@@ -275,26 +262,18 @@
             const controls = document.getElementById('char-controls');
             if (selectedCharIndex === null) { controls.classList.remove('active'); return; }
             controls.classList.add('active');
-            
             const o = charOverrides[selectedCharIndex] || {};
-            const effectiveSettings = getLocalSettings(selectedCharIndex);
             
-            const dx = o.dx !== undefined ? o.dx : 0;
-            const dy = o.dy !== undefined ? o.dy : 0;
-            const sc = o.scale !== undefined ? o.scale : 1.0;
-            const wl = effectiveSettings.whiskerLen;
-            const id = effectiveSettings.infillDepth;
-
-            document.getElementById('char-x').value = dx;
-            document.getElementById('val-c-x').textContent = dx + 'px';
-            document.getElementById('char-y').value = dy;
-            document.getElementById('val-c-y').textContent = dy + 'px';
-            document.getElementById('char-scale').value = sc;
-            document.getElementById('val-c-scale').textContent = sc.toFixed(2) + 'x';
-            document.getElementById('char-whisker').value = wl;
-            document.getElementById('val-c-whisk').textContent = wl;
-            document.getElementById('char-infill').value = id;
-            document.getElementById('val-c-infill').textContent = id.toFixed(2);
+            document.getElementById('char-x').value = o.dx || 0;
+            document.getElementById('val-c-x').textContent = (o.dx || 0) + 'px';
+            document.getElementById('char-y').value = o.dy || 0;
+            document.getElementById('val-c-y').textContent = (o.dy || 0) + 'px';
+            document.getElementById('char-scale').value = o.scale || 1.0;
+            document.getElementById('val-c-scale').textContent = (o.scale || 1.0).toFixed(2) + 'x';
+            document.getElementById('char-whisker').value = (o.whiskerLen !== undefined ? o.whiskerLen : settings.whiskerLen);
+            document.getElementById('val-c-whisk').textContent = (o.whiskerLen !== undefined ? o.whiskerLen : settings.whiskerLen);
+            document.getElementById('char-infill').value = (o.infillDepth !== undefined ? o.infillDepth : settings.infillDepth);
+            document.getElementById('val-c-infill').textContent = (o.infillDepth !== undefined ? o.infillDepth : settings.infillDepth).toFixed(2);
 
             const grid = document.getElementById('char-style-grid');
             grid.querySelectorAll('.style-check').forEach(el => {
@@ -347,7 +326,6 @@
             charOverrides = {};
             syncCharControls();
             renderFrame(currentTime);
-            logMessage("모든 글자 개별 설정 초기화");
         });
 
         function logMessage(msg) {
@@ -367,7 +345,6 @@
             };
         }
 
-        // [버그 ② 수정] 전역과 개별 스타일 우선순위 완벽 정리
         function getLocalSettings(charIndex) {
             let base = { ...settings };
             const o = charOverrides[charIndex];
@@ -375,11 +352,11 @@
                 if (o.styles && o.styles.length > 0) {
                     base = { ...base, ...calculateSettings(o.styles) };
                 }
-                const cleanOverride = {};
-                for (let k in o) {
-                    if (o[k] !== undefined && k !== 'styles') cleanOverride[k] = o[k];
-                }
-                return { ...base, ...cleanOverride };
+                if (o.dx !== undefined) base.dx = o.dx;
+                if (o.dy !== undefined) base.dy = o.dy;
+                if (o.scale !== undefined) base.scale = o.scale;
+                if (o.whiskerLen !== undefined) base.whiskerLen = o.whiskerLen;
+                if (o.infillDepth !== undefined) base.infillDepth = o.infillDepth;
             }
             return base;
         }
@@ -450,7 +427,9 @@
                 path.commands.forEach(c => {
                     if (c.type === 'M') {
                         if (current.length > 0) contours.push(current);
-                        current = []; cx = c.x; cy = c.y; current.push({x: cx, y: cy});
+                        current = [];
+                        cx = c.x; cy = c.y;
+                        current.push({x: cx, y: cy});
                     } else if (c.type === 'L') { cx = c.x; cy = c.y; current.push({x: cx, y: cy}); }
                     else if (c.type === 'C') {
                         for (let i = 1; i <= STEPS; i++) {
@@ -475,7 +454,6 @@
             } catch(e) { return { contours: [], bbox: {x1:0, y1:0, x2:0, y2:0} }; }
         }
 
-        // [버그 ③ 수정] 로컬 좌표계 유지 및 SVG 이중 변환 제거
         function renderCalligraphyGlyph(targetCtx, char, fontSize, seed, isSvgRecord, globalX, globalY, charIndex) {
             const localSettings = getLocalSettings(charIndex);
             const { contours, bbox } = extractContoursFromGlyph(char, fontSize);
@@ -491,12 +469,13 @@
             const centerX = (bbox.x1 + bbox.x2) * 0.5;
             const centerY = (bbox.y1 + bbox.y2) * 0.5;
 
+            const transformStr = `translate(${globalX + centerX + offsetX}, ${globalY + centerY + offsetY}) scale(${scale}) translate(${-centerX}, ${-centerY})`;
+
             targetCtx.save();
             targetCtx.translate(centerX + offsetX, centerY + offsetY);
             targetCtx.scale(scale, scale);
             targetCtx.translate(-centerX, -centerY);
 
-            // 1. 솔리드 베이스 (로컬 좌표계)
             targetCtx.beginPath();
             let svgPathData = "";
             warpedContours.forEach(pts => {
@@ -515,13 +494,11 @@
             });
             targetCtx.fillStyle = 'rgba(24, 24, 26, 0.94)';
             targetCtx.fill('evenodd');
-
-            const gTransform = `translate(${globalX + centerX + offsetX}, ${globalY + centerY + offsetY}) scale(${scale}) translate(${-centerX}, ${-centerY})`;
             if (isSvgRecord) {
-                lastRenderedPaths.push({ d: svgPathData, transform: gTransform });
+                lastRenderedPaths.push({ d: svgPathData, transform: transformStr });
             }
 
-            // 2. 먹물 침윤 브러시 (로컬 좌표 그대로 기록)
+            targetCtx.save();
             const strokeCount = localSettings.bristles;
             warpedContours.forEach(pts => {
                 const len = pts.length;
@@ -544,20 +521,19 @@
                         targetCtx.moveTo(px, py);
                         targetCtx.lineTo(qx, qy);
                         targetCtx.stroke();
-
                         if (isSvgRecord && b % 3 === 0) {
                             lastBrushStrokes.push({
                                 d: `M ${px.toFixed(1)} ${py.toFixed(1)} L ${qx.toFixed(1)} ${qy.toFixed(1)}`,
                                 stroke: `rgba(18,18,20,0.18)`,
                                 width: `1.0`,
-                                transform: gTransform
+                                transform: transformStr
                             });
                         }
                     }
                 }
             });
+            targetCtx.restore();
 
-            // 3. 수필(삐침) 사출 (로컬 좌표 그대로 기록)
             const whiskers = generateSharpWhiskers(warpedContours, randGen, localSettings);
             whiskers.forEach(wh => {
                 targetCtx.beginPath();
@@ -569,7 +545,12 @@
                     targetCtx.quadraticCurveTo(parseFloat(m[3]), parseFloat(m[4]), parseFloat(m[5]), parseFloat(m[6]));
                     targetCtx.stroke();
                     if (isSvgRecord) {
-                        lastBrushStrokes.push({ d: wh.d, stroke: wh.stroke, width: wh.width, transform: gTransform });
+                        lastBrushStrokes.push({
+                            d: wh.d,
+                            stroke: wh.stroke,
+                            width: wh.width,
+                            transform: transformStr
+                        });
                     }
                 }
             });
@@ -590,9 +571,7 @@
                         if ((cur + ' ' + w).trim().length > maxChars) {
                             if (cur) result.push(cur.trim());
                             cur = w;
-                        } else {
-                            cur = (cur + ' ' + w).trim();
-                        }
+                        } else { cur = (cur + ' ' + w).trim(); }
                     });
                     if (cur) result.push(cur.trim());
                 }
@@ -614,18 +593,14 @@
 
             const text = activeSubtitle.text.trim();
             
-            // [버그 ④ 수정] 텍스트 변경 시 글자 칩 갱신 및 인덱스 안전 보정
             if (lastBuiltText !== text) {
                 lastBuiltText = text;
+                selectedCharIndex = null;
+                syncCharControls();
+                
                 const cleanChars = Array.from(text.replace(/\s/g, ''));
                 const charListContainer = document.getElementById('char-list');
                 charListContainer.innerHTML = '';
-                
-                if (selectedCharIndex !== null && selectedCharIndex >= cleanChars.length) {
-                    selectedCharIndex = null;
-                    syncCharControls();
-                }
-
                 cleanChars.forEach((char, idx) => {
                     const btn = document.createElement('div');
                     btn.className = 'char-chip' + (idx === selectedCharIndex ? ' active' : '');
@@ -685,66 +660,43 @@
             ctx.drawImage(scratchCv, 0, 0);
         }
 
-        // SVG 내보내기 (일러스트레이터 100% 일치)
         document.getElementById('btn-svg').addEventListener('click', () => {
             if (lastRenderedPaths.length === 0) { alert("현재 캔버스에 표시된 글씨가 없습니다."); return; }
-
             let svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${canvas.width} ${canvas.height}" width="${canvas.width}" height="${canvas.height}">\n`;
             svgContent += `<rect width="100%" height="100%" fill="#f4ecd8"/>\n`;
-            
             const shearAngleDeg = Math.atan(settings.shear) * (180 / Math.PI);
             svgContent += `<g transform="translate(${canvas.width*0.5},${canvas.height*0.5}) skewY(${shearAngleDeg.toFixed(2)}) translate(${-canvas.width*0.5},${-canvas.height*0.5})">\n`;
-            
-            lastRenderedPaths.forEach(pathObj => {
-                svgContent += `  <g transform="${pathObj.transform}"><path d="${pathObj.d}" fill="#18181a" fill-rule="evenodd"/></g>\n`;
-            });
-            lastBrushStrokes.forEach(st => {
-                svgContent += `  <g transform="${st.transform}"><path d="${st.d}" fill="none" stroke="${st.stroke}" stroke-width="${st.width}" stroke-linecap="round"/></g>\n`;
-            });
-
+            lastRenderedPaths.forEach(pathObj => { svgContent += `  <g transform="${pathObj.transform}"><path d="${pathObj.d}" fill="#18181a" fill-rule="evenodd"/></g>\n`; });
+            lastBrushStrokes.forEach(st => { svgContent += `  <g transform="${st.transform}"><path d="${st.d}" fill="none" stroke="${st.stroke}" stroke-width="${st.width}" stroke-linecap="round"/></g>\n`; });
             svgContent += `</g>\n</svg>`;
 
             const blob = new Blob([svgContent], {type: 'image/svg+xml'});
             const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `Calligraphy_Vector_${Date.now()}.svg`;
-            a.click();
+            const a = document.createElement('a'); a.href = url; a.download = `Calligraphy_Vector_${Date.now()}.svg`; a.click();
             URL.revokeObjectURL(url);
             logMessage("✅ 실벡터 SVG 추출 완료");
         });
 
-        // 비디오 제어
         function togglePlay() { isPlaying ? pause() : play(); }
         function play() { if (isPlaying) return; isPlaying = true; lastTimestamp = 0; animationFrameId = requestAnimationFrame(animate); }
         function pause() { isPlaying = false; if (animationFrameId) cancelAnimationFrame(animationFrameId); }
-        
         function animate(t) {
             if (!isPlaying) return;
             if (!lastTimestamp) lastTimestamp = t;
             currentTime += (t - lastTimestamp) / 1000;
             lastTimestamp = t;
-
             if (currentTime > totalDuration) {
                 if (isRecording && mediaRecorder && mediaRecorder.state === 'recording') {
                     currentTime = totalDuration; renderFrame(currentTime); pause(); mediaRecorder.stop(); return;
-                } else {
-                    currentTime = 0;
-                }
+                } else { currentTime = 0; }
             }
-
             document.getElementById('time-slider').value = currentTime;
             document.getElementById('time-display').textContent = `${formatTime(currentTime)} / ${formatTime(totalDuration)}`;
             renderFrame(currentTime);
             animationFrameId = requestAnimationFrame(animate);
         }
-
         document.getElementById('btn-play').addEventListener('click', togglePlay);
-        document.getElementById('time-slider').addEventListener('input', (e) => {
-            currentTime = parseFloat(e.target.value);
-            document.getElementById('time-display').textContent = `${formatTime(currentTime)} / ${formatTime(totalDuration)}`;
-            renderFrame(currentTime);
-        });
+        document.getElementById('time-slider').addEventListener('input', (e) => { currentTime = parseFloat(e.target.value); document.getElementById('time-display').textContent = `${formatTime(currentTime)} / ${formatTime(totalDuration)}`; renderFrame(currentTime); });
 
         function startRecording() {
             pause(); currentTime = 0; isRecording = true; renderFrame(0);
@@ -755,21 +707,15 @@
             mediaRecorder.onstop = () => {
                 const blob = new Blob(recordedChunks, { type: 'video/webm' });
                 const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `Calligraphy_Live_${Date.now()}.webm`;
-                a.click();
+                const a = document.createElement('a'); a.href = url; a.download = `Calligraphy_Live_${Date.now()}.webm`; a.click();
                 URL.revokeObjectURL(url);
-                isRecording = false;
-                document.getElementById('btn-export').textContent = '🔴 실시간 녹화 시작';
-                logMessage("✅ 실시간 녹화 자동 저장 완료");
+                isRecording = false; document.getElementById('btn-export').textContent = '🔴 실시간 녹화 시작';
+                logMessage("✅ 실시간 녹화 저장 완료");
             };
             mediaRecorder.start(100);
             document.getElementById('btn-export').textContent = '⏹ 녹화 진행 중 (자동 종료 대기)';
-            play();
-            logMessage("🔴 실시간 녹화 시작");
+            play(); logMessage("🔴 실시간 녹화 시작");
         }
-
         document.getElementById('btn-export').addEventListener('click', () => {
             if (isRecording) { pause(); if (mediaRecorder) mediaRecorder.stop(); }
             else { startRecording(); }
@@ -791,10 +737,7 @@
                 recorder.onstop = () => {
                     const blob = new Blob(chunks, {type: 'video/webm'});
                     const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `Calligraphy_Lossless_${Date.now()}.webm`;
-                    a.click();
+                    const a = document.createElement('a'); a.href = url; a.download = `Calligraphy_Lossless_${Date.now()}.webm`; a.click();
                     URL.revokeObjectURL(url);
                     logMessage("✅ 무손실 WebM 완료");
                 };
@@ -806,7 +749,7 @@
                 }
                 recorder.stop();
             } else {
-                logMessage("⚠️ Safari 감지: JSZip 폴백 가동");
+                logMessage("⚠️ Safari 감지: JSZip 폴백");
                 const zip = new JSZip();
                 for (let f = 0; f <= totalFrames; f++) {
                     renderFrame(f / fps);
@@ -815,12 +758,9 @@
                 }
                 const zipBlob = await zip.generateAsync({type: 'blob'});
                 const url = URL.createObjectURL(zipBlob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `Calligraphy_Frames_${Date.now()}.zip`;
-                a.click();
+                const a = document.createElement('a'); a.href = url; a.download = `Calligraphy_Frames_${Date.now()}.zip`; a.click();
                 URL.revokeObjectURL(url);
-                logMessage("✅ Safari 프레임 ZIP 다운로드 완료");
+                logMessage("✅ Safari 프레임 ZIP 완료");
             }
         });
 
@@ -849,7 +789,7 @@
             srtData.forEach(item => {
                 const d = document.createElement('div');
                 d.className = 'srt-item';
-                d.innerHTML = `<span>#${item.text.replace('\n', ' ')}</span><span style="font-family:monospace;color:var(--accent-color);">${formatTime(item.start)}</span>`;
+                d.innerHTML = `<span>${item.text.replace('\n', ' ')}</span><span style="font-family:monospace;color:var(--accent-color);">${formatTime(item.start)}</span>`;
                 d.addEventListener('click', () => { currentTime = item.start + 0.01; renderFrame(currentTime); });
                 el.appendChild(d);
             });
@@ -857,6 +797,18 @@
             logMessage(`자막 로드 완료 (${srtData.length}개 세션)`);
             renderFrame(0);
         }
+
+        // [수정] SRT 파일 로딩 이벤트 리스너 추가
+        document.getElementById('srt-input').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                // 파일을 읽어서 바로 자막을 적용
+                loadSRTData(evt.target.result);
+            };
+            reader.readAsText(file);
+        });
 
         document.getElementById('btn-apply-srt').addEventListener('click', () => loadSRTData(document.getElementById('srt-textarea').value));
         document.getElementById('ttf-input').addEventListener('change', (e) => {
