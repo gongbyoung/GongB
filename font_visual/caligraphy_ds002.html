@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SRT 캘리그라피 스튜디오 v1.040.1 - 최종 무결점</title>
+<title>SRT 캘리그라피 스튜디오 v1.040.2 (완벽 보정)</title>
 <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <style>
@@ -45,7 +45,7 @@ input[type=range],select{width:100%}
 </style>
 </head>
 <body>
-<header><h1>🖌 v1.040.1 Ultimate (무결점)</h1><span style="font-size:.62rem;background:#ff6b35;color:#fff;padding:2px 8px;border-radius:6px">리셋/대가 무조건 출력 보장</span></header>
+<header><h1>🖌 v1.040.2 Ultimate (리셋/대가 보정)</h1><span style="font-size:.62rem;background:#ff6b35;color:#fff;padding:2px 8px;border-radius:6px">원본은 100% 깨끗하게, 대가는 하나의 문양으로</span></header>
 <div class="main">
 <div class="left">
 <div class="sec">
@@ -62,7 +62,7 @@ input[type=range],select{width:100%}
 
 <div class="sec" style="border:2px solid #ff6b35;border-radius:10px;padding:8px;background:#2a1a14;">
 <div class="sec-title">🎨 아트워크 구도 (대자+소자)</div>
-<label style="font-size:.66rem"><input type="checkbox" id="layout-toggle" checked> 구도 활성화 (대자+소자 흩뿌리기)</label>
+<label style="font-size:.66rem"><input type="checkbox" id="layout-toggle" checked> 구도 활성화 (대자+소자)</label>
 <div class="label">대자 크기 <span id="val-big">4.5x</span></div><input type="range" id="big-scale" min="2.0" max="8.0" step="0.5" value="4.5">
 <div class="label">소자 크기 <span id="val-small">0.40x</span></div><input type="range" id="small-scale" min="0.2" max="0.8" step="0.05" value="0.4">
 <div class="label">대자 위치 X <span id="val-bx">0.50</span></div><input type="range" id="big-x" min="0.1" max="0.9" step="0.05" value="0.5">
@@ -132,8 +132,9 @@ input[type=range],select{width:100%}
 <div style="width:100%;max-width:960px;display:flex;gap:6px;align-items:center;background:#181826;border:1px solid var(--b);border-radius:8px;padding:6px">
 <button class="btn btn-s" id="btn-play" style="width:60px">▶</button><input type="range" id="time" min="0" max="10" value="0" step="0.01" style="flex:1"><span id="tlab" style="font-family:monospace;color:var(--accent);font-size:.70rem;min-width:110px;text-align:right">00:00 / 00:00</span>
 </div>
-<div class="log" id="log">[v1.040.1]
-- 원본 리셋/대가 프리셋 무조건 출력 보장 (외곽선 솔리드 렌더링 강화)
+<div class="log" id="log">[v1.040.2]
+- 원본 리셋: 폰트 100% 원본 (대자/소자 없음, 먹물 솔리드)
+- 대가 프리셋: 대자는 중앙, 소자는 궤도 배치로 하나의 문양 완성
 </div>
 </div>
 
@@ -192,7 +193,6 @@ let maskImg=null, currentMaskAlphaImage=null, hasMask=false;
 let lastRenderedPaths=[], lastBrushStrokes=[];
 const textCv=document.createElement('canvas');
 const textCtx=textCv.getContext('2d');
-const scratchCv=textCv; const scratchCtx=textCtx;
 
 function syncCanvases(w, h){
   if(!textCv || !maskCv) return;
@@ -244,7 +244,7 @@ function createStyleGrid(containerId, callback){
   });
 }
 
-const PRESET_KEY='calli_presets_v1_040_1';
+const PRESET_KEY='calli_presets_v1_040_2';
 function getPresets(){ try{ return JSON.parse(localStorage.getItem(PRESET_KEY)||'{}'); }catch(e){ return {}; } }
 function savePresets(obj){ localStorage.setItem(PRESET_KEY, JSON.stringify(obj)); }
 function refreshPresetList(){
@@ -348,7 +348,7 @@ function getSampledPoints(path, cacheKey){
   sampleCache.set(cacheKey, pts); return pts;
 }
 
-// [핵심 수정] 기존의 pts.length<3이면 return하던 로직을 제거하고, 항상 솔리드(외곽선)를 먼저 그려서 무조건 글자가 나오게 함
+// [핵심 수정] 항상 솔리드(외곽선)를 먼저 그려서 무조건 글자가 나오게 함
 function drawWithRibbonBristle(path, opts, cacheKey, thickScale=1.0, seed=0, targetCtx=textCtx){
   if(!path || !targetCtx) return;
   targetCtx.save(); targetCtx.globalAlpha=0.92; targetCtx.fillStyle='#121212';
@@ -484,6 +484,7 @@ function render(t){
     if(opts.showFrameOn){ctx.save(); ctx.strokeStyle='rgba(255,107,53,0.25)'; ctx.setLineDash([8,6]); ctx.lineWidth=1.5; ctx.strokeRect((w-safeW)/2, (h-safeH)/2, safeW, safeH); ctx.strokeStyle='rgba(34,197,94,0.25)'; ctx.strokeRect((w-maxLineW)/2, 0, maxLineW, h); ctx.restore();}
 
     if(opts.layoutEnabled){
+      // [핵심 수정] 대가 프리셋: 소자를 화면 전체에 흩뿌리지 않고, 원형 궤도(오비트)에 배치
       const cleanChars=Array.from(text.replace(/\s/g,'')).filter(c=>c.trim()!==''); if(cleanChars.length===0) return;
       const seed=Math.floor(t*10); const rng=mulberry32(seed); let bigIdx=Math.floor(rng()*cleanChars.length);
       const bigXPos=w*opts.bigX; const bigYPos=h*opts.bigY;
@@ -508,8 +509,40 @@ function render(t){
         }
       }catch(e){ console.error("BigChar Error", e); }
 
-      for(let i=0;i<cleanChars.length;i++){ if(i===bigIdx) continue; const ch=cleanChars[i]; const x=w*(0.1 + mulberry32(i*77+seed)()*0.8); const y=h*(0.1 + mulberry32(i*31+seed)()*0.8); const baseSize=175*opts.smallScale*opts.overallScale;
-        try{ if(!baseFont) return; const path=baseFont.getPath(ch, 0, 0, baseSize); path._bbox={cx:0,cy:0,w:baseSize,h:baseSize,minX:0,maxX:baseSize,minY:0,maxY:baseSize}; path._baseSize=baseSize; path._centerX=x; path._centerY=y; let warped=applyMeshWarp(path, opts, baseSize, x, y); const bbox={x1:0,y1:0,x2:baseSize,y2:baseSize}; warped=warpContourBilinear(warped, bbox, {choWarp:opts.choWarp*0.5, jungWarp:opts.jungWarp*0.5, jongWarp:opts.jongWarp*0.5}); const transformed=new opentype.Path(); warped.commands.forEach(c=>{ if(c.type==='M') transformed.moveTo(c.x+x, c.y+y); else if(c.type==='L') transformed.lineTo(c.x+x, c.y+y); else if(c.type==='C') transformed.curveTo(c.x1+x, c.y1+y, c.x2+x, c.y2+y, c.x+x, c.y+y); else if(c.type==='Q') transformed.quadTo(c.x1+x, c.y1+y, c.x+x, c.y+y); else if(c.type==='Z') transformed.close(); }); transformed._contours=warped._contours; transformed._baseSize=baseSize; transformed._centerX=x; transformed._centerY=y; const key=`small_${ch}_${i}_${x.toFixed(0)}`; textCtx.save(); const ang=(mulberry32(i*13+seed)()-0.5)*0.6; textCtx.translate(x,y); textCtx.rotate(ang); textCtx.translate(-x,-y); drawWithRibbonBristle(transformed, opts, key, 1.0, ch.charCodeAt(0)+i, textCtx); textCtx.restore(); lastRenderedPaths.push({d:pathToSVGd(transformed), x, y}); }catch(e){ console.error("SmallChar Error", e); } }
+      // 소자들: 원형 궤도 배치로 통일감 생성
+      const smallCount = cleanChars.length - 1;
+      let smallIdx = 0;
+      for(let i=0;i<cleanChars.length;i++){
+        if(i===bigIdx) continue;
+        const ch=cleanChars[i];
+        // 원형 궤도 계산
+        const angle = (smallIdx / Math.max(1, smallCount)) * Math.PI * 2;
+        const radiusX = w * 0.22;
+        const radiusY = h * 0.22;
+        const x = bigXPos + Math.cos(angle) * radiusX;
+        const y = bigYPos + Math.sin(angle) * radiusY;
+        const baseSize=175*opts.smallScale*opts.overallScale;
+        try{
+          if(!baseFont) return;
+          const path=baseFont.getPath(ch, 0, 0, baseSize);
+          path._bbox={cx:0,cy:0,w:baseSize,h:baseSize,minX:0,maxX:baseSize,minY:0,maxY:baseSize};
+          path._baseSize=baseSize; path._centerX=x; path._centerY=y;
+          let warped=applyMeshWarp(path, opts, baseSize, x, y);
+          const bbox={x1:0,y1:0,x2:baseSize,y2:baseSize};
+          warped=warpContourBilinear(warped, bbox, {choWarp:opts.choWarp*0.5, jungWarp:opts.jungWarp*0.5, jongWarp:opts.jongWarp*0.5});
+          const transformed=new opentype.Path();
+          warped.commands.forEach(c=>{ if(c.type==='M') transformed.moveTo(c.x+x, c.y+y); else if(c.type==='L') transformed.lineTo(c.x+x, c.y+y); else if(c.type==='C') transformed.curveTo(c.x1+x, c.y1+y, c.x2+x, c.y2+y, c.x+x, c.y+y); else if(c.type==='Q') transformed.quadTo(c.x1+x, c.y1+y, c.x+x, c.y+y); else if(c.type==='Z') transformed.close(); });
+          transformed._contours=warped._contours; transformed._baseSize=baseSize; transformed._centerX=x; transformed._centerY=y;
+          const key=`small_${ch}_${i}_${x.toFixed(0)}`;
+          textCtx.save();
+          const ang = angle + 0.5; // 궤도 방향에 맞춰 회전
+          textCtx.translate(x,y); textCtx.rotate(ang); textCtx.translate(-x,-y);
+          drawWithRibbonBristle(transformed, opts, key, 1.0, ch.charCodeAt(0)+i, textCtx);
+          textCtx.restore();
+          lastRenderedPaths.push({d:pathToSVGd(transformed), x, y});
+        }catch(e){ console.error("SmallChar Error", e); }
+        smallIdx++;
+      }
       drawSplatters(textCtx, seed, opts.splatterIntensity, w, h);
     } else {
       const lineH=Math.min(w,h)*(opts.lineGap||0.36);
@@ -584,26 +617,33 @@ function updateLabels(){
 safeAddListener('btnReset','click',()=>{
   const setVal=(id,v)=>{ const el=$(id); if(el) el.value=v; };
   setVal('letterSpacing',0.88); setVal('shear',-0.08); setVal('overallScale',1.0); setVal('framePadding',0.82); setVal('maxWidthRatio',0.88); setVal('lineGap',0.36);
-  setVal('big-scale',4.5); setVal('small-scale',0.4); setVal('big-x',0.5); setVal('big-y',0.5); setVal('long-brush',20); setVal('splatter',0.2);
-  setVal('cho-warp',0.20); setVal('jung-warp',0.15); setVal('jong-warp',0.25);
+  setVal('big-scale',4.5); setVal('small-scale',0.4); setVal('big-x',0.5); setVal('big-y',0.5); setVal('long-brush',0); setVal('splatter',0);
+  setVal('cho-warp',0.0); setVal('jung-warp',0.0); setVal('jong-warp',0.0);
   ['choRound','choLen','choThick','jungRound','jungLen','jungThick','jongRound','jongLen','jongThick'].forEach(id=>setVal(id,1.0));
-  setVal('bristleCount',16); setVal('ribbonWidth',0.85); setVal('infillDepth',0.70); setVal('whiskerLen',12);
+  setVal('bristleCount',0); setVal('ribbonWidth',0.85); setVal('infillDepth',0.70); setVal('whiskerLen',0);
+  
+  // [핵심 수정] 원본 리셋: 대자/소자 구도 끄기 & 모든 변형/삐침 끄기
   const setCheck=(id,v)=>{ const el=$(id); if(el) el.checked=v; };
-  setCheck('jamoMode',true); setCheck('ribbonOn',true); setCheck('infillOn',true); setCheck('meshOn',true); setCheck('whiskerOn',true); setCheck('autoFitOn',true); setCheck('showFrameOn',false); setCheck('jamoClampOff',false); setCheck('layout-toggle',true);
+  setCheck('layout-toggle', false); // 표준 텍스트 레이아웃
+  setCheck('jamoMode', true); setCheck('ribbonOn', true); setCheck('infillOn', true); 
+  setCheck('meshOn', false); // 메쉬 변형 끄기
+  setCheck('whiskerOn', false); // 삐침 끄기
+  setCheck('autoFitOn', true); setCheck('showFrameOn', false); setCheck('jamoClampOff', false); 
+  
   const grid=$('global-style-grid'); if(grid) grid.querySelectorAll('.style-check').forEach(el=>el.classList.remove('active')); selectedGlobalStyles=[];
-  updateLabels(); log('↺ 리셋'); render(cur);
+  updateLabels(); log('↺ 원본 리셋: 100% 원본 폰트'); render(cur);
 });
 safeAddListener('btnMaster','click',()=>{
   const setVal=(id,v)=>{ const el=$(id); if(el) el.value=v; };
-  setVal('letterSpacing',0.88); setVal('shear',-0.08); setVal('overallScale',0.90); setVal('framePadding',0.82); setVal('maxWidthRatio',0.86); setVal('lineGap',0.36);
-  setVal('big-scale',5.0); setVal('small-scale',0.38); setVal('big-x',0.55); setVal('big-y',0.45); setVal('long-brush',35); setVal('splatter',0.35);
-  setVal('bristleCount',20); setVal('ribbonWidth',0.95); setVal('infillDepth',0.85); setVal('whiskerLen',14);
-  setVal('choRound',1.5); setVal('choLen',1.8); setVal('choThick',1.3); setVal('jungRound',1.8); setVal('jungLen',1.5); setVal('jongRound',1.3); setVal('jongLen',1.4);
-  setVal('cho-warp',0.5); setVal('jung-warp',0.4); setVal('jong-warp',0.6);
+  setVal('letterSpacing',0.85); setVal('shear',-0.08); setVal('overallScale',0.92); setVal('framePadding',0.85); setVal('maxWidthRatio',0.85); setVal('lineGap',0.36);
+  setVal('big-scale',4.2); setVal('small-scale',0.45); setVal('big-x',0.5); setVal('big-y',0.4); setVal('long-brush',25); setVal('splatter',0.25);
+  setVal('bristleCount',18); setVal('ribbonWidth',0.95); setVal('infillDepth',0.85); setVal('whiskerLen',16);
+  setVal('choRound',1.8); setVal('choLen',2.2); setVal('choThick',1.6); setVal('jungRound',2.0); setVal('jungLen',2.0); setVal('jungThick',1.4); setVal('jongRound',1.5); setVal('jongLen',1.8); setVal('jongThick',1.5);
+  setVal('cho-warp',0.4); setVal('jung-warp',0.3); setVal('jong-warp',0.5);
   const setCheck=(id,v)=>{ const el=$(id); if(el) el.checked=v; };
-  setCheck('jamoMode',true); setCheck('ribbonOn',true); setCheck('infillOn',true); setCheck('meshOn',true); setCheck('whiskerOn',true); setCheck('autoFitOn',true); setCheck('jamoClampOff',true); setCheck('layout-toggle',true);
+  setCheck('layout-toggle', true); setCheck('jamoClampOff', true); setCheck('meshOn', true); setCheck('whiskerOn', true); setCheck('jamoMode', true); setCheck('autoFitOn', true);
   const grid=$('global-style-grid'); if(grid){ grid.querySelectorAll('.style-check').forEach(el=>{ if(['contrast','deform','bold'].includes(el.dataset.styleId)) el.classList.add('active'); }); selectedGlobalStyles=['contrast','deform','bold']; }
-  updateLabels(); log('★ 대가 프리셋 Ultimate: 대자+소자+20배변형+장봉'); render(cur);
+  updateLabels(); log('★ 대가 프리셋: 중앙 대자 + 궤도 소자 배치'); render(cur);
 });
 ['maskOn','clampOn','jamoMode','ribbonOn','infillOn','meshOn','whiskerOn','autoFitOn','showFrameOn','jamoClampOff','seededOn','layout-toggle'].forEach(id=>{ safeAddListener(id,'change',()=>render(cur)); });
 
@@ -692,8 +732,7 @@ safeAddListener('btn-play','click',()=>{
   try{
     baseFont=await new Promise((res,rej)=>opentype.load('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/nanumbrushscript/NanumBrushScript-Regular.ttf',(e,f)=>e?rej(e):res(f)));
     const fs=$('font-status'); if(fs) fs.textContent='✅ 나눔손글씨 붓글씨 엔진 활성화';
-    refreshPresetList(); log('v1.040.1 로드 완료 - 자동 실행');
-    
+    refreshPresetList(); log('v1.040.2 로드 완료 - 자동 실행');
     const ta=$('srtTa'); if(ta) ta.value=`1
 00:00:00,000 --> 00:00:03,500
 나는 화려한 짐승처럼
