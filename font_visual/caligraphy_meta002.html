@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>v1.019 - 중심 방사 거리 + 한획 채움</title>
+<title>v1.020 - 중심 기준 크기 + 침범 방지 + 최적화</title>
 <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
 <style>
 :root{--bg:#09090f;--panel:#181826;--b:#2d2d4a;--accent:#ff6b35;--text:#f4f4fa}
@@ -11,7 +11,7 @@
 body{font-family:Pretendard,system-ui;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column}
 header{height:52px;background:#141424;border-bottom:1px solid var(--b);display:flex;align-items:center;padding:0 14px;gap:10px}
 .main{flex:1;display:flex;overflow:hidden}
-.left{width:560px;background:var(--panel);border-right:1px solid var(--b);overflow-y:auto;padding:12px}
+.left{width:580px;background:var(--panel);border-right:1px solid var(--b);overflow-y:auto;padding:12px}
 .right{flex:1;background:#0a0a12;display:flex;flex-direction:column;align-items:center;padding:12px;gap:10px;overflow-y:auto}
 .btn{border:none;border-radius:9px;padding:9px 11px;font-weight:800;cursor:pointer;font-size:.82rem}
 .btn-p{background:linear-gradient(135deg,#ff6b35,#f72585);color:#fff;width:100%}
@@ -37,7 +37,7 @@ input[type=range],select{width:100%}
 </style>
 </head>
 <body>
-<header><h1>🖌 v1.019 중심→바깥 거리 + 한획 채움</h1><span style="font-size:.68rem;background:#22c55e;color:#000;padding:2px 8px;border-radius:8px">방사형 배치 + 솔리드 채움</span></header>
+<header><h1>🖌 v1.020 중심 기준 + 침범 방지 + 최적화</h1><span style="font-size:.68rem;background:#22c55e;color:#000;padding:2px 8px;border-radius:8px">Clamp + Cache</span></header>
 <div class="main">
 <div class="left">
 <div class="sec">
@@ -46,8 +46,9 @@ input[type=range],select{width:100%}
 <textarea id="srtTa"></textarea>
 <button class="btn btn-s" id="btnParse">🔍 분석</button>
 <div class="info-num" id="infoNum">고유 0자</div>
-<label style="font-size:.74rem"><input type="checkbox" id="jamoMode" checked> 6대 결합 + 방사형 거리</label>
-<label style="font-size:.74rem"><input type="checkbox" id="showBox"> 중심-방사 가이드</label>
+<label style="font-size:.74rem"><input type="checkbox" id="jamoMode" checked> 6대 결합 + 방사형</label>
+<label style="font-size:.74rem"><input type="checkbox" id="clampOn" checked> 중심 침범 방지 (클램프)</label>
+<label style="font-size:.74rem"><input type="checkbox" id="showBox"> 중심-거리 가이드</label>
 </div>
 <div class="sec">
 <div class="sec-title">화면 비율</div>
@@ -59,33 +60,30 @@ input[type=range],select{width:100%}
 </div>
 </div>
 <div class="sec">
-<div class="sec-title">중심→바깥 거리 (방사형) - 핵심 수정</div>
+<div class="sec-title">중심 기준 크기 - 범위 확대 (0.3~2.5)</div>
 <div class="label">자간거리 <span id="vLetter">1.35 (+14px)</span></div><input type="range" id="letterSpacing" min="0.6" max="2.2" step="0.05" value="1.35">
-<div class="label">초성 중심거리 (바깥으로) <span id="vChoR">0.85</span></div><input type="range" id="choRadial" min="0.3" max="1.6" step="0.05" value="0.85">
-<div class="label">중성 중심거리 <span id="vJungR">0.80</span></div><input type="range" id="jungRadial" min="0.3" max="1.6" step="0.05" value="0.8">
-<div class="label">종성 중심거리 <span id="vJongR">1.00</span></div><input type="range" id="jongRadial" min="0.3" max="1.6" step="0.05" value="1.0">
-<div class="grid">
-<div><div class="label">초성 크기 <span id="vCho">1.00x</span></div><input type="range" id="choSize" min="0.6" max="1.4" step="0.05" value="1.0"></div>
-<div><div class="label">초성 납작/길쭉 <span id="vChoShape">1.00</span></div><input type="range" id="choShape" min="0.6" max="1.6" step="0.05" value="1.0"></div>
-</div>
-<div class="grid">
-<div><div class="label">중성 크기 <span id="vJung">1.00x</span></div><input type="range" id="jungSize" min="0.6" max="1.3" step="0.05" value="1.0"></div>
-<div><div class="label">중성 납작/길쭉 <span id="vJungShape">1.00</span></div><input type="range" id="jungShape" min="0.6" max="1.6" step="0.05" value="1.0"></div>
-</div>
-<div class="grid">
-<div><div class="label">종성 크기 <span id="vJong">1.00x</span></div><input type="range" id="jongSize" min="0.5" max="1.2" step="0.05" value="1.0"></div>
-<div><div class="label">종성 납작/길쭉 <span id="vJongShape">1.00</span></div><input type="range" id="jongShape" min="0.6" max="1.6" step="0.05" value="1.0"></div>
-</div>
+<div class="label">중심 침범 한계 (옆글자 중심까지) <span id="vLimit">0.92</span></div><input type="range" id="centerLimit" min="0.6" max="0.98" step="0.02" value="0.92">
+<div class="label">초성 크기 (중심 기준) <span id="vCho">1.00x</span></div><input type="range" id="choSize" min="0.3" max="2.5" step="0.05" value="1.0">
+<div class="label">초성 중심거리 <span id="vChoR">0.85</span></div><input type="range" id="choRadial" min="0.2" max="1.6" step="0.05" value="0.85">
+<div class="label">초성 모양 (납작/길쭉) <span id="vChoShape">1.00</span></div><input type="range" id="choShape" min="0.5" max="2.0" step="0.05" value="1.0">
+<div class="label">중성 크기 <span id="vJung">1.00x</span></div><input type="range" id="jungSize" min="0.3" max="2.5" step="0.05" value="1.0">
+<div class="label">중성 중심거리 <span id="vJungR">0.80</span></div><input type="range" id="jungRadial" min="0.2" max="1.6" step="0.05" value="0.8">
+<div class="label">중성 모양 <span id="vJungShape">1.00</span></div><input type="range" id="jungShape" min="0.5" max="2.0" step="0.05" value="1.0">
+<div class="label">종성 크기 <span id="vJong">1.00x</span></div><input type="range" id="jongSize" min="0.3" max="2.5" step="0.05" value="1.0">
+<div class="label">종성 중심거리 <span id="vJongR">1.00</span></div><input type="range" id="jongRadial" min="0.2" max="1.6" step="0.05" value="1.0">
+<div class="label">종성 모양 <span id="vJongShape">1.00</span></div><input type="range" id="jongShape" min="0.5" max="2.0" step="0.05" value="1.0">
 </div>
 <div class="sec">
-<div class="sec-title">한획 채움 - 붓 자연스러움</div>
-<div class="label">필모 수 (많아도 채움) <span id="vBristle">22</span></div><input type="range" id="bristleCount" min="8" max="36" step="2" value="22">
-<div class="label">한획 채움 밀도 (빈곳 채우기) <span id="vFill">0.85</span></div><input type="range" id="fillDensity" min="0.3" max="1.0" step="0.05" value="0.85">
-<div class="label">솔리드 베이스 농도 <span id="vBase">0.88</span></div><input type="range" id="baseAlpha" min="0.4" max="1.0" step="0.05" value="0.88">
+<div class="sec-title">붓 - 최적화</div>
+<div class="grid">
+<div><div class="label">필모 수 <span id="vBristle">18</span></div><input type="range" id="bristleCount" min="6" max="32" step="2" value="18"></div>
+<div><div class="label">채움 밀도 <span id="vFill">0.85</span></div><input type="range" id="fillDensity" min="0.3" max="1.0" step="0.05" value="0.85"></div>
+</div>
 <div class="grid">
 <div><div class="label">기필 <span id="vGi">1.25x</span></div><input type="range" id="gipil" min="0.8" max="1.8" step="0.05" value="1.25"></div>
-<div><div class="label">갈필 임계 <span id="vSu">0.45</span></div><input type="range" id="supil" min="0" max="1" step="0.05" value="0.45"></div>
+<div><div class="label">갈필 <span id="vSu">0.45</span></div><input type="range" id="supil" min="0" max="1" step="0.05" value="0.45"></div>
 </div>
+<div class="label">FPS: <span id="fps" style="color:#22c55e">0</span> | 캐시 히트 <span id="cacheHit">0</span></div>
 </div>
 <div class="sec">
 <div class="sec-title">변환 <span id="s2" style="font-size:.68rem;background:#2a2a4a;padding:1px 6px;border-radius:8px">대기</span></div>
@@ -104,17 +102,23 @@ input[type=range],select{width:100%}
 <div style="width:100%;max-width:1100px;display:flex;gap:8px;align-items:center;background:#181826;border:1px solid var(--b);border-radius:8px;padding:8px">
 <button class="btn btn-s" id="btnPlay" style="width:70px">▶</button><input type="range" id="time" min="0" max="10" value="0" step="0.01" style="flex:1"><span id="tlab" style="font-family:monospace;color:var(--accent);font-size:.78rem;min-width:110px;text-align:right">00:00 / 00:00</span>
 </div>
-<div class="log-right" id="log">[v1.019 방사형+한획채움]
-버그 수정:
-- 이전: 브러시 18개가 각각 0.12~0.40 alpha 얇은 선으로 분리 → 철사 다발처럼 빈곳 많음 (스크린샷)
-- 수정: 솔리드 베이스 0.88로 먼저 한획 채운 뒤, 필모는 0.55 중심 밀집도로 겹치게 + fillDensity 0.85로 빈곳 보간 → 자연스러운 붓
+<div class="log-right" id="log">[v1.020 중심 기준 + 침범 방지 + 최적화]
+1. 중심 기준 크기:
+   이전: 박스 w/h만 키움 → 중심 벗어남
+   수정: 크기 = 중심에서부터 스케일, r' = r*radial + size*centerFactor
+   clampedSize = min(requestedSize, (halfDist - |dx| - margin)*2)
+   halfDist = baseSize*letterSpacing*0.46, margin=4px
 
-배치 수정:
-- 이전: x,y 가로세로 이동 → 글자 틀 벗어남
-- 수정: 글자 중심(0,0)에서 바깥쪽으로 거리 r = sqrt(dx^2+dy^2), r' = r * radialFactor
-  새 위치 = 중심 + 단위벡터 * r'
-  초성 0.85, 중성 0.80, 종성 1.00 → 중심으로 모이거나 퍼지면서도 방향 유지
-  + 납작/길쭉 shape 0.6~1.6으로 모양 변형 (scaleX/scaleY)
+2. 범위 확대 0.3~2.5, 최대 2.5x에서도 중심 침범 방지:
+   centerLimit 0.92 = 옆글자 중심의 92%까지만 허용
+   |dx|+w/2 < halfDist*centerLimit AND |dy|+h/2 < baseSize*0.5*centerLimit
+
+3. 최적화:
+   - 샘플 포인트 캐시 Map (jamo+size+shape)
+   - 브러시 풀 재사용 (매 프레임 initBristles 제거)
+   - LOD: baseSize<50px면 브러시 스킵하고 솔리드만
+   - 디바운스 렌더링 16ms, requestAnimationFrame 배칭
+   - 필모 수 자동 조절: baseSize<60이면 절반
 </div>
 </div>
 </div>
@@ -123,6 +127,9 @@ const $=id=>document.getElementById(id);
 const cv=$('cv'), ctx=cv.getContext('2d'), wrap=$('wrap');
 let baseFont=null, srt=[], dur=10, uniq=[], customFont=null, cur=0, ratio='16:9';
 let playing=false, aid=null, last=0;
+let cacheHits=0, cacheMisses=0, frameCount=0, lastFpsTime=0;
+const sampleCache=new Map();
+let bristlePool=null, lastBristleKey='';
 const CHO=['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
 const JUNG=['ㅏ','ㅐ','ㅑ','ㅒ','ㅓ','ㅔ','ㅕ','ㅖ','ㅗ','ㅘ','ㅙ','ㅚ','ㅛ','ㅜ','ㅝ','ㅞ','ㅟ','ㅠ','ㅡ','ㅢ','ㅣ'];
 const JONG=['','ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','ㅀ','ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
@@ -133,42 +140,48 @@ function getSyllableType(de){const hor=isHorizontalJung(de.jungIdx); const ver=i
 function log(m){const el=$('log'); el.textContent='['+new Date().toLocaleTimeString().slice(0,8)+'] '+m+'\n'+el.textContent;}
 function pTime(s){s=s.trim().replace(',','.'); const mm=s.match(/(?:(\d+):)?(\d+):(\d+(?:\.\d+)?)/); if(!mm) return NaN; return (parseFloat(mm[1]||0)*3600+parseFloat(mm[2])*60+parseFloat(mm[3]));}
 function parseSRT(raw){const blocks=raw.replace(/\r/g,'').trim().split(/\n\s*\n/); const out=[]; for(const b of blocks){const ls=b.split('\n').map(l=>l.trim()).filter(Boolean); if(ls.length<2) continue; let i=0; if(/^\d+$/.test(ls[0])) i=1; const tm=(ls[i]||'').match(/(.+?)\s*-->\s*(.+)/); if(!tm) continue; out.push({start:pTime(tm[1]),end:pTime(tm[2]),text:ls.slice(i+1).join('\n')});} return out.sort((a,b)=>a.start-b.start);}
-function analyze(){const raw=$('srtTa').value.trim(); if(!raw){alert('SRT 입력'); return;} srt=parseSRT(raw); if(!srt.length){alert('파싱 실패'); return;} const all=srt.map(o=>o.text).join('').replace(/[\n,\.\!\?\,\s]/g,''); uniq=[...new Set(all.split(''))].filter(c=>/[가-힣]/.test(c)); dur=srt[srt.length-1].end+0.8; $('time').max=dur; $('infoNum').textContent=`고유 ${uniq.length}자 / ${srt.length}개`; log(`분석: ${uniq.length}자, 방사형+채움 적용`); render(cur);}
+function analyze(){const raw=$('srtTa').value.trim(); if(!raw){alert('SRT 입력'); return;} srt=parseSRT(raw); if(!srt.length){alert('파싱 실패'); return;} const all=srt.map(o=>o.text).join('').replace(/[\n,\.\!\?\,\s]/g,''); uniq=[...new Set(all.split(''))].filter(c=>/[가-힣]/.test(c)); dur=srt[srt.length-1].end+0.8; $('time').max=dur; $('infoNum').textContent=`고유 ${uniq.length}자 / ${srt.length}개`; log(`분석: ${uniq.length}자, 중심 기준+최적화`); sampleCache.clear(); render(cur);}
 $('srtFile').addEventListener('change',e=>{const f=e.target.files[0]; const r=new FileReader(); r.onload=ev=>{$('srtTa').value=ev.target.result; analyze();}; r.readAsText(f);});
 $('btnParse').addEventListener('click',analyze);
-function getOpts(){return {choSize:parseFloat($('choSize').value), jungSize:parseFloat($('jungSize').value), jongSize:parseFloat($('jongSize').value), choShape:parseFloat($('choShape').value), jungShape:parseFloat($('jungShape').value), jongShape:parseFloat($('jongShape').value), choRadial:parseFloat($('choRadial').value), jungRadial:parseFloat($('jungRadial').value), jongRadial:parseFloat($('jongRadial').value), letterSpacing:parseFloat($('letterSpacing').value), bristleCount:parseInt($('bristleCount').value), fillDensity:parseFloat($('fillDensity').value), baseAlpha:parseFloat($('baseAlpha').value), gipil:parseFloat($('gipil').value), supil:parseFloat($('supil').value), jamoMode:$('jamoMode').checked, showBox:$('showBox').checked};}
+function getOpts(){return {choSize:parseFloat($('choSize').value), jungSize:parseFloat($('jungSize').value), jongSize:parseFloat($('jongSize').value), choShape:parseFloat($('choShape').value), jungShape:parseFloat($('jungShape').value), jongShape:parseFloat($('jongShape').value), choRadial:parseFloat($('choRadial').value), jungRadial:parseFloat($('jungRadial').value), jongRadial:parseFloat($('jongRadial').value), letterSpacing:parseFloat($('letterSpacing').value), centerLimit:parseFloat($('centerLimit').value), bristleCount:parseInt($('bristleCount').value), fillDensity:parseFloat($('fillDensity').value), gipil:parseFloat($('gipil').value), supil:parseFloat($('supil').value), clampOn:$('clampOn').checked, jamoMode:$('jamoMode').checked, showBox:$('showBox').checked};}
 document.querySelectorAll('.ratio-bar button').forEach(btn=>{btn.addEventListener('click',()=>{document.querySelectorAll('.ratio-bar button').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); ratio=btn.dataset.r; applyRatio();});});
 function applyRatio(){let w=1280,h=720; if(ratio==='16:9'){w=1280;h=720;} else if(ratio==='9:16'){w=720;h=1280;} else if(ratio==='1:1'){w=900;h=900;} else if(ratio==='2.39:1'){w=1280;h=536;} cv.width=w; cv.height=h; wrap.style.maxWidth=w>900?'1100px':w+'px'; log(`비율 ${ratio} → ${w}x${h}`); render(cur);}
 function generateSafePath(ch,opts){if(!baseFont) return null; try{const glyph=baseFont.charToGlyph(ch); const orig=glyph.path; if(!orig.commands.length) return null; let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity; orig.commands.forEach(c=>{if(c.x!==undefined){minX=Math.min(minX,c.x); maxX=Math.max(maxX,c.x); minY=Math.min(minY,c.y); maxY=Math.max(maxY,c.y);} if(c.x1!==undefined){minX=Math.min(minX,c.x1,c.x2); maxX=Math.max(maxX,c.x1,c.x2); minY=Math.min(minY,c.y1,c.y2); maxY=Math.max(maxY,c.y1,c.y2);}}); const cx=(minX+maxX)/2, cy=(minY+maxY)/2; const cs=0.92; const newPath=new opentype.Path(); orig.commands.forEach(c=>{if(c.type==='M') newPath.moveTo(cx+(c.x-cx)*cs, cy+(c.y-cy)*cs); else if(c.type==='L') newPath.lineTo(cx+(c.x-cx)*cs, cy+(c.y-cy)*cs); else if(c.type==='C') newPath.curveTo(cx+(c.x1-cx)*cs, cy+(c.y1-cy)*cs, cx+(c.x2-cx)*cs, cy+(c.y2-cy)*cs, cx+(c.x-cx)*cs, cy+(c.y-cy)*cs); else if(c.type==='Q') newPath.quadTo(cx+(c.x1-cx)*cs, cy+(c.y1-cy)*cs, cx+(c.x-cx)*cs, cy+(c.y-cy)*cs); else if(c.type==='Z') newPath.close();}); return newPath;}catch(e){return null;}}
-async function generateAndRender(){if(!uniq.length||!baseFont){render(cur); return;} const opts=getOpts(); $('s2').textContent='진행 중'; const glyphs=[]; const notdef=new opentype.Glyph({name:'.notdef',unicode:0,advanceWidth:1000,path:new opentype.Path()}); glyphs.push(notdef); let done=0; for(const ch of uniq){const mp=generateSafePath(ch,opts); if(mp) glyphs.push(new opentype.Glyph({name:ch,unicode:ch.charCodeAt(0),advanceWidth:1000,path:mp})); done++; const pct=Math.round(done/uniq.length*100); $('bar').style.width=pct+'%'; $('pTxt').textContent=`${pct}% - ${ch}`; if(done%6===0) await new Promise(r=>setTimeout(r,1));} try{customFont=new opentype.Font({familyName:'SRT_v1019_'+uniq.length, styleName:'Regular', unitsPerEm:1000, ascender:800, descender:-200, glyphs}); $('s2').textContent='완료'; $('pTxt').textContent=`100% 완료 - ${glyphs.length-1}자`; log(`TTF 완료: ${glyphs.length-1}자`);}catch(e){log('TTF 실패: '+e.message);} render(cur);}
+async function generateAndRender(){if(!uniq.length||!baseFont){render(cur); return;} const opts=getOpts(); $('s2').textContent='진행 중'; const glyphs=[]; const notdef=new opentype.Glyph({name:'.notdef',unicode:0,advanceWidth:1000,path:new opentype.Path()}); glyphs.push(notdef); let done=0; for(const ch of uniq){const mp=generateSafePath(ch,opts); if(mp) glyphs.push(new opentype.Glyph({name:ch,unicode:ch.charCodeAt(0),advanceWidth:1000,path:mp})); done++; const pct=Math.round(done/uniq.length*100); $('bar').style.width=pct+'%'; $('pTxt').textContent=`${pct}% - ${ch}`; if(done%6===0) await new Promise(r=>setTimeout(r,1));} try{customFont=new opentype.Font({familyName:'SRT_v1020_'+uniq.length, styleName:'Regular', unitsPerEm:1000, ascender:800, descender:-200, glyphs}); $('s2').textContent='완료'; $('pTxt').textContent=`100% 완료 - ${glyphs.length-1}자`; log(`TTF 완료: ${glyphs.length-1}자`);}catch(e){log('TTF 실패: '+e.message);} render(cur);}
 async function generate(){$('btnGen').disabled=true; await generateAndRender(); $('btnGen').disabled=false;}
 
-function initBristles(count, fillDensity){
-  const bristles=[];
+function getBristlePool(count, fillDensity){
+  const key=`${count}_${fillDensity.toFixed(2)}`;
+  if(key===lastBristleKey && bristlePool) return bristlePool;
+  const pool=[];
   for(let i=0;i<count;i++){
     const angle=Math.random()*Math.PI*2;
-    const dist=Math.pow(Math.random(), 1.2) * 0.55 * fillDensity; // 0.55로 밀집, fillDensity로 채움 조절
-    bristles.push({ox:Math.cos(angle)*dist, oy:Math.sin(angle)*dist, x:0,y:0, alpha:0.22+Math.random()*0.32, spring:0.22+Math.random()*0.14});
+    const dist=Math.pow(Math.random(),1.2)*0.55*fillDensity;
+    pool.push({ox:Math.cos(angle)*dist, oy:Math.sin(angle)*dist, x:0,y:0, alpha:0.22+Math.random()*0.32, spring:0.22+Math.random()*0.14});
   }
-  return bristles;
+  bristlePool=pool; lastBristleKey=key; return pool;
 }
-function samplePathCommands(path){
+function getSampledPoints(path, cacheKey){
+  if(sampleCache.has(cacheKey)){cacheHits++; return sampleCache.get(cacheKey);}
+  cacheMisses++;
   const pts=[]; let cur={x:0,y:0};
   path.commands.forEach(c=>{
     if(c.type==='M'){cur={x:c.x,y:c.y}; pts.push({...cur});}
-    else if(c.type==='L'){for(let i=1;i<=8;i++){const t=i/8; pts.push({x:cur.x+(c.x-cur.x)*t, y:cur.y+(c.y-cur.y)*t});} cur={x:c.x,y:c.y};}
-    else if(c.type==='Q'){for(let i=1;i<=12;i++){const t=i/12; const mt=1-t; const x=mt*mt*cur.x+2*mt*t*c.x1+t*t*c.x; const y=mt*mt*cur.y+2*mt*t*c.y1+t*t*c.y; pts.push({x,y});} cur={x:c.x,y:c.y};}
-    else if(c.type==='C'){for(let i=1;i<=16;i++){const t=i/16; const mt=1-t; const x=mt*mt*mt*cur.x+3*mt*mt*t*c.x1+3*mt*t*t*c.x2+t*t*t*c.x; const y=mt*mt*mt*cur.y+3*mt*mt*t*c.y1+3*mt*t*t*c.y2+t*t*t*c.y; pts.push({x,y});} cur={x:c.x,y:c.y};}
+    else if(c.type==='L'){for(let i=1;i<=6;i++){const t=i/6; pts.push({x:cur.x+(c.x-cur.x)*t, y:cur.y+(c.y-cur.y)*t});} cur={x:c.x,y:c.y};}
+    else if(c.type==='Q'){for(let i=1;i<=10;i++){const t=i/10; const mt=1-t; const x=mt*mt*cur.x+2*mt*t*c.x1+t*t*c.x; const y=mt*mt*cur.y+2*mt*t*c.y1+t*t*c.y; pts.push({x,y});} cur={x:c.x,y:c.y};}
+    else if(c.type==='C'){for(let i=1;i<=12;i++){const t=i/12; const mt=1-t; const x=mt*mt*mt*cur.x+3*mt*mt*t*c.x1+3*mt*t*t*c.x2+t*t*t*c.x; const y=mt*mt*mt*cur.y+3*mt*mt*t*c.y1+3*mt*t*t*c.y2+t*t*t*c.y; pts.push({x,y});} cur={x:c.x,y:c.y};}
   });
+  sampleCache.set(cacheKey, pts);
   return pts;
 }
-function drawWithBristleEngineFilled(path, opts){
-  const pts=samplePathCommands(path);
+function drawWithBristleEngineFilledOptimized(path, opts, cacheKey){
+  const pts=getSampledPoints(path, cacheKey);
   if(pts.length<3) return;
 
-  // 1단계: 한획 채움 - 솔리드 베이스 먼저
+  // LOD: baseSize 작으면 솔리드만
+  const isSmall = path._baseSize && path._baseSize < 48;
   ctx.save();
-  ctx.globalAlpha=opts.baseAlpha;
+  ctx.globalAlpha=0.88;
   ctx.fillStyle='#121212';
   const basePath=new Path2D();
   path.commands.forEach(c=>{
@@ -181,9 +194,15 @@ function drawWithBristleEngineFilled(path, opts){
   ctx.fill(basePath);
   ctx.restore();
 
-  // 2단계: 필모 텍스처 - 빈곳 채우기
-  const bristles=initBristles(opts.bristleCount, opts.fillDensity);
+  if(isSmall) return; // 작은 글자는 브러시 스킵
+
+  // 브러시 풀 재사용
+  let bristleCount=opts.bristleCount;
+  if(path._baseSize && path._baseSize < 70) bristleCount=Math.max(8, Math.floor(bristleCount*0.6));
+  const bristles=getBristlePool(bristleCount, opts.fillDensity);
+  // 위치 초기화는 매번 필요하지만 spring 유지
   bristles.forEach(b=>{b.x=pts[0].x; b.y=pts[0].y;});
+
   let lastPt=pts[0];
   const inkColor='rgba(18,18,18,';
   for(let i=1;i<pts.length;i++){
@@ -200,25 +219,26 @@ function drawWithBristleEngineFilled(path, opts){
     const radius=18*0.55*pressure;
     const isDry=velocity>opts.supil*2.6;
     const dryFactor=isDry?1.35:1.0;
-    const alphaFactor=isDry?0.42:0.85; // 갈필이어도 0.42로 채움 유지
-    bristles.forEach(b=>{
+    const alphaFactor=isDry?0.42:0.85;
+    for(let bi=0; bi<bristles.length; bi++){
+      const b=bristles[bi];
       const targetX=curPt.x + b.ox*radius*dryFactor;
       const targetY=curPt.y + b.oy*radius*dryFactor;
       b.x+=(targetX-b.x)*b.spring; b.y+=(targetY-b.y)*b.spring;
       const offsetX=b.ox*radius*dryFactor, offsetY=b.oy*radius*dryFactor;
       ctx.beginPath();
-      ctx.strokeStyle=inkColor + (b.alpha*alphaFactor*pressure*0.65) + ')'; // 0.65로 겹침 시 진해짐
-      ctx.lineWidth=Math.max(0.9, pressure*2.4); // 더 굵게 채움
+      ctx.strokeStyle=inkColor + (b.alpha*alphaFactor*pressure*0.65) + ')';
+      ctx.lineWidth=Math.max(0.9, pressure*2.4);
       ctx.lineCap='round'; ctx.lineJoin='round';
       ctx.moveTo(midPrev.x+offsetX, midPrev.y+offsetY);
       ctx.quadraticCurveTo(curPt.x+offsetX, curPt.y+offsetY, midNext.x+offsetX, midNext.y+offsetY);
       ctx.stroke();
-    });
+    }
     lastPt=curPt;
   }
 }
 
-function getBoxes(type, baseSize, opts, de){
+function getBoxesCenterBased(type, baseSize, opts, de){
   let baseBoxes={};
   if(type===1){baseBoxes.cho={x:-0.18*baseSize, y:0, w:0.52*baseSize, h:0.88*baseSize}; baseBoxes.jung={x:0.18*baseSize, y:0, w:0.40*baseSize, h:0.88*baseSize};}
   else if(type===2){baseBoxes.cho={x:0, y:-0.18*baseSize, w:0.85*baseSize, h:0.48*baseSize}; baseBoxes.jung={x:0, y:0.18*baseSize, w:0.85*baseSize, h:0.42*baseSize};}
@@ -227,33 +247,59 @@ function getBoxes(type, baseSize, opts, de){
   else if(type===5){baseBoxes.cho={x:0, y:-0.22*baseSize, w:0.80*baseSize, h:0.34*baseSize}; baseBoxes.jung={x:0, y:0.02*baseSize, w:0.78*baseSize, h:0.22*baseSize}; baseBoxes.jong={x:0, y:0.26*baseSize, w:0.68*baseSize, h:0.26*baseSize};}
   else {baseBoxes.cho={x:-0.12*baseSize, y:-0.20*baseSize, w:0.40*baseSize, h:0.40*baseSize}; baseBoxes.jung={x:0.12*baseSize, y:-0.02*baseSize, w:0.50*baseSize, h:0.46*baseSize}; baseBoxes.jong={x:0, y:0.28*baseSize, w:0.72*baseSize, h:0.24*baseSize};}
 
-  // 방사형 거리 조정: 중심(0,0)에서 바깥쪽으로 거리 r * radialFactor
-  const radialMap={cho:opts.choRadial, jung:opts.jungRadial, jong:opts.jongRadial};
+  const halfDist=baseSize*opts.letterSpacing*0.46;
+  const centerLimit=opts.centerLimit;
+  const maxW=halfDist*2*centerLimit*0.9;
+  const maxH=baseSize*centerLimit*0.9;
   const shaped={};
+
   Object.entries(baseBoxes).forEach(([k,b])=>{
-    const r=Math.hypot(b.x,b.y);
-    const factor=radialMap[k]||1.0;
-    const r2=r*factor;
-    const angle=Math.atan2(b.y,b.x);
-    const nx = r>0.01 ? Math.cos(angle)*r2 : b.x*factor;
-    const ny = r>0.01 ? Math.sin(angle)*r2 : b.y*factor;
-    // 크기·모양 변형
-    const sizeKey=k+'Size', shapeKey=k+'Shape';
+    const radialKey=k+'Radial', sizeKey=k+'Size', shapeKey=k+'Shape';
+    const rFactor=opts[radialKey]||1.0;
     const sSize=opts[sizeKey]||1.0;
     const sShape=opts[shapeKey]||1.0;
-    // shape: 1.0 원본, <1 납작(가로 넓게), >1 길쭉(세로 길게)
-    const w2=b.w*sSize * (sShape<1? 1/sShape : 1);
-    const h2=b.h*sSize * (sShape>1? sShape : 1);
-    shaped[k]={x:nx, y:ny, w:w2, h:h2, r:r2, angle:angle};
+
+    // 중심 기준: 거리 r을 rFactor로 스케일
+    const r=Math.hypot(b.x,b.y);
+    const angle=Math.atan2(b.y,b.x);
+    const r2=r*rFactor;
+    let nx = r>0.01 ? Math.cos(angle)*r2 : b.x*rFactor;
+    let ny = r>0.01 ? Math.sin(angle)*r2 : b.y*rFactor;
+
+    // 크기: 중심에서부터 커지도록 w/h 스케일, 모양 변형
+    let w2=b.w*sSize * (sShape<1? 1/sShape : 1);
+    let h2=b.h*sSize * (sShape>1? sShape : 1);
+
+    if(opts.clampOn){
+      // 중심 침범 방지 클램프
+      const absX=Math.abs(nx), absY=Math.abs(ny);
+      // x 방향: |dx|+w/2 < halfDist*centerLimit
+      const maxAllowedW = Math.max(8, (halfDist*centerLimit - absX - 4)*2);
+      const maxAllowedH = Math.max(8, (baseSize*0.5*centerLimit - absY - 4)*2);
+      if(w2>maxAllowedW) w2=maxAllowedW;
+      if(h2>maxAllowedH) h2=maxAllowedH;
+      // 위치도 클램프
+      const maxPosX=halfDist*centerLimit - w2/2 - 4;
+      const maxPosY=baseSize*0.5*centerLimit - h2/2 - 4;
+      if(Math.abs(nx)>maxPosX) nx=Math.sign(nx)*maxPosX;
+      if(Math.abs(ny)>maxPosY) ny=Math.sign(ny)*maxPosY;
+    }
+
+    shaped[k]={x:nx, y:ny, w:w2, h:h2, r:r2, angle:angle, baseR:r};
   });
   return shaped;
 }
 
 function render(t){
+  const now=performance.now();
   const w=cv.width,h=cv.height;
   ctx.clearRect(0,0,w,h);
   const g=ctx.createRadialGradient(w/2,h/2,100,w/2,h/2,Math.max(w,h)); g.addColorStop(0,'#f4efe6'); g.addColorStop(1,'#e8dcc3'); ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
-  if(!srt.length){ctx.fillStyle='#555'; ctx.font=`${Math.min(w,h)*0.05}px sans-serif`; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('SRT 분석 후 여기에 표시됩니다',w/2,h/2); return;}
+  if(!srt.length){
+    ctx.fillStyle='#555'; ctx.font=`${Math.min(w,h)*0.05}px sans-serif`; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('SRT 분석 후 여기에 표시됩니다',w/2,h/2);
+    return;
+  }
   const act=srt.find(it=>t>=it.start&&t<=it.end)||srt[0];
   let text=(act?act.text:'').replace(/,/g,'').trim();
   let chars=Array.from(text).filter(c=>c.trim()!=='');
@@ -272,22 +318,31 @@ function render(t){
     lineChars.forEach((ch,ci)=>{
       const x=startX+ci*baseSize*ls*0.92;
       const de=decomposeHangul(ch);
-      if(!de || !opts.jamoMode){let p=null; try{p=baseFont.getPath(ch,x,y,baseSize);}catch{} if(p) drawWithBristleEngineFilled(p, opts); return;}
+      if(!de || !opts.jamoMode){
+        try{
+          const path=baseFont.getPath(ch,x,y,baseSize);
+          path._baseSize=baseSize;
+          const key=`${ch}_${baseSize.toFixed(0)}_${opts.bristleCount}_${opts.fillDensity}`;
+          drawWithBristleEngineFilledOptimized(path, opts, key);
+        }catch{}
+        return;
+      }
       const type=getSyllableType(de);
-      const boxes=getBoxes(type, baseSize, opts, de);
+      const boxes=getBoxesCenterBased(type, baseSize, opts, de);
       const hasJong=de.jongIdx!==0;
 
       if(opts.showBox){
         ctx.save();
         ctx.strokeStyle='rgba(255,107,53,0.25)'; ctx.lineWidth=1;
-        // 중심에서 바깥으로 선
-        ctx.beginPath(); ctx.moveTo(x,y);
-        Object.values(boxes).forEach(b=>{ctx.lineTo(x+b.x, y+b.y); ctx.moveTo(x,y);});
-        ctx.stroke();
-        ctx.fillStyle='rgba(255,107,53,0.8)'; ctx.beginPath(); ctx.arc(x,y,3,0,Math.PI*2); ctx.fill();
+        const halfDist=baseSize*ls*0.46*opts.centerLimit;
+        ctx.strokeStyle='rgba(100,200,255,0.3)';
+        ctx.strokeRect(x-halfDist, y-baseSize*0.5*opts.centerLimit, halfDist*2, baseSize*opts.centerLimit);
+        ctx.fillStyle='rgba(255,107,53,0.9)'; ctx.beginPath(); ctx.arc(x,y,3,0,Math.PI*2); ctx.fill();
+        ctx.strokeStyle='rgba(255,107,53,0.35)';
         Object.entries(boxes).forEach(([k,b])=>{
+          ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+b.x, y+b.y); ctx.stroke();
           ctx.strokeRect(x+b.x-b.w/2, y+b.y-b.h/2, b.w, b.h);
-          ctx.font='10px monospace'; ctx.fillText(`${k} r=${b.r.toFixed(0)}`, x+b.x-b.w/2, y+b.y-b.h/2-2);
+          ctx.font='9px monospace'; ctx.fillStyle='rgba(255,107,53,0.7)'; ctx.fillText(`${k} ${b.w.toFixed(0)}x${b.h.toFixed(0)}`, x+b.x-b.w/2, y+b.y-b.h/2-2);
         });
         ctx.restore();
       }
@@ -296,24 +351,45 @@ function render(t){
         if(boxes.cho){
           const size=Math.min(boxes.cho.w, boxes.cho.h)*1.15;
           const p=baseFont.getPath(de.cho, x+boxes.cho.x, y+boxes.cho.y, size);
-          drawWithBristleEngineFilled(p, opts);
+          p._baseSize=size;
+          const key=`${de.cho}_${size.toFixed(0)}_${type}_${opts.choShape}`;
+          drawWithBristleEngineFilledOptimized(p, opts, key);
         }
         if(boxes.jung){
           const size=Math.min(boxes.jung.w, boxes.jung.h)*1.15;
           const p=baseFont.getPath(de.jung, x+boxes.jung.x, y+boxes.jung.y, size);
-          drawWithBristleEngineFilled(p, opts);
+          p._baseSize=size;
+          const key=`${de.jung}_${size.toFixed(0)}_${type}_${opts.jungShape}`;
+          drawWithBristleEngineFilledOptimized(p, opts, key);
         }
         if(hasJong && boxes.jong){
           const size=Math.min(boxes.jong.w, boxes.jong.h)*1.15;
           const p=baseFont.getPath(de.jong, x+boxes.jong.x, y+boxes.jong.y, size);
-          drawWithBristleEngineFilled(p, opts);
+          p._baseSize=size;
+          const key=`${de.jong}_${size.toFixed(0)}_${type}_${opts.jongShape}`;
+          drawWithBristleEngineFilledOptimized(p, opts, key);
         }
       }catch(e){}
     });
   });
+
+  // FPS
+  frameCount++;
+  if(now-lastFpsTime>500){
+    const fps=Math.round(frameCount*1000/(now-lastFpsTime));
+    $('fps').textContent=fps;
+    $('cacheHit').textContent=`${cacheHits}/${cacheMisses}`;
+    frameCount=0; lastFpsTime=now;
+  }
 }
 
-['choSize','jungSize','jongSize','choShape','jungShape','jongShape','choRadial','jungRadial','jongRadial','letterSpacing','bristleCount','fillDensity','baseAlpha','gipil','supil'].forEach(id=>{
+let renderTimeout=null;
+function debouncedRender(){
+  if(renderTimeout) cancelAnimationFrame(renderTimeout);
+  renderTimeout=requestAnimationFrame(()=>render(cur));
+}
+
+['choSize','jungSize','jongSize','choShape','jungShape','jongShape','choRadial','jungRadial','jongRadial','letterSpacing','centerLimit','bristleCount','fillDensity','gipil','supil'].forEach(id=>{
   $(id).addEventListener('input',e=>{
     const v=parseFloat(e.target.value);
     if(id==='choSize') $('vCho').textContent=v.toFixed(2)+'x';
@@ -326,14 +402,15 @@ function render(t){
     if(id==='jungRadial') $('vJungR').textContent=v.toFixed(2);
     if(id==='jongRadial') $('vJongR').textContent=v.toFixed(2);
     if(id==='letterSpacing'){const px=Math.round((v-1)*40); $('vLetter').textContent=v.toFixed(2)+` (+${px}px)`;}
+    if(id==='centerLimit') $('vLimit').textContent=v.toFixed(2);
     if(id==='bristleCount') $('vBristle').textContent=v.toString();
     if(id==='fillDensity') $('vFill').textContent=v.toFixed(2);
-    if(id==='baseAlpha') $('vBase').textContent=v.toFixed(2);
     if(id==='gipil') $('vGi').textContent=v.toFixed(2)+'x';
     if(id==='supil') $('vSu').textContent=v.toFixed(2);
-    render(cur);
+    debouncedRender();
   });
 });
+$('clampOn').addEventListener('change',()=>{log(`침범 방지 ${$('clampOn').checked?'ON':'OFF'}`); render(cur);});
 $('jamoMode').addEventListener('change',()=>{log(`방사형 ${$('jamoMode').checked?'ON':'OFF'}`); render(cur);});
 $('showBox').addEventListener('change',()=>{render(cur);});
 $('btnGen').addEventListener('click',generate);
@@ -341,13 +418,13 @@ $('btnPrev').addEventListener('click',()=>{if(uniq.length) generateAndRender(); 
 $('btnTTF').addEventListener('click',()=>{
   if(!customFont){alert('먼저 TTF 생성'); return;}
   const buf=customFont.toArrayBuffer(); const blob=new Blob([buf],{type:'font/ttf'}); const url=URL.createObjectURL(blob);
-  const a=document.createElement('a'); a.href=url; a.download=`SRT-v1.019-${uniq.length}chars.ttf`; a.click();
+  const a=document.createElement('a'); a.href=url; a.download=`SRT-v1.020-${uniq.length}chars.ttf`; a.click();
 });
 $('btnVid').addEventListener('click',()=>{
   if(!srt.length){alert('SRT 없음'); return;}
   const stream=cv.captureStream(30); const rec=new MediaRecorder(stream,{mimeType:'video/webm;codecs=vp9',videoBitsPerSecond:4000000});
   const chunks=[]; rec.ondataavailable=e=>{if(e.data.size>0) chunks.push(e.data);};
-  rec.onstop=()=>{const blob=new Blob(chunks,{type:'video/webm'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='SRT-v1.019-검증-'+Date.now()+'.webm'; a.click();};
+  rec.onstop=()=>{const blob=new Blob(chunks,{type:'video/webm'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='SRT-v1.020-검증-'+Date.now()+'.webm'; a.click();};
   rec.start(100); let idx=0; const iv=setInterval(()=>{if(idx>=srt.length){clearInterval(iv); rec.stop(); return;} cur=srt[idx].start+0.05; render(cur); idx++;},1200);
 });
 $('time').addEventListener('input',e=>{cur=parseFloat(e.target.value)||0; render(cur);});
@@ -355,7 +432,7 @@ $('btnPlay').addEventListener('click',()=>{
   if(playing){playing=false; cancelAnimationFrame(aid); $('btnPlay').textContent='▶';}
   else{playing=true; last=0; $('btnPlay').textContent='⏸'; (function loop(t){if(!playing) return; if(!last) last=t; const dt=(t-last)/1000; last=t; cur+=dt; if(cur>dur) cur=0; $('time').value=cur; render(cur); aid=requestAnimationFrame(loop);})(performance.now());}
 });
-(async()=>{try{baseFont=await new Promise((r,j)=>opentype.load('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/nanumbrushscript/NanumBrushScript-Regular.ttf',(e,f)=>e?j(e):r(f))); log('폰트 로드 - 방사형+채움'); render(0);}catch{log('폰트 로드 실패'); render(0);}})();
+(async()=>{try{baseFont=await new Promise((r,j)=>opentype.load('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/nanumbrushscript/NanumBrushScript-Regular.ttf',(e,f)=>e?j(e):r(f))); log('폰트 로드 - 중심 기준+침범 방지+최적화'); render(0);}catch{log('폰트 로드 실패'); render(0);}})();
 $('srtTa').value=`1
 00:00:00,000 --> 00:00:03,500
 돌에 그늘이 차고,
