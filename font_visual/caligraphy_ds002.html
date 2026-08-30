@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SRT 캘리그라피 스튜디오 v4.0 (직관적 제어)</title>
+    <title>SRT 캘리그라피 스튜디오 v4.1 (방향 수정 + 자간)</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Nanum+Brush+Script&display=swap" rel="stylesheet">
@@ -14,8 +14,6 @@
         body { font-family: 'Pretendard', sans-serif; background-color: var(--bg-dark); color: var(--text-main); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
         header { background: #18181c; padding: 15px 24px; border-bottom: 1px solid var(--panel-border); }
         .main-container { display: flex; flex: 1; overflow: hidden; }
-        
-        /* 왼쪽 UI 패널 - 깔끔하게 정리 */
         .sidebar { width: 300px; background: var(--panel-bg); border-right: 1px solid var(--panel-border); padding: 20px; display: flex; flex-direction: column; gap: 15px; overflow-y: auto; }
         .preview-area { flex: 1; display: flex; flex-direction: column; background: #f4ecd8; align-items: center; justify-content: center; padding: 20px; position: relative; }
         .canvas-wrapper { position: relative; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2); border-radius: 8px; overflow: hidden; max-width: 100%; max-height: 80vh; cursor: grab; background: #f4ecd8; }
@@ -44,7 +42,7 @@
 </head>
 <body>
     <header>
-        <h1>🖌️ SRT 캘리그라피 스튜디오 v4.0 (직관적 조작)</h1>
+        <h1>🖌️ SRT 캘리그라피 스튜디오 v4.1 (글자 정상 방향)</h1>
     </header>
     <div class="main-container">
         <div class="sidebar">
@@ -61,8 +59,10 @@
             <textarea id="srt-textarea" style="height: 80px; background: #141418;"></textarea>
             <button class="btn-action" id="btn-apply-srt" style="width:100%; margin-bottom: 10px;">✏️ 자막 적용하기</button>
 
-            <!-- 전역 설정 -->
             <div class="section-title">🎨 글자 전체 변형</div>
+            <label>글자 간격 <span id="val-spacing">50</span></label>
+            <input type="range" id="global-spacing" min="0" max="150" step="1" value="50">
+
             <label>전체 글자 크기 <span id="val-size">1.0x</span></label>
             <input type="range" id="global-size" min="0.5" max="2.0" step="0.05" value="1.0">
             
@@ -75,21 +75,18 @@
             <label>전체 기울기 <span id="val-shear">0.0</span></label>
             <input type="range" id="global-shear" min="-0.5" max="0.5" step="0.01" value="0.0">
 
-            <!-- 초성 -->
             <div class="section-title">🔷 초성</div>
             <label>중심에서 바깥으로 <span id="val-c-dist">0.0</span></label>
             <input type="range" id="cho-dist" min="-0.5" max="1.0" step="0.05" value="0.0">
             <label>초성만 크기 <span id="val-c-scale">1.0</span></label>
             <input type="range" id="cho-scale" min="0.5" max="2.0" step="0.05" value="1.0">
 
-            <!-- 중성 -->
             <div class="section-title">🟩 중성</div>
             <label>중심에서 바깥으로 <span id="val-j-dist">0.0</span></label>
             <input type="range" id="jung-dist" min="-0.5" max="1.0" step="0.05" value="0.0">
             <label>중성만 크기 <span id="val-j-scale">1.0</span></label>
             <input type="range" id="jung-scale" min="0.5" max="2.0" step="0.05" value="1.0">
 
-            <!-- 종성 -->
             <div class="section-title">🟦 종성</div>
             <label>중심에서 바깥으로 <span id="val-jg-dist">0.0</span></label>
             <input type="range" id="jong-dist" min="-0.5" max="1.0" step="0.05" value="0.0">
@@ -132,15 +129,16 @@
         let hasMask = false;
         let currentMaskAlphaImage = null;
 
-        // [핵심] 직관적인 설정값들
+        // [핵심 수정] 자간 스페이싱 추가
         let settings = {
-            global: { size: 1.0, thick: 1.0, len: 1.0, shear: 0.0 },
+            global: { size: 1.0, thick: 1.0, len: 1.0, shear: 0.0, spacing: 50 },
             cho: { dist: 0.0, scale: 1.0 },
             jung: { dist: 0.0, scale: 1.0 },
             jong: { dist: 0.0, scale: 1.0 }
         };
 
         // UI 바인딩
+        document.getElementById('global-spacing').addEventListener('input', (e) => { settings.global.spacing = parseInt(e.target.value); document.getElementById('val-spacing').textContent = e.target.value; renderFrame(currentTime); });
         document.getElementById('global-size').addEventListener('input', (e) => { settings.global.size = parseFloat(e.target.value); document.getElementById('val-size').textContent = e.target.value + 'x'; renderFrame(currentTime); });
         document.getElementById('global-thick').addEventListener('input', (e) => { settings.global.thick = parseFloat(e.target.value); document.getElementById('val-thick').textContent = e.target.value + 'x'; renderFrame(currentTime); });
         document.getElementById('global-len').addEventListener('input', (e) => { settings.global.len = parseFloat(e.target.value); document.getElementById('val-len').textContent = e.target.value + 'x'; renderFrame(currentTime); });
@@ -179,36 +177,35 @@
             return { cho: null, jung: null, jong: null };
         }
 
-        // [핵심 수정] Path2D를 버리고 점(배열) 추출. Y축 변환을 하지 않음!
+        // [핵심 수정] Y축 뒤집기를 포인트 추출 단계에서 처리 (완벽한 방향 보장)
         function getPointsFromGlyph(char, size) {
             try {
                 const path = currentFont.getPath(char, 0, 0, size);
                 let pts = [];
                 let cx = 0, cy = 0, sx = 0, sy = 0;
-                const STEPS = 8; // 부드럽게 하기 위한 샘플링
-
+                const STEPS = 10; 
                 path.commands.forEach(c => {
-                    if (c.type === 'M') { cx = c.x; cy = c.y; sx = cx; sy = cy; pts.push({x: cx, y: cy}); }
-                    else if (c.type === 'L') { cx = c.x; cy = c.y; pts.push({x: cx, y: cy}); }
+                    if (c.type === 'M') { cx = c.x; cy = -c.y; sx = cx; sy = cy; pts.push({x: cx, y: cy}); }
+                    else if (c.type === 'L') { cx = c.x; cy = -c.y; pts.push({x: cx, y: cy}); }
                     else if (c.type === 'C') {
                         for (let i = 1; i <= STEPS; i++) {
                             const t = i / STEPS, mt = 1 - t;
                             pts.push({
                                 x: mt*mt*mt*cx + 3*mt*mt*t*c.x1 + 3*mt*t*t*c.x2 + t*t*t*c.x,
-                                y: mt*mt*mt*cy + 3*mt*mt*t*c.y1 + 3*mt*t*t*c.y2 + t*t*t*c.y
+                                y: -(mt*mt*mt*cy + 3*mt*mt*t*c.y1 + 3*mt*t*t*c.y2 + t*t*t*c.y) 
                             });
                         }
-                        cx = c.x; cy = c.y;
+                        cx = c.x; cy = -c.y;
                     }
                     else if (c.type === 'Q') {
                         for (let i = 1; i <= STEPS; i++) {
                             const t = i / STEPS, mt = 1 - t;
                             pts.push({
                                 x: mt*mt*cx + 2*mt*t*c.x1 + t*t*c.x,
-                                y: mt*mt*cy + 2*mt*t*c.y1 + t*t*c.y
+                                y: -(mt*mt*cy + 2*mt*t*c.y1 + t*t*c.y)
                             });
                         }
-                        cx = c.x; cy = c.y;
+                        cx = c.x; cy = -c.y;
                     }
                     else if (c.type === 'Z') { pts.push({x: sx, y: sy}); cx = sx; cy = sy; }
                 });
@@ -216,14 +213,24 @@
             } catch(e) { return []; }
         }
 
-        // [핵심 수정] 선을 직접 그리는 함수 (변환 행렬 적용됨)
+        // [핵심] 추출된 점을 기준으로 BBox 계산 (뒤집힘 방지)
+        function getPointsBBox(pts) {
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            pts.forEach(p => {
+                if(p.x < minX) minX = p.x;
+                if(p.x > maxX) maxX = p.x;
+                if(p.y < minY) minY = p.y;
+                if(p.y > maxY) maxY = p.y;
+            });
+            return { x1: minX, y1: minY, x2: maxX, y2: maxY };
+        }
+
+        // 실선 스트로크
         function drawSolidStroke(targetCtx, pts, lineWidth, alpha) {
             if (pts.length < 2) return;
             
             targetCtx.beginPath();
             targetCtx.moveTo(pts[0].x, pts[0].y);
-            
-            // 중간점 기준 부드러운 베지어 곡선으로 연결
             for (let i = 1; i < pts.length - 1; i++) {
                 const midX = (pts[i].x + pts[i+1].x) / 2;
                 const midY = (pts[i].y + pts[i+1].y) / 2;
@@ -235,14 +242,12 @@
             targetCtx.lineCap = 'round';
             targetCtx.lineJoin = 'round';
             targetCtx.strokeStyle = `rgba(30, 30, 30, ${alpha})`;
-
             targetCtx.stroke();
-            // 진하게 한번 더
             targetCtx.lineWidth = lineWidth * 0.7;
             targetCtx.stroke();
         }
 
-        // 6대 유형 및 그리드
+        // 6대 유형
         function getSyllableType(cho, jung, jong) {
             const vertical = ['ㅏ', 'ㅐ', 'ㅑ', 'ㅒ', 'ㅓ', 'ㅔ', 'ㅕ', 'ㅖ', 'ㅣ'];
             const horizontal = ['ㅗ', 'ㅛ', 'ㅜ', 'ㅠ', 'ㅡ'];
@@ -266,7 +271,7 @@
             }
         }
 
-        // [핵심] 메인 렌더링
+        // [핵심] 메인 렌더링 (ctx.scale(1, -1) 제거됨!)
         function renderFrame(timeSec) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.fillStyle = '#f4ecd8';
@@ -278,44 +283,39 @@
             if (!activeSubtitle) return;
             const text = activeSubtitle.text.trim();
 
-            // 전역 설정
             ctx.save();
-            
-            // 기울기 적용
             ctx.translate(canvas.width / 2, canvas.height / 2);
             ctx.transform(1, settings.global.shear, 0, 1, 0, 0);
             ctx.translate(-canvas.width / 2, -canvas.height / 2);
 
             let currentX = canvas.width * 0.1;
-            const fontSize = 180; // 기본 폰트 크기 (여기서 고정, 스케일은 변환행렬로 조절)
+            const fontSize = 180; 
             const lineHeight = fontSize * 1.6;
             let currentY = canvas.height / 2 - lineHeight / 2;
 
             for (let char of text) {
                 if (char === '\n') { currentY += lineHeight; currentX = canvas.width * 0.1; continue; }
                 
-                let charWidth = currentFont.getAdvanceWidth(char, fontSize) + 30; 
+                // [핵심 수정] 자간 적용
+                let charWidth = currentFont.getAdvanceWidth(char, fontSize) + settings.global.spacing; 
 
                 ctx.save();
-                
-                // [핵심] Opentype Y축 뒤집기 (글자 방향 수정)
                 ctx.translate(currentX, currentY);
-                ctx.scale(1, -1);
                 
-                // [핵심] 전체 글자 크기
+                // [핵심] 전체 크기/늘리기 적용
                 ctx.scale(settings.global.size * settings.global.len, settings.global.size);
 
-                // 글자 전체 중심 계산
-                let fullBBox;
-                try { fullBBox = currentFont.getPath(char, 0, 0, fontSize).getBoundingBox(); } catch(e) { fullBBox = {x1: 0, y1: -fontSize, x2: fontSize, y2: 0}; }
-
                 const parts = decomposeHangul(char);
+
+                // [핵심] 추출된 점으로 BBox를 직접 계산
+                const rawPts = getPointsFromGlyph(char, fontSize);
+                const fullBBox = getPointsBBox(rawPts);
                 const fullW = fullBBox.x2 - fullBBox.x1;
                 const fullH = fullBBox.y2 - fullBBox.y1;
                 const centerX = fullBBox.x1 + fullW / 2;
                 const centerY = fullBBox.y1 + fullH / 2;
 
-                // [핵심] 글자 중심으로 이동 후 그리기 시작
+                // [핵심] 글자 중심으로 이동
                 ctx.translate(-centerX, -centerY);
 
                 const lineWidth = 16 * settings.global.thick;
@@ -329,7 +329,7 @@
                     const dx = gridPos.x - 0.5;
                     const dy = gridPos.y - 0.5;
 
-                    // [핵심] 중심에서 바깥으로의 거리 조절
+                    // [핵심] 중심에서 바깥으로
                     const targetX = (dx * (1 + cfg.dist)) * fullW;
                     const targetY = (dy * (1 + cfg.dist)) * fullH;
 
@@ -350,18 +350,15 @@
                     drawComponent(parts.jung, grid.jung, settings.jung);
                     if (parts.jong) drawComponent(parts.jong, grid.jong, settings.jong);
                 } else {
-                    // 영어, 숫자 등
-                    const pts = getPointsFromGlyph(char, fontSize);
-                    if (pts.length > 0) drawSolidStroke(ctx, pts, lineWidth, alpha);
+                    if (rawPts.length > 0) drawSolidStroke(ctx, rawPts, lineWidth, alpha);
                 }
 
-                ctx.restore(); // 글자 변환 행렬 복원
-
+                ctx.restore(); // 크기 복원
                 currentX += charWidth;
                 if (currentX > canvas.width * 0.9) { currentX = canvas.width * 0.1; currentY += lineHeight; }
             }
 
-            ctx.restore(); // 전역 기울기 복원
+            ctx.restore(); // 기울기 복원
 
             if (isRecording && hasMask && currentMaskAlphaImage) {
                 ctx.globalCompositeOperation = 'destination-in';
@@ -370,7 +367,7 @@
             }
         }
 
-        // 초기화 및 기타 기본 로직 (이전과 동일)
+        // 기본 함수 및 초기화 로직 (이전과 동일하게 작동하도록 유지)
         function parseSRT(text){ const n=text.replace(/\r/g,'\n'); const b=n.split('\n\n'); const r=[]; for(let bl of b){ const l=bl.trim().split('\n'); if(l.length>=3){ const tm=l[1].match(/(.*?)\s*-->\s*(.*)/); if(tm){ r.push({ id:l[0], start:parseTime(tm[1]), end:parseTime(tm[2]), text:l.slice(2).join('\n') }); } } } return r; }
         function parseTime(t){ if(!t) return 0; const p=t.trim().replace(',','.').split(':'); return(+p[0]||0)*3600+(+p[1]||0)*60+(+p[2]||0); }
         
@@ -382,7 +379,7 @@
             const el = document.getElementById('srt-list');
             el.innerHTML = '';
             srtData.forEach((i) => { const d = document.createElement('div'); d.className = 'srt-item'; d.innerHTML = `<span>#${i.id}</span> <span>${i.text.replace('\n',' ')}</span>`; el.appendChild(d); });
-            logMessage("✅ 자막 적용 완료 (v4.0 직관적 UI)");
+            logMessage("✅ 자막 적용 완료 (v4.1 방향 수정 + 자간)");
             renderFrame(0);
         }
 
