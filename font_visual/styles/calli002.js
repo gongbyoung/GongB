@@ -28,7 +28,7 @@
         // 추가 글자 데이터 확장 가능
     };
 
-    window.TypoMotionStyles['calli001'] = {
+    window.TypoMotionStyles['calli002'] = {
         name: '수묵 캘리그라피 (Brush Ink)',
         backgroundColor: '#fbf8f0', // 전통 한지 톤
         textColor: 'rgba(28, 26, 24, 0.15)', // 비활성 글자 은은한 먹선
