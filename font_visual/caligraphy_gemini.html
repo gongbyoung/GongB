@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SRT 캘리그라피 에셋 스튜디오 v1.043.1 (에러 수정)</title>
+<title>SRT 캘리그라피 에셋 스튜디오 v1.043.3 (절대 렌더링 수정)</title>
 <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
 <style>
 :root{--bg:#09090f;--panel:#181826;--b:#2d2d4a;--accent:#ff6b35;--text:#f4f4fa}
@@ -23,12 +23,9 @@ input[type=file]{display:none}
 .sec-title{font-size:.76rem;font-weight:800;color:var(--accent);margin-bottom:4px}
 .canvas-wrap{background:#f4efe6;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.6);width:100%;max-width:960px;position:relative;display:flex;justify-content:center;align-items:center;overflow:hidden}
 canvas{display:block;touch-action:none;max-width:100%}
-textarea{width:100%;background:#11111e;border:1px solid var(--b);color:var(--text);border-radius:8px;padding:6px;font-size:.8rem;min-height:60px;text-align:center;font-weight:bold}
+textarea{width:100%;background:#11111e;border:1px solid var(--b);color:var(--text);border-radius:8px;padding:6px;font-size:.8rem;min-height:50px}
 .label{font-size:.64rem;color:#8a8ab8;display:flex;justify-content:space-between;margin:4px 0 2px}
 input[type=range],select{width:100%}
-.ratio-bar{display:flex;gap:5px;margin:5px 0}
-.ratio-bar button{flex:1;padding:5px 3px;font-size:.66rem;background:#1e1e36;border:1px solid var(--b);color:var(--text);border-radius:6px;cursor:pointer}
-.ratio-bar button.active{background:var(--accent);color:#fff}
 .log{width:100%;background:#11111e;border:1px solid var(--b);border-radius:8px;padding:6px;height:90px;overflow-y:auto;font-size:.60rem;color:#a0a0c0;white-space:pre-wrap;font-family:monospace}
 .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px}
 .style-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin:6px 0}
@@ -40,21 +37,25 @@ input[type=range],select{width:100%}
 </style>
 </head>
 <body>
-<header><h1>🖌 v1.043.1 단일 글자 에셋 스튜디오</h1><span style="font-size:.62rem;background:#ff6b35;color:#fff;padding:2px 8px;border-radius:6px">에러 수정·폴더지정·번호저장</span></header>
+<header><h1>🖌 v1.043.3 단일 글자 에셋 스튜디오</h1><span style="font-size:.62rem;background:#ff6b35;color:#fff;padding:2px 8px;border-radius:6px">절대 렌더링 보장</span></header>
 <div class="main">
 <div class="left">
 <div class="sec">
-<div class="sec-title">📂 폰트 및 대상 글자</div>
+<div class="sec-title">📂 폰트 및 자막 (SRT 연동)</div>
 <label class="btn-file" for="ttf-input">📁 TTF 폰트 열기</label><input type="file" id="ttf-input" accept=".ttf,.otf">
 <div id="font-status" style="font-size:.70rem;color:#7cd992;">나눔붓글씨 활성화 대기</div>
 <select id="aspect-ratio-select"><option value="1:1" selected>⬜ 1:1 정사각형 (추천)</option><option value="16:9">🖥 16:9 가로</option><option value="9:16">📱 9:16 세로</option></select>
 
-<div class="label" style="margin-top:6px">제작할 글자 입력 (공백/단어 단위 자동 분리)</div>
-<textarea id="targetChars" placeholder="예: 사랑 해 빓 뭉 큭">사랑 빓 독 꽃</textarea>
+<label class="btn-file" for="srt-input" style="margin-top:6px">📁 SRT 파일 불러오기</label><input type="file" id="srt-input" accept=".srt,.txt">
+<textarea id="srtTa" placeholder="여기에 SRT 자막을 넣거나 파일을 여세요"></textarea>
+<button class="btn btn-s" id="btn-apply-srt" style="background:linear-gradient(135deg,#ff6b35,#f72585);color:#fff;margin-top:4px">🔍 자막에서 글자 추출하기</button>
+
+<div class="label" style="margin-top:8px">제작할 대상 글자들 (수정 가능)</div>
+<textarea id="targetChars" placeholder="글자들을 입력하세요">사랑 해 독 꽃</textarea>
 <div class="char-nav">
-  <button id="btnPrev">◀ 이전</button>
-  <span id="charIndicator" style="font-size:0.75rem;font-weight:bold;color:var(--accent);min-width:50px;text-align:center">1 / 4</span>
-  <button id="btnNext">다음 ▶</button>
+  <button id="btnPrev">◀ 이전 글자</button>
+  <span id="charIndicator" style="font-size:0.75rem;font-weight:bold;color:var(--accent);min-width:60px;text-align:center">1 / 4</span>
+  <button id="btnNext">다음 글자 ▶</button>
 </div>
 </div>
 
@@ -81,38 +82,24 @@ input[type=range],select{width:100%}
 
 <div class="center">
 <div class="canvas-wrap" id="wrap"><canvas id="cv" width="1080" height="1080"></canvas></div>
-<div class="log" id="log">[v1.043.1 에러 수정 완료]
-- safeAddListener 누락 함수 정상 장착
-- 화면 정가운데 한 글자 집중 렌더링 즉시 작동
+<div class="log" id="log">[v1.043.3 절대 렌더링 패치 완료]
+- 글자 BBox 중심 기반 정가운데 배치 강제
+- 빈 화면 현상 및 좌표 이탈 원인 차단
 </div>
 </div>
 
 <div class="right">
 <div class="sec" style="border:1px solid #ff6b35;">
-<div class="sec-title">초성 미세 조정 (실제 변형)</div>
+<div class="sec-title">초성 미세 조정</div>
 <div class="grid3">
 <div><div class="label">둥글게 <span id="vChoRound">1.2x</span></div><input type="range" id="choRound" min="0.1" max="5.0" step="0.1" value="1.2"></div>
 <div><div class="label">길이 <span id="vChoLen">1.5x</span></div><input type="range" id="choLen" min="0.1" max="5.0" step="0.1" value="1.5"></div>
 <div><div class="label">두께 <span id="vChoThick">1.2x</span></div><input type="range" id="choThick" min="0.1" max="5.0" step="0.1" value="1.2"></div>
 </div>
 </div>
-<div class="sec" style="border:1px solid #ff6b35;">
-<div class="sec-title">중성 / 종성 미세 조정</div>
-<div class="grid3">
-<div><div class="label">중 둥글게 <span id="vJungRound">1.2x</span></div><input type="range" id="jungRound" min="0.1" max="5.0" step="0.1" value="1.2"></div>
-<div><div class="label">중 길이 <span id="vJungLen">1.5x</span></div><input type="range" id="jungLen" min="0.1" max="5.0" step="0.1" value="1.5"></div>
-<div><div class="label">중 두께 <span id="vJungThick">1.2x</span></div><input type="range" id="jungThick" min="0.1" max="5.0" step="0.1" value="1.2"></div>
-</div>
-<div class="grid3" style="margin-top:5px">
-<div><div class="label">종 둥글게 <span id="vJongRound">1.2x</span></div><input type="range" id="jongRound" min="0.1" max="5.0" step="0.1" value="1.2"></div>
-<div><div class="label">종 길이 <span id="vJongLen">1.5x</span></div><input type="range" id="jongLen" min="0.1" max="5.0" step="0.1" value="1.5"></div>
-<div><div class="label">종 두께 <span id="vJongThick">1.2x</span></div><input type="range" id="jongThick" min="0.1" max="5.0" step="0.1" value="1.2"></div>
-</div>
-</div>
 <div class="sec">
 <div class="sec-title">붓 질감 물리 (거친 결)</div>
-<div class="label">필모 수 <span id="vBristle">10</span></div><input type="range" id="bristleCount" min="0" max="32" step="2" value="10">
-<div class="label">리본 폭 <span id="vRibbon">0.95</span></div><input type="range" id="ribbonWidth" min="0.2" max="1.5" step="0.05" value="0.95">
+<div class="label">필모 수 <span id="vBristle">12</span></div><input type="range" id="bristleCount" min="0" max="32" step="2" value="12">
 <div class="label">인필 깊이 <span id="vInfill">0.85</span></div><input type="range" id="infillDepth" min="0" max="1" step="0.05" value="0.85">
 <div class="label">삐침 강도 <span id="vWhisker">18</span></div><input type="range" id="whiskerLen" min="0" max="30" step="1" value="18">
 <div class="label">불규칙 강도 <span id="vIrregular">0.60</span></div><input type="range" id="irregularity" min="0" max="1.0" step="0.05" value="0.60">
@@ -128,10 +115,14 @@ input[type=range],select{width:100%}
 const $=id=>document.getElementById(id);
 const cv=$('cv'), ctx=cv?.getContext('2d');
 let baseFont=null;
-let charList=[];
 let currentIdx=0;
 let selectedGlobalStyles=['dry','bold'];
 let chosenDirectoryHandle = null;
+
+function safeAddListener(id, event, fn){
+  const el = $(id);
+  if(el) el.addEventListener(event, fn);
+}
 
 const styleList=[{id:'soft',name:'둥글둥글'},{id:'sharp',name:'뾰족'},{id:'contrast',name:'강약'},{id:'ink',name:'농담'},{id:'deform',name:'자유변형'},{id:'curve',name:'곡선구도'},{id:'seal',name:'전서체'},{id:'dry',name:'갈필'},{id:'bold',name:'농묵'}];
 const styleParams={soft:{bristles:24,whiskerLen:4,infillDepth:0.5},sharp:{bristles:8,whiskerLen:20,infillDepth:0.3},contrast:{bristles:16,whiskerLen:12,infillDepth:0.7},ink:{bristles:18,whiskerLen:10,infillDepth:0.95},deform:{bristles:14,whiskerLen:8,infillDepth:0.6},curve:{bristles:16,whiskerLen:10,infillDepth:0.6},seal:{bristles:32,whiskerLen:0,infillDepth:0.9},dry:{bristles:8,whiskerLen:24,infillDepth:0.25},bold:{bristles:26,whiskerLen:8,infillDepth:0.9}};
@@ -139,17 +130,11 @@ const styleParams={soft:{bristles:24,whiskerLen:4,infillDepth:0.5},sharp:{bristl
 function log(m){const el=$('log'); if(!el) return; el.textContent='['+new Date().toLocaleTimeString().slice(0,8)+'] '+m+'\n'+el.textContent;}
 function mulberry32(a){return function(){let t=a+=0x6D2B79F5; t=Math.imul(t ^ t >>> 15, t | 1); t^=t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0)/4294967296;};}
 
-// ★ 누락되었던 safeAddListener 함수 정의 추가
-function safeAddListener(id, event, fn){
-  const el = $(id);
-  if(el) el.addEventListener(event, fn);
-}
-
 const textCv=document.createElement('canvas'); const textCtx=textCv.getContext('2d');
 function syncCanvases(w, h){ if(textCv.width !== w || textCv.height !== h){ textCv.width=w; textCv.height=h; } textCtx.clearRect(0,0,w,h); }
 
 function calculateSettings(ids){
-  if(ids.length===0) return {bristles:10,whiskerLen:18,infillDepth:0.85};
+  if(ids.length===0) return {bristles:12,whiskerLen:18,infillDepth:0.85};
   const keys=['bristles','whiskerLen','infillDepth'];
   let sum={}; keys.forEach(k=>sum[k]=0);
   ids.forEach(id=>{const sp=styleParams[id]; keys.forEach(k=>sum[k]+=sp[k]);});
@@ -172,64 +157,9 @@ function getOpts(){
   const gs=calculateSettings(selectedGlobalStyles);
   return {
     choRound:g('choRound',1.2), choLen:g('choLen',1.5), choThick:g('choThick',1.2),
-    jungRound:g('jungRound',1.2), jungLen:g('jungLen',1.5), jungThick:g('jungThick',1.2),
-    jongRound:g('jongRound',1.2), jongLen:g('jongLen',1.5), jongThick:g('jongThick',1.2),
     bristleCount:gi('bristleCount',gs.bristles), infillDepth:g('infillDepth',gs.infillDepth), whiskerLen:g('whiskerLen',gs.whiskerLen),
     irregularity:g('irregularity',0.6)
   };
-}
-
-function getContourArea(cmds){let area=0; const pts=[]; cmds.forEach(c=>{if(c.x!==undefined) pts.push({x:c.x,y:c.y}); else if(c.x1!==undefined){ pts.push({x:c.x1,y:c.y1}); pts.push({x:c.x2,y:c.y2}); pts.push({x:c.x,y:c.y});}}); for(let i=0;i<pts.length;i++){const p1=pts[i], p2=pts[(i+1)%pts.length]; if(p1.x!==undefined && p2.x!==undefined) area+=(p1.x*p2.y - p2.x*p1.y);} return area/2;}
-
-function decomposeHangul(syl){const code=syl.charCodeAt(0); if(code<0xAC00||code>0xD7A3) return null; const S=code-0xAC00; const CHO=['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ']; const JUNG=['ㅏ','ㅐ','ㅑ','ㅒ','ㅓ','ㅔ','ㅕ','ㅖ','ㅗ','ㅘ','ㅙ','ㅚ','ㅛ','ㅜ','ㅝ','ㅞ','ㅟ','ㅠ','ㅡ','ㅢ','ㅣ']; const JONG=['','ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','ㅀ','ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ']; return {cho:CHO[S/(28*21)|0], jung:JUNG[(S/28|0)%21], jong:JONG[S%28]};}
-
-function splitSyllablePathIntoJamoGroups(syllableChar, baseSize){
-  try{
-    if(!baseFont) return null;
-    const path=baseFont.getPath(syllableChar, 0, 0, baseSize);
-    const contours=[]; let curContour=[]; let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
-    path.commands.forEach(c=>{
-      if(c.type==='M'){
-        if(curContour.length>0){const area=getContourArea(curContour); contours.push({cmds:curContour.slice(), bbox:{minX, maxX, minY, maxY, cx:(minX+maxX)/2, cy:(minY+maxY)/2}, area}); curContour=[]; minX=Infinity; maxX=-Infinity; minY=Infinity; maxY=-Infinity;}
-        curContour.push(c); if(c.x!==undefined){minX=Math.min(minX,c.x); maxX=Math.max(maxX,c.x); minY=Math.min(minY,c.y); maxY=Math.max(maxY,c.y);}
-      } else {curContour.push(c); if(c.x!==undefined){minX=Math.min(minX,c.x); maxX=Math.max(maxX,c.x); minY=Math.min(minY,c.y); maxY=Math.max(maxY,c.y);} if(c.x1!==undefined){minX=Math.min(minX,c.x1,c.x2); maxX=Math.max(maxX,c.x1,c.x2); minY=Math.min(minY,c.y1,c.y2); maxY=Math.max(maxY,c.y1,c.y2);}}
-    });
-    if(curContour.length>0){const area=getContourArea(curContour); contours.push({cmds:curContour, bbox:{minX, maxX, minY, maxY, cx:(minX+maxX)/2, cy:(minY+maxY)/2}, area});}
-    if(contours.length===0) return null;
-    let gMinX=Infinity,gMaxX=-Infinity,gMinY=Infinity,gMaxY=-Infinity;
-    contours.forEach(ct=>{gMinX=Math.min(gMinX, ct.bbox.minX); gMaxX=Math.max(gMaxX, ct.bbox.maxX); gMinY=Math.min(gMinY, ct.bbox.minY); gMaxY=Math.max(gMaxY, ct.bbox.maxY);});
-    const gCx=(gMinX+gMaxX)/2, gCy=(gMinY+gMaxY)/2, gH=gMaxY-gMinY, gW=gMaxX-gMinX;
-    
-    const groups={cho:[], jung:[], jong:[]};
-    contours.forEach(ct=>{
-      const relY=(ct.bbox.cy - gMinY) / (gH || 1), relX=(ct.bbox.cx - gMinX) / (gW || 1);
-      let target='jung';
-      if(relX < 0.45 && relY < 0.5) target='cho';
-      else if(relY > 0.65) target='jong';
-      else target='jung';
-      groups[target].push(ct);
-    });
-
-    const transformGroup = (groupName, ctList) => {
-      if(ctList.length === 0) return null;
-      const p = new opentype.Path();
-      ctList.forEach(ct => {
-        ct.cmds.forEach(c => {
-          if(c.type==='M') p.moveTo(c.x, c.y);
-          else if(c.type==='L') p.lineTo(c.x, c.y);
-          else if(c.type==='C') p.curveTo(c.x1, c.y1, c.x2, c.y2, c.x, c.y);
-          else if(c.type==='Q') p.quadTo(c.x1, c.y1, c.x, c.y);
-          else if(c.type==='Z') p.close();
-        });
-      });
-      let bMinX=Infinity,bMaxX=-Infinity,bMinY=Infinity,bMaxY=-Infinity;
-      p.commands.forEach(c=>{ if(c.x!==undefined){ bMinX=Math.min(bMinX,c.x); bMaxX=Math.max(bMaxX,c.x); bMinY=Math.min(bMinY,c.y); bMaxY=Math.max(bMaxY,c.y); } });
-      p._bbox={cx:(bMinX+bMaxX)/2, cy:(bMinY+bMaxY)/2, w:bMaxX-bMinX, h:bMaxY-bMinY};
-      return p;
-    };
-
-    return { cho: transformGroup('cho', groups.cho), jung: transformGroup('jung', groups.jung), jong: transformGroup('jong', groups.jong) };
-  }catch(e){ return null; }
 }
 
 function getBristlePool(count){
@@ -287,8 +217,9 @@ function drawSingleRoughGlyph(path, opts, thickScale, seed, targetCtx){
       const targetX=curPt.x + offsetX; const targetY=curPt.y + offsetY;
       b.x+=(targetX-b.x)*b.spring; b.y+=(targetY-b.y)*b.spring;
       targetCtx.beginPath();
+      const wobbleWidth = Math.max(0.8, pressure*1.3*thickScale);
       targetCtx.strokeStyle=`rgba(18,18,18,${(b.alpha*pressure*0.5).toFixed(3)})`;
-      targetCtx.lineWidth=Math.max(0.8, pressure*1.3*thickScale);
+      targetCtx.lineWidth=wobbleWidth;
       targetCtx.lineCap='round'; targetCtx.lineJoin='round';
       targetCtx.moveTo(midPrev.x+offsetX, midPrev.y+offsetY);
       targetCtx.quadraticCurveTo(curPt.x+offsetX, curPt.y+offsetY, midNext.x+offsetX, midNext.y+offsetY);
@@ -297,7 +228,6 @@ function drawSingleRoughGlyph(path, opts, thickScale, seed, targetCtx){
     lastPt=curPt;
   }
 
-  // 삐침
   if(opts.whiskerLen>0){
     const whiskerCount = Math.floor(pts.length / 10);
     for(let w=0; w<whiskerCount; w++){
@@ -313,8 +243,7 @@ function drawSingleRoughGlyph(path, opts, thickScale, seed, targetCtx){
   }
 }
 
-function amplify(v){ return 1 + (v-1)*4; }
-
+// 캔버스 정가운데 단일 글자 절대 렌더링 함수
 function renderSingleChar(){
   try{
     if(!cv || !textCtx || !baseFont) return;
@@ -337,63 +266,42 @@ function renderSingleChar(){
     $('charIndicator').textContent = `${currentIdx + 1} / ${cleanChars.length} (${ch})`;
 
     const opts = getOpts();
-    const fontSize = Math.min(w, h) * 0.5;
+    const fontSize = Math.min(w, h) * 0.55; // 캔버스 크기의 55% 크기로 웅장하게
     const centerX = w * 0.5;
     const centerY = h * 0.5;
     const seed = ch.charCodeAt(0) * 131 + currentIdx * 37;
 
-    const de = decomposeHangul(ch);
     lastRenderedPaths = [];
 
-    if(!de) {
-      const path = baseFont.getPath(ch, 0, 0, fontSize);
-      const transformed = new opentype.Path();
-      const pbox = path.getBoundingBox();
-      const pcx = (pbox.x1 + pbox.x2) / 2;
-      const pcy = (pbox.y1 + pbox.y2) / 2;
+    // opentype.js로 글자 경로 생성 후, BBox 기준으로 화면 정중앙에 정확히 안착시킴
+    const path = baseFont.getPath(ch, 0, 0, fontSize);
+    const transformed = new opentype.Path();
+    const pbox = path.getBoundingBox();
+    
+    // 유효한 바운딩 박스가 없을 경우 기본값 부여
+    const minX = (pbox && pbox.x1 !== undefined) ? pbox.x1 : 0;
+    const maxX = (pbox && pbox.x2 !== undefined) ? pbox.x2 : fontSize;
+    const minY = (pbox && pbox.y1 !== undefined) ? pbox.y1 : -fontSize;
+    const maxY = (pbox && pbox.y2 !== undefined) ? pbox.y2 : 0;
 
-      path.commands.forEach(c=>{
-        const tx = (c.x !== undefined) ? (c.x - pcx + centerX) : undefined;
-        const ty = (c.y !== undefined) ? (c.y - pcy + centerY) : undefined;
-        if(c.type==='M') transformed.moveTo(tx, ty);
-        else if(c.type==='L') transformed.lineTo(tx, ty);
-        else if(c.type==='C') transformed.curveTo(c.x1-pcx+centerX, c.y1-pcy+centerY, c.x2-pcx+centerX, c.y2-pcy+centerY, tx, ty);
-        else if(c.type==='Q') transformed.quadTo(c.x1-pcx+centerX, c.y1-pcy+centerY, tx, ty);
-        else if(c.type==='Z') transformed.close();
-      });
-      transformed._contours=path._contours;
-      drawSingleRoughGlyph(transformed, opts, 1.2, seed, textCtx);
-      ctx.drawImage(textCv, 0, 0);
-      lastRenderedPaths = [{d: pathToSVGd(transformed), x: centerX, y: centerY}];
-      return;
-    }
+    const pcx = (minX + maxX) / 2;
+    const pcy = (minY + maxY) / 2;
 
-    const split = splitSyllablePathIntoJamoGroups(ch, fontSize);
-    if(split) {
-      ['cho', 'jung', 'jong'].forEach(k => {
-        let groupPath = split[k];
-        if(!groupPath) return;
+    path.commands.forEach(c=>{
+      const tx = (c.x !== undefined) ? (c.x - pcx + centerX) : undefined;
+      const ty = (c.y !== undefined) ? (c.y - pcy + centerY) : undefined;
+      if(c.type==='M') transformed.moveTo(tx, ty);
+      else if(c.type==='L') transformed.lineTo(tx, ty);
+      else if(c.type==='C') transformed.curveTo(c.x1-pcx+centerX, c.y1-pcy+centerY, c.x2-pcx+centerX, c.y2-pcy+centerY, tx, ty);
+      else if(c.type==='Q') transformed.quadTo(c.x1-pcx+centerX, c.y1-pcy+centerY, tx, ty);
+      else if(c.type==='Z') transformed.close();
+    });
+    transformed._contours=path._contours;
 
-        const gb = groupPath._bbox;
-        const transformed = new opentype.Path();
-        
-        groupPath.commands.forEach(c => {
-          const tx = (c.x - gb.cx) + centerX;
-          const ty = (c.y - gb.cy) + centerY;
-          if(c.type==='M') transformed.moveTo(tx, ty);
-          else if(c.type==='L') transformed.lineTo(tx, ty);
-          else if(c.type==='C') transformed.curveTo(c.x1 - gb.cx + centerX, c.y1 - gb.cy + centerY, c.x2 - gb.cx + centerX, c.y2 - gb.cy + centerY, tx, ty);
-          else if(c.type==='Q') transformed.quadTo(c.x1 - gb.cx + centerX, c.y1 - gb.cy + centerY, tx, ty);
-          else if(c.type==='Z') transformed.close();
-        });
-
-        transformed._contours = groupPath._contours;
-        drawSingleRoughGlyph(transformed, opts, 1.3, seed + k.charCodeAt(0), textCtx);
-        lastRenderedPaths.push({ d: pathToSVGd(transformed), x: centerX, y: centerY });
-      });
-    }
-
+    drawSingleRoughGlyph(transformed, opts, 1.2, seed, textCtx);
     ctx.drawImage(textCv, 0, 0);
+    lastRenderedPaths = [{d: pathToSVGd(transformed), x: centerX, y: centerY}];
+
   }catch(e){
     console.error("Single Render Error", e);
     log('⚠ 렌더 에러: '+e.message);
@@ -404,13 +312,57 @@ function updateLabels(){
   try{
     const opts=getOpts();
     const set=(id,val)=>{ const el=$(id); if(el) el.textContent=val; };
-    set('vBristle',(opts.bristleCount||10).toString()); set('vWhisker',(opts.whiskerLen||18).toString()); set('vIrregular',(opts.irregularity||0.6).toFixed(2));
+    set('vBristle',(opts.bristleCount||12).toString()); set('vWhisker',(opts.whiskerLen||18).toString()); set('vIrregular',(opts.irregularity||0.6).toFixed(2));
   }catch(e){}
 }
 
 [
-  'bristleCount','whiskerLen','irregularity','choRound','choLen','choThick'
+  'bristleCount','whiskerLen','irregularity','choRound'
 ].forEach(id=>{ safeAddListener(id,'input',()=>{ updateLabels(); renderSingleChar(); }); });
+
+function parseSRT(raw){
+  const blocks=raw.replace(/\r/g,'').trim().split(/\n\s*\n/);
+  const out=[];
+  for(const b of blocks){
+    const ls=b.split('\n').map(l=>l.trim()).filter(Boolean);
+    if(ls.length<2) continue;
+    let i=0; if(/^\d+$/.test(ls[0])) i=1;
+    const tm=(ls[i]||'').match(/(.+?)\s*-->\s*(.+)/);
+    if(!tm) continue;
+    out.push(ls.slice(i+1).join(' '));
+  }
+  return out.join(' ');
+}
+
+safeAddListener('btn-apply-srt','click', ()=>{
+  const raw = $('srtTa')?.value?.trim();
+  if(!raw) { alert("SRT 내용을 입력해주세요."); return; }
+  const extractedText = parseSRT(raw);
+  const targetArea = $('targetChars');
+  if(targetArea) {
+    targetArea.value = extractedText;
+    currentIdx = 0;
+    renderSingleChar();
+    log(`✅ SRT 자막에서 글자 추출 완료`);
+  }
+});
+
+safeAddListener('srt-input','change', e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=ev=>{
+    const ta=$('srtTa'); if(ta) ta.value=ev.target.result;
+    const extractedText = parseSRT(ev.target.result);
+    const targetArea = $('targetChars');
+    if(targetArea) {
+      targetArea.value = extractedText;
+      currentIdx = 0;
+      renderSingleChar();
+      log(`✅ SRT 파일 로드 및 글자 추출 완료`);
+    }
+  };
+  r.readAsText(f);
+});
 
 safeAddListener('targetChars','input', ()=>{ currentIdx=0; renderSingleChar(); });
 safeAddListener('btnPrev','click', ()=>{ if(currentIdx > 0) { currentIdx--; renderSingleChar(); } });
@@ -469,7 +421,7 @@ safeAddListener('fileSeq','input', e=>{
 
 safeAddListener('btnReset','click',()=>{
   const setVal=(id,v)=>{ const el=$(id); if(el) el.value=v; };
-  setVal('bristleCount',10); setVal('whiskerLen',18); setVal('irregularity',0.6);
+  setVal('bristleCount',12); setVal('whiskerLen',18); setVal('irregularity',0.6);
   updateLabels(); renderSingleChar(); log('↺ 원본 리셋');
 });
 
@@ -508,7 +460,7 @@ safeAddListener('btnSvgSingle','click',()=>{
     baseFont=await new Promise((res,rej)=>opentype.load('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/nanumbrushscript/NanumBrushScript-Regular.ttf',(e,f)=>e?rej(e):res(f)));
     const fs=$('font-status'); if(fs) fs.textContent='✅ 나눔손글씨 활성화';
     createStyleGrid('global-style-grid', (sel)=>{ selectedGlobalStyles=sel; renderSingleChar(); });
-    updateLabels(); log('v1.043.1 에셋 스튜디오 로드 완료');
+    updateLabels(); log('v1.043.3 에셋 스튜디오 로드 완료');
     renderSingleChar();
   }catch(e){ const fs=$('font-status'); if(fs) fs.textContent='⚠ 폰트 실패'; log('폰트 로드 실패: '+e.message); }
 })();
