@@ -3,13 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>한글 자소 결구 & 모듈러 캘리그라피 4단계 파이프라인 스튜디오 (v30.3 - 중심 거리)</title>
+  <title>한글 자소 결구 & 모듈러 캘리그라피 4단계 파이프라인 스튜디오 (v40.0 - 1~5 템플릿 조정 수치 탑재)</title>
 
+  <!-- 캘리그라피 웹 폰트 로드 -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Nanum+Brush+Script&display=swap" rel="stylesheet">
 
+  <!-- Opentype.js CDN (벡터 폰트 파싱 및 TTF/OTF 파일 로딩) -->
   <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
+
+  <!-- MP4 비디오 인코딩 라이브러리 CDN -->
   <script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.1.0/build/mp4-muxer.min.js"></script>
 
   <style>
@@ -19,6 +23,8 @@
       --panel-border: #2d2d38;
       --accent-color: #ff6b35;
       --accent-gradient: linear-gradient(135deg, #ff6b35, #f72585);
+      --preset-gradient: linear-gradient(135deg, #3a0ca3, #4361ee);
+      --slot-gradient: linear-gradient(135deg, #059669, #10b981);
       --text-main: #f0f0f5;
       --text-muted: #a0a0b0;
     }
@@ -27,19 +33,28 @@
     body { font-family: 'Pretendard', sans-serif; background-color: var(--bg-dark); color: var(--text-main); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
     header { background: #18181c; padding: 12px 24px; border-bottom: 1px solid var(--panel-border); display: flex; justify-content: space-between; align-items: center; }
     header h1 { font-size: 1.25rem; font-weight: 700; background: var(--accent-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    
     .main-container { display: flex; flex: 1; overflow: hidden; }
-    .sidebar { width: 420px; background: var(--panel-bg); border-right: 1px solid var(--panel-border); padding: 20px; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; }
-    .section-title { font-size: 0.9rem; font-weight: 700; color: var(--accent-color); text-transform: uppercase; margin-bottom: 6px; }
+    
+    /* 🏛️ 좌측/우측 듀얼 사이드바 구조 */
+    .sidebar-left { width: 380px; background: var(--panel-bg); border-right: 1px solid var(--panel-border); padding: 18px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
+    .sidebar-right { width: 400px; background: var(--panel-bg); border-left: 1px solid var(--panel-border); padding: 18px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
+
+    .section-title { font-size: 0.88rem; font-weight: 700; color: var(--accent-color); text-transform: uppercase; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
     .control-group { display: flex; flex-direction: column; gap: 6px; background: #181820; padding: 12px; border-radius: 8px; border: 1px solid #282834; }
+    
     label { font-size: 0.82rem; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
     label span.val { color: var(--text-main); font-weight: 600; }
+    
     input[type="file"] { display: none; }
     .btn-file { display: block; padding: 10px; background: #2a2a36; border: 1px dashed var(--accent-color); border-radius: 6px; text-align: center; cursor: pointer; font-size: 0.85rem; font-weight: 600; color: var(--text-main); transition: all 0.2s; }
     .btn-file:hover { background: #353545; border-color: #ff8c5a; }
-    textarea.srt-textarea { width: 100%; height: 85px; background: #141418; border: 1px solid var(--panel-border); border-radius: 6px; color: var(--text-main); font-family: monospace; font-size: 0.78rem; padding: 8px; resize: vertical; margin-top: 4px; }
+    
+    textarea.srt-textarea { width: 100%; height: 80px; background: #141418; border: 1px solid var(--panel-border); border-radius: 6px; color: var(--text-main); font-family: monospace; font-size: 0.78rem; padding: 8px; resize: vertical; margin-top: 4px; }
     select, input[type="range"], input[type="color"], input[type="text"] { width: 100%; padding: 8px; background: #16161a; border: 1px solid var(--panel-border); border-radius: 6px; color: var(--text-main); font-size: 0.85rem; margin-bottom: 4px; }
     input[type="range"] { padding: 0; accent-color: var(--accent-color); cursor: pointer; }
-    .preview-area { flex: 1; display: flex; flex-direction: column; background: #0a0a0c; align-items: center; justify-content: center; padding: 20px; position: relative; }
+    
+    .preview-area { flex: 1; display: flex; flex-direction: column; background: #0a0a0c; align-items: center; justify-content: center; padding: 16px; position: relative; }
     .canvas-wrapper { position: relative; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8); border-radius: 8px; overflow: hidden; max-width: 100%; max-height: 65vh; display: flex; align-items: center; justify-content: center; background: #000; }
     canvas { display: block; max-width: 100%; max-height: 65vh; object-fit: contain; }
     
@@ -47,15 +62,33 @@
     .calli-char-wrapper { display: inline-block; position: relative; line-height: 1; filter: url(#ink-bleed-filter); }
     .calli-char { display: inline-block; transition: transform 0.1s ease; }
 
-    .player-controls { width: 100%; max-width: 960px; margin-top: 15px; background: var(--panel-bg); padding: 14px 20px; border-radius: 10px; display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--panel-border); }
+    .player-controls { width: 100%; max-width: 960px; margin-top: 12px; background: var(--panel-bg); padding: 12px 18px; border-radius: 10px; display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--panel-border); }
     .timeline-row { display: flex; align-items: center; gap: 12px; }
     .time-display { font-family: monospace; font-size: 0.9rem; color: var(--accent-color); min-width: 120px; }
-    button.btn-action { background: var(--accent-gradient); color: white; border: none; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; }
-    button.btn-secondary { background: #2b2b38; border: 1px solid var(--panel-border); color: var(--text-main); padding: 10px 16px; border-radius: 6px; cursor: pointer; }
-    .srt-list-container { max-height: 140px; overflow-y: auto; background: #141418; border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px; }
+    
+    button.btn-action { background: var(--accent-gradient); color: white; border: none; padding: 10px 18px; border-radius: 6px; font-weight: 600; cursor: pointer; }
+    button.btn-secondary { background: #2b2b38; border: 1px solid var(--panel-border); color: var(--text-main); padding: 9px 14px; border-radius: 6px; cursor: pointer; }
+    
+    .btn-preset { background: var(--preset-gradient); color: white; border: none; padding: 9px 12px; border-radius: 6px; font-weight: 700; cursor: pointer; font-size: 0.8rem; text-align: left; transition: all 0.2s; display: flex; align-items: center; gap: 6px; }
+    .btn-preset:hover { opacity: 0.9; transform: translateY(-1px); }
+
+    button.btn-random { background: linear-gradient(135deg, #7209b7, #4361ee); color: white; border: none; padding: 10px 14px; border-radius: 6px; font-weight: 700; cursor: pointer; width: 100%; margin-top: 4px; transition: all 0.2s; }
+    button.btn-random:hover { opacity: 0.9; transform: translateY(-1px); }
+
+    /* 📌 1~10 템플릿 슬롯 UI 그리드 전용 스타일 */
+    .slot-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin: 8px 0; }
+    .btn-slot { background: #161622; border: 1px solid #2d2d42; color: #a0a0b0; padding: 8px 4px; border-radius: 6px; font-size: 0.76rem; font-weight: 600; cursor: pointer; text-align: center; transition: all 0.2s; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+    .btn-slot:hover { background: #262638; border-color: var(--accent-color); color: #fff; }
+    .btn-slot.saved { background: #102a20; border-color: #10b981; color: #7cd992; }
+    .btn-slot.active { border-color: var(--accent-color); box-shadow: 0 0 10px rgba(255, 107, 55, 0.4); color: #fff; font-weight: bold; }
+    .slot-badge { font-size: 0.68rem; padding: 1px 4px; border-radius: 3px; background: #282838; }
+    .btn-slot.saved .slot-badge { background: #059669; color: #fff; }
+
+    .srt-list-container { max-height: 130px; overflow-y: auto; background: #141418; border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px; }
     .srt-item { padding: 8px 10px; border-bottom: 1px solid #22222a; font-size: 0.8rem; cursor: pointer; display: flex; justify-content: space-between; align-items: center; border-radius: 4px; }
     .srt-item.active { background: rgba(255, 107, 55, 0.2); border-left: 4px solid var(--accent-color); color: #fff; font-weight: bold; }
-    .srt-item-title { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .srt-item-title { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    
     .progress-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(4px); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; display: none; }
     .progress-box { background: var(--panel-bg); padding: 30px; border-radius: 12px; text-align: center; width: 360px; }
     .progress-bar-bg { width: 100%; height: 10px; background: #111; border-radius: 5px; margin: 15px 0; overflow: hidden; }
@@ -65,11 +98,12 @@
     .font-status.ready { color: #7cd992; }
     .font-status.loading { color: #ffcf6b; }
     .session-badge { background: #ff6b35; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.72rem; }
-    .analysis-box { background: #14141c; border: 1px solid #2d2d3e; border-radius: 6px; padding: 8px 10px; font-family: monospace; font-size: 0.75rem; color: #7cd992; max-height: 90px; overflow-y: auto; }
+    .analysis-box { background: #14141c; border: 1px solid #2d2d3e; border-radius: 6px; padding: 8px 10px; font-family: monospace; font-size: 0.75rem; color: #7cd992; max-height: 85px; overflow-y: auto; }
   </style>
 </head>
 <body>
 
+  <!-- 🏛️ 4단계 SVG 필터 (feTurbulence & feDisplacementMap 갈필/먹물 번짐) -->
   <svg class="filters">
     <defs>
       <filter id="ink-bleed-filter" x="-20%" y="-20%" width="140%" height="140%">
@@ -81,19 +115,34 @@
 
   <header>
     <h1>🖌️ SRT 캘리그라피 스튜디오</h1>
-    <span style="font-size: 0.85rem; color: var(--text-muted);">한글 자소 결구 & 모듈러 4단계 파이프라인 엔진 v30.3 (중심 거리)</span>
+    <span style="font-size: 0.85rem; color: var(--text-muted);">v40.0 - 템플릿 1~5 정밀 조형 수치 & 파라메트릭 필압 엔진</span>
   </header>
 
   <div class="main-container">
-    <div class="sidebar">
+    
+    <!-- 👈 1. 좌측 사이드바: 기본 설정, SRT 편집, 마스크, 배경 -->
+    <div class="sidebar-left">
 
       <div class="control-group">
         <div class="section-title">📂 1. SRT 자막 로딩 & 편집</div>
         <label for="srt-input" class="btn-file" id="srt-label">📁 SRT 자막 파일 불러오기 (.srt)</label>
         <input type="file" id="srt-input" accept=".srt">
 
-        <label style="margin-top: 6px;">SRT 자막 직접 입력/수정</label>
-        <textarea id="srt-textarea" class="srt-textarea" placeholder="SRT 자막 내용을 입력하세요."></textarea>
+        <label style="margin-top: 4px;">SRT 자막 직접 입력/수정</label>
+        <textarea id="srt-textarea" class="srt-textarea" placeholder="SRT 자막 내용을 입력하세요.">1
+00:00:00,000 --> 00:00:05,000
+맛있게 먹으면
+0칼로리
+
+2
+00:00:05,000 --> 00:00:10,000
+우리에겐 행복할 권리와
+타인의 행복에 대한 책임이 함께 있다
+
+3
+00:00:10,000 --> 00:00:15,000
+사랑도
+멈출 수 없이 필요하다</textarea>
         <button class="btn-secondary" id="btn-apply-srt" style="width:100%; margin-top:4px;">✏️ 자막 적용하기</button>
       </div>
 
@@ -107,6 +156,7 @@
         <select id="aspect-ratio-select">
           <option value="16:9" selected>🖥️ 16:9 가로형 (1920 x 1080 Full HD)</option>
           <option value="9:16">📱 9:16 세로 숏폼 (1080 x 1920 Reels/Shorts)</option>
+          <option value="1:1">⬛ 1:1 정방형 (1440 x 1440 Square)</option>
         </select>
       </div>
 
@@ -125,7 +175,7 @@
       </div>
 
       <div class="control-group">
-        <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
+        <div class="section-title">
           <span>🔷 4. 자막 세션 개별 위치 & 도형 틀</span>
           <span class="session-badge" id="selected-srt-badge">전체 적용 중</span>
         </div>
@@ -137,19 +187,6 @@
           <option value="circle">⭕ 원형 (동그란 낙관 구도)</option>
           <option value="triangle">🔺 정삼각형 (피라미드 구도)</option>
           <option value="horizontal-rect">▭ 가로 직사각형 (와이드 블록)</option>
-        </select>
-
-        <label for="shape-layout-style">8대 한글 결구 기반 조형 구도</label>
-        <select id="shape-layout-style">
-          <option value="artistic-rhythm" selected>🧬 8대 결구 & 시각적 무게중심 알고리즘 (추천)</option>
-          <option value="multiline-fit">📜 행 단위 정돈된 채우기</option>
-          <option value="single-column">🖌️ 세로 1열 전통 수묵 구도</option>
-        </select>
-
-        <label for="shape-crop-select">획 잘림 방지 (자연스러운 붓터치)</label>
-        <select id="shape-crop-select">
-          <option value="natural" selected>🖌️ 자연스러운 붓터치 (획이 나가도 자르지 않음)</option>
-          <option value="hard-crop">✂️ 도형 윤곽 칼같이 자르기</option>
         </select>
 
         <label for="param-offset-x">
@@ -166,66 +203,30 @@
           자막 전체 크기 비율 <span class="val" id="val-scale">100%</span>
         </label>
         <input type="range" id="param-scale" min="50" max="180" step="5" value="100">
+
+        <label for="shape-crop-select">획 잘림 방지 (자연스러운 붓터치)</label>
+        <select id="shape-crop-select">
+          <option value="natural" selected>🖌️ 자연스러운 붓터치 (획이 나가도 자르지 않음)</option>
+          <option value="hard-crop">✂️ 도형 윤곽 칼같이 자르기</option>
+        </select>
+
+        <label for="shape-layout-style">조형 배치 패턴</label>
+        <select id="shape-layout-style">
+          <option value="block-headline" selected>▭ 블록 지그재그 (맛있게 0칼로리)</option>
+          <option value="center">⚖️ 산문 정돈 중심 정렬 (행복할 권리)</option>
+          <option value="wedge-title">🔻 상단 쐐기 강조 구도 (사랑도 필요하다)</option>
+          <option value="stair-diagonal">📐 사선 계단형 구도 (첫눈처럼 갈께)</option>
+          <option value="emblem-compact">🗿 엠블럼 중심 압축 구도 (시나브로)</option>
+          <option value="single-column">🖌️ 세로 1열 전통 수묵 구도 (사랑을 배운다)</option>
+        </select>
       </div>
 
       <div class="control-group">
-        <div class="section-title">🎨 5. 조형 파라미터 엔진 (필압, 각도 & 획 융합)</div>
-
-        <label for="param-style-intensity">
-          ✨ 필압/강약 변형 가중치 ($P$) <span class="val" id="val-style-intensity">1.4x</span>
-        </label>
-        <input type="range" id="param-style-intensity" min="0.5" max="3.0" step="0.1" value="1.4">
-
-        <label for="param-dry-brush">
-          🖌️ 갈필(飛白) 붓갈라짐 질감 <span class="val" id="val-dry-brush">중간</span>
-        </label>
-        <input type="range" id="param-dry-brush" min="0.0" max="1.0" step="0.1" value="0.5">
-
-        <label for="param-splatter">
-          💦 먹물 미세 튀김(Ink Splatter) <span class="val" id="val-splatter">은은하게</span>
-        </label>
-        <input type="range" id="param-splatter" min="0.0" max="1.0" step="0.1" value="0.4">
-
-        <label for="param-contrast">주요 단어/첫 글자 대비 <span class="val" id="val-contrast">2.4x</span></label>
-        <input type="range" id="param-contrast" min="1.2" max="3.5" step="0.1" value="2.4">
-
-        <label for="param-finish-pct">
-          문장 쓰기 완성 구간 <span class="val" id="val-finish-pct">70% 시간 내 완성</span>
-        </label>
-        <input type="range" id="param-finish-pct" min="50" max="85" step="1" value="70">
-      </div>
-
-      <!-- 🧩 초/중/종성 결구 중심 거리 (6가지 유형 자동 반영) -->
-      <div class="control-group">
-        <div class="section-title">🧩 초/중/종성 결구 중심 거리</div>
-        
-        <div style="font-size: 11px; color: #aaa; margin-bottom: 5px;">
-          * X, Y 이동이 아닌 "중심에서 거리"입니다.<br>
-          * 글자의 6대 결구 유형에 따라 초성(좌), 중성(우), 종성(하) 방향으로 자동 이동합니다.
-        </div>
-
-        <label>초성 거리: <span class="val" id="v-cho-dist">0</span></label>
-        <input type="range" id="param-cho-dist" min="-200" max="300" value="0">
-        <label>초성 크기: <span class="val" id="v-cho-scale">1.00</span></label>
-        <input type="range" id="param-cho-scale" min="0.5" max="2.0" step="0.05" value="1.0">
-
-        <label>중성 거리: <span class="val" id="v-jung-dist">0</span></label>
-        <input type="range" id="param-jung-dist" min="-200" max="300" value="0">
-        <label>중성 크기: <span class="val" id="v-jung-scale">1.00</span></label>
-        <input type="range" id="param-jung-scale" min="0.5" max="2.0" step="0.05" value="1.0">
-
-        <label>종성 거리: <span class="val" id="v-jong-dist">0</span></label>
-        <input type="range" id="param-jong-dist" min="-200" max="300" value="0">
-        <label>종성 크기: <span class="val" id="v-jong-scale">1.00</span></label>
-        <input type="range" id="param-jong-scale" min="0.5" max="2.0" step="0.05" value="1.0">
-      </div>
-
-      <div class="control-group">
-        <div class="section-title">🖼️ 6. 배경, 먹물 & 윤곽 가이드</div>
+        <div class="section-title">🖼️ 5. 배경, 먹물 & 윤곽 가이드</div>
 
         <label for="param-show-guide">도형 윤곽 가이드선 (녹화 시 자동 제거됨)</label>
         <select id="param-show-guide">
-          <option value="guide-shape" selected>📐 윤곽 가이드선 항상 표시 (편집용 - 녹화 시 자동 숨김)</option>
+          <option value="guide-shape" selected>📐 윤곽 가이드선 항상 표시 (편집용 - 녹화 시 안보임)</option>
           <option value="subtle-axis">🖌️ 세로 먹선 축 표시</option>
           <option value="none">❌ 전혀 안 보임</option>
         </select>
@@ -239,7 +240,7 @@
         </select>
 
         <label for="ink-color">먹물 색상</label>
-        <input type="color" id="ink-color" value="#1c1917">
+        <input type="color" id="ink-color" value="#111113">
 
         <label for="filter-mode-select">먹물 번짐 필터 모드</label>
         <select id="filter-mode-select">
@@ -249,12 +250,13 @@
       </div>
 
       <div class="control-group">
-        <div class="section-title">📜 7. 자막 세션 목록 (클릭하여 개별 설정)</div>
+        <div class="section-title">📜 6. 자막 세션 목록 (클릭하여 개별 설정)</div>
         <div class="srt-list-container" id="srt-list"></div>
       </div>
 
     </div>
 
+    <!-- 🖼️ 2. 중앙 캔버스 프리뷰 및 타임라인 컨트롤 -->
     <div class="preview-area">
       <div class="canvas-wrapper" id="canvas-wrapper">
         <canvas id="calligraphy-canvas" width="1920" height="1080"></canvas>
@@ -268,9 +270,9 @@
           <div class="time-display" id="time-display">00:00.00 / 00:00.00</div>
         </div>
 
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 5px;">
-          <div style="font-size: 0.85rem; color: var(--text-muted);" id="res-indicator">
-            해상도: 1920x1080 (16:9 Full HD) | 한글 자소 8대 결구 파이프라인
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+          <div style="font-size: 0.82rem; color: var(--text-muted);" id="res-indicator">
+            해상도: 1920x1080 (16:9 Full HD) | 작품 캘리그라피 연출 엔진
           </div>
           <button class="btn-action" id="btn-export">
             🔴 한번에 전체 녹화 시작 ➔ 세션별 개별 위치/도형 MP4 자동 저장
@@ -278,6 +280,253 @@
         </div>
       </div>
     </div>
+
+    <!-- 👉 3. 우측 사이드바: 1~5 템플릿 조정 수치 & 1~10 슬롯, 파라메트릭 조형 왜곡 -->
+    <div class="sidebar-right">
+
+      <!-- 🏆 1~10 캘리그라피 템플릿 슬롯 저장 & 불러오기 UI -->
+      <div class="control-group" style="background: linear-gradient(135deg, #1f1d2b, #2d2640); border: 1px solid #4361ee;">
+        <div class="section-title" style="color: #4cc9f0;">🏆 템플릿 1~5 정밀 수치 & 1~10 슬롯 관리</div>
+        
+        <label for="template-select" style="font-weight: bold; color: #fff;">📜 작품 템플릿 & 슬롯 선택</label>
+        <select id="template-select" style="font-weight: bold; border-color: #4361ee; background: #181824;"></select>
+
+        <label style="color: #a0a0b0; margin-top: 6px;">📌 1~10번 퀵 슬롯 클릭 (클릭=불러오기)</label>
+        <div class="slot-grid" id="slot-button-grid">
+          <!-- JS로 10개 슬롯 버튼이 생성됩니다 -->
+        </div>
+
+        <div style="margin-top: 6px; border-top: 1px dashed #4361ee; padding-top: 8px;">
+          <label style="color: #a0a0b0;">💾 선택된 슬롯 설정 관리 (1~10번 슬롯)</label>
+          
+          <div style="display: flex; gap: 6px; margin-top: 4px;">
+            <input type="text" id="slot-custom-name" placeholder="템플릿 슬롯 이름 입력..." style="margin-bottom:0; flex:1;">
+            <button class="btn-action" id="btn-save-slot" style="padding: 6px 12px; font-size: 0.8rem; background: var(--slot-gradient); white-space: nowrap;">💾 슬롯 저장</button>
+          </div>
+          
+          <div style="display: flex; gap: 6px; margin-top: 6px;">
+            <button class="btn-secondary" id="btn-load-slot" style="flex: 1; font-weight: bold; border-color: #4361ee; color: #4cc9f0;">📂 슬롯 불러오기</button>
+            <button class="btn-secondary" id="btn-delete-slot" style="width: 100px; font-size: 0.78rem; color: #ff4d4d; border-color: #ff4d4d33;">🗑️ 슬롯 비우기</button>
+          </div>
+        </div>
+
+        <button class="btn-random" id="btn-random-mix" style="margin-top: 6px;">✨ 무작위 캘리그라피 템플릿 믹스</button>
+      </div>
+
+      <!-- 🧮 획 왜곡 및 필압 지오메트리 파라미터 (v39.0 엔진 통합) -->
+      <div class="control-group">
+        <div class="section-title">🧮 획 왜곡 & 파라메트릭 지오메트리 수치</div>
+
+        <label for="param-shear">
+          속도장 전단각 (우상향 틸트) <span class="val" id="val-shear">7°</span>
+        </label>
+        <input type="range" id="param-shear" min="-15" max="25" step="1" value="7">
+
+        <label for="param-bulge">
+          구형 중심 팽창 (후중화) <span class="val" id="val-bulge">0.3</span>
+        </label>
+        <input type="range" id="param-bulge" min="-1.0" max="2.0" step="0.1" value="0.3">
+
+        <label for="param-stroke-expand">
+          외곽선 확장 (획 굵기) <span class="val" id="val-stroke-expand">1.35x</span>
+        </label>
+        <input type="range" id="param-stroke-expand" min="0.5" max="2.5" step="0.05" value="1.35">
+
+        <label for="param-curvature">
+          비선형 곡률 (Bending) <span class="val" id="val-curvature">0.2</span>
+        </label>
+        <input type="range" id="param-curvature" min="-2.0" max="2.0" step="0.1" value="0.2">
+
+        <label for="param-slit-cut">
+          갈필(飛白) 접선 슬릿 절삭 <span class="val" id="val-slit-cut">0.45</span>
+        </label>
+        <input type="range" id="param-slit-cut" min="0.0" max="1.0" step="0.05" value="0.45">
+      </div>
+
+      <!-- ✒️ 장획/삐침 어트랙터 수치 -->
+      <div class="control-group">
+        <div class="section-title">✒️ 장획/삐침 어트랙터 연출 수치</div>
+
+        <label for="param-pull-dir">장획 뻗는 방향</label>
+        <select id="param-pull-dir">
+          <option value="down" selected>⬇️ 수직 하강 (사랑을 배운다)</option>
+          <option value="down-right">↘️ 우하단 사선 (첫눈처럼)</option>
+          <option value="down-left">↙️ 좌하단 대각 (봄캘리)</option>
+          <option value="right">➡️ 우측 수평 (질주 꼬리)</option>
+        </select>
+
+        <label for="param-pull-target">장획 적용 대상 글자</label>
+        <select id="param-pull-target">
+          <option value="last-char" selected>문장 맨 마지막 글자 끝획</option>
+          <option value="first-char">문장 첫 글자</option>
+          <option value="line-ends">각 행의 마지막 글자들</option>
+          <option value="none">장획 끔</option>
+        </select>
+
+        <label for="param-attractor">
+          장획/삐침 강도 <span class="val" id="val-attractor">1.2x</span>
+        </label>
+        <input type="range" id="param-attractor" min="0.0" max="3.0" step="0.1" value="1.2">
+
+        <label for="param-decay">
+          행별 점진 축소율 (Decay) <span class="val" id="val-decay">1.0x</span>
+        </label>
+        <input type="range" id="param-decay" min="0.6" max="1.4" step="0.05" value="1.0">
+
+        <label for="param-contrast">
+          주제어/첫 행 대비율 <span class="val" id="val-contrast">1.4x</span>
+        </label>
+        <input type="range" id="param-contrast" min="1.0" max="3.5" step="0.1" value="1.4">
+      </div>
+
+      <div class="control-group">
+        <div class="section-title">🎨 감성 수채화 물감 방울 & 빛망울 연출</div>
+        <label for="param-watercolor-style">수채화 파스텔 물감 번짐 패턴</label>
+        <select id="param-watercolor-style">
+          <option value="pastel-dots" selected>🎨 은은한 파스텔 수채화 물감 방울 (추천)</option>
+          <option value="rich-dots">🌈 풍부한 수채화 & 빛망울 감성 연출</option>
+          <option value="none">❌ 물감 방울 없음 (단정한 먹물만)</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <div class="section-title">✍️ 보조 자막 / 작가 서명 & 소자막</div>
+        <label for="param-subcaption-text">보조 문구 / 서명 문구 입력</label>
+        <input type="text" id="param-subcaption-text" value="제주글씨" placeholder="예: 제주글씨, 메리 씀">
+
+        <label for="param-subcaption-pos">보조 문구 위치</label>
+        <select id="param-subcaption-pos">
+          <option value="bottom-center" selected>📌 하단 중앙 소자막 (기본)</option>
+          <option value="right-vertical">📌 우측 세로 소자막</option>
+          <option value="none">❌ 보조 문구 표시 안함</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <div class="section-title">📜 문장 타이포그래피 (자간 & 줄간격)</div>
+        
+        <label for="param-letter-spacing">
+          글자 자간 (Letter Spacing) <span class="val" id="val-letter-spacing">-6px</span>
+        </label>
+        <input type="range" id="param-letter-spacing" min="-40" max="40" step="2" value="-6">
+
+        <label for="param-line-height">
+          문장 줄간격 (Line Height) <span class="val" id="val-line-height">1.05x</span>
+        </label>
+        <input type="range" id="param-line-height" min="0.6" max="2.2" step="0.05" value="1.05">
+      </div>
+
+      <div class="control-group">
+        <div class="section-title">✍️ 초성(初聲) 방사형 방향 벡터 변형</div>
+
+        <label for="param-initial-dist">
+          📐 정중앙 ➔ 초성 방향 벡터 거리 ($d_{init}$) <span class="val" id="val-initial-dist">20px</span>
+        </label>
+        <input type="range" id="param-initial-dist" min="0" max="100" step="2" value="20">
+
+        <label for="param-initial-scale">
+          초성 개별 크기 비율 <span class="val" id="val-initial-scale">140%</span>
+        </label>
+        <input type="range" id="param-initial-scale" min="50" max="200" step="5" value="140">
+
+        <label for="param-initial-shape">초성 모양 조형 스타일</label>
+        <select id="param-initial-shape">
+          <option value="normal" selected>기본 (폰트 아웃라인 그대로)</option>
+          <option value="rounded">⭕ 동그랗게 (유연하고 부드러운 획)</option>
+          <option value="angled">📐 각지게 (예리한 붓 꺾임 서체)</option>
+          <option value="cursive">🖌️ 흘림 / 행서 (유체 붓 쏠림)</option>
+          <option value="plump">🐘 뚱뚱하게 / 후중 (묵직하고 꽉 찬 획)</option>
+          <option value="random">🎲 글자마다 무작위 믹스</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <div class="section-title">🌾 중성(中聲) 방사형 방향 벡터 변형</div>
+
+        <label for="param-medial-dist">
+          📐 정중앙 ➔ 중성 방향 벡터 거리 ($d_{med}$) <span class="val" id="val-medial-dist">15px</span>
+        </label>
+        <input type="range" id="param-medial-dist" min="0" max="100" step="2" value="15">
+
+        <label for="param-medial-scale">
+          중성 크기/획 두께 비율 <span class="val" id="val-medial-scale">110%</span>
+        </label>
+        <input type="range" id="param-medial-scale" min="50" max="200" step="5" value="110">
+
+        <label for="param-medial-shape">중성 모양 조형 스타일</label>
+        <select id="param-medial-shape">
+          <option value="normal" selected>기본 (폰트 아웃라인 그대로)</option>
+          <option value="rounded">⭕ 동그랗게 (부드러운 곡선 모음)</option>
+          <option value="angled">📐 각지게 (직선적 칼붓 모음)</option>
+          <option value="cursive">🖌️ 흘림 / 행서 (자연스러운 연결 획)</option>
+          <option value="plump">🐘 뚱뚱하게 / 후중 (시원하고 두툼한 획)</option>
+          <option value="random">🎲 글자마다 무작위 믹스</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <div class="section-title">⚓ 종성(終聲) 받침 방향 벡터 변형</div>
+
+        <label for="param-final-dist">
+          📐 정중앙 ➔ 종성(받침) 방향 벡터 거리 ($d_{final}$) <span class="val" id="val-final-dist">25px</span>
+        </label>
+        <input type="range" id="param-final-dist" min="0" max="100" step="2" value="25">
+
+        <label for="param-final-scale">
+          종성 받침 크기 비율 <span class="val" id="val-final-scale">130%</span>
+        </label>
+        <input type="range" id="param-final-scale" min="40" max="200" step="5" value="130">
+
+        <label for="param-final-shape">종성 모양 조형 스타일</label>
+        <select id="param-final-shape">
+          <option value="normal" selected>기본 (폰트 아웃라인 그대로)</option>
+          <option value="rounded">⭕ 동그랗게 (둥근 맺음 받침)</option>
+          <option value="angled">📐 각지게 (힘있는 받침 꺾임)</option>
+          <option value="cursive">🖌️ 흘림 / 행서 (갈고리 수필 받침)</option>
+          <option value="plump">🐘 뚱뚱하게 / 후중 (안정적인 받침 받침대)</option>
+          <option value="random">🎲 글자마다 무작위 믹스</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <div class="section-title">🖌️ 전통 붓터치 필압 (기필·행필·수필)</div>
+
+        <label for="param-gipil">
+          ✍️ 기필(起筆) 시작 붓 누름 <span class="val" id="val-gipil">1.4x</span>
+        </label>
+        <input type="range" id="param-gipil" min="0.0" max="2.5" step="0.1" value="1.4">
+
+        <label for="param-supil">
+          ✒️ 수필(收筆) 마감 맺음/돈필 <span class="val" id="val-supil">1.3x</span>
+        </label>
+        <input type="range" id="param-supil" min="0.0" max="2.5" step="0.1" value="1.3">
+
+        <label for="param-style-intensity">
+          ✨ 전체 필압 강약 ($P$) <span class="val" id="val-style-intensity">1.5x</span>
+        </label>
+        <input type="range" id="param-style-intensity" min="0.5" max="3.0" step="0.1" value="1.5">
+
+        <label for="param-seal-select">🔴 전통 붉은 낙관 인장 설정</label>
+        <select id="param-seal-select">
+          <option value="none" selected>❌ 낙관 없음</option>
+          <option value="seal-red">🔴 주문 정방형 붉은 인장</option>
+          <option value="seal-dark">⚫ 흑묵 정방 낙관</option>
+          <option value="custom">✏️ 사용자 직접 입력 직인</option>
+        </select>
+
+        <div id="seal-custom-group" style="display: none; margin-top: 4px;">
+          <label for="param-seal-text">사용자 직인 문구 (1~4글자)</label>
+          <input type="text" id="param-seal-text" value="제주" maxlength="4" placeholder="예: 제주, 메리, 사랑">
+        </div>
+
+        <label for="param-finish-pct">
+          문장 쓰기 완성 구간 <span class="val" id="val-finish-pct">70% 시간 내 완성</span>
+        </label>
+        <input type="range" id="param-finish-pct" min="50" max="85" step="1" value="70">
+      </div>
+
+    </div>
+
   </div>
 
   <div class="progress-overlay" id="progress-modal">
@@ -290,6 +539,9 @@
   </div>
 
   <script>
+    /* =========================================================================
+       🏛️ 1단계: 유니코드 자소 분해 및 8대 결구 파서 (Unicode Decomposer)
+       ========================================================================= */
     const INITIAL_CONSONANTS = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
     const MEDIAL_VOWELS     = ['ㅏ','ㅐ','ㅑ','ㅒ','ㅓ','ㅔ','ㅕ','ㅖ','ㅗ','ㅘ','ㅙ','ㅚ','ㅛ','ㅜ','ㅝ','ㅞ','ㅟ','ㅠ','ㅡ','ㅢ','ㅣ'];
     const FINAL_CONSONANTS  = ['','ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','ㅀ','ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
@@ -302,15 +554,19 @@
 
     function decomposeHangul(char) {
       const code = char.charCodeAt(0);
-      if (code < 0xAC00 || code > 0xD7A3) return { char, isHangul: false, type: 8, typeDesc: '특수/기호' };
+      if (code < 0xAC00 || code > 0xD7A3) {
+        return { char, isHangul: false, type: 8, typeDesc: '특수/기호' };
+      }
 
       const sIndex = code - 0xAC00;
       const initialIdx = Math.floor(sIndex / (21 * 28));
       const medialIdx  = Math.floor((sIndex % (21 * 28)) / 28);
       const finalIdx   = sIndex % 28;
+
       const initial = INITIAL_CONSONANTS[initialIdx];
       const medial  = MEDIAL_VOWELS[medialIdx];
       const final   = FINAL_CONSONANTS[finalIdx];
+
       const hasFinal = finalIdx > 0;
       const isDoubleFinal = [3, 5, 6, 9, 10, 11, 12, 13, 14, 15, 18].includes(finalIdx);
 
@@ -318,7 +574,9 @@
       if (VOWEL_TYPES.VERTICAL.includes(medialIdx)) vowelShape = 'VERTICAL';
       else if (VOWEL_TYPES.HORIZONTAL.includes(medialIdx)) vowelShape = 'HORIZONTAL';
 
-      let type = 1, typeDesc = '';
+      let type = 1;
+      let typeDesc = '';
+
       if (!hasFinal) {
         if (vowelShape === 'VERTICAL') { type = 1; typeDesc = 'Type 1 (수직중성·무받침)'; }
         else if (vowelShape === 'HORIZONTAL') { type = 2; typeDesc = 'Type 2 (수평중성·무받침)'; }
@@ -329,70 +587,132 @@
         else if (vowelShape === 'HORIZONTAL') { type = 5; typeDesc = 'Type 5 (수평중성·받침)'; }
         else { type = 6; typeDesc = 'Type 6 (복합중성·받침)'; }
       }
-      return { char, isHangul: true, initial, medial, final, type, typeDesc };
+
+      return {
+        char, isHangul: true,
+        initial, medial, final,
+        initialIdx, medialIdx, finalIdx,
+        vowelShape, hasFinal, isDoubleFinal,
+        type, typeDesc
+      };
     }
 
-    /* 6대 결구에 따른 자모 방향 벡터 (중심에서 바깥으로) */
-    function getDirectionVector(type, part) {
-      if (part === 'cho') {
-        if (type === 1) return [-1, 0];
-        if (type === 2) return [0, -1];
-        if (type === 3) return [-1, -1];
-        if (type === 4) return [-1, 0];
-        if (type === 5) return [0, -1];
-        if (type === 6) return [-1, -1];
-        if (type === 7) return [-1, -1];
-        return [0, 0];
-      } else if (part === 'jung') {
-        if (type === 1) return [1, 0];
-        if (type === 2) return [0, 1];
-        if (type === 3) return [1, 1];
-        if (type === 4) return [1, 0];
-        if (type === 5) return [0, 0];
-        if (type === 6) return [1, -1];
-        if (type === 7) return [1, -1];
-        return [0, 0];
-      } else if (part === 'jong') {
-        if (type === 4) return [0, 1];
-        if (type === 5) return [0, 1];
-        if (type === 6) return [0, 1];
-        if (type === 7) return [0, 1];
-        return [0, 0];
-      }
-      return [0, 0];
+    /* =========================================================================
+       ⚙️ 2단계: 시각적 무게중심 Matrix (Optical Center Matrix)
+       ========================================================================= */
+    function getOpticalCenterMatrix(decomp, baseSize) {
+      if (!decomp.isHangul) return { cx: 0, cy: 0, scale: 1.0, tilt: 0 };
+
+      const MATRIX_MAP = {
+        1: { cxOff: -0.05, cyOff:  0.00, scale: 1.05, tilt: -0.03 },
+        2: { cxOff:  0.00, cyOff: -0.04, scale: 1.00, tilt:  0.02 },
+        3: { cxOff: -0.03, cyOff: -0.02, scale: 0.98, tilt: -0.04 },
+        4: { cxOff: -0.04, cyOff:  0.05, scale: 1.10, tilt: -0.02 },
+        5: { cxOff:  0.00, cyOff:  0.06, scale: 1.06, tilt:  0.03 },
+        6: { cxOff: -0.02, cyOff:  0.04, scale: 1.04, tilt: -0.01 },
+        7: { cxOff:  0.02, cyOff:  0.07, scale: 1.12, tilt:  0.04 },
+        8: { cxOff:  0.00, cyOff:  0.00, scale: 0.90, tilt:  0.00 }
+      };
+
+      const m = MATRIX_MAP[decomp.type] || MATRIX_MAP[8];
+      return {
+        cx: m.cxOff * baseSize,
+        cy: m.cyOff * baseSize,
+        scale: m.scale,
+        tilt: m.tilt
+      };
     }
 
-    /* 전역 상태 */
-    let srtData = [], activeSrtIndex = -1, totalDuration = 0, currentTime = 0, isPlaying = false, isRecording = false;
-    let animationFrameId = null, lastTimestamp = 0, rafScheduled = false;
+    /* 전역 변수 및 DOM 선택자 */
+    let srtData = [];
+    let activeSrtIndex = -1;
+    let totalDuration = 0;
+    let currentTime = 0;
+    let isPlaying = false;
+    let isRecording = false;
+    let animationFrameId = null;
+    let lastTimestamp = 0;
+    let rafScheduled = false;
+    let selectedSlotId = 1; // 현재 선택된 템플릿 슬롯 번호 (1~10)
+
     const canvas = document.getElementById('calligraphy-canvas');
     const ctx = canvas.getContext('2d');
     const calliDomLayer = document.getElementById('calli-dom-layer');
     const analysisOutput = document.getElementById('analysis-output');
 
-    const srtInput = document.getElementById('srt-input'), srtLabel = document.getElementById('srt-label');
-    const srtTextarea = document.getElementById('srt-textarea'), btnApplySrt = document.getElementById('btn-apply-srt');
-    const srtListEl = document.getElementById('srt-list'), btnPlay = document.getElementById('btn-play');
-    const timeSlider = document.getElementById('time-slider'), timeDisplay = document.getElementById('time-display');
+    const srtInput = document.getElementById('srt-input');
+    const srtLabel = document.getElementById('srt-label');
+    const srtTextarea = document.getElementById('srt-textarea');
+    const btnApplySrt = document.getElementById('btn-apply-srt');
+    const srtListEl = document.getElementById('srt-list');
+    const btnPlay = document.getElementById('btn-play');
+    const timeSlider = document.getElementById('time-slider');
+    const timeDisplay = document.getElementById('time-display');
     const btnExport = document.getElementById('btn-export');
+    const btnRandomMix = document.getElementById('btn-random-mix');
+
+    const aspectRatioSelect = document.getElementById('aspect-ratio-select');
+    const resIndicator = document.getElementById('res-indicator');
 
     const shapeFrameSelect = document.getElementById('shape-frame-select');
     const shapeCropSelect = document.getElementById('shape-crop-select');
     const shapeLayoutStyleSelect = document.getElementById('shape-layout-style');
     const paramShowGuide = document.getElementById('param-show-guide');
+    const fontFamilySelect = document.getElementById('font-family');
     const fontFileInput = document.getElementById('font-file-input');
     const fontFileLabel = document.getElementById('font-file-label');
+    
     const paramOffsetX = document.getElementById('param-offset-x');
     const paramOffsetY = document.getElementById('param-offset-y');
     const paramScale = document.getElementById('param-scale');
     const selectedSrtBadge = document.getElementById('selected-srt-badge');
 
+    /* 🏆 1~10번 템플릿 슬롯 관리 DOM */
+    const templateSelect = document.getElementById('template-select');
+    const slotButtonGrid = document.getElementById('slot-button-grid');
+    const slotCustomName = document.getElementById('slot-custom-name');
+    const btnSaveSlot = document.getElementById('btn-save-slot');
+    const btnLoadSlot = document.getElementById('btn-load-slot');
+    const btnDeleteSlot = document.getElementById('btn-delete-slot');
+
+    /* 🧮 파라메트릭 조형 왜곡 DOM 요소들 (v39.0 엔진) */
+    const paramShear = document.getElementById('param-shear');
+    const paramBulge = document.getElementById('param-bulge');
+    const paramStrokeExpand = document.getElementById('param-stroke-expand');
+    const paramCurvature = document.getElementById('param-curvature');
+    const paramSlitCut = document.getElementById('param-slit-cut');
+
+    const paramPullDir = document.getElementById('param-pull-dir');
+    const paramPullTarget = document.getElementById('param-pull-target');
+    const paramAttractor = document.getElementById('param-attractor');
+    const paramDecay = document.getElementById('param-decay');
+
+    const paramWatercolorStyle = document.getElementById('param-watercolor-style');
+    const paramSubcaptionText = document.getElementById('param-subcaption-text');
+    const paramSubcaptionPos = document.getElementById('param-subcaption-pos');
+
+    const paramLetterSpacing = document.getElementById('param-letter-spacing');
+    const paramLineHeight = document.getElementById('param-line-height');
+
+    const paramInitialDist = document.getElementById('param-initial-dist');
+    const paramInitialScale = document.getElementById('param-initial-scale');
+    const paramInitialShape = document.getElementById('param-initial-shape');
+
+    const paramMedialDist = document.getElementById('param-medial-dist');
+    const paramMedialScale = document.getElementById('param-medial-scale');
+    const paramMedialShape = document.getElementById('param-medial-shape');
+
+    const paramFinalDist = document.getElementById('param-final-dist');
+    const paramFinalScale = document.getElementById('param-final-scale');
+    const paramFinalShape = document.getElementById('param-final-shape');
+
+    const paramGipil = document.getElementById('param-gipil');
+    const paramSupil = document.getElementById('param-supil');
     const paramStyleIntensity = document.getElementById('param-style-intensity');
-    const paramDryBrush = document.getElementById('param-dry-brush');
-    const paramSplatter = document.getElementById('param-splatter');
     const paramSealSelect = document.getElementById('param-seal-select');
     const paramSealText = document.getElementById('param-seal-text');
     const sealCustomGroup = document.getElementById('seal-custom-group');
+
     const paramFinishPct = document.getElementById('param-finish-pct');
     const bgStyleSelect = document.getElementById('bg-style');
     const inkColorInput = document.getElementById('ink-color');
@@ -405,433 +725,2066 @@
     const progressPercent = document.getElementById('progress-percent');
     const progressText = document.getElementById('progress-text');
 
-    const maskCanvas = document.createElement('canvas'); maskCanvas.width = 1920; maskCanvas.height = 1080;
+    const maskCanvas = document.createElement('canvas');
+    maskCanvas.width = 1920; maskCanvas.height = 1080;
     const maskCtx = maskCanvas.getContext('2d');
-    const maskBoundsCache = new Map(), shapeMaskCache = {}, layoutCache = new Map();
-    let cachedBgCanvas = null, cachedBgKey = '';
 
-    function clearCaches() { maskBoundsCache.clear(); layoutCache.clear(); cachedBgCanvas = null; }
-    function scheduleRender() { if (rafScheduled) return; rafScheduled = true; requestAnimationFrame(() => { rafScheduled = false; renderFrame(currentTime); }); }
+    const maskBoundsCache = new Map();   
+    const shapeMaskCache = {};           
+    const layoutCache = new Map();
+
+    /* 🏛️ 템플릿 1~5 정밀 조형 수치 사전 (v40.0) */
+    const BUILTIN_TEMPLATES = {
+      'artwork-1': {
+        name: '📜 [템플릿 1] 맛있게 0칼로리 (블록 지그재그 구도)',
+        layoutStyle: 'block-headline',
+        decay: 1.0,
+        contrast: 1.4,
+        pullDir: 'down',
+        pullTarget: 'none',
+        attractor: 0.0,
+        shear: 7,
+        bulge: 0.3,
+        strokeExpand: 1.35,
+        curvature: 0.2,
+        slitCut: 0.45,
+        letterSpacing: -6,
+        lineHeight: 1.05,
+        subcaptionText: '제주글씨',
+        subcaptionPos: 'bottom-center',
+        sealSelect: 'none',
+        sealText: '제주',
+        watercolorStyle: 'pastel-dots',
+        gipil: 1.4, supil: 1.3, styleIntensity: 1.5,
+        initialDist: 20, initialScale: 140, initialShape: 'normal',
+        medialDist: 15, medialScale: 110, medialShape: 'normal',
+        finalDist: 25, finalScale: 130, finalShape: 'normal'
+      },
+      'artwork-2': {
+        name: '🖌️ [템플릿 2] 행복할 권리 (산문 정돈 구도)',
+        layoutStyle: 'center',
+        decay: 1.0,
+        contrast: 1.25,
+        pullDir: 'down-right',
+        pullTarget: 'last-char',
+        attractor: 0.8,
+        shear: 2,
+        bulge: 0.1,
+        strokeExpand: 1.15,
+        curvature: 0.3,
+        slitCut: 0.3,
+        letterSpacing: -8,
+        lineHeight: 1.05,
+        subcaptionText: '- 정유정, <완전한 행복> 中 - calligraphy by 메리',
+        subcaptionPos: 'bottom-center',
+        sealSelect: 'seal-red',
+        sealText: '메리',
+        watercolorStyle: 'rich-dots',
+        gipil: 1.6, supil: 1.8, styleIntensity: 1.6,
+        initialDist: 15, initialScale: 120, initialShape: 'cursive',
+        medialDist: 20, medialScale: 120, medialShape: 'cursive',
+        finalDist: 20, finalScale: 120, finalShape: 'cursive'
+      },
+      'artwork-3': {
+        name: '🔻 [템플릿 3] 사랑도 필요하다 (상단 쐐기 강렬 구도)',
+        layoutStyle: 'wedge-title',
+        decay: 1.25,
+        contrast: 2.6,
+        pullDir: 'down',
+        pullTarget: 'last-char',
+        attractor: 1.6,
+        shear: -4,
+        bulge: 0.4,
+        strokeExpand: 1.4,
+        curvature: -0.4,
+        slitCut: 0.5,
+        letterSpacing: -10,
+        lineHeight: 0.95,
+        subcaptionText: '사랑도 멈출 수 없이',
+        subcaptionPos: 'right-vertical',
+        sealSelect: 'seal-red',
+        sealText: '사랑',
+        watercolorStyle: 'pastel-dots',
+        gipil: 1.5, supil: 1.4, styleIntensity: 1.7,
+        initialDist: 25, initialScale: 160, initialShape: 'normal',
+        medialDist: 15, medialScale: 110, medialShape: 'normal',
+        finalDist: 30, finalScale: 140, finalShape: 'normal'
+      },
+      'artwork-4': {
+        name: '🌸 [템플릿 4] 첫눈처럼 갈께 (사선 계단 유체 구도)',
+        layoutStyle: 'stair-diagonal',
+        decay: 1.0,
+        contrast: 1.4,
+        pullDir: 'down-right',
+        pullTarget: 'last-char',
+        attractor: 2.4,
+        shear: 9,
+        bulge: 0.1,
+        strokeExpand: 1.2,
+        curvature: 0.6,
+        slitCut: 0.4,
+        letterSpacing: -6,
+        lineHeight: 1.15,
+        subcaptionText: '첫눈처럼 너에게 갈께',
+        subcaptionPos: 'bottom-center',
+        sealSelect: 'none',
+        sealText: '첫눈',
+        watercolorStyle: 'rich-dots',
+        gipil: 1.2, supil: 1.2, styleIntensity: 1.4,
+        initialDist: 18, initialScale: 130, initialShape: 'rounded',
+        medialDist: 18, medialScale: 115, medialShape: 'rounded',
+        finalDist: 22, finalScale: 125, finalShape: 'rounded'
+      },
+      'artwork-5': {
+        name: '🗿 [템플릿 5] 시나브로 (엠블럼 중심 압축 구도)',
+        layoutStyle: 'emblem-compact',
+        decay: 1.0,
+        contrast: 1.6,
+        pullDir: 'down',
+        pullTarget: 'last-char',
+        attractor: 1.5,
+        shear: 1,
+        bulge: 1.3,
+        strokeExpand: 1.65,
+        curvature: 0.0,
+        slitCut: 0.4,
+        letterSpacing: -14,
+        lineHeight: 1.0,
+        subcaptionText: '모르는 사이에 조금씩',
+        subcaptionPos: 'right-vertical',
+        sealSelect: 'seal-red',
+        sealText: '진심',
+        watercolorStyle: 'none',
+        gipil: 2.0, supil: 2.0, styleIntensity: 2.2,
+        initialDist: 30, initialScale: 170, initialShape: 'angled',
+        medialDist: 20, medialScale: 125, medialShape: 'angled',
+        finalDist: 35, finalScale: 150, finalShape: 'angled'
+      },
+      'artwork-6': {
+        name: '🖤 [템플릿 6] 사랑을 배운다 (전통 수묵 장천 구도)',
+        layoutStyle: 'single-column',
+        decay: 1.0,
+        contrast: 1.6,
+        pullDir: 'down',
+        pullTarget: 'last-char',
+        attractor: 2.6,
+        shear: 8,
+        bulge: 0.2,
+        strokeExpand: 1.25,
+        curvature: 0.4,
+        slitCut: 0.5,
+        letterSpacing: -8,
+        lineHeight: 1.05,
+        subcaptionText: '이천이십육년 현진 쓰다',
+        subcaptionPos: 'right-vertical',
+        sealSelect: 'seal-red',
+        sealText: '현진',
+        watercolorStyle: 'none',
+        gipil: 2.0, supil: 2.0, styleIntensity: 2.2,
+        initialDist: 30, initialScale: 170, initialShape: 'angled',
+        medialDist: 20, medialScale: 125, medialShape: 'angled',
+        finalDist: 35, finalScale: 150, finalShape: 'angled'
+      }
+    };
+
+    /* 📌 1~10번 템플릿 슬롯 관리 데이터 구조 (템플릿 1~5 초기 기본값 포함) */
+    function loadSlotData() {
+      try {
+        const raw = localStorage.getItem('srt_calli_template_slots_v40');
+        if (raw) return JSON.parse(raw);
+      } catch (e) {}
+      
+      const slots = {};
+      for (let i = 1; i <= 10; i++) {
+        if (i <= 5) {
+          const builtinKey = `artwork-${i}`;
+          slots[i] = {
+            slotId: i,
+            isSaved: true,
+            name: BUILTIN_TEMPLATES[builtinKey].name.replace(/^.*\s/, ''),
+            config: BUILTIN_TEMPLATES[builtinKey]
+          };
+        } else {
+          slots[i] = { slotId: i, isSaved: false, name: `슬롯 ${i}`, config: null };
+        }
+      }
+      return slots;
+    }
+
+    function saveSlotData(slots) {
+      try {
+        localStorage.setItem('srt_calli_template_slots_v40', JSON.stringify(slots));
+      } catch (e) {}
+    }
+
+    function updateSlotUI() {
+      const slots = loadSlotData();
+      slotButtonGrid.innerHTML = '';
+
+      for (let i = 1; i <= 10; i++) {
+        const slot = slots[i];
+        const btn = document.createElement('button');
+        btn.className = `btn-slot ${slot.isSaved ? 'saved' : ''} ${selectedSlotId === i ? 'active' : ''}`;
+        
+        const badge = document.createElement('span');
+        badge.className = 'slot-badge';
+        badge.textContent = `슬롯 ${i}`;
+
+        const label = document.createElement('span');
+        label.style.overflow = 'hidden';
+        label.style.textOverflow = 'ellipsis';
+        label.style.whiteSpace = 'nowrap';
+        label.style.maxWidth = '100%';
+        label.textContent = slot.isSaved ? (slot.name || `슬롯 ${i}`) : '비어있음';
+
+        btn.appendChild(badge);
+        btn.appendChild(label);
+
+        btn.addEventListener('click', () => {
+          selectedSlotId = i;
+          updateSlotUI();
+          if (slot.isSaved && slot.config) {
+            applyTemplateConfig(slot.config);
+            templateSelect.value = `slot_${i}`;
+          } else {
+            slotCustomName.value = `슬롯 ${i} 템플릿`;
+          }
+        });
+
+        slotButtonGrid.appendChild(btn);
+      }
+
+      // 템플릿 드롭다운 옵션 재생성
+      let html = `
+        <option value="custom">✏️ 사용자 커스텀 조합 (수치 직접 조절)</option>
+        <optgroup label="🌟 템플릿 1~5 정밀 조형 수치">
+          <option value="artwork-1">📜 [템플릿 1] 맛있게 0칼로리 (블록 지그재그)</option>
+          <option value="artwork-2">🖌️ [템플릿 2] 행복할 권리 (산문 정돈)</option>
+          <option value="artwork-3">🔻 [템플릿 3] 사랑도 필요하다 (상단 쐐기)</option>
+          <option value="artwork-4">🌸 [템플릿 4] 첫눈처럼 갈께 (사선 계단)</option>
+          <option value="artwork-5">🗿 [템플릿 5] 시나브로 (엠블럼 중심 압축)</option>
+          <option value="artwork-6">🖤 [템플릿 6] 사랑을 배운다 (전통 수묵)</option>
+        </optgroup>
+        <optgroup label="📌 1~10번 저장 템플릿 슬롯">
+      `;
+
+      for (let i = 1; i <= 10; i++) {
+        const slot = slots[i];
+        const statusStr = slot.isSaved ? `★ ${slot.name}` : `빈 슬롯 ${i}`;
+        html += `<option value="slot_${i}">📌 [슬롯 ${i}] ${statusStr}</option>`;
+      }
+      html += `</optgroup>`;
+
+      const curVal = templateSelect.value;
+      templateSelect.innerHTML = html;
+      if (Array.from(templateSelect.options).some(o => o.value === curVal)) {
+        templateSelect.value = curVal;
+      }
+
+      const activeSlot = slots[selectedSlotId];
+      if (activeSlot && activeSlot.isSaved) {
+        slotCustomName.value = activeSlot.name || `슬롯 ${selectedSlotId}`;
+      } else {
+        slotCustomName.value = `슬롯 ${selectedSlotId} 템플릿`;
+      }
+    }
+
+    function getCurrentUIAsTemplateConfig(name) {
+      return {
+        name: name || `슬롯 ${selectedSlotId}`,
+        shapeFrame: shapeFrameSelect.value,
+        layoutStyle: shapeLayoutStyleSelect.value,
+        decay: parseFloat(paramDecay.value),
+        contrast: parseFloat(paramContrast.value),
+        shear: parseInt(paramShear.value),
+        bulge: parseFloat(paramBulge.value),
+        strokeExpand: parseFloat(paramStrokeExpand.value),
+        curvature: parseFloat(paramCurvature.value),
+        slitCut: parseFloat(paramSlitCut.value),
+        pullDir: paramPullDir.value,
+        pullTarget: paramPullTarget.value,
+        attractor: parseFloat(paramAttractor.value),
+        scale: parseInt(paramScale.value) / 100,
+        letterSpacing: parseInt(paramLetterSpacing.value),
+        lineHeight: parseFloat(paramLineHeight.value),
+        watercolorStyle: paramWatercolorStyle.value,
+        subcaptionPos: paramSubcaptionPos.value,
+        subcaptionText: paramSubcaptionText.value,
+        sealSelect: paramSealSelect.value,
+        sealText: paramSealText.value,
+        initialDist: parseInt(paramInitialDist.value),
+        initialScale: parseInt(paramInitialScale.value),
+        initialShape: paramInitialShape.value,
+        medialDist: parseInt(paramMedialDist.value),
+        medialScale: parseInt(paramMedialScale.value),
+        medialShape: paramMedialShape.value,
+        finalDist: parseInt(paramFinalDist.value),
+        finalScale: parseInt(paramFinalScale.value),
+        finalShape: paramFinalShape.value,
+        gipil: parseFloat(paramGipil.value),
+        supil: parseFloat(paramSupil.value),
+        styleIntensity: parseFloat(paramStyleIntensity.value)
+      };
+    }
+
+    function applyTemplateConfig(cfg) {
+      if (!cfg) return;
+
+      if (cfg.shapeFrame) shapeFrameSelect.value = cfg.shapeFrame;
+      if (cfg.layoutStyle) shapeLayoutStyleSelect.value = cfg.layoutStyle;
+
+      if (cfg.decay !== undefined) {
+        paramDecay.value = cfg.decay;
+        document.getElementById('val-decay').textContent = `${cfg.decay}x`;
+      }
+      if (cfg.contrast !== undefined) {
+        paramContrast.value = cfg.contrast;
+        document.getElementById('val-contrast').textContent = `${cfg.contrast}x`;
+      }
+
+      if (cfg.shear !== undefined) {
+        paramShear.value = cfg.shear;
+        document.getElementById('val-shear').textContent = `${cfg.shear}°`;
+      }
+      if (cfg.bulge !== undefined) {
+        paramBulge.value = cfg.bulge;
+        document.getElementById('val-bulge').textContent = `${cfg.bulge}`;
+      }
+      if (cfg.strokeExpand !== undefined) {
+        paramStrokeExpand.value = cfg.strokeExpand;
+        document.getElementById('val-stroke-expand').textContent = `${cfg.strokeExpand}x`;
+      }
+      if (cfg.curvature !== undefined) {
+        paramCurvature.value = cfg.curvature;
+        document.getElementById('val-curvature').textContent = `${cfg.curvature}`;
+      }
+      if (cfg.slitCut !== undefined) {
+        paramSlitCut.value = cfg.slitCut;
+        document.getElementById('val-slit-cut').textContent = `${cfg.slitCut}`;
+      }
+
+      if (cfg.pullDir) paramPullDir.value = cfg.pullDir;
+      if (cfg.pullTarget) paramPullTarget.value = cfg.pullTarget;
+      if (cfg.attractor !== undefined) {
+        paramAttractor.value = cfg.attractor;
+        document.getElementById('val-attractor').textContent = `${cfg.attractor}x`;
+      }
+
+      if (cfg.scale !== undefined) {
+        paramScale.value = Math.round(cfg.scale * 100);
+        document.getElementById('val-scale').textContent = `${Math.round(cfg.scale * 100)}%`;
+      }
+      if (cfg.letterSpacing !== undefined) {
+        paramLetterSpacing.value = cfg.letterSpacing;
+        document.getElementById('val-letter-spacing').textContent = `${cfg.letterSpacing}px`;
+      }
+      if (cfg.lineHeight !== undefined) {
+        paramLineHeight.value = cfg.lineHeight;
+        document.getElementById('val-line-height').textContent = `${cfg.lineHeight}x`;
+      }
+      if (cfg.watercolorStyle) paramWatercolorStyle.value = cfg.watercolorStyle;
+      if (cfg.subcaptionPos) paramSubcaptionPos.value = cfg.subcaptionPos;
+      if (cfg.subcaptionText !== undefined) paramSubcaptionText.value = cfg.subcaptionText;
+
+      if (cfg.sealSelect) {
+        paramSealSelect.value = cfg.sealSelect;
+        if (cfg.sealSelect === 'custom') sealCustomGroup.style.display = 'block';
+        else sealCustomGroup.style.display = 'none';
+      }
+      if (cfg.sealText !== undefined) paramSealText.value = cfg.sealText;
+
+      if (cfg.initialDist !== undefined) {
+        paramInitialDist.value = cfg.initialDist;
+        document.getElementById('val-initial-dist').textContent = `${cfg.initialDist}px`;
+      }
+      if (cfg.initialScale !== undefined) {
+        paramInitialScale.value = cfg.initialScale;
+        document.getElementById('val-initial-scale').textContent = `${cfg.initialScale}%`;
+      }
+      if (cfg.initialShape) paramInitialShape.value = cfg.initialShape;
+
+      if (cfg.medialDist !== undefined) {
+        paramMedialDist.value = cfg.medialDist;
+        document.getElementById('val-medial-dist').textContent = `${cfg.medialDist}px`;
+      }
+      if (cfg.medialScale !== undefined) {
+        paramMedialScale.value = cfg.medialScale;
+        document.getElementById('val-medial-scale').textContent = `${cfg.medialScale}%`;
+      }
+      if (cfg.medialShape) paramMedialShape.value = cfg.medialShape;
+
+      if (cfg.finalDist !== undefined) {
+        paramFinalDist.value = cfg.finalDist;
+        document.getElementById('val-final-dist').textContent = `${cfg.finalDist}px`;
+      }
+      if (cfg.finalScale !== undefined) {
+        paramFinalScale.value = cfg.finalScale;
+        document.getElementById('val-final-scale').textContent = `${cfg.finalScale}%`;
+      }
+      if (cfg.finalShape) paramFinalShape.value = cfg.finalShape;
+
+      if (cfg.gipil !== undefined) {
+        paramGipil.value = cfg.gipil;
+        document.getElementById('val-gipil').textContent = `${cfg.gipil}x`;
+      }
+      if (cfg.supil !== undefined) {
+        paramSupil.value = cfg.supil;
+        document.getElementById('val-supil').textContent = `${cfg.supil}x`;
+      }
+      if (cfg.styleIntensity !== undefined) {
+        paramStyleIntensity.value = cfg.styleIntensity;
+        document.getElementById('val-style-intensity').textContent = `${cfg.styleIntensity}x`;
+      }
+
+      updateActiveSessionData();
+      layoutCache.clear();
+      scheduleRender();
+    }
+
+    templateSelect.addEventListener('change', (e) => {
+      const val = e.target.value;
+      if (val === 'custom') return;
+
+      if (BUILTIN_TEMPLATES[val]) {
+        applyTemplateConfig(BUILTIN_TEMPLATES[val]);
+      } else if (val.startsWith('slot_')) {
+        const slotId = parseInt(val.replace('slot_', ''));
+        selectedSlotId = slotId;
+        const slots = loadSlotData();
+        if (slots[slotId] && slots[slotId].isSaved) {
+          applyTemplateConfig(slots[slotId].config);
+        }
+        updateSlotUI();
+      }
+    });
+
+    btnSaveSlot.addEventListener('click', () => {
+      const name = slotCustomName.value.trim() || `슬롯 ${selectedSlotId}`;
+      const slots = loadSlotData();
+      slots[selectedSlotId] = {
+        slotId: selectedSlotId,
+        isSaved: true,
+        name,
+        config: getCurrentUIAsTemplateConfig(name)
+      };
+      saveSlotData(slots);
+      updateSlotUI();
+      templateSelect.value = `slot_${selectedSlotId}`;
+      alert(`✅ 현재 조형 수치가 [슬롯 ${selectedSlotId}] '${name}'에 성공적으로 저장되었습니다!`);
+    });
+
+    btnLoadSlot.addEventListener('click', () => {
+      const slots = loadSlotData();
+      const slot = slots[selectedSlotId];
+      if (slot && slot.isSaved && slot.config) {
+        applyTemplateConfig(slot.config);
+        templateSelect.value = `slot_${selectedSlotId}`;
+        alert(`📂 [슬롯 ${selectedSlotId}] '${slot.name}' 조형 수치를 불러왔습니다.`);
+      } else {
+        alert(`⚠️ 슬롯 ${selectedSlotId}번은 아직 비어있습니다. 먼저 저장해주세요.`);
+      }
+    });
+
+    btnDeleteSlot.addEventListener('click', () => {
+      const slots = loadSlotData();
+      if (slots[selectedSlotId] && slots[selectedSlotId].isSaved) {
+        slots[selectedSlotId] = { slotId: selectedSlotId, isSaved: false, name: `슬롯 ${selectedSlotId}`, config: null };
+        saveSlotData(slots);
+        updateSlotUI();
+        templateSelect.value = 'artwork-1';
+        applyTemplateConfig(BUILTIN_TEMPLATES['artwork-1']);
+        alert(`🗑️ [슬롯 ${selectedSlotId}] 템플릿이 초기화되었습니다.`);
+      } else {
+        alert(`슬롯 ${selectedSlotId}번은 이미 비어있습니다.`);
+      }
+    });
+
+    function clearCaches() {
+      maskBoundsCache.clear();
+      layoutCache.clear();
+      cachedBgCanvas = null;
+    }
+
+    function scheduleRender() {
+      if (rafScheduled) return;
+      rafScheduled = true;
+      requestAnimationFrame(() => {
+        rafScheduled = false;
+        renderFrame(currentTime);
+      });
+    }
 
     function updateCanvasDimensions() {
-      const ratio = aspectRatioSelect.value; let w = 1920, h = 1080;
-      if (ratio === '9:16') { w = 1080; h = 1920; } else { w = 1920; h = 1080; }
-      canvas.width = w; canvas.height = h; maskCanvas.width = w; maskCanvas.height = h;
-      clearCaches(); preloadShapeMasks(); scheduleRender();
+      const ratio = aspectRatioSelect.value;
+      let w = 1920, h = 1080;
+      if (ratio === '9:16') {
+        w = 1080; h = 1920;
+        resIndicator.textContent = '해상도: 1080x1920 (9:16 세로 숏폼/릴스) | 작품 캘리그라피 연출 엔진';
+      } else if (ratio === '1:1') {
+        w = 1440; h = 1440;
+        resIndicator.textContent = '해상도: 1440x1440 (1:1 정방형 Square) | 작품 캘리그라피 연출 엔진';
+      } else {
+        w = 1920; h = 1080;
+        resIndicator.textContent = '해상도: 1920x1080 (16:9 Full HD) | 작품 캘리그라피 연출 엔진';
+      }
+
+      canvas.width = w; canvas.height = h;
+      maskCanvas.width = w; maskCanvas.height = h;
+
+      clearCaches();
+      preloadShapeMasks();
+      scheduleRender();
     }
+
     aspectRatioSelect.addEventListener('change', updateCanvasDimensions);
 
     const DEFAULT_FONT_URL = "https://raw.githubusercontent.com/google/fonts/main/ofl/nanumbrushscript/NanumBrushScript-Regular.ttf";
-    const glyphDataCache = new Map(); let currentFont = null; let currentFontKey = 'NanumBrushScript';
+
+    const glyphDataCache = new Map(); 
+    let currentFont = null;
+    let currentFontKey = 'NanumBrushScript';
 
     function loadDefaultFont() {
       fontStatusEl.textContent = '⏳ 나눔붓글씨 기본 폰트 로딩 중...';
+      fontStatusEl.className = 'font-status loading';
       opentype.load(DEFAULT_FONT_URL, (err, font) => {
-        if (err) { console.error('기본 폰트 로드 실패:', err); fontStatusEl.textContent = '⚠️ 기본 폰트 네트워크 로딩 실패'; }
-        else { currentFont = font; currentFontKey = 'NanumBrushScript'; glyphDataCache.clear(); layoutCache.clear(); fontStatusEl.textContent = '✅ 나눔붓글씨 기본 폰트 준비 완료'; fontStatusEl.className = 'font-status ready'; scheduleRender(); }
+        if (err) {
+          console.error('기본 폰트 로드 실패:', err);
+          fontStatusEl.textContent = '⚠️ 기본 폰트 네트워크 로딩 실패 (시스템 기본 서체로 대체)';
+        } else {
+          currentFont = font;
+          currentFontKey = 'NanumBrushScript';
+          glyphDataCache.clear();
+          layoutCache.clear();
+          fontStatusEl.textContent = '✅ 나눔붓글씨 기본 폰트 준비 완료';
+          fontStatusEl.className = 'font-status ready';
+          scheduleRender();
+        }
       });
     }
 
     fontFileInput.addEventListener('change', (e) => {
-      const file = e.target.files[0]; if (!file) return;
-      if (file.size > 15 * 1024 * 1024) { alert('⚠️ 폰트 파일 용량이 너무 큽니다. (15MB 이하의 TTF/OTF 파일만 지원됩니다)'); return; }
+      const file = e.target.files[0];
+      if (!file) return;
+
+      if (file.size > 15 * 1024 * 1024) {
+        alert('⚠️ 폰트 파일 용량이 너무 큽니다. (15MB 이하의 TTF/OTF 파일만 지원됩니다)');
+        return;
+      }
+
       fontFileLabel.textContent = `🔤 ${file.name}`;
       fontStatusEl.textContent = `⏳ ${file.name} 폰트 파싱 중...`;
+      fontStatusEl.className = 'font-status loading';
+
       const reader = new FileReader();
       reader.onload = (evt) => {
         try {
           const font = opentype.parse(evt.target.result);
-          currentFont = font; currentFontKey = `custom_${file.name}_${file.size}`;
-          glyphDataCache.clear(); layoutCache.clear();
-          fontStatusEl.textContent = `✅ 사용자 폰트 적용 완료 (${file.name})`; fontStatusEl.className = 'font-status ready';
+          currentFont = font;
+          currentFontKey = `custom_${file.name}_${file.size}`;
+          glyphDataCache.clear();
+          layoutCache.clear();
+          fontStatusEl.textContent = `✅ 사용자 폰트 적용 완료 (${file.name})`;
+          fontStatusEl.className = 'font-status ready';
           scheduleRender();
-        } catch (err) { alert(`폰트 파일 파싱 실패: ${err.message || '올바른 TTF/OTF 폰트 형식인지 확인해주세요.'}`); fontStatusEl.textContent = '⚠️ 사용자 폰트 파일 파싱 오류'; }
+        } catch (err) {
+          console.error('사용자 TTF 폰트 파싱 실패:', err);
+          alert(`폰트 파일 파싱 실패: ${err.message || '올바른 TTF/OTF 폰트 형식인지 확인해주세요.'}`);
+          fontStatusEl.textContent = '⚠️ 사용자 폰트 파일 파싱 오류';
+          fontStatusEl.className = 'font-status loading';
+        }
       };
       reader.readAsArrayBuffer(file);
     });
 
     function flattenGlyphPath(commands) {
-      const contours = []; let current = []; let startX = 0, startY = 0, curX = 0, curY = 0; const STEPS = 6;
+      const contours = [];
+      let current = [];
+      let startX = 0, startY = 0, curX = 0, curY = 0;
+      const STEPS = 6;
       const pushCurrent = () => { if (current.length > 1) contours.push(current); current = []; };
+
       commands.forEach(cmd => {
-        if (cmd.type === 'M') { pushCurrent(); curX = cmd.x; curY = cmd.y; startX = curX; startY = curY; current.push({ x: curX, y: curY }); }
-        else if (cmd.type === 'L') { curX = cmd.x; curY = cmd.y; current.push({ x: curX, y: curY }); }
-        else if (cmd.type === 'C') {
+        if (cmd.type === 'M') {
+          pushCurrent();
+          curX = cmd.x; curY = cmd.y; startX = curX; startY = curY;
+          current.push({ x: curX, y: curY });
+        } else if (cmd.type === 'L') {
+          curX = cmd.x; curY = cmd.y;
+          current.push({ x: curX, y: curY });
+        } else if (cmd.type === 'C') {
           const p0 = { x: curX, y: curY }, p1 = { x: cmd.x1, y: cmd.y1 }, p2 = { x: cmd.x2, y: cmd.y2 }, p3 = { x: cmd.x, y: cmd.y };
-          for (let i = 1; i <= STEPS; i++) { const t = i / STEPS, mt = 1 - t; const x = mt*mt*mt*p0.x + 3*mt*mt*t*p1.x + 3*mt*t*t*p2.x + t*t*t*p3.x; const y = mt*mt*mt*p0.y + 3*mt*mt*t*p1.y + 3*mt*t*t*p2.y + t*t*t*p3.y; current.push({ x, y }); }
+          for (let i = 1; i <= STEPS; i++) {
+            const t = i / STEPS, mt = 1 - t;
+            const x = mt*mt*mt*p0.x + 3*mt*mt*t*p1.x + 3*mt*t*t*p2.x + t*t*t*p3.x;
+            const y = mt*mt*mt*p0.y + 3*mt*mt*t*p1.y + 3*mt*t*t*p2.y + t*t*t*p3.y;
+            current.push({ x, y });
+          }
           curX = cmd.x; curY = cmd.y;
         } else if (cmd.type === 'Q') {
           const p0 = { x: curX, y: curY }, p1 = { x: cmd.x1, y: cmd.y1 }, p2 = { x: cmd.x, y: cmd.y };
-          for (let i = 1; i <= STEPS; i++) { const t = i / STEPS, mt = 1 - t; const x = mt*mt*p0.x + 2*mt*t*p1.x + t*t*p2.x; const y = mt*mt*p0.y + 2*mt*t*p1.y + t*t*p2.y; current.push({ x, y }); }
+          for (let i = 1; i <= STEPS; i++) {
+            const t = i / STEPS, mt = 1 - t;
+            const x = mt*mt*p0.x + 2*mt*t*p1.x + t*t*p2.x;
+            const y = mt*mt*p0.y + 2*mt*t*p1.y + t*t*p2.y;
+            current.push({ x, y });
+          }
           curX = cmd.x; curY = cmd.y;
-        } else if (cmd.type === 'Z') { current.push({ x: startX, y: startY }); curX = startX; curY = startY; }
+        } else if (cmd.type === 'Z') {
+          current.push({ x: startX, y: startY });
+          curX = startX; curY = startY;
+        }
       });
-      pushCurrent(); return contours;
+      pushCurrent();
+      return contours;
     }
 
-    function contourLength(pts) { let len = 0; for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y); return len; }
-    function commandsToSvgD(commands) { return commands.map(c => { switch (c.type) { case 'M': return `M ${c.x} ${c.y}`; case 'L': return `L ${c.x} ${c.y}`; case 'C': return `C ${c.x1} ${c.y1} ${c.x2} ${c.y2} ${c.x} ${c.y}`; case 'Q': return `Q ${c.x1} ${c.y1} ${c.x} ${c.y}`; case 'Z': return 'Z'; default: return ''; } }).join(' '); }
+    function contourLength(pts) {
+      let len = 0;
+      for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
+      return len;
+    }
+
+    function commandsToSvgD(commands) {
+      return commands.map(c => {
+        switch (c.type) {
+          case 'M': return `M ${c.x} ${c.y}`;
+          case 'L': return `L ${c.x} ${c.y}`;
+          case 'C': return `C ${c.x1} ${c.y1} ${c.x2} ${c.y2} ${c.x} ${c.y}`;
+          case 'Q': return `Q ${c.x1} ${c.y1} ${c.x} ${c.y}`;
+          case 'Z': return 'Z';
+          default: return '';
+        }
+      }).join(' ');
+    }
 
     function getGlyphBrushData(char, fontSize) {
       const key = `${currentFontKey}_${char.codePointAt(0)}_${fontSize.toFixed(1)}`;
       if (glyphDataCache.has(key)) return glyphDataCache.get(key);
+
       const path = currentFont.getPath(char, 0, 0, fontSize);
-      let bbox; try { bbox = path.getBoundingBox(); } catch (e) { bbox = { x1: 0, y1: -fontSize*0.5, x2: fontSize*0.3, y2: 0 }; }
+      let bbox;
+      try { bbox = path.getBoundingBox(); } catch (e) { bbox = { x1: 0, y1: -fontSize*0.5, x2: fontSize*0.3, y2: 0 }; }
       if (!isFinite(bbox.x1) || !isFinite(bbox.y1)) bbox = { x1: 0, y1: -fontSize*0.5, x2: fontSize*0.3, y2: 0 };
+
       const rawContours = flattenGlyphPath(path.commands);
-      const contours = rawContours.map(pts => { let minX = Infinity, minY = Infinity; pts.forEach(p => { if (p.x < minX) minX = p.x; if (p.y < minY) minY = p.y; }); return { points: pts, length: contourLength(pts), minX, minY }; });
+      const contours = rawContours.map(pts => {
+        let minX = Infinity, minY = Infinity;
+        pts.forEach(p => { if (p.x < minX) minX = p.x; if (p.y < minY) minY = p.y; });
+        return { points: pts, length: contourLength(pts), minX, minY };
+      });
       contours.sort((a, b) => (a.minY - b.minY) || (a.minX - b.minX));
+
       const totalLength = contours.reduce((s, c) => s + c.length, 0);
       const svgD = commandsToSvgD(path.commands);
-      let path2d = null; try { path2d = new Path2D(svgD); } catch (e) {}
-      const data = { contours, totalLength: totalLength > 0 ? totalLength : fontSize * 0.2, bbox, svgD, path2d, isBlank: rawContours.length === 0 };
-      glyphDataCache.set(key, data); return data;
+      let path2d = null;
+      try { path2d = new Path2D(svgD); } catch (e) {}
+
+      const data = {
+        contours,
+        totalLength: totalLength > 0 ? totalLength : fontSize * 0.2,
+        bbox,
+        svgD,
+        path2d,
+        isBlank: rawContours.length === 0
+      };
+      glyphDataCache.set(key, data);
+      return data;
     }
 
-    function stampSegment(targetCtx, p0, p1, distSoFar, contourLen, baseWidth, seed, styleIntensity, dryBrushVal) {
-      const segLen = Math.hypot(p1.x - p0.x, p1.y - p0.y); if (segLen < 0.5) return;
+    /* ✒️ 3단계: 파라메트릭 조형 왜곡 & 방사형 방향 벡터 변위 붓터치 연산 (v39.0 엔진) */
+    function stampSegment(targetCtx, p0, p1, distSoFar, contourLen, baseWidth, seed, styleIntensity, dryBrushVal, gipilVal, supilVal, shapeStyle, bbox, decomp, jasoDistances, pullDir, pullTarget, attractor, shearDeg, bulge, strokeExpand, curvature, isMajorChar) {
+      const segLen = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+      if (segLen < 0.5) return;
       const steps = Math.max(1, Math.ceil(segLen / 5.0));
+
+      const gcx = (bbox.x1 + bbox.x2) / 2;
+      const gcy = (bbox.y1 + bbox.y2) / 2;
+      const bboxW = Math.max(1, bbox.x2 - bbox.x1);
+      const bboxH = Math.max(1, bbox.y2 - bbox.y1);
+
+      const { initialDist, medialDist, finalDist } = jasoDistances;
+      const tanShear = Math.tan((-shearDeg * Math.PI) / 180);
+      
       for (let s = 0; s <= steps; s++) {
-        const t = s / steps; const px = p0.x + (p1.x - p0.x) * t; const py = p0.y + (p1.y - p0.y) * t;
-        const localDist = distSoFar + segLen * t; const travelT = contourLen > 0 ? Math.min(1, localDist / contourLen) : 1;
-        const taper = Math.sin(Math.min(1, travelT) * Math.PI);
+        const t = s / steps;
+        let px = p0.x + (p1.x - p0.x) * t;
+        let py = p0.y + (p1.y - p0.y) * t;
+
+        // 🧮 파라메트릭 왜곡 연산 (Bulge, Curvature, Shear)
+        let u = (px - gcx) / (bboxW * 0.5);
+        let v = (py - gcy) / (bboxH * 0.5);
+
+        if (bulge !== 0) {
+          const distSq = u * u + v * v;
+          const bulgeFactor = 1.0 + bulge * 0.45 * Math.exp(-distSq * 0.85);
+          u *= bulgeFactor;
+          v *= bulgeFactor;
+        }
+
+        if (curvature !== 0) {
+          v += curvature * 0.35 * (1.0 - u * u);
+        }
+
+        u += v * tanShear;
+
+        px = gcx + u * (bboxW * 0.5) * strokeExpand;
+        py = gcy + v * (bboxH * 0.5) * strokeExpand;
+
+        /* 📐 정중앙(gcx, gcy) 기준 자소별 방사형 방향 벡터 연산 */
+        if (decomp && decomp.isHangul) {
+          const relX = (px - gcx) / bboxW;
+          const relY = (py - gcy) / bboxH;
+
+          let vDx = 0, vDy = 0;
+
+          // 1. 초성 (Initial): 중심 ➔ 좌상단 방향 벡터
+          if (relY < -0.05 && relX < 0.15) {
+            const wInit = Math.min(1.0, Math.max(0, (-relY * 1.6) + (-relX * 0.8)));
+            vDx += initialDist * wInit * (-0.707);
+            vDy += initialDist * wInit * (-0.707);
+          }
+
+          // 2. 중성 (Medial): 중심 ➔ 모음 형태별 방향 벡터
+          let uMedX = 1.0, uMedY = 0.0;
+          if (decomp.vowelShape === 'HORIZONTAL') {
+            uMedX = 0.0; uMedY = 0.8;
+          } else if (decomp.vowelShape === 'COMPLEX') {
+            uMedX = 0.866; uMedY = 0.5;
+          }
+
+          if (relX > 0.05 || (decomp.vowelShape === 'HORIZONTAL' && relY > -0.15 && relY < 0.25)) {
+            const wMed = Math.min(1.0, Math.max(0, relX * 2.0 + (decomp.vowelShape === 'HORIZONTAL' ? relY * 1.5 : 0)));
+            vDx += medialDist * wMed * uMedX;
+            vDy += medialDist * wMed * uMedY;
+          }
+
+          // 3. 종성 (Final / 받침): 중심 ➔ 직하단 방향 벡터
+          if (decomp.hasFinal && relY > 0.12) {
+            const wFinal = Math.min(1.0, Math.max(0, (relY - 0.12) * 2.5));
+            vDx += finalDist * wFinal * (0.0);
+            vDy += finalDist * wFinal * (1.0);
+          }
+
+          /* 🖌️ 캘리그라피 장획 어트랙터 뻗침 (Dramatic Attractor Tail) */
+          if (isMajorChar && attractor > 0.05) {
+            if (pullDir === 'down' && relY > 0.15) {
+              const pw = Math.pow((relY - 0.15) / 0.85, 2.0);
+              py += pw * Math.min(220, bboxH * 1.5 * attractor);
+            } else if (pullDir === 'down-right' && (relY > 0.15 || relX > 0.15)) {
+              const pw = Math.pow(Math.max(0, (relY + relX) * 0.5), 1.8);
+              px += pw * Math.min(150, bboxW * 1.2 * attractor);
+              py += pw * Math.min(220, bboxH * 1.5 * attractor);
+            } else if (pullDir === 'down-left' && relY > 0.1) {
+              const pw = Math.pow(relY, 1.8);
+              px -= pw * Math.min(150, bboxW * 1.3 * attractor);
+              py += pw * Math.min(220, bboxH * 1.5 * attractor);
+            } else if (pullDir === 'right' && relX > 0.2) {
+              const pw = Math.pow((relX - 0.2) / 0.8, 1.8);
+              px += pw * Math.min(200, bboxW * 1.4 * attractor);
+            }
+          }
+
+          px += vDx;
+          py += vDy;
+        }
+
+        const localDist = distSoFar + segLen * t;
+        const travelT = contourLen > 0 ? Math.min(1, Math.max(0, localDist / contourLen)) : 0.5;
+
+        /* 🏛️ 기필/행필/수필 3단계 필압 방정식 */
+        let pressureP = 1.0;
+        if (travelT < 0.15) {
+          const entryT = travelT / 0.15;
+          pressureP = 1.0 + (gipilVal * 0.55) * Math.pow(1 - entryT, 2);
+        } else if (travelT > 0.85) {
+          const exitT = (travelT - 0.85) / 0.15;
+          pressureP = 1.0 + (supilVal * 0.45) * Math.pow(exitT, 2);
+        } else {
+          pressureP = 0.9 + Math.sin(travelT * Math.PI) * 0.25;
+        }
+
+        /* 🎨 자소 모양 모핑 변형 */
+        let widthMult = 1.0;
+        if (shapeStyle === 'angled') {
+          px = Math.round(px / 4) * 4;
+          py = Math.round(py / 4) * 4;
+        } else if (shapeStyle === 'cursive') {
+          px += Math.sin(travelT * Math.PI * 2) * 4;
+        } else if (shapeStyle === 'plump') {
+          widthMult = 1.65;
+        } else if (shapeStyle === 'rounded') {
+          widthMult = 1.15;
+        }
+
         const jitter = 0.85 + (Math.sin(seed + localDist * 0.37) * 0.5 + 0.5) * (0.35 * styleIntensity);
-        const r = Math.max(0.6, (baseWidth / 2) * (0.35 + 0.75 * taper) * jitter);
-        targetCtx.moveTo(px + r, py); targetCtx.arc(px, py, r, 0, Math.PI * 2);
-        if (dryBrushVal > 0.1 && s % 2 === 0) { const offX = (Math.sin(seed * 3 + s * 1.7) - 0.5) * r * 0.8 * dryBrushVal; const offY = (Math.cos(seed * 2 + s * 1.3) - 0.5) * r * 0.8 * dryBrushVal; targetCtx.moveTo(px + offX + r * 0.4, py + offY); targetCtx.arc(px + offX, py + offY, Math.max(0.4, r * 0.3), 0, Math.PI * 2); }
+        const r = Math.max(0.6, (baseWidth / 2) * pressureP * jitter * widthMult);
+        
+        targetCtx.moveTo(px + r, py);
+        targetCtx.arc(px, py, r, 0, Math.PI * 2);
       }
     }
 
-    function drawBrushGlyph(targetCtx, glyphData, centerX, centerY, revealLength, fullyDone, seed, brushScale, styleIntensity, dryBrushVal, rotationRad) {
+    function drawBrushGlyph(targetCtx, glyphData, centerX, centerY, revealLength, fullyDone, seed, brushScale, styleIntensity, dryBrushVal, rotationRad, gipilVal, supilVal, shapeStyle, decomp, jasoDistances, pullDir, pullTarget, attractor, shearDeg, bulge, strokeExpand, curvature, isMajorChar) {
       if (glyphData.isBlank) return;
-      const bbox = glyphData.bbox; const gcx = (bbox.x1 + bbox.x2) / 2; const gcy = (bbox.y1 + bbox.y2) / 2;
-      targetCtx.save(); targetCtx.translate(centerX, centerY); if (rotationRad && Math.abs(rotationRad) > 0.001) targetCtx.rotate(rotationRad); targetCtx.translate(-gcx, -gcy);
-      if (fullyDone && dryBrushVal < 0.1) { if (glyphData.path2d) targetCtx.fill(glyphData.path2d, 'nonzero'); targetCtx.restore(); return; }
+      const bbox = glyphData.bbox;
+      const gcx = (bbox.x1 + bbox.x2) / 2;
+      const gcy = (bbox.y1 + bbox.y2) / 2;
+
+      targetCtx.save();
+      targetCtx.translate(centerX, centerY);
+      if (rotationRad && Math.abs(rotationRad) > 0.001) {
+        targetCtx.rotate(rotationRad);
+      }
+      targetCtx.translate(-gcx, -gcy);
+
       let remaining = revealLength > 0 ? revealLength : glyphData.totalLength;
       const baseWidth = Math.max(3.2, (bbox.y2 - bbox.y1) * 0.05 * brushScale * Math.min(1.6, styleIntensity));
-      targetCtx.globalAlpha = 0.92; targetCtx.beginPath();
+
+      targetCtx.globalAlpha = 0.92;
+      targetCtx.beginPath();
+
       for (const contour of glyphData.contours) {
-        if (remaining <= 0) break; const drawLen = Math.min(contour.length, remaining); remaining -= drawLen;
-        const pts = contour.points; let acc = 0;
+        if (remaining <= 0) break;
+        const drawLen = Math.min(contour.length, remaining);
+        remaining -= drawLen;
+
+        const pts = contour.points;
+        let acc = 0;
         for (let i = 1; i < pts.length; i++) {
           const segLen = Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
-          if (acc + segLen > drawLen) { const localT = segLen > 0 ? (drawLen - acc) / segLen : 0; const ex = pts[i-1].x + (pts[i].x - pts[i-1].x) * localT; const ey = pts[i-1].y + (pts[i].y - pts[i-1].y) * localT; stampSegment(targetCtx, pts[i-1], { x: ex, y: ey }, acc, contour.length, baseWidth, seed, styleIntensity, dryBrushVal); break; }
-          else { stampSegment(targetCtx, pts[i-1], pts[i], acc, contour.length, baseWidth, seed, styleIntensity, dryBrushVal); acc += segLen; }
+          if (acc + segLen > drawLen) {
+            const localT = segLen > 0 ? (drawLen - acc) / segLen : 0;
+            const ex = pts[i-1].x + (pts[i].x - pts[i-1].x) * localT;
+            const ey = pts[i-1].y + (pts[i].y - pts[i-1].y) * localT;
+            stampSegment(targetCtx, pts[i-1], { x: ex, y: ey }, acc, contour.length, baseWidth, seed, styleIntensity, dryBrushVal, gipilVal, supilVal, shapeStyle, bbox, decomp, jasoDistances, pullDir, pullTarget, attractor, shearDeg, bulge, strokeExpand, curvature, isMajorChar);
+            break;
+          } else {
+            stampSegment(targetCtx, pts[i-1], pts[i], acc, contour.length, baseWidth, seed, styleIntensity, dryBrushVal, gipilVal, supilVal, shapeStyle, bbox, decomp, jasoDistances, pullDir, pullTarget, attractor, shearDeg, bulge, strokeExpand, curvature, isMajorChar);
+            acc += segLen;
+          }
         }
       }
-      targetCtx.fill(); targetCtx.restore();
+
+      targetCtx.fill();
+      targetCtx.restore();
     }
 
     function getShapeWidthAtT(shapeType, t, bounds) {
-      t = Math.max(0, Math.min(1, t)); const w = bounds.w;
+      t = Math.max(0, Math.min(1, t));
+      const w = bounds.w;
       switch (shapeType) {
-        case 'inv-triangle': return w * (0.95 - 0.75 * t);
-        case 'triangle': return w * (0.20 + 0.75 * t);
-        case 'diamond': return w * (0.25 + 0.70 * (1 - 2 * Math.abs(t - 0.5)));
-        case 'circle': { const dy = (t - 0.5) * 2; return w * Math.sqrt(Math.max(0, 1 - dy * dy)) * 0.92; }
-        default: return w * 0.88;
+        case 'inv-triangle':
+          return w * (0.95 - 0.75 * t);
+        case 'triangle':
+          return w * (0.20 + 0.75 * t);
+        case 'diamond':
+          return w * (0.25 + 0.70 * (1 - 2 * Math.abs(t - 0.5)));
+        case 'circle': {
+          const dy = (t - 0.5) * 2;
+          return w * Math.sqrt(Math.max(0, 1 - dy * dy)) * 0.92;
+        }
+        case 'horizontal-rect':
+        default:
+          return w * 0.88;
       }
     }
 
-    function layoutArtisticCalligraphy(text, shapeType, bounds, contrast, layoutStyle, seed) {
-      const cacheKey = `v30_artistic_${text}_${shapeType}_${bounds.x.toFixed(0)}_${bounds.y.toFixed(0)}_${bounds.w.toFixed(0)}_${bounds.h.toFixed(0)}_${contrast}_${layoutStyle}_${seed}`;
+    /* 🎨 자간, 줄간격 & 8대 결구 기반 캘리그라피 작품 구도 연산 */
+    function layoutArtisticCalligraphy(text, shapeType, bounds, contrast, layoutStyle, seed, letterSpacing, lineHeightMult, decay) {
+      const cacheKey = `v40_artistic_${text}_${shapeType}_${bounds.x.toFixed(0)}_${bounds.y.toFixed(0)}_${bounds.w.toFixed(0)}_${bounds.h.toFixed(0)}_${contrast}_${layoutStyle}_${seed}_${letterSpacing}_${lineHeightMult}_${decay}`;
       if (layoutCache.has(cacheKey)) return layoutCache.get(cacheKey);
-      let res; const particles = ['은', '는', '이', '가', '을', '를', '에', '의', '와', '과', '도', '로', '에서', '으로']; const analysisLogs = [];
-      if (layoutStyle === 'single-column') { /* (생략) ... */ res = { positions: [], sizes: [], rotations: [], rawChars: [], analysisLogs }; }
-      else if (layoutStyle === 'artistic-rhythm') {
-        let lines = text.split('\n').filter(l => l.trim().length > 0); if (lines.length === 0) lines = [text];
-        if (lines.length === 1 && text.includes(' ')) { const words = text.split(' '); if (words.length >= 3) { const mid = Math.ceil(words.length / 2); lines = [words.slice(0, mid).join(' '), words.slice(mid).join(' ')]; } }
-        const N = lines.length; const positions = [], sizes = [], rotations = [], rawChars = [];
-        lines.forEach((lineText, lineIdx) => {
-          const t = N === 1 ? 0.5 : (lineIdx + 0.5) / N; const availW = getShapeWidthAtT(shapeType, t, bounds);
-          const lineY = bounds.y + bounds.h * (N === 1 ? 0.5 : (0.15 + 0.70 * t)); const chars = Array.from(lineText); const m = chars.length || 1;
-          let baseSize = availW / Math.max(1, m * 0.92); const maxH = (bounds.h * 0.78) / (N * 1.15); baseSize = Math.min(baseSize, maxH); baseSize = Math.max(24, baseSize);
-          const charScales = chars.map((ch, idx) => {
-            const decomp = decomposeHangul(ch); const matrix = getOpticalCenterMatrix(decomp, baseSize); analysisLogs.push(`[${ch}] ${decomp.typeDesc}`);
-            let sc = matrix.scale; if (lineIdx === 0 && idx === 0 && ch !== ' ') sc *= Math.min(1.6, contrast * 0.65 + 0.4); else if (particles.includes(ch)) sc *= 0.72; else if (idx === 0) sc *= 1.12; else sc *= 0.92 + (seededRandom(seed + lineIdx * 41 + idx * 7) * 0.22 - 0.08); return { sc, matrix, decomp };
-          });
-          const totalScaledWidth = charScales.reduce((acc, item) => acc + baseSize * item.sc * 0.88, 0); let currentX = bounds.x + bounds.w / 2 - totalScaledWidth / 2;
-          chars.forEach((ch, idx) => {
-            const { sc, matrix, decomp } = charScales[idx]; const sz = baseSize * sc; const tilt = matrix.tilt + (seededRandom(seed + lineIdx * 19 + idx * 13) - 0.5) * 0.14; const waveY = matrix.cy + (seededRandom(seed + lineIdx * 31 + idx * 23) - 0.5) * sz * 0.16;
-            const cx = currentX + (sz * 0.88) / 2 + matrix.cx; const cy = lineY + waveY; positions.push({ x: cx, y: cy, ch, decomp }); sizes.push(sz); rotations.push(tilt); rawChars.push(ch); currentX += sz * 0.88;
-          });
-        });
-        res = { positions, sizes, rotations, rawChars, analysisLogs };
-      } else { res = { positions: [], sizes: [], rotations: [], rawChars: [], analysisLogs }; }
-      if (layoutCache.size > 80) layoutCache.clear(); layoutCache.set(cacheKey, res); return res;
-    }
 
-    function getOpticalCenterMatrix(decomp, baseSize) {
-      if (!decomp.isHangul) return { cx: 0, cy: 0, scale: 1.0, tilt: 0 };
-      const MATRIX_MAP = { 1: { cxOff: -0.05, cyOff:  0.00, scale: 1.05, tilt: -0.03 }, 2: { cxOff:  0.00, cyOff: -0.04, scale: 1.00, tilt:  0.02 }, 3: { cxOff: -0.03, cyOff: -0.02, scale: 0.98, tilt: -0.04 }, 4: { cxOff: -0.04, cyOff:  0.05, scale: 1.10, tilt: -0.02 }, 5: { cxOff:  0.00, cyOff:  0.06, scale: 1.06, tilt:  0.03 }, 6: { cxOff: -0.02, cyOff:  0.04, scale: 1.04, tilt: -0.01 }, 7: { cxOff:  0.02, cyOff:  0.07, scale: 1.12, tilt:  0.04 }, 8: { cxOff:  0.00, cyOff:  0.00, scale: 0.90, tilt:  0.00 } };
-      const m = MATRIX_MAP[decomp.type] || MATRIX_MAP[8];
-      return { cx: m.cxOff * baseSize, cy: m.cyOff * baseSize, scale: m.scale, tilt: m.tilt };
+      let res;
+      const particles = ['은', '는', '이', '가', '을', '를', '에', '의', '와', '과', '도', '로', '에서', '으로'];
+      const analysisLogs = [];
+
+      let lines = text.split('\n').filter(l => l.trim().length > 0);
+      if (lines.length === 0) lines = [text];
+      const N = lines.length;
+      const positions = [], sizes = [], rotations = [], rawChars = [];
+
+      lines.forEach((lineText, lineIdx) => {
+        const t = N === 1 ? 0.5 : (lineIdx + 0.5) / N;
+        const availW = getShapeWidthAtT(shapeType, t, bounds);
+        const lineY = bounds.y + bounds.h * (N === 1 ? 0.5 : (0.12 + 0.76 * t * lineHeightMult));
+        const chars = Array.from(lineText);
+        const m = chars.length || 1;
+
+        let lineDecayScale = (lineIdx === 0) ? contrast : Math.max(0.55, 1.0 / Math.pow(decay, lineIdx));
+        let baseSize = Math.min(availW / Math.max(1, m * 0.92), (bounds.h * 0.8) / (N * 1.1 * lineHeightMult)) * lineDecayScale;
+        baseSize = Math.max(22, Math.min(220, baseSize));
+
+        const charScales = chars.map((ch, idx) => {
+          const decomp = decomposeHangul(ch);
+          const matrix = getOpticalCenterMatrix(decomp, baseSize);
+          analysisLogs.push(`[${ch}] ${decomp.typeDesc}`);
+
+          let sc = matrix.scale;
+          if (lineIdx === 0 && idx === 0 && ch !== ' ') sc *= Math.min(1.6, contrast * 0.65 + 0.4);
+          else if (particles.includes(ch)) sc *= 0.72;
+          else if (idx === 0) sc *= 1.12;
+
+          return { sc, matrix, decomp };
+        });
+
+        const totalScaledWidth = charScales.reduce((acc, item) => acc + (baseSize * item.sc * 0.88 + letterSpacing), 0);
+        let currentX = bounds.x + bounds.w / 2 - totalScaledWidth / 2;
+
+        if (layoutStyle === 'stair-diagonal') {
+          const stepX = (bounds.w * 0.5) / Math.max(1, N - 1);
+          currentX = bounds.x + bounds.w * 0.15 + lineIdx * stepX;
+        } else if (layoutStyle === 'block-headline') {
+          currentX += (lineIdx % 2 === 0 ? -30 : 30);
+        }
+
+        chars.forEach((ch, idx) => {
+          const { sc, matrix, decomp } = charScales[idx];
+          const sz = baseSize * sc;
+          const tilt = matrix.tilt + (seededRandom(seed + lineIdx * 19 + idx * 13) - 0.5) * 0.14;
+          const waveY = matrix.cy + (seededRandom(seed + lineIdx * 31 + idx * 23) - 0.5) * sz * 0.16;
+
+          const cx = currentX + (sz * 0.88) / 2 + matrix.cx;
+          const cy = lineY + waveY;
+
+          positions.push({ x: cx, y: cy, ch, decomp, lineIdx, isLastLine: (lineIdx === N - 1), isLastCharInLine: (idx === chars.length - 1) });
+          sizes.push(sz);
+          rotations.push(tilt);
+          rawChars.push(ch);
+
+          currentX += sz * 0.88 + letterSpacing;
+        });
+      });
+
+      res = { positions, sizes, rotations, rawChars, analysisLogs };
+
+      if (layoutCache.size > 80) layoutCache.clear();
+      layoutCache.set(cacheKey, res);
+      return res;
     }
 
     function computeCharPlan(chars, sizes) {
-      let cum = 0; const plan = chars.map((ch, i) => {
-        let data = null, length; if (ch !== ' ') { data = getGlyphBrushData(ch, sizes[i]); length = Math.max(data.totalLength, sizes[i] * 0.2); } else { length = sizes[i] * 0.3; }
-        cum += length; return { ch, data, length, cumEnd: cum };
-      }); return { plan, totalLen: cum || 1 };
+      let cum = 0;
+      const plan = chars.map((ch, i) => {
+        let data = null, length;
+        if (ch !== ' ') {
+          data = getGlyphBrushData(ch, sizes[i]);
+          length = Math.max(data.totalLength, sizes[i] * 0.2);
+        } else {
+          length = sizes[i] * 0.3;
+        }
+        cum += length;
+        return { ch, data, length, cumEnd: cum };
+      });
+      return { plan, totalLen: cum || 1 };
     }
 
     function traceShapePath(octx, shapeType, w, h) {
-      const cx = w / 2, cy = h / 2; const minDim = Math.min(w, h); const r = minDim * 0.4; octx.beginPath();
+      const cx = w / 2, cy = h / 2;
+      const minDim = Math.min(w, h);
+      const r = minDim * 0.4;
+      octx.beginPath();
       switch (shapeType) {
-        case 'circle': octx.arc(cx, cy, r, 0, Math.PI * 2); break;
-        case 'triangle': octx.moveTo(cx, cy - r); octx.lineTo(cx + r, cy + r * 0.8); octx.lineTo(cx - r, cy + r * 0.8); octx.closePath(); break;
-        case 'inv-triangle': octx.moveTo(cx - r, cy - r * 0.8); octx.lineTo(cx + r, cy - r * 0.8); octx.lineTo(cx, cy + r); octx.closePath(); break;
-        case 'horizontal-rect': octx.rect(cx - w * 0.4, cy - h * 0.25, w * 0.8, h * 0.5); break;
-        default: octx.moveTo(cx, cy - r); octx.lineTo(cx + r * 0.9, cy); octx.lineTo(cx, cy + r); octx.lineTo(cx - r * 0.9, cy); octx.closePath(); break;
+        case 'circle':
+          octx.arc(cx, cy, r, 0, Math.PI * 2);
+          break;
+        case 'triangle':
+          octx.moveTo(cx, cy - r); octx.lineTo(cx + r, cy + r * 0.8); octx.lineTo(cx - r, cy + r * 0.8); octx.closePath();
+          break;
+        case 'inv-triangle':
+          octx.moveTo(cx - r, cy - r * 0.8); octx.lineTo(cx + r, cy - r * 0.8); octx.lineTo(cx, cy + r); octx.closePath();
+          break;
+        case 'horizontal-rect':
+          octx.rect(cx - w * 0.4, cy - h * 0.25, w * 0.8, h * 0.5);
+          break;
+        case 'diamond':
+        default:
+          octx.moveTo(cx, cy - r); octx.lineTo(cx + r * 0.9, cy); octx.lineTo(cx, cy + r); octx.lineTo(cx - r * 0.9, cy); octx.closePath();
+          break;
       }
     }
 
     function makeShapeMaskImage(shapeType) {
       return new Promise(resolve => {
-        const w = canvas.width, h = canvas.height; const off = document.createElement('canvas'); off.width = w; off.height = h;
-        const octx = off.getContext('2d'); octx.clearRect(0, 0, w, h); octx.fillStyle = '#ffffff'; traceShapePath(octx, shapeType, w, h); octx.fill();
-        const img = new Image(); img.onload = () => resolve(img); img.src = off.toDataURL();
+        const w = canvas.width, h = canvas.height;
+        const off = document.createElement('canvas');
+        off.width = w; off.height = h;
+        const octx = off.getContext('2d');
+        octx.clearRect(0, 0, w, h);
+        octx.fillStyle = '#ffffff';
+        traceShapePath(octx, shapeType, w, h);
+        octx.fill();
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.src = off.toDataURL();
       });
     }
-    async function preloadShapeMasks() { const types = ['diamond', 'circle', 'triangle', 'inv-triangle', 'horizontal-rect']; for (const t of types) shapeMaskCache[t] = await makeShapeMaskImage(t); }
+
+    async function preloadShapeMasks() {
+      const types = ['diamond', 'circle', 'triangle', 'inv-triangle', 'horizontal-rect'];
+      for (const t of types) shapeMaskCache[t] = await makeShapeMaskImage(t);
+    }
 
     function getMaskBounds(shapeType) {
-      const key = `mask_${shapeType}_${canvas.width}_${canvas.height}`; if (maskBoundsCache.has(key)) return maskBoundsCache.get(key);
-      const maskImg = shapeMaskCache[shapeType] || shapeMaskCache['inv-triangle']; const w = canvas.width, h = canvas.height; let bounds;
-      if (!maskImg) { bounds = { x: w * 0.2, y: h * 0.2, w: w * 0.6, h: h * 0.6 }; }
-      else { const off = document.createElement('canvas'); off.width = w; off.height = h; const octx = off.getContext('2d'); octx.drawImage(maskImg, 0, 0, w, h); const data = octx.getImageData(0, 0, w, h).data; let minX = w, minY = h, maxX = 0, maxY = 0, found = false; for (let y = 0; y < h; y += 4) { for (let x = 0; x < w; x += 4) { const a = data[(y * w + x) * 4 + 3]; if (a > 128) { found = true; if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; } } } bounds = found ? { x: minX, y: minY, w: Math.max(40, maxX - minX), h: Math.max(40, maxY - minY) } : { x: w*0.3, y: h*0.3, w: w*0.4, h: h*0.4 }; }
-      maskBoundsCache.set(key, bounds); return bounds;
+      const key = `mask_${shapeType}_${canvas.width}_${canvas.height}`;
+      if (maskBoundsCache.has(key)) return maskBoundsCache.get(key);
+
+      const maskImg = shapeMaskCache[shapeType] || shapeMaskCache['inv-triangle'];
+      const w = canvas.width, h = canvas.height;
+      let bounds;
+
+      if (!maskImg) {
+        bounds = { x: w * 0.2, y: h * 0.2, w: w * 0.6, h: h * 0.6 };
+      } else {
+        const off = document.createElement('canvas');
+        off.width = w; off.height = h;
+        const octx = off.getContext('2d');
+        octx.drawImage(maskImg, 0, 0, w, h);
+        const data = octx.getImageData(0, 0, w, h).data;
+        let minX = w, minY = h, maxX = 0, maxY = 0, found = false;
+        for (let y = 0; y < h; y += 4) {
+          for (let x = 0; x < w; x += 4) {
+            const a = data[(y * w + x) * 4 + 3];
+            if (a > 128) {
+              found = true;
+              if (x < minX) minX = x; if (x > maxX) maxX = x;
+              if (y < minY) minY = y; if (y > maxY) maxY = y;
+            }
+          }
+        }
+        bounds = found ? { x: minX, y: minY, w: Math.max(40, maxX - minX), h: Math.max(40, maxY - minY) } : { x: w*0.3, y: h*0.3, w: w*0.4, h: h*0.4 };
+      }
+      
+      maskBoundsCache.set(key, bounds);
+      return bounds;
     }
 
+    /* 🎨 수채화 물감 방울 & 빛망울 번짐 배경 연출 */
+    function drawWatercolorAccents(targetCtx, bounds, styleMode, seed) {
+      if (!styleMode || styleMode === 'none') return;
+      targetCtx.save();
+
+      const colors = [
+        'rgba(255, 182, 193, 0.38)',
+        'rgba(255, 236, 179, 0.42)',
+        'rgba(179, 229, 252, 0.38)',
+        'rgba(200, 230, 201, 0.40)',
+        'rgba(225, 190, 231, 0.35)'
+      ];
+
+      const count = styleMode === 'rich-dots' ? 26 : 14;
+      for (let i = 0; i < count; i++) {
+        const angle = seededRandom(seed + i * 17) * Math.PI * 2;
+        const dist = (0.15 + seededRandom(seed + i * 23) * 0.85) * (bounds.w * 0.65);
+        const x = bounds.x + bounds.w / 2 + Math.cos(angle) * dist;
+        const y = bounds.y + bounds.h / 2 + Math.sin(angle) * dist;
+        const r = 8 + seededRandom(seed + i * 31) * (styleMode === 'rich-dots' ? 32 : 18);
+
+        const col = colors[Math.floor(seededRandom(seed + i * 41) * colors.length)];
+        targetCtx.fillStyle = col;
+        targetCtx.beginPath();
+        targetCtx.arc(x, y, r, 0, Math.PI * 2);
+        targetCtx.fill();
+      }
+      targetCtx.restore();
+    }
+
+    /* ✍️ 보조 자막 / 작가 서명 & 소자막 렌더링 */
+    function drawSubCaption(targetCtx, text, bounds, posMode) {
+      if (!text || !posMode || posMode === 'none' || text.trim().length === 0) return;
+      targetCtx.save();
+      targetCtx.fillStyle = inkColorInput.value;
+
+      if (posMode === 'right-vertical') {
+        const startX = bounds.x + bounds.w * 0.92;
+        let startY = bounds.y + bounds.h * 0.28;
+        const fontSize = Math.max(16, Math.round(bounds.w * 0.035));
+        targetCtx.font = `bold ${fontSize}px serif`;
+        targetCtx.textAlign = 'center';
+
+        const chars = Array.from(text.trim());
+        chars.forEach((ch, i) => {
+          targetCtx.fillText(ch, startX, startY + i * (fontSize * 1.15));
+        });
+      } else if (posMode === 'bottom-center') {
+        const x = bounds.x + bounds.w * 0.5;
+        const y = bounds.y + bounds.h * 0.90;
+        const fontSize = Math.max(15, Math.round(bounds.w * 0.032));
+        targetCtx.font = `italic bold ${fontSize}px sans-serif`;
+        targetCtx.textAlign = 'center';
+        targetCtx.fillText(text.trim(), x, y);
+      }
+      targetCtx.restore();
+    }
+
+    /* 🔴 전서 직인 낙관 렌더링 */
     function drawCalligraphySeal(targetCtx, bounds, sealType) {
-      if (!sealType || sealType === 'none') return; let sealText = '캘리';
-      if (sealType === 'custom') sealText = paramSealText.value.trim() || '낙관'; else if (sealType === 'seal-art') sealText = '藝術'; else if (sealType === 'seal-heart') sealText = '心';
-      targetCtx.save(); const sx = bounds.x + bounds.w * 0.88; const sy = bounds.y + bounds.h * 0.78; const size = Math.max(34, Math.min(56, bounds.w * 0.08));
-      targetCtx.fillStyle = '#d90429'; targetCtx.beginPath(); if (targetCtx.roundRect) targetCtx.roundRect(sx, sy, size, size, 6); else targetCtx.rect(sx, sy, size, size); targetCtx.fill(); targetCtx.strokeStyle = '#ef233c'; targetCtx.lineWidth = 2; targetCtx.stroke();
-      targetCtx.fillStyle = '#ffffff'; targetCtx.font = `bold ${Math.round(size * 0.42)}px serif`; targetCtx.textAlign = 'center'; targetCtx.textBaseline = 'middle'; targetCtx.fillText(sealText, sx + size / 2, sy + size / 2 + 1); targetCtx.restore();
+      if (!sealType || sealType === 'none') return;
+      
+      let sealText = '제주';
+      if (sealType === 'custom') {
+        sealText = paramSealText.value.trim() || '낙관';
+      } else if (sealType === 'seal-red' || sealType === 'seal-dark') {
+        sealText = paramSealText.value.trim() || '제주';
+      }
+
+      targetCtx.save();
+      const sx = bounds.x + bounds.w * 0.88;
+      const sy = bounds.y + bounds.h * 0.78;
+      const size = Math.max(36, Math.min(56, bounds.w * 0.08));
+
+      const isRed = (sealType === 'seal-red' || sealType === 'custom');
+      targetCtx.fillStyle = isRed ? '#bb1b27' : '#1f1e24';
+      targetCtx.fillRect(sx, sy, size, size);
+
+      targetCtx.strokeStyle = isRed ? '#e2303c' : '#33323d';
+      targetCtx.lineWidth = 2;
+      targetCtx.strokeRect(sx, sy, size, size);
+
+      targetCtx.fillStyle = '#ffffff';
+      targetCtx.textAlign = 'center';
+      targetCtx.textBaseline = 'middle';
+
+      const str = sealText.trim();
+      if (str.length <= 2) {
+        targetCtx.font = `bold ${Math.round(size * 0.42)}px serif`;
+        targetCtx.fillText(str[0], sx + size / 2, sy + size * 0.33);
+        if (str[1]) targetCtx.fillText(str[1], sx + size / 2, sy + size * 0.72);
+      } else {
+        targetCtx.font = `bold ${Math.round(size * 0.32)}px serif`;
+        targetCtx.fillText(str[0], sx + size * 0.3, sy + size * 0.32);
+        targetCtx.fillText(str[1], sx + size * 0.7, sy + size * 0.32);
+        targetCtx.fillText(str[2], sx + size * 0.3, sy + size * 0.72);
+        targetCtx.fillText(str[3] || '', sx + size * 0.7, sy + size * 0.72);
+      }
+
+      targetCtx.restore();
     }
 
-    function drawInkSplatter(targetCtx, bounds, inkColor, splatterVal, seed) {
-      if (splatterVal <= 0.05) return; targetCtx.save(); targetCtx.fillStyle = inkColor; targetCtx.globalAlpha = 0.35 + splatterVal * 0.45;
-      const numDots = Math.floor(15 * splatterVal); for (let i = 0; i < numDots; i++) { const angle = seededRandom(seed + i * 13) * Math.PI * 2; const dist = (0.2 + seededRandom(seed + i * 19) * 0.7) * (bounds.w / 2); const dotX = bounds.x + bounds.w / 2 + Math.cos(angle) * dist; const dotY = bounds.y + bounds.h / 2 + Math.sin(angle) * dist; const radius = 0.8 + seededRandom(seed + i * 23) * 2.8 * splatterVal; targetCtx.beginPath(); targetCtx.arc(dotX, dotY, radius, 0, Math.PI * 2); targetCtx.fill(); }
+    function applyDryBrushSlitCut(targetCtx, w, h, slitIntensity) {
+      if (slitIntensity <= 0.05) return;
+      targetCtx.save();
+      targetCtx.globalCompositeOperation = 'destination-out';
+      const num = Math.floor(slitIntensity * 220);
+      targetCtx.strokeStyle = 'rgba(0,0,0,0.85)';
+
+      for (let i = 0; i < num; i++) {
+        const sx = (Math.sin(i * 1.91) * 0.5 + 0.5) * w;
+        const sy = (Math.cos(i * 2.73) * 0.5 + 0.5) * h;
+        const len = (Math.sin(i * 4.1) * 0.5 + 0.5) * 40 + 10;
+        const angle = (Math.sin(i * 3.3) * 0.25) + Math.PI * 0.45;
+        targetCtx.lineWidth = (Math.sin(i * 5.7) * 0.5 + 0.5) * 2.0 + 0.5;
+        targetCtx.beginPath();
+        targetCtx.moveTo(sx, sy);
+        targetCtx.lineTo(sx + Math.cos(angle) * len, sy + Math.sin(angle) * len);
+        targetCtx.stroke();
+      }
       targetCtx.restore();
     }
 
     function updateDOMInlineLayer(text, positions, sizes, rotations) {
-      calliDomLayer.innerHTML = ''; if (!positions || positions.length === 0) return; const wrapper = document.createElement('div'); wrapper.className = 'calli-char-wrapper';
-      positions.forEach((pos, i) => { const span = document.createElement('span'); span.className = 'calli-char'; span.dataset.char = pos.ch; span.textContent = pos.ch; span.style.fontSize = `${sizes[i]}px`; span.style.transform = `rotate(${rotations[i]}rad)`; span.style.color = inkColorInput.value; span.style.opacity = '0.0'; wrapper.appendChild(span); });
+      calliDomLayer.innerHTML = '';
+      if (!positions || positions.length === 0) return;
+
+      const wrapper = document.createElement('div');
+      wrapper.className = 'calli-char-wrapper';
+
+      positions.forEach((pos, i) => {
+        const span = document.createElement('span');
+        span.className = 'calli-char';
+        span.dataset.char = pos.ch;
+        span.textContent = pos.ch;
+        span.style.fontSize = `${sizes[i]}px`;
+        span.style.transform = `rotate(${rotations[i]}rad)`;
+        span.style.color = inkColorInput.value;
+        span.style.opacity = '0.0';
+
+        wrapper.appendChild(span);
+      });
+
       calliDomLayer.appendChild(wrapper);
     }
 
     function drawGuideFrame(guideMode, activeShapeType, sessionData) {
-      if (isRecording || guideMode === 'none') return; const w = canvas.width, h = canvas.height; ctx.save();
-      if (guideMode === 'guide-shape' && activeShapeType) { ctx.strokeStyle = 'rgba(255, 107, 55, 0.85)'; ctx.lineWidth = 3; ctx.setLineDash([10, 10]); ctx.save(); if (sessionData) { const offsetX = sessionData.offsetX || 0; const offsetY = sessionData.offsetY || 0; const scale = sessionData.scale || 1.0; ctx.translate(w / 2 + offsetX, h / 2 + offsetY); ctx.scale(scale, scale); ctx.translate(-w / 2, -h / 2); } traceShapePath(ctx, activeShapeType, w, h); ctx.stroke(); ctx.restore(); }
-      else if (guideMode === 'subtle-axis') { ctx.strokeStyle = 'rgba(255, 107, 55, 0.4)'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(w / 2, 0); ctx.lineTo(w / 2, h); ctx.moveTo(0, h / 2); ctx.lineTo(w, h / 2); ctx.stroke(); }
+      if (isRecording || guideMode === 'none') return;
+      const w = canvas.width, h = canvas.height;
+
+      ctx.save();
+      if (guideMode === 'guide-shape' && activeShapeType) {
+        ctx.strokeStyle = 'rgba(255, 107, 55, 0.85)';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([10, 10]);
+
+        ctx.save();
+        if (sessionData) {
+          const offsetX = sessionData.offsetX || 0;
+          const offsetY = sessionData.offsetY || 0;
+          const scale = sessionData.scale || 1.0;
+          
+          ctx.translate(w / 2 + offsetX, h / 2 + offsetY);
+          ctx.scale(scale, scale);
+          ctx.translate(-w / 2, -h / 2);
+        }
+
+        traceShapePath(ctx, activeShapeType, w, h);
+        ctx.stroke();
+        ctx.restore();
+      } else if (guideMode === 'subtle-axis') {
+        ctx.strokeStyle = 'rgba(255, 107, 55, 0.4)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(w / 2, 0); ctx.lineTo(w / 2, h);
+        ctx.moveTo(0, h / 2); ctx.lineTo(w, h / 2);
+        ctx.stroke();
+      }
       ctx.restore();
     }
 
     function drawWelcomeGuide() {
-      const w = canvas.width, h = canvas.height; const cx = w / 2, cy = h / 2; ctx.save();
-      ctx.fillStyle = 'rgba(28, 25, 23, 0.04)'; ctx.strokeStyle = 'rgba(255, 107, 55, 0.55)'; ctx.lineWidth = 2.5; ctx.setLineDash([10, 8]); ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(cx - 420, cy - 220, 840, 440, 20); else ctx.rect(cx - 420, cy - 220, 840, 440); ctx.fill(); ctx.stroke();
-      ctx.setLineDash([]); ctx.textAlign = 'center'; ctx.fillStyle = '#ff6b35'; ctx.font = 'bold 34px sans-serif'; ctx.fillText('🖌️ SRT 자막 8대 한글 결구 캘리그라피 스튜디오', cx, cy - 140);
-      ctx.fillStyle = '#2c2c35'; ctx.font = '21px sans-serif'; ctx.fillText('1️⃣ [1단계] 유니코드 기반 초/중/종성 분해 및 8대 결구 유형을 자동 분류합니다.', cx, cy - 70); ctx.fillText('2️⃣ [2단계] 시각적 무게중심 오프셋 & 필압($P$), 회전각($\\theta$) 변수를 실시간 계산합니다.', cx, cy - 20); ctx.fillText('3️⃣ [3단계] 3차 베지어 곡선 기반 SVG 벡터 획 오프셋 패스를 구축합니다.', cx, cy + 30); ctx.fillStyle = '#e63946'; ctx.font = 'bold 22px sans-serif'; ctx.fillText('4️⃣ [4단계] <span class="calli-char"> 인라인 DOM 마운트 & MP4 비디오 자동 저장!', cx, cy + 85); ctx.restore();
+      const w = canvas.width, h = canvas.height;
+      const cx = w / 2, cy = h / 2;
+
+      ctx.save();
+      ctx.fillStyle = 'rgba(28, 25, 23, 0.04)';
+      ctx.strokeStyle = 'rgba(255, 107, 55, 0.55)';
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([10, 8]);
+      ctx.beginPath();
+      if (ctx.roundRect) {
+        ctx.roundRect(cx - 420, cy - 220, 840, 440, 20);
+      } else {
+        ctx.rect(cx - 420, cy - 220, 840, 440);
+      }
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.setLineDash([]);
+      ctx.textAlign = 'center';
+      
+      ctx.fillStyle = '#ff6b35';
+      ctx.font = 'bold 34px sans-serif';
+      ctx.fillText('🖌️ SRT 자막 8대 한글 결구 캘리그라피 스튜디오', cx, cy - 140);
+
+      ctx.fillStyle = '#2c2c35';
+      ctx.font = '21px sans-serif';
+      
+      ctx.fillText('1️⃣ [1단계] 유니코드 기반 초/중/종성 분해 및 8대 결구 유형을 자동 분류합니다.', cx, cy - 70);
+      ctx.fillText('2️⃣ [2단계] 시각적 무게중심 오프셋 & 필압($P$), 파라메트릭 왜곡 수치를 실시간 계산합니다.', cx, cy - 20);
+      ctx.fillText('3️⃣ [3단계] 우측 🏆 템플릿 1~5 정밀 수치 & 1~10번 슬롯으로 자유롭게 저장/불러오세요!', cx, cy + 30);
+      
+      ctx.fillStyle = '#e63946';
+      ctx.font = 'bold 22px sans-serif';
+      ctx.fillText('4️⃣ [4단계] <span class="calli-char"> 인라인 DOM 마운트 & MP4 비디오 자동 저장!', cx, cy + 85);
+
+      ctx.fillStyle = '#6b7280';
+      ctx.font = 'italic 18px sans-serif';
+      ctx.fillText('💡 자막을 적용하시면 8대 결구 분석 로그와 함께 캘리그라피 작품이 즉시 표시됩니다.', cx, cy + 155);
+
+      ctx.restore();
     }
 
-    /* ★ 핵심 변경점: 6가지 유형에 따른 중심 거리 변형 */
+    /* 🎨 파라메트릭 필압 & 방사형 방향 벡터 변형 파이프라인 (v40.0) */
     function renderGeometricShapeMode(text, writeProgress, inkColor, contrast, seed, shapeType, cropMode, layoutStyle, offsetX, offsetY, scale) {
-      const w = canvas.width, h = canvas.height; const maskImg = shapeMaskCache[shapeType] || shapeMaskCache['inv-triangle']; const baseBounds = getMaskBounds(shapeType);
-      const centerX = (baseBounds.x + baseBounds.w / 2); const centerY = (baseBounds.y + baseBounds.h / 2); const scaledW = baseBounds.w * scale; const scaledH = baseBounds.h * scale;
-      const bounds = { x: centerX - scaledW / 2 + offsetX, y: centerY - scaledH / 2 + offsetY, w: scaledW, h: scaledH };
-      const styleIntensity = parseFloat(paramStyleIntensity.value); const dryBrushVal = parseFloat(paramDryBrush.value); const splatterVal = parseFloat(paramSplatter.value);
+      const w = canvas.width, h = canvas.height;
+      const maskImg = shapeMaskCache[shapeType] || shapeMaskCache['inv-triangle'];
+      const baseBounds = getMaskBounds(shapeType);
+
+      const centerX = (baseBounds.x + baseBounds.w / 2);
+      const centerY = (baseBounds.y + baseBounds.h / 2);
+      const scaledW = baseBounds.w * scale;
+      const scaledH = baseBounds.h * scale;
+
+      const bounds = {
+        x: centerX - scaledW / 2 + offsetX,
+        y: centerY - scaledH / 2 + offsetY,
+        w: scaledW,
+        h: scaledH,
+        offsetX, offsetY, scale
+      };
+
+      const letterSpacing = parseInt(paramLetterSpacing.value);
+      const lineHeightMult = parseFloat(paramLineHeight.value);
+      const decay = parseFloat(paramDecay.value);
+
+      const jasoDistances = {
+        initialDist: parseInt(paramInitialDist.value),
+        medialDist: parseInt(paramMedialDist.value),
+        finalDist: parseInt(paramFinalDist.value)
+      };
+
+      const initialScale = parseInt(paramInitialScale.value) / 100;
+      const initialShape = paramInitialShape.value;
+
+      const medialScale = parseInt(paramMedialScale.value) / 100;
+      const medialShape = paramMedialShape.value;
+
+      const finalScale = parseInt(paramFinalScale.value) / 100;
+      const finalShape = paramFinalShape.value;
+
+      const gipilVal = parseFloat(paramGipil.value);
+      const supilVal = parseFloat(paramSupil.value);
+      const styleIntensity = parseFloat(paramStyleIntensity.value);
+      const sealType = paramSealSelect.value;
+
+      const watercolorStyle = paramWatercolorStyle.value;
+      const subcaptionText = paramSubcaptionText.value;
+      const subcaptionPos = paramSubcaptionPos.value;
+
+      // 🧮 파라메트릭 조형 변형 수치 (v39.0 통합)
+      const shearDeg = parseInt(paramShear.value);
+      const bulge = parseFloat(paramBulge.value);
+      const strokeExpand = parseFloat(paramStrokeExpand.value);
+      const curvature = parseFloat(paramCurvature.value);
+      const slitCut = parseFloat(paramSlitCut.value);
+
+      const pullDir = paramPullDir.value;
+      const pullTarget = paramPullTarget.value;
+      const attractor = parseFloat(paramAttractor.value);
+
+      /* 🎨 수채화 물감 방울/빛망울 배경 렌더링 */
+      drawWatercolorAccents(ctx, bounds, watercolorStyle, seed);
+
+      const { positions, sizes, rotations, rawChars, analysisLogs } = layoutArtisticCalligraphy(
+        text, shapeType || 'inv-triangle', bounds, contrast, layoutStyle, seed, letterSpacing, lineHeightMult, decay
+      );
       
-      // 유형별 방향 벡터를 위한 6가지 유형 분석
-      const { positions, sizes, rotations, rawChars, analysisLogs } = layoutArtisticCalligraphy(text, shapeType || 'inv-triangle', bounds, contrast, layoutStyle, seed);
-      if (analysisLogs && analysisLogs.length > 0) { analysisOutput.textContent = `[분석 로그] ${analysisLogs.slice(0, 5).join(' | ')}`; }
+      if (analysisLogs && analysisLogs.length > 0) {
+        analysisOutput.textContent = `[분석 로그] ${analysisLogs.slice(0, 5).join(' | ')}`;
+      }
+
       updateDOMInlineLayer(text, positions, sizes, rotations);
 
       const targetChars = rawChars || Array.from(text.replace(/\n/g, ' '));
       const { plan, totalLen } = computeCharPlan(targetChars, sizes);
       const inkRevealed = writeProgress * totalLen;
 
-      // 🧩 초/중/종성 "중심 거리" 슬라이더 값 읽기
-      const jamoOpts = {
-        cho: { dist: parseFloat(document.getElementById('param-cho-dist').value) || 0, scale: parseFloat(document.getElementById('param-cho-scale').value) || 1 },
-        jung: { dist: parseFloat(document.getElementById('param-jung-dist').value) || 0, scale: parseFloat(document.getElementById('param-jung-scale').value) || 1 },
-        jong: { dist: parseFloat(document.getElementById('param-jong-dist').value) || 0, scale: parseFloat(document.getElementById('param-jong-scale').value) || 1 }
+      const drawGlyphWithJasoTransform = (targetCtx, item, i) => {
+        if (item.ch === ' ') return;
+        const pos = positions[i];
+        const rot = rotations[i] || 0;
+        const decomp = pos.decomp;
+
+        let isMajorChar = false;
+        if (pullTarget === 'last-char') {
+          isMajorChar = (pos.isLastLine && pos.isLastCharInLine);
+        } else if (pullTarget === 'first-char') {
+          isMajorChar = (i === 0);
+        } else if (pullTarget === 'line-ends') {
+          isMajorChar = pos.isLastCharInLine;
+        }
+
+        let charScaleMult = 1.0;
+        let shapeStyle = 'normal';
+
+        if (decomp && decomp.isHangul) {
+          const overallJasoScale = (initialScale + medialScale + (decomp.hasFinal ? finalScale : 1.0)) / (decomp.hasFinal ? 3 : 2);
+          charScaleMult = overallJasoScale;
+
+          if (initialShape !== 'normal') shapeStyle = initialShape;
+          else if (medialShape !== 'normal') shapeStyle = medialShape;
+          else if (finalShape !== 'normal') shapeStyle = finalShape;
+
+          if (shapeStyle === 'random') {
+            const styles = ['normal', 'rounded', 'angled', 'cursive', 'plump'];
+            shapeStyle = styles[Math.floor(seededRandom(seed + i * 17) * styles.length)];
+          }
+        }
+
+        if (inkRevealed >= item.cumEnd) {
+          drawBrushGlyph(targetCtx, item.data, pos.x, pos.y, 0, true, seed + i * 13, charScaleMult, styleIntensity, 0, rot, gipilVal, supilVal, shapeStyle, decomp, jasoDistances, pullDir, pullTarget, attractor, shearDeg, bulge, strokeExpand, curvature, isMajorChar);
+        } else if (inkRevealed > item.cumEnd - item.length) {
+          const revealLen = inkRevealed - (item.cumEnd - item.length);
+          drawBrushGlyph(targetCtx, item.data, pos.x, pos.y, revealLen, false, seed + i * 13, charScaleMult, styleIntensity, 0, rot, gipilVal, supilVal, shapeStyle, decomp, jasoDistances, pullDir, pullTarget, attractor, shearDeg, bulge, strokeExpand, curvature, isMajorChar);
+        }
       };
 
       if (cropMode === 'hard-crop') {
-        maskCtx.clearRect(0, 0, w, h); maskCtx.fillStyle = inkColor;
-        plan.forEach((item, i) => {
-          if (item.ch === ' ') return;
-          const pos = positions[i]; const rot = rotations[i] || 0;
-          if (inkRevealed >= item.cumEnd) {
-            const dec = decomposeHangul(item.ch);
-            if (dec.isHangul) {
-              // 유형별 방향 벡터를 이용하여 중심에서 얼마나 멀어질지 계산
-              if (dec.initial) {
-                const vec = getDirectionVector(dec.type, 'cho');
-                const baseDistance = sizes[i] * 0.25; // 기본 결구 거리
-                const totalDist = baseDistance + jamoOpts.cho.dist;
-                const choData = getGlyphBrushData(dec.initial, sizes[i]);
-                drawBrushGlyph(maskCtx, choData, pos.x + vec[0] * totalDist, pos.y + vec[1] * totalDist, 0, true, seed + i * 2, jamoOpts.cho.scale, styleIntensity, dryBrushVal, rot);
-              }
-              if (dec.medial) {
-                const vec = getDirectionVector(dec.type, 'jung');
-                const baseDistance = sizes[i] * 0.25;
-                const totalDist = baseDistance + jamoOpts.jung.dist;
-                const jungData = getGlyphBrushData(dec.medial, sizes[i]);
-                drawBrushGlyph(maskCtx, jungData, pos.x + vec[0] * totalDist, pos.y + vec[1] * totalDist, 0, true, seed + i * 3, jamoOpts.jung.scale, styleIntensity, dryBrushVal, rot);
-              }
-              if (dec.final) {
-                const vec = getDirectionVector(dec.type, 'jong');
-                const baseDistance = sizes[i] * 0.35; // 종성은 좀 더 아래로
-                const totalDist = baseDistance + jamoOpts.jong.dist;
-                const jongData = getGlyphBrushData(dec.final, sizes[i]);
-                drawBrushGlyph(maskCtx, jongData, pos.x + vec[0] * totalDist, pos.y + vec[1] * totalDist, 0, true, seed + i * 4, jamoOpts.jong.scale, styleIntensity, dryBrushVal, rot);
-              }
-            } else { drawBrushGlyph(maskCtx, item.data, pos.x, pos.y, 0, true, seed + i * 13, 1, styleIntensity, dryBrushVal, rot); }
-          } else if (inkRevealed > item.cumEnd - item.length) {
-            const revealLen = inkRevealed - (item.cumEnd - item.length);
-            drawBrushGlyph(maskCtx, item.data, pos.x, pos.y, revealLen, false, seed + i * 13, 1, styleIntensity, dryBrushVal, rot);
-          }
-        });
-        maskCtx.globalCompositeOperation = 'destination-in'; maskCtx.save(); maskCtx.translate(w / 2 + offsetX, h / 2 + offsetY); maskCtx.scale(scale, scale); maskCtx.translate(-w / 2, -h / 2); maskCtx.drawImage(maskImg, 0, 0, w, h); maskCtx.restore(); maskCtx.globalCompositeOperation = 'source-over'; ctx.drawImage(maskCanvas, 0, 0);
+        maskCtx.clearRect(0, 0, w, h);
+        maskCtx.fillStyle = inkColor;
+
+        plan.forEach((item, i) => drawGlyphWithJasoTransform(maskCtx, item, i));
+
+        maskCtx.globalCompositeOperation = 'destination-in';
+        maskCtx.save();
+        maskCtx.translate(w / 2 + offsetX, h / 2 + offsetY);
+        maskCtx.scale(scale, scale);
+        maskCtx.translate(-w / 2, -h / 2);
+        maskCtx.drawImage(maskImg, 0, 0, w, h);
+        maskCtx.restore();
+        maskCtx.globalCompositeOperation = 'source-over';
+
+        ctx.drawImage(maskCanvas, 0, 0);
       } else {
         ctx.fillStyle = inkColor;
-        plan.forEach((item, i) => {
-          if (item.ch === ' ') return;
-          const pos = positions[i]; const rot = rotations[i] || 0;
-          if (inkRevealed >= item.cumEnd) {
-            const dec = decomposeHangul(item.ch);
-            if (dec.isHangul) {
-              if (dec.initial) {
-                const vec = getDirectionVector(dec.type, 'cho');
-                const baseDistance = sizes[i] * 0.25; const totalDist = baseDistance + jamoOpts.cho.dist;
-                const choData = getGlyphBrushData(dec.initial, sizes[i]);
-                drawBrushGlyph(ctx, choData, pos.x + vec[0] * totalDist, pos.y + vec[1] * totalDist, 0, true, seed + i * 2, jamoOpts.cho.scale, styleIntensity, dryBrushVal, rot);
-              }
-              if (dec.medial) {
-                const vec = getDirectionVector(dec.type, 'jung'); const baseDistance = sizes[i] * 0.25; const totalDist = baseDistance + jamoOpts.jung.dist;
-                const jungData = getGlyphBrushData(dec.medial, sizes[i]);
-                drawBrushGlyph(ctx, jungData, pos.x + vec[0] * totalDist, pos.y + vec[1] * totalDist, 0, true, seed + i * 3, jamoOpts.jung.scale, styleIntensity, dryBrushVal, rot);
-              }
-              if (dec.final) {
-                const vec = getDirectionVector(dec.type, 'jong'); const baseDistance = sizes[i] * 0.35; const totalDist = baseDistance + jamoOpts.jong.dist;
-                const jongData = getGlyphBrushData(dec.final, sizes[i]);
-                drawBrushGlyph(ctx, jongData, pos.x + vec[0] * totalDist, pos.y + vec[1] * totalDist, 0, true, seed + i * 4, jamoOpts.jong.scale, styleIntensity, dryBrushVal, rot);
-              }
-            } else { drawBrushGlyph(ctx, item.data, pos.x, pos.y, 0, true, seed + i * 13, 1, styleIntensity, dryBrushVal, rot); }
-          } else if (inkRevealed > item.cumEnd - item.length) {
-            const revealLen = inkRevealed - (item.cumEnd - item.length);
-            drawBrushGlyph(ctx, item.data, pos.x, pos.y, revealLen, false, seed + i * 13, 1, styleIntensity, dryBrushVal, rot);
-          }
-        });
+        plan.forEach((item, i) => drawGlyphWithJasoTransform(ctx, item, i));
       }
-      drawInkSplatter(ctx, bounds, inkColor, splatterVal, seed); if (writeProgress > 0.85) drawCalligraphySeal(ctx, bounds, paramSealSelect.value);
+
+      applyDryBrushSlitCut(ctx, w, h, slitCut);
+
+      if (writeProgress > 0.85) {
+        drawSubCaption(ctx, subcaptionText, bounds, subcaptionPos);
+        drawCalligraphySeal(ctx, bounds, sealType);
+      }
+
       return bounds;
     }
 
     function renderCalligraphyFrame(subtitleObj, timeSec) {
       if (!subtitleObj || !currentFont) return null;
-      const inkColor = inkColorInput.value; const filterMode = filterModeSelect ? filterModeSelect.value : 'fast'; const contrast = parseFloat(paramContrast.value); const finishPct = parseInt(paramFinishPct.value) / 100;
-      const duration = Math.max(0.5, subtitleObj.end - subtitleObj.start); const elapsed = Math.max(0, timeSec - subtitleObj.start); const writeDuration = duration * finishPct; const writeProgress = Math.min(1, elapsed / writeDuration); const text = subtitleObj.text.trim(); const seed = (parseInt(subtitleObj.id) || 1) * 97 + text.length;
-      const shapeType = subtitleObj.shapeType || shapeFrameSelect.value || 'inv-triangle'; const cropMode = subtitleObj.cropMode || shapeCropSelect.value || 'natural'; const layoutStyle = subtitleObj.layoutStyle || shapeLayoutStyleSelect.value || 'artistic-rhythm'; const offsetX = subtitleObj.offsetX || 0; const offsetY = subtitleObj.offsetY || 0; const scale = subtitleObj.scale || 1.0;
-      ctx.save(); if (filterMode === 'high-quality') { try { ctx.filter = 'blur(0.3px) url(#ink-bleed-filter)'; } catch (e) {} } else { try { ctx.filter = 'blur(0.3px)'; } catch (e) {} }
-      const bounds = renderGeometricShapeMode(text, writeProgress, inkColor, contrast, seed, shapeType, cropMode, layoutStyle, offsetX, offsetY, scale);
-      ctx.filter = 'none'; ctx.restore(); return { shapeType, bounds };
+      const inkColor = inkColorInput.value;
+      const filterMode = filterModeSelect ? filterModeSelect.value : 'fast';
+      const contrast = parseFloat(paramContrast.value);
+      const finishPct = parseInt(paramFinishPct.value) / 100;
+
+      const duration = Math.max(0.5, subtitleObj.end - subtitleObj.start);
+      const elapsed = Math.max(0, timeSec - subtitleObj.start);
+      const writeDuration = duration * finishPct;
+      const writeProgress = Math.min(1, elapsed / writeDuration);
+      const text = subtitleObj.text.trim();
+      const seed = (parseInt(subtitleObj.id) || 1) * 97 + text.length;
+
+      const shapeType = subtitleObj.shapeType || shapeFrameSelect.value || 'inv-triangle';
+      const cropMode = subtitleObj.cropMode || shapeCropSelect.value || 'natural';
+      const layoutStyle = subtitleObj.layoutStyle || shapeLayoutStyleSelect.value || 'block-headline';
+      const offsetX = subtitleObj.offsetX || 0;
+      const offsetY = subtitleObj.offsetY || 0;
+      const scale = subtitleObj.scale || 1.0;
+
+      ctx.save();
+      if (filterMode === 'high-quality') {
+        try { ctx.filter = 'blur(0.3px) url(#ink-bleed-filter)'; } catch (e) {}
+      } else {
+        try { ctx.filter = 'blur(0.3px)'; } catch (e) {}
+      }
+
+      const bounds = renderGeometricShapeMode(
+        text, writeProgress, inkColor, contrast, seed, 
+        shapeType, cropMode, layoutStyle, offsetX, offsetY, scale
+      );
+
+      ctx.filter = 'none';
+      ctx.restore();
+      return { shapeType, bounds, sessionData: { offsetX, offsetY, scale } };
     }
 
-    function seededRandom(seed) { let x = Math.sin(seed++) * 10000; return x - Math.floor(x); }
-    function parseSRTTime(h, m, s, ms) { return (parseInt(h) || 0) * 3600 + (parseInt(m) || 0) * 60 + (parseInt(s) || 0) + (parseInt(ms) || 0) / 1000; }
+    function seededRandom(seed) {
+      let x = Math.sin(seed++) * 10000;
+      return x - Math.floor(x);
+    }
+
+    function parseSRTTime(h, m, s, ms) {
+      return (parseInt(h) || 0) * 3600 + (parseInt(m) || 0) * 60 + (parseInt(s) || 0) + (parseInt(ms) || 0) / 1000;
+    }
 
     function parseSRT(text) {
-      if (!text || typeof text !== 'string') return []; const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n'); const blocks = normalized.split(/\n\s*\n/); const result = [];
-      let autoId = 1; for (let block of blocks) { const lines = block.trim().split('\n').filter(l => l.trim().length > 0); if (lines.length === 0) continue; let timeLineIndex = -1; for (let i = 0; i < lines.length; i++) { if (lines[i].includes('-->')) { timeLineIndex = i; break; } } if (timeLineIndex !== -1) { const matches = lines[timeLineIndex].match(/(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})\s*-->\s*(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})/); if (matches) { const startSec = parseSRTTime(matches[1], matches[2], matches[3], matches[4]); const endSec = parseSRTTime(matches[5], matches[6], matches[7], matches[8]); const textLines = lines.slice(timeLineIndex + 1); if (isFinite(startSec) && isFinite(endSec) && endSec > startSec && textLines.length > 0) { result.push({ id: (timeLineIndex > 0 ? lines[0].trim() : String(autoId++)), start: startSec, end: endSec, text: textLines.join('\n'), shapeType: shapeFrameSelect.value || 'inv-triangle', cropMode: shapeCropSelect.value || 'natural', layoutStyle: shapeLayoutStyleSelect.value || 'artistic-rhythm', offsetX: 0, offsetY: 0, scale: 1.0 }); } } } } return result;
+      if (!text || typeof text !== 'string') return [];
+      const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+      const blocks = normalized.split(/\n\s*\n/);
+      const result = [];
+      
+      let autoId = 1;
+      for (let block of blocks) {
+        const lines = block.trim().split('\n').filter(l => l.trim().length > 0);
+        if (lines.length === 0) continue;
+
+        let timeLineIndex = -1;
+        for (let i = 0; i < lines.length; i++) {
+          if (lines[i].includes('-->')) {
+            timeLineIndex = i;
+            break;
+          }
+        }
+
+        if (timeLineIndex !== -1) {
+          const timeStr = lines[timeLineIndex];
+          const matches = timeStr.match(/(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})\s*-->\s*(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})/);
+          if (matches) {
+            const startSec = parseSRTTime(matches[1], matches[2], matches[3], matches[4]);
+            const endSec = parseSRTTime(matches[5], matches[6], matches[7], matches[8]);
+            const textLines = lines.slice(timeLineIndex + 1);
+            
+            if (isFinite(startSec) && isFinite(endSec) && endSec > startSec && textLines.length > 0) {
+              result.push({
+                id: (timeLineIndex > 0 ? lines[0].trim() : String(autoId++)),
+                start: startSec,
+                end: endSec,
+                text: textLines.join('\n'),
+                shapeType: shapeFrameSelect.value || 'inv-triangle',
+                cropMode: shapeCropSelect.value || 'natural',
+                layoutStyle: shapeLayoutStyleSelect.value || 'block-headline',
+                offsetX: 0,
+                offsetY: 0,
+                scale: 1.0
+              });
+            }
+          }
+        }
+      }
+      return result;
     }
 
     function loadSRTData(rawText) {
-      srtTextarea.value = rawText; srtData = parseSRT(rawText); activeSrtIndex = srtData.length > 0 ? 0 : -1; let maxEnd = 0; if (srtData.length > 0) { maxEnd = srtData.reduce((max, s) => Math.max(max, s.end), 0); } totalDuration = isFinite(maxEnd) && maxEnd > 0 ? maxEnd + 1.0 : 10; timeSlider.max = totalDuration; clearCaches(); updateSRTListUI(); syncSidebarControlsWithActiveSession(); scheduleRender();
+      srtTextarea.value = rawText;
+      srtData = parseSRT(rawText);
+      activeSrtIndex = srtData.length > 0 ? 0 : -1;
+      
+      let maxEnd = 0;
+      if (srtData.length > 0) {
+        maxEnd = srtData.reduce((max, s) => Math.max(max, s.end), 0);
+      }
+      totalDuration = isFinite(maxEnd) && maxEnd > 0 ? maxEnd + 1.0 : 10;
+      timeSlider.max = totalDuration;
+
+      clearCaches();
+      updateSRTListUI();
+      syncSidebarControlsWithActiveSession();
+      scheduleRender();
     }
 
-    srtInput.addEventListener('change', (e) => { const file = e.target.files[0]; if (!file) return; srtLabel.textContent = `📄 ${file.name}`; const reader = new FileReader(); reader.onload = (evt) => loadSRTData(evt.target.result); reader.readAsText(file); });
+    srtInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      srtLabel.textContent = `📄 ${file.name}`;
+      const reader = new FileReader();
+      reader.onload = (evt) => loadSRTData(evt.target.result);
+      reader.readAsText(file);
+    });
+
     btnApplySrt.addEventListener('click', () => loadSRTData(srtTextarea.value));
 
     function syncSidebarControlsWithActiveSession() {
-      if (activeSrtIndex >= 0 && activeSrtIndex < srtData.length) { const s = srtData[activeSrtIndex]; selectedSrtBadge.textContent = `#${s.id}번 자막 개별 설정 중`; shapeFrameSelect.value = s.shapeType || 'inv-triangle'; shapeCropSelect.value = s.cropMode || 'natural'; shapeLayoutStyleSelect.value = s.layoutStyle || 'artistic-rhythm'; paramOffsetX.value = s.offsetX || 0; paramOffsetY.value = s.offsetY || 0; paramScale.value = Math.round((s.scale || 1.0) * 100); document.getElementById('val-offset-x').textContent = `${s.offsetX || 0}px`; document.getElementById('val-offset-y').textContent = `${s.offsetY || 0}px`; document.getElementById('val-scale').textContent = `${Math.round((s.scale || 1.0) * 100)}%`; } else { selectedSrtBadge.textContent = '전체 자막 공통 설정 중'; }
+      if (activeSrtIndex >= 0 && activeSrtIndex < srtData.length) {
+        const s = srtData[activeSrtIndex];
+        selectedSrtBadge.textContent = `#${s.id}번 자막 개별 설정 중`;
+        shapeFrameSelect.value = s.shapeType || 'inv-triangle';
+        shapeCropSelect.value = s.cropMode || 'natural';
+        shapeLayoutStyleSelect.value = s.layoutStyle || 'block-headline';
+        paramOffsetX.value = s.offsetX || 0;
+        paramOffsetY.value = s.offsetY || 0;
+        paramScale.value = Math.round((s.scale || 1.0) * 100);
+
+        document.getElementById('val-offset-x').textContent = `${s.offsetX || 0}px`;
+        document.getElementById('val-offset-y').textContent = `${s.offsetY || 0}px`;
+        document.getElementById('val-scale').textContent = `${Math.round((s.scale || 1.0) * 100)}%`;
+      } else {
+        selectedSrtBadge.textContent = '전체 자막 공통 설정 중';
+      }
     }
 
     function updateActiveSessionData() {
-      if (activeSrtIndex >= 0 && activeSrtIndex < srtData.length) { const s = srtData[activeSrtIndex]; s.shapeType = shapeFrameSelect.value; s.cropMode = shapeCropSelect.value; s.layoutStyle = shapeLayoutStyleSelect.value; s.offsetX = parseInt(paramOffsetX.value); s.offsetY = parseInt(paramOffsetY.value); s.scale = parseInt(paramScale.value) / 100; }
+      if (activeSrtIndex >= 0 && activeSrtIndex < srtData.length) {
+        const s = srtData[activeSrtIndex];
+        s.shapeType = shapeFrameSelect.value;
+        s.cropMode = shapeCropSelect.value;
+        s.layoutStyle = shapeLayoutStyleSelect.value;
+        s.offsetX = parseInt(paramOffsetX.value);
+        s.offsetY = parseInt(paramOffsetY.value);
+        s.scale = parseInt(paramScale.value) / 100;
+      }
     }
 
     function updateSRTListUI() {
-      srtListEl.innerHTML = ''; srtData.forEach((item, index) => { const div = document.createElement('div'); div.className = `srt-item ${index === activeSrtIndex ? 'active' : ''}`; const sp1 = document.createElement('span'); sp1.textContent = `#${item.id} (${formatTime(item.start)})`; const sp2 = document.createElement('span'); sp2.className = 'srt-item-title'; sp2.textContent = item.text.replace(/\n/g, ' / '); const sp3 = document.createElement('span'); sp3.style.fontSize = '0.7rem'; sp3.style.opacity = '0.8'; sp3.textContent = `[${item.shapeType || '기본'}]`; div.appendChild(sp1); div.appendChild(sp2); div.appendChild(sp3); div.addEventListener('click', () => { activeSrtIndex = index; currentTime = item.start; timeSlider.value = currentTime; updateSRTListUI(); syncSidebarControlsWithActiveSession(); scheduleRender(); }); srtListEl.appendChild(div); });
+      srtListEl.innerHTML = '';
+      srtData.forEach((item, index) => {
+        const div = document.createElement('div');
+        div.className = `srt-item ${index === activeSrtIndex ? 'active' : ''}`;
+
+        const sp1 = document.createElement('span');
+        sp1.textContent = `#${item.id} (${formatTime(item.start)})`;
+
+        const sp2 = document.createElement('span');
+        sp2.className = 'srt-item-title';
+        sp2.textContent = item.text.replace(/\n/g, ' / ');
+
+        const sp3 = document.createElement('span');
+        sp3.style.fontSize = '0.7rem';
+        sp3.style.opacity = '0.8';
+        sp3.textContent = `[${item.shapeType || '기본'}]`;
+
+        div.appendChild(sp1);
+        div.appendChild(sp2);
+        div.appendChild(sp3);
+
+        div.addEventListener('click', () => {
+          activeSrtIndex = index;
+          currentTime = item.start;
+          timeSlider.value = currentTime;
+          updateSRTListUI();
+          syncSidebarControlsWithActiveSession();
+          scheduleRender();
+        });
+        srtListEl.appendChild(div);
+      });
     }
 
-    function formatTime(sec) { if (!isFinite(sec)) return '00:00.00'; const m = Math.floor(sec / 60); const s = Math.floor(sec % 60); const ms = Math.floor((sec % 1) * 100); return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(ms).padStart(2, '0')}`; }
+    function formatTime(sec) {
+      if (!isFinite(sec)) return '00:00.00';
+      const m = Math.floor(sec / 60);
+      const s = Math.floor(sec % 60);
+      const ms = Math.floor((sec % 1) * 100);
+      return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(ms).padStart(2, '0')}`;
+    }
+
+    let cachedBgCanvas = null;
+    let cachedBgKey = '';
 
     function drawBackground() {
-      const style = bgStyleSelect.value; const w = canvas.width, h = canvas.height; const key = `${style}_${w}_${h}`;
-      if (!cachedBgCanvas || cachedBgKey !== key) { cachedBgCanvas = document.createElement('canvas'); cachedBgCanvas.width = w; cachedBgCanvas.height = h; const bctx = cachedBgCanvas.getContext('2d'); if (style === 'transparent') { bctx.clearRect(0, 0, w, h); } else if (style === 'black') { bctx.fillStyle = '#000'; bctx.fillRect(0, 0, w, h); } else if (style === 'dark-paper') { bctx.fillStyle = '#16161a'; bctx.fillRect(0, 0, w, h); } else { const grad = bctx.createRadialGradient(w/2, h/2, 100, w/2, h/2, Math.max(w, h)/1.1); grad.addColorStop(0, '#f8f4eb'); grad.addColorStop(1, '#e3d7c3'); bctx.fillStyle = grad; bctx.fillRect(0, 0, w, h); bctx.fillStyle = 'rgba(80, 60, 40, 0.035)'; for (let i = 0; i < 400; i++) { const x = seededRandom(i * 1.3) * w; const y = seededRandom(i * 2.7) * h; const r = seededRandom(i * 3.1) * 2.2 + 0.4; bctx.beginPath(); bctx.arc(x, y, r, 0, Math.PI * 2); bctx.fill(); } } cachedBgKey = key; } ctx.drawImage(cachedBgCanvas, 0, 0);
+      const style = bgStyleSelect.value;
+      const w = canvas.width, h = canvas.height;
+      const key = `${style}_${w}_${h}`;
+
+      if (!cachedBgCanvas || cachedBgKey !== key) {
+        cachedBgCanvas = document.createElement('canvas');
+        cachedBgCanvas.width = w;
+        cachedBgCanvas.height = h;
+        const bctx = cachedBgCanvas.getContext('2d');
+
+        if (style === 'transparent') {
+          bctx.clearRect(0, 0, w, h);
+        } else if (style === 'black') {
+          bctx.fillRect(0, 0, w, h);
+        } else if (style === 'dark-paper') {
+          bctx.fillStyle = '#16161a';
+          bctx.fillRect(0, 0, w, h);
+        } else {
+          const grad = bctx.createRadialGradient(w/2, h/2, 100, w/2, h/2, Math.max(w, h)/1.1);
+          grad.addColorStop(0, '#faf7f2');
+          grad.addColorStop(1, '#ede2cd');
+          bctx.fillStyle = grad;
+          bctx.fillRect(0, 0, w, h);
+
+          bctx.fillStyle = 'rgba(80, 60, 40, 0.035)';
+          for (let i = 0; i < 400; i++) {
+            const x = seededRandom(i * 1.3) * w;
+            const y = seededRandom(i * 2.7) * h;
+            const r = seededRandom(i * 3.1) * 2.2 + 0.4;
+            bctx.beginPath();
+            bctx.arc(x, y, r, 0, Math.PI * 2);
+            bctx.fill();
+          }
+        }
+        cachedBgKey = key;
+      }
+
+      ctx.drawImage(cachedBgCanvas, 0, 0);
     }
 
     function renderFrame(timeSec) {
-      drawBackground(); if (!currentFont) { ctx.save(); ctx.fillStyle = 'rgba(120,100,80,0.7)'; ctx.font = '32px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('폰트를 불러오는 중입니다...', canvas.width / 2, canvas.height / 2); ctx.restore(); } else { const guideMode = paramShowGuide.value; if (srtData.length === 0) { drawWelcomeGuide(); } else { const activeSubtitle = srtData.find(item => timeSec >= item.start && timeSec <= item.end); if (activeSubtitle) { const res = renderCalligraphyFrame(activeSubtitle, timeSec); if (res && res.shapeType) drawGuideFrame(guideMode, res.shapeType, null); } else { drawGuideFrame(guideMode, shapeFrameSelect.value || 'inv-triangle', null); } } } timeDisplay.textContent = `${formatTime(timeSec)} / ${formatTime(totalDuration)}`;
+      drawBackground();
+      if (!currentFont) {
+        ctx.save();
+        ctx.fillStyle = 'rgba(120,100,80,0.7)';
+        ctx.font = '32px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('폰트를 불러오는 중입니다...', canvas.width / 2, canvas.height / 2);
+        ctx.restore();
+      } else {
+        const guideMode = paramShowGuide.value;
+
+        if (srtData.length === 0) {
+          drawWelcomeGuide();
+        } else {
+          const activeSubtitle = srtData.find(item => timeSec >= item.start && timeSec <= item.end);
+          if (activeSubtitle) {
+            const res = renderCalligraphyFrame(activeSubtitle, timeSec);
+            if (res && res.shapeType) {
+              drawGuideFrame(guideMode, res.shapeType, res.sessionData);
+            }
+          } else {
+            const fallbackShape = shapeFrameSelect.value || 'inv-triangle';
+            drawGuideFrame(guideMode, fallbackShape, null);
+          }
+        }
+      }
+      timeDisplay.textContent = `${formatTime(timeSec)} / ${formatTime(totalDuration)}`;
     }
 
-    paramOffsetX.addEventListener('input', (e) => { document.getElementById('val-offset-x').textContent = `${e.target.value}px`; updateActiveSessionData(); scheduleRender(); });
-    paramOffsetY.addEventListener('input', (e) => { document.getElementById('val-offset-y').textContent = `${e.target.value}px`; updateActiveSessionData(); scheduleRender(); });
-    paramScale.addEventListener('input', (e) => { document.getElementById('val-scale').textContent = `${e.target.value}%`; updateActiveSessionData(); scheduleRender(); });
-    paramStyleIntensity.addEventListener('input', (e) => { document.getElementById('val-style-intensity').textContent = `${e.target.value}x`; scheduleRender(); });
-    paramDryBrush.addEventListener('input', (e) => { const v = parseFloat(e.target.value); document.getElementById('val-dry-brush').textContent = v === 0 ? '없음' : (v > 0.7 ? '강렬하게' : '중간'); scheduleRender(); });
-    paramSplatter.addEventListener('input', (e) => { const v = parseFloat(e.target.value); document.getElementById('val-splatter').textContent = v === 0 ? '없음' : (v > 0.7 ? '풍부하게' : '은은하게'); scheduleRender(); });
-    paramFinishPct.addEventListener('input', (e) => { document.getElementById('val-finish-pct').textContent = `${e.target.value}% 시간 내 완성`; scheduleRender(); });
-    paramContrast.addEventListener('input', (e) => { document.getElementById('val-contrast').textContent = e.target.value + 'x'; layoutCache.clear(); scheduleRender(); });
+    /* 이벤트 리스너 연동 및 수치 변경 시 템플릿 '커스텀' 상태 감지 */
+    function onManualOptionChange() {
+      templateSelect.value = 'custom';
+      scheduleRender();
+    }
 
-    // 🧩 초/중/종성 중심 거리 및 크기 컨트롤
-    ['cho', 'jung', 'jong'].forEach(part => {
-      ['dist', 'scale'].forEach(type => {
-        const input = document.getElementById(`param-${part}-${type}`);
-        const display = document.getElementById(`v-${part}-${type}`);
-        if (input) input.addEventListener('input', (e) => { if (type === 'dist') display.textContent = e.target.value; else display.textContent = parseFloat(e.target.value).toFixed(2); scheduleRender(); });
+    paramOffsetX.addEventListener('input', (e) => {
+      document.getElementById('val-offset-x').textContent = `${e.target.value}px`;
+      updateActiveSessionData();
+      scheduleRender();
+    });
+    paramOffsetY.addEventListener('input', (e) => {
+      document.getElementById('val-offset-y').textContent = `${e.target.value}px`;
+      updateActiveSessionData();
+      scheduleRender();
+    });
+    paramScale.addEventListener('input', (e) => {
+      document.getElementById('val-scale').textContent = `${e.target.value}%`;
+      updateActiveSessionData();
+      scheduleRender();
+    });
+
+    /* 🧮 파라메트릭 왜곡 수치 리스너들 (v39.0 통합) */
+    paramShear.addEventListener('input', (e) => {
+      document.getElementById('val-shear').textContent = `${e.target.value}°`;
+      onManualOptionChange();
+    });
+    paramBulge.addEventListener('input', (e) => {
+      document.getElementById('val-bulge').textContent = `${e.target.value}`;
+      onManualOptionChange();
+    });
+    paramStrokeExpand.addEventListener('input', (e) => {
+      document.getElementById('val-stroke-expand').textContent = `${e.target.value}x`;
+      onManualOptionChange();
+    });
+    paramCurvature.addEventListener('input', (e) => {
+      document.getElementById('val-curvature').textContent = `${e.target.value}`;
+      onManualOptionChange();
+    });
+    paramSlitCut.addEventListener('input', (e) => {
+      document.getElementById('val-slit-cut').textContent = `${e.target.value}`;
+      onManualOptionChange();
+    });
+
+    paramPullDir.addEventListener('change', onManualOptionChange);
+    paramPullTarget.addEventListener('change', onManualOptionChange);
+    paramAttractor.addEventListener('input', (e) => {
+      document.getElementById('val-attractor').textContent = `${e.target.value}x`;
+      onManualOptionChange();
+    });
+    paramDecay.addEventListener('input', (e) => {
+      document.getElementById('val-decay').textContent = `${e.target.value}x`;
+      onManualOptionChange();
+    });
+
+    paramWatercolorStyle.addEventListener('change', onManualOptionChange);
+    paramSubcaptionText.addEventListener('input', onManualOptionChange);
+    paramSubcaptionPos.addEventListener('change', onManualOptionChange);
+
+    paramLetterSpacing.addEventListener('input', (e) => {
+      document.getElementById('val-letter-spacing').textContent = `${e.target.value}px`;
+      templateSelect.value = 'custom';
+      layoutCache.clear();
+      scheduleRender();
+    });
+    paramLineHeight.addEventListener('input', (e) => {
+      document.getElementById('val-line-height').textContent = `${e.target.value}x`;
+      templateSelect.value = 'custom';
+      layoutCache.clear();
+      scheduleRender();
+    });
+
+    paramInitialDist.addEventListener('input', (e) => {
+      document.getElementById('val-initial-dist').textContent = `${e.target.value}px`;
+      onManualOptionChange();
+    });
+    paramInitialScale.addEventListener('input', (e) => {
+      document.getElementById('val-initial-scale').textContent = `${e.target.value}%`;
+      onManualOptionChange();
+    });
+    paramInitialShape.addEventListener('change', onManualOptionChange);
+
+    paramMedialDist.addEventListener('input', (e) => {
+      document.getElementById('val-medial-dist').textContent = `${e.target.value}px`;
+      onManualOptionChange();
+    });
+    paramMedialScale.addEventListener('input', (e) => {
+      document.getElementById('val-medial-scale').textContent = `${e.target.value}%`;
+      onManualOptionChange();
+    });
+    paramMedialShape.addEventListener('change', onManualOptionChange);
+
+    paramFinalDist.addEventListener('input', (e) => {
+      document.getElementById('val-final-dist').textContent = `${e.target.value}px`;
+      onManualOptionChange();
+    });
+    paramFinalScale.addEventListener('input', (e) => {
+      document.getElementById('val-final-scale').textContent = `${e.target.value}%`;
+      onManualOptionChange();
+    });
+    paramFinalShape.addEventListener('change', onManualOptionChange);
+
+    /* 🎲 무작위 템플릿 믹스 */
+    btnRandomMix.addEventListener('click', () => {
+      const keys = Object.keys(BUILTIN_TEMPLATES);
+      const randomKey = keys[Math.floor(Math.random() * keys.length)];
+      templateSelect.value = randomKey;
+      applyTemplateConfig(BUILTIN_TEMPLATES[randomKey]);
+    });
+
+    paramGipil.addEventListener('input', (e) => {
+      document.getElementById('val-gipil').textContent = `${e.target.value}x`;
+      onManualOptionChange();
+    });
+    paramSupil.addEventListener('input', (e) => {
+      document.getElementById('val-supil').textContent = `${e.target.value}x`;
+      onManualOptionChange();
+    });
+    paramStyleIntensity.addEventListener('input', (e) => {
+      document.getElementById('val-style-intensity').textContent = `${e.target.value}x`;
+      onManualOptionChange();
+    });
+    paramFinishPct.addEventListener('input', (e) => {
+      document.getElementById('val-finish-pct').textContent = `${e.target.value}% 시간 내 완성`;
+      onManualOptionChange();
+    });
+    paramContrast.addEventListener('input', (e) => {
+      document.getElementById('val-contrast').textContent = e.target.value + 'x';
+      templateSelect.value = 'custom';
+      layoutCache.clear();
+      scheduleRender();
+    });
+
+    paramSealSelect.addEventListener('change', (e) => {
+      if (e.target.value === 'custom') {
+        sealCustomGroup.style.display = 'block';
+      } else {
+        sealCustomGroup.style.display = 'none';
+      }
+      updateActiveSessionData();
+      onManualOptionChange();
+    });
+
+    paramSealText.addEventListener('input', () => {
+      onManualOptionChange();
+    });
+
+    [shapeFrameSelect, shapeCropSelect, shapeLayoutStyleSelect].forEach(el => {
+      el.addEventListener('change', () => {
+        updateActiveSessionData();
+        updateSRTListUI();
+        onManualOptionChange();
       });
     });
 
-    paramSealSelect.addEventListener('change', (e) => { if (e.target.value === 'custom') { sealCustomGroup.style.display = 'block'; } else { sealCustomGroup.style.display = 'none'; } updateActiveSessionData(); scheduleRender(); });
-    paramSealText.addEventListener('input', () => { scheduleRender(); });
-    [shapeFrameSelect, shapeCropSelect, shapeLayoutStyleSelect].forEach(el => { el.addEventListener('change', () => { updateActiveSessionData(); updateSRTListUI(); layoutCache.clear(); scheduleRender(); }); });
-    [paramShowGuide, bgStyleSelect, inkColorInput, filterModeSelect].forEach(el => { if (el) el.addEventListener('change', () => { if (el === bgStyleSelect) cachedBgCanvas = null; scheduleRender(); }); });
+    [paramShowGuide, bgStyleSelect, inkColorInput, filterModeSelect].forEach(el => {
+      if (el) el.addEventListener('change', () => {
+        if (el === bgStyleSelect) cachedBgCanvas = null;
+        scheduleRender();
+      });
+    });
 
-    function animate(timestamp) { if (!isPlaying) return; if (!lastTimestamp) lastTimestamp = timestamp; const delta = (timestamp - lastTimestamp) / 1000; lastTimestamp = timestamp; currentTime += delta; if (currentTime > totalDuration) { currentTime = totalDuration; pause(); } timeSlider.value = currentTime; renderFrame(currentTime); if (isPlaying) animationFrameId = requestAnimationFrame(animate); }
-    function play() { if (isPlaying) return; isPlaying = true; btnPlay.textContent = '⏸ 일시정지'; lastTimestamp = 0; animationFrameId = requestAnimationFrame(animate); }
-    function pause() { isPlaying = false; btnPlay.textContent = '▶ 재생'; lastTimestamp = 0; if (animationFrameId) cancelAnimationFrame(animationFrameId); }
+    function animate(timestamp) {
+      if (!isPlaying) return;
+      if (!lastTimestamp) lastTimestamp = timestamp;
+      const delta = (timestamp - lastTimestamp) / 1000;
+      lastTimestamp = timestamp;
+
+      currentTime += delta;
+      if (currentTime > totalDuration) { currentTime = totalDuration; pause(); }
+
+      timeSlider.value = currentTime;
+      renderFrame(currentTime);
+
+      if (isPlaying) animationFrameId = requestAnimationFrame(animate);
+    }
+
+    function play() {
+      if (isPlaying) return;
+      isPlaying = true;
+      btnPlay.textContent = '⏸ 일시정지';
+      lastTimestamp = 0;
+      animationFrameId = requestAnimationFrame(animate);
+    }
+
+    function pause() {
+      isPlaying = false;
+      btnPlay.textContent = '▶ 재생';
+      lastTimestamp = 0;
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    }
+
     btnPlay.addEventListener('click', () => isPlaying ? pause() : play());
-    timeSlider.addEventListener('input', (e) => { currentTime = parseFloat(e.target.value); scheduleRender(); });
+    timeSlider.addEventListener('input', (e) => {
+      currentTime = parseFloat(e.target.value);
+      scheduleRender();
+    });
 
     async function getSupportedH264Codec(width, height) {
-      const candidates = ['avc1.64002A', 'avc1.4d402a', 'avc1.42E02A', 'avc1.640033', 'avc1.42E028'];
-      for (const codec of candidates) { try { if (typeof VideoEncoder !== 'undefined' && VideoEncoder.isConfigSupported) { const support = await VideoEncoder.isConfigSupported({ codec, width, height, bitrate: 4_000_000, framerate: 30 }); if (support && support.supported) return codec; } } catch (e) {} } return 'avc1.64002A';
+      const candidates = [
+        'avc1.64002A',
+        'avc1.4d402a',
+        'avc1.42E02A',
+        'avc1.640033',
+        'avc1.42E028'
+      ];
+
+      for (const codec of candidates) {
+        try {
+          if (typeof VideoEncoder !== 'undefined' && VideoEncoder.isConfigSupported) {
+            const support = await VideoEncoder.isConfigSupported({
+              codec, width, height, bitrate: 4_000_000, framerate: 30
+            });
+            if (support && support.supported) return codec;
+          }
+        } catch (e) {}
+      }
+      return 'avc1.64002A';
     }
 
     async function exportWithWebCodecs(fps, totalFrames, width, height, codecStr) {
-      const muxer = new Mp4Muxer.Muxer({ target: new Mp4Muxer.ArrayBufferTarget(), video: { codec: 'avc', width, height }, fastStart: 'in-memory' });
+      const muxer = new Mp4Muxer.Muxer({
+        target: new Mp4Muxer.ArrayBufferTarget(),
+        video: { codec: 'avc', width, height },
+        fastStart: 'in-memory'
+      });
+
       let encoderError = null;
-      const videoEncoder = new VideoEncoder({ output: (chunk, meta) => muxer.addVideoChunk(chunk, meta), error: (e) => { console.error('VideoEncoder 인코더 에러:', e); encoderError = e; } });
-      videoEncoder.configure({ codec: codecStr, width, height, bitrate: 4_000_000, framerate: fps });
-      for (let i = 0; i < totalFrames; i++) { if (encoderError) throw new Error(`하드웨어 인코더 오류: ${encoderError.message || encoderError}`); const frameTime = i / fps; currentTime = frameTime; renderFrame(frameTime); const videoFrame = new VideoFrame(canvas, { timestamp: Math.round(frameTime * 1e6) }); videoEncoder.encode(videoFrame, { keyFrame: i % (fps * 2) === 0 }); videoFrame.close(); if (videoEncoder.encodeQueueSize > 5) { await new Promise(resolve => { const checkQueue = () => { if (videoEncoder.encodeQueueSize <= 2) { videoEncoder.ondequeue = null; resolve(); } }; videoEncoder.ondequeue = checkQueue; setTimeout(resolve, 60); }); } const pct = Math.round(((i + 1) / totalFrames) * 100); progressFill.style.width = `${pct}%`; progressPercent.textContent = `${pct}%`; progressText.textContent = `전체 세션 MP4 자동 인코딩 중 (${formatTime(frameTime)} / ${formatTime(totalDuration)})`; if (i % 20 === 0) await new Promise(r => setTimeout(r, 0)); }
-      await videoEncoder.flush(); muxer.finalize(); const { buffer } = muxer.target; return new Blob([buffer], { type: 'video/mp4' });
+
+      const videoEncoder = new VideoEncoder({
+        output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+        error: (e) => {
+          console.error('VideoEncoder 인코더 에러:', e);
+          encoderError = e;
+        }
+      });
+
+      videoEncoder.configure({
+        codec: codecStr, width, height, bitrate: 4_000_000, framerate: fps
+      });
+
+      for (let i = 0; i < totalFrames; i++) {
+        if (encoderError) {
+          throw new Error(`하드웨어 인코더 오류: ${encoderError.message || encoderError}`);
+        }
+
+        const frameTime = i / fps;
+        currentTime = frameTime;
+        renderFrame(frameTime);
+
+        const videoFrame = new VideoFrame(canvas, { timestamp: Math.round(frameTime * 1e6) });
+        videoEncoder.encode(videoFrame, { keyFrame: i % (fps * 2) === 0 });
+        videoFrame.close();
+
+        if (videoEncoder.encodeQueueSize > 5) {
+          await new Promise(resolve => {
+            const checkQueue = () => {
+              if (videoEncoder.encodeQueueSize <= 2) {
+                videoEncoder.ondequeue = null;
+                resolve();
+              }
+            };
+            videoEncoder.ondequeue = checkQueue;
+            setTimeout(resolve, 60);
+          });
+        }
+
+        const pct = Math.round(((i + 1) / totalFrames) * 100);
+        progressFill.style.width = `${pct}%`;
+        progressPercent.textContent = `${pct}%`;
+        progressText.textContent = `전체 세션 MP4 자동 인코딩 중 (${formatTime(frameTime)} / ${formatTime(totalDuration)})`;
+
+        if (i % 20 === 0) await new Promise(r => setTimeout(r, 0));
+      }
+
+      await videoEncoder.flush();
+      muxer.finalize();
+
+      const { buffer } = muxer.target;
+      return new Blob([buffer], { type: 'video/mp4' });
     }
 
     async function exportWithMediaRecorder(fps, totalFrames) {
-      return new Promise((resolve, reject) => { const stream = canvas.captureStream(fps); let mimeType = 'video/mp4;codecs=avc1'; if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/mp4'; if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm;codecs=vp9'; if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm'; const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 4_000_000 }); const chunks = []; recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); }; recorder.onstop = () => { const blob = new Blob(chunks, { type: mimeType }); resolve({ blob, extension: mimeType.includes('webm') ? 'webm' : 'mp4' }); }; recorder.onerror = (e) => reject(e.error || new Error('MediaRecorder 실패')); recorder.start(); let frameIdx = 0; const interval = setInterval(() => { if (frameIdx >= totalFrames) { clearInterval(interval); recorder.requestData(); setTimeout(() => recorder.stop(), 50); return; } const frameTime = frameIdx / fps; currentTime = frameTime; renderFrame(frameTime); const pct = Math.round(((frameIdx + 1) / totalFrames) * 100); progressFill.style.width = `${pct}%`; progressPercent.textContent = `${pct}%`; progressText.textContent = `안정 보장 녹화 중 (${formatTime(frameTime)} / ${formatTime(totalDuration)})`; frameIdx++; }, 1000 / fps); });
+      return new Promise((resolve, reject) => {
+        const stream = canvas.captureStream(fps);
+        let mimeType = 'video/mp4;codecs=avc1';
+        if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/mp4';
+        if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm;codecs=vp9';
+        if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
+
+        const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 4_000_000 });
+        const chunks = [];
+
+        recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+        recorder.onstop = () => {
+          const blob = new Blob(chunks, { type: mimeType });
+          resolve({ blob, extension: mimeType.includes('webm') ? 'webm' : 'mp4' });
+        };
+        recorder.onerror = (e) => reject(e.error || new Error('MediaRecorder 실패'));
+
+        recorder.start();
+
+        let frameIdx = 0;
+        const interval = setInterval(() => {
+          if (frameIdx >= totalFrames) {
+            clearInterval(interval);
+            recorder.requestData();
+            setTimeout(() => recorder.stop(), 50);
+            return;
+          }
+          const frameTime = frameIdx / fps;
+          currentTime = frameTime;
+          renderFrame(frameTime);
+
+          const pct = Math.round(((frameIdx + 1) / totalFrames) * 100);
+          progressFill.style.width = `${pct}%`;
+          progressPercent.textContent = `${pct}%`;
+          progressText.textContent = `안정 보장 녹화 중 (${formatTime(frameTime)} / ${formatTime(totalDuration)})`;
+          frameIdx++;
+        }, 1000 / fps);
+      });
     }
 
     btnExport.addEventListener('click', async () => {
-      if (srtData.length === 0) { alert('SRT 자막 파일이 로드되지 않았습니다.'); return; } if (!currentFont) { alert('폰트가 아직 로딩되지 않았습니다. 잠시 후 다시 시도해주세요.'); return; } pause(); currentTime = 0; timeSlider.value = 0; isRecording = true; renderFrame(0); progressModal.style.display = 'flex'; progressText.textContent = '브라우저 호환 H.264 코덱 확인 중...'; progressFill.style.width = '0%'; progressPercent.textContent = '0%'; const fps = 30; const totalFrames = Math.ceil(totalDuration * fps); const width = canvas.width; const height = canvas.height; try { const codecStr = await getSupportedH264Codec(width, height); let videoBlob, downloadExt = 'mp4'; try { videoBlob = await exportWithWebCodecs(fps, totalFrames, width, height, codecStr); } catch (webcodecsErr) { console.warn('WebCodecs 오류 발생 ➔ MediaRecorder 호환 모드로 자동 전환:', webcodecsErr); progressText.textContent = 'MediaRecorder 안전 모드로 자동 전환 중...'; const fallbackRes = await exportWithMediaRecorder(fps, totalFrames); videoBlob = fallbackRes.blob; downloadExt = fallbackRes.extension; } const url = URL.createObjectURL(videoBlob); const a = document.createElement('a'); a.href = url; const ratioName = aspectRatioSelect.value.replace(':', '_'); a.download = `calligraphy_session_${ratioName}_${Date.now()}.${downloadExt}`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); progressText.textContent = `🎬 MP4 세션 비디오 저장 완료! (.${downloadExt})`; setTimeout(() => { progressModal.style.display = 'none'; }, 1000); } catch (err) { alert(`MP4 저장 중 오류 발생: ${err.message}`); progressModal.style.display = 'none'; } finally { isRecording = false; renderFrame(currentTime); }
+      if (srtData.length === 0) { alert('SRT 자막 파일이 로드되지 않았습니다.'); return; }
+      if (!currentFont) { alert('폰트가 아직 로딩되지 않았습니다. 잠시 후 다시 시도해주세요.'); return; }
+
+      pause();
+      currentTime = 0;
+      timeSlider.value = 0;
+
+      isRecording = true;
+      renderFrame(0);
+
+      progressModal.style.display = 'flex';
+      progressText.textContent = '브라우저 호환 H.264 코덱 확인 중...';
+      progressFill.style.width = '0%';
+      progressPercent.textContent = '0%';
+
+      const fps = 30;
+      const totalFrames = Math.ceil(totalDuration * fps);
+      const width = canvas.width;
+      const height = canvas.height;
+
+      try {
+        const codecStr = await getSupportedH264Codec(width, height);
+        let videoBlob, downloadExt = 'mp4';
+
+        try {
+          videoBlob = await exportWithWebCodecs(fps, totalFrames, width, height, codecStr);
+        } catch (webcodecsErr) {
+          console.warn('WebCodecs 오류 발생 ➔ MediaRecorder 호환 모드로 자동 전환:', webcodecsErr);
+          progressText.textContent = 'MediaRecorder 안전 모드로 자동 전환 중...';
+          const fallbackRes = await exportWithMediaRecorder(fps, totalFrames);
+          videoBlob = fallbackRes.blob;
+          downloadExt = fallbackRes.extension;
+        }
+
+        const url = URL.createObjectURL(videoBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        const ratioName = aspectRatioSelect.value.replace(':', '_');
+        a.download = `calligraphy_session_${ratioName}_${Date.now()}.${downloadExt}`;
+        a.click();
+        
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+        progressText.textContent = `🎬 MP4 세션 비디오 저장 완료! (.${downloadExt})`;
+        setTimeout(() => { progressModal.style.display = 'none'; }, 1000);
+
+      } catch (err) {
+        alert(`MP4 저장 중 오류 발생: ${err.message}`);
+        progressModal.style.display = 'none';
+      } finally {
+        isRecording = false;
+        renderFrame(currentTime);
+      }
     });
 
-    updateCanvasDimensions(); loadDefaultFont();
+    loadSRTData(srtTextarea.value);
+    updateSlotUI();
+    applyTemplateConfig(BUILTIN_TEMPLATES['artwork-1']);
+
+    updateCanvasDimensions();
+    loadDefaultFont();
   </script>
 </body>
 </html>
