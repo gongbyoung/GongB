@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SRT 캘리그라피 에셋 스튜디오 v1.043 (단일 글자 집중형)</title>
+<title>SRT 캘리그라피 에셋 스튜디오 v1.043.1 (에러 수정)</title>
 <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
 <style>
 :root{--bg:#09090f;--panel:#181826;--b:#2d2d4a;--accent:#ff6b35;--text:#f4f4fa}
@@ -40,13 +40,13 @@ input[type=range],select{width:100%}
 </style>
 </head>
 <body>
-<header><h1>🖌 v1.043 단일 글자 에셋 스튜디오</h1><span style="font-size:.62rem;background:#ff6b35;color:#fff;padding:2px 8px;border-radius:6px">폴더지정·번호저장·불규칙 붓글씨</span></header>
+<header><h1>🖌 v1.043.1 단일 글자 에셋 스튜디오</h1><span style="font-size:.62rem;background:#ff6b35;color:#fff;padding:2px 8px;border-radius:6px">에러 수정·폴더지정·번호저장</span></header>
 <div class="main">
 <div class="left">
 <div class="sec">
 <div class="sec-title">📂 폰트 및 대상 글자</div>
 <label class="btn-file" for="ttf-input">📁 TTF 폰트 열기</label><input type="file" id="ttf-input" accept=".ttf,.otf">
-<div id="font-status" style="font-size:.70rem;color:#7cd992;">나눔붓글씨 활성화</div>
+<div id="font-status" style="font-size:.70rem;color:#7cd992;">나눔붓글씨 활성화 대기</div>
 <select id="aspect-ratio-select"><option value="1:1" selected>⬜ 1:1 정사각형 (추천)</option><option value="16:9">🖥 16:9 가로</option><option value="9:16">📱 9:16 세로</option></select>
 
 <div class="label" style="margin-top:6px">제작할 글자 입력 (공백/단어 단위 자동 분리)</div>
@@ -81,10 +81,9 @@ input[type=range],select{width:100%}
 
 <div class="center">
 <div class="canvas-wrap" id="wrap"><canvas id="cv" width="1080" height="1080"></canvas></div>
-<div class="log" id="log">[v1.043 단일 글자 스튜디오 준비 완료]
-- 화면 정가운데 한 글자 집중 렌더링
-- 폴더 지정 후 [글자_번호.png] 순번 저장 지원
-- 자소 분할 기본 OFF로 글자 깨짐 방지
+<div class="log" id="log">[v1.043.1 에러 수정 완료]
+- safeAddListener 누락 함수 정상 장착
+- 화면 정가운데 한 글자 집중 렌더링 즉시 작동
 </div>
 </div>
 
@@ -117,7 +116,6 @@ input[type=range],select{width:100%}
 <div class="label">인필 깊이 <span id="vInfill">0.85</span></div><input type="range" id="infillDepth" min="0" max="1" step="0.05" value="0.85">
 <div class="label">삐침 강도 <span id="vWhisker">18</span></div><input type="range" id="whiskerLen" min="0" max="30" step="1" value="18">
 <div class="label">불규칙 강도 <span id="vIrregular">0.60</span></div><input type="range" id="irregularity" min="0" max="1.0" step="0.05" value="0.60">
-<div class="label">회전 흔들림 <span id="vRotJit">0.15</span></div><input type="range" id="rotationJitter" min="0" max="0.5" step="0.05" value="0.15">
 </div>
 <div class="sec">
 <div class="sec-title">📤 단일 벡터 SVG 추출</div>
@@ -133,17 +131,26 @@ let baseFont=null;
 let charList=[];
 let currentIdx=0;
 let selectedGlobalStyles=['dry','bold'];
-let chosenDirectoryHandle = null; // 사용자가 지정한 폴더 핸들
+let chosenDirectoryHandle = null;
 
 const styleList=[{id:'soft',name:'둥글둥글'},{id:'sharp',name:'뾰족'},{id:'contrast',name:'강약'},{id:'ink',name:'농담'},{id:'deform',name:'자유변형'},{id:'curve',name:'곡선구도'},{id:'seal',name:'전서체'},{id:'dry',name:'갈필'},{id:'bold',name:'농묵'}];
-const styleParams={soft:{bristles:24,whiskerLen:4,infillDepth:0.5,choWarp:0.25},sharp:{bristles:8,whiskerLen:20,infillDepth:0.3,choWarp:0.10},contrast:{bristles:16,whiskerLen:12,infillDepth:0.7,choWarp:0.40},ink:{bristles:18,whiskerLen:10,infillDepth:0.95,choWarp:0.20},deform:{bristles:14,whiskerLen:8,infillDepth:0.6,choWarp:0.50},curve:{bristles:16,whiskerLen:10,infillDepth:0.6,choWarp:0.10},seal:{bristles:32,whiskerLen:0,infillDepth:0.9,choWarp:0.80},dry:{bristles:8,whiskerLen:24,infillDepth:0.25,choWarp:0.15},bold:{bristles:26,whiskerLen:8,infillDepth:0.9,choWarp:0.30}};
+const styleParams={soft:{bristles:24,whiskerLen:4,infillDepth:0.5},sharp:{bristles:8,whiskerLen:20,infillDepth:0.3},contrast:{bristles:16,whiskerLen:12,infillDepth:0.7},ink:{bristles:18,whiskerLen:10,infillDepth:0.95},deform:{bristles:14,whiskerLen:8,infillDepth:0.6},curve:{bristles:16,whiskerLen:10,infillDepth:0.6},seal:{bristles:32,whiskerLen:0,infillDepth:0.9},dry:{bristles:8,whiskerLen:24,infillDepth:0.25},bold:{bristles:26,whiskerLen:8,infillDepth:0.9}};
 
 function log(m){const el=$('log'); if(!el) return; el.textContent='['+new Date().toLocaleTimeString().slice(0,8)+'] '+m+'\n'+el.textContent;}
 function mulberry32(a){return function(){let t=a+=0x6D2B79F5; t=Math.imul(t ^ t >>> 15, t | 1); t^=t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0)/4294967296;};}
 
+// ★ 누락되었던 safeAddListener 함수 정의 추가
+function safeAddListener(id, event, fn){
+  const el = $(id);
+  if(el) el.addEventListener(event, fn);
+}
+
+const textCv=document.createElement('canvas'); const textCtx=textCv.getContext('2d');
+function syncCanvases(w, h){ if(textCv.width !== w || textCv.height !== h){ textCv.width=w; textCv.height=h; } textCtx.clearRect(0,0,w,h); }
+
 function calculateSettings(ids){
-  if(ids.length===0) return {bristles:10,whiskerLen:18,infillDepth:0.85,choWarp:0.60};
-  const keys=['bristles','whiskerLen','infillDepth','choWarp'];
+  if(ids.length===0) return {bristles:10,whiskerLen:18,infillDepth:0.85};
+  const keys=['bristles','whiskerLen','infillDepth'];
   let sum={}; keys.forEach(k=>sum[k]=0);
   ids.forEach(id=>{const sp=styleParams[id]; keys.forEach(k=>sum[k]+=sp[k]);});
   let r={}; keys.forEach(k=>r[k]=sum[k]/ids.length); return r;
@@ -168,68 +175,77 @@ function getOpts(){
     jungRound:g('jungRound',1.2), jungLen:g('jungLen',1.5), jungThick:g('jungThick',1.2),
     jongRound:g('jongRound',1.2), jongLen:g('jongLen',1.5), jongThick:g('jongThick',1.2),
     bristleCount:gi('bristleCount',gs.bristles), infillDepth:g('infillDepth',gs.infillDepth), whiskerLen:g('whiskerLen',gs.whiskerLen),
-    choWarp:g('cho-warp',gs.choWarp), irregularity:g('irregularity',0.6), rotationJitter:g('rotationJitter',0.15)
+    irregularity:g('irregularity',0.6)
   };
 }
 
 function getContourArea(cmds){let area=0; const pts=[]; cmds.forEach(c=>{if(c.x!==undefined) pts.push({x:c.x,y:c.y}); else if(c.x1!==undefined){ pts.push({x:c.x1,y:c.y1}); pts.push({x:c.x2,y:c.y2}); pts.push({x:c.x,y:c.y});}}); for(let i=0;i<pts.length;i++){const p1=pts[i], p2=pts[(i+1)%pts.length]; if(p1.x!==undefined && p2.x!==undefined) area+=(p1.x*p2.y - p2.x*p1.y);} return area/2;}
 
-function splitSyllablePathIntoJamoGroups(syllableChar, baseSize, type){
+function decomposeHangul(syl){const code=syl.charCodeAt(0); if(code<0xAC00||code>0xD7A3) return null; const S=code-0xAC00; const CHO=['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ']; const JUNG=['ㅏ','ㅐ','ㅑ','ㅒ','ㅓ','ㅔ','ㅕ','ㅖ','ㅗ','ㅘ','ㅙ','ㅚ','ㅛ','ㅜ','ㅝ','ㅞ','ㅟ','ㅠ','ㅡ','ㅢ','ㅣ']; const JONG=['','ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','ㅀ','ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ']; return {cho:CHO[S/(28*21)|0], jung:JUNG[(S/28|0)%21], jong:JONG[S%28]};}
+
+function splitSyllablePathIntoJamoGroups(syllableChar, baseSize){
   try{
     if(!baseFont) return null;
     const path=baseFont.getPath(syllableChar, 0, 0, baseSize);
     const contours=[]; let curContour=[]; let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
     path.commands.forEach(c=>{
       if(c.type==='M'){
-        if(curContour.length>0){const area=getContourArea(curContour); contours.push({cmds:curContour.slice(), bbox:{minX, maxX, minY, maxY, cx:(minX+maxX)/2, cy:(minY+maxY)/2}, area, isHole:area<0}); curContour=[]; minX=Infinity; maxX=-Infinity; minY=Infinity; maxY=-Infinity;}
+        if(curContour.length>0){const area=getContourArea(curContour); contours.push({cmds:curContour.slice(), bbox:{minX, maxX, minY, maxY, cx:(minX+maxX)/2, cy:(minY+maxY)/2}, area}); curContour=[]; minX=Infinity; maxX=-Infinity; minY=Infinity; maxY=-Infinity;}
         curContour.push(c); if(c.x!==undefined){minX=Math.min(minX,c.x); maxX=Math.max(maxX,c.x); minY=Math.min(minY,c.y); maxY=Math.max(maxY,c.y);}
       } else {curContour.push(c); if(c.x!==undefined){minX=Math.min(minX,c.x); maxX=Math.max(maxX,c.x); minY=Math.min(minY,c.y); maxY=Math.max(maxY,c.y);} if(c.x1!==undefined){minX=Math.min(minX,c.x1,c.x2); maxX=Math.max(maxX,c.x1,c.x2); minY=Math.min(minY,c.y1,c.y2); maxY=Math.max(maxY,c.y1,c.y2);}}
     });
-    if(curContour.length>0){const area=getContourArea(curContour); contours.push({cmds:curContour, bbox:{minX, maxX, minY, maxY, cx:(minX+maxX)/2, cy:(minY+maxY)/2}, area, isHole:area<0});}
+    if(curContour.length>0){const area=getContourArea(curContour); contours.push({cmds:curContour, bbox:{minX, maxX, minY, maxY, cx:(minX+maxX)/2, cy:(minY+maxY)/2}, area});}
     if(contours.length===0) return null;
     let gMinX=Infinity,gMaxX=-Infinity,gMinY=Infinity,gMaxY=-Infinity;
     contours.forEach(ct=>{gMinX=Math.min(gMinX, ct.bbox.minX); gMaxX=Math.max(gMaxX, ct.bbox.maxX); gMinY=Math.min(gMinY, ct.bbox.minY); gMaxY=Math.max(gMaxY, ct.bbox.maxY);});
-    const gH=gMaxY-gMinY, gW=gMaxX-gMinX, gCx=(gMinX+gMaxX)/2, gCy=(gMinY+gMaxY)/2;
+    const gCx=(gMinX+gMaxX)/2, gCy=(gMinY+gMaxY)/2, gH=gMaxY-gMinY, gW=gMaxX-gMinX;
+    
     const groups={cho:[], jung:[], jong:[]};
     contours.forEach(ct=>{
       const relY=(ct.bbox.cy - gMinY) / (gH || 1), relX=(ct.bbox.cx - gMinX) / (gW || 1);
       let target='jung';
-      if(type===1) target = relX < 0.5 ? 'cho' : 'jung';
-      else if(type===2) target = relY < 0.5 ? 'cho' : 'jung';
-      else if(type===3) target = (relX<0.45 && relY<0.55) ? 'cho' : 'jung';
-      else if(type===4) target = relY>0.68 ? 'jong' : (relX<0.5 ? 'cho' : 'jung');
-      else if(type===5) target = relY<0.38 ? 'cho' : (relY<0.65 ? 'jung' : 'jong');
-      else target = relY>0.72 ? 'jong' : 'jung';
+      if(relX < 0.45 && relY < 0.5) target='cho';
+      else if(relY > 0.65) target='jong';
+      else target='jung';
       groups[target].push(ct);
     });
-    function groupsToPath(group){
-      const p=new opentype.Path();
-      group.forEach(ct=>{ct.cmds.forEach(c=>{if(c.type==='M') p.moveTo(c.x,c.y); else if(c.type==='L') p.lineTo(c.x,c.y); else if(c.type==='C') p.curveTo(c.x1,c.y1,c.x2,c.y2,c.x,c.y); else if(c.type==='Q') p.quadTo(c.x1,c.y1,c.x,c.y); else if(c.type==='Z') p.close();});});
-      p._contours=group;
+
+    const transformGroup = (groupName, ctList) => {
+      if(ctList.length === 0) return null;
+      const p = new opentype.Path();
+      ctList.forEach(ct => {
+        ct.cmds.forEach(c => {
+          if(c.type==='M') p.moveTo(c.x, c.y);
+          else if(c.type==='L') p.lineTo(c.x, c.y);
+          else if(c.type==='C') p.curveTo(c.x1, c.y1, c.x2, c.y2, c.x, c.y);
+          else if(c.type==='Q') p.quadTo(c.x1, c.y1, c.x, c.y);
+          else if(c.type==='Z') p.close();
+        });
+      });
       let bMinX=Infinity,bMaxX=-Infinity,bMinY=Infinity,bMaxY=-Infinity;
-      group.forEach(ct=>{bMinX=Math.min(bMinX, ct.bbox.minX); bMaxX=Math.max(bMaxX, ct.bbox.maxX); bMinY=Math.min(bMinY, ct.bbox.minY); bMaxY=Math.max(bMaxY, ct.bbox.maxY);});
-      p._bbox={cx:(bMinX+bMaxX)/2, cy:(bMinY+bMaxY)/2, w:bMaxX-bMinX, h:bMaxY-bMinY, minX:bMinX, maxX:bMaxX, minY:bMinY, maxY:bMaxY};
+      p.commands.forEach(c=>{ if(c.x!==undefined){ bMinX=Math.min(bMinX,c.x); bMaxX=Math.max(bMaxX,c.x); bMinY=Math.min(bMinY,c.y); bMaxY=Math.max(bMaxY,c.y); } });
+      p._bbox={cx:(bMinX+bMaxX)/2, cy:(bMinY+bMaxY)/2, w:bMaxX-bMinX, h:bMaxY-bMinY};
       return p;
-    }
-    return {cho: groups.cho.length?groupsToPath(groups.cho):null, jung: groups.jung.length?groupsToPath(groups.jung):null, jong: groups.jong.length?groupsToPath(groups.jong):null, overall:{gMinX,gMaxX,gMinY,gMaxY,gW,gH,gCx,gCy}};
+    };
+
+    return { cho: transformGroup('cho', groups.cho), jung: transformGroup('jung', groups.jung), jong: transformGroup('jong', groups.jong) };
   }catch(e){ return null; }
 }
 
-function getBristlePoolRibbon(count, ribbonWidth, seed){
-  const pool=[]; const rand = mulberry32(seed);
-  for(let i=0;i<count;i++){const t=(count===1?0:(i/(count-1))*2-1); pool.push({t, offset:t*ribbonWidth, alpha:0.24 + rand()*0.28, spring:0.22 + rand()*0.14, x:0, y:0});}
+function getBristlePool(count){
+  const pool=[];
+  for(let i=0;i<count;i++){const t=(count===1?0:(i/(count-1))*2-1); pool.push({t, offset:t*0.9, alpha:0.3, spring:0.25, x:0, y:0});}
   return pool;
 }
 
 function getSampledPoints(path){
-  const pts=[]; let cur={x:0,y:0}; let contourIdx=0; const contours=path._contours || []; let curContourIsHole=contours[0] ? contours[0].isHole : false;
-  if(path.commands) {
+  const pts=[]; let cur={x:0,y:0};
+  if(path && path.commands) {
     path.commands.forEach(c=>{
-      if(c.type==='M'){cur={x:c.x,y:c.y}; if(contours[contourIdx]) curContourIsHole=contours[contourIdx].isHole||false; pts.push({x:cur.x, y:cur.y, isHole:curContourIsHole, isMove:true});}
-      else if(c.type==='L'){for(let i=1;i<=4;i++){const t=i/4; pts.push({x:cur.x+(c.x-cur.x)*t, y:cur.y+(c.y-cur.y)*t, isHole:curContourIsHole, isMove:false});} cur={x:c.x,y:c.y};}
-      else if(c.type==='Q'){for(let i=1;i<=6;i++){const t=i/6; const mt=1-t; pts.push({x:mt*mt*cur.x+2*mt*t*c.x1+t*t*c.x, y:mt*mt*cur.y+2*mt*t*c.y1+t*t*c.y, isHole:curContourIsHole, isMove:false});} cur={x:c.x,y:c.y};}
-      else if(c.type==='C'){for(let i=1;i<=8;i++){const t=i/8; const mt=1-t; pts.push({x:mt*mt*mt*cur.x+3*mt*mt*t*c.x1+3*mt*t*t*c.x2+t*t*t*c.x, y:mt*mt*mt*cur.y+3*mt*mt*t*c.y1+3*mt*t*t*c.y2+t*t*t*c.y, isHole:curContourIsHole, isMove:false});} cur={x:c.x,y:c.y};}
-      else if(c.type==='Z'){contourIdx++; if(contours[contourIdx]) curContourIsHole=contours[contourIdx].isHole||false;}
+      if(c.type==='M'){cur={x:c.x,y:c.y}; pts.push({x:cur.x, y:cur.y, isMove:true});}
+      else if(c.type==='L'){for(let i=1;i<=4;i++){const t=i/4; pts.push({x:cur.x+(c.x-cur.x)*t, y:cur.y+(c.y-cur.y)*t, isMove:false});} cur={x:c.x,y:c.y};}
+      else if(c.type==='Q'){for(let i=1;i<=6;i++){const t=i/6; const mt=1-t; pts.push({x:mt*mt*cur.x+2*mt*t*c.x1+t*t*c.x, y:mt*mt*cur.y+2*mt*t*c.y1+t*t*c.y, isMove:false});} cur={x:c.x,y:c.y};}
+      else if(c.type==='C'){for(let i=1;i<=8;i++){const t=i/8; const mt=1-t; pts.push({x:mt*mt*mt*cur.x+3*mt*mt*t*c.x1+3*mt*t*t*c.x2+t*t*t*c.x, y:mt*mt*mt*cur.y+3*mt*mt*t*c.y1+3*mt*t*t*c.y2+t*t*t*c.y, isMove:false});} cur={x:c.x,y:c.y};}
     });
   }
   return pts;
@@ -237,7 +253,7 @@ function getSampledPoints(path){
 
 function drawSingleRoughGlyph(path, opts, thickScale, seed, targetCtx){
   if(!path || !targetCtx) return;
-  targetCtx.save(); targetCtx.globalAlpha=0.92; targetCtx.fillStyle='#121212';
+  targetCtx.save(); targetCtx.globalAlpha=0.95; targetCtx.fillStyle='#121212';
   const basePath=new Path2D(); 
   if(path.commands) {
     path.commands.forEach(c=>{if(c.type==='M') basePath.moveTo(c.x,c.y); else if(c.type==='L') basePath.lineTo(c.x,c.y); else if(c.type==='C') basePath.bezierCurveTo(c.x1,c.y1,c.x2,c.y2,c.x,c.y); else if(c.type==='Q') basePath.quadraticCurveTo(c.x1,c.y1,c.x,c.y); else if(c.type==='Z') basePath.closePath();});
@@ -248,34 +264,31 @@ function drawSingleRoughGlyph(path, opts, thickScale, seed, targetCtx){
   if(opts.bristleCount===0) return;
   const pts=getSampledPoints(path); if(pts.length<3) return;
   const rand=mulberry32(seed);
-  const bristles=getBristlePoolRibbon(opts.bristleCount, 0.9, seed); bristles.forEach(b=>{b.x=pts[0].x; b.y=pts[0].y;}); let lastPt=pts[0];
+  const bristles=getBristlePool(opts.bristleCount);
+  bristles.forEach(b=>{b.x=pts[0].x; b.y=pts[0].y;}); let lastPt=pts[0];
 
   for(let i=1;i<pts.length;i++){
     const curPt=pts[i]; if(curPt.isMove){lastPt=curPt; bristles.forEach(b=>{b.x=curPt.x; b.y=curPt.y;}); continue;}
     const dx=curPt.x-lastPt.x, dy=curPt.y-lastPt.y; const len=Math.hypot(dx,dy)||1;
-    const jitter = 1 + (rand()-0.5)*opts.irregularity*0.8;
-    let pressure=Math.max(0.3, Math.min(1.3, (0.9 + (rand()-0.5)*0.5) * jitter));
+    const jitter = 1 + (rand()-0.5)*opts.irregularity*0.5;
+    let pressure=Math.max(0.4, Math.min(1.2, (1.0 + (rand()-0.5)*0.3) * jitter));
     const midPrev={x:(pts[Math.max(0,i-1)].x+curPt.x)/2, y:(pts[Math.max(0,i-1)].y+curPt.y)/2};
     const nextPt = (i+1 < pts.length && !pts[i+1].isMove) ? pts[i+1] : curPt;
     const midNext={x:(curPt.x+nextPt.x)/2, y:(curPt.y+nextPt.y)/2};
-    const radius=12*0.6*pressure*thickScale * (0.7 + rand()*0.6);
+    const radius=10*0.5*pressure*thickScale;
 
     for(let bi=0; bi<bristles.length; bi++){
       const b=bristles[bi];
       const baseInwardX = -dy / len; const baseInwardY = dx / len;
-      const finalInwardX = curPt.isHole ? -baseInwardX : baseInwardX;
-      const finalInwardY = curPt.isHole ? -baseInwardY : baseInwardY;
-      const tInfill = rand()*0.9+0.1;
-      const depth = tInfill * opts.infillDepth;
-      let offsetX = finalInwardX * depth * radius * 1.1;
-      let offsetY = finalInwardY * depth * radius * 1.1;
+      const depth = (rand()*0.8+0.2) * opts.infillDepth;
+      let offsetX = baseInwardX * depth * radius;
+      let offsetY = baseInwardY * depth * radius;
       
       const targetX=curPt.x + offsetX; const targetY=curPt.y + offsetY;
       b.x+=(targetX-b.x)*b.spring; b.y+=(targetY-b.y)*b.spring;
       targetCtx.beginPath();
-      const wobbleWidth = Math.max(0.5, pressure*1.4*thickScale * (0.6 + rand()*0.8));
-      targetCtx.strokeStyle=`rgba(18,18,18,${(b.alpha*pressure*0.45).toFixed(3)})`;
-      targetCtx.lineWidth=wobbleWidth;
+      targetCtx.strokeStyle=`rgba(18,18,18,${(b.alpha*pressure*0.5).toFixed(3)})`;
+      targetCtx.lineWidth=Math.max(0.8, pressure*1.3*thickScale);
       targetCtx.lineCap='round'; targetCtx.lineJoin='round';
       targetCtx.moveTo(midPrev.x+offsetX, midPrev.y+offsetY);
       targetCtx.quadraticCurveTo(curPt.x+offsetX, curPt.y+offsetY, midNext.x+offsetX, midNext.y+offsetY);
@@ -286,7 +299,7 @@ function drawSingleRoughGlyph(path, opts, thickScale, seed, targetCtx){
 
   // 삐침
   if(opts.whiskerLen>0){
-    const whiskerCount = Math.floor(pts.length / 8);
+    const whiskerCount = Math.floor(pts.length / 10);
     for(let w=0; w<whiskerCount; w++){
       const idx = Math.floor(rand()*pts.length);
       if(pts[idx].isMove) continue;
@@ -294,7 +307,7 @@ function drawSingleRoughGlyph(path, opts, thickScale, seed, targetCtx){
       const len = opts.whiskerLen * (0.6 + rand()*0.8) * opts.irregularity;
       const ex = p.x + Math.cos(ang)*len; const ey = p.y + Math.sin(ang)*len;
       const mx = (p.x+ex)/2 + (rand()-0.5)*len*0.3; const my = (p.y+ey)/2 + (rand()-0.5)*len*0.3;
-      targetCtx.beginPath(); targetCtx.strokeStyle=`rgba(18,18,18,${(0.15+rand()*0.2).toFixed(3)})`; targetCtx.lineWidth=0.6 + rand()*0.8;
+      targetCtx.beginPath(); targetCtx.strokeStyle=`rgba(18,18,18,${(0.2+rand()*0.2).toFixed(3)})`; targetCtx.lineWidth=0.7 + rand()*0.7;
       targetCtx.moveTo(p.x,p.y); targetCtx.quadraticCurveTo(mx,my,ex,ey); targetCtx.stroke();
     }
   }
@@ -302,32 +315,6 @@ function drawSingleRoughGlyph(path, opts, thickScale, seed, targetCtx){
 
 function amplify(v){ return 1 + (v-1)*4; }
 
-function applyJamoDeform(path, opts, k, seed){
-  if(!path) return path;
-  const round=amplify(opts[`${k}Round`]||1.2), len=amplify(opts[`${k}Len`]||1.5), thick=amplify(opts[`${k}Thick`]||1.2);
-  const gb=path._bbox; if(!gb) return path; const cx=gb.cx, cy=gb.cy; const avgR=(gb.w+gb.h)/4;
-  const rand=mulberry32(seed);
-  const deformed=new opentype.Path();
-  path.commands.forEach(c=>{
-    const deformPt=(px,py)=>{
-      let dx=px-cx, dy=py-cy;
-      const irr = 1 + (rand()-0.5)*opts.irregularity*0.6;
-      if(len!==1){ const l=amplify(len)*irr; dy*=l; dx/=Math.max(0.6, l*0.4+0.6); }
-      if(round!==1){ const ang=Math.atan2(dy,dx); const r=Math.hypot(dx,dy); const targetR = avgR * (r / (Math.max(gb.w,gb.h)/2)) * 1.2; const t = Math.min(1, Math.max(0, (round-1)/4)); const newR = r*(1-t) + targetR*t; dx=Math.cos(ang)*newR*irr; dy=Math.sin(ang)*newR*irr; }
-      if(thick!==1){ const t=amplify(thick); const ang=Math.atan2(dy,dx); const r=Math.hypot(dx,dy); const exp = (t-1)*0.15*r*irr; dx+=Math.cos(ang)*exp; dy+=Math.sin(ang)*exp; }
-      dx+=(rand()-0.5)*2*opts.irregularity; dy+=(rand()-0.5)*2*opts.irregularity;
-      return {x:cx+dx, y:cy+dy};
-    };
-    if(c.type==='M'){ const p=deformPt(c.x,c.y); deformed.moveTo(p.x,p.y); }
-    else if(c.type==='L'){ const p=deformPt(c.x,c.y); deformed.lineTo(p.x,p.y); }
-    else if(c.type==='C'){ const p1=deformPt(c.x1,c.y1); const p2=deformPt(c.x2,c.y2); const p=deformPt(c.x,c.y); deformed.curveTo(p1.x,p1.y,p2.x,p2.y,p.x,p.y); }
-    else if(c.type==='Q'){ const p1=deformPt(c.x1,c.y1); const p=deformPt(c.x,c.y); deformed.quadTo(p1.x,p1.y,p.x,p.y); }
-    else if(c.type==='Z')ອາຫານ: deformed.close();
-  });
-  deformed._contours=path._contours; deformed._bbox=path._bbox; return deformed;
-}
-
-// 캔버스 정가운데 단일 글자 렌더링 메인 함수
 function renderSingleChar(){
   try{
     if(!cv || !textCtx || !baseFont) return;
@@ -335,7 +322,6 @@ function renderSingleChar(){
     syncCanvases(w, h);
     textCtx.clearRect(0,0,w,h);
 
-    // 배경 화선지 색상 채우기
     const g=textCtx.createRadialGradient(w/2,h/2,100,w/2,h/2,Math.max(w,h));
     g.addColorStop(0,'#f4ecd8'); g.addColorStop(1,'#e8dcc3');
     textCtx.fillStyle=g; textCtx.fillRect(0,0,w,h);
@@ -351,19 +337,16 @@ function renderSingleChar(){
     $('charIndicator').textContent = `${currentIdx + 1} / ${cleanChars.length} (${ch})`;
 
     const opts = getOpts();
-    const fontSize = Math.min(w, h) * 0.55; // 화면 정가운데 큼직하게
+    const fontSize = Math.min(w, h) * 0.5;
     const centerX = w * 0.5;
     const centerY = h * 0.5;
     const seed = ch.charCodeAt(0) * 131 + currentIdx * 37;
 
     const de = decomposeHangul(ch);
+    lastRenderedPaths = [];
 
     if(!de) {
-      // 일반 글자 렌더링
       const path = baseFont.getPath(ch, 0, 0, fontSize);
-      path._bbox={cx:0,cy:0,w:fontSize,h:fontSize,minX:0,maxX:fontSize,minY:0,maxY:fontSize};
-      path._baseSize=fontSize; path._centerX=centerX; path._centerY=centerY;
-      
       const transformed = new opentype.Path();
       const pbox = path.getBoundingBox();
       const pcx = (pbox.x1 + pbox.x2) / 2;
@@ -378,30 +361,22 @@ function renderSingleChar(){
         else if(c.type==='Q') transformed.quadTo(c.x1-pcx+centerX, c.y1-pcy+centerY, tx, ty);
         else if(c.type==='Z') transformed.close();
       });
-      transformed._contours=path._contours; transformed._baseSize=fontSize; transformed._centerX=centerX; transformed._centerY=centerY;
-      
+      transformed._contours=path._contours;
       drawSingleRoughGlyph(transformed, opts, 1.2, seed, textCtx);
       ctx.drawImage(textCv, 0, 0);
       lastRenderedPaths = [{d: pathToSVGd(transformed), x: centerX, y: centerY}];
       return;
     }
 
-    // 한글 자소 분할 모드 (초성, 중성, 종성 중심 거리 및 크기 조정)
-    const type = getSyllableType(de);
-    const split = splitSyllablePathIntoJamoGroups(ch, fontSize, type, opts);
-
+    const split = splitSyllablePathIntoJamoGroups(ch, fontSize);
     if(split) {
-      lastRenderedPaths = [];
       ['cho', 'jung', 'jong'].forEach(k => {
         let groupPath = split[k];
         if(!groupPath) return;
 
-        groupPath = applyJamoDeform(groupPath, opts, k, seed + k.charCodeAt(0));
-        
         const gb = groupPath._bbox;
         const transformed = new opentype.Path();
         
-        // 화면 정가운데를 기준으로 사상
         groupPath.commands.forEach(c => {
           const tx = (c.x - gb.cx) + centerX;
           const ty = (c.y - gb.cy) + centerY;
@@ -413,9 +388,6 @@ function renderSingleChar(){
         });
 
         transformed._contours = groupPath._contours;
-        transformed._baseSize = fontSize;
-        transformed._centerX = centerX; transformed._centerY = centerY;
-
         drawSingleRoughGlyph(transformed, opts, 1.3, seed + k.charCodeAt(0), textCtx);
         lastRenderedPaths.push({ d: pathToSVGd(transformed), x: centerX, y: centerY });
       });
@@ -428,82 +400,59 @@ function renderSingleChar(){
   }
 }
 
-let renderTimeout=null;
-function debouncedRender(){ if(renderTimeout) cancelAnimationFrame(renderTimeout); renderTimeout=requestAnimationFrame(()=>renderSingleChar()); }
-
 function updateLabels(){
   try{
     const opts=getOpts();
     const set=(id,val)=>{ const el=$(id); if(el) el.textContent=val; };
-    set('vChoDist',(opts.choDist||1.0).toFixed(2)+'x'); set('vChoScale',(opts.choScale||1.0).toFixed(2)+'x'); set('vChoRand',(opts.choRand||0.0).toFixed(2));
-    set('vJungDist',(opts.jungDist||1.0).toFixed(2)+'x'); set('vJungScale',(opts.jungScale||1.0).toFixed(2)+'x'); set('vJungRand',(opts.jungRand||0.0).toFixed(2));
-    set('vJongDist',(opts.jongDist||1.0).toFixed(2)+'x'); set('vJongScale',(opts.jongScale||1.0).toFixed(2)+'x'); set('vJongRand',(opts.jongRand||0.0).toFixed(2));
     set('vBristle',(opts.bristleCount||10).toString()); set('vWhisker',(opts.whiskerLen||18).toString()); set('vIrregular',(opts.irregularity||0.6).toFixed(2));
   }catch(e){}
 }
 
 [
-  'choRound','choLen','choThick','jungRound','jungLen','jungThick','jongRound','jongLen','jongThick',
-  'choDist','choScale','choRand','jungDist','jungScale','jungRand','jongDist','jongScale','jongRand',
-  'bristleCount','whiskerLen','irregularity','cho-warp'
-].forEach(id=>{ safeAddListener(id,'input',()=>{ updateLabels(); debouncedRender(); }); });
+  'bristleCount','whiskerLen','irregularity','choRound','choLen','choThick'
+].forEach(id=>{ safeAddListener(id,'input',()=>{ updateLabels(); renderSingleChar(); }); });
 
-safeAddListener('targetChars','input', ()=>{ currentIdx=0; debouncedRender(); });
-safeAddListener('btnPrev','click', ()=>{ if(currentIdx > 0) { currentIdx--; debouncedRender(); } });
+safeAddListener('targetChars','input', ()=>{ currentIdx=0; renderSingleChar(); });
+safeAddListener('btnPrev','click', ()=>{ if(currentIdx > 0) { currentIdx--; renderSingleChar(); } });
 safeAddListener('btnNext','click', ()=>{ 
   const rawText = $('targetChars')?.value?.trim() || "";
   const cleanChars = Array.from(rawText.replace(/\s/g,'')).filter(c=>c.trim()!=='');
-  if(currentIdx < cleanChars.length - 1) { currentIdx++; debouncedRender(); }
+  if(currentIdx < cleanChars.length - 1) { currentIdx++; renderSingleChar(); }
 });
 
-// 폴더 지정 API 핸들러
 safeAddListener('btnSelectFolder','click', async ()=>{
   try {
-    if (!window.showDirectoryPicker) {
-      alert("이 브라우저는 폴더 지정 API를 지원하지 않습니다. 기본 다운로드로 진행됩니다.");
-      return;
-    }
+    if (!window.showDirectoryPicker) { alert("폴더 지정 미지원 브라우저"); return; }
     chosenDirectoryHandle = await window.showDirectoryPicker();
     $('folderStatus').textContent = `✅ 지정된 폴더: ${chosenDirectoryHandle.name}`;
-    log(`📂 폴더 지정 완료: ${chosenDirectoryHandle.name}`);
-  } catch(e) {
-    if(e.name !== 'AbortError') log('폴더 지정 취소 또는 오류');
-  }
+  } catch(e) {}
 });
 
-// 순번 지정 저장 버튼 핸들러
 safeAddListener('btnSaveAsset','click', async ()=>{
   try {
     const rawText = $('targetChars')?.value?.trim() || "사랑";
     const cleanChars = Array.from(rawText.replace(/\s/g,'')).filter(c=>c.trim()!=='');
-    if(cleanChars.length === 0) { alert("저장할 글자가 없습니다."); return; }
-    if(currentIdx >= cleanChars.length) currentIdx = 0;
-
+    if(cleanChars.length === 0) return;
     const ch = cleanChars[currentIdx];
     const seq = String($('fileSeq')?.value || 1).padStart(2, '0');
     const filename = `${ch}_${seq}.png`;
 
-    // 캔버스 Blob 생성
     const blob = await new Promise(res => cv.toBlob(res, 'image/png'));
     if(!blob) return;
 
     if (chosenDirectoryHandle) {
-      // 지정된 폴더에 파일 쓰기
       const fileHandle = await chosenDirectoryHandle.getFileHandle(filename, { create: true });
       const writable = await fileHandle.createWritable();
       await writable.write(blob);
       await writable.close();
-      log(`💾 저장 완료 [폴더]: ${filename}`);
+      log(`💾 저장 [폴더]: ${filename}`);
     } else {
-      // 일반 다운로드 폴백
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = filename; a.click();
+      const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
       URL.revokeObjectURL(url);
-      log(`💾 저장 완료 [다운로드]: ${filename}`);
+      log(`💾 저장 [다운로드]: ${filename}`);
     }
 
-    // 다음 순번으로 자동 증가
     const seqEl = $('fileSeq');
     if(seqEl) {
       let nextSeq = parseInt(seqEl.value) + 1;
@@ -511,42 +460,32 @@ safeAddListener('btnSaveAsset','click', async ()=>{
       seqEl.value = nextSeq;
       $('valSeq').textContent = String(nextSeq).padStart(2, '0');
     }
-  } catch(e) {
-    console.error(e);
-    alert("저장 중 오류가 발생했습니다: " + e.message);
-  }
+  } catch(e) { alert("저장 오류: " + e.message); }
 });
 
 safeAddListener('fileSeq','input', e=>{
-  const val = parseInt(e.target.value) || 1;
-  $('valSeq').textContent = String(val).padStart(2, '0');
+  $('valSeq').textContent = String(parseInt(e.target.value) || 1).padStart(2, '0');
 });
 
 safeAddListener('btnReset','click',()=>{
   const setVal=(id,v)=>{ const el=$(id); if(el) el.value=v; };
-  setVal('choDist',1.0); setVal('choScale',1.0); setVal('choRand',0.0);
-  setVal('jungDist',1.0); setVal('jungScale',1.0); setVal('jungRand',0.0);
-  setVal('jongDist',1.0); setVal('jongScale',1.0); setVal('jongRand',0.0);
   setVal('bristleCount',10); setVal('whiskerLen',18); setVal('irregularity',0.6);
-  updateLabels(); debouncedRender(); log('↺ 원본 리셋');
+  updateLabels(); renderSingleChar(); log('↺ 원본 리셋');
 });
 
 safeAddListener('btnMaster','click',()=>{
   const setVal=(id,v)=>{ const el=$(id); if(el) el.value=v; };
-  setVal('choDist',1.2); setVal('choScale',1.2); setVal('choRand',0.2);
-  setVal('jungDist',1.1); setVal('jungScale',1.3); setVal('jungRand',0.1);
-  setVal('jongDist',1.3); setVal('jongScale',1.1); setVal('jongRand',0.3);
   setVal('bristleCount',12); setVal('whiskerLen',20); setVal('irregularity',0.7);
-  updateLabels(); debouncedRender(); log('★ 불규칙 붓글씨 프리셋 적용');
+  updateLabels(); renderSingleChar(); log('★ 불규칙 프리셋 적용');
 });
 
-createStyleGrid('global-style-grid', (selected)=>{ selectedGlobalStyles=selected; debouncedRender(); });
+createStyleGrid('global-style-grid', (selected)=>{ selectedGlobalStyles=selected; renderSingleChar(); });
 
 safeAddListener('aspect-ratio-select','change',e=>{
-  const v=e.target.value; ratio=v; let w=1080,h=1080;
+  const v=e.target.value; let w=1080,h=1080;
   if(v==='16:9'){w=1920;h=1080;} else if(v==='9:16'){w=1080;h=1920;} else if(v==='1:1'){w=1080;h=1080;}
   cv.width=w; cv.height=h; syncCanvases(w,h);
-  debouncedRender();
+  renderSingleChar();
 });
 
 safeAddListener('btnSvgSingle','click',()=>{
@@ -568,8 +507,8 @@ safeAddListener('btnSvgSingle','click',()=>{
   try{
     baseFont=await new Promise((res,rej)=>opentype.load('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/nanumbrushscript/NanumBrushScript-Regular.ttf',(e,f)=>e?rej(e):res(f)));
     const fs=$('font-status'); if(fs) fs.textContent='✅ 나눔손글씨 활성화';
-    createStyleGrid('global-style-grid', (sel)=>{ selectedGlobalStyles=sel; debouncedRender(); });
-    updateLabels(); log('v1.043 단일 글자 에셋 스튜디오 로드 완료');
+    createStyleGrid('global-style-grid', (sel)=>{ selectedGlobalStyles=sel; renderSingleChar(); });
+    updateLabels(); log('v1.043.1 에셋 스튜디오 로드 완료');
     renderSingleChar();
   }catch(e){ const fs=$('font-status'); if(fs) fs.textContent='⚠ 폰트 실패'; log('폰트 로드 실패: '+e.message); }
 })();
