@@ -1,782 +1,408 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SRT 캘리그라피 스튜디오 v1.045 (버그 수정 및 성능 개선)</title>
-<script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-<style>
-:root{--bg:#09090f;--panel:#181826;--b:#2d2d4a;--accent:#ff6b35;--text:#f4f4fa}
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:Pretendard,system-ui;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column}
-header{height:52px;background:#141424;border-bottom:1px solid var(--b);display:flex;align-items:center;padding:0 14px;gap:10px}
-.main{flex:1;display:flex;overflow:hidden}
-.left{width:340px;background:var(--panel);border-right:1px solid var(--b);overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px}
-.center{flex:1;background:#0a0a12;display:flex;flex-direction:column;align-items:center;padding:10px;gap:8px;overflow-y:auto}
-.right{width:400px;background:var(--panel);border-left:1px solid var(--b);overflow-y:auto;padding:10px}
-.btn{border:none;border-radius:8px;padding:8px 10px;font-weight:800;cursor:pointer;font-size:.76rem}
-.btn-p{background:linear-gradient(135deg,#ff6b35,#f72585);color:#fff;width:100%}
-.btn-s{background:#26263e;border:1px solid var(--b);color:var(--text);width:100%}
-.btn-file{display:flex;justify-content:center;padding:6px;border:1.5px dashed #4a4a6e;border-radius:8px;background:#1a1a2e;cursor:pointer;font-weight:700;font-size:.72rem}
-input[type=file]{display:none}
-.sec{margin-bottom:8px;padding-bottom:8px;border-bottom:1px dashed #333355}
-.sec-title{font-size:.76rem;font-weight:800;color:var(--accent);margin-bottom:4px;display:flex;justify-content:space-between;cursor:pointer}
-.sec-title span{font-size:.6rem;color:#888}
-.canvas-wrap{background:#f4efe6;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.6);width:100%;max-width:600px;position:relative;display:flex;justify-content:center;align-items:center;overflow:hidden}
-canvas{display:block;touch-action:none;max-width:100%}
-textarea{width:100%;background:#11111e;border:1px solid var(--b);color:var(--text);border-radius:8px;padding:6px;font-size:.72rem;min-height:48px}
-.label{font-size:.64rem;color:#8a8ab8;display:flex;justify-content:space-between;margin:4px 0 2px}
-input[type=range],select{width:100%}
-.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px}
-.preset-box{background:#1e1e36;border:1px solid #ff6b35;border-radius:8px;padding:8px}
-.style-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin:6px 0}
-.style-check{background:#2a2a36;border:1px solid #444;border-radius:6px;padding:6px;text-align:center;cursor:pointer;font-size:.70rem}
-.style-check.active{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:bold}
-.log{width:100%;background:#11111e;border:1px solid var(--b);border-radius:8px;padding:6px;height:140px;overflow-y:auto;font-size:.60rem;color:#a0a0c0;white-space:pre-wrap;font-family:monospace;display:flex;flex-direction:column-reverse}
-.log p{margin:0;padding:1px 0}
-.d-flex{display:flex;gap:5px;align-items:center}
-.nav-btn{background:#26263e;border:1px solid var(--b);color:#fff;padding:5px 12px;cursor:pointer;border-radius:6px;font-weight:bold}
-.char-display{font-size:2rem;background:#11111e;border:1px solid var(--b);border-radius:8px;width:60px;height:60px;display:flex;align-items:center;justify-content:center;margin-bottom:6px}
-#export-progress{font-size:.7rem;color:#a0a0c0;margin-top:4px;min-height:1.2em;text-align:center}
-.toggle-section .content{display:block}
-.toggle-section.collapsed .content{display:none}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>캘리그라피 스튜디오 v2.0 (완전 개편)</title>
+    <!-- 필요한 라이브러리 -->
+    <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+    <style>
+        body { font-family: sans-serif; background: #121212; color: #eee; margin: 0; display: flex; height: 100vh; }
+        .sidebar { width: 320px; background: #1e1e1e; padding: 15px; overflow-y: auto; border-right: 1px solid #333; }
+        .main { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
+        
+        canvas { background: #f4ecd8; box-shadow: 0 4px 20px rgba(0,0,0,0.5); border-radius: 8px; }
+        h3 { margin-top: 20px; font-size: 15px; border-bottom: 1px solid #444; padding-bottom: 5px; color: #ff6b35; }
+        .section { margin-bottom: 10px; }
+        .row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+        .row label { width: 60px; font-size: 13px; }
+        .row input[type="range"] { flex: 1; }
+        .val { width: 35px; text-align: right; font-size: 12px; }
+        .btn { padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; margin-bottom: 5px; }
+        .btn-orange { background: #ff6b35; color: #fff; }
+        .btn-green { background: #22c55e; color: #111; }
+        .btn-gray { background: #333; color: #eee; }
+        input[type=file] { display: none; }
+        .file-label { display: block; background: #444; color: #fff; padding: 8px; text-align: center; border-radius: 4px; cursor: pointer; margin-bottom: 5px; font-size: 14px; }
+        
+        .char-display { font-size: 70px; background: #fff; color: #111; width: 120px; height: 120px; margin: 0 auto; display: flex; align-items: center; justify-content: center; border-radius: 8px; }
+        .style-panel { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+        .style-check { background: #444; border: 1px solid #555; padding: 5px; text-align: center; border-radius: 4px; cursor: pointer; font-size: 12px; }
+        .style-check.active { background: #ff6b35; border-color: #fff; font-weight: bold; }
+        .preset-btns { display: flex; gap: 5px; }
+        #status { position: absolute; bottom: 10px; left: 10px; font-size: 12px; color: #888; }
+    </style>
 </head>
 <body>
-<header><h1>🖌 v1.045 (버그 수정 + 성능 개선)</h1><span style="font-size:.62rem;background:#ff6b35;color:#fff;padding:2px 8px;border-radius:6px">삐침 복원 · 캐시 최적화</span></header>
-<div class="main">
-  <div class="left">
-    <div class="sec">
-      <div class="sec-title">📂 폰트 로드 & SRT 분석</div>
-      <label class="btn-file" for="ttf-input">📁 TTF 폰트 열기</label>
-      <input type="file" id="ttf-input" accept=".ttf,.otf">
-      <div id="font-status" style="font-size:.70rem;color:#7cd992;">나눔붓글씨 로드 대기</div>
-      <label class="btn-file" for="srt-input">📁 SRT 파일 불러오기 (유니코드 추출용)</label>
-      <input type="file" id="srt-input" accept=".srt,.txt">
-      <textarea id="srtTa" placeholder="또는 SRT 내용을 직접 붙여넣기"></textarea>
-      <button class="btn btn-s" id="btn-analyze" style="background:linear-gradient(135deg,#ff6b35,#f72585);color:#fff">🔍 고유 글자 추출</button>
-      <div style="font-size:.68rem;color:#8a8ab8" id="infoNum">고유 0자</div>
+    <div class="sidebar">
+        <!-- 1. SRT 자막 로딩, 분석, 추출 -->
+        <h3>1. 데이터 로드</h3>
+        <div class="section">
+            <label class="file-label" for="ttf">📁 TTF 폰트 열기</label>
+            <input type="file" id="ttf" accept=".ttf,.otf">
+            <div id="font-status" style="font-size:12px;color:#aaa;margin-bottom:10px;">폰트를 불러오세요.</div>
+            
+            <label class="file-label" for="srt">📁 SRT 파일 불러오기</label>
+            <input type="file" id="srt" accept=".srt">
+            <textarea id="srt-content" rows="4" placeholder="SRT 내용을 직접 붙여넣거나 파일을 열어주세요." style="width:100%;background:#111;color:#fff;border:1px solid #444;border-radius:4px;padding:8px;margin-bottom:5px;"></textarea>
+            <button class="btn btn-orange" onclick="extractChars()">🔍 고유 글자 추출</button>
+            <div id="char-count" style="margin-top:5px; font-size:12px; text-align:center;">0자 추출됨</div>
+        </div>
+
+        <!-- 2. 글자 탐색 -->
+        <h3>2. 글자 탐색</h3>
+        <div class="section">
+            <div class="char-display" id="char-view">-</div>
+            <div class="row" style="justify-content:center; margin-top:10px;">
+                <button class="btn btn-gray" style="width:auto;padding:5px 15px;" onclick="prevChar()">◀ 이전</button>
+                <span id="char-idx" style="width:50px;text-align:center;font-size:14px;">0 / 0</span>
+                <button class="btn btn-gray" style="width:auto;padding:5px 15px;" onclick="nextChar()">다음 ▶</button>
+            </div>
+        </div>
+
+        <!-- 3. 초성, 중성, 종성 변형 옵션 -->
+        <h3>3. 자모 변형</h3>
+        <div class="section">
+            <strong style="color:#ff6b35;">초성</strong>
+            <div class="row"><label>X 이동</label><input type="range" id="cho-x" min="-100" max="100" value="0" oninput="changeOpt()"><span id="cho-x-v" class="val">0</span></div>
+            <div class="row"><label>Y 이동</label><input type="range" id="cho-y" min="-100" max="100" value="0" oninput="changeOpt()"><span id="cho-y-v" class="val">0</span></div>
+            <div class="row"><label>크기</label><input type="range" id="cho-s" min="0.5" max="2" step="0.05" value="1" oninput="changeOpt()"><span id="cho-s-v" class="val">1.00</span></div>
+
+            <strong style="color:#ff6b35;">중성</strong>
+            <div class="row"><label>X 이동</label><input type="range" id="jung-x" min="-100" max="100" value="0" oninput="changeOpt()"><span id="jung-x-v" class="val">0</span></div>
+            <div class="row"><label>Y 이동</label><input type="range" id="jung-y" min="-100" max="100" value="0" oninput="changeOpt()"><span id="jung-y-v" class="val">0</span></div>
+            <div class="row"><label>크기</label><input type="range" id="jung-s" min="0.5" max="2" step="0.05" value="1" oninput="changeOpt()"><span id="jung-s-v" class="val">1.00</span></div>
+
+            <strong style="color:#ff6b35;">종성</strong>
+            <div class="row"><label>X 이동</label><input type="range" id="jong-x" min="-100" max="100" value="0" oninput="changeOpt()"><span id="jong-x-v" class="val">0</span></div>
+            <div class="row"><label>Y 이동</label><input type="range" id="jong-y" min="-100" max="100" value="0" oninput="changeOpt()"><span id="jong-y-v" class="val">0</span></div>
+            <div class="row"><label>크기</label><input type="range" id="jong-s" min="0.5" max="2" step="0.05" value="1" oninput="changeOpt()"><span id="jong-s-v" class="val">1.00</span></div>
+        </div>
+
+        <!-- 부가 옵션 -->
+        <h3>4. 붓터치 스타일</h3>
+        <div class="section">
+            <div class="style-panel">
+                <div class="style-check active" onclick="setStyle('none', this)">기본</div>
+                <div class="style-check" onclick="setStyle('bold', this)">농묵</div>
+                <div class="style-check" onclick="setStyle('soft', this)">둥근</div>
+                <div class="style-check" onclick="setStyle('sharp', this)">뾰족</div>
+                <div class="style-check" onclick="setStyle('dry', this)">갈필</div>
+                <div class="style-check" onclick="setStyle('rough', this)">거친</div>
+            </div>
+        </div>
+
+        <!-- 4. 저장 및 5. 프리셋 -->
+        <h3>5. 내보내기 & 프리셋</h3>
+        <div class="section">
+            <div class="preset-btns">
+                <button class="btn btn-gray" onclick="savePreset()">💾 프리셋 저장</button>
+                <button class="btn btn-gray" onclick="loadPreset()">📂 프리셋 로드</button>
+            </div>
+            <div style="height:10px;"></div>
+            <button class="btn btn-orange" onclick="exportOne('png')">현재 글자 PNG</button>
+            <button class="btn btn-orange" onclick="exportOne('jpg')">현재 글자 JPG</button>
+            <button class="btn btn-green" onclick="exportAll('png')">전체 글자 ZIP (PNG)</button>
+            <button class="btn btn-green" onclick="exportAll('jpg')">전체 글자 ZIP (JPG)</button>
+            <div id="export-status" style="font-size:12px;color:#aaa;margin-top:10px;text-align:center;"></div>
+        </div>
     </div>
 
-    <div class="sec">
-      <div class="sec-title">🖼️ 한 글자 내비게이션</div>
-      <div style="text-align:center; margin-bottom:8px;">
-        <div class="char-display" id="char-view" style="margin:0 auto; font-size:3rem;">-</div>
-        <div style="font-size:.8rem; color:#aaa;">인덱스: <span id="char-index">0 / 0</span></div>
-      </div>
-      <div class="d-flex" style="justify-content:center;">
-        <button class="nav-btn" id="prev-char">◀ 이전</button>
-        <button class="nav-btn" id="next-char">다음 ▶</button>
-      </div>
+    <div class="main">
+        <canvas id="cvs" width="800" height="800"></canvas>
+        <div id="status">Ready.</div>
     </div>
 
-    <div class="sec">
-      <div class="sec-title">📤 한 글자 내보내기</div>
-      <div class="d-flex">
-        <button class="btn btn-s" id="export-png" style="flex:1;">현재 PNG</button>
-        <button class="btn btn-s" id="export-jpg" style="flex:1;">현재 JPG</button>
-      </div>
-      <div class="d-flex" style="margin-top:5px;">
-        <button class="btn btn-p" id="export-all-png" style="flex:1;">전체 PNG (ZIP)</button>
-        <button class="btn btn-p" id="export-all-jpg" style="flex:1;">전체 JPG (ZIP)</button>
-      </div>
-      <div id="export-progress"></div>
-      <label style="font-size:.66rem;margin-top:4px;display:block">
-        <input type="checkbox" id="whiskerToggle" checked> 🖌 삐침 효과 (메인 렌더링 및 내보내기)
-      </label>
-    </div>
+    <script>
+        // 한글 구성 요소
+        const CHO = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+        const JUNG = ['ㅏ','ㅐ','ㅑ','ㅒ','ㅓ','ㅔ','ㅕ','ㅖ','ㅗ','ㅘ','ㅙ','ㅚ','ㅛ','ㅜ','ㅝ','ㅞ','ㅟ','ㅠ','ㅡ','ㅢ','ㅣ'];
+        const JONG = ['','ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','ㅀ','ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
 
-    <div class="preset-box">
-      <div class="sec-title">💾 프리셋</div>
-      <button class="btn btn-s" id="btnMaster" style="background:#ff6b35;color:#fff">★ 대가 붓글씨 (거친 붓)</button>
-      <button class="btn btn-s" id="btnReset" style="background:#22c55e;color:#000; margin-top:5px;">↺ 기본 순수 글꼴</button>
-    </div>
+        let font = null;
+        let uniqChars = [];
+        let charIdx = 0;
+        let currentStyle = 'none';
 
-    <div class="sec">
-      <div class="sec-title">🎨 붓터치 스타일</div>
-      <div id="global-style-grid" class="style-grid"></div>
-    </div>
+        // 폰트 경로 캐시 (성능 최적화)
+        let pathCache = new Map();
 
-    <div class="sec">
-      <div class="sec-title">🔷 변형 설정</div>
-      <div class="label">초성 메쉬 <span id="val-cho-warp">0.20</span></div><input type="range" id="cho-warp" min="-0.5" max="1.5" step="0.05" value="0.20">
-      <div class="label">중성 메쉬 <span id="val-jung-warp">0.15</span></div><input type="range" id="jung-warp" min="-0.5" max="1.5" step="0.05" value="0.15">
-      <div class="label">종성 메쉬 <span id="val-jong-warp">0.25</span></div><input type="range" id="jong-warp" min="-0.5" max="1.5" step="0.05" value="0.25">
-      <label style="font-size:.66rem"><input type="checkbox" id="jamoMode" checked> 자모 분리 (초/중/종성 개별 조정 가능)</label>
-      <label style="font-size:.66rem"><input type="checkbox" id="jamoClampOff" checked> 🔓 격자 제한 해제 (파격 배치)</label>
-    </div>
-  </div>
+        const cvs = document.getElementById('cvs');
+        const ctx = cvs.getContext('2d');
 
-  <div class="center">
-    <div class="canvas-wrap" id="wrap"><canvas id="cv" width="900" height="900"></canvas></div>
-    <div class="log" id="log">[v1.045] 최적화 및 버그 수정 버전 로드</div>
-  </div>
-
-  <div class="right">
-    <div class="sec">
-      <div class="sec-title">초성 조정 (중심/크기/랜덤)</div>
-      <div class="grid3">
-        <div><div class="label">중심 X <span id="vChoDistX">0</span></div><input type="range" id="choDistX" min="-100" max="100" step="5" value="0"></div>
-        <div><div class="label">중심 Y <span id="vChoDistY">0</span></div><input type="range" id="choDistY" min="-100" max="100" step="5" value="0"></div>
-        <div><div class="label">크기 <span id="vChoScale">1.00</span></div><input type="range" id="choScale" min="0.1" max="3.0" step="0.05" value="1.0"></div>
-        <div><div class="label">랜덤 <span id="vChoRand">0</span></div><input type="range" id="choRand" min="0" max="100" step="5" value="0"></div>
-        <div><div class="label">둥글게 <span id="vChoRound">1.00x</span></div><input type="range" id="choRound" min="0.1" max="5.0" step="0.1" value="1.0"></div>
-        <div><div class="label">길이 <span id="vChoLen">1.00x</span></div><input type="range" id="choLen" min="0.1" max="5.0" step="0.1" value="1.0"></div>
-        <div><div class="label">두께 <span id="vChoThick">1.00x</span></div><input type="range" id="choThick" min="0.1" max="5.0" step="0.1" value="1.0"></div>
-      </div>
-    </div>
-
-    <div class="sec">
-      <div class="sec-title">중성 조정 (중심/크기/랜덤)</div>
-      <div class="grid3">
-        <div><div class="label">중심 X <span id="vJungDistX">0</span></div><input type="range" id="jungDistX" min="-100" max="100" step="5" value="0"></div>
-        <div><div class="label">중심 Y <span id="vJungDistY">0</span></div><input type="range" id="jungDistY" min="-100" max="100" step="5" value="0"></div>
-        <div><div class="label">크기 <span id="vJungScale">1.00</span></div><input type="range" id="jungScale" min="0.1" max="3.0" step="0.05" value="1.0"></div>
-        <div><div class="label">랜덤 <span id="vJungRand">0</span></div><input type="range" id="jungRand" min="0" max="100" step="5" value="0"></div>
-        <div><div class="label">둥글게 <span id="vJungRound">1.00x</span></div><input type="range" id="jungRound" min="0.1" max="5.0" step="0.1" value="1.0"></div>
-        <div><div class="label">길이 <span id="vJungLen">1.00x</span></div><input type="range" id="jungLen" min="0.1" max="5.0" step="0.1" value="1.0"></div>
-        <div><div class="label">두께 <span id="vJungThick">1.00x</span></div><input type="range" id="jungThick" min="0.1" max="5.0" step="0.1" value="1.0"></div>
-      </div>
-    </div>
-
-    <div class="sec">
-      <div class="sec-title">종성 조정 (중심/크기/랜덤)</div>
-      <div class="grid3">
-        <div><div class="label">중심 X <span id="vJongDistX">0</span></div><input type="range" id="jongDistX" min="-100" max="100" step="5" value="0"></div>
-        <div><div class="label">중심 Y <span id="vJongDistY">0</span></div><input type="range" id="jongDistY" min="-100" max="100" step="5" value="0"></div>
-        <div><div class="label">크기 <span id="vJongScale">1.00</span></div><input type="range" id="jongScale" min="0.1" max="3.0" step="0.05" value="1.0"></div>
-        <div><div class="label">랜덤 <span id="vJongRand">0</span></div><input type="range" id="jongRand" min="0" max="100" step="5" value="0"></div>
-        <div><div class="label">둥글게 <span id="vJongRound">1.00x</span></div><input type="range" id="jongRound" min="0.1" max="5.0" step="0.1" value="1.0"></div>
-        <div><div class="label">길이 <span id="vJongLen">1.00x</span></div><input type="range" id="jongLen" min="0.1" max="5.0" step="0.1" value="1.0"></div>
-        <div><div class="label">두께 <span id="vJongThick">1.00x</span></div><input type="range" id="jongThick" min="0.1" max="5.0" step="0.1" value="1.0"></div>
-      </div>
-    </div>
-
-    <div class="sec">
-      <div class="sec-title">붓 질감</div>
-      <div class="label">필모 수 <span id="vBristle">16</span></div><input type="range" id="bristleCount" min="0" max="32" step="2" value="16">
-      <div class="label">리본 폭 <span id="vRibbon">0.85</span></div><input type="range" id="ribbonWidth" min="0.2" max="1.5" step="0.05" value="0.85">
-      <div class="label">인필 깊이 <span id="vInfill">0.70</span></div><input type="range" id="infillDepth" min="0" max="1" step="0.05" value="0.70">
-      <div class="label">삐침 강도 <span id="vWhisker">12</span></div><input type="range" id="whiskerLen" min="0" max="30" step="1" value="12">
-      <div class="label">FPS <span id="fps">0</span></div>
-    </div>
-  </div>
-</div>
-
-<script>
-// ================================================================
-//  v1.045 - 주요 개선 사항
-//  1) _contours fallback 수정 (속이 빈 획 처리)
-//  2) 삐침(whisker) 캐시 키 고유화 및 isSvg 플래그 활성화
-//  3) clampOn 옵션 구현 (격자 제한 해제 체크박스와 연동)
-//  4) 경로 캐싱 (pathCache) 도입
-//  5) 렌더링 디바운스 개선 (setTimeout 100ms)
-//  6) 로그 최신 메시지 아래로 추가
-//  7) 미사용 코드 제거
-//  8) 주석 추가
-// ================================================================
-
-const $ = id => document.getElementById(id);
-const cv = $('cv'), ctx = cv.getContext('2d');
-let baseFont = null, uniqChars = [], currentCharIndex = 0;
-
-const sampleCache = new Map();
-const MAX_CACHE_SIZE = 300;
-const pathCache = new Map();       // 글자별 경로 캐싱
-const PATH_CACHE_MAX = 100;
-
-let bristlePool = null, lastBristleKey = '';
-const textCv = document.createElement('canvas');
-const textCtx = textCv.getContext('2d');
-let renderScheduled = false;
-let renderTimeout = null;
-
-// --- 유틸리티 ---
-function syncCanvases(w, h) {
-  if (textCv.width !== w || textCv.height !== h) { textCv.width = w; textCv.height = h; }
-  if (textCtx) textCtx.clearRect(0, 0, w, h);
-}
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-function mulberry32(a) {
-  return function() {
-    let t = a += 0x6D2B79F5;
-    t = Math.imul(t ^ t >>> 15, t | 1);
-    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
-    return ((t ^ t >>> 14) >>> 0) / 4294967296;
-  };
-}
-
-// --- 개선된 캐시 키: 옵션 변화를 반영 ---
-function getCacheKey(char, part, opts) {
-  const relevant = [
-    char, part || 'full',
-    opts.bristleCount, opts.ribbonWidth, opts.infillDepth,
-    opts.choWarp, opts.jungWarp, opts.jongWarp,
-    opts.choScale, opts.jungScale, opts.jongScale,
-    opts.choRound, opts.jungRound, opts.jongRound,
-    opts.choLen, opts.jungLen, opts.jongLen,
-    opts.choThick, opts.jungThick, opts.jongThick,
-    opts.choDistX, opts.choDistY, opts.jungDistX, opts.jungDistY, opts.jongDistX, opts.jongDistY,
-    opts.choRand, opts.jungRand, opts.jongRand,
-    opts.jamoMode ? 1 : 0, opts.jamoClampOff ? 1 : 0
-  ];
-  return relevant.join('|');
-}
-
-function setCache(map, key, value, maxSize) {
-  if (map.size >= maxSize) {
-    const firstKey = map.keys().next().value;
-    map.delete(firstKey);
-  }
-  map.set(key, value);
-}
-
-function log(m) {
-  const el = $('log');
-  if (!el) return;
-  const p = document.createElement('p');
-  p.textContent = '[' + new Date().toLocaleTimeString().slice(0,8) + '] ' + m;
-  el.appendChild(p);
-  // 스크롤 유지 (최신 메시지가 보이도록)
-  if (el.scrollTop > el.scrollHeight - el.clientHeight - 20) {
-    el.scrollTop = el.scrollHeight;
-  }
-}
-
-function safeAddListener(id, event, fn) { const el = $(id); if (el) el.addEventListener(event, fn); else console.warn(`Element #${id} not found`); }
-
-// --- 한글 분석 ---
-const CHO = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
-const JUNG = ['ㅏ','ㅐ','ㅑ','ㅒ','ㅓ','ㅔ','ㅕ','ㅖ','ㅗ','ㅘ','ㅙ','ㅚ','ㅛ','ㅜ','ㅝ','ㅞ','ㅟ','ㅠ','ㅡ','ㅢ','ㅣ'];
-const JONG = ['','ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','ㅀ','ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
-
-function decomposeHangul(syl) {
-  const code = syl.charCodeAt(0);
-  if (code < 0xAC00 || code > 0xD7A3) return null;
-  const S = code - 0xAC00;
-  return { cho: CHO[S/(28*21)|0], jung: JUNG[(S/28|0)%21], jong: JONG[S%28], jungIdx:(S/28|0)%21, jongIdx:S%28 };
-}
-
-function isSeRoVowel(idx){ return [0,1,2,3,4,5,6,7,20].includes(idx); }
-function isGaRoVowel(idx){ return [8,12,13,17,18].includes(idx); }
-function getSyllableType(de) {
-  const seRo = isSeRoVowel(de.jungIdx), gaRo = isGaRoVowel(de.jungIdx), hasJong = de.jongIdx !== 0;
-  if (seRo && !hasJong) return 1;
-  if (gaRo && !hasJong) return 2;
-  if (!seRo && !gaRo && !hasJong) return 3;
-  if (seRo && hasJong) return 4;
-  if (gaRo && hasJong) return 5;
-  return 6;
-}
-
-// --- 스타일 (동일) ---
-const styleList = [
-  {id:'soft',name:'둥글둥글'}, {id:'sharp',name:'뾰족'}, {id:'contrast',name:'강약'},
-  {id:'ink',name:'농담'}, {id:'deform',name:'자유변형'}, {id:'curve',name:'곡선구도'},
-  {id:'seal',name:'전서체'}, {id:'dry',name:'갈필'}, {id:'bold',name:'농묵'}
-];
-const styleParams = {
-  soft:{spacing:0.85,shear:-0.04,bristles:24,whiskerLen:4,infillDepth:0.5,choWarp:0.25,jungWarp:0.10,jongWarp:0.20},
-  sharp:{spacing:0.94,shear:-0.12,bristles:8,whiskerLen:20,infillDepth:0.3,choWarp:0.10,jungWarp:0.30,jongWarp:0.15},
-  contrast:{spacing:0.88,shear:-0.08,bristles:16,whiskerLen:12,infillDepth:0.7,choWarp:0.40,jungWarp:0.05,jongWarp:0.45},
-  ink:{spacing:0.88,shear:-0.08,bristles:18,whiskerLen:10,infillDepth:0.95,choWarp:0.20,jungWarp:0.15,jongWarp:0.25},
-  deform:{spacing:0.90,shear:-0.08,bristles:14,whiskerLen:8,infillDepth:0.6,choWarp:0.50,jungWarp:0.40,jongWarp:0.30},
-  curve:{spacing:0.80,shear:-0.02,bristles:16,whiskerLen:10,infillDepth:0.6,choWarp:0.10,jungWarp:0.50,jongWarp:0.10},
-  seal:{spacing:0.72,shear:0.00,bristles:32,whiskerLen:0,infillDepth:0.9,choWarp:0.80,jungWarp:0.80,jongWarp:0.80},
-  dry:{spacing:0.92,shear:-0.05,bristles:8,whiskerLen:24,infillDepth:0.25,choWarp:0.15,jungWarp:0.10,jongWarp:0.20},
-  bold:{spacing:0.82,shear:-0.10,bristles:26,whiskerLen:8,infillDepth:0.9,choWarp:0.30,jungWarp:0.20,jongWarp:0.35}
-};
-let selectedGlobalStyles = [];
-
-function calculateSettings(selectedIds) {
-  if (selectedIds.length === 0) return {spacing:0.88,shear:-0.08,bristles:16,whiskerLen:12,infillDepth:0.70,choWarp:0.20,jungWarp:0.15,jongWarp:0.25};
-  const keys = ['spacing','shear','bristles','whiskerLen','infillDepth','choWarp','jungWarp','jongWarp'];
-  let sum = {}; keys.forEach(k => sum[k] = 0);
-  selectedIds.forEach(id => { const sp = styleParams[id]; keys.forEach(k => sum[k] += sp[k]); });
-  let result = {}; keys.forEach(k => result[k] = sum[k] / selectedIds.length);
-  return result;
-}
-
-function createStyleGrid(containerId, callback) {
-  const container = $(containerId);
-  if (!container) return;
-  container.innerHTML = '';
-  styleList.forEach(style => {
-    const div = document.createElement('div');
-    div.className = 'style-check';
-    div.textContent = style.name;
-    div.dataset.styleId = style.id;
-    div.addEventListener('click', () => {
-      div.classList.toggle('active');
-      const selected = Array.from(container.querySelectorAll('.active')).map(el => el.dataset.styleId);
-      callback(selected);
-      scheduleRender();
-    });
-    container.appendChild(div);
-  });
-}
-
-function getOpts() {
-  const g = (id, def) => { const el = $(id); if (!el) return def; if (el.type === 'checkbox') return el.checked; const v = parseFloat(el.value); return isNaN(v) ? def : v; };
-  const gi = (id, def) => { const el = $(id); if (!el) return def; const v = parseInt(el.value); return isNaN(v) ? def : v; };
-  const globalSet = calculateSettings(selectedGlobalStyles);
-  return {
-    choDistX: g('choDistX', 0), choDistY: g('choDistY', 0), choScale: g('choScale', 1), choRand: g('choRand', 0),
-    jungDistX: g('jungDistX', 0), jungDistY: g('jungDistY', 0), jungScale: g('jungScale', 1), jungRand: g('jungRand', 0),
-    jongDistX: g('jongDistX', 0), jongDistY: g('jongDistY', 0), jongScale: g('jongScale', 1), jongRand: g('jongRand', 0),
-    choRound: g('choRound', 1.0), choLen: g('choLen', 1.0), choThick: g('choThick', 1.0),
-    jungRound: g('jungRound', 1.0), jungLen: g('jungLen', 1.0), jungThick: g('jungThick', 1.0),
-    jongRound: g('jongRound', 1.0), jongLen: g('jongLen', 1.0), jongThick: g('jongThick', 1.0),
-    choWarp: g('cho-warp', globalSet.choWarp), jungWarp: g('jung-warp', globalSet.jungWarp), jongWarp: g('jong-warp', globalSet.jongWarp),
-    jamoMode: $('jamoMode')?.checked ?? true,
-    jamoClampOff: $('jamoClampOff')?.checked ?? false,
-    clampOn: true, // 항상 clamp 로직을 사용하되 jamoClampOff가 true면 해제
-    bristleCount: gi('bristleCount', Math.round(globalSet.bristles)), ribbonWidth: g('ribbonWidth', 0.85),
-    infillDepth: g('infillDepth', globalSet.infillDepth), whiskerLen: g('whiskerLen', globalSet.whiskerLen),
-    whiskerOn: $('whiskerToggle')?.checked ?? true,
-    ribbonOn: true, infillOn: true, meshOn: true
-  };
-}
-
-// --- 폰트 파싱 (동일) ---
-function getContourArea(cmds) { let area = 0; const pts = []; cmds.forEach(c => { if (c.x !== undefined) pts.push({x:c.x, y:c.y}); else if (c.x1 !== undefined) { pts.push({x:c.x1,y:c.y1}); pts.push({x:c.x2,y:c.y2}); pts.push({x:c.x,y:c.y}); } }); for (let i = 0; i < pts.length; i++) { const p1 = pts[i], p2 = pts[(i + 1) % pts.length]; if (p1.x !== undefined && p2.x !== undefined) area += (p1.x * p2.y - p2.x * p1.y); } return area / 2; }
-
-function splitSyllablePathIntoJamoGroups(syllableChar, baseSize, type) {
-  try {
-    if (!baseFont) return null;
-    const path = baseFont.getPath(syllableChar, 0, 0, baseSize);
-    const contours = []; let curContour = []; let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    path.commands.forEach(c => {
-      if (c.type === 'M') { if (curContour.length > 0) { const area = getContourArea(curContour); contours.push({ cmds: curContour.slice(), bbox:{minX, maxX, minY, maxY, cx:(minX+maxX)/2, cy:(minY+maxY)/2}, area, isHole: area<0 }); curContour = []; minX = Infinity; maxX = -Infinity; minY = Infinity; maxY = -Infinity; } curContour.push(c); if (c.x !== undefined) { minX=Math.min(minX,c.x); maxX=Math.max(maxX,c.x); minY=Math.min(minY,c.y); maxY=Math.max(maxY,c.y); } }
-      else { curContour.push(c); if (c.x !== undefined) { minX=Math.min(minX,c.x); maxX=Math.max(maxX,c.x); minY=Math.min(minY,c.y); maxY=Math.max(maxY,c.y); } if (c.x1 !== undefined) { minX=Math.min(minX,c.x1,c.x2); maxX=Math.max(maxX,c.x1,c.x2); minY=Math.min(minY,c.y1,c.y2); maxY=Math.max(maxY,c.y1,c.y2); } }
-    });
-    if (curContour.length > 0) { const area = getContourArea(curContour); contours.push({ cmds: curContour, bbox:{minX,maxX,minY,maxY,cx:(minX+maxX)/2,cy:(minY+maxY)/2}, area, isHole: area<0 }); }
-    if (contours.length === 0) return null;
-    let gMinX=Infinity, gMaxX=-Infinity, gMinY=Infinity, gMaxY=-Infinity;
-    contours.forEach(ct => { gMinX=Math.min(gMinX,ct.bbox.minX); gMaxX=Math.max(gMaxX,ct.bbox.maxX); gMinY=Math.min(gMinY,ct.bbox.minY); gMaxY=Math.max(gMaxY,ct.bbox.maxY); });
-    const gH = gMaxY - gMinY, gW = gMaxX - gMinX; const groups = { cho: [], jung: [], jong: [] };
-    contours.forEach(ct => {
-      const relY = (ct.bbox.cy - gMinY) / (gH || 1), relX = (ct.bbox.cx - gMinX) / (gW || 1); let target = 'jung';
-      if (type===1) { target = relX < 0.5 ? 'cho' : 'jung'; }
-      else if (type===2) { target = relY < 0.5 ? 'cho' : 'jung'; }
-      else if (type===3) { target = (relX<0.45 && relY<0.55) ? 'cho' : 'jung'; }
-      else if (type===4) { if (relY>0.68) target='jong'; else target = relX<0.5 ? 'cho' : 'jung'; }
-      else if (type===5) { if (relY<0.38) target='cho'; else if (relY<0.65) target='jung'; else target='jong'; }
-      else { if (relY>0.72) target='jong'; else target = (relX<0.45 && relY<0.45) ? 'cho' : 'jung'; }
-      groups[target].push(ct);
-    });
-    function groupsToPath(group) { const p = new opentype.Path(); group.forEach(ct => { ct.cmds.forEach(c => { if (c.type==='M') p.moveTo(c.x,c.y); else if (c.type==='L') p.lineTo(c.x,c.y); else if (c.type==='C') p.curveTo(c.x1,c.y1,c.x2,c.y2,c.x,c.y); else if (c.type==='Q') p.quadTo(c.x1,c.y1,c.x,c.y); else if (c.type==='Z') p.close(); }); }); p._contours = group; let bMinX=Infinity, bMaxX=-Infinity, bMinY=Infinity, bMaxY=-Infinity; group.forEach(ct => { bMinX=Math.min(bMinX,ct.bbox.minX); bMaxX=Math.max(bMaxX,ct.bbox.maxX); bMinY=Math.min(bMinY,ct.bbox.minY); bMaxY=Math.max(bMaxY,ct.bbox.maxY); }); p._bbox = { cx:(bMinX+bMaxX)/2, cy:(bMinY+bMaxY)/2, w:bMaxX-bMinX, h:bMaxY-bMinY, minX:bMinX, maxX:bMaxX, minY:bMinY, maxY:bMaxY }; return p; }
-    const outerContours = contours.filter(c => !c.isHole);
-    return { cho: groups.cho.length ? groupsToPath(groups.cho) : null, jung: groups.jung.length ? groupsToPath(groups.jung) : null, jong: groups.jong.length ? groupsToPath(groups.jong) : null, overall: contours, isConnected: outerContours.length <= 1 };
-  } catch(e) { return null; }
-}
-
-function getBristlePoolRibbon(count, ribbonWidth, seed) {
-  if (count === 0) return [];
-  const key = `${count}_${ribbonWidth.toFixed(2)}_${seed}`;
-  if (key === lastBristleKey && bristlePool) return bristlePool;
-  const pool = []; const rand = mulberry32(seed);
-  for (let i = 0; i < count; i++) { const t = (count === 1 ? 0 : (i / (count - 1)) * 2 - 1); pool.push({ t, offset: t * ribbonWidth, alpha: 0.24 + rand() * 0.28, spring: 0.22 + rand() * 0.14, x: 0, y: 0 }); }
-  bristlePool = pool; lastBristleKey = key; return pool;
-}
-
-function getSampledPoints(path, cacheKey) {
-  if (sampleCache.has(cacheKey)) return sampleCache.get(cacheKey);
-  const pts = []; let cur = {x:0, y:0}; let contourIdx = 0;
-  const contours = path._contours || []; let curContourIsHole = contours[0] ? contours[0].isHole : false;
-  path.commands.forEach(c => {
-    if (c.type === 'M') { cur = {x:c.x, y:c.y}; if (contours[contourIdx]) curContourIsHole = contours[contourIdx].isHole || false; pts.push({ x:cur.x, y:cur.y, isHole:curContourIsHole, isMove:true }); }
-    else if (c.type === 'L') { for (let i=1; i<=5; i++) { const t = i/5; pts.push({ x:cur.x+(c.x-cur.x)*t, y:cur.y+(c.y-cur.y)*t, isHole:curContourIsHole, isMove:false }); } cur = {x:c.x, y:c.y}; }
-    else if (c.type === 'Q') { for (let i=1; i<=8; i++) { const t = i/8; const mt = 1-t; pts.push({ x:mt*mt*cur.x + 2*mt*t*c.x1 + t*t*c.x, y:mt*mt*cur.y + 2*mt*t*c.y1 + t*t*c.y, isHole:curContourIsHole, isMove:false }); } cur = {x:c.x, y:c.y}; }
-    else if (c.type === 'C') { for (let i=1; i<=10; i++) { const t = i/10; const mt = 1-t; pts.push({ x:mt*mt*mt*cur.x + 3*mt*mt*t*c.x1 + 3*mt*t*t*c.x2 + t*t*t*c.x, y:mt*mt*mt*cur.y + 3*mt*mt*t*c.y1 + 3*mt*t*t*c.y2 + t*t*t*c.y, isHole:curContourIsHole, isMove:false }); } cur = {x:c.x, y:c.y}; }
-    else if (c.type === 'Z') { contourIdx++; if (contours[contourIdx]) curContourIsHole = contours[contourIdx].isHole || false; }
-  });
-  setCache(sampleCache, cacheKey, pts, MAX_CACHE_SIZE);
-  return pts;
-}
-
-function drawWithRibbonBristle(path, opts, cacheKey, thickScale, seed, targetCtx) {
-  if (!path || !targetCtx) return;
-  targetCtx.save(); targetCtx.globalAlpha = 0.92; targetCtx.fillStyle = '#121212';
-  const basePath = new Path2D();
-  path.commands.forEach(c => {
-    if (c.type === 'M') basePath.moveTo(c.x, c.y);
-    else if (c.type === 'L') basePath.lineTo(c.x, c.y);
-    else if (c.type === 'C') basePath.bezierCurveTo(c.x1, c.y1, c.x2, c.y2, c.x, c.y);
-    else if (c.type === 'Q') basePath.quadraticCurveTo(c.x1, c.y1, c.x, c.y);
-    else if (c.type === 'Z') basePath.closePath();
-  });
-  targetCtx.fill(basePath, 'evenodd');
-  targetCtx.restore();
-  if (opts.bristleCount === 0) return;
-  const pts = getSampledPoints(path, cacheKey); if (pts.length < 3) return;
-  const limitedThick = Math.min(5.0, thickScale);
-  const bristles = getBristlePoolRibbon(opts.bristleCount, opts.ribbonWidth, seed);
-  bristles.forEach(b => { b.x = pts[0].x; b.y = pts[0].y; });
-  let lastPt = pts[0];
-  for (let i = 1; i < pts.length; i++) {
-    const curPt = pts[i]; if (curPt.isMove) { lastPt = curPt; bristles.forEach(b => { b.x = curPt.x; b.y = curPt.y; }); continue; }
-    const dx = curPt.x - lastPt.x, dy = curPt.y - lastPt.y, len = Math.hypot(dx, dy) || 1;
-    const nx0 = opts.ribbonOn ? -dy / len : 0, ny0 = opts.ribbonOn ? dx / len : 0, velocity = len / 16;
-    let pressure = Math.max(0.18, Math.min(1.25, 1.25 - velocity * 0.30));
-    const midPrev = { x:(pts[Math.max(0,i-1)].x + curPt.x)/2, y:(pts[Math.max(0,i-1)].y + curPt.y)/2 };
-    const nextPt = (i + 1 < pts.length && !pts[i+1].isMove) ? pts[i+1] : curPt;
-    const midNext = { x:(curPt.x + nextPt.x)/2, y:(curPt.y + nextPt.y)/2 };
-    const radius = 14 * 0.55 * pressure * limitedThick;
-    for (let bi = 0; bi < bristles.length; bi++) {
-      const b = bristles[bi]; const baseInwardX = -dy / len, baseInwardY = dx / len;
-      const finalInwardX = curPt.isHole ? -baseInwardX : baseInwardX, finalInwardY = curPt.isHole ? -baseInwardY : baseInwardY;
-      let offsetX, offsetY;
-      if (opts.infillOn) { const tInfill = mulberry32(seed+bi+i)() * 0.8 + 0.2; const depth = tInfill * opts.infillDepth; offsetX = finalInwardX * depth * radius * 1.2; offsetY = finalInwardY * depth * radius * 1.2; if (opts.ribbonOn) { offsetX += nx0 * b.t * radius * 0.6; offsetY += ny0 * b.t * radius * 0.6; } }
-      else { offsetX = opts.ribbonOn ? nx0 * b.t * radius * 1.6 : 0; offsetY = opts.ribbonOn ? ny0 * b.t * radius * 1.6 : 0; }
-      const targetX = curPt.x + offsetX, targetY = curPt.y + offsetY;
-      b.x += (targetX - b.x) * b.spring; b.y += (targetY - b.y) * b.spring;
-      targetCtx.beginPath(); targetCtx.strokeStyle = `rgba(18,18,18,${(b.alpha*pressure*0.48).toFixed(3)})`;
-      targetCtx.lineWidth = Math.max(0.6, pressure * 1.5 * limitedThick); targetCtx.lineCap = 'round'; targetCtx.lineJoin = 'round';
-      targetCtx.moveTo(midPrev.x + offsetX, midPrev.y + offsetY);
-      targetCtx.quadraticCurveTo(curPt.x + offsetX, curPt.y + offsetY, midNext.x + offsetX, midNext.y + offsetY);
-      targetCtx.stroke();
-    }
-    lastPt = curPt;
-  }
-}
-
-function amplify(v) { return 1 + (v - 1) * 4; }
-
-function getBoxesCenterBasedWithClamp(type, baseSize, opts, seed) {
-  let baseBoxes = {};
-  if (type === 1) { baseBoxes.cho={x:-0.18*baseSize,y:0,w:0.52*baseSize,h:0.88*baseSize}; baseBoxes.jung={x:0.18*baseSize,y:0,w:0.40*baseSize,h:0.88*baseSize}; }
-  else if (type === 2) { baseBoxes.cho={x:0,y:-0.18*baseSize,w:0.85*baseSize,h:0.48*baseSize}; baseBoxes.jung={x:0,y:0.18*baseSize,w:0.85*baseSize,h:0.42*baseSize}; }
-  else if (type === 3) { baseBoxes.cho={x:-0.12*baseSize,y:-0.14*baseSize,w:0.44*baseSize,h:0.50*baseSize}; baseBoxes.jung={x:0.14*baseSize,y:0.10*baseSize,w:0.52*baseSize,h:0.60*baseSize}; }
-  else if (type === 4) { baseBoxes.cho={x:-0.16*baseSize,y:-0.16*baseSize,w:0.44*baseSize,h:0.52*baseSize}; baseBoxes.jung={x:0.16*baseSize,y:-0.16*baseSize,w:0.36*baseSize,h:0.52*baseSize}; baseBoxes.jong={x:0,y:0.24*baseSize,w:0.78*baseSize,h:0.30*baseSize}; }
-  else if (type === 5) { baseBoxes.cho={x:0,y:-0.22*baseSize,w:0.80*baseSize,h:0.34*baseSize}; baseBoxes.jung={x:0,y:0.02*baseSize,w:0.78*baseSize,h:0.22*baseSize}; baseBoxes.jong={x:0,y:0.26*baseSize,w:0.68*baseSize,h:0.26*baseSize}; }
-  else { baseBoxes.cho={x:-0.12*baseSize,y:-0.20*baseSize,w:0.40*baseSize,h:0.40*baseSize}; baseBoxes.jung={x:0.12*baseSize,y:-0.02*baseSize,w:0.50*baseSize,h:0.46*baseSize}; baseBoxes.jong={x:0,y:0.28*baseSize,w:0.72*baseSize,h:0.24*baseSize}; }
-
-  const halfDist = baseSize * (0.88) * 0.46; const vHalf = baseSize * 0.5; const hLimit = halfDist;
-  const shaped = {};
-  Object.entries(baseBoxes).forEach(([k, b]) => {
-    let prefix = 'cho'; if (k === 'jung') prefix = 'jung'; if (k === 'jong') prefix = 'jong';
-    const distX = opts[prefix + 'DistX'] || 0, distY = opts[prefix + 'DistY'] || 0;
-    const scale = opts[prefix + 'Scale'] || 1.0, rand = opts[prefix + 'Rand'] || 0;
-    const rnd = mulberry32(seed);
-    const rndOff = rand > 0 ? (rnd() - 0.5) * rand * 0.2 * baseSize : 0;
-    const randScale = rand > 0 ? 1 + (rnd() - 0.5) * (rand * 0.01) : 1;
-    const round = amplify(opts[`${k}Round`]||1.0), len = amplify(opts[`${k}Len`]||1.0), thick = amplify(opts[`${k}Thick`]||1.0);
-    let nx = b.x + distX + rndOff, ny = b.y + distY + rndOff;
-    let w2 = b.w * round * len * scale * randScale, h2 = b.h * round * thick * scale * randScale;
-    if (!opts.jamoClampOff) { w2 = Math.min(w2, b.w*10); h2 = Math.min(h2, b.h*10); }
-    // clampOn이 true이고 jamoClampOff가 false일 때만 제한 적용
-    if (opts.clampOn && !opts.jamoClampOff) {
-      if (Math.abs(nx)+w2/2 > hLimit) nx = Math.sign(nx)*Math.max(0, hLimit-w2/2-4);
-      if (Math.abs(ny)+h2/2 > vHalf) ny = Math.sign(ny)*Math.max(0, vHalf-h2/2-4);
-    }
-    shaped[k] = { x:nx, y:ny, w:w2, h:h2, thick:Math.min(5.0, thick), round:opts[`${k}Round`], len:opts[`${k}Len`] };
-  });
-  return shaped;
-}
-
-function applyJamoDeform(path, opts, k) {
-  if(!path) return path; const round=opts[`${k}Round`]||1.0, len=opts[`${k}Len`]||1.0, thick=opts[`${k}Thick`]||1.0; const gb=path._bbox; if(!gb) return path; const cx=gb.cx, cy=gb.cy, avgR=(gb.w+gb.h)/4; const deformed=new opentype.Path(); path.commands.forEach(c=>{ const deformPt=(px,py)=>{ let dx=px-cx, dy=py-cy; if(len!==1){const l=amplify(len); dy*=l; dx/=Math.max(0.6,l*0.4+0.6);} if(round!==1){const ang=Math.atan2(dy,dx); const r=Math.hypot(dx,dy); const targetR=avgR*(r/(Math.max(gb.w,gb.h)/2))*1.2; const t=Math.min(1,Math.max(0,(round-1)/4)); const newR=r*(1-t)+targetR*t; dx=Math.cos(ang)*newR; dy=Math.sin(ang)*newR;} if(thick!==1){const t=amplify(thick); const ang=Math.atan2(dy,dx); const r=Math.hypot(dx,dy); const exp=(t-1)*0.15*r; dx+=Math.cos(ang)*exp; dy+=Math.sin(ang)*exp;} return {x:cx+dx, y:cy+dy}; }; if(c.type==='M'){const p=deformPt(c.x,c.y); deformed.moveTo(p.x,p.y);} else if(c.type==='L'){const p=deformPt(c.x,c.y); deformed.lineTo(p.x,p.y);} else if(c.type==='C'){const p1=deformPt(c.x1,c.y1); const p2=deformPt(c.x2,c.y2); const p=deformPt(c.x,c.y); deformed.curveTo(p1.x,p1.y,p2.x,p2.y,p.x,p.y);} else if(c.type==='Q'){const p1=deformPt(c.x1,c.y1); const p=deformPt(c.x,c.y); deformed.quadTo(p1.x,p1.y,p.x,p.y);} else if(c.type==='Z') deformed.close(); }); deformed._contours=path._contours; deformed._bbox=path._bbox; return deformed; }
-
-function warpContourBilinear(path, bbox, localSettings) {
-  if(!path._bbox) return path; const w=bbox.x2-bbox.x1||path._bbox.w||1; const h=bbox.y2-bbox.y1||path._bbox.h||1; const warped=new opentype.Path(); path.commands.forEach(c=>{ const warpPt=(px,py)=>{ const u=Math.max(0,Math.min(1,(px-bbox.x1)/w)); const v=Math.max(0,Math.min(1,(py-bbox.y1)/h)); const wCho=(1-u)*(1-v), wJung=u*(1-v*0.5), wJong=v; const dxCho=-localSettings.choWarp*w*0.25*wCho, dyCho=-localSettings.choWarp*h*0.25*wCho; const dxJung=localSettings.jungWarp*w*0.35*wJung, dyJung=-localSettings.jungWarp*h*0.10*wJung; const dxJong=(u-0.5)*localSettings.jongWarp*w*0.20*wJong, dyJong=localSettings.jongWarp*h*0.30*wJong; return {x:px+dxCho+dxJung+dxJong, y:py+dyCho+dyJung+dyJong}; }; if(c.type==='M'){const p=warpPt(c.x,c.y); warped.moveTo(p.x,p.y);} else if(c.type==='L'){const p=warpPt(c.x,c.y); warped.lineTo(p.x,p.y);} else if(c.type==='C'){const p1=warpPt(c.x1,c.y1); const p2=warpPt(c.x2,c.y2); const p=warpPt(c.x,c.y); warped.curveTo(p1.x,p1.y,p2.x,p2.y,p.x,p.y);} else if(c.type==='Q'){const p1=warpPt(c.x1,c.y1); const p=warpPt(c.x,c.y); warped.quadTo(p1.x,p1.y,p.x,p.y);} else if(c.type==='Z') warped.close(); }); warped._contours=path._contours; warped._bbox=path._bbox; warped._baseSize=path._baseSize; return warped;
-}
-
-// --- 개선된 삐침: 고유 캐시 키 사용 ---
-function generateWhiskers(path, opts, seed, char, part) {
-  if(!opts.whiskerOn || opts.whiskerLen===0) return [];
-  // 고유 키 생성 (글자+파트+옵션의 주요 값)
-  const key = `whisker_${char}_${part||'full'}_${opts.whiskerLen}_${opts.choWarp}_${opts.jungWarp}_${opts.jongWarp}`;
-  const pts = getSampledPoints(path, key);  // 이 키는 sampleCache에 저장됨
-  if (!pts || pts.length < 10) return [];
-  const rand = mulberry32(seed);
-  const whiskers = [];
-  for(let i=5;i<pts.length-5;i+=10){
-    if(pts[i].isMove||pts[i-5].isMove||pts[i+5].isMove) continue;
-    const p0=pts[i-5], p1=pts[i], p2=pts[i+5];
-    const v1x=p1.x-p0.x, v1y=p1.y-p0.y, v2x=p2.x-p1.x, v2y=p2.y-p1.y;
-    const ang=Math.abs(Math.atan2(v1x*v2y-v1y*v2x, v1x*v2x+v1y*v2y));
-    if(ang>0.8){
-      const len=opts.whiskerLen;
-      const dirX=(v1x/Math.hypot(v1x,v1y)-v2x/Math.hypot(v2x,v2y))*0.5;
-      const dirY=(v1y/Math.hypot(v1x,v1y)-v2y/Math.hypot(v2x,v2y))*0.5;
-      const dLen=Math.hypot(dirX,dirY)||1;
-      const ndx=dirX/dLen, ndy=dirY/dLen;
-      for(let w=0; w<3; w++){
-        const spread=(w-1)*0.3;
-        const ex=p1.x+(ndx*Math.cos(spread)-ndy*Math.sin(spread))*len;
-        const ey=p1.y+(ndx*Math.sin(spread)+ndy*Math.cos(spread))*len;
-        const mx=(p1.x+ex)/2+(rand()-0.5)*len*0.2;
-        const my=(p1.y+ey)/2+(rand()-0.5)*len*0.2;
-        whiskers.push({
-          d:`M ${p1.x.toFixed(1)} ${p1.y.toFixed(1)} Q ${mx.toFixed(1)} ${my.toFixed(1)} ${ex.toFixed(1)} ${ey.toFixed(1)}`,
-          stroke:`rgba(18,18,18,0.35)`,
-          width:(0.8+rand()*0.6).toFixed(2)
+        // 폰트 로드
+        document.getElementById('ttf').addEventListener('change', e => {
+            const file = e.target.files[0];
+            const reader = new FileReader();
+            reader.onload = ev => {
+                font = opentype.parse(ev.target.result);
+                document.getElementById('font-status').innerText = "로드 완료: " + file.name;
+                if (uniqChars.length) render();
+            };
+            reader.readAsArrayBuffer(file);
         });
-      }
-    }
-  }
-  return whiskers;
-}
 
-// --- 메인 렌더링 (캐시 및 플래그 개선) ---
-function renderCharacter(char, isSvg = false, destinationCtx = null) {
-  if (!baseFont || !char) return;
-  const w = cv.width, h = cv.height;
-  syncCanvases(w, h);
-  
-  const targetCtx = destinationCtx || ctx;
-  // 배경 처리
-  if (!destinationCtx) {
-    const g = ctx.createRadialGradient(w/2, h/2, 100, w/2, h/2, Math.max(w, h));
-    g.addColorStop(0, '#f4ecd8'); g.addColorStop(1, '#e8dcc3'); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
-  } else {
-    destinationCtx.fillStyle = '#f4ecd8'; destinationCtx.fillRect(0, 0, w, h);
-  }
+        // SRT 분석 및 추출 (기능 1)
+        function extractChars() {
+            const text = document.getElementById('srt-content').value;
+            if (!text) return alert('SRT 내용을 입력하거나 파일을 불러오세요.');
+            
+            // 한글 음절만 추출
+            const matches = text.match(/[가-힣]/g);
+            if (!matches) return alert('추출된 한글이 없습니다.');
+            
+            uniqChars = [...new Set(matches)];
+            charIdx = 0;
+            document.getElementById('char-count').innerText = `${uniqChars.length}자 추출됨`;
+            render();
+        }
 
-  const opts = getOpts();
-  // isSvg 플래그를 opts에 전달 (삐침 그리기 여부)
-  const whiskerOn = opts.whiskerOn && isSvg;
+        // 초/중/종성 분해 (기능 2)
+        function decompose(syl) {
+            const code = syl.charCodeAt(0);
+            if (code < 0xAC00 || code > 0xD7A3) return null;
+            const S = code - 0xAC00;
+            return { 
+                cho: CHO[S/(28*21)|0], 
+                jung: JUNG[(S/28|0)%21], 
+                jong: JONG[S%28],
+                type: getType((S/28|0)%21, S%28)
+            };
+        }
 
-  // 경로 캐싱: 글자별로 path 재사용
-  let path;
-  if (pathCache.has(char)) {
-    path = pathCache.get(char);
-  } else {
-    path = baseFont.getPath(char, 0, 0, 500);
-    setCache(pathCache, char, path, PATH_CACHE_MAX);
-  }
-  const bbox = path.getBoundingBox();
-  const charW = bbox.x2 - bbox.x1, charH = bbox.y2 - bbox.y1;
-  const scale = Math.min(w, h) * 0.8 / Math.max(charW, charH);
-  const centerX = w / 2, centerY = h / 2;
+        function getType(vowelIdx, jongIdx) {
+            const seRo = [0,1,2,3,4,5,6,7,20].includes(vowelIdx);
+            const gaRo = [8,12,13,17,18].includes(vowelIdx);
+            const hasJong = jongIdx !== 0;
 
-  textCtx.save();
-  textCtx.translate(centerX, centerY);
-  textCtx.scale(scale, scale);
-  textCtx.translate(-(bbox.x1 + bbox.x2) / 2, -(bbox.y1 + bbox.y2) / 2);
+            if (seRo && !hasJong) return 1;
+            if (gaRo && !hasJong) return 2;
+            if (!seRo && !gaRo && !hasJong) return 3;
+            if (seRo && hasJong) return 4;
+            if (gaRo && hasJong) return 5;
+            return 6;
+        }
 
-  const de = decomposeHangul(char);
-  const type = de ? getSyllableType(de) : 1;
-  const boxes = getBoxesCenterBasedWithClamp(type, 500, opts, char.charCodeAt(0));
-  const split = de ? splitSyllablePathIntoJamoGroups(char, 500, type) : null;
+        // 자모 위치 배치 (기능 2 - 표준 배열)
+        function getLayout(type) {
+            if (type === 1) return { cho: [0,0,500,1000], jung: [500,0,500,1000] };
+            if (type === 2) return { cho: [0,0,1000,500], jung: [0,500,1000,500] };
+            if (type === 3) return { cho: [0,0,500,500], jung: [500,0,500,500] };
+            if (type === 4) return { cho: [0,0,500,500], jung: [500,0,500,500], jong: [0,500,1000,500] };
+            if (type === 5) return { cho: [0,0,1000,400], jung: [0,400,1000,200], jong: [0,600,1000,400] };
+            return { cho: [0,0,500,400], jung: [500,0,500,400], jong: [0,400,1000,600] };
+        }
 
-  const drawOne = (p, k) => {
-    let transformedP = p;
-    if (k) transformedP = applyJamoDeform(transformedP, opts, k);
-    const bbox2 = {x1:transformedP._bbox.minX||0, y1:transformedP._bbox.minY||0, x2:transformedP._bbox.maxX||500, y2:transformedP._bbox.maxY||500};
-    const localSet = { choWarp:opts.choWarp, jungWarp:opts.jungWarp, jongWarp:opts.jongWarp };
-    transformedP = warpContourBilinear(transformedP, bbox2, localSet);
-    transformedP._baseSize = 500; transformedP._centerX = 0; transformedP._centerY = 0;
+        function getOpts(part) {
+            return {
+                dx: parseInt(document.getElementById(part + '-x').value),
+                dy: parseInt(document.getElementById(part + '-y').value),
+                scale: parseFloat(document.getElementById(part + '-s').value)
+            };
+        }
 
-    const cacheKey = getCacheKey(char, k, opts);
-    drawWithRibbonBristle(transformedP, opts, cacheKey, boxes[k]?boxes[k].thick:1.5, char.charCodeAt(0), textCtx);
-    
-    // 삐침 그리기 (whiskerOn이 true일 때)
-    if (whiskerOn) {
-      const whiskers = generateWhiskers(transformedP, opts, char.charCodeAt(0) + (k ? k.charCodeAt(0) : 0), char, k);
-      whiskers.forEach(wh => {
-        textCtx.beginPath(); textCtx.strokeStyle = wh.stroke; textCtx.lineWidth = parseFloat(wh.width); textCtx.lineCap = 'round';
-        const m = wh.d.match(/M\s*([-\d\.]+)\s+([-\d\.]+)\s+Q\s*([-\d\.]+)\s+([-\d\.]+)\s+([-\d\.]+)\s+([-\d\.]+)/);
-        if (m) { textCtx.moveTo(parseFloat(m[1]), parseFloat(m[2])); textCtx.quadraticCurveTo(parseFloat(m[3]), parseFloat(m[4]), parseFloat(m[5]), parseFloat(m[6])); textCtx.stroke(); }
-      });
-    }
-  };
+        // 도형 그리기 (기능 3 - 변형 적용)
+        function drawPart(partChar, box, opts, targetCtx) {
+            if (!font || !partChar) return;
+            
+            // 경로 캐싱
+            let path;
+            if (pathCache.has(partChar)) path = pathCache.get(partChar);
+            else {
+                path = font.getPath(partChar, 0, 0, 1000);
+                pathCache.set(partChar, path);
+            }
 
-  if (split && !split.isConnected) {
-    ['cho','jung','jong'].forEach(k => { if (split[k]) drawOne(split[k], k); });
-  } else {
-    // fallback: 전체 경로를 사용하되 _contours를 split.overall (배열)로 설정
-    const fullPath = baseFont.getPath(char, 0, 0, 500);
-    fullPath._contours = (split && split.overall) ? split.overall : [];
-    fullPath._bbox = { cx:(bbox.x1+bbox.x2)/2, cy:(bbox.y1+bbox.y2)/2, w:charW, h:charH, minX:bbox.x1, maxX:bbox.x2, minY:bbox.y1, maxY:bbox.y2 };
-    fullPath._baseSize = 500;
-    drawOne(fullPath, null);
-  }
+            let bbox = path.getBoundingBox();
+            let baseScale = Math.min(box[2] / (bbox.x2 - bbox.x1), box[3] / (bbox.y2 - bbox.y1)) * 0.85;
+            let finalScale = baseScale * (opts.scale || 1);
 
-  textCtx.restore();
-  targetCtx.drawImage(textCv, 0, 0);
-  
-  if (!destinationCtx) {
-    $('char-view').textContent = char;
-    $('char-index').textContent = `${currentCharIndex + 1} / ${uniqChars.length}`;
-  }
-}
+            let finalX = box[0] + box[2] / 2 + (opts.dx || 0);
+            let finalY = box[1] + box[3] / 2 + (opts.dy || 0);
 
-// --- 스케줄링 (디바운스 + setTimeout) ---
-function scheduleRender() {
-  if (!uniqChars.length || !baseFont) return;
-  if (renderTimeout) {
-    clearTimeout(renderTimeout);
-    renderTimeout = null;
-  }
-  renderTimeout = setTimeout(() => {
-    renderTimeout = null;
-    renderCharacter(uniqChars[currentCharIndex], $('whiskerToggle')?.checked ?? true);
-  }, 100);
-}
+            targetCtx.save();
+            targetCtx.translate(finalX, finalY);
+            targetCtx.scale(finalScale, finalScale);
+            targetCtx.translate(-(bbox.x1 + bbox.x2) / 2, -(bbox.y1 + bbox.y2) / 2);
 
-// --- SRT 분석 ---
-function analyze() {
-  const raw = $('srtTa')?.value?.trim();
-  if (!raw) { alert('SRT 내용을 입력하세요'); return; }
-  const allChars = raw.replace(/\s/g, '');
-  uniqChars = [...new Set(allChars.split(''))].filter(c => c.trim() !== '');
-  currentCharIndex = 0;
-  $('infoNum').textContent = `고유 ${uniqChars.length}자`;
-  if (uniqChars.length > 0) renderCharacter(uniqChars[0], $('whiskerToggle')?.checked ?? true);
-}
+            let p2d = new Path2D();
+            path.commands.forEach(c => {
+                if (c.type === 'M') p2d.moveTo(c.x, c.y);
+                else if (c.type === 'L') p2d.lineTo(c.x, c.y);
+                else if (c.type === 'C') p2d.bezierCurveTo(c.x1, c.y1, c.x2, c.y2, c.x, c.y);
+                else if (c.type === 'Q') p2d.quadraticCurveTo(c.x1, c.y1, c.x, c.y);
+                else if (c.type === 'Z') p2d.closePath();
+            });
 
-// --- 내보내기 (오프스크린, isSvg 전달) ---
-function downloadBlob(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = filename;
-  a.click(); URL.revokeObjectURL(url);
-}
+            // 스타일 적용 (기능 4에서 활용)
+            targetCtx.fillStyle = '#111';
+            targetCtx.fill(p2d, 'evenodd');
 
-function exportCurrent(type) {
-  if (!uniqChars.length) return alert('먼저 글자를 추출하세요.');
-  const offscreen = document.createElement('canvas');
-  offscreen.width = cv.width; offscreen.height = cv.height;
-  const offCtx = offscreen.getContext('2d');
-  const whiskerOn = $('whiskerToggle')?.checked ?? true;
-  renderCharacter(uniqChars[currentCharIndex], whiskerOn, offCtx);
-  const mime = type === 'png' ? 'image/png' : 'image/jpeg';
-  offscreen.toBlob(blob => downloadBlob(blob, `char_${uniqChars[currentCharIndex]}.${type}`), mime, 0.95);
-}
+            if (currentStyle === 'bold') {
+                targetCtx.lineWidth = 5; targetCtx.strokeStyle = '#111'; targetCtx.stroke(p2d);
+            } else if (currentStyle === 'soft') {
+                targetCtx.lineWidth = 2; targetCtx.strokeStyle = '#111'; targetCtx.stroke(p2d);
+            } else if (currentStyle === 'rough') {
+                // 거친 느낌을 위한 단순 노이즈 라인
+                for(let i=0; i<20; i++) {
+                    targetCtx.beginPath();
+                    targetCtx.moveTo(Math.random()*100, Math.random()*100);
+                    targetCtx.lineTo(Math.random()*100, Math.random()*100);
+                    targetCtx.strokeStyle = 'rgba(17,17,17,0.1)';
+                    targetCtx.lineWidth = 2;
+                    targetCtx.stroke();
+                }
+            }
+            targetCtx.restore();
+        }
 
-async function exportAll(type) {
-  if (!uniqChars.length) return alert('먼저 글자를 추출하세요.');
-  const progress = $('export-progress');
-  progress.textContent = `⏳ ${uniqChars.length}자 준비 중...`;
-  log(`⏳ 전체 ${uniqChars.length}자 ${type.toUpperCase()} 변환 시작`);
+        // 메인 렌더링 (기능 2, 3 통합)
+        function drawTo(targetCtx, char) {
+            targetCtx.fillStyle = '#f4ecd8';
+            targetCtx.fillRect(0, 0, cvs.width, cvs.height);
 
-  const zip = new JSZip();
-  const mime = type === 'png' ? 'image/png' : 'image/jpeg';
-  const offscreen = document.createElement('canvas');
-  offscreen.width = cv.width; offscreen.height = cv.height;
-  const offCtx = offscreen.getContext('2d');
-  const whiskerOn = $('whiskerToggle')?.checked ?? true;
+            if (!font || !char) return;
 
-  for (let i = 0; i < uniqChars.length; i++) {
-    progress.textContent = `진행중: ${i+1} / ${uniqChars.length}`;
-    renderCharacter(uniqChars[i], whiskerOn, offCtx);
-    const blob = await new Promise(res => offscreen.toBlob(res, mime, 0.95));
-    zip.file(`char_${String(i).padStart(3, '0')}_${uniqChars[i]}.${type}`, blob);
-    if (i % 5 === 0) await sleep(0);
-  }
+            const dec = decompose(char);
+            if (!dec) {
+                // 한글이 아닌 특수문자/영문 처리
+                let p = font.getPath(char, 0, 0, 1000);
+                let b = p.getBoundingBox();
+                let s = Math.min(cvs.width / (b.x2-b.x1), cvs.height / (b.y2-b.y1)) * 0.8;
+                targetCtx.save();
+                targetCtx.translate(cvs.width/2, cvs.height/2);
+                targetCtx.scale(s, s);
+                targetCtx.translate(-(b.x1+b.x2)/2, -(b.y1+b.y2)/2);
+                let p2d = new Path2D();
+                p.commands.forEach(c => { 
+                    if (c.type === 'M') p2d.moveTo(c.x,c.y);
+                    else if (c.type === 'L') p2d.lineTo(c.x,c.y);
+                    else if (c.type === 'C') p2d.bezierCurveTo(c.x1,c.y1,c.x2,c.y2,c.x,c.y);
+                    else if (c.type === 'Q') p2d.quadraticCurveTo(c.x1,c.y1,c.x,c.y);
+                    else if (c.type === 'Z') p2d.closePath();
+                });
+                targetCtx.fillStyle = '#111';
+                targetCtx.fill(p2d, 'evenodd');
+                targetCtx.restore();
+            } else {
+                // 자모 분리 배치
+                const layout = getLayout(dec.type);
+                if (layout.cho) drawPart(dec.cho, layout.cho, getOpts('cho'), targetCtx);
+                if (layout.jung) drawPart(dec.jung, layout.jung, getOpts('jung'), targetCtx);
+                if (layout.jong && dec.jong) drawPart(dec.jong, layout.jong, getOpts('jong'), targetCtx);
+            }
+        }
 
-  const zipBlob = await zip.generateAsync({ type: 'blob' });
-  downloadBlob(zipBlob, `calligraphy_chars_${type}.zip`);
-  progress.textContent = `✅ 완료! (${uniqChars.length}자)`;
-  log(`✅ 전체 글자 ${type.toUpperCase()} ZIP 다운로드 완료!`);
-}
+        function render() {
+            if (!uniqChars.length) return;
+            drawTo(ctx, uniqChars[charIdx]);
+            document.getElementById('char-view').innerText = uniqChars[charIdx];
+            document.getElementById('char-idx').innerText = `${charIdx + 1} / ${uniqChars.length}`;
+        }
 
-// --- 이벤트 바인딩 ---
-document.getElementById('ttf-input').addEventListener('change', e => {
-  const file = e.target.files[0]; if (!file) return;
-  const reader = new FileReader();
-  reader.onload = ev => {
-    try {
-      baseFont = opentype.parse(ev.target.result);
-      $('font-status').textContent = `✅ ${file.name} 적용`;
-      if (uniqChars.length) renderCharacter(uniqChars[currentCharIndex], $('whiskerToggle')?.checked ?? true);
-    } catch(err) { alert('폰트 파싱 실패'); $('font-status').textContent = '❌ 파싱 실패'; }
-  };
-  reader.readAsArrayBuffer(file);
-});
+        // UI 및 내비게이션
+        function changeOpt() {
+            ['cho', 'jung', 'jong'].forEach(part => {
+                document.getElementById(part + '-x-v').innerText = document.getElementById(part + '-x').value;
+                document.getElementById(part + '-y-v').innerText = document.getElementById(part + '-y').value;
+                document.getElementById(part + '-s-v').innerText = parseFloat(document.getElementById(part + '-s').value).toFixed(2);
+            });
+            render();
+        }
 
-safeAddListener('srt-input', 'change', e => {
-  const f = e.target.files[0]; if (!f) return;
-  const r = new FileReader();
-  r.onload = ev => { $('srtTa').value = ev.target.result; analyze(); };
-  r.readAsText(f);
-});
+        function setStyle(style, el) {
+            currentStyle = style;
+            document.querySelectorAll('.style-check').forEach(s => s.classList.remove('active'));
+            el.classList.add('active');
+            render();
+        }
 
-safeAddListener('btn-analyze', 'click', analyze);
-safeAddListener('prev-char', 'click', () => { if (uniqChars.length) { currentCharIndex = (currentCharIndex - 1 + uniqChars.length) % uniqChars.length; renderCharacter(uniqChars[currentCharIndex], $('whiskerToggle')?.checked ?? true); } });
-safeAddListener('next-char', 'click', () => { if (uniqChars.length) { currentCharIndex = (currentCharIndex + 1) % uniqChars.length; renderCharacter(uniqChars[currentCharIndex], $('whiskerToggle')?.checked ?? true); } });
+        function prevChar() {
+            if (!uniqChars.length) return;
+            charIdx = (charIdx - 1 + uniqChars.length) % uniqChars.length;
+            render();
+        }
 
-safeAddListener('export-png', 'click', () => exportCurrent('png'));
-safeAddListener('export-jpg', 'click', () => exportCurrent('jpg'));
-safeAddListener('export-all-png', 'click', () => exportAll('png'));
-safeAddListener('export-all-jpg', 'click', () => exportAll('jpg'));
+        function nextChar() {
+            if (!uniqChars.length) return;
+            charIdx = (charIdx + 1) % uniqChars.length;
+            render();
+        }
 
-// 슬라이더 + 체크박스 -> scheduleRender
-const allInputIds = [
-  'choDistX','choDistY','choScale','choRand','choRound','choLen','choThick',
-  'jungDistX','jungDistY','jungScale','jungRand','jungRound','jungLen','jungThick',
-  'jongDistX','jongDistY','jongScale','jongRand','jongRound','jongLen','jongThick',
-  'cho-warp','jung-warp','jong-warp','bristleCount','ribbonWidth','infillDepth','whiskerLen'
-];
-allInputIds.forEach(id => {
-  const el = $(id);
-  if (el) el.addEventListener('input', scheduleRender);
-});
+        // 내보내기 (기능 4)
+        function download(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = filename;
+            a.click(); URL.revokeObjectURL(url);
+        }
 
-['jamoMode', 'jamoClampOff', 'whiskerToggle'].forEach(id => {
-  const el = $(id);
-  if (el) el.addEventListener('change', scheduleRender);
-});
+        function exportOne(type) {
+            if (!uniqChars.length) return alert('먼저 글자를 추출하세요.');
+            const off = document.createElement('canvas');
+            off.width = cvs.width; off.height = cvs.height;
+            drawTo(off.getContext('2d'), uniqChars[charIdx]);
+            const mime = type === 'png' ? 'image/png' : 'image/jpeg';
+            off.toBlob(b => download(b, `char_${uniqChars[charIdx]}.${type}`), mime, 0.95);
+        }
 
-createStyleGrid('global-style-grid', (selected) => {
-  selectedGlobalStyles = selected;
-  scheduleRender();
-});
+        async function exportAll(type) {
+            if (!uniqChars.length) return alert('먼저 글자를 추출하세요.');
+            const zip = new JSZip();
+            const status = document.getElementById('export-status');
+            const mime = type === 'png' ? 'image/png' : 'image/jpeg';
+            const off = document.createElement('canvas');
+            off.width = cvs.width; off.height = cvs.height;
 
-// 프리셋
-safeAddListener('btnReset', 'click', () => {
-  const setVal = (id, v) => { const el = $(id); if (el) el.value = v; };
-  setVal('choDistX', 0); setVal('choDistY', 0); setVal('choScale', 1); setVal('choRand', 0);
-  setVal('jungDistX', 0); setVal('jungDistY', 0); setVal('jungScale', 1); setVal('jungRand', 0);
-  setVal('jongDistX', 0); setVal('jongDistY', 0); setVal('jongScale', 1); setVal('jongRand', 0);
-  setVal('choRound', 1); setVal('choLen', 1); setVal('choThick', 1);
-  setVal('jungRound', 1); setVal('jungLen', 1); setVal('jungThick', 1);
-  setVal('jongRound', 1); setVal('jongLen', 1); setVal('jongThick', 1);
-  setVal('cho-warp', 0); setVal('jung-warp', 0); setVal('jong-warp', 0);
-  setVal('bristleCount', 0); setVal('ribbonWidth', 0.85); setVal('infillDepth', 0.7); setVal('whiskerLen', 0);
-  $('jamoMode').checked = true; $('jamoClampOff').checked = false;
-  const grid = $('global-style-grid'); grid.querySelectorAll('.style-check').forEach(el => el.classList.remove('active'));
-  selectedGlobalStyles = [];
-  scheduleRender();
-  log('↺ 기본 순수 글꼴');
-});
+            for (let i = 0; i < uniqChars.length; i++) {
+                status.innerText = `처리 중: ${i+1} / ${uniqChars.length}`;
+                drawTo(off.getContext('2d'), uniqChars[i]);
+                const blob = await new Promise(res => off.toBlob(res, mime, 0.95));
+                zip.file(`char_${String(i).padStart(3, '0')}_${uniqChars[i]}.${type}`, blob);
+            }
 
-safeAddListener('btnMaster', 'click', () => {
-  const setVal = (id, v) => { const el = $(id); if (el) el.value = v; };
-  setVal('choRound', 1.5); setVal('choLen', 2.0); setVal('choThick', 1.4);
-  setVal('jungRound', 1.8); setVal('jungLen', 1.5); setVal('jungThick', 1.3);
-  setVal('jongRound', 1.4); setVal('jongLen', 1.6); setVal('jongThick', 1.4);
-  setVal('cho-warp', 0.6); setVal('jung-warp', 0.5); setVal('jong-warp', 0.7);
-  setVal('bristleCount', 10); setVal('ribbonWidth', 0.95); setVal('infillDepth', 0.85); setVal('whiskerLen', 20);
-  setVal('choRand', 30); setVal('jungRand', 30); setVal('jongRand', 30);
-  $('jamoClampOff').checked = true;
-  const grid = $('global-style-grid');
-  grid.querySelectorAll('.style-check').forEach(el => {
-    if (['dry', 'bold'].includes(el.dataset.styleId)) el.classList.add('active');
-    else el.classList.remove('active');
-  });
-  selectedGlobalStyles = ['dry', 'bold'];
-  scheduleRender();
-  log('★ 대가 붓글씨 (거친 붓) 적용');
-});
+            const zipBlob = await zip.generateAsync({type: 'blob'});
+            download(zipBlob, `calligraphy_${type}_all.zip`);
+            status.innerText = "완료!";
+        }
 
-// --- 초기화 ---
-(async () => {
-  try {
-    baseFont = await new Promise((res, rej) => opentype.load('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/nanumbrushscript/NanumBrushScript-Regular.ttf', (e, f) => e ? rej(e) : res(f)));
-    $('font-status').textContent = '✅ 나눔손글씨 엔진 로드 완료';
-    log('v1.045 최적화 버전 로드 완료');
-    analyze();
-  } catch(e) {
-    $('font-status').textContent = '❌ 폰트 로드 실패, 직접 업로드 해주세요.';
-    alert('나눔 손글씨 폰트를 불러오지 못했습니다. TTF 파일을 직접 업로드하거나 인터넷 연결을 확인하세요.');
-    log('❌ 폰트 로드 실패');
-  }
-})();
-</script>
+        // 프리셋 저장/로딩 (기능 5)
+        function savePreset() {
+            const state = {
+                style: currentStyle,
+                cho: getOpts('cho'), jung: getOpts('jung'), jong: getOpts('jong')
+            };
+            localStorage.setItem('calligraphy_v2_preset', JSON.stringify(state));
+            alert('프리셋이 저장되었습니다.');
+        }
+
+        function loadPreset() {
+            const raw = localStorage.getItem('calligraphy_v2_preset');
+            if (!raw) return alert('저장된 프리셋이 없습니다.');
+            const state = JSON.parse(raw);
+            
+            if (state.style) setStyle(state.style, document.querySelector(`.style-check[onclick*="${state.style}"]`));
+            
+            ['cho', 'jung', 'jong'].forEach(part => {
+                if (state[part]) {
+                    document.getElementById(part + '-x').value = state[part].dx || 0;
+                    document.getElementById(part + '-y').value = state[part].dy || 0;
+                    document.getElementById(part + '-s').value = state[part].scale || 1;
+                }
+            });
+            changeOpt();
+        }
+
+        // 초기화
+        (async () => {
+            try {
+                font = await new Promise((res, rej) => opentype.load('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/nanumbrushscript/NanumBrushScript-Regular.ttf', (e, f) => e ? rej(e) : res(f)));
+                document.getElementById('font-status').innerText = '✅ 나눔붓글씨 로드 완료 (직접 업로드 가능)';
+            } catch (e) {
+                document.getElementById('font-status').innerText = '❌ 폰트 로드 실패. 직접 업로드해주세요.';
+            }
+        })();
+    </script>
 </body>
 </html>
