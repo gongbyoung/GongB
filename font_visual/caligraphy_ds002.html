@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SRT 캘리그라피 스튜디오 v1.043 (한 글자 생성기)</title>
+<title>SRT 캘리그라피 스튜디오 v1.044 (최적화 버전)</title>
 <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <style>
@@ -36,10 +36,11 @@ input[type=range],select{width:100%}
 .d-flex{display:flex;gap:5px;align-items:center}
 .nav-btn{background:#26263e;border:1px solid var(--b);color:#fff;padding:5px 12px;cursor:pointer;border-radius:6px;font-weight:bold}
 .char-display{font-size:2rem;background:#11111e;border:1px solid var(--b);border-radius:8px;width:60px;height:60px;display:flex;align-items:center;justify-content:center;margin-bottom:6px}
+#export-progress{font-size:.7rem;color:#a0a0c0;margin-top:4px;min-height:1.2em;text-align:center}
 </style>
 </head>
 <body>
-<header><h1>🖌 v1.043 (한 글자 자산 생성기)</h1><span style="font-size:.62rem;background:#ff6b35;color:#fff;padding:2px 8px;border-radius:6px">중앙배치·PNG/JPG 일괄저장</span></header>
+<header><h1>🖌 v1.044 (최적화 + 캐시/내보내기 개선)</h1><span style="font-size:.62rem;background:#ff6b35;color:#fff;padding:2px 8px;border-radius:6px">부드러운 렌더링 & 일괄 내보내기</span></header>
 <div class="main">
   <div class="left">
     <div class="sec">
@@ -76,6 +77,7 @@ input[type=range],select{width:100%}
         <button class="btn btn-p" id="export-all-png" style="flex:1;">전체 PNG (ZIP)</button>
         <button class="btn btn-p" id="export-all-jpg" style="flex:1;">전체 JPG (ZIP)</button>
       </div>
+      <div id="export-progress"></div>
     </div>
 
     <div class="preset-box">
@@ -101,7 +103,7 @@ input[type=range],select{width:100%}
 
   <div class="center">
     <div class="canvas-wrap" id="wrap"><canvas id="cv" width="900" height="900"></canvas></div>
-    <div class="log" id="log">[v1.043] 한 글자 생성 모드 로드</div>
+    <div class="log" id="log">[v1.044] 최적화 및 캐시 개선 버전 로드</div>
   </div>
 
   <div class="right">
@@ -162,15 +164,19 @@ let baseFont = null, uniqChars = [], currentCharIndex = 0;
 
 let cacheHits = 0, cacheMisses = 0, frameCount = 0, lastFpsTime = 0;
 const sampleCache = new Map();
+const MAX_CACHE_SIZE = 200;
 let bristlePool = null, lastBristleKey = '';
-let lastRenderedPaths = [], lastBrushStrokes = [];
 const textCv = document.createElement('canvas');
 const textCtx = textCv.getContext('2d');
+let renderScheduled = false;
 
+// --- 유틸리티 ---
 function syncCanvases(w, h) {
   if (textCv.width !== w || textCv.height !== h) { textCv.width = w; textCv.height = h; }
   if (textCtx) textCtx.clearRect(0, 0, w, h);
 }
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 function mulberry32(a) {
   return function() {
@@ -181,6 +187,31 @@ function mulberry32(a) {
   };
 }
 
+function getCacheKey(char, part, opts) {
+  const relevant = [
+    char, part || 'full',
+    opts.bristleCount, opts.ribbonWidth, opts.infillDepth,
+    opts.choWarp, opts.jungWarp, opts.jongWarp,
+    opts.choScale, opts.jungScale, opts.jongScale,
+    opts.choRound, opts.jungRound, opts.jongRound,
+    opts.choLen, opts.jungLen, opts.jongLen,
+    opts.choThick, opts.jungThick, opts.jongThick,
+    opts.choDistX, opts.choDistY, opts.jungDistX, opts.jungDistY, opts.jongDistX, opts.jongDistY,
+    opts.choRand, opts.jungRand, opts.jongRand,
+    opts.jamoMode ? 1 : 0, opts.jamoClampOff ? 1 : 0
+  ];
+  return relevant.join('|');
+}
+
+function setCache(key, value) {
+  if (sampleCache.size >= MAX_CACHE_SIZE) {
+    const firstKey = sampleCache.keys().next().value;
+    sampleCache.delete(firstKey);
+  }
+  sampleCache.set(key, value);
+}
+
+// --- 한글 분석 ---
 const CHO = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
 const JUNG = ['ㅏ','ㅐ','ㅑ','ㅒ','ㅓ','ㅔ','ㅕ','ㅖ','ㅗ','ㅘ','ㅙ','ㅚ','ㅛ','ㅜ','ㅝ','ㅞ','ㅟ','ㅠ','ㅡ','ㅢ','ㅣ'];
 const JONG = ['','ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','ㅀ','ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
@@ -206,8 +237,9 @@ function getSyllableType(de) {
 
 function log(m) { const el = $('log'); if (!el) return; el.textContent = '[' + new Date().toLocaleTimeString().slice(0,8) + '] ' + m + '\n' + el.textContent; }
 
-function safeAddListener(id, event, fn) { const el = $(id); if (el) el.addEventListener(event, fn); }
+function safeAddListener(id, event, fn) { const el = $(id); if (el) el.addEventListener(event, fn); else console.warn(`Element #${id} not found`); }
 
+// --- 스타일 ---
 const styleList = [
   {id:'soft',name:'둥글둥글'}, {id:'sharp',name:'뾰족'}, {id:'contrast',name:'강약'},
   {id:'ink',name:'농담'}, {id:'deform',name:'자유변형'}, {id:'curve',name:'곡선구도'},
@@ -248,6 +280,7 @@ function createStyleGrid(containerId, callback) {
       div.classList.toggle('active');
       const selected = Array.from(container.querySelectorAll('.active')).map(el => el.dataset.styleId);
       callback(selected);
+      scheduleRender();
     });
     container.appendChild(div);
   });
@@ -268,11 +301,11 @@ function getOpts() {
     jamoMode: $('jamoMode')?.checked ?? true, jamoClampOff: $('jamoClampOff')?.checked ?? false,
     bristleCount: gi('bristleCount', Math.round(globalSet.bristles)), ribbonWidth: g('ribbonWidth', 0.85),
     infillDepth: g('infillDepth', globalSet.infillDepth), whiskerLen: g('whiskerLen', globalSet.whiskerLen),
-    seededOn: true, ribbonOn: true, infillOn: true, meshOn: true, whiskerOn: true
+    ribbonOn: true, infillOn: true, meshOn: true, whiskerOn: true
   };
 }
 
-// ============ 폰트 파싱 로직 (기존 v1.042 로직 유지) ============
+// --- 폰트 파싱 로직 (v1.042 기반) ---
 function getContourArea(cmds) { let area = 0; const pts = []; cmds.forEach(c => { if (c.x !== undefined) pts.push({x:c.x, y:c.y}); else if (c.x1 !== undefined) { pts.push({x:c.x1,y:c.y1}); pts.push({x:c.x2,y:c.y2}); pts.push({x:c.x,y:c.y}); } }); for (let i = 0; i < pts.length; i++) { const p1 = pts[i], p2 = pts[(i + 1) % pts.length]; if (p1.x !== undefined && p2.x !== undefined) area += (p1.x * p2.y - p2.x * p1.y); } return area / 2; }
 
 function splitSyllablePathIntoJamoGroups(syllableChar, baseSize, type) {
@@ -305,11 +338,30 @@ function splitSyllablePathIntoJamoGroups(syllableChar, baseSize, type) {
   } catch(e) { return null; }
 }
 
-function getBristlePoolRibbon(count, ribbonWidth, seed, seededOn) { if (count === 0) return []; const key = `${count}_${ribbonWidth.toFixed(2)}_${seed}_${seededOn}`; if (key === lastBristleKey && bristlePool) return bristlePool; const pool = []; const rand = seededOn ? mulberry32(seed) : Math.random; for (let i = 0; i < count; i++) { const t = (count === 1 ? 0 : (i / (count - 1)) * 2 - 1); pool.push({ t, offset: t * ribbonWidth, alpha: 0.24 + rand() * 0.28, spring: 0.22 + rand() * 0.14, x: 0, y: 0 }); } bristlePool = pool; lastBristleKey = key; return pool; }
+function getBristlePoolRibbon(count, ribbonWidth, seed) {
+  if (count === 0) return [];
+  const key = `${count}_${ribbonWidth.toFixed(2)}_${seed}`;
+  if (key === lastBristleKey && bristlePool) return bristlePool;
+  const pool = []; const rand = mulberry32(seed);
+  for (let i = 0; i < count; i++) { const t = (count === 1 ? 0 : (i / (count - 1)) * 2 - 1); pool.push({ t, offset: t * ribbonWidth, alpha: 0.24 + rand() * 0.28, spring: 0.22 + rand() * 0.14, x: 0, y: 0 }); }
+  bristlePool = pool; lastBristleKey = key; return pool;
+}
 
-function getSampledPoints(path, cacheKey) { if (sampleCache.has(cacheKey)) { cacheHits++; return sampleCache.get(cacheKey); } cacheMisses++; const pts = []; let cur = {x:0, y:0}; let contourIdx = 0; const contours = path._contours || []; let curContourIsHole = contours[0] ? contours[0].isHole : false; path.commands.forEach(c => { if (c.type === 'M') { cur = {x:c.x, y:c.y}; if (contours[contourIdx]) curContourIsHole = contours[contourIdx].isHole || false; pts.push({ x:cur.x, y:cur.y, isHole:curContourIsHole, isMove:true }); } else if (c.type === 'L') { for (let i=1; i<=5; i++) { const t = i/5; pts.push({ x:cur.x+(c.x-cur.x)*t, y:cur.y+(c.y-cur.y)*t, isHole:curContourIsHole, isMove:false }); } cur = {x:c.x, y:c.y}; } else if (c.type === 'Q') { for (let i=1; i<=8; i++) { const t = i/8; const mt = 1-t; pts.push({ x:mt*mt*cur.x + 2*mt*t*c.x1 + t*t*c.x, y:mt*mt*cur.y + 2*mt*t*c.y1 + t*t*c.y, isHole:curContourIsHole, isMove:false }); } cur = {x:c.x, y:c.y}; } else if (c.type === 'C') { for (let i=1; i<=10; i++) { const t = i/10; const mt = 1-t; pts.push({ x:mt*mt*mt*cur.x + 3*mt*mt*t*c.x1 + 3*mt*t*t*c.x2 + t*t*t*c.x, y:mt*mt*mt*cur.y + 3*mt*mt*t*c.y1 + 3*mt*t*t*c.y2 + t*t*t*c.y, isHole:curContourIsHole, isMove:false }); } cur = {x:c.x, y:c.y}; } else if (c.type === 'Z') { contourIdx++; if (contours[contourIdx]) curContourIsHole = contours[contourIdx].isHole || false; } }); sampleCache.set(cacheKey, pts); return pts; }
+function getSampledPoints(path, cacheKey) {
+  if (sampleCache.has(cacheKey)) { cacheHits++; return sampleCache.get(cacheKey); }
+  cacheMisses++; const pts = []; let cur = {x:0, y:0}; let contourIdx = 0;
+  const contours = path._contours || []; let curContourIsHole = contours[0] ? contours[0].isHole : false;
+  path.commands.forEach(c => {
+    if (c.type === 'M') { cur = {x:c.x, y:c.y}; if (contours[contourIdx]) curContourIsHole = contours[contourIdx].isHole || false; pts.push({ x:cur.x, y:cur.y, isHole:curContourIsHole, isMove:true }); }
+    else if (c.type === 'L') { for (let i=1; i<=5; i++) { const t = i/5; pts.push({ x:cur.x+(c.x-cur.x)*t, y:cur.y+(c.y-cur.y)*t, isHole:curContourIsHole, isMove:false }); } cur = {x:c.x, y:c.y}; }
+    else if (c.type === 'Q') { for (let i=1; i<=8; i++) { const t = i/8; const mt = 1-t; pts.push({ x:mt*mt*cur.x + 2*mt*t*c.x1 + t*t*c.x, y:mt*mt*cur.y + 2*mt*t*c.y1 + t*t*c.y, isHole:curContourIsHole, isMove:false }); } cur = {x:c.x, y:c.y}; }
+    else if (c.type === 'C') { for (let i=1; i<=10; i++) { const t = i/10; const mt = 1-t; pts.push({ x:mt*mt*mt*cur.x + 3*mt*mt*t*c.x1 + 3*mt*t*t*c.x2 + t*t*t*c.x, y:mt*mt*mt*cur.y + 3*mt*mt*t*c.y1 + 3*mt*t*t*c.y2 + t*t*t*c.y, isHole:curContourIsHole, isMove:false }); } cur = {x:c.x, y:c.y}; }
+    else if (c.type === 'Z') { contourIdx++; if (contours[contourIdx]) curContourIsHole = contours[contourIdx].isHole || false; }
+  });
+  setCache(cacheKey, pts);
+  return pts;
+}
 
-// [수정] evenodd 적용으로 속공간(ㅇ, ㅎ) 처리
 function drawWithRibbonBristle(path, opts, cacheKey, thickScale, seed, targetCtx) {
   if (!path || !targetCtx) return;
   targetCtx.save(); targetCtx.globalAlpha = 0.92; targetCtx.fillStyle = '#121212';
@@ -321,12 +373,12 @@ function drawWithRibbonBristle(path, opts, cacheKey, thickScale, seed, targetCtx
     else if (c.type === 'Q') basePath.quadraticCurveTo(c.x1, c.y1, c.x, c.y);
     else if (c.type === 'Z') basePath.closePath();
   });
-  targetCtx.fill(basePath, 'evenodd'); // [핵심 수정] 속공간 유지
+  targetCtx.fill(basePath, 'evenodd');
   targetCtx.restore();
   if (opts.bristleCount === 0) return;
   const pts = getSampledPoints(path, cacheKey); if (pts.length < 3) return;
   const limitedThick = Math.min(5.0, thickScale);
-  const bristles = getBristlePoolRibbon(opts.bristleCount, opts.ribbonWidth, seed, opts.seededOn);
+  const bristles = getBristlePoolRibbon(opts.bristleCount, opts.ribbonWidth, seed);
   bristles.forEach(b => { b.x = pts[0].x; b.y = pts[0].y; });
   let lastPt = pts[0];
   for (let i = 1; i < pts.length; i++) {
@@ -342,7 +394,7 @@ function drawWithRibbonBristle(path, opts, cacheKey, thickScale, seed, targetCtx
       const b = bristles[bi]; const baseInwardX = -dy / len, baseInwardY = dx / len;
       const finalInwardX = curPt.isHole ? -baseInwardX : baseInwardX, finalInwardY = curPt.isHole ? -baseInwardY : baseInwardY;
       let offsetX, offsetY;
-      if (opts.infillOn) { const tInfill = opts.seededOn ? (mulberry32(seed+bi+i)()*0.8+0.2) : (Math.abs(b.t)*0.7+0.1); const depth = tInfill * opts.infillDepth; offsetX = finalInwardX * depth * radius * 1.2; offsetY = finalInwardY * depth * radius * 1.2; if (opts.ribbonOn) { offsetX += nx0 * b.t * radius * 0.6; offsetY += ny0 * b.t * radius * 0.6; } }
+      if (opts.infillOn) { const tInfill = mulberry32(seed+bi+i)() * 0.8 + 0.2; const depth = tInfill * opts.infillDepth; offsetX = finalInwardX * depth * radius * 1.2; offsetY = finalInwardY * depth * radius * 1.2; if (opts.ribbonOn) { offsetX += nx0 * b.t * radius * 0.6; offsetY += ny0 * b.t * radius * 0.6; } }
       else { offsetX = opts.ribbonOn ? nx0 * b.t * radius * 1.6 : 0; offsetY = opts.ribbonOn ? ny0 * b.t * radius * 1.6 : 0; }
       const targetX = curPt.x + offsetX, targetY = curPt.y + offsetY;
       b.x += (targetX - b.x) * b.spring; b.y += (targetY - b.y) * b.spring;
@@ -369,7 +421,6 @@ function getBoxesCenterBasedWithClamp(type, baseSize, opts, seed) {
 
   const halfDist = baseSize * (0.88) * 0.46; const vHalf = baseSize * 0.5; const hLimit = halfDist;
   const shaped = {};
-
   Object.entries(baseBoxes).forEach(([k, b]) => {
     let prefix = 'cho'; if (k === 'jung') prefix = 'jung'; if (k === 'jong') prefix = 'jong';
     const distX = opts[prefix + 'DistX'] || 0, distY = opts[prefix + 'DistY'] || 0;
@@ -390,27 +441,33 @@ function getBoxesCenterBasedWithClamp(type, baseSize, opts, seed) {
   return shaped;
 }
 
-function applyJamoDeform(path, opts, k) { /* 유지 */ if(!path) return path; const round=opts[`${k}Round`]||1.0, len=opts[`${k}Len`]||1.0, thick=opts[`${k}Thick`]||1.0; const gb=path._bbox; if(!gb) return path; const cx=gb.cx, cy=gb.cy, avgR=(gb.w+gb.h)/4; const deformed=new opentype.Path(); path.commands.forEach(c=>{ const deformPt=(px,py)=>{ let dx=px-cx, dy=py-cy; if(len!==1){const l=amplify(len); dy*=l; dx/=Math.max(0.6,l*0.4+0.6);} if(round!==1){const ang=Math.atan2(dy,dx); const r=Math.hypot(dx,dy); const targetR=avgR*(r/(Math.max(gb.w,gb.h)/2))*1.2; const t=Math.min(1,Math.max(0,(round-1)/4)); const newR=r*(1-t)+targetR*t; dx=Math.cos(ang)*newR; dy=Math.sin(ang)*newR;} if(thick!==1){const t=amplify(thick); const ang=Math.atan2(dy,dx); const r=Math.hypot(dx,dy); const exp=(t-1)*0.15*r; dx+=Math.cos(ang)*exp; dy+=Math.sin(ang)*exp;} return {x:cx+dx, y:cy+dy}; }; if(c.type==='M'){const p=deformPt(c.x,c.y); deformed.moveTo(p.x,p.y);} else if(c.type==='L'){const p=deformPt(c.x,c.y); deformed.lineTo(p.x,p.y);} else if(c.type==='C'){const p1=deformPt(c.x1,c.y1); const p2=deformPt(c.x2,c.y2); const p=deformPt(c.x,c.y); deformed.curveTo(p1.x,p1.y,p2.x,p2.y,p.x,p.y);} else if(c.type==='Q'){const p1=deformPt(c.x1,c.y1); const p=deformPt(c.x,c.y); deformed.quadTo(p1.x,p1.y,p.x,p.y);} else if(c.type==='Z') deformed.close(); }); deformed._contours=path._contours; deformed._bbox=path._bbox; return deformed; }
+function applyJamoDeform(path, opts, k) {
+  if(!path) return path; const round=opts[`${k}Round`]||1.0, len=opts[`${k}Len`]||1.0, thick=opts[`${k}Thick`]||1.0; const gb=path._bbox; if(!gb) return path; const cx=gb.cx, cy=gb.cy, avgR=(gb.w+gb.h)/4; const deformed=new opentype.Path(); path.commands.forEach(c=>{ const deformPt=(px,py)=>{ let dx=px-cx, dy=py-cy; if(len!==1){const l=amplify(len); dy*=l; dx/=Math.max(0.6,l*0.4+0.6);} if(round!==1){const ang=Math.atan2(dy,dx); const r=Math.hypot(dx,dy); const targetR=avgR*(r/(Math.max(gb.w,gb.h)/2))*1.2; const t=Math.min(1,Math.max(0,(round-1)/4)); const newR=r*(1-t)+targetR*t; dx=Math.cos(ang)*newR; dy=Math.sin(ang)*newR;} if(thick!==1){const t=amplify(thick); const ang=Math.atan2(dy,dx); const r=Math.hypot(dx,dy); const exp=(t-1)*0.15*r; dx+=Math.cos(ang)*exp; dy+=Math.sin(ang)*exp;} return {x:cx+dx, y:cy+dy}; }; if(c.type==='M'){const p=deformPt(c.x,c.y); deformed.moveTo(p.x,p.y);} else if(c.type==='L'){const p=deformPt(c.x,c.y); deformed.lineTo(p.x,p.y);} else if(c.type==='C'){const p1=deformPt(c.x1,c.y1); const p2=deformPt(c.x2,c.y2); const p=deformPt(c.x,c.y); deformed.curveTo(p1.x,p1.y,p2.x,p2.y,p.x,p.y);} else if(c.type==='Q'){const p1=deformPt(c.x1,c.y1); const p=deformPt(c.x,c.y); deformed.quadTo(p1.x,p1.y,p.x,p.y);} else if(c.type==='Z') deformed.close(); }); deformed._contours=path._contours; deformed._bbox=path._bbox; return deformed; }
 
-function warpContourBilinear(path, bbox, localSettings) { /* 유지 */ if(!path._bbox) return path; const w=bbox.x2-bbox.x1||path._bbox.w||1; const h=bbox.y2-bbox.y1||path._bbox.h||1; const warped=new opentype.Path(); path.commands.forEach(c=>{ const warpPt=(px,py)=>{ const u=Math.max(0,Math.min(1,(px-bbox.x1)/w)); const v=Math.max(0,Math.min(1,(py-bbox.y1)/h)); const wCho=(1-u)*(1-v), wJung=u*(1-v*0.5), wJong=v; const dxCho=-localSettings.choWarp*w*0.25*wCho, dyCho=-localSettings.choWarp*h*0.25*wCho; const dxJung=localSettings.jungWarp*w*0.35*wJung, dyJung=-localSettings.jungWarp*h*0.10*wJung; const dxJong=(u-0.5)*localSettings.jongWarp*w*0.20*wJong, dyJong=localSettings.jongWarp*h*0.30*wJong; return {x:px+dxCho+dxJung+dxJong, y:py+dyCho+dyJung+dyJong}; }; if(c.type==='M'){const p=warpPt(c.x,c.y); warped.moveTo(p.x,p.y);} else if(c.type==='L'){const p=warpPt(c.x,c.y); warped.lineTo(p.x,p.y);} else if(c.type==='C'){const p1=warpPt(c.x1,c.y1); const p2=warpPt(c.x2,c.y2); const p=warpPt(c.x,c.y); warped.curveTo(p1.x,p1.y,p2.x,p2.y,p.x,p.y);} else if(c.type==='Q'){const p1=warpPt(c.x1,c.y1); const p=warpPt(c.x,c.y); warped.quadTo(p1.x,p1.y,p.x,p.y);} else if(c.type==='Z') warped.close(); }); warped._contours=path._contours; warped._bbox=path._bbox; warped._baseSize=path._baseSize; return warped; }
+function warpContourBilinear(path, bbox, localSettings) {
+  if(!path._bbox) return path; const w=bbox.x2-bbox.x1||path._bbox.w||1; const h=bbox.y2-bbox.y1||path._bbox.h||1; const warped=new opentype.Path(); path.commands.forEach(c=>{ const warpPt=(px,py)=>{ const u=Math.max(0,Math.min(1,(px-bbox.x1)/w)); const v=Math.max(0,Math.min(1,(py-bbox.y1)/h)); const wCho=(1-u)*(1-v), wJung=u*(1-v*0.5), wJong=v; const dxCho=-localSettings.choWarp*w*0.25*wCho, dyCho=-localSettings.choWarp*h*0.25*wCho; const dxJung=localSettings.jungWarp*w*0.35*wJung, dyJung=-localSettings.jungWarp*h*0.10*wJung; const dxJong=(u-0.5)*localSettings.jongWarp*w*0.20*wJong, dyJong=localSettings.jongWarp*h*0.30*wJong; return {x:px+dxCho+dxJung+dxJong, y:py+dyCho+dyJung+dyJong}; }; if(c.type==='M'){const p=warpPt(c.x,c.y); warped.moveTo(p.x,p.y);} else if(c.type==='L'){const p=warpPt(c.x,c.y); warped.lineTo(p.x,p.y);} else if(c.type==='C'){const p1=warpPt(c.x1,c.y1); const p2=warpPt(c.x2,c.y2); const p=warpPt(c.x,c.y); warped.curveTo(p1.x,p1.y,p2.x,p2.y,p.x,p.y);} else if(c.type==='Q'){const p1=warpPt(c.x1,c.y1); const p=warpPt(c.x,c.y); warped.quadTo(p1.x,p1.y,p.x,p.y);} else if(c.type==='Z') warped.close(); }); warped._contours=path._contours; warped._bbox=path._bbox; warped._baseSize=path._baseSize; return warped;
+}
 
-function generateWhiskers(path, opts, seed) { /* 유지 */ if(!opts.whiskerOn || opts.whiskerLen===0) return []; const whiskers=[]; const pts=getSampledPoints(path, `whisker_${path._centerX}_${path._centerY}`), rand=mulberry32(seed); for(let i=5;i<pts.length-5;i+=10){if(pts[i].isMove||pts[i-5].isMove||pts[i+5].isMove) continue; const p0=pts[i-5], p1=pts[i], p2=pts[i+5], v1x=p1.x-p0.x, v1y=p1.y-p0.y, v2x=p2.x-p1.x, v2y=p2.y-p1.y, ang=Math.abs(Math.atan2(v1x*v2y-v1y*v2x, v1x*v2x+v1y*v2y)); if(ang>0.8){const len=opts.whiskerLen, dirX=(v1x/Math.hypot(v1x,v1y)-v2x/Math.hypot(v2x,v2y))*0.5, dirY=(v1y/Math.hypot(v1x,v1y)-v2y/Math.hypot(v2x,v2y))*0.5, dLen=Math.hypot(dirX,dirY)||1, ndx=dirX/dLen, ndy=dirY/dLen; for(let w=0;w<3;w++){const spread=(w-1)*0.3, ex=p1.x+(ndx*Math.cos(spread)-ndy*Math.sin(spread))*len, ey=p1.y+(ndx*Math.sin(spread)+ndy*Math.cos(spread))*len, mx=(p1.x+ex)/2+(rand()-0.5)*len*0.2, my=(p1.y+ey)/2+(rand()-0.5)*len*0.2; whiskers.push({d:`M ${p1.x.toFixed(1)} ${p1.y.toFixed(1)} Q ${mx.toFixed(1)} ${my.toFixed(1)} ${ex.toFixed(1)} ${ey.toFixed(1)}`, stroke:`rgba(18,18,18,0.35)`, width:(0.8+rand()*0.6).toFixed(2)});}}} return whiskers; }
+function generateWhiskers(path, opts, seed) {
+  if(!opts.whiskerOn || opts.whiskerLen===0) return []; const whiskers=[]; const pts=getSampledPoints(path, `whisker_${path._centerX}_${path._centerY}`), rand=mulberry32(seed); for(let i=5;i<pts.length-5;i+=10){if(pts[i].isMove||pts[i-5].isMove||pts[i+5].isMove) continue; const p0=pts[i-5], p1=pts[i], p2=pts[i+5], v1x=p1.x-p0.x, v1y=p1.y-p0.y, v2x=p2.x-p1.x, v2y=p2.y-p1.y, ang=Math.abs(Math.atan2(v1x*v2y-v1y*v2x, v1x*v2x+v1y*v2y)); if(ang>0.8){const len=opts.whiskerLen, dirX=(v1x/Math.hypot(v1x,v1y)-v2x/Math.hypot(v2x,v2y))*0.5, dirY=(v1y/Math.hypot(v1x,v1y)-v2y/Math.hypot(v2x,v2y))*0.5, dLen=Math.hypot(dirX,dirY)||1, ndx=dirX/dLen, ndy=dirY/dLen; for(let w=0;w<3;w++){const spread=(w-1)*0.3, ex=p1.x+(ndx*Math.cos(spread)-ndy*Math.sin(spread))*len, ey=p1.y+(ndx*Math.sin(spread)+ndy*Math.cos(spread))*len, mx=(p1.x+ex)/2+(rand()-0.5)*len*0.2, my=(p1.y+ey)/2+(rand()-0.5)*len*0.2; whiskers.push({d:`M ${p1.x.toFixed(1)} ${p1.y.toFixed(1)} Q ${mx.toFixed(1)} ${my.toFixed(1)} ${ex.toFixed(1)} ${ey.toFixed(1)}`, stroke:`rgba(18,18,18,0.35)`, width:(0.8+rand()*0.6).toFixed(2)});}}} return whiskers;
+}
 
-function pathToSVGd(path) { let d=''; path.commands.forEach(c=>{ if(c.type==='M') d+=`M${c.x.toFixed(1)} ${c.y.toFixed(1)} `; else if(c.type==='L') d+=`L${c.x.toFixed(1)} ${c.y.toFixed(1)} `; else if(c.type==='C') d+=`C${c.x1.toFixed(1)} ${c.y1.toFixed(1)} ${c.x2.toFixed(1)} ${c.y2.toFixed(1)} ${c.x.toFixed(1)} ${c.y.toFixed(1)} `; else if(c.type==='Q') d+=`Q${c.x1.toFixed(1)} ${c.y1.toFixed(1)} ${c.x.toFixed(1)} ${c.y.toFixed(1)} `; else if(c.type==='Z') d+='Z ';}); return d; }
-
-// ============ 핵심: 한 글자 렌더링 ============
-function renderCharacter(char, isSvg = false) {
+// --- 메인 렌더링 ---
+function renderCharacter(char, isSvg = false, destinationCtx = null) {
   if (!baseFont || !char) return;
   const w = cv.width, h = cv.height;
   syncCanvases(w, h);
-  ctx.clearRect(0, 0, w, h);
-  const g = ctx.createRadialGradient(w/2, h/2, 100, w/2, h/2, Math.max(w, h));
-  g.addColorStop(0, '#f4ecd8'); g.addColorStop(1, '#e8dcc3'); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+  
+  const targetCtx = destinationCtx || ctx;
+  // 배경은 메인 캔버스에만 그리기 (내보내기 시에는 투명 또는 흰 배경 원한다면? 기본은 흰 배경으로 통일)
+  if (!destinationCtx) {
+    const g = ctx.createRadialGradient(w/2, h/2, 100, w/2, h/2, Math.max(w, h));
+    g.addColorStop(0, '#f4ecd8'); g.addColorStop(1, '#e8dcc3'); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+  } else {
+    destinationCtx.fillStyle = '#f4ecd8'; destinationCtx.fillRect(0, 0, w, h);
+  }
 
-  lastRenderedPaths = []; lastBrushStrokes = [];
   const opts = getOpts();
-
-  // 1. 글자의 전체 BBox를 구해 크기 조정 후 중앙 정렬
   const targetSize = Math.min(w, h) * 0.8;
   const path = baseFont.getPath(char, 0, 0, 500);
   const bbox = path.getBoundingBox();
@@ -418,7 +475,6 @@ function renderCharacter(char, isSvg = false) {
   const scale = targetSize / Math.max(charW, charH);
   const centerX = w / 2, centerY = h / 2;
 
-  // 변환 행렬: 중앙으로 이동 후 스케일 적용
   textCtx.save();
   textCtx.translate(centerX, centerY);
   textCtx.scale(scale, scale);
@@ -437,14 +493,14 @@ function renderCharacter(char, isSvg = false) {
     transformedP = warpContourBilinear(transformedP, bbox, localSet);
     transformedP._baseSize = 500; transformedP._centerX = 0; transformedP._centerY = 0;
 
-    const key = `char_${char}_${k}_${Date.now()}`;
-    drawWithRibbonBristle(transformedP, opts, key, boxes[k]?boxes[k].thick:1.5, char.charCodeAt(0), textCtx);
+    const cacheKey = getCacheKey(char, k, opts);
+    drawWithRibbonBristle(transformedP, opts, cacheKey, boxes[k]?boxes[k].thick:1.5, char.charCodeAt(0), textCtx);
     if (isSvg && opts.whiskerOn) {
-      const whiskers = generateWhiskers(transformedP, opts, char.charCodeAt(0)+k.charCodeAt(0));
+      const whiskers = generateWhiskers(transformedP, opts, char.charCodeAt(0)+ (k?k.charCodeAt(0):0));
       whiskers.forEach(wh => {
         textCtx.beginPath(); textCtx.strokeStyle = wh.stroke; textCtx.lineWidth = parseFloat(wh.width); textCtx.lineCap = 'round';
         const m = wh.d.match(/M\s*([-\d\.]+)\s+([-\d\.]+)\s+Q\s*([-\d\.]+)\s+([-\d\.]+)\s+([-\d\.]+)\s+([-\d\.]+)/);
-        if (m) { textCtx.moveTo(parseFloat(m[1]), parseFloat(m[2])); textCtx.quadraticCurveTo(parseFloat(m[3]), parseFloat(m[4]), parseFloat(m[5]), parseFloat(m[6])); textCtx.stroke(); lastBrushStrokes.push(wh); }
+        if (m) { textCtx.moveTo(parseFloat(m[1]), parseFloat(m[2])); textCtx.quadraticCurveTo(parseFloat(m[3]), parseFloat(m[4]), parseFloat(m[5]), parseFloat(m[6])); textCtx.stroke(); }
       });
     }
   };
@@ -452,37 +508,46 @@ function renderCharacter(char, isSvg = false) {
   if (split && !split.isConnected) {
     ['cho','jung','jong'].forEach(k => { if (split[k]) drawOne(split[k], k); });
   } else {
-    // 자모 분리가 안 되는 글자 (또는 연결된 글자)는 전체 경로로
     const fullPath = baseFont.getPath(char, 0, 0, 500);
-    fullPath._contours = split ? split.overall : []; // 임시
+    fullPath._contours = split ? split.overall : [];
     fullPath._bbox = { cx:(bbox.x1+bbox.x2)/2, cy:(bbox.y1+bbox.y2)/2, w:charW, h:charH, minX:bbox.x1, maxX:bbox.x2, minY:bbox.y1, maxY:bbox.y2 };
     fullPath._baseSize = 500;
     drawOne(fullPath, null);
   }
 
   textCtx.restore();
-  ctx.drawImage(textCv, 0, 0);
+  targetCtx.drawImage(textCv, 0, 0);
   
-  // 글자 UI 업데이트
-  $('char-view').textContent = char;
-  $('char-index').textContent = `${currentCharIndex + 1} / ${uniqChars.length}`;
+  if (!destinationCtx) {
+    $('char-view').textContent = char;
+    $('char-index').textContent = `${currentCharIndex + 1} / ${uniqChars.length}`;
+  }
 }
 
-// ============ SRT 분석 (고유 글자 추출) ============
+// --- 스케줄링 (디바운스/스로틀) ---
+function scheduleRender() {
+  if (!uniqChars.length || !baseFont) return;
+  if (!renderScheduled) {
+    renderScheduled = true;
+    requestAnimationFrame(() => {
+      renderScheduled = false;
+      renderCharacter(uniqChars[currentCharIndex]);
+    });
+  }
+}
+
+// --- SRT 분석 ---
 function analyze() {
   const raw = $('srtTa')?.value?.trim();
   if (!raw) { alert('SRT 내용을 입력하세요'); return; }
-  
-  // 텍스트에서 한글/숫자/영문 등 모든 유니코드 추출
   const allChars = raw.replace(/\s/g, '');
   uniqChars = [...new Set(allChars.split(''))].filter(c => c.trim() !== '');
   currentCharIndex = 0;
-  
   $('infoNum').textContent = `고유 ${uniqChars.length}자`;
   if (uniqChars.length > 0) renderCharacter(uniqChars[0]);
 }
 
-// ============ 내보내기 ============
+// --- 내보내기 ---
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -492,32 +557,42 @@ function downloadBlob(blob, filename) {
 
 function exportCurrent(type) {
   if (!uniqChars.length) return alert('먼저 글자를 추출하세요.');
-  renderCharacter(uniqChars[currentCharIndex]);
+  const offscreen = document.createElement('canvas');
+  offscreen.width = cv.width; offscreen.height = cv.height;
+  const offCtx = offscreen.getContext('2d');
+  renderCharacter(uniqChars[currentCharIndex], false, offCtx);
   const mime = type === 'png' ? 'image/png' : 'image/jpeg';
-  cv.toBlob(blob => downloadBlob(blob, `char_${uniqChars[currentCharIndex]}.${type}`), mime, 0.95);
+  offscreen.toBlob(blob => downloadBlob(blob, `char_${uniqChars[currentCharIndex]}.${type}`), mime, 0.95);
 }
 
 async function exportAll(type) {
   if (!uniqChars.length) return alert('먼저 글자를 추출하세요.');
-  log(`⏳ 전체 ${uniqChars.length}자 ${type.toUpperCase()} 변환 중...`);
-  
+  const progress = $('export-progress');
+  progress.textContent = `⏳ ${uniqChars.length}자 준비 중...`;
+  log(`⏳ 전체 ${uniqChars.length}자 ${type.toUpperCase()} 변환 시작`);
+
   const zip = new JSZip();
   const mime = type === 'png' ? 'image/png' : 'image/jpeg';
-  
+  const offscreen = document.createElement('canvas');
+  offscreen.width = cv.width; offscreen.height = cv.height;
+  const offCtx = offscreen.getContext('2d');
+
   for (let i = 0; i < uniqChars.length; i++) {
-    renderCharacter(uniqChars[i]);
-    const blob = await new Promise(res => cv.toBlob(res, mime, 0.95));
+    progress.textContent = `진행중: ${i+1} / ${uniqChars.length}`;
+    renderCharacter(uniqChars[i], false, offCtx);
+    const blob = await new Promise(res => offscreen.toBlob(res, mime, 0.95));
     zip.file(`char_${String(i).padStart(3, '0')}_${uniqChars[i]}.${type}`, blob);
     
-    if (i % 10 === 0) log(`변환 진행: ${i} / ${uniqChars.length}`);
+    if (i % 5 === 0) await sleep(0); // UI 반응성 확보
   }
-  
+
   const zipBlob = await zip.generateAsync({ type: 'blob' });
   downloadBlob(zipBlob, `calligraphy_chars_${type}.zip`);
+  progress.textContent = `✅ 완료! (${uniqChars.length}자)`;
   log(`✅ 전체 글자 ${type.toUpperCase()} ZIP 다운로드 완료!`);
 }
 
-// ============ 이벤트 리스너 ============
+// --- 이벤트 바인딩 ---
 document.getElementById('ttf-input').addEventListener('change', e => {
   const file = e.target.files[0]; if (!file) return;
   const reader = new FileReader();
@@ -526,7 +601,7 @@ document.getElementById('ttf-input').addEventListener('change', e => {
       baseFont = opentype.parse(ev.target.result);
       $('font-status').textContent = `✅ ${file.name} 적용`;
       if (uniqChars.length) renderCharacter(uniqChars[currentCharIndex]);
-    } catch(err) { alert('폰트 파싱 실패'); }
+    } catch(err) { alert('폰트 파싱 실패'); $('font-status').textContent = '❌ 파싱 실패'; }
   };
   reader.readAsArrayBuffer(file);
 });
@@ -547,7 +622,7 @@ safeAddListener('export-jpg', 'click', () => exportCurrent('jpg'));
 safeAddListener('export-all-png', 'click', () => exportAll('png'));
 safeAddListener('export-all-jpg', 'click', () => exportAll('jpg'));
 
-// 스타일 및 슬라이더 이벤트
+// 슬라이더 + 체크박스 -> scheduleRender
 const allInputIds = [
   'choDistX','choDistY','choScale','choRand','choRound','choLen','choThick',
   'jungDistX','jungDistY','jungScale','jungRand','jungRound','jungLen','jungThick',
@@ -556,16 +631,18 @@ const allInputIds = [
 ];
 allInputIds.forEach(id => {
   const el = $(id);
-  if (el) el.addEventListener('input', () => {
-    if (uniqChars.length) renderCharacter(uniqChars[currentCharIndex]);
-  });
+  if (el) el.addEventListener('input', scheduleRender);
 });
 
 ['jamoMode', 'jamoClampOff'].forEach(id => {
-  $(id).addEventListener('change', () => { if (uniqChars.length) renderCharacter(uniqChars[currentCharIndex]); });
+  const el = $(id);
+  if (el) el.addEventListener('change', scheduleRender);
 });
 
-createStyleGrid('global-style-grid', () => { if (uniqChars.length) renderCharacter(uniqChars[currentCharIndex]); });
+createStyleGrid('global-style-grid', (selected) => {
+  selectedGlobalStyles = selected;
+  scheduleRender();
+});
 
 // 프리셋
 safeAddListener('btnReset', 'click', () => {
@@ -581,7 +658,7 @@ safeAddListener('btnReset', 'click', () => {
   $('jamoMode').checked = true; $('jamoClampOff').checked = false;
   const grid = $('global-style-grid'); grid.querySelectorAll('.style-check').forEach(el => el.classList.remove('active'));
   selectedGlobalStyles = [];
-  if (uniqChars.length) renderCharacter(uniqChars[currentCharIndex]);
+  scheduleRender();
   log('↺ 기본 순수 글꼴');
 });
 
@@ -600,18 +677,22 @@ safeAddListener('btnMaster', 'click', () => {
     else el.classList.remove('active');
   });
   selectedGlobalStyles = ['dry', 'bold'];
-  if (uniqChars.length) renderCharacter(uniqChars[currentCharIndex]);
+  scheduleRender();
   log('★ 대가 붓글씨 (거친 붓) 적용');
 });
 
-// ============ 초기화 ============
+// --- 초기화 ---
 (async () => {
   try {
     baseFont = await new Promise((res, rej) => opentype.load('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/nanumbrushscript/NanumBrushScript-Regular.ttf', (e, f) => e ? rej(e) : res(f)));
     $('font-status').textContent = '✅ 나눔손글씨 엔진 로드 완료';
-    log('v1.043 한 글자 자산 생성기 로드 완료');
+    log('v1.044 최적화 버전 로드 완료');
     analyze();
-  } catch(e) { log('폰트 로드 실패'); }
+  } catch(e) {
+    $('font-status').textContent = '❌ 폰트 로드 실패, 직접 업로드 해주세요.';
+    alert('나눔 손글씨 폰트를 불러오지 못했습니다. TTF 파일을 직접 업로드하거나 인터넷 연결을 확인하세요.');
+    log('❌ 폰트 로드 실패');
+  }
 })();
 </script>
 </body>
