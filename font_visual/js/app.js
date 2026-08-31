@@ -102,9 +102,9 @@ function updateStatusPanel() {
         <div class="status-item"><span class="label">폰트</span><span class="value">${currentFont}</span></div>
         <div class="status-item"><span class="label">폰트 크기</span><span class="value">${currentFontSize}px</span></div>
         <div class="status-item"><span class="label">흩어짐</span><span class="value">${Math.round(scatterAmount * 100)}%</span></div>
-        <div class="status-item"><span class="label">범위</span><span class="value">${Math.round(rangeAmount * 100)}%</span></div>
-        <div class="status-item"><span class="label">강도</span><span class="value">${Math.round(intensityAmount * 100)}%</span></div>
-        <div class="status-item"><span class="label">잔상</span><span class="value">${Math.round(trailAmount * 100)}%</span></div>
+        <div class="status-item"><span class="label">범위(갈필)</span><span class="value">${Math.round(rangeAmount * 100)}%</span></div>
+        <div class="status-item"><span class="label">강도(필압)</span><span class="value">${Math.round(intensityAmount * 100)}%</span></div>
+        <div class="status-item"><span class="label">잔상(먹번짐)</span><span class="value">${Math.round(trailAmount * 100)}%</span></div>
     `;
     statusContent.innerHTML = statusHtml;
 }
@@ -171,7 +171,9 @@ function buildAllLeds(cues) {
                 end: cue.end,
                 fullLitTime,
                 color: cue.color,
-                x: 0, y: 0, baseX: 0, baseY: 0
+                x: 0, y: 0, baseX: 0, baseY: 0,
+                // ★ [캘리그라피 연동] 각 글자의 기본 크기 속성 초기화
+                size: currentFontSize
             });
         });
     });
@@ -232,6 +234,11 @@ function updateLedPosition(led, margin) {
 
 function avoidOverlaps() {
     if (allLeds.length < 2) return;
+    
+    // ★ [캘리그라피 연동] 캘리그라피 등 자획 겹침/연계가 의도된 스타일은 강제 분리 로직 바이패스
+    const style = window.TypoMotionStyles?.[currentStyleId];
+    if (style && style.disableAvoidOverlaps) return;
+
     ctx.font = `${currentFontSize}px ${currentFont}`;
     const widths = allLeds.map(led => ctx.measureText(led.char).width);
     const margin = Math.max(20, currentFontSize / 2 + 5);
@@ -302,13 +309,18 @@ function applyMotionPreset(led, time) {
         return { opacity: 1, scale: 1, rotation: 0, offsetX: 0, offsetY: 0 };
     }
     const preset = window.TypoMotionStyles[currentStyleId].presets[presetId];
+    
+    // ★ [캘리그라피 연동] 붓터치 렌더링에 필요한 화면 상태값과 캔버스 객체를 온전히 전달
     return preset.apply(led, time, ctx, {
         currentFont,
         currentFontSize,
         scatterAmount,
         rangeAmount,
         intensityAmount,
-        trailAmount
+        trailAmount,
+        activeGlowColor,
+        canvasBackgroundColor,
+        canvas
     });
 }
 
@@ -323,6 +335,7 @@ function hexToRgba(hex, alpha) {
 }
 
 function render() {
+    // 잔상(수묵 번짐 먹물 레이어) 처리
     if (trailAmount > 0) {
         ctx.fillStyle = hexToRgba(canvasBackgroundColor, 1 - trailAmount);
         ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -351,6 +364,23 @@ function render() {
         const isActive = isLedLit(led, currentTime);
         if (isActive) {
             const transform = applyMotionPreset(led, currentTime);
+
+            // ★ [캘리그라피 연동] 스타일 프리셋에서 캘리그라피를 자체 렌더링했다면 기본 폰트 그리기를 패스
+            if (transform && transform.skipDefaultText) {
+                // 커스텀 드로잉 콜백이 명시된 경우 트랜스폼 컨텍스트 안에서 실행
+                if (typeof transform.customDraw === 'function') {
+                    ctx.save();
+                    ctx.globalAlpha = transform.opacity ?? 1;
+                    ctx.translate(led.x + (transform.offsetX || 0), led.y + (transform.offsetY || 0));
+                    ctx.rotate((transform.rotation || 0) * Math.PI / 180);
+                    ctx.scale(transform.scale || 1, transform.scale || 1);
+                    transform.customDraw(ctx);
+                    ctx.restore();
+                }
+                return;
+            }
+
+            // 기존 일반 폰트 렌더링 유지
             ctx.save();
             ctx.globalAlpha = transform.opacity;
             ctx.translate(led.x + (transform.offsetX || 0), led.y + (transform.offsetY || 0));
@@ -362,7 +392,11 @@ function render() {
             ctx.fillText(led.char, 0, 0);
             ctx.restore();
         } else {
-            if (inactiveTextColor !== 'transparent') { 
+            // ★ [캘리그라피 연동] 비활성 텍스트 렌더링 (스타일 전용 비활성 드로잉이 있으면 우선 호출)
+            const style = window.TypoMotionStyles?.[currentStyleId];
+            if (style && typeof style.renderInactive === 'function') {
+                style.renderInactive(led, ctx, { inactiveTextColor, currentFontSize });
+            } else if (inactiveTextColor !== 'transparent') { 
                 ctx.strokeStyle = inactiveTextColor;
                 ctx.lineWidth = 2;
                 ctx.strokeText(led.char, led.x, led.y);
