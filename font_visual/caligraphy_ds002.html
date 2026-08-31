@@ -1,408 +1,383 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>캘리그라피 스튜디오 v2.0 (완전 개편)</title>
-    <!-- 필요한 라이브러리 -->
-    <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-    <style>
-        body { font-family: sans-serif; background: #121212; color: #eee; margin: 0; display: flex; height: 100vh; }
-        .sidebar { width: 320px; background: #1e1e1e; padding: 15px; overflow-y: auto; border-right: 1px solid #333; }
-        .main { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
-        
-        canvas { background: #f4ecd8; box-shadow: 0 4px 20px rgba(0,0,0,0.5); border-radius: 8px; }
-        h3 { margin-top: 20px; font-size: 15px; border-bottom: 1px solid #444; padding-bottom: 5px; color: #ff6b35; }
-        .section { margin-bottom: 10px; }
-        .row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-        .row label { width: 60px; font-size: 13px; }
-        .row input[type="range"] { flex: 1; }
-        .val { width: 35px; text-align: right; font-size: 12px; }
-        .btn { padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; margin-bottom: 5px; }
-        .btn-orange { background: #ff6b35; color: #fff; }
-        .btn-green { background: #22c55e; color: #111; }
-        .btn-gray { background: #333; color: #eee; }
-        input[type=file] { display: none; }
-        .file-label { display: block; background: #444; color: #fff; padding: 8px; text-align: center; border-radius: 4px; cursor: pointer; margin-bottom: 5px; font-size: 14px; }
-        
-        .char-display { font-size: 70px; background: #fff; color: #111; width: 120px; height: 120px; margin: 0 auto; display: flex; align-items: center; justify-content: center; border-radius: 8px; }
-        .style-panel { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
-        .style-check { background: #444; border: 1px solid #555; padding: 5px; text-align: center; border-radius: 4px; cursor: pointer; font-size: 12px; }
-        .style-check.active { background: #ff6b35; border-color: #fff; font-weight: bold; }
-        .preset-btns { display: flex; gap: 5px; }
-        #status { position: absolute; bottom: 10px; left: 10px; font-size: 12px; color: #888; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>논문 기반 한글 캘리그라피 스튜디오 v3.0</title>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<style>
+  :root { --bg:#0a0a12; --panel:#1e1e36; --accent:#ff6b35; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: sans-serif; background: var(--bg); color: #fff; height: 100vh; display: flex; }
+  
+  /* 레이아웃 */
+  .sidebar { width: 340px; background: var(--panel); border-right: 1px solid #333; padding: 15px; overflow-y: auto; }
+  .main { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
+  
+  /* UI 요소 */
+  h3 { color: var(--accent); border-bottom: 1px solid #444; padding-bottom: 5px; margin: 20px 0 10px; font-size: 14px; }
+  .row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; }
+  .row input[type="range"] { flex: 1; }
+  .val { width: 45px; text-align: right; font-size: 12px; }
+  .btn { width: 100%; padding: 8px; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 5px; font-weight: bold; }
+  .btn-orange { background: var(--accent); color: #fff; }
+  .btn-green { background: #22c55e; color: #111; }
+  .btn-gray { background: #444; color: #eee; }
+  .file-label { display: block; background: #444; color: #fff; padding: 8px; text-align: center; border-radius: 4px; cursor: pointer; margin-bottom: 5px; font-size: 14px; }
+  input[type="file"] { display: none; }
+  textarea { width: 100%; background: #111; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 8px; margin-bottom: 5px; }
+  
+  /* 캔버스 및 인터랙션 */
+  .paper-area { background: #f4ecd8; border-radius: 12px; padding: 30px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); display: flex; gap: 20px; }
+  .calli-char { display: inline-block; width: 200px; height: 200px; transition: transform 0.2s ease; position: relative; }
+  .calli-char:hover { transform: scale(1.05) rotate(-2deg); }
+  .calli-char svg { width: 100%; height: 100%; overflow: visible; filter: url(#ink-bleed); }
+  .char-display { font-size: 80px; background: #fff; color: #111; width: 120px; height: 120px; margin: 0 auto; display: flex; align-items: center; justify-content: center; border-radius: 8px; }
+  
+  .nav-btns { display: flex; justify-content: center; gap: 10px; margin-top: 10px; }
+  .nav-btns button { padding: 5px 15px; }
+</style>
 </head>
 <body>
-    <div class="sidebar">
-        <!-- 1. SRT 자막 로딩, 분석, 추출 -->
-        <h3>1. 데이터 로드</h3>
-        <div class="section">
-            <label class="file-label" for="ttf">📁 TTF 폰트 열기</label>
-            <input type="file" id="ttf" accept=".ttf,.otf">
-            <div id="font-status" style="font-size:12px;color:#aaa;margin-bottom:10px;">폰트를 불러오세요.</div>
-            
-            <label class="file-label" for="srt">📁 SRT 파일 불러오기</label>
-            <input type="file" id="srt" accept=".srt">
-            <textarea id="srt-content" rows="4" placeholder="SRT 내용을 직접 붙여넣거나 파일을 열어주세요." style="width:100%;background:#111;color:#fff;border:1px solid #444;border-radius:4px;padding:8px;margin-bottom:5px;"></textarea>
-            <button class="btn btn-orange" onclick="extractChars()">🔍 고유 글자 추출</button>
-            <div id="char-count" style="margin-top:5px; font-size:12px; text-align:center;">0자 추출됨</div>
-        </div>
 
-        <!-- 2. 글자 탐색 -->
-        <h3>2. 글자 탐색</h3>
-        <div class="section">
-            <div class="char-display" id="char-view">-</div>
-            <div class="row" style="justify-content:center; margin-top:10px;">
-                <button class="btn btn-gray" style="width:auto;padding:5px 15px;" onclick="prevChar()">◀ 이전</button>
-                <span id="char-idx" style="width:50px;text-align:center;font-size:14px;">0 / 0</span>
-                <button class="btn btn-gray" style="width:auto;padding:5px 15px;" onclick="nextChar()">다음 ▶</button>
-            </div>
-        </div>
+  <!-- 공통 수묵 효과 SVG 필터 (논문 요구사항) -->
+  <svg width="0" height="0" style="position:absolute;">
+    <filter id="ink-bleed">
+      <feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves="3" result="noise" />
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="2.5" xChannelSelector="R" yChannelSelector="G" />
+    </filter>
+  </svg>
 
-        <!-- 3. 초성, 중성, 종성 변형 옵션 -->
-        <h3>3. 자모 변형</h3>
-        <div class="section">
-            <strong style="color:#ff6b35;">초성</strong>
-            <div class="row"><label>X 이동</label><input type="range" id="cho-x" min="-100" max="100" value="0" oninput="changeOpt()"><span id="cho-x-v" class="val">0</span></div>
-            <div class="row"><label>Y 이동</label><input type="range" id="cho-y" min="-100" max="100" value="0" oninput="changeOpt()"><span id="cho-y-v" class="val">0</span></div>
-            <div class="row"><label>크기</label><input type="range" id="cho-s" min="0.5" max="2" step="0.05" value="1" oninput="changeOpt()"><span id="cho-s-v" class="val">1.00</span></div>
+  <div class="sidebar">
+    <h3>1. SRT 데이터 로드</h3>
+    <label class="file-label" for="srt-upload">📁 SRT 파일 열기</label>
+    <input type="file" id="srt-upload" accept=".srt,.txt">
+    <textarea id="srt-content" rows="4" placeholder="자막 내용을 붙여넣거나 파일을 여세요"></textarea>
+    <button class="btn btn-orange" onclick="extractSRT()">🔍 고유 글자 추출</button>
+    <div style="text-align:center; font-size:12px; margin-top:5px;" id="char-count">0자</div>
 
-            <strong style="color:#ff6b35;">중성</strong>
-            <div class="row"><label>X 이동</label><input type="range" id="jung-x" min="-100" max="100" value="0" oninput="changeOpt()"><span id="jung-x-v" class="val">0</span></div>
-            <div class="row"><label>Y 이동</label><input type="range" id="jung-y" min="-100" max="100" value="0" oninput="changeOpt()"><span id="jung-y-v" class="val">0</span></div>
-            <div class="row"><label>크기</label><input type="range" id="jung-s" min="0.5" max="2" step="0.05" value="1" oninput="changeOpt()"><span id="jung-s-v" class="val">1.00</span></div>
-
-            <strong style="color:#ff6b35;">종성</strong>
-            <div class="row"><label>X 이동</label><input type="range" id="jong-x" min="-100" max="100" value="0" oninput="changeOpt()"><span id="jong-x-v" class="val">0</span></div>
-            <div class="row"><label>Y 이동</label><input type="range" id="jong-y" min="-100" max="100" value="0" oninput="changeOpt()"><span id="jong-y-v" class="val">0</span></div>
-            <div class="row"><label>크기</label><input type="range" id="jong-s" min="0.5" max="2" step="0.05" value="1" oninput="changeOpt()"><span id="jong-s-v" class="val">1.00</span></div>
-        </div>
-
-        <!-- 부가 옵션 -->
-        <h3>4. 붓터치 스타일</h3>
-        <div class="section">
-            <div class="style-panel">
-                <div class="style-check active" onclick="setStyle('none', this)">기본</div>
-                <div class="style-check" onclick="setStyle('bold', this)">농묵</div>
-                <div class="style-check" onclick="setStyle('soft', this)">둥근</div>
-                <div class="style-check" onclick="setStyle('sharp', this)">뾰족</div>
-                <div class="style-check" onclick="setStyle('dry', this)">갈필</div>
-                <div class="style-check" onclick="setStyle('rough', this)">거친</div>
-            </div>
-        </div>
-
-        <!-- 4. 저장 및 5. 프리셋 -->
-        <h3>5. 내보내기 & 프리셋</h3>
-        <div class="section">
-            <div class="preset-btns">
-                <button class="btn btn-gray" onclick="savePreset()">💾 프리셋 저장</button>
-                <button class="btn btn-gray" onclick="loadPreset()">📂 프리셋 로드</button>
-            </div>
-            <div style="height:10px;"></div>
-            <button class="btn btn-orange" onclick="exportOne('png')">현재 글자 PNG</button>
-            <button class="btn btn-orange" onclick="exportOne('jpg')">현재 글자 JPG</button>
-            <button class="btn btn-green" onclick="exportAll('png')">전체 글자 ZIP (PNG)</button>
-            <button class="btn btn-green" onclick="exportAll('jpg')">전체 글자 ZIP (JPG)</button>
-            <div id="export-status" style="font-size:12px;color:#aaa;margin-top:10px;text-align:center;"></div>
-        </div>
+    <h3>2. 글자 탐색</h3>
+    <div class="char-display" id="char-view">-</div>
+    <div class="nav-btns">
+      <button class="btn btn-gray" onclick="prev()">◀ 이전</button>
+      <span id="char-idx" style="line-height:30px;">0 / 0</span>
+      <button class="btn btn-gray" onclick="next()">다음 ▶</button>
     </div>
 
-    <div class="main">
-        <canvas id="cvs" width="800" height="800"></canvas>
-        <div id="status">Ready.</div>
-    </div>
+    <h3>3. 변형 옵션 (초/중/종)</h3>
+    <strong style="color: #ff6b35;">초성</strong>
+    <div class="row"><label>X</label><input type="range" id="cho-x" min="-50" max="50" value="0" oninput="redraw()"><span class="val" id="cho-x-v">0</span></div>
+    <div class="row"><label>Y</label><input type="range" id="cho-y" min="-50" max="50" value="0" oninput="redraw()"><span class="val" id="cho-y-v">0</span></div>
+    <div class="row"><label>크기</label><input type="range" id="cho-s" min="0.5" max="1.5" step="0.05" value="1" oninput="redraw()"><span class="val" id="cho-s-v">1.00</span></div>
 
-    <script>
-        // 한글 구성 요소
-        const CHO = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
-        const JUNG = ['ㅏ','ㅐ','ㅑ','ㅒ','ㅓ','ㅔ','ㅕ','ㅖ','ㅗ','ㅘ','ㅙ','ㅚ','ㅛ','ㅜ','ㅝ','ㅞ','ㅟ','ㅠ','ㅡ','ㅢ','ㅣ'];
-        const JONG = ['','ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','ㅀ','ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+    <strong style="color: #ff6b35;">중성</strong>
+    <div class="row"><label>X</label><input type="range" id="jung-x" min="-50" max="50" value="0" oninput="redraw()"><span class="val" id="jung-x-v">0</span></div>
+    <div class="row"><label>Y</label><input type="range" id="jung-y" min="-50" max="50" value="0" oninput="redraw()"><span class="val" id="jung-y-v">0</span></div>
+    <div class="row"><label>크기</label><input type="range" id="jung-s" min="0.5" max="1.5" step="0.05" value="1" oninput="redraw()"><span class="val" id="jung-s-v">1.00</span></div>
 
-        let font = null;
-        let uniqChars = [];
-        let charIdx = 0;
-        let currentStyle = 'none';
+    <strong style="color: #ff6b35;">종성</strong>
+    <div class="row"><label>X</label><input type="range" id="jong-x" min="-50" max="50" value="0" oninput="redraw()"><span class="val" id="jong-x-v">0</span></div>
+    <div class="row"><label>Y</label><input type="range" id="jong-y" min="-50" max="50" value="0" oninput="redraw()"><span class="val" id="jong-y-v">0</span></div>
+    <div class="row"><label>크기</label><input type="range" id="jong-s" min="0.5" max="1.5" step="0.05" value="1" oninput="redraw()"><span class="val" id="jong-s-v">1.00</span></div>
 
-        // 폰트 경로 캐시 (성능 최적화)
-        let pathCache = new Map();
+    <h3>4. 프리셋 & 내보내기</h3>
+    <button class="btn btn-gray" onclick="savePreset()">💾 프리셋 저장</button>
+    <button class="btn btn-gray" onclick="loadPreset()">📂 프리셋 로드</button>
+    <div style="height:5px;"></div>
+    <button class="btn btn-orange" onclick="exportOne('png')">현재 글자 PNG</button>
+    <button class="btn btn-green" onclick="exportAll('png')">전체 글자 ZIP (PNG)</button>
+    <div id="export-status" style="text-align:center; font-size:12px; margin-top:10px; color:#aaa"></div>
+  </div>
 
-        const cvs = document.getElementById('cvs');
-        const ctx = cvs.getContext('2d');
+  <div class="main">
+    <div class="paper-area" id="stage"></div>
+    <p style="margin-top:20px; font-size:13px; color:#aaa;">* SVG 벡터 기반 + 수묵 필터가 적용된 글자입니다. 글자에 마우스를 올려보세요.</p>
+  </div>
 
-        // 폰트 로드
-        document.getElementById('ttf').addEventListener('change', e => {
-            const file = e.target.files[0];
-            const reader = new FileReader();
-            reader.onload = ev => {
-                font = opentype.parse(ev.target.result);
-                document.getElementById('font-status').innerText = "로드 완료: " + file.name;
-                if (uniqChars.length) render();
-            };
-            reader.readAsArrayBuffer(file);
-        });
+<script>
+/* ============================================
+   논문 기반 28 자소 데이터셋 (SVG Path)
+   실제 붓글씨 느낌을 내기 위해 stroke를 두껍게 설정
+============================================ */
+const JAMO_DB = {
+  // 초성
+  'ㄱ': '<path d="M 20 20 L 70 20 L 70 70" />',
+  'ㄲ': '<path d="M 20 20 L 70 20 L 70 70 M 30 40 L 80 40 L 80 90" />',
+  'ㄴ': '<path d="M 20 20 L 20 70 L 70 70" />',
+  'ㄷ': '<path d="M 30 20 L 70 20 L 70 70 L 30 70" />',
+  'ㄸ': '<path d="M 30 20 L 70 20 L 70 70 L 30 70 M 20 40 L 80 40" />',
+  'ㄹ': '<path d="M 20 20 L 70 20 L 70 40 L 20 40 L 20 70 L 70 70" />',
+  'ㅁ': '<path d="M 20 20 L 70 20 L 70 70 L 20 70 Z" />',
+  'ㅂ': '<path d="M 20 20 L 60 20 L 60 70 L 20 70 M 30 40 L 70 40 L 70 70" />',
+  'ㅃ': '<path d="M 20 20 L 60 20 L 60 70 L 20 70 M 30 40 L 70 40 L 70 70 M 40 20 L 80 20 L 80 70 L 40 70" />',
+  'ㅅ': '<path d="M 50 20 L 50 70 M 50 50 L 20 70 M 50 50 L 80 70" />',
+  'ㅆ': '<path d="M 50 20 L 50 70 M 50 50 L 20 70 M 50 50 L 80 70 M 30 20 L 30 70 M 30 50 L 10 70 M 30 50 L 50 70" />',
+  'ㅇ': '<path d="M 50 30 C 50 20, 70 20, 70 30 C 70 50, 50 50, 50 30 Z M 50 60 L 70 70" />',
+  'ㅈ': '<path d="M 20 20 L 70 20 M 50 20 L 50 50 M 50 40 L 20 70 M 50 40 L 80 70" />',
+  'ㅉ': '<path d="M 20 20 L 70 20 M 50 20 L 50 50 M 50 40 L 20 70 M 50 40 L 80 70 M 30 20 L 30 50 M 30 40 L 10 70 M 30 40 L 50 70" />',
+  'ㅊ': '<path d="M 20 20 L 70 20 M 50 20 L 50 50 M 50 40 L 20 70 M 50 40 L 80 70 M 50 10 L 50 30" />',
+  'ㅋ': '<path d="M 20 20 L 70 20 L 70 70 M 70 40 L 40 40" />',
+  'ㅌ': '<path d="M 30 20 L 70 20 L 70 70 L 30 70 M 30 40 L 70 40" />',
+  'ㅍ': '<path d="M 30 20 L 30 70 M 70 20 L 70 70 M 30 30 L 70 30 M 30 60 L 70 60" />',
+  'ㅎ': '<path d="M 50 15 L 50 25 M 50 25 C 40 30, 40 50, 50 50 M 50 25 C 60 30, 60 50, 50 50 M 20 60 L 80 60" />',
+  
+  // 중성
+  'ㅏ': '<path d="M 60 10 L 60 90 M 60 40 L 85 40" />',
+  'ㅐ': '<path d="M 50 10 L 50 90 M 50 40 L 75 40 M 80 10 L 80 90 M 80 40 L 95 40" />',
+  'ㅑ': '<path d="M 60 10 L 60 90 M 60 20 L 85 20 M 60 50 L 85 50" />',
+  'ㅒ': '<path d="M 50 10 L 50 90 M 50 20 L 75 20 M 50 50 L 75 50 M 80 10 L 80 90 M 80 20 L 95 20 M 80 50 L 95 50" />',
+  'ㅓ': '<path d="M 60 10 L 60 90 M 60 40 L 35 40" />',
+  'ㅔ': '<path d="M 50 10 L 50 90 M 50 40 L 25 40 M 80 10 L 80 90 M 80 40 L 55 40" />',
+  'ㅕ': '<path d="M 60 10 L 60 90 M 60 20 L 35 20 M 60 50 L 35 50" />',
+  'ㅖ': '<path d="M 50 10 L 50 90 M 50 20 L 25 20 M 50 50 L 25 50 M 80 10 L 80 90 M 80 20 L 55 20 M 80 50 L 55 50" />',
+  'ㅗ': '<path d="M 20 40 L 80 40 M 50 40 L 50 70" />',
+  'ㅘ': '<path d="M 30 10 L 30 70 M 30 30 L 55 30 M 10 40 L 70 40 M 40 40 L 40 70 M 70 30 L 70 70 M 70 50 L 90 50" />',
+  'ㅙ': '<path d="M 30 10 L 30 70 M 30 30 L 55 30 M 10 40 L 70 40 M 40 40 L 40 70 M 70 30 L 70 70 M 70 50 L 90 50 M 80 30 L 80 80 M 80 50 L 100 50" />',
+  'ㅚ': '<path d="M 50 10 L 50 90 M 50 40 L 25 40 M 10 40 L 90 40 M 70 40 L 70 80" />',
+  'ㅛ': '<path d="M 20 30 L 80 30 M 50 30 L 50 70 M 50 50 L 20 70 M 50 50 L 80 70" />',
+  'ㅜ': '<path d="M 20 50 L 80 50 M 50 50 L 50 80" />',
+  'ㅝ': '<path d="M 30 10 L 30 70 M 30 30 L 55 30 M 10 40 L 70 40 M 40 40 L 40 70 M 70 30 L 70 70 M 70 50 L 90 50 M 90 50 L 90 90" />',
+  'ㅞ': '<path d="M 30 10 L 30 70 M 30 30 L 55 30 M 10 40 L 70 40 M 40 40 L 40 70 M 70 30 L 70 70 M 70 50 L 90 50 M 80 30 L 80 80 M 80 50 L 100 50 M 100 50 L 100 90" />',
+  'ㅟ': '<path d="M 50 10 L 50 90 M 50 40 L 25 40 M 10 40 L 90 40 M 70 40 L 70 80" />',
+  'ㅠ': '<path d="M 20 60 L 80 60 M 50 60 L 50 30 M 50 50 L 20 30 M 50 50 L 80 30" />',
+  'ㅡ': '<path d="M 20 50 L 80 50" />',
+  'ㅢ': '<path d="M 60 10 L 60 90 M 60 40 L 35 40 M 10 50 L 80 50" />',
+  'ㅣ': '<path d="M 50 10 L 50 90" />',
 
-        // SRT 분석 및 추출 (기능 1)
-        function extractChars() {
-            const text = document.getElementById('srt-content').value;
-            if (!text) return alert('SRT 내용을 입력하거나 파일을 불러오세요.');
-            
-            // 한글 음절만 추출
-            const matches = text.match(/[가-힣]/g);
-            if (!matches) return alert('추출된 한글이 없습니다.');
-            
-            uniqChars = [...new Set(matches)];
-            charIdx = 0;
-            document.getElementById('char-count').innerText = `${uniqChars.length}자 추출됨`;
-            render();
-        }
+  // 종성 (받침은 ㄱ, ㄴ, ㄷ, ㄹ, ㅁ, ㅂ, ㅅ, ㅇ 등 초성과 동일하게 사용됨)
+  '': ''
+};
 
-        // 초/중/종성 분해 (기능 2)
-        function decompose(syl) {
-            const code = syl.charCodeAt(0);
-            if (code < 0xAC00 || code > 0xD7A3) return null;
-            const S = code - 0xAC00;
-            return { 
-                cho: CHO[S/(28*21)|0], 
-                jung: JUNG[(S/28|0)%21], 
-                jong: JONG[S%28],
-                type: getType((S/28|0)%21, S%28)
-            };
-        }
+/* ============================================
+   한글 분해 및 6가지 결구 분류 (논문의 1, 2단계)
+============================================ */
+const CHO_LIST = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+const JUNG_LIST = ['ㅏ','ㅐ','ㅑ','ㅒ','ㅓ','ㅔ','ㅕ','ㅖ','ㅗ','ㅘ','ㅙ','ㅚ','ㅛ','ㅜ','ㅝ','ㅞ','ㅟ','ㅠ','ㅡ','ㅢ','ㅣ'];
+const JONG_LIST = ['','ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','ㅀ','ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
 
-        function getType(vowelIdx, jongIdx) {
-            const seRo = [0,1,2,3,4,5,6,7,20].includes(vowelIdx);
-            const gaRo = [8,12,13,17,18].includes(vowelIdx);
-            const hasJong = jongIdx !== 0;
+function decompose(char) {
+  const code = char.charCodeAt(0);
+  if (code < 0xAC00 || code > 0xD7A3) return null;
+  const syllable = code - 0xAC00;
+  return {
+    cho: CHO_LIST[Math.floor(syllable / (21 * 28))],
+    jung: JUNG_LIST[Math.floor(syllable / 28) % 21],
+    jong: JONG_LIST[syllable % 28],
+    jungIdx: Math.floor(syllable / 28) % 21,
+    jongIdx: syllable % 28
+  };
+}
 
-            if (seRo && !hasJong) return 1;
-            if (gaRo && !hasJong) return 2;
-            if (!seRo && !gaRo && !hasJong) return 3;
-            if (seRo && hasJong) return 4;
-            if (gaRo && hasJong) return 5;
-            return 6;
-        }
+function getType(jungIdx, jongIdx) {
+  const seRo = [0,1,2,3,4,5,6,7,20].includes(jungIdx);
+  const gaRo = [8,12,13,17,18].includes(jungIdx);
+  if (seRo && !jongIdx) return 1;
+  if (gaRo && !jongIdx) return 2;
+  if (!seRo && !gaRo && !jongIdx) return 3;
+  if (seRo && jongIdx) return 4;
+  if (gaRo && jongIdx) return 5;
+  return 6;
+}
 
-        // 자모 위치 배치 (기능 2 - 표준 배열)
-        function getLayout(type) {
-            if (type === 1) return { cho: [0,0,500,1000], jung: [500,0,500,1000] };
-            if (type === 2) return { cho: [0,0,1000,500], jung: [0,500,1000,500] };
-            if (type === 3) return { cho: [0,0,500,500], jung: [500,0,500,500] };
-            if (type === 4) return { cho: [0,0,500,500], jung: [500,0,500,500], jong: [0,500,1000,500] };
-            if (type === 5) return { cho: [0,0,1000,400], jung: [0,400,1000,200], jong: [0,600,1000,400] };
-            return { cho: [0,0,500,400], jung: [500,0,500,400], jong: [0,400,1000,600] };
-        }
+function getBoxes(type, w, h) {
+  // 논문의 무게중심 기반 배치 박스
+  if (type === 1) return { cho: [0, 0, w/2, h], jung: [w/2, 0, w/2, h] };
+  if (type === 2) return { cho: [0, 0, w, h/2], jung: [0, h/2, w, h/2] };
+  if (type === 3) return { cho: [0, 0, w/2, h/2], jung: [w/2, 0, w/2, h/2] };
+  if (type === 4) return { cho: [0, 0, w/2, h/2], jung: [w/2, 0, w/2, h/2], jong: [0, h/2, w, h/2] };
+  if (type === 5) return { cho: [0, 0, w, h/3], jung: [0, h/3, w, h/3], jong: [0, (h/3)*2, w, h/3] };
+  return { cho: [0, 0, w/2, h/3], jung: [w/2, 0, w/2, h/3], jong: [0, h/3, w, (h/3)*2] };
+}
 
-        function getOpts(part) {
-            return {
-                dx: parseInt(document.getElementById(part + '-x').value),
-                dy: parseInt(document.getElementById(part + '-y').value),
-                scale: parseFloat(document.getElementById(part + '-s').value)
-            };
-        }
+/* ============================================
+   SVG 렌더링 및 인터랙션 (논문의 3, 4단계)
+============================================ */
+let uniqChars = [];
+let charIdx = 0;
 
-        // 도형 그리기 (기능 3 - 변형 적용)
-        function drawPart(partChar, box, opts, targetCtx) {
-            if (!font || !partChar) return;
-            
-            // 경로 캐싱
-            let path;
-            if (pathCache.has(partChar)) path = pathCache.get(partChar);
-            else {
-                path = font.getPath(partChar, 0, 0, 1000);
-                pathCache.set(partChar, path);
-            }
+// 옵션 가져오기
+function getOpts(part) {
+  return {
+    dx: parseFloat(document.getElementById(part + '-x').value),
+    dy: parseFloat(document.getElementById(part + '-y').value),
+    scale: parseFloat(document.getElementById(part + '-s').value)
+  };
+}
 
-            let bbox = path.getBoundingBox();
-            let baseScale = Math.min(box[2] / (bbox.x2 - bbox.x1), box[3] / (bbox.y2 - bbox.y1)) * 0.85;
-            let finalScale = baseScale * (opts.scale || 1);
+function drawCharacter(targetEl, char) {
+  if (!char || char === ' ') return;
+  const dec = decompose(char);
+  
+  let svgContent = '';
+  const size = 200; // SVG viewBox 크기
+  
+  if (dec) {
+    const type = getType(dec.jungIdx, dec.jongIdx);
+    const layout = getBoxes(type, size, size);
+    
+    const renderJamo = (jamo, box) => {
+      if (!jamo || !JAMO_DB[jamo]) return '';
+      let opts = {};
+      if (box === layout.cho) opts = getOpts('cho');
+      if (box === layout.jung) opts = getOpts('jung');
+      if (box === layout.jong) opts = getOpts('jong');
 
-            let finalX = box[0] + box[2] / 2 + (opts.dx || 0);
-            let finalY = box[1] + box[3] / 2 + (opts.dy || 0);
+      const cx = box[0] + box[2]/2 + opts.dx;
+      const cy = box[1] + box[3]/2 + opts.dy;
+      const s = opts.scale;
 
-            targetCtx.save();
-            targetCtx.translate(finalX, finalY);
-            targetCtx.scale(finalScale, finalScale);
-            targetCtx.translate(-(bbox.x1 + bbox.x2) / 2, -(bbox.y1 + bbox.y2) / 2);
+      return `<g transform="translate(${cx}, ${cy}) scale(${s}) translate(-${size/2}, -${size/2})">${JAMO_DB[jamo]}</g>`;
+    };
 
-            let p2d = new Path2D();
-            path.commands.forEach(c => {
-                if (c.type === 'M') p2d.moveTo(c.x, c.y);
-                else if (c.type === 'L') p2d.lineTo(c.x, c.y);
-                else if (c.type === 'C') p2d.bezierCurveTo(c.x1, c.y1, c.x2, c.y2, c.x, c.y);
-                else if (c.type === 'Q') p2d.quadraticCurveTo(c.x1, c.y1, c.x, c.y);
-                else if (c.type === 'Z') p2d.closePath();
-            });
+    svgContent += renderJamo(dec.cho, layout.cho);
+    svgContent += renderJamo(dec.jung, layout.jung);
+    if (layout.jong) svgContent += renderJamo(dec.jong, layout.jong);
+  } else {
+    // 특수문자나 숫자는 그냥 텍스트로 처리
+    svgContent = `<text x="100" y="140" font-size="150" text-anchor="middle" fill="#111">${char}</text>`;
+  }
 
-            // 스타일 적용 (기능 4에서 활용)
-            targetCtx.fillStyle = '#111';
-            targetCtx.fill(p2d, 'evenodd');
+  // SVG 및 필터 적용 (논문 4단계)
+  const svg = `
+    <svg viewBox="0 0 200 200">
+      ${svgContent}
+    </svg>
+  `;
+  targetEl.innerHTML = svg;
+}
 
-            if (currentStyle === 'bold') {
-                targetCtx.lineWidth = 5; targetCtx.strokeStyle = '#111'; targetCtx.stroke(p2d);
-            } else if (currentStyle === 'soft') {
-                targetCtx.lineWidth = 2; targetCtx.strokeStyle = '#111'; targetCtx.stroke(p2d);
-            } else if (currentStyle === 'rough') {
-                // 거친 느낌을 위한 단순 노이즈 라인
-                for(let i=0; i<20; i++) {
-                    targetCtx.beginPath();
-                    targetCtx.moveTo(Math.random()*100, Math.random()*100);
-                    targetCtx.lineTo(Math.random()*100, Math.random()*100);
-                    targetCtx.strokeStyle = 'rgba(17,17,17,0.1)';
-                    targetCtx.lineWidth = 2;
-                    targetCtx.stroke();
-                }
-            }
-            targetCtx.restore();
-        }
+function redraw() {
+  if (!uniqChars.length) return;
+  const stage = document.getElementById('stage');
+  stage.innerHTML = '';
+  
+  const span = document.createElement('span');
+  span.className = 'calli-char';
+  span.dataset.char = uniqChars[charIdx];
+  
+  drawCharacter(span, uniqChars[charIdx]);
+  stage.appendChild(span);
 
-        // 메인 렌더링 (기능 2, 3 통합)
-        function drawTo(targetCtx, char) {
-            targetCtx.fillStyle = '#f4ecd8';
-            targetCtx.fillRect(0, 0, cvs.width, cvs.height);
+  document.getElementById('char-view').innerText = uniqChars[charIdx];
+  document.getElementById('char-idx').innerText = `${charIdx + 1} / ${uniqChars.length}`;
+  
+  ['cho', 'jung', 'jong'].forEach(p => {
+    document.getElementById(p + '-x-v').innerText = document.getElementById(p + '-x').value;
+    document.getElementById(p + '-y-v').innerText = document.getElementById(p + '-y').value;
+    document.getElementById(p + '-s-v').innerText = parseFloat(document.getElementById(p + '-s').value).toFixed(2);
+  });
+}
 
-            if (!font || !char) return;
+function extractSRT() {
+  const content = document.getElementById('srt-content').value;
+  if (!content) return alert('SRT 내용을 입력하세요.');
+  const matches = content.match(/[가-힣]/g);
+  if (!matches) return alert('한글이 포함되어 있지 않습니다.');
+  uniqChars = [...new Set(matches)];
+  charIdx = 0;
+  document.getElementById('char-count').innerText = `${uniqChars.length}자`;
+  redraw();
+}
 
-            const dec = decompose(char);
-            if (!dec) {
-                // 한글이 아닌 특수문자/영문 처리
-                let p = font.getPath(char, 0, 0, 1000);
-                let b = p.getBoundingBox();
-                let s = Math.min(cvs.width / (b.x2-b.x1), cvs.height / (b.y2-b.y1)) * 0.8;
-                targetCtx.save();
-                targetCtx.translate(cvs.width/2, cvs.height/2);
-                targetCtx.scale(s, s);
-                targetCtx.translate(-(b.x1+b.x2)/2, -(b.y1+b.y2)/2);
-                let p2d = new Path2D();
-                p.commands.forEach(c => { 
-                    if (c.type === 'M') p2d.moveTo(c.x,c.y);
-                    else if (c.type === 'L') p2d.lineTo(c.x,c.y);
-                    else if (c.type === 'C') p2d.bezierCurveTo(c.x1,c.y1,c.x2,c.y2,c.x,c.y);
-                    else if (c.type === 'Q') p2d.quadraticCurveTo(c.x1,c.y1,c.x,c.y);
-                    else if (c.type === 'Z') p2d.closePath();
-                });
-                targetCtx.fillStyle = '#111';
-                targetCtx.fill(p2d, 'evenodd');
-                targetCtx.restore();
-            } else {
-                // 자모 분리 배치
-                const layout = getLayout(dec.type);
-                if (layout.cho) drawPart(dec.cho, layout.cho, getOpts('cho'), targetCtx);
-                if (layout.jung) drawPart(dec.jung, layout.jung, getOpts('jung'), targetCtx);
-                if (layout.jong && dec.jong) drawPart(dec.jong, layout.jong, getOpts('jong'), targetCtx);
-            }
-        }
+function prev() { if (uniqChars.length) { charIdx = (charIdx - 1 + uniqChars.length) % uniqChars.length; redraw(); } }
+function next() { if (uniqChars.length) { charIdx = (charIdx + 1) % uniqChars.length; redraw(); } }
 
-        function render() {
-            if (!uniqChars.length) return;
-            drawTo(ctx, uniqChars[charIdx]);
-            document.getElementById('char-view').innerText = uniqChars[charIdx];
-            document.getElementById('char-idx').innerText = `${charIdx + 1} / ${uniqChars.length}`;
-        }
+function savePreset() {
+  const state = {
+    cho: getOpts('cho'), jung: getOpts('jung'), jong: getOpts('jong')
+  };
+  localStorage.setItem('v3_preset', JSON.stringify(state));
+  alert('프리셋 저장 완료');
+}
 
-        // UI 및 내비게이션
-        function changeOpt() {
-            ['cho', 'jung', 'jong'].forEach(part => {
-                document.getElementById(part + '-x-v').innerText = document.getElementById(part + '-x').value;
-                document.getElementById(part + '-y-v').innerText = document.getElementById(part + '-y').value;
-                document.getElementById(part + '-s-v').innerText = parseFloat(document.getElementById(part + '-s').value).toFixed(2);
-            });
-            render();
-        }
+function loadPreset() {
+  const saved = localStorage.getItem('v3_preset');
+  if (!saved) return alert('저장된 프리셋 없음');
+  const state = JSON.parse(saved);
+  ['cho', 'jung', 'jong'].forEach(p => {
+    document.getElementById(p + '-x').value = state[p].dx;
+    document.getElementById(p + '-y').value = state[p].dy;
+    document.getElementById(p + '-s').value = state[p].scale;
+  });
+  redraw();
+}
 
-        function setStyle(style, el) {
-            currentStyle = style;
-            document.querySelectorAll('.style-check').forEach(s => s.classList.remove('active'));
-            el.classList.add('active');
-            render();
-        }
+/* SVG를 이미지로 내보내기 */
+function exportOne(type) {
+  if (!uniqChars.length) return alert('먼저 글자를 추출하세요.');
+  const el = document.querySelector('.calli-char svg');
+  const xml = new XMLSerializer().serializeToString(el);
+  const svgBlob = new Blob([xml], {type: 'image/svg+xml;charset=utf-8'});
+  const url = URL.createObjectURL(svgBlob);
+  
+  const img = new Image();
+  img.onload = () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 800; canvas.height = 800;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#f4ecd8'; // 한지 배경
+    ctx.fillRect(0, 0, 800, 800);
+    ctx.drawImage(img, 0, 0, 800, 800);
+    
+    const mime = type === 'png' ? 'image/png' : 'image/jpeg';
+    canvas.toBlob(b => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(b);
+      a.download = `char_${uniqChars[charIdx]}.${type}`;
+      a.click();
+    }, mime, 0.95);
+  };
+  img.src = url;
+}
 
-        function prevChar() {
-            if (!uniqChars.length) return;
-            charIdx = (charIdx - 1 + uniqChars.length) % uniqChars.length;
-            render();
-        }
+async function exportAll(type) {
+  if (!uniqChars.length) return alert('먼저 글자를 추출하세요.');
+  const zip = new JSZip();
+  const status = document.getElementById('export-status');
+  status.innerText = '처리 중...';
 
-        function nextChar() {
-            if (!uniqChars.length) return;
-            charIdx = (charIdx + 1) % uniqChars.length;
-            render();
-        }
+  for (let i = 0; i < uniqChars.length; i++) {
+    const span = document.createElement('span');
+    drawCharacter(span, uniqChars[i]);
+    const xml = new XMLSerializer().serializeToString(span.querySelector('svg'));
+    
+    const img = await new Promise((res) => {
+      const img = new Image();
+      img.onload = () => res(img);
+      img.src = URL.createObjectURL(new Blob([xml], {type: 'image/svg+xml;charset=utf-8'}));
+    });
 
-        // 내보내기 (기능 4)
-        function download(blob, filename) {
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url; a.download = filename;
-            a.click(); URL.revokeObjectURL(url);
-        }
+    const canvas = document.createElement('canvas');
+    canvas.width = 800; canvas.height = 800;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#f4ecd8';
+    ctx.fillRect(0, 0, 800, 800);
+    ctx.drawImage(img, 0, 0, 800, 800);
+    
+    const blob = await new Promise(res => canvas.toBlob(res, `image/${type}`, 0.95));
+    zip.file(`char_${String(i).padStart(3, '0')}.${type}`, blob);
+    
+    if (i % 10 === 0) status.innerText = `진행 중: ${i + 1} / ${uniqChars.length}`;
+  }
 
-        function exportOne(type) {
-            if (!uniqChars.length) return alert('먼저 글자를 추출하세요.');
-            const off = document.createElement('canvas');
-            off.width = cvs.width; off.height = cvs.height;
-            drawTo(off.getContext('2d'), uniqChars[charIdx]);
-            const mime = type === 'png' ? 'image/png' : 'image/jpeg';
-            off.toBlob(b => download(b, `char_${uniqChars[charIdx]}.${type}`), mime, 0.95);
-        }
+  const zipBlob = await zip.generateAsync({type: 'blob'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(zipBlob);
+  a.download = `calligraphy_${type}_all.zip`;
+  a.click();
+  status.innerText = '완료!';
+}
 
-        async function exportAll(type) {
-            if (!uniqChars.length) return alert('먼저 글자를 추출하세요.');
-            const zip = new JSZip();
-            const status = document.getElementById('export-status');
-            const mime = type === 'png' ? 'image/png' : 'image/jpeg';
-            const off = document.createElement('canvas');
-            off.width = cvs.width; off.height = cvs.height;
+/* SRT 파일 로드 */
+document.getElementById('srt-upload').addEventListener('change', e => {
+  const f = e.target.files[0];
+  const r = new FileReader();
+  r.onload = ev => { document.getElementById('srt-content').value = ev.target.result; extractSRT(); };
+  r.readAsText(f);
+});
 
-            for (let i = 0; i < uniqChars.length; i++) {
-                status.innerText = `처리 중: ${i+1} / ${uniqChars.length}`;
-                drawTo(off.getContext('2d'), uniqChars[i]);
-                const blob = await new Promise(res => off.toBlob(res, mime, 0.95));
-                zip.file(`char_${String(i).padStart(3, '0')}_${uniqChars[i]}.${type}`, blob);
-            }
-
-            const zipBlob = await zip.generateAsync({type: 'blob'});
-            download(zipBlob, `calligraphy_${type}_all.zip`);
-            status.innerText = "완료!";
-        }
-
-        // 프리셋 저장/로딩 (기능 5)
-        function savePreset() {
-            const state = {
-                style: currentStyle,
-                cho: getOpts('cho'), jung: getOpts('jung'), jong: getOpts('jong')
-            };
-            localStorage.setItem('calligraphy_v2_preset', JSON.stringify(state));
-            alert('프리셋이 저장되었습니다.');
-        }
-
-        function loadPreset() {
-            const raw = localStorage.getItem('calligraphy_v2_preset');
-            if (!raw) return alert('저장된 프리셋이 없습니다.');
-            const state = JSON.parse(raw);
-            
-            if (state.style) setStyle(state.style, document.querySelector(`.style-check[onclick*="${state.style}"]`));
-            
-            ['cho', 'jung', 'jong'].forEach(part => {
-                if (state[part]) {
-                    document.getElementById(part + '-x').value = state[part].dx || 0;
-                    document.getElementById(part + '-y').value = state[part].dy || 0;
-                    document.getElementById(part + '-s').value = state[part].scale || 1;
-                }
-            });
-            changeOpt();
-        }
-
-        // 초기화
-        (async () => {
-            try {
-                font = await new Promise((res, rej) => opentype.load('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/nanumbrushscript/NanumBrushScript-Regular.ttf', (e, f) => e ? rej(e) : res(f)));
-                document.getElementById('font-status').innerText = '✅ 나눔붓글씨 로드 완료 (직접 업로드 가능)';
-            } catch (e) {
-                document.getElementById('font-status').innerText = '❌ 폰트 로드 실패. 직접 업로드해주세요.';
-            }
-        })();
-    </script>
+/* 초기 렌더링 */
+redraw();
+</script>
 </body>
 </html>
