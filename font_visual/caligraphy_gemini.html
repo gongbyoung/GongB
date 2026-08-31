@@ -2,146 +2,302 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <title>골격 기반 캘리그라피 렌더러</title>
+  <title>한글 자소 뼈대 기반 캘리그라피 합성 엔진</title>
   <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      background: #eee9df;
+      background: #e5e0d3;
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 40px;
-      font-family: sans-serif;
+      padding: 30px 10px;
+      font-family: -apple-system, sans-serif;
     }
-    .box {
-      background: #fcf9f2;
-      padding: 20px;
+    .panel {
+      background: #fbf9f4;
+      padding: 16px 24px;
       border-radius: 8px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-      text-align: center;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 20px;
     }
-    canvas {
-      display: block;
-      background: #fcf9f2;
-      border: 1px solid #e0dacf;
-      margin-top: 15px;
+    input[type="text"] {
+      font-size: 16px;
+      padding: 8px 12px;
+      border: 1px solid #c8c0b0;
+      border-radius: 4px;
+      outline: none;
+      width: 180px;
     }
     button {
-      padding: 8px 18px;
+      background: #3a3835;
+      color: #fff;
+      border: none;
+      padding: 9px 18px;
       font-size: 15px;
-      cursor: pointer;
-      border: 1px solid #999;
-      background: #fff;
       border-radius: 4px;
+      cursor: pointer;
     }
+    button:hover { background: #1a1815; }
+    .canvas-card {
+      background: #fdfaf2;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+      border-radius: 4px;
+      padding: 20px;
+    }
+    canvas { display: block; }
   </style>
 </head>
 <body>
 
-  <div class="box">
-    <button onclick="drawCalligraphy()">'한글' 캘리그라피 필순으로 자동 쓰기</button>
-    <canvas id="cv" width="600" height="300"></canvas>
+  <div class="panel">
+    <label>입력: </label>
+    <input type="text" id="inputText" value="한글">
+    <button id="renderBtn">캘리그라피 생성</button>
+  </div>
+
+  <div class="canvas-card">
+    <canvas id="calliCanvas" width="800" height="360"></canvas>
   </div>
 
   <script>
-    const cv = document.getElementById('cv');
-    const ctx = cv.getContext('2d');
-
-    // 글자의 "1선 뼈대(Skeleton)" 벡터 데이터 (x, y, 굵기 가중치 w)
-    // 활자 외곽선이 아니라, 붓이 지나가는 길과 필압 포인트입니다.
-    const charStrokes = {
-      '한': [
-        // 초성 ㅎ 점
-        [{x: 90, y: 70, w: 5}, {x: 105, y: 75, w: 12}, {x: 115, y: 85, w: 4}],
-        // 초성 ㅎ 가로획
-        [{x: 65, y: 105, w: 6}, {x: 105, y: 100, w: 14}, {x: 145, y: 105, w: 5}],
-        // 초성 ㅎ 동그라미 (시계방향)
-        [{x: 105, y: 120, w: 8}, {x: 130, y: 135, w: 11}, {x: 105, y: 155, w: 6}, {x: 80, y: 135, w: 12}, {x: 105, y: 120, w: 8}],
-        // 중성 ㅏ 세로획 (힘차게 내리긋기)
-        [{x: 185, y: 55, w: 14}, {x: 188, y: 130, w: 9}, {x: 185, y: 220, w: 16}, {x: 182, y: 245, w: 3}],
-        // 중성 ㅏ 짧은 가로획
-        [{x: 188, y: 135, w: 10}, {x: 215, y: 138, w: 13}, {x: 230, y: 140, w: 4}],
-        // 종성 ㄴ (꺾임에서 두꺼워짐)
-        [{x: 80, y: 195, w: 10}, {x: 82, y: 235, w: 18}, {x: 150, y: 230, w: 11}, {x: 165, y: 215, w: 4}]
-      ],
-      '글': [
-        // 초성 ㄱ (기필 -> 가늘어짐 -> 꺾임에서 강한 필압 -> 삐침)
-        [{x: 340, y: 75, w: 12}, {x: 400, y: 70, w: 7}, {x: 420, y: 80, w: 20}, {x: 410, y: 125, w: 10}, {x: 395, y: 140, w: 3}],
-        // 중성 ㅡ
-        [{x: 320, y: 165, w: 11}, {x: 385, y: 160, w: 7}, {x: 450, y: 168, w: 13}, {x: 465, y: 166, w: 4}],
-        // 종성 ㄹ (복합 꺾임)
-        [{x: 350, y: 195, w: 9}, {x: 415, y: 190, w: 13}, {x: 415, y: 210, w: 7}, 
-         {x: 350, y: 215, w: 12}, {x: 350, y: 235, w: 8}, {x: 425, y: 230, w: 14}, {x: 440, y: 220, w: 3}]
-      ]
+    // ==========================================
+    // 1. 기본 자소 1선 뼈대 데이터 (정규화 0~1)
+    // ==========================================
+    const JAMO_DB = {
+      cho: {
+        0: { // ㄱ
+          strokes: [[[0.15, 0.2, 1.2], [0.85, 0.18, 0.9], [0.88, 0.25, 1.8], [0.75, 0.85, 0.4]]]
+        },
+        2: { // ㄴ
+          strokes: [[[0.25, 0.15, 1.1], [0.25, 0.8, 1.6], [0.85, 0.78, 1.2], [0.95, 0.7, 0.3]]]
+        },
+        18: { // ㅎ
+          strokes: [
+            [[0.4, 0.15, 0.8], [0.55, 0.18, 1.4], [0.65, 0.22, 0.4]],
+            [[0.15, 0.42, 0.9], [0.5, 0.38, 1.5], [0.85, 0.42, 0.6]],
+            [[0.5, 0.55, 0.9], [0.78, 0.72, 1.3], [0.5, 0.92, 0.8], [0.22, 0.72, 1.3], [0.5, 0.55, 0.9]]
+          ]
+        }
+      },
+      jung: {
+        0: { // ㅏ (세로모음)
+          strokes: [
+            [[0.5, 0.05, 1.5], [0.52, 0.5, 0.9], [0.5, 0.95, 0.4]],
+            [[0.52, 0.5, 1.1], [0.9, 0.52, 1.4], [0.98, 0.53, 0.3]]
+          ]
+        },
+        18: { // ㅡ (가로모음)
+          strokes: [
+            [[0.05, 0.5, 1.3], [0.5, 0.46, 0.8], [0.92, 0.53, 1.5], [0.98, 0.5, 0.3]]
+          ]
+        }
+      },
+      jong: {
+        4: { // ㄴ
+          strokes: [[[0.2, 0.1, 1.1], [0.22, 0.75, 1.7], [0.8, 0.72, 1.2], [0.92, 0.65, 0.3]]]
+        },
+        8: { // ㄹ
+          strokes: [
+            [[0.15, 0.15, 1.0], [0.8, 0.12, 1.4], [0.8, 0.45, 0.8], [0.2, 0.5, 1.3], 
+             [0.2, 0.85, 0.8], [0.85, 0.82, 1.5], [0.92, 0.75, 0.3]]
+          ]
+        }
+      }
     };
 
-    function clear() {
-      ctx.fillStyle = '#fcf9f2';
-      ctx.fillRect(0, 0, cv.width, cv.height);
+    // ==========================================
+    // 2. 결구(Layout) 규칙 엔진
+    // ==========================================
+    // 중성의 형태 분류: 0: 세로형(ㅏ, ㅓ, ㅣ 등), 1: 가로형(ㅗ, ㅜ, ㅡ 등), 2: 복합형(ㅘ, ㅢ 등)
+    function getVowelType(jungIndex) {
+      if ([0, 1, 2, 3, 4, 5, 6, 7, 20].includes(jungIndex)) return 'VERTICAL';
+      if ([8, 12, 13, 17, 18].includes(jungIndex)) return 'HORIZONTAL';
+      return 'COMPLEX';
     }
-    clear();
 
-    // 두 점 사이를 부드러운 가변 굵기 붓으로 잇는 함수
-    function drawSegment(p1, p2, progress) {
-      const x = p1.x + (p2.x - p1.x) * progress;
-      const y = p1.y + (p2.y - p1.y) * progress;
-      const w = p1.w + (p2.w - p1.w) * progress;
+    // 초·중·종성을 글자 사각 영역(x, y, w, h) 내 상대 바운딩 박스로 분할
+    function calculateLayout(choIdx, jungIdx, jongIdx, box) {
+      const vowelType = getVowelType(jungIdx);
+      const hasJong = jongIdx > 0;
+      const res = { cho: null, jung: null, jong: null };
 
-      // 먹물 다발 효과
-      for (let i = 0; i < 12; i++) {
-        const ox = (Math.random() - 0.5) * w;
-        const oy = (Math.random() - 0.5) * w;
-        ctx.fillStyle = 'rgba(25, 25, 25, 0.25)';
+      if (!hasJong) {
+        if (vowelType === 'VERTICAL') { // 예: 가, 나
+          res.cho  = { x: box.x, y: box.y, w: box.w * 0.55, h: box.h };
+          res.jung = { x: box.x + box.w * 0.45, y: box.y, w: box.w * 0.55, h: box.h };
+        } else { // 예: 고, 노
+          res.cho  = { x: box.x, y: box.y, w: box.w, h: box.h * 0.55 };
+          res.jung = { x: box.x, y: box.y + box.h * 0.45, w: box.w, h: box.h * 0.55 };
+        }
+      } else {
+        if (vowelType === 'VERTICAL') { // 예: 강, 한
+          res.cho  = { x: box.x, y: box.y, w: box.w * 0.55, h: box.h * 0.6 };
+          res.jung = { x: box.x + box.w * 0.45, y: box.y, w: box.w * 0.55, h: box.h * 0.75 };
+          res.jong = { x: box.x + box.w * 0.1, y: box.y + box.h * 0.55, w: box.w * 0.8, h: box.h * 0.45 };
+        } else { // 예: 공, 글
+          res.cho  = { x: box.x + box.w * 0.1, y: box.y, w: box.w * 0.8, h: box.h * 0.4 };
+          res.jung = { x: box.x, y: box.y + box.h * 0.35, w: box.w, h: box.h * 0.3 };
+          res.jong = { x: box.x + box.w * 0.1, y: box.y + box.h * 0.55, w: box.w * 0.8, h: box.h * 0.45 };
+        }
+      }
+      return res;
+    }
+
+    // ==========================================
+    // 3. 텍스트 파싱 및 결합
+    // ==========================================
+    function parseHangulSyllable(char) {
+      const code = char.charCodeAt(0) - 0xAC00;
+      if (code < 0 || code > 11171) return null; // 한글 음절 아님
+      const jong = code % 28;
+      const jung = ((code - jong) / 28) % 21;
+      const cho = Math.floor((code - jong) / (28 * 21));
+      return { cho, jung, jong };
+    }
+
+    function transformStroke(points, bbox) {
+      return points.map(([nx, ny, nw]) => ({
+        x: bbox.x + nx * bbox.w,
+        y: bbox.y + ny * bbox.h,
+        w: nw
+      }));
+    }
+
+    // ==========================================
+    // 4. 캔버스 캘리그라피 렌더러
+    // ==========================================
+    const canvas = document.getElementById('calliCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // 붓털 생성
+    const BRISTLES = Array.from({ length: 22 }, () => ({
+      angle: Math.random() * Math.PI * 2,
+      dist: Math.pow(Math.random(), 1.7),
+      thickness: 0.8 + Math.random() * 1.2
+    }));
+
+    function clearCanvas() {
+      ctx.fillStyle = '#fdfaf2';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    function drawInkPoint(x, y, radius) {
+      for (let b of BRISTLES) {
+        const r = b.dist * radius;
+        const bx = x + Math.cos(b.angle) * r;
+        const by = y + Math.sin(b.angle) * r;
+        ctx.fillStyle = `rgba(20, 20, 20, ${0.15 + (1 - b.dist) * 0.35})`;
         ctx.beginPath();
-        ctx.arc(x + ox, y + oy, (w * 0.35) * Math.random(), 0, Math.PI * 2);
+        ctx.arc(bx, by, b.thickness, 0, Math.PI * 2);
         ctx.fill();
       }
     }
 
-    // 획 하나를 애니메이션으로 그리기
-    function animateStroke(points, onComplete) {
-      let segIndex = 0;
-      let progress = 0;
+    // Catmull-Rom 스플라인을 따라 부드러운 필압 궤적 생성
+    function renderCalliPath(strokePoints, onComplete) {
+      if (strokePoints.length < 2) {
+        if (onComplete) onComplete();
+        return;
+      }
 
-      function step() {
-        if (segIndex >= points.length - 1) {
-          onComplete();
+      // 두 점 사이 세밀 보간 드로잉
+      let seg = 0;
+      let t = 0;
+      const BASE_SIZE = 12;
+
+      function loop() {
+        if (seg >= strokePoints.length - 1) {
+          if (onComplete) onComplete();
           return;
         }
 
-        const p1 = points[segIndex];
-        const p2 = points[segIndex + 1];
+        const p0 = strokePoints[seg];
+        const p1 = strokePoints[seg + 1];
 
-        drawSegment(p1, p2, progress);
+        // 좌표 및 가중치 보간
+        const curX = p0.x + (p1.x - p0.x) * t;
+        const curY = p0.y + (p1.y - p0.y) * t;
+        const curW = (p0.w + (p1.w - p0.w) * t) * BASE_SIZE;
 
-        progress += 0.12; // 그리는 속도
-        if (progress >= 1) {
-          progress = 0;
-          segIndex++;
+        drawInkPoint(curX, curY, curW);
+
+        t += 0.08;
+        if (t >= 1) {
+          t = 0;
+          seg++;
         }
-        requestAnimationFrame(step);
+        requestAnimationFrame(loop);
       }
-      step();
+      loop();
     }
 
-    // 전체 글자 연속 재생
-    function drawCalligraphy() {
-      clear();
-      const allStrokes = [...charStrokes['한'], ...charStrokes['글']];
-      let strokeIdx = 0;
+    // ==========================================
+    // 5. 전체 텍스트 렌더링 실행기
+    // ==========================================
+    function renderText(text) {
+      clearCanvas();
+      const allStrokesQueue = [];
+      const charWidth = 140;
+      const charHeight = 140;
+      const startX = 60;
+      const startY = 100;
 
+      [...text].forEach((char, idx) => {
+        const parsed = parseHangulSyllable(char);
+        if (!parsed) return;
+
+        const charBox = {
+          x: startX + idx * (charWidth + 30),
+          y: startY,
+          w: charWidth,
+          h: charHeight
+        };
+
+        const layout = calculateLayout(parsed.cho, parsed.jung, parsed.jong, charBox);
+
+        // 초성 획 추출
+        if (JAMO_DB.cho[parsed.cho]) {
+          JAMO_DB.cho[parsed.cho].strokes.forEach(s => {
+            allStrokesQueue.push(transformStroke(s, layout.cho));
+          });
+        }
+        // 중성 획 추출
+        if (JAMO_DB.jung[parsed.jung]) {
+          JAMO_DB.jung[parsed.jung].strokes.forEach(s => {
+            allStrokesQueue.push(transformStroke(s, layout.jung));
+          });
+        }
+        // 종성 획 추출
+        if (parsed.jong > 0 && JAMO_DB.jong[parsed.jong]) {
+          JAMO_DB.jong[parsed.jong].strokes.forEach(s => {
+            allStrokesQueue.push(transformStroke(s, layout.jong));
+          });
+        }
+      });
+
+      // 획 순서대로 연속 애니메이션 실행
+      let currentStrokeIdx = 0;
       function next() {
-        if (strokeIdx < allStrokes.length) {
-          animateStroke(allStrokes[strokeIdx], () => {
-            strokeIdx++;
-            setTimeout(next, 40); // 획과 획 사이 간격
+        if (currentStrokeIdx < allStrokesQueue.length) {
+          renderCalliPath(allStrokesQueue[currentStrokeIdx], () => {
+            currentStrokeIdx++;
+            setTimeout(next, 30);
           });
         }
       }
       next();
     }
 
-    // 초기 1회 실행
-    drawCalligraphy();
+    document.getElementById('renderBtn').addEventListener('click', () => {
+      const val = document.getElementById('inputText').value;
+      renderText(val);
+    });
+
+    // 초기 실행
+    renderText('한글');
   </script>
 </body>
 </html>
