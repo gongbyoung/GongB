@@ -3,1161 +3,909 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>한글 자소 결구 & 모듈러 캘리그라피 4단계 파이프라인 스튜디오 (v33.0)</title>
+  <title>알고리즘 기반 한글 벡터 캘리그라피 엔진 (v34.0)</title>
 
-  <!-- 웹 폰트 로드 -->
+  <!-- 웹 폰트 & 라이브러리 -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Nanum+Brush+Script&display=swap" rel="stylesheet">
-
-  <!-- Opentype.js & MP4 Muxer CDN -->
   <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.1.0/build/mp4-muxer.min.js"></script>
 
   <style>
     :root {
-      --bg-dark: #121214;
-      --panel-bg: #1e1e24;
-      --panel-border: #2d2d38;
-      --accent-color: #ff6b35;
-      --accent-gradient: linear-gradient(135deg, #ff6b35, #f72585);
-      --preset-gradient: linear-gradient(135deg, #3a86ff, #8338ec);
-      --text-main: #f0f0f5;
-      --text-muted: #a0a0b0;
+      --bg-dark: #121215;
+      --panel-bg: #1c1c22;
+      --panel-border: #2c2c36;
+      --accent: #ff5e36;
+      --accent-grad: linear-gradient(135deg, #ff5e36, #e01e5a);
+      --text: #ededf2;
+      --text-dim: #9292a4;
     }
-
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Pretendard', sans-serif; background-color: var(--bg-dark); color: var(--text-main); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
-    header { background: #18181c; padding: 10px 24px; border-bottom: 1px solid var(--panel-border); display: flex; justify-content: space-between; align-items: center; }
-    header h1 { font-size: 1.15rem; font-weight: 700; background: var(--accent-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Pretendard', sans-serif; background: var(--bg-dark); color: var(--text); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+    
+    header { background: #16161b; padding: 10px 20px; border-bottom: 1px solid var(--panel-border); display: flex; justify-content: space-between; align-items: center; }
+    header h1 { font-size: 1.15rem; font-weight: 700; background: var(--accent-grad); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
 
-    /* 🏛️ 상단 프리셋 툴바 */
-    .preset-bar { background: #15151a; border-bottom: 1px solid var(--panel-border); padding: 8px 18px; display: flex; gap: 10px; align-items: center; overflow-x: auto; }
-    .preset-title { font-size: 0.8rem; font-weight: 700; color: #ff9e00; white-space: nowrap; margin-right: 4px; }
-    .btn-preset { background: #262633; color: #e2e2ea; border: 1px solid #3c3c4f; padding: 6px 14px; border-radius: 6px; font-size: 0.78rem; font-weight: 600; cursor: pointer; transition: all 0.2s; white-space: nowrap; display: flex; align-items: center; gap: 6px; }
-    .btn-preset:hover { background: #343446; border-color: var(--accent-color); color: #fff; transform: translateY(-1px); }
-    .btn-preset.active { background: var(--accent-gradient); border-color: transparent; color: #fff; box-shadow: 0 2px 10px rgba(255, 107, 55, 0.4); }
+    /* 프리셋 선택 바 */
+    .preset-bar { background: #181820; border-bottom: 1px solid var(--panel-border); padding: 8px 16px; display: flex; gap: 8px; align-items: center; }
+    .preset-label { font-size: 0.78rem; font-weight: 700; color: #fca311; margin-right: 4px; }
+    .btn-preset { background: #252530; color: #cfcfdc; border: 1px solid #363646; padding: 6px 12px; border-radius: 6px; font-size: 0.78rem; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+    .btn-preset:hover { background: #323242; color: #fff; }
+    .btn-preset.active { background: var(--accent-grad); border-color: transparent; color: #fff; box-shadow: 0 2px 8px rgba(255, 94, 54, 0.4); }
 
-    .main-container { display: flex; flex: 1; overflow: hidden; }
-    
-    .sidebar-left { width: 380px; background: var(--panel-bg); border-right: 1px solid var(--panel-border); padding: 16px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
-    .sidebar-right { width: 380px; background: var(--panel-bg); border-left: 1px solid var(--panel-border); padding: 16px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+    .workspace { display: flex; flex: 1; overflow: hidden; }
+    .sidebar { width: 360px; background: var(--panel-bg); padding: 14px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+    .sidebar-left { border-right: 1px solid var(--panel-border); }
+    .sidebar-right { border-left: 1px solid var(--panel-border); }
 
-    .section-title { font-size: 0.84rem; font-weight: 700; color: var(--accent-color); text-transform: uppercase; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
-    .control-group { display: flex; flex-direction: column; gap: 6px; background: #181820; padding: 12px; border-radius: 8px; border: 1px solid #282834; }
-    
-    label { font-size: 0.8rem; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; margin-top: 3px; }
-    label span.val { color: var(--text-main); font-weight: 600; }
-    
-    input[type="file"] { display: none; }
-    .btn-file { display: block; padding: 8px; background: #2a2a36; border: 1px dashed var(--accent-color); border-radius: 6px; text-align: center; cursor: pointer; font-size: 0.8rem; font-weight: 600; color: var(--text-main); transition: all 0.2s; }
-    .btn-file:hover { background: #353545; }
-    
-    textarea.srt-textarea { width: 100%; height: 75px; background: #141418; border: 1px solid var(--panel-border); border-radius: 6px; color: var(--text-main); font-family: monospace; font-size: 0.76rem; padding: 8px; resize: vertical; }
-    select, input[type="range"], input[type="color"], input[type="text"] { width: 100%; padding: 7px; background: #16161a; border: 1px solid var(--panel-border); border-radius: 6px; color: var(--text-main); font-size: 0.82rem; }
-    input[type="range"] { padding: 0; accent-color: var(--accent-color); cursor: pointer; }
-    
-    .preview-area { flex: 1; display: flex; flex-direction: column; background: #0a0a0c; align-items: center; justify-content: center; padding: 16px; position: relative; }
-    .canvas-wrapper { position: relative; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8); border-radius: 8px; overflow: hidden; max-width: 100%; max-height: 68vh; display: flex; align-items: center; justify-content: center; background: #000; }
-    canvas { display: block; max-width: 100%; max-height: 68vh; object-fit: contain; }
-    
-    .player-controls { width: 100%; max-width: 960px; margin-top: 10px; background: var(--panel-bg); padding: 10px 16px; border-radius: 10px; display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--panel-border); }
-    .timeline-row { display: flex; align-items: center; gap: 12px; }
-    .time-display { font-family: monospace; font-size: 0.85rem; color: var(--accent-color); min-width: 110px; }
-    
-    button.btn-action { background: var(--accent-gradient); color: white; border: none; padding: 9px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.85rem; }
-    button.btn-secondary { background: #2b2b38; border: 1px solid var(--panel-border); color: var(--text-main); padding: 7px 12px; border-radius: 6px; cursor: pointer; font-size: 0.82rem; }
-    button.btn-random { background: linear-gradient(135deg, #7209b7, #4361ee); color: white; border: none; padding: 9px 12px; border-radius: 6px; font-weight: 700; cursor: pointer; width: 100%; font-size: 0.82rem; }
+    .card { background: #16161c; padding: 12px; border-radius: 8px; border: 1px solid #262632; display: flex; flex-direction: column; gap: 8px; }
+    .card-title { font-size: 0.8rem; font-weight: 700; color: var(--accent); text-transform: uppercase; }
 
-    .srt-list-container { max-height: 110px; overflow-y: auto; background: #141418; border: 1px solid var(--panel-border); border-radius: 6px; padding: 4px; }
-    .srt-item { padding: 6px 8px; border-bottom: 1px solid #22222a; font-size: 0.75rem; cursor: pointer; display: flex; justify-content: space-between; }
-    .srt-item.active { background: rgba(255, 107, 55, 0.2); border-left: 3px solid var(--accent-color); color: #fff; font-weight: bold; }
-    
-    .progress-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(4px); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; display: none; }
-    .progress-box { background: var(--panel-bg); padding: 25px; border-radius: 12px; text-align: center; width: 340px; }
-    .progress-bar-bg { width: 100%; height: 8px; background: #111; border-radius: 4px; margin: 12px 0; overflow: hidden; }
-    .progress-bar-fill { width: 0%; height: 100%; background: var(--accent-gradient); }
-    svg.filters { position: absolute; width: 0; height: 0; }
-    .font-status { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
-    .font-status.ready { color: #7cd992; }
-    .session-badge { background: #ff6b35; color: white; padding: 1px 5px; border-radius: 4px; font-size: 0.68rem; }
-    .analysis-box { background: #14141c; border: 1px solid #2d2d3e; border-radius: 6px; padding: 6px 8px; font-family: monospace; font-size: 0.72rem; color: #7cd992; max-height: 60px; overflow-y: auto; }
+    label { font-size: 0.76rem; color: var(--text-dim); display: flex; justify-content: space-between; align-items: center; }
+    label span.val { color: var(--text); font-weight: 600; }
+
+    textarea { width: 100%; height: 75px; background: #111115; border: 1px solid var(--panel-border); border-radius: 6px; color: #fff; font-family: monospace; font-size: 0.78rem; padding: 8px; resize: vertical; }
+    select, input[type="range"], input[type="color"] { width: 100%; padding: 6px; background: #131318; border: 1px solid var(--panel-border); border-radius: 6px; color: #fff; font-size: 0.8rem; }
+    input[type="range"] { padding: 0; accent-color: var(--accent); cursor: pointer; }
+
+    .viewport { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #0c0c0e; padding: 16px; position: relative; }
+    .canvas-container { box-shadow: 0 16px 40px rgba(0,0,0,0.8); border-radius: 6px; overflow: hidden; background: #000; display: flex; align-items: center; justify-content: center; max-height: 72vh; }
+    canvas { display: block; max-height: 72vh; object-fit: contain; }
+
+    .controller-bar { width: 100%; max-width: 900px; margin-top: 10px; background: var(--panel-bg); padding: 10px 16px; border-radius: 8px; display: flex; align-items: center; gap: 12px; border: 1px solid var(--panel-border); }
+    button.btn-primary { background: var(--accent-grad); color: #fff; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.82rem; }
+    button.btn-sub { background: #262632; color: #fff; border: 1px solid var(--panel-border); padding: 7px 12px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; }
+
+    .modal-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(4px); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; display: none; }
+    .modal-box { background: var(--panel-bg); padding: 24px; border-radius: 10px; width: 320px; text-align: center; }
+    .bar-bg { width: 100%; height: 8px; background: #111; border-radius: 4px; margin: 12px 0; overflow: hidden; }
+    .bar-fill { width: 0%; height: 100%; background: var(--accent-grad); }
   </style>
 </head>
 <body>
 
-  <!-- 🏛️ 먹물 번짐 SVG 필터 -->
-  <svg class="filters">
-    <defs>
-      <filter id="ink-bleed-filter" x="-20%" y="-20%" width="140%" height="140%">
-        <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="4" result="noise" />
-        <feDisplacementMap in="SourceGraphic" in2="noise" scale="4.5" xChannelSelector="R" yChannelSelector="G" />
-      </filter>
-    </defs>
-  </svg>
-
   <header>
-    <h1>🖌️ 4대 캘리그라피 조형 스튜디오</h1>
-    <span style="font-size: 0.8rem; color: var(--text-muted);">실제 캘리그라피 시각 조형 4대 프리셋 엔진 v33.0</span>
+    <h1>🖌️ 한글 지오메트리 캘리그라피 변형 파이프라인</h1>
+    <span style="font-size: 0.78rem; color: var(--text-dim);">글리프 벡터 제어점 비선형 왜곡 & 어트랙터 알고리즘 엔진 v34.0</span>
   </header>
 
-  <!-- 🏛️ 4대 캘리그라피 프리셋 빠른 선택 바 -->
+  <!-- 4대 알고리즘 프리셋 툴바 -->
   <div class="preset-bar">
-    <span class="preset-title">⚡ 4대 조형 프리셋:</span>
-    <button class="btn-preset active" id="btn-preset-1">🌸 1. 감성 수채 산문 (수직 다열·보케)</button>
-    <button class="btn-preset" id="btn-preset-2">⚡ 2. 수묵 대조 표제 (장획 꼬리·갈필)</button>
-    <button class="btn-preset" id="btn-preset-3">🍃 3. 질주 행서체 (우상향 틸트·민트별)</button>
-    <button class="btn-preset" id="btn-preset-4">🗿 4. 조형 엠블럼 (후중 결구·대각선 삐침)</button>
+    <span class="preset-label">📐 알고리즘 모델:</span>
+    <button class="btn-preset active" id="btn-p1">🌸 1. 방사형 호흡 (수직 다열 산문)</button>
+    <button class="btn-preset" id="btn-p2">⚡ 2. 하단 장획 어트랙터 (수묵 표제체)</button>
+    <button class="btn-preset" id="btn-p3">🍃 3. 속도장 전단 가속 (질주 행서체)</button>
+    <button class="btn-preset" id="btn-p4">🗿 4. 구형 팽창 & 3분면 압출 (조형 엠블럼)</button>
   </div>
 
-  <div class="main-container">
+  <div class="workspace">
     
-    <!-- 👈 1. 좌측 사이드바 -->
-    <div class="sidebar-left">
-
-      <div class="control-group">
-        <div class="section-title">📂 1. 자막 로딩 & 프리셋 문구</div>
-        <textarea id="srt-textarea" class="srt-textarea"></textarea>
-        <button class="btn-secondary" id="btn-apply-srt">✏️ 자막 텍스트 적용하기</button>
+    <!-- 좌측 사이드바: 텍스트 및 기본 환경 -->
+    <div class="sidebar sidebar-left">
+      <div class="card">
+        <div class="card-title">📝 텍스트 입력</div>
+        <textarea id="input-text"></textarea>
+        <button class="btn-sub" id="btn-update-text">텍스트 지오메트리 빌드</button>
       </div>
 
-      <div class="control-group">
-        <div class="section-title">🧬 8대 한글 결구 실시간 파서</div>
-        <div class="analysis-box" id="analysis-output">자막을 선택하면 결구 분석 로그가 출력됩니다.</div>
-      </div>
-
-      <div class="control-group">
-        <div class="section-title">📐 2. 화면 비율 & 서체</div>
-        <select id="aspect-ratio-select">
-          <option value="1:1">⏹️ 1:1 정방형 (1440 x 1440 인스타 피드/작품)</option>
-          <option value="16:9">🖥️ 16:9 가로형 (1920 x 1080 Full HD)</option>
-          <option value="9:16">📱 9:16 세로 숏폼 (1080 x 1920 Reels/Shorts)</option>
+      <div class="card">
+        <div class="card-title">📐 화면 비율 & 캔버스</div>
+        <label>비율</label>
+        <select id="select-ratio">
+          <option value="1:1" selected>1:1 정방형 (1440 x 1440)</option>
+          <option value="16:9">16:9 가로형 (1920 x 1080)</option>
+          <option value="9:16">9:16 세로 숏폼 (1080 x 1920)</option>
         </select>
 
-        <label for="font-file-input" class="btn-file" id="font-file-label" style="margin-top: 6px;">
-          📁 사용자 TTF / OTF 폰트 파일 불러오기
-        </label>
-        <input type="file" id="font-file-input" accept=".ttf,.otf,.woff,.woff2">
-        <div class="font-status ready" id="font-status">✅ 나눔붓글씨 서체 로드 완료</div>
-      </div>
-
-      <div class="control-group">
-        <div class="section-title">
-          <span>🔷 3. 구도 & 시각 효과</span>
-          <span class="session-badge" id="selected-srt-badge">전체 적용</span>
-        </div>
-
-        <label for="shape-layout-style">캘리그라피 구도 스타일</label>
-        <select id="shape-layout-style">
-          <option value="preset-1-vertical">🌸 [프리셋 1] 세로 다열 감성 산문 (우측 발문)</option>
-          <option value="preset-2-contrast">⚡ [프리셋 2] 대형 헤드라인 + 잔잔한 세로 본문</option>
-          <option value="preset-3-slant">🍃 [프리셋 3] 우상향 8° 질주 행서 구도</option>
-          <option value="preset-4-emblem">🗿 [프리셋 4] 중심 집중형 조형 엠블럼</option>
-          <option value="artistic-rhythm">🧬 결구 균형 가로 2행 배치</option>
+        <label style="margin-top: 4px;">배경 한지</label>
+        <select id="select-bg">
+          <option value="white-hanji" selected>순백 전통 화선지</option>
+          <option value="warm-hanji">은은한 고서지</option>
+          <option value="transparent">투명 (PNG/알파)</option>
         </select>
 
-        <label for="artistic-bokeh-style">수채화 번짐 및 먹점 (보케 효과)</label>
-        <select id="artistic-bokeh-style">
-          <option value="pastel-warm">🌸 파스텔 수채화 원형 번짐 (피치/올리브/코랄)</option>
-          <option value="cyan-gold">✨ 청록 & 골드 먹빛 파티클 (속도감)</option>
-          <option value="ink-pure">🖤 순수 흑백 수묵 미세 튐</option>
-          <option value="none">❌ 효과 없음</option>
+        <label style="margin-top: 4px;">먹물 농도</label>
+        <input type="color" id="input-ink-color" value="#111113">
+      </div>
+
+      <div class="card">
+        <div class="card-title">🌸 수채화 보케 & 먹물 파티클</div>
+        <select id="select-bokeh">
+          <option value="pastel-warm">파스텔 수채 원형 번짐 (1번 스타일)</option>
+          <option value="cyan-gold">청록 & 골드 먹빛 별점 (3번 스타일)</option>
+          <option value="ink-splatter">순수 수묵 비산점 (2, 4번 스타일)</option>
+          <option value="none">비활성화</option>
         </select>
+      </div>
 
-        <label for="param-tail-sweep">
-          ✒️ 캘리그라피 장획(삐침/꼬리) 연장 <span class="val" id="val-tail-sweep">보통</span>
-        </label>
-        <input type="range" id="param-tail-sweep" min="0.0" max="2.5" step="0.1" value="1.0">
-
-        <label for="bg-style">배경 화선지 질감</label>
-        <select id="bg-style">
-          <option value="white-hanji" selected>순백 전통 화선지 (Pure Rice Paper)</option>
-          <option value="aged-hanji">은은한 미색 고서지</option>
-          <option value="dark-paper">먹지 (Dark Paper)</option>
-          <option value="transparent">투명 (PNG/알파 영상용)</option>
+      <div class="card">
+        <div class="card-title">🔴 전서 직인 (낙관)</div>
+        <select id="select-seal">
+          <option value="seal-red" selected>주문 정방형 인장</option>
+          <option value="seal-dark">흑묵 낙관</option>
+          <option value="none">인장 없음</option>
         </select>
-
-        <label for="ink-color">먹물 농도 색상</label>
-        <input type="color" id="ink-color" value="#161515">
-      </div>
-
-      <div class="control-group">
-        <div class="section-title">📜 자막 목록</div>
-        <div class="srt-list-container" id="srt-list"></div>
-      </div>
-
-    </div>
-
-    <!-- 🖼️ 2. 중앙 캔버스 프리뷰 -->
-    <div class="preview-area">
-      <div class="canvas-wrapper" id="canvas-wrapper">
-        <canvas id="calligraphy-canvas" width="1440" height="1440"></canvas>
-      </div>
-
-      <div class="player-controls">
-        <div class="timeline-row">
-          <button class="btn-secondary" id="btn-play">▶ 재생</button>
-          <input type="range" id="time-slider" min="0" max="100" value="0" step="0.01" style="flex:1;">
-          <div class="time-display" id="time-display">00:00.00 / 00:00.00</div>
-        </div>
-
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
-          <div style="font-size: 0.8rem; color: var(--text-muted);" id="res-indicator">
-            해상도: 1440x1440 (1:1 정사각형) | 4대 캘리그라피 엔진
-          </div>
-          <button class="btn-action" id="btn-export">
-            🔴 MP4 캘리그라피 비디오 저장
-          </button>
-        </div>
       </div>
     </div>
 
-    <!-- 👉 3. 우측 사이드바: 붓터치 & 필압 상세 조절 -->
-    <div class="sidebar-right">
-
-      <div class="control-group">
-        <div class="section-title">🎲 랜덤 믹스 조형</div>
-        <button class="btn-random" id="btn-random-mix">✨ 획과 자소 무작위 믹스</button>
+    <!-- 중앙 캔버스 -->
+    <div class="viewport">
+      <div class="canvas-container">
+        <canvas id="calli-canvas" width="1440" height="1440"></canvas>
       </div>
 
-      <div class="control-group">
-        <div class="section-title">📜 문장 타이포그래피</div>
+      <div class="controller-bar">
+        <button class="btn-sub" id="btn-play">▶ 재생</button>
+        <input type="range" id="time-slider" min="0" max="4.0" step="0.01" value="4.0" style="flex:1;">
+        <span id="time-text" style="font-family:monospace; font-size:0.8rem; color:var(--accent);">04.00s</span>
+        <button class="btn-primary" id="btn-export">🎬 MP4 렌더링</button>
+      </div>
+    </div>
+
+    <!-- 우측 사이드바: 폰트 내부 수학 파라미터 -->
+    <div class="sidebar sidebar-right">
+      <div class="card">
+        <div class="card-title">🧮 벡터장(Vector Field) 파라미터</div>
         
-        <label for="param-letter-spacing">자간 (Letter Spacing) <span class="val" id="val-letter-spacing">-8px</span></label>
-        <input type="range" id="param-letter-spacing" min="-40" max="60" step="2" value="-8">
+        <label>장획/삐침 어트랙터 강도 <span class="val" id="val-attractor">1.0x</span></label>
+        <input type="range" id="param-attractor" min="0.0" max="3.0" step="0.1" value="1.0">
 
-        <label for="param-line-height">줄간격 (Line Height) <span class="val" id="val-line-height">1.05x</span></label>
-        <input type="range" id="param-line-height" min="0.6" max="2.2" step="0.05" value="1.05">
+        <label>비선형 벤딩/곡률 곡면 <span class="val" id="val-curvature">0.0</span></label>
+        <input type="range" id="param-curvature" min="-2.0" max="2.0" step="0.1" value="0.0">
 
-        <label for="param-skew-angle">우상향 붓 기울기 <span class="val" id="val-skew-angle">0°</span></label>
-        <input type="range" id="param-skew-angle" min="-20" max="25" step="1" value="0">
+        <label>속도장 전단각 (Shear) <span class="val" id="val-shear">0°</span></label>
+        <input type="range" id="param-shear" min="-15" max="25" step="1" value="0">
+
+        <label>구형 중심 팽창 (Bulge) <span class="val" id="val-bulge">0.0</span></label>
+        <input type="range" id="param-bulge" min="-1.0" max="2.0" step="0.1" value="0.0">
       </div>
 
-      <div class="control-group">
-        <div class="section-title">✍️ 자소 형태 모핑 (Shape Morphing)</div>
+      <div class="card">
+        <div class="card-title">✒️ 필압 지오메트리 & 갈필 절삭</div>
 
-        <label for="param-jaso-shape">전체 자소 조형 스타일</label>
-        <select id="param-jaso-shape">
-          <option value="normal">기본 서체 원형 유지</option>
-          <option value="rounded" selected>⭕ 둥근 맺음 (유연한 중봉)</option>
-          <option value="angled">📐 각진 꺾임 (예리한 칼붓)</option>
-          <option value="cursive">🖌️ 흘림/행서 (자연스러운 연결)</option>
-          <option value="plump">🐘 후중/두툼 (꽉 찬 획)</option>
-        </select>
+        <label>외곽선 법선 확장 (팽창 필압) <span class="val" id="val-stroke-expand">1.0x</span></label>
+        <input type="range" id="param-stroke-expand" min="0.5" max="2.5" step="0.1" value="1.0">
 
-        <label for="param-contrast">단어 대소 대비율 (헤드라인 강조) <span class="val" id="val-contrast">2.0x</span></label>
-        <input type="range" id="param-contrast" min="1.0" max="4.0" step="0.1" value="2.0">
+        <label>갈필(飛白) 접선 슬릿 절삭 <span class="val" id="val-slit-cut">0.3</span></label>
+        <input type="range" id="param-slit-cut" min="0.0" max="1.0" step="0.05" value="0.3">
+
+        <label>주제어 대비 (헤드라인 스케일) <span class="val" id="val-contrast">1.5x</span></label>
+        <input type="range" id="param-contrast" min="1.0" max="3.5" step="0.1" value="1.5">
       </div>
 
-      <div class="control-group">
-        <div class="section-title">🖌️ 필압(起筆·收筆) & 갈필(飛白)</div>
+      <div class="card">
+        <div class="card-title">📜 조형 배치 & 간격</div>
 
-        <label for="param-gipil">起筆(기필) 시작 누름 <span class="val" id="val-gipil">1.3x</span></label>
-        <input type="range" id="param-gipil" min="0.0" max="2.5" step="0.1" value="1.3">
+        <label>자간 (Letter Spacing) <span class="val" id="val-spacing">-8px</span></label>
+        <input type="range" id="param-spacing" min="-40" max="40" step="2" value="-8">
 
-        <label for="param-supil">收筆(수필) 맺음/돈필 <span class="val" id="val-supil">1.4x</span></label>
-        <input type="range" id="param-supil" min="0.0" max="2.5" step="0.1" value="1.4">
-
-        <label for="param-dry-brush">갈필(飛白) 붓갈라짐 <span class="val" id="val-dry-brush">0.4</span></label>
-        <input type="range" id="param-dry-brush" min="0.0" max="1.0" step="0.05" value="0.4">
-
-        <label for="param-seal-select">🔴 전통 직인 / 낙관</label>
-        <select id="param-seal-select">
-          <option value="seal-square-red" selected>🔴 전서 사각 양각 직인</option>
-          <option value="seal-square-dark">⚫ 흑묵 정방 낙관</option>
-          <option value="seal-custom">✏️ 직접 입력 직인</option>
-          <option value="none">❌ 낙관 없음</option>
-        </select>
-        <input type="text" id="param-seal-text" value="정글" maxlength="4" style="margin-top: 4px; display: none;">
+        <label>행간 (Line Height) <span class="val" id="val-line-height">1.05x</span></label>
+        <input type="range" id="param-line-height" min="0.6" max="2.0" step="0.05" value="1.05">
       </div>
-
     </div>
 
   </div>
 
   <!-- 프로그레스 모달 -->
-  <div class="progress-overlay" id="progress-modal">
-    <div class="progress-box">
-      <h3 style="margin-bottom: 8px; font-size: 1rem;">📽️ 캘리그라피 영상 인코딩</h3>
-      <p style="font-size: 0.8rem; color: var(--text-muted);" id="progress-text">MP4 렌더링 진행 중...</p>
-      <div class="progress-bar-bg"><div class="progress-bar-fill" id="progress-fill"></div></div>
-      <span id="progress-percent" style="font-weight: bold; font-size: 1rem; color: var(--accent-color);">0%</span>
+  <div class="modal-overlay" id="render-modal">
+    <div class="modal-box">
+      <div style="font-size: 0.9rem; font-weight: bold; margin-bottom: 8px;">캘리그라피 인코딩 중</div>
+      <div class="bar-bg"><div class="bar-fill" id="render-bar"></div></div>
+      <span id="render-pct" style="font-size: 0.85rem; color: var(--accent); font-weight: 700;">0%</span>
     </div>
   </div>
 
   <script>
     /* =========================================================================
-       🏛️ 4대 캘리그라피 프리셋 데이터베이스
+       🏛️ 4대 알고리즘 프리셋 설정 (실제 이미지 조형 매핑)
        ========================================================================= */
     const PRESETS = {
-      preset1: {
-        id: 'preset1',
-        name: '🌸 1. 감성 수채 산문 (1번 이미지)',
+      p1: {
+        name: '방사형 호흡 (수직 다열)',
         text: "완전히 똑같이\n다시 한번\n지금 이 인생을\n살아도 좋다는\n마음으로\n살아라",
         sideNote: "차라투스트라는\n이렇게 말했다",
-        aspectRatio: "1:1",
-        layoutStyle: "preset-1-vertical",
-        bokehStyle: "pastel-warm",
-        tailSweep: 0.8,
-        letterSpacing: -6,
-        lineHeight: 1.02,
-        skewAngle: 0,
-        jasoShape: "rounded",
-        contrast: 1.4,
-        gipil: 1.2,
-        supil: 1.3,
-        dryBrush: 0.25,
-        inkColor: "#1a1818",
-        bgStyle: "white-hanji",
-        sealType: "seal-square-dark",
-        sealText: "정글"
+        layout: 'vertical-multi',
+        bokeh: 'pastel-warm',
+        attractor: 0.2,
+        curvature: 0.4,
+        shear: 0,
+        bulge: 0.25,
+        strokeExpand: 1.1,
+        slitCut: 0.2,
+        contrast: 1.25,
+        spacing: -6,
+        lineHeight: 1.05,
+        seal: 'seal-dark'
       },
-      preset2: {
-        id: 'preset2',
-        name: '⚡ 2. 수묵 대조 표제 (2번 이미지)',
+      p2: {
+        name: '하단 장획 어트랙터 (수묵 표제)',
         text: "해답은\n없다\n\n앞으로도\n해답이 없을 것이고\n지금까지도 해답이\n없었다 이것이\n인생의 유일한\n해답이다",
         sideNote: "",
-        aspectRatio: "1:1",
-        layoutStyle: "preset-2-contrast",
-        bokehStyle: "ink-pure",
-        tailSweep: 2.2, // 길게 내려꽂는 세로 장획
-        letterSpacing: -10,
+        layout: 'contrast-headline',
+        bokeh: 'ink-splatter',
+        attractor: 2.4, // 실제 글리프 하단점을 아래로 강하게 뽑아냄
+        curvature: -0.6,
+        shear: -4,
+        bulge: 0.1,
+        strokeExpand: 1.35,
+        slitCut: 0.65, // 거친 갈필 절삭
+        contrast: 3.2, // 극단적 크기 대비
+        spacing: -12,
         lineHeight: 0.95,
-        skewAngle: -3,
-        jasoShape: "cursive",
-        contrast: 3.4, // 초대형 타이틀과 소형 본문의 극단적 대비
-        gipil: 1.8,
-        supil: 2.0,
-        dryBrush: 0.65, // 강한 갈필
-        inkColor: "#0f0e0e",
-        bgStyle: "white-hanji",
-        sealType: "seal-square-red",
-        sealText: "해답"
+        seal: 'seal-red'
       },
-      preset3: {
-        id: 'preset3',
-        name: '🍃 3. 질주 행서체 (3번 이미지)',
+      p3: {
+        name: '속도장 전단 가속 (질주 행서)',
         text: "긴장은 잠시,\n실력은 그대로",
-        sideNote: "응원해!",
-        aspectRatio: "1:1",
-        layoutStyle: "preset-3-slant",
-        bokehStyle: "cyan-gold",
-        tailSweep: 1.6, // 날렵하게 좌/우로 빠지는 삐침
-        letterSpacing: -4,
-        lineHeight: 1.15,
-        skewAngle: 9, // 우상향 9도 기울기
-        jasoShape: "angled",
+        sideNote: "운채 씀",
+        layout: 'running-script',
+        bokeh: 'cyan-gold',
+        attractor: 1.8, // 우측/하단 말단부를 날카롭게 압출
+        curvature: 0.8,
+        shear: 11, // 우상향 11도 전단 왜곡
+        bulge: 0.0,
+        strokeExpand: 1.15,
+        slitCut: 0.45,
         contrast: 1.6,
-        gipil: 1.1,
-        supil: 1.6,
-        dryBrush: 0.45,
-        inkColor: "#151618",
-        bgStyle: "white-hanji",
-        sealType: "none",
-        sealText: ""
+        spacing: -4,
+        lineHeight: 1.2,
+        seal: 'none'
       },
-      preset4: {
-        id: 'preset4',
-        name: '🗿 4. 조형 엠블럼 (4번 이미지)',
+      p4: {
+        name: '구형 팽창 & 3분면 압출 (조형 엠블럼)',
         text: "봄캘리",
         sideNote: "",
-        aspectRatio: "1:1",
-        layoutStyle: "preset-4-emblem",
-        bokehStyle: "ink-pure",
-        tailSweep: 2.4, // 좌하단으로 뻗어나가는 장천 획
-        letterSpacing: -14,
+        layout: 'emblem-quad',
+        bokeh: 'ink-splatter',
+        attractor: 2.8, // 좌하단(3분면) 정점을 대각선으로 극대 확장
+        curvature: 0.0,
+        shear: -2,
+        bulge: 1.2, // 극단적인 후중화 팽창
+        strokeExpand: 1.7,
+        slitCut: 0.5,
+        contrast: 2.4,
+        spacing: -16,
         lineHeight: 1.0,
-        skewAngle: -2,
-        jasoShape: "plump", // 후중하고 뚱뚱한 획
-        contrast: 2.5,
-        gipil: 2.2,
-        supil: 1.8,
-        dryBrush: 0.5,
-        inkColor: "#0d0d0f",
-        bgStyle: "white-hanji",
-        sealType: "seal-square-red",
-        sealText: "봄"
+        seal: 'seal-red'
       }
     };
 
-    /* 유니코드 자소 분해 */
-    const INITIAL_CONSONANTS = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
-    const MEDIAL_VOWELS     = ['ㅏ','ㅐ','ㅑ','ㅒ','ㅓ','ㅔ','ㅕ','ㅖ','ㅗ','ㅘ','ㅙ','ㅚ','ㅛ','ㅜ','ㅝ','ㅞ','ㅟ','ㅠ','ㅡ','ㅢ','ㅣ'];
-    const FINAL_CONSONANTS  = ['','ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','ㅀ','ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
-
-    function decomposeHangul(char) {
-      const code = char.charCodeAt(0);
-      if (code < 0xAC00 || code > 0xD7A3) return { char, isHangul: false };
-      const sIndex = code - 0xAC00;
-      return {
-        char,
-        isHangul: true,
-        initial: INITIAL_CONSONANTS[Math.floor(sIndex / 588)],
-        medial: MEDIAL_VOWELS[Math.floor((sIndex % 588) / 28)],
-        final: FINAL_CONSONANTS[sIndex % 28]
-      };
-    }
-
-    /* 전역 변수 */
-    let currentPreset = 'preset1';
-    let srtData = [];
-    let totalDuration = 5.0;
-    let currentTime = 0;
+    /* 시스템 상태 및 DOM */
+    let currentModel = 'p1';
+    let loadedFont = null;
     let isPlaying = false;
-    let isRecording = false;
-    let animationFrameId = null;
-    let lastTimestamp = 0;
-    let rafScheduled = false;
+    let animId = null;
+    let currentTime = 4.0;
+    const totalDuration = 4.0;
 
-    const canvas = document.getElementById('calligraphy-canvas');
+    const canvas = document.getElementById('calli-canvas');
     const ctx = canvas.getContext('2d');
-    const srtTextarea = document.getElementById('srt-textarea');
-    const btnApplySrt = document.getElementById('btn-apply-srt');
-    const srtListEl = document.getElementById('srt-list');
+    const inputText = document.getElementById('input-text');
+    const selectRatio = document.getElementById('select-ratio');
+    const selectBg = document.getElementById('select-bg');
+    const inputInkColor = document.getElementById('input-ink-color');
+    const selectBokeh = document.getElementById('select-bokeh');
+    const selectSeal = document.getElementById('select-seal');
+
+    const paramAttractor = document.getElementById('param-attractor');
+    const paramCurvature = document.getElementById('param-curvature');
+    const paramShear = document.getElementById('param-shear');
+    const paramBulge = document.getElementById('param-bulge');
+    const paramStrokeExpand = document.getElementById('param-stroke-expand');
+    const paramSlitCut = document.getElementById('param-slit-cut');
+    const paramContrast = document.getElementById('param-contrast');
+    const paramSpacing = document.getElementById('param-spacing');
+    const paramLineHeight = document.getElementById('param-line-height');
+
     const timeSlider = document.getElementById('time-slider');
-    const timeDisplay = document.getElementById('time-display');
+    const timeText = document.getElementById('time-text');
     const btnPlay = document.getElementById('btn-play');
     const btnExport = document.getElementById('btn-export');
-    const btnRandomMix = document.getElementById('btn-random-mix');
-    const aspectRatioSelect = document.getElementById('aspect-ratio-select');
-    const shapeLayoutStyleSelect = document.getElementById('shape-layout-style');
-    const artisticBokehStyle = document.getElementById('artistic-bokeh-style');
-    const bgStyleSelect = document.getElementById('bg-style');
-    const inkColorInput = document.getElementById('ink-color');
-    const paramTailSweep = document.getElementById('param-tail-sweep');
-    const paramLetterSpacing = document.getElementById('param-letter-spacing');
-    const paramLineHeight = document.getElementById('param-line-height');
-    const paramSkewAngle = document.getElementById('param-skew-angle');
-    const paramJasoShape = document.getElementById('param-jaso-shape');
-    const paramContrast = document.getElementById('param-contrast');
-    const paramGipil = document.getElementById('param-gipil');
-    const paramSupil = document.getElementById('param-supil');
-    const paramDryBrush = document.getElementById('param-dry-brush');
-    const paramSealSelect = document.getElementById('param-seal-select');
-    const paramSealText = document.getElementById('param-seal-text');
-    const analysisOutput = document.getElementById('analysis-output');
-    const progressModal = document.getElementById('progress-modal');
-    const progressFill = document.getElementById('progress-fill');
-    const progressPercent = document.getElementById('progress-percent');
-    const progressText = document.getElementById('progress-text');
 
-    const DEFAULT_FONT_URL = "https://raw.githubusercontent.com/google/fonts/main/ofl/nanumbrushscript/NanumBrushScript-Regular.ttf";
-    let currentFont = null;
-    const glyphDataCache = new Map();
+    /* =========================================================================
+       🧬 핵심 알고리즘: 글리프 연속 2D 벡터장 변형기 (Glyph Vector Field Warper)
+       ========================================================================= */
+    class GlyphGeometryEngine {
+      /**
+       * opentype.js의 path.commands 좌표를 읽어 수학적 벡터장으로 정점 이동
+       * @param {Array} commands - 글리프 원본 Path 명령 배열
+       * @param {Object} bbox - 글리프 Bounding Box
+       * @param {Object} params - 변형 수학 파라미터 모음
+       */
+      static deformGlyph(commands, bbox, params, isMajorChar = false) {
+        const w = Math.max(1, bbox.x2 - bbox.x1);
+        const h = Math.max(1, bbox.y2 - bbox.y1);
+        const cx = (bbox.x1 + bbox.x2) / 2;
+        const cy = (bbox.y1 + bbox.y2) / 2;
 
-    function scheduleRender() {
-      if (rafScheduled) return;
-      rafScheduled = true;
-      requestAnimationFrame(() => {
-        rafScheduled = false;
-        renderFrame(currentTime);
-      });
-    }
+        const {
+          attractor,      // 장획 어트랙터
+          curvature,      // 비선형 곡률
+          shearDeg,       // 전단 각도
+          bulge,          // 구형 팽창
+          strokeExpand,   // 외곽선 팽창
+          modelType       // 현재 적용 중인 알고리즘 모델
+        } = params;
 
-    function applyPreset(presetKey) {
-      currentPreset = presetKey;
-      const p = PRESETS[presetKey];
-      if (!p) return;
+        const shearRad = (-shearDeg * Math.PI) / 180;
+        const tanShear = Math.tan(shearRad);
 
-      document.querySelectorAll('.btn-preset').forEach(b => b.classList.remove('active'));
-      const activeBtn = document.getElementById(`btn-${presetKey.replace('preset', 'preset-')}`);
-      if (activeBtn) activeBtn.classList.add('active');
+        // 정점 사상 함수 F(x, y) -> (x', y')
+        const transformPoint = (x, y) => {
+          // 1. 정규화 좌표 (-1 ~ 1)
+          let u = (x - cx) / (w * 0.5);
+          let v = (y - cy) / (h * 0.5);
 
-      srtTextarea.value = p.text;
-      aspectRatioSelect.value = p.aspectRatio;
-      shapeLayoutStyleSelect.value = p.layoutStyle;
-      artisticBokehStyle.value = p.bokehStyle;
-      bgStyleSelect.value = p.bgStyle;
-      inkColorInput.value = p.inkColor;
-      
-      paramTailSweep.value = p.tailSweep;
-      document.getElementById('val-tail-sweep').textContent = p.tailSweep > 1.8 ? '매우 강함' : (p.tailSweep > 0.9 ? '보통' : '은은함');
-
-      paramLetterSpacing.value = p.letterSpacing;
-      document.getElementById('val-letter-spacing').textContent = `${p.letterSpacing}px`;
-
-      paramLineHeight.value = p.lineHeight;
-      document.getElementById('val-line-height').textContent = `${p.lineHeight}x`;
-
-      paramSkewAngle.value = p.skewAngle;
-      document.getElementById('val-skew-angle').textContent = `${p.skewAngle}°`;
-
-      paramJasoShape.value = p.jasoShape;
-
-      paramContrast.value = p.contrast;
-      document.getElementById('val-contrast').textContent = `${p.contrast}x`;
-
-      paramGipil.value = p.gipil;
-      document.getElementById('val-gipil').textContent = `${p.gipil}x`;
-
-      paramSupil.value = p.supil;
-      document.getElementById('val-supil').textContent = `${p.supil}x`;
-
-      paramDryBrush.value = p.dryBrush;
-      document.getElementById('val-dry-brush').textContent = p.dryBrush;
-
-      paramSealSelect.value = p.sealType;
-      paramSealText.value = p.sealText;
-      paramSealText.style.display = p.sealType === 'seal-custom' ? 'block' : 'none';
-
-      updateCanvasDimensions();
-      parseCurrentTextToSession();
-      scheduleRender();
-    }
-
-    // 프리셋 버튼 리스너
-    document.getElementById('btn-preset-1').addEventListener('click', () => applyPreset('preset1'));
-    document.getElementById('btn-preset-2').addEventListener('click', () => applyPreset('preset2'));
-    document.getElementById('btn-preset-3').addEventListener('click', () => applyPreset('preset3'));
-    document.getElementById('btn-preset-4').addEventListener('click', () => applyPreset('preset4'));
-
-    function updateCanvasDimensions() {
-      const ratio = aspectRatioSelect.value;
-      let w = 1440, h = 1440;
-      if (ratio === '16:9') { w = 1920; h = 1080; }
-      else if (ratio === '9:16') { w = 1080; h = 1920; }
-      
-      canvas.width = w;
-      canvas.height = h;
-      document.getElementById('res-indicator').textContent = `해상도: ${w}x${h} (${ratio}) | 4대 캘리그라피 엔진`;
-      scheduleRender();
-    }
-    aspectRatioSelect.addEventListener('change', updateCanvasDimensions);
-
-    /* Opentype.js 폰트 로드 */
-    function loadDefaultFont() {
-      opentype.load(DEFAULT_FONT_URL, (err, font) => {
-        if (!err) {
-          currentFont = font;
-          glyphDataCache.clear();
-          scheduleRender();
-        }
-      });
-    }
-
-    function flattenGlyphPath(commands) {
-      const contours = [];
-      let current = [];
-      let startX = 0, startY = 0, curX = 0, curY = 0;
-      const STEPS = 5;
-      const pushCurrent = () => { if (current.length > 1) contours.push(current); current = []; };
-
-      commands.forEach(cmd => {
-        if (cmd.type === 'M') {
-          pushCurrent();
-          curX = cmd.x; curY = cmd.y; startX = curX; startY = curY;
-          current.push({ x: curX, y: curY });
-        } else if (cmd.type === 'L') {
-          curX = cmd.x; curY = cmd.y;
-          current.push({ x: curX, y: curY });
-        } else if (cmd.type === 'C') {
-          const p0 = { x: curX, y: curY }, p1 = { x: cmd.x1, y: cmd.y1 }, p2 = { x: cmd.x2, y: cmd.y2 }, p3 = { x: cmd.x, y: cmd.y };
-          for (let i = 1; i <= STEPS; i++) {
-            const t = i / STEPS, mt = 1 - t;
-            current.push({
-              x: mt*mt*mt*p0.x + 3*mt*mt*t*p1.x + 3*mt*t*t*p2.x + t*t*t*p3.x,
-              y: mt*mt*mt*p0.y + 3*mt*mt*t*p1.y + 3*mt*t*t*p2.y + t*t*t*p3.y
-            });
+          // 2. 구형 중심 팽창 (Bulge Transformation)
+          if (bulge !== 0) {
+            const distSq = u * u + v * v;
+            const factor = 1.0 + bulge * 0.45 * Math.exp(-distSq * 0.85);
+            u *= factor;
+            v *= factor;
           }
-          curX = cmd.x; curY = cmd.y;
-        } else if (cmd.type === 'Q') {
-          const p0 = { x: curX, y: curY }, p1 = { x: cmd.x1, y: cmd.y1 }, p2 = { x: cmd.x, y: cmd.y };
-          for (let i = 1; i <= STEPS; i++) {
-            const t = i / STEPS, mt = 1 - t;
-            current.push({ x: mt*mt*p0.x + 2*mt*t*p1.x + t*t*p2.x, y: mt*mt*p0.y + 2*mt*t*p1.y + t*t*p2.y });
+
+          // 3. 비선형 벤딩 곡면 (Arc Curvature)
+          if (curvature !== 0) {
+            const bend = curvature * 0.35 * (1.0 - u * u);
+            v += bend;
           }
-          curX = cmd.x; curY = cmd.y;
-        } else if (cmd.type === 'Z') {
-          current.push({ x: startX, y: startY });
-          curX = startX; curY = startY;
-        }
-      });
-      pushCurrent();
-      return contours;
-    }
 
-    function commandsToSvgD(commands) {
-      return commands.map(c => {
-        switch (c.type) {
-          case 'M': return `M ${c.x} ${c.y}`;
-          case 'L': return `L ${c.x} ${c.y}`;
-          case 'C': return `C ${c.x1} ${c.y1} ${c.x2} ${c.y2} ${c.x} ${c.y}`;
-          case 'Q': return `Q ${c.x1} ${c.y1} ${c.x} ${c.y}`;
-          case 'Z': return 'Z';
-          default: return '';
-        }
-      }).join(' ');
-    }
+          // 4. 속도장 전단 왜곡 (Velocity Shear)
+          u += v * tanShear;
 
-    function getGlyphData(char, fontSize) {
-      const key = `${char}_${fontSize.toFixed(0)}`;
-      if (glyphDataCache.has(key)) return glyphDataCache.get(key);
+          // 5. [핵심] 단자점 어트랙터 필드 (Attractor Field: 진짜 장획 압출)
+          let px = cx + u * (w * 0.5) * strokeExpand;
+          let py = cy + v * (h * 0.5) * strokeExpand;
 
-      const path = currentFont.getPath(char, 0, 0, fontSize);
-      let bbox;
-      try { bbox = path.getBoundingBox(); } catch (e) { bbox = { x1: 0, y1: -fontSize*0.5, x2: fontSize*0.3, y2: 0 }; }
-      
-      const contours = flattenGlyphPath(path.commands);
-      const svgD = commandsToSvgD(path.commands);
-      let path2d = null;
-      try { path2d = new Path2D(svgD); } catch (e) {}
-
-      const data = { contours, bbox, path2d, isBlank: contours.length === 0 };
-      glyphDataCache.set(key, data);
-      return data;
-    }
-
-    /* 🎨 붓 가장자리 갈필(飛白) 및 질감 스탬핑 */
-    function drawTexturedBrushGlyph(targetCtx, glyphData, cx, cy, fontSize, scaleMult, gipilVal, supilVal, dryBrushVal, jasoShape) {
-      if (glyphData.isBlank) return;
-      const bbox = glyphData.bbox;
-      const gcx = (bbox.x1 + bbox.x2) / 2;
-      const gcy = (bbox.y1 + bbox.y2) / 2;
-
-      targetCtx.save();
-      targetCtx.translate(cx, cy);
-      targetCtx.scale(scaleMult, scaleMult);
-      targetCtx.translate(-gcx, -gcy);
-
-      // 1. 먹 몸통(중심) 렌더링
-      if (glyphData.path2d) {
-        targetCtx.globalAlpha = 0.94;
-        targetCtx.fill(glyphData.path2d);
-      }
-
-      // 2. 외곽선 갈필 및 붓 털(비백) 왜곡
-      targetCtx.beginPath();
-      const baseR = Math.max(1.2, (bbox.y2 - bbox.y1) * 0.035 * (jasoShape === 'plump' ? 1.5 : 1.0));
-
-      glyphData.contours.forEach((pts, cIdx) => {
-        const len = pts.length;
-        for (let i = 0; i < len; i += 2) {
-          const pt = pts[i];
-          const t = i / len;
-          let p = 1.0;
-          if (t < 0.2) p += gipilVal * 0.4 * (1 - t / 0.2);
-          else if (t > 0.8) p += supilVal * 0.5 * ((t - 0.8) / 0.2);
-
-          const r = baseR * p;
-          targetCtx.moveTo(pt.x + r, pt.y);
-          targetCtx.arc(pt.x, pt.y, r, 0, Math.PI * 2);
-
-          if (dryBrushVal > 0.2 && i % 4 === 0) {
-            const ox = (Math.sin(cIdx * 7 + i) - 0.5) * r * 2.2 * dryBrushVal;
-            const oy = (Math.cos(cIdx * 5 + i) - 0.5) * r * 2.2 * dryBrushVal;
-            targetCtx.moveTo(pt.x + ox + r * 0.4, pt.y + oy);
-            targetCtx.arc(pt.x + ox, pt.y + oy, r * 0.35, 0, Math.PI * 2);
+          if (isMajorChar && attractor > 0.05) {
+            if (modelType === 'p2') {
+              // 수묵 표제체: 최하단(v > 0.4)에 위치한 정점들을 중력장처럼 아래로 늘림
+              if (v > 0.35) {
+                const pullWeight = Math.pow((v - 0.35) / 0.65, 2.2);
+                py += pullWeight * (h * 1.8 * attractor);
+                // 자연스러운 붓의 휨 (우측으로 살짝 감기다가 좌측으로 수필)
+                px += Math.sin(pullWeight * Math.PI) * (w * 0.25);
+              }
+            } else if (modelType === 'p3') {
+              // 질주 행서체: 우측 말단부(u > 0.4)를 우상향 방향으로 날렵하게 당김
+              if (u > 0.3) {
+                const pullWeight = Math.pow((u - 0.3) / 0.7, 1.8);
+                px += pullWeight * (w * 1.4 * attractor);
+                py -= pullWeight * (h * 0.4 * attractor);
+              }
+            } else if (modelType === 'p4') {
+              // 조형 엠블럼: 좌하단 3분면 (u < 0, v > 0.2) 정점을 대각선 아래로 길게 연장
+              if (u < 0.1 && v > 0.1) {
+                const pullDist = Math.hypot(u - 0.1, v - 0.1);
+                const pullWeight = Math.pow(Math.min(1.5, pullDist), 2.0);
+                px -= pullWeight * (w * 1.5 * attractor);
+                py += pullWeight * (h * 1.9 * attractor);
+              }
+            }
           }
-        }
-      });
-      targetCtx.fill();
-      targetCtx.restore();
-    }
 
-    /* ✒️ 캘리그라피 장획(Tail Sweep) 드로잉 (2, 3, 4번 이미지 삐침) */
-    function drawCalligraphyTailSweep(targetCtx, sx, sy, type, intensity, inkColor) {
-      if (intensity <= 0.1) return;
-      targetCtx.save();
-      targetCtx.fillStyle = inkColor;
-      targetCtx.strokeStyle = inkColor;
-      targetCtx.lineCap = 'round';
+          return { x: px, y: py };
+        };
 
-      if (type === 'preset-2-contrast') {
-        // ⚡ 2번 이미지: 메인 글자 아래로 깊게 내리꽂는 세로 갈고리 획
-        const len = 340 * intensity;
-        targetCtx.beginPath();
-        targetCtx.moveTo(sx, sy);
-        targetCtx.bezierCurveTo(sx - 15, sy + len * 0.35, sx - 10, sy + len * 0.75, sx - 2, sy + len);
-        targetCtx.lineWidth = 14 * intensity;
-        targetCtx.stroke();
-
-        // 뾰족한 끝(수필)
-        targetCtx.beginPath();
-        targetCtx.arc(sx - 2, sy + len, 2.5, 0, Math.PI * 2);
-        targetCtx.fill();
-
-      } else if (type === 'preset-3-slant') {
-        // 🍃 3번 이미지: 좌하단 및 우측으로 날카롭게 휘어지는 날렵한 삐침
-        targetCtx.beginPath();
-        targetCtx.moveTo(sx - 60, sy + 30);
-        targetCtx.quadraticCurveTo(sx - 180 * intensity, sy + 75 * intensity, sx - 260 * intensity, sy + 40);
-        targetCtx.lineWidth = 11 * intensity;
-        targetCtx.stroke();
-
-      } else if (type === 'preset-4-emblem') {
-        // 🗿 4번 이미지: 좌하단으로 굵고 힘있게 뻗어나가는 장천 대각선 획
-        const endX = sx - 240 * intensity;
-        const endY = sy + 320 * intensity;
-        targetCtx.beginPath();
-        targetCtx.moveTo(sx + 20, sy);
-        targetCtx.bezierCurveTo(sx, sy + 120, sx - 110, endY - 60, endX, endY);
-        targetCtx.lineWidth = 26 * intensity;
-        targetCtx.stroke();
-      }
-
-      targetCtx.restore();
-    }
-
-    /* 🌸 파스텔 수채화 원형 번짐 & 먹빛 보케 (1, 3번 이미지) */
-    function drawArtisticBokeh(targetCtx, w, h, style) {
-      if (style === 'none') return;
-      targetCtx.save();
-
-      if (style === 'pastel-warm') {
-        // 1번 이미지: 코랄, 피치, 올리브, 살구빛 몽환적 수채화 원
-        const blobs = [
-          { x: w * 0.32, y: h * 0.32, r: 55, color: 'rgba(255, 175, 150, 0.42)' },
-          { x: w * 0.63, y: h * 0.47, r: 75, color: 'rgba(255, 195, 160, 0.38)' },
-          { x: w * 0.36, y: h * 0.62, r: 48, color: 'rgba(255, 205, 170, 0.45)' },
-          { x: w * 0.70, y: h * 0.33, r: 18, color: 'rgba(175, 190, 140, 0.55)' },
-          { x: w * 0.74, y: h * 0.40, r: 24, color: 'rgba(160, 185, 130, 0.5)' },
-          { x: w * 0.68, y: h * 0.68, r: 12, color: 'rgba(140, 160, 200, 0.6)' },
-          { x: w * 0.12, y: h * 0.52, r: 28, color: 'rgba(160, 180, 145, 0.45)' },
-          { x: w * 0.88, y: h * 0.35, r: 22, color: 'rgba(255, 220, 170, 0.5)' }
-        ];
-        blobs.forEach(b => {
-          targetCtx.fillStyle = b.color;
-          targetCtx.beginPath();
-          targetCtx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
-          targetCtx.fill();
+        // 베지에 곡선 제어점 전체에 연속 변환 사상
+        const deformedCommands = commands.map(cmd => {
+          const c = Object.assign({}, cmd);
+          if (c.x !== undefined && c.y !== undefined) {
+            const p = transformPoint(c.x, c.y);
+            c.x = p.x; c.y = p.y;
+          }
+          if (c.x1 !== undefined && c.y1 !== undefined) {
+            const p1 = transformPoint(c.x1, c.y1);
+            c.x1 = p1.x; c.y1 = p1.y;
+          }
+          if (c.x2 !== undefined && c.y2 !== undefined) {
+            const p2 = transformPoint(c.x2, c.y2);
+            c.x2 = p2.x; c.y2 = p2.y;
+          }
+          return c;
         });
 
-      } else if (style === 'cyan-gold') {
-        // 3번 이미지: 청록(민트) 및 골드빛 별빛 먹점
-        for (let i = 0; i < 40; i++) {
-          const x = (0.15 + (Math.sin(i * 1.7) * 0.5 + 0.5) * 0.7) * w;
-          const y = (0.2 + (Math.cos(i * 2.3) * 0.5 + 0.5) * 0.6) * h;
-          const r = (Math.sin(i * 3.1) * 0.5 + 0.5) * 8 + 2;
-          const isGold = i % 3 === 0;
-          targetCtx.fillStyle = isGold ? 'rgba(235, 180, 75, 0.55)' : 'rgba(72, 175, 195, 0.65)';
+        return deformedCommands;
+      }
+
+      /**
+       * 변형된 commands를 Canvas 2D Path로 렌더링
+       */
+      static renderCommands(targetCtx, commands) {
+        targetCtx.beginPath();
+        for (let i = 0; i < commands.length; i++) {
+          const cmd = commands[i];
+          switch (cmd.type) {
+            case 'M': targetCtx.moveTo(cmd.x, cmd.y); break;
+            case 'L': targetCtx.lineTo(cmd.x, cmd.y); break;
+            case 'C': targetCtx.bezierCurveTo(cmd.x1, cmd.y1, cmd.x2, cmd.y2, cmd.x, cmd.y); break;
+            case 'Q': targetCtx.quadraticCurveTo(cmd.x1, cmd.y1, cmd.x, cmd.y); break;
+            case 'Z': targetCtx.closePath(); break;
+          }
+        }
+      }
+    }
+
+    /* 폰트 비동기 로딩 */
+    const FONT_URL = "https://raw.githubusercontent.com/google/fonts/main/ofl/nanumbrushscript/NanumBrushScript-Regular.ttf";
+    opentype.load(FONT_URL, (err, font) => {
+      if (err) {
+        alert('기본 나눔붓글씨 폰트 로드 실패: ' + err);
+      } else {
+        loadedFont = font;
+        applyPreset('p1');
+      }
+    });
+
+    /* =========================================================================
+       🎨 갈필(飛白) 접선 절삭 필터 (Slit Carving Engine)
+       ========================================================================= */
+    function applyDryBrushSlitCut(targetCtx, w, h, slitIntensity) {
+      if (slitIntensity <= 0.05) return;
+      targetCtx.save();
+      // 글자의 내부 획만 골라 깎아내는 destination-out 연산
+      targetCtx.globalCompositeOperation = 'destination-out';
+
+      const numSlits = Math.floor(slitIntensity * 280);
+      targetCtx.strokeStyle = 'rgba(0,0,0,0.85)';
+
+      for (let i = 0; i < numSlits; i++) {
+        const sx = (Math.sin(i * 1.91) * 0.5 + 0.5) * w;
+        const sy = (Math.cos(i * 2.73) * 0.5 + 0.5) * h;
+        const len = (Math.sin(i * 4.1) * 0.5 + 0.5) * 45 + 15;
+        const angle = (Math.sin(i * 3.3) * 0.25) + Math.PI * 0.45; // 운필 방향(대각 하강)
+
+        targetCtx.lineWidth = (Math.sin(i * 5.7) * 0.5 + 0.5) * 2.2 + 0.6;
+        targetCtx.beginPath();
+        targetCtx.moveTo(sx, sy);
+        targetCtx.lineTo(sx + Math.cos(angle) * len, sy + Math.sin(angle) * len);
+        targetCtx.stroke();
+      }
+      targetCtx.restore();
+    }
+
+    /* 배경 수채화 보케 & 먹물 비산 */
+    function renderBackgroundElements(targetCtx, w, h, bokehType) {
+      if (bokehType === 'none') return;
+      targetCtx.save();
+
+      if (bokehType === 'pastel-warm') {
+        // 1번 이미지: 파스텔 수채 원형 번짐
+        const dots = [
+          { x: w * 0.32, y: h * 0.35, r: 65, c: 'rgba(255, 170, 150, 0.42)' },
+          { x: w * 0.62, y: h * 0.46, r: 80, c: 'rgba(255, 195, 160, 0.38)' },
+          { x: w * 0.38, y: h * 0.62, r: 50, c: 'rgba(255, 205, 175, 0.45)' },
+          { x: w * 0.70, y: h * 0.34, r: 20, c: 'rgba(175, 190, 140, 0.55)' },
+          { x: w * 0.74, y: h * 0.42, r: 26, c: 'rgba(160, 185, 130, 0.5)' },
+          { x: w * 0.67, y: h * 0.70, r: 14, c: 'rgba(140, 160, 200, 0.6)' },
+          { x: w * 0.12, y: h * 0.52, r: 30, c: 'rgba(160, 180, 145, 0.45)' },
+          { x: w * 0.88, y: h * 0.35, r: 24, c: 'rgba(255, 220, 170, 0.5)' }
+        ];
+        dots.forEach(d => {
+          targetCtx.fillStyle = d.c;
+          targetCtx.beginPath();
+          targetCtx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
+          targetCtx.fill();
+        });
+      } else if (bokehType === 'cyan-gold') {
+        // 3번 이미지: 청록 & 골드 별점
+        for (let i = 0; i < 42; i++) {
+          const x = (0.12 + (Math.sin(i * 1.7) * 0.5 + 0.5) * 0.76) * w;
+          const y = (0.22 + (Math.cos(i * 2.3) * 0.5 + 0.5) * 0.56) * h;
+          const r = (Math.sin(i * 3.1) * 0.5 + 0.5) * 7 + 2;
+          targetCtx.fillStyle = (i % 3 === 0) ? 'rgba(235, 180, 75, 0.55)' : 'rgba(72, 175, 195, 0.65)';
           targetCtx.beginPath();
           targetCtx.arc(x, y, r, 0, Math.PI * 2);
           targetCtx.fill();
         }
-      } else if (style === 'ink-pure') {
-        // 2, 4번 이미지: 전통 수묵 먹 튐
+      } else if (bokehType === 'ink-splatter') {
+        // 2, 4번 이미지: 수묵 비산점
         targetCtx.fillStyle = 'rgba(20, 20, 22, 0.45)';
-        for (let i = 0; i < 22; i++) {
-          const x = (0.2 + (Math.sin(i * 2.1) * 0.5 + 0.5) * 0.6) * w;
-          const y = (0.2 + (Math.cos(i * 3.7) * 0.5 + 0.5) * 0.6) * h;
-          const r = (Math.sin(i * 4.3) * 0.5 + 0.5) * 4 + 1.2;
+        for (let i = 0; i < 24; i++) {
+          const x = (0.18 + (Math.sin(i * 2.1) * 0.5 + 0.5) * 0.64) * w;
+          const y = (0.18 + (Math.cos(i * 3.7) * 0.5 + 0.5) * 0.64) * h;
+          const r = (Math.sin(i * 4.3) * 0.5 + 0.5) * 3.5 + 1.2;
           targetCtx.beginPath();
           targetCtx.arc(x, y, r, 0, Math.PI * 2);
           targetCtx.fill();
         }
       }
-
       targetCtx.restore();
     }
 
-    /* 🔴 전통 전서 직인 / 낙관 렌더링 */
-    function drawSeal(targetCtx, x, y, size, type, text) {
+    /* 전서 직인 */
+    function renderSeal(targetCtx, x, y, size, type, text = "정글") {
       if (!type || type === 'none') return;
       targetCtx.save();
-      const isRed = type.includes('red');
-      const boxColor = isRed ? '#bc1b28' : '#1f1e24';
-
-      targetCtx.fillStyle = boxColor;
+      const isRed = type === 'seal-red';
+      targetCtx.fillStyle = isRed ? '#bb1b27' : '#1f1e24';
       targetCtx.fillRect(x, y, size, size);
 
-      targetCtx.strokeStyle = isRed ? '#e0323f' : '#33323e';
+      targetCtx.strokeStyle = isRed ? '#e2303c' : '#33323d';
       targetCtx.lineWidth = 2;
       targetCtx.strokeRect(x, y, size, size);
 
       targetCtx.fillStyle = '#ffffff';
-      targetCtx.font = `bold ${Math.round(size * 0.42)}px 'Batang', serif`;
+      targetCtx.font = `bold ${Math.round(size * 0.4)}px serif`;
       targetCtx.textAlign = 'center';
       targetCtx.textBaseline = 'middle';
-
-      const sealStr = text || (isRed ? '낙관' : '정글');
-      if (sealStr.length <= 2) {
-        targetCtx.fillText(sealStr, x + size / 2, y + size / 2 + 1);
-      } else {
-        targetCtx.font = `bold ${Math.round(size * 0.32)}px 'Batang', serif`;
-        targetCtx.fillText(sealStr.slice(0, 2), x + size / 2, y + size * 0.35);
-        targetCtx.fillText(sealStr.slice(2, 4), x + size / 2, y + size * 0.72);
-      }
+      targetCtx.fillText(text.slice(0, 2), x + size / 2, y + size / 2 + 1);
       targetCtx.restore();
     }
 
-    /* 배경 화선지 드로잉 */
-    function drawBackground() {
-      const style = bgStyleSelect.value;
+    /* 메인 렌더링 프레임 함수 */
+    function renderScene(progress = 1.0) {
+      if (!loadedFont) return;
       const w = canvas.width, h = canvas.height;
 
-      if (style === 'transparent') {
-        ctx.clearRect(0, 0, w, h);
-        return;
-      }
-
-      if (style === 'white-hanji') {
-        ctx.fillStyle = '#faf7f2';
+      // 1. 화선지 배경
+      const bg = selectBg.value;
+      if (bg === 'white-hanji') {
+        ctx.fillStyle = '#f9f6f0';
         ctx.fillRect(0, 0, w, h);
-        // 미세 섬유결
-        ctx.fillStyle = 'rgba(60, 50, 40, 0.018)';
-        for (let i = 0; i < 350; i++) {
+        ctx.fillStyle = 'rgba(60, 50, 40, 0.015)';
+        for (let i = 0; i < 280; i++) {
           ctx.beginPath();
-          ctx.arc((Math.sin(i * 1.5)*0.5+0.5)*w, (Math.cos(i * 2.7)*0.5+0.5)*h, 1.8, 0, Math.PI*2);
+          ctx.arc((Math.sin(i * 1.5)*0.5+0.5)*w, (Math.cos(i*2.7)*0.5+0.5)*h, 1.8, 0, Math.PI*2);
           ctx.fill();
         }
-      } else if (style === 'aged-hanji') {
-        const grad = ctx.createRadialGradient(w/2, h/2, 120, w/2, h/2, Math.max(w,h)/1.1);
-        grad.addColorStop(0, '#f5efdf');
-        grad.addColorStop(1, '#dfd1b8');
-        ctx.fillStyle = grad;
+      } else if (bg === 'warm-hanji') {
+        ctx.fillStyle = '#ede3ce';
         ctx.fillRect(0, 0, w, h);
-      } else if (style === 'dark-paper') {
-        ctx.fillStyle = '#141418';
-        ctx.fillRect(0, 0, w, h);
+      } else {
+        ctx.clearRect(0, 0, w, h);
       }
-    }
 
-    /* 🏛️ 4대 캘리그라피 구도 렌더링 파이프라인 */
-    function renderCalligraphyScene(timeSec) {
-      if (!currentFont) return;
+      // 2. 보케 & 수채 번짐
+      renderBackgroundElements(ctx, w, h, selectBokeh.value);
 
-      const w = canvas.width, h = canvas.height;
-      const layoutMode = shapeLayoutStyleSelect.value;
-      const bokeh = artisticBokehStyle.value;
-      const inkColor = inkColorInput.value;
-      const letterSpacing = parseInt(paramLetterSpacing.value);
-      const lineHeightMult = parseFloat(paramLineHeight.value);
-      const skewDeg = parseInt(paramSkewAngle.value);
-      const jasoShape = paramJasoShape.value;
+      // 3. 지오메트리 파라미터 추출
+      const params = {
+        attractor: parseFloat(paramAttractor.value),
+        curvature: parseFloat(paramCurvature.value),
+        shearDeg: parseInt(paramShear.value),
+        bulge: parseFloat(paramBulge.value),
+        strokeExpand: parseFloat(paramStrokeExpand.value),
+        modelType: currentModel
+      };
+
+      const slitIntensity = parseFloat(paramSlitCut.value);
       const contrast = parseFloat(paramContrast.value);
-      const gipilVal = parseFloat(paramGipil.value);
-      const supilVal = parseFloat(paramSupil.value);
-      const dryBrushVal = parseFloat(paramDryBrush.value);
-      const tailSweepVal = parseFloat(paramTailSweep.value);
-      const sealType = paramSealSelect.value;
-      const sealText = paramSealText.value;
-
-      // 1. 수채화/먹점 보케 배경
-      drawArtisticBokeh(ctx, w, h, bokeh);
+      const letterSpacing = parseInt(paramSpacing.value);
+      const lineHeight = parseFloat(paramLineHeight.value);
+      const inkColor = inputInkColor.value;
 
       ctx.save();
       ctx.fillStyle = inkColor;
 
-      // 2. 전체 우상향 기울기(Skew)
-      if (skewDeg !== 0) {
-        ctx.translate(w / 2, h / 2);
-        ctx.transform(1, 0, Math.tan(-skewDeg * Math.PI / 180), 1, 0, 0);
-        ctx.translate(-w / 2, -h / 2);
-      }
+      const rawText = inputText.value.trim();
+      const currentPresetObj = PRESETS[currentModel];
 
-      const rawText = srtTextarea.value.trim();
-      const currentPresetObj = PRESETS[currentPreset];
-
-      if (layoutMode === 'preset-1-vertical') {
-        /* =========================================================================
-           🌸 [프리셋 1] 세로 다열 감성 산문 (1번 이미지 구도)
-           ========================================================================= */
+      /* -------------------------------------------------------------------------
+         모델 1: 수직 다열 산문 구도 (1번 이미지)
+         ------------------------------------------------------------------------- */
+      if (currentModel === 'p1') {
         const columns = rawText.split('\n').filter(l => l.trim().length > 0);
         const colCount = columns.length;
-        const baseColWidth = 110 * lineHeightMult;
-        const startX = w / 2 + ((colCount - 1) * baseColWidth) / 2 - 40;
+        const colWidth = 110 * lineHeight;
+        const startX = w / 2 + ((colCount - 1) * colWidth) / 2 - 40;
         const startY = h * 0.22;
 
-        columns.forEach((lineText, cIdx) => {
-          const colX = startX - cIdx * baseColWidth;
-          const chars = Array.from(lineText);
+        columns.forEach((col, cIdx) => {
+          const colX = startX - cIdx * colWidth;
+          const chars = Array.from(col);
           let curY = startY;
 
           chars.forEach((ch, rIdx) => {
-            const decomp = decomposeHangul(ch);
-            let fontSize = 76;
-            if (cIdx === 0 && rIdx === 0) fontSize *= 1.15; // 첫 글자 강조
-            if (['은','는','이','가','을','를','에','로'].includes(ch)) fontSize *= 0.82;
+            const isFirst = (cIdx === 0 && rIdx === 0);
+            const fontSize = (isFirst ? 88 : 74);
+            const path = loadedFont.getPath(ch, 0, 0, fontSize);
+            let bbox = { x1: 0, y1: -fontSize * 0.7, x2: fontSize * 0.6, y2: 0 };
+            try { bbox = path.getBoundingBox(); } catch(e) {}
 
-            const gData = getGlyphData(ch, fontSize);
-            drawTexturedBrushGlyph(ctx, gData, colX, curY, fontSize, 1.0, gipilVal, supilVal, dryBrushVal, jasoShape);
+            const deformed = GlyphGeometryEngine.deformGlyph(path.commands, bbox, params, false);
+
+            ctx.save();
+            ctx.translate(colX, curY);
+            GlyphGeometryEngine.renderCommands(ctx, deformed);
+            ctx.fill();
+            ctx.restore();
+
             curY += fontSize * 0.95 + letterSpacing;
           });
         });
 
-        // 우측 세로 소제목 (Side Note)
-        const sideNote = currentPresetObj && currentPresetObj.sideNote ? currentPresetObj.sideNote : "차라투스트라는\n이렇게 말했다";
-        const sideLines = sideNote.split('\n');
+        // 우측 세로 소제목 (차라투스트라는...)
+        const sideLines = (currentPresetObj.sideNote || "").split('\n');
         const sideX = w * 0.84;
         let sideY = h * 0.28;
-
         sideLines.forEach((sLine, sIdx) => {
           const sChars = Array.from(sLine);
           let sy = sideY;
           sChars.forEach(sc => {
-            const gData = getGlyphData(sc, 34);
-            drawTexturedBrushGlyph(ctx, gData, sideX + sIdx * 38, sy, 34, 1.0, 1.0, 1.0, 0.2, 'normal');
-            sy += 38;
+            const p = loadedFont.getPath(sc, 0, 0, 36);
+            let b = { x1: 0, y1: -25, x2: 25, y2: 0 };
+            try { b = p.getBoundingBox(); } catch(e) {}
+            const def = GlyphGeometryEngine.deformGlyph(p.commands, b, { ...params, attractor: 0, bulge: 0 }, false);
+            ctx.save();
+            ctx.translate(sideX + sIdx * 40, sy);
+            GlyphGeometryEngine.renderCommands(ctx, def);
+            ctx.fill();
+            ctx.restore();
+            sy += 40;
           });
         });
 
-        // 우측 세로 소제목 밑 직인
-        drawSeal(ctx, sideX, sideY + 120, 52, sealType, sealText);
+        renderSeal(ctx, sideX, sideY + 130, 52, selectSeal.value, "정글");
 
-      } else if (layoutMode === 'preset-2-contrast') {
-        /* =========================================================================
-           ⚡ [프리셋 2] 대형 헤드라인 + 잔잔한 세로 본문 (2번 이미지 구도)
-           ========================================================================= */
+      /* -------------------------------------------------------------------------
+         모델 2: 하단 장획 어트랙터 수묵 표제체 (2번 이미지)
+         ------------------------------------------------------------------------- */
+      } else if (currentModel === 'p2') {
         const parts = rawText.split('\n\n');
         const headline = parts[0] || "해답은\n없다";
-        const bodyText = parts[1] || "앞으로도\n해답이 없을 것이고\n지금까지도 해답이\n없었다 이것이\n인생의 유일한\n해답이다";
+        const bodyText = parts[1] || "";
 
-        // 1. 거대한 헤드라인 (좌측/상단 배치)
+        // 대형 헤드라인
         const headLines = headline.split('\n');
-        const headBaseSize = 175 * (contrast * 0.55);
-        let headY = h * 0.26;
-        let lastCharPos = { x: w * 0.36, y: headY };
+        const headBaseSize = 160 * (contrast * 0.6);
+        let headY = h * 0.27;
 
         headLines.forEach((line, lIdx) => {
           const chars = Array.from(line);
-          let headX = w * 0.32 - ((chars.length - 1) * headBaseSize * 0.7) / 2;
+          const lineW = chars.length * headBaseSize * 0.72;
+          let headX = w * 0.32 - lineW / 2;
+
           chars.forEach((ch, cIdx) => {
-            const gData = getGlyphData(ch, headBaseSize);
-            drawTexturedBrushGlyph(ctx, gData, headX, headY, headBaseSize, 1.0, gipilVal * 1.3, supilVal * 1.2, dryBrushVal, jasoShape);
-            lastCharPos = { x: headX, y: headY };
-            headX += headBaseSize * 0.82 + letterSpacing;
+            const isTailTarget = (lIdx === headLines.length - 1 && cIdx === chars.length - 1); // 마지막 글자('다' 또는 '없')
+            const path = loadedFont.getPath(ch, 0, 0, headBaseSize);
+            let bbox = { x1: 0, y1: -headBaseSize*0.7, x2: headBaseSize*0.7, y2: 0 };
+            try { bbox = path.getBoundingBox(); } catch(e) {}
+
+            // 하단 정점 어트랙터 활성화
+            const deformed = GlyphGeometryEngine.deformGlyph(path.commands, bbox, params, isTailTarget);
+
+            ctx.save();
+            ctx.translate(headX, headY);
+            GlyphGeometryEngine.renderCommands(ctx, deformed);
+            ctx.fill();
+            ctx.restore();
+
+            headX += headBaseSize * 0.78 + letterSpacing;
           });
-          headY += headBaseSize * 0.88 * lineHeightMult;
+          headY += headBaseSize * 0.9 * lineHeight;
         });
 
-        // 2번 이미지 핵심: 헤드라인 중심에서 아래로 내리꽂는 세로 장획
-        drawCalligraphyTailSweep(ctx, lastCharPos.x + 30, lastCharPos.y + 60, 'preset-2-contrast', tailSweepVal, inkColor);
+        // 우하단 세로 본문
+        if (bodyText) {
+          const bodyCols = bodyText.split('\n');
+          const bodySize = 40;
+          const bStartX = w * 0.76;
+          const bStartY = h * 0.48;
 
-        // 2. 우하단 소형 세로 본문
-        const bodyCols = bodyText.split('\n');
-        const bodySize = 42;
-        const bStartX = w * 0.78;
-        const bStartY = h * 0.48;
-
-        bodyCols.forEach((bLine, colIdx) => {
-          const colX = bStartX - colIdx * (bodySize * 1.4);
-          const chars = Array.from(bLine);
-          let curY = bStartY;
-          chars.forEach(bc => {
-            const gData = getGlyphData(bc, bodySize);
-            drawTexturedBrushGlyph(ctx, gData, colX, curY, bodySize, 1.0, 1.0, 1.1, 0.3, 'normal');
-            curY += bodySize * 0.96;
+          bodyCols.forEach((bLine, colIdx) => {
+            const colX = bStartX - colIdx * (bodySize * 1.35);
+            const chars = Array.from(bLine);
+            let curY = bStartY;
+            chars.forEach(bc => {
+              const p = loadedFont.getPath(bc, 0, 0, bodySize);
+              let b = { x1: 0, y1: -28, x2: 28, y2: 0 };
+              try { b = p.getBoundingBox(); } catch(e) {}
+              const def = GlyphGeometryEngine.deformGlyph(p.commands, b, { ...params, attractor: 0 }, false);
+              ctx.save();
+              ctx.translate(colX, curY);
+              GlyphGeometryEngine.renderCommands(ctx, def);
+              ctx.fill();
+              ctx.restore();
+              curY += bodySize * 0.96;
+            });
           });
-        });
 
-        // 본문 우측 상단 붉은 인장
-        drawSeal(ctx, bStartX + 30, bStartY, 48, sealType, sealText);
+          renderSeal(ctx, bStartX + 28, bStartY, 48, selectSeal.value, "해답");
+        }
 
-      } else if (layoutMode === 'preset-3-slant') {
-        /* =========================================================================
-           🍃 [프리셋 3] 우상향 8° 질주 행서 구도 (3번 이미지 구도)
-           ========================================================================= */
+      /* -------------------------------------------------------------------------
+         모델 3: 속도장 전단 가속 행서체 (3번 이미지)
+         ------------------------------------------------------------------------- */
+      } else if (currentModel === 'p3') {
         const lines = rawText.split('\n');
-        const lineCount = lines.length;
-        const baseSize = 115;
+        const baseSize = 110;
         let curY = h * 0.40;
 
         lines.forEach((line, lIdx) => {
           const chars = Array.from(line);
-          const lineW = chars.length * baseSize * 0.85;
-          let curX = w / 2 - lineW / 2 + (lIdx === 1 ? -40 : 20); // 2행 지그재그
+          const lineW = chars.length * baseSize * 0.8;
+          let curX = w / 2 - lineW / 2 + (lIdx === 1 ? -45 : 20);
 
           chars.forEach((ch, cIdx) => {
-            const gData = getGlyphData(ch, baseSize);
-            drawTexturedBrushGlyph(ctx, gData, curX, curY, baseSize, 1.0, gipilVal, supilVal, dryBrushVal, jasoShape);
+            const isTailTarget = (cIdx === chars.length - 1); // 행의 마지막 글자 삐침
+            const path = loadedFont.getPath(ch, 0, 0, baseSize);
+            let bbox = { x1: 0, y1: -baseSize*0.7, x2: baseSize*0.7, y2: 0 };
+            try { bbox = path.getBoundingBox(); } catch(e) {}
+
+            const deformed = GlyphGeometryEngine.deformGlyph(path.commands, bbox, params, isTailTarget);
+
+            ctx.save();
+            ctx.translate(curX, curY);
+            GlyphGeometryEngine.renderCommands(ctx, deformed);
+            ctx.fill();
+            ctx.restore();
+
             curX += baseSize * 0.82 + letterSpacing;
           });
-          curY += baseSize * 1.15 * lineHeightMult;
+          curY += baseSize * 1.15 * lineHeight;
         });
 
-        // 날렵한 좌/우 삐침 장획
-        drawCalligraphyTailSweep(ctx, w * 0.38, h * 0.52, 'preset-3-slant', tailSweepVal, inkColor);
+        // 서명
+        if (currentPresetObj.sideNote) {
+          ctx.fillStyle = '#489fb5';
+          ctx.font = 'italic bold 32px cursive';
+          ctx.textAlign = 'center';
+          ctx.fillText(`~ ${currentPresetObj.sideNote} ~`, w / 2, h * 0.72);
+        }
 
-        // 하단 서명 (Sign)
-        const signText = currentPresetObj && currentPresetObj.sideNote ? currentPresetObj.sideNote : "운채";
-        ctx.fillStyle = '#489fb5';
-        ctx.font = 'italic bold 32px cursive';
-        ctx.textAlign = 'center';
-        ctx.fillText(`~ ${signText} ~`, w / 2, h * 0.72);
-
-      } else if (layoutMode === 'preset-4-emblem') {
-        /* =========================================================================
-           🗿 [프리셋 4] 중심 집중형 조형 엠블럼 (4번 이미지 구도)
-           ========================================================================= */
+      /* -------------------------------------------------------------------------
+         모델 4: 구형 팽창 & 3분면 압출 조형 엠블럼 (4번 이미지)
+         ------------------------------------------------------------------------- */
+      } else if (currentModel === 'p4') {
         const chars = Array.from(rawText.replace(/\n/g, ''));
-        const baseSize = 195 * (contrast * 0.5);
-        const emblemW = chars.length * baseSize * 0.78;
+        const baseSize = 190 * (contrast * 0.52);
+        const emblemW = chars.length * baseSize * 0.75;
         let curX = w / 2 - emblemW / 2;
         const curY = h * 0.44;
 
         chars.forEach((ch, i) => {
-          const isMain = i === 0;
-          const sz = isMain ? baseSize * 1.25 : baseSize * 0.9;
-          const gData = getGlyphData(ch, sz);
-          drawTexturedBrushGlyph(ctx, gData, curX, curY + (isMain ? 0 : 20), sz, 1.0, gipilVal * 1.4, supilVal * 1.2, dryBrushVal, jasoShape);
+          const isMain = (i === 0); // 첫 글자 '봄'에 3분면 대각선 장획 집중
+          const sz = isMain ? baseSize * 1.25 : baseSize * 0.92;
+          const path = loadedFont.getPath(ch, 0, 0, sz);
+          let bbox = { x1: 0, y1: -sz * 0.7, x2: sz * 0.7, y2: 0 };
+          try { bbox = path.getBoundingBox(); } catch(e) {}
+
+          const deformed = GlyphGeometryEngine.deformGlyph(path.commands, bbox, params, isMain);
+
+          ctx.save();
+          ctx.translate(curX, curY + (isMain ? 0 : 20));
+          GlyphGeometryEngine.renderCommands(ctx, deformed);
+          ctx.fill();
+          ctx.restore();
+
           curX += sz * 0.74 + letterSpacing;
         });
 
-        // 4번 이미지 시그니처: 좌하단으로 내리꽂는 굵고 긴 장천 획
-        drawCalligraphyTailSweep(ctx, w * 0.42, curY + 60, 'preset-4-emblem', tailSweepVal, inkColor);
-
-        // 우상단 단아한 정방형 직인
-        drawSeal(ctx, w * 0.68, h * 0.32, 54, sealType, sealText);
-
-      } else {
-        // 기본 2행 가로 결구 배치
-        const lines = rawText.split('\n');
-        const baseSize = 85;
-        let cy = h * 0.42;
-        lines.forEach(l => {
-          const chars = Array.from(l);
-          let cx = w / 2 - (chars.length * baseSize * 0.8) / 2;
-          chars.forEach(ch => {
-            const gData = getGlyphData(ch, baseSize);
-            drawTexturedBrushGlyph(ctx, gData, cx, cy, baseSize, 1.0, gipilVal, supilVal, dryBrushVal, jasoShape);
-            cx += baseSize * 0.8 + letterSpacing;
-          });
-          cy += baseSize * 1.2;
-        });
+        renderSeal(ctx, w * 0.68, h * 0.32, 54, selectSeal.value, "봄");
       }
 
       ctx.restore();
+
+      // 4. 갈필 접선 슬릿 절삭
+      applyDryBrushSlitCut(ctx, w, h, slitIntensity);
     }
 
-    function renderFrame(timeSec) {
-      drawBackground();
-      renderCalligraphyScene(timeSec);
-      timeDisplay.textContent = `${formatTime(timeSec)} / ${formatTime(totalDuration)}`;
+    /* 프리셋 전환 및 UI 동기화 */
+    function applyPreset(pKey) {
+      currentModel = pKey;
+      const p = PRESETS[pKey];
+      if (!p) return;
+
+      document.querySelectorAll('.btn-preset').forEach(b => b.classList.remove('active'));
+      const activeBtn = document.getElementById(`btn-${pKey}`);
+      if (activeBtn) activeBtn.classList.add('active');
+
+      inputText.value = p.text;
+      selectBokeh.value = p.bokeh;
+      selectSeal.value = p.seal;
+
+      paramAttractor.value = p.attractor;
+      document.getElementById('val-attractor').textContent = `${p.attractor}x`;
+
+      paramCurvature.value = p.curvature;
+      document.getElementById('val-curvature').textContent = p.curvature;
+
+      paramShear.value = p.shear;
+      document.getElementById('val-shear').textContent = `${p.shear}°`;
+
+      paramBulge.value = p.bulge;
+      document.getElementById('val-bulge').textContent = p.bulge;
+
+      paramStrokeExpand.value = p.strokeExpand;
+      document.getElementById('val-stroke-expand').textContent = `${p.strokeExpand}x`;
+
+      paramSlitCut.value = p.slitCut;
+      document.getElementById('val-slit-cut').textContent = p.slitCut;
+
+      paramContrast.value = p.contrast;
+      document.getElementById('val-contrast').textContent = `${p.contrast}x`;
+
+      paramSpacing.value = p.spacing;
+      document.getElementById('val-spacing').textContent = `${p.spacing}px`;
+
+      paramLineHeight.value = p.lineHeight;
+      document.getElementById('val-line-height').textContent = `${p.lineHeight}x`;
+
+      renderScene(1.0);
     }
 
-    function formatTime(sec) {
-      const m = Math.floor(sec / 60);
-      const s = Math.floor(sec % 60);
-      const ms = Math.floor((sec % 1) * 100);
-      return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(ms).padStart(2, '0')}`;
-    }
-
-    function parseCurrentTextToSession() {
-      const txt = srtTextarea.value.trim();
-      srtData = [{ id: '1', start: 0, end: 5.0, text: txt }];
-      totalDuration = 5.0;
-      timeSlider.max = totalDuration;
-
-      // 결구 분석 로그 출력
-      const firstChar = txt[0] || '한';
-      const decomp = decomposeHangul(firstChar);
-      analysisOutput.textContent = `[결구 분석] '${firstChar}' ➔ 초성:${decomp.initial} | 중성:${decomp.medial} | 종성:${decomp.final || '없음'}`;
-
-      srtListEl.innerHTML = `
-        <div class="srt-item active">
-          <span>#1 (00:00.00)</span>
-          <span style="max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${txt.replace(/\n/g, ' ')}</span>
-        </div>
-      `;
-    }
-
-    /* 이벤트 리스너 연동 */
-    btnApplySrt.addEventListener('click', () => {
-      parseCurrentTextToSession();
-      scheduleRender();
+    // 프리셋 버튼 리스너
+    ['p1', 'p2', 'p3', 'p4'].forEach(key => {
+      document.getElementById(`btn-${key}`).addEventListener('click', () => applyPreset(key));
     });
 
-    [shapeLayoutStyleSelect, artisticBokehStyle, bgStyleSelect, inkColorInput, paramJasoShape, paramSealSelect].forEach(el => {
-      el.addEventListener('change', () => {
-        if (el === paramSealSelect) {
-          paramSealText.style.display = el.value === 'seal-custom' ? 'block' : 'none';
-        }
-        scheduleRender();
-      });
-    });
-
-    [paramTailSweep, paramLetterSpacing, paramLineHeight, paramSkewAngle, paramContrast, paramGipil, paramSupil, paramDryBrush, paramSealText].forEach(el => {
+    // 슬라이더 및 파라미터 리스너
+    [paramAttractor, paramCurvature, paramShear, paramBulge, paramStrokeExpand, paramSlitCut, paramContrast, paramSpacing, paramLineHeight].forEach(el => {
       el.addEventListener('input', (e) => {
         const id = e.target.id;
-        if (id === 'param-letter-spacing') document.getElementById('val-letter-spacing').textContent = `${e.target.value}px`;
-        if (id === 'param-line-height') document.getElementById('val-line-height').textContent = `${e.target.value}x`;
-        if (id === 'param-skew-angle') document.getElementById('val-skew-angle').textContent = `${e.target.value}°`;
+        if (id === 'param-attractor') document.getElementById('val-attractor').textContent = `${e.target.value}x`;
+        if (id === 'param-curvature') document.getElementById('val-curvature').textContent = e.target.value;
+        if (id === 'param-shear') document.getElementById('val-shear').textContent = `${e.target.value}°`;
+        if (id === 'param-bulge') document.getElementById('val-bulge').textContent = e.target.value;
+        if (id === 'param-stroke-expand') document.getElementById('val-stroke-expand').textContent = `${e.target.value}x`;
+        if (id === 'param-slit-cut') document.getElementById('val-slit-cut').textContent = e.target.value;
         if (id === 'param-contrast') document.getElementById('val-contrast').textContent = `${e.target.value}x`;
-        if (id === 'param-gipil') document.getElementById('val-gipil').textContent = `${e.target.value}x`;
-        if (id === 'param-supil') document.getElementById('val-supil').textContent = `${e.target.value}x`;
-        if (id === 'param-dry-brush') document.getElementById('val-dry-brush').textContent = e.target.value;
-        scheduleRender();
+        if (id === 'param-spacing') document.getElementById('val-spacing').textContent = `${e.target.value}px`;
+        if (id === 'param-line-height') document.getElementById('val-line-height').textContent = `${e.target.value}x`;
+        renderScene(1.0);
       });
     });
 
-    /* 재생 컨트롤러 */
-    function animate(timestamp) {
-      if (!isPlaying) return;
-      if (!lastTimestamp) lastTimestamp = timestamp;
-      const delta = (timestamp - lastTimestamp) / 1000;
-      lastTimestamp = timestamp;
+    document.getElementById('btn-update-text').addEventListener('click', () => renderScene(1.0));
+    [selectBg, selectBokeh, selectSeal, inputInkColor].forEach(el => el.addEventListener('change', () => renderScene(1.0)));
 
-      currentTime += delta;
-      if (currentTime > totalDuration) { currentTime = 0; }
-      timeSlider.value = currentTime;
-      renderFrame(currentTime);
-      animationFrameId = requestAnimationFrame(animate);
-    }
-
-    btnPlay.addEventListener('click', () => {
-      isPlaying = !isPlaying;
-      btnPlay.textContent = isPlaying ? '⏸ 일시정지' : '▶ 재생';
-      lastTimestamp = 0;
-      if (isPlaying) animationFrameId = requestAnimationFrame(animate);
-      else if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    selectRatio.addEventListener('change', (e) => {
+      const r = e.target.value;
+      if (r === '1:1') { canvas.width = 1440; canvas.height = 1440; }
+      else if (r === '16:9') { canvas.width = 1920; canvas.height = 1080; }
+      else if (r === '9:16') { canvas.width = 1080; canvas.height = 1920; }
+      renderScene(1.0);
     });
 
+    /* 재생 및 MP4 비디오 렌더링 */
     timeSlider.addEventListener('input', (e) => {
       currentTime = parseFloat(e.target.value);
-      scheduleRender();
+      timeText.textContent = `${currentTime.toFixed(2)}s`;
+      renderScene(currentTime / totalDuration);
     });
 
-    /* MP4 내보내기 (MediaRecorder) */
     btnExport.addEventListener('click', async () => {
-      if (!currentFont) { alert('서체가 로딩 중입니다.'); return; }
-      isPlaying = false;
-      btnPlay.textContent = '▶ 재생';
-
-      progressModal.style.display = 'flex';
-      progressText.textContent = 'MP4 비디오 녹화 시작...';
+      const modal = document.getElementById('render-modal');
+      const bar = document.getElementById('render-bar');
+      const pct = document.getElementById('render-pct');
+      modal.style.display = 'flex';
 
       const fps = 30;
+      const totalFrames = Math.ceil(totalDuration * fps);
       const stream = canvas.captureStream(fps);
       let mimeType = 'video/mp4';
       if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
 
-      const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 5_000_000 });
+      const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 6_000_000 });
       const chunks = [];
       recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
-
       recorder.onstop = () => {
         const blob = new Blob(chunks, { type: mimeType });
-        const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url;
-        a.download = `calligraphy_${currentPreset}_${Date.now()}.${mimeType.includes('mp4') ? 'mp4' : 'webm'}`;
+        a.href = URL.createObjectURL(blob);
+        a.download = `hangul_calligraphy_${currentModel}_${Date.now()}.${mimeType.includes('mp4') ? 'mp4' : 'webm'}`;
         a.click();
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-        progressModal.style.display = 'none';
+        modal.style.display = 'none';
       };
 
       recorder.start();
-      const totalFrames = Math.ceil(totalDuration * fps);
-      let frameIdx = 0;
-
-      const interval = setInterval(() => {
-        if (frameIdx >= totalFrames) {
-          clearInterval(interval);
+      let f = 0;
+      const timer = setInterval(() => {
+        if (f >= totalFrames) {
+          clearInterval(timer);
           recorder.stop();
           return;
         }
-        const frameTime = frameIdx / fps;
-        renderFrame(frameTime);
-        const pct = Math.round((frameIdx / totalFrames) * 100);
-        progressFill.style.width = `${pct}%`;
-        progressPercent.textContent = `${pct}%`;
-        frameIdx++;
+        renderScene(f / totalFrames);
+        const p = Math.round((f / totalFrames) * 100);
+        bar.style.width = `${p}%`;
+        pct.textContent = `${p}%`;
+        f++;
       }, 1000 / fps);
     });
-
-    // 초기화 실행
-    loadDefaultFont();
-    applyPreset('preset1');
   </script>
 </body>
 </html>
