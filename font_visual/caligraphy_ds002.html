@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>논문 기반 캘리그라피 스튜디오 v3.2 (획 가시성 수정)</title>
+<title>논문 기반 캘리그라피 v3.3 (중심 고정 & 스타일 프리셋)</title>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <style>
   :root { --bg:#0a0a12; --panel:#1e1e36; --accent:#ff6b35; }
@@ -31,6 +31,11 @@
   .char-display { font-size: 80px; background: #fff; color: #111; width: 120px; height: 120px; margin: 0 auto; display: flex; align-items: center; justify-content: center; border-radius: 8px; }
   .nav-btns { display: flex; justify-content: center; gap: 10px; margin-top: 10px; }
   .nav-btns button { padding: 5px 15px; }
+  
+  /* 스타일 그리드 */
+  .style-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-bottom: 10px; }
+  .style-item { background: #333; border: 1px solid #555; padding: 8px; text-align: center; border-radius: 4px; cursor: pointer; font-size: 12px; }
+  .style-item.active { background: var(--accent); border-color: #fff; font-weight: bold; }
 </style>
 </head>
 <body>
@@ -61,19 +66,28 @@
     <h3>3. 초/중/종성 변형 (중심 거리)</h3>
     <strong style="color: #ff6b35;">초성</strong>
     <div class="row"><label>거리</label><input type="range" id="cho-dist" min="0" max="100" value="0" oninput="redraw()"><span class="val" id="cho-dist-v">0</span></div>
-    <div class="row"><label>크기</label><input type="range" id="cho-s" min="0.5" max="2" step="0.05" value="1" oninput="redraw()"><span class="val" id="cho-s-v">1.00</span></div>
+    <div class="row"><label>크기</label><input type="range" id="cho-s" min="0.5" max="3" step="0.05" value="2.0" oninput="redraw()"><span class="val" id="cho-s-v">2.00</span></div>
 
     <strong style="color: #ff6b35;">중성</strong>
     <div class="row"><label>거리</label><input type="range" id="jung-dist" min="0" max="100" value="0" oninput="redraw()"><span class="val" id="jung-dist-v">0</span></div>
-    <div class="row"><label>크기</label><input type="range" id="jung-s" min="0.5" max="2" step="0.05" value="1" oninput="redraw()"><span class="val" id="jung-s-v">1.00</span></div>
+    <div class="row"><label>크기</label><input type="range" id="jung-s" min="0.5" max="3" step="0.05" value="2.0" oninput="redraw()"><span class="val" id="jung-s-v">2.00</span></div>
 
     <strong style="color: #ff6b35;">종성</strong>
     <div class="row"><label>거리</label><input type="range" id="jong-dist" min="0" max="100" value="0" oninput="redraw()"><span class="val" id="jong-dist-v">0</span></div>
-    <div class="row"><label>크기</label><input type="range" id="jong-s" min="0.5" max="2" step="0.05" value="1" oninput="redraw()"><span class="val" id="jong-s-v">1.00</span></div>
+    <div class="row"><label>크기</label><input type="range" id="jong-s" min="0.5" max="3" step="0.05" value="2.0" oninput="redraw()"><span class="val" id="jong-s-v">2.00</span></div>
 
-    <h3>4. 붓터치 강도 조절</h3>
+    <h3>4. 붓터치 스타일 (강도/두께 연동)</h3>
+    <div class="style-grid">
+      <div class="style-item active" onclick="setStyle('none', this)">기본</div>
+      <div class="style-item" onclick="setStyle('bold', this)">농묵</div>
+      <div class="style-item" onclick="setStyle('soft', this)">둥근</div>
+      <div class="style-item" onclick="setStyle('sharp', this)">뾰족</div>
+      <div class="style-item" onclick="setStyle('dry', this)">갈필</div>
+      <div class="style-item" onclick="setStyle('rough', this)">거친</div>
+    </div>
+    
     <div class="row"><label>번짐 강도</label><input type="range" id="brushStrength" min="0" max="10" step="0.5" value="2.5" oninput="updateBrush()"><span class="val" id="brushStrength-v">2.5</span></div>
-    <div class="row"><label>획 두께</label><input type="range" id="strokeWidth" min="0" max="10" step="0.5" value="10" oninput="redraw()"><span class="val" id="strokeWidth-v">10</span></div>
+    <div class="row"><label>획 두께</label><input type="range" id="strokeWidth" min="0" max="20" step="0.5" value="10" oninput="redraw()"><span class="val" id="strokeWidth-v">10</span></div>
 
     <h3>5. 프리셋 & 내보내기</h3>
     <button class="btn btn-gray" onclick="savePreset()">💾 프리셋 저장</button>
@@ -86,7 +100,7 @@
 
   <div class="main">
     <div class="paper-area" id="stage"></div>
-    <p style="margin-top:20px; font-size:13px; color:#aaa;">* 초성/중성/종성이 캔버스 안에 안전하게 클램프됩니다.</p>
+    <p style="margin-top:20px; font-size:13px; color:#aaa;">* 모든 글자는 캔버스 중앙에 고정되며, 크기를 키워도 경계 밖으로 나가지 않습니다.</p>
   </div>
 
 <script>
@@ -164,6 +178,23 @@ function updateBrush() {
   document.getElementById('displacement').setAttribute('scale', v);
 }
 
+function setStyle(style, el) {
+  let thick = 10, brush = 2.5;
+  if (style === 'bold') { thick = 20; brush = 1; }
+  if (style === 'soft') { thick = 18; brush = 0.5; }
+  if (style === 'sharp') { thick = 10; brush = 4; }
+  if (style === 'dry') { thick = 8; brush = 10; }
+  if (style === 'rough') { thick = 12; brush = 10; }
+  if (style === 'none') { thick = 10; brush = 2.5; }
+
+  document.getElementById('strokeWidth').value = thick;
+  document.getElementById('brushStrength').value = brush;
+  document.querySelectorAll('.style-item').forEach(s => s.classList.remove('active'));
+  el.classList.add('active');
+  updateBrush();
+  redraw();
+}
+
 function redraw() {
   if (!uniqChars.length) return;
   const stage = document.getElementById('stage');
@@ -197,9 +228,8 @@ function drawCharacter(targetEl, char) {
     const type = getType(dec.jungIdx, dec.jongIdx);
     const layout = getBoxes(type, size, size);
     
-    // ★ 수정 핵심: 스트로크 0이면 안 보이므로, 무조건 8 이상으로 강제하고, 닫힌 도형은 채우지 않음
     const baseStroke = parseFloat(document.getElementById('strokeWidth').value);
-    const finalStroke = Math.max(baseStroke, 8); 
+    const finalStroke = Math.max(baseStroke, 1); 
     const strokeStyle = `fill="none" stroke="#111" stroke-width="${finalStroke}" stroke-linecap="round" stroke-linejoin="round"`;
 
     const renderJamo = (jamo, box) => {
@@ -232,7 +262,8 @@ function drawCharacter(targetEl, char) {
       const cy = Math.max(margin, Math.min(size - margin, jamoCenterY + dy));
       const s = opts.scale;
 
-      return `<g transform="translate(${cx}, ${cy}) scale(${s}) translate(-${size/2}, -${size/2})"><g ${strokeStyle}>${JAMO_DB[jamo]}</g></g>`;
+      // ★ 핵심 수정: 자모의 실제 중심(-50, -50)으로 이동 후 스케일링
+      return `<g transform="translate(${cx}, ${cy}) scale(${s}) translate(-50, -50)"><g ${strokeStyle}>${JAMO_DB[jamo]}</g></g>`;
     };
 
     svgContent += renderJamo(dec.cho, layout.cho);
