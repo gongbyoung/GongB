@@ -1,1388 +1,599 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SRT 캘리그라피 스튜디오 (SRT별 세션 설정 v17.0)</title>
-
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Nanum+Brush+Script&display=swap" rel="stylesheet">
-
-  <!-- Opentype.js CDN (벡터 폰트 파싱 및 실제 획 외곽선 추출) -->
-  <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
-
-  <!-- MP4 비디오 인코딩 라이브러리 CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.1.0/build/mp4-muxer.min.js"></script>
-
-  <style>
-    :root {
-      --bg-dark: #121214;
-      --panel-bg: #1e1e24;
-      --panel-border: #2d2d38;
-      --accent-color: #ff6b35;
-      --accent-gradient: linear-gradient(135deg, #ff6b35, #f72585);
-      --text-main: #f0f0f5;
-      --text-muted: #a0a0b0;
-    }
-
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Pretendard', sans-serif; background-color: var(--bg-dark); color: var(--text-main); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
-    header { background: #18181c; padding: 12px 24px; border-bottom: 1px solid var(--panel-border); display: flex; justify-content: space-between; align-items: center; }
-    header h1 { font-size: 1.25rem; font-weight: 700; background: var(--accent-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-    .main-container { display: flex; flex: 1; overflow: hidden; }
-    .sidebar { width: 400px; background: var(--panel-bg); border-right: 1px solid var(--panel-border); padding: 20px; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; }
-    .section-title { font-size: 0.9rem; font-weight: 700; color: var(--accent-color); text-transform: uppercase; margin-bottom: 6px; }
-    .control-group { display: flex; flex-direction: column; gap: 6px; }
-    .control-group.session-group { border: 1px solid var(--panel-border); border-radius: 10px; padding: 14px; background: #17171c; }
-    label { font-size: 0.82rem; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
-    label span.val { color: var(--text-main); font-weight: 600; }
-    input[type="file"] { display: none; }
-    .btn-file { display: block; padding: 12px; background: #2a2a36; border: 2px dashed var(--accent-color); border-radius: 8px; text-align: center; cursor: pointer; font-size: 0.9rem; font-weight: 600; color: var(--text-main); }
-    textarea.srt-textarea { width: 100%; height: 85px; background: #141418; border: 1px solid var(--panel-border); border-radius: 6px; color: var(--text-main); font-family: monospace; font-size: 0.78rem; padding: 8px; resize: vertical; margin-top: 4px; }
-    select, input[type="range"], input[type="color"] { width: 100%; padding: 8px; background: #16161a; border: 1px solid var(--panel-border); border-radius: 6px; color: var(--text-main); font-size: 0.85rem; margin-bottom: 4px; }
-    input[type="range"] { padding: 0; accent-color: var(--accent-color); cursor: pointer; }
-    .preview-area { flex: 1; display: flex; flex-direction: column; background: #0a0a0c; align-items: center; justify-content: center; padding: 20px; position: relative; }
-    .canvas-wrapper { position: relative; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8); border-radius: 8px; overflow: hidden; max-width: 100%; max-height: 70vh; display: flex; align-items: center; justify-content: center; background: #000; }
-    canvas { display: block; max-width: 100%; max-height: 70vh; object-fit: contain; }
-    .player-controls { width: 100%; max-width: 960px; margin-top: 15px; background: var(--panel-bg); padding: 14px 20px; border-radius: 10px; display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--panel-border); }
-    .timeline-row { display: flex; align-items: center; gap: 12px; }
-    .time-display { font-family: monospace; font-size: 0.9rem; color: var(--accent-color); min-width: 120px; }
-    button.btn-action { background: var(--accent-gradient); color: white; border: none; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; }
-    button.btn-secondary { background: #2b2b38; border: 1px solid var(--panel-border); color: var(--text-main); padding: 10px 16px; border-radius: 6px; cursor: pointer; }
-    .srt-list-container { max-height: 150px; overflow-y: auto; background: #141418; border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px; margin-bottom: 8px; }
-    .srt-item { padding: 6px 10px; border-bottom: 1px solid #22222a; font-size: 0.8rem; cursor: pointer; display: flex; justify-content: space-between; border-radius: 4px; }
-    .srt-item.active { background: rgba(255,107,53,0.18); border: 1px solid rgba(255,107,53,0.5); }
-    .progress-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(4px); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; display: none; }
-    .progress-box { background: var(--panel-bg); padding: 30px; border-radius: 12px; text-align: center; width: 340px; }
-    .progress-bar-bg { width: 100%; height: 10px; background: #111; border-radius: 5px; margin: 15px 0; overflow: hidden; }
-    .progress-bar-fill { width: 0%; height: 100%; background: var(--accent-gradient); }
-    svg.filters { position: absolute; width: 0; height: 0; }
-    .hint-text { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
-    .hint-text.ready { color: #7cd992; }
-    .hint-text.loading { color: #ffcf6b; }
-    .session-info { font-size: 0.82rem; font-weight: 600; color: var(--accent-color); margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px dashed var(--panel-border); }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>v1.049 정중앙 강제 - 글자 보임 완전 복구</title>
+<script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<style>
+:root{--bg:#0a0a0f;--panel:#181826;--b:#2d2d4a;--accent:#ff6b35;--text:#f4f4fa}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Pretendard,system-ui;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column}
+header{height:52px;background:#141424;border-bottom:1px solid var(--b);display:flex;align-items:center;padding:0 14px;gap:10px}
+.main{flex:1;display:flex;overflow:hidden}
+.left{width:340px;background:var(--panel);border-right:1px solid var(--b);overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px}
+.center{flex:1;background:#0a0a12;display:flex;flex-direction:column;align-items:center;padding:10px;gap:8px;overflow-y:auto}
+.right{width:380px;background:var(--panel);border-left:1px solid var(--b);overflow-y:auto;padding:10px}
+.btn{border:none;border-radius:8px;padding:8px 10px;font-weight:800;cursor:pointer;font-size:.76rem}
+.btn-p{background:linear-gradient(135deg,#ff6b35,#f72585);color:#fff;width:100%}
+.btn-s{background:#26263e;border:1px solid var(--b);color:var(--text);width:100%}
+.btn-file{display:flex;justify-content:center;padding:6px;border:1.5px dashed #4a4a6e;border-radius:8px;background:#1a1a2e;cursor:pointer;font-weight:700;font-size:.72rem}
+input[type=file]{display:none}
+.sec{margin-bottom:8px;padding-bottom:8px;border-bottom:1px dashed #333355}
+.sec-title{font-size:.76rem;font-weight:800;color:var(--accent);margin-bottom:4px}
+.canvas-wrap{background:#f4efe6;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.6);width:100%;max-width:640px;aspect-ratio:1/1;position:relative;display:flex;justify-content:center;align-items:center;overflow:hidden;border:3px solid #22c55e}
+canvas{display:block;touch-action:none;width:100%;height:100%}
+textarea{width:100%;background:#11111e;border:1px solid var(--b);color:var(--text);border-radius:8px;padding:6px;font-size:.72rem;min-height:48px}
+.label{font-size:.64rem;color:#8a8ab8;display:flex;justify-content:space-between;margin:4px 0 2px}
+input[type=range],select{width:100%}
+.log{width:100%;background:#11111e;border:1px solid var(--b);border-radius:8px;padding:6px;height:120px;overflow-y:auto;font-size:.60rem;color:#a0a0c0;white-space:pre-wrap;font-family:monospace}
+.char-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:5px;max-height:260px;overflow-y:auto;background:#11111e;border:1px solid var(--b);border-radius:8px;padding:6px}
+.char-btn{background:#1e1e36;border:1px solid #2d2d4a;border-radius:6px;padding:8px 2px;font-size:.95rem;font-weight:800;cursor:pointer;text-align:center;color:var(--text)}
+.char-btn:hover{border-color:var(--accent)}
+.char-btn.active{background:linear-gradient(135deg,#ff6b35,#f72585);color:#fff;border-color:#ff6b35;box-shadow:0 0 8px rgba(255,107,53,.5)}
+.style-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin:6px 0}
+.style-check{background:#2a2a36;border:1px solid #444;border-radius:6px;padding:6px;text-align:center;cursor:pointer;font-size:.70rem}
+.style-check:hover{border-color:var(--accent)}
+.style-check.active{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:bold}
+.jamo-box{border:2px solid #ff6b35;background:#1e1e24;border-radius:8px;padding:6px;margin-bottom:6px}
+.preset-box{background:#1e1e36;border:2px solid #22c55e;border-radius:10px;padding:8px}
+.guide-box{border:2px solid #3b82f6;background:#1a1a2e;border-radius:10px;padding:8px}
+</style>
 </head>
 <body>
+<header><h1>🖌 v1.049 정중앙 강제 - 글자 보임 복구</h1><span style="font-size:.62rem;background:#22c55e;color:#000;padding:2px 8px;border-radius:6px">단순 렌더링·무조건 중앙·가이드</span></header>
+<div class="main">
+<div class="left">
+<div class="sec">
+<div class="sec-title">📂 폰트 및 SRT</div>
+<label class="btn-file" for="ttf-input">📁 TTF 폰트</label><input type="file" id="ttf-input" accept=".ttf,.otf">
+<div id="font-status" style="font-size:.70rem;color:#7cd992;">나눔붓글씨 대기</div>
+<label class="btn-file" for="srt-input">📁 SRT (모든 글자 추출)</label><input type="file" id="srt-input" accept=".srt,.txt">
+<textarea id="srtTa" placeholder="SRT 붙여넣기"></textarea>
+<button class="btn btn-s" id="btn-apply-srt" style="background:linear-gradient(135deg,#ff6b35,#f72585);color:#fff">🔍 모든 글자 추출</button>
+<div style="font-size:.68rem;color:#8a8ab8" id="infoNum">고유 0자</div>
+</div>
 
-  <svg class="filters">
-    <defs>
-      <filter id="ink-bleed-filter">
-        <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="4" result="noise" />
-        <feDisplacementMap in="SourceGraphic" in2="noise" scale="4" xChannelSelector="R" yChannelSelector="G" />
-      </filter>
-    </defs>
-  </svg>
+<div class="sec">
+<div class="sec-title">🔤 추출된 글자 (정중앙 1자)</div>
+<div style="display:flex;gap:5px;margin-bottom:6px"><button class="btn btn-s" id="btn-prev" style="flex:1">◀ 이전</button><button class="btn btn-s" id="btn-next" style="flex:1">다음 ▶</button><span id="char-indicator" style="flex:1.2;background:#11111e;border:1px solid var(--b);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:.70rem;color:var(--accent)">0 / 0</span></div>
+<div class="char-grid" id="char-grid"></div>
+</div>
 
-  <header>
-    <h1>🖌️ SRT 캘리그라피 스튜디오</h1>
-    <span style="font-size: 0.85rem; color: var(--text-muted);">SRT별 위치/모양틀/스타일 세션 설정 v17.0</span>
-  </header>
+<div class="guide-box">
+<div class="sec-title" style="color:#3b82f6">📐 가이드라인</div>
+<label style="font-size:.66rem"><input type="checkbox" id="showGuide" checked> 가이드 ON</label>
+<label style="font-size:.66rem"><input type="checkbox" id="showCenter" checked> 정중앙 십자선</label>
+<label style="font-size:.66rem"><input type="checkbox" id="showBoxes" checked> 초중종성 박스</label>
+</div>
 
-  <div class="main-container">
-    <div class="sidebar">
+<div class="preset-box">
+<div class="sec-title" style="color:#22c55e">💾 프리셋</div>
+<input type="text" id="presetName" placeholder="예: 사랑체" style="width:100%;background:#11111e;border:1px solid #2d2d4a;color:#fff;border-radius:6px;padding:6px;margin-bottom:6px">
+<div style="display:flex;gap:5px"><button class="btn btn-s" id="btnSavePreset" style="background:#22c55e;color:#000;flex:1">💾 저장</button><button class="btn btn-s" id="btnLoadPreset" style="flex:1">📂 불러오기</button><button class="btn btn-s" id="btnDeletePreset" style="flex:0.6">🗑 삭제</button></div>
+<select id="presetList" style="margin-top:6px;background:#11111e;border:1px solid #2d2d4a;color:#fff;border-radius:6px;padding:5px;width:100%"></select>
+</div>
 
-      <div class="control-group">
-        <div class="section-title">📂 1. SRT 자막 로딩 & 편집</div>
-        <label for="srt-input" class="btn-file" id="srt-label">📁 SRT 자막 파일 불러오기 (.srt)</label>
-        <input type="file" id="srt-input" accept=".srt">
+<div class="sec"><div class="sec-title">🎨 붓터치</div><div id="global-style-grid" class="style-grid"></div>
+<div class="label">필모 수 <span id="vBristle">0</span></div><input type="range" id="bristleCount" min="0" max="32" step="2" value="0">
+<div class="label">삐침 <span id="vWhisker">0</span></div><input type="range" id="whiskerLen" min="0" max="30" step="1" value="0">
+</div>
+</div>
 
-        <label style="margin-top: 6px;">SRT 자막 직접 입력/수정</label>
-        <textarea id="srt-textarea" class="srt-textarea" placeholder="SRT 자막 내용을 입력하세요."></textarea>
-        <button class="btn-secondary" id="btn-apply-srt" style="width:100%; margin-top:4px;">✏️ 자막 적용하기</button>
-      </div>
+<div class="center">
+<div style="width:100%;max-width:640px;background:#1e1e36;border:1px solid #2d2d4a;border-radius:8px;padding:8px;display:flex;gap:8px;align-items:center">
+<div style="flex:1;text-align:center"><div style="font-size:.60rem;color:#8a8ab8">현재 글자</div><div id="current-char-display" style="font-size:2.2rem;font-weight:900;color:var(--accent)">-</div></div>
+<div style="flex:2"><div class="label">전체 크기 <span id="vOverallScale">1.00x</span></div><input type="range" id="overallScale" min="0.3" max="2.0" step="0.05" value="1.0"></div>
+<div style="flex:1"><label style="font-size:.62rem"><input type="checkbox" id="bgTransparent"> 투명 배경</label><br><label style="font-size:.62rem"><input type="checkbox" id="jamoClampOff" checked> 클램프 해제</label></div>
+</div>
 
-      <div class="control-group">
-        <div class="section-title">🖼️ 2. 흑백 마스크 이미지 업로드</div>
-        <label for="mask-file-input" class="btn-file" id="mask-label">🖼️ 마스크 이미지 추가 (.png / .jpg)</label>
-        <input type="file" id="mask-file-input" accept="image/*">
-        <div class="hint-text" id="mask-upload-status">업로드한 이미지는 아래 "SRT별 세션 설정"에서 원하는 자막에 골라 적용할 수 있습니다.</div>
-      </div>
+<div class="canvas-wrap" id="wrap"><canvas id="cv" width="1080" height="1080"></canvas></div>
 
-      <div class="control-group">
-        <div class="section-title">🖌️ 3. 폰트</div>
-        <div class="hint-text" id="font-status">⏳ 기본 붓글씨 폰트 로딩 중...</div>
-        <label for="custom-font-input" class="btn-file" id="custom-font-label" style="margin-top:6px;">🔤 TTF/OTF 폰트 업로드해서 사용</label>
-        <input type="file" id="custom-font-input" accept=".ttf,.otf">
-      </div>
+<div style="width:100%;max-width:640px;display:flex;gap:6px">
+<button class="btn btn-s" id="btnPNGCurrent" style="background:#22c55e;color:#000;flex:1">📸 현재 1자 PNG</button>
+<button class="btn btn-s" id="btnJPGCurrent" style="flex:1">🖼 현재 1자 JPG</button>
+<button class="btn btn-s" id="btnPNGAll" style="background:linear-gradient(135deg,#ff6b35,#f72585);color:#fff;flex:1.2">🗂 전체 ZIP (PNG)</button>
+</div>
+<div style="width:100%;max-width:640px;display:flex;gap:6px">
+<button class="btn btn-s" id="btnJPGAll" style="flex:1">🗂 전체 ZIP (JPG)</button>
+<button class="btn btn-s" id="btnMaster" style="background:#ff6b35;color:#fff;flex:1">★ 추천</button>
+<button class="btn btn-s" id="btnReset" style="background:#26263e;flex:0.6">↺ 리셋</button>
+</div>
 
-      <div class="control-group">
-        <div class="section-title">🎨 4. 글자 크기 & 쓰기 속도</div>
-        <label for="param-finish-pct">문장 쓰기 완성 구간 <span class="val" id="val-finish-pct">70% 시간 내 완성</span></label>
-        <input type="range" id="param-finish-pct" min="50" max="85" step="1" value="70">
+<div class="log" id="log">[v1.049 완전 단순화]
+- 렌더링 로직 단순화: baseFont.getPath() → getBoundingBox() → 중앙 이동, 무조건 보임
+- 자소분할 OFF일 때는 단일 경로로 정중앙 강제
+- 자소분할 ON일 때는 각 자소 박스 + 거리/크기/랜덤 적용 후 전체 bbox 다시 중앙
+- 가이드: 초중종성 박스 + 십자선, 저장 시 자동 OFF
+- 필모 0이면 벡터 그대로 채우기, 필모 있으면 붓터치
+</div>
+</div>
 
-        <label for="param-tightness">글자 밀집도 <span class="val" id="val-tightness">보통</span></label>
-        <input type="range" id="param-tightness" min="0.5" max="1.1" step="0.05" value="0.75">
+<div class="right">
+<div class="jamo-box" style="border:3px solid #ef4444;">
+<div class="sec-title">초성 조정 (빨강)</div>
+<div class="label">중심부터 거리 <span id="vChoDist">1.00x</span></div><input type="range" id="choDist" min="0.3" max="2.5" step="0.05" value="1.0">
+<div class="label">크기 <span id="vChoSize">1.00x</span></div><input type="range" id="choSize" min="0.3" max="2.5" step="0.05" value="1.0">
+<div class="label">랜덤 변형 <span id="vChoRand">0.00</span></div><input type="range" id="choRand" min="0" max="1.0" step="0.05" value="0.0">
+</div>
+<div class="jamo-box" style="border:3px solid #3b82f6;">
+<div class="sec-title">중성 조정 (파랑)</div>
+<div class="label">중심부터 거리 <span id="vJungDist">1.00x</span></div><input type="range" id="jungDist" min="0.3" max="2.5" step="0.05" value="1.0">
+<div class="label">크기 <span id="vJungSize">1.00x</span></div><input type="range" id="jungSize" min="0.3" max="2.5" step="0.05" value="1.0">
+<div class="label">랜덤 변형 <span id="vJungRand">0.00</span></div><input type="range" id="jungRand" min="0" max="1.0" step="0.05" value="0.0">
+</div>
+<div class="jamo-box" style="border:3px solid #22c55e;">
+<div class="sec-title">종성 조정 (초록)</div>
+<div class="label">중심부터 거리 <span id="vJongDist">1.00x</span></div><input type="range" id="jongDist" min="0.3" max="2.5" step="0.05" value="1.0">
+<div class="label">크기 <span id="vJongSize">1.00x</span></div><input type="range" id="jongSize" min="0.3" max="2.5" step="0.05" value="1.0">
+<div class="label">랜덤 변형 <span id="vJongRand">0.00</span></div><input type="range" id="jongRand" min="0" max="1.0" step="0.05" value="0.0">
+</div>
 
-        <label for="param-contrast">첫 글자 강약 대비 <span class="val" id="val-contrast">2.4x</span></label>
-        <input type="range" id="param-contrast" min="1.2" max="3.5" step="0.1" value="2.4">
-      </div>
-
-      <div class="control-group">
-        <div class="section-title">🖼️ 5. 배경 및 먹물 색상</div>
-        <label for="bg-style">배경 스타일</label>
-        <select id="bg-style">
-          <option value="hanji" selected>전통 한지 (Rice Paper)</option>
-          <option value="dark-paper">어두운 먹종이 (Dark Paper)</option>
-          <option value="transparent">투명 배경 (영상 합성용)</option>
-          <option value="black">단색 검정</option>
-        </select>
-        <label for="ink-color">먹물 색상</label>
-        <input type="color" id="ink-color" value="#1c1917">
-      </div>
-
-      <div class="control-group">
-        <div class="section-title">📐 6. 가이드선 표시</div>
-        <label for="param-show-guide">편집 화면 가이드선 종류</label>
-        <select id="param-show-guide">
-          <option value="guide-shape" selected>📐 윤곽 가이드선 표시 (편집 확인용)</option>
-          <option value="subtle-axis">🖌️ 세로 먹선 축 표시</option>
-          <option value="none">❌ 가이드선 없음</option>
-        </select>
-        <div class="hint-text">가이드선은 편집 화면에서만 보이고, 녹화(MP4 저장)된 영상에는 자동으로 표시되지 않습니다.</div>
-      </div>
-
-      <div class="control-group session-group">
-        <div class="section-title">🎬 7. SRT별 세션 설정 (자막마다 위치·모양틀·스타일 개별 지정)</div>
-        <div class="srt-list-container" id="srt-list"></div>
-
-        <div class="session-info" id="session-info">편집할 자막을 목록에서 선택하세요</div>
-
-        <label for="session-mask-select">이 자막의 모양틀(마스크)</label>
-        <select id="session-mask-select"></select>
-
-        <label for="session-offset-x">위치 X <span class="val" id="val-session-offsetx">0px</span></label>
-        <input type="range" id="session-offset-x" min="-500" max="500" step="10" value="0">
-
-        <label for="session-offset-y">위치 Y <span class="val" id="val-session-offsety">0px</span></label>
-        <input type="range" id="session-offset-y" min="-400" max="400" step="10" value="0">
-
-        <label for="session-scale">크기 배율 <span class="val" id="val-session-scale">1.00x</span></label>
-        <input type="range" id="session-scale" min="0.5" max="1.8" step="0.05" value="1">
-
-        <label for="session-style-select">글자 모양 변형 스타일</label>
-        <select id="session-style-select">
-          <option value="none" selected>✒️ 기본 (변형 없음)</option>
-          <option value="round-bulge">⚪ 각진 부분 둥글고 크게 (유선형)</option>
-          <option value="seal-fill">🔳 전서체처럼 틀에 꽉 채우기</option>
-          <option value="flowing-tail">🌊 획 끝을 다음 줄까지 흐르게</option>
-          <option value="flat-stretch">➡️ 아래 가로획(ㄴㅡㅠㅛ) 오른쪽으로 늘이기</option>
-          <option value="tall-slim">🕴️ 세로로 길게 (키다리)</option>
-          <option value="puffy-counter">🍩 속공간(ㅁㅇㅎㅂ) 부풀리기</option>
-          <option value="bulbous-ends">🔘 시작/끝 혹부리처럼 뭉치기</option>
-        </select>
-
-        <label for="session-style-intensity">스타일 강도 <span class="val" id="val-session-intensity">100%</span></label>
-        <input type="range" id="session-style-intensity" min="0" max="100" step="5" value="100">
-      </div>
-
-    </div>
-
-    <div class="preview-area">
-      <div class="canvas-wrapper">
-        <canvas id="calligraphy-canvas" width="1920" height="1080"></canvas>
-      </div>
-
-      <div class="player-controls">
-        <div class="timeline-row">
-          <button class="btn-secondary" id="btn-play">▶ 재생</button>
-          <input type="range" id="time-slider" min="0" max="100" value="0" step="0.01" style="flex:1;">
-          <div class="time-display" id="time-display">00:00.00 / 00:00.00</div>
-        </div>
-
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 5px;">
-          <div style="font-size: 0.85rem; color: var(--text-muted);">
-            해상도: 1920x1080 (Full HD) | 자막별 개별 위치/모양틀/스타일 적용
-          </div>
-          <button class="btn-action" id="btn-export">⏺ 녹화 시작 (처음부터 MP4 저장)</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="progress-overlay" id="progress-modal">
-    <div class="progress-box">
-      <h3 style="margin-bottom: 10px; font-size: 1.1rem;">⏺ 처음부터 녹화 중...</h3>
-      <p style="font-size: 0.85rem; color: var(--text-muted);" id="progress-text">타임라인 00:00부터 붓글씨 스트로크를 다시 그리며 인코딩 중 (가이드선 제외)</p>
-      <div class="progress-bar-bg"><div class="progress-bar-fill" id="progress-fill"></div></div>
-      <span id="progress-percent" style="font-weight: bold; font-size: 1.1rem; color: var(--accent-color);">0%</span>
-    </div>
-  </div>
-
-  <script>
-    /* =========================================================================================
-       상태 변수
-    ========================================================================================= */
-    let srtData = [];
-    let totalDuration = 0;
-    let currentTime = 0;
-    let isPlaying = false;
-    let isRecording = false;     // true인 동안은 가이드선을 그리지 않는다 (녹화 영상엔 가이드선 미포함)
-    let animationFrameId = null;
-    let lastTimestamp = 0;
-    let currentEditingId = null; // 세션 패널에서 현재 편집 중인 자막의 id
-
-    const canvas = document.getElementById('calligraphy-canvas');
-    const ctx = canvas.getContext('2d');
-    const srtInput = document.getElementById('srt-input');
-    const srtLabel = document.getElementById('srt-label');
-    const srtTextarea = document.getElementById('srt-textarea');
-    const btnApplySrt = document.getElementById('btn-apply-srt');
-    const srtListEl = document.getElementById('srt-list');
-    const btnPlay = document.getElementById('btn-play');
-    const timeSlider = document.getElementById('time-slider');
-    const timeDisplay = document.getElementById('time-display');
-    const btnExport = document.getElementById('btn-export');
-
-    const maskFileInput = document.getElementById('mask-file-input');
-    const maskUploadStatusEl = document.getElementById('mask-upload-status');
-    const paramShowGuide = document.getElementById('param-show-guide');
-    const customFontInput = document.getElementById('custom-font-input');
-    const paramFinishPct = document.getElementById('param-finish-pct');
-    const bgStyleSelect = document.getElementById('bg-style');
-    const inkColorInput = document.getElementById('ink-color');
-    const paramTightness = document.getElementById('param-tightness');
-    const paramContrast = document.getElementById('param-contrast');
-    const fontStatusEl = document.getElementById('font-status');
-
-    const sessionInfoEl = document.getElementById('session-info');
-    const sessionMaskSelect = document.getElementById('session-mask-select');
-    const sessionOffsetX = document.getElementById('session-offset-x');
-    const sessionOffsetY = document.getElementById('session-offset-y');
-    const sessionScale = document.getElementById('session-scale');
-    const sessionStyleSelect = document.getElementById('session-style-select');
-    const sessionStyleIntensity = document.getElementById('session-style-intensity');
-
-    const progressModal = document.getElementById('progress-modal');
-    const progressFill = document.getElementById('progress-fill');
-    const progressPercent = document.getElementById('progress-percent');
-    const progressText = document.getElementById('progress-text');
-
-    // 오프스크린 잉크 합성용 캔버스 (마스크 클리핑에 사용)
-    const maskCanvas = document.createElement('canvas');
-    maskCanvas.width = 1920; maskCanvas.height = 1080;
-    const maskCtx = maskCanvas.getContext('2d');
-
-    const maskBoundsCache = new Map();   // Image -> {x,y,w,h}
-    const shapeMaskCache = {};           // shapeType -> 알파 정규화된 Image (프리셋 도형)
-    let maskGallery = [];                // [{id, label, image}] - 프리셋 도형 + 사용자가 업로드한 이미지들
-
-    /* =========================================================================================
-       Opentype.js 폰트 로딩
-       - 기본은 나눔붓글씨 하나만 fetch해서 사용하고, 사용자가 TTF/OTF 파일을 업로드하면
-         네트워크 없이 opentype.parse()로 바로 파싱해서 그 폰트로 교체한다.
-    ========================================================================================= */
-    const DEFAULT_FONT_KEY = 'default-nanum-brush';
-    const FONT_URLS = {
-      [DEFAULT_FONT_KEY]: 'https://raw.githubusercontent.com/google/fonts/main/ofl/nanumbrushscript/NanumBrushScript-Regular.ttf'
-    };
-
-    const fontObjectCache = {};
-    const glyphDataCache = new Map(); // "fontKey|codepoint|size|style|intensity" -> brush glyph data
-    let currentFont = null;
-    let currentFontKey = null;
-
-    function loadOpentypeFont(key) {
-      if (fontObjectCache[key]) return fontObjectCache[key];
-      const url = FONT_URLS[key];
-      const p = new Promise((resolve, reject) => {
-        opentype.load(url, (err, font) => { if (err) reject(err); else resolve(font); });
-      });
-      fontObjectCache[key] = p;
-      return p;
+<div class="sec">
+<div class="sec-title">🔷 FFD + 아트워크</div>
+<div class="label">장봉 길이 <span id="val-long">0px</span></div><input type="range" id="long-brush" min="0" max="80" step="1" value="0">
+<div class="label">먹물 튀김 <span id="val-splatter">0.00</span></div><input type="range" id="splatter" min="0" max="1.0" step="0.05" value="0">
+<label style="font-size:.66rem"><input type="checkbox" id="jamoMode"> 자소분할 (체크 시 초중종성 분리)</label>
+</div>
+</div>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+const cv=$('cv'), ctx=cv?.getContext('2d');
+let baseFont=null, srt=[], allChars=[], uniqChars=[], curIdx=0, curChar='-';
+const REF_SIZE=650; // 자소분할은 이 고정 크기로 1회만 계산 후 정규화 비율로 재사용(캐시)
+const jamoSplitCache=new Map(); // key: `${fontKey}|${ch}|${type}` -> split result (또는 null)
+let fontLoadId=0; // 폰트가 바뀌면 캐시 무효화용
+const textCv=document.createElement('canvas'); const textCtx=textCv.getContext('2d');
+const guideCv=document.createElement('canvas'); const guideCtx=guideCv.getContext('2d');
+function syncCanvases(w,h){ if(textCv.width!==w||textCv.height!==h){ textCv.width=w; textCv.height=h; guideCv.width=w; guideCv.height=h; } textCtx.clearRect(0,0,w,h); guideCtx.clearRect(0,0,w,h); }
+function mulberry32(a){return function(){let t=a+=0x6D2B79F5; t=Math.imul(t ^ t >>> 15, t | 1); t^=t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0)/4294967296;};}
+const CHO=['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+const JUNG=['ㅏ','ㅐ','ㅑ','ㅒ','ㅓ','ㅔ','ㅕ','ㅖ','ㅗ','ㅘ','ㅙ','ㅚ','ㅛ','ㅜ','ㅝ','ㅞ','ㅟ','ㅠ','ㅡ','ㅢ','ㅣ'];
+const JONG=['','ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','ㅀ','ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+function decomposeHangul(syl){const code=syl.charCodeAt(0); if(code<0xAC00||code>0xD7A3) return null; const S=code-0xAC00; return {jungIdx:(S/28|0)%21, jongIdx:S%28};}
+function getSyllableType(de){const seRo=[0,1,2,3,4,5,6,7,20].includes(de.jungIdx), gaRo=[8,12,13,17,18].includes(de.jungIdx), hasJong=de.jongIdx!==0; if(seRo&&!hasJong) return 1; if(gaRo&&!hasJong) return 2; if(!seRo&&!gaRo&&!hasJong) return 3; if(seRo&&hasJong) return 4; if(gaRo&&hasJong) return 5; return 6;}
+function log(m){const el=$('log'); if(!el) return; el.textContent='['+new Date().toLocaleTimeString().slice(0,8)+'] '+m+'\n'+el.textContent;}
+function pTime(s){s=s.trim().replace(',','.'); const mm=s.match(/(?:(\d+):)?(\d+):(\d+(?:\.\d+)?)/); if(!mm) return NaN; return (parseFloat(mm[1]||0)*3600+parseFloat(mm[2])*60+parseFloat(mm[3]));}
+function parseSRT(raw){const blocks=raw.replace(/\r/g,'').trim().split(/\n\s*\n/); const out=[]; for(const b of blocks){const ls=b.split('\n').map(l=>l.trim()).filter(Boolean); if(ls.length<2) continue; let i=0; if(/^\d+$/.test(ls[0])) i=1; const tm=(ls[i]||'').match(/(.+?)\s*-->\s*(.+)/); if(!tm) continue; out.push({start:pTime(tm[1]),end:pTime(tm[2]),text:ls.slice(i+1).join('\n')});} return out.sort((a,b)=>a.start-b.start);}
+function analyze(){
+  const raw=$('srtTa')?.value?.trim(); if(!raw){alert('SRT 입력'); return;}
+  srt=parseSRT(raw);
+  const all=srt.map(o=>o.text).join('').replace(/[\n,\s]/g,'');
+  allChars=[...all].filter(c=>/[가-힣]/.test(c));
+  uniqChars=[...new Set(allChars)];
+  const info=$('infoNum'); if(info) info.textContent=`전체 ${allChars.length}자 / 고유 ${uniqChars.length}자`;
+  renderCharGrid();
+  if(uniqChars.length>0){ curIdx=0; curChar=uniqChars[0]; updateCharIndicator(); renderChar(curChar); }
+  log(`추출: 전체 ${allChars.length}자, 고유 ${uniqChars.length}자`);
+}
+function renderCharGrid(){
+  const grid=$('char-grid'); if(!grid) return; grid.innerHTML='';
+  uniqChars.forEach((ch, idx)=>{
+    const btn=document.createElement('button'); btn.className='char-btn'; btn.textContent=ch; if(idx===curIdx) btn.classList.add('active');
+    btn.addEventListener('click',()=>{curIdx=idx; curChar=ch; updateCharIndicator(); renderCharGrid(); renderChar(ch);});
+    grid.appendChild(btn);
+  });
+}
+function updateCharIndicator(){
+  const ind=$('char-indicator'); if(ind) ind.textContent=`${curIdx+1} / ${uniqChars.length}`;
+  const disp=$('current-char-display'); if(disp) disp.textContent=curChar;
+}
+function safeAddListener(id, event, fn){const el=$(id); if(el) el.addEventListener(event, fn);}
+const styleList=[{id:'soft',name:'둥글둥글'},{id:'sharp',name:'뾰족'},{id:'contrast',name:'강약'},{id:'ink',name:'농담'},{id:'deform',name:'자유변형'},{id:'curve',name:'곡선구도'},{id:'seal',name:'전서체'},{id:'dry',name:'갈필'},{id:'bold',name:'농묵'}];
+const styleParams={ soft:{bristles:24,whiskerLen:4}, sharp:{bristles:8,whiskerLen:20}, contrast:{bristles:16,whiskerLen:12}, ink:{bristles:18,whiskerLen:10}, deform:{bristles:14,whiskerLen:8}, curve:{bristles:16,whiskerLen:10}, seal:{bristles:32,whiskerLen:0}, dry:{bristles:8,whiskerLen:24}, bold:{bristles:26,whiskerLen:8} };
+let selectedGlobalStyles=[];
+function calculateSettings(ids){ if(ids.length===0) return {bristles:0,whiskerLen:0}; const keys=['bristles','whiskerLen']; let sum={}; keys.forEach(k=>sum[k]=0); ids.forEach(id=>{const sp=styleParams[id]; keys.forEach(k=>sum[k]+=sp[k]);}); let r={}; keys.forEach(k=>r[k]=sum[k]/ids.length); return r; }
+function createStyleGrid(id, cb){ const c=$(id); if(!c) return; c.innerHTML=''; styleList.forEach(s=>{ const d=document.createElement('div'); d.className='style-check'; d.textContent=s.name; d.dataset.styleId=s.id; d.addEventListener('click',()=>{d.classList.toggle('active'); const sel=Array.from(c.querySelectorAll('.active')).map(e=>e.dataset.styleId); cb(sel);}); c.appendChild(d); }); }
+const PRESET_KEY='calli_presets'; // 버전 문자열을 키에 넣지 않음 - 앱 버전이 올라가도 프리셋 유지
+const OLD_PRESET_KEYS=['calli_presets_v1_049']; // 과거 버전 키 - 있으면 1회 마이그레이션
+function getPresets(){
+  try{
+    const cur=localStorage.getItem(PRESET_KEY);
+    if(cur) return JSON.parse(cur);
+    for(const oldKey of OLD_PRESET_KEYS){
+      const old=localStorage.getItem(oldKey);
+      if(old){ const parsed=JSON.parse(old); localStorage.setItem(PRESET_KEY, old); return parsed; }
     }
+    return {};
+  }catch(e){ return {}; }
+}
+function savePresets(obj){ localStorage.setItem(PRESET_KEY, JSON.stringify(obj)); }
+function refreshPresetList(){ const sel=$('presetList'); if(!sel) return; const presets=getPresets(); sel.innerHTML=''; Object.keys(presets).forEach(name=>{const opt=document.createElement('option'); opt.value=name; opt.textContent=name; sel.appendChild(opt);}); if(Object.keys(presets).length===0){const opt=document.createElement('option'); opt.textContent='저장된 프리셋 없음'; sel.appendChild(opt);} }
+function collectCurrentOpts(){
+  const ids=['choDist','choSize','choRand','jungDist','jungSize','jungRand','jongDist','jongSize','jongRand','overallScale','bristleCount','whiskerLen','long-brush','splatter'];
+  const out={}; ids.forEach(id=>{const el=$(id); if(el) out[id]=el.value;});
+  ['jamoClampOff','jamoMode','bgTransparent','showGuide','showCenter','showBoxes'].forEach(id=>{const el=$(id); if(el) out[id]=el.checked;});
+  out['selectedStyles']=selectedGlobalStyles.slice(); return out;
+}
+function applyOptsToUI(o){
+  Object.entries(o).forEach(([k,v])=>{if(k==='selectedStyles') return; const el=$(k); if(!el) return; if(el.type==='checkbox') el.checked=v; else el.value=v;});
+  if(o['selectedStyles']){ selectedGlobalStyles=o['selectedStyles']; const container=$('global-style-grid'); if(container){ container.querySelectorAll('.style-check').forEach(el=>{ if(o['selectedStyles'].includes(el.dataset.styleId)) el.classList.add('active'); else el.classList.remove('active'); }); } }
+  updateLabels(); if(curChar!=='-') renderChar(curChar);
+}
+function getOpts(){
+  const g=(id,def)=>{const el=$(id); if(!el) return def; if(el.type==='checkbox') return el.checked; const v=parseFloat(el.value); return isNaN(v)?def:v;};
+  const gi=(id,def)=>{const el=$(id); if(!el) return def; const v=parseInt(el.value); return isNaN(v)?def:v;};
+  const gs=calculateSettings(selectedGlobalStyles);
+  return {
+    choDist:g('choDist',1), choSize:g('choSize',1), choRand:g('choRand',0),
+    jungDist:g('jungDist',1), jungSize:g('jungSize',1), jungRand:g('jungRand',0),
+    jongDist:g('jongDist',1), jongSize:g('jongSize',1), jongRand:g('jongRand',0),
+    overallScale:g('overallScale',1), bristleCount:gi('bristleCount',Math.round(gs.bristles)), whiskerLen:g('whiskerLen',gs.whiskerLen), longBrushLen:gi('long-brush',0), splatterIntensity:g('splatter',0), jamoClampOff:$('jamoClampOff')?.checked??false, jamoMode:$('jamoMode')?.checked??false, bgTransparent:$('bgTransparent')?.checked??false,
+    showGuide:$('showGuide')?.checked??true, showCenter:$('showCenter')?.checked??true, showBoxes:$('showBoxes')?.checked??true
+  };
+}
+function getContourArea(cmds){let area=0; const pts=[]; cmds.forEach(c=>{if(c.x!==undefined) pts.push({x:c.x,y:c.y}); else if(c.x1!==undefined){ pts.push({x:c.x1,y:c.y1}); pts.push({x:c.x2,y:c.y2}); pts.push({x:c.x,y:c.y});}}); for(let i=0;i<pts.length;i++){const p1=pts[i], p2=pts[(i+1)%pts.length]; if(p1.x!==undefined && p2.x!==undefined) area+=(p1.x*p2.y - p2.x*p1.y);} return area/2;}
+function splitSyllablePathIntoJamoGroups(syllableChar, baseSize, type){
+  try{
+    if(!baseFont) return null;
+    const path=baseFont.getPath(syllableChar, 0, 0, baseSize);
+    const contours=[]; let curContour=[]; let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+    path.commands.forEach(c=>{ if(c.type==='M'){ if(curContour.length>0){const area=getContourArea(curContour); contours.push({cmds:curContour.slice(), bbox:{minX, maxX, minY, maxY, cx:(minX+maxX)/2, cy:(minY+maxY)/2}, area, isHole:area<0}); curContour=[]; minX=Infinity; maxX=-Infinity; minY=Infinity; maxY=-Infinity;} curContour.push(c); if(c.x!==undefined){minX=Math.min(minX,c.x); maxX=Math.max(maxX,c.x); minY=Math.min(minY,c.y); maxY=Math.max(maxY,c.y);} } else {curContour.push(c); if(c.x!==undefined){minX=Math.min(minX,c.x); maxX=Math.max(maxX,c.x); minY=Math.min(minY,c.y); maxY=Math.max(maxY,c.y);} if(c.x1!==undefined){minX=Math.min(minX,c.x1,c.x2); maxX=Math.max(maxX,c.x1,c.x2); minY=Math.min(minY,c.y1,c.y2); maxY=Math.max(maxY,c.y1,c.y2);}} });
+    if(curContour.length>0){const area=getContourArea(curContour); contours.push({cmds:curContour, bbox:{minX, maxX, minY, maxY, cx:(minX+maxX)/2, cy:(minY+maxY)/2}, area, isHole:area<0});}
+    if(contours.length===0) return null;
+    let gMinX=Infinity,gMaxX=-Infinity,gMinY=Infinity,gMaxY=-Infinity;
+    contours.forEach(ct=>{gMinX=Math.min(gMinX, ct.bbox.minX); gMaxX=Math.max(gMaxX, ct.bbox.maxX); gMinY=Math.min(gMinY, ct.bbox.minY); gMaxY=Math.max(gMaxY, ct.bbox.maxY);});
+    const gH=gMaxY-gMinY, gW=gMaxX-gMinX;
+    const groups={cho:[], jung:[], jong:[]};
+    contours.forEach(ct=>{ const relY=(ct.bbox.cy - gMinY) / (gH || 1), relX=(ct.bbox.cx - gMinX) / (gW || 1); let target='jung'; if(type===1){ target = relX < 0.5 ? 'cho' : 'jung'; } else if(type===2){ target = relY < 0.5 ? 'cho' : 'jung'; } else if(type===3){ target = (relX<0.45 && relY<0.55) ? 'cho' : 'jung'; } else if(type===4){ if(relY>0.68) target='jong'; else target = relX<0.5 ? 'cho' : 'jung'; } else if(type===5){ if(relY<0.38) target='cho'; else if(relY<0.65) target='jung'; else target='jong'; } else { if(relY>0.72) target='jong'; else target = (relX<0.45 && relY<0.45) ? 'cho' : 'jung'; } groups[target].push(ct); });
+    function groupsToPath(group){ const p=new opentype.Path(); group.forEach(ct=>{ct.cmds.forEach(c=>{if(c.type==='M') p.moveTo(c.x,c.y); else if(c.type==='L') p.lineTo(c.x,c.y); else if(c.type==='C') p.curveTo(c.x1,c.y1,c.x2,c.y2,c.x,c.y); else if(c.type==='Q') p.quadTo(c.x1,c.y1,c.x,c.y); else if(c.type==='Z') p.close();});}); p._contours=group; let bMinX=Infinity,bMaxX=-Infinity,bMinY=Infinity,bMaxY=-Infinity; group.forEach(ct=>{bMinX=Math.min(bMinX, ct.bbox.minX); bMaxX=Math.max(bMaxX, ct.bbox.maxX); bMinY=Math.min(bMinY, ct.bbox.minY); bMaxY=Math.max(bMaxY, ct.bbox.maxY);}); p._bbox={cx:(bMinX+bMaxX)/2, cy:(bMinY+bMaxY)/2, w:bMaxX-bMinX, h:bMaxY-bMinY, minX:bMinX, maxX:bMaxX, minY:bMinY, maxY:bMaxY}; return p; }
+    const outerContours=contours.filter(c=>!c.isHole);
+    return {cho: groups.cho.length?groupsToPath(groups.cho):null, jung: groups.jung.length?groupsToPath(groups.jung):null, jong: groups.jong.length?groupsToPath(groups.jong):null, isConnected: outerContours.length <= 1};
+  }catch(e){ return null; }
+}
+function getPathBounds(path){
+  let minX=Infinity, maxX=-Infinity, minY=Infinity, maxY=-Infinity;
+  path.commands.forEach(c=>{
+    if(c.x!==undefined){ minX=Math.min(minX,c.x); maxX=Math.max(maxX,c.x); minY=Math.min(minY,c.y); maxY=Math.max(maxY,c.y); }
+    if(c.x1!==undefined){ minX=Math.min(minX,c.x1,c.x2); maxX=Math.max(maxX,c.x1,c.x2); minY=Math.min(minY,c.y1,c.y2); maxY=Math.max(maxY,c.y1,c.y2); }
+  });
+  if(minX===Infinity) return null;
+  return {minX,maxX,minY,maxY,cx:(minX+maxX)/2,cy:(minY+maxY)/2,w:maxX-minX,h:maxY-minY};
+}
+function getBoxes(type, baseSize, opts){
+  let b={};
+  if(type===1){b.cho={x:-0.18*baseSize, y:0, w:0.52*baseSize, h:0.88*baseSize}; b.jung={x:0.18*baseSize, y:0, w:0.40*baseSize, h:0.88*baseSize};}
+  else if(type===2){b.cho={x:0, y:-0.18*baseSize, w:0.85*baseSize, h:0.48*baseSize}; b.jung={x:0, y:0.18*baseSize, w:0.85*baseSize, h:0.42*baseSize};}
+  else if(type===3){b.cho={x:-0.12*baseSize, y:-0.14*baseSize, w:0.44*baseSize, h:0.50*baseSize}; b.jung={x:0.14*baseSize, y:0.10*baseSize, w:0.52*baseSize, h:0.60*baseSize};}
+  else if(type===4){b.cho={x:-0.16*baseSize, y:-0.16*baseSize, w:0.44*baseSize, h:0.52*baseSize}; b.jung={x:0.16*baseSize, y:-0.16*baseSize, w:0.36*baseSize, h:0.52*baseSize}; b.jong={x:0, y:0.24*baseSize, w:0.78*baseSize, h:0.30*baseSize};}
+  else if(type===5){b.cho={x:0, y:-0.22*baseSize, w:0.80*baseSize, h:0.34*baseSize}; b.jung={x:0, y:0.02*baseSize, w:0.78*baseSize, h:0.22*baseSize}; b.jong={x:0, y:0.26*baseSize, w:0.68*baseSize, h:0.26*baseSize};}
+  else {b.cho={x:-0.12*baseSize, y:-0.20*baseSize, w:0.40*baseSize, h:0.40*baseSize}; b.jung={x:0.12*baseSize, y:-0.02*baseSize, w:0.50*baseSize, h:0.46*baseSize}; b.jong={x:0, y:0.28*baseSize, w:0.72*baseSize, h:0.24*baseSize};}
+  const out={};
+  Object.entries(b).forEach(([k,box])=>{
+    const dist=opts[`${k}Dist`]||1, size=opts[`${k}Size`]||1;
+    let w2=box.w*size, h2=box.h*size, nx=box.x*dist, ny=box.y*dist;
+    if(!opts.jamoClampOff){ const lim=baseSize*0.5; if(Math.abs(nx)+w2/2>lim) nx=Math.sign(nx)*Math.max(0,lim-w2/2-5); if(Math.abs(ny)+h2/2>lim) ny=Math.sign(ny)*Math.max(0,lim-h2/2-5); }
+    out[k]={x:nx,y:ny,w:w2,h:h2};
+  }); return out;
+}
+function deformPath(path, opts, k, seed){
+  if(!path) return path; const gb=path._bbox; if(!gb) return path; const cx=gb.cx, cy=gb.cy; const dist=opts[`${k}Dist`]||1, size=opts[`${k}Size`]||1, randF=opts[`${k}Rand`]||0; const rand=mulberry32(seed); const np=new opentype.Path();
+  path.commands.forEach(c=>{
+    const dp=(px,py)=>{ let dx=px-cx, dy=py-cy; dx*=dist*size; dy*=dist*size; if(randF>0){ dx+=(rand()-0.5)*randF*20; dy+=(rand()-0.5)*randF*20; } return {x:cx+dx,y:cy+dy}; };
+    if(c.type==='M'){const p=dp(c.x,c.y); np.moveTo(p.x,p.y);} else if(c.type==='L'){const p=dp(c.x,c.y); np.lineTo(p.x,p.y);} else if(c.type==='C'){const p1=dp(c.x1,c.y1), p2=dp(c.x2,c.y2), p=dp(c.x,c.y); np.curveTo(p1.x,p1.y,p2.x,p2.y,p.x,p.y);} else if(c.type==='Q'){const p1=dp(c.x1,c.y1), p=dp(c.x,c.y); np.quadTo(p1.x,p1.y,p.x,p.y);} else if(c.type==='Z') np.close();
+  }); np._contours=path._contours; np._bbox=path._bbox; return np;
+}
 
-    async function ensureFontLoaded() {
-      if (currentFont) return currentFont;
-      fontStatusEl.textContent = '⏳ 기본 붓글씨 폰트 로딩 중...';
-      fontStatusEl.className = 'hint-text loading';
-      try {
-        const font = await loadOpentypeFont(DEFAULT_FONT_KEY);
-        currentFont = font;
-        currentFontKey = DEFAULT_FONT_KEY;
-        glyphDataCache.clear();
-        fontStatusEl.textContent = '✅ 기본 붓글씨 폰트 준비 완료';
-        fontStatusEl.className = 'hint-text ready';
-        renderFrame(currentTime);
-      } catch (e) {
-        console.error('폰트 로딩 실패:', e);
-        fontStatusEl.textContent = '⚠️ 폰트 로딩 실패 (네트워크 확인)';
-        fontStatusEl.className = 'hint-text loading';
+function pathToPath2D(fp){ const p2d=new Path2D(); fp.commands.forEach(c=>{ if(c.type==='M') p2d.moveTo(c.x,c.y); else if(c.type==='L') p2d.lineTo(c.x,c.y); else if(c.type==='C') p2d.bezierCurveTo(c.x1,c.y1,c.x2,c.y2,c.x,c.y); else if(c.type==='Q') p2d.quadraticCurveTo(c.x1,c.y1,c.x,c.y); else if(c.type==='Z') p2d.closePath(); }); return p2d; }
+const INK='#161310';
+function fillPathBrushed(tctx, fp, bristleCount, seed){
+  const p2d=pathToPath2D(fp);
+  if(bristleCount<=0){ tctx.fillStyle=INK; tctx.fill(p2d); return; }
+  const rand=mulberry32(seed);
+  const layers=Math.max(2, Math.min(10, Math.round(bristleCount/4)));
+  const jitterAmt=1.0 + (bristleCount/32)*2.5;
+  tctx.save();
+  for(let i=0;i<layers;i++){
+    const dx=(rand()-0.5)*jitterAmt*2, dy=(rand()-0.5)*jitterAmt*2;
+    tctx.save(); tctx.translate(dx,dy); tctx.globalAlpha=0.14+rand()*0.10; tctx.fillStyle=INK; tctx.fill(p2d); tctx.restore();
+  }
+  tctx.globalAlpha=0.92; tctx.fillStyle=INK; tctx.fill(p2d);
+  tctx.restore();
+}
+function getContourPoints(fp){
+  const contours=[]; let cur=[];
+  fp.commands.forEach(c=>{
+    if(c.type==='M'){ if(cur.length>1) contours.push(cur); cur=[{x:c.x,y:c.y}]; }
+    else if(c.type==='L'||c.type==='C'||c.type==='Q'){ if(c.x!==undefined) cur.push({x:c.x,y:c.y}); }
+  });
+  if(cur.length>1) contours.push(cur);
+  return contours;
+}
+function quadPoint(p0,cx,cy,p2x,p2y,t){ const mt=1-t; return {x:mt*mt*p0.x+2*mt*t*cx+t*t*p2x, y:mt*mt*p0.y+2*mt*t*cy+t*t*p2y}; }
+function drawWhiskers(tctx, fp, whiskerLen, seed){
+  if(whiskerLen<=0) return;
+  const rand=mulberry32(seed);
+  const contours=getContourPoints(fp);
+  contours.forEach(pts=>{
+    if(pts.length<3) return;
+    [{tip:pts[0],prev:pts[1]},{tip:pts[pts.length-1],prev:pts[pts.length-2]}].forEach(({tip,prev})=>{
+      if(!tip||!prev) return;
+      let dx=tip.x-prev.x, dy=tip.y-prev.y; const l=Math.hypot(dx,dy)||1; dx/=l; dy/=l;
+      const flick=whiskerLen*(0.5+rand()*0.7);
+      const nx=-dy, ny=dx; const bend=(rand()-0.5)*flick*0.35;
+      const cpx=tip.x+dx*flick*0.5+nx*bend, cpy=tip.y+dy*flick*0.5+ny*bend;
+      const ex=tip.x+dx*flick+nx*bend*0.3, ey=tip.y+dy*flick+ny*bend*0.3;
+      tctx.save(); tctx.strokeStyle=INK; tctx.lineCap='round';
+      const segs=5;
+      for(let s=0;s<segs;s++){
+        const t0=s/segs, t1=(s+1)/segs;
+        const p0=quadPoint(tip,cpx,cpy,ex,ey,t0), p1=quadPoint(tip,cpx,cpy,ex,ey,t1);
+        tctx.globalAlpha=(1-t0)*0.8; tctx.lineWidth=Math.max(0.4,(1-t0)*3.0);
+        tctx.beginPath(); tctx.moveTo(p0.x,p0.y); tctx.lineTo(p1.x,p1.y); tctx.stroke();
       }
-      return currentFont;
-    }
-
-    customFontInput.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (evt) => {
-        try {
-          const font = opentype.parse(evt.target.result);
-          currentFont = font;
-          currentFontKey = 'custom:' + file.name;
-          glyphDataCache.clear();
-          fontStatusEl.textContent = `✅ 커스텀 폰트 사용 중: ${file.name}`;
-          fontStatusEl.className = 'hint-text ready';
-          renderFrame(currentTime);
-        } catch (err) {
-          console.error(err);
-          alert('폰트 파일을 읽을 수 없습니다. 올바른 TTF/OTF 파일인지 확인해주세요.');
-        }
-      };
-      reader.readAsArrayBuffer(file);
+      tctx.restore();
     });
-
-    /* =========================================================================================
-       글자 -> 벡터 외곽선(contour) 추출
-    ========================================================================================= */
-    function flattenGlyphPath(commands) {
-      const contours = [];
-      let current = [];
-      let startX = 0, startY = 0, curX = 0, curY = 0;
-      const STEPS = 10;
-      const pushCurrent = () => { if (current.length > 1) contours.push(current); current = []; };
-
-      commands.forEach(cmd => {
-        if (cmd.type === 'M') {
-          pushCurrent();
-          curX = cmd.x; curY = cmd.y; startX = curX; startY = curY;
-          current.push({ x: curX, y: curY });
-        } else if (cmd.type === 'L') {
-          curX = cmd.x; curY = cmd.y;
-          current.push({ x: curX, y: curY });
-        } else if (cmd.type === 'C') {
-          const p0 = { x: curX, y: curY }, p1 = { x: cmd.x1, y: cmd.y1 }, p2 = { x: cmd.x2, y: cmd.y2 }, p3 = { x: cmd.x, y: cmd.y };
-          for (let i = 1; i <= STEPS; i++) {
-            const t = i / STEPS, mt = 1 - t;
-            const x = mt*mt*mt*p0.x + 3*mt*mt*t*p1.x + 3*mt*t*t*p2.x + t*t*t*p3.x;
-            const y = mt*mt*mt*p0.y + 3*mt*mt*t*p1.y + 3*mt*t*t*p2.y + t*t*t*p3.y;
-            current.push({ x, y });
-          }
-          curX = cmd.x; curY = cmd.y;
-        } else if (cmd.type === 'Q') {
-          const p0 = { x: curX, y: curY }, p1 = { x: cmd.x1, y: cmd.y1 }, p2 = { x: cmd.x, y: cmd.y };
-          for (let i = 1; i <= STEPS; i++) {
-            const t = i / STEPS, mt = 1 - t;
-            const x = mt*mt*p0.x + 2*mt*t*p1.x + t*t*p2.x;
-            const y = mt*mt*p0.y + 2*mt*t*p1.y + t*t*p2.y;
-            current.push({ x, y });
-          }
-          curX = cmd.x; curY = cmd.y;
-        } else if (cmd.type === 'Z') {
-          current.push({ x: startX, y: startY });
-          curX = startX; curY = startY;
-        }
-      });
-      pushCurrent();
-      return contours;
-    }
-
-    function contourLength(pts) {
-      let len = 0;
-      for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
-      return len;
-    }
-
-    /* =========================================================================================
-       글자 모양 변형 스타일 (7종) + 강도(intensity 0~1) 보간
-       - "완전히 스타일 적용된" 버전과 "원본"을 각각 동일 개수로 리샘플링한 뒤 선형보간해서
-         스타일 강도 슬라이더가 0~100% 사이를 매끄럽게 표현하도록 한다.
-    ========================================================================================= */
-    function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
-
-    function closeIfNeeded(points) {
-      if (points.length === 0) return points;
-      const first = points[0], last = points[points.length - 1];
-      if (Math.hypot(first.x - last.x, first.y - last.y) > 0.01) return points.concat([first]);
-      return points;
-    }
-
-    function chaikinSmooth(points, iterations) {
-      let pts = points;
-      for (let iter = 0; iter < iterations; iter++) {
-        const next = [];
-        const n = pts.length;
-        for (let i = 0; i < n - 1; i++) {
-          const p0 = pts[i], p1 = pts[i+1];
-          next.push({ x: p0.x*0.75 + p1.x*0.25, y: p0.y*0.75 + p1.y*0.25 });
-          next.push({ x: p0.x*0.25 + p1.x*0.75, y: p0.y*0.25 + p1.y*0.75 });
-        }
-        next.push(pts[n-1]);
-        pts = next;
-      }
-      return pts;
-    }
-
-    function signedArea(points) {
-      let a = 0;
-      for (let i = 0; i < points.length - 1; i++) a += points[i].x * points[i+1].y - points[i+1].x * points[i].y;
-      return a / 2;
-    }
-
-    function contourCentroid(points) {
-      let cx = 0, cy = 0;
-      points.forEach(p => { cx += p.x; cy += p.y; });
-      const n = points.length || 1;
-      return { x: cx / n, y: cy / n };
-    }
-
-    function scaleContourPoints(points, cx, cy, sx, sy) {
-      return points.map(p => ({ x: cx + (p.x - cx) * sx, y: cy + (p.y - cy) * sy }));
-    }
-
-    function recomputeBBox(contours) {
-      let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
-      contours.forEach(c => c.points.forEach(p => {
-        if (p.x < x1) x1 = p.x; if (p.x > x2) x2 = p.x;
-        if (p.y < y1) y1 = p.y; if (p.y > y2) y2 = p.y;
-      }));
-      if (!isFinite(x1)) return { x1: 0, y1: 0, x2: 1, y2: 1 };
-      return { x1, y1, x2, y2 };
-    }
-
-    function contoursToPolygonSvgD(contours) {
-      return contours.map(c => {
-        if (c.points.length < 2) return '';
-        let d = `M ${c.points[0].x} ${c.points[0].y} `;
-        for (let i = 1; i < c.points.length; i++) d += `L ${c.points[i].x} ${c.points[i].y} `;
-        return d + 'Z';
-      }).join(' ');
-    }
-
-    // 폴리라인을 호 길이 기준으로 n개의 등간격 점으로 리샘플링 (스타일 강도 보간용)
-    function resampleContour(points, n) {
-      if (points.length < 2) return new Array(n).fill(points[0] || { x: 0, y: 0 });
-      const segLens = [];
-      let total = 0;
-      for (let i = 1; i < points.length; i++) {
-        const d = Math.hypot(points[i].x - points[i-1].x, points[i].y - points[i-1].y);
-        segLens.push(d); total += d;
-      }
-      if (total === 0) return new Array(n).fill(points[0]);
-      const result = [];
-      let segIdx = 0, accBefore = 0;
-      for (let k = 0; k < n; k++) {
-        const targetDist = (k / (n - 1)) * total;
-        while (segIdx < segLens.length - 1 && accBefore + segLens[segIdx] < targetDist) {
-          accBefore += segLens[segIdx];
-          segIdx++;
-        }
-        const segLen = segLens[segIdx] || 1e-6;
-        const t = clamp((targetDist - accBefore) / segLen, 0, 1);
-        const p0 = points[segIdx], p1 = points[segIdx + 1] || points[segIdx];
-        result.push({ x: p0.x + (p1.x - p0.x) * t, y: p0.y + (p1.y - p0.y) * t });
-      }
-      return result;
-    }
-
-    const RESAMPLE_N = 26;
-
-    // orderedContours: [{points}] (필순 정렬된 원본) -> intensity(0~1)만큼 스타일이 섞인 최종 결과
-    function applyGlyphStyle(orderedContours, fontSize, styleType, intensity, seedVal) {
-      intensity = clamp(intensity, 0, 1);
-
-      if (styleType === 'none' || intensity <= 0.001) {
-        const contours = orderedContours.map(c => ({ points: c.points, length: contourLength(c.points) }));
-        return { contours, flourish: null, bbox: recomputeBBox(contours), taperBlend: 0, widthMul: 1 };
-      }
-
-      let styledRaw = orderedContours.map(c => ({ points: c.points.slice() }));
-      let widthMulFull = 1;
-      let taperBlendFull = 0;
-      let flourishFull = null;
-
-      if (styleType === 'round-bulge') {
-        // 1. ㄱㄴㅁㅂ 같은 각진 부분을 둥글고 크게, 직선도 유선형으로
-        styledRaw = styledRaw.map(c => ({ points: chaikinSmooth(closeIfNeeded(c.points), 2) }));
-        widthMulFull = 1.3;
-
-      } else if (styleType === 'seal-fill') {
-        // 2. 도장 전서체처럼 모양틀(정사각형에 가깝게)에 꽉 채우고 두껍게
-        const bb = recomputeBBox(styledRaw);
-        const w = Math.max(1, bb.x2 - bb.x1), h = Math.max(1, bb.y2 - bb.y1);
-        const target = fontSize * 0.92;
-        const sx = clamp(target / w, 0.75, 1.9);
-        const sy = clamp(target / h, 0.75, 1.9);
-        const ccx = (bb.x1 + bb.x2) / 2, ccy = (bb.y1 + bb.y2) / 2;
-        styledRaw = styledRaw.map(c => ({ points: scaleContourPoints(c.points, ccx, ccy, sx, sy) }));
-        widthMulFull = 1.55;
-
-      } else if (styleType === 'flowing-tail') {
-        // 3. 획의 아랫부분을 길게 회전시켜 다음 줄까지 닿는 흐르는 꼬리를 추가 (강도만큼 길이/휘어짐 스케일)
-        let bottomPt = null;
-        orderedContours.forEach(c => c.points.forEach(p => { if (!bottomPt || p.y > bottomPt.y) bottomPt = p; }));
-        if (bottomPt) {
-          const tailLen = fontSize * 1.15 * intensity;
-          const steps = 14;
-          const swing = fontSize * 0.3 * intensity * (seededRandom(seedVal) > 0.5 ? 1 : -1);
-          const pts = [];
-          for (let i = 0; i <= steps; i++) {
-            const t = i / steps;
-            pts.push({ x: bottomPt.x + Math.sin(t * Math.PI * 0.5) * swing, y: bottomPt.y + tailLen * t });
-          }
-          flourishFull = { points: pts, length: contourLength(pts) };
-        }
-
-      } else if (styleType === 'flat-stretch') {
-        // 4. 아래쪽 획이 ㄴ,ㅡ,ㅠ,ㅛ처럼 가로로 납작하면 오른쪽으로 늘림
-        const bb = recomputeBBox(styledRaw);
-        const bottomBand = bb.y1 + (bb.y2 - bb.y1) * 0.6;
-        styledRaw = styledRaw.map(c => {
-          let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-          c.points.forEach(p => { if (p.x<minX)minX=p.x; if(p.x>maxX)maxX=p.x; if(p.y<minY)minY=p.y; if(p.y>maxY)maxY=p.y; });
-          const w = maxX - minX, h = Math.max(1, maxY - minY);
-          const isFlatBottom = (w / h > 1.7) && (minY > bottomBand);
-          if (!isFlatBottom) return c;
-          const anchorX = minX;
-          return { points: c.points.map(p => ({ x: anchorX + (p.x - anchorX) * 1.7, y: p.y })) };
-        });
-
-      } else if (styleType === 'tall-slim') {
-        // 5. 세로 방향만 길게 빼서 키다리 아저씨처럼
-        const bb = recomputeBBox(styledRaw);
-        const ccx = (bb.x1 + bb.x2) / 2, ccy = (bb.y1 + bb.y2) / 2;
-        styledRaw = styledRaw.map(c => ({ points: scaleContourPoints(c.points, ccx, ccy, 0.82, 1.55) }));
-
-      } else if (styleType === 'puffy-counter') {
-        // 6. ㅁ,ㅇ,ㅎ,ㅂ처럼 속공간(구멍)이 있는 글자는 그 공간을 부풀림
-        const closedPts = styledRaw.map(c => closeIfNeeded(c.points));
-        const areas = closedPts.map(pts => signedArea(pts));
-        let outerIdx = 0, maxAbs = 0;
-        areas.forEach((a, i) => { if (Math.abs(a) > maxAbs) { maxAbs = Math.abs(a); outerIdx = i; } });
-        const outerSign = Math.sign(areas[outerIdx]) || 1;
-        styledRaw = styledRaw.map((c, i) => {
-          if (i === outerIdx) return c;
-          const sameSign = (Math.sign(areas[i]) || 1) === outerSign;
-          if (sameSign) return c;
-          const cc = contourCentroid(c.points);
-          return { points: scaleContourPoints(c.points, cc.x, cc.y, 1.45, 1.45) };
-        });
-
-      } else if (styleType === 'bulbous-ends') {
-        // 7. 시작점/끝점에 두껍게 획을 뭉쳐서 혹부리처럼 (지오메트리는 그대로, 붓 두께 함수만 반전)
-        taperBlendFull = 1;
-        widthMulFull = 1.1;
-      }
-
-      const blendedContours = orderedContours.map((orig, i) => {
-        const styledC = styledRaw[i] || orig;
-        const a = resampleContour(closeIfNeeded(orig.points), RESAMPLE_N);
-        const b = resampleContour(closeIfNeeded(styledC.points), RESAMPLE_N);
-        const pts = a.map((p, idx) => ({
-          x: p.x + (b[idx].x - p.x) * intensity,
-          y: p.y + (b[idx].y - p.y) * intensity
-        }));
-        return { points: pts, length: contourLength(pts) };
-      });
-
-      return {
-        contours: blendedContours,
-        flourish: flourishFull,
-        bbox: recomputeBBox(blendedContours),
-        taperBlend: taperBlendFull * intensity,
-        widthMul: 1 + (widthMulFull - 1) * intensity
-      };
-    }
-
-    // 획 순서 추정: 완벽한 실제 필순 데이터는 없으므로, 윤곽선의 좌상단 좌표를 기준으로
-    // "위->아래, 왼쪽->오른쪽" 순으로 정렬해 자연스러운 한글 쓰기 흐름에 근접시킨다.
-    function getGlyphBrushData(char, fontSize, styleType, intensity) {
-      const key = `${currentFontKey}|${char.codePointAt(0)}|${fontSize.toFixed(1)}|${styleType}|${intensity.toFixed(2)}`;
-      if (glyphDataCache.has(key)) return glyphDataCache.get(key);
-
-      const path = currentFont.getPath(char, 0, 0, fontSize);
-      let bbox;
-      try { bbox = path.getBoundingBox(); } catch (e) { bbox = { x1: 0, y1: -fontSize*0.5, x2: fontSize*0.3, y2: 0 }; }
-      if (!isFinite(bbox.x1) || !isFinite(bbox.y1)) bbox = { x1: 0, y1: -fontSize*0.5, x2: fontSize*0.3, y2: 0 };
-
-      const rawContourPointArrays = flattenGlyphPath(path.commands);
-      if (rawContourPointArrays.length === 0) {
-        const blank = { contours: [], totalLength: fontSize * 0.2, bbox, svgD: '', isBlank: true, taperBlend: 0, widthMul: 1, flourishStartIndex: -1 };
-        glyphDataCache.set(key, blank);
-        return blank;
-      }
-
-      const orderedContours = rawContourPointArrays.map(pts => {
-        let minX = Infinity, minY = Infinity;
-        pts.forEach(p => { if (p.x < minX) minX = p.x; if (p.y < minY) minY = p.y; });
-        return { points: pts, minX, minY };
-      });
-      orderedContours.sort((a, b) => (a.minY - b.minY) || (a.minX - b.minX));
-
-      const seedVal = char.codePointAt(0) * 7 + Math.round(fontSize);
-      const styled = applyGlyphStyle(orderedContours, fontSize, styleType, intensity, seedVal);
-
-      let contours = styled.contours;
-      let flourishStartIndex = -1;
-      if (styled.flourish) {
-        flourishStartIndex = contours.length;
-        contours = contours.concat([{ points: styled.flourish.points, length: styled.flourish.length }]);
-      }
-
-      const totalLength = contours.reduce((s, c) => s + c.length, 0);
-      const data = {
-        contours,
-        totalLength: totalLength > 0 ? totalLength : fontSize * 0.2,
-        bbox: styled.bbox,
-        svgD: contoursToPolygonSvgD(styled.contours),
-        isBlank: false,
-        taperBlend: styled.taperBlend,
-        widthMul: styled.widthMul,
-        flourishStartIndex
-      };
-      glyphDataCache.set(key, data);
-      return data;
-    }
-
-    /* =========================================================================================
-       붓 스트로크 렌더링: 점묘(stamping) 기법으로 두께가 변하는 자연스러운 붓 라인을 그린다.
-    ========================================================================================= */
-    function stampSegment(targetCtx, p0, p1, distSoFar, contourLen, baseWidth, seed, taperBlend) {
-      const segLen = Math.hypot(p1.x - p0.x, p1.y - p0.y);
-      const steps = Math.max(1, Math.ceil(segLen / 2));
-      for (let s = 0; s <= steps; s++) {
-        const t = s / steps;
-        const px = p0.x + (p1.x - p0.x) * t;
-        const py = p0.y + (p1.y - p0.y) * t;
-        const localDist = distSoFar + segLen * t;
-        const travelT = contourLen > 0 ? Math.min(1, localDist / contourLen) : 1;
-        const sinT = Math.sin(Math.min(1, travelT) * Math.PI);
-        const normalTaper = 0.35 + 0.75 * sinT;
-        const taper = taperBlend > 0 ? normalTaper * (1 - taperBlend) + (0.55 + 0.85 * (1 - sinT)) * taperBlend : normalTaper;
-        const jitter = 0.85 + seededRandom(seed + localDist * 0.37) * 0.3;
-        const r = Math.max(0.6, (baseWidth / 2) * taper * jitter);
-        targetCtx.globalAlpha = 0.85 + seededRandom(seed + localDist * 0.13) * 0.15;
-        targetCtx.beginPath();
-        targetCtx.arc(px, py, r, 0, Math.PI * 2);
-        targetCtx.fill();
-      }
-      targetCtx.globalAlpha = 1;
-    }
-
-    function stampContourPortion(targetCtx, contour, drawLen, baseWidth, seed, taperBlend) {
-      const pts = contour.points;
-      let acc = 0;
-      for (let i = 1; i < pts.length; i++) {
-        const segLen = Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
-        if (acc + segLen > drawLen) {
-          const localT = segLen > 0 ? (drawLen - acc) / segLen : 0;
-          const ex = pts[i-1].x + (pts[i].x - pts[i-1].x) * localT;
-          const ey = pts[i-1].y + (pts[i].y - pts[i-1].y) * localT;
-          stampSegment(targetCtx, pts[i-1], { x: ex, y: ey }, acc, contour.length, baseWidth, seed, taperBlend);
-          return;
-        } else {
-          stampSegment(targetCtx, pts[i-1], pts[i], acc, contour.length, baseWidth, seed, taperBlend);
-          acc += segLen;
-        }
-      }
-    }
-
-    function drawBrushGlyph(targetCtx, glyphData, centerX, centerY, revealLength, fullyDone, seed, brushScale) {
-      if (glyphData.isBlank) return;
-      const bbox = glyphData.bbox;
-      const gcx = (bbox.x1 + bbox.x2) / 2;
-      const gcy = (bbox.y1 + bbox.y2) / 2;
-      const offX = centerX - gcx;
-      const offY = centerY - gcy;
-
-      targetCtx.save();
-      targetCtx.translate(offX, offY);
-
-      const baseWidth = Math.max(3, (bbox.y2 - bbox.y1) * 0.045 * brushScale) * (glyphData.widthMul || 1);
-
-      if (fullyDone) {
-        try {
-          const p2d = new Path2D(glyphData.svgD);
-          targetCtx.fill(p2d, 'nonzero');
-        } catch (e) { /* Path2D 미지원 브라우저 대비 - 조용히 무시 */ }
-        if (glyphData.flourishStartIndex >= 0) {
-          const fc = glyphData.contours[glyphData.flourishStartIndex];
-          stampContourPortion(targetCtx, fc, fc.length, baseWidth, seed + 999, glyphData.taperBlend);
-        }
-        targetCtx.restore();
-        return;
-      }
-
-      let remaining = revealLength;
-      for (const contour of glyphData.contours) {
-        if (remaining <= 0) break;
-        const drawLen = Math.min(contour.length, remaining);
-        remaining -= drawLen;
-        stampContourPortion(targetCtx, contour, drawLen, baseWidth, seed, glyphData.taperBlend);
-      }
-      targetCtx.restore();
-    }
-
-    // 자막 텍스트를 글자별 "쓰기 시간표"로 변환한다.
-    function computeCharPlan(chars, sizes, styleType, intensity) {
-      let cum = 0;
-      const plan = chars.map((ch, i) => {
-        let data = null, length;
-        if (ch !== ' ') {
-          data = getGlyphBrushData(ch, sizes[i], styleType, intensity);
-          length = Math.max(data.totalLength, sizes[i] * 0.2);
-        } else {
-          length = sizes[i] * 0.3;
-        }
-        cum += length;
-        return { ch, data, length, cumEnd: cum };
-      });
-      return { plan, totalLen: cum || 1 };
-    }
-
-    /* =========================================================================================
-       마스크의 실제 모양을 y좌표별로 스캔해서 각 높이에서의 폭과 중심 x를 구한다.
-       위아래로 좁아지는 도형(다이아몬드/삼각형 등)에서 글자가 밖으로 잘리지 않도록 한다.
-    ========================================================================================= */
-    function sampleShapeRows(maskImg, bounds, numSamples) {
-      const off = document.createElement('canvas');
-      off.width = 1920; off.height = 1080;
-      const octx = off.getContext('2d');
-      octx.drawImage(maskImg, 0, 0, 1920, 1080);
-      const data = octx.getImageData(0, 0, 1920, 1080).data;
-      const rows = [];
-      for (let i = 0; i < numSamples; i++) {
-        const y = Math.min(1079, Math.round(bounds.y + (i + 0.5) / numSamples * bounds.h));
-        let minX = null, maxX = null;
-        for (let x = Math.max(0, bounds.x - 4); x < Math.min(1920, bounds.x + bounds.w + 4); x += 2) {
-          const a = data[(y * 1920 + x) * 4 + 3];
-          if (a > 128) { if (minX === null) minX = x; maxX = x; }
-        }
-        rows.push({ y, width: minX !== null ? (maxX - minX) : 0, cx: minX !== null ? (minX + maxX) / 2 : bounds.x + bounds.w / 2 });
-      }
-      return rows;
-    }
-
-    function computeSafeBand(rows) {
-      const maxW = Math.max(1, ...rows.map(r => r.width));
-      const threshold = maxW * 0.55;
-      let y0 = null, y1 = null, minWidth = maxW;
-      rows.forEach(r => {
-        if (r.width >= threshold) {
-          if (y0 === null) y0 = r.y;
-          y1 = r.y;
-          if (r.width < minWidth) minWidth = r.width;
-        }
-      });
-      if (y0 === null) { y0 = rows[0].y; y1 = rows[rows.length - 1].y; minWidth = maxW; }
-      return { y0, y1, minWidth, maxWidth: maxW };
-    }
-
-    function localCenterXAt(rows, y) {
-      if (rows.length === 0) return 960;
-      if (y <= rows[0].y) return rows[0].cx;
-      if (y >= rows[rows.length - 1].y) return rows[rows.length - 1].cx;
-      for (let i = 1; i < rows.length; i++) {
-        if (y <= rows[i].y) {
-          const r0 = rows[i-1], r1 = rows[i];
-          const t = (y - r0.y) / Math.max(1, r1.y - r0.y);
-          return r0.cx + (r1.cx - r0.cx) * t;
-        }
-      }
-      return rows[rows.length - 1].cx;
-    }
-
-    function layoutColumn(chars, bounds, tightness, contrast, rows, band) {
-      const availH = Math.max(20, (band.y1 - band.y0)) * 0.94;
-      const availW = Math.max(20, band.minWidth) * 0.88;
-      const n = chars.length || 1;
-      const weightSum = (chars[0] && chars[0] !== ' ' ? contrast : 1) + Math.max(0, n - 1);
-
-      let unit = availH / (weightSum + (n - 1) * tightness * 0.3);
-      unit = Math.min(unit, availW / Math.max(1, contrast * 0.95));
-      unit = Math.max(14, unit);
-
-      const sizes = chars.map((ch, i) => (i === 0 && ch !== ' ') ? unit * contrast : unit);
-      const totalH = sizes.reduce((a, b) => a + b, 0) + (n - 1) * unit * tightness * 0.3;
-
-      const bandCenterY = (band.y0 + band.y1) / 2;
-      let y = bandCenterY - totalH / 2;
-      const positions = sizes.map(sz => {
-        const cy = y + sz / 2;
-        const cx = localCenterXAt(rows, cy);
-        y += sz + unit * tightness * 0.3;
-        return { x: cx, y: cy, size: sz };
-      });
-      return { positions, sizes };
-    }
-
-    /* =========================================================================================
-       마스크(흑백 이미지 / 프리셋 도형) 준비 - 밝기를 실제 알파 채널로 정규화해서 클리핑이
-       정상 동작하도록 한다 (검정+흰색 모두 불투명이면 source-in/destination-in이 무의미해짐).
-    ========================================================================================= */
-    function normalizeMaskAlpha(img) {
-      return new Promise(resolve => {
-        const off = document.createElement('canvas');
-        off.width = 1920; off.height = 1080;
-        const octx = off.getContext('2d');
-        octx.drawImage(img, 0, 0, 1920, 1080);
-        const imgData = octx.getImageData(0, 0, 1920, 1080);
-        const d = imgData.data;
-        for (let i = 0; i < d.length; i += 4) {
-          const brightness = (d[i] + d[i+1] + d[i+2]) / 3;
-          const srcAlpha = d[i+3];
-          const a = srcAlpha < 10 ? 0 : brightness;
-          d[i] = 255; d[i+1] = 255; d[i+2] = 255; d[i+3] = a;
-        }
-        octx.putImageData(imgData, 0, 0);
-        const outImg = new Image();
-        outImg.onload = () => resolve(outImg);
-        outImg.src = off.toDataURL();
-      });
-    }
-
-    function makeShapeMaskImage(shapeType) {
-      return new Promise(resolve => {
-        const off = document.createElement('canvas');
-        off.width = 1920; off.height = 1080;
-        const octx = off.getContext('2d');
-        octx.clearRect(0, 0, 1920, 1080);
-        octx.fillStyle = '#ffffff';
-        const cx = 960, cy = 540;
-        octx.beginPath();
-        switch (shapeType) {
-          case 'circle': octx.arc(cx, cy, 420, 0, Math.PI * 2); break;
-          case 'triangle': octx.moveTo(cx, cy - 420); octx.lineTo(cx + 420, cy + 340); octx.lineTo(cx - 420, cy + 340); octx.closePath(); break;
-          case 'inv-triangle': octx.moveTo(cx - 420, cy - 340); octx.lineTo(cx + 420, cy - 340); octx.lineTo(cx, cy + 420); octx.closePath(); break;
-          case 'horizontal-rect': octx.rect(cx - 500, cy - 230, 1000, 460); break;
-          case 'diamond':
-          default: octx.moveTo(cx, cy - 320); octx.lineTo(cx + 420, cy); octx.lineTo(cx, cy + 320); octx.lineTo(cx - 420, cy); octx.closePath(); break;
-        }
-        octx.fill();
-        const img = new Image();
-        img.onload = () => resolve(img);
-        img.src = off.toDataURL();
-      });
-    }
-
-    async function preloadShapeMasks() {
-      const types = ['diamond', 'circle', 'triangle', 'inv-triangle', 'horizontal-rect'];
-      for (const t of types) shapeMaskCache[t] = await makeShapeMaskImage(t);
-      initMaskGallery();
-      renderFrame(currentTime);
-    }
-
-    function getMaskBounds(img) {
-      if (maskBoundsCache.has(img)) return maskBoundsCache.get(img);
-      const off = document.createElement('canvas');
-      off.width = 1920; off.height = 1080;
-      const octx = off.getContext('2d');
-      octx.drawImage(img, 0, 0, 1920, 1080);
-      const data = octx.getImageData(0, 0, 1920, 1080).data;
-      let minX = 1920, minY = 1080, maxX = 0, maxY = 0, found = false;
-      for (let y = 0; y < 1080; y += 3) {
-        for (let x = 0; x < 1920; x += 3) {
-          const a = data[(y * 1920 + x) * 4 + 3];
-          if (a > 128) {
-            found = true;
-            if (x < minX) minX = x; if (x > maxX) maxX = x;
-            if (y < minY) minY = y; if (y > maxY) maxY = y;
-          }
-        }
-      }
-      const bounds = found ? { x: minX, y: minY, w: Math.max(40, maxX - minX), h: Math.max(40, maxY - minY) } : { x: 660, y: 390, w: 600, h: 300 };
-      maskBoundsCache.set(img, bounds);
-      return bounds;
-    }
-
-    const shapeRowsCache = new Map();
-    function getShapeRowsAndBand(maskImg, bounds) {
-      if (shapeRowsCache.has(maskImg)) return shapeRowsCache.get(maskImg);
-      const rows = sampleShapeRows(maskImg, bounds, 48);
-      const band = computeSafeBand(rows);
-      const result = { rows, band };
-      shapeRowsCache.set(maskImg, result);
-      return result;
-    }
-
-    /* =========================================================================================
-       마스크 갤러리 (프리셋 도형 5종 + 사용자가 업로드한 이미지들)
-       - 각 SRT 자막마다 이 갤러리에서 원하는 마스크를 골라 쓸 수 있다.
-    ========================================================================================= */
-    function initMaskGallery() {
-      maskGallery = [
-        { id: 'diamond', label: '🔷 다이아몬드', image: shapeMaskCache['diamond'] },
-        { id: 'circle', label: '⭕ 원형', image: shapeMaskCache['circle'] },
-        { id: 'triangle', label: '🔺 삼각형', image: shapeMaskCache['triangle'] },
-        { id: 'inv-triangle', label: '🔻 역삼각형', image: shapeMaskCache['inv-triangle'] },
-        { id: 'horizontal-rect', label: '▭ 가로 사각형', image: shapeMaskCache['horizontal-rect'] }
-      ];
-      refreshSessionMaskOptions();
-      if (currentEditingId) loadSessionPanel(currentEditingId);
-    }
-
-    function getMaskById(id) {
-      const found = maskGallery.find(m => m.id === id);
-      if (found) return found.image;
-      return maskGallery[0] ? maskGallery[0].image : null;
-    }
-
-    function refreshSessionMaskOptions() {
-      const prevValue = sessionMaskSelect.value;
-      sessionMaskSelect.innerHTML = maskGallery.map(m => `<option value="${m.id}">${m.label}</option>`).join('');
-      if (maskGallery.some(m => m.id === prevValue)) sessionMaskSelect.value = prevValue;
-    }
-
-    maskFileInput.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (evt) => {
-        const img = new Image();
-        img.onload = async () => {
-          const alphaImg = await normalizeMaskAlpha(img);
-          const id = 'custom-' + Date.now();
-          maskGallery.push({ id, label: `🖼️ ${file.name}`, image: alphaImg });
-          refreshSessionMaskOptions();
-          maskUploadStatusEl.textContent = `✅ "${file.name}" 갤러리에 추가됨`;
-          maskUploadStatusEl.className = 'hint-text ready';
-          if (currentEditingId) {
-            const cfg = ensureSubtitleConfig(currentEditingId);
-            cfg.maskId = id; // 방금 올린 마스크를 현재 편집 중인 자막에 바로 적용
-            loadSessionPanel(currentEditingId);
-          }
-          renderFrame(currentTime);
-        };
-        img.src = evt.target.result;
-      };
-      reader.readAsDataURL(file);
-    });
-
-    /* =========================================================================================
-       SRT별 세션 설정 (자막마다 마스크/위치/크기/스타일을 독립적으로 저장)
-    ========================================================================================= */
-    const subtitleConfigs = new Map(); // subtitle.id -> {maskId, offsetX, offsetY, scale, styleType, styleIntensity}
-
-    function defaultSubtitleConfig() {
-      return { maskId: 'diamond', offsetX: 0, offsetY: 0, scale: 1, styleType: 'none', styleIntensity: 1 };
-    }
-
-    function ensureSubtitleConfig(id) {
-      if (!subtitleConfigs.has(id)) subtitleConfigs.set(id, defaultSubtitleConfig());
-      return subtitleConfigs.get(id);
-    }
-
-    function updateSessionLabels() {
-      document.getElementById('val-session-offsetx').textContent = sessionOffsetX.value + 'px';
-      document.getElementById('val-session-offsety').textContent = sessionOffsetY.value + 'px';
-      document.getElementById('val-session-scale').textContent = parseFloat(sessionScale.value).toFixed(2) + 'x';
-      document.getElementById('val-session-intensity').textContent = sessionStyleIntensity.value + '%';
-    }
-
-    function loadSessionPanel(id) {
-      currentEditingId = id;
-      const cfg = ensureSubtitleConfig(id);
-      if (maskGallery.length && !maskGallery.some(m => m.id === cfg.maskId)) cfg.maskId = maskGallery[0].id;
-
-      sessionMaskSelect.value = cfg.maskId;
-      sessionOffsetX.value = cfg.offsetX;
-      sessionOffsetY.value = cfg.offsetY;
-      sessionScale.value = cfg.scale;
-      sessionStyleSelect.value = cfg.styleType;
-      sessionStyleIntensity.value = Math.round(cfg.styleIntensity * 100);
-      updateSessionLabels();
-
-      const sub = srtData.find(s => s.id === id);
-      sessionInfoEl.textContent = sub ? `편집 중: #${sub.id} "${sub.text.replace(/\n/g, ' / ')}"` : '편집할 자막을 목록에서 선택하세요';
-
-      // 목록에서 선택된 항목 하이라이트
-      Array.from(srtListEl.children).forEach(el => {
-        el.classList.toggle('active', el.dataset.subId === String(id));
-      });
-    }
-
-    [sessionMaskSelect, sessionOffsetX, sessionOffsetY, sessionScale, sessionStyleSelect, sessionStyleIntensity].forEach(el => {
-      el.addEventListener('input', () => {
-        if (!currentEditingId) return;
-        const cfg = ensureSubtitleConfig(currentEditingId);
-        cfg.maskId = sessionMaskSelect.value;
-        cfg.offsetX = parseFloat(sessionOffsetX.value);
-        cfg.offsetY = parseFloat(sessionOffsetY.value);
-        cfg.scale = parseFloat(sessionScale.value);
-        cfg.styleType = sessionStyleSelect.value;
-        cfg.styleIntensity = parseFloat(sessionStyleIntensity.value) / 100;
-        updateSessionLabels();
-        renderFrame(currentTime);
-      });
-    });
-
-    /* =========================================================================================
-       렌더링: 흑백 마스크 이미지 영역에 붓글씨를 채우는 방식 하나만 사용한다.
-       각 자막은 자신의 세션 설정(마스크/위치/크기/스타일)을 그대로 적용받는다.
-    ========================================================================================= */
-    function renderMaskFitMode(chars, writeProgress, maskImg, inkColor, tightness, contrast, seed, showGuide, guideMode, offsetX, offsetY, scale, styleType, styleIntensity) {
-      if (!maskImg) return;
-      const bounds = getMaskBounds(maskImg);
-      const { rows, band } = getShapeRowsAndBand(maskImg, bounds);
-      const { positions, sizes } = layoutColumn(chars, bounds, tightness, contrast, rows, band);
-      const { plan, totalLen } = computeCharPlan(chars, sizes, styleType, styleIntensity);
-      const inkRevealed = writeProgress * totalLen;
-
-      maskCtx.clearRect(0, 0, 1920, 1080);
-      maskCtx.fillStyle = inkColor;
-
-      plan.forEach((item, i) => {
-        if (item.ch === ' ') return;
-        const pos = positions[i];
-        if (inkRevealed >= item.cumEnd) {
-          drawBrushGlyph(maskCtx, item.data, pos.x, pos.y, 0, true, seed + i * 13, 1);
-        } else if (inkRevealed > item.cumEnd - item.length) {
-          const revealLen = inkRevealed - (item.cumEnd - item.length);
-          drawBrushGlyph(maskCtx, item.data, pos.x, pos.y, revealLen, false, seed + i * 13, 1);
-        }
-      });
-
-      maskCtx.globalCompositeOperation = 'destination-in';
-      maskCtx.drawImage(maskImg, 0, 0, 1920, 1080);
-      maskCtx.globalCompositeOperation = 'source-over';
-
-      // 이 자막의 위치(X/Y)와 크기 배율을 도형+글자 전체에 한번에 적용
-      ctx.save();
-      ctx.translate(960 + offsetX, 540 + offsetY);
-      ctx.scale(scale, scale);
-      ctx.translate(-960, -540);
-      ctx.drawImage(maskCanvas, 0, 0);
-
-      if (showGuide) {
-        if (guideMode === 'guide-shape') {
-          ctx.save();
-          ctx.globalAlpha = 0.16;
-          ctx.drawImage(maskImg, 0, 0, 1920, 1080);
-          ctx.globalAlpha = 1;
-          ctx.strokeStyle = 'rgba(255, 107, 55, 0.55)';
-          ctx.lineWidth = 2; ctx.setLineDash([6, 6]);
-          ctx.strokeRect(bounds.x, bounds.y, bounds.w, bounds.h);
-          ctx.strokeStyle = 'rgba(80, 220, 200, 0.6)';
-          ctx.setLineDash([]);
-          ctx.beginPath();
-          ctx.moveTo(bounds.x, band.y0); ctx.lineTo(bounds.x + bounds.w, band.y0);
-          ctx.moveTo(bounds.x, band.y1); ctx.lineTo(bounds.x + bounds.w, band.y1);
-          ctx.stroke();
-          ctx.restore();
-        } else if (guideMode === 'subtle-axis') {
-          ctx.save();
-          ctx.strokeStyle = 'rgba(28,25,23,0.25)';
-          ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          rows.forEach((r, i) => { if (i === 0) ctx.moveTo(r.cx, r.y); else ctx.lineTo(r.cx, r.y); });
-          ctx.stroke();
-          ctx.restore();
-        }
-      }
-      ctx.restore();
-    }
-
-    function renderCalligraphyFrame(subtitleObj, timeSec) {
-      if (!subtitleObj || !currentFont) return;
-      const inkColor = inkColorInput.value;
-      const tightness = parseFloat(paramTightness.value);
-      const contrast = parseFloat(paramContrast.value);
-      const finishPct = parseInt(paramFinishPct.value) / 100;
-      const guideMode = paramShowGuide.value;
-      const showGuide = guideMode !== 'none' && !isRecording; // 녹화 중에는 무조건 가이드선 숨김
-
-      const cfg = ensureSubtitleConfig(subtitleObj.id);
-      const maskImg = getMaskById(cfg.maskId);
-
-      const duration = Math.max(0.5, subtitleObj.end - subtitleObj.start);
-      const elapsed = Math.max(0, timeSec - subtitleObj.start);
-      const writeDuration = duration * finishPct;
-      const writeProgress = Math.min(1, elapsed / writeDuration);
-      const text = subtitleObj.text.trim();
-      const chars = Array.from(text.replace(/\n/g, ' '));
-      const seed = (parseInt(subtitleObj.id) || 1) * 97 + text.length;
-
-      ctx.save();
-      try { ctx.filter = 'blur(0.3px) url(#ink-bleed-filter)'; } catch (e) {}
-      renderMaskFitMode(chars, writeProgress, maskImg, inkColor, tightness, contrast, seed, showGuide, guideMode, cfg.offsetX, cfg.offsetY, cfg.scale, cfg.styleType, cfg.styleIntensity);
-      ctx.filter = 'none';
-      ctx.restore();
-    }
-
-    /* =========================================================================================
-       SRT 파싱 & UI 배선
-    ========================================================================================= */
-    function seededRandom(seed) {
-      let x = Math.sin(seed++) * 10000;
-      return x - Math.floor(x);
-    }
-
-    const demoSRT = `1
-00:00:00,500 --> 00:00:04,500
-물에 흔들리는 적
-
-2
-00:00:05,000 --> 00:00:08,500
-바람에 피는 꽃
-
-3
-00:00:09,000 --> 00:00:13,000
-오늘이 가장 행복한 날`;
-
-    function parseSRTTime(timeStr) {
-      if (!timeStr) return 0;
-      const parts = timeStr.trim().replace(',', '.').split(':');
-      return (parseFloat(parts[0]) || 0) * 3600 + (parseFloat(parts[1]) || 0) * 60 + (parseFloat(parts[2]) || 0);
-    }
-
-    function parseSRT(text) {
-      const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-      const blocks = normalized.split('\n\n');
-      const result = [];
-      for (let block of blocks) {
-        const lines = block.trim().split('\n');
-        if (lines.length >= 3) {
-          const timeMatch = lines[1].match(/(.*?)\s*-->\s*(.*)/);
-          if (timeMatch) {
-            result.push({
-              id: lines[0],
-              start: parseSRTTime(timeMatch[1]),
-              end: parseSRTTime(timeMatch[2]),
-              text: lines.slice(2).join('\n')
+  });
+}
+function drawSplatter(tctx, bounds, intensity, seed){
+  if(intensity<=0 || !bounds) return;
+  const rand=mulberry32(seed);
+  const count=Math.round(intensity*35);
+  const spread=Math.max(bounds.w,bounds.h)*0.7;
+  tctx.save();
+  for(let i=0;i<count;i++){
+    const ang=rand()*Math.PI*2, dist=rand()*spread;
+    const x=bounds.cx+Math.cos(ang)*dist, y=bounds.cy+Math.sin(ang)*dist;
+    const r=0.7+rand()*3.0*intensity;
+    tctx.globalAlpha=0.22+rand()*0.35; tctx.fillStyle=INK;
+    tctx.beginPath(); tctx.arc(x,y,r,0,Math.PI*2); tctx.fill();
+  }
+  tctx.restore();
+}
+function drawLongBrushTail(tctx, bounds, len, seed){
+  if(len<=0 || !bounds) return;
+  const rand=mulberry32(seed);
+  const startX=bounds.cx+(rand()-0.5)*bounds.w*0.3, startY=bounds.maxY-bounds.h*0.06;
+  const ang=Math.PI*0.62+(rand()-0.5)*0.3, dx=Math.cos(ang), dy=Math.sin(ang);
+  tctx.save(); tctx.strokeStyle=INK; tctx.lineCap='round';
+  const segs=8;
+  for(let s=0;s<segs;s++){
+    const t0=s/segs, t1=(s+1)/segs;
+    tctx.globalAlpha=(1-t0)*0.75; tctx.lineWidth=Math.max(0.5,(1-t0)*6);
+    tctx.beginPath(); tctx.moveTo(startX+dx*len*t0, startY+dy*len*t0); tctx.lineTo(startX+dx*len*t1, startY+dy*len*t1); tctx.stroke();
+  }
+  tctx.restore();
+}
+function renderChar(ch){
+  if(!ch || ch==='-') return;
+  const w=cv.width, h=cv.height; syncCanvases(w,h);
+  const opts=getOpts();
+  textCtx.clearRect(0,0,w,h);
+  guideCtx.clearRect(0,0,w,h);
+  const cx=w/2, cy=h/2;
+  const baseSize=650 * opts.overallScale;
+
+  try{
+    if(!baseFont){ log('폰트 없음'); return; }
+    const de=decomposeHangul(ch); const type=de?getSyllableType(de):1;
+
+    let pathsToDraw=[];
+    let boxesForGuide={};
+
+    if(opts.jamoMode){
+      const boxes=getBoxes(type, baseSize, opts);
+      boxesForGuide=boxes;
+      const cacheKey=`${fontLoadId}|${ch}|${type}`;
+      let split;
+      if(jamoSplitCache.has(cacheKey)){ split=jamoSplitCache.get(cacheKey); }
+      else { split=splitSyllablePathIntoJamoGroups(ch, REF_SIZE, type); jamoSplitCache.set(cacheKey, split); }
+      if(split && !split.isConnected){
+        ['cho','jung','jong'].forEach((k,i)=>{
+          if(split[k]){
+            const box=boxes[k]; if(!box) return;
+            const sp=split[k]; const gb=sp._bbox;
+            const sx=box.w/(gb.w||baseSize)*0.95, sy=box.h/(gb.h||baseSize)*0.95;
+            const tp=new opentype.Path();
+            sp.commands.forEach(c=>{
+              if(c.type==='M') tp.moveTo((c.x-gb.cx)*sx+box.x, (c.y-gb.cy)*sy+box.y);
+              else if(c.type==='L') tp.lineTo((c.x-gb.cx)*sx+box.x, (c.y-gb.cy)*sy+box.y);
+              else if(c.type==='C') tp.curveTo((c.x1-gb.cx)*sx+box.x, (c.y1-gb.cy)*sy+box.y, (c.x2-gb.cx)*sx+box.x, (c.y2-gb.cy)*sy+box.y, (c.x-gb.cx)*sx+box.x, (c.y-gb.cy)*sy+box.y);
+              else if(c.type==='Q') tp.quadTo((c.x1-gb.cx)*sx+box.x, (c.y1-gb.cy)*sy+box.y, (c.x-gb.cx)*sx+box.x, (c.y-gb.cy)*sy+box.y);
+              else if(c.type==='Z') tp.close();
             });
+            tp._contours=sp._contours; tp._bbox=sp._bbox;
+            const def=deformPath(tp, opts, k, ch.charCodeAt(0)+i*33);
+            pathsToDraw.push({path:def, k});
           }
-        }
+        });
+      } else {
+        const p=baseFont.getPath(ch,0,0,baseSize);
+        pathsToDraw.push({path:p,k:null});
       }
-      return result;
+    } else {
+      const p=baseFont.getPath(ch,0,0,baseSize);
+      pathsToDraw.push({path:p,k:null});
     }
 
-    function loadSRTData(rawText) {
-      srtTextarea.value = rawText;
-      srtData = parseSRT(rawText);
-      totalDuration = srtData.length > 0 ? srtData[srtData.length - 1].end + 1.0 : 10;
-      timeSlider.max = totalDuration;
-      srtData.forEach(item => ensureSubtitleConfig(item.id));
-      updateSRTListUI();
-      if (srtData.length > 0) loadSessionPanel(srtData[0].id);
-      renderFrame(0);
-    }
+    // 전체 bbox → 정중앙 이동
+    let gminX=Infinity,gmaxX=-Infinity,gminY=Infinity,gmaxY=-Infinity;
+    pathsToDraw.forEach(o=>{ const b=getPathBounds(o.path); if(!b) return; gminX=Math.min(gminX,b.minX); gmaxX=Math.max(gmaxX,b.maxX); gminY=Math.min(gminY,b.minY); gmaxY=Math.max(gmaxY,b.maxY); });
+    if(gminX===Infinity){ log('bbox 실패'); return; }
+    const gcx=(gminX+gmaxX)/2, gcy=(gminY+gmaxY)/2;
+    const offX=cx-gcx, offY=cy-gcy;
 
-    srtInput.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      srtLabel.textContent = `📄 ${file.name}`;
-      const reader = new FileReader();
-      reader.onload = (evt) => loadSRTData(evt.target.result);
-      reader.readAsText(file);
+    // 그리기
+    pathsToDraw.forEach(o=>{
+      const fp=new opentype.Path();
+      o.path.commands.forEach(c=>{
+        if(c.type==='M') fp.moveTo(c.x+offX, c.y+offY);
+        else if(c.type==='L') fp.lineTo(c.x+offX, c.y+offY);
+        else if(c.type==='C') fp.curveTo(c.x1+offX,c.y1+offY,c.x2+offX,c.y2+offY,c.x+offX,c.y+offY);
+        else if(c.type==='Q') fp.quadTo(c.x1+offX,c.y1+offY,c.x+offX,c.y+offY);
+        else if(c.type==='Z') fp.close();
+      });
+      fp._contours=o.path._contours;
+      const seed=ch.charCodeAt(0)*97 + (o.k?o.k.charCodeAt(0):7);
+      fillPathBrushed(textCtx, fp, opts.bristleCount, seed);
+      if(opts.bristleCount>0) drawWhiskers(textCtx, fp, opts.whiskerLen, seed+11);
+      o.finalBounds=getPathBounds(fp);
+      o.finalPath=fp;
     });
 
-    btnApplySrt.addEventListener('click', () => loadSRTData(srtTextarea.value));
+    // 글자 전체 기준(자소 낱개가 아닌) 먹물 튀김 + 장봉 꼬리
+    let ovMinX=Infinity,ovMaxX=-Infinity,ovMinY=Infinity,ovMaxY=-Infinity;
+    pathsToDraw.forEach(o=>{ if(!o.finalBounds) return; ovMinX=Math.min(ovMinX,o.finalBounds.minX); ovMaxX=Math.max(ovMaxX,o.finalBounds.maxX); ovMinY=Math.min(ovMinY,o.finalBounds.minY); ovMaxY=Math.max(ovMaxY,o.finalBounds.maxY); });
+    if(ovMinX!==Infinity){
+      const overallBounds={minX:ovMinX,maxX:ovMaxX,minY:ovMinY,maxY:ovMaxY,cx:(ovMinX+ovMaxX)/2,cy:(ovMinY+ovMaxY)/2,w:ovMaxX-ovMinX,h:ovMaxY-ovMinY};
+      const charSeed=ch.charCodeAt(0)*13;
+      drawSplatter(textCtx, overallBounds, opts.splatterIntensity, charSeed+1);
+      drawLongBrushTail(textCtx, overallBounds, opts.longBrushLen, charSeed+2);
+    }
 
-    function updateSRTListUI() {
-      srtListEl.innerHTML = '';
-      srtData.forEach(item => {
-        const div = document.createElement('div');
-        div.className = 'srt-item';
-        div.dataset.subId = String(item.id);
-        div.innerHTML = `<span>#${item.id} (${formatTime(item.start)})</span> <span>${item.text.replace('\n', ' / ')}</span>`;
-        div.addEventListener('click', () => {
-          currentTime = item.start;
-          timeSlider.value = currentTime;
-          loadSessionPanel(item.id);
-          renderFrame(currentTime);
-        });
-        srtListEl.appendChild(div);
+    // 가이드 박스 그리기 위해 저장
+    window._lastPathsForGuide=pathsToDraw;
+    window._lastBoxes=boxesForGuide;
+    window._lastCenter={cx,cy};
+
+  }catch(e){ console.error(e); log('에러: '+e.message); }
+
+  ctx.clearRect(0,0,w,h);
+  if(!opts.bgTransparent){
+    const g=ctx.createRadialGradient(cx,cy,80,cx,cy,Math.max(w,h)); g.addColorStop(0,'#f4ecd8'); g.addColorStop(1,'#e8dcc3'); ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
+  }
+  ctx.drawImage(textCv,0,0);
+
+  if(opts.showGuide){
+    guideCtx.clearRect(0,0,w,h);
+    const cx=w/2, cy=h/2;
+    if(opts.showCenter){
+      guideCtx.save(); guideCtx.strokeStyle='rgba(59,130,246,0.7)'; guideCtx.lineWidth=1.2; guideCtx.setLineDash([10,8]);
+      guideCtx.beginPath(); guideCtx.moveTo(cx,0); guideCtx.lineTo(cx,h); guideCtx.stroke();
+      guideCtx.beginPath(); guideCtx.moveTo(0,cy); guideCtx.lineTo(w,cy); guideCtx.stroke();
+      guideCtx.setLineDash([]); guideCtx.fillStyle='rgba(59,130,246,1)'; guideCtx.font='bold 13px monospace'; guideCtx.fillText('정중앙', cx+10, cy-10);
+      guideCtx.restore();
+    }
+    if(opts.showBoxes && window._lastPathsForGuide){
+      window._lastPathsForGuide.forEach(o=>{
+        if(!o.k) return;
+        const b=o.finalBounds; if(!b) return;
+        let color='rgba(239,68,68,0.95)'; if(o.k==='jung') color='rgba(59,130,246,0.95)'; if(o.k==='jong') color='rgba(34,197,94,0.95)';
+        guideCtx.save(); guideCtx.strokeStyle=color; guideCtx.lineWidth=2; guideCtx.setLineDash([12,6]); guideCtx.strokeRect(b.minX,b.minY,b.w,b.h);
+        guideCtx.fillStyle=color; guideCtx.font='bold 11px monospace'; guideCtx.fillText(`${o.k} ${opts[o.k+'Dist'].toFixed(2)}x ${opts[o.k+'Size'].toFixed(2)}x`, b.minX, b.minY-6);
+        guideCtx.restore();
       });
     }
+    ctx.drawImage(guideCv,0,0);
+  }
+}
 
-    function formatTime(sec) {
-      const m = Math.floor(sec / 60);
-      const s = Math.floor(sec % 60);
-      const ms = Math.floor((sec % 1) * 100);
-      return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(ms).padStart(2, '0')}`;
-    }
+function updateLabels(){
+  const opts=getOpts();
+  const set=(id,val)=>{ const el=$(id); if(el) el.textContent=val; };
+  set('vOverallScale',(opts.overallScale||1).toFixed(2)+'x'); set('val-long',(opts.longBrushLen||0)+'px'); set('val-splatter',(opts.splatterIntensity||0).toFixed(2));
+  set('vChoDist',(opts.choDist||1).toFixed(2)+'x'); set('vChoSize',(opts.choSize||1).toFixed(2)+'x'); set('vChoRand',(opts.choRand||0).toFixed(2));
+  set('vJungDist',(opts.jungDist||1).toFixed(2)+'x'); set('vJungSize',(opts.jungSize||1).toFixed(2)+'x'); set('vJungRand',(opts.jungRand||0).toFixed(2));
+  set('vJongDist',(opts.jongDist||1).toFixed(2)+'x'); set('vJongSize',(opts.jongSize||1).toFixed(2)+'x'); set('vJongRand',(opts.jongRand||0).toFixed(2));
+  set('vBristle',(opts.bristleCount||0).toString()); set('vWhisker',(opts.whiskerLen||0).toString());
+}
+['choDist','choSize','choRand','jungDist','jungSize','jungRand','jongDist','jongSize','jongRand','overallScale','bristleCount','whiskerLen','long-brush','splatter'].forEach(id=>{ safeAddListener(id,'input',()=>{ updateLabels(); if(curChar!=='-') renderChar(curChar); }); });
+['jamoClampOff','jamoMode','bgTransparent','showGuide','showCenter','showBoxes'].forEach(id=>{ safeAddListener(id,'change',()=>{ if(curChar!=='-') renderChar(curChar); }); });
 
-    function drawBackground() {
-      const style = bgStyleSelect.value;
-      const w = canvas.width, h = canvas.height;
+safeAddListener('btn-prev','click',()=>{ if(uniqChars.length===0) return; curIdx=(curIdx-1+uniqChars.length)%uniqChars.length; curChar=uniqChars[curIdx]; updateCharIndicator(); renderCharGrid(); renderChar(curChar); });
+safeAddListener('btn-next','click',()=>{ if(uniqChars.length===0) return; curIdx=(curIdx+1)%uniqChars.length; curChar=uniqChars[curIdx]; updateCharIndicator(); renderCharGrid(); renderChar(curChar); });
 
-      if (style === 'transparent') { ctx.clearRect(0, 0, w, h); return; }
-      if (style === 'black') { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, w, h); return; }
-      if (style === 'dark-paper') { ctx.fillStyle = '#16161a'; ctx.fillRect(0, 0, w, h); return; }
+safeAddListener('btnReset','click',()=>{
+  const setVal=(id,v)=>{ const el=$(id); if(el) el.value=v; }; const setCheck=(id,v)=>{ const el=$(id); if(el) el.checked=v; };
+  setVal('overallScale',1.0); setVal('long-brush',0); setVal('splatter',0); setVal('choDist',1.0); setVal('choSize',1.0); setVal('choRand',0); setVal('jungDist',1.0); setVal('jungSize',1.0); setVal('jungRand',0); setVal('jongDist',1.0); setVal('jongSize',1.0); setVal('jongRand',0); setVal('bristleCount',0); setVal('whiskerLen',0);
+  setCheck('jamoClampOff',false); setCheck('jamoMode',false); setCheck('bgTransparent',false); setCheck('showGuide',true); setCheck('showCenter',true); setCheck('showBoxes',true);
+  const grid=$('global-style-grid'); if(grid) grid.querySelectorAll('.style-check').forEach(el=>el.classList.remove('active')); selectedGlobalStyles=[]; updateLabels(); if(curChar!=='-') renderChar(curChar); log('원본 리셋 - 정중앙');
+});
+safeAddListener('btnMaster','click',()=>{
+  const setVal=(id,v)=>{ const el=$(id); if(el) el.value=v; }; const setCheck=(id,v)=>{ const el=$(id); if(el) el.checked=v; };
+  setVal('overallScale',1.0); setVal('long-brush',35); setVal('splatter',0.25); setVal('choDist',1.15); setVal('choSize',1.15); setVal('choRand',0.25); setVal('jungDist',1.10); setVal('jungSize',1.20); setVal('jungRand',0.20); setVal('jongDist',1.0); setVal('jongSize',1.0); setVal('jongRand',0.15); setVal('bristleCount',12); setVal('whiskerLen',18);
+  setCheck('jamoClampOff',true); setCheck('jamoMode',true); setCheck('bgTransparent',false); setCheck('showGuide',true); setCheck('showCenter',true); setCheck('showBoxes',true);
+  const grid=$('global-style-grid'); if(grid){ grid.querySelectorAll('.style-check').forEach(el=>el.classList.remove('active')); ['dry','bold'].forEach(id=>{ const e=grid.querySelector(`[data-style-id="${id}"]`); if(e) e.classList.add('active'); }); }
+  selectedGlobalStyles=['dry','bold']; updateLabels(); if(curChar!=='-') renderChar(curChar); log('★ 추천 - 정중앙 + 가이드 + 초중종성 실제변형');
+});
 
-      const grad = ctx.createRadialGradient(w/2, h/2, 100, w/2, h/2, w/1.1);
-      grad.addColorStop(0, '#f8f4eb');
-      grad.addColorStop(1, '#e3d7c3');
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, w, h);
+safeAddListener('btnSavePreset','click',()=>{
+  const name=$('presetName')?.value?.trim(); if(!name){alert('프리셋 이름 입력'); return;}
+  const presets=getPresets(); presets[name]=collectCurrentOpts(); savePresets(presets); refreshPresetList(); log(`💾 저장: ${name}`);
+});
+safeAddListener('btnLoadPreset','click',()=>{
+  const sel=$('presetList'); if(!sel) return; const name=sel.value; const presets=getPresets(); const o=presets[name]; if(!o){alert('프리셋 없음'); return;}
+  applyOptsToUI(o); log(`📂 불러오기: ${name}`);
+});
+safeAddListener('btnDeletePreset','click',()=>{
+  const sel=$('presetList'); if(!sel) return; const name=sel.value; if(!confirm(`삭제? ${name}`)) return; const presets=getPresets(); delete presets[name]; savePresets(presets); refreshPresetList(); log(`🗑 삭제: ${name}`);
+});
 
-      ctx.fillStyle = 'rgba(80, 60, 40, 0.035)';
-      for (let i = 0; i < 400; i++) {
-        const x = seededRandom(i * 1.3) * w;
-        const y = seededRandom(i * 2.7) * h;
-        const r = seededRandom(i * 3.1) * 2.2 + 0.4;
-        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
-      }
-    }
+safeAddListener('srt-input','change',e=>{const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=ev=>{const ta=$('srtTa'); if(ta) ta.value=ev.target.result; analyze();}; r.readAsText(f);});
+safeAddListener('btn-apply-srt','click',analyze);
+safeAddListener('ttf-input','change',e=>{const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=ev=>{try{baseFont=opentype.parse(ev.target.result); fontLoadId++; jamoSplitCache.clear(); const fs=$('font-status'); if(fs) fs.textContent=`✅ ${f.name} 적용`; log(`폰트: ${f.name}`); if(curChar!=='-') renderChar(curChar);}catch(err){log('폰트 오류: '+err.message);}}; r.readAsArrayBuffer(f);});
 
-    function renderFrame(timeSec) {
-      drawBackground();
-      if (!currentFont) {
-        ctx.save();
-        ctx.fillStyle = 'rgba(120,100,80,0.7)';
-        ctx.font = '32px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('붓글씨 폰트를 불러오는 중입니다...', canvas.width / 2, canvas.height / 2);
-        ctx.restore();
-      } else {
-        const activeSubtitle = srtData.find(item => timeSec >= item.start && timeSec <= item.end);
-        if (activeSubtitle) renderCalligraphyFrame(activeSubtitle, timeSec);
-      }
-      timeDisplay.textContent = `${formatTime(timeSec)} / ${formatTime(totalDuration)}`;
-    }
+createStyleGrid('global-style-grid', (selected)=>{ selectedGlobalStyles=selected; if(curChar!=='-') renderChar(curChar); });
 
-    /* =========================================================================================
-       컨트롤 이벤트 배선
-    ========================================================================================= */
-    paramFinishPct.addEventListener('input', (e) => {
-      document.getElementById('val-finish-pct').textContent = `${e.target.value}% 시간 내 완성`;
-      renderFrame(currentTime);
-    });
-    paramTightness.addEventListener('input', (e) => {
-      document.getElementById('val-tightness').textContent = e.target.value < 0.7 ? '매우 촘촘' : (e.target.value > 0.95 ? '여유롭게' : '보통');
-      renderFrame(currentTime);
-    });
-    paramContrast.addEventListener('input', (e) => {
-      document.getElementById('val-contrast').textContent = e.target.value + 'x';
-      renderFrame(currentTime);
-    });
-    [paramShowGuide, bgStyleSelect, inkColorInput].forEach(el => {
-      el.addEventListener('change', () => renderFrame(currentTime));
-    });
+safeAddListener('btnPNGCurrent','click',()=>{
+  if(!cv || curChar==='-'){alert('글자 선택'); return;}
+  const prev=$('showGuide').checked; $('showGuide').checked=false; renderChar(curChar);
+  setTimeout(()=>{ cv.toBlob(blob=>{ if(!blob) return; const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`${curChar}_${Date.now()}.png`; a.click(); URL.revokeObjectURL(url); $('showGuide').checked=prev; renderChar(curChar); }); },80);
+});
+safeAddListener('btnJPGCurrent','click',()=>{
+  if(!cv || curChar==='-'){alert('글자 선택'); return;}
+  const prev=$('showGuide').checked; $('showGuide').checked=false; renderChar(curChar);
+  setTimeout(()=>{ const tmp=document.createElement('canvas'); const tw=tmp.width=cv.width, th=tmp.height=cv.height; const tctx=tmp.getContext('2d'); tctx.fillStyle='#fff'; tctx.fillRect(0,0,tw,th); tctx.drawImage(cv,0,0); tmp.toBlob(b=>{ const url=URL.createObjectURL(b); const a=document.createElement('a'); a.href=url; a.download=`${curChar}_${Date.now()}.jpg`; a.click(); URL.revokeObjectURL(url); $('showGuide').checked=prev; renderChar(curChar); },'image/jpeg',0.92); },80);
+});
+async function saveAllZIP(isJPG){
+  if(uniqChars.length===0){alert('SRT 없음'); return;}
+  const zip=new JSZip(); log(`🗂 전체 ${uniqChars.length}자 ZIP...`);
+  const prev=$('showGuide').checked; $('showGuide').checked=false;
+  for(let idx=0; idx<uniqChars.length; idx++){
+    const ch=uniqChars[idx]; curIdx=idx; curChar=ch; updateCharIndicator(); renderCharGrid(); renderChar(ch);
+    await new Promise(r=>setTimeout(r, 80));
+    if(isJPG){
+      const tmp=document.createElement('canvas'); tmp.width=cv.width; tmp.height=cv.height; const tctx=tmp.getContext('2d'); tctx.fillStyle='#fff'; tctx.fillRect(0,0,tmp.width,tmp.height); tctx.drawImage(cv,0,0);
+      const blob=await new Promise(res=>tmp.toBlob(res,'image/jpeg',0.92)); zip.file(`${String(idx).padStart(3,'0')}_${ch}.jpg`, blob);
+    } else { const blob=await new Promise(res=>cv.toBlob(res,'image/png')); zip.file(`${String(idx).padStart(3,'0')}_${ch}.png`, blob); }
+  }
+  $('showGuide').checked=prev;
+  const zipBlob=await zip.generateAsync({type:'blob'}); const url=URL.createObjectURL(zipBlob); const a=document.createElement('a'); a.href=url; a.download=`Calligraphy_${isJPG?'JPG':'PNG'}_${Date.now()}.zip`; a.click(); URL.revokeObjectURL(url); log(`✅ ZIP 완료`);
+}
+safeAddListener('btnPNGAll','click',()=>saveAllZIP(false));
+safeAddListener('btnJPGAll','click',()=>saveAllZIP(true));
 
-    function animate(timestamp) {
-      if (!isPlaying) return;
-      if (!lastTimestamp) lastTimestamp = timestamp;
-      const delta = (timestamp - lastTimestamp) / 1000;
-      lastTimestamp = timestamp;
-
-      currentTime += delta;
-      if (currentTime > totalDuration) { currentTime = totalDuration; pause(); }
-
-      timeSlider.value = currentTime;
-      renderFrame(currentTime);
-
-      if (isPlaying) animationFrameId = requestAnimationFrame(animate);
-    }
-
-    function play() {
-      if (isPlaying) return;
-      isPlaying = true;
-      btnPlay.textContent = '⏸ 일시정지';
-      lastTimestamp = 0;
-      animationFrameId = requestAnimationFrame(animate);
-    }
-
-    function pause() {
-      isPlaying = false;
-      btnPlay.textContent = '▶ 재생';
-      if (animationFrameId) cancelAnimationFrame(animationFrameId);
-    }
-
-    btnPlay.addEventListener('click', () => isPlaying ? pause() : play());
-    timeSlider.addEventListener('input', (e) => {
-      currentTime = parseFloat(e.target.value);
-      renderFrame(currentTime);
-    });
-
-    btnExport.addEventListener('click', async () => {
-      if (srtData.length === 0) { alert('SRT 자막 파일이 로드되지 않았습니다.'); return; }
-      await ensureFontLoaded();
-      if (!currentFont) { alert('붓글씨 폰트가 아직 로딩되지 않았습니다. 잠시 후 다시 시도해주세요.'); return; }
-
-      pause();
-      const playheadBeforeRecording = currentTime;
-
-      btnExport.disabled = true;
-      btnExport.textContent = '⏺ 녹화 중...';
-      progressModal.style.display = 'flex';
-      isRecording = true; // 녹화 중에는 가이드선을 그리지 않는다
-
-      currentTime = 0;
-      timeSlider.value = 0;
-      renderFrame(0);
-      await new Promise(r => setTimeout(r, 50));
-
-      const fps = 30;
-      const totalFrames = Math.ceil(totalDuration * fps);
-      const width = canvas.width, height = canvas.height;
-
-      try {
-        const muxer = new Mp4Muxer.Muxer({
-          target: new Mp4Muxer.ArrayBufferTarget(),
-          video: { codec: 'avc', width, height },
-          fastStart: 'in-memory'
-        });
-
-        const videoEncoder = new VideoEncoder({
-          output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
-          error: (e) => console.error(e)
-        });
-
-        const codecCandidates = ['avc1.64002A', 'avc1.640028', 'avc1.640033', 'avc1.4d0028'];
-        let chosenCodec = null;
-        for (const codec of codecCandidates) {
-          const support = await VideoEncoder.isConfigSupported({ codec, width, height, bitrate: 6_500_000, framerate: fps });
-          if (support.supported) { chosenCodec = codec; break; }
-        }
-        if (!chosenCodec) throw new Error('이 브라우저/기기에서는 1920x1080 해상도의 H.264 인코더를 지원하지 않습니다.');
-
-        videoEncoder.configure({ codec: chosenCodec, width, height, bitrate: 6_500_000, framerate: fps });
-
-        for (let i = 0; i < totalFrames; i++) {
-          const frameTime = i / fps;
-          currentTime = frameTime;
-          timeSlider.value = frameTime;
-          renderFrame(frameTime);
-
-          const videoFrame = new VideoFrame(canvas, { timestamp: Math.round(frameTime * 1e6) });
-          videoEncoder.encode(videoFrame, { keyFrame: i % (fps * 2) === 0 });
-          videoFrame.close();
-
-          const pct = Math.round(((i + 1) / totalFrames) * 100);
-          progressFill.style.width = `${pct}%`;
-          progressPercent.textContent = `${pct}%`;
-          progressText.textContent = `00:00부터 녹화 중 - 붓글씨 스트로크 인코딩 (${i + 1} / ${totalFrames})`;
-
-          if (i % 10 === 0) await new Promise(r => setTimeout(r, 0));
-        }
-
-        await videoEncoder.flush();
-        muxer.finalize();
-
-        const { buffer } = muxer.target;
-        const blob = new Blob([buffer], { type: 'video/mp4' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `calligraphy_brush_${Date.now()}.mp4`;
-        a.click();
-        URL.revokeObjectURL(url);
-
-        progressText.textContent = 'MP4 비디오 다운로드 완료!';
-        setTimeout(() => progressModal.style.display = 'none', 1000);
-
-      } catch (err) {
-        alert(`MP4 저장 중 오류 발생: ${err.message}`);
-        progressModal.style.display = 'none';
-      } finally {
-        isRecording = false;
-        currentTime = playheadBeforeRecording;
-        timeSlider.value = playheadBeforeRecording;
-        renderFrame(playheadBeforeRecording);
-        btnExport.disabled = false;
-        btnExport.textContent = '⏺ 녹화 시작 (처음부터 MP4 저장)';
-      }
-    });
-
-    /* =========================================================================================
-       초기화
-    ========================================================================================= */
-    preloadShapeMasks();
-    ensureFontLoaded();
-    loadSRTData(demoSRT);
-  </script>
+const FONT_URLS=[
+  'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/nanumbrushscript/NanumBrushScript-Regular.ttf',
+  'https://fonts.gstatic.com/s/nanumbrushscript/v22/wXKuE3QSp1QuVsr1DwZwXqUksBUm5TegqA.ttf',
+  'https://raw.githubusercontent.com/google/fonts/main/ofl/nanumbrushscript/NanumBrushScript-Regular.ttf'
+];
+async function loadFontWithFallback(urls){
+  for(const url of urls){
+    try{ return await new Promise((res,rej)=>opentype.load(url,(e,f)=>e?rej(e):res(f))); }
+    catch(e){ log(`폰트 시도 실패: ${url.slice(0,40)}...`); }
+  }
+  throw new Error('모든 폰트 소스 실패');
+}
+(async()=>{
+  try{
+    const fsLoading=$('font-status'); if(fsLoading) fsLoading.textContent='⏳ 폰트 로딩 중...';
+    baseFont=await loadFontWithFallback(FONT_URLS);
+    fontLoadId++; jamoSplitCache.clear();
+    const fs=$('font-status'); if(fs) fs.textContent='✅ 나눔손글씨 활성화';
+    const ta=$('srtTa'); if(ta) ta.value=`1
+00:00:00,000 --> 00:00:03,500
+나는 화려한 짐승처럼
+2
+00:00:03,600 --> 00:00:07,000
+짖으며 달려 나간다
+3
+00:00:07,100 --> 00:00:10,500
+돌에 그늘이 차고
+4
+00:00:10,600 --> 00:00:14,000
+사랑
+5
+00:00:14,100 --> 00:00:17,500
+힘내
+6
+00:00:17,600 --> 00:00:20,500
+독하고 그곳에 꽃이 핀다`;
+    analyze();
+    refreshPresetList(); updateLabels(); log('v1.050 로드 - 무조건 중앙 보임 + 실제 붓터치');
+  }catch(e){ const fs=$('font-status'); if(fs) fs.textContent='⚠ 자동 폰트 로딩 실패 - TTF를 직접 업로드하세요'; log('자동 폰트 로딩 완전 실패: '+e.message); }
+})();
+</script>
 </body>
 </html>
