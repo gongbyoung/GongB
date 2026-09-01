@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>한글 캘리그라피 스튜디오 (v41.0 - v39.0 베지어 벡터 렌더러 & 1~5 템플릿 일치)</title>
+  <title>한글 캘리그라피 스튜디오 (v42.0 - SRT 순수 자막 파싱 & 번호/타임스탬프 자동 제거)</title>
 
   <!-- 웹 폰트 & Opentype.js & MP4 Muxer CDN -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -54,8 +54,6 @@
     canvas { display: block; max-width: 100%; max-height: 68vh; object-fit: contain; }
     
     .calli-dom-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-    .calli-char-wrapper { display: inline-block; position: relative; line-height: 1; filter: url(#ink-bleed-filter); }
-    .calli-char { display: inline-block; transition: transform 0.1s ease; }
 
     .player-controls { width: 100%; max-width: 920px; margin-top: 10px; background: var(--panel-bg); padding: 10px 16px; border-radius: 8px; display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--panel-border); }
     .timeline-row { display: flex; align-items: center; gap: 12px; }
@@ -75,10 +73,10 @@
     .slot-badge { font-size: 0.68rem; padding: 1px 4px; border-radius: 3px; background: #282838; }
     .btn-slot.saved .slot-badge { background: #059669; color: #fff; }
 
-    .srt-list-container { max-height: 120px; overflow-y: auto; background: #111115; border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px; }
+    .srt-list-container { max-height: 140px; overflow-y: auto; background: #111115; border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px; }
     .srt-item { padding: 7px 9px; border-bottom: 1px solid #22222a; font-size: 0.78rem; cursor: pointer; display: flex; justify-content: space-between; align-items: center; border-radius: 4px; }
     .srt-item.active { background: rgba(255, 94, 54, 0.2); border-left: 4px solid var(--accent-color); color: #fff; font-weight: bold; }
-    .srt-item-title { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .srt-item-title { max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     
     .progress-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(4px); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; display: none; }
     .progress-box { background: var(--panel-bg); padding: 26px; border-radius: 12px; text-align: center; width: 340px; }
@@ -106,12 +104,12 @@
 
   <header>
     <h1>🖌️ SRT 캘리그라피 스튜디오</h1>
-    <span style="font-size: 0.82rem; color: var(--text-muted);">v41.0 - v39.0 베지어 벡터 필압 엔진 & 1~5번 템플릿 완전 일치</span>
+    <span style="font-size: 0.82rem; color: var(--text-muted);">v42.0 - SRT 순수 자막 파싱 & 타임스탬프/번호 필터링</span>
   </header>
 
   <div class="main-container">
     
-    <!-- 👈 1. 좌측 사이드바: 자막, 폰트, 마스크, 배경 -->
+    <!-- 👈 1. 좌측 사이드바 -->
     <div class="sidebar-left">
 
       <div class="control-group">
@@ -119,10 +117,10 @@
         <label for="srt-input" class="btn-file" id="srt-label">📁 SRT 자막 파일 불러오기 (.srt)</label>
         <input type="file" id="srt-input" accept=".srt">
 
-        <label style="margin-top: 4px;">본문 문장 직접 입력 / 수정</label>
+        <label style="margin-top: 4px;">SRT 내용 또는 자막 문구</label>
         <textarea id="srt-textarea" class="srt-textarea" placeholder="자막 문장을 입력하세요.">맛있게 먹으면
 0칼로리</textarea>
-        <button class="btn-secondary" id="btn-apply-srt" style="width:100%; margin-top:4px;">✏️ 캔버스 문장 적용하기</button>
+        <button class="btn-secondary" id="btn-apply-srt" style="width:100%; margin-top:4px;">✏️ 자막 파싱 & 캔버스 적용</button>
       </div>
 
       <div class="control-group">
@@ -169,35 +167,19 @@
           <option value="single-column">🖌️ 세로 1열 전통 수묵 구도 (사랑을 배운다)</option>
         </select>
 
-        <label for="shape-frame-select">도형 틀 (마스크 영역) 선택</label>
+        <label for="shape-frame-select">도형 틀 선택</label>
         <select id="shape-frame-select">
           <option value="none" selected>❌ 도형 마스크 사용 안함 (자연스러운 캘리그라피 구도)</option>
-          <option value="inv-triangle">🔻 역삼각형 (상단 와이드 ➔ 하단 집중)</option>
-          <option value="diamond">🔷 다이아몬드 / 마름모 (중앙 확장)</option>
-          <option value="circle">⭕ 원형 (동그란 낙관 구도)</option>
-          <option value="triangle">🔺 정삼각형 (피라미드 구도)</option>
+          <option value="inv-triangle">🔻 역삼각형</option>
+          <option value="diamond">🔷 다이아몬드</option>
+          <option value="circle">⭕ 원형</option>
+          <option value="triangle">🔺 정삼각형</option>
           <option value="horizontal-rect">▭ 가로 직사각형</option>
         </select>
-
-        <label for="param-offset-x">자막 X 위치 오프셋 <span class="val" id="val-offset-x">0px</span></label>
-        <input type="range" id="param-offset-x" min="-600" max="600" step="5" value="0">
-
-        <label for="param-offset-y">자막 Y 위치 오프셋 <span class="val" id="val-offset-y">0px</span></label>
-        <input type="range" id="param-offset-y" min="-400" max="400" step="5" value="0">
-
-        <label for="param-scale">자막 전체 크기 비율 <span class="val" id="val-scale">100%</span></label>
-        <input type="range" id="param-scale" min="50" max="180" step="5" value="100">
       </div>
 
       <div class="control-group">
         <div class="section-title">🖼️ 5. 배경 및 먹물 색상</div>
-
-        <label for="param-show-guide">가이드선 표시</label>
-        <select id="param-show-guide">
-          <option value="none" selected>❌ 가이드선 숨기기</option>
-          <option value="guide-shape">📐 윤곽 가이드선 표시 (편집용)</option>
-          <option value="subtle-axis">🖌️ 세로/가로 먹선 축 표시</option>
-        </select>
 
         <label for="bg-style">배경 화선지 재질</label>
         <select id="bg-style">
@@ -212,13 +194,13 @@
       </div>
 
       <div class="control-group">
-        <div class="section-title">📜 6. 자막 세션 목록</div>
+        <div class="section-title">📜 6. 자막 세션 목록 (파싱된 자막)</div>
         <div class="srt-list-container" id="srt-list"></div>
       </div>
 
     </div>
 
-    <!-- 🖼️ 2. 중앙 캔버스 프리뷰 및 타임라인 컨트롤 -->
+    <!-- 🖼️ 2. 중앙 캔버스 프리뷰 -->
     <div class="preview-area">
       <div class="canvas-wrapper" id="canvas-wrapper">
         <canvas id="calligraphy-canvas" width="1440" height="1440"></canvas>
@@ -234,26 +216,25 @@
 
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
           <div style="font-size: 0.8rem; color: var(--text-muted);" id="res-indicator">
-            해상도: 1440x1440 (1:1 정방형 Square) | v39.0 베지어 벡터 렌더러
+            해상도: 1440x1440 (1:1 정방형 Square) | SRT 자막 전용 파서
           </div>
           <button class="btn-action" id="btn-export">
-            🎬 MP4 비디오 렌더링 내보내기
+            🎬 전체 세션 MP4 자동 렌더링
           </button>
         </div>
       </div>
     </div>
 
-    <!-- 👉 3. 우측 사이드바: 1~5 템플릿 선택, 1~10 슬롯, 베지어 조형 왜곡 -->
+    <!-- 👉 3. 우측 사이드바 -->
     <div class="sidebar-right">
 
-      <!-- 🏆 1~10 캘리그라피 템플릿 슬롯 저장 & 불러오기 UI -->
       <div class="control-group" style="background: linear-gradient(135deg, #1f1d2b, #2d2640); border: 1px solid #4361ee;">
         <div class="section-title" style="color: #4cc9f0;">🏆 템플릿 1~5 정밀 수치 & 1~10 슬롯 관리</div>
         
         <label for="template-select" style="font-weight: bold; color: #fff;">📜 작품 템플릿 & 슬롯 선택</label>
         <select id="template-select" style="font-weight: bold; border-color: #4361ee; background: #181824;"></select>
 
-        <label style="color: #a0a0b0; margin-top: 4px;">📌 1~10번 퀵 슬롯 클릭 (클릭=1초만에 불러오기)</label>
+        <label style="color: #a0a0b0; margin-top: 4px;">📌 1~10번 퀵 슬롯 클릭</label>
         <div class="slot-grid" id="slot-button-grid"></div>
 
         <div style="margin-top: 6px; border-top: 1px dashed #4361ee; padding-top: 6px;">
@@ -271,9 +252,8 @@
         <button class="btn-random" id="btn-random-mix" style="margin-top: 6px;">✨ 무작위 캘리그라피 템플릿 믹스</button>
       </div>
 
-      <!-- 🧮 획 왜곡 및 필압 지오메트리 파라미터 (v39.0 베지어 엔진) -->
       <div class="control-group">
-        <div class="section-title">🧮 획 왜곡 & 베지어 지오메트리 수치 (v39.0)</div>
+        <div class="section-title">🧮 획 왜곡 & 베지어 지오메트리 수치</div>
 
         <label for="param-shear">속도장 전단각 (우상향 틸트) <span class="val" id="val-shear">7°</span></label>
         <input type="range" id="param-shear" min="-15" max="25" step="1" value="7">
@@ -291,16 +271,15 @@
         <input type="range" id="param-slit-cut" min="0.0" max="1.0" step="0.05" value="0.45">
       </div>
 
-      <!-- ✒️ 장획/삐침 어트랙터 수치 -->
       <div class="control-group">
         <div class="section-title">✒️ 장획/삐침 어트랙터 연출 수치</div>
 
         <label for="param-pull-dir">장획 뻗는 방향</label>
         <select id="param-pull-dir">
-          <option value="down" selected>⬇️ 수직 하강 (사랑을 배운다)</option>
-          <option value="down-right">↘️ 우하단 사선 (첫눈처럼)</option>
-          <option value="down-left">↙️ 좌하단 대각 (봄캘리)</option>
-          <option value="right">➡️ 우측 수평 (질주 꼬리)</option>
+          <option value="down" selected>⬇️ 수직 하강</option>
+          <option value="down-right">↘️ 우하단 사선</option>
+          <option value="down-left">↙️ 좌하단 대각</option>
+          <option value="right">➡️ 우측 수평</option>
         </select>
 
         <label for="param-pull-target">장획 적용 대상 글자</label>
@@ -322,7 +301,7 @@
       </div>
 
       <div class="control-group">
-        <div class="section-title">🎨 감성 수채화 물감 방울 & 빛망울 연출</div>
+        <div class="section-title">🎨 감성 수채화 물감 방울 연출</div>
         <label for="param-watercolor-style">수채화 파스텔 물감 번짐 패턴</label>
         <select id="param-watercolor-style">
           <option value="pastel-dots" selected>🎨 은은한 파스텔 수채화 물감 방울 (추천)</option>
@@ -385,7 +364,7 @@
 
   <script>
     /* =========================================================================
-       🏛️ 1. 유니코드 자소 분해 파서 (Unicode Decomposer)
+       🏛️ 1. 유니코드 자소 분해 파서
        ========================================================================= */
     const INITIAL_CONSONANTS = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
     const MEDIAL_VOWELS     = ['ㅏ','ㅐ','ㅑ','ㅒ','ㅓ','ㅔ','ㅕ','ㅖ','ㅗ','ㅘ','ㅙ','ㅚ','ㅛ','ㅜ','ㅝ','ㅞ','ㅟ','ㅠ','ㅡ','ㅢ','ㅣ'];
@@ -410,7 +389,7 @@
     }
 
     /* =========================================================================
-       🧬 2. GlyphGeometryEngine: v39.0 베지어 아웃라인 파라메트릭 변형기
+       🧬 2. GlyphGeometryEngine: 베지어 아웃라인 변형 엔진
        ========================================================================= */
     class GlyphGeometryEngine {
       static deformGlyph(commands, bbox, uiParams, isMajorChar = false, maxPullBudget = 220) {
@@ -538,14 +517,9 @@
 
     const shapeFrameSelect = document.getElementById('shape-frame-select');
     const shapeLayoutStyleSelect = document.getElementById('shape-layout-style');
-    const paramShowGuide = document.getElementById('param-show-guide');
     const fontFamilySelect = document.getElementById('font-family');
     const fontFileInput = document.getElementById('font-file-input');
     const fontFileLabel = document.getElementById('font-file-label');
-    
-    const paramOffsetX = document.getElementById('param-offset-x');
-    const paramOffsetY = document.getElementById('param-offset-y');
-    const paramScale = document.getElementById('param-scale');
     const selectedSrtBadge = document.getElementById('selected-srt-badge');
 
     const templateSelect = document.getElementById('template-select');
@@ -587,11 +561,10 @@
     const progressPercent = document.getElementById('progress-percent');
     const progressText = document.getElementById('progress-text');
 
-    // 개별 글자 렌더링용 오프스크린 캔버스
     const charOffscreen = document.createElement('canvas');
     const charCtx = charOffscreen.getContext('2d');
 
-    /* 🏛️ 템플릿 1~5 정밀 수치 & 전용 샘플 문구 사전 */
+    /* 🏛️ 템플릿 1~5 정밀 수치 & 예시 문구 */
     const BUILTIN_TEMPLATES = {
       'artwork-1': {
         name: '📜 [템플릿 1] 맛있게 0칼로리 (블록 지그재그)',
@@ -679,10 +652,9 @@
       }
     };
 
-    /* 📌 1~10번 템플릿 슬롯 관리 데이터 구조 */
     function loadSlotData() {
       try {
-        const raw = localStorage.getItem('srt_calli_template_slots_v41');
+        const raw = localStorage.getItem('srt_calli_template_slots_v42');
         if (raw) return JSON.parse(raw);
       } catch (e) {}
       
@@ -705,7 +677,7 @@
 
     function saveSlotData(slots) {
       try {
-        localStorage.setItem('srt_calli_template_slots_v41', JSON.stringify(slots));
+        localStorage.setItem('srt_calli_template_slots_v42', JSON.stringify(slots));
       } catch (e) {}
     }
 
@@ -748,7 +720,7 @@
 
       let html = `
         <option value="custom">✏️ 사용자 커스텀 조합 (수치 직접 조절)</option>
-        <optgroup label="🌟 템플릿 1~5 정밀 수치 & 전용 예시 구도">
+        <optgroup label="🌟 템플릿 1~5 정밀 수치 & 예시 구도">
           <option value="artwork-1">📜 [템플릿 1] 맛있게 0칼로리 (블록 지그재그)</option>
           <option value="artwork-2">🖌️ [템플릿 2] 행복할 권리 (산문 정돈)</option>
           <option value="artwork-3">🔻 [템플릿 3] 사랑도 필요하다 (상단 쐐기)</option>
@@ -796,7 +768,6 @@
         pullDir: paramPullDir.value,
         pullTarget: paramPullTarget.value,
         attractor: parseFloat(paramAttractor.value),
-        scale: parseInt(paramScale.value) / 100,
         letterSpacing: parseInt(paramLetterSpacing.value),
         lineHeight: parseFloat(paramLineHeight.value),
         watercolorStyle: paramWatercolorStyle.value,
@@ -855,10 +826,6 @@
         document.getElementById('val-attractor').textContent = `${cfg.attractor}x`;
       }
 
-      if (cfg.scale !== undefined) {
-        paramScale.value = Math.round(cfg.scale * 100);
-        document.getElementById('val-scale').textContent = `${Math.round(cfg.scale * 100)}%`;
-      }
       if (cfg.letterSpacing !== undefined) {
         paramLetterSpacing.value = cfg.letterSpacing;
         document.getElementById('val-letter-spacing').textContent = `${cfg.letterSpacing}px`;
@@ -878,7 +845,6 @@
       }
       if (cfg.sealText !== undefined) paramSealText.value = cfg.sealText;
 
-      updateActiveSessionData();
       scheduleRender();
     }
 
@@ -911,7 +877,7 @@
       saveSlotData(slots);
       updateSlotUI();
       templateSelect.value = `slot_${selectedSlotId}`;
-      alert(`✅ 현재 문장 및 조형 수치가 [슬롯 ${selectedSlotId}] '${name}'에 저장되었습니다!`);
+      alert(`✅ 현재 자막 및 조형 수치가 [슬롯 ${selectedSlotId}] '${name}'에 저장되었습니다!`);
     });
 
     btnLoadSlot.addEventListener('click', () => {
@@ -954,13 +920,13 @@
       let w = 1440, h = 1440;
       if (ratio === '9:16') {
         w = 1080; h = 1920;
-        resIndicator.textContent = '해상도: 1080x1920 (9:16 세로 숏폼/릴스) | v39.0 베지어 벡터 렌더러';
+        resIndicator.textContent = '해상도: 1080x1920 (9:16 세로 숏폼/릴스) | SRT 전용 파서';
       } else if (ratio === '16:9') {
         w = 1920; h = 1080;
-        resIndicator.textContent = '해상도: 1920x1080 (16:9 Full HD) | v39.0 베지어 벡터 렌더러';
+        resIndicator.textContent = '해상도: 1920x1080 (16:9 Full HD) | SRT 전용 파서';
       } else {
         w = 1440; h = 1440;
-        resIndicator.textContent = '해상도: 1440x1440 (1:1 정방형 Square) | v39.0 베지어 벡터 렌더러';
+        resIndicator.textContent = '해상도: 1440x1440 (1:1 정방형 Square) | SRT 전용 파서';
       }
 
       canvas.width = w; canvas.height = h;
@@ -977,8 +943,7 @@
       fontStatusEl.className = 'font-status loading';
       opentype.load(DEFAULT_FONT_URL, (err, font) => {
         if (err) {
-          console.error('기본 폰트 로드 실패:', err);
-          fontStatusEl.textContent = '⚠️ 기본 폰트 네트워크 로딩 실패 (시스템 기본 서체로 대체)';
+          fontStatusEl.textContent = '⚠️ 기본 폰트 네트워크 로딩 실패';
         } else {
           currentFont = font;
           fontStatusEl.textContent = '✅ 나눔붓글씨 기본 폰트 준비 완료';
@@ -1005,14 +970,13 @@
           fontStatusEl.className = 'font-status ready';
           scheduleRender();
         } catch (err) {
-          alert(`폰트 파일 파싱 실패: ${err.message || '올바른 TTF/OTF 폰트 형식인지 확인해주세요.'}`);
+          alert(`폰트 파일 파싱 실패: ${err.message}`);
           fontStatusEl.textContent = '⚠️ 사용자 폰트 파일 파싱 오류';
         }
       };
       reader.readAsArrayBuffer(file);
     });
 
-    /* 갈필(飛白) 접선 슬릿 절삭 함수 */
     function applyDryBrushSlitCut(targetCtx, w, h, slitIntensity) {
       if (slitIntensity <= 0.05) return;
       targetCtx.save();
@@ -1034,7 +998,6 @@
       targetCtx.restore();
     }
 
-    /* 🎨 수채화 물감 방울 배경 */
     function drawWatercolorAccents(targetCtx, bounds, styleMode, seed) {
       if (!styleMode || styleMode === 'none') return;
       targetCtx.save();
@@ -1064,7 +1027,6 @@
       targetCtx.restore();
     }
 
-    /* ✍️ 보조 자막 / 작가 서명 & 소자막 렌더링 */
     function drawSubCaption(targetCtx, text, bounds, posMode) {
       if (!text || !posMode || posMode === 'none' || text.trim().length === 0) return;
       targetCtx.save();
@@ -1092,7 +1054,6 @@
       targetCtx.restore();
     }
 
-    /* 🔴 전서 직인 낙관 렌더링 */
     function drawCalligraphySeal(targetCtx, bounds, sealType) {
       if (!sealType || sealType === 'none') return;
       
@@ -1130,7 +1091,6 @@
       targetCtx.restore();
     }
 
-    /* 🧮 레이아웃 연산기 (v39.0 방식 정밀 다행 구조 지원) */
     function computeUILayout(text, bounds, uiParams) {
       const { w, h, marginX, marginY, availW, availH } = bounds;
       const { layoutStyle, decay, contrast, letterSpacing, lineHeightMult } = uiParams;
@@ -1214,7 +1174,6 @@
       return { lineLayouts, baseSize, totalChars: globalCharIndex };
     }
 
-    /* ✒️ v39.0 사선 붓터치 마스킹 & 베지어 아웃라인 운필 렌더러 */
     function renderWritingGlyph(targetCtx, ch, renderX, renderY, fontSize, uiParams, isMajor, progressU) {
       if (progressU <= 0.001) return null;
 
@@ -1337,16 +1296,42 @@
         availW: w * 0.84, availH: h * 0.84
       };
 
-      /* 🎨 수채화 물감 번짐 연출 */
       drawWatercolorAccents(ctx, bounds, uiParams.watercolorStyle, 42);
 
-      const rawText = srtTextarea.value.trim();
-      const { lineLayouts, baseSize, totalChars } = computeUILayout(rawText, bounds, uiParams);
+      /* 🌟 3. SRT 자막 파싱 기반 자막 본문 텍스트 자동 추출 (번호/타임스탬프 필터링) */
+      let displayText = "";
+      let activeSession = null;
 
-      const animTotalTime = totalDuration;
-      const mainStartTime = 0.1;
-      const mainEndTime = animTotalTime * 0.75;
-      const mainTotalSpan = mainEndTime - mainStartTime;
+      if (srtData && srtData.length > 0) {
+        activeSession = srtData.find(item => timeSec >= item.start && timeSec <= item.end);
+        if (!activeSession && activeSrtIndex >= 0 && activeSrtIndex < srtData.length) {
+          activeSession = srtData[activeSrtIndex];
+        }
+        if (activeSession) {
+          displayText = activeSession.text;
+          selectedSrtBadge.textContent = `#${activeSession.id} 자막 세션 (${formatTime(activeSession.start)} ~ ${formatTime(activeSession.end)})`;
+          
+          // 한글 결구 분석 로그 업데이트
+          const firstChar = displayText.trim()[0] || '';
+          const decomp = decomposeHangul(firstChar);
+          if (decomp.isHangul) {
+            analysisOutput.textContent = `[세션 #${activeSession.id} 자막 분석] '${displayText.replace(/\n/g, ' ')}' ➔ 첫글자 [${firstChar}] 초성:${decomp.initial}, 중성:${decomp.medial}, 받침:${decomp.hasFinal ? decomp.final : '없음'}`;
+          }
+        }
+      }
+
+      if (!displayText) {
+        displayText = srtTextarea.value.trim() || "자막을 선택하거나 입력하세요";
+      }
+
+      const { lineLayouts, baseSize, totalChars } = computeUILayout(displayText, bounds, uiParams);
+
+      const sessionDuration = activeSession ? Math.max(0.5, activeSession.end - activeSession.start) : totalDuration;
+      const sessionElapsed = activeSession ? Math.max(0, timeSec - activeSession.start) : timeSec;
+
+      const mainStartTime = 0.05 * sessionDuration;
+      const mainEndTime = sessionDuration * 0.80;
+      const mainTotalSpan = Math.max(0.1, mainEndTime - mainStartTime);
 
       ctx.save();
       ctx.fillStyle = uiParams.inkColor;
@@ -1367,22 +1352,19 @@
           const tEnd = tStart + charSpan * 1.15;
 
           let progressU = 0;
-          if (timeSec >= tEnd) progressU = 1.0;
-          else if (timeSec > tStart) progressU = (timeSec - tStart) / (tEnd - tStart);
+          if (sessionElapsed >= tEnd) progressU = 1.0;
+          else if (sessionElapsed > tStart) progressU = (sessionElapsed - tStart) / (tEnd - tStart);
 
           renderWritingGlyph(ctx, c.ch, c.x, c.y, c.fontSize, uiParams, isMajor, progressU);
         });
       });
 
-      // 3. 보조 자막 / 서명 렌더링
-      if (timeSec > mainEndTime * 0.75) {
+      if (sessionElapsed > mainEndTime * 0.75) {
         drawSubCaption(ctx, uiParams.subText, bounds, uiParams.subPos);
         drawCalligraphySeal(ctx, bounds, uiParams.sealType);
       }
 
       ctx.restore();
-
-      // 4. 갈필 슬릿 절삭 연산
       applyDryBrushSlitCut(ctx, w, h, uiParams.slitCut);
     }
 
@@ -1396,7 +1378,6 @@
       scheduleRender();
     }
 
-    /* 이벤트 핸들러 연동 */
     paramShear.addEventListener('input', (e) => {
       document.getElementById('val-shear').textContent = `${e.target.value}°`;
       onManualOptionChange();
@@ -1473,13 +1454,27 @@
       return (parseInt(h) || 0) * 3600 + (parseInt(m) || 0) * 60 + (parseInt(s) || 0) + (parseInt(ms) || 0) / 1000;
     }
 
+    /* 🌟 정밀 SRT 파서: 숫자 및 타임스탬프 구문을 완전 제외하고 오직 자막 본문만 추출 */
     function parseSRT(text) {
       if (!text || typeof text !== 'string') return [];
       const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+      
+      // SRT 형식 타임스탬프 화살표가 없으면 단일 자막 문구로 파싱
+      if (!normalized.includes('-->')) {
+        return [{
+          id: "1",
+          start: 0,
+          end: 5.0,
+          text: normalized.trim(),
+          shapeType: shapeFrameSelect.value || 'none',
+          layoutStyle: shapeLayoutStyleSelect.value || 'block-headline'
+        }];
+      }
+
       const blocks = normalized.split(/\n\s*\n/);
       const result = [];
-      
       let autoId = 1;
+
       for (let block of blocks) {
         const lines = block.trim().split('\n').filter(l => l.trim().length > 0);
         if (lines.length === 0) continue;
@@ -1498,14 +1493,17 @@
           if (matches) {
             const startSec = parseSRTTime(matches[1], matches[2], matches[3], matches[4]);
             const endSec = parseSRTTime(matches[5], matches[6], matches[7], matches[8]);
-            const textLines = lines.slice(timeLineIndex + 1);
             
-            if (isFinite(startSec) && isFinite(endSec) && endSec > startSec && textLines.length > 0) {
+            // 타임스탬프 줄 이후의 오직 순수 자막 텍스트 행만 모아서 자막 본문으로 추출!
+            const textLines = lines.slice(timeLineIndex + 1);
+            const cleanText = textLines.join('\n').trim();
+            
+            if (cleanText.length > 0 && isFinite(startSec) && isFinite(endSec) && endSec > startSec) {
               result.push({
                 id: (timeLineIndex > 0 ? lines[0].trim() : String(autoId++)),
                 start: startSec,
                 end: endSec,
-                text: textLines.join('\n'),
+                text: cleanText,
                 shapeType: shapeFrameSelect.value || 'none',
                 layoutStyle: shapeLayoutStyleSelect.value || 'block-headline'
               });
@@ -1542,14 +1540,6 @@
     });
 
     btnApplySrt.addEventListener('click', () => loadSRTData(srtTextarea.value));
-
-    function updateActiveSessionData() {
-      if (activeSrtIndex >= 0 && activeSrtIndex < srtData.length) {
-        const s = srtData[activeSrtIndex];
-        s.shapeType = shapeFrameSelect.value;
-        s.layoutStyle = shapeLayoutStyleSelect.value;
-      }
-    }
 
     function updateSRTListUI() {
       srtListEl.innerHTML = '';
