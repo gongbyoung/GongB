@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>한글 캘리그라피 스튜디오 (v43.0 - seededRandom 참조 에러 수정 및 안정화)</title>
+  <title>한글 캘리그라피 스튜디오 (v44.0 - 6자 이상 글자 자동 Auto-Fit 스케일링 & 여백 최적화)</title>
 
   <!-- 웹 폰트 & Opentype.js & MP4 Muxer CDN -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -104,7 +104,7 @@
 
   <header>
     <h1>🖌️ SRT 캘리그라피 스튜디오</h1>
-    <span style="font-size: 0.82rem; color: var(--text-muted);">v43.0 - 콘솔 에러 예방 & 시드 난수 함수 정상 복원</span>
+    <span style="font-size: 0.82rem; color: var(--text-muted);">v44.0 - 6자 이상 글자 자동 Auto-Fit 스케일링 & 여백 최적화</span>
   </header>
 
   <div class="main-container">
@@ -216,7 +216,7 @@
 
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
           <div style="font-size: 0.8rem; color: var(--text-muted);" id="res-indicator">
-            해상도: 1440x1440 (1:1 정방형 Square) | SRT 자막 전용 파서
+            해상도: 1440x1440 (1:1 정방형 Square) | Auto-Fit 자동 글자 크기 최적화
           </div>
           <button class="btn-action" id="btn-export">
             🎬 전체 세션 MP4 자동 렌더링
@@ -327,7 +327,7 @@
         <div class="section-title">📜 문장 타이포그래피 (자간 & 줄간격)</div>
         
         <label for="param-letter-spacing">글자 자간 (Letter Spacing) <span class="val" id="val-letter-spacing">-6px</span></label>
-        <input type="range" id="param-letter-spacing" min="-40" max="40" step="2" value="-6">
+        <input type="range" id="param-letter-spacing" min="-40" max="60" step="2" value="-6">
 
         <label for="param-line-height">문장 줄간격 (Line Height) <span class="val" id="val-line-height">1.05x</span></label>
         <input type="range" id="param-line-height" min="0.6" max="2.2" step="0.05" value="1.05">
@@ -364,7 +364,7 @@
 
   <script>
     /* =========================================================================
-       🎲 시드 난수 생성기 (Seeded Pseudo-Random Generator)
+       🎲 시드 난수 생성기
        ========================================================================= */
     function seededRandom(seed) {
       let x = Math.sin(seed++) * 10000;
@@ -662,7 +662,7 @@
 
     function loadSlotData() {
       try {
-        const raw = localStorage.getItem('srt_calli_template_slots_v43');
+        const raw = localStorage.getItem('srt_calli_template_slots_v44');
         if (raw) return JSON.parse(raw);
       } catch (e) {}
       
@@ -685,7 +685,7 @@
 
     function saveSlotData(slots) {
       try {
-        localStorage.setItem('srt_calli_template_slots_v43', JSON.stringify(slots));
+        localStorage.setItem('srt_calli_template_slots_v44', JSON.stringify(slots));
       } catch (e) {}
     }
 
@@ -928,13 +928,13 @@
       let w = 1440, h = 1440;
       if (ratio === '9:16') {
         w = 1080; h = 1920;
-        resIndicator.textContent = '해상도: 1080x1920 (9:16 세로 숏폼/릴스) | SRT 전용 파서';
+        resIndicator.textContent = '해상도: 1080x1920 (9:16 세로 숏폼/릴스) | Auto-Fit 스케일링';
       } else if (ratio === '16:9') {
         w = 1920; h = 1080;
-        resIndicator.textContent = '해상도: 1920x1080 (16:9 Full HD) | SRT 전용 파서';
+        resIndicator.textContent = '해상도: 1920x1080 (16:9 Full HD) | Auto-Fit 스케일링';
       } else {
         w = 1440; h = 1440;
-        resIndicator.textContent = '해상도: 1440x1440 (1:1 정방형 Square) | SRT 전용 파서';
+        resIndicator.textContent = '해상도: 1440x1440 (1:1 정방형 Square) | Auto-Fit 스케일링';
       }
 
       canvas.width = w; canvas.height = h;
@@ -1099,6 +1099,7 @@
       targetCtx.restore();
     }
 
+    /* 🌟 반응형 Auto-Fit 레이아웃 연산기 (가로 넘침 방지 자동 스케일링) */
     function computeUILayout(text, bounds, uiParams) {
       const { w, h, marginX, marginY, availW, availH } = bounds;
       const { layoutStyle, decay, contrast, letterSpacing, lineHeightMult } = uiParams;
@@ -1106,7 +1107,8 @@
       let rawLines = text.split('\n').filter(l => l.trim().length > 0);
       if (rawLines.length === 0) rawLines = ["캘리그라피"];
 
-      const maxCharsPerLine = Math.max(4, Math.floor(availW / 120));
+      // 1. 글자 수가 많을 경우 행별 분할
+      const maxCharsPerLine = Math.max(5, Math.floor(availW / 140));
       let processedLines = [];
       rawLines.forEach(l => {
         const chars = Array.from(l);
@@ -1122,11 +1124,28 @@
       const lineCount = processedLines.length;
       let maxLineChars = Math.max(...processedLines.map(l => Array.from(l).length), 1);
 
-      let baseSize = availW / (maxLineChars * 0.85);
-      const maxHeightBudget = availH / (lineCount * 1.2 * lineHeightMult);
+      // 2. 1차 기본 폰트 크기 계산
+      let baseSize = availW / (maxLineChars * 0.82);
+      const maxHeightBudget = availH / (lineCount * 1.25 * lineHeightMult);
       baseSize = Math.min(baseSize, maxHeightBudget);
       if (layoutStyle === 'emblem-compact') baseSize = Math.min(availW / (maxLineChars * 0.75), availH * 0.45);
-      baseSize = Math.max(26, Math.min(220, baseSize));
+
+      // 3. 2차 반응형 Auto-Fit: 자간(letterSpacing) 및 대비율(contrast), 지그재그 오프셋까지 합산하여 캔버스 가로 영역 초과 시 자동 스케일 다운
+      processedLines.forEach((lineStr, lineIdx) => {
+        const chars = Array.from(lineStr);
+        let charScale = (lineIdx === 0) ? contrast : Math.max(0.5, 1.0 / Math.pow(decay, lineIdx));
+        
+        const estCharAdvance = baseSize * charScale * 0.78 + letterSpacing;
+        const estLineWidth = chars.length * estCharAdvance;
+        let extraShift = (layoutStyle === 'block-headline') ? 35 : 0;
+
+        const totalNeeded = estLineWidth + extraShift * 2;
+        if (totalNeeded > availW) {
+          baseSize *= (availW / totalNeeded); // 캔버스 여백 맞춤 자동 축소
+        }
+      });
+
+      baseSize = Math.max(20, Math.min(220, baseSize));
 
       const lineLayouts = [];
       let currentY = marginY;
@@ -1306,7 +1325,6 @@
 
       drawWatercolorAccents(ctx, bounds, uiParams.watercolorStyle, 42);
 
-      /* 🌟 3. SRT 자막 파싱 기반 자막 본문 텍스트 자동 추출 (번호/타임스탬프 필터링) */
       let displayText = "";
       let activeSession = null;
 
