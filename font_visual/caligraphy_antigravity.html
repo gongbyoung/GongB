@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>한글 캘리그라피 스튜디오 (v42.0 - SRT 순수 자막 파싱 & 번호/타임스탬프 자동 제거)</title>
+  <title>한글 캘리그라피 스튜디오 (v43.0 - seededRandom 참조 에러 수정 및 안정화)</title>
 
   <!-- 웹 폰트 & Opentype.js & MP4 Muxer CDN -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -104,7 +104,7 @@
 
   <header>
     <h1>🖌️ SRT 캘리그라피 스튜디오</h1>
-    <span style="font-size: 0.82rem; color: var(--text-muted);">v42.0 - SRT 순수 자막 파싱 & 타임스탬프/번호 필터링</span>
+    <span style="font-size: 0.82rem; color: var(--text-muted);">v43.0 - 콘솔 에러 예방 & 시드 난수 함수 정상 복원</span>
   </header>
 
   <div class="main-container">
@@ -363,6 +363,14 @@
   </div>
 
   <script>
+    /* =========================================================================
+       🎲 시드 난수 생성기 (Seeded Pseudo-Random Generator)
+       ========================================================================= */
+    function seededRandom(seed) {
+      let x = Math.sin(seed++) * 10000;
+      return x - Math.floor(x);
+    }
+
     /* =========================================================================
        🏛️ 1. 유니코드 자소 분해 파서
        ========================================================================= */
@@ -654,7 +662,7 @@
 
     function loadSlotData() {
       try {
-        const raw = localStorage.getItem('srt_calli_template_slots_v42');
+        const raw = localStorage.getItem('srt_calli_template_slots_v43');
         if (raw) return JSON.parse(raw);
       } catch (e) {}
       
@@ -677,7 +685,7 @@
 
     function saveSlotData(slots) {
       try {
-        localStorage.setItem('srt_calli_template_slots_v42', JSON.stringify(slots));
+        localStorage.setItem('srt_calli_template_slots_v43', JSON.stringify(slots));
       } catch (e) {}
     }
 
@@ -1311,7 +1319,6 @@
           displayText = activeSession.text;
           selectedSrtBadge.textContent = `#${activeSession.id} 자막 세션 (${formatTime(activeSession.start)} ~ ${formatTime(activeSession.end)})`;
           
-          // 한글 결구 분석 로그 업데이트
           const firstChar = displayText.trim()[0] || '';
           const decomp = decomposeHangul(firstChar);
           if (decomp.isHangul) {
@@ -1454,12 +1461,10 @@
       return (parseInt(h) || 0) * 3600 + (parseInt(m) || 0) * 60 + (parseInt(s) || 0) + (parseInt(ms) || 0) / 1000;
     }
 
-    /* 🌟 정밀 SRT 파서: 숫자 및 타임스탬프 구문을 완전 제외하고 오직 자막 본문만 추출 */
     function parseSRT(text) {
       if (!text || typeof text !== 'string') return [];
       const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
       
-      // SRT 형식 타임스탬프 화살표가 없으면 단일 자막 문구로 파싱
       if (!normalized.includes('-->')) {
         return [{
           id: "1",
@@ -1494,7 +1499,6 @@
             const startSec = parseSRTTime(matches[1], matches[2], matches[3], matches[4]);
             const endSec = parseSRTTime(matches[5], matches[6], matches[7], matches[8]);
             
-            // 타임스탬프 줄 이후의 오직 순수 자막 텍스트 행만 모아서 자막 본문으로 추출!
             const textLines = lines.slice(timeLineIndex + 1);
             const cleanText = textLines.join('\n').trim();
             
