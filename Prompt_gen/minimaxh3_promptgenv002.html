@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Minimax H3 Video Prompt Generator</title>
+    <title>Minimax H3 Video Prompt Generator (Multi-API)</title>
     <style>
         :root {
             --bg-color: #1e1e1e;
@@ -57,7 +57,7 @@
             font-weight: bold;
             font-size: 14px;
         }
-        textarea, input[type="text"], input[type="password"] {
+        select, textarea, input[type="text"], input[type="password"] {
             width: 100%;
             background-color: #1a1a1a;
             color: #fff;
@@ -68,6 +68,10 @@
             box-sizing: border-box;
             margin-bottom: 15px;
             font-family: monospace;
+        }
+        select {
+            font-family: 'Segoe UI', sans-serif;
+            cursor: pointer;
         }
         textarea {
             resize: vertical;
@@ -137,7 +141,7 @@
             font-size: 13px;
             line-height: 1.5;
             word-wrap: break-word;
-            padding-bottom: 30px; /* Copy 버튼 공간 확보 */
+            padding-bottom: 30px;
         }
         .copy-btn {
             position: absolute;
@@ -152,6 +156,13 @@
             font-weight: bold;
             margin-top: 10px;
         }
+        .api-note {
+            font-size: 12px;
+            color: #ff9800;
+            margin-top: -10px;
+            margin-bottom: 15px;
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -159,13 +170,23 @@
 <div class="container">
     <div class="header">
         <h1>Minimax H3 Prompt Generator</h1>
-        <p>시나 스토리를 분석하여 ComfyUI Video 생성(5초 단위)에 일관성을 부여하는 영문 프롬프트 추출기</p>
+        <p>Gemini 또는 DeepSeek API를 활용하여 스토리에서 비디오 프롬프트를 자동 추출합니다.</p>
     </div>
 
     <div class="panel">
-        <label for="apiKey">Gemini API Key (분석 자동화를 위해 필요)</label>
-        <input type="password" id="apiKey" placeholder="AI Studio에서 발급받은 API 키 입력 (입력된 키는 로컬 브라우저에서만 처리됩니다)">
+        <label for="apiProvider">AI 모델 선택</label>
+        <select id="apiProvider" onchange="toggleApiInfo()">
+            <option value="gemini">Google Gemini (추천, 빠름)</option>
+            <option value="deepseek">DeepSeek (뛰어난 추론)</option>
+        </select>
+
+        <label for="apiKey" id="apiKeyLabel">Gemini API Key</label>
+        <input type="password" id="apiKey" placeholder="API 키를 입력하세요 (브라우저에서만 처리됩니다)">
         
+        <div id="deepseekNote" class="api-note">
+            * 브라우저 환경에 따라 DeepSeek API는 CORS(교차 출처 리소스 공유) 보안 에러가 발생할 수 있습니다. 에러 발생 시 크롬 CORS 확장프로그램이나 프록시 서버를 이용해야 할 수 있습니다.
+        </div>
+
         <label for="storyInput">원문 텍스트 (시 / 스토리)</label>
         <textarea id="storyInput" rows="12">산 위에 올라서서 바라다보면
 가로막힌 바다를 마주 건너서
@@ -186,10 +207,10 @@
         <input type="text" id="baseStyle" value="masterpiece, best quality, ultra-detailed, cinematic lighting, moody atmosphere, slow motion, highly detailed textures, smooth camera movement">
         
         <div class="button-group">
-            <button id="generateBtn" onclick="generatePrompts()">AI 스토리 분석 및 프롬프트 생성</button>
-            <button class="secondary-btn" onclick="copySystemPrompt()">수동용 LLM 프롬프트 복사</button>
+            <button id="generateBtn" onclick="generatePrompts()">API로 프롬프트 생성</button>
+            <button class="secondary-btn" onclick="copySystemPrompt()">수동용 지시문 복사 (API 미사용 시)</button>
         </div>
-        <div id="loading">AI가 문맥을 분석하여 시퀀스를 구성 중입니다... (최대 10~20초 소요)</div>
+        <div id="loading">AI가 문맥을 분석하여 시퀀스를 구성 중입니다... (최대 10~30초 소요)</div>
     </div>
 
     <div class="panel" id="resultPanel" style="display: none;">
@@ -201,30 +222,40 @@
 </div>
 
 <script>
+    function toggleApiInfo() {
+        const provider = document.getElementById('apiProvider').value;
+        const label = document.getElementById('apiKeyLabel');
+        const note = document.getElementById('deepseekNote');
+        
+        if (provider === 'gemini') {
+            label.innerText = 'Google Gemini API Key';
+            note.style.display = 'none';
+        } else {
+            label.innerText = 'DeepSeek API Key';
+            note.style.display = 'block';
+        }
+    }
+
     function copySystemPrompt() {
+        // ... (기존과 동일한 수동 복사 로직)
         const story = document.getElementById('storyInput').value;
         const style = document.getElementById('baseStyle').value;
-        
         const manualPrompt = `다음 한국어 시/스토리를 분석하여 비디오 AI 생성용(ComfyUI Minimax H3 모델) 5초 단위 영문 프롬프트 시퀀스로 나누어주세요.
 
 [작업 조건]
-1. 원문의 의미와 은유를 시각적인 영상 묘사로 변환할 것.
-2. 각 씬은 5초 단위의 클립으로 가정하여 일관된 톤앤매너와 분위기를 유지할 것.
-3. 모든 영문 프롬프트 끝에 다음 기본 스타일을 반드시 포함할 것: ", ${style}"
-4. 피사체의 구체적인 모습, 빛의 방향, 안개나 물보라 같은 환경 요소, 카메라의 움직임(예: slow pan right, slight zoom in)을 명확하게 포함할 것.
-5. 화자(나)가 서 있는 산 위, 바다 건너 마을, 선창가, 밤바다 등 공간의 이동과 시간의 흐름(저녁->밤)을 반영할 것.
+1. 각 씬은 5초 단위의 클립으로 가정합니다.
+2. 모든 영문 프롬프트 끝에 다음 스타일을 반드시 포함할 것: ", \${style}"
+3. 피사체, 조명, 환경요소, 카메라 움직임을 구체적으로 포함할 것.
 
 [원본 텍스트]
-${story}
+\${story}
 
-출력은 반드시 각 씬별로 "원문 구절"과 "영문 프롬프트"가 구분되도록 작성해주세요.`;
-
-        navigator.clipboard.writeText(manualPrompt).then(() => {
-            alert('ChatGPT, Claude 또는 Gemini에 붙여넣을 수 있는 지시문이 클립보드에 복사되었습니다.');
-        });
+출력은 각 씬별로 "원문 구절"과 "영문 프롬프트"가 구분되도록 작성해주세요. JSON 포맷으로 작성해주면 더욱 좋습니다.`;
+        navigator.clipboard.writeText(manualPrompt).then(() => alert('클립보드에 복사되었습니다.'));
     }
 
     async function generatePrompts() {
+        const provider = document.getElementById('apiProvider').value;
         const apiKey = document.getElementById('apiKey').value;
         const story = document.getElementById('storyInput').value;
         const style = document.getElementById('baseStyle').value;
@@ -234,7 +265,7 @@ ${story}
         const sceneList = document.getElementById('sceneList');
 
         if (!apiKey) {
-            alert('API 키를 입력해주세요. 없으시다면 우측의 "수동용 LLM 프롬프트 복사" 기능을 이용해 다른 AI 챗봇에서 생성하신 후 사용할 수 있습니다.');
+            alert('API 키를 입력해주세요.');
             return;
         }
 
@@ -246,44 +277,74 @@ ${story}
         const systemInstruction = `You are an expert video prompt engineer for the Minimax H3 Video generation model in ComfyUI.
 Task: Break down the provided Korean poem into a sequence of continuous 5-second video scenes.
 For each scene, translate the original text's mood into a highly descriptive visual English prompt.
-Crucial: Append this exact base style string to the END of EVERY generated prompt: ", ${style}".
-Ensure visual consistency across scenes, tracking the progression of time (sunset to deep night) and location (mountain top looking at the sea, misty dock, dark ocean).
-Include specific camera movements (e.g., slow pan over the ocean, slow zoom out, static wide shot).
+Crucial: Append this exact base style string to the END of EVERY generated prompt: ", \${style}".
+Ensure visual consistency across scenes, tracking the progression of time and location. Include specific camera movements.
 
-Return ONLY a valid JSON array of objects with the following format:
+Return ONLY a valid JSON array of objects with the following format, with NO markdown formatting blocks like \`\`\`json:
 [
   {
     "time": "0s - 5s",
     "korean_text": "원문 한 줄 또는 연",
-    "prompt": "Highly detailed english visual description of the scene, camera movement, lighting, ${style}"
+    "prompt": "Highly detailed english visual description of the scene, camera movement, lighting, \${style}"
   }
 ]`;
 
         try {
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    contents: [{
-                        parts: [{
-                            text: systemInstruction + "\n\n[Poem]\n" + story
-                        }]
-                    }],
-                    generationConfig: {
-                        response_mime_type: "application/json"
-                    }
-                })
-            });
+            let responseText = "";
 
-            const data = await response.json();
-            
-            if (data.error) {
-                throw new Error(data.error.message);
+            if (provider === 'gemini') {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=\${apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: systemInstruction + "\n\n[Poem]\n" + story }] }],
+                        generationConfig: { response_mime_type: "application/json" }
+                    })
+                });
+                const data = await response.json();
+                if (data.error) throw new Error(data.error.message);
+                responseText = data.candidates[0].content.parts[0].text;
+            } 
+            else if (provider === 'deepseek') {
+                const response = await fetch('https://api.deepseek.com/chat/completions', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer \${apiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: "deepseek-chat",
+                        messages: [
+                            { role: "system", content: systemInstruction },
+                            { role: "user", content: "[Poem]\n" + story }
+                        ],
+                        response_format: { type: "json_object" }
+                    })
+                });
+                const data = await response.json();
+                if (data.error) throw new Error(data.error.message);
+                
+                // DeepSeek's JSON response handling (might return wrapped inside an object)
+                let tempText = data.choices[0].message.content;
+                // Clean up possible markdown wrappers if they leaked through
+                tempText = tempText.replace(/```json/g, "").replace(/```/g, "").trim();
+                
+                // If wrapped in a root object like {"scenes": [...]}, unwrap it
+                let parsed = JSON.parse(tempText);
+                if (!Array.isArray(parsed) && typeof parsed === 'object') {
+                    // Try to find the array inside
+                    const keys = Object.keys(parsed);
+                    if (keys.length > 0 && Array.isArray(parsed[keys[0]])) {
+                        parsed = parsed[keys[0]];
+                    } else {
+                        parsed = [parsed];
+                    }
+                    responseText = JSON.stringify(parsed);
+                } else {
+                    responseText = tempText;
+                }
             }
 
-            const responseText = data.candidates[0].content.parts[0].text;
             const scenes = JSON.parse(responseText);
 
             scenes.forEach((scene, index) => {
@@ -303,7 +364,7 @@ Return ONLY a valid JSON array of objects with the following format:
             resultPanel.style.display = 'block';
 
         } catch (error) {
-            alert('오류가 발생했습니다: API 키가 올바른지, 또는 네트워크 상태를 확인해주세요.\n상세 오류: ' + error.message);
+            alert('API 호출 중 오류가 발생했습니다.\n(DeepSeek의 경우 브라우저 CORS 제한일 수 있습니다.)\n\n상세 오류: ' + error.message);
         } finally {
             btn.disabled = false;
             loading.style.display = 'none';
@@ -324,6 +385,5 @@ Return ONLY a valid JSON array of objects with the following format:
         });
     }
 </script>
-
 </body>
 </html>
