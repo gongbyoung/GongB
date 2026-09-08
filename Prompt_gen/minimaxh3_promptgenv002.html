@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title> V001 (V5)</title>
+    <title>Minimax H3 Prompt Generator (오프라인 지원)</title>
     <style>
         :root {
             --bg-color: #1e1e1e;
@@ -35,16 +35,8 @@
             padding-bottom: 15px;
             margin-bottom: 10px;
         }
-        .header h1 {
-            margin: 0;
-            font-size: 24px;
-            color: #fff;
-        }
-        .header p {
-            margin: 5px 0 0 0;
-            color: var(--text-muted);
-            font-size: 14px;
-        }
+        .header h1 { margin: 0; font-size: 24px; color: #fff; }
+        .header p { margin: 5px 0 0 0; color: var(--text-muted); font-size: 14px; }
         .panel {
             background-color: var(--panel-bg);
             border: 1px solid var(--border-color);
@@ -69,13 +61,8 @@
             margin-bottom: 15px;
             font-family: monospace;
         }
-        select {
-            font-family: 'Segoe UI', sans-serif;
-            cursor: pointer;
-        }
-        textarea {
-            resize: vertical;
-        }
+        select { font-family: 'Segoe UI', sans-serif; cursor: pointer; }
+        textarea { resize: vertical; min-height: 200px; }
         button {
             background-color: var(--accent-color);
             color: white;
@@ -87,28 +74,12 @@
             font-size: 14px;
             transition: background-color 0.2s;
         }
-        button:hover {
-            background-color: #45a049;
-        }
-        button:disabled {
-            background-color: #555;
-            cursor: not-allowed;
-        }
-        .secondary-btn {
-            background-color: #555;
-        }
-        .secondary-btn:hover {
-            background-color: #666;
-        }
-        .button-group {
-            display: flex;
-            gap: 10px;
-        }
-        .scene-list {
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-        }
+        button:hover { background-color: #45a049; }
+        button:disabled { background-color: #555; cursor: not-allowed; }
+        .secondary-btn { background-color: #555; }
+        .secondary-btn:hover { background-color: #666; }
+        .button-group { display: flex; gap: 10px; flex-wrap: wrap; }
+        .scene-list { display: flex; flex-direction: column; gap: 15px; }
         .scene-card {
             background-color: #222;
             border-left: 4px solid var(--accent-color);
@@ -123,10 +94,7 @@
             border-bottom: 1px dashed var(--border-color);
             padding-bottom: 5px;
         }
-        .scene-time {
-            font-weight: bold;
-            color: var(--accent-color);
-        }
+        .scene-time { font-weight: bold; color: var(--accent-color); }
         .scene-source {
             font-style: italic;
             color: var(--text-muted);
@@ -139,9 +107,10 @@
             border-radius: 4px;
             font-family: monospace;
             font-size: 13px;
-            line-height: 1.5;
+            line-height: 1.6;
             word-wrap: break-word;
-            padding-bottom: 30px;
+            padding-bottom: 35px;
+            white-space: pre-wrap;
         }
         .copy-btn {
             position: absolute;
@@ -163,33 +132,47 @@
             margin-bottom: 15px;
             display: none;
         }
+        .mode-hint {
+            background: #1a2a3a;
+            padding: 10px;
+            border-radius: 4px;
+            border-left: 3px solid #ff9800;
+            margin-bottom: 15px;
+            font-size: 13px;
+        }
     </style>
 </head>
 <body>
 
 <div class="container">
     <div class="header">
-        <h1>Minimax H3 Prompt Generator V001</h1>
-        <p>Gemini 또는 DeepSeek API를 활용하여 스토리에서 비디오 프롬프트를 자동 추출합니다.</p>
+        <h1>🎬 Minimax H3 Prompt Generator</h1>
+        <p>Gemini / DeepSeek API 또는 <strong>완전 오프라인 분석</strong>으로 스토리에서 5초 단위 비디오 프롬프트를 추출합니다.</p>
     </div>
 
     <div class="panel">
         <label for="apiProvider">AI 모델 선택</label>
         <select id="apiProvider" onchange="toggleApiInfo()">
-            <option value="gemini-1.5-flash-latest">Google Gemini 1.5 Flash (최신 안정버전)</option>
-            <option value="gemini-1.5-pro-latest">Google Gemini 1.5 Pro (고성능 버전)</option>
-            <option value="deepseek">DeepSeek (뛰어난 추론)</option>
+            <option value="offline">🛠️ 오프라인 분석 (API 없음, 즉시 실행)</option>
+            <option value="gemini">Google Gemini (API 키 필요)</option>
+            <option value="deepseek">DeepSeek (API 키 필요, CORS 주의)</option>
         </select>
 
-        <label for="apiKey" id="apiKeyLabel">Gemini API Key</label>
-        <input type="password" id="apiKey" placeholder="API 키를 입력하세요 (브라우저에서만 처리됩니다)">
+        <div id="apiKeyArea">
+            <label for="apiKey" id="apiKeyLabel">API Key</label>
+            <input type="password" id="apiKey" placeholder="API 키를 입력하세요 (오프라인 모드에서는 무시됨)">
+        </div>
         
         <div id="deepseekNote" class="api-note">
-            * 브라우저 환경에 따라 DeepSeek API는 CORS(교차 출처 리소스 공유) 보안 에러가 발생할 수 있습니다. 에러 발생 시 크롬 CORS 확장프로그램이나 프록시 서버를 이용해야 할 수 있습니다.
+            * DeepSeek API는 브라우저 CORS 제한이 있을 수 있습니다. (에러 시 오프라인 모드 권장)
+        </div>
+
+        <div class="mode-hint" id="modeHint">
+            ✅ 현재 <strong>오프라인 분석</strong> 모드입니다. 시의 키워드를 분석하여 자동으로 프롬프트를 생성합니다. API 키가 필요 없습니다.
         </div>
 
         <label for="storyInput">원문 텍스트 (시 / 스토리)</label>
-        <textarea id="storyInput" rows="12">산 위에 올라서서 바라다보면
+        <textarea id="storyInput">산 위에 올라서서 바라다보면
 가로막힌 바다를 마주 건너서
 님 계시는 마을이 내 눈앞으로
 꿈 하늘 하늘같이 떠오릅니다
@@ -208,55 +191,178 @@
         <input type="text" id="baseStyle" value="masterpiece, best quality, ultra-detailed, cinematic lighting, moody atmosphere, slow motion, highly detailed textures, smooth camera movement">
         
         <div class="button-group">
-            <button id="generateBtn" onclick="generatePrompts()">API로 프롬프트 생성</button>
-            <button class="secondary-btn" onclick="copySystemPrompt()">수동용 지시문 복사 (API 미사용 시)</button>
+            <button id="generateBtn" onclick="generatePrompts()">🚀 프롬프트 생성</button>
+            <button class="secondary-btn" onclick="copySystemPrompt()">📋 수동용 지시문 복사</button>
         </div>
-        <div id="loading">AI가 문맥을 분석하여 시퀀스를 구성 중입니다... (최대 10~30초 소요)</div>
+        <div id="loading">⏳ 분석 중입니다... (잠시만 기다려주세요)</div>
     </div>
 
     <div class="panel" id="resultPanel" style="display: none;">
-        <h2>생성된 씬 시퀀스 (5초 단위)</h2>
-        <div id="sceneList" class="scene-list">
-            <!-- 씬 카드가 동적으로 추가됩니다 -->
-        </div>
+        <h2>🎞️ 생성된 씬 시퀀스 (5초 단위)</h2>
+        <div id="sceneList" class="scene-list"></div>
     </div>
 </div>
 
 <script>
+    // ==========================================
+    // 1. UI 토글 및 헬퍼 함수
+    // ==========================================
     function toggleApiInfo() {
         const provider = document.getElementById('apiProvider').value;
         const label = document.getElementById('apiKeyLabel');
         const note = document.getElementById('deepseekNote');
-        
-        if (provider.includes('gemini')) {
+        const keyArea = document.getElementById('apiKeyArea');
+        const hint = document.getElementById('modeHint');
+
+        if (provider === 'offline') {
+            keyArea.style.display = 'none';
+            note.style.display = 'none';
+            hint.innerHTML = '✅ 현재 <strong>오프라인 분석</strong> 모드입니다. 시의 키워드를 분석하여 자동으로 프롬프트를 생성합니다. API 키가 필요 없습니다.';
+            hint.style.borderLeftColor = '#4CAF50';
+        } else if (provider === 'gemini') {
+            keyArea.style.display = 'block';
             label.innerText = 'Google Gemini API Key';
             note.style.display = 'none';
+            hint.innerHTML = '🔑 <strong>Gemini API</strong> 모드입니다. 정확한 분석을 위해 AI가 시를 해석합니다. API 키가 필요합니다.';
+            hint.style.borderLeftColor = '#3b82f6';
         } else {
+            keyArea.style.display = 'block';
             label.innerText = 'DeepSeek API Key';
             note.style.display = 'block';
+            hint.innerHTML = '🔑 <strong>DeepSeek API</strong> 모드입니다. 뛰어난 추론 능력으로 분석하지만, 브라우저 CORS 제한이 있을 수 있습니다.';
+            hint.style.borderLeftColor = '#f97316';
         }
     }
 
     function copySystemPrompt() {
         const story = document.getElementById('storyInput').value;
         const style = document.getElementById('baseStyle').value;
-        const manualPrompt = `다음 한국어 시/스토리를 분석하여 비디오 AI 생성용(ComfyUI Minimax H3 모델) 5초 단위 영문 프롬프트 시퀀스로 나누어주세요.
+        const manualPrompt = `다음 한국어 시/스토리를 분석하여 비디오 AI 생성용(Minimax H3) 5초 단위 영문 프롬프트 시퀀스로 나누어주세요.
 
-[작업 조건]
-1. 각 씬은 5초 단위의 클립으로 가정합니다.
-2. 모든 영문 프롬프트 끝에 다음 스타일을 반드시 포함할 것: ", ${style}"
-3. 피사체, 조명, 환경요소, 카메라 움직임을 구체적으로 포함할 것.
+[조건]
+1. 각 씬은 5초 단위 클립.
+2. 모든 프롬프트 끝에 다음 스타일 포함: ", ${style}"
+3. 피사체, 조명, 환경, 카메라 움직임 구체적으로 서술.
+4. 출력은 JSON 배열: [{"time": "0s-5s", "korean_text": "...", "prompt": "..."}]
 
-[원본 텍스트]
-${story}
-
-출력은 각 씬별로 "원문 구절"과 "영문 프롬프트"가 구분되도록 작성해주세요. JSON 포맷으로 작성해주면 더욱 좋습니다.`;
-        navigator.clipboard.writeText(manualPrompt).then(() => alert('클립보드에 복사되었습니다.'));
+[원문]
+${story}`;
+        navigator.clipboard.writeText(manualPrompt).then(() => alert('클립보드에 복사되었습니다. (수동으로 API에 붙여넣기 하세요)'));
     }
 
+    function copyPrompt(elementId) {
+        const text = document.getElementById(elementId).innerText;
+        navigator.clipboard.writeText(text).then(() => {
+            const btn = document.querySelector(`#${elementId}`).nextElementSibling;
+            const original = btn.innerText;
+            btn.innerText = '✅ 복사됨!';
+            btn.style.backgroundColor = '#45a049';
+            setTimeout(() => { btn.innerText = original; btn.style.backgroundColor = ''; }, 1500);
+        });
+    }
+
+    // ==========================================
+    // 2. 오프라인 분석 엔진 (키워드 기반)
+    // ==========================================
+    function offlineAnalyze(story, style) {
+        // 연(문단) 단위로 분할 (빈 줄 기준)
+        const stanzas = story.split(/\n\s*\n/).filter(s => s.trim().length > 0);
+        if (stanzas.length === 0) {
+            // 빈 줄이 없으면 라인 단위로 분할
+            const lines = story.split('\n').filter(s => s.trim().length > 0);
+            if (lines.length === 0) return [];
+            // 4줄씩 묶어서 연으로 처리
+            for (let i = 0; i < lines.length; i += 4) {
+                stanzas.push(lines.slice(i, i + 4).join('\n'));
+            }
+        }
+
+        // 키워드 -> 시각적 묘사 매핑
+        const keywordMap = {
+            '산': 'towering mountain peaks, rugged rocky terrain, misty valleys, ancient pine trees silhouetted against the sky',
+            '바다': 'vast open ocean, deep blue rolling waves, infinite horizon, dramatic sea cliffs, sparkling water surface',
+            '배': 'traditional wooden boat, gently drifting on the water, warm lantern light reflecting on the hull, creaking ropes',
+            '물새': 'solitary dark water bird, sleek silhouette, long neck, floating motionless on the glassy surface, echoing cry',
+            '밤': 'deep dark night sky, moonless, starry canopy, deep shadows, mysterious twilight glow',
+            '안개': 'thick rolling fog, mysterious atmosphere, obscured distant shapes, soft diffused light, ethereal mist',
+            '물결': 'gentle ripples, soft waves lapping against the shore, fluid continuous motion, shimmering reflections',
+            '노래': 'distant melody, haunting vocal harmony, echoing across the water, emotional resonance',
+            '마을': 'quaint coastal village, warm glowing windows, clustered houses, peaceful harbor',
+            '하늘': 'expansive sky, soft clouds drifting, celestial gradient from deep blue to warm twilight',
+            '꿈': 'dreamlike quality, surreal atmosphere, soft focus, floating ethereal imagery',
+            '가랑잎': 'dry fallen leaf, drifting on the water, fragile and solitary, spinning slowly in the current'
+        };
+
+        // 카메라 움직임 풀
+        const cameraMoves = [
+            'The camera slowly pushes in with small amplitude toward the main subject.',
+            'The camera pans left with medium amplitude at slow speed, revealing the expansive landscape.',
+            'The camera trucks right smoothly, following the movement of the subject.',
+            'A slow tracking shot follows the subject as it drifts across the frame.',
+            'The camera pulls out with large amplitude at slow speed, emphasizing the vastness of the scene.',
+            'The camera holds a static wide shot, allowing the atmosphere to settle.',
+            'The camera tilts up slowly, revealing the sky and distant horizon.',
+            'The camera arcs around the subject, capturing it from multiple angles.'
+        ];
+
+        const scenes = [];
+        let currentTime = 0;
+        const duration = 5; // 5초 단위
+
+        stanzas.forEach((stanza, idx) => {
+            const lines = stanza.split('\n').filter(l => l.trim().length > 0);
+            const combined = lines.join(' ');
+            
+            // 키워드 추출 및 시각화
+            let visualDesc = [];
+            let foundKeywords = [];
+            for (const [keyword, desc] of Object.entries(keywordMap)) {
+                if (combined.includes(keyword)) {
+                    visualDesc.push(desc);
+                    foundKeywords.push(keyword);
+                }
+            }
+
+            // 키워드가 하나도 없으면 일반적인 분위기 설명
+            if (visualDesc.length === 0) {
+                visualDesc.push('a serene and melancholic natural landscape, quiet and introspective atmosphere, soft muted colors');
+            }
+
+            // 카메라 움직임 선택 (순환)
+            const cam = cameraMoves[idx % cameraMoves.length];
+
+            // 분위기 추론 (키워드 기반)
+            let mood = 'melancholic, serene, poetic, reflective';
+            if (foundKeywords.some(k => ['밤', '어두운', '안개'].includes(k))) mood = 'dark, mysterious, atmospheric, hauntingly beautiful';
+            if (foundKeywords.some(k => ['배', '물결', '바다'].includes(k))) mood = 'fluid, drifting, boundless, contemplative';
+            if (foundKeywords.some(k => ['산', '하늘'].includes(k))) mood = 'epic, vast, majestic, awe-inspiring';
+
+            // 시간 포맷
+            const startTime = currentTime;
+            const endTime = currentTime + duration;
+            const timeStr = `${startTime}s - ${endTime}s`;
+            currentTime += duration;
+
+            // 프롬프트 조합 (영문)
+            const visualText = visualDesc.slice(0, 2).join('. ') + '.';
+            const prompt = `[Shot ${idx+1}] A cinematic, live-action shot. ${visualText} ${cam} The scene embodies a ${mood} mood. Soft, diffused lighting enhances the texture of the environment. ${style}`;
+
+            scenes.push({
+                time: timeStr,
+                korean_text: combined.length > 50 ? combined.substring(0, 50) + '...' : combined,
+                prompt: prompt
+            });
+        });
+
+        return scenes;
+    }
+
+    // ==========================================
+    // 3. 메인 생성 함수 (API + 오프라인)
+    // ==========================================
     async function generatePrompts() {
         const provider = document.getElementById('apiProvider').value;
-        let apiKey = document.getElementById('apiKey').value.trim();
+        const apiKey = document.getElementById('apiKey').value;
         const story = document.getElementById('storyInput').value;
         const style = document.getElementById('baseStyle').value;
         const btn = document.getElementById('generateBtn');
@@ -264,8 +370,8 @@ ${story}
         const resultPanel = document.getElementById('resultPanel');
         const sceneList = document.getElementById('sceneList');
 
-        if (!apiKey) {
-            alert('API 키를 입력해주세요.');
+        if (!story.trim()) {
+            alert('원문 텍스트를 입력해주세요.');
             return;
         }
 
@@ -274,29 +380,28 @@ ${story}
         resultPanel.style.display = 'none';
         sceneList.innerHTML = '';
 
-        const systemInstruction = `You are an expert video prompt engineer for the Minimax H3 Video generation model in ComfyUI.
-Task: Break down the provided Korean poem into a sequence of continuous 5-second video scenes.
-For each scene, translate the original text's mood into a highly descriptive visual English prompt.
-Crucial: Append this exact base style string to the END of EVERY generated prompt: ", ${style}".
-Ensure visual consistency across scenes, tracking the progression of time and location. Include specific camera movements.
-
-Return ONLY a valid JSON array of objects with the following format, with NO markdown formatting blocks:
-[
-  {
-    "time": "0s - 5s",
-    "korean_text": "원문 한 줄 또는 연",
-    "prompt": "Highly detailed english visual description of the scene, camera movement, lighting, ${style}"
-  }
-]`;
-
         try {
-            let responseText = "";
+            let scenes = [];
 
-            if (provider.includes('gemini')) {
-                // 동적으로 선택한 모델명이 URL에 정확히 삽입되도록 함
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/${provider}:generateContent?key=${apiKey}`;
-                
-                const response = await fetch(url, {
+            // ========== 오프라인 모드 ==========
+            if (provider === 'offline') {
+                await new Promise(resolve => setTimeout(resolve, 500)); // 약간의 딜레이 (UX)
+                scenes = offlineAnalyze(story, style);
+                if (scenes.length === 0) throw new Error('오프라인 분석 실패: 텍스트를 인식할 수 없습니다.');
+            }
+
+            // ========== Gemini API ==========
+            else if (provider === 'gemini') {
+                if (!apiKey) throw new Error('Gemini API 키를 입력해주세요.');
+
+                const systemInstruction = `You are an expert video prompt engineer for Minimax H3.
+Follow the VIDEO_PROMPT_WRITING_GUIDE strictly.
+Break down the Korean poem into 5-second video scenes.
+Each prompt must be in English, highly descriptive (visuals, camera movement, lighting, mood).
+Append this exact style to EVERY prompt: ", ${style}".
+Return ONLY a valid JSON array: [{"time": "0s-5s", "korean_text": "...", "prompt": "..."}]`;
+
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -304,18 +409,33 @@ Return ONLY a valid JSON array of objects with the following format, with NO mar
                         generationConfig: { response_mime_type: "application/json" }
                     })
                 });
-                
-                const data = await response.json();
-                
-                if (data.error) {
-                    throw new Error(data.error.message);
+
+                if (!response.ok) {
+                    const err = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${err}`);
                 }
-                responseText = data.candidates[0].content.parts[0].text;
-            } 
+
+                const data = await response.json();
+                if (data.error) throw new Error(data.error.message);
+                const raw = data.candidates[0].content.parts[0].text;
+                scenes = JSON.parse(raw);
+                if (!Array.isArray(scenes)) throw new Error('응답이 배열이 아닙니다.');
+            }
+
+            // ========== DeepSeek API ==========
             else if (provider === 'deepseek') {
+                if (!apiKey) throw new Error('DeepSeek API 키를 입력해주세요.');
+
+                const systemInstruction = `You are an expert video prompt engineer for Minimax H3.
+Follow the VIDEO_PROMPT_WRITING_GUIDE strictly.
+Break down the Korean poem into 5-second video scenes.
+Each prompt must be in English, highly descriptive (visuals, camera movement, lighting, mood).
+Append this exact style to EVERY prompt: ", ${style}".
+Return ONLY a valid JSON array: [{"time": "0s-5s", "korean_text": "...", "prompt": "..."}]`;
+
                 const response = await fetch('https://api.deepseek.com/chat/completions', {
                     method: 'POST',
-                    headers: { 
+                    headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${apiKey}`
                     },
@@ -328,13 +448,19 @@ Return ONLY a valid JSON array of objects with the following format, with NO mar
                         response_format: { type: "json_object" }
                     })
                 });
+
+                if (!response.ok) {
+                    const err = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${err}`);
+                }
+
                 const data = await response.json();
                 if (data.error) throw new Error(data.error.message);
                 
-                let tempText = data.choices[0].message.content;
-                tempText = tempText.replace(/```json/g, "").replace(/```/g, "").trim();
+                let temp = data.choices[0].message.content;
+                temp = temp.replace(/```json/g, '').replace(/```/g, '').trim();
+                let parsed = JSON.parse(temp);
                 
-                let parsed = JSON.parse(tempText);
                 if (!Array.isArray(parsed) && typeof parsed === 'object') {
                     const keys = Object.keys(parsed);
                     if (keys.length > 0 && Array.isArray(parsed[keys[0]])) {
@@ -342,24 +468,29 @@ Return ONLY a valid JSON array of objects with the following format, with NO mar
                     } else {
                         parsed = [parsed];
                     }
-                    responseText = JSON.stringify(parsed);
-                } else {
-                    responseText = tempText;
                 }
+                scenes = parsed;
+                if (!Array.isArray(scenes)) throw new Error('응답이 배열이 아닙니다.');
             }
 
-            const scenes = JSON.parse(responseText);
+            // ========== 결과 렌더링 ==========
+            if (!scenes || scenes.length === 0) throw new Error('생성된 씬이 없습니다.');
 
             scenes.forEach((scene, index) => {
                 const card = document.createElement('div');
                 card.className = 'scene-card';
+                
+                // 프롬프트 내부의 ${style} 치환 (혹시 남아있을 경우)
+                let finalPrompt = scene.prompt;
+                finalPrompt = finalPrompt.replace(/\$\{style\}/g, style);
+                
                 card.innerHTML = `
                     <div class="scene-header">
-                        <span class="scene-time">Scene ${index + 1} [${scene.time}]</span>
+                        <span class="scene-time">🎬 Scene ${index + 1} [${scene.time}]</span>
                     </div>
-                    <div class="scene-source">"${scene.korean_text}"</div>
-                    <div class="scene-prompt" id="prompt-${index}">${scene.prompt}</div>
-                    <button class="copy-btn" onclick="copyPrompt('prompt-${index}')">프롬프트 복사</button>
+                    <div class="scene-source">📝 "${scene.korean_text}"</div>
+                    <div class="scene-prompt" id="prompt-${index}">${finalPrompt}</div>
+                    <button class="copy-btn" onclick="copyPrompt('prompt-${index}')">📋 프롬프트 복사</button>
                 `;
                 sceneList.appendChild(card);
             });
@@ -367,26 +498,18 @@ Return ONLY a valid JSON array of objects with the following format, with NO mar
             resultPanel.style.display = 'block';
 
         } catch (error) {
-            alert('API 호출 중 오류가 발생했습니다.\n\n상세 원인: ' + error.message);
+            alert('❌ 오류 발생:\n\n' + error.message + '\n\n💡 오프라인 모드로 전환하거나, 텍스트를 확인해보세요.');
         } finally {
             btn.disabled = false;
             loading.style.display = 'none';
         }
     }
 
-    function copyPrompt(elementId) {
-        const text = document.getElementById(elementId).innerText;
-        navigator.clipboard.writeText(text).then(() => {
-            const btn = document.querySelector(`#${elementId}`).nextElementSibling;
-            const originalText = btn.innerText;
-            btn.innerText = '복사 완료!';
-            btn.style.backgroundColor = '#45a049';
-            setTimeout(() => {
-                btn.innerText = originalText;
-                btn.style.backgroundColor = 'var(--accent-color)';
-            }, 1500);
-        });
-    }
+    // 페이지 로드 시 초기화
+    window.onload = function() {
+        toggleApiInfo();
+    };
 </script>
+
 </body>
 </html>
