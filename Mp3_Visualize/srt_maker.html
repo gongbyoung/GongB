@@ -48,7 +48,25 @@ textarea {
   display: flex; flex-direction: column; gap: 15px;
 }
 .progress-bar { width: 100%; height: 6px; background: #222; cursor: pointer; position: relative; }
-.progress-fill { height: 100%; background: var(--accent); width: 0%; }
+.progress-fill { height: 100%; background: var(--accent); width: 0%; pointer-events: none; }
+
+/* 새로 추가된 마커 스타일 */
+.marker {
+  position: absolute;
+  top: -5px;
+  width: 10px;
+  height: 16px;
+  background: #ff2a6d;
+  border: 1px solid #fff;
+  cursor: ew-resize;
+  z-index: 10;
+  transform: translateX(-50%);
+  border-radius: 2px;
+}
+.marker.end-marker {
+  background: var(--accent);
+}
+.marker:hover { transform: translateX(-50%) scale(1.2); z-index: 11; }
 
 .btns { display: flex; gap: 10px; align-items: center; }
 .btn { 
@@ -77,7 +95,9 @@ mark { background: var(--accent); color: #000; padding: 0 4px; }
     <h3>1. 가사 입력 (한 줄에 한 문장)</h3>
     <textarea id="lyricInput" placeholder="노래 가사를 여기에 복사해서 붙여넣으세요.&#10;엔터로 줄바꿈된 한 줄이 하나의 자막 단위가 됩니다."></textarea>
     <div class="instruction">
-      * <mark>SPACE</mark> 또는 <mark>SYNC 버튼</mark>을 누를 때마다 현재 가사의 시작 시간이 기록됩니다.
+      * <mark>SPACE</mark>를 누를 때마다 현재 가사의 시작 시간이 기록됩니다.<br>
+      * 마지막 가사 싱크 후 <b>SPACE를 한 번 더 누르면</b> 마지막 자막이 종료됩니다.<br>
+      * 완료 후 하단 <b>슬라이더의 마커를 드래그</b>하여 미세조정할 수 있습니다.
     </div>
   </div>
 
@@ -89,8 +109,9 @@ mark { background: var(--accent); color: #000; padding: 0 4px; }
 </div>
 
 <div class="player-box">
-  <div class="progress-bar" onclick="seek(event)">
+  <div class="progress-bar" id="progressBar" onclick="seek(event)">
     <div class="progress-fill" id="progFill"></div>
+    <!-- 마커들이 여기에 동적으로 생성됩니다 -->
   </div>
   
   <div class="btns">
@@ -114,13 +135,13 @@ function loadAudio(files) {
   const url = URL.createObjectURL(files[0]);
   audio.src = url;
   document.getElementById('loadBtn').textContent = files[0].name;
+  clearWork();
 }
 
 function togglePlay() {
   if (audio.paused) {
     audio.play();
     document.getElementById('playBtn').textContent = "PAUSE";
-    // 싱크 작업 시작을 위해 가사 배열 준비
     if (srtResults.length === 0) {
       lyrics = document.getElementById('lyricInput').value.split('\n').filter(l => l.trim() !== "");
       currentLineIdx = 0;
@@ -132,20 +153,43 @@ function togglePlay() {
 }
 
 function formatTime(seconds) {
-  const date = new Date(seconds * 1000);
-  const hh = String(Math.floor(seconds / 3600)).padStart(2, '0');
-  const mm = String(date.getUTCMinutes()).padStart(2, '0');
-  const ss = String(date.getUTCSeconds()).padStart(2, '0');
-  const ms = String(date.getUTCMilliseconds()).padStart(3, '0');
-  return `${hh}:${mm}:${ss},${ms}`;
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  const ms = Math.floor((seconds % 1) * 1000);
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(ms).padStart(3, '0')}`;
+}
+
+// "00:00:10,500" 형식을 다시 초(seconds)로 변환
+function timeToSeconds(timeStr) {
+  const parts = timeStr.split(',');
+  const hms = parts[0].split(':');
+  const sec = parseInt(hms[0], 10) * 3600 + parseInt(hms[1], 10) * 60 + parseInt(hms[2], 10);
+  const ms = parseInt(parts[1], 10) / 1000;
+  return sec + ms;
 }
 
 function markSync() {
-  if (audio.paused || currentLineIdx >= lyrics.length) return;
-
+  if (audio.paused) return;
   const currentTime = audio.currentTime;
   
-  // 이전 라인의 종료 시간을 현재 라인의 시작 시간으로 설정
+  // 1. 가사를 모두 입력한 뒤, 마지막 자막의 끝나는 시간을 설정하는 처리
+  if (currentLineIdx === lyrics.length) {
+    if (srtResults.length > 0) {
+      srtResults[srtResults.length - 1].end = formatTime(currentTime);
+      updateSRTDisplay();
+      renderMarkers();
+    }
+    currentLineIdx++; // 더 이상 실행되지 않도록 인덱스 증가
+    audio.pause();
+    document.getElementById('playBtn').textContent = "PLAY";
+    return;
+  }
+
+  // 이미 마지막 종료 마커까지 다 찍은 상태라면 무시
+  if (currentLineIdx > lyrics.length) return; 
+
+  // 2. 가사 싱크 입력 처리
   if (currentLineIdx > 0) {
     srtResults[currentLineIdx - 1].end = formatTime(currentTime - 0.001);
   }
@@ -153,15 +197,13 @@ function markSync() {
   srtResults.push({
     index: currentLineIdx + 1,
     start: formatTime(currentTime),
-    end: formatTime(currentTime + 2), // 임시 종료 시간 (다음 클릭 시 수정됨)
+    end: formatTime(currentTime + 2), 
     text: lyrics[currentLineIdx]
   });
 
   currentLineIdx++;
   updateSRTDisplay();
-  
-  // 가사 입력창에서 현재 진행중인 줄 강조(심플하게 구현)
-  console.log("Synced:", lyrics[currentLineIdx-1]);
+  renderMarkers();
 }
 
 function updateSRTDisplay() {
@@ -173,18 +215,7 @@ function updateSRTDisplay() {
   document.getElementById('srtOutput').scrollTop = document.getElementById('srtOutput').scrollHeight;
 }
 
-function downloadSRT() {
-  const content = document.getElementById('srtOutput').value;
-  if (!content) return;
-  const blob = new Blob([content], { type: 'text/plain' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = "subtitle.srt";
-  a.click();
-}
-
-// 오디오 업데이트
+// 오디오 진행상태
 audio.ontimeupdate = () => {
   const p = (audio.currentTime / audio.duration) * 100;
   document.getElementById('progFill').style.width = p + "%";
@@ -192,6 +223,7 @@ audio.ontimeupdate = () => {
 };
 
 function seek(e) {
+  if (isDraggingMarker) return; // 마커 드래그 중에는 탐색 방지
   const rect = e.target.getBoundingClientRect();
   const p = (e.clientX - rect.left) / rect.width;
   audio.currentTime = p * audio.duration;
@@ -211,6 +243,112 @@ function clearWork() {
   srtResults = [];
   currentLineIdx = 0;
   document.getElementById('srtOutput').value = "";
+  renderMarkers();
+}
+
+/* ================================
+   마커 드래그 시스템 (미세 조정 기능)
+=================================== */
+let isDraggingMarker = false;
+let dragIndex = -1;
+let isDraggingEndMarker = false;
+
+function renderMarkers() {
+  const bar = document.getElementById('progressBar');
+  // 기존 마커 삭제
+  bar.querySelectorAll('.marker').forEach(m => m.remove());
+  if (!audio.duration) return;
+
+  // 시작 마커들 렌더링
+  srtResults.forEach((item, i) => {
+    let p = (timeToSeconds(item.start) / audio.duration) * 100;
+    let marker = document.createElement('div');
+    marker.className = 'marker';
+    marker.style.left = p + '%';
+    marker.title = `자막 ${item.index} 조절`;
+
+    marker.onmousedown = (e) => {
+      e.stopPropagation();
+      isDraggingMarker = true;
+      dragIndex = i;
+      isDraggingEndMarker = false;
+    };
+    bar.appendChild(marker);
+  });
+
+  // 최종 종료 마커 렌더링 (마지막 스페이스바를 누른 후)
+  if (srtResults.length > 0 && currentLineIdx > lyrics.length) {
+    let lastItem = srtResults[srtResults.length - 1];
+    let p = (timeToSeconds(lastItem.end) / audio.duration) * 100;
+    let endMarker = document.createElement('div');
+    endMarker.className = 'marker end-marker';
+    endMarker.style.left = p + '%';
+    endMarker.title = `최종 종료 시간 조절`;
+
+    endMarker.onmousedown = (e) => {
+      e.stopPropagation();
+      isDraggingMarker = true;
+      dragIndex = srtResults.length - 1;
+      isDraggingEndMarker = true;
+    };
+    bar.appendChild(endMarker);
+  }
+}
+
+window.addEventListener('mousemove', (e) => {
+  if (!isDraggingMarker || !audio.duration) return;
+  
+  const bar = document.getElementById('progressBar');
+  const rect = bar.getBoundingClientRect();
+  let p = (e.clientX - rect.left) / rect.width;
+  p = Math.max(0, Math.min(1, p));
+  let newTime = p * audio.duration;
+
+  // 마커가 순서를 엇갈리지 않도록 최소/최대 시간 제한 (Clamping)
+  let minTime = 0;
+  let maxTime = audio.duration;
+
+  if (isDraggingEndMarker) {
+    minTime = timeToSeconds(srtResults[dragIndex].start);
+  } else {
+    if (dragIndex > 0) minTime = timeToSeconds(srtResults[dragIndex - 1].start);
+    if (dragIndex < srtResults.length - 1) {
+      maxTime = timeToSeconds(srtResults[dragIndex + 1].start);
+    } else if (currentLineIdx > lyrics.length) {
+      maxTime = timeToSeconds(srtResults[dragIndex].end);
+    }
+  }
+
+  // 서로 겹치지 않게 0.01초 간격 유지
+  newTime = Math.max(minTime + 0.01, Math.min(maxTime - 0.01, newTime));
+
+  // 데이터 업데이트
+  if (isDraggingEndMarker) {
+    srtResults[dragIndex].end = formatTime(newTime);
+  } else {
+    srtResults[dragIndex].start = formatTime(newTime);
+    if (dragIndex > 0) {
+      srtResults[dragIndex - 1].end = formatTime(newTime - 0.001);
+    }
+  }
+
+  renderMarkers();
+  updateSRTDisplay();
+});
+
+window.addEventListener('mouseup', () => {
+  isDraggingMarker = false;
+});
+
+function downloadSRT() {
+  const content = document.getElementById('srtOutput').value;
+  if (!content) return;
+  const blob = new Blob([content], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = "subtitle.srt";
+  a.click();
 }
 </script>
 </body>
