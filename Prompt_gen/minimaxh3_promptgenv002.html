@@ -3,13 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Minimax H3 Prompt Generator (콤보박스 스타일)</title>
+    <title>Minimax H3 + Krea 2 Prompt Generator</title>
     <style>
         :root {
             --bg-color: #1e1e1e;
             --panel-bg: #2b2b2b;
             --border-color: #444;
             --accent-color: #4CAF50;
+            --krea-color: #ff6b6b;
             --text-main: #eeeeee;
             --text-muted: #aaaaaa;
         }
@@ -79,15 +80,16 @@
         .secondary-btn { background-color: #555; }
         .secondary-btn:hover { background-color: #666; }
         .button-group { display: flex; gap: 10px; flex-wrap: wrap; }
-        .scene-list { display: flex; flex-direction: column; gap: 15px; }
-        .scene-card {
+        .scene-list, .krea-list { display: flex; flex-direction: column; gap: 15px; margin-top: 10px; }
+        .scene-card, .krea-card {
             background-color: #222;
-            border-left: 4px solid var(--accent-color);
             border-radius: 4px;
             padding: 15px;
             position: relative;
         }
-        .scene-header {
+        .scene-card { border-left: 4px solid var(--accent-color); }
+        .krea-card { border-left: 4px solid var(--krea-color); }
+        .scene-header, .krea-header {
             display: flex;
             justify-content: space-between;
             margin-bottom: 10px;
@@ -95,13 +97,14 @@
             padding-bottom: 5px;
         }
         .scene-time { font-weight: bold; color: var(--accent-color); }
-        .scene-source {
+        .krea-title { font-weight: bold; color: var(--krea-color); }
+        .scene-source, .krea-source {
             font-style: italic;
             color: var(--text-muted);
             margin-bottom: 10px;
             font-size: 13px;
         }
-        .scene-prompt {
+        .scene-prompt, .krea-prompt {
             background: #111;
             padding: 10px;
             border-radius: 4px;
@@ -140,7 +143,6 @@
             margin-bottom: 15px;
             font-size: 13px;
         }
-        /* 콤보박스 그리드 */
         .style-selector-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -169,6 +171,14 @@
         .custom-style-input input {
             margin-bottom: 0;
         }
+        .badge-krea {
+            background: var(--krea-color);
+            color: #fff;
+            font-size: 11px;
+            padding: 2px 10px;
+            border-radius: 20px;
+            display: inline-block;
+        }
         @media (max-width: 680px) {
             .style-selector-grid { grid-template-columns: 1fr; }
         }
@@ -178,8 +188,8 @@
 
 <div class="container">
     <div class="header">
-        <h1>🎬 Minimax H3 Prompt Generator</h1>
-        <p>Gemini / DeepSeek API 또는 <strong>완전 오프라인 분석</strong>으로 스토리에서 5초 단위 비디오 프롬프트를 추출합니다.</p>
+        <h1>🎬 Minimax H3 + Krea 2 Prompt Generator</h1>
+        <p>스토리 분석으로 5초 단위 비디오 프롬프트 + Krea 2용 이미지 프롬프트 2개를 자동 생성합니다.</p>
     </div>
 
     <div class="panel">
@@ -219,7 +229,6 @@
 저 멀리 한바다로 아주 바다로
 마치 가랑잎같이 떠나갑니다</textarea>
 
-        <!-- ========== 콤보박스 영역 ========== -->
         <label>🎨 일관된 아트 스타일 및 카메라 설정 (Global Prompt)</label>
         <div class="style-selector-grid">
             <div class="style-group">
@@ -269,7 +278,6 @@
             </div>
         </div>
 
-        <!-- 직접 수정할 수 있는 입력창 (선택) -->
         <div class="custom-style-input">
             <label for="baseStyleCustom">✏️ 직접 스타일 수정 (위 콤보박스 선택 후 자동 생성됨)</label>
             <input type="text" id="baseStyleCustom" placeholder="위에서 선택한 옵션이 자동으로 조합됩니다..." readonly style="background:#111; color:#aaa; cursor:default;">
@@ -283,8 +291,17 @@
     </div>
 
     <div class="panel" id="resultPanel" style="display: none;">
-        <h2>🎞️ 생성된 씬 시퀀스 (5초 단위)</h2>
-        <div id="sceneList" class="scene-list"></div>
+        <!-- Krea 2 이미지 프롬프트 영역 -->
+        <div style="margin-bottom: 25px;">
+            <h2>🖼️ Krea 2 이미지 프롬프트 (키프레임 참고용) <span class="badge-krea">2개 생성</span></h2>
+            <div id="kreaList" class="krea-list"></div>
+        </div>
+
+        <!-- 비디오 프롬프트 영역 -->
+        <div>
+            <h2>🎞️ 생성된 비디오 씬 시퀀스 (5초 단위)</h2>
+            <div id="sceneList" class="scene-list"></div>
+        </div>
     </div>
 </div>
 
@@ -317,10 +334,9 @@
             hint.innerHTML = '🔑 <strong>DeepSeek API</strong> 모드입니다. 뛰어난 추론 능력으로 분석하지만, 브라우저 CORS 제한이 있을 수 있습니다.';
             hint.style.borderLeftColor = '#f97316';
         }
-        updateCustomStyle(); // 콤보박스 값 업데이트
+        updateCustomStyle();
     }
 
-    // 콤보박스 선택 시 커스텀 입력창 업데이트
     function updateCustomStyle() {
         const art = document.getElementById('artStyle').value;
         const angle = document.getElementById('cameraAngle').value;
@@ -330,22 +346,93 @@
         document.getElementById('baseStyleCustom').value = combined;
     }
 
-    // 콤보박스에 change 이벤트 연결
     document.addEventListener('DOMContentLoaded', function() {
         const selects = ['artStyle', 'cameraAngle', 'cameraMovement', 'lightingMood'];
         selects.forEach(id => {
             document.getElementById(id).addEventListener('change', updateCustomStyle);
         });
-        updateCustomStyle(); // 초기값 설정
+        updateCustomStyle();
     });
 
-    // Global Prompt 조합 함수 (실제 사용)
     function getGlobalPrompt() {
         return document.getElementById('baseStyleCustom').value;
     }
 
     // ==========================================
-    // 2. 오프라인 분석 엔진 (키워드 기반)
+    // 2. Krea 2 이미지 프롬프트 생성 엔진 (오프라인)
+    // ==========================================
+    function generateKreaPrompts(story, style) {
+        const lines = story.split('\n').filter(l => l.trim().length > 0);
+        const total = lines.length;
+        const mid = Math.floor(total / 2);
+
+        // 앞부분 (도입부)
+        const firstHalf = lines.slice(0, mid).join(' ');
+        // 뒷부분 (클라이맥스)
+        const secondHalf = lines.slice(mid).join(' ');
+
+        // 키워드 기반 시각화
+        const descMap = {
+            '산': 'towering mountain peaks, rugged terrain, misty valleys',
+            '바다': 'vast open ocean, deep blue rolling waves, infinite horizon',
+            '마을': 'quaint coastal village, warm glowing windows, peaceful harbor',
+            '하늘': 'expansive twilight sky, soft clouds drifting, celestial gradient',
+            '꿈': 'dreamlike quality, surreal atmosphere, soft focus, floating ethereal',
+            '모래': 'white sandy shore, soft fine grains, gentle texture',
+            '노래': 'distant melody, haunting vocal harmony, emotional resonance',
+            '안개': 'thick rolling fog, mysterious atmosphere, diffused light',
+            '물꽃': 'scattered sea foam, delicate white spray, gentle ripples',
+            '밤': 'deep dark night sky, moonless, starry canopy, deep shadows',
+            '물새': 'solitary dark water bird, sleek silhouette, long neck, floating',
+            '물결': 'gentle ripples, soft waves lapping, fluid motion',
+            '배': 'traditional wooden boat, warm lantern light, creaking ropes',
+            '가랑잎': 'dry fallen leaf, drifting on the water, fragile and solitary'
+        };
+
+        function buildImagePrompt(text, moodType) {
+            let visualElems = [];
+            for (const [key, val] of Object.entries(descMap)) {
+                if (text.includes(key)) {
+                    visualElems.push(val);
+                }
+            }
+            if (visualElems.length === 0) {
+                visualElems.push('serene and melancholic natural landscape, quiet introspective atmosphere');
+            }
+            // 중복 제거 및 앞 5개만 사용
+            const unique = [...new Set(visualElems)];
+            const selected = unique.slice(0, 5).join('. ');
+            
+            let mood = '';
+            if (moodType === 'opening') {
+                mood = 'hopeful, dreamy, expansive, luminous, soft golden light, twilight atmosphere';
+            } else {
+                mood = 'melancholic, dark, mysterious, atmospheric, haunting, deep blue and black tones, dramatic shadows';
+            }
+
+            // Krea 2는 일반적으로 비디오 프롬프트보다 간결하고 정적인 묘사에 집중
+            return `A breathtaking cinematic still image. ${selected}. The scene embodies a ${mood} mood. The composition is perfectly balanced, with rich textures and subtle color grading. ${style}`;
+        }
+
+        const prompt1 = buildImagePrompt(firstHalf || lines.slice(0, 2).join(' '), 'opening');
+        const prompt2 = buildImagePrompt(secondHalf || lines.slice(-2).join(' '), 'closing');
+
+        return [
+            {
+                title: '🎨 Krea Prompt 1 (Opening / 도입부)',
+                desc: firstHalf.slice(0, 40) + '...',
+                prompt: prompt1
+            },
+            {
+                title: '🎨 Krea Prompt 2 (Climax / 클라이맥스)',
+                desc: secondHalf.slice(0, 40) + '...',
+                prompt: prompt2
+            }
+        ];
+    }
+
+    // ==========================================
+    // 3. 오프라인 비디오 분석 엔진
     // ==========================================
     function offlineAnalyze(story, style) {
         const stanzas = story.split(/\n\s*\n/).filter(s => s.trim().length > 0);
@@ -416,7 +503,6 @@
             currentTime += duration;
 
             const visualText = visualDesc.slice(0, 2).join('. ') + '.';
-            // 스타일을 프롬프트 끝에 추가 (콤보박스 스타일)
             const prompt = `[Shot ${idx+1}] A cinematic, live-action shot. ${visualText} ${cam} The scene embodies a ${mood} mood. Soft, diffused lighting enhances the texture of the environment. ${style}`;
 
             scenes.push({
@@ -429,6 +515,9 @@
         return scenes;
     }
 
+    // ==========================================
+    // 4. 공통 유틸리티
+    // ==========================================
     function copySystemPrompt() {
         const story = document.getElementById('storyInput').value;
         const style = getGlobalPrompt();
@@ -457,17 +546,18 @@ ${story}`;
     }
 
     // ==========================================
-    // 3. 메인 생성 함수 (API + 오프라인)
+    // 5. 메인 생성 함수
     // ==========================================
     async function generatePrompts() {
         const provider = document.getElementById('apiProvider').value;
         const apiKey = document.getElementById('apiKey').value;
         const story = document.getElementById('storyInput').value;
-        const style = getGlobalPrompt(); // 콤보박스로 조합된 스타일
+        const style = getGlobalPrompt();
         const btn = document.getElementById('generateBtn');
         const loading = document.getElementById('loading');
         const resultPanel = document.getElementById('resultPanel');
         const sceneList = document.getElementById('sceneList');
+        const kreaList = document.getElementById('kreaList');
 
         if (!story.trim()) {
             alert('원문 텍스트를 입력해주세요.');
@@ -478,10 +568,28 @@ ${story}`;
         loading.style.display = 'block';
         resultPanel.style.display = 'none';
         sceneList.innerHTML = '';
+        kreaList.innerHTML = '';
 
         try {
             let scenes = [];
 
+            // -------- Krea 2 프롬프트는 항상 오프라인으로 생성 (API 호출 없이) --------
+            const kreaPrompts = generateKreaPrompts(story, style);
+            kreaPrompts.forEach((kp, idx) => {
+                const card = document.createElement('div');
+                card.className = 'krea-card';
+                card.innerHTML = `
+                    <div class="krea-header">
+                        <span class="krea-title">${kp.title}</span>
+                    </div>
+                    <div class="krea-source">📝 "${kp.desc}"</div>
+                    <div class="krea-prompt" id="krea-${idx}">${kp.prompt}</div>
+                    <button class="copy-btn" onclick="copyPrompt('krea-${idx}')">📋 프롬프트 복사</button>
+                `;
+                kreaList.appendChild(card);
+            });
+
+            // -------- 비디오 프롬프트 생성 (오프라인 or API) --------
             if (provider === 'offline') {
                 await new Promise(resolve => setTimeout(resolve, 500));
                 scenes = offlineAnalyze(story, style);
@@ -543,7 +651,7 @@ Return ONLY a valid JSON array.`;
                 if (!Array.isArray(scenes)) throw new Error('응답이 배열이 아닙니다.');
             }
 
-            if (!scenes || scenes.length === 0) throw new Error('생성된 씬이 없습니다.');
+            if (!scenes || scenes.length === 0) throw new Error('생성된 비디오 씬이 없습니다.');
 
             scenes.forEach((scene, index) => {
                 const card = document.createElement('div');
@@ -556,8 +664,8 @@ Return ONLY a valid JSON array.`;
                         <span class="scene-time">🎬 Scene ${index + 1} [${scene.time}]</span>
                     </div>
                     <div class="scene-source">📝 "${scene.korean_text}"</div>
-                    <div class="scene-prompt" id="prompt-${index}">${finalPrompt}</div>
-                    <button class="copy-btn" onclick="copyPrompt('prompt-${index}')">📋 프롬프트 복사</button>
+                    <div class="scene-prompt" id="video-${index}">${finalPrompt}</div>
+                    <button class="copy-btn" onclick="copyPrompt('video-${index}')">📋 프롬프트 복사</button>
                 `;
                 sceneList.appendChild(card);
             });
