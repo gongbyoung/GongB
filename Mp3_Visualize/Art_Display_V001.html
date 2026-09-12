@@ -306,13 +306,13 @@
     #poem-scroll.ratio-16-9 {
       width: 2560px;
       height: 1440px;
-      padding: 80px 120px;
+      padding: 120px 160px;
     }
 
     #poem-scroll.ratio-9-16 {
       width: 1440px;
       height: 2560px;
-      padding: 120px 80px;
+      padding: 160px 100px;
     }
 
     #scroll-content {
@@ -519,8 +519,8 @@
       <div class="form-group">
         <label>기본 글자 크기 배율 (%)</label>
         <div class="slider-number-row">
-          <input type="range" id="glyph-scale-range" min="40" max="150" value="90">
-          <input type="number" id="glyph-scale-num" min="40" max="150" value="90">
+          <input type="range" id="glyph-scale-range" min="30" max="120" value="70">
+          <input type="number" id="glyph-scale-num" min="30" max="120" value="70">
         </div>
       </div>
 
@@ -546,16 +546,16 @@
       <div class="form-group">
         <label>자간 (글자 사이 간격, px)</label>
         <div class="slider-number-row">
-          <input type="range" id="letter-spacing-range" min="-2" max="20" value="6">
-          <input type="number" id="letter-spacing-num" min="-2" max="20" value="6">
+          <input type="range" id="letter-spacing-range" min="-5" max="20" value="4">
+          <input type="number" id="letter-spacing-num" min="-5" max="20" value="4">
         </div>
       </div>
 
       <div class="form-group">
         <label>줄간격 (문장 사이 간격, px)</label>
         <div class="slider-number-row">
-          <input type="range" id="line-spacing-range" min="10" max="60" value="20">
-          <input type="number" id="line-spacing-num" min="10" max="60" value="20">
+          <input type="range" id="line-spacing-range" min="5" max="50" value="16">
+          <input type="number" id="line-spacing-num" min="5" max="50" value="16">
         </div>
       </div>
 
@@ -629,14 +629,12 @@
 
     /* -------------------------------------------------------------
        [팔뚝~손가락 + 손바닥 오각형 수인 버전] 캘리그램 렌더러
-       - '통통한 손'과 '섬섬옥수' 가독성 최적화 및 뭉침 방지
        ------------------------------------------------------------- */
     function renderHandCalligramGlyph(char, targetSize, options) {
       const { fingerStyle, customStrokeWidth } = options;
       const isChubby = (fingerStyle === 'chubby');
       const baseSize = 256;
       
-      // 통통한 손일 때 획이 너무 두꺼워져서 뭉개지는 현상을 방지하도록 안전 범위 설정
       let strokeVal = customStrokeWidth !== undefined ? customStrokeWidth : (isChubby ? 11 : 8);
       if (isChubby && strokeVal > 14) strokeVal = 14;
 
@@ -645,7 +643,6 @@
       canvas.height = targetSize;
       const ctx = canvas.getContext('2d');
 
-      // 1. 뼈대 서예 렌더링
       const tmp = document.createElement('canvas');
       tmp.width = baseSize; tmp.height = baseSize;
       const tctx = tmp.getContext('2d');
@@ -662,7 +659,6 @@
       tctx.fillStyle = '#000000';
       tctx.fillText(char, baseSize / 2, baseSize / 2);
 
-      // 2. 살결 그라데이션 채색 마스크
       const skinCanvas = document.createElement('canvas');
       skinCanvas.width = baseSize; skinCanvas.height = baseSize;
       const sctx = skinCanvas.getContext('2d');
@@ -671,12 +667,10 @@
 
       const skinGrad = sctx.createLinearGradient(0, 0, baseSize, baseSize);
       if (isChubby) {
-        // 통통한 손은 좀 더 도톰하고 부드러운 살결 톤
         skinGrad.addColorStop(0, '#ffebd0');
         skinGrad.addColorStop(0.5, '#f5cca8');
         skinGrad.addColorStop(1, '#e2ab86');
       } else {
-        // 섬섬옥수는 우아한 연한 살결 톤
         skinGrad.addColorStop(0, '#fdebd0');
         skinGrad.addColorStop(0.5, '#edd1be');
         skinGrad.addColorStop(1, '#d8ad93');
@@ -684,7 +678,6 @@
       sctx.fillStyle = skinGrad;
       sctx.fillRect(0, 0, baseSize, baseSize);
 
-      // 3. 수묵 먹선 윤곽 및 살결 합성
       const outCanvas = document.createElement('canvas');
       outCanvas.width = baseSize; outCanvas.height = baseSize;
       const octx = outCanvas.getContext('2d');
@@ -699,7 +692,6 @@
       octx.strokeText(char, baseSize / 2, baseSize / 2);
       octx.drawImage(skinCanvas, 0, 0);
 
-      // 4. 'ㅇ', 'ㅎ' 및 동그란 자소 형태는 손바닥을 모은 수인 형태로 렌더링
       if (char === 'ㅇ' || char === 'ㅎ' || char === '이' || char === '한') {
         const cx = baseSize / 2, cy = baseSize * 0.55;
         const radius = baseSize * 0.24;
@@ -798,12 +790,17 @@
     }
 
     function updateViewportScale() {
-      const availableW = viewport.clientWidth - 70;
-      const availableH = viewport.clientHeight - 70;
+      const availableW = viewport.clientWidth - 80;
+      const availableH = viewport.clientHeight - 80;
       const scaleX = availableW / canvas2KWidth;
       const scaleY = availableH / canvas2KHeight;
       scaler.style.transform = `scale(${Math.min(scaleX, scaleY, 1.0)})`;
     }
+
+    ratioSelect.addEventListener('change', () => {
+      applyCanvasResolution();
+      executeBuildVisualization();
+    });
 
     window.addEventListener('resize', updateViewportScale);
 
@@ -930,8 +927,13 @@
         }));
       }
 
-      const safeW = canvas2KWidth * 0.78; // 여유 공간 확보 (화면 밖 나감 방지)
-      const baseGlyphSize = Math.floor(95 * scaleMultiplier);
+      // 9:16과 16:9 규격별 패딩 및 가용 폭을 정확히 반영하여 절대 화면 밖으로 나가지 않도록 설정
+      const isVertical = (ratioSelect.value === '9:16');
+      const horizontalPadding = isVertical ? 200 : 320; 
+      const safeW = canvas2KWidth - horizontalPadding;
+
+      // 규격별 기본 글자 크기 보정 (세로형일 때는 글자가 길므로 약간 축소하여 안전하게 수납)
+      const baseGlyphSize = Math.floor((isVertical ? 75 : 90) * scaleMultiplier);
       scrollContent.style.gap = `${options.lineSpacing}px`;
 
       for (let idx = 0; idx < rawLines.length; idx++) {
@@ -974,7 +976,6 @@
 
           const wordApproxWidth = word.length * (baseGlyphSize * currentWordFactor) + (word.length - 1) * options.letterSpacing;
 
-          // 폭 초과 시 다음 줄로 확실히 개행
           if (currentLineWidth + wordApproxWidth > safeW && currentWordGroup.children.length > 0) {
             const newLineRow = document.createElement('div');
             newLineRow.className = 'scroll-line';
