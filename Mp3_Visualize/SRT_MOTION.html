@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>A4 Organic Calligraphy Tapestry Masterpiece</title>
+    <title>A4 Organic Calligraphy Tapestry & MP4 Recorder</title>
     <!-- 정통 붓글씨 및 캘리그라피 서체 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -53,7 +53,7 @@
             border-radius: 40px;
             display: flex;
             align-items: center;
-            gap: 9px;
+            gap: 8px;
             box-shadow: 0 12px 35px rgba(0, 0, 0, 0.65);
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         }
@@ -61,7 +61,7 @@
             background: #28282e;
             color: #fff;
             border: 1px solid rgba(255, 255, 255, 0.15);
-            padding: 6px 13px;
+            padding: 6px 12px;
             font-size: 13px;
             border-radius: 20px;
             cursor: pointer;
@@ -82,6 +82,23 @@
         }
         .btn-primary:hover {
             background: #caa062;
+        }
+        .btn-record {
+            background: #28282e;
+            color: #ff4d4d;
+            border: 1px solid rgba(255, 77, 77, 0.4);
+            font-weight: 600;
+        }
+        .btn-record.recording {
+            background: #c0392b;
+            color: #fff;
+            border-color: #e74c3c;
+            animation: pulseRecord 1.5s infinite;
+        }
+        @keyframes pulseRecord {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
         }
         .btn-preview.active {
             background: #962d22;
@@ -120,7 +137,7 @@
             color: #bbb;
         }
         .slider-group input[type="range"] {
-            width: 70px;
+            width: 65px;
             cursor: pointer;
             accent-color: #b5894b;
         }
@@ -160,8 +177,9 @@
 
     <div id="control-panel">
         <button id="btn-play" class="btn btn-primary">▶ 재생</button>
+        <button id="btn-record" class="btn btn-record">🔴 MP4 녹화</button>
         <button id="btn-preview" class="btn btn-preview">👁️ 최종본 미리보기</button>
-        <button id="btn-reseed" class="btn" title="새로운 유기적 배치 연산">🎲 새 배치</button>
+        <button id="btn-reseed" class="btn" title="새로운 배치 연산">🎲 새 배치</button>
         <button id="btn-reset" class="btn">처음으로</button>
 
         <input type="text" id="title-input" class="text-input" value="별 헤는 밤" placeholder="제목">
@@ -268,20 +286,26 @@
             return list;
         }
 
-        class OrganicCalligraphyTapestryEngine {
+        class MasterCalligraphyRecorderEngine {
             constructor(container) {
                 this.container = container;
                 this.canvas = document.createElement('canvas');
                 this.ctx = this.canvas.getContext('2d');
                 this.container.appendChild(this.canvas);
 
+                // 오디오 및 레코딩
                 this.audioCtx = null;
                 this.audioElement = new Audio();
                 this.audioElement.crossOrigin = "anonymous";
                 this.analyser = null;
                 this.audioSource = null;
+                this.audioStreamDest = null;
                 this.freqData = null;
                 this.isDemoMode = true;
+
+                this.mediaRecorder = null;
+                this.recordedChunks = [];
+                this.isRecording = false;
 
                 this.currentTime = 0;
                 this.duration = 45;
@@ -373,7 +397,7 @@
             loadSRT(text) {
                 this.srtList = parseSRT(text);
                 if (this.srtList.length > 0) {
-                    this.duration = this.srtList[this.srtList.length - 1].endTime + 3.0;
+                    this.duration = this.srtList[this.srtList.length - 1].endTime + 3.5;
                 }
                 this.reset();
             }
@@ -402,9 +426,7 @@
             }
 
             /**
-             * [유기적 물리 반발 배치 알고리즘 (Force-Directed Blue-Noise Relaxation)]
-             * 동심원 궤도를 완전히 폐기하고, 글자들이 전하(Charge)를 띤 입자처럼
-             * 서로를 밀어내며 A4 구석과 타원 주변을 균일하게 채우도록 80회 물리 연산
+             * [유기적 물리 반발 배치 및 타이핑 궤적 초기화]
              */
             computeOrganicLayout() {
                 if (!this.srtList || this.srtList.length === 0) return;
@@ -417,7 +439,9 @@
                             char: str[i],
                             lineIndex: line.index,
                             startTime: line.startTime,
-                            endTime: line.endTime
+                            endTime: line.endTime,
+                            charIndexInLine: i,
+                            lineTotalChars: str.length
                         });
                     }
                 });
@@ -437,11 +461,10 @@
                 const rx = this.centerOval.rx * 1.08;
                 const ry = this.centerOval.ry * 1.08;
 
-                // 1. 이상적 입자 간격 계산
                 const totalArea = (maxX - minX) * (maxY - minY) - (Math.PI * rx * ry);
                 const idealSpacing = Math.sqrt(totalArea / totalN);
 
-                // 2. 초기 입자 씨앗 생성 (타원 외부 영역에 고르게 분산)
+                // 초기 입자 씨앗 생성
                 const particles = [];
                 for (let i = 0; i < totalN; i++) {
                     let px, py, safe = false, tries = 0;
@@ -457,21 +480,20 @@
                         y: py,
                         vx: 0,
                         vy: 0,
-                        baseAngle: ((i * 37) % 60 - 30) * (Math.PI / 180) // 유기적 기본 각도
+                        baseAngle: ((i * 37) % 60 - 30) * (Math.PI / 180)
                     });
                 }
 
-                // 3. 물리적 반발 완화 시뮬레이션 (80회 반복)
+                // 물리 완화 연산 (80회)
                 const iterations = 80;
                 for (let iter = 0; iter < iterations; iter++) {
-                    const temp = 1.0 - (iter / iterations); // 쿨링 계수
+                    const temp = 1.0 - (iter / iterations);
                     const repulseR = idealSpacing * 1.35;
 
                     for (let i = 0; i < totalN; i++) {
                         const p1 = particles[i];
                         let fx = 0, fy = 0;
 
-                        // 이웃 입자와의 쿨롱 반발력
                         for (let j = 0; j < totalN; j++) {
                             if (i === j) continue;
                             const p2 = particles[j];
@@ -485,7 +507,6 @@
                             }
                         }
 
-                        // 중앙 타원 밀어내기
                         const ex = (p1.x - cx) / rx;
                         const ey = (p1.y - cy) / ry;
                         const ovalDist = Math.hypot(ex, ey);
@@ -496,7 +517,6 @@
                             fy += Math.sin(ang) * push;
                         }
 
-                        // A4 사각 벽면 완충력
                         const wallDist = idealSpacing * 0.8;
                         if (p1.x < minX + wallDist) fx += (minX + wallDist - p1.x) * 0.35 * temp;
                         if (p1.x > maxX - wallDist) fx -= (p1.x - (maxX - wallDist)) * 0.35 * temp;
@@ -513,17 +533,16 @@
                     }
                 }
 
-                // 4. 동심원 모양이 드러나지 않도록 유기적 연속 나선 정렬 (Meandering Path)
+                // 유기적 연속 소용돌이 순서 정렬
                 particles.sort((a, b) => {
                     const angA = Math.atan2(a.y - cy, a.x - cx);
                     const angB = Math.atan2(b.y - cy, b.x - cx);
                     const distA = Math.hypot(a.x - cx, a.y - cy);
                     const distB = Math.hypot(b.x - cy, b.y - cy);
-                    // 각도와 거리가 절묘하게 얽힌 완만한 소용돌이 순서
                     return (angA + distA * 0.008) - (angB + distB * 0.008);
                 });
 
-                // 5. 각 글자별 최근접 이웃 거리($d_{\min}$) 실측을 통한 무충돌 무여백 크기 결정
+                // 각 글자별 최근접 이웃 거리 실측 및 크기 확정
                 this.charItems = [];
                 for (let i = 0; i < totalN; i++) {
                     const p = particles[i];
@@ -534,7 +553,6 @@
                         if (d < minD) minD = d;
                     }
 
-                    // 폰트 크기를 최근접 거리의 1.12배로 키워 칸을 메우되 먹선은 겹치지 않게 조절
                     const safeSize = Math.max(14, minD * 1.12 * this.userFontScale);
 
                     this.charItems.push({
@@ -542,13 +560,17 @@
                         lineIndex: allCharacters[i].lineIndex,
                         startTime: allCharacters[i].startTime,
                         endTime: allCharacters[i].endTime,
+                        charIndexInLine: allCharacters[i].charIndexInLine,
+                        lineTotalChars: allCharacters[i].lineTotalChars,
                         targetX: p.x,
                         targetY: p.y,
                         targetAngle: p.baseAngle,
                         targetSize: safeSize,
-                        state: 'WAITING',
+                        state: 'WAITING', // WAITING -> ACTIVE(Typing) -> FLYING -> STAMPED
                         flyProgress: 0,
-                        baseAlpha: 0.18
+                        typedProgress: 0,
+                        originX: 0,
+                        originY: 0
                     });
                 }
 
@@ -564,14 +586,120 @@
                     this.audioSource = this.audioCtx.createMediaElementSource(this.audioElement);
                     this.analyser = this.audioCtx.createAnalyser();
                     this.analyser.fftSize = 64;
+
+                    // 녹화 스트림 전용 오디오 노드
+                    this.audioStreamDest = this.audioCtx.createMediaStreamDestination();
+
                     this.audioSource.connect(this.analyser);
                     this.analyser.connect(this.audioCtx.destination);
+                    this.audioSource.connect(this.audioStreamDest); // 레코더로 오디오 패스
+
                     this.freqData = new Uint8Array(this.analyser.frequencyBinCount);
                 }
                 this.isDemoMode = false;
                 this.audioElement.onloadedmetadata = () => {
                     this.duration = this.audioElement.duration;
                 };
+            }
+
+            /**
+             * [MP4 (H.264/AVC) 녹화 엔진]
+             */
+            toggleRecording() {
+                if (this.isRecording) {
+                    this.stopRecording();
+                } else {
+                    this.startRecording();
+                }
+            }
+
+            startRecording() {
+                if (this.isRecording) return;
+
+                // 캔버스 60FPS 캡처 스트림 생성
+                const canvasStream = this.canvas.captureStream(60);
+                const combinedTracks = [...canvasStream.getVideoTracks()];
+
+                // 오디오 트랙 결합
+                if (this.audioStreamDest && this.audioStreamDest.stream.getAudioTracks().length > 0) {
+                    combinedTracks.push(this.audioStreamDest.stream.getAudioTracks()[0]);
+                }
+
+                const stream = new MediaStream(combinedTracks);
+
+                // H.264 / MP4 지원 코덱 탐색
+                const mimeTypes = [
+                    'video/mp4;codecs=avc1.4d401f,mp4a.40.2',
+                    'video/mp4;codecs=avc1',
+                    'video/mp4',
+                    'video/webm;codecs=h264',
+                    'video/webm;codecs=vp9,opus',
+                    'video/webm'
+                ];
+
+                let selectedMime = '';
+                for (const mime of mimeTypes) {
+                    if (MediaRecorder.isTypeSupported(mime)) {
+                        selectedMime = mime;
+                        break;
+                    }
+                }
+
+                try {
+                    this.mediaRecorder = new MediaRecorder(stream, {
+                        mimeType: selectedMime,
+                        videoBitsPerSecond: 16000000 // 고화질 16Mbps
+                    });
+                } catch (e) {
+                    this.mediaRecorder = new MediaRecorder(stream);
+                }
+
+                this.recordedChunks = [];
+                this.mediaRecorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) {
+                        this.recordedChunks.push(e.data);
+                    }
+                };
+
+                this.mediaRecorder.onstop = () => {
+                    const ext = selectedMime.includes('mp4') ? 'mp4' : 'webm';
+                    const blob = new Blob(this.recordedChunks, { type: selectedMime || 'video/mp4' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    a.download = `${this.titleText}_calligraphy_art.${ext}`;
+                    document.body.appendChild(a);
+                    a.click();
+                    setTimeout(() => {
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                    }, 200);
+                };
+
+                this.mediaRecorder.start(250); // 250ms 단위 청크
+                this.isRecording = true;
+
+                const btn = document.getElementById('btn-record');
+                btn.innerText = "⏹️ 녹화 중지 및 저장";
+                btn.classList.add('recording');
+
+                // 녹화 시작 시 자동 재생
+                if (!this.isPlaying) {
+                    this.reset();
+                    this.play();
+                }
+            }
+
+            stopRecording() {
+                if (!this.isRecording) return;
+                this.isRecording = false;
+                if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+                    this.mediaRecorder.stop();
+                }
+                const btn = document.getElementById('btn-record');
+                btn.innerText = "🔴 MP4 녹화";
+                btn.classList.remove('recording');
             }
 
             play() {
@@ -627,10 +755,14 @@
                         if (this.currentTime >= this.duration) {
                             this.currentTime = this.duration;
                             this.isPlaying = false;
+                            if (this.isRecording) this.stopRecording();
                         }
                     } else {
                         this.currentTime = this.audioElement.currentTime;
-                        if (this.audioElement.ended) this.isPlaying = false;
+                        if (this.audioElement.ended) {
+                            this.isPlaying = false;
+                            if (this.isRecording) this.stopRecording();
+                        }
                     }
                 }
 
@@ -646,6 +778,7 @@
                 const rms = this.getRMS();
                 let stampedCount = 0;
 
+                // 글자 상태 및 비행 전이
                 this.charItems.forEach(item => {
                     if (this.currentTime < item.startTime) {
                         item.state = 'WAITING';
@@ -668,17 +801,19 @@
                     }
                 });
 
+                // 모든 자막이 지면에 박혔는지 체크
                 if (this.charItems.length > 0 && stampedCount === this.charItems.length) {
                     this.allFinished = true;
                 }
 
+                // [핵심] 마지막 자막이 박힌 후에만 짙은 검은색(#111114)으로 트랜지션
                 if (this.isPreviewMode) {
                     this.finalInkProgress = 1.0;
                 } else if (this.allFinished) {
                     this.finalInkProgress = Math.min(1.0, this.finalInkProgress + 0.008);
                 }
 
-                // 1. 지면 안착 레이어 (유기적 깜지)
+                // 1. 지면 안착 레이어 (재생 중엔 흐린 회색 -> 완료 시 흑색)
                 this.renderStampedLayer(ctx);
 
                 // 2. 날아가는 글자 레이어
@@ -686,7 +821,7 @@
                     this.renderFlyingLayer(ctx);
                 }
 
-                // 3. 중앙 타원 영역
+                // 3. 중앙 타원 영역 및 실시간 붓글씨 타이핑 가사
                 this.renderCenterOvalZone(ctx, rms);
 
                 this.updateUI();
@@ -719,11 +854,13 @@
                 const oval = this.centerOval;
                 ctx.save();
 
+                // 타원 내부 정돈된 여백 마스크
                 ctx.beginPath();
                 ctx.ellipse(oval.cx, oval.cy, oval.rx * 1.03, oval.ry * 1.03, 0, 0, Math.PI * 2);
                 ctx.fillStyle = "#f6f3ea";
                 ctx.fill();
 
+                // 이중 먹선 테두리
                 ctx.beginPath();
                 ctx.ellipse(oval.cx, oval.cy, oval.rx, oval.ry, 0, 0, Math.PI * 2);
                 ctx.strokeStyle = "rgba(40, 40, 45, 0.35)";
@@ -736,6 +873,7 @@
                 ctx.lineWidth = 0.8;
                 ctx.stroke();
 
+                // 상단 고정: 제목 / 글쓴이 / 낙관
                 const titleY = oval.cy - oval.ry * 0.44;
                 const authorY = oval.cy - oval.ry * 0.10;
 
@@ -768,16 +906,24 @@
                 ctx.fillText("心", sealX + sealS * 0.5, sealY + sealS * 0.35);
                 ctx.fillText("印", sealX + sealS * 0.5, sealY + sealS * 0.75);
 
+                // --- [하단 영역] 실시간 붓글씨 타이핑 가사 ---
                 if (!this.isPreviewMode) {
-                    const activeItem = this.charItems.find(it => it.state === 'ACTIVE');
-                    if (activeItem) {
-                        const curLine = this.srtList.find(l => l.index === activeItem.lineIndex);
+                    const activeChars = this.charItems.filter(it => it.state === 'ACTIVE');
+                    if (activeChars.length > 0) {
+                        const curLine = this.srtList.find(l => l.index === activeChars[0].lineIndex);
                         if (curLine) {
                             const lyricY = oval.cy + oval.ry * 0.44;
                             const beat = 1.0 + (rms * 0.22);
-                            let lyricFontSize = oval.ry * 0.26 * beat;
+                            let lyricFontSize = oval.ry * 0.27 * beat;
 
                             ctx.font = `bold ${lyricFontSize}px ${this.currentFont}`;
+
+                            // 타이핑 진척도 연산 (0.0 ~ 1.0)
+                            const lineElapsed = this.currentTime - curLine.startTime;
+                            const lineDuration = Math.max(0.1, curLine.endTime - curLine.startTime);
+                            const typeProgress = Math.min(1.0, lineElapsed / lineDuration);
+                            const visibleCharsCount = Math.floor(typeProgress * curLine.text.length);
+
                             const maxW = oval.rx * 1.75;
                             const measuredW = ctx.measureText(curLine.text).width;
                             if (measuredW > maxW) {
@@ -785,10 +931,27 @@
                                 ctx.font = `bold ${lyricFontSize}px ${this.currentFont}`;
                             }
 
+                            // 타이핑된 글자들의 실시간 가로 기준점 계산
+                            const charWidth = (measuredW / curLine.text.length);
+                            const startX = oval.cx - (measuredW / 2);
+
                             ctx.shadowColor = "rgba(0, 0, 0, 0.35)";
                             ctx.shadowBlur = 6 + (rms * 10);
                             ctx.fillStyle = "#0c0c0e";
-                            ctx.fillText(curLine.text, oval.cx, lyricY);
+
+                            // 타이핑된 글자까지만 순서대로 그리기
+                            for (let i = 0; i < visibleCharsCount; i++) {
+                                const ch = curLine.text[i];
+                                const cxPos = startX + (i * charWidth) + (charWidth / 2);
+                                ctx.fillText(ch, cxPos, lyricY);
+
+                                // 해당 낱글자의 비행 출발 원점(Origin) 등록
+                                const targetCharItem = activeChars.find(it => it.charIndexInLine === i);
+                                if (targetCharItem) {
+                                    targetCharItem.originX = cxPos;
+                                    targetCharItem.originY = lyricY;
+                                }
+                            }
                         }
                     }
                 }
@@ -796,6 +959,11 @@
                 ctx.restore();
             }
 
+            /**
+             * [지면 안착 레이어]
+             * 평상시: 흐린 회색 rgba(195, 195, 195, 0.16)
+             * 마지막 자막 안착 후: 완전 흑색 rgba(17, 17, 20, 0.96)으로 트랜지션
+             */
             renderStampedLayer(ctx) {
                 ctx.save();
                 ctx.textAlign = "center";
@@ -804,8 +972,8 @@
                 this.charItems.forEach(item => {
                     const isVisible = this.isPreviewMode || item.state === 'STAMPED';
                     if (isVisible) {
-                        const alpha = this.isPreviewMode ? 0.95 : (item.baseAlpha + (0.95 - item.baseAlpha) * this.finalInkProgress);
-                        const grey = this.isPreviewMode ? 14 : Math.floor(180 - (180 - 14) * this.finalInkProgress);
+                        const alpha = this.isPreviewMode ? 0.96 : (0.16 + (0.96 - 0.16) * this.finalInkProgress);
+                        const grey = this.isPreviewMode ? 17 : Math.floor(195 - (195 - 17) * this.finalInkProgress);
 
                         ctx.save();
                         ctx.translate(item.targetX, item.targetY);
@@ -813,9 +981,10 @@
 
                         ctx.font = `bold ${item.targetSize}px ${this.currentFont}`;
 
+                        // 최종 완성 시에만 먹물 번짐 그림자 부여
                         if (this.finalInkProgress > 0 || this.isPreviewMode) {
-                            ctx.shadowColor = "rgba(10, 10, 15, 0.22)";
-                            ctx.shadowBlur = 1.5;
+                            ctx.shadowColor = `rgba(10, 10, 15, ${0.25 * this.finalInkProgress})`;
+                            ctx.shadowBlur = 2.0 * this.finalInkProgress;
                         }
 
                         ctx.fillStyle = `rgba(${grey}, ${grey}, ${grey}, ${alpha})`;
@@ -827,6 +996,10 @@
                 ctx.restore();
             }
 
+            /**
+             * [날아가는 레이어]
+             * 타이핑되었던 위치에서 출발하여 목표 지점에 안착할 때까지 연회색으로 감쇠
+             */
             renderFlyingLayer(ctx) {
                 ctx.save();
                 ctx.textAlign = "center";
@@ -836,18 +1009,19 @@
                     if (item.state === 'FLYING') {
                         const t = this.easeOutCubic(item.flyProgress);
 
-                        const startX = this.centerOval.cx;
-                        const startY = this.centerOval.cy + this.centerOval.ry * 0.44;
+                        const startX = item.originX || this.centerOval.cx;
+                        const startY = item.originY || (this.centerOval.cy + this.centerOval.ry * 0.44);
 
                         const curX = startX + (item.targetX - startX) * t;
                         const curY = startY + (item.targetY - startY) * t;
                         const curAngle = item.targetAngle * t;
 
-                        const startSize = this.centerOval.ry * 0.26;
+                        const startSize = this.centerOval.ry * 0.27;
                         const curSize = startSize + (item.targetSize - startSize) * t;
 
-                        const alpha = 1.0 - (1.0 - item.baseAlpha) * t;
-                        const grey = Math.floor(14 + (180 - 14) * t);
+                        // 흑색에서 흐린 회색(0.16)으로 페이드아웃
+                        const alpha = 1.0 - (1.0 - 0.16) * t;
+                        const grey = Math.floor(17 + (195 - 17) * t);
 
                         ctx.save();
                         ctx.translate(curX, curY);
@@ -875,9 +1049,10 @@
 
         window.addEventListener('DOMContentLoaded', () => {
             const container = document.getElementById('canvas-container');
-            const engine = new OrganicCalligraphyTapestryEngine(container);
+            const engine = new MasterCalligraphyRecorderEngine(container);
 
             const btnPlay = document.getElementById('btn-play');
+            const btnRecord = document.getElementById('btn-record');
             const btnPreview = document.getElementById('btn-preview');
             const btnReseed = document.getElementById('btn-reseed');
             const btnReset = document.getElementById('btn-reset');
@@ -896,6 +1071,10 @@
                     engine.play();
                     btnPlay.innerText = "⏸ 일시정지";
                 }
+            });
+
+            btnRecord.addEventListener('click', () => {
+                engine.toggleRecording();
             });
 
             btnPreview.addEventListener('click', () => {
