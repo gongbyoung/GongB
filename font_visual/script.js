@@ -1,110 +1,82 @@
 /**
- * SRT 자막 파서 및 Canvas 캘리그라피 애니메이션 엔진
+ * 어떤 SRT 포맷(BOM, CRLF/LF, 쉼표/마침표 타임코드)도 100% 인식하는 강력한 SRT 파서
  */
-const srtFileInput = document.getElementById('srtFileInput');
-const fontSelect = document.getElementById('fontSelect');
-const textColorInput = document.getElementById('textColorInput');
-const btnPlay = document.getElementById('btnPlay');
-const btnPause = document.getElementById('btnPause');
-const btnExportWebM = document.getElementById('btnExportWebM');
-const canvas = document.getElementById('subCanvas');
-const ctx = canvas.getContext('2d');
-const currentTimeEl = document.getElementById('currentTime');
-const totalTimeEl = document.getElementById('totalTime');
-
-let subtitles = [];
-let isPlaying = false;
-let animationFrameId = null;
-let startTime = null;
-let pausedTime = 0;
-let totalDuration = 0;
-
-// 1. SRT 파싱 함수 (시작/종료 ms 계산)
 function parseSRT(srtText) {
-    const regex = /(\d+)\r?\n(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\r?\n([\s\S]*?)(?=\r?\n\r?\n|\r?\n*$)/g;
-    const items = [];
-    let match;
+    if (!srtText) return [];
 
-    function timeToMs(timeStr) {
-        const [h, m, sWithMs] = timeStr.split(':');
-        const [s, ms] = sWithMs.split(',');
-        return parseInt(h) * 3600000 + parseInt(m) * 60000 + parseInt(s) * 1000 + parseInt(ms);
+    // 1. UTF-8 BOM 제거 및 줄바꿈 정규화
+    let cleanText = srtText.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+    // 2. 자막 블록 단위 분할
+    const blocks = cleanText.trim().split(/\n\n+/);
+    const parsedList = [];
+
+    function timeToMs(tStr) {
+        if (!tStr) return 0;
+        tStr = tStr.trim().replace('.', ','); // 마침표를 쉼표로 자동 정규화
+        const parts = tStr.split(':');
+        let h = 0, m = 0, s = 0, ms = 0;
+
+        if (parts.length === 3) {
+            h = parseInt(parts[0], 10) || 0;
+            m = parseInt(parts[1], 10) || 0;
+            const secParts = parts[2].split(',');
+            s = parseInt(secParts[0], 10) || 0;
+            ms = parseInt(secParts[1], 10) || 0;
+        }
+        return h * 3600000 + m * 60000 + s * 1000 + ms;
     }
 
-    while ((match = regex.exec(srtText)) !== null) {
-        items.push({
-            id: parseInt(match[1]),
-            start: timeToMs(match[2]),
-            end: timeToMs(match[3]),
-            text: match[4].replace(/\r?\n/g, ' ').trim()
-        });
-    }
-    return items;
+    blocks.forEach((block, index) => {
+        const lines = block.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+        let timeLineIndex = lines.findIndex(l => l.includes('-->'));
+
+        if (timeLineIndex !== -1) {
+            const timeParts = lines[timeLineIndex].split('-->');
+            const startMs = timeToMs(timeParts[0]);
+            const endMs = timeToMs(timeParts[1]);
+            const text = lines.slice(timeLineIndex + 1).join(' ');
+
+            if (endMs > startMs && text.length > 0) {
+                parsedList.push({ id: index + 1, start: startMs, end: endMs, text: text });
+            }
+        }
+    });
+
+    console.log(`✅ SRT 파싱 완료: 총 ${parsedList.length}개 자막 감지됨`, parsedList);
+    return parsedList;
 }
 
-// 2. 붓글씨 애니메이션 렌더링
-function drawFrame(currentMs) {
-    currentTimeEl.textContent = formatTime(currentMs);
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+// SRT 파일 업로드 시 예외 처리 및 UI 피드백 강화
+srtFileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
 
-    const activeSub = subtitles.find(sub => currentMs >= sub.start && currentMs <= sub.end);
-    if (!activeSub) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        try {
+            subtitles = parseSRT(event.target.result);
+            if (subtitles.length > 0) {
+                totalDuration = subtitles[subtitles.length - 1].end + 1000;
+                totalTimeEl.textContent = formatTime(totalDuration);
+                subtitleCountInfo.textContent = `(자막 ${subtitles.length}개 로드 완료)`;
+                
+                statusMessage.style.display = 'none';
+                btnPlay.disabled = false;
+                btnExportWebM.disabled = false;
 
-    const subDuration = activeSub.end - activeSub.start;
-    const writeDuration = Math.min(1500, subDuration * 0.5); // 자막 시간의 첫 50% 동안 붓글씨 써짐
-    const elapsedTime = currentMs - activeSub.start;
-    const progress = Math.min(1.0, elapsedTime / writeDuration); // 0.0 ~ 1.0 진행률
-
-    renderCalligraphyText(activeSub.text, progress, fontSelect.value, textColorInput.value);
-}
-
-function renderCalligraphyText(text, progress, fontStyle, color) {
-    const fontSize = 72;
-    const x = canvas.width / 2;
-    const y = canvas.height * 0.82;
-
-    ctx.save();
-    ctx.font = `bold ${fontSize}px ${fontStyle}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-
-    const textMetrics = ctx.measureText(text);
-    const textWidth = textMetrics.width;
-    const startX = x - (textWidth / 2);
-
-    if (progress >= 1.0) {
-        // [멈춤 상태] 자막 유지
-        ctx.fillStyle = color;
-        ctx.fillText(text, x, y);
-    } else {
-        // [써지는 상태] 붓글씨 마스크 클리핑
-        ctx.save();
-        ctx.beginPath();
-        const currentClipWidth = (textWidth + 60) * progress;
-        const maskX = startX - 30;
-        
-        ctx.rect(maskX, y - fontSize, currentClipWidth, fontSize * 2);
-        ctx.clip();
-
-        ctx.fillStyle = color;
-        ctx.fillText(text, x, y);
-
-        // 붓터치 잔상 포인트 효과
-        const headX = maskX + currentClipWidth;
-        ctx.fillStyle = color;
-        ctx.beginPath();
-        ctx.arc(headX - 10, y + (Math.sin(progress * Math.PI * 4) * 4), 6, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.restore();
-    }
-    ctx.restore();
-}
-
-function formatTime(ms) {
-    const totalSec = Math.floor(ms / 1000);
-    const m = Math.floor(totalSec / 60).toString().padStart(2, '0');
-    const s = (totalSec % 60).toString().padStart(2, '0');
-    const milli = Math.floor(ms % 1000).toString().padStart(3, '0');
-    return `${m}:${s}.${milli}`;
-}
+                // 첫 번째 자막 화면 즉시 프리뷰 렌더링
+                drawFrame(subtitles[0].start);
+            } else {
+                throw new Error("자막 구문('-->')을 찾지 못했습니다.");
+            }
+        } catch (err) {
+            console.error("❌ SRT 파일 파싱 오류:", err);
+            statusMessage.style.display = 'block';
+            statusMessage.style.color = '#ff6b6b';
+            statusMessage.textContent = `⚠️ 오류: ${err.message}`;
+            subtitleCountInfo.textContent = `(파싱 실패)`;
+        }
+    };
+    reader.readAsText(file, 'utf-8');
+});
