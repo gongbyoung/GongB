@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calligraphy Collage Masterpiece</title>
-    <!-- 정통 붓글씨 및 캘리그라피 서체 -->
+    <title>A4 Calligraphy Character-Collage Engine</title>
+    <!-- 정통 붓글씨 및 캘리그라피 웹폰트 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=East+Sea+Dokdo&family=Nanum+Brush+Script&family=Yeon+Sung&family=Gowun+Batang:wght@700&display=swap" rel="stylesheet">
@@ -39,7 +39,7 @@
             width: 100%;
             height: 100%;
         }
-        /* 상단 컨트롤 관제탑 */
+        /* 상단 관제탑 컨트롤 바 */
         #control-panel {
             position: absolute;
             top: 16px;
@@ -160,7 +160,7 @@
             <option value="'Yeon Sung', cursive">연성체</option>
         </select>
         
-        <label class="file-label btn" title="MP3 파일 선택">
+        <label class="file-label btn" title="MP3 오디오 선택">
             🎵 MP3
             <input type="file" id="audio-input" accept="audio/*">
         </label>
@@ -173,7 +173,7 @@
         <span id="time-display">00:00 / 00:00</span>
     </div>
 
-    <div id="preview-badge">최종 완성본 깜지 미리보기 모드</div>
+    <div id="preview-badge">한 글자 캘리그라피 깜지 최종본 미리보기 모드</div>
     <div id="canvas-container"></div>
 
     <script>
@@ -263,7 +263,7 @@
             return list;
         }
 
-        class CalligraphyCollageEngine {
+        class CharCollageEngine {
             constructor(container) {
                 this.container = container;
                 this.canvas = document.createElement('canvas');
@@ -287,7 +287,7 @@
                 this.authorText = "윤동주 詩";
 
                 this.srtList = [];
-                this.lyricItems = [];
+                this.charItems = []; // 한 글자 단위 오브젝트 풀
                 this.isLayoutCalculated = false;
 
                 this.allFinished = false;
@@ -297,7 +297,6 @@
                 this.a4Rect = { x: 0, y: 0, w: 0, h: 0 };
                 this.centerOval = { cx: 0, cy: 0, rx: 0, ry: 0 };
 
-                // 화선지 텍스처 버퍼
                 this.paperNoise = document.createElement('canvas');
                 this.buildPaperNoise();
 
@@ -340,12 +339,12 @@
                     h: paperH
                 };
 
-                // 가운데 타원(제목/글쓴이 영역) 계산
+                // 가운데 타원(제목/글쓴이 영역)
                 this.centerOval = {
                     cx: this.a4Rect.x + this.a4Rect.w / 2,
                     cy: this.a4Rect.y + this.a4Rect.h / 2,
-                    rx: this.a4Rect.w * 0.28,
-                    ry: this.a4Rect.h * 0.16
+                    rx: this.a4Rect.w * 0.25,
+                    ry: this.a4Rect.h * 0.15
                 };
 
                 this.isLayoutCalculated = false;
@@ -393,77 +392,144 @@
             }
 
             /**
-             * 중앙 타원을 제외한 지면 전체를 회전/변형 캘리그라피로 가득 채우는 알고리즘
-             * 중복 없이 각 가사 문장을 고유한 궤도 슬롯에 배치
+             * [핵심 알고리즘]
+             * SRT 전체 가사를 '한 글자' 단위로 완전 분해하여 타원 외곽부터 A4 모서리까지
+             * 균일한 등밀도 동심 궤도(Concentric Contour Rings)에 빈틈없이 채우는 레이아웃
              */
-            computeCollageLayout() {
+            computeCharLayout() {
                 if (!this.srtList || this.srtList.length === 0) return;
 
-                const N = this.srtList.length;
+                // 1. 모든 문장을 글자(음절) 단위로 분해
+                const rawChars = [];
+                this.srtList.forEach(line => {
+                    const cleanText = line.text.replace(/\s+/g, ' ');
+                    for (let i = 0; i < cleanText.length; i++) {
+                        const ch = cleanText[i];
+                        rawChars.push({
+                            char: ch,
+                            isSpace: (ch === ' '),
+                            lineIndex: line.index,
+                            startTime: line.startTime,
+                            endTime: line.endTime,
+                            charIndexInLine: i,
+                            lineTotalChars: cleanText.length
+                        });
+                    }
+                });
+
+                const totalChars = rawChars.length;
+                if (totalChars === 0) return;
+
                 const cx = this.centerOval.cx;
                 const cy = this.centerOval.cy;
-                const rx = this.centerOval.rx;
-                const ry = this.centerOval.ry;
+                const rx0 = this.centerOval.rx;
+                const ry0 = this.centerOval.ry;
 
-                // 타원 바깥에서 A4 용지 끝까지의 거리 밴드
-                const maxRx = this.a4Rect.w * 0.46;
-                const maxRy = this.a4Rect.h * 0.46;
+                const pad = this.a4Rect.w * 0.04;
+                const hw = (this.a4Rect.w / 2) - pad;
+                const hh = (this.a4Rect.h / 2) - pad;
 
-                this.ctx.save();
-                this.lyricItems = this.srtList.map((item, idx) => {
-                    // 균일한 나선/방사형 확산 각도
-                    const phi = (idx / N) * Math.PI * 2 + (idx % 2 === 0 ? 0.1 : -0.1);
-                    
-                    // 안쪽 타원 경계선 바로 바깥(1.2)부터 용지 가장자리(2.8)까지 층위 배분
-                    const layer = (idx % 3) / 2.5; // 0, 0.4, 0.8
-                    const currentRx = rx * 1.25 + (maxRx - rx * 1.25) * layer;
-                    const currentRy = ry * 1.30 + (maxRy - ry * 1.30) * layer;
+                // 극좌표 방향 phi에 따른 안쪽 타원 반경과 바깥쪽 A4 사각 반경 연산 함수
+                const getR_In = (phi) => {
+                    return (rx0 * ry0) / Math.sqrt(Math.pow(ry0 * Math.cos(phi), 2) + Math.pow(rx0 * Math.sin(phi), 2));
+                };
+                const getR_Out = (phi) => {
+                    const cosP = Math.abs(Math.cos(phi)) + 1e-6;
+                    const sinP = Math.abs(Math.sin(phi)) + 1e-6;
+                    return Math.min(hw / cosP, hh / sinP);
+                };
 
-                    // 타원 좌표계 배치
-                    let targetX = cx + currentRx * Math.cos(phi);
-                    let targetY = cy + currentRy * Math.sin(phi);
+                // 2. 글자 수량에 맞춘 최적 등고선 링(Ring) 개수 동적 결정
+                const ringCount = Math.max(6, Math.min(22, Math.round(Math.sqrt(totalChars / 2.2))));
 
-                    // A4 테두리 내부로 클램핑
-                    const padX = this.a4Rect.w * 0.08;
-                    const padY = this.a4Rect.h * 0.06;
-                    targetX = Math.max(this.a4Rect.x + padX, Math.min(this.a4Rect.x + this.a4Rect.w - padX, targetX));
-                    targetY = Math.max(this.a4Rect.y + padY, Math.min(this.a4Rect.y + this.a4Rect.h - padY, targetY));
+                // 각 링의 둘레(Perimeter) 실측을 통한 글자 수 비례 배분
+                const ringPerimeters = [];
+                for (let k = 0; k < ringCount; k++) {
+                    const s = (k + 0.5) / ringCount;
+                    let peri = 0;
+                    let prevX = 0, prevY = 0;
+                    const steps = 60;
+                    for (let j = 0; j <= steps; j++) {
+                        const phi = (j / steps) * Math.PI * 2;
+                        const rIn = getR_In(phi) * 1.12; // 타원 보호 안전 여백
+                        const rOut = getR_Out(phi) * 0.98;
+                        const r = rIn + s * (rOut - rIn);
+                        const x = cx + r * Math.cos(phi);
+                        const y = cy + r * Math.sin(phi);
+                        if (j > 0) {
+                            peri += Math.hypot(x - prevX, y - prevY);
+                        }
+                        prevX = x;
+                        prevY = y;
+                    }
+                    ringPerimeters.push(peri);
+                }
 
-                    // 타원의 곡선을 타고 흐르는 회전각(접선 벡터) 계산
-                    // dx = -rx * sin(phi), dy = ry * cos(phi)
-                    let tangentAngle = Math.atan2(currentRy * Math.cos(phi), -currentRx * Math.sin(phi));
+                const totalPerimeter = ringPerimeters.reduce((a, b) => a + b, 0);
 
-                    // 글자가 완전히 뒤집히지 않도록 가독성 범위(-90도 ~ +90도)로 정규화
-                    if (tangentAngle > Math.PI / 2) tangentAngle -= Math.PI;
-                    if (tangentAngle < -Math.PI / 2) tangentAngle += Math.PI;
+                // 3. 각 링별 할당 글자 수 계산
+                const ringCapacities = ringPerimeters.map(p => Math.max(1, Math.round(totalChars * (p / totalPerimeter))));
+                let diff = totalChars - ringCapacities.reduce((a, b) => a + b, 0);
+                ringCapacities[ringCapacities.length - 1] += diff;
 
-                    // 모서리 깜지 느낌을 위한 미세한 유기적 틸트 부여
-                    const organicTilt = ((idx * 37) % 20 - 10) * (Math.PI / 180);
-                    const finalAngle = tangentAngle + organicTilt;
+                // 4. 각 글자마다 캔버스 타깃 좌표, 회전 각도, 맞춤 폰트 크기 계산
+                let charPointer = 0;
+                this.charItems = [];
 
-                    // 텍스트 길이와 지면 밀도에 따른 폰트 크기 계산
-                    const baseSize = Math.max(16, Math.min(34, (this.a4Rect.w * 0.052) * (20 / Math.max(10, item.text.length))));
-                    
-                    // 캘리그라피 붓의 신축(변형) 배율
-                    const scaleX = 0.9 + ((idx % 4) * 0.08); // 장평 변화
-                    const scaleY = 1.0 + (((idx + 2) % 3) * 0.1);
+                for (let k = 0; k < ringCount; k++) {
+                    const countOnRing = ringCapacities[k];
+                    const s = (k + 0.5) / ringCount;
+                    const peri = ringPerimeters[k];
 
-                    return {
-                        text: item.text,
-                        startTime: item.startTime,
-                        endTime: item.endTime,
-                        targetX: targetX,
-                        targetY: targetY,
-                        targetAngle: finalAngle,
-                        targetSize: baseSize,
-                        scaleX: scaleX,
-                        scaleY: scaleY,
-                        state: 'WAITING',
-                        flyProgress: 0,
-                        baseAlpha: 0.14
-                    };
-                });
-                this.ctx.restore();
+                    // 지면 밀도에 맞춘 각 링의 최적 폰트 크기
+                    const ringFontSize = Math.max(12, Math.min(28, (peri / countOnRing) * 1.15));
+
+                    for (let i = 0; i < countOnRing; i++) {
+                        if (charPointer >= totalChars) break;
+                        const item = rawChars[charPointer];
+
+                        // 12시 방향(상단)부터 시계방향으로 회전 배치
+                        const phi = (i / countOnRing) * Math.PI * 2 - Math.PI / 2;
+
+                        const rIn = getR_In(phi) * 1.12;
+                        const rOut = getR_Out(phi) * 0.98;
+                        const r = rIn + s * (rOut - rIn);
+
+                        const targetX = cx + r * Math.cos(phi);
+                        const targetY = cy + r * Math.sin(phi);
+
+                        // 접선 벡터(흐름 방향) 기반 회전각 연산
+                        const delta = 0.01;
+                        const rA = rIn + s * (getR_Out(phi - delta) - rIn);
+                        const rB = rIn + s * (getR_Out(phi + delta) - rIn);
+                        const xA = cx + rA * Math.cos(phi - delta);
+                        const yA = cy + rA * Math.sin(phi - delta);
+                        const xB = cx + rB * Math.cos(phi + delta);
+                        const yB = cy + rB * Math.sin(phi + delta);
+
+                        let tangentAngle = Math.atan2(yB - yA, xB - xA);
+
+                        // 글자가 거꾸로 뒤집히지 않도록 가독성 범위(-90도 ~ +90도)로 정규화
+                        if (tangentAngle > Math.PI / 2) tangentAngle -= Math.PI;
+                        if (tangentAngle < -Math.PI / 2) tangentAngle += Math.PI;
+
+                        // 캘리그라피 붓의 미세한 자연 틸트 추가
+                        const organicTilt = ((charPointer * 13) % 11 - 5) * (Math.PI / 180);
+
+                        this.charItems.push({
+                            ...item,
+                            targetX: targetX,
+                            targetY: targetY,
+                            targetAngle: tangentAngle + organicTilt,
+                            targetSize: ringFontSize,
+                            state: 'WAITING',
+                            flyProgress: 0,
+                            baseAlpha: 0.16
+                        });
+
+                        charPointer++;
+                    }
+                }
 
                 this.isLayoutCalculated = true;
             }
@@ -514,7 +580,7 @@
                     this.audioElement.pause();
                     this.audioElement.currentTime = 0;
                 }
-                this.computeCollageLayout();
+                this.computeCharLayout();
             }
 
             getRMS() {
@@ -548,26 +614,26 @@
                 }
 
                 if (!this.isLayoutCalculated) {
-                    this.computeCollageLayout();
+                    this.computeCharLayout();
                 }
 
                 const ctx = this.ctx;
                 ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
-                // 1. 도화지 배경
+                // 1. 한지 배경
                 this.renderBackground(ctx);
 
                 const rms = this.getRMS();
-                let currentActiveItem = null;
                 let stampedCount = 0;
+                const activeLinesMap = {};
 
-                // 2. 가사 상태 업데이트
-                this.lyricItems.forEach(item => {
+                // 2. 글자 상태 갱신
+                this.charItems.forEach(item => {
                     if (this.currentTime < item.startTime) {
                         item.state = 'WAITING';
                     } else if (this.currentTime >= item.startTime && this.currentTime <= item.endTime) {
                         item.state = 'ACTIVE';
-                        currentActiveItem = item;
+                        activeLinesMap[item.lineIndex] = true;
                     } else if (this.currentTime > item.endTime) {
                         if (item.state === 'ACTIVE') {
                             item.state = 'FLYING';
@@ -585,31 +651,31 @@
                     }
                 });
 
-                if (this.lyricItems.length > 0 && stampedCount === this.lyricItems.length) {
+                if (this.charItems.length > 0 && stampedCount === this.charItems.length) {
                     this.allFinished = true;
                 }
 
-                // 최종 먹물 번짐 진행도
+                // 먹색 완성 진행도
                 if (this.isPreviewMode) {
                     this.finalInkProgress = 1.0;
                 } else if (this.allFinished) {
                     this.finalInkProgress = Math.min(1.0, this.finalInkProgress + 0.007);
                 }
 
-                // 3. 지면 안착 레이어 (깜지 콜라주)
-                this.renderStampedCollage(ctx);
+                // 3. 지면 안착 깜지 레이어
+                this.renderStampedLayer(ctx);
 
-                // 4. 날아가는 레이어 (Flying)
+                // 4. 날아가는 한 글자들 레이어 (Flying)
                 if (!this.isPreviewMode) {
                     this.renderFlyingLayer(ctx);
                 }
 
-                // 5. 중앙 타원 여백 및 제목/글쓴이 렌더링
+                // 5. 중앙 타원 여백 및 제목/글쓴이
                 this.renderCenterOvalZone(ctx);
 
-                // 6. 현재 노래 중인 활성 캘리그라피
-                if (currentActiveItem && !this.isPreviewMode) {
-                    this.renderActiveLyric(ctx, currentActiveItem, rms);
+                // 6. 현재 노래 중인 활성 문장 (타원 안에서 크고 선명하게 호흡)
+                if (!this.isPreviewMode) {
+                    this.renderActiveLyrics(ctx, rms);
                 }
 
                 this.updateUI();
@@ -620,18 +686,15 @@
                 ctx.fillStyle = "#0a0a0c";
                 ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-                // A4 그림자
                 ctx.save();
                 ctx.shadowColor = "rgba(0, 0, 0, 0.7)";
                 ctx.shadowBlur = 45;
                 ctx.shadowOffsetY = 18;
 
-                // 미색 한지 바탕
                 ctx.fillStyle = "#f6f3ea";
                 ctx.fillRect(this.a4Rect.x, this.a4Rect.y, this.a4Rect.w, this.a4Rect.h);
                 ctx.restore();
 
-                // 종이 노이즈 질감
                 ctx.save();
                 ctx.globalCompositeOperation = "multiply";
                 ctx.globalAlpha = 0.52;
@@ -641,18 +704,17 @@
                 ctx.restore();
             }
 
-            // 중앙 타원 영역: 부드러운 네거티브 여백 + 제목 및 글쓴이
             renderCenterOvalZone(ctx) {
                 const oval = this.centerOval;
                 ctx.save();
 
-                // 타원 내부를 맑고 깨끗하게 비워내는 은은한 마스크 (배경 먹물 차단)
+                // 타원 내부 정돈된 여백 마스크
                 ctx.beginPath();
-                ctx.ellipse(oval.cx, oval.cy, oval.rx * 1.05, oval.ry * 1.05, 0, 0, Math.PI * 2);
+                ctx.ellipse(oval.cx, oval.cy, oval.rx * 1.04, oval.ry * 1.04, 0, 0, Math.PI * 2);
                 ctx.fillStyle = "#f6f3ea";
                 ctx.fill();
 
-                // 타원 테두리 섬세한 이중 먹선
+                // 섬세한 이중 먹선 테두리
                 ctx.beginPath();
                 ctx.ellipse(oval.cx, oval.cy, oval.rx, oval.ry, 0, 0, Math.PI * 2);
                 ctx.strokeStyle = "rgba(40, 40, 45, 0.35)";
@@ -665,25 +727,25 @@
                 ctx.lineWidth = 0.8;
                 ctx.stroke();
 
-                // 제목 (타원 상단부)
+                // 제목
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";
-                ctx.font = `bold ${oval.ry * 0.38}px ${this.currentFont}`;
+                ctx.font = `bold ${oval.ry * 0.36}px ${this.currentFont}`;
                 ctx.fillStyle = "#161618";
                 ctx.shadowColor = "rgba(0,0,0,0.2)";
                 ctx.shadowBlur = 4;
-                ctx.fillText(this.titleText, oval.cx, oval.cy - oval.ry * 0.22);
+                ctx.fillText(this.titleText, oval.cx, oval.cy - oval.ry * 0.24);
 
-                // 글쓴이 (타원 하단부)
+                // 글쓴이
                 ctx.font = `500 ${oval.ry * 0.22}px 'Gowun Batang', serif`;
                 ctx.fillStyle = "#4a4a52";
                 ctx.shadowBlur = 0;
-                ctx.fillText(this.authorText, oval.cx, oval.cy + oval.ry * 0.28);
+                ctx.fillText(this.authorText, oval.cx, oval.cy + oval.ry * 0.26);
 
-                // 전통 붉은 전각 낙관 인장
+                // 전통 붉은 전각 낙관
                 const sealS = oval.ry * 0.28;
                 const sealX = oval.cx + (oval.rx * 0.52);
-                const sealY = oval.cy + (oval.ry * 0.12);
+                const sealY = oval.cy + (oval.ry * 0.10);
 
                 ctx.fillStyle = "#9e2a2b";
                 ctx.fillRect(sealX, sealY, sealS, sealS);
@@ -699,35 +761,33 @@
                 ctx.restore();
             }
 
-            // 지면에 회전 및 변형되어 안착된 캘리그라피 깜지 레이어
-            renderStampedCollage(ctx) {
+            // 지면에 안착된 한 글자 깜지 레이어
+            renderStampedLayer(ctx) {
                 ctx.save();
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";
 
-                this.lyricItems.forEach(item => {
+                this.charItems.forEach(item => {
+                    if (item.isSpace) return; // 공백은 렌더링 생략
+
                     const isVisible = this.isPreviewMode || item.state === 'STAMPED';
                     if (isVisible) {
                         const alpha = this.isPreviewMode ? 0.94 : (item.baseAlpha + (0.94 - item.baseAlpha) * this.finalInkProgress);
-                        const grey = this.isPreviewMode ? 18 : Math.floor(185 - (185 - 18) * this.finalInkProgress);
+                        const grey = this.isPreviewMode ? 16 : Math.floor(185 - (185 - 16) * this.finalInkProgress);
 
                         ctx.save();
-                        // 1. 고유 타깃 위치로 이동
                         ctx.translate(item.targetX, item.targetY);
-                        // 2. 타원 흐름에 맞춘 회전
                         ctx.rotate(item.targetAngle);
-                        // 3. 붓글씨 조형 변형(장평)
-                        ctx.scale(item.scaleX, item.scaleY);
 
                         ctx.font = `bold ${item.targetSize}px ${this.currentFont}`;
-                        
+
                         if (this.finalInkProgress > 0 || this.isPreviewMode) {
                             ctx.shadowColor = "rgba(10, 10, 15, 0.25)";
-                            ctx.shadowBlur = 3;
+                            ctx.shadowBlur = 2;
                         }
 
                         ctx.fillStyle = `rgba(${grey}, ${grey}, ${grey}, ${alpha})`;
-                        ctx.fillText(item.text, 0, 0);
+                        ctx.fillText(item.char, 0, 0);
 
                         ctx.restore();
                     }
@@ -735,75 +795,79 @@
                 ctx.restore();
             }
 
-            // 중앙에서 고유 회전 슬롯으로 날아가는 모션
+            // 글자가 분해되어 중앙에서 자기 자리로 날아가는 모션
             renderFlyingLayer(ctx) {
                 ctx.save();
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";
 
-                this.lyricItems.forEach(item => {
+                this.charItems.forEach(item => {
+                    if (item.isSpace) return;
+
                     if (item.state === 'FLYING') {
                         const t = this.easeOutCubic(item.flyProgress);
 
-                        // 중앙에서 목표 회전 위치로 보간
-                        const startX = this.canvas.width / 2;
-                        const startY = this.canvas.height / 2;
+                        // 중앙 문장 내 위치에서 출발
+                        const activeFontSize = this.centerOval.ry * 0.32;
+                        const charStep = activeFontSize * 0.75;
+                        const lineW = item.lineTotalChars * charStep;
+                        const startX = this.centerOval.cx - (lineW / 2) + (item.charIndexInLine * charStep) + (charStep / 2);
+                        const startY = this.centerOval.cy;
+
                         const curX = startX + (item.targetX - startX) * t;
                         const curY = startY + (item.targetY - startY) * t;
-
                         const curAngle = item.targetAngle * t;
-                        const curScaleX = 1.0 + (item.scaleX - 1.0) * t;
-                        const curScaleY = 1.0 + (item.scaleY - 1.0) * t;
-
-                        const startSize = this.a4Rect.w * 0.06;
-                        const curSize = startSize + (item.targetSize - startSize) * t;
+                        const curSize = activeFontSize + (item.targetSize - activeFontSize) * t;
 
                         const alpha = 1.0 - (1.0 - item.baseAlpha) * t;
-                        const grey = Math.floor(18 + (185 - 18) * t);
+                        const grey = Math.floor(16 + (185 - 16) * t);
 
                         ctx.save();
                         ctx.translate(curX, curY);
                         ctx.rotate(curAngle);
-                        ctx.scale(curScaleX, curScaleY);
 
                         ctx.font = `bold ${curSize}px ${this.currentFont}`;
                         ctx.fillStyle = `rgba(${grey}, ${grey}, ${grey}, ${alpha})`;
-                        ctx.fillText(item.text, 0, 0);
+                        ctx.fillText(item.char, 0, 0);
                         ctx.restore();
                     }
                 });
                 ctx.restore();
             }
 
-            // 현재 부르고 있는 활성 가사 (가장 크고 진하게 표시)
-            renderActiveLyric(ctx, item, rms) {
+            // 현재 노래 중인 활성 문장 (타원 중앙에서 크고 선명하게)
+            renderActiveLyrics(ctx, rms) {
+                const activeItems = this.charItems.filter(it => it.state === 'ACTIVE');
+                if (activeItems.length === 0) return;
+
+                const lineIndex = activeItems[0].lineIndex;
+                const lineChars = activeItems.filter(it => it.lineIndex === lineIndex);
+
                 ctx.save();
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";
 
-                const centerX = this.centerOval.cx;
-                // 타원 내부 제목과 겹치지 않도록 살짝 아래 또는 중심에 강력한 포커스
-                const centerY = this.centerOval.cy;
+                const beat = 1.0 + (rms * 0.28);
+                const baseSize = this.centerOval.ry * 0.32;
+                const fontSize = baseSize * beat;
 
-                const beat = 1.0 + (rms * 0.25);
-                const baseSize = this.a4Rect.w * 0.058;
-                let targetFontSize = baseSize * beat;
-
-                // 타원 폭을 벗어나지 않도록 안전 리사이징
-                const maxW = this.centerOval.rx * 1.7;
-                ctx.font = `bold ${targetFontSize}px ${this.currentFont}`;
-                let measuredW = ctx.measureText(item.text).width;
-                if (measuredW > maxW) {
-                    targetFontSize = targetFontSize * (maxW / measuredW);
-                    ctx.font = `bold ${targetFontSize}px ${this.currentFont}`;
-                }
-
-                // 활성 가사 배경을 살짝 감싸는 연한 먹안개
+                ctx.font = `bold ${fontSize}px ${this.currentFont}`;
                 ctx.shadowColor = "rgba(0, 0, 0, 0.4)";
-                ctx.shadowBlur = 12 + (rms * 16);
+                ctx.shadowBlur = 10 + (rms * 14);
                 ctx.fillStyle = "#0c0c0e";
 
-                ctx.fillText(item.text, centerX, centerY);
+                const charStep = fontSize * 0.75;
+                const lineW = lineChars.length * charStep;
+                const startX = this.centerOval.cx - (lineW / 2) + (charStep / 2);
+                const startY = this.centerOval.cy;
+
+                lineChars.forEach(item => {
+                    if (!item.isSpace) {
+                        const x = startX + (item.charIndexInLine * charStep);
+                        ctx.fillText(item.char, x, startY);
+                    }
+                });
+
                 ctx.restore();
             }
 
@@ -820,7 +884,7 @@
 
         window.addEventListener('DOMContentLoaded', () => {
             const container = document.getElementById('canvas-container');
-            const engine = new CalligraphyCollageEngine(container);
+            const engine = new CharCollageEngine(container);
 
             const btnPlay = document.getElementById('btn-play');
             const btnPreview = document.getElementById('btn-preview');
