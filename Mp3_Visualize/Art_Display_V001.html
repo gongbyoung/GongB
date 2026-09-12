@@ -36,7 +36,7 @@
 
     /* 좌측 설정 사이드바 */
     #sidebar {
-      width: 420px;
+      width: 440px;
       height: 100vh;
       background: var(--panel-bg);
       border-right: 1px solid rgba(212, 175, 55, 0.25);
@@ -49,7 +49,7 @@
     }
 
     #sidebar.collapsed {
-      transform: translateX(-420px);
+      transform: translateX(-440px);
     }
 
     .panel-header {
@@ -244,7 +244,7 @@
 
     #toggle-sidebar {
       position: absolute;
-      left: 420px;
+      left: 440px;
       top: 24px;
       width: 32px;
       height: 38px;
@@ -322,7 +322,6 @@
       flex-direction: column;
       justify-content: center;
       align-items: center;
-      gap: 26px;
       position: relative;
       z-index: 10;
     }
@@ -331,7 +330,6 @@
       display: flex;
       justify-content: center;
       align-items: center;
-      gap: 16px;
       width: 100%;
       opacity: 0;
       transform: scale(0.96);
@@ -343,7 +341,14 @@
       transform: scale(1);
     }
 
-    /* 박힌 글자 기본: 흐린 회색 비활성화 */
+    /* 단어별 래퍼 */
+    .word-group {
+      display: inline-flex;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    /* 글자 기본: 흐린 회색 비활성화 */
     .scroll-line .word-glyph {
       display: inline-block;
       flex-shrink: 0;
@@ -499,12 +504,56 @@
         </select>
       </div>
 
+      <!-- 획 굵기 조정 (신규) -->
+      <div class="form-group">
+        <label>획 굵기 조정</label>
+        <div class="slider-number-row">
+          <input type="range" id="stroke-width-range" min="5" max="30" value="11">
+          <input type="number" id="stroke-width-num" min="5" max="30" value="11">
+        </div>
+      </div>
+
       <!-- 글자 크기 배율 -->
       <div class="form-group">
-        <label>글자 크기 배율 (%)</label>
+        <label>기본 글자 크기 배율 (%)</label>
         <div class="slider-number-row">
           <input type="range" id="glyph-scale-range" min="50" max="180" value="100">
           <input type="number" id="glyph-scale-num" min="50" max="180" value="100">
+        </div>
+      </div>
+
+      <!-- 캘리그라피 강조 효과 (신규) -->
+      <div class="form-group">
+        <label for="emphasis-mode">캘리그라피 강조 효과 (단어 크기 변화)</label>
+        <select id="emphasis-mode">
+          <option value="none" selected>없음 (균일한 크기)</option>
+          <option value="random">랜덤 단어 강조</option>
+          <option value="first">문장 첫 단어 강조</option>
+          <option value="last">문장 마지막 단어 강조</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>강조 단어 확대 배율 (배)</label>
+        <div class="slider-number-row">
+          <input type="range" id="emphasis-scale-range" min="1.0" max="2.0" value="1.3" step="0.1">
+          <input type="number" id="emphasis-scale-num" min="1.0" max="2.0" value="1.3" step="0.1">
+        </div>
+      </div>
+
+      <!-- 자간 / 줄간격 조정 (신규) -->
+      <div class="form-group">
+        <label>자간 (글자 사이 간격, px)</label>
+        <div class="slider-number-row">
+          <input type="range" id="letter-spacing-range" min="-5" max="30" value="12">
+          <input type="number" id="letter-spacing-num" min="-5" max="30" value="12">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>줄간격 (문장 사이 간격, px)</label>
+        <div class="slider-number-row">
+          <input type="range" id="line-spacing-range" min="5" max="80" value="26">
+          <input type="number" id="line-spacing-num" min="5" max="80" value="26">
         </div>
       </div>
 
@@ -571,16 +620,20 @@
       numEl.addEventListener('input', () => { rangeEl.value = numEl.value; });
     }
     bindSliderNumberLight('glyph-scale-range', 'glyph-scale-num');
+    bindSliderNumberLight('stroke-width-range', 'stroke-width-num');
+    bindSliderNumberLight('emphasis-scale-range', 'emphasis-scale-num');
+    bindSliderNumberLight('letter-spacing-range', 'letter-spacing-num');
+    bindSliderNumberLight('line-spacing-range', 'line-spacing-num');
 
     /* -------------------------------------------------------------
        [팔뚝~손가락 + 손바닥 오각형 수인 버전] 캘리그램 렌더러
-       - 팔뚝부터 손끝까지 이어지는 곡선형 획 구조 반영
-       - 'ㅇ', 'ㅎ' 등 원형 자소는 손바닥을 오각형/동그랗게 모은 수인 형태로 렌더링
+       - 획 굵기(strokeWidth) 파라미터 반영
        ------------------------------------------------------------- */
     function renderHandCalligramGlyph(char, targetSize, options) {
-      const { fingerStyle } = options;
+      const { fingerStyle, customStrokeWidth } = options;
       const isChubby = (fingerStyle === 'chubby');
       const baseSize = 256;
+      const strokeVal = customStrokeWidth !== undefined ? customStrokeWidth : (isChubby ? 16 : 11);
 
       const canvas = document.createElement('canvas');
       canvas.width = targetSize;
@@ -596,7 +649,7 @@
       tctx.textBaseline = 'middle';
       tctx.font = `bold ${baseSize * 0.74}px 'Nanum Brush Script', cursive`;
 
-      tctx.lineWidth = isChubby ? 16 : 11;
+      tctx.lineWidth = strokeVal;
       tctx.strokeStyle = '#000000';
       tctx.lineJoin = 'round';
       tctx.lineCap = 'round';
@@ -626,14 +679,14 @@
       octx.textAlign = 'center';
       octx.textBaseline = 'middle';
       octx.font = `bold ${baseSize * 0.74}px 'Nanum Brush Script', cursive`;
-      octx.lineWidth = (isChubby ? 16 : 11) + 3.0;
+      octx.lineWidth = strokeVal + 3.0;
       octx.strokeStyle = '#22150e';
       octx.lineJoin = 'round';
       octx.lineCap = 'round';
       octx.strokeText(char, baseSize / 2, baseSize / 2);
       octx.drawImage(skinCanvas, 0, 0);
 
-      // 4. 요청하신 조건: 'ㅇ', 'ㅎ' 및 동그란 자소 형태는 손바닥을 모은 형태(수인/오각형)로 정밀 묘사
+      // 4. 'ㅇ', 'ㅎ' 및 동그란 자소 형태는 손바닥을 모은 형태(수인/오각형)로 정밀 묘사
       if (char === 'ㅇ' || char === 'ㅎ' || char === '이' || char === '한') {
         const cx = baseSize / 2, cy = baseSize * 0.55;
         const radius = baseSize * 0.24;
@@ -645,7 +698,6 @@
         octx.clearRect(0, 0, baseSize, baseSize);
         octx.restore();
 
-        // 양손 손바닥을 둥글게 모은 형태 (오각형 수인 실루엣)
         octx.save();
         octx.beginPath();
         octx.moveTo(cx, cy - radius);
@@ -661,7 +713,6 @@
         octx.lineWidth = 2.5;
         octx.stroke();
 
-        // 손바닥 결 및 손끝 디테일
         octx.strokeStyle = 'rgba(120, 80, 60, 0.4)';
         octx.lineWidth = 1.5;
         octx.beginPath();
@@ -672,7 +723,6 @@
         octx.restore();
       }
 
-      // 최종 캔버스 안착
       ctx.drawImage(outCanvas, 0, 0, targetSize, targetSize);
       return canvas;
     }
@@ -816,7 +866,12 @@
 
     function getOptions() {
       return {
-        fingerStyle: fingerStyleSelect.value
+        fingerStyle: fingerStyleSelect.value,
+        customStrokeWidth: parseFloat(document.getElementById('stroke-width-range').value),
+        emphasisMode: document.getElementById('emphasis-mode').value,
+        emphasisScale: parseFloat(document.getElementById('emphasis-scale-range').value),
+        letterSpacing: parseInt(document.getElementById('letter-spacing-range').value, 10),
+        lineSpacing: parseInt(document.getElementById('line-spacing-range').value, 10)
       };
     }
 
@@ -863,17 +918,8 @@
       }
 
       const safeW = canvas2KWidth * 0.84;
-      const safeH = canvas2KHeight * 0.84;
-      let maxLineChars = 1;
-      rawLines.forEach(l => { if (l.text.length > maxLineChars) maxLineChars = l.text.length; });
-      const numLines = Math.max(rawLines.length, 1);
-
-      const baseGlyphW = safeW / (maxLineChars * 1.15);
-      const baseGlyphH = safeH / (numLines * 1.4);
-      let glyphSize = Math.floor(Math.min(baseGlyphW, baseGlyphH) * scaleMultiplier);
-      glyphSize = Math.max(32, Math.min(glyphSize, 180));
-
-      scrollContent.style.gap = `${Math.floor(glyphSize * 0.34)}px`;
+      const baseGlyphSize = Math.floor(100 * scaleMultiplier);
+      scrollContent.style.gap = `${options.lineSpacing}px`;
 
       for (let idx = 0; idx < rawLines.length; idx++) {
         const cueData = rawLines[idx];
@@ -882,19 +928,69 @@
         const lineRow = document.createElement('div');
         lineRow.className = 'scroll-line';
 
-        const chars = cueData.text.split('');
-        chars.forEach(ch => {
-          if (ch === ' ' || ch === '\t') {
-            const sp = document.createElement('div');
-            sp.style.width = `${Math.floor(glyphSize * 0.45)}px`;
-            lineRow.appendChild(sp);
-            return;
+        // 단어 단위로 분할하여 단어별 래퍼 및 줄바꿈 처리
+        const words = cueData.text.split(/\s+/).filter(w => w.length > 0);
+        
+        // 강조 단어 인덱스 결정
+        let targetEmphasisIdx = -1;
+        if (options.emphasisMode === 'random' && words.length > 0) {
+          targetEmphasisIdx = Math.floor(Math.random() * words.length);
+        } else if (options.emphasisMode === 'first' && words.length > 0) {
+          targetEmphasisIdx = 0;
+        } else if (options.emphasisMode === 'last' && words.length > 0) {
+          targetEmphasisIdx = words.length - 1;
+        }
+
+        let currentLineWidth = 0;
+        let currentWordGroup = document.createElement('div');
+        currentWordGroup.className = 'word-group';
+        currentWordGroup.style.gap = `${options.letterSpacing}px`;
+        lineRow.appendChild(currentWordGroup);
+
+        words.forEach((word, wIdx) => {
+          const isEmphasized = (wIdx === targetEmphasisIdx);
+          const currentWordFactor = isEmphasized ? options.emphasisScale : 1.0;
+          const wordGlyphs = [];
+
+          word.split('').forEach(ch => {
+            const gSize = Math.floor(baseGlyphSize * currentWordFactor);
+            const gCanvas = renderHandCalligramGlyph(ch, Math.floor(gSize * 1.25), options);
+            gCanvas.className = 'word-glyph';
+            gCanvas.style.width = `${gSize}px`;
+            gCanvas.style.height = `${gSize}px`;
+            wordGlyphs.push({ canvas: gCanvas, size: gSize });
+          });
+
+          // 단어 하나의 대략적인 너비 계산 (글자수 * 크기 + 자간)
+          const wordApproxWidth = word.length * (baseGlyphSize * currentWordFactor) + (word.length - 1) * options.letterSpacing;
+
+          // 만약 현재 행의 너비가 허용 폭(safeW)을 초과하고, 비어있는 행이 아니라면 다음 줄(scroll-line)로 분기
+          if (currentLineWidth + wordApproxWidth > safeW && currentWordGroup.children.length > 0) {
+            // 새 행 생성
+            const newLineRow = document.createElement('div');
+            newLineRow.className = 'scroll-line';
+            scrollContent.appendChild(newLineRow);
+
+            currentWordGroup = document.createElement('div');
+            currentWordGroup.className = 'word-group';
+            currentWordGroup.style.gap = `${options.letterSpacing}px`;
+            newLineRow.appendChild(currentWordGroup);
+            currentLineWidth = 0;
           }
-          const gCanvas = renderHandCalligramGlyph(ch, Math.floor(glyphSize * 1.25), options);
-          gCanvas.className = 'word-glyph';
-          gCanvas.style.width = `${glyphSize}px`;
-          gCanvas.style.height = `${glyphSize}px`;
-          lineRow.appendChild(gCanvas);
+
+          // 단어 내 글자들을 현재 단어 그룹에 추가
+          const wordWrapper = document.createElement('div');
+          wordWrapper.className = 'word-group';
+          wordWrapper.style.gap = `${options.letterSpacing}px`;
+          wordGlyphs.forEach(wg => wordWrapper.appendChild(wg.canvas));
+
+          // 단어 사이 공백 추가를 위한 스페이스 엘리먼트
+          const spaceEl = document.createElement('div');
+          spaceEl.style.width = `${Math.floor(baseGlyphSize * 0.45)}px`;
+
+          currentWordGroup.appendChild(wordWrapper);
+          currentWordGroup.appendChild(spaceEl);
+          currentLineWidth += wordApproxWidth + (baseGlyphSize * 0.45);
         });
 
         scrollContent.appendChild(lineRow);
@@ -905,7 +1001,7 @@
           start: cueData.start,
           end: cueData.end,
           element: lineRow,
-          glyphSize: glyphSize,
+          glyphSize: baseGlyphSize,
           options: options,
           landed: false
         });
