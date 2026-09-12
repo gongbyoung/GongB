@@ -1,8 +1,7 @@
 /**
  * src/sketches/028_pump_rhythm_highway.js
- * - [028호 캘리그래피 자막 & 백드롭 비주얼 오버레이 스케치 Ver 32.0]
- * - 🔒 028호 화면 이탈 완전 차단 및 SRT 붓글씨 자막 최상단 고정 렌더링
- * - 🌌 뒷배경(Backdrop): 음악 비트에 반응하는 오디오 리액티브 파형 및 성운 입자 동시 구동
+ * - [028호 백드롭 오버레이 & 유저 선택 폰트 연동 캘리그래피 Ver 33.0]
+ * - 🔀 좌측 패널의 폰트 선택 드롭다운 및 커스텀 TTF/OTF 폰트 실시간 반영
  */
 
 export default class CalligraphyWithBackdropSketch {
@@ -16,9 +15,8 @@ export default class CalligraphyWithBackdropSketch {
     }
 
     this.time = 0;
-    this.version = "028호 백드롭 오버레이 & 붓글씨 자막 고정 Ver 32.0";
+    this.version = "028호 유저 폰트 연동 캘리그래피 Ver 33.0";
     
-    // 뒷배경 비주얼 효과를 위한 파티클 배열 초기화
     this.backdropParticles = [];
     for (let i = 0; i < 70; i++) {
       this.backdropParticles.push({
@@ -51,9 +49,7 @@ export default class CalligraphyWithBackdropSketch {
 
     this.ctx.save();
 
-    // =========================================================================
-    // 🌌 1단계: 뒷배경 (Backdrop Layer) - 오디오 리액티브 비주얼 무대
-    // =========================================================================
+    // 🌌 1단계: 뒷배경 (Backdrop Layer) - 오디오 리액티브 비주얼
     const bgGrad = this.ctx.createLinearGradient(0, 0, W, H);
     bgGrad.addColorStop(0, "#0a0c16");
     bgGrad.addColorStop(0.5, "#141026");
@@ -64,7 +60,6 @@ export default class CalligraphyWithBackdropSketch {
     const vol = audioData && audioData.vol ? audioData.vol : 0;
     const bass = audioData && audioData.bass ? audioData.bass : 0;
 
-    // 뒷배경 유동적인 오라(Glow) 효과
     const glowRadius = Math.min(W, H) * 0.5 + (bass * 120);
     const radialGrad = this.ctx.createRadialGradient(W / 2, H / 2, 10, W / 2, H / 2, glowRadius);
     radialGrad.addColorStop(0, `rgba(0, 240, 255, ${0.12 + bass * 0.25})`);
@@ -73,7 +68,6 @@ export default class CalligraphyWithBackdropSketch {
     this.ctx.fillStyle = radialGrad;
     this.ctx.fillRect(0, 0, W, H);
 
-    // 뒷배경 은은하게 흘러내리는 성운/별 입자들
     this.ctx.fillStyle = "#ffffff";
     this.backdropParticles.forEach(pt => {
       pt.y -= pt.speedY + (bass * 3.0);
@@ -88,7 +82,6 @@ export default class CalligraphyWithBackdropSketch {
     });
     this.ctx.globalAlpha = 1.0;
 
-    // 뒷배경 오디오 파형 웨이브 라인 렌더링
     const rawWave = audioData && audioData.raw ? audioData.raw : null;
     if (rawWave && rawWave.length > 0) {
       this.ctx.strokeStyle = `rgba(0, 255, 204, ${0.35 + vol * 0.4})`;
@@ -106,9 +99,7 @@ export default class CalligraphyWithBackdropSketch {
       this.ctx.stroke();
     }
 
-    // =========================================================================
-    // ✍️ 2단계: 최상단 (Foreground Layer) - SRT 붓글씨(캘리그래피) 자막 고정
-    // =========================================================================
+    // ✍️ 2단계: 최상단 (Foreground Layer) - SRT 자막 렌더링
     const subtitleText = window.currentSubtitleText || window.cosmicEngineSettings?.poemText || "상단에서 SRT 자막 파일을 로딩해주세요.";
 
     if (subtitleText) {
@@ -116,7 +107,10 @@ export default class CalligraphyWithBackdropSketch {
       const pulse = 1.0 + (vol * 0.06);
       const fontSize = baseFontSize * pulse;
 
-      this.ctx.font = `bold ${fontSize}px "MapoFlowerIsland", "Nanum Pen Script", "Gowun Dodum", sans-serif`;
+      // 💡 [핵심 연동]: 좌측 패널에서 선택한 폰트 패밀리를 실시간으로 가져와 적용
+      const selectedFont = window.cosmicEngineSettings?.fontFamily || "'Noto Sans KR', sans-serif";
+      this.ctx.font = `bold ${fontSize}px ${selectedFont}, sans-serif`;
+      
       this.ctx.textAlign = 'center';
       this.ctx.textBaseline = 'middle';
 
@@ -129,7 +123,6 @@ export default class CalligraphyWithBackdropSketch {
       lines.forEach((line, idx) => {
         const lineY = centerY + (idx - (lines.length - 1) / 2) * lineHeight;
 
-        // 먹물 번짐 효과를 위한 다중 외곽선 스트로크
         const offsets = [
           [-2, -2], [2, -2], [-2, 2], [2, 2],
           [-3, 0], [3, 0], [0, -3], [0, 3],
@@ -141,13 +134,11 @@ export default class CalligraphyWithBackdropSketch {
           this.ctx.fillText(line, centerX + off[0], lineY + off[1]);
         });
 
-        // 묵직한 그림자
         this.ctx.shadowColor = "rgba(0, 0, 0, 0.95)";
         this.ctx.shadowBlur = 20;
         this.ctx.shadowOffsetX = 4;
         this.ctx.shadowOffsetY = 4;
 
-        // 본문 텍스트 (한지 미색)
         this.ctx.fillStyle = "#faf6ed";
         this.ctx.fillText(line, centerX, lineY);
 
@@ -159,9 +150,9 @@ export default class CalligraphyWithBackdropSketch {
 
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: 'Backdrop Overlay & Calligraphy',
+      particleCount: 'Font-Linked Calligraphy',
       isCovering: true,
-      activeFunction: 'BackdropVisualOverlay'
+      activeFunction: 'FontLinkedBackdrop'
     };
   }
 
