@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>정방향 캘리그라피 시화(詩畫) 생성기</title>
+  <title>2K 시화(詩畫) 캘리그라피 생성기</title>
   <!-- 전통 캘리그라피 및 명조 한글 웹폰트 -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11,12 +11,12 @@
 
   <style>
     :root {
-      --bg-dark: #0b0c10;
-      --panel-bg: #14161f;
+      --bg-dark: #08090c;
+      --panel-bg: #13151c;
       --accent-gold: #d4af37;
-      --accent-red: #c0392b;
-      --paper-cream: #f5eedc;
-      --ink-black: #111114;
+      --accent-red: #b33939;
+      --paper-cream: #f4edd9;
+      --ink-black: #111115;
     }
 
     * {
@@ -36,9 +36,9 @@
       display: flex;
     }
 
-    /* 좌측 설정 패널 */
+    /* 좌측 설정 사이드바 */
     #sidebar {
-      width: 370px;
+      width: 380px;
       height: 100vh;
       background: var(--panel-bg);
       border-right: 1px solid rgba(212, 175, 55, 0.25);
@@ -47,23 +47,21 @@
       z-index: 100;
       box-shadow: 10px 0 35px rgba(0, 0, 0, 0.7);
       transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      flex-shrink: 0;
     }
 
     #sidebar.collapsed {
-      transform: translateX(-370px);
+      transform: translateX(-380px);
     }
 
     .panel-header {
       padding: 22px 20px;
       border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
     }
 
     .panel-header h1 {
       font-family: 'Nanum Brush Script', cursive;
-      font-size: 2.1rem;
+      font-size: 2.2rem;
       color: var(--accent-gold);
       letter-spacing: 2px;
     }
@@ -77,36 +75,12 @@
       gap: 16px;
     }
 
-    /* 입력 모드 토글 탭 */
-    .mode-tabs {
-      display: flex;
-      border: 1px solid #333a4d;
-      border-radius: 8px;
-      overflow: hidden;
-    }
-
-    .mode-tab {
-      flex: 1;
-      padding: 10px;
-      background: #191c26;
-      border: none;
-      color: #8f96a8;
-      cursor: pointer;
-      font-size: 0.85rem;
-      font-weight: bold;
-      transition: all 0.2s;
-    }
-
-    .mode-tab.active {
-      background: var(--accent-gold);
-      color: #0b0c10;
-    }
-
     .form-group label {
       font-size: 0.85rem;
       color: #a2a8ba;
       margin-bottom: 6px;
       display: block;
+      font-weight: bold;
     }
 
     select, textarea, input[type="file"], input[type="range"], button {
@@ -125,10 +99,27 @@
       border-color: var(--accent-gold);
     }
 
-    textarea {
-      resize: vertical;
-      min-height: 110px;
-      line-height: 1.6;
+    .mode-tabs {
+      display: flex;
+      border: 1px solid #333a4d;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .mode-tab {
+      flex: 1;
+      padding: 10px;
+      background: #191c26;
+      border: none;
+      color: #8f96a8;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: bold;
+    }
+
+    .mode-tab.active {
+      background: var(--accent-gold);
+      color: #0b0c10;
     }
 
     .file-box {
@@ -145,10 +136,16 @@
       color: #55db88;
     }
 
+    textarea {
+      resize: vertical;
+      min-height: 100px;
+      line-height: 1.6;
+    }
+
     .btn-row {
       display: flex;
       gap: 10px;
-      margin-top: 8px;
+      margin-top: 4px;
     }
 
     button.btn-primary {
@@ -170,10 +167,9 @@
       cursor: pointer;
     }
 
-    /* 패널 여닫기 버튼 */
     #toggle-sidebar {
       position: absolute;
-      left: 370px;
+      left: 380px;
       top: 24px;
       width: 32px;
       height: 38px;
@@ -194,18 +190,98 @@
       left: 0;
     }
 
-    /* 메인 뷰포트 */
+    /* 메인 뷰포트 (반응형 핏 스케일러) */
     #viewport {
       flex: 1;
       position: relative;
-      background: radial-gradient(circle at center, #1b1e2a 0%, #08090d 100%);
+      background: radial-gradient(circle at center, #181b24 0%, #050608 100%);
       overflow: hidden;
       display: flex;
       align-items: center;
       justify-content: center;
     }
 
-    /* 화면 중앙 활성 왜곡 글자 (타이핑 하이라이트) */
+    /* 2K 고정 해상도 캔버스 스테이지 래퍼 */
+    #canvas-viewport-scaler {
+      position: absolute;
+      transform-origin: center center;
+      transition: transform 0.2s ease-out;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* 2K 실제 화폭 (16:9 / 9:16) */
+    #poem-scroll {
+      position: relative;
+      background: var(--paper-cream);
+      background-image: 
+        radial-gradient(ellipse at 85% 15%, rgba(195, 170, 130, 0.28) 0%, transparent 60%),
+        radial-gradient(ellipse at 15% 85%, rgba(180, 155, 120, 0.32) 0%, transparent 70%);
+      border-radius: 8px;
+      box-shadow: 0 30px 80px rgba(0, 0, 0, 0.8), inset 0 0 140px rgba(150, 130, 90, 0.3);
+      border: 24px solid #1a1510;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      transition: box-shadow 0.8s ease;
+    }
+
+    /* 16:9 모드 (2560 x 1440) */
+    #poem-scroll.ratio-16-9 {
+      width: 2560px;
+      height: 1440px;
+      padding: 90px 140px;
+    }
+
+    /* 9:16 모드 (1440 x 2560) */
+    #poem-scroll.ratio-9-16 {
+      width: 1440px;
+      height: 2560px;
+      padding: 140px 90px;
+    }
+
+    #poem-scroll.completed {
+      box-shadow: 0 0 100px rgba(212, 175, 55, 0.45), inset 0 0 140px rgba(150, 130, 90, 0.3);
+    }
+
+    /* 캔버스 내부 안전 영역 컨테이너 (글자가 절대 밖으로 나가지 못함) */
+    #scroll-content {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      position: relative;
+      z-index: 10;
+    }
+
+    .scroll-line {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      width: 100%;
+    }
+
+    /* 화폭에 박히는 왜곡 글자 캔버스 */
+    .word-glyph {
+      display: inline-block;
+      opacity: 0;
+      transform: scale(2.8);
+      transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+      filter: drop-shadow(2px 4px 6px rgba(0, 0, 0, 0.4));
+      flex-shrink: 0;
+    }
+
+    .word-glyph.landed {
+      opacity: 0.94;
+      transform: scale(1);
+    }
+
+    /* 화면 중앙 실시간 캘리그라피 타이핑 강조 포커스 */
     #center-stage {
       position: absolute;
       top: 50%;
@@ -219,15 +295,15 @@
     }
 
     #center-canvas-wrap {
-      width: 280px;
-      height: 280px;
+      width: 580px;
+      height: 580px;
       display: flex;
       align-items: center;
       justify-content: center;
-      filter: drop-shadow(0 0 30px rgba(212, 175, 55, 0.5));
+      filter: drop-shadow(0 0 50px rgba(212, 175, 55, 0.55));
       opacity: 0;
       transform: scale(0.65);
-      transition: opacity 0.2s ease, transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      transition: opacity 0.18s ease, transform 0.22s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     }
 
     #center-canvas-wrap.active {
@@ -235,84 +311,16 @@
       transform: scale(1.05);
     }
 
-    /* 전통 족자 화폭 (시화 캔버스) */
-    #poem-scroll {
-      position: relative;
-      width: 860px;
-      height: 640px;
-      background: var(--paper-cream);
-      background-image: 
-        radial-gradient(ellipse at 85% 15%, rgba(195, 170, 130, 0.25) 0%, transparent 60%),
-        radial-gradient(ellipse at 15% 85%, rgba(180, 155, 120, 0.3) 0%, transparent 70%);
-      border-radius: 4px;
-      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7), inset 0 0 100px rgba(150, 130, 90, 0.25);
-      border: 14px solid #201a14;
-      overflow: hidden;
-      padding: 45px 55px;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      transition: all 1s ease;
-    }
-
-    #poem-scroll.completed {
-      box-shadow: 0 0 60px rgba(212, 175, 55, 0.4), inset 0 0 100px rgba(150, 130, 90, 0.25);
-      transform: scale(1.02);
-    }
-
-    #scroll-content {
-      width: 100%;
-      height: 100%;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      gap: 16px;
-      position: relative;
-      z-index: 10;
-    }
-
-    .scroll-line {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 8px;
-      min-height: 52px;
-    }
-
-    /* 화폭에 안착하는 왜곡 글자 캔버스 */
-    .word-glyph {
-      width: 50px;
-      height: 50px;
-      display: inline-block;
-      opacity: 0;
-      transform: scale(2.8);
-      transition: all 0.85s cubic-bezier(0.16, 1, 0.3, 1);
-      filter: drop-shadow(1px 2px 3px rgba(0, 0, 0, 0.35));
-    }
-
-    .word-glyph.landed {
-      opacity: 0.92;
-      transform: scale(1);
-    }
-
-    /* 붉은 낙관 인장 */
+    /* 2K 붉은 낙관 인장 */
     #red-seal {
       position: absolute;
-      right: 42px;
-      bottom: 38px;
-      width: 56px;
-      height: 56px;
-      border: 3px solid var(--accent-red);
-      border-radius: 6px;
+      border: 6px solid var(--accent-red);
+      border-radius: 12px;
       color: var(--accent-red);
-      font-size: 1.1rem;
       font-weight: bold;
       display: flex;
       align-items: center;
       justify-content: center;
-      line-height: 1.1;
       writing-mode: vertical-rl;
       opacity: 0;
       transform: scale(2.5) rotate(10deg);
@@ -320,26 +328,45 @@
       z-index: 20;
     }
 
+    #poem-scroll.ratio-16-9 #red-seal {
+      right: 90px;
+      bottom: 80px;
+      width: 110px;
+      height: 110px;
+      font-size: 2.2rem;
+      letter-spacing: 4px;
+    }
+
+    #poem-scroll.ratio-9-16 #red-seal {
+      right: 90px;
+      bottom: 120px;
+      width: 120px;
+      height: 120px;
+      font-size: 2.4rem;
+      letter-spacing: 4px;
+    }
+
     #poem-scroll.completed #red-seal {
-      opacity: 0.88;
+      opacity: 0.9;
       transform: scale(1) rotate(0deg);
     }
 
-    /* 재생 진행 슬라이더 */
+    /* 하단 타임라인 */
     #timeline-bar {
       position: absolute;
       bottom: 24px;
       left: 50%;
       transform: translateX(-50%);
       width: 55%;
+      min-width: 480px;
       display: flex;
       align-items: center;
       gap: 16px;
-      background: rgba(20, 22, 31, 0.9);
-      padding: 10px 22px;
+      background: rgba(19, 21, 28, 0.9);
+      padding: 12px 24px;
       border-radius: 30px;
       backdrop-filter: blur(10px);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.12);
       z-index: 80;
     }
 
@@ -359,45 +386,54 @@
 </head>
 <body>
 
-  <!-- 설정 사이드바 -->
+  <!-- 좌측 조작 패널 -->
   <aside id="sidebar">
     <div class="panel-header">
-      <h1>詩畫 캘리그라피</h1>
+      <h1>2K 詩畫 캘리그라피</h1>
     </div>
 
     <div class="panel-body">
-      <!-- 텍스트 소스 선택 탭 -->
-      <div class="mode-tabs">
-        <button class="mode-tab active" id="tab-srt">SRT 자막 파일</button>
-        <button class="mode-tab" id="tab-direct">직접 글 입력</button>
+      <!-- 캔버스 비율 및 2K 해상도 설정 -->
+      <div class="form-group">
+        <label for="ratio-select">캔버스 규격 (2K 고정 해상도)</label>
+        <select id="ratio-select">
+          <option value="16:9">16 : 9 가로형 (2560 × 1440, QHD)</option>
+          <option value="9:16">9 : 16 세로형 (1440 × 2560, 숏폼/릴스)</option>
+        </select>
       </div>
 
-      <!-- 형상 선택 -->
+      <!-- 왜곡 형상 선택 -->
       <div class="form-group">
         <label for="shape-type">글자 왜곡 형상</label>
         <select id="shape-type">
-          <option value="hand">손바닥 (Hand - 손가락과 손바닥 실루엣)</option>
+          <option value="hand">손바닥 (Hand - 손가락/손바닥 실루엣)</option>
           <option value="star">별 (Star - 5갈래 꼭짓점 방사 왜곡)</option>
           <option value="oval">타원 (Oval - 유려한 달걀형 곡선)</option>
-          <option value="rect">사각 인장 (Square Seal - 묵직한 돌인장)</option>
+          <option value="rect">전서 사각 (Square Seal - 돌인장 테두리)</option>
           <option value="heart">하트 (Heart - 상단 홈과 하단 뾰족형)</option>
         </select>
       </div>
 
-      <!-- 왜곡 강도 조절 -->
+      <!-- 왜곡 강도 -->
       <div class="form-group">
-        <label for="warp-intensity">형상 왜곡 강도: <span id="warp-val">100%</span></label>
+        <label for="warp-intensity">왜곡 강도: <span id="warp-val">100%</span></label>
         <input type="range" id="warp-intensity" min="30" max="150" value="100">
       </div>
 
-      <!-- SRT 자막 파일 영역 -->
+      <!-- 텍스트 소스 모드 탭 -->
+      <div class="mode-tabs">
+        <button class="mode-tab active" id="tab-srt">SRT 자막 모드</button>
+        <button class="mode-tab" id="tab-direct">직접 입력 모드</button>
+      </div>
+
+      <!-- SRT 업로드 -->
       <div id="section-srt" class="file-box">
-        <label for="srt-input">SRT 자막 파일 선택</label>
+        <label for="srt-input">SRT 자막 파일 업로드</label>
         <input type="file" id="srt-input" accept=".srt">
         <div id="srt-status" class="status-badge">파일을 선택해주세요.</div>
       </div>
 
-      <!-- 직접 입력 영역 -->
+      <!-- 직접 텍스트 입력 -->
       <div id="section-direct" class="form-group" style="display: none;">
         <label for="direct-text">직접 글 입력 (줄바꿈 지원)</label>
         <textarea id="direct-text">하늘과 바람과
@@ -407,16 +443,16 @@
 빛나는 형상이 되리라</textarea>
       </div>
 
-      <!-- 배경 음악 파일 (선택) -->
+      <!-- 배경 음악 파일 -->
       <div class="file-box">
         <label for="audio-input">배경 음악 (선택 사항)</label>
         <input type="file" id="audio-input" accept="audio/*">
         <audio id="bg-audio" style="display: none;"></audio>
       </div>
 
-      <!-- 제어 버튼 -->
+      <!-- 동작 버튼 -->
       <div class="btn-row">
-        <button class="btn-primary" id="btn-play">시화 시연 시작</button>
+        <button class="btn-primary" id="btn-play">시연 시작</button>
         <button class="btn-secondary" id="btn-reset">초기화</button>
       </div>
     </div>
@@ -424,20 +460,23 @@
 
   <div id="toggle-sidebar">◀</div>
 
-  <!-- 메인 뷰포트 -->
+  <!-- 메인 반응형 뷰포트 -->
   <main id="viewport">
-    <!-- 화면 정중앙 실시간 타이핑 왜곡 글자 -->
-    <div id="center-stage">
-      <div id="center-canvas-wrap"></div>
+    <!-- 화면 중앙에 2K 캔버스를 축소/확대하여 맞춰주는 스케일러 -->
+    <div id="canvas-viewport-scaler">
+      <div id="poem-scroll" class="ratio-16-9">
+        <!-- 엄격한 내부 배치 영역 (글자가 밖으로 안 나감) -->
+        <div id="scroll-content"></div>
+        <div id="red-seal">千古<br>詩心</div>
+
+        <!-- 2K 내부 정중앙 활성 타이핑 글자 -->
+        <div id="center-stage">
+          <div id="center-canvas-wrap"></div>
+        </div>
+      </div>
     </div>
 
-    <!-- 완성될 시화 화폭 (족자) -->
-    <div id="poem-scroll">
-      <div id="scroll-content"></div>
-      <div id="red-seal">千古<br>詩心</div>
-    </div>
-
-    <!-- 하단 타임라인 -->
+    <!-- 재생 진행 컨트롤 -->
     <div id="timeline-bar">
       <span id="time-text">00:00 / 00:00</span>
       <input type="range" id="time-slider" min="0" max="100" value="0" step="0.1">
@@ -446,103 +485,66 @@
 
   <script>
     /* -------------------------------------------------------------
-       1. 정방향 2D 메쉬 왜곡 수식 (Shape Deformers)
-       캔버스 좌표계와 1:1 일치:
-       u: -1(좌) ~ +1(우), v: -1(상) ~ +1(하)
+       1. 정방향 2D 왜곡 방정식 (Shape Deformers)
        ------------------------------------------------------------- */
     const ShapeDeformers = {
-      // 1. 손바닥 (상단 손가락 4개, 좌측 엄지, 하단 손목 수축)
       hand: (u, v, strength) => {
-        let x = u;
-        let y = v;
-
-        // 상단 손가락들 (v < -0.1)
+        let x = u, y = v;
         if (v < -0.1) {
-          const fingerWarp = 0.22 * Math.sin((u + 0.9) * 4.2) + 0.15 * Math.cos((u - 0.2) * 5.0);
-          y -= fingerWarp * Math.pow(Math.abs(v + 0.1) / 0.9, 1.4) * strength;
+          const finger = 0.22 * Math.sin((u + 0.9) * 4.2) + 0.15 * Math.cos((u - 0.2) * 5.0);
+          y -= finger * Math.pow(Math.abs(v + 0.1) / 0.9, 1.4) * strength;
         }
-
-        // 좌측 엄지손가락 (u < -0.1 && v가 중간일 때 돌출)
         if (u < -0.1 && v > -0.35 && v < 0.4) {
-          const thumb = Math.sin(((v + 0.35) / 0.75) * Math.PI) * 0.42 * strength;
-          x -= thumb;
+          x -= Math.sin(((v + 0.35) / 0.75) * Math.PI) * 0.42 * strength;
         }
-
-        // 하단 손목 수축 (v > 0.3)
         if (v > 0.3) {
-          const wrist = 1 - 0.45 * ((v - 0.3) / 0.7) * strength;
-          x *= Math.max(0.4, wrist);
+          x *= Math.max(0.4, 1 - 0.45 * ((v - 0.3) / 0.7) * strength);
         }
-
         return { x: x * 0.9, y: y * 0.9 };
       },
-
-      // 2. 별 (5각 별 형상 왜곡)
       star: (u, v, strength) => {
         const r = Math.sqrt(u * u + v * v);
-        // atan2(y, x) -> v가 음수일 때 위쪽이므로 -PI/2가 상단
         const theta = Math.atan2(v, u);
-        const starFactor = 0.58 + 0.42 * Math.pow(Math.max(0, Math.cos(5 * theta + Math.PI / 2)), 1.3);
-        const modR = r * (1 + (starFactor - 0.7) * 1.35 * strength);
-
-        return {
-          x: modR * Math.cos(theta),
-          y: modR * Math.sin(theta)
-        };
+        const mod = 0.58 + 0.42 * Math.pow(Math.max(0, Math.cos(5 * theta + Math.PI / 2)), 1.3);
+        const modR = r * (1 + (mod - 0.7) * 1.35 * strength);
+        return { x: modR * Math.cos(theta), y: modR * Math.sin(theta) };
       },
-
-      // 3. 타원 (Squircle 기반 정규화)
       oval: (u, v, strength) => {
         const s = strength;
-        const x = u * Math.sqrt(Math.max(0, 1 - (v * v) / 2)) * (0.85 + 0.15 * (1 - s));
-        const y = v * Math.sqrt(Math.max(0, 1 - (u * u) / 2)) * 1.25;
-        return { x, y };
+        return {
+          x: u * Math.sqrt(Math.max(0, 1 - (v * v) / 2)) * (0.85 + 0.15 * (1 - s)),
+          y: v * Math.sqrt(Math.max(0, 1 - (u * u) / 2)) * 1.25
+        };
       },
-
-      // 4. 사각 인장 (가장자리 귀접이와 모서리 돌출)
       rect: (u, v, strength) => {
         const p = 0.16 * strength;
-        const x = u * (1 - p * (v * v));
-        const y = v * (1 - p * (u * u));
-        return { x: x * 0.92, y: y * 0.92 };
+        return { x: u * (1 - p * (v * v)) * 0.92, y: v * (1 - p * (u * u)) * 0.92 };
       },
-
-      // 5. 하트 (상단 홈 파임, 하단 뾰족 모서리)
       heart: (u, v, strength) => {
         let x = u * (1 - 0.35 * (1 - v) * 0.5);
         let y = v;
-
-        // 상단 가운데 파임 (v < 0)
-        if (v < 0) {
-          y += Math.pow(1 - Math.abs(u), 1.8) * 0.45 * strength;
-        }
-        // 하단 뾰족 모서리 (v > 0)
-        if (v > 0) {
-          x *= Math.max(0.1, 1 - v * 0.65 * strength);
-        }
-
+        if (v < 0) y += Math.pow(1 - Math.abs(u), 1.8) * 0.45 * strength;
+        if (v > 0) x *= Math.max(0.1, 1 - v * 0.65 * strength);
         return { x: x * 0.95, y: y * 1.05 };
       }
     };
 
     /* -------------------------------------------------------------
-       2. 정밀 2D 아핀 변환 메쉬 렌더러 (정방향 렌더링 보장)
+       2. 2D 삼각 아핀 변환 메쉬 렌더러 (정방향 및 2K 초고해상도 렌더링)
        ------------------------------------------------------------- */
-    function renderWarpedGlyphCanvas(char, shapeKey, intensity, targetSize = 240) {
+    function renderWarpedGlyphCanvas(char, shapeKey, intensity, targetSize = 180) {
       const srcCanvas = document.createElement('canvas');
-      const srcSize = 256;
+      const srcSize = 320;
       srcCanvas.width = srcSize;
       srcCanvas.height = srcSize;
       const sctx = srcCanvas.getContext('2d');
 
-      // 1. 소스 캔버스에 올바른 방향으로 붓글씨 렌더링
-      sctx.fillStyle = '#111114';
-      sctx.font = `bold ${srcSize * 0.72}px 'Nanum Brush Script', cursive`;
+      sctx.fillStyle = '#111115';
+      sctx.font = `bold ${srcSize * 0.74}px 'Nanum Brush Script', cursive`;
       sctx.textAlign = 'center';
       sctx.textBaseline = 'middle';
       sctx.fillText(char, srcSize / 2, srcSize / 2);
 
-      // 2. 대상 왜곡 캔버스 생성
       const dstCanvas = document.createElement('canvas');
       dstCanvas.width = targetSize;
       dstCanvas.height = targetSize;
@@ -551,17 +553,14 @@
       const gridN = 14;
       const deformer = ShapeDeformers[shapeKey] || ShapeDeformers.hand;
       const strength = intensity / 100;
-
-      // 격자 정점 산출
       const vertices = [];
+
       for (let j = 0; j <= gridN; j++) {
         const row = [];
-        const vNorm = (j / gridN) * 2 - 1; // -1(위) ~ +1(아래)
+        const vNorm = (j / gridN) * 2 - 1;
         for (let i = 0; i <= gridN; i++) {
-          const uNorm = (i / gridN) * 2 - 1; // -1(좌) ~ +1(우)
-          
+          const uNorm = (i / gridN) * 2 - 1;
           const def = deformer(uNorm, vNorm, strength);
-
           row.push({
             u: (i / gridN) * srcSize,
             v: (j / gridN) * srcSize,
@@ -572,23 +571,19 @@
         vertices.push(row);
       }
 
-      // 3. 삼각 분할 텍스처 매핑
       for (let j = 0; j < gridN; j++) {
         for (let i = 0; i < gridN; i++) {
           const p00 = vertices[j][i];
           const p10 = vertices[j][i + 1];
           const p01 = vertices[j + 1][i];
           const p11 = vertices[j + 1][i + 1];
-
           drawTexturedTriangle(dctx, srcCanvas, p00, p10, p01);
           drawTexturedTriangle(dctx, srcCanvas, p10, p11, p01);
         }
       }
-
       return dstCanvas;
     }
 
-    // 수학적으로 검증된 정밀 역행렬 아핀 변환 (상하반전 오류 완전 제거)
     function drawTexturedTriangle(ctx, img, p0, p1, p2) {
       const D = (p1.u - p0.u) * (p2.v - p0.v) - (p2.u - p0.u) * (p1.v - p0.v);
       if (Math.abs(D) < 0.0001) return;
@@ -615,11 +610,10 @@
     }
 
     /* -------------------------------------------------------------
-       3. 견고한 SRT 파서 (BOM, 윈도우 개행, 모든 구분자 완벽 지원)
+       3. SRT 견고한 파서
        ------------------------------------------------------------- */
     function parseSRTRobust(rawText) {
-      // 1. BOM 제거 및 줄바꿈 정규화
-      let clean = rawText.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+      const clean = rawText.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
       const blocks = clean.split(/\n\n+/);
       const cues = [];
 
@@ -636,34 +630,67 @@
 
       blocks.forEach(block => {
         const lines = block.trim().split('\n');
-        if (lines.length >= 2) {
-          // 타임라인 행 찾기 ("-->" 포함 행)
-          let timeLineIdx = -1;
-          for (let i = 0; i < lines.length; i++) {
-            if (lines[i].includes('-->')) {
-              timeLineIdx = i;
-              break;
-            }
-          }
-
-          if (timeLineIdx !== -1 && lines.length > timeLineIdx + 1) {
-            const timeParts = lines[timeLineIdx].split('-->');
-            const start = timeToMs(timeParts[0]);
-            const end = timeToMs(timeParts[1]);
-            const textLines = lines.slice(timeLineIdx + 1).join('\n').trim();
-
-            if (textLines && !isNaN(start) && !isNaN(end) && end > start) {
-              cues.push({ start, end, text: textLines });
-            }
+        let timeIdx = -1;
+        for (let i = 0; i < lines.length; i++) {
+          if (lines[i].includes('-->')) { timeIdx = i; break; }
+        }
+        if (timeIdx !== -1 && lines.length > timeIdx + 1) {
+          const tParts = lines[timeIdx].split('-->');
+          const start = timeToMs(tParts[0]);
+          const end = timeToMs(tParts[1]);
+          const text = lines.slice(timeIdx + 1).join('\n').trim();
+          if (text && !isNaN(start) && !isNaN(end) && end > start) {
+            cues.push({ start, end, text });
           }
         }
       });
-
       return cues;
     }
 
     /* -------------------------------------------------------------
-       4. 앱 상태 및 타임라인 빌더
+       4. 반응형 뷰포트 스케일러 & 캔버스 비율 관리
+       ------------------------------------------------------------- */
+    const viewport = document.getElementById('viewport');
+    const scaler = document.getElementById('canvas-viewport-scaler');
+    const poemScroll = document.getElementById('poem-scroll');
+    const ratioSelect = document.getElementById('ratio-select');
+
+    let canvas2KWidth = 2560;
+    let canvas2KHeight = 1440;
+
+    function applyCanvasResolution() {
+      const ratio = ratioSelect.value;
+      if (ratio === '16:9') {
+        canvas2KWidth = 2560;
+        canvas2KHeight = 1440;
+        poemScroll.className = 'ratio-16-9';
+      } else {
+        canvas2KWidth = 1440;
+        canvas2KHeight = 2560;
+        poemScroll.className = 'ratio-9-16';
+      }
+      updateViewportScale();
+    }
+
+    function updateViewportScale() {
+      // 뷰포트 내부 여백 60px 확보
+      const availableW = viewport.clientWidth - 70;
+      const availableH = viewport.clientHeight - 70;
+      const scaleX = availableW / canvas2KWidth;
+      const scaleY = availableH / canvas2KHeight;
+      const finalScale = Math.min(scaleX, scaleY, 1.0); // 최대 1.0배(2K 원본 크기)
+
+      scaler.style.transform = `scale(${finalScale})`;
+    }
+
+    window.addEventListener('resize', updateViewportScale);
+    ratioSelect.addEventListener('change', () => {
+      applyCanvasResolution();
+      buildVisualization();
+    });
+
+    /* -------------------------------------------------------------
+       5. 캔버스 내부 안전 영역 자동 배치 엔진 (In-Canvas Containment)
        ------------------------------------------------------------- */
     const tabSrt = document.getElementById('tab-srt');
     const tabDirect = document.getElementById('tab-direct');
@@ -680,12 +707,11 @@
     const timeSlider = document.getElementById('time-slider');
     const timeText = document.getElementById('time-text');
     const scrollContent = document.getElementById('scroll-content');
-    const poemScroll = document.getElementById('poem-scroll');
     const centerWrap = document.getElementById('center-canvas-wrap');
     const audioInput = document.getElementById('audio-input');
     const bgAudio = document.getElementById('bg-audio');
 
-    let currentMode = 'srt'; // 'srt' 또는 'direct'
+    let currentMode = 'srt';
     let srtCues = [];
     let timelineEvents = [];
     let totalDurationMs = 8000;
@@ -694,7 +720,6 @@
     let animId = null;
     let currentActiveIdx = -1;
 
-    // 모드 전환
     tabSrt.addEventListener('click', () => {
       currentMode = 'srt';
       tabSrt.classList.add('active');
@@ -713,11 +738,9 @@
       buildVisualization();
     });
 
-    // SRT 파일 로드
     srtInput.addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (!file) return;
-
       const reader = new FileReader();
       reader.onload = (evt) => {
         srtCues = parseSRTRobust(evt.target.result);
@@ -727,14 +750,13 @@
           currentMode = 'srt';
           tabSrt.click();
         } else {
-          srtStatus.textContent = `⚠ 자막 파싱 실패. SRT 형식을 확인해주세요.`;
+          srtStatus.textContent = `⚠ 자막 파싱 실패. SRT 파일을 확인해주세요.`;
           srtStatus.style.color = '#ff6b6b';
         }
       };
       reader.readAsText(file, 'utf-8');
     });
 
-    // 시화 시각화 데이터 구축
     function buildVisualization() {
       stopPlayback();
       scrollContent.innerHTML = '';
@@ -747,10 +769,8 @@
       const intensity = parseFloat(warpIntensityInput.value);
 
       let textLines = [];
-
       if (currentMode === 'srt') {
         if (srtCues.length === 0) {
-          // SRT가 아직 안 들어왔으면 안내 메시지
           textLines = ["SRT 파일을 업로드하거나", "직접 글 입력을 선택해주세요"];
         } else {
           textLines = srtCues.map(c => c.text);
@@ -759,7 +779,30 @@
         textLines = directTextInput.value.split('\n').filter(l => l.trim().length > 0);
       }
 
-      let globalCharIndex = 0;
+      // 캔버스 크기 대비 안전 영역 계산 (82% 가용 영역)
+      const safeWidth = canvas2KWidth * 0.82;
+      const safeHeight = canvas2KHeight * 0.82;
+
+      // 최대 글자 수 및 라인 수 파악
+      let maxLineChars = 1;
+      textLines.forEach(line => {
+        if (line.length > maxLineChars) maxLineChars = line.length;
+      });
+      const numLines = Math.max(textLines.length, 1);
+
+      // 글자가 화면 밖으로 절대 나가지 않도록 하는 동적 Glyph 크기 산출
+      const maxGlyphW = safeWidth / (maxLineChars * 1.08);
+      const maxGlyphH = safeHeight / (numLines * 1.35);
+      
+      // 2K 해상도에 최적화된 글자 크기 결정
+      let dynamicGlyphSize = Math.floor(Math.min(maxGlyphW, maxGlyphH));
+      // 상하한선 클램프 (2K 기준 최소 38px, 최대 150px)
+      dynamicGlyphSize = Math.max(38, Math.min(dynamicGlyphSize, 150));
+      const lineGap = Math.floor(dynamicGlyphSize * 0.35);
+
+      scrollContent.style.gap = `${lineGap}px`;
+
+      let globalCharIdx = 0;
       const defaultInterval = 280;
 
       textLines.forEach((lineText, lineIdx) => {
@@ -770,37 +813,45 @@
         chars.forEach((char, charIdx) => {
           if (char === ' ' || char === '\t') {
             const space = document.createElement('div');
-            space.style.width = '16px';
+            space.style.width = `${Math.floor(dynamicGlyphSize * 0.45)}px`;
+            space.style.flexShrink = '0';
             lineRow.appendChild(space);
             return;
           }
 
-          // 올바른 방향으로 베이킹된 왜곡 글자 캔버스
-          const glyph = renderWarpedGlyphCanvas(char, shape, intensity, 110);
-          glyph.className = 'word-glyph';
-          lineRow.appendChild(glyph);
+          // 2K 고해상도 베이킹 (선명도 유지를 위해 1.4배 오버샘플링)
+          const glyphCanvas = renderWarpedGlyphCanvas(
+            char, 
+            shape, 
+            intensity, 
+            Math.floor(dynamicGlyphSize * 1.4)
+          );
+          glyphCanvas.className = 'word-glyph';
+          glyphCanvas.style.width = `${dynamicGlyphSize}px`;
+          glyphCanvas.style.height = `${dynamicGlyphSize}px`;
+          lineRow.appendChild(glyphCanvas);
 
-          // 타이밍 계산
+          // 트리거 타임코드 연산
           let triggerTime = 0;
           if (currentMode === 'srt' && srtCues.length > 0) {
             const cue = srtCues[lineIdx];
             const dur = cue.end - cue.start;
             triggerTime = cue.start + (charIdx / chars.length) * dur;
           } else {
-            triggerTime = globalCharIndex * defaultInterval;
+            triggerTime = globalCharIdx * defaultInterval;
           }
 
           timelineEvents.push({
-            index: globalCharIndex,
+            index: globalCharIdx,
             char: char,
-            element: glyph,
+            element: glyphCanvas,
             triggerTime: triggerTime,
             shape: shape,
             intensity: intensity,
             landed: false
           });
 
-          globalCharIndex++;
+          globalCharIdx++;
         });
 
         scrollContent.appendChild(lineRow);
@@ -810,7 +861,7 @@
         if (currentMode === 'srt' && srtCues.length > 0) {
           totalDurationMs = srtCues[srtCues.length - 1].end + 1200;
         } else {
-          totalDurationMs = globalCharIndex * defaultInterval + 2500;
+          totalDurationMs = globalCharIdx * defaultInterval + 2500;
         }
       }
 
@@ -819,7 +870,7 @@
     }
 
     /* -------------------------------------------------------------
-       5. 타이핑 프레임 렌더러
+       6. 재생 프레임 렌더러
        ------------------------------------------------------------- */
     function updateFrame(currMs) {
       let activeEvt = null;
@@ -842,23 +893,22 @@
         }
       }
 
-      // 화면 중앙 왜곡 글자 하이라이트 연출
+      // 화면 중앙 캘리그라피 타이핑 하이라이트 (2K 기준 540px 초대형 캔버스)
       if (activeEvt) {
         if (currentActiveIdx !== activeEvt.index) {
           currentActiveIdx = activeEvt.index;
           centerWrap.innerHTML = '';
 
-          // 중앙 260px 대형 정방향 왜곡 캔버스 베이킹
           const bigGlyph = renderWarpedGlyphCanvas(
             activeEvt.char,
             activeEvt.shape,
             activeEvt.intensity,
-            260
+            540
           );
           centerWrap.appendChild(bigGlyph);
 
           centerWrap.classList.remove('active');
-          void centerWrap.offsetWidth; // Reflow
+          void centerWrap.offsetWidth;
           centerWrap.classList.add('active');
         }
       } else {
@@ -866,7 +916,7 @@
         currentActiveIdx = -1;
       }
 
-      // 전체 완료 시 화폭 및 붉은 인장 완성
+      // 마지막에 도달하면 완성
       if (currMs >= totalDurationMs - 1200 && timelineEvents.length > 0) {
         poemScroll.classList.add('completed');
         centerWrap.classList.remove('active');
@@ -916,7 +966,7 @@
 
     function stopPlayback() {
       isPlaying = false;
-      btnPlay.textContent = '시화 시연 시작';
+      btnPlay.textContent = '시연 시작';
       if (animId) cancelAnimationFrame(animId);
       if (bgAudio.src) bgAudio.pause();
     }
@@ -929,7 +979,7 @@
     }
 
     /* -------------------------------------------------------------
-       6. UI 이벤트 등록
+       7. UI 컨트롤러 리스너
        ------------------------------------------------------------- */
     btnPlay.addEventListener('click', () => {
       if (isPlaying) stopPlayback();
@@ -967,16 +1017,16 @@
       if (file) bgAudio.src = URL.createObjectURL(file);
     });
 
-    // 사이드바 토글
     const sidebar = document.getElementById('sidebar');
     const toggleBtn = document.getElementById('toggle-sidebar');
     toggleBtn.addEventListener('click', () => {
       sidebar.classList.toggle('collapsed');
       toggleBtn.textContent = sidebar.classList.contains('collapsed') ? '▶' : '◀';
+      setTimeout(updateViewportScale, 310);
     });
 
-    // 시작 시 기본 초기화
     window.addEventListener('DOMContentLoaded', () => {
+      applyCanvasResolution();
       buildVisualization();
       updateFrame(0);
     });
