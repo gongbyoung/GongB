@@ -29,6 +29,8 @@ const srtInput = document.getElementById('file-srt');
 window.cosmicEngineSettings = window.cosmicEngineSettings || {};
 window.cosmicEngineSettings.poemText = poemTextInput ? poemTextInput.value : "떠날 때의 님의 얼굴";
 window.cosmicEngineSettings.exportRatio = "full";
+// 🔒 [스케치 고정 잠금 옵션 기본값]: true이면 자막/단어 매칭에 의해 스케치가 절대 안 바뀜
+window.cosmicEngineSettings.lockSketch = true; 
 
 const wordMatcher = new WordVisualMatcher(manager, analyzer);
 
@@ -56,10 +58,16 @@ poemTextInput?.addEventListener('input', (e) => {
   const text = e.target.value || "떠날 때의 님의 얼굴";
   window.cosmicEngineSettings.poemText = text;
   window.currentSubtitleText = text;
-  wordMatcher.applyForText(text);
+  
+  // 🔒 고정 모드가 아닐 때만 단어 매처 실행
+  if (!window.cosmicEngineSettings.lockSketch) {
+    wordMatcher.applyForText(text);
+  }
 });
 
-wordMatcher.applyForText(window.cosmicEngineSettings.poemText);
+if (!window.cosmicEngineSettings.lockSketch) {
+  wordMatcher.applyForText(window.cosmicEngineSettings.poemText);
+}
 
 function stopAllActiveStems() {
   Object.keys(stemSources).forEach(key => {
@@ -101,7 +109,7 @@ function updateAudioDelayForSketch(sketchFileName) {
   }
 }
 
-// 💡 [핵심 수리]: 페이지 내 모든 파일 업로드 창을 감시하여 오디오 파일(.mp3 등)이 선택되면 무조건 메인 오디오로 장착
+// 사용자 업로드 오디오 캐치
 document.querySelectorAll('input[type="file"]').forEach(input => {
   if (input.id === 'file-srt' || input.id === 'file-batch-mp3') return;
 
@@ -109,7 +117,6 @@ document.querySelectorAll('input[type="file"]').forEach(input => {
     const file = e.target.files[0];
     if (!file) return;
 
-    // 업로드된 파일이 오디오 형식이거나 mp3 확장자인 경우
     if (file.type.includes('audio') || file.name.toLowerCase().endsWith('.mp3') || file.name.toLowerCase().endsWith('.wav')) {
       stopAllActiveStems();
       Object.keys(stemBuffers).forEach(key => stemBuffers[key] = null);
@@ -118,15 +125,8 @@ document.querySelectorAll('input[type="file"]').forEach(input => {
       if (audioPlayer) {
         audioPlayer.src = audioUrl;
         audioPlayer.load();
-        console.log("[🎵 User Audio Loaded successfully]:", file.name);
       }
-
       isAudioAnalyzerConnected = false;
-
-      if (batchStatusText) {
-        batchStatusText.style.color = "#00ffcc";
-        batchStatusText.innerHTML = `🎵 선택한 음악 로딩 완료: <strong>${file.name}</strong>`;
-      }
     }
   });
 });
@@ -137,8 +137,6 @@ batchMp3Input?.addEventListener('change', async (e) => {
 
   stopAllActiveStems();
   if (audioPlayer) audioPlayer.pause();
-
-  if (batchStatusText) batchStatusText.innerText = "⏳ MP3 파일 고속 해독 중...";
 
   let loadedNames = { vocals: null, drums: null, bass: null, other: null, main: null };
 
@@ -262,16 +260,6 @@ function renderEngineTicker() {
       }
     }
 
-    if (isMultiStemPlaying) {
-      compiledAudioData.isMultiStem = true;
-    } else {
-      compiledAudioData.isMultiStem = false;
-      compiledAudioData.vocalsVol = Math.min(1.0, (compiledAudioData.mid || 0) * 3.5);
-      compiledAudioData.drumsVol  = Math.min(1.0, (compiledAudioData.bass || 0) * 4.0);
-      compiledAudioData.bassVol   = Math.min(1.0, (compiledAudioData.bass || 0) * 3.5);
-      compiledAudioData.otherVol  = Math.min(1.0, (compiledAudioData.treble || 0) * 3.5);
-    }
-
     window.latestCompiledAudioData = compiledAudioData;
     
     if (manager && typeof manager.update === 'function') {
@@ -311,13 +299,18 @@ document.querySelectorAll('.btn-export-ratio, [data-ratio]').forEach(btn => {
   });
 });
 
+// 🔒 [강력 방어 가드]: lockSketch가 true이면 외부 모듈이 스케치를 강제로 바꾸는 것을 원천 차단
 const originalSwitchSketch = manager.switchSketch.bind(manager);
 manager.switchSketch = async function(sketchName, ...args) {
-  const currentActiveLi = document.querySelector('#sketch-list li.active');
-  const lockedSketch = currentActiveLi ? currentActiveLi.getAttribute('data-sketch') : null;
-
-  if (lockedSketch && lockedSketch.includes('028') && sketchName && !String(sketchName).includes('028')) {
-    return; 
+  if (window.cosmicEngineSettings.lockSketch) {
+    const currentActiveLi = document.querySelector('#sketch-list li.active');
+    const lockedSketch = currentActiveLi ? currentActiveLi.getAttribute('data-sketch') : null;
+    
+    // 만약 현재 켜둔 스케치와 다른 스케치로 넘어가려고 하면 무시함
+    if (lockedSketch && sketchName && !String(sketchName).includes(lockedSketch.split('_')[0])) {
+      console.warn(`[🔒 Sketch Locked] 자막/단어 매칭에 의한 ${sketchName} 강제 전환 차단됨`);
+      return;
+    }
   }
   return originalSwitchSketch(sketchName, ...args);
 };
