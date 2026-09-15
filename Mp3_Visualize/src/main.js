@@ -70,6 +70,23 @@ window.cosmicEngineSettings.fontFamily = fontSelect ? fontSelect.value : "Noto S
 
 window.currentUploadedImageElement = null;
 
+// 💡 [자막 On/Off 토글 로직 추가]
+window.cosmicEngineSettings.showSubtitle = true; // 기본값은 켜짐
+const btnToggleSubtitle = document.getElementById('btn-toggle-subtitle');
+
+if (btnToggleSubtitle) {
+  btnToggleSubtitle.addEventListener('click', () => {
+    window.cosmicEngineSettings.showSubtitle = !window.cosmicEngineSettings.showSubtitle;
+    if (window.cosmicEngineSettings.showSubtitle) {
+      btnToggleSubtitle.innerText = "👁️ 자막 끄기 (Hide Subtitle)";
+      btnToggleSubtitle.style.color = "#00ffcc";
+    } else {
+      btnToggleSubtitle.innerText = "🙈 자막 켜기 (Show Subtitle)";
+      btnToggleSubtitle.style.color = "#ff4444";
+    }
+  });
+}
+
 // 🔤 [수리 완료]: 폰트 선택 드롭다운 연동
 fontSelect?.addEventListener('change', (e) => {
   window.cosmicEngineSettings.fontFamily = e.target.value;
