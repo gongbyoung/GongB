@@ -1,20 +1,11 @@
 /**
  * src/sketches/029_infinite_mandala.js
- * - [029호 무한 확장 만다라 & 5대 화풍 테마 시뮬레이터]
- * - 화면 중앙으로부터 겹겹이 회전하며 무한히 팽창하는 기하학적 장미창 만다라
- * - 바로크, 르네상스, 인상파, 야수파, 무채색 화풍별 색상 및 재질 질감 실시간 전환
- */
-/**
- * src/sketches/029_infinite_mandala.js
- * - [거미줄 현상 완치] 선 긋기가 아닌 진짜 꽃잎/물방울 기하학 도형 기반의 웅장한 만다라
- * - 업로드된 이미지 배경 연동 및 5대 화풍 색감 완벽 적용
- */
-/**
- * src/sketches/029_infinite_mandala.js
- * - [리얼 만다라 & 만화경 줌인 엔진 Ver 4.0]
- * - 단순 선긋기가 아닌 정교하게 디자인된 4종의 고퀄리티 쉐이프(연꽃잎, 레이스 띠, 둥근꽃잎, 다이아몬드)
- * - 중앙에서부터 무한히 생성되며 화면 밖으로 퍼져나가는 만화경(Kaleidoscope) 효과 적용
- * - 배경 이미지 업로드 완벽 연동 및 16:9 / 9:16 비율 강제 레터박스 엔진 탑재
+ * - [UI 완벽 연동 및 3-Band 주파수 리액티브 만다라 Ver 5.0]
+ * - 🔀 Shuffle (Seed): 시드를 변경하면 쉐이프 조합/순서/색상이 완전히 새로 섞임
+ * - 📏 Range (Scatter): 만다라 겹(Ring)이 생성되는 총 갯수(밀도) 조절
+ * - 🔍 Scale (Glow): 만다라 전체의 거대한 스케일 조절
+ * - 🔊 Volume (Gain): 바깥으로 팽창하며 퍼져나가는 기본 속도 조절
+ * - 🎛️ Gauge: 음악 주파수(Bass, Mid, Treble)에 반응하여 진동하는 정도를 조절
  */
 
 export default class InfiniteMandalaSketch {
@@ -28,8 +19,9 @@ export default class InfiniteMandalaSketch {
     }
 
     this.time = 0;
-    this.version = "029호 정밀 만화경 만다라 Ver 4.0";
-    this.rings = []; // 화면 중앙에서 뿜어져 나오는 만다라 띠 배열
+    this.version = "029호 UI 연동 3-Band 만다라 Ver 5.0";
+    this.rings = []; 
+    this.spawnIndex = 0; // Shuffle(Seed)을 위한 고유 생성 인덱스
   }
 
   init() {
@@ -43,18 +35,26 @@ export default class InfiniteMandalaSketch {
     this.canvas.height = this.height;
   }
 
-  // 🎨 5대 화풍 색상 팔레트
-  getPalette(style) {
+  // 💡 [수리 완료]: 오른쪽 패널의 Color Style 드롭다운 값과 정확히 매칭
+  getPalette(style, customColors) {
     const s = (style || 'neon').toLowerCase();
-    if (s.includes('baroque')) return { bg: '#080402', c1: '#d4af37', c2: '#8b0000', c3: '#5e1b00', glow: '#ffd700' };
-    else if (s.includes('renaissance')) return { bg: '#0b131f', c1: '#1d4ed8', c2: '#eab308', c3: '#b45309', glow: '#93c5fd' };
-    else if (s.includes('impressionism')) return { bg: '#1e1b2e', c1: '#c084fc', c2: '#67e8f9', c3: '#f472b6', glow: '#fbcfe8' };
-    else if (s.includes('fauvism')) return { bg: '#111827', c1: '#ef4444', c2: '#10b981', c3: '#f59e0b', glow: '#ec4899' };
-    else if (s.includes('monochrome')) return { bg: '#09090b', c1: '#ffffff', c2: '#a1a1aa', c3: '#3f3f46', glow: '#e4e4e7' };
-    else return { bg: '#050508', c1: '#00f0ff', c2: '#ff007f', c3: '#7000ff', glow: '#00ffff' };
+    if (s === 'pastel') return { bg: '#1e1b2e', c1: '#c084fc', c2: '#67e8f9', c3: '#f472b6', glow: '#fbcfe8' };
+    if (s === 'earth') return { bg: '#0b131f', c1: '#1d4ed8', c2: '#eab308', c3: '#b45309', glow: '#93c5fd' };
+    if (s === 'monochrome') return { bg: '#09090b', c1: '#ffffff', c2: '#a1a1aa', c3: '#3f3f46', glow: '#e4e4e7' };
+    // Custom 선택 시, 유저가 지정한 Color Picker 3종(Gas1, Gas2, Star)을 완벽 적용!
+    if (s === 'custom') return { bg: '#050508', c1: customColors.gas1, c2: customColors.gas2, c3: customColors.star, glow: customColors.gas1 };
+    
+    // 기본 Neon
+    return { bg: '#050508', c1: '#00f0ff', c2: '#ff007f', c3: '#7000ff', glow: '#00ffff' };
   }
 
-  // 💠 [고퀄리티 쉐이프 1]: 정교한 연꽃잎 (레이어드)
+  // 🔀 무작위성을 부여하기 위한 시드 기반 난수 생성기
+  pseudoRandom(seed, index) {
+    let x = Math.sin(seed * 12.9898 + index * 78.233) * 43758.5453;
+    return x - Math.floor(x);
+  }
+
+  // 💠 [고퀄리티 쉐이프 1]: 정교한 연꽃잎
   drawLotusPetal(ctx, color, palette, thickness) {
     ctx.fillStyle = color;
     ctx.strokeStyle = palette.glow;
@@ -66,9 +66,8 @@ export default class InfiniteMandalaSketch {
     ctx.fill();
     ctx.stroke();
 
-    // 꽃잎 내부 디테일(수술/결)
     ctx.fillStyle = palette.bg;
-    ctx.globalAlpha = 0.5;
+    ctx.globalAlpha = 0.6;
     ctx.beginPath();
     ctx.moveTo(0, -5);
     ctx.bezierCurveTo(8 * thickness, -20, 10 * thickness, -35, 0, -50);
@@ -76,67 +75,55 @@ export default class InfiniteMandalaSketch {
     ctx.fill();
   }
 
-  // 💠 [고퀄리티 쉐이프 2]: 구멍 뚫린 레이스 띠 (컴파운드 패스 적용)
+  // 💠 [고퀄리티 쉐이프 2]: 구멍 뚫린 레이스 띠
   drawLaceBand(ctx, color, palette, symmetry) {
-    let w = (Math.PI * 300) / symmetry; // 띠의 너비
+    let w = (Math.PI * 300) / symmetry;
     ctx.fillStyle = color;
-    ctx.strokeStyle = palette.glow;
+    ctx.strokeStyle = palette.bg;
     ctx.lineWidth = 1.5;
 
     ctx.beginPath();
-    // 바깥쪽 곡선
     ctx.moveTo(-w/2, 0);
     ctx.quadraticCurveTo(0, -20, w/2, 0);
     ctx.quadraticCurveTo(w/2 + 10, 15, w/2, 30);
     ctx.quadraticCurveTo(0, 10, -w/2, 30);
     ctx.quadraticCurveTo(-w/2 - 10, 15, -w/2, 0);
     
-    // 레이스 구멍 파내기 (반시계 방향)
-    ctx.moveTo(5, 15);
-    ctx.arc(0, 15, 6, 0, Math.PI*2, true);
-    ctx.moveTo(-w/4 + 4, 5);
-    ctx.arc(-w/4, 5, 4, 0, Math.PI*2, true);
-    ctx.moveTo(w/4 + 4, 5);
-    ctx.arc(w/4, 5, 4, 0, Math.PI*2, true);
+    // 구멍 파내기 (반시계)
+    ctx.moveTo(5, 15); ctx.arc(0, 15, 6, 0, Math.PI*2, true);
+    ctx.moveTo(-w/4 + 4, 5); ctx.arc(-w/4, 5, 4, 0, Math.PI*2, true);
+    ctx.moveTo(w/4 + 4, 5); ctx.arc(w/4, 5, 4, 0, Math.PI*2, true);
     
-    ctx.fill();
-    ctx.stroke();
+    ctx.fill(); ctx.stroke();
   }
 
   // 💠 [고퀄리티 쉐이프 3]: 둥글고 넓은 겹꽃잎
   drawRoundPetal(ctx, color, palette, thickness) {
     ctx.fillStyle = color;
-    ctx.strokeStyle = palette.bg;
+    ctx.strokeStyle = palette.glow;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(0, -20, 20 * thickness, 0, Math.PI, true);
     ctx.bezierCurveTo(20 * thickness, 10, 10 * thickness, 20, 0, 30);
     ctx.bezierCurveTo(-10 * thickness, 20, -20 * thickness, 10, -20 * thickness, -20);
-    ctx.fill();
-    ctx.stroke();
+    ctx.fill(); ctx.stroke();
 
-    // 강조점 (Dot)
-    ctx.fillStyle = palette.glow;
+    ctx.fillStyle = palette.bg;
     ctx.beginPath(); ctx.arc(0, -32, 4, 0, Math.PI*2); ctx.fill();
   }
 
-  // 💠 [고퀄리티 쉐이프 4]: 기하학 다이아몬드 (만화경 코어)
+  // 💠 [고퀄리티 쉐이프 4]: 기하학 다이아몬드/보석
   drawDiamond(ctx, color, palette, thickness) {
     ctx.fillStyle = color;
-    ctx.strokeStyle = palette.glow;
+    ctx.strokeStyle = palette.bg;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.moveTo(0, -45);
-    ctx.lineTo(15 * thickness, -15);
-    ctx.lineTo(0, 10);
-    ctx.lineTo(-15 * thickness, -15);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
+    ctx.moveTo(0, -45); ctx.lineTo(15 * thickness, -15);
+    ctx.lineTo(0, 10); ctx.lineTo(-15 * thickness, -15);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
 
-    // 보석 파셋(결) 라인
-    ctx.beginPath();
-    ctx.moveTo(0, -45); ctx.lineTo(0, 10);
+    ctx.strokeStyle = palette.glow;
+    ctx.beginPath(); ctx.moveTo(0, -45); ctx.lineTo(0, 10);
     ctx.moveTo(-15 * thickness, -15); ctx.lineTo(15 * thickness, -15);
     ctx.stroke();
   }
@@ -147,19 +134,28 @@ export default class InfiniteMandalaSketch {
     const W = this.canvas.width;
     const H = this.canvas.height;
     const settings = window.cosmicEngineSettings || {};
+    const customColors = settings.customColors || { gas1: '#00f0ff', gas2: '#ff007f', star: '#ffffff' };
     
-    const vol = audioData && audioData.vol ? audioData.vol : 0;
+    // 🎛️ 오디오 주파수 3-Band 데이터 추출
     const bass = audioData && audioData.bass ? audioData.bass : 0;
-    const gainVal = settings.audioGain ?? 1.0;
+    const mid = audioData && audioData.mid ? audioData.mid : 0;
+    const treble = audioData && audioData.treble ? audioData.treble : 0;
+    
+    // 🎛️ 관제탑 슬라이더 변수 완벽 연동
+    const seedVal = settings.seed ?? 42;                             // Shuffle: 쉐이프 무작위 믹스
+    const scatterVal = settings.scatterExponent ?? 2.2;              // Range: 생성 간격 (갯수 조절)
+    const glowVal = settings.glowIntensity ?? 0.85;                  // Scale: 전체 크기
+    const gainVal = settings.audioGain ?? 1.0;                       // Volume: 이동 속도
+    const gaugeVal = settings.gaugeValue ?? 0.5;                     // Gauge: 노래(오디오) 반응성!
+
     const colorStyle = settings.colorStyle || 'neon';
-    const palette = this.getPalette(colorStyle);
+    const palette = this.getPalette(colorStyle, customColors);
 
-    this.time += 0.01 + (bass * 0.02 * gainVal);
+    this.time += 0.01;
 
-    // 📐 [비율 변환 완벽 수리]: 16:9, 9:16 강제 레터박스 엔진
+    // 📐 16:9 / 9:16 레터박스 엔진
     let exportRatio = settings.exportRatio || 'full';
     let renderW = W, renderH = H, renderX = 0, renderY = 0;
-    
     if (exportRatio === '16:9') {
       renderH = W * (9/16);
       if (renderH > H) { renderH = H; renderW = H * (16/9); }
@@ -171,54 +167,66 @@ export default class InfiniteMandalaSketch {
     }
 
     this.ctx.save();
-    // 캔버스 전체 초기화 후 레터박스 영역만 클리핑
     this.ctx.fillStyle = "#000000";
     this.ctx.fillRect(0, 0, W, H);
-    
     this.ctx.beginPath();
     this.ctx.rect(renderX, renderY, renderW, renderH);
     this.ctx.clip();
 
     const centerX = renderX + renderW / 2;
     const centerY = renderY + renderH / 2;
-    const maxRadius = Math.max(renderW, renderH) * 0.8;
+    const maxRadius = Math.max(renderW, renderH) * 1.5;
 
-    // 1. 유저 업로드 배경 이미지 렌더링
+    // 🖼️ 배경 렌더링
     if (window.currentUploadedImageElement) {
       this.ctx.drawImage(window.currentUploadedImageElement, renderX, renderY, renderW, renderH);
-      this.ctx.fillStyle = `rgba(0, 0, 0, 0.75)`; // 만다라가 돋보이게 살짝 톤다운
+      this.ctx.fillStyle = `rgba(0, 0, 0, 0.7)`; // 만다라 구분을 위한 다크 틴트
       this.ctx.fillRect(renderX, renderY, renderW, renderH);
     } else {
       this.ctx.fillStyle = palette.bg;
       this.ctx.fillRect(renderX, renderY, renderW, renderH);
     }
 
-    // 2. 만화경(Kaleidoscope) 만다라 링 스폰 로직
-    // 맨 마지막 링이 일정 크기 이상 커지면 중앙에서 새로운 링을 발사
-    if (this.rings.length === 0 || this.rings[this.rings.length - 1].radius > 35) {
+    // 📏 [Range(Scatter) 연동]: 갯수 및 간격 조절 (값이 낮을수록 촘촘히 쏟아짐)
+    let spacingThresh = 15 + (scatterVal * 8); 
+
+    // 🔀 [Shuffle(Seed) 연동]: 시드값에 따라 완전히 다른 패턴 생성
+    if (this.rings.length === 0 || this.rings[this.rings.length - 1].radius > spacingThresh) {
+      this.spawnIndex++;
+      let shapeRand = this.pseudoRandom(seedVal, this.spawnIndex);
+      let bandRand = this.pseudoRandom(seedVal + 1, this.spawnIndex);
+      
       this.rings.push({
         radius: 1, 
-        type: Math.floor(Math.random() * 4), // 0:Lotus, 1:Lace, 2:Round, 3:Diamond
-        symmetry: [8, 12, 16, 24][Math.floor(Math.random() * 4)],
-        colorKey: ['c1', 'c2', 'c3', 'glow'][Math.floor(Math.random() * 4)],
-        rotSpd: (Math.random() < 0.5 ? 1 : -1) * (0.002 + Math.random() * 0.005),
-        angle: Math.random() * Math.PI,
-        thickness: Math.random() * 0.5 + 0.7 
+        type: Math.floor(shapeRand * 4), 
+        symmetry: [6, 8, 12, 16][Math.floor(this.pseudoRandom(seedVal + 2, this.spawnIndex) * 4)],
+        colorKey: ['c1', 'c2', 'c3', 'glow'][Math.floor(this.pseudoRandom(seedVal + 3, this.spawnIndex) * 4)],
+        rotSpd: (this.pseudoRandom(seedVal + 4, this.spawnIndex) < 0.5 ? 1 : -1) * (0.002 + shapeRand * 0.005),
+        angle: this.pseudoRandom(seedVal + 5, this.spawnIndex) * Math.PI,
+        thickness: this.pseudoRandom(seedVal + 6, this.spawnIndex) * 0.5 + 0.6,
+        // 🎵 [1/3 확률 주파수 배정]: 0=Bass, 1=Mid, 2=Treble
+        audioBand: Math.floor(bandRand * 3) 
       });
     }
 
-    // 3. 만다라 링들 업데이트 및 렌더링 (줌인 효과)
+    // 🔍 [Scale(Glow) 연동]: 전체 만다라 크기 증폭
+    const globalScale = Math.max(0.3, glowVal * 1.4);
+
+    // 🌟 만다라 링 렌더링 루프
     for(let i = 0; i < this.rings.length; i++) {
       let r = this.rings[i];
-      // 베이스의 타격감에 맞춰 밖으로 빠르게 퍼져나감
-      r.radius += (1.5 + bass * 8.0) * gainVal; 
-      r.angle += r.rotSpd * (1 + vol * 3.0);
+      
+      // 🎛️ [Gauge 연동]: 자신에게 할당된 주파수(Bass/Mid/Treble)에 따라 반응성 폭발
+      let myBandVol = r.audioBand === 0 ? bass : (r.audioBand === 1 ? mid : treble);
+      let reaction = myBandVol * gaugeVal * 5.0; // Gauge가 높을수록 쿵쿵 뜀
 
-      // 화면 밖으로 나간 링은 제거하여 최적화 유지
-      if (r.radius > maxRadius) {
+      // 🔊 [Volume(Gain) 연동]: 바깥으로 퍼지는 속도
+      r.radius += (1.0 + gainVal * 3.0) + (reaction * 3.0); 
+      r.angle += r.rotSpd * (1 + reaction);
+
+      if (r.radius * globalScale > maxRadius) {
         this.rings.splice(i, 1);
-        i--;
-        continue;
+        i--; continue;
       }
 
       this.ctx.save();
@@ -227,22 +235,22 @@ export default class InfiniteMandalaSketch {
 
       let color = palette[r.colorKey] || palette.c1;
       
-      // 스케일과 투명도 조절 (멀리 갈수록 거대해지며 서서히 사라짐)
       let alpha = 1.0;
-      if (r.radius < 40) alpha = r.radius / 40;
-      else if (r.radius > maxRadius - 150) alpha = (maxRadius - r.radius) / 150;
+      if (r.radius < 30) alpha = r.radius / 30;
+      else if (r.radius * globalScale > maxRadius - 200) alpha = (maxRadius - r.radius * globalScale) / 200;
       this.ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
 
       for(let s = 0; s < r.symmetry; s++) {
         this.ctx.save();
         this.ctx.rotate((s / r.symmetry) * Math.PI * 2);
         
-        // 링 반경만큼 밖으로 이동 후 크기 확대 (핵심 만화경 로직)
-        this.ctx.translate(0, -r.radius);
-        let scale = r.radius / 120; // 밖으로 갈수록 도형이 거대해짐
+        this.ctx.translate(0, -r.radius * globalScale);
+        
+        // 🎵 주파수에 반응하여 도형의 크기 자체가 수축/팽창
+        let scale = (r.radius / 100) * globalScale;
+        scale *= (1.0 + reaction * 0.4); // 음악 리액션!
         this.ctx.scale(scale, scale);
 
-        // 정교한 도형 렌더링
         if (r.type === 0) this.drawLotusPetal(this.ctx, color, palette, r.thickness);
         else if (r.type === 1) this.drawLaceBand(this.ctx, color, palette, r.symmetry);
         else if (r.type === 2) this.drawRoundPetal(this.ctx, color, palette, r.thickness);
@@ -253,23 +261,23 @@ export default class InfiniteMandalaSketch {
       this.ctx.restore();
     }
 
-    // 4. 중앙 코어 빛망울
-    const coreGrad = this.ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 40 + bass * 60);
+    // 💡 코어 빛망울 (베이스에 반응)
+    const coreGrad = this.ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 40 + bass * 80 * gaugeVal);
     coreGrad.addColorStop(0, palette.glow);
     coreGrad.addColorStop(0.3, palette.c1);
     coreGrad.addColorStop(1, "rgba(0,0,0,0)");
     this.ctx.fillStyle = coreGrad;
     this.ctx.globalAlpha = 0.8 + bass * 0.2;
     this.ctx.beginPath();
-    this.ctx.arc(centerX, centerY, 60 + bass * 40, 0, Math.PI * 2);
+    this.ctx.arc(centerX, centerY, 80 + bass * 60 * gaugeVal, 0, Math.PI * 2);
     this.ctx.fill();
 
-    // 5. 최상단 SRT 캘리그래피 자막 렌더링 (가독성 보장)
+    // ✍️ SRT 자막
     const subtitleText = window.currentSubtitleText || window.cosmicEngineSettings?.poemText || "";
     if (subtitleText) {
       this.ctx.globalAlpha = 1.0;
       const baseFontSize = Math.max(28, Math.min(52, renderW * 0.065));
-      const fontSize = baseFontSize * (1.0 + (vol * 0.05));
+      const fontSize = baseFontSize * (1.0 + (bass * 0.05 * gaugeVal));
       const selectedFont = window.cosmicEngineSettings?.fontFamily || "'Noto Sans KR', sans-serif";
 
       this.ctx.font = `bold ${fontSize}px ${selectedFont}, sans-serif`;
@@ -303,7 +311,7 @@ export default class InfiniteMandalaSketch {
       fps: 60,
       particleCount: `Rings: ${this.rings.length}`,
       isCovering: true,
-      activeFunction: `Kaleidoscope[${exportRatio}]`
+      activeFunction: `Mandala[${colorStyle.toUpperCase()}]`
     };
   }
 
