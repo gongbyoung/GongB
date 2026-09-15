@@ -26,11 +26,32 @@ const batchMp3Input = document.getElementById('file-batch-mp3');
 const batchStatusText = document.getElementById('batch-load-status');
 const srtInput = document.getElementById('file-srt');
 
+// 🔤 폰트 선택 및 커스텀 폰트 감지
+const fontSelect = document.getElementById('select-poem-font');
+const customFontInput = document.getElementById('file-custom-font');
+
 window.cosmicEngineSettings = window.cosmicEngineSettings || {};
 window.cosmicEngineSettings.poemText = poemTextInput ? poemTextInput.value : "떠날 때의 님의 얼굴";
 window.cosmicEngineSettings.exportRatio = "full";
-// 🔒 [스케치 고정 잠금 옵션 기본값]: true이면 자막/단어 매칭에 의해 스케치가 절대 안 바뀜
-window.cosmicEngineSettings.lockSketch = true; 
+window.cosmicEngineSettings.lockSketch = true; // 🔒 스케치 고정 잠금 기본 활성화
+window.cosmicEngineSettings.fontFamily = fontSelect ? fontSelect.value : "'Noto Sans KR'";
+
+fontSelect?.addEventListener('change', (e) => {
+  window.cosmicEngineSettings.fontFamily = e.target.value;
+});
+
+customFontInput?.addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const fontName = `CustomFont_${Date.now()}`;
+  const fontUrl = URL.createObjectURL(file);
+  try {
+    const fontFace = new FontFace(fontName, `url(${fontUrl})`);
+    await fontFace.load();
+    document.fonts.add(fontFace);
+    window.cosmicEngineSettings.fontFamily = `"${fontName}", sans-serif`;
+  } catch (err) {}
+});
 
 const wordMatcher = new WordVisualMatcher(manager, analyzer);
 
@@ -58,16 +79,10 @@ poemTextInput?.addEventListener('input', (e) => {
   const text = e.target.value || "떠날 때의 님의 얼굴";
   window.cosmicEngineSettings.poemText = text;
   window.currentSubtitleText = text;
-  
-  // 🔒 고정 모드가 아닐 때만 단어 매처 실행
   if (!window.cosmicEngineSettings.lockSketch) {
     wordMatcher.applyForText(text);
   }
 });
-
-if (!window.cosmicEngineSettings.lockSketch) {
-  wordMatcher.applyForText(window.cosmicEngineSettings.poemText);
-}
 
 function stopAllActiveStems() {
   Object.keys(stemSources).forEach(key => {
@@ -111,7 +126,7 @@ function updateAudioDelayForSketch(sketchFileName) {
 
 // 사용자 업로드 오디오 캐치
 document.querySelectorAll('input[type="file"]').forEach(input => {
-  if (input.id === 'file-srt' || input.id === 'file-batch-mp3') return;
+  if (input.id === 'file-srt' || input.id === 'file-batch-mp3' || input.id === 'file-custom-font') return;
 
   input.addEventListener('change', (e) => {
     const file = e.target.files[0];
@@ -138,8 +153,6 @@ batchMp3Input?.addEventListener('change', async (e) => {
   stopAllActiveStems();
   if (audioPlayer) audioPlayer.pause();
 
-  let loadedNames = { vocals: null, drums: null, bass: null, other: null, main: null };
-
   for (let file of files) {
     const name = file.name.toLowerCase();
     const createStemAnalyser = () => {
@@ -152,25 +165,15 @@ batchMp3Input?.addEventListener('change', async (e) => {
       if (name.includes('vocal') || name.includes('보컬')) {
         stemBuffers.vocals = await safeDecodeAudio(file);
         stemAnalysers.vocals = createStemAnalyser();
-        loadedNames.vocals = file.name;
       } else if (name.includes('drum') || name.includes('드럼')) {
         stemBuffers.drums = await safeDecodeAudio(file);
         stemAnalysers.drums = createStemAnalyser();
-        loadedNames.drums = file.name;
       } else if (name.includes('bass') || name.includes('베이스')) {
         stemBuffers.bass = await safeDecodeAudio(file);
         stemAnalysers.bass = createStemAnalyser();
-        loadedNames.bass = file.name;
       } else if (name.includes('other') || name.includes('기타') || name.includes('inst')) {
         stemBuffers.other = await safeDecodeAudio(file);
         stemAnalysers.other = createStemAnalyser();
-        loadedNames.other = file.name;
-      } else if (!loadedNames.main) {
-        if (audioPlayer) {
-          audioPlayer.src = URL.createObjectURL(file);
-          audioPlayer.load();
-        }
-        loadedNames.main = file.name;
       }
     } catch (err) {}
   }
@@ -182,12 +185,10 @@ batchMp3Input?.addEventListener('change', async (e) => {
 
 async function toggleMultiStemPlayback() {
   await initAudioContext();
-
   if (isMultiStemPlaying) {
     stopAllActiveStems();
   } else {
     if (audioPlayer) audioPlayer.pause();
-
     const startTargetTime = audioCtx.currentTime + 0.05;
     window.stemStartTime = startTargetTime;
     let loadedCount = 0;
@@ -197,10 +198,8 @@ async function toggleMultiStemPlayback() {
         loadedCount++;
         const source = audioCtx.createBufferSource();
         source.buffer = stemBuffers[key];
-        
         source.connect(stemAnalysers[key]);
         stemAnalysers[key].connect(delayNode);
-        
         source.start(startTargetTime);
         stemSources[key] = source;
       }
@@ -261,7 +260,6 @@ function renderEngineTicker() {
     }
 
     window.latestCompiledAudioData = compiledAudioData;
-    
     if (manager && typeof manager.update === 'function') {
       manager.update(compiledAudioData);
     }
@@ -299,18 +297,13 @@ document.querySelectorAll('.btn-export-ratio, [data-ratio]').forEach(btn => {
   });
 });
 
-// 🔒 [강력 방어 가드]: lockSketch가 true이면 외부 모듈이 스케치를 강제로 바꾸는 것을 원천 차단
+// 💡 [스마트 방어 가드]: 사용자 수동 클릭은 100% 보장하고 백그라운드 자동 튀어오름만 방어
+let isUserManualClick = false;
+
 const originalSwitchSketch = manager.switchSketch.bind(manager);
 manager.switchSketch = async function(sketchName, ...args) {
-  if (window.cosmicEngineSettings.lockSketch) {
-    const currentActiveLi = document.querySelector('#sketch-list li.active');
-    const lockedSketch = currentActiveLi ? currentActiveLi.getAttribute('data-sketch') : null;
-    
-    // 만약 현재 켜둔 스케치와 다른 스케치로 넘어가려고 하면 무시함
-    if (lockedSketch && sketchName && !String(sketchName).includes(lockedSketch.split('_')[0])) {
-      console.warn(`[🔒 Sketch Locked] 자막/단어 매칭에 의한 ${sketchName} 강제 전환 차단됨`);
-      return;
-    }
+  if (window.cosmicEngineSettings.lockSketch && !isUserManualClick) {
+    return; // 백그라운드 자동 전환 차단
   }
   return originalSwitchSketch(sketchName, ...args);
 };
@@ -326,15 +319,19 @@ if (sketchListContainer) {
 
     const targetSketch = targetLi.getAttribute('data-sketch');
     try {
+      isUserManualClick = true; // 수동 클릭 플래그 켜기
       updateAudioDelayForSketch(targetSketch);
       await originalSwitchSketch(targetSketch, analyzer);
+      isUserManualClick = false; // 플래그 끄기
       syncCosmicControls();
-    } catch(err) {}
+    } catch(err) {
+      isUserManualClick = false;
+    }
   });
 }
 
 const activeLi = document.querySelector('#sketch-list li.active');
-const initSketch = activeLi ? activeLi.getAttribute('data-sketch') : '028_pump_rhythm_highway.js';
+const initSketch = activeLi ? activeLi.getAttribute('data-sketch') : '029_infinite_mandala.js';
 syncCosmicControls();
 updateAudioDelayForSketch(initSketch);
 

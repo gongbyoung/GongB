@@ -2,6 +2,7 @@
  * src/sketches/001_p5_wave.js
  * - [수리 완료] 보컬/드럼/베이스 연동 다이내믹 파형
  */
+
 export default class P5WaveSketch {
   constructor(container) {
     this.container = container;
@@ -28,11 +29,11 @@ export default class P5WaveSketch {
     const globalSettings = window.cosmicEngineSettings || {};
     const gainVal = globalSettings.audioGain ?? 1.0;
 
-    const targetAudio = (audioData && audioData.vocalsVol !== undefined) ? audioData : (window.latestCompiledAudioData || {});
-    const vocals = (targetAudio.vocalsVol || 0) * gainVal;
-    const drums  = (targetAudio.drumsVol  || 0) * gainVal;
-    const bass   = (targetAudio.bassVol   || 0) * gainVal;
-    const other  = (targetAudio.otherVol  || 0) * gainVal;
+    const targetAudio = (audioData && audioData.vol !== undefined) ? audioData : (window.latestCompiledAudioData || {});
+    const vocals = (targetAudio.vocalsVol || targetAudio.mid || 0) * gainVal;
+    const drums  = (targetAudio.drumsVol  || targetAudio.bass || 0) * gainVal;
+    const bass   = (targetAudio.bassVol   || targetAudio.bass || 0) * gainVal;
+    const other  = (targetAudio.otherVol  || targetAudio.treble || 0) * gainVal;
 
     const w = this.canvas.width;
     const h = this.canvas.height;
@@ -56,7 +57,6 @@ export default class P5WaveSketch {
 
     for (let i = 0; i < points; i++) {
       const a = (i / points) * Math.PI * 2;
-      // 🎤 보컬 및 드럼 소리에 따라 요동치는 파형 진폭 연산
       const idleWave = Math.sin(a * 8 + this.time * 2) * 8;
       const audioWave = Math.sin(a * 14 + this.angle * 4) * (vocals * 110) + Math.cos(a * 28) * (drums * 60);
       const r = baseRadius + idleWave + audioWave;
@@ -71,14 +71,13 @@ export default class P5WaveSketch {
     this.ctx.strokeStyle = globalSettings.customColors?.star || '#00ffcc';
     this.ctx.lineWidth = 3 + bass * 12;
     this.ctx.stroke();
-
     this.ctx.restore();
 
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: `Wave Active [Vocal:${vocals.toFixed(2)}]`,
+      particleCount: `Wave Active`,
       isCovering: true,
-      activeFunction: "P5Wave[Render_Fixed]"
+      activeFunction: "P5Wave[Active]"
     };
   }
 

@@ -28,11 +28,11 @@ export default class MatrixPressSketch {
     const globalSettings = window.cosmicEngineSettings || {};
     const gainVal = globalSettings.audioGain ?? 1.0;
 
-    const targetAudio = (audioData && audioData.vocalsVol !== undefined) ? audioData : (window.latestCompiledAudioData || {});
-    const vocals = (targetAudio.vocalsVol || 0) * gainVal;
-    const drums  = (targetAudio.drumsVol  || 0) * gainVal;
-    const bass   = (targetAudio.bassVol   || 0) * gainVal;
-    const other  = (targetAudio.otherVol  || 0) * gainVal;
+    const targetAudio = (audioData && audioData.vol !== undefined) ? audioData : (window.latestCompiledAudioData || {});
+    const vocals = (targetAudio.vocalsVol || targetAudio.mid || 0) * gainVal;
+    const drums  = (targetAudio.drumsVol  || targetAudio.bass || 0) * gainVal;
+    const bass   = (targetAudio.bassVol   || targetAudio.bass || 0) * gainVal;
+    const other  = (targetAudio.otherVol  || targetAudio.treble || 0) * gainVal;
 
     const renderW = this.canvas.width;
     const renderH = this.canvas.height;
@@ -54,12 +54,11 @@ export default class MatrixPressSketch {
         const x = padding + c * (padW + padding);
         const y = padding + r * (padH + padding);
 
-        // 💡 행별 4-Stem 소리 매핑
         let intensity = 0;
-        if (r === 3) intensity = bass * 2.2;       // 4번째 행: 베이스
-        else if (r === 2) intensity = drums * 2.2;  // 3번째 행: 드럼
-        else if (r === 1) intensity = vocals * 2.2; // 2번째 행: 보컬
-        else intensity = other * 2.2;               // 1번째 행: 기타/반주
+        if (r === 3) intensity = bass * 2.2;
+        else if (r === 2) intensity = drums * 2.2;
+        else if (r === 1) intensity = vocals * 2.2;
+        else intensity = other * 2.2;
 
         const activeAlpha = Math.min(1.0, intensity);
 
@@ -87,7 +86,7 @@ export default class MatrixPressSketch {
       fps: 60,
       particleCount: `32 Channel Pads`,
       isCovering: true,
-      activeFunction: "MatrixPress[Render_Fixed]"
+      activeFunction: "MatrixPress[Active]"
     };
   }
 

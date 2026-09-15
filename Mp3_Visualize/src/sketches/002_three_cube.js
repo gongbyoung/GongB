@@ -30,16 +30,11 @@ export default class ThreeCubeSketch {
 
     const projected = vertices.map(v => {
       let x = v[0], y = v[1], z = v[2];
-
-      // X축 회전
       let y1 = y * Math.cos(rotX) - z * Math.sin(rotX);
       let z1 = y * Math.sin(rotX) + z * Math.cos(rotX);
-
-      // Y축 회전
       let x2 = x * Math.cos(rotY) + z1 * Math.sin(rotY);
       let z2 = -x * Math.sin(rotY) + z1 * Math.cos(rotY);
 
-      // 3D 투영
       const fov = 400;
       const scale = fov / (fov + z2 + cz + 300);
       return {
@@ -48,12 +43,7 @@ export default class ThreeCubeSketch {
       };
     });
 
-    const edges = [
-      [0,1],[1,2],[2,3],[3,0],
-      [4,5],[5,6],[6,7],[7,4],
-      [0,4],[1,5],[2,6],[3,7]
-    ];
-
+    const edges = [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
     edges.forEach(e => {
       const p1 = projected[e[0]];
       const p2 = projected[e[1]];
@@ -71,11 +61,11 @@ export default class ThreeCubeSketch {
     const globalSettings = window.cosmicEngineSettings || {};
     const gainVal = globalSettings.audioGain ?? 1.0;
 
-    const targetAudio = (audioData && audioData.vocalsVol !== undefined) ? audioData : (window.latestCompiledAudioData || {});
-    const vocals = (targetAudio.vocalsVol || 0) * gainVal;
-    const drums  = (targetAudio.drumsVol  || 0) * gainVal;
-    const bass   = (targetAudio.bassVol   || 0) * gainVal;
-    const other  = (targetAudio.otherVol  || 0) * gainVal;
+    const targetAudio = (audioData && audioData.vol !== undefined) ? audioData : (window.latestCompiledAudioData || {});
+    const vocals = (targetAudio.vocalsVol || targetAudio.mid || 0) * gainVal;
+    const drums  = (targetAudio.drumsVol  || targetAudio.bass || 0) * gainVal;
+    const bass   = (targetAudio.bassVol   || targetAudio.bass || 0) * gainVal;
+    const other  = (targetAudio.otherVol  || targetAudio.treble || 0) * gainVal;
 
     const W = this.canvas.width;
     const H = this.canvas.height;
@@ -95,12 +85,10 @@ export default class ThreeCubeSketch {
       const angle = (i / cubeCount) * Math.PI * 2 + this.time * (0.5 + other * 1.5);
       const cx = Math.cos(angle) * baseRadius;
       const cy = Math.sin(angle) * baseRadius;
-
       const cubeSize = 25 + vocals * 45;
       this.drawWireCube(cx, cy, 0, cubeSize, this.time + i, this.time * 0.8);
     }
 
-    // 중앙 코어 3D 큐브
     this.ctx.strokeStyle = globalSettings.customColors?.gas1 || '#ff0055';
     this.drawWireCube(0, 0, 0, 60 + bass * 90, this.time * 1.5, this.time);
 
@@ -108,7 +96,7 @@ export default class ThreeCubeSketch {
       fps: 60,
       particleCount: `3D Cubes: 20 Pcs`,
       isCovering: true,
-      activeFunction: "ThreeCube[Render_Fixed_v2]"
+      activeFunction: "ThreeCube[Active]"
     };
   }
 

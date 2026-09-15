@@ -45,11 +45,11 @@ export default class ThreeFireworksSketch {
     const globalSettings = window.cosmicEngineSettings || {};
     const gainVal = globalSettings.audioGain ?? 1.0;
 
-    const targetAudio = (audioData && audioData.vocalsVol !== undefined) ? audioData : (window.latestCompiledAudioData || {});
-    const vocals = (targetAudio.vocalsVol || 0) * gainVal;
-    const drums  = (targetAudio.drumsVol  || 0) * gainVal;
-    const bass   = (targetAudio.bassVol   || 0) * gainVal;
-    const other  = (targetAudio.otherVol  || 0) * gainVal;
+    const targetAudio = (audioData && audioData.vol !== undefined) ? audioData : (window.latestCompiledAudioData || {});
+    const vocals = (targetAudio.vocalsVol || targetAudio.mid || 0) * gainVal;
+    const drums  = (targetAudio.drumsVol  || targetAudio.bass || 0) * gainVal;
+    const bass   = (targetAudio.bassVol   || targetAudio.bass || 0) * gainVal;
+    const other  = (targetAudio.otherVol  || targetAudio.treble || 0) * gainVal;
 
     const W = this.canvas.width;
     const H = this.canvas.height;
@@ -57,7 +57,6 @@ export default class ThreeFireworksSketch {
     this.ctx.fillStyle = 'rgba(3, 5, 12, 0.25)';
     this.ctx.fillRect(0, 0, W, H);
 
-    // 주기적 자동 로켓 발사 + 드럼 비트 피크 발사
     if (drums > 0.05 || Math.random() < 0.05) {
       this.rockets.push({
         x: Math.random() * (W * 0.8) + W * 0.1,
@@ -68,7 +67,6 @@ export default class ThreeFireworksSketch {
       });
     }
 
-    // 로켓 공중 상승
     for (let i = this.rockets.length - 1; i >= 0; i--) {
       const r = this.rockets[i];
       r.y += r.vy;
@@ -82,12 +80,11 @@ export default class ThreeFireworksSketch {
       }
     }
 
-    // 불꽃 입자 물리
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
       p.x += p.vx;
       p.y += p.vy;
-      p.vy += 0.12; // 중력
+      p.vy += 0.12;
       p.alpha -= p.decay;
 
       if (p.alpha <= 0) {
@@ -111,7 +108,7 @@ export default class ThreeFireworksSketch {
       fps: 60,
       particleCount: `Sparks: ${this.particles.length}`,
       isCovering: true,
-      activeFunction: "ThreeFireworks[Render_Fixed_v2]"
+      activeFunction: "ThreeFireworks[Active]"
     };
   }
 
