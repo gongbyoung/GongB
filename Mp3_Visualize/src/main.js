@@ -1,3 +1,31 @@
+/**
+ * ============================================================================
+ * 🚨 [CRITICAL CORE] main.js 절대 보호 구역 안내서 🚨
+ * ============================================================================
+ * 아래 명시된 변수, 함수, DOM 선택자들은 001~029번까지의 모든 스케치 파일과 
+ * index.html의 UI가 정상 작동하기 위한 뼈대(Architecture)입니다. 
+ * 임의로 이름(변수명/함수명)을 변경하거나 삭제할 경우 치명적인 오작동이 발생합니다.
+ * 
+ * [1. 절대 변경 금지: 전역(Global) 변수 및 상태 객체]
+ * - window.cosmicEngineSettings : 관제탑(우측 패널)의 모든 슬라이더/컬러/비율 설정값 저장소
+ * - window.latestCompiledAudioData : 001~029 스케치가 공통으로 받아가는 오디오 4-Stem/주파수 데이터
+ * - window.currentSubtitleText : SRT에서 추출된 현재 자막 텍스트 (스케치 내부에서 호출됨)
+ * - window.currentUploadedImageElement : 업로드된 배경 이미지 객체 (019, 020, 029 등에 BG로 깔림)
+ * 
+ * [2. 절대 변경 금지: 핵심 오디오 & 렌더링 파이프라인 함수]
+ * - initAudioContext() & safeDecodeAudio() : 브라우저 오디오 정책 우회 및 다중 스템 해독기
+ * - toggleMultiStemPlayback() : 4-Stem(보컬,드럼,베이스,기타) 오디오 동기화 재생 엔진
+ * - renderEngineTicker() : 초당 60프레임으로 오디오 데이터를 쪼개어 각 스케치의 update()로 쏴주는 심장부
+ * 
+ * [3. 절대 변경 금지: 스마트 방어 가드 로직]
+ * - isUserManualClick & manager.switchSketch() 오버라이드 로직 : 
+ *   자막/단어 매칭에 의해 스케치가 멋대로 튀어버리는 것을 막고, 사용자가 직접 클릭했을 때만 넘어가게 하는 방어벽
+ * 
+ * [4. 절대 변경 금지: index.html DOM 연결 ID]
+ * - 'audio-player', 'stage-wrapper', 'btn-play-music', 'select-poem-font', '.btn-export-ratio' 등
+ * ============================================================================
+ */
+
 import { AudioAnalyzer } from './core/AudioAnalyzer.js';
 import { SketchManager } from './core/SketchManager.js';
 import { VideoRecorder } from './core/VideoRecorder.js';
@@ -26,15 +54,17 @@ const batchMp3Input = document.getElementById('file-batch-mp3');
 const batchStatusText = document.getElementById('batch-load-status');
 const srtInput = document.getElementById('file-srt');
 
-// 🔤 폰트 선택 및 커스텀 폰트 감지
 const fontSelect = document.getElementById('select-poem-font');
 const customFontInput = document.getElementById('file-custom-font');
 
 window.cosmicEngineSettings = window.cosmicEngineSettings || {};
 window.cosmicEngineSettings.poemText = poemTextInput ? poemTextInput.value : "떠날 때의 님의 얼굴";
 window.cosmicEngineSettings.exportRatio = "full";
-window.cosmicEngineSettings.lockSketch = true; // 🔒 스케치 고정 잠금 기본 활성화
+window.cosmicEngineSettings.lockSketch = true; 
 window.cosmicEngineSettings.fontFamily = fontSelect ? fontSelect.value : "'Noto Sans KR'";
+
+// 💡 전역 배경 이미지 저장소 초기화
+window.currentUploadedImageElement = null;
 
 fontSelect?.addEventListener('change', (e) => {
   window.cosmicEngineSettings.fontFamily = e.target.value;
@@ -124,7 +154,7 @@ function updateAudioDelayForSketch(sketchFileName) {
   }
 }
 
-// 사용자 업로드 오디오 캐치
+// 💡 [수리 완료]: 오디오 파일뿐만 아니라 이미지 파일 업로드도 실시간 감지하여 전역 렌더러에 주입
 document.querySelectorAll('input[type="file"]').forEach(input => {
   if (input.id === 'file-srt' || input.id === 'file-batch-mp3' || input.id === 'file-custom-font') return;
 
@@ -132,6 +162,18 @@ document.querySelectorAll('input[type="file"]').forEach(input => {
     const file = e.target.files[0];
     if (!file) return;
 
+    // 이미지 파일 처리
+    if (file.type.includes('image')) {
+      const img = new Image();
+      img.onload = () => {
+        window.currentUploadedImageElement = img;
+        console.log("[🖼️ Image Loaded]: 배경 이미지 적용 완료");
+      };
+      img.src = URL.createObjectURL(file);
+      return;
+    }
+
+    // 오디오 파일 처리
     if (file.type.includes('audio') || file.name.toLowerCase().endsWith('.mp3') || file.name.toLowerCase().endsWith('.wav')) {
       stopAllActiveStems();
       Object.keys(stemBuffers).forEach(key => stemBuffers[key] = null);
@@ -290,20 +332,41 @@ function syncCosmicControls() {
 
 Object.values(cosmicControls).forEach(el => { el?.addEventListener('input', syncCosmicControls); });
 
+// 💡 [수리 완료]: 비율 버튼 클릭 시 DOM 클래스를 물리적으로 변경하고 스케치 매니저에게 리사이즈 강제 명령
 document.querySelectorAll('.btn-export-ratio, [data-ratio]').forEach(btn => {
   btn.addEventListener('click', (e) => {
-    const ratio = e.currentTarget.getAttribute('data-ratio') || e.currentTarget.innerText.trim();
-    window.cosmicEngineSettings.exportRatio = ratio;
+    const ratioText = (e.currentTarget.getAttribute('data-ratio') || e.currentTarget.innerText).trim().toLowerCase();
+    
+    let ratioVal = 'full';
+    if (ratioText.includes('16:9')) ratioVal = '16:9';
+    else if (ratioText.includes('9:16')) ratioVal = '9:16';
+
+    window.cosmicEngineSettings.exportRatio = ratioVal;
+
+    if (stageWrapper) {
+      // 기존 비율 클래스 초기화
+      stageWrapper.classList.remove('ratio-full', 'ratio-169', 'ratio-916');
+      
+      // 새 비율 클래스 부착
+      if (ratioVal === '16:9') stageWrapper.classList.add('ratio-169');
+      else if (ratioVal === '9:16') stageWrapper.classList.add('ratio-916');
+      else stageWrapper.classList.add('ratio-full');
+
+      // 캔버스 사이즈 즉시 동기화 리사이즈
+      if (manager) {
+        manager.resize(stageWrapper.clientWidth, stageWrapper.clientHeight);
+      }
+      console.log(`[📐 Ratio Changed]: ${ratioVal} 적용 완료`);
+    }
   });
 });
 
-// 💡 [스마트 방어 가드]: 사용자 수동 클릭은 100% 보장하고 백그라운드 자동 튀어오름만 방어
 let isUserManualClick = false;
 
 const originalSwitchSketch = manager.switchSketch.bind(manager);
 manager.switchSketch = async function(sketchName, ...args) {
   if (window.cosmicEngineSettings.lockSketch && !isUserManualClick) {
-    return; // 백그라운드 자동 전환 차단
+    return; 
   }
   return originalSwitchSketch(sketchName, ...args);
 };
@@ -319,10 +382,10 @@ if (sketchListContainer) {
 
     const targetSketch = targetLi.getAttribute('data-sketch');
     try {
-      isUserManualClick = true; // 수동 클릭 플래그 켜기
+      isUserManualClick = true; 
       updateAudioDelayForSketch(targetSketch);
       await originalSwitchSketch(targetSketch, analyzer);
-      isUserManualClick = false; // 플래그 끄기
+      isUserManualClick = false; 
       syncCosmicControls();
     } catch(err) {
       isUserManualClick = false;
@@ -341,4 +404,6 @@ originalSwitchSketch(initSketch, analyzer).then(() => {
   renderEngineTicker();
 });
 
-window.addEventListener('resize', () => manager.resize(stageWrapper.clientWidth, stageWrapper.clientHeight));
+window.addEventListener('resize', () => {
+  if (manager && stageWrapper) manager.resize(stageWrapper.clientWidth, stageWrapper.clientHeight);
+});
