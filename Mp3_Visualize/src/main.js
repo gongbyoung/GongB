@@ -25,6 +25,11 @@
  * - 'audio-player', 'stage-wrapper', 'btn-play-music', 'select-poem-font', '.btn-export-ratio' 등
  * ============================================================================
  */
+/**
+ * ============================================================================
+ * 🚨 [CRITICAL CORE] main.js 절대 보호 구역 안내서 🚨
+ * ============================================================================
+ */
 
 import { AudioAnalyzer } from './core/AudioAnalyzer.js';
 import { SketchManager } from './core/SketchManager.js';
@@ -61,26 +66,33 @@ window.cosmicEngineSettings = window.cosmicEngineSettings || {};
 window.cosmicEngineSettings.poemText = poemTextInput ? poemTextInput.value : "떠날 때의 님의 얼굴";
 window.cosmicEngineSettings.exportRatio = "full";
 window.cosmicEngineSettings.lockSketch = true; 
-window.cosmicEngineSettings.fontFamily = fontSelect ? fontSelect.value : "'Noto Sans KR'";
+window.cosmicEngineSettings.fontFamily = fontSelect ? fontSelect.value : "Noto Sans KR";
 
-// 💡 전역 배경 이미지 저장소 초기화
 window.currentUploadedImageElement = null;
 
+// 🔤 [수리 완료]: 폰트 선택 드롭다운 연동
 fontSelect?.addEventListener('change', (e) => {
   window.cosmicEngineSettings.fontFamily = e.target.value;
 });
 
+// 🔤 [수리 완료]: 내 컴퓨터 TTF/OTF 파일 업로드 연동 및 알림창 추가
 customFontInput?.addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
+  
   const fontName = `CustomFont_${Date.now()}`;
   const fontUrl = URL.createObjectURL(file);
+  
   try {
-    const fontFace = new FontFace(fontName, `url(${fontUrl})`);
+    const fontFace = new FontFace(fontName, `url("${fontUrl}")`);
     await fontFace.load();
     document.fonts.add(fontFace);
-    window.cosmicEngineSettings.fontFamily = `"${fontName}", sans-serif`;
-  } catch (err) {}
+    window.cosmicEngineSettings.fontFamily = fontName;
+    alert(`[폰트 적용 성공] ${file.name} 폰트가 화면에 적용되었습니다!`);
+  } catch (err) {
+    console.error("Font Load Error:", err);
+    alert("폰트 파일을 읽을 수 없습니다. 지원되는 TTF/OTF 파일인지 확인해주세요.");
+  }
 });
 
 const wordMatcher = new WordVisualMatcher(manager, analyzer);
@@ -154,7 +166,6 @@ function updateAudioDelayForSketch(sketchFileName) {
   }
 }
 
-// 💡 [수리 완료]: 오디오 파일뿐만 아니라 이미지 파일 업로드도 실시간 감지하여 전역 렌더러에 주입
 document.querySelectorAll('input[type="file"]').forEach(input => {
   if (input.id === 'file-srt' || input.id === 'file-batch-mp3' || input.id === 'file-custom-font') return;
 
@@ -162,7 +173,6 @@ document.querySelectorAll('input[type="file"]').forEach(input => {
     const file = e.target.files[0];
     if (!file) return;
 
-    // 이미지 파일 처리
     if (file.type.includes('image')) {
       const img = new Image();
       img.onload = () => {
@@ -173,7 +183,6 @@ document.querySelectorAll('input[type="file"]').forEach(input => {
       return;
     }
 
-    // 오디오 파일 처리
     if (file.type.includes('audio') || file.name.toLowerCase().endsWith('.mp3') || file.name.toLowerCase().endsWith('.wav')) {
       stopAllActiveStems();
       Object.keys(stemBuffers).forEach(key => stemBuffers[key] = null);
@@ -332,34 +341,24 @@ function syncCosmicControls() {
 
 Object.values(cosmicControls).forEach(el => { el?.addEventListener('input', syncCosmicControls); });
 
-// 💡 [수리 완료]: 비율 버튼 클릭 시 DOM 클래스를 물리적으로 변경하고 스케치 매니저에게 리사이즈 강제 명령
-document.querySelectorAll('.btn-export-ratio, [data-ratio]').forEach(btn => {
-  btn.addEventListener('click', (e) => {
-    const ratioText = (e.currentTarget.getAttribute('data-ratio') || e.currentTarget.innerText).trim().toLowerCase();
-    
-    let ratioVal = 'full';
-    if (ratioText.includes('16:9')) ratioVal = '16:9';
-    else if (ratioText.includes('9:16')) ratioVal = '9:16';
+// 📐 [수리 완료]: index.html에 작성된 실제 버튼 ID를 직접 타겟팅하여 연결
+const updateExportRatio = (ratioVal) => {
+  window.cosmicEngineSettings.exportRatio = ratioVal;
+  if (stageWrapper) {
+    stageWrapper.classList.remove('ratio-full', 'ratio-169', 'ratio-916');
+    if (ratioVal === '16:9') stageWrapper.classList.add('ratio-169');
+    else if (ratioVal === '9:16') stageWrapper.classList.add('ratio-916');
+    else stageWrapper.classList.add('ratio-full');
 
-    window.cosmicEngineSettings.exportRatio = ratioVal;
+    if (manager) manager.resize(stageWrapper.clientWidth, stageWrapper.clientHeight);
+    console.log(`[📐 Ratio Active]: ${ratioVal} 화면 비율 적용`);
+  }
+};
 
-    if (stageWrapper) {
-      // 기존 비율 클래스 초기화
-      stageWrapper.classList.remove('ratio-full', 'ratio-169', 'ratio-916');
-      
-      // 새 비율 클래스 부착
-      if (ratioVal === '16:9') stageWrapper.classList.add('ratio-169');
-      else if (ratioVal === '9:16') stageWrapper.classList.add('ratio-916');
-      else stageWrapper.classList.add('ratio-full');
+document.getElementById('btn-ratio-full')?.addEventListener('click', () => updateExportRatio('full'));
+document.getElementById('btn-ratio-169')?.addEventListener('click', () => updateExportRatio('16:9'));
+document.getElementById('btn-ratio-916')?.addEventListener('click', () => updateExportRatio('9:16'));
 
-      // 캔버스 사이즈 즉시 동기화 리사이즈
-      if (manager) {
-        manager.resize(stageWrapper.clientWidth, stageWrapper.clientHeight);
-      }
-      console.log(`[📐 Ratio Changed]: ${ratioVal} 적용 완료`);
-    }
-  });
-});
 
 let isUserManualClick = false;
 

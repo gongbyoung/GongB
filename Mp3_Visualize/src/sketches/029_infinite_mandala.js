@@ -1,8 +1,14 @@
 /**
  * src/sketches/029_infinite_mandala.js
+ * - [UI 완벽 연동 및 3-Band 주파수 리액티브 만다라 Ver 5.1]
  * - [테두리 제거 & Shuffle 그라디언트 연동 Ver 5.2]
- * - 거미줄처럼 보이던 모든 외곽선(Stroke)을 제거하여 깔끔하고 고급스러운 꽃잎 렌더링
+ * - 🔀 Shuffle (Seed): 시드를 변경하면 쉐이프 조합/순서/색상이 완전히 새로 섞임
  * - 🔀 Shuffle (Seed): 난수 생성뿐만 아니라 '그라디언트로 색이 칠해지는 정도'를 실시간 제어
+ * - 📏 Range (Scatter): 만다라 겹(Ring)이 생성되는 총 갯수(밀도) 조절
+ * - 🔍 Scale (Glow): 만다라 전체의 거대한 스케일 조절
+ * - 🔊 Volume (Gain): 바깥으로 팽창하며 퍼져나가는 기본 속도 조절
+ * - 🎛️ Gauge: 음악 주파수(Bass, Mid, Treble)에 반응하여 진동하는 정도를 조절
+ * - 거미줄처럼 보이던 모든 외곽선(Stroke)을 제거하여 깔끔하고 고급스러운 꽃잎 렌더링
  */
 
 export default class InfiniteMandalaSketch {
@@ -16,7 +22,7 @@ export default class InfiniteMandalaSketch {
     }
 
     this.time = 0;
-    this.version = "029호 노라인 그라디언트 만다라 Ver 5.2";
+    this.version = "029호 UI 연동 3-Band + 노라인 그라디언트 만다라 Ver 5.2";
     this.rings = []; 
     this.spawnIndex = 0;
   }
@@ -65,6 +71,12 @@ export default class InfiniteMandalaSketch {
     // 테두리(Stroke) 제거 완료, 대신 속을 파스텔/글로우 톤으로 살짝 채워 디테일 향상
     ctx.fillStyle = palette.glow;
     ctx.globalAlpha = 0.3 * fillDegree;
+    ctx.beginPath();
+    ctx.moveTo(0, -5);
+    ctx.bezierCurveTo(8 * thickness, -20, 10 * thickness, -35, 0, -50);
+    ctx.bezierCurveTo(-10 * thickness, -35, -8 * thickness, -20, 0, -5);
+    ctx.fill();
+    ctx.globalAlpha = 1.0;
     ctx.beginPath();
     ctx.moveTo(0, -5);
     ctx.bezierCurveTo(8 * thickness, -20, 10 * thickness, -35, 0, -50);
@@ -133,7 +145,6 @@ export default class InfiniteMandalaSketch {
 
     // 💡 [핵심 추가]: Shuffle 슬라이더 값(1~500)을 0.05 ~ 1.0 비율로 변환하여 '색을 칠하는 정도'로 사용
     const fillDegree = Math.max(0.05, seedVal / 500);
-
     const colorStyle = settings.colorStyle || 'neon';
     const palette = this.getPalette(colorStyle, customColors);
 
@@ -246,6 +257,7 @@ export default class InfiniteMandalaSketch {
     this.ctx.arc(centerX, centerY, 80 + bass * 60 * gaugeVal, 0, Math.PI * 2);
     this.ctx.fill();
 
+    // 🔤 [수리 완료]: 폰트 이름의 따옴표를 완전히 제거하고 캔버스에 깔끔하게 주입
     const subtitleText = window.currentSubtitleText || window.cosmicEngineSettings?.poemText || "";
     if (subtitleText) {
       this.ctx.globalAlpha = 1.0;
@@ -253,7 +265,7 @@ export default class InfiniteMandalaSketch {
       const fontSize = baseFontSize * (1.0 + (bass * 0.05 * gaugeVal));
       
       const rawFont = window.cosmicEngineSettings?.fontFamily || "Noto Sans KR";
-      const cleanFontName = rawFont.replace(/['"]/g, ''); 
+      const cleanFontName = rawFont.replace(/['"]/g, ''); // 불필요한 따옴표 완벽 제거
       
       this.ctx.font = `bold ${fontSize}px "${cleanFontName}", sans-serif`;
       this.ctx.textAlign = 'center';
@@ -286,7 +298,7 @@ export default class InfiniteMandalaSketch {
       fps: 60,
       particleCount: `Rings: ${this.rings.length}`,
       isCovering: true,
-      activeFunction: `Mandala[Grad:${fillDegree.toFixed(2)}]`
+      activeFunction: `Mandala[Grad:${fillDegree.toFixed(2)}|Ratio:${exportRatio}]`
     };
   }
 
