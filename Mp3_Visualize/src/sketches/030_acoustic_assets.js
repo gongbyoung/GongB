@@ -1,11 +1,13 @@
 /**
  * src/sketches/030_acoustic_assets.js
- * - [030호 우아한 어쿠스틱 디오라마 Ver 2.0]
- * - 거대 악기는 배경에서 우아하게 숨 쉬고(공명), 음표와 물방울만 서정적으로 떠오릅니다.
- * - 자막 On/Off 기능 완벽 대응
+ * - [030호 홀로그램 스테이지 엔진 Ver 4.0]
+ * - 🎻 현/기타 (Treble/Other): 빛의 물결 (곡선)
+ * - 🎤 목소리 (Mid/Vocals): 신비로운 연기 (Smoke)
+ * - 🥁 드럼/베이스 (Bass/Drums): 바닥에서 튀어오르는 기하학 도형 (Shapes)
+ * - 각각의 소리에만 독립적으로 완벽하게 반응합니다.
  */
 
-export default class AcousticAssetsSketch {
+export default class HolographicStageSketch {
   constructor(container) {
     this.container = typeof container === 'string' ? document.getElementById(container) : container;
     this.canvas = document.createElement('canvas');
@@ -16,58 +18,20 @@ export default class AcousticAssetsSketch {
     }
 
     this.time = 0;
-    this.version = "030호 어쿠스틱 디오라마 Ver 2.0";
+    this.version = "030호 홀로그램 스테이지 Ver 4.0";
     
-    this.particles = [];
-    this.loadedImages = { instruments: [], notes: [] };
-    this.currentMainInstrument = null; // 중앙을 장식할 메인 악기 1개
-
-    this.initAssets();
+    this.smokeParticles = [];
+    this.drumShapes = [];
+    
+    // 연기 효과를 위한 사전 렌더링 텍스처 (성능 최적화)
+    this.smokeTexture = this.createSmokeTexture();
+    
+    this.lastDrums = 0;
+    this.init();
   }
 
   init() {
     this.resize();
-  }
-
-  // 📂 모델링 에셋 로드 및 역할 분리
-  initAssets() {
-    const basePath = 'assets/models/';
-    
-    // 악기류 (배경에서 은은하게 렌더링될 거대 오브젝트)
-    const instrumentFiles = [
-      'PIANO001.png', 'PIANO002.png', 'VIOLIN001.png', 'GUITAR002.png', 'GUITAR003.png', 'GUITAR004.png',
-      'CYLOPHONE001.png', 'DRUM_001.png', 'DRUM_002.png'
-    ];
-    
-    // 파티클류 (피아노 선율에 맞춰 화면을 떠다닐 에셋)
-    const noteFiles = [
-      'MUSIC14_001.png', 'MUSIC14_002.png', 'MUSIC14_003.png', 'MUSIC18_001.png', 'HIGHMUSIC_001.png',
-      'PURE_WATER_001.png', 'PURE_WATER_002.png', 'PURE_WATER_003.png'
-    ];
-
-    const loadImg = (filename, category) => {
-      const img = new Image();
-      img.src = basePath + filename;
-      img.onload = () => {
-        this.loadedImages[category].push(img);
-        // 악기 이미지가 하나라도 로드되면 메인 악기로 지정
-        if (category === 'instruments' && !this.currentMainInstrument) {
-          this.pickNewMainInstrument();
-        }
-      };
-      // 에러 무시 처리 (없는 파일 대비)
-      img.onerror = () => { console.warn(`Asset missing: ${filename}`); };
-    };
-
-    instrumentFiles.forEach(f => loadImg(f, 'instruments'));
-    noteFiles.forEach(f => loadImg(f, 'notes'));
-  }
-
-  pickNewMainInstrument() {
-    if (this.loadedImages.instruments.length > 0) {
-      const idx = Math.floor(Math.random() * this.loadedImages.instruments.length);
-      this.currentMainInstrument = this.loadedImages.instruments[idx];
-    }
   }
 
   resize(w, h) {
@@ -77,26 +41,42 @@ export default class AcousticAssetsSketch {
     this.canvas.height = this.height;
   }
 
-  // 🎶 음표/물방울 파티클 스폰 (위로 부드럽게 상승)
-  spawnNote(W, H) {
-    const assets = this.loadedImages.notes;
-    if (assets.length === 0) return;
+  // ☁️ 연기 파티클 텍스처 미리 만들기 (64x64)
+  createSmokeTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64; canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grad.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
+    grad.addColorStop(0.4, 'rgba(255, 255, 255, 0.6)');
+    grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 64, 64);
+    return canvas;
+  }
 
-    const img = assets[Math.floor(Math.random() * assets.length)];
+  // 🥁 드럼 도형 스폰 (삼각형, 빈 원형 등)
+  spawnDrumShape(x, y, intensity) {
+    const types = ['triangle', 'ring'];
+    const colors = ['#ff2a6d', '#05d9e8', '#ff7a00', '#d1f7ff'];
     
-    this.particles.push({
-      img: img,
-      x: W * 0.1 + Math.random() * (W * 0.8),
-      y: H + 50,
-      life: 1.0,
-      decay: 0.005 + Math.random() * 0.005, // 매우 천천히 사라짐
-      scale: Math.random() * 0.3 + 0.2,     // 작고 귀엽게
-      angle: (Math.random() - 0.5) * 0.5,   // 살짝만 기울어짐
-      rotSpeed: (Math.random() - 0.5) * 0.01,
-      speedY: 1.5 + Math.random() * 2.0,    // 위로 떠오르는 속도
-      wavePhase: Math.random() * Math.PI * 2,
-      waveAmp: Math.random() * 1.5
-    });
+    const count = Math.floor(intensity * 3) + 1; // 세게 칠수록 많이 나옴
+    
+    for (let i = 0; i < count; i++) {
+      this.drumShapes.push({
+        type: types[Math.floor(Math.random() * types.length)],
+        x: x + (Math.random() * 200 - 100),
+        y: y,
+        vx: (Math.random() - 0.5) * 6,
+        vy: -(Math.random() * 8 + 4) * intensity, // 위로 튀어오름
+        size: Math.random() * 20 + 15,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        life: 1.0,
+        decay: 0.02 + Math.random() * 0.02,
+        angle: Math.random() * Math.PI * 2,
+        rotSpeed: (Math.random() - 0.5) * 0.2
+      });
+    }
   }
 
   update(audioData) {
@@ -106,16 +86,19 @@ export default class AcousticAssetsSketch {
     const H = this.canvas.height;
     const settings = window.cosmicEngineSettings || {};
     
-    const bass = audioData && audioData.bass ? audioData.bass : 0;
-    const mid = audioData && audioData.mid ? audioData.mid : 0;
-    const treble = audioData && audioData.treble ? audioData.treble : 0;
-    
+    // 🎛️ 멀티 스템(4-Stem) 데이터가 있으면 우선 사용, 없으면 주파수(Bass/Mid/Treble)로 대체
+    const targetAudio = (audioData && audioData.vocalsVol !== undefined) ? audioData : (window.latestCompiledAudioData || {});
+    const vocals = targetAudio.vocalsVol !== undefined ? targetAudio.vocalsVol : (targetAudio.mid || 0);
+    const drums  = targetAudio.drumsVol  !== undefined ? targetAudio.drumsVol  : (targetAudio.bass || 0);
+    const strings= targetAudio.otherVol  !== undefined ? targetAudio.otherVol  : (targetAudio.treble || 0);
+    const vol = targetAudio.vol || 0;
+
     const gainVal = settings.audioGain ?? 1.0;
     const gaugeVal = settings.gaugeValue ?? 0.5; 
 
-    this.time += 0.01 + (bass * 0.01 * gainVal);
+    this.time += 0.01 + (strings * 0.02 * gainVal);
 
-    // 📐 레터박스 엔진
+    // 📐 16:9 / 9:16 레터박스 엔진
     let exportRatio = settings.exportRatio || 'full';
     let renderW = W, renderH = H, renderX = 0, renderY = 0;
     if (exportRatio === '16:9') {
@@ -129,109 +112,166 @@ export default class AcousticAssetsSketch {
     }
 
     this.ctx.save();
-    this.ctx.fillStyle = "#000000";
+    this.ctx.fillStyle = "#020205"; // 깊은 스테이지 암전
     this.ctx.fillRect(0, 0, W, H);
     this.ctx.beginPath();
     this.ctx.rect(renderX, renderY, renderW, renderH);
     this.ctx.clip();
 
     const centerX = renderX + renderW / 2;
-    const centerY = renderY + renderH / 2;
+    const bottomY = renderY + renderH * 0.85; // 무대 바닥 위치
 
-    // 1. 깊이 있는 어쿠스틱 나무 질감 배경
-    const bgGrad = this.ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, renderW * 0.8);
-    bgGrad.addColorStop(0, '#261612'); // 따뜻한 우드 톤
-    bgGrad.addColorStop(1, '#050302');
-    this.ctx.fillStyle = bgGrad;
-    this.ctx.fillRect(renderX, renderY, renderW, renderH);
-
-    // 2. 🎻 거대한 메인 악기 공명 렌더링 (단 1개만 우아하게)
-    // 셔플 슬라이더의 값을 이용해 가끔씩 메인 악기를 교체
-    if (Math.random() < 0.001) this.pickNewMainInstrument();
-
-    if (this.currentMainInstrument) {
-      this.ctx.save();
-      this.ctx.translate(centerX, centerY);
-      
-      // 베이스에 맞춰 천천히 숨쉬듯 커졌다 작아지는 스케일링
-      const baseScale = Math.min(renderW, renderH) / this.currentMainInstrument.width * 1.5;
-      const pulse = bass * 0.15 * gaugeVal;
-      const finalScale = baseScale + pulse;
-
-      // 악기가 배경에 스며들도록 부드러운 투명도 처리
-      this.ctx.globalCompositeOperation = 'screen';
-      this.ctx.globalAlpha = 0.15 + (bass * 0.2); 
-      
-      const w = this.currentMainInstrument.width * finalScale;
-      const h = this.currentMainInstrument.height * finalScale;
-      this.ctx.drawImage(this.currentMainInstrument, -w/2, -h/2, w, h);
-      this.ctx.restore();
-    }
-
-    // 3. 〰️ 서정적인 황금빛 현(String) 파동
-    this.ctx.lineWidth = 1.5 + bass * 3;
-    this.ctx.strokeStyle = `rgba(255, 215, 0, ${0.4 + bass * 0.4})`; // 빛나는 금선
-    this.ctx.shadowBlur = 15;
-    this.ctx.shadowColor = '#d4af37';
-
-    for(let i=0; i<6; i++) {
+    // ==========================================
+    // 1. 🎻 STRING 파트 : 빛의 물결 (곡선)
+    // ==========================================
+    const lineColors = ['#00ffcc', '#ff0055', '#4d4dff', '#ffaa00'];
+    this.ctx.globalCompositeOperation = 'screen';
+    
+    for (let i = 0; i < 6; i++) {
       this.ctx.beginPath();
-      // 현들이 화면을 가로지름
-      const yOffset = renderY + (renderH * 0.15) + (i * (renderH * 0.14));
-      // 베이스가 칠 때 현이 강하게 튕겨짐
-      const wave = Math.sin(this.time * 4 + i * 1.5) * (15 + bass * 120 * gaugeVal); 
+      this.ctx.lineWidth = 2 + (strings * 3);
+      this.ctx.strokeStyle = lineColors[i % lineColors.length];
+      this.ctx.shadowBlur = 15;
+      this.ctx.shadowColor = this.ctx.strokeStyle;
+      this.ctx.globalAlpha = 0.4 + (strings * 0.6);
+
+      const yBase = renderY + (renderH * 0.2) + (i * renderH * 0.1);
       
-      this.ctx.moveTo(renderX, yOffset);
-      this.ctx.quadraticCurveTo(centerX, yOffset + wave, renderX + renderW, yOffset);
+      this.ctx.moveTo(renderX, yBase);
+      for (let x = renderX; x <= renderX + renderW; x += 20) {
+        // 스트링(현/기타) 소리가 커질수록 파장이 요동침
+        const freq = 0.01 + (i * 0.005);
+        const amp = 20 + (strings * 150 * gaugeVal) + Math.sin(this.time + i) * 20;
+        const waveY = Math.sin(x * freq + this.time * (2 + i*0.5)) * amp;
+        this.ctx.lineTo(x, yBase + waveY);
+      }
       this.ctx.stroke();
     }
     this.ctx.shadowBlur = 0;
 
-    // 4. 🎶 음표/물방울 에셋 스폰 (피아노, 고음역에 반응)
-    // 멜로디(Mid)나 고음(Treble)이 칠 때 예쁜 음표가 퐁퐁 솟아오름
-    if ((mid > 0.3 || treble > 0.3) && Math.random() < 0.25) {
-      this.spawnNote(renderW, renderH);
+    // ==========================================
+    // 2. 🎤 VOCAL 파트 : 신비로운 연기 (Smoke)
+    // ==========================================
+    // 보컬 소리가 있을 때 연기 스폰
+    if (vocals > 0.1 && Math.random() < vocals * 0.8) {
+      this.smokeParticles.push({
+        x: centerX + (Math.random() * renderW * 0.4 - renderW * 0.2),
+        y: bottomY - 50,
+        vx: (Math.random() - 0.5) * 2.0,
+        vy: -2 - (Math.random() * 3) * vocals, // 위로 솟아오름
+        size: Math.random() * 40 + 40,
+        growth: 0.5 + Math.random(), // 점점 퍼짐
+        life: 1.0,
+        decay: 0.005 + Math.random() * 0.01,
+        // 보라/핑크/오렌지 톤의 보컬 연기 색상
+        hue: 280 + Math.random() * 60
+      });
     }
 
-    // 5. 음표 파티클 부드러운 상승 물리 로직
-    for (let i = this.particles.length - 1; i >= 0; i--) {
-      let p = this.particles[i];
-      
-      // 위로 올라가며 좌우로 살랑살랑 흔들림 (수중 공기방울처럼)
-      p.y -= p.speedY * gainVal;
-      p.x += Math.sin(this.time * 2 + p.wavePhase) * p.waveAmp;
-      p.angle += p.rotSpeed;
+    for (let i = this.smokeParticles.length - 1; i >= 0; i--) {
+      let p = this.smokeParticles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.size += p.growth;
       p.life -= p.decay;
 
-      if (p.life <= 0 || p.y < renderY - 100) {
-        this.particles.splice(i, 1);
+      if (p.life <= 0) {
+        this.smokeParticles.splice(i, 1);
         continue;
       }
 
       this.ctx.save();
-      this.ctx.translate(renderX + p.x, p.y);
-      this.ctx.rotate(p.angle);
-      
-      // 나타날 때와 사라질 때 부드러운 페이드 효과
-      this.ctx.globalAlpha = p.life > 0.8 ? (1.0 - p.life) * 5 : p.life * 1.2;
-      
-      const w = p.img.width * p.scale;
-      const h = p.img.height * p.scale;
-      
-      this.ctx.shadowBlur = 10;
-      this.ctx.shadowColor = "rgba(255, 255, 255, 0.4)";
-      
-      this.ctx.drawImage(p.img, -w/2, -h/2, w, h);
+      this.ctx.translate(p.x, p.y);
+      this.ctx.globalAlpha = p.life * 0.4 * (0.5 + vocals * 0.5); // 보컬이 셀수록 연기가 진해짐
+      // 연기 색상 틴팅
+      this.ctx.fillStyle = `hsla(${p.hue}, 80%, 60%, ${p.life})`;
+      this.ctx.beginPath();
+      this.ctx.arc(0, 0, p.size, 0, Math.PI * 2);
+      this.ctx.fill();
+
+      // 연기 텍스처 오버레이
+      this.ctx.globalCompositeOperation = 'screen';
+      this.ctx.drawImage(this.smokeTexture, -p.size, -p.size, p.size * 2, p.size * 2);
       this.ctx.restore();
     }
 
-    // 6. ✍️ 최상단 자막 (자막 끄기 토글 상태 확인!)
+    // ==========================================
+    // 3. 🥁 DRUM 파트 : 기하학 도형 (Shapes)
+    // ==========================================
+    this.ctx.globalCompositeOperation = 'source-over';
+    
+    // 피크 감지: 드럼 소리가 확 튈 때 도형 스폰
+    if (drums > 0.35 && drums > this.lastDrums + 0.05) {
+      this.spawnDrumShape(centerX, bottomY, drums * gainVal);
+    }
+    this.lastDrums = drums;
+
+    // 무대 바닥 라인 (도형들이 튕기는 곳)
+    this.ctx.fillStyle = `rgba(255, 255, 255, ${0.05 + drums * 0.1})`;
+    this.ctx.beginPath();
+    this.ctx.ellipse(centerX, bottomY, renderW * 0.4, 40, 0, 0, Math.PI * 2);
+    this.ctx.fill();
+
+    for (let i = this.drumShapes.length - 1; i >= 0; i--) {
+      let s = this.drumShapes[i];
+      
+      // 중력 적용
+      s.vy += 0.4; 
+      s.x += s.vx;
+      s.y += s.vy;
+      s.angle += s.rotSpeed;
+      s.life -= s.decay;
+
+      // 바닥에 닿으면 튕김 (Bouncing)
+      if (s.y > bottomY) {
+        s.y = bottomY;
+        s.vy *= -0.6; // 탄성
+        s.vx *= 0.8;  // 마찰
+      }
+
+      if (s.life <= 0) {
+        this.drumShapes.splice(i, 1);
+        continue;
+      }
+
+      this.ctx.save();
+      this.ctx.translate(s.x, s.y);
+      this.ctx.rotate(s.angle);
+      this.ctx.globalAlpha = s.life;
+      
+      this.ctx.shadowBlur = 15;
+      this.ctx.shadowColor = s.color;
+
+      if (s.type === 'triangle') {
+        this.ctx.strokeStyle = s.color;
+        this.ctx.lineWidth = 3;
+        this.ctx.beginPath();
+        this.ctx.moveTo(0, -s.size);
+        this.ctx.lineTo(s.size * 0.866, s.size * 0.5);
+        this.ctx.lineTo(-s.size * 0.866, s.size * 0.5);
+        this.ctx.closePath();
+        this.ctx.stroke();
+      } else if (s.type === 'ring') {
+        this.ctx.strokeStyle = s.color;
+        this.ctx.lineWidth = 4;
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, s.size, 0, Math.PI * 2);
+        this.ctx.stroke();
+      }
+      
+      this.ctx.restore();
+    }
+
+    // ==========================================
+    // 4. ✍️ 자막 (자막 끄기 토글 상태 확인!)
+    // ==========================================
     const subtitleText = window.currentSubtitleText || window.cosmicEngineSettings?.poemText || "";
-    // 💡 토글 설정이 켜져 있을 때만 그리기
+    
     if (subtitleText && settings.showSubtitle !== false) {
       this.ctx.globalAlpha = 1.0;
+      this.ctx.globalCompositeOperation = 'source-over';
       const baseFontSize = Math.max(28, Math.min(52, renderW * 0.065));
-      const fontSize = baseFontSize * (1.0 + (mid * 0.05 * gaugeVal)); // 목소리(mid)에 살짝 반응
+      const fontSize = baseFontSize * (1.0 + (vocals * 0.05 * gaugeVal)); // 보컬에 자막이 살짝 반응
       
       const rawFont = settings.fontFamily || "Noto Sans KR";
       const cleanFontName = rawFont.replace(/['"]/g, ''); 
@@ -255,7 +295,7 @@ export default class AcousticAssetsSketch {
 
         this.ctx.shadowColor = "rgba(0, 0, 0, 0.9)";
         this.ctx.shadowBlur = 15;
-        this.ctx.fillStyle = "#faf6ed"; 
+        this.ctx.fillStyle = "#ffffff"; 
         this.ctx.fillText(line, centerX, lineY);
         this.ctx.shadowBlur = 0;
       });
@@ -265,9 +305,9 @@ export default class AcousticAssetsSketch {
 
     window.sketchDiagnostics = {
       fps: 60,
-      particleCount: `Notes: ${this.particles.length}`,
+      particleCount: `Smoke:${this.smokeParticles.length} | Shapes:${this.drumShapes.length}`,
       isCovering: true,
-      activeFunction: `Diorama[Sub:${settings.showSubtitle !== false ? 'ON' : 'OFF'}]`
+      activeFunction: `HologramStage[Sub:${settings.showSubtitle !== false ? 'ON' : 'OFF'}]`
     };
   }
 
@@ -277,6 +317,7 @@ export default class AcousticAssetsSketch {
     }
     this.canvas = null;
     this.ctx = null;
-    this.particles = [];
+    this.smokeParticles = [];
+    this.drumShapes = [];
   }
 }
