@@ -1,9 +1,10 @@
 /**
  * src/sketches/030_acoustic_assets.js
- * - [030호 홀로그램 스테이지 엔진 Ver 5.0 - 유기적(Organic) 설계]
- * - 구도를 중앙으로 이동, 스트링(선) 교차 및 뒤섞임 효과 적용
- * - 연기(Smoke) 디졸브 및 유체역학적 상승 효과 적용
- * - 우측 패널 UI (Shuffle, Range, Scale, Volume, Gauge) 100% 연동
+ * - [030호 유기적 홀로그램 엔진 Ver 6.0 - 단일축 교차 모델]
+ * - 🎻 STRING: 모든 선이 '하나의 유영하는 중심축'을 공유하며 거미줄/리본처럼 얽히고 교차함
+ * - 🎤 VOCAL: 중심축의 현재 위치에서 다양한 크기의 연기가 피어오르며 리얼하게 사라짐
+ * - 🥁 DRUM: 중심축을 기반으로 한 발광 패드에서 역동적으로 도형이 튐
+ * - 모든 움직임, 크기, 폭발 빈도가 UI 슬라이더와 100% 연동
  */
 
 export default class HolographicStageSketch {
@@ -17,7 +18,7 @@ export default class HolographicStageSketch {
     }
 
     this.time = 0;
-    this.version = "030호 유기적 홀로그램 Ver 5.0";
+    this.version = "030호 유기적 홀로그램 Ver 6.0";
     
     this.smokeParticles = [];
     this.drumShapes = [];
@@ -39,7 +40,7 @@ export default class HolographicStageSketch {
     this.canvas.height = this.height;
   }
 
-  // ☁️ 사실적인 연기 텍스처 (중심은 진하고 가장자리는 매우 부드럽게 퍼짐)
+  // ☁️ 사실적인 연기 텍스처 (가장자리가 부드럽게 디졸브)
   createSmokeTexture() {
     const canvas = document.createElement('canvas');
     canvas.width = 128; canvas.height = 128;
@@ -63,7 +64,6 @@ export default class HolographicStageSketch {
     for (let i = 0; i < count; i++) {
       this.drumShapes.push({
         type: types[Math.floor(Math.random() * types.length)],
-        // Range 슬라이더에 따라 좌우 퍼짐 정도가 다름
         x: x + (Math.random() * spreadRange - spreadRange / 2),
         y: y,
         vx: (Math.random() - 0.5) * 6 * speedMulti,
@@ -85,23 +85,21 @@ export default class HolographicStageSketch {
     const H = this.canvas.height;
     const settings = window.cosmicEngineSettings || {};
     
-    // 🎛️ 오디오 데이터 매핑
+    // 🎛️ 오디오 데이터 & 게이지 민감도
     const targetAudio = (audioData && audioData.vol !== undefined) ? audioData : (window.latestCompiledAudioData || {});
     const gaugeVal = settings.gaugeValue ?? 0.5; 
     
-    // Gauge 슬라이더 값에 비례하여 소리 반응 증폭
     const vocals = (targetAudio.vocalsVol !== undefined ? targetAudio.vocalsVol : (targetAudio.mid || 0)) * gaugeVal * 2.5;
     const drums  = (targetAudio.drumsVol  !== undefined ? targetAudio.drumsVol  : (targetAudio.bass || 0)) * gaugeVal * 2.5;
     const strings= (targetAudio.otherVol  !== undefined ? targetAudio.otherVol  : (targetAudio.treble || 0)) * gaugeVal * 2.5;
     const vol = targetAudio.vol || 0;
 
-    // 🎛️ 관제탑 UI 값 변수화
-    const seedVal = settings.seed ?? 42;                             // Shuffle: 선 꼬임/파장 뒤섞기
-    const scatterVal = settings.scatterExponent ?? 2.2;              // Range: 영역 넓이
-    const glowVal = settings.glowIntensity ?? 0.85;                  // Scale: 크기
-    const gainVal = settings.audioGain ?? 1.0;                       // Volume: 속도
+    // 🎛️ 관제탑 UI 값
+    const seedVal = settings.seed ?? 42;                             // Shuffle: 파장 및 꼬임 형태 변경
+    const scatterVal = settings.scatterExponent ?? 2.2;              // Range: 화면에서 상하 유영하는 폭 조절
+    const glowVal = settings.glowIntensity ?? 0.85;                  // Scale: 연기 및 진동 크기
+    const gainVal = settings.audioGain ?? 1.0;                       // Volume: 이동 속도
 
-    // 시간의 흐름 (Volume 속도에 비례)
     this.time += (0.01 + (strings * 0.02)) * gainVal;
 
     // 📐 레터박스 엔진
@@ -124,40 +122,44 @@ export default class HolographicStageSketch {
     this.ctx.rect(renderX, renderY, renderW, renderH);
     this.ctx.clip();
 
-    // 💡 구도 변경: 화면의 55% 지점 (중앙보다 아주 살짝 아래)으로 모든 중심 이동
     const centerX = renderX + renderW / 2;
-    const centerY = renderY + renderH * 0.55; 
+    const centerY = renderY + renderH / 2;
     
-    // Range(Scatter)에 따른 가로 폭 계산
-    const spreadRange = renderW * 0.3 * scatterVal; 
+    // 💡 [핵심]: 유영하는 공통 중심축(yBase)
+    // Range(scatterVal)에 따라 상하로 움직이는 폭이 달라지며, 시간에 따라 부드럽게 위아래로 떠다닙니다.
+    const driftY = Math.sin(this.time * 0.4 + seedVal * 0.1) * (renderH * 0.25 * scatterVal);
+    const yBase = centerY + driftY;
+
+    // Range에 따른 파티클 가로 퍼짐 폭
+    const spreadRange = renderW * 0.4 * scatterVal; 
 
     // ==========================================
-    // 1. 🎻 STRING 파트 : 뒤섞이는 빛의 물결
+    // 1. 🎻 STRING 파트 : 하나의 선에 모여 교차하는 빛의 물결
     // ==========================================
-    const lineColors = ['#00ffcc', '#ff0055', '#4d4dff', '#ffaa00', '#cc00ff'];
+    const lineColors = ['#00ffcc', '#ff0055', '#4d4dff', '#ffaa00', '#cc00ff', '#ffffff'];
     this.ctx.globalCompositeOperation = 'screen';
     
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 6; i++) {
       this.ctx.beginPath();
       this.ctx.lineWidth = 1.5 + (strings * 3);
       this.ctx.strokeStyle = lineColors[i % lineColors.length];
-      this.ctx.shadowBlur = 15;
+      this.ctx.shadowBlur = 15 * glowVal;
       this.ctx.shadowColor = this.ctx.strokeStyle;
       this.ctx.globalAlpha = 0.3 + (strings * 0.7);
 
-      // 💡 [선 뒤섞임 1]: 각 선의 중심축(yBase)이 제자리에 있지 않고 시간에 따라 위아래로 유영함
-      // Shuffle(seedVal)값을 더해 선들이 서로 다르게 꼬이도록 유도
-      const driftY = Math.sin(this.time * 0.5 + i * (seedVal * 0.1)) * (40 * scatterVal);
-      const yBase = centerY + driftY;
-      
       this.ctx.moveTo(renderX, yBase);
-      for (let x = renderX; x <= renderX + renderW; x += 20) {
-        // 💡 [선 뒤섞임 2]: 파장 빈도와 진폭도 셔플값에 영향을 받아 불규칙적으로 일렁임
-        const freq = 0.005 + (i * 0.002) * (seedVal * 0.05);
-        const amp = 10 + (strings * 80) + Math.sin(this.time * 1.5 + i + x * 0.01) * (20 * scatterVal);
-        const waveY = Math.sin(x * freq + this.time * (2 + i*0.3)) * amp;
+      for (let x = renderX; x <= renderX + renderW; x += 15) {
+        // 💡 모든 선이 동일한 yBase를 기준으로 위아래로 진동합니다.
+        // 주파수(freq)와 위상(phase)이 i값에 따라 다르기 때문에 평행하지 않고 서로 교차(Intersect)합니다!
+        const freq = 0.002 + (i * 0.0015) * (seedVal * 0.05);
+        const phase = this.time * (2 + i * 0.5);
         
-        // 좁은 공간에서 선명하게 보이기 위해 Y 진폭 제한
+        // 💡 진폭(Amp)도 선마다 다르게 요동치게 만들어 3D 리본처럼 보이게 함
+        const baseAmp = (15 + (strings * 120)) * glowVal;
+        const individualAmp = baseAmp * Math.sin(this.time * 0.3 + i * Math.PI / 3);
+        
+        const waveY = Math.sin(x * freq + phase) * individualAmp;
+        
         this.ctx.lineTo(x, yBase + waveY);
       }
       this.ctx.stroke();
@@ -165,39 +167,30 @@ export default class HolographicStageSketch {
     this.ctx.shadowBlur = 0;
 
     // ==========================================
-    // 2. 🎤 VOCAL 파트 : 부피가 줄어들며 흩날리는 연기
+    // 2. 🎤 VOCAL 파트 : 움직이는 축(yBase)에서 흩날리는 유기적인 연기
     // ==========================================
     if (vocals > 0.1 || Math.random() < 0.15) {
       const isAmbient = vocals <= 0.1;
       this.smokeParticles.push({
-        // Range 슬라이더로 연기가 좌우로 퍼지는 범위 조절
         x: centerX + (Math.random() * spreadRange - spreadRange / 2),
-        y: centerY + 20,
-        // 위로 올라가면서 좌우로 흔들리는(drift) 기본값
+        y: yBase, // 💡 연기가 항상 유영하는 중심선에서 시작됨!
         driftPhase: Math.random() * Math.PI * 2,
         driftSpeed: Math.random() * 0.05 + 0.02,
-        
         vy: isAmbient ? -(Math.random() * 1.5 + 0.5) * gainVal : -(Math.random() * 3 + 1.5) * vocals * gainVal,
-        
-        // Scale 슬라이더로 기본 연기 덩치 조절 (다양한 크기로 생성)
-        size: (Math.random() * 50 + 20) * glowVal,
-        
+        size: (Math.random() * 60 + 20) * glowVal, // 크기가 다양함
         life: 1.0,
-        decay: 0.004 + Math.random() * 0.006,
-        hue: 240 + Math.random() * 120 // 푸른색 ~ 보라색 ~ 핑크색 톤
+        decay: 0.005 + Math.random() * 0.007, // 천천히 사라짐
+        hue: 240 + Math.random() * 120 
       });
     }
 
     for (let i = this.smokeParticles.length - 1; i >= 0; i--) {
       let p = this.smokeParticles[i];
       
-      // 💡 [연기 효과]: 위로 올라갈수록 좌우로 살랑살랑 흔들림
-      p.x += Math.sin(this.time * 5 + p.driftPhase) * 1.5;
+      // 위로 상승하며 유기적으로 좌우로 흔들림
+      p.x += Math.sin(this.time * 3 + p.driftPhase) * 2.0;
       p.y += p.vy;
-      
-      // 💡 [연기 효과]: 위로 올라갈수록 크기가 서서히 작아짐 (디졸브 효과)
-      p.size *= 0.985; 
-      
+      p.size *= 0.985; // 점점 작아지는 디졸브 효과
       p.life -= p.decay;
 
       if (p.life <= 0 || p.size < 5) {
@@ -207,18 +200,14 @@ export default class HolographicStageSketch {
 
       this.ctx.save();
       this.ctx.translate(p.x, p.y);
-      
-      // 서서히 페이드아웃 되며, 보컬이 강할 때 투명도가 진해짐
-      this.ctx.globalAlpha = p.life * (0.4 + vocals * 0.6);
+      this.ctx.globalAlpha = p.life * (0.3 + vocals * 0.7);
       this.ctx.globalCompositeOperation = 'screen';
       
-      // 연기 틴팅
       this.ctx.fillStyle = `hsla(${p.hue}, 80%, 60%, ${p.life})`;
       this.ctx.beginPath();
       this.ctx.arc(0, 0, p.size, 0, Math.PI * 2);
       this.ctx.fill();
 
-      // 연기 텍스처 입히기 (부드러운 그라데이션)
       this.ctx.drawImage(this.smokeTexture, -p.size, -p.size, p.size * 2, p.size * 2);
       this.ctx.restore();
     }
@@ -228,37 +217,37 @@ export default class HolographicStageSketch {
     // ==========================================
     this.ctx.globalCompositeOperation = 'source-over';
     
-    // 중앙 발광 패드 (소리의 근원지)
+    // 중앙선(yBase) 아래에 깔리는 빛나는 무대 패드
+    const padY = yBase + 20; 
     this.ctx.globalCompositeOperation = 'screen';
-    const floorGrad = this.ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, renderW * 0.3 * glowVal);
+    const floorGrad = this.ctx.createRadialGradient(centerX, padY, 0, centerX, padY, renderW * 0.3 * glowVal);
     floorGrad.addColorStop(0, `rgba(100, 150, 255, ${0.1 + drums * 0.4})`);
     floorGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
     this.ctx.fillStyle = floorGrad;
     this.ctx.beginPath();
-    this.ctx.ellipse(centerX, centerY, spreadRange * 0.8, 30 * glowVal, 0, 0, Math.PI * 2);
+    this.ctx.ellipse(centerX, padY, spreadRange * 0.8, 30 * glowVal, 0, 0, Math.PI * 2);
     this.ctx.fill();
     this.ctx.globalCompositeOperation = 'source-over';
 
     if (drums > 0.25 && drums > this.lastDrums + 0.02) {
-      this.spawnDrumShape(centerX, centerY, drums, spreadRange, glowVal, gainVal, false);
+      this.spawnDrumShape(centerX, padY, drums, spreadRange, glowVal, gainVal, false);
     } else if (Math.random() < 0.05) {
-      this.spawnDrumShape(centerX, centerY, 0.2, spreadRange, glowVal, gainVal, true);
+      this.spawnDrumShape(centerX, padY, 0.2, spreadRange, glowVal, gainVal, true);
     }
     this.lastDrums = drums;
 
     for (let i = this.drumShapes.length - 1; i >= 0; i--) {
       let s = this.drumShapes[i];
       
-      s.vy += 0.3 * gainVal; // 중력 적용 (속도 슬라이더 연동)
+      s.vy += 0.3 * gainVal; 
       s.x += s.vx;
       s.y += s.vy;
       s.angle += s.rotSpeed;
       s.life -= s.decay;
 
-      // 중앙선(centerY) 주변을 보이지 않는 바닥으로 삼아 튕김
-      const bounceY = centerY + 10;
-      if (s.y > bounceY) {
-        s.y = bounceY;
+      // 움직이는 축(padY)를 바닥 삼아 튕김!
+      if (s.y > padY + 10) {
+        s.y = padY + 10;
         s.vy *= -0.6;
         s.vx *= 0.8; 
       }
@@ -302,7 +291,7 @@ export default class HolographicStageSketch {
     }
 
     // ==========================================
-    // 4. ✍️ 자막 (중앙 상단에 우아하게 배치)
+    // 4. ✍️ 자막 (중심선을 따라 유영함)
     // ==========================================
     const subtitleText = window.currentSubtitleText || window.cosmicEngineSettings?.poemText || "";
     
@@ -322,8 +311,8 @@ export default class HolographicStageSketch {
       const lines = subtitleText.split('\n');
       const lineHeight = fontSize * 1.35;
 
-      // 💡 자막 위치를 중앙(centerY)보다 약간 위로 올려서 스트링/연기와 균형을 맞춤
-      const textCenterY = centerY - (renderH * 0.2);
+      // 💡 자막 위치도 움직이는 중심축(yBase)을 기준으로 유영하게 만듦
+      const textCenterY = yBase - (renderH * 0.2);
 
       lines.forEach((line, idx) => {
         const lineY = textCenterY + (idx - (lines.length - 1) / 2) * lineHeight;
@@ -349,7 +338,7 @@ export default class HolographicStageSketch {
       fps: 60,
       particleCount: `Smoke:${this.smokeParticles.length} | Shapes:${this.drumShapes.length}`,
       isCovering: true,
-      activeFunction: `OrganicHolo[UI-Synced]`
+      activeFunction: `OrganicHolo[BaseY:${yBase.toFixed(0)}]`
     };
   }
 
