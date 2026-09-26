@@ -3,16 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>전서체 타이포그래피 모션 엔진 (Seal Script Typo Engine)</title>
-    <!-- 전서체/해서체 느낌을 살리기 위한 무료 구글 폰트 (Noto Serif TC / Ma Shan Zheng) 로드 -->
+    <title>전각·구첩전(九疊篆) SRT 타이포 엔진</title>
+    <!-- 기하학적이고 장방형 전서체 느낌을 극대화하는 웹폰트 로드 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+KR:wght@900&family=Noto+Serif+TC:wght@900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=East+Sea+Dokdo&family=Noto+Serif+KR:wght@900&family=ZCOOL+QingKe+HuangYou&family=Dela+Gothic+One&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-color: #0d0c0c;
-            --text-color: #eeddbb;
-            --accent-color: #bb2222;
+            --bg-color: #0d0a0a;
+            --seal-red: #c22a22;      /* 전각 인주 붉은색 */
+            --seal-border: #a81c15;
+            --paper-bg: #ece6d8;      /* 탁본/인주 배지 */
         }
 
         * {
@@ -23,316 +24,320 @@
 
         body {
             background-color: var(--bg-color);
-            color: var(--text-color);
-            font-family: 'Ma Shan Zheng', 'Noto Serif KR', 'Noto Serif TC', serif;
+            color: #eee;
+            font-family: 'Noto Serif KR', sans-serif;
             overflow: hidden;
             width: 100vw;
             height: 100vh;
             display: flex;
-            justify-content: center;
+            flex-direction: column;
             align-items: center;
+            justify-content: center;
         }
 
-        /* 컨트롤 패널 UI */
-        #ctrl-panel {
+        /* 컨트롤 상단 바 */
+        #top-bar {
             position: absolute;
-            top: 15px;
+            top: 12px;
             left: 50%;
             transform: translateX(-50%);
             display: flex;
             flex-wrap: wrap;
+            align-items: center;
             gap: 10px;
-            background: rgba(20, 18, 18, 0.85);
-            padding: 12px 20px;
-            border-radius: 30px;
-            border: 1px solid rgba(238, 221, 187, 0.25);
+            background: rgba(22, 18, 18, 0.9);
+            padding: 10px 18px;
+            border-radius: 20px;
+            border: 1px solid rgba(194, 42, 34, 0.4);
             z-index: 1000;
-            backdrop-filter: blur(8px);
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
-            align-items: center;
-            font-family: sans-serif;
-            font-size: 13px;
-        }
-
-        #ctrl-panel select, #ctrl-panel input, #ctrl-panel button {
-            background: #222;
-            color: #eeddbb;
-            border: 1px solid #444;
-            padding: 6px 12px;
-            border-radius: 15px;
-            outline: none;
+            backdrop-filter: blur(10px);
             font-size: 12px;
+        }
+
+        #top-bar button, #top-bar select, #top-bar label {
+            background: #252020;
+            color: #f0e6d2;
+            border: 1px solid #554444;
+            padding: 6px 12px;
+            border-radius: 6px;
             cursor: pointer;
+            font-size: 12px;
+            outline: none;
         }
 
-        #ctrl-panel button {
-            background: var(--accent-color);
+        #top-bar button:hover, #top-bar label:hover {
+            background: var(--seal-red);
             color: #fff;
-            border: none;
-            font-weight: bold;
-            transition: 0.2s;
+            border-color: var(--seal-red);
         }
 
-        #ctrl-panel button:hover {
-            background: #dd3333;
-            transform: scale(1.05);
-        }
+        #file-input { display: none; }
 
-        /* 화면 꽉 차는 메인 텍스트 컨테이너 */
-        #stage {
-            position: relative;
-            width: 90vw;
-            height: 80vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+        #timeline-info {
+            color: #e0bb6b;
+            font-family: monospace;
+            font-size: 13px;
+            min-width: 100px;
             text-align: center;
-            perspective: 1000px;
         }
 
-        #typo-container {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            align-items: center;
-            width: 100%;
-            font-size: clamp(3rem, 12vw, 15rem); /* 화면을 꽉 채우는 유동적 폰트 크기 */
-            font-weight: 900;
-            letter-spacing: 0.1em;
-            line-height: 1.1;
-            text-shadow: 0 0 15px rgba(238, 221, 187, 0.3);
-            user-select: none;
-        }
-
-        /* 개별 글자 래퍼 */
-        .char {
-            display: inline-block;
+        /* 뷰포트 영역 및 가이드 */
+        #viewport-wrapper {
             position: relative;
-            transform-style: preserve-3d;
-            transition: all 0.6s cubic-bezier(0.25, 1, 0.5, 1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 50px rgba(0,0,0,0.9);
+        }
+
+        /* 16:9 / 9:16 전환 컨테이너 */
+        .ratio-16-9 {
+            width: 1066px;
+            height: 600px;
+            border: 2px dashed #00ffcc; /* 보색 가이드 */
+        }
+
+        .ratio-9-16 {
+            width: 380px;
+            height: 675px;
+            border: 2px dashed #00ffcc; /* 보색 가이드 */
+        }
+
+        #stage {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #060505;
+        }
+
+        /* ========================================================
+           [전각 도장(印章) & 구첩전 스타일]
+        ======================================================== */
+        #seal-box {
+            position: relative;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-auto-rows: 1fr;
+            gap: 6px;
+            padding: 16px;
+            /* 도장 외곽 이중 테두리 (인곽) */
+            border: 8px solid var(--seal-red);
+            border-radius: 22px;
+            box-shadow: 0 0 0 4px #060505, 0 0 0 8px var(--seal-red), inset 0 0 15px rgba(194, 42, 34, 0.3);
+            background: rgba(194, 42, 34, 0.03);
+            transform-origin: center center;
+            transition: transform 0.1s;
+        }
+
+        /* 도장 내부 글자 셀 */
+        .seal-cell {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1.5px solid rgba(194, 42, 34, 0.5); /* 내부 격자 */
+            overflow: hidden;
+            min-width: 90px;
+            min-height: 90px;
+        }
+
+        /* 구첩전 글자 조형 변형 (수직으로 늘어나며 직각으로 꽉 차는 획) */
+        .seal-char {
+            font-family: 'ZCOOL QingKe HuangYou', 'Noto Serif KR', serif;
+            font-size: 82px;
+            font-weight: 900;
+            color: var(--seal-red);
+            line-height: 1;
+            /* 전서체 특유의 긴 비례와 기하학적 팽창 */
+            transform: scaleY(1.3) scaleX(0.88);
+            letter-spacing: -2px;
+            text-shadow: 0 0 1px var(--seal-red);
+            display: inline-block;
             will-change: transform, opacity, filter;
         }
 
-        /* 파티클 / 가루 분해 전용 캔버스 */
+        /* 파티클 캔버스 */
         #fx-canvas {
             position: absolute;
             top: 0;
             left: 0;
-            width: 100vw;
-            height: 100vh;
+            width: 100%;
+            height: 100%;
             pointer-events: none;
-            z-index: 100;
+            z-index: 50;
         }
 
         /* ========================================================
-           [IN 애니메이션 모음 - 10종 이상]
+           [IN 애니메이션 10종]
         ======================================================== */
         /* 1. 타이핑 */
-        .in-typing { opacity: 0; animation: animTyping 0.05s forwards; }
-        @keyframes animTyping { to { opacity: 1; } }
+        .in-typing { opacity: 0; animation: aTyping 0.05s forwards; }
+        @keyframes aTyping { to { opacity: 1; } }
 
-        /* 2. 바닥에서 팝업 (스쿼시 & 탄성) */
+        /* 2. 바닥에서 팝업 */
         .in-popup {
             opacity: 0;
             transform: translateY(120%) scale(0.3, 1.8);
-            animation: animPopup 0.7s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+            animation: aPopup 0.6s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards;
         }
-        @keyframes animPopup {
-            60% { transform: translateY(-15%) scale(1.15, 0.85); }
-            100% { opacity: 1; transform: translateY(0) scale(1, 1); }
+        @keyframes aPopup {
+            60% { transform: translateY(-10%) scale(1.1, 0.9); }
+            100% { opacity: 1; transform: translateY(0) scaleY(1.3) scaleX(0.88); }
         }
 
         /* 3. 눈처럼 내려오기 */
         .in-snow {
             opacity: 0;
-            transform: translateY(-200px) rotate(20deg);
-            animation: animSnow 1.2s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+            transform: translateY(-160px) rotate(15deg);
+            animation: aSnow 0.8s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
         }
-        @keyframes animSnow {
-            to { opacity: 1; transform: translateY(0) rotate(0deg); }
-        }
+        @keyframes aSnow { to { opacity: 1; transform: translateY(0) scaleY(1.3) scaleX(0.88) rotate(0); } }
 
         /* 4. 사방에서 날아와 구성 */
         .in-converge {
             opacity: 0;
-            transform: translate(var(--rand-x, -300px), var(--rand-y, 300px)) scale(0.1) rotate(var(--rand-rot, 180deg));
-            animation: animConverge 0.8s cubic-bezier(0.1, 0.9, 0.2, 1) forwards;
+            transform: translate(var(--rx, -200px), var(--ry, 200px)) scale(0.1) rotate(var(--rr, 180deg));
+            animation: aConverge 0.7s cubic-bezier(0.1, 0.9, 0.2, 1) forwards;
         }
-        @keyframes animConverge {
-            to { opacity: 1; transform: translate(0, 0) scale(1) rotate(0deg); }
-        }
+        @keyframes aConverge { to { opacity: 1; transform: translate(0,0) scaleY(1.3) scaleX(0.88) rotate(0); } }
 
-        /* 5. 먹물 번짐 (Ink Bleed) */
-        .in-inkbleed {
-            opacity: 0;
-            filter: blur(30px) contrast(300%);
-            transform: scale(1.4);
-            animation: animInk 1.2s ease-out forwards;
-        }
-        @keyframes animInk {
-            to { opacity: 1; filter: blur(0px) contrast(100%); transform: scale(1); }
-        }
-
-        /* 6. 천장 벼락 낙하 (Stamp) */
+        /* 5. 벼락 낙하 (Stamp) */
         .in-stamp {
             opacity: 0;
-            transform: scale(4);
-            animation: animStamp 0.4s cubic-bezier(0.6, -0.28, 0.735, 0.045) forwards;
+            transform: scale(3.5);
+            animation: aStamp 0.35s cubic-bezier(0.6, -0.28, 0.735, 0.045) forwards;
         }
-        @keyframes animStamp {
+        @keyframes aStamp {
             80% { opacity: 1; transform: scale(0.9); }
-            100% { opacity: 1; transform: scale(1); }
+            100% { opacity: 1; transform: scaleY(1.3) scaleX(0.88); }
         }
 
-        /* 7. 3D 수직 회전 (Flip Y) */
+        /* 6. 먹물 번짐 (Ink Bleed) */
+        .in-inkbleed {
+            opacity: 0;
+            filter: blur(20px) contrast(200%);
+            animation: aInk 0.9s ease-out forwards;
+        }
+        @keyframes aInk { to { opacity: 1; filter: blur(0); transform: scaleY(1.3) scaleX(0.88); } }
+
+        /* 7. 3D 수직 회전 (Flip) */
         .in-flip {
             opacity: 0;
-            transform: rotateY(90deg) rotateX(45deg);
-            animation: animFlip 0.8s ease-out forwards;
+            transform: rotateY(90deg);
+            animation: aFlip 0.6s ease-out forwards;
         }
-        @keyframes animFlip {
-            to { opacity: 1; transform: rotateY(0deg) rotateX(0deg); }
-        }
+        @keyframes aFlip { to { opacity: 1; transform: rotateY(0) scaleY(1.3) scaleX(0.88); } }
 
-        /* 8. 렌즈 줌인 (Hyper Zoom) */
+        /* 8. 렌즈 줌인 */
         .in-zoom {
             opacity: 0;
             transform: scale(0);
-            animation: animZoom 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            animation: aZoom 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
-        @keyframes animZoom {
-            to { opacity: 1; transform: scale(1); }
-        }
+        @keyframes aZoom { to { opacity: 1; transform: scaleY(1.3) scaleX(0.88); } }
 
-        /* 9. 나선형 회오리 진입 (Vortex) */
+        /* 9. 나선 회오리 (Vortex) */
         .in-vortex {
             opacity: 0;
-            transform: scale(0.1) rotate(720deg);
-            animation: animVortex 1s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+            transform: scale(0.1) rotate(540deg);
+            animation: aVortex 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
         }
-        @keyframes animVortex {
-            to { opacity: 1; transform: scale(1) rotate(0deg); }
-        }
+        @keyframes aVortex { to { opacity: 1; transform: scaleY(1.3) scaleX(0.88) rotate(0); } }
 
-        /* 10. 좌우 슬릿 조립 (Slit Assemble) */
+        /* 10. 좌우 슬릿 조립 */
         .in-slit {
             opacity: 0;
-            letter-spacing: 1em;
             filter: blur(10px);
-            animation: animSlit 0.8s ease-out forwards;
+            transform: scaleX(0.1);
+            animation: aSlit 0.6s ease-out forwards;
         }
-        @keyframes animSlit {
-            to { opacity: 1; letter-spacing: 0.1em; filter: blur(0); }
-        }
+        @keyframes aSlit { to { opacity: 1; filter: blur(0); transform: scaleY(1.3) scaleX(0.88); } }
 
         /* ========================================================
-           [OUT 애니메이션 모음 - 10종 이상]
+           [OUT 애니메이션 10종]
         ======================================================== */
-        /* 1. 바람에 날아가기 (Wind Drift) */
+        /* 1. 바람에 날아가기 */
         .out-wind {
-            animation: animWind 1s cubic-bezier(0.4, 0, 1, 1) forwards;
+            animation: aWind 0.7s cubic-bezier(0.4, 0, 1, 1) forwards;
         }
-        @keyframes animWind {
-            40% { transform: translateY(-30px) skewX(-20deg); }
-            100% { opacity: 0; transform: translate(600px, -150px) skewX(-45deg) scale(0.6); filter: blur(10px); }
+        @keyframes aWind {
+            to { opacity: 0; transform: translate(400px, -100px) skewX(-40deg) scale(0.5); filter: blur(8px); }
         }
 
-        /* 2. 와이퍼로 닦기 (Wipe Out) */
+        /* 2. 와이퍼로 닦기 */
         .out-wipe {
             mask-image: linear-gradient(to right, black 50%, transparent 50%);
             mask-size: 200% 100%;
-            mask-position: 0% 0;
-            animation: animWipe 0.8s ease-in-out forwards;
+            mask-position: 0 0;
+            animation: aWipe 0.6s ease-in-out forwards;
         }
-        @keyframes animWipe {
-            to { mask-position: -100% 0; opacity: 0; }
-        }
+        @keyframes aWipe { to { mask-position: -100% 0; opacity: 0; } }
 
-        /* 3. 대각선 팝업 소멸 (Diagonal Pop Out) */
+        /* 3. 팝업 대각선 소멸 */
         .out-diagpop {
-            animation: animDiagPop 0.6s cubic-bezier(0.6, -0.28, 0.735, 0.045) forwards;
+            animation: aDiagPop 0.5s cubic-bezier(0.6, -0.28, 0.735, 0.045) forwards;
         }
-        @keyframes animDiagPop {
-            30% { transform: translate(-30px, 30px) scale(1.15); }
-            100% { opacity: 0; transform: translate(300px, -300px) scale(0.2); }
+        @keyframes aDiagPop {
+            30% { transform: scale(1.15) translate(-10px, 10px); }
+            100% { opacity: 0; transform: translate(250px, -250px) scale(0.2); }
         }
 
-        /* 4. 각 글자 획 방향 비산 (Stroke Scatter) */
+        /* 4. 글자 획 방향 비산 */
         .out-stroke {
-            animation: animStrokeScatter 0.8s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+            animation: aStroke 0.6s cubic-bezier(0.25, 1, 0.5, 1) forwards;
         }
-        @keyframes animStrokeScatter {
-            to {
-                opacity: 0;
-                transform: translate(var(--stroke-x, 150px), var(--stroke-y, -150px)) 
-                           rotate(var(--stroke-rot, 45deg)) 
-                           scaleX(1.8) scaleY(0.2);
-                filter: blur(8px);
-            }
+        @keyframes aStroke {
+            to { opacity: 0; transform: translate(var(--sx, 120px), var(--sy, -120px)) rotate(var(--sr, 45deg)) scaleX(1.8) scaleY(0.2); filter: blur(6px); }
         }
 
-        /* 5. 바닥으로 꺼지기 (Sinkhole) */
-        .out-sink {
-            animation: animSink 0.7s cubic-bezier(0.5, 0, 1, 0.5) forwards;
-        }
-        @keyframes animSink {
-            to { opacity: 0; transform: translateY(200px) scale(0.8, 1.4); filter: blur(5px); }
-        }
+        /* 5. 바닥 침몰 */
+        .out-sink { animation: aSink 0.6s cubic-bezier(0.5, 0, 1, 0.5) forwards; }
+        @keyframes aSink { to { opacity: 0; transform: translateY(180px) scale(0.8, 1.4); filter: blur(5px); } }
 
-        /* 6. 회전하며 빨려들어가기 (Blackhole Spiral) */
-        .out-blackhole {
-            animation: animBlackhole 0.8s ease-in forwards;
-        }
-        @keyframes animBlackhole {
-            to { opacity: 0; transform: scale(0) rotate(-720deg); filter: blur(15px); }
-        }
+        /* 6. 블랙홀 회전 */
+        .out-blackhole { animation: aBlackhole 0.6s ease-in forwards; }
+        @keyframes aBlackhole { to { opacity: 0; transform: scale(0) rotate(-720deg); filter: blur(10px); } }
 
-        /* 7. 먹물 흘러내림 (Melt/Drip) */
-        .out-melt {
-            animation: animMelt 1s ease-in forwards;
-        }
-        @keyframes animMelt {
-            50% { transform: scaleY(1.4) skewY(10deg); filter: blur(2px); }
-            100% { opacity: 0; transform: translateY(150px) scaleY(2) scaleX(0.5); filter: blur(12px); }
-        }
+        /* 7. 먹물 흘러내림 */
+        .out-melt { animation: aMelt 0.7s ease-in forwards; }
+        @keyframes aMelt { to { opacity: 0; transform: translateY(120px) scaleY(2.2) scaleX(0.4); filter: blur(10px); } }
 
-        /* 8. 도장 찍혀 부서지듯 박살 (Shatter Explode) */
-        .out-shatter {
-            animation: animShatter 0.7s cubic-bezier(0.1, 1, 0.1, 1) forwards;
-        }
-        @keyframes animShatter {
-            to { opacity: 0; transform: translate(var(--rand-x, 100px), var(--rand-y, 100px)) rotate(var(--rand-rot, 90deg)) scale(0.3); }
-        }
+        /* 8. 도장 분쇄 폭발 */
+        .out-shatter { animation: aShatter 0.6s cubic-bezier(0.1, 1, 0.1, 1) forwards; }
+        @keyframes aShatter { to { opacity: 0; transform: translate(var(--rx, 100px), var(--ry, 100px)) rotate(var(--rr, 90deg)) scale(0.2); } }
 
-        /* 9. 롤러로 압축 (Squash Thin) */
-        .out-squash {
-            animation: animSquash 0.5s ease-in forwards;
-        }
-        @keyframes animSquash {
-            to { opacity: 0; transform: scaleX(2.5) scaleY(0.01); filter: blur(4px); }
-        }
+        /* 9. 롤러 압축 */
+        .out-squash { animation: aSquash 0.5s ease-in forwards; }
+        @keyframes aSquash { to { opacity: 0; transform: scaleX(2) scaleY(0.01); filter: blur(4px); } }
 
-        /* 10. 가루 비산 (자바스크립트 Canvas 엔진 호출용 빈 클래스) */
-        .out-dust {
-            opacity: 0 !important;
-            transition: opacity 0.1s;
-        }
+        /* 10. 가루 비산 (Canvas 구동용 클래스) */
+        .out-dust { opacity: 0 !important; transition: opacity 0.05s; }
     </style>
 </head>
 <body>
 
-<!-- 제어 패널 -->
-<div id="ctrl-panel">
-    <input type="text" id="text-input" value="天地玄黃 宇宙洪荒" title="문구 입력">
+<div id="top-bar">
+    <label for="file-input">📂 LOAD SRT</label>
+    <input type="file" id="file-input" accept=".srt">
     
+    <label>화면비:</label>
+    <select id="ratio-select" onchange="changeRatio(this.value)">
+        <option value="16:9">16:9 (가로형)</option>
+        <option value="9:16">9:16 (세로 숏폼)</option>
+    </select>
+
     <label>IN 효과:</label>
     <select id="in-select">
-        <option value="in-typing">1. 타이핑</option>
-        <option value="in-popup" selected>2. 바닥에서 팝업</option>
-        <option value="in-snow">3. 눈처럼 내려오기</option>
-        <option value="in-converge">4. 사방에서 날아와 구성</option>
-        <option value="in-inkbleed">5. 먹물 번짐</option>
-        <option value="in-stamp">6. 벼락 낙하</option>
+        <option value="in-stamp" selected>1. 벼락 낙하(도장 날인)</option>
+        <option value="in-popup">2. 바닥에서 팝업</option>
+        <option value="in-typing">3. 타이핑</option>
+        <option value="in-snow">4. 눈처럼 내려오기</option>
+        <option value="in-converge">5. 사방에서 날아와 구성</option>
+        <option value="in-inkbleed">6. 먹물 번짐</option>
         <option value="in-flip">7. 3D 수직 회전</option>
         <option value="in-zoom">8. 렌즈 줌인</option>
         <option value="in-vortex">9. 나선 회오리</option>
@@ -344,145 +349,213 @@
         <option value="out-dust" selected>1. 가루되어 날아가기</option>
         <option value="out-wind">2. 바람에 날아가기</option>
         <option value="out-wipe">3. 와이퍼로 닦기</option>
-        <option value="out-diagpop">4. 팝업 대각선 소멸</option>
+        <option value="out-diagpop">4. 대각선 팝업 소멸</option>
         <option value="out-stroke">5. 각 글자 획 방향 비산</option>
         <option value="out-sink">6. 바닥으로 침몰</option>
-        <option value="out-blackhole">7. 블랙홀 회전 소멸</option>
+        <option value="out-blackhole">7. 블랙홀 회전</option>
         <option value="out-melt">8. 먹물 흘러내림</option>
         <option value="out-shatter">9. 도장 분쇄 폭발</option>
-        <option value="out-squash">10. 납작 압축 소멸</option>
+        <option value="out-squash">10. 롤러 압축 소멸</option>
     </select>
 
-    <button onclick="runSequence()">▶ 재생 실행</button>
+    <button id="play-btn" onclick="togglePlay()">▶ 재생</button>
+    <span id="timeline-info">00:00.00</span>
 </div>
 
-<!-- 텍스트 렌더링 무대 -->
-<div id="stage">
-    <div id="typo-container"></div>
+<div id="viewport-wrapper" class="ratio-16-9">
+    <div id="stage">
+        <div id="seal-box"></div>
+        <canvas id="fx-canvas"></canvas>
+    </div>
 </div>
-
-<!-- 물리 파티클 시뮬레이터 캔버스 -->
-<canvas id="fx-canvas"></canvas>
 
 <script>
-    const typoContainer = document.getElementById('typo-container');
-    const textInput = document.getElementById('text-input');
+    let subtitles = [];
+    let isPlaying = false;
+    let startTime = 0;
+    let animFrameId = null;
+    let currentCueIndex = -1;
+
+    const viewport = document.getElementById('viewport-wrapper');
+    const sealBox = document.getElementById('seal-box');
+    const timelineInfo = document.getElementById('timeline-info');
+    const playBtn = document.getElementById('play-btn');
     const inSelect = document.getElementById('in-select');
     const outSelect = document.getElementById('out-select');
     const canvas = document.getElementById('fx-canvas');
     const ctx = canvas.getContext('2d');
 
     let particles = [];
-    let isAnimatingParticles = false;
+    let isParticleLooping = false;
 
-    // 캔버스 크기 재설정
-    function resizeCanvas() {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
+    // 캔버스 크기 맞춤
+    function syncCanvas() {
+        canvas.width = viewport.clientWidth;
+        canvas.height = viewport.clientHeight;
     }
-    window.addEventListener('resize', resizeCanvas);
-    resizeCanvas();
+    window.addEventListener('resize', syncCanvas);
+    syncCanvas();
 
-    // 텍스트를 글자(span) 단위로 분리 및 랜덤 파라미터 부여
-    function setupText(text) {
-        typoContainer.innerHTML = '';
-        const chars = text.split('');
+    // 16:9 / 9:16 화면비 제어
+    function changeRatio(ratio) {
+        if(ratio === '16:9') {
+            viewport.className = 'ratio-16-9';
+        } else {
+            viewport.className = 'ratio-9-16';
+        }
+        syncCanvas();
+    }
+
+    // SRT 파서 (콤마, 마침표 타임라인 모두 지원)
+    document.getElementById('file-input').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if(!file) return;
+        const reader = new FileReader();
+        reader.onload = function(evt) {
+            parseSRT(evt.target.result);
+        };
+        reader.readAsText(file);
+    });
+
+    function parseSRT(data) {
+        const clean = data.replace(/\r/g, '').trim();
+        const blocks = clean.split(/\n\s*\n/);
+        subtitles = [];
+
+        blocks.forEach(block => {
+            const lines = block.trim().split('\n');
+            if(lines.length < 2) return;
+            const timeLine = lines.find(l => l.includes('-->'));
+            if(!timeLine) return;
+
+            const tIdx = lines.indexOf(timeLine);
+            const times = timeLine.split('-->');
+            const text = lines.slice(tIdx + 1).join(' ').trim();
+
+            subtitles.push({
+                start: timeToSec(times[0].trim()),
+                end: timeToSec(times[1].trim()),
+                text: text
+            });
+        });
+
+        if(subtitles.length > 0) {
+            alert(`SRT 자막 ${subtitles.length}개가 정상 로드되었습니다.`);
+            currentCueIndex = -1;
+            renderCue(0); // 첫 자막 프리뷰
+        }
+    }
+
+    function timeToSec(str) {
+        const p = str.replace(',', '.').split(':');
+        return parseFloat(p[0])*3600 + parseFloat(p[1])*60 + parseFloat(p[2]);
+    }
+
+    // 도장 구첩전 렌더링
+    function renderCue(idx) {
+        if(!subtitles[idx]) return;
+        const sub = subtitles[idx];
+        sealBox.innerHTML = '';
         
-        chars.forEach((c, idx) => {
+        // 텍스트를 공백 제외 글자로 분해 (최대 9글자까지 도장 3x3 격자 수납)
+        const chars = sub.text.replace(/\s+/g, '').split('').slice(0, 9);
+        
+        // 도장 격자 열 수 계산 (글자 수에 따라 2x2 또는 3x3 적응형)
+        const cols = chars.length <= 4 ? 2 : 3;
+        sealBox.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+
+        chars.forEach((char, cIdx) => {
+            const cell = document.createElement('div');
+            cell.className = 'seal-cell';
+            
             const span = document.createElement('span');
-            span.className = 'char';
-            span.textContent = c === ' ' ? '\u00A0' : c;
+            span.className = 'seal-char';
+            span.textContent = char;
 
-            // 랜덤 사방 좌표 (사방 진입용)
+            // 랜덤 사방 벡터 (인/아웃용)
             const angle = Math.random() * Math.PI * 2;
-            const dist = 600 + Math.random() * 400;
-            span.style.setProperty('--rand-x', `${Math.cos(angle) * dist}px`);
-            span.style.setProperty('--rand-y', `${Math.sin(angle) * dist}px`);
-            span.style.setProperty('--rand-rot', `${(Math.random() - 0.5) * 720}deg`);
+            const dist = 350 + Math.random() * 200;
+            span.style.setProperty('--rx', `${Math.cos(angle) * dist}px`);
+            span.style.setProperty('--ry', `${Math.sin(angle) * dist}px`);
+            span.style.setProperty('--rr', `${(Math.random() - 0.5) * 540}deg`);
 
-            // 획 방향 비산용 벡터 (대각선 및 종횡 획 분산)
-            const strokeAngles = [ -45, 45, 135, -135, 0, 90 ];
-            const sAngle = strokeAngles[idx % strokeAngles.length];
-            span.style.setProperty('--stroke-x', `${Math.cos(sAngle * Math.PI / 180) * 400}px`);
-            span.style.setProperty('--stroke-y', `${Math.sin(sAngle * Math.PI / 180) * 400}px`);
-            span.style.setProperty('--stroke-rot', `${sAngle}deg`);
+            // 획 방향 비산용 벡터
+            const sAngles = [-45, 45, 135, -135, 0, 90];
+            const sa = sAngles[cIdx % sAngles.length];
+            span.style.setProperty('--sx', `${Math.cos(sa * Math.PI / 180) * 300}px`);
+            span.style.setProperty('--sy', `${Math.sin(sa * Math.PI / 180) * 300}px`);
+            span.style.setProperty('--sr', `${sa}deg`);
 
-            typoContainer.appendChild(span);
+            cell.appendChild(span);
+            sealBox.appendChild(cell);
+        });
+
+        triggerInEffect();
+    }
+
+    function triggerInEffect() {
+        const inEff = inSelect.value;
+        const charEls = document.querySelectorAll('.seal-char');
+        charEls.forEach((el, i) => {
+            el.className = 'seal-char';
+            el.style.animationDelay = `${i * 0.05}s`;
+            el.classList.add(inEff);
         });
     }
 
-    // [IN 모션 실행]
-    function playInEffect(effectName, callback) {
-        const charElements = document.querySelectorAll('.char');
-        charElements.forEach((el, idx) => {
-            el.className = 'char'; // 초기화
-            el.style.animationDelay = `${idx * 0.08}s`;
-            el.classList.add(effectName);
-        });
+    function triggerOutEffect() {
+        const outEff = outSelect.value;
+        const charEls = document.querySelectorAll('.seal-char');
 
-        const totalDuration = (charElements.length * 0.08 + 1.2) * 1000;
-        setTimeout(callback, totalDuration);
-    }
-
-    // [OUT 모션 실행]
-    function playOutEffect(effectName) {
-        const charElements = document.querySelectorAll('.char');
-
-        if (effectName === 'out-dust') {
-            // 특수 캔버스 파티클 분해 실행
+        if(outEff === 'out-dust') {
             explodeToDust();
-            charElements.forEach(el => el.classList.add('out-dust'));
+            charEls.forEach(el => el.classList.add('out-dust'));
             return;
         }
 
-        charElements.forEach((el, idx) => {
-            el.style.animationDelay = `${idx * 0.06}s`;
-            el.classList.add(effectName);
+        charEls.forEach((el, i) => {
+            el.style.animationDelay = `${i * 0.04}s`;
+            el.classList.add(outEff);
         });
     }
 
-    // 가루(Dust Particle) 분해 물리 연산
+    // 가루 분해 물리 효과
     function explodeToDust() {
         particles = [];
-        const charElements = document.querySelectorAll('.char');
-        
-        charElements.forEach(el => {
-            const rect = el.getBoundingClientRect();
-            if (rect.width === 0 || rect.height === 0) return;
+        const charEls = document.querySelectorAll('.seal-char');
+        const vRect = viewport.getBoundingClientRect();
 
-            // 글자 영역 내에서 샘플링하여 파티클 생성
-            const count = 70; // 글자당 파티클 수
-            for (let i = 0; i < count; i++) {
+        charEls.forEach(el => {
+            const rect = el.getBoundingClientRect();
+            for(let i = 0; i < 60; i++) {
                 particles.push({
-                    x: rect.left + Math.random() * rect.width,
-                    y: rect.top + Math.random() * rect.height,
-                    vx: (Math.random() - 0.5) * 8 + 3, // 우측으로 날림
-                    vy: (Math.random() - 0.5) * 8 - 2, // 살짝 부유
-                    size: Math.random() * 3 + 1,
+                    x: (rect.left - vRect.left) + Math.random() * rect.width,
+                    y: (rect.top - vRect.top) + Math.random() * rect.height,
+                    vx: (Math.random() - 0.4) * 8 + 3,
+                    vy: (Math.random() - 0.5) * 6 - 2,
                     alpha: 1,
-                    decay: Math.random() * 0.02 + 0.015,
-                    color: '#eeddbb'
+                    decay: Math.random() * 0.03 + 0.02,
+                    size: Math.random() * 3 + 1,
+                    color: '#c22a22'
                 });
             }
         });
 
-        if (!isAnimatingParticles) {
-            isAnimatingParticles = true;
-            loopParticles();
+        if(!isParticleLooping) {
+            isParticleLooping = true;
+            renderParticles();
         }
     }
 
-    function loopParticles() {
+    function renderParticles() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        for (let i = particles.length - 1; i >= 0; i--) {
+        for(let i = particles.length - 1; i >= 0; i--) {
             const p = particles[i];
             p.x += p.vx;
             p.y += p.vy;
-            p.vx += 0.1; // 바람 저항
             p.alpha -= p.decay;
 
-            if (p.alpha <= 0) {
+            if(p.alpha <= 0) {
                 particles.splice(i, 1);
                 continue;
             }
@@ -496,38 +569,74 @@
             ctx.restore();
         }
 
-        if (particles.length > 0) {
-            requestAnimationFrame(loopParticles);
+        if(particles.length > 0) {
+            requestAnimationFrame(renderParticles);
         } else {
-            isAnimatingParticles = false;
+            isParticleLooping = false;
             ctx.clearRect(0, 0, canvas.width, canvas.height);
         }
     }
 
-    // 시퀀스 실행기
-    function runSequence() {
-        const text = textInput.value || "天地玄黃 宇宙洪荒";
-        const inEffect = inSelect.value;
-        const outEffect = outSelect.value;
+    // 타임라인 재생 루프
+    function togglePlay() {
+        if(subtitles.length === 0) {
+            // 샘플 자막 주입
+            subtitles = [
+                { start: 0.5, end: 3.5, text: "萬事如意" },
+                { start: 4.0, end: 7.0, text: "家和萬事成" },
+                { start: 7.5, end: 10.5, text: "大吉大利" }
+            ];
+            alert("기본 도장 텍스트 샘플이 로드되었습니다.");
+        }
 
-        // 파티클 초기화
-        particles = [];
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        setupText(text);
-
-        // IN 모션 실행 -> 1초 대기 -> OUT 모션 실행
-        playInEffect(inEffect, () => {
-            setTimeout(() => {
-                playOutEffect(outEffect);
-            }, 1000);
-        });
+        isPlaying = !isPlaying;
+        if(isPlaying) {
+            playBtn.innerText = "⏹ 정지";
+            playBtn.style.background = "#555";
+            startTime = performance.now();
+            currentCueIndex = -1;
+            loop();
+        } else {
+            playBtn.innerText = "▶ 재생";
+            playBtn.style.background = "var(--seal-red)";
+            cancelAnimationFrame(animFrameId);
+        }
     }
 
-    // 최초 로드 시 1회 자동 실행
-    window.onload = () => {
-        runSequence();
-    };
+    function loop() {
+        if(!isPlaying) return;
+        const curTime = (performance.now() - startTime) / 1000;
+        
+        // 시간 포맷 표기
+        const mm = Math.floor(curTime / 60).toString().padStart(2, '0');
+        const ss = (curTime % 60).toFixed(2).padStart(5, '0');
+        timelineInfo.innerText = `${mm}:${ss}`;
+
+        // 현재 시간에 해당하는 자막 인덱스 검색
+        const activeIdx = subtitles.findIndex(s => curTime >= s.start && curTime <= s.end);
+
+        if(activeIdx !== -1 && activeIdx !== currentCueIndex) {
+            currentCueIndex = activeIdx;
+            renderCue(currentCueIndex);
+        }
+
+        // 자막 종료 0.6초 전에 OUT 효과 자동 발동
+        if(currentCueIndex !== -1) {
+            const cue = subtitles[currentCueIndex];
+            const remaining = cue.end - curTime;
+            if(remaining <= 0.6 && remaining > 0.5) {
+                triggerOutEffect();
+            }
+        }
+
+        // 전체 종료 검사
+        if(curTime > subtitles[subtitles.length - 1].end + 1) {
+            togglePlay();
+            return;
+        }
+
+        animFrameId = requestAnimationFrame(loop);
+    }
 </script>
 </body>
 </html>
