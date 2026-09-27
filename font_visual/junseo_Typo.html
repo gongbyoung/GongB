@@ -3,7 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>구첩전(九疊篆) 벡터 획 분해 엔진 v0.3</title>
+    <title>한글 구첩전(九疊篆) 획 분해 엔진 v0.4</title>
+    <!-- 직각 획과 두꺼운 기하학적 골격을 제공하는 한글 폰트 로드 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Dela+Gothic+One&family=Noto+Sans+KR:wght@900&display=swap" rel="stylesheet">
     <style>
         :root {
             --bg-color: #050404;
@@ -30,10 +34,10 @@
             justify-content: center;
         }
 
-        /* 컨트롤 패널 */
+        /* 컨트롤 상단 패널 */
         #top-bar {
             position: absolute;
-            top: 12px;
+            top: 10px;
             left: 50%;
             transform: translateX(-50%);
             display: flex;
@@ -41,8 +45,8 @@
             align-items: center;
             gap: 8px;
             background: rgba(18, 15, 15, 0.94);
-            padding: 10px 16px;
-            border-radius: 12px;
+            padding: 8px 16px;
+            border-radius: 10px;
             border: 1px solid rgba(200, 32, 24, 0.45);
             z-index: 1000;
             backdrop-filter: blur(10px);
@@ -83,7 +87,7 @@
             text-align: center;
         }
 
-        /* 뷰포트 래퍼 */
+        /* 뷰포트 & 가이드 */
         #viewport-wrapper {
             position: relative;
             display: flex;
@@ -104,7 +108,6 @@
             border: 2px dashed var(--guide-border);
         }
 
-        /* 렌더링 캔버스 */
         #renderCanvas {
             width: 100%;
             height: 100%;
@@ -133,7 +136,7 @@
 
     <div id="px-input-group" style="display: none; align-items: center; gap: 4px;">
         <label>글자 크기(px):</label>
-        <input type="number" id="fixed-px-val" value="140" min="30" max="600" step="10" onchange="renderCurrentFrame()">
+        <input type="number" id="fixed-px-val" value="160" min="40" max="600" step="10" onchange="renderCurrentFrame()">
     </div>
 
     <label>IN 효과:</label>
@@ -146,7 +149,7 @@
 
     <label>OUT 효과:</label>
     <select id="out-select">
-        <option value="stroke-disassemble" selected>★ 획 단위 분리 뱀 비산</option>
+        <option value="stroke-snake" selected>★ 획 단위 분리 뱀 비산</option>
         <option value="wind">바람에 날리기</option>
         <option value="sink">바닥 침몰</option>
     </select>
@@ -177,8 +180,13 @@
     const pxGroup = document.getElementById('px-input-group');
     const fixedPxInput = document.getElementById('fixed-px-val');
 
-    // 현재 화면에 배치된 구첩전 글자 획 데이터들
     let currentGlyphs = [];
+
+    // 오프스크린 캔버스 (한글 획 벡터 스캐닝용)
+    const scanCanvas = document.createElement('canvas');
+    const scanCtx = scanCanvas.getContext('2d');
+    scanCanvas.width = 160;
+    scanCanvas.height = 160;
 
     function syncCanvas() {
         const dpr = window.devicePixelRatio || 1;
@@ -200,7 +208,7 @@
         renderCurrentFrame();
     }
 
-    // SRT 파일 파싱
+    // SRT 파일 파서
     document.getElementById('file-input').addEventListener('change', function(e) {
         const file = e.target.files[0];
         if(!file) return;
@@ -247,67 +255,117 @@
     }
 
     // ========================================================
-    // [구첩전(九疊篆) 알고리즘 기하 획 생성 엔진]
-    // 폰트를 배제하고 사각 슬롯을 절선(Folded Path)으로 채움
+    // [한글 기반 구첩전 획 벡터 추출 엔진]
+    // 실제 입력된 한글 글자를 도장 비율로 스캔하여 개별 획을 생성
     // ========================================================
-    function createNineFoldStrokes(char, seed) {
+    function extractHangulStrokes(char, seed) {
         const strokes = [];
-        const folds = 5; // 절선의 밀도 (구첩전의 겹수)
-        const rnd = (s) => {
-            let x = Math.sin(s++) * 10000;
-            return x - Math.floor(x);
-        };
+        const W = 160, H = 160;
+        scanCtx.clearRect(0, 0, W, H);
 
-        let s = (char.charCodeAt(0) || 100) + seed;
+        // 구첩전 특유의 전각 직각 팽창 렌더링
+        scanCtx.save();
+        scanCtx.fillStyle = '#ffffff';
+        scanCtx.font = '900 135px "Black Han Sans", "Noto Sans KR", sans-serif';
+        scanCtx.textAlign = 'center';
+        scanCtx.textBaseline = 'middle';
+        
+        // 세로축 1.35배 늘려 사각 인면을 꽉 채우는 구첩전 비율 구현
+        scanCtx.translate(W / 2, H / 2);
+        scanCtx.scale(0.85, 1.35);
+        scanCtx.fillText(char, 0, 0);
+        scanCtx.restore();
 
-        // 1. 외곽 구조 획 (ㄷ자, ㄹ자 형태의 굵은 메인 획)
-        strokes.push({
-            type: 'outer-fold',
-            points: [
-                { x: 0.1, y: 0.1 },
-                { x: 0.9, y: 0.1 },
-                { x: 0.9, y: 0.45 },
-                { x: 0.2, y: 0.45 },
-                { x: 0.2, y: 0.9 },
-                { x: 0.9, y: 0.9 }
-            ],
-            strokeWidth: 0.08
-        });
+        const imgData = scanCtx.getImageData(0, 0, W, H).data;
+        const step = 8; // 격자 샘플링 해상도
+        const horizontalRuns = [];
 
-        // 2. 내부 횡/종 구첩 미로 획 (글자 내면을 직각으로 접어 채움)
-        for (let i = 0; i < folds; i++) {
-            const yLevel = 0.2 + (i / folds) * 0.65;
-            const dir = i % 2 === 0 ? 1 : -1;
-            const startX = dir === 1 ? 0.25 : 0.8;
-            const endX = dir === 1 ? 0.8 : 0.25;
+        // 1. 수평 절선 획(Horizontal Strokes) 추출
+        for (let y = 0; y < H; y += step) {
+            let startX = -1;
+            for (let x = 0; x < W; x += step) {
+                const idx = (y * W + x) * 4;
+                const isSolid = imgData[idx + 3] > 128;
 
-            strokes.push({
-                type: 'inner-fold',
-                points: [
-                    { x: startX, y: yLevel },
-                    { x: endX, y: yLevel },
-                    { x: endX, y: yLevel + (0.65 / folds) * 0.7 }
-                ],
-                strokeWidth: 0.065
-            });
+                if (isSolid && startX === -1) {
+                    startX = x;
+                } else if (!isSolid && startX !== -1) {
+                    if (x - startX >= step * 2) {
+                        horizontalRuns.push({
+                            x1: startX / W,
+                            y1: y / H,
+                            x2: (x - step) / W,
+                            y2: y / H
+                        });
+                    }
+                    startX = -1;
+                }
+            }
+            if (startX !== -1 && (W - startX) >= step * 2) {
+                horizontalRuns.push({
+                    x1: startX / W,
+                    y1: y / H,
+                    x2: (W - step) / W,
+                    y2: y / H
+                });
+            }
         }
 
-        // 3. 수직 기둥 절선 획
-        strokes.push({
-            type: 'vert-pillar',
-            points: [
-                { x: 0.5, y: 0.15 },
-                { x: 0.5, y: 0.45 },
-                { x: 0.65, y: 0.45 },
-                { x: 0.65, y: 0.85 }
-            ],
-            strokeWidth: 0.07
+        // 2. 수직 절선 획(Vertical Strokes) 추출
+        const verticalRuns = [];
+        for (let x = 0; x < W; x += step) {
+            let startY = -1;
+            for (let y = 0; y < H; y += step) {
+                const idx = (y * W + x) * 4;
+                const isSolid = imgData[idx + 3] > 128;
+
+                if (isSolid && startY === -1) {
+                    startY = y;
+                } else if (!isSolid && startY !== -1) {
+                    if (y - startY >= step * 2) {
+                        verticalRuns.push({
+                            x1: x / W,
+                            y1: startY / H,
+                            x2: x / W,
+                            y2: (y - step) / H
+                        });
+                    }
+                    startY = -1;
+                }
+            }
+            if (startY !== -1 && (H - startY) >= step * 2) {
+                verticalRuns.push({
+                    x1: x / W,
+                    y1: startY / H,
+                    x2: x / W,
+                    y2: (H - step) / H
+                });
+            }
+        }
+
+        // 3. 추출된 수평/수직 획 통합
+        const combined = [...horizontalRuns, ...verticalRuns];
+
+        combined.forEach((run, rIdx) => {
+            const angle = (rIdx / combined.length) * Math.PI * 2 + (seed * 0.3);
+            strokes.push({
+                points: [
+                    { x: run.x1, y: run.y1 },
+                    { x: run.x2, y: run.y2 }
+                ],
+                // 획 고유 비산 물리 벡터
+                dirX: Math.cos(angle) * (450 + (rIdx % 4) * 120),
+                dirY: Math.sin(angle) * (350 + (rIdx % 3) * 120),
+                rotSpeed: (rIdx % 2 === 0 ? 1 : -1) * (3 + (rIdx % 3)),
+                phase: rIdx * 0.35,
+                strokeWidth: 0.055
+            });
         });
 
         return strokes;
     }
 
-    // 화면 배치 및 글자별 획 구조체 구성
+    // 화면 꽉 찬 배치 및 글자별 획 구조체 구성
     function buildGlyphs(idx) {
         if(!subtitles[idx]) return;
         const sub = subtitles[idx];
@@ -322,13 +380,13 @@
         let slotSize;
         if(mode === 'fill') {
             const cols = Math.ceil(Math.sqrt(total));
-            const target = Math.min(vW, vH) * 0.82;
+            const target = Math.min(vW, vH) * 0.85;
             slotSize = Math.floor(target / cols);
         } else {
-            slotSize = parseFloat(fixedPxInput.value) || 140;
+            slotSize = parseFloat(fixedPxInput.value) || 160;
         }
 
-        const cols = Math.min(total, Math.floor((vW * 0.9) / slotSize) || 1);
+        const cols = Math.min(total, Math.floor((vW * 0.92) / slotSize) || 1);
         const rows = Math.ceil(total / cols);
         const totalW = cols * slotSize;
         const totalH = rows * slotSize;
@@ -341,21 +399,7 @@
             const gx = startX + col * slotSize;
             const gy = startY + row * slotSize;
 
-            const baseStrokes = createNineFoldStrokes(char, i * 77);
-
-            // 개별 획에 대한 물리/분해 속성 부여
-            const strokes = baseStrokes.map((st, sIdx) => {
-                const angle = (sIdx / baseStrokes.length) * Math.PI * 2 + (i * 0.5);
-                return {
-                    ...st,
-                    basePoints: st.points,
-                    // 획 단위 비산 벡터
-                    dirX: Math.cos(angle) * (400 + (sIdx % 3) * 150),
-                    dirY: Math.sin(angle) * (300 + (sIdx % 2) * 150),
-                    rotSpeed: (sIdx % 2 === 0 ? 1 : -1) * (2 + Math.random() * 2),
-                    phase: sIdx * 0.4
-                };
-            });
+            const strokes = extractHangulStrokes(char, i * 83);
 
             return {
                 char,
@@ -368,7 +412,7 @@
     }
 
     // ========================================================
-    // [렌더러 및 이징(Easing) 모션 처리]
+    // [렌더러 & 획 단위 이징 모션]
     // ========================================================
     function renderFrame(curTime) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -382,7 +426,6 @@
         const inType = inSelect.value;
         const outType = outSelect.value;
 
-        // IN/OUT 진행도 산정
         const inWindow = 0.22;
         const outWindow = 0.22;
         const inProgress = Math.min(normTime / inWindow, 1);
@@ -390,12 +433,11 @@
         const outProgress = isOut ? (normTime - (1 - outWindow)) / outWindow : 0;
 
         ctx.strokeStyle = '#c82018';
-        ctx.fillStyle = '#c82018';
         ctx.lineCap = 'square';
         ctx.lineJoin = 'miter';
 
         currentGlyphs.forEach((glyph, gIdx) => {
-            const gDelay = gIdx * 0.04;
+            const gDelay = gIdx * 0.035;
             const localInP = Math.min(Math.max((inProgress - gDelay) / (1 - gDelay || 1), 0), 1);
 
             glyph.strokes.forEach((stroke, sIdx) => {
@@ -407,7 +449,7 @@
                 let rotation = 0;
                 let alpha = 1;
 
-                // --- 1. IN 효과 적용 ---
+                // --- 1. IN 효과 ---
                 if (localInP < 1) {
                     if (inType === 'stamp') {
                         const p = localInP;
@@ -417,7 +459,7 @@
                         transY += (1 - localInP) * 120;
                         alpha = localInP;
                     } else if (inType === 'snow') {
-                        transY -= (1 - localInP) * 150;
+                        transY -= (1 - localInP) * 160;
                         alpha = localInP;
                     } else if (inType === 'converge') {
                         transX += stroke.dirX * (1 - localInP) * 0.5;
@@ -426,24 +468,24 @@
                     }
                 }
 
-                // --- 2. OUT 효과 (개별 획 분리 비산) ---
+                // --- 2. OUT 효과 (실제 한글 획 분리 비산) ---
                 if (outProgress > 0) {
-                    const localOutP = Math.min(Math.max((outProgress - sIdx * 0.03) / 0.8, 0), 1);
+                    const localOutP = Math.min(Math.max((outProgress - sIdx * 0.015) / 0.85, 0), 1);
 
-                    if (outType === 'stroke-disassemble') {
-                        // 뱀처럼 구불거리며 나가는 S자 곡선 오프셋
-                        const wave = Math.sin(localOutP * Math.PI * 4 + stroke.phase) * 45;
+                    if (outType === 'stroke-snake') {
+                        // 뱀처럼 구불거리는 S자 곡선 (Sine 웨이브)
+                        const wave = Math.sin(localOutP * Math.PI * 4 + stroke.phase) * 55;
                         transX += stroke.dirX * localOutP + (stroke.dirY > 0 ? wave : -wave);
                         transY += stroke.dirY * localOutP + wave;
                         rotation = stroke.rotSpeed * localOutP;
                         alpha = 1 - Math.pow(localOutP, 2);
-                        strokeScale = 1 + localOutP * 0.4;
+                        strokeScale = 1 + localOutP * 0.3;
                     } else if (outType === 'wind') {
-                        transX += localOutP * 400;
-                        transY -= localOutP * 80;
+                        transX += localOutP * 450;
+                        transY -= localOutP * 70;
                         alpha = 1 - localOutP;
                     } else if (outType === 'sink') {
-                        transY += localOutP * 200;
+                        transY += localOutP * 220;
                         alpha = 1 - localOutP;
                     }
                 }
@@ -456,7 +498,7 @@
                 ctx.translate(-glyph.size / 2, -glyph.size / 2);
 
                 const sWidth = stroke.strokeWidth * glyph.size;
-                ctx.lineWidth = Math.max(sWidth, 2);
+                ctx.lineWidth = Math.max(sWidth, 2.5);
 
                 ctx.beginPath();
                 stroke.points.forEach((pt, pIdx) => {
@@ -483,11 +525,11 @@
     function togglePlay() {
         if(subtitles.length === 0) {
             subtitles = [
-                { start: 0.5, end: 3.5, text: "萬事如意" },
-                { start: 4.0, end: 7.0, text: "家和萬事成" },
-                { start: 7.5, end: 10.5, text: "大吉大利" }
+                { start: 0.5, end: 3.5, text: "바다바람" },
+                { start: 4.0, end: 7.0, text: "치마폭에" },
+                { start: 7.5, end: 10.5, text: "니치대는구려" }
             ];
-            alert("기본 구첩전 샘플 자막이 로드되었습니다.");
+            alert("기본 한글 구첩전 샘플 자막이 로드되었습니다.");
         }
 
         isPlaying = !isPlaying;
@@ -531,7 +573,7 @@
         animFrameId = requestAnimationFrame(loop);
     }
 
-    // 초기화
+    // 구동 초기화
     syncCanvas();
     updateScaleModeUI();
 </script>
