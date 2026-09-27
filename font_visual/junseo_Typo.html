@@ -3,17 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>전각·구첩전(九疊篆) SRT 타이포 엔진</title>
-    <!-- 기하학적이고 장방형 전서체 느낌을 극대화하는 웹폰트 로드 -->
+    <title>구첩전(九疊篆) SRT 타이포 엔진 v0.2</title>
+    <!-- 전각/구첩전 느낌을 주는 고밀도 폰트 로드 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=East+Sea+Dokdo&family=Noto+Serif+KR:wght@900&family=ZCOOL+QingKe+HuangYou&family=Dela+Gothic+One&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Noto+Serif+KR:wght@900&family=ZCOOL+QingKe+HuangYou&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-color: #0d0a0a;
-            --seal-red: #c22a22;      /* 전각 인주 붉은색 */
-            --seal-border: #a81c15;
-            --paper-bg: #ece6d8;      /* 탁본/인주 배지 */
+            --bg-color: #060505;
+            --seal-red: #c82018;      /* 묵직한 전통 인주색 */
+            --guide-border: #00ffcc;  /* 캔버스 경계 보색 가이드 */
         }
 
         * {
@@ -35,34 +34,36 @@
             justify-content: center;
         }
 
-        /* 컨트롤 상단 바 */
+        /* 상단 컨트롤 패널 */
         #top-bar {
             position: absolute;
-            top: 12px;
+            top: 10px;
             left: 50%;
             transform: translateX(-50%);
             display: flex;
             flex-wrap: wrap;
             align-items: center;
-            gap: 10px;
-            background: rgba(22, 18, 18, 0.9);
+            gap: 8px;
+            background: rgba(18, 15, 15, 0.92);
             padding: 10px 18px;
-            border-radius: 20px;
-            border: 1px solid rgba(194, 42, 34, 0.4);
+            border-radius: 12px;
+            border: 1px solid rgba(200, 32, 24, 0.4);
             z-index: 1000;
-            backdrop-filter: blur(10px);
-            font-size: 12px;
+            backdrop-filter: blur(12px);
+            font-size: 11px;
+            box-shadow: 0 4px 25px rgba(0,0,0,0.8);
         }
 
         #top-bar button, #top-bar select, #top-bar label {
-            background: #252020;
-            color: #f0e6d2;
-            border: 1px solid #554444;
-            padding: 6px 12px;
-            border-radius: 6px;
+            background: #201c1c;
+            color: #eeddbb;
+            border: 1px solid #443838;
+            padding: 5px 10px;
+            border-radius: 4px;
             cursor: pointer;
-            font-size: 12px;
+            font-size: 11px;
             outline: none;
+            transition: 0.2s;
         }
 
         #top-bar button:hover, #top-bar label:hover {
@@ -74,33 +75,32 @@
         #file-input { display: none; }
 
         #timeline-info {
-            color: #e0bb6b;
+            color: #00ffcc;
             font-family: monospace;
             font-size: 13px;
-            min-width: 100px;
+            min-width: 80px;
             text-align: center;
         }
 
-        /* 뷰포트 영역 및 가이드 */
+        /* 뷰포트 영역 & 화면비 가이드 */
         #viewport-wrapper {
             position: relative;
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 0 50px rgba(0,0,0,0.9);
+            transition: width 0.3s, height 0.3s;
         }
 
-        /* 16:9 / 9:16 전환 컨테이너 */
         .ratio-16-9 {
-            width: 1066px;
-            height: 600px;
-            border: 2px dashed #00ffcc; /* 보색 가이드 */
+            width: 1120px;
+            height: 630px;
+            border: 2px dashed var(--guide-border);
         }
 
         .ratio-9-16 {
             width: 380px;
             height: 675px;
-            border: 2px dashed #00ffcc; /* 보색 가이드 */
+            border: 2px dashed var(--guide-border);
         }
 
         #stage {
@@ -111,56 +111,167 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            background: #060505;
+            background: transparent;
         }
 
         /* ========================================================
-           [전각 도장(印章) & 구첩전 스타일]
+           [구첩전(九疊篆) 폰트 조형 렌더러]
+           - 틀을 제거하고 글자만으로 화면을 빽빽히 장악
         ======================================================== */
-        #seal-box {
-            position: relative;
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            grid-auto-rows: 1fr;
-            gap: 6px;
-            padding: 16px;
-            /* 도장 외곽 이중 테두리 (인곽) */
-            border: 8px solid var(--seal-red);
-            border-radius: 22px;
-            box-shadow: 0 0 0 4px #060505, 0 0 0 8px var(--seal-red), inset 0 0 15px rgba(194, 42, 34, 0.3);
-            background: rgba(194, 42, 34, 0.03);
-            transform-origin: center center;
-            transition: transform 0.1s;
-        }
-
-        /* 도장 내부 글자 셀 */
-        .seal-cell {
-            position: relative;
+        #seal-container {
             display: flex;
-            align-items: center;
+            flex-wrap: wrap;
             justify-content: center;
-            border: 1.5px solid rgba(194, 42, 34, 0.5); /* 내부 격자 */
-            overflow: hidden;
-            min-width: 90px;
-            min-height: 90px;
+            align-items: center;
+            width: 90%;
+            height: 90%;
+            gap: 1.5vw;
+            user-select: none;
         }
 
-        /* 구첩전 글자 조형 변형 (수직으로 늘어나며 직각으로 꽉 차는 획) */
-        .seal-char {
-            font-family: 'ZCOOL QingKe HuangYou', 'Noto Serif KR', serif;
-            font-size: 82px;
+        /* 글자 래퍼 (글자 분할 비산 모션을 위한 기준점) */
+        .char-cluster {
+            position: relative;
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        /* 구첩전 글씨 본체 (전각 특유의 왜곡과 긴 획) */
+        .seal-glyph {
+            font-family: 'ZCOOL QingKe HuangYou', 'Dela Gothic One', 'Noto Serif KR', serif;
             font-weight: 900;
             color: var(--seal-red);
-            line-height: 1;
-            /* 전서체 특유의 긴 비례와 기하학적 팽창 */
-            transform: scaleY(1.3) scaleX(0.88);
-            letter-spacing: -2px;
-            text-shadow: 0 0 1px var(--seal-red);
+            line-height: 0.95;
+            text-align: center;
             display: inline-block;
+            white-space: pre;
+            /* 1.55배 세로로 길게 늘이고 가로로 꽉 조여 전각 인장 형태 유도 */
+            transform: scaleY(1.55) scaleX(0.85);
+            letter-spacing: -0.12em;
+            /* 전각 먹물/인주 획의 굵기감 강화 */
+            -webkit-text-stroke: 1.5px var(--seal-red);
+            filter: drop-shadow(0 0 2px rgba(200, 32, 24, 0.7));
             will-change: transform, opacity, filter;
         }
 
-        /* 파티클 캔버스 */
+        /* ========================================================
+           [수정 4: 획방향 4분할 뱀(Snake) 사이드 비산 OUT]
+        ======================================================== */
+        /* 분할 조각 공통 설정 */
+        .char-fragment {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        /* 4분할 클리핑 마스크 */
+        .frag-nw { clip-path: polygon(0 0, 50% 0, 50% 50%, 0 50%); }
+        .frag-ne { clip-path: polygon(50% 0, 100% 0, 100% 50%, 50% 50%); }
+        .frag-sw { clip-path: polygon(0 50%, 50% 50%, 50% 100%, 0 100%); }
+        .frag-se { clip-path: polygon(50% 50%, 100% 50%, 100% 100%, 50% 100%); }
+
+        /* 뱀처럼 S자를 그리며 화면 사이드로 탈출하는 키프레임 */
+        .out-snake-nw { animation: aSnakeNW 0.85s cubic-bezier(0.25, 1, 0.5, 1) forwards; }
+        .out-snake-ne { animation: aSnakeNE 0.85s cubic-bezier(0.25, 1, 0.5, 1) forwards; }
+        .out-snake-sw { animation: aSnakeSW 0.85s cubic-bezier(0.25, 1, 0.5, 1) forwards; }
+        .out-snake-se { animation: aSnakeSE 0.85s cubic-bezier(0.25, 1, 0.5, 1) forwards; }
+
+        @keyframes aSnakeNW {
+            0% { transform: translate(0, 0) scaleY(1.55) scaleX(0.85); opacity: 1; }
+            30% { transform: translate(-80px, -30px) rotate(-15deg) scale(1.1); }
+            60% { transform: translate(-220px, 20px) rotate(25deg) scale(0.9); }
+            100% { transform: translate(-600px, -200px) rotate(-45deg) scale(0.3); opacity: 0; filter: blur(8px); }
+        }
+
+        @keyframes aSnakeNE {
+            0% { transform: translate(0, 0) scaleY(1.55) scaleX(0.85); opacity: 1; }
+            30% { transform: translate(80px, -30px) rotate(15deg) scale(1.1); }
+            60% { transform: translate(220px, 20px) rotate(-25deg) scale(0.9); }
+            100% { transform: translate(600px, -200px) rotate(45deg) scale(0.3); opacity: 0; filter: blur(8px); }
+        }
+
+        @keyframes aSnakeSW {
+            0% { transform: translate(0, 0) scaleY(1.55) scaleX(0.85); opacity: 1; }
+            30% { transform: translate(-70px, 40px) rotate(20deg) scale(1.1); }
+            60% { transform: translate(-240px, -20px) rotate(-20deg) scale(0.8); }
+            100% { transform: translate(-600px, 300px) rotate(45deg) scale(0.3); opacity: 0; filter: blur(8px); }
+        }
+
+        @keyframes aSnakeSE {
+            0% { transform: translate(0, 0) scaleY(1.55) scaleX(0.85); opacity: 1; }
+            30% { transform: translate(70px, 40px) rotate(-20deg) scale(1.1); }
+            60% { transform: translate(240px, -20px) rotate(20deg) scale(0.8); }
+            100% { transform: translate(600px, 300px) rotate(-45deg) scale(0.3); opacity: 0; filter: blur(8px); }
+        }
+
+        /* ========================================================
+           [기타 IN 효과]
+        ======================================================== */
+        .in-stamp {
+            opacity: 0;
+            transform: scale(3.5);
+            animation: aStamp 0.4s cubic-bezier(0.6, -0.28, 0.735, 0.045) forwards;
+        }
+        @keyframes aStamp {
+            80% { opacity: 1; transform: scale(0.92); }
+            100% { opacity: 1; transform: scaleY(1.55) scaleX(0.85); }
+        }
+
+        .in-popup {
+            opacity: 0;
+            transform: translateY(150%) scale(0.3, 2);
+            animation: aPopup 0.6s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards;
+        }
+        @keyframes aPopup {
+            60% { transform: translateY(-12%) scale(1.15, 0.85); }
+            100% { opacity: 1; transform: translateY(0) scaleY(1.55) scaleX(0.85); }
+        }
+
+        .in-typing { opacity: 0; animation: aTyping 0.05s forwards; }
+        @keyframes aTyping { to { opacity: 1; transform: scaleY(1.55) scaleX(0.85); } }
+
+        .in-converge {
+            opacity: 0;
+            transform: translate(var(--rx, -250px), var(--ry, 250px)) scale(0.1) rotate(var(--rr, 180deg));
+            animation: aConverge 0.7s cubic-bezier(0.1, 0.9, 0.2, 1) forwards;
+        }
+        @keyframes aConverge { to { opacity: 1; transform: translate(0,0) scaleY(1.55) scaleX(0.85); } }
+
+        .in-snow {
+            opacity: 0;
+            transform: translateY(-180px) rotate(20deg);
+            animation: aSnow 0.8s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+        }
+        @keyframes aSnow { to { opacity: 1; transform: translateY(0) scaleY(1.55) scaleX(0.85); } }
+
+        /* ========================================================
+           [기타 OUT 효과]
+        ======================================================== */
+        .out-wind { animation: aWind 0.7s cubic-bezier(0.4, 0, 1, 1) forwards; }
+        @keyframes aWind { to { opacity: 0; transform: translate(450px, -120px) skewX(-45deg) scale(0.5); filter: blur(8px); } }
+
+        .out-wipe {
+            mask-image: linear-gradient(to right, black 50%, transparent 50%);
+            mask-size: 200% 100%;
+            mask-position: 0 0;
+            animation: aWipe 0.6s ease-in-out forwards;
+        }
+        @keyframes aWipe { to { mask-position: -100% 0; opacity: 0; } }
+
+        .out-diagpop { animation: aDiagPop 0.5s cubic-bezier(0.6, -0.28, 0.735, 0.045) forwards; }
+        @keyframes aDiagPop { to { opacity: 0; transform: translate(300px, -300px) scale(0.2); } }
+
+        .out-sink { animation: aSink 0.6s cubic-bezier(0.5, 0, 1, 0.5) forwards; }
+        @keyframes aSink { to { opacity: 0; transform: translateY(180px) scale(0.8, 1.6); filter: blur(6px); } }
+
+        .out-dust { opacity: 0 !important; }
+
+        /* 캔버스 */
         #fx-canvas {
             position: absolute;
             top: 0;
@@ -170,152 +281,6 @@
             pointer-events: none;
             z-index: 50;
         }
-
-        /* ========================================================
-           [IN 애니메이션 10종]
-        ======================================================== */
-        /* 1. 타이핑 */
-        .in-typing { opacity: 0; animation: aTyping 0.05s forwards; }
-        @keyframes aTyping { to { opacity: 1; } }
-
-        /* 2. 바닥에서 팝업 */
-        .in-popup {
-            opacity: 0;
-            transform: translateY(120%) scale(0.3, 1.8);
-            animation: aPopup 0.6s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards;
-        }
-        @keyframes aPopup {
-            60% { transform: translateY(-10%) scale(1.1, 0.9); }
-            100% { opacity: 1; transform: translateY(0) scaleY(1.3) scaleX(0.88); }
-        }
-
-        /* 3. 눈처럼 내려오기 */
-        .in-snow {
-            opacity: 0;
-            transform: translateY(-160px) rotate(15deg);
-            animation: aSnow 0.8s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
-        }
-        @keyframes aSnow { to { opacity: 1; transform: translateY(0) scaleY(1.3) scaleX(0.88) rotate(0); } }
-
-        /* 4. 사방에서 날아와 구성 */
-        .in-converge {
-            opacity: 0;
-            transform: translate(var(--rx, -200px), var(--ry, 200px)) scale(0.1) rotate(var(--rr, 180deg));
-            animation: aConverge 0.7s cubic-bezier(0.1, 0.9, 0.2, 1) forwards;
-        }
-        @keyframes aConverge { to { opacity: 1; transform: translate(0,0) scaleY(1.3) scaleX(0.88) rotate(0); } }
-
-        /* 5. 벼락 낙하 (Stamp) */
-        .in-stamp {
-            opacity: 0;
-            transform: scale(3.5);
-            animation: aStamp 0.35s cubic-bezier(0.6, -0.28, 0.735, 0.045) forwards;
-        }
-        @keyframes aStamp {
-            80% { opacity: 1; transform: scale(0.9); }
-            100% { opacity: 1; transform: scaleY(1.3) scaleX(0.88); }
-        }
-
-        /* 6. 먹물 번짐 (Ink Bleed) */
-        .in-inkbleed {
-            opacity: 0;
-            filter: blur(20px) contrast(200%);
-            animation: aInk 0.9s ease-out forwards;
-        }
-        @keyframes aInk { to { opacity: 1; filter: blur(0); transform: scaleY(1.3) scaleX(0.88); } }
-
-        /* 7. 3D 수직 회전 (Flip) */
-        .in-flip {
-            opacity: 0;
-            transform: rotateY(90deg);
-            animation: aFlip 0.6s ease-out forwards;
-        }
-        @keyframes aFlip { to { opacity: 1; transform: rotateY(0) scaleY(1.3) scaleX(0.88); } }
-
-        /* 8. 렌즈 줌인 */
-        .in-zoom {
-            opacity: 0;
-            transform: scale(0);
-            animation: aZoom 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-        }
-        @keyframes aZoom { to { opacity: 1; transform: scaleY(1.3) scaleX(0.88); } }
-
-        /* 9. 나선 회오리 (Vortex) */
-        .in-vortex {
-            opacity: 0;
-            transform: scale(0.1) rotate(540deg);
-            animation: aVortex 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
-        }
-        @keyframes aVortex { to { opacity: 1; transform: scaleY(1.3) scaleX(0.88) rotate(0); } }
-
-        /* 10. 좌우 슬릿 조립 */
-        .in-slit {
-            opacity: 0;
-            filter: blur(10px);
-            transform: scaleX(0.1);
-            animation: aSlit 0.6s ease-out forwards;
-        }
-        @keyframes aSlit { to { opacity: 1; filter: blur(0); transform: scaleY(1.3) scaleX(0.88); } }
-
-        /* ========================================================
-           [OUT 애니메이션 10종]
-        ======================================================== */
-        /* 1. 바람에 날아가기 */
-        .out-wind {
-            animation: aWind 0.7s cubic-bezier(0.4, 0, 1, 1) forwards;
-        }
-        @keyframes aWind {
-            to { opacity: 0; transform: translate(400px, -100px) skewX(-40deg) scale(0.5); filter: blur(8px); }
-        }
-
-        /* 2. 와이퍼로 닦기 */
-        .out-wipe {
-            mask-image: linear-gradient(to right, black 50%, transparent 50%);
-            mask-size: 200% 100%;
-            mask-position: 0 0;
-            animation: aWipe 0.6s ease-in-out forwards;
-        }
-        @keyframes aWipe { to { mask-position: -100% 0; opacity: 0; } }
-
-        /* 3. 팝업 대각선 소멸 */
-        .out-diagpop {
-            animation: aDiagPop 0.5s cubic-bezier(0.6, -0.28, 0.735, 0.045) forwards;
-        }
-        @keyframes aDiagPop {
-            30% { transform: scale(1.15) translate(-10px, 10px); }
-            100% { opacity: 0; transform: translate(250px, -250px) scale(0.2); }
-        }
-
-        /* 4. 글자 획 방향 비산 */
-        .out-stroke {
-            animation: aStroke 0.6s cubic-bezier(0.25, 1, 0.5, 1) forwards;
-        }
-        @keyframes aStroke {
-            to { opacity: 0; transform: translate(var(--sx, 120px), var(--sy, -120px)) rotate(var(--sr, 45deg)) scaleX(1.8) scaleY(0.2); filter: blur(6px); }
-        }
-
-        /* 5. 바닥 침몰 */
-        .out-sink { animation: aSink 0.6s cubic-bezier(0.5, 0, 1, 0.5) forwards; }
-        @keyframes aSink { to { opacity: 0; transform: translateY(180px) scale(0.8, 1.4); filter: blur(5px); } }
-
-        /* 6. 블랙홀 회전 */
-        .out-blackhole { animation: aBlackhole 0.6s ease-in forwards; }
-        @keyframes aBlackhole { to { opacity: 0; transform: scale(0) rotate(-720deg); filter: blur(10px); } }
-
-        /* 7. 먹물 흘러내림 */
-        .out-melt { animation: aMelt 0.7s ease-in forwards; }
-        @keyframes aMelt { to { opacity: 0; transform: translateY(120px) scaleY(2.2) scaleX(0.4); filter: blur(10px); } }
-
-        /* 8. 도장 분쇄 폭발 */
-        .out-shatter { animation: aShatter 0.6s cubic-bezier(0.1, 1, 0.1, 1) forwards; }
-        @keyframes aShatter { to { opacity: 0; transform: translate(var(--rx, 100px), var(--ry, 100px)) rotate(var(--rr, 90deg)) scale(0.2); } }
-
-        /* 9. 롤러 압축 */
-        .out-squash { animation: aSquash 0.5s ease-in forwards; }
-        @keyframes aSquash { to { opacity: 0; transform: scaleX(2) scaleY(0.01); filter: blur(4px); } }
-
-        /* 10. 가루 비산 (Canvas 구동용 클래스) */
-        .out-dust { opacity: 0 !important; transition: opacity 0.05s; }
     </style>
 </head>
 <body>
@@ -330,32 +295,29 @@
         <option value="9:16">9:16 (세로 숏폼)</option>
     </select>
 
+    <label>스케일 모드:</label>
+    <select id="scale-mode" onchange="recalculateScale()">
+        <option value="fill">화면 가득 채움 (%)</option>
+        <option value="fixed">절대 수치 고정 (px)</option>
+    </select>
+
     <label>IN 효과:</label>
     <select id="in-select">
-        <option value="in-stamp" selected>1. 벼락 낙하(도장 날인)</option>
+        <option value="in-stamp" selected>1. 벼락 낙하 (날인)</option>
         <option value="in-popup">2. 바닥에서 팝업</option>
         <option value="in-typing">3. 타이핑</option>
-        <option value="in-snow">4. 눈처럼 내려오기</option>
-        <option value="in-converge">5. 사방에서 날아와 구성</option>
-        <option value="in-inkbleed">6. 먹물 번짐</option>
-        <option value="in-flip">7. 3D 수직 회전</option>
-        <option value="in-zoom">8. 렌즈 줌인</option>
-        <option value="in-vortex">9. 나선 회오리</option>
-        <option value="in-slit">10. 좌우 슬릿 조립</option>
+        <option value="in-converge">4. 사방에서 날아와 구성</option>
+        <option value="in-snow">5. 눈처럼 내려오기</option>
     </select>
 
     <label>OUT 효과:</label>
     <select id="out-select">
-        <option value="out-dust" selected>1. 가루되어 날아가기</option>
-        <option value="out-wind">2. 바람에 날아가기</option>
-        <option value="out-wipe">3. 와이퍼로 닦기</option>
-        <option value="out-diagpop">4. 대각선 팝업 소멸</option>
-        <option value="out-stroke">5. 각 글자 획 방향 비산</option>
-        <option value="out-sink">6. 바닥으로 침몰</option>
-        <option value="out-blackhole">7. 블랙홀 회전</option>
-        <option value="out-melt">8. 먹물 흘러내림</option>
-        <option value="out-shatter">9. 도장 분쇄 폭발</option>
-        <option value="out-squash">10. 롤러 압축 소멸</option>
+        <option value="out-snake" selected>★ 획방향 4분할 뱀 비산</option>
+        <option value="out-dust">가루되어 날아가기</option>
+        <option value="out-wind">바람에 날아가기</option>
+        <option value="out-wipe">와이퍼로 닦기</option>
+        <option value="out-diagpop">팝업 대각선 소멸</option>
+        <option value="out-sink">바닥 침몰</option>
     </select>
 
     <button id="play-btn" onclick="togglePlay()">▶ 재생</button>
@@ -364,7 +326,7 @@
 
 <div id="viewport-wrapper" class="ratio-16-9">
     <div id="stage">
-        <div id="seal-box"></div>
+        <div id="seal-container"></div>
         <canvas id="fx-canvas"></canvas>
     </div>
 </div>
@@ -377,18 +339,18 @@
     let currentCueIndex = -1;
 
     const viewport = document.getElementById('viewport-wrapper');
-    const sealBox = document.getElementById('seal-box');
+    const sealContainer = document.getElementById('seal-container');
     const timelineInfo = document.getElementById('timeline-info');
     const playBtn = document.getElementById('play-btn');
     const inSelect = document.getElementById('in-select');
     const outSelect = document.getElementById('out-select');
+    const scaleModeSelect = document.getElementById('scale-mode');
     const canvas = document.getElementById('fx-canvas');
     const ctx = canvas.getContext('2d');
 
     let particles = [];
     let isParticleLooping = false;
 
-    // 캔버스 크기 맞춤
     function syncCanvas() {
         canvas.width = viewport.clientWidth;
         canvas.height = viewport.clientHeight;
@@ -396,17 +358,17 @@
     window.addEventListener('resize', syncCanvas);
     syncCanvas();
 
-    // 16:9 / 9:16 화면비 제어
     function changeRatio(ratio) {
-        if(ratio === '16:9') {
-            viewport.className = 'ratio-16-9';
-        } else {
-            viewport.className = 'ratio-9-16';
-        }
+        viewport.className = ratio === '16:9' ? 'ratio-16-9' : 'ratio-9-16';
         syncCanvas();
+        if(currentCueIndex !== -1) renderCue(currentCueIndex);
     }
 
-    // SRT 파서 (콤마, 마침표 타임라인 모두 지원)
+    function recalculateScale() {
+        if(currentCueIndex !== -1) renderCue(currentCueIndex);
+    }
+
+    // SRT 파일 파서
     document.getElementById('file-input').addEventListener('change', function(e) {
         const file = e.target.files[0];
         if(!file) return;
@@ -442,7 +404,7 @@
         if(subtitles.length > 0) {
             alert(`SRT 자막 ${subtitles.length}개가 정상 로드되었습니다.`);
             currentCueIndex = -1;
-            renderCue(0); // 첫 자막 프리뷰
+            renderCue(0);
         }
     }
 
@@ -451,43 +413,65 @@
         return parseFloat(p[0])*3600 + parseFloat(p[1])*60 + parseFloat(p[2]);
     }
 
-    // 도장 구첩전 렌더링
+    // [글자 렌더링 및 스케일 조정]
     function renderCue(idx) {
         if(!subtitles[idx]) return;
         const sub = subtitles[idx];
-        sealBox.innerHTML = '';
-        
-        // 텍스트를 공백 제외 글자로 분해 (최대 9글자까지 도장 3x3 격자 수납)
-        const chars = sub.text.replace(/\s+/g, '').split('').slice(0, 9);
-        
-        // 도장 격자 열 수 계산 (글자 수에 따라 2x2 또는 3x3 적응형)
-        const cols = chars.length <= 4 ? 2 : 3;
-        sealBox.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+        sealContainer.innerHTML = '';
 
-        chars.forEach((char, cIdx) => {
-            const cell = document.createElement('div');
-            cell.className = 'seal-cell';
-            
-            const span = document.createElement('span');
-            span.className = 'seal-char';
-            span.textContent = char;
+        // 공백 제거 및 글자 단위 추출
+        const rawChars = sub.text.replace(/\s+/g, '').split('');
+        if(rawChars.length === 0) return;
 
-            // 랜덤 사방 벡터 (인/아웃용)
+        // 스케일 계산: 글자 수와 화면비에 따라 크기 산정
+        const mode = scaleModeSelect.value;
+        const vW = viewport.clientWidth;
+        const vH = viewport.clientHeight;
+        const totalChars = rawChars.length;
+
+        let fontSize;
+        if (mode === 'fill') {
+            // 화면의 85% 면적을 채우도록 글자 수에 비례한 유동적 크기 계산
+            const targetDim = Math.min(vW, vH);
+            const cols = Math.ceil(Math.sqrt(totalChars));
+            fontSize = Math.floor((targetDim * 0.85) / cols);
+            fontSize = Math.min(Math.max(fontSize, 60), 220); // 상하한선
+        } else {
+            // 절대 수치 고정 모드
+            fontSize = 110;
+        }
+
+        rawChars.forEach((char, cIdx) => {
+            const cluster = document.createElement('div');
+            cluster.className = 'char-cluster';
+
+            // 메인 글립
+            const glyph = document.createElement('span');
+            glyph.className = 'seal-glyph';
+            glyph.textContent = char;
+            glyph.style.fontSize = `${fontSize}px`;
+
+            // 랜덤 사방 벡터 (Converge 인 효과용)
             const angle = Math.random() * Math.PI * 2;
-            const dist = 350 + Math.random() * 200;
-            span.style.setProperty('--rx', `${Math.cos(angle) * dist}px`);
-            span.style.setProperty('--ry', `${Math.sin(angle) * dist}px`);
-            span.style.setProperty('--rr', `${(Math.random() - 0.5) * 540}deg`);
+            const dist = 300 + Math.random() * 200;
+            glyph.style.setProperty('--rx', `${Math.cos(angle) * dist}px`);
+            glyph.style.setProperty('--ry', `${Math.sin(angle) * dist}px`);
+            glyph.style.setProperty('--rr', `${(Math.random() - 0.5) * 360}deg`);
 
-            // 획 방향 비산용 벡터
-            const sAngles = [-45, 45, 135, -135, 0, 90];
-            const sa = sAngles[cIdx % sAngles.length];
-            span.style.setProperty('--sx', `${Math.cos(sa * Math.PI / 180) * 300}px`);
-            span.style.setProperty('--sy', `${Math.sin(sa * Math.PI / 180) * 300}px`);
-            span.style.setProperty('--sr', `${sa}deg`);
+            cluster.appendChild(glyph);
 
-            cell.appendChild(span);
-            sealBox.appendChild(cell);
+            // [수정 4] 4분할 조각 생성 (획방향 뱀 비산용 예비 돔)
+            const frags = ['nw', 'ne', 'sw', 'se'];
+            frags.forEach(dir => {
+                const frag = document.createElement('span');
+                frag.className = `seal-glyph char-fragment frag-${dir}`;
+                frag.textContent = char;
+                frag.style.fontSize = `${fontSize}px`;
+                frag.style.display = 'none'; // 초기 숨김
+                cluster.appendChild(frag);
+            });
+
+            sealContainer.appendChild(cluster);
         });
 
         triggerInEffect();
@@ -495,9 +479,9 @@
 
     function triggerInEffect() {
         const inEff = inSelect.value;
-        const charEls = document.querySelectorAll('.seal-char');
-        charEls.forEach((el, i) => {
-            el.className = 'seal-char';
+        const glyphs = document.querySelectorAll('.char-cluster > .seal-glyph:not(.char-fragment)');
+        glyphs.forEach((el, i) => {
+            el.className = 'seal-glyph';
             el.style.animationDelay = `${i * 0.05}s`;
             el.classList.add(inEff);
         });
@@ -505,38 +489,60 @@
 
     function triggerOutEffect() {
         const outEff = outSelect.value;
-        const charEls = document.querySelectorAll('.seal-char');
 
-        if(outEff === 'out-dust') {
-            explodeToDust();
-            charEls.forEach(el => el.classList.add('out-dust'));
+        if (outEff === 'out-snake') {
+            // 4개 분할 조각 활성화 후 뱀처럼 사이드로 분산
+            const clusters = document.querySelectorAll('.char-cluster');
+            clusters.forEach((cluster, cIdx) => {
+                const baseGlyph = cluster.querySelector('.seal-glyph:not(.char-fragment)');
+                baseGlyph.style.display = 'none'; // 원본 숨김
+
+                const frags = cluster.querySelectorAll('.char-fragment');
+                frags.forEach(frag => {
+                    frag.style.display = 'inline-block';
+                    const delay = (cIdx * 0.04) + 's';
+                    frag.style.animationDelay = delay;
+
+                    if (frag.classList.contains('frag-nw')) frag.classList.add('out-snake-nw');
+                    if (frag.classList.contains('frag-ne')) frag.classList.add('out-snake-ne');
+                    if (frag.classList.contains('frag-sw')) frag.classList.add('out-snake-sw');
+                    if (frag.classList.contains('frag-se')) frag.classList.add('out-snake-se');
+                });
+            });
             return;
         }
 
-        charEls.forEach((el, i) => {
+        if (outEff === 'out-dust') {
+            explodeToDust();
+            document.querySelectorAll('.seal-glyph').forEach(el => el.classList.add('out-dust'));
+            return;
+        }
+
+        const glyphs = document.querySelectorAll('.char-cluster > .seal-glyph:not(.char-fragment)');
+        glyphs.forEach((el, i) => {
             el.style.animationDelay = `${i * 0.04}s`;
             el.classList.add(outEff);
         });
     }
 
-    // 가루 분해 물리 효과
+    // 붉은 인주 가루 비산 파티클
     function explodeToDust() {
         particles = [];
-        const charEls = document.querySelectorAll('.seal-char');
+        const glyphs = document.querySelectorAll('.char-cluster > .seal-glyph:not(.char-fragment)');
         const vRect = viewport.getBoundingClientRect();
 
-        charEls.forEach(el => {
+        glyphs.forEach(el => {
             const rect = el.getBoundingClientRect();
-            for(let i = 0; i < 60; i++) {
+            for(let i = 0; i < 70; i++) {
                 particles.push({
                     x: (rect.left - vRect.left) + Math.random() * rect.width,
                     y: (rect.top - vRect.top) + Math.random() * rect.height,
-                    vx: (Math.random() - 0.4) * 8 + 3,
+                    vx: (Math.random() - 0.3) * 9 + 4,
                     vy: (Math.random() - 0.5) * 6 - 2,
                     alpha: 1,
-                    decay: Math.random() * 0.03 + 0.02,
-                    size: Math.random() * 3 + 1,
-                    color: '#c22a22'
+                    decay: Math.random() * 0.025 + 0.02,
+                    size: Math.random() * 3.5 + 1.2,
+                    color: '#c82018'
                 });
             }
         });
@@ -577,16 +583,15 @@
         }
     }
 
-    // 타임라인 재생 루프
+    // 타임라인 재생 엔진
     function togglePlay() {
         if(subtitles.length === 0) {
-            // 샘플 자막 주입
             subtitles = [
                 { start: 0.5, end: 3.5, text: "萬事如意" },
                 { start: 4.0, end: 7.0, text: "家和萬事成" },
                 { start: 7.5, end: 10.5, text: "大吉大利" }
             ];
-            alert("기본 도장 텍스트 샘플이 로드되었습니다.");
+            alert("기본 샘플 자막이 로드되었습니다.");
         }
 
         isPlaying = !isPlaying;
@@ -607,12 +612,10 @@
         if(!isPlaying) return;
         const curTime = (performance.now() - startTime) / 1000;
         
-        // 시간 포맷 표기
         const mm = Math.floor(curTime / 60).toString().padStart(2, '0');
         const ss = (curTime % 60).toFixed(2).padStart(5, '0');
         timelineInfo.innerText = `${mm}:${ss}`;
 
-        // 현재 시간에 해당하는 자막 인덱스 검색
         const activeIdx = subtitles.findIndex(s => curTime >= s.start && curTime <= s.end);
 
         if(activeIdx !== -1 && activeIdx !== currentCueIndex) {
@@ -620,17 +623,16 @@
             renderCue(currentCueIndex);
         }
 
-        // 자막 종료 0.6초 전에 OUT 효과 자동 발동
+        // 자막 종료 0.7초 전에 선택된 OUT 모션 발동
         if(currentCueIndex !== -1) {
             const cue = subtitles[currentCueIndex];
             const remaining = cue.end - curTime;
-            if(remaining <= 0.6 && remaining > 0.5) {
+            if(remaining <= 0.7 && remaining > 0.6) {
                 triggerOutEffect();
             }
         }
 
-        // 전체 종료 검사
-        if(curTime > subtitles[subtitles.length - 1].end + 1) {
+        if(curTime > subtitles[subtitles.length - 1].end + 0.8) {
             togglePlay();
             return;
         }
