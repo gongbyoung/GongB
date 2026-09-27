@@ -3,28 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>한글 전각 도장 타이포 엔진 (가독성 완벽 보장형)</title>
-    <!-- 직각 구조와 극도의 두께를 가진 고가독성 한글 폰트 -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Do+Hyeon&family=Noto+Sans+KR:wght@900&display=swap" rel="stylesheet">
+    <title>한글전서체 완벽 구현 SRT 엔진</title>
     <style>
         :root {
-            --bg-color: #060505;
-            --seal-red: #c82018;      /* 고전 인주 붉은색 */
+            --bg-color: #050404;
+            --seal-red: #c82018;      /* 도장 인주색 */
             --guide-border: #00ffcc;
         }
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
 
         body {
             background-color: var(--bg-color);
             color: #eee;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-family: sans-serif;
             overflow: hidden;
             width: 100vw;
             height: 100vh;
@@ -65,18 +57,8 @@
             outline: none;
         }
 
-        #top-bar input[type="number"] {
-            width: 65px;
-            text-align: center;
-            cursor: text;
-        }
-
-        #top-bar button:hover, #top-bar label:hover {
-            background: var(--seal-red);
-            color: #fff;
-            border-color: var(--seal-red);
-        }
-
+        #top-bar input[type="number"] { width: 65px; text-align: center; cursor: text; }
+        #top-bar button:hover, #top-bar label:hover { background: var(--seal-red); color: #fff; }
         #file-input { display: none; }
 
         #timeline-info {
@@ -87,7 +69,6 @@
             text-align: center;
         }
 
-        /* 뷰포트 영역 & 가이드 */
         #viewport-wrapper {
             position: relative;
             display: flex;
@@ -96,24 +77,10 @@
             transition: width 0.25s, height 0.25s;
         }
 
-        .ratio-16-9 {
-            width: 1120px;
-            height: 630px;
-            border: 2px dashed var(--guide-border);
-        }
+        .ratio-16-9 { width: 1120px; height: 630px; border: 2px dashed var(--guide-border); }
+        .ratio-9-16 { width: 380px; height: 675px; border: 2px dashed var(--guide-border); }
 
-        .ratio-9-16 {
-            width: 380px;
-            height: 675px;
-            border: 2px dashed var(--guide-border);
-        }
-
-        #renderCanvas {
-            width: 100%;
-            height: 100%;
-            display: block;
-            background: transparent;
-        }
+        #renderCanvas { width: 100%; height: 100%; display: block; }
     </style>
 </head>
 <body>
@@ -197,13 +164,6 @@
 
     let currentGlyphs = [];
 
-    // 개별 글자를 오프스크린 캔버스에 사각 꽉 채움으로 캐싱
-    const glyphBufferCanvas = document.createElement('canvas');
-    const glyphBufferCtx = glyphBufferCanvas.getContext('2d');
-    const BUFFER_SIZE = 256;
-    glyphBufferCanvas.width = BUFFER_SIZE;
-    glyphBufferCanvas.height = BUFFER_SIZE;
-
     function syncCanvas() {
         const dpr = window.devicePixelRatio || 1;
         canvas.width = viewport.clientWidth * dpr;
@@ -270,72 +230,164 @@
         return parseFloat(p[0])*3600 + parseFloat(p[1])*60 + parseFloat(p[2]);
     }
 
-    // ========================================================
-    // [한글 가독성 100% + 사각틀 100% 팽창 렌더링 & 획 분해 엔진]
-    // ========================================================
-    function createReadableSealGlyph(char, seed) {
-        // 1. 오프스크린 캔버스에 한글을 사각 틀 끝까지 강제 연신하여 도장 글씨 생성
-        glyphBufferCtx.clearRect(0, 0, BUFFER_SIZE, BUFFER_SIZE);
-        glyphBufferCtx.save();
-        
-        // 두껍고 네모진 골격의 서체 사용
-        glyphBufferCtx.font = '900 220px "Black Han Sans", "Noto Sans KR", sans-serif';
-        glyphBufferCtx.textAlign = 'center';
-        glyphBufferCtx.textBaseline = 'middle';
-        glyphBufferCtx.fillStyle = '#c82018';
-        glyphBufferCtx.strokeStyle = '#c82018';
-        glyphBufferCtx.lineWidth = 14;
+    // =========================================================================
+    // [한글전서체 벡터 폰트 엔진 (진짜 관인 도장 조형 곡선 규격)]
+    // 획을 얇고 균일하게(strokeWidth: 4~6px) 유지하며 여백을 구불구불 채움
+    // =========================================================================
+    function getJeonseoStrokes(char, seed) {
+        const strokes = [];
+        const code = char.charCodeAt(0);
+        let cho = 0, jung = 0, jong = 0;
+        let isHangul = (code >= 0xAC00 && code <= 0xD7A3);
 
-        // 사각 칸 100% 가득 채우기 위한 비례 변형 (Scale-to-Fill)
-        glyphBufferCtx.translate(BUFFER_SIZE / 2, BUFFER_SIZE / 2);
-        glyphBufferCtx.scale(1.05, 1.25);
-        glyphBufferCtx.strokeText(char, 0, 0);
-        glyphBufferCtx.fillText(char, 0, 0);
-        glyphBufferCtx.restore();
+        if (isHangul) {
+            const sIdx = code - 0xAC00;
+            jong = sIdx % 28;
+            jung = Math.floor((sIdx - jong) / 28) % 21;
+            cho = Math.floor(Math.floor((sIdx - jong) / 28) / 21);
+        }
 
-        // 2. 글자의 실제 획들을 6~8개의 다방향 절선 조각(Strokes Slice)으로 분할
-        // 가독성을 지키면서 퇴장 시 획 단위로 뱀처럼 분해되는 핵심 로직
-        const slices = [];
-        const sliceCount = 6;
-        const bCanvas = document.createElement('canvas');
-        bCanvas.width = BUFFER_SIZE;
-        bCanvas.height = BUFFER_SIZE;
-        const bCtx = bCanvas.getContext('2d');
+        const hasJong = jong > 0;
+        // 상하 구획: 받침이 있으면 55:45, 없으면 100
+        const topH = hasJong ? 0.52 : 0.94;
+        const botY = hasJong ? 0.56 : 0.94;
 
-        for (let i = 0; i < sliceCount; i++) {
-            const partCanvas = document.createElement('canvas');
-            partCanvas.width = BUFFER_SIZE;
-            partCanvas.height = BUFFER_SIZE;
-            const pCtx = partCanvas.getContext('2d');
+        // 세로모음(ㅏ, ㅑ, ㅓ, ㅕ, ㅣ 등) 여부
+        const isVertVowel = [0, 1, 2, 3, 20].includes(jung);
+        const choW = isVertVowel ? 0.62 : 0.94;
+        const vX = 0.92;
 
-            // 빗살 및 십자 분할 클리핑 경로 구성
-            pCtx.save();
-            pCtx.beginPath();
-            if (i === 0) pCtx.rect(0, 0, BUFFER_SIZE * 0.5, BUFFER_SIZE * 0.35); // 좌상
-            else if (i === 1) pCtx.rect(BUFFER_SIZE * 0.5, 0, BUFFER_SIZE * 0.5, BUFFER_SIZE * 0.35); // 우상
-            else if (i === 2) pCtx.rect(0, BUFFER_SIZE * 0.35, BUFFER_SIZE * 0.5, BUFFER_SIZE * 0.35); // 좌중
-            else if (i === 3) pCtx.rect(BUFFER_SIZE * 0.5, BUFFER_SIZE * 0.35, BUFFER_SIZE * 0.5, BUFFER_SIZE * 0.35); // 우중
-            else if (i === 4) pCtx.rect(0, BUFFER_SIZE * 0.7, BUFFER_SIZE * 0.5, BUFFER_SIZE * 0.3); // 좌하
-            else pCtx.rect(BUFFER_SIZE * 0.5, BUFFER_SIZE * 0.7, BUFFER_SIZE * 0.5, BUFFER_SIZE * 0.3); // 우하
-            pCtx.clip();
+        // --- 1. 초성 (전서체 특유의 긴 곡선 다리와 대칭형 구조) ---
+        // ㅈ, ㅊ (증, 천 등)
+        if ([9, 10].includes(cho)) {
+            strokes.push([{ x: 0.08, y: 0.08 }, { x: choW, y: 0.08 }]); // 상단 수평선
+            // 좌측 유려한 곡절 다리
+            strokes.push([
+                { x: choW * 0.5, y: 0.08 },
+                { x: 0.15, y: topH * 0.4 },
+                { x: 0.08, y: topH * 0.92 }
+            ]);
+            // 우측 유려한 곡절 다리
+            strokes.push([
+                { x: choW * 0.5, y: 0.08 },
+                { x: choW - 0.15, y: topH * 0.4 },
+                { x: choW, y: topH * 0.92 }
+            ]);
+        }
+        // ㅍ (평 등)
+        else if (cho === 17) {
+            strokes.push([{ x: 0.08, y: 0.08 }, { x: choW, y: 0.08 }]); // 상초
+            strokes.push([{ x: 0.08, y: topH * 0.92 }, { x: choW, y: topH * 0.92 }]); // 하초
+            strokes.push([{ x: choW * 0.35, y: 0.08 }, { x: choW * 0.35, y: topH * 0.92 }]); // 좌기둥
+            strokes.push([{ x: choW * 0.65, y: 0.08 }, { x: choW * 0.65, y: topH * 0.92 }]); // 우기둥
+        }
+        // ㄱ, ㅋ (군 등)
+        else if ([0, 15].includes(cho)) {
+            strokes.push([
+                { x: 0.08, y: 0.08 },
+                { x: choW, y: 0.08 },
+                { x: choW, y: topH * 0.92 }
+            ]);
+            if (cho === 15) strokes.push([{ x: 0.08, y: topH * 0.45 }, { x: choW, y: topH * 0.45 }]);
+        }
+        // ㅅ (수 등)
+        else if (cho === 7 || cho === 9) {
+            strokes.push([
+                { x: choW * 0.5, y: 0.08 },
+                { x: 0.15, y: topH * 0.4 },
+                { x: 0.08, y: topH * 0.92 }
+            ]);
+            strokes.push([
+                { x: choW * 0.5, y: 0.08 },
+                { x: choW - 0.15, y: topH * 0.4 },
+                { x: choW, y: topH * 0.92 }
+            ]);
+        }
+        // ㅇ, ㅎ (인 등)
+        else if ([11, 18].includes(cho)) {
+            // 전서체 고유의 세로로 긴 장방형 타원 (캡슐 형태)
+            strokes.push([
+                { x: choW * 0.5, y: 0.08 },
+                { x: 0.08, y: topH * 0.25 },
+                { x: 0.08, y: topH * 0.75 },
+                { x: choW * 0.5, y: topH * 0.92 },
+                { x: choW, y: topH * 0.75 },
+                { x: choW, y: topH * 0.25 },
+                { x: choW * 0.5, y: 0.08 }
+            ]);
+            if (cho === 18) strokes.push([{ x: 0.15, y: 0.04 }, { x: choW - 0.15, y: 0.04 }]);
+        }
+        // 기타 자음 (ㄴ, ㄷ, ㄹ, ㅁ, ㅂ)
+        else {
+            strokes.push([
+                { x: 0.08, y: 0.08 },
+                { x: choW, y: 0.08 },
+                { x: choW, y: topH * 0.92 },
+                { x: 0.08, y: topH * 0.92 },
+                { x: 0.08, y: 0.08 }
+            ]);
+        }
 
-            pCtx.drawImage(glyphBufferCanvas, 0, 0);
-            pCtx.restore();
+        // --- 2. 중성 모음 (틀 벽면에 바짝 닿는 팽팽한 전서 기둥) ---
+        if (isVertVowel) {
+            // 세로 기둥 (벽면 끝까지)
+            strokes.push([{ x: vX, y: 0.08 }, { x: vX, y: topH * 0.92 }]);
+            // 곁가지 연결선
+            strokes.push([{ x: choW, y: topH * 0.45 }, { x: vX, y: topH * 0.45 }]);
+        } else {
+            // 가로 모음 (ㅡ, ㅗ, ㅜ) : 상단을 가로지르는 굵은 중심 횡선
+            strokes.push([{ x: 0.08, y: topH * 0.92 }, { x: 0.94, y: topH * 0.92 }]);
+        }
 
-            const angle = (i / sliceCount) * Math.PI * 2 + (seed * 0.3);
-            slices.push({
-                canvas: partCanvas,
+        // --- 3. 종성 받침 (도장 하단을 웅장하게 떠받치는 전각 구조) ---
+        if (hasJong) {
+            // ㅇ 받침 (증, 평 등)
+            if (jong === 21) {
+                strokes.push([
+                    { x: 0.5, y: botY },
+                    { x: 0.08, y: botY + 0.15 },
+                    { x: 0.08, y: 0.82 },
+                    { x: 0.5, y: 0.94 },
+                    { x: 0.92, y: 0.82 },
+                    { x: 0.92, y: botY + 0.15 },
+                    { x: 0.5, y: botY }
+                ]);
+            }
+            // ㄴ 받침 (군, 인 등)
+            else if (jong === 4) {
+                strokes.push([
+                    { x: 0.08, y: botY },
+                    { x: 0.08, y: 0.94 },
+                    { x: 0.92, y: 0.94 },
+                    { x: 0.92, y: botY + 0.2 }
+                ]);
+            }
+            // 일반 받침 (사각 구첩전으로 채움)
+            else {
+                strokes.push([
+                    { x: 0.08, y: botY },
+                    { x: 0.92, y: botY },
+                    { x: 0.92, y: 0.94 },
+                    { x: 0.08, y: 0.94 },
+                    { x: 0.08, y: botY }
+                ]);
+            }
+        }
+
+        // 각 획별 비산/모션 벡터 부여
+        return strokes.map((pts, i) => {
+            const angle = (i / strokes.length) * Math.PI * 2 + (seed * 0.4);
+            return {
+                points: pts,
                 dirX: Math.cos(angle) * (420 + (i % 3) * 120),
                 dirY: Math.sin(angle) * (320 + (i % 2) * 120),
                 rotSpeed: (i % 2 === 0 ? 1 : -1) * (2.5 + (i % 3)),
                 phase: i * 0.45
-            });
-        }
-
-        return slices;
+            };
+        });
     }
 
-    // 화면 꽉 찬 사각 박스 격자 계산
+    // 자막 문자열을 사각 박스 격자에 완벽히 배치
     function buildGlyphs(idx) {
         if(!subtitles[idx]) return;
         const sub = subtitles[idx];
@@ -369,7 +421,7 @@
             const gx = startX + col * slotSize;
             const gy = startY + row * slotSize;
 
-            const strokes = createReadableSealGlyph(char, i * 53);
+            const strokes = getJeonseoStrokes(char, i * 53);
 
             return {
                 char,
@@ -402,6 +454,10 @@
         const isOut = normTime > (1 - outWindow);
         const outProgress = isOut ? (normTime - (1 - outWindow)) / outWindow : 0;
 
+        ctx.strokeStyle = '#c82018';
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
         currentGlyphs.forEach((glyph, gIdx) => {
             const charDelay = gIdx * 0.05;
             const localInP = Math.min(Math.max((inProgress - charDelay) / (1 - charDelay || 1), 0), 1);
@@ -415,6 +471,7 @@
                 let transY = glyph.y;
                 let rotation = 0;
                 let alpha = 1;
+                let strokeTrim = 1.0;
 
                 // ----------------------------------------------------
                 // [IN 모션 10종]
@@ -491,7 +548,8 @@
                             break;
 
                         case 'typing-stroke':
-                            alpha = p > (sIdx / glyph.strokes.length) ? 1 : 0;
+                            strokeTrim = Math.min(p * 1.2, 1.0);
+                            alpha = p > 0 ? 1 : 0;
                             break;
                     }
                 }
@@ -532,7 +590,8 @@
                             break;
 
                         case 'wipe-side':
-                            alpha = op > (sIdx / glyph.strokes.length) ? 0 : 1;
+                            strokeTrim = Math.max(1 - op, 0);
+                            alpha = 1 - op;
                             break;
 
                         case 'diag-popout':
@@ -569,14 +628,28 @@
                     }
                 }
 
-                // 선명한 획 렌더링
+                // 획 렌더링 (도장 인주 굵기: 글자 크기의 약 4%)
                 ctx.globalAlpha = Math.max(alpha, 0);
                 ctx.translate(transX + glyph.size / 2, transY + glyph.size / 2);
                 ctx.rotate(rotation);
                 ctx.scale(scaleX, scaleY);
                 ctx.translate(-glyph.size / 2, -glyph.size / 2);
 
-                ctx.drawImage(stroke.canvas, 0, 0, glyph.size, glyph.size);
+                // 균일한 도장 굵기 계산 (속공간이 막히지 않도록 정밀 제어)
+                ctx.lineWidth = Math.max(glyph.size * 0.042, 3.5);
+
+                ctx.beginPath();
+                const totalPts = stroke.points.length;
+                const visibleCount = Math.ceil(totalPts * strokeTrim);
+
+                for (let pIdx = 0; pIdx < visibleCount; pIdx++) {
+                    const pt = stroke.points[pIdx];
+                    const px = pt.x * glyph.size;
+                    const py = pt.y * glyph.size;
+                    if (pIdx === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                }
+                ctx.stroke();
 
                 ctx.restore();
             });
@@ -590,15 +663,15 @@
         renderFrame(cur);
     }
 
-    // 재생 루프
+    // 타임라인 재생 엔진
     function togglePlay() {
         if(subtitles.length === 0) {
             subtitles = [
                 { start: 0.5, end: 3.5, text: "증평군수인" },
-                { start: 4.0, end: 7.0, text: "바다바람" },
-                { start: 7.5, end: 10.5, text: "치마폭에" }
+                { start: 4.0, end: 7.0, text: "치마폭에" },
+                { start: 7.5, end: 10.5, text: "바다바람" }
             ];
-            alert("기본 자막(증평군수인, 바다바람, 치마폭에)이 로드되었습니다.");
+            alert("기본 한글전서체 샘플(증평군수인)이 로드되었습니다.");
         }
 
         isPlaying = !isPlaying;
@@ -642,12 +715,10 @@
         animFrameId = requestAnimationFrame(loop);
     }
 
-    // 폰트 완전 로드 후 최초 렌더링
-    document.fonts.ready.then(() => {
-        syncCanvas();
-        updateScaleModeUI();
-        renderCurrentFrame();
-    });
+    // 초기화
+    syncCanvas();
+    updateScaleModeUI();
+    renderCurrentFrame();
 </script>
 </body>
 </html>
