@@ -3,16 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>구첩전(九疊篆) SRT 타이포 엔진 v0.2</title>
-    <!-- 전각/구첩전 느낌을 주는 고밀도 폰트 로드 -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Noto+Serif+KR:wght@900&family=ZCOOL+QingKe+HuangYou&display=swap" rel="stylesheet">
+    <title>구첩전(九疊篆) 벡터 획 분해 엔진 v0.3</title>
     <style>
         :root {
-            --bg-color: #060505;
-            --seal-red: #c82018;      /* 묵직한 전통 인주색 */
-            --guide-border: #00ffcc;  /* 캔버스 경계 보색 가이드 */
+            --bg-color: #050404;
+            --seal-red: #c82018;      /* 고전 인주색 */
+            --guide-border: #00ffcc;
         }
 
         * {
@@ -24,7 +20,7 @@
         body {
             background-color: var(--bg-color);
             color: #eee;
-            font-family: 'Noto Serif KR', sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             overflow: hidden;
             width: 100vw;
             height: 100vh;
@@ -34,36 +30,41 @@
             justify-content: center;
         }
 
-        /* 상단 컨트롤 패널 */
+        /* 컨트롤 패널 */
         #top-bar {
             position: absolute;
-            top: 10px;
+            top: 12px;
             left: 50%;
             transform: translateX(-50%);
             display: flex;
             flex-wrap: wrap;
             align-items: center;
             gap: 8px;
-            background: rgba(18, 15, 15, 0.92);
-            padding: 10px 18px;
+            background: rgba(18, 15, 15, 0.94);
+            padding: 10px 16px;
             border-radius: 12px;
-            border: 1px solid rgba(200, 32, 24, 0.4);
+            border: 1px solid rgba(200, 32, 24, 0.45);
             z-index: 1000;
-            backdrop-filter: blur(12px);
+            backdrop-filter: blur(10px);
             font-size: 11px;
-            box-shadow: 0 4px 25px rgba(0,0,0,0.8);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.85);
         }
 
-        #top-bar button, #top-bar select, #top-bar label {
+        #top-bar button, #top-bar select, #top-bar label, #top-bar input {
             background: #201c1c;
             color: #eeddbb;
-            border: 1px solid #443838;
-            padding: 5px 10px;
+            border: 1px solid #483a3a;
+            padding: 5px 9px;
             border-radius: 4px;
             cursor: pointer;
             font-size: 11px;
             outline: none;
-            transition: 0.2s;
+        }
+
+        #top-bar input[type="number"] {
+            width: 65px;
+            text-align: center;
+            cursor: text;
         }
 
         #top-bar button:hover, #top-bar label:hover {
@@ -78,17 +79,17 @@
             color: #00ffcc;
             font-family: monospace;
             font-size: 13px;
-            min-width: 80px;
+            min-width: 75px;
             text-align: center;
         }
 
-        /* 뷰포트 영역 & 화면비 가이드 */
+        /* 뷰포트 래퍼 */
         #viewport-wrapper {
             position: relative;
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: width 0.3s, height 0.3s;
+            transition: width 0.25s, height 0.25s;
         }
 
         .ratio-16-9 {
@@ -103,183 +104,12 @@
             border: 2px dashed var(--guide-border);
         }
 
-        #stage {
+        /* 렌더링 캔버스 */
+        #renderCanvas {
             width: 100%;
             height: 100%;
-            position: relative;
-            overflow: hidden;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            display: block;
             background: transparent;
-        }
-
-        /* ========================================================
-           [구첩전(九疊篆) 폰트 조형 렌더러]
-           - 틀을 제거하고 글자만으로 화면을 빽빽히 장악
-        ======================================================== */
-        #seal-container {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            align-items: center;
-            width: 90%;
-            height: 90%;
-            gap: 1.5vw;
-            user-select: none;
-        }
-
-        /* 글자 래퍼 (글자 분할 비산 모션을 위한 기준점) */
-        .char-cluster {
-            position: relative;
-            display: inline-flex;
-            justify-content: center;
-            align-items: center;
-            flex-shrink: 0;
-        }
-
-        /* 구첩전 글씨 본체 (전각 특유의 왜곡과 긴 획) */
-        .seal-glyph {
-            font-family: 'ZCOOL QingKe HuangYou', 'Dela Gothic One', 'Noto Serif KR', serif;
-            font-weight: 900;
-            color: var(--seal-red);
-            line-height: 0.95;
-            text-align: center;
-            display: inline-block;
-            white-space: pre;
-            /* 1.55배 세로로 길게 늘이고 가로로 꽉 조여 전각 인장 형태 유도 */
-            transform: scaleY(1.55) scaleX(0.85);
-            letter-spacing: -0.12em;
-            /* 전각 먹물/인주 획의 굵기감 강화 */
-            -webkit-text-stroke: 1.5px var(--seal-red);
-            filter: drop-shadow(0 0 2px rgba(200, 32, 24, 0.7));
-            will-change: transform, opacity, filter;
-        }
-
-        /* ========================================================
-           [수정 4: 획방향 4분할 뱀(Snake) 사이드 비산 OUT]
-        ======================================================== */
-        /* 분할 조각 공통 설정 */
-        .char-fragment {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-        }
-
-        /* 4분할 클리핑 마스크 */
-        .frag-nw { clip-path: polygon(0 0, 50% 0, 50% 50%, 0 50%); }
-        .frag-ne { clip-path: polygon(50% 0, 100% 0, 100% 50%, 50% 50%); }
-        .frag-sw { clip-path: polygon(0 50%, 50% 50%, 50% 100%, 0 100%); }
-        .frag-se { clip-path: polygon(50% 50%, 100% 50%, 100% 100%, 50% 100%); }
-
-        /* 뱀처럼 S자를 그리며 화면 사이드로 탈출하는 키프레임 */
-        .out-snake-nw { animation: aSnakeNW 0.85s cubic-bezier(0.25, 1, 0.5, 1) forwards; }
-        .out-snake-ne { animation: aSnakeNE 0.85s cubic-bezier(0.25, 1, 0.5, 1) forwards; }
-        .out-snake-sw { animation: aSnakeSW 0.85s cubic-bezier(0.25, 1, 0.5, 1) forwards; }
-        .out-snake-se { animation: aSnakeSE 0.85s cubic-bezier(0.25, 1, 0.5, 1) forwards; }
-
-        @keyframes aSnakeNW {
-            0% { transform: translate(0, 0) scaleY(1.55) scaleX(0.85); opacity: 1; }
-            30% { transform: translate(-80px, -30px) rotate(-15deg) scale(1.1); }
-            60% { transform: translate(-220px, 20px) rotate(25deg) scale(0.9); }
-            100% { transform: translate(-600px, -200px) rotate(-45deg) scale(0.3); opacity: 0; filter: blur(8px); }
-        }
-
-        @keyframes aSnakeNE {
-            0% { transform: translate(0, 0) scaleY(1.55) scaleX(0.85); opacity: 1; }
-            30% { transform: translate(80px, -30px) rotate(15deg) scale(1.1); }
-            60% { transform: translate(220px, 20px) rotate(-25deg) scale(0.9); }
-            100% { transform: translate(600px, -200px) rotate(45deg) scale(0.3); opacity: 0; filter: blur(8px); }
-        }
-
-        @keyframes aSnakeSW {
-            0% { transform: translate(0, 0) scaleY(1.55) scaleX(0.85); opacity: 1; }
-            30% { transform: translate(-70px, 40px) rotate(20deg) scale(1.1); }
-            60% { transform: translate(-240px, -20px) rotate(-20deg) scale(0.8); }
-            100% { transform: translate(-600px, 300px) rotate(45deg) scale(0.3); opacity: 0; filter: blur(8px); }
-        }
-
-        @keyframes aSnakeSE {
-            0% { transform: translate(0, 0) scaleY(1.55) scaleX(0.85); opacity: 1; }
-            30% { transform: translate(70px, 40px) rotate(-20deg) scale(1.1); }
-            60% { transform: translate(240px, -20px) rotate(20deg) scale(0.8); }
-            100% { transform: translate(600px, 300px) rotate(-45deg) scale(0.3); opacity: 0; filter: blur(8px); }
-        }
-
-        /* ========================================================
-           [기타 IN 효과]
-        ======================================================== */
-        .in-stamp {
-            opacity: 0;
-            transform: scale(3.5);
-            animation: aStamp 0.4s cubic-bezier(0.6, -0.28, 0.735, 0.045) forwards;
-        }
-        @keyframes aStamp {
-            80% { opacity: 1; transform: scale(0.92); }
-            100% { opacity: 1; transform: scaleY(1.55) scaleX(0.85); }
-        }
-
-        .in-popup {
-            opacity: 0;
-            transform: translateY(150%) scale(0.3, 2);
-            animation: aPopup 0.6s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards;
-        }
-        @keyframes aPopup {
-            60% { transform: translateY(-12%) scale(1.15, 0.85); }
-            100% { opacity: 1; transform: translateY(0) scaleY(1.55) scaleX(0.85); }
-        }
-
-        .in-typing { opacity: 0; animation: aTyping 0.05s forwards; }
-        @keyframes aTyping { to { opacity: 1; transform: scaleY(1.55) scaleX(0.85); } }
-
-        .in-converge {
-            opacity: 0;
-            transform: translate(var(--rx, -250px), var(--ry, 250px)) scale(0.1) rotate(var(--rr, 180deg));
-            animation: aConverge 0.7s cubic-bezier(0.1, 0.9, 0.2, 1) forwards;
-        }
-        @keyframes aConverge { to { opacity: 1; transform: translate(0,0) scaleY(1.55) scaleX(0.85); } }
-
-        .in-snow {
-            opacity: 0;
-            transform: translateY(-180px) rotate(20deg);
-            animation: aSnow 0.8s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
-        }
-        @keyframes aSnow { to { opacity: 1; transform: translateY(0) scaleY(1.55) scaleX(0.85); } }
-
-        /* ========================================================
-           [기타 OUT 효과]
-        ======================================================== */
-        .out-wind { animation: aWind 0.7s cubic-bezier(0.4, 0, 1, 1) forwards; }
-        @keyframes aWind { to { opacity: 0; transform: translate(450px, -120px) skewX(-45deg) scale(0.5); filter: blur(8px); } }
-
-        .out-wipe {
-            mask-image: linear-gradient(to right, black 50%, transparent 50%);
-            mask-size: 200% 100%;
-            mask-position: 0 0;
-            animation: aWipe 0.6s ease-in-out forwards;
-        }
-        @keyframes aWipe { to { mask-position: -100% 0; opacity: 0; } }
-
-        .out-diagpop { animation: aDiagPop 0.5s cubic-bezier(0.6, -0.28, 0.735, 0.045) forwards; }
-        @keyframes aDiagPop { to { opacity: 0; transform: translate(300px, -300px) scale(0.2); } }
-
-        .out-sink { animation: aSink 0.6s cubic-bezier(0.5, 0, 1, 0.5) forwards; }
-        @keyframes aSink { to { opacity: 0; transform: translateY(180px) scale(0.8, 1.6); filter: blur(6px); } }
-
-        .out-dust { opacity: 0 !important; }
-
-        /* 캔버스 */
-        #fx-canvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 50;
         }
     </style>
 </head>
@@ -296,28 +126,29 @@
     </select>
 
     <label>스케일 모드:</label>
-    <select id="scale-mode" onchange="recalculateScale()">
+    <select id="scale-mode" onchange="updateScaleModeUI()">
         <option value="fill">화면 가득 채움 (%)</option>
         <option value="fixed">절대 수치 고정 (px)</option>
     </select>
 
+    <div id="px-input-group" style="display: none; align-items: center; gap: 4px;">
+        <label>글자 크기(px):</label>
+        <input type="number" id="fixed-px-val" value="140" min="30" max="600" step="10" onchange="renderCurrentFrame()">
+    </div>
+
     <label>IN 효과:</label>
     <select id="in-select">
-        <option value="in-stamp" selected>1. 벼락 낙하 (날인)</option>
-        <option value="in-popup">2. 바닥에서 팝업</option>
-        <option value="in-typing">3. 타이핑</option>
-        <option value="in-converge">4. 사방에서 날아와 구성</option>
-        <option value="in-snow">5. 눈처럼 내려오기</option>
+        <option value="stamp" selected>1. 벼락 낙하 (날인)</option>
+        <option value="popup">2. 바닥에서 팝업</option>
+        <option value="snow">3. 위에서 조립</option>
+        <option value="converge">4. 사방에서 획 수렴</option>
     </select>
 
     <label>OUT 효과:</label>
     <select id="out-select">
-        <option value="out-snake" selected>★ 획방향 4분할 뱀 비산</option>
-        <option value="out-dust">가루되어 날아가기</option>
-        <option value="out-wind">바람에 날아가기</option>
-        <option value="out-wipe">와이퍼로 닦기</option>
-        <option value="out-diagpop">팝업 대각선 소멸</option>
-        <option value="out-sink">바닥 침몰</option>
+        <option value="stroke-disassemble" selected>★ 획 단위 분리 뱀 비산</option>
+        <option value="wind">바람에 날리기</option>
+        <option value="sink">바닥 침몰</option>
     </select>
 
     <button id="play-btn" onclick="togglePlay()">▶ 재생</button>
@@ -325,10 +156,7 @@
 </div>
 
 <div id="viewport-wrapper" class="ratio-16-9">
-    <div id="stage">
-        <div id="seal-container"></div>
-        <canvas id="fx-canvas"></canvas>
-    </div>
+    <canvas id="renderCanvas"></canvas>
 </div>
 
 <script>
@@ -339,36 +167,40 @@
     let currentCueIndex = -1;
 
     const viewport = document.getElementById('viewport-wrapper');
-    const sealContainer = document.getElementById('seal-container');
+    const canvas = document.getElementById('renderCanvas');
+    const ctx = canvas.getContext('2d');
     const timelineInfo = document.getElementById('timeline-info');
     const playBtn = document.getElementById('play-btn');
     const inSelect = document.getElementById('in-select');
     const outSelect = document.getElementById('out-select');
     const scaleModeSelect = document.getElementById('scale-mode');
-    const canvas = document.getElementById('fx-canvas');
-    const ctx = canvas.getContext('2d');
+    const pxGroup = document.getElementById('px-input-group');
+    const fixedPxInput = document.getElementById('fixed-px-val');
 
-    let particles = [];
-    let isParticleLooping = false;
+    // 현재 화면에 배치된 구첩전 글자 획 데이터들
+    let currentGlyphs = [];
 
     function syncCanvas() {
-        canvas.width = viewport.clientWidth;
-        canvas.height = viewport.clientHeight;
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = viewport.clientWidth * dpr;
+        canvas.height = viewport.clientHeight * dpr;
+        ctx.resetTransform();
+        ctx.scale(dpr, dpr);
     }
-    window.addEventListener('resize', syncCanvas);
-    syncCanvas();
+    window.addEventListener('resize', () => { syncCanvas(); renderCurrentFrame(); });
 
     function changeRatio(ratio) {
         viewport.className = ratio === '16:9' ? 'ratio-16-9' : 'ratio-9-16';
         syncCanvas();
-        if(currentCueIndex !== -1) renderCue(currentCueIndex);
+        renderCurrentFrame();
     }
 
-    function recalculateScale() {
-        if(currentCueIndex !== -1) renderCue(currentCueIndex);
+    function updateScaleModeUI() {
+        pxGroup.style.display = scaleModeSelect.value === 'fixed' ? 'flex' : 'none';
+        renderCurrentFrame();
     }
 
-    // SRT 파일 파서
+    // SRT 파일 파싱
     document.getElementById('file-input').addEventListener('change', function(e) {
         const file = e.target.files[0];
         if(!file) return;
@@ -402,9 +234,10 @@
         });
 
         if(subtitles.length > 0) {
-            alert(`SRT 자막 ${subtitles.length}개가 정상 로드되었습니다.`);
-            currentCueIndex = -1;
-            renderCue(0);
+            alert(`SRT 자막 ${subtitles.length}개가 로드되었습니다.`);
+            currentCueIndex = 0;
+            buildGlyphs(0);
+            renderCurrentFrame();
         }
     }
 
@@ -413,177 +246,240 @@
         return parseFloat(p[0])*3600 + parseFloat(p[1])*60 + parseFloat(p[2]);
     }
 
-    // [글자 렌더링 및 스케일 조정]
-    function renderCue(idx) {
+    // ========================================================
+    // [구첩전(九疊篆) 알고리즘 기하 획 생성 엔진]
+    // 폰트를 배제하고 사각 슬롯을 절선(Folded Path)으로 채움
+    // ========================================================
+    function createNineFoldStrokes(char, seed) {
+        const strokes = [];
+        const folds = 5; // 절선의 밀도 (구첩전의 겹수)
+        const rnd = (s) => {
+            let x = Math.sin(s++) * 10000;
+            return x - Math.floor(x);
+        };
+
+        let s = (char.charCodeAt(0) || 100) + seed;
+
+        // 1. 외곽 구조 획 (ㄷ자, ㄹ자 형태의 굵은 메인 획)
+        strokes.push({
+            type: 'outer-fold',
+            points: [
+                { x: 0.1, y: 0.1 },
+                { x: 0.9, y: 0.1 },
+                { x: 0.9, y: 0.45 },
+                { x: 0.2, y: 0.45 },
+                { x: 0.2, y: 0.9 },
+                { x: 0.9, y: 0.9 }
+            ],
+            strokeWidth: 0.08
+        });
+
+        // 2. 내부 횡/종 구첩 미로 획 (글자 내면을 직각으로 접어 채움)
+        for (let i = 0; i < folds; i++) {
+            const yLevel = 0.2 + (i / folds) * 0.65;
+            const dir = i % 2 === 0 ? 1 : -1;
+            const startX = dir === 1 ? 0.25 : 0.8;
+            const endX = dir === 1 ? 0.8 : 0.25;
+
+            strokes.push({
+                type: 'inner-fold',
+                points: [
+                    { x: startX, y: yLevel },
+                    { x: endX, y: yLevel },
+                    { x: endX, y: yLevel + (0.65 / folds) * 0.7 }
+                ],
+                strokeWidth: 0.065
+            });
+        }
+
+        // 3. 수직 기둥 절선 획
+        strokes.push({
+            type: 'vert-pillar',
+            points: [
+                { x: 0.5, y: 0.15 },
+                { x: 0.5, y: 0.45 },
+                { x: 0.65, y: 0.45 },
+                { x: 0.65, y: 0.85 }
+            ],
+            strokeWidth: 0.07
+        });
+
+        return strokes;
+    }
+
+    // 화면 배치 및 글자별 획 구조체 구성
+    function buildGlyphs(idx) {
         if(!subtitles[idx]) return;
         const sub = subtitles[idx];
-        sealContainer.innerHTML = '';
+        const chars = sub.text.replace(/\s+/g, '').split('');
+        if(chars.length === 0) return;
 
-        // 공백 제거 및 글자 단위 추출
-        const rawChars = sub.text.replace(/\s+/g, '').split('');
-        if(rawChars.length === 0) return;
-
-        // 스케일 계산: 글자 수와 화면비에 따라 크기 산정
-        const mode = scaleModeSelect.value;
         const vW = viewport.clientWidth;
         const vH = viewport.clientHeight;
-        const totalChars = rawChars.length;
+        const mode = scaleModeSelect.value;
+        const total = chars.length;
 
-        let fontSize;
-        if (mode === 'fill') {
-            // 화면의 85% 면적을 채우도록 글자 수에 비례한 유동적 크기 계산
-            const targetDim = Math.min(vW, vH);
-            const cols = Math.ceil(Math.sqrt(totalChars));
-            fontSize = Math.floor((targetDim * 0.85) / cols);
-            fontSize = Math.min(Math.max(fontSize, 60), 220); // 상하한선
+        let slotSize;
+        if(mode === 'fill') {
+            const cols = Math.ceil(Math.sqrt(total));
+            const target = Math.min(vW, vH) * 0.82;
+            slotSize = Math.floor(target / cols);
         } else {
-            // 절대 수치 고정 모드
-            fontSize = 110;
+            slotSize = parseFloat(fixedPxInput.value) || 140;
         }
 
-        rawChars.forEach((char, cIdx) => {
-            const cluster = document.createElement('div');
-            cluster.className = 'char-cluster';
+        const cols = Math.min(total, Math.floor((vW * 0.9) / slotSize) || 1);
+        const rows = Math.ceil(total / cols);
+        const totalW = cols * slotSize;
+        const totalH = rows * slotSize;
+        const startX = (vW - totalW) / 2;
+        const startY = (vH - totalH) / 2;
 
-            // 메인 글립
-            const glyph = document.createElement('span');
-            glyph.className = 'seal-glyph';
-            glyph.textContent = char;
-            glyph.style.fontSize = `${fontSize}px`;
+        currentGlyphs = chars.map((char, i) => {
+            const col = i % cols;
+            const row = Math.floor(i / cols);
+            const gx = startX + col * slotSize;
+            const gy = startY + row * slotSize;
 
-            // 랜덤 사방 벡터 (Converge 인 효과용)
-            const angle = Math.random() * Math.PI * 2;
-            const dist = 300 + Math.random() * 200;
-            glyph.style.setProperty('--rx', `${Math.cos(angle) * dist}px`);
-            glyph.style.setProperty('--ry', `${Math.sin(angle) * dist}px`);
-            glyph.style.setProperty('--rr', `${(Math.random() - 0.5) * 360}deg`);
+            const baseStrokes = createNineFoldStrokes(char, i * 77);
 
-            cluster.appendChild(glyph);
-
-            // [수정 4] 4분할 조각 생성 (획방향 뱀 비산용 예비 돔)
-            const frags = ['nw', 'ne', 'sw', 'se'];
-            frags.forEach(dir => {
-                const frag = document.createElement('span');
-                frag.className = `seal-glyph char-fragment frag-${dir}`;
-                frag.textContent = char;
-                frag.style.fontSize = `${fontSize}px`;
-                frag.style.display = 'none'; // 초기 숨김
-                cluster.appendChild(frag);
+            // 개별 획에 대한 물리/분해 속성 부여
+            const strokes = baseStrokes.map((st, sIdx) => {
+                const angle = (sIdx / baseStrokes.length) * Math.PI * 2 + (i * 0.5);
+                return {
+                    ...st,
+                    basePoints: st.points,
+                    // 획 단위 비산 벡터
+                    dirX: Math.cos(angle) * (400 + (sIdx % 3) * 150),
+                    dirY: Math.sin(angle) * (300 + (sIdx % 2) * 150),
+                    rotSpeed: (sIdx % 2 === 0 ? 1 : -1) * (2 + Math.random() * 2),
+                    phase: sIdx * 0.4
+                };
             });
 
-            sealContainer.appendChild(cluster);
-        });
-
-        triggerInEffect();
-    }
-
-    function triggerInEffect() {
-        const inEff = inSelect.value;
-        const glyphs = document.querySelectorAll('.char-cluster > .seal-glyph:not(.char-fragment)');
-        glyphs.forEach((el, i) => {
-            el.className = 'seal-glyph';
-            el.style.animationDelay = `${i * 0.05}s`;
-            el.classList.add(inEff);
+            return {
+                char,
+                x: gx,
+                y: gy,
+                size: slotSize,
+                strokes: strokes
+            };
         });
     }
 
-    function triggerOutEffect() {
-        const outEff = outSelect.value;
-
-        if (outEff === 'out-snake') {
-            // 4개 분할 조각 활성화 후 뱀처럼 사이드로 분산
-            const clusters = document.querySelectorAll('.char-cluster');
-            clusters.forEach((cluster, cIdx) => {
-                const baseGlyph = cluster.querySelector('.seal-glyph:not(.char-fragment)');
-                baseGlyph.style.display = 'none'; // 원본 숨김
-
-                const frags = cluster.querySelectorAll('.char-fragment');
-                frags.forEach(frag => {
-                    frag.style.display = 'inline-block';
-                    const delay = (cIdx * 0.04) + 's';
-                    frag.style.animationDelay = delay;
-
-                    if (frag.classList.contains('frag-nw')) frag.classList.add('out-snake-nw');
-                    if (frag.classList.contains('frag-ne')) frag.classList.add('out-snake-ne');
-                    if (frag.classList.contains('frag-sw')) frag.classList.add('out-snake-sw');
-                    if (frag.classList.contains('frag-se')) frag.classList.add('out-snake-se');
-                });
-            });
-            return;
-        }
-
-        if (outEff === 'out-dust') {
-            explodeToDust();
-            document.querySelectorAll('.seal-glyph').forEach(el => el.classList.add('out-dust'));
-            return;
-        }
-
-        const glyphs = document.querySelectorAll('.char-cluster > .seal-glyph:not(.char-fragment)');
-        glyphs.forEach((el, i) => {
-            el.style.animationDelay = `${i * 0.04}s`;
-            el.classList.add(outEff);
-        });
-    }
-
-    // 붉은 인주 가루 비산 파티클
-    function explodeToDust() {
-        particles = [];
-        const glyphs = document.querySelectorAll('.char-cluster > .seal-glyph:not(.char-fragment)');
-        const vRect = viewport.getBoundingClientRect();
-
-        glyphs.forEach(el => {
-            const rect = el.getBoundingClientRect();
-            for(let i = 0; i < 70; i++) {
-                particles.push({
-                    x: (rect.left - vRect.left) + Math.random() * rect.width,
-                    y: (rect.top - vRect.top) + Math.random() * rect.height,
-                    vx: (Math.random() - 0.3) * 9 + 4,
-                    vy: (Math.random() - 0.5) * 6 - 2,
-                    alpha: 1,
-                    decay: Math.random() * 0.025 + 0.02,
-                    size: Math.random() * 3.5 + 1.2,
-                    color: '#c82018'
-                });
-            }
-        });
-
-        if(!isParticleLooping) {
-            isParticleLooping = true;
-            renderParticles();
-        }
-    }
-
-    function renderParticles() {
+    // ========================================================
+    // [렌더러 및 이징(Easing) 모션 처리]
+    // ========================================================
+    function renderFrame(curTime) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        for(let i = particles.length - 1; i >= 0; i--) {
-            const p = particles[i];
-            p.x += p.vx;
-            p.y += p.vy;
-            p.alpha -= p.decay;
+        if(!subtitles[currentCueIndex]) return;
 
-            if(p.alpha <= 0) {
-                particles.splice(i, 1);
-                continue;
-            }
+        const sub = subtitles[currentCueIndex];
+        const cueDuration = Math.max(sub.end - sub.start, 0.4);
+        const elapsed = curTime - sub.start;
+        const normTime = Math.min(Math.max(elapsed / cueDuration, 0), 1);
 
-            ctx.save();
-            ctx.globalAlpha = p.alpha;
-            ctx.fillStyle = p.color;
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
-        }
+        const inType = inSelect.value;
+        const outType = outSelect.value;
 
-        if(particles.length > 0) {
-            requestAnimationFrame(renderParticles);
-        } else {
-            isParticleLooping = false;
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-        }
+        // IN/OUT 진행도 산정
+        const inWindow = 0.22;
+        const outWindow = 0.22;
+        const inProgress = Math.min(normTime / inWindow, 1);
+        const isOut = normTime > (1 - outWindow);
+        const outProgress = isOut ? (normTime - (1 - outWindow)) / outWindow : 0;
+
+        ctx.strokeStyle = '#c82018';
+        ctx.fillStyle = '#c82018';
+        ctx.lineCap = 'square';
+        ctx.lineJoin = 'miter';
+
+        currentGlyphs.forEach((glyph, gIdx) => {
+            const gDelay = gIdx * 0.04;
+            const localInP = Math.min(Math.max((inProgress - gDelay) / (1 - gDelay || 1), 0), 1);
+
+            glyph.strokes.forEach((stroke, sIdx) => {
+                ctx.save();
+
+                let strokeScale = 1;
+                let transX = glyph.x;
+                let transY = glyph.y;
+                let rotation = 0;
+                let alpha = 1;
+
+                // --- 1. IN 효과 적용 ---
+                if (localInP < 1) {
+                    if (inType === 'stamp') {
+                        const p = localInP;
+                        strokeScale = p < 0.8 ? 3.5 - p * 3.1 : 1;
+                        alpha = Math.min(p * 2, 1);
+                    } else if (inType === 'popup') {
+                        transY += (1 - localInP) * 120;
+                        alpha = localInP;
+                    } else if (inType === 'snow') {
+                        transY -= (1 - localInP) * 150;
+                        alpha = localInP;
+                    } else if (inType === 'converge') {
+                        transX += stroke.dirX * (1 - localInP) * 0.5;
+                        transY += stroke.dirY * (1 - localInP) * 0.5;
+                        alpha = localInP;
+                    }
+                }
+
+                // --- 2. OUT 효과 (개별 획 분리 비산) ---
+                if (outProgress > 0) {
+                    const localOutP = Math.min(Math.max((outProgress - sIdx * 0.03) / 0.8, 0), 1);
+
+                    if (outType === 'stroke-disassemble') {
+                        // 뱀처럼 구불거리며 나가는 S자 곡선 오프셋
+                        const wave = Math.sin(localOutP * Math.PI * 4 + stroke.phase) * 45;
+                        transX += stroke.dirX * localOutP + (stroke.dirY > 0 ? wave : -wave);
+                        transY += stroke.dirY * localOutP + wave;
+                        rotation = stroke.rotSpeed * localOutP;
+                        alpha = 1 - Math.pow(localOutP, 2);
+                        strokeScale = 1 + localOutP * 0.4;
+                    } else if (outType === 'wind') {
+                        transX += localOutP * 400;
+                        transY -= localOutP * 80;
+                        alpha = 1 - localOutP;
+                    } else if (outType === 'sink') {
+                        transY += localOutP * 200;
+                        alpha = 1 - localOutP;
+                    }
+                }
+
+                // 획 렌더링
+                ctx.globalAlpha = Math.max(alpha, 0);
+                ctx.translate(transX + glyph.size / 2, transY + glyph.size / 2);
+                ctx.rotate(rotation);
+                ctx.scale(strokeScale, strokeScale);
+                ctx.translate(-glyph.size / 2, -glyph.size / 2);
+
+                const sWidth = stroke.strokeWidth * glyph.size;
+                ctx.lineWidth = Math.max(sWidth, 2);
+
+                ctx.beginPath();
+                stroke.points.forEach((pt, pIdx) => {
+                    const px = pt.x * glyph.size;
+                    const py = pt.y * glyph.size;
+                    if (pIdx === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                });
+                ctx.stroke();
+
+                ctx.restore();
+            });
+        });
     }
 
-    // 타임라인 재생 엔진
+    function renderCurrentFrame() {
+        if(currentCueIndex === -1 && subtitles.length > 0) currentCueIndex = 0;
+        buildGlyphs(currentCueIndex);
+        const cur = subtitles[currentCueIndex] ? subtitles[currentCueIndex].start + 0.1 : 0;
+        renderFrame(cur);
+    }
+
+    // 재생 루프
     function togglePlay() {
         if(subtitles.length === 0) {
             subtitles = [
@@ -591,7 +487,7 @@
                 { start: 4.0, end: 7.0, text: "家和萬事成" },
                 { start: 7.5, end: 10.5, text: "大吉大利" }
             ];
-            alert("기본 샘플 자막이 로드되었습니다.");
+            alert("기본 구첩전 샘플 자막이 로드되었습니다.");
         }
 
         isPlaying = !isPlaying;
@@ -611,7 +507,7 @@
     function loop() {
         if(!isPlaying) return;
         const curTime = (performance.now() - startTime) / 1000;
-        
+
         const mm = Math.floor(curTime / 60).toString().padStart(2, '0');
         const ss = (curTime % 60).toFixed(2).padStart(5, '0');
         timelineInfo.innerText = `${mm}:${ss}`;
@@ -620,25 +516,24 @@
 
         if(activeIdx !== -1 && activeIdx !== currentCueIndex) {
             currentCueIndex = activeIdx;
-            renderCue(currentCueIndex);
+            buildGlyphs(currentCueIndex);
         }
 
-        // 자막 종료 0.7초 전에 선택된 OUT 모션 발동
         if(currentCueIndex !== -1) {
-            const cue = subtitles[currentCueIndex];
-            const remaining = cue.end - curTime;
-            if(remaining <= 0.7 && remaining > 0.6) {
-                triggerOutEffect();
-            }
+            renderFrame(curTime);
         }
 
-        if(curTime > subtitles[subtitles.length - 1].end + 0.8) {
+        if(curTime > subtitles[subtitles.length - 1].end + 0.5) {
             togglePlay();
             return;
         }
 
         animFrameId = requestAnimationFrame(loop);
     }
+
+    // 초기화
+    syncCanvas();
+    updateScaleModeUI();
 </script>
 </body>
 </html>
