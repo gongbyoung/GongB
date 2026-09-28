@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>한글전서체 완벽 구현 SRT 엔진</title>
+    <title>한글전서체 타이포 엔진 v0.5</title>
     <style>
         :root {
             --bg-color: #050404;
-            --seal-red: #c82018;      /* 도장 인주색 */
+            --seal-red: #c82018;
             --guide-border: #00ffcc;
         }
 
@@ -16,7 +16,7 @@
         body {
             background-color: var(--bg-color);
             color: #eee;
-            font-family: sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             overflow: hidden;
             width: 100vw;
             height: 100vh;
@@ -26,16 +26,15 @@
             justify-content: center;
         }
 
-        /* 컨트롤 상단 패널 */
-        #top-bar {
+        /* 2단 컨트롤 패널 */
+        #ctrl-container {
             position: absolute;
             top: 10px;
             left: 50%;
             transform: translateX(-50%);
             display: flex;
-            flex-wrap: wrap;
-            align-items: center;
-            gap: 8px;
+            flex-direction: column;
+            gap: 6px;
             background: rgba(18, 15, 15, 0.95);
             padding: 8px 16px;
             border-radius: 12px;
@@ -44,28 +43,38 @@
             backdrop-filter: blur(12px);
             font-size: 11px;
             box-shadow: 0 4px 25px rgba(0,0,0,0.85);
+            max-width: 95vw;
         }
 
-        #top-bar button, #top-bar select, #top-bar label, #top-bar input {
+        .ctrl-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+        }
+
+        #ctrl-container button, #ctrl-container select, #ctrl-container label, #ctrl-container input {
             background: #201c1c;
             color: #eeddbb;
             border: 1px solid #483a3a;
-            padding: 5px 9px;
+            padding: 4px 8px;
             border-radius: 4px;
             cursor: pointer;
             font-size: 11px;
             outline: none;
         }
 
-        #top-bar input[type="number"] { width: 65px; text-align: center; cursor: text; }
-        #top-bar button:hover, #top-bar label:hover { background: var(--seal-red); color: #fff; }
+        #ctrl-container input[type="number"] { width: 55px; text-align: center; }
+        #ctrl-container input[type="range"] { accent-color: var(--seal-red); cursor: pointer; }
+        #ctrl-container button:hover, #ctrl-container label:hover { background: var(--seal-red); color: #fff; }
         #file-input { display: none; }
 
+        #time-slider { flex: 1; min-width: 150px; height: 5px; }
         #timeline-info {
             color: #00ffcc;
             font-family: monospace;
-            font-size: 13px;
-            min-width: 75px;
+            font-size: 12px;
+            min-width: 85px;
             text-align: center;
         }
 
@@ -85,59 +94,74 @@
 </head>
 <body>
 
-<div id="top-bar">
-    <label for="file-input">📂 LOAD SRT</label>
-    <input type="file" id="file-input" accept=".srt">
-    
-    <label>화면비:</label>
-    <select id="ratio-select" onchange="changeRatio(this.value)">
-        <option value="16:9">16:9 (가로형)</option>
-        <option value="9:16">9:16 (세로 숏폼)</option>
-    </select>
+<div id="ctrl-container">
+    <!-- 1행: 파일, 화면비, 조형 파라미터 조절 -->
+    <div class="ctrl-row">
+        <label for="file-input">📂 LOAD SRT</label>
+        <input type="file" id="file-input" accept=".srt">
+        
+        <label>화면비:</label>
+        <select id="ratio-select" onchange="changeRatio(this.value)">
+            <option value="16:9">16:9</option>
+            <option value="9:16">9:16</option>
+        </select>
 
-    <label>스케일 모드:</label>
-    <select id="scale-mode" onchange="updateScaleModeUI()">
-        <option value="fill">화면 가득 채움 (%)</option>
-        <option value="fixed">절대 수치 고정 (px)</option>
-    </select>
+        <label>한줄 글자수:</label>
+        <select id="col-select" onchange="renderCurrentFrame()">
+            <option value="auto">자동(정방형)</option>
+            <option value="2">2자씩</option>
+            <option value="3">3자씩</option>
+            <option value="4">4자씩</option>
+            <option value="5">5자씩</option>
+        </select>
 
-    <div id="px-input-group" style="display: none; align-items: center; gap: 4px;">
+        <label>획 굵기:</label>
+        <input type="range" id="weight-slider" min="1" max="25" value="6" oninput="syncWeight(this.value)">
+        <span id="weight-val">6px</span>
+
+        <label>자간:</label>
+        <input type="range" id="spacing-slider" min="-30" max="60" value="10" oninput="syncSpacing(this.value)">
+        <span id="spacing-val">10px</span>
+
         <label>글자 크기(px):</label>
         <input type="number" id="fixed-px-val" value="160" min="40" max="600" step="10" onchange="renderCurrentFrame()">
     </div>
 
-    <!-- IN 모션 10종 -->
-    <label>IN 효과:</label>
-    <select id="in-select">
-        <option value="snake-in" selected>1. 획들이 뱀처럼 들어오기</option>
-        <option value="slide-up">2. 바닥에서 스르륵 올라오기</option>
-        <option value="stamp-char">3. 도장찍듯이 한글자씩 찍히기</option>
-        <option value="stamp-top">4. 상단에서 도장찍기(눌림 복원)</option>
-        <option value="fold-unfold">5. 접혔던 획이 펼쳐지기</option>
-        <option value="ink-bleed">6. 먹물이 번지며 드러나기</option>
-        <option value="spiral-in">7. 나선 회오리 수렴</option>
-        <option value="converge-4way">8. 4방향에서 획 날아오기</option>
-        <option value="elastic-pop">9. 쫀득한 탄성 팝업</option>
-        <option value="typing-stroke">10. 획 순서대로 그어지기</option>
-    </select>
+    <!-- 2행: 인/아웃 모션 및 타임라인 컨트롤 -->
+    <div class="ctrl-row">
+        <label>IN:</label>
+        <select id="in-select">
+            <option value="snake-in" selected>1. 획들이 뱀처럼 들어오기</option>
+            <option value="slide-up">2. 바닥에서 스르륵 올라오기</option>
+            <option value="stamp-char">3. 도장찍듯이 한글자씩 찍히기</option>
+            <option value="stamp-top">4. 상단 도장 날인(눌림 복원)</option>
+            <option value="fold-unfold">5. 접혔던 획 펼치기</option>
+            <option value="ink-bleed">6. 먹물 번짐</option>
+            <option value="spiral-in">7. 나선 수렴</option>
+            <option value="converge-4way">8. 4방향 수렴</option>
+            <option value="elastic-pop">9. 탄성 팝업</option>
+            <option value="typing-stroke">10. 획 순서 드로잉</option>
+        </select>
 
-    <!-- OUT 모션 10종 -->
-    <label>OUT 효과:</label>
-    <select id="out-select">
-        <option value="snake-out" selected>1. 획들이 뱀처럼 사이드로 탈출</option>
-        <option value="dust-fly">2. 천천히 분해되어 공중 날리기</option>
-        <option value="next-stamp-crush">3. 다음 글자 찍히며 으깨지기</option>
-        <option value="wind-sweep">4. 바람에 실려 흩어지기</option>
-        <option value="wipe-side">5. 와이퍼로 닦여 소멸</option>
-        <option value="diag-popout">6. 대각선 팝업 축소 소멸</option>
-        <option value="sink-down">7. 바닥으로 스르륵 침몰</option>
-        <option value="stroke-shatter">8. 획이 유리처럼 부서지기</option>
-        <option value="blackhole">9. 블랙홀로 빨려들어가기</option>
-        <option value="melt-drip">10. 아래로 먹물 녹아내림</option>
-    </select>
+        <label>OUT:</label>
+        <select id="out-select">
+            <option value="snake-out" selected>★ 수평/수직 뱀 굴곡 비산</option>
+            <option value="dust-fly">2. 공중 날리기</option>
+            <option value="next-stamp-crush">3. 으깨지며 소멸</option>
+            <option value="wind-sweep">4. 바람에 날리기</option>
+            <option value="wipe-side">5. 와이퍼 닦기</option>
+            <option value="diag-popout">6. 대각선 소멸</option>
+            <option value="sink-down">7. 바닥 침몰</option>
+            <option value="stroke-shatter">8. 획 유리 파쇄</option>
+            <option value="blackhole">9. 블랙홀 소멸</option>
+            <option value="melt-drip">10. 먹물 흘러내림</option>
+        </select>
 
-    <button id="play-btn" onclick="togglePlay()">▶ 재생</button>
-    <span id="timeline-info">00:00.00</span>
+        <button id="play-btn" onclick="togglePlay()">▶ 재생</button>
+        <button id="pause-btn" onclick="togglePause()">⏸ 일시정지</button>
+        <input type="range" id="time-slider" min="0" max="100" step="0.01" value="0" oninput="seekTime(this.value)">
+        <span id="timeline-info">00:00.00</span>
+    </div>
 </div>
 
 <div id="viewport-wrapper" class="ratio-16-9">
@@ -147,19 +171,24 @@
 <script>
     let subtitles = [];
     let isPlaying = false;
-    let startTime = 0;
+    let isPaused = false;
+    let currentTime = 0;
+    let lastTimestamp = 0;
     let animFrameId = null;
     let currentCueIndex = -1;
+
+    let strokeWidthVal = 6;
+    let charSpacingVal = 10;
 
     const viewport = document.getElementById('viewport-wrapper');
     const canvas = document.getElementById('renderCanvas');
     const ctx = canvas.getContext('2d');
+    const timeSlider = document.getElementById('time-slider');
     const timelineInfo = document.getElementById('timeline-info');
     const playBtn = document.getElementById('play-btn');
     const inSelect = document.getElementById('in-select');
     const outSelect = document.getElementById('out-select');
-    const scaleModeSelect = document.getElementById('scale-mode');
-    const pxGroup = document.getElementById('px-input-group');
+    const colSelect = document.getElementById('col-select');
     const fixedPxInput = document.getElementById('fixed-px-val');
 
     let currentGlyphs = [];
@@ -179,12 +208,19 @@
         renderCurrentFrame();
     }
 
-    function updateScaleModeUI() {
-        pxGroup.style.display = scaleModeSelect.value === 'fixed' ? 'flex' : 'none';
+    function syncWeight(v) {
+        strokeWidthVal = parseFloat(v);
+        document.getElementById('weight-val').innerText = v + 'px';
         renderCurrentFrame();
     }
 
-    // SRT 파일 파싱
+    function syncSpacing(v) {
+        charSpacingVal = parseFloat(v);
+        document.getElementById('spacing-val').innerText = v + 'px';
+        renderCurrentFrame();
+    }
+
+    // SRT 파서
     document.getElementById('file-input').addEventListener('change', function(e) {
         const file = e.target.files[0];
         if(!file) return;
@@ -218,7 +254,10 @@
         });
 
         if(subtitles.length > 0) {
+            const maxEnd = subtitles[subtitles.length - 1].end;
+            timeSlider.max = maxEnd + 1;
             alert(`SRT 자막 ${subtitles.length}개가 로드되었습니다.`);
+            currentTime = 0;
             currentCueIndex = 0;
             buildGlyphs(0);
             renderCurrentFrame();
@@ -231,11 +270,11 @@
     }
 
     // =========================================================================
-    // [한글전서체 벡터 폰트 엔진 (진짜 관인 도장 조형 곡선 규격)]
-    // 획을 얇고 균일하게(strokeWidth: 4~6px) 유지하며 여백을 구불구불 채움
+    // [한글전서체 획 분절 및 굴곡 벡터 엔진]
+    // 획들을 세부 수평(H)/수직(V) 선분으로 쪼개어 유기적인 뱀 탈출 궤적을 부여
     // =========================================================================
-    function getJeonseoStrokes(char, seed) {
-        const strokes = [];
+    function getJeonseoSegmentStrokes(char, seed) {
+        const segments = [];
         const code = char.charCodeAt(0);
         let cho = 0, jung = 0, jong = 0;
         let isHangul = (code >= 0xAC00 && code <= 0xD7A3);
@@ -248,146 +287,93 @@
         }
 
         const hasJong = jong > 0;
-        // 상하 구획: 받침이 있으면 55:45, 없으면 100
         const topH = hasJong ? 0.52 : 0.94;
         const botY = hasJong ? 0.56 : 0.94;
-
-        // 세로모음(ㅏ, ㅑ, ㅓ, ㅕ, ㅣ 등) 여부
         const isVertVowel = [0, 1, 2, 3, 20].includes(jung);
         const choW = isVertVowel ? 0.62 : 0.94;
-        const vX = 0.92;
+        const vX = 0.94;
 
-        // --- 1. 초성 (전서체 특유의 긴 곡선 다리와 대칭형 구조) ---
-        // ㅈ, ㅊ (증, 천 등)
-        if ([9, 10].includes(cho)) {
-            strokes.push([{ x: 0.08, y: 0.08 }, { x: choW, y: 0.08 }]); // 상단 수평선
-            // 좌측 유려한 곡절 다리
-            strokes.push([
-                { x: choW * 0.5, y: 0.08 },
-                { x: 0.15, y: topH * 0.4 },
-                { x: 0.08, y: topH * 0.92 }
-            ]);
-            // 우측 유려한 곡절 다리
-            strokes.push([
-                { x: choW * 0.5, y: 0.08 },
-                { x: choW - 0.15, y: topH * 0.4 },
-                { x: choW, y: topH * 0.92 }
-            ]);
-        }
-        // ㅍ (평 등)
-        else if (cho === 17) {
-            strokes.push([{ x: 0.08, y: 0.08 }, { x: choW, y: 0.08 }]); // 상초
-            strokes.push([{ x: 0.08, y: topH * 0.92 }, { x: choW, y: topH * 0.92 }]); // 하초
-            strokes.push([{ x: choW * 0.35, y: 0.08 }, { x: choW * 0.35, y: topH * 0.92 }]); // 좌기둥
-            strokes.push([{ x: choW * 0.65, y: 0.08 }, { x: choW * 0.65, y: topH * 0.92 }]); // 우기둥
-        }
-        // ㄱ, ㅋ (군 등)
-        else if ([0, 15].includes(cho)) {
-            strokes.push([
-                { x: 0.08, y: 0.08 },
-                { x: choW, y: 0.08 },
-                { x: choW, y: topH * 0.92 }
-            ]);
-            if (cho === 15) strokes.push([{ x: 0.08, y: topH * 0.45 }, { x: choW, y: topH * 0.45 }]);
-        }
-        // ㅅ (수 등)
-        else if (cho === 7 || cho === 9) {
-            strokes.push([
-                { x: choW * 0.5, y: 0.08 },
-                { x: 0.15, y: topH * 0.4 },
-                { x: 0.08, y: topH * 0.92 }
-            ]);
-            strokes.push([
-                { x: choW * 0.5, y: 0.08 },
-                { x: choW - 0.15, y: topH * 0.4 },
-                { x: choW, y: topH * 0.92 }
-            ]);
-        }
-        // ㅇ, ㅎ (인 등)
-        else if ([11, 18].includes(cho)) {
-            // 전서체 고유의 세로로 긴 장방형 타원 (캡슐 형태)
-            strokes.push([
-                { x: choW * 0.5, y: 0.08 },
-                { x: 0.08, y: topH * 0.25 },
-                { x: 0.08, y: topH * 0.75 },
-                { x: choW * 0.5, y: topH * 0.92 },
-                { x: choW, y: topH * 0.75 },
-                { x: choW, y: topH * 0.25 },
-                { x: choW * 0.5, y: 0.08 }
-            ]);
-            if (cho === 18) strokes.push([{ x: 0.15, y: 0.04 }, { x: choW - 0.15, y: 0.04 }]);
-        }
-        // 기타 자음 (ㄴ, ㄷ, ㄹ, ㅁ, ㅂ)
-        else {
-            strokes.push([
-                { x: 0.08, y: 0.08 },
-                { x: choW, y: 0.08 },
-                { x: choW, y: topH * 0.92 },
-                { x: 0.08, y: topH * 0.92 },
-                { x: 0.08, y: 0.08 }
-            ]);
+        // 보조 선분 추가기
+        function addSeg(x1, y1, x2, y2, type) {
+            segments.push({
+                x1, y1, x2, y2,
+                type: type || (Math.abs(x2 - x1) > Math.abs(y2 - y1) ? 'H' : 'V')
+            });
         }
 
-        // --- 2. 중성 모음 (틀 벽면에 바짝 닿는 팽팽한 전서 기둥) ---
+        // 초성
+        if ([9, 10].includes(cho)) { // ㅈ, ㅊ
+            addSeg(0.06, 0.06, choW, 0.06, 'H');
+            addSeg(choW * 0.5, 0.06, 0.12, topH * 0.45, 'V');
+            addSeg(0.12, topH * 0.45, 0.06, topH * 0.92, 'V');
+            addSeg(choW * 0.5, 0.06, choW - 0.12, topH * 0.45, 'V');
+            addSeg(choW - 0.12, topH * 0.45, choW, topH * 0.92, 'V');
+        } else if (cho === 17) { // ㅍ
+            addSeg(0.06, 0.06, choW, 0.06, 'H');
+            addSeg(0.06, topH * 0.92, choW, topH * 0.92, 'H');
+            addSeg(choW * 0.35, 0.06, choW * 0.35, topH * 0.92, 'V');
+            addSeg(choW * 0.65, 0.06, choW * 0.65, topH * 0.92, 'V');
+        } else if ([0, 15].includes(cho)) { // ㄱ, ㅋ
+            addSeg(0.06, 0.06, choW, 0.06, 'H');
+            addSeg(choW, 0.06, choW, topH * 0.92, 'V');
+            if (cho === 15) addSeg(0.06, topH * 0.45, choW, topH * 0.45, 'H');
+        } else if ([11, 18].includes(cho)) { // ㅇ, ㅎ
+            addSeg(0.15, 0.06, choW - 0.15, 0.06, 'H');
+            addSeg(0.06, 0.2, 0.06, topH * 0.75, 'V');
+            addSeg(choW, 0.2, choW, topH * 0.75, 'V');
+            addSeg(0.15, topH * 0.92, choW - 0.15, topH * 0.92, 'H');
+            addSeg(0.06, 0.2, 0.15, 0.06, 'H');
+            addSeg(choW - 0.15, 0.06, choW, 0.2, 'H');
+            addSeg(0.06, topH * 0.75, 0.15, topH * 0.92, 'H');
+            addSeg(choW - 0.15, topH * 0.92, choW, topH * 0.75, 'H');
+            if (cho === 18) addSeg(0.2, 0.02, choW - 0.2, 0.02, 'H');
+        } else { // 기타 (ㄴ, ㄷ, ㅁ 등)
+            addSeg(0.06, 0.06, choW, 0.06, 'H');
+            addSeg(0.06, 0.06, 0.06, topH * 0.92, 'V');
+            addSeg(choW, 0.06, choW, topH * 0.92, 'V');
+            addSeg(0.06, topH * 0.92, choW, topH * 0.92, 'H');
+        }
+
+        // 중성 모음
         if (isVertVowel) {
-            // 세로 기둥 (벽면 끝까지)
-            strokes.push([{ x: vX, y: 0.08 }, { x: vX, y: topH * 0.92 }]);
-            // 곁가지 연결선
-            strokes.push([{ x: choW, y: topH * 0.45 }, { x: vX, y: topH * 0.45 }]);
+            addSeg(vX, 0.06, vX, topH * 0.92, 'V');
+            addSeg(choW, topH * 0.45, vX, topH * 0.45, 'H');
         } else {
-            // 가로 모음 (ㅡ, ㅗ, ㅜ) : 상단을 가로지르는 굵은 중심 횡선
-            strokes.push([{ x: 0.08, y: topH * 0.92 }, { x: 0.94, y: topH * 0.92 }]);
+            addSeg(0.06, topH * 0.92, 0.94, topH * 0.92, 'H');
         }
 
-        // --- 3. 종성 받침 (도장 하단을 웅장하게 떠받치는 전각 구조) ---
+        // 종성 받침
         if (hasJong) {
-            // ㅇ 받침 (증, 평 등)
-            if (jong === 21) {
-                strokes.push([
-                    { x: 0.5, y: botY },
-                    { x: 0.08, y: botY + 0.15 },
-                    { x: 0.08, y: 0.82 },
-                    { x: 0.5, y: 0.94 },
-                    { x: 0.92, y: 0.82 },
-                    { x: 0.92, y: botY + 0.15 },
-                    { x: 0.5, y: botY }
-                ]);
-            }
-            // ㄴ 받침 (군, 인 등)
-            else if (jong === 4) {
-                strokes.push([
-                    { x: 0.08, y: botY },
-                    { x: 0.08, y: 0.94 },
-                    { x: 0.92, y: 0.94 },
-                    { x: 0.92, y: botY + 0.2 }
-                ]);
-            }
-            // 일반 받침 (사각 구첩전으로 채움)
-            else {
-                strokes.push([
-                    { x: 0.08, y: botY },
-                    { x: 0.92, y: botY },
-                    { x: 0.92, y: 0.94 },
-                    { x: 0.08, y: 0.94 },
-                    { x: 0.08, y: botY }
-                ]);
+            if (jong === 21) { // ㅇ 받침
+                addSeg(0.2, botY, 0.8, botY, 'H');
+                addSeg(0.06, botY + 0.12, 0.06, 0.82, 'V');
+                addSeg(0.94, botY + 0.12, 0.94, 0.82, 'V');
+                addSeg(0.2, 0.94, 0.8, 0.94, 'H');
+            } else if (jong === 4) { // ㄴ 받침
+                addSeg(0.06, botY, 0.06, 0.94, 'V');
+                addSeg(0.06, 0.94, 0.94, 0.94, 'H');
+            } else {
+                addSeg(0.06, botY, 0.94, botY, 'H');
+                addSeg(0.06, botY, 0.06, 0.94, 'V');
+                addSeg(0.94, botY, 0.94, 0.94, 'V');
+                addSeg(0.06, 0.94, 0.94, 0.94, 'H');
             }
         }
 
-        // 각 획별 비산/모션 벡터 부여
-        return strokes.map((pts, i) => {
-            const angle = (i / strokes.length) * Math.PI * 2 + (seed * 0.4);
+        // 물리 비산 궤적 파라미터 매핑
+        return segments.map((seg, i) => {
+            const angle = (i / segments.length) * Math.PI * 2 + (seed * 0.4);
             return {
-                points: pts,
-                dirX: Math.cos(angle) * (420 + (i % 3) * 120),
-                dirY: Math.sin(angle) * (320 + (i % 2) * 120),
-                rotSpeed: (i % 2 === 0 ? 1 : -1) * (2.5 + (i % 3)),
-                phase: i * 0.45
+                ...seg,
+                dirX: Math.cos(angle) * (380 + (i % 3) * 120),
+                dirY: Math.sin(angle) * (280 + (i % 2) * 120),
+                rotSpeed: (i % 2 === 0 ? 1 : -1) * (2.0 + (i % 3)),
+                phase: i * 0.6
             };
         });
     }
 
-    // 자막 문자열을 사각 박스 격자에 완벽히 배치
+    // 자막 문자열을 사각 박스 격자에 배치
     function buildGlyphs(idx) {
         if(!subtitles[idx]) return;
         const sub = subtitles[idx];
@@ -396,32 +382,33 @@
 
         const vW = viewport.clientWidth;
         const vH = viewport.clientHeight;
-        const mode = scaleModeSelect.value;
+        const slotSize = parseFloat(fixedPxInput.value) || 160;
         const total = chars.length;
 
-        let slotSize;
-        if(mode === 'fill') {
-            const cols = Math.ceil(Math.sqrt(total));
-            const target = Math.min(vW, vH) * 0.88;
-            slotSize = Math.floor(target / cols);
+        // 한줄 글자수 설정 적용
+        let cols;
+        const colMode = colSelect.value;
+        if(colMode === 'auto') {
+            cols = Math.ceil(Math.sqrt(total));
         } else {
-            slotSize = parseFloat(fixedPxInput.value) || 160;
+            cols = parseInt(colMode);
         }
 
-        const cols = Math.min(total, Math.floor((vW * 0.94) / slotSize) || 1);
         const rows = Math.ceil(total / cols);
-        const totalW = cols * slotSize;
-        const totalH = rows * slotSize;
+        const stepX = slotSize + charSpacingVal;
+        const stepY = slotSize + charSpacingVal;
+        const totalW = cols * slotSize + (cols - 1) * charSpacingVal;
+        const totalH = rows * slotSize + (rows - 1) * charSpacingVal;
         const startX = (vW - totalW) / 2;
         const startY = (vH - totalH) / 2;
 
         currentGlyphs = chars.map((char, i) => {
             const col = i % cols;
             const row = Math.floor(i / cols);
-            const gx = startX + col * slotSize;
-            const gy = startY + row * slotSize;
+            const gx = startX + col * stepX;
+            const gy = startY + row * stepY;
 
-            const strokes = getJeonseoStrokes(char, i * 53);
+            const strokes = getJeonseoSegmentStrokes(char, i * 43);
 
             return {
                 char,
@@ -434,7 +421,7 @@
     }
 
     // ========================================================
-    // [10종 IN & 10종 OUT 모션 렌더러]
+    // [렌더러 및 뱀 비산 모션 엔진]
     // ========================================================
     function renderFrame(curTime) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -457,11 +444,12 @@
         ctx.strokeStyle = '#c82018';
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
+        ctx.lineWidth = strokeWidthVal;
 
         currentGlyphs.forEach((glyph, gIdx) => {
             const charDelay = gIdx * 0.05;
             const localInP = Math.min(Math.max((inProgress - charDelay) / (1 - charDelay || 1), 0), 1);
-            const localOutP = isOut ? Math.min(Math.max((outProgress - charDelay * 0.5) / 0.8, 0), 1) : 0;
+            const localOutP = isOut ? Math.min(Math.max((outProgress - charDelay * 0.4) / 0.8, 0), 1) : 0;
 
             glyph.strokes.forEach((stroke, sIdx) => {
                 ctx.save();
@@ -471,19 +459,21 @@
                 let transY = glyph.y;
                 let rotation = 0;
                 let alpha = 1;
-                let strokeTrim = 1.0;
 
-                // ----------------------------------------------------
-                // [IN 모션 10종]
-                // ----------------------------------------------------
+                // --- 1. IN 효과 ---
                 if (localInP < 1) {
                     const p = localInP;
                     switch (inType) {
                         case 'snake-in':
-                            const inWave = Math.sin((1 - p) * Math.PI * 3 + stroke.phase) * 60;
-                            transX += stroke.dirX * (1 - p) + inWave;
-                            transY += stroke.dirY * (1 - p) + (stroke.dirX > 0 ? inWave : -inWave);
-                            rotation = stroke.rotSpeed * (1 - p);
+                            // 획 방향별 유기적 진입
+                            const inW = Math.sin((1 - p) * Math.PI * 3 + stroke.phase) * 50;
+                            if (stroke.type === 'H') {
+                                transX += stroke.dirX * (1 - p);
+                                transY += inW;
+                            } else {
+                                transX += inW;
+                                transY += stroke.dirY * (1 - p);
+                            }
                             alpha = p;
                             break;
 
@@ -493,9 +483,9 @@
                             break;
 
                         case 'stamp-char':
-                            const stampP = Math.min(p * 1.5, 1);
-                            scaleX = scaleY = stampP < 0.85 ? 3.0 - stampP * 2.3 : 1.0;
-                            alpha = Math.min(stampP * 2, 1);
+                            const sp = Math.min(p * 1.5, 1);
+                            scaleX = scaleY = sp < 0.85 ? 3.0 - sp * 2.3 : 1.0;
+                            alpha = Math.min(sp * 2, 1);
                             break;
 
                         case 'stamp-top':
@@ -518,53 +508,58 @@
 
                         case 'ink-bleed':
                             alpha = Math.pow(p, 1.8);
-                            scaleX = scaleY = 1.2 - p * 0.2;
                             ctx.shadowColor = 'rgba(200, 32, 24, 0.6)';
                             ctx.shadowBlur = (1 - p) * 25;
                             break;
 
                         case 'spiral-in':
                             const spin = (1 - p) * Math.PI * 3;
-                            transX += Math.cos(spin) * 200 * (1 - p);
-                            transY += Math.sin(spin) * 200 * (1 - p);
+                            transX += Math.cos(spin) * 180 * (1 - p);
+                            transY += Math.sin(spin) * 180 * (1 - p);
                             rotation = spin;
                             alpha = p;
                             break;
 
                         case 'converge-4way':
-                            const cDir = sIdx % 4;
-                            if (cDir === 0) transX -= (1 - p) * 400;
-                            if (cDir === 1) transX += (1 - p) * 400;
-                            if (cDir === 2) transY -= (1 - p) * 300;
-                            if (cDir === 3) transY += (1 - p) * 300;
+                            const cd = sIdx % 4;
+                            if (cd === 0) transX -= (1 - p) * 350;
+                            if (cd === 1) transX += (1 - p) * 350;
+                            if (cd === 2) transY -= (1 - p) * 250;
+                            if (cd === 3) transY += (1 - p) * 250;
                             alpha = p;
                             break;
 
                         case 'elastic-pop':
-                            const bounce = Math.sin(p * Math.PI * 1.5) * Math.exp(-p * 3);
-                            scaleX = 1 + bounce * 0.8;
-                            scaleY = 1 - bounce * 0.4;
+                            const bc = Math.sin(p * Math.PI * 1.5) * Math.exp(-p * 3);
+                            scaleX = 1 + bc * 0.8;
+                            scaleY = 1 - bc * 0.4;
                             alpha = Math.min(p * 2, 1);
                             break;
 
                         case 'typing-stroke':
-                            strokeTrim = Math.min(p * 1.2, 1.0);
-                            alpha = p > 0 ? 1 : 0;
+                            alpha = p > (sIdx / glyph.strokes.length) ? 1 : 0;
                             break;
                     }
                 }
 
-                // ----------------------------------------------------
-                // [OUT 모션 10종]
-                // ----------------------------------------------------
+                // --- 2. OUT 효과 (수평/수직 분절 뱀 비산 강화) ---
                 if (localOutP > 0) {
                     const op = localOutP;
                     switch (outType) {
                         case 'snake-out':
-                            const outWave = Math.sin(op * Math.PI * 4 + stroke.phase) * 60;
-                            transX += stroke.dirX * op + outWave;
-                            transY += stroke.dirY * op + (stroke.dirX > 0 ? -outWave : outWave);
-                            rotation = stroke.rotSpeed * op;
+                            // 수평/수직 획의 고유 방향 뱀 굴곡
+                            const wave = Math.sin(op * Math.PI * 5 + stroke.phase) * 45;
+                            if (stroke.type === 'H') {
+                                // 수평선은 좌우로 흐르며 수직으로 격하게 요동침
+                                transX += (stroke.dirX > 0 ? 1 : -1) * op * 550;
+                                transY += wave * (1 + op * 2);
+                                rotation = Math.sin(op * Math.PI * 2) * 0.4;
+                            } else {
+                                // 수직선은 위아래로 솟구치며 좌우로 구불거림
+                                transX += wave * (1 + op * 2);
+                                transY += (stroke.dirY > 0 ? 1 : -1) * op * 450;
+                                rotation = Math.cos(op * Math.PI * 2) * 0.4;
+                            }
                             alpha = 1 - Math.pow(op, 2);
                             break;
 
@@ -590,8 +585,7 @@
                             break;
 
                         case 'wipe-side':
-                            strokeTrim = Math.max(1 - op, 0);
-                            alpha = 1 - op;
+                            alpha = op > (sIdx / glyph.strokes.length) ? 0 : 1;
                             break;
 
                         case 'diag-popout':
@@ -628,27 +622,16 @@
                     }
                 }
 
-                // 획 렌더링 (도장 인주 굵기: 글자 크기의 약 4%)
+                // 선분 렌더링
                 ctx.globalAlpha = Math.max(alpha, 0);
                 ctx.translate(transX + glyph.size / 2, transY + glyph.size / 2);
                 ctx.rotate(rotation);
                 ctx.scale(scaleX, scaleY);
                 ctx.translate(-glyph.size / 2, -glyph.size / 2);
 
-                // 균일한 도장 굵기 계산 (속공간이 막히지 않도록 정밀 제어)
-                ctx.lineWidth = Math.max(glyph.size * 0.042, 3.5);
-
                 ctx.beginPath();
-                const totalPts = stroke.points.length;
-                const visibleCount = Math.ceil(totalPts * strokeTrim);
-
-                for (let pIdx = 0; pIdx < visibleCount; pIdx++) {
-                    const pt = stroke.points[pIdx];
-                    const px = pt.x * glyph.size;
-                    const py = pt.y * glyph.size;
-                    if (pIdx === 0) ctx.moveTo(px, py);
-                    else ctx.lineTo(px, py);
-                }
+                ctx.moveTo(stroke.x1 * glyph.size, stroke.y1 * glyph.size);
+                ctx.lineTo(stroke.x2 * glyph.size, stroke.y2 * glyph.size);
                 ctx.stroke();
 
                 ctx.restore();
@@ -659,11 +642,30 @@
     function renderCurrentFrame() {
         if(currentCueIndex === -1 && subtitles.length > 0) currentCueIndex = 0;
         buildGlyphs(currentCueIndex);
-        const cur = subtitles[currentCueIndex] ? subtitles[currentCueIndex].start + 0.1 : 0;
-        renderFrame(cur);
+        renderFrame(currentTime);
     }
 
-    // 타임라인 재생 엔진
+    // 타임라인 탐색(슬라이더 조작)
+    function seekTime(val) {
+        currentTime = parseFloat(val);
+        updateTimelineUI();
+
+        const activeIdx = subtitles.findIndex(s => currentTime >= s.start && currentTime <= s.end);
+        if(activeIdx !== -1 && activeIdx !== currentCueIndex) {
+            currentCueIndex = activeIdx;
+            buildGlyphs(currentCueIndex);
+        }
+        renderFrame(currentTime);
+    }
+
+    function updateTimelineUI() {
+        timeSlider.value = currentTime;
+        const mm = Math.floor(currentTime / 60).toString().padStart(2, '0');
+        const ss = (currentTime % 60).toFixed(2).padStart(5, '0');
+        timelineInfo.innerText = `${mm}:${ss}`;
+    }
+
+    // 재생 / 일시정지 제어
     function togglePlay() {
         if(subtitles.length === 0) {
             subtitles = [
@@ -671,43 +673,64 @@
                 { start: 4.0, end: 7.0, text: "치마폭에" },
                 { start: 7.5, end: 10.5, text: "바다바람" }
             ];
-            alert("기본 한글전서체 샘플(증평군수인)이 로드되었습니다.");
+            timeSlider.max = 11.5;
+            alert("기본 한글전서체 샘플 자막이 로드되었습니다.");
+        }
+
+        if(isPaused) {
+            isPaused = false;
+            isPlaying = true;
+            lastTimestamp = performance.now();
+            playBtn.innerText = "⏹ 정지";
+            loop();
+            return;
         }
 
         isPlaying = !isPlaying;
         if(isPlaying) {
             playBtn.innerText = "⏹ 정지";
-            playBtn.style.background = "#555";
-            startTime = performance.now();
-            currentCueIndex = -1;
+            lastTimestamp = performance.now();
             loop();
         } else {
             playBtn.innerText = "▶ 재생";
-            playBtn.style.background = "var(--seal-red)";
             cancelAnimationFrame(animFrameId);
         }
     }
 
-    function loop() {
+    function togglePause() {
         if(!isPlaying) return;
-        const curTime = (performance.now() - startTime) / 1000;
+        isPaused = !isPaused;
+        if(isPaused) {
+            cancelAnimationFrame(animFrameId);
+            document.getElementById('pause-btn').innerText = "▶ 계속";
+        } else {
+            lastTimestamp = performance.now();
+            document.getElementById('pause-btn').innerText = "⏸ 일시정지";
+            loop();
+        }
+    }
 
-        const mm = Math.floor(curTime / 60).toString().padStart(2, '0');
-        const ss = (curTime % 60).toFixed(2).padStart(5, '0');
-        timelineInfo.innerText = `${mm}:${ss}`;
+    function loop() {
+        if(!isPlaying || isPaused) return;
 
-        const activeIdx = subtitles.findIndex(s => curTime >= s.start && curTime <= s.end);
+        const now = performance.now();
+        const delta = (now - lastTimestamp) / 1000;
+        lastTimestamp = now;
+        currentTime += delta;
 
+        updateTimelineUI();
+
+        const activeIdx = subtitles.findIndex(s => currentTime >= s.start && currentTime <= s.end);
         if(activeIdx !== -1 && activeIdx !== currentCueIndex) {
             currentCueIndex = activeIdx;
             buildGlyphs(currentCueIndex);
         }
 
         if(currentCueIndex !== -1) {
-            renderFrame(curTime);
+            renderFrame(currentTime);
         }
 
-        if(curTime > subtitles[subtitles.length - 1].end + 0.5) {
+        if(currentTime > subtitles[subtitles.length - 1].end + 0.5) {
             togglePlay();
             return;
         }
@@ -715,9 +738,8 @@
         animFrameId = requestAnimationFrame(loop);
     }
 
-    // 초기화
+    // 초기 설정 구동
     syncCanvas();
-    updateScaleModeUI();
     renderCurrentFrame();
 </script>
 </body>
