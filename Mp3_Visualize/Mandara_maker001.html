@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Music Mandala Generator</title>
+    <style>
+        :root {
+            --bg-color: #1a1a1a;
+            --panel-color: #333;
+            --text-color: #fff;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .control-panel {
+            background: var(--panel-color);
+            padding: 20px;
+            border-radius: 15px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            width: 100%;
+            max-width: 1000px;
+            margin-bottom: 20px;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .canvas-container {
+            position: relative;
+            background: #000;
+            box-shadow: 0 0 30px rgba(0,0,0,0.5);
+            margin-bottom: 20px;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* Aspect Ratio Classes */
+        .ratio-16-9 { aspect-ratio: 16 / 9; width: 80%; }
+        .ratio-9-16 { aspect-ratio: 9 / 16; width: 40%; }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .timeline-container {
+            width: 100%;
+            max-width: 1000px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        input[type="range"] {
+            flex-grow: 1;
+            cursor: pointer;
+        }
+
+        button {
+            padding: 10px 25px;
+            background: #4CAF50;
+            border: none;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        button:hover { background: #45a049; }
+
+        label { font-size: 0.9rem; color: #ccc; }
+    </style>
+</head>
+<body>
+
+    <h1>🎵 Music Mandala Generator</h1>
+
+    <div class="control-panel">
+        <div class="input-group">
+            <label>Vocal Track</label>
+            <input type="file" id="vocalFile" accept="audio/*">
+        </div>
+        <div class="input-group">
+            <label>Other Track</label>
+            <input type="file" id="otherFile" accept="audio/*">
+        </div>
+        <div class="input-group">
+            <label>Bass Track</label>
+            <input type="file" id="bassFile" accept="audio/*">
+        </div>
+        <div class="input-group">
+            <label>Drum Track</label>
+            <input type="file" id="drumFile" accept="audio/*">
+        </div>
+
+        <div class="input-group">
+            <label>Aspect Ratio</label>
+            <select id="aspectRatio">
+                <option value="ratio-16-9">16:9 (Landscape)</option>
+                <option value="ratio-9-16">9:16 (Portrait)</option>
+            </select>
+        </div>
+
+        <div class="input-group">
+            <label>Color Theme</label>
+            <select id="colorTheme">
+                <option value="pastel">Pastel</option>
+                <option value="primary">Primary (Bold)</option>
+                <option value="custom">Custom</option>
+            </select>
+            <input type="color" id="customColor" value="#ff00ea" style="display:none; margin-top:5px;">
+        </div>
+
+        <div class="input-group" style="justify-content: flex-end;">
+            <button id="generateBtn">GENERATE & PLAY</button>
+        </div>
+    </div>
+
+    <div id="canvasWrapper" class="canvas-container ratio-16-9">
+        <canvas id="mandalaCanvas"></canvas>
+    </div>
+
+    <div class="timeline-container">
+        <span id="currentTime">0:00</span>
+        <input type="range" id="timeline" value="0" step="0.1">
+        <span id="duration">0:00</span>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('mandalaCanvas');
+        const ctx = canvas.getContext('2d');
+        const generateBtn = document.getElementById('generateBtn');
+        const timeline = document.getElementById('timeline');
+        const aspectRatioSelect = document.getElementById('aspectRatio');
+        const colorThemeSelect = document.getElementById('colorTheme');
+        const customColorInput = document.getElementById('customColor');
+        const canvasWrapper = document.getElementById('canvasWrapper');
+
+        let audioCtx, analyserNodes = {}, audioBuffers = {}, audioSources = {};
+        let isPlaying = false;
+        let animationId;
+        let startTime;
+
+        // 색상 팔레트 정의
+        const palettes = {
+            pastel: ['#FFB7B2', '#FFDAC1', '#E2F0CB', '#B5EAD7', '#C7CEEA'],
+            primary: ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF']
+        };
+
+        // Aspect Ratio 변경
+        aspectRatioSelect.addEventListener('change', (e) => {
+            canvasWrapper.className = 'canvas-container ' + e.target.value;
+        });
+
+        // 커스텀 색상 입력창 토글
+        colorThemeSelect.addEventListener('change', (e) => {
+            customColorInput.style.display = e.target.value === 'custom' ? 'block' : 'none';
+        });
+
+        // 오디오 파일 로드 함수
+        async function loadAudio(file, key) {
+            const arrayBuffer = await file.arrayBuffer();
+            return await audioCtx.decodeAudioData(arrayBuffer);
+        }
+
+        generateBtn.addEventListener('click', async () => {
+            if (isPlaying) {
+                location.reload(); // 간단하게 구현하기 위해 새로고침
+                return;
+            }
+
+            const files = {
+                vocal: document.getElementById('vocalFile').files[0],
+                other: document.getElementById('otherFile').files[0],
+                bass: document.getElementById('bassFile').files[0],
+                drum: document.getElementById('drumFile').files[0]
+            };
+
+            if (!files.vocal || !files.other || !files.bass || !files.drum) {
+                alert("4개의 음악 파일을 모두 업로드해주세요!");
+                return;
+            }
+
+            // 초기화
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+
+            try {
+                // 파일 로딩
+                const keys = Object.keys(files);
+                for (let key of keys) {
+                    audioBuffers[key] = await loadAudio(files[key], key);
+                    analyserNodes[key] = audioCtx.createAnalyser();
+                    analyserNodes[key].fftSize = 256;
+                }
+
+                // 재생 시작
+                startPlayback(keys);
+                isPlaying = true;
+                generateBtn.innerText = "STOP";
+                generateBtn.style.background = "#f44336";
+            } catch (e) {
+                console.error(e);
+                alert("오디오 로딩 중 오류가 발생했습니다.");
+            }
+        });
+
+        function startPlayback(keys) {
+            startTime = audioCtx.currentTime;
+            
+            // 가장 긴 버퍼 길이를 기준으로 타임라인 설정
+            const maxDuration = Math.max(...keys.map(k => audioBuffers[k].duration));
+            timeline.max = maxDuration;
+            document.getElementById('duration').innerText = formatTime(maxDuration);
+
+            keys.forEach(key => {
+                const source = audioCtx.createBufferSource();
+                source.buffer = audioBuffers[key];
+                source.connect(analyserNodes[key]);
+                analyserNodes[key].connect(audioCtx.destination);
+                source.start(0);
+                audioSources[key] = source;
+            });
+
+            draw();
+        }
+
+        function formatTime(sec) {
+            const m = Math.floor(sec / 60);
+            const s = Math.floor(sec % 60);
+            return `${m}:${s < 10 ? '0' : ''}${s}`;
+        }
+
+        function draw() {
+            animationId = requestAnimationFrame(draw);
+
+            // 현재 시간 업데이트
+            const elapsed = audioCtx.currentTime - startTime;
+            timeline.value = elapsed;
+            document.getElementById('currentTime').innerText = formatTime(elapsed);
+
+            // 배경 지우기
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.15)'; // 잔상 효과
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 데이터 추출
+            const data = {};
+            for (let key in analyserNodes) {
+                const bufferLength = analyserNodes[key].frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+                analyserNodes[key].getByteFrequencyData(dataArray);
+                // 주요 주파수 대역 요약
+                data[key] = dataArray.reduce((a, b) => a + b, 0) / bufferLength;
+            }
+
+            renderMandala(data);
+        }
+
+        function renderMandala(audioData) {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            
+            // 음악 데이터 매핑
+            const bassVal = audioData.bass / 255;      // 크기/확장
+            const drumVal = audioData.drum / 255;      // 두께/강도
+            const vocalVal = audioData.vocal / 255;    // 회전/복잡도
+            const otherVal = audioData.other / 255;    //
