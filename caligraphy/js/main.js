@@ -1,14 +1,17 @@
 const BUILTIN_PRESETS = {
-  p1: { layoutPattern: "block-headline", decay: 1.0, contrast: 1.4, pullDir: "down", pullTarget: "none", attractor: 0.0, shear: 7, bulge: 0.3, strokeExpand: 1.35, curvature: 0.2, slitCut: 0.45, spacing: -6, lineHeight: 1.05 },
-  p2: { layoutPattern: "center", decay: 1.0, contrast: 1.25, pullDir: "down-right", pullTarget: "last-char", attractor: 0.8, shear: 2, bulge: 0.1, strokeExpand: 1.15, curvature: 0.3, slitCut: 0.3, spacing: -8, lineHeight: 1.05 },
-  p3: { layoutPattern: "wedge-title", decay: 1.25, contrast: 2.6, pullDir: "down", pullTarget: "last-char", attractor: 1.6, shear: -4, bulge: 0.4, strokeExpand: 1.4, curvature: -0.4, slitCut: 0.5, spacing: -10, lineHeight: 0.95 },
-  p4: { layoutPattern: "stair-diagonal", decay: 1.0, contrast: 1.4, pullDir: "down-right", pullTarget: "last-char", attractor: 2.4, shear: 9, bulge: 0.1, strokeExpand: 1.2, curvature: 0.6, slitCut: 0.4, spacing: -6, lineHeight: 1.15 },
-  p5: { layoutPattern: "emblem-compact", decay: 1.0, contrast: 1.6, pullDir: "down", pullTarget: "last-char", attractor: 1.5, shear: 1, bulge: 1.3, strokeExpand: 1.65, curvature: 0.0, slitCut: 0.4, spacing: -14, lineHeight: 1.0 },
-  p6: { layoutPattern: "center", decay: 1.0, contrast: 1.6, pullDir: "down", pullTarget: "last-char", attractor: 2.6, shear: 8, bulge: 0.2, strokeExpand: 1.25, curvature: 0.4, slitCut: 0.5, spacing: -8, lineHeight: 1.05 }
+  p1: { layoutPattern: "block-headline", decay: 1.0, contrast: 1.4, pullDir: "down", pullTarget: "none", attractor: 0.0, shear: 7, bulge: 0.3, strokeExpand: 1.35, curvature: 0.2, slitCut: 0.1, spacing: -6, lineHeight: 1.05, wobble: 0.0 },
+  p2: { layoutPattern: "center", decay: 1.0, contrast: 1.25, pullDir: "down-right", pullTarget: "last-char", attractor: 0.8, shear: 2, bulge: 0.1, strokeExpand: 1.15, curvature: 0.3, slitCut: 0.1, spacing: -8, lineHeight: 1.05, wobble: 0.1 },
+  p3: { layoutPattern: "wedge-title", decay: 1.25, contrast: 2.6, pullDir: "down", pullTarget: "last-char", attractor: 1.6, shear: -4, bulge: 0.4, strokeExpand: 1.4, curvature: -0.4, slitCut: 0.1, spacing: -10, lineHeight: 0.95, wobble: 0.0 },
+  p4: { layoutPattern: "stair-diagonal", decay: 1.0, contrast: 1.4, pullDir: "down-right", pullTarget: "last-char", attractor: 2.4, shear: 9, bulge: 0.1, strokeExpand: 1.2, curvature: 0.6, slitCut: 0.1, spacing: -6, lineHeight: 1.15, wobble: 0.0 },
+  p5: { layoutPattern: "emblem-compact", decay: 1.0, contrast: 1.6, pullDir: "down", pullTarget: "last-char", attractor: 1.5, shear: 1, bulge: 1.3, strokeExpand: 1.65, curvature: 0.0, slitCut: 0.1, spacing: -14, lineHeight: 1.0, wobble: 0.0 },
+  p6: { layoutPattern: "center", decay: 1.0, contrast: 1.6, pullDir: "down", pullTarget: "last-char", attractor: 2.6, shear: 8, bulge: 0.2, strokeExpand: 1.25, curvature: 0.4, slitCut: 0.1, spacing: -8, lineHeight: 1.05, wobble: 0.0 },
+  // 💡 신규 템플릿 3종 추가 (7: 물결 춤사위 / 8: 극단적 지그재그 / 9: 메아리 확장형)
+  p7: { layoutPattern: "wave-dance", decay: 1.0, contrast: 1.3, pullDir: "down", pullTarget: "none", attractor: 0.0, shear: -5, bulge: 0.1, strokeExpand: 1.2, curvature: 0.5, slitCut: 0.1, spacing: -4, lineHeight: 1.1, wobble: 1.2 },
+  p8: { layoutPattern: "zigzag", decay: 1.0, contrast: 1.5, pullDir: "right", pullTarget: "last-char", attractor: 1.5, shear: 12, bulge: -0.2, strokeExpand: 1.1, curvature: 0.0, slitCut: 0.1, spacing: -8, lineHeight: 1.0, wobble: 0.5 },
+  p9: { layoutPattern: "center", decay: 0.75, contrast: 0.7, pullDir: "down-right", pullTarget: "none", attractor: 0.0, shear: 0, bulge: 0.4, strokeExpand: 1.5, curvature: -0.5, slitCut: 0.0, spacing: -2, lineHeight: 0.95, wobble: 0.0 }
 };
 
-let srtData = [], loadedFont = null, isPlaying = false, lastTimestamp = 0, currentTime = 0, totalDuration = 5.0;
-let debounceTimer = null; // 💡 디바운싱 타이머 변수 추가
+let srtData = [], loadedFont = null, isPlaying = false, lastTimestamp = 0, currentTime = 0, totalDuration = 5.0, debounceTimer = null;
 
 const canvas = document.getElementById('calli-canvas');
 const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -52,28 +55,20 @@ function updateSRTUI() {
     div.className = 'srt-item';
     div.innerHTML = `<span><b>#${idx + 1}</b> (${s.start.toFixed(1)}s)</span><span style="max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${s.text.replace(/\n/g, ' ')}</span>`;
     
-    div.addEventListener('click', () => {
-      jumpToFinalFrameOfSubtitle(s);
-    });
+    div.addEventListener('click', () => { jumpToFinalFrameOfSubtitle(s); });
     container.appendChild(div);
   });
 }
 
 function jumpToFinalFrameOfSubtitle(subtitleObj = null) {
-  if (isPlaying) {
-    isPlaying = false;
-    document.getElementById('btn-play').textContent = '▶ 재생';
-  }
-  
+  if (isPlaying) { isPlaying = false; document.getElementById('btn-play').textContent = '▶ 재생'; }
   let targetEnd = 5.0;
-  if (subtitleObj) {
-    targetEnd = subtitleObj.end;
-  } else {
+  if (subtitleObj) { targetEnd = subtitleObj.end; } 
+  else {
     let activeSub = srtData.find(s => currentTime >= s.start && currentTime <= s.end);
     if (!activeSub && srtData.length > 0) activeSub = srtData[0];
     if (activeSub) targetEnd = activeSub.end;
   }
-
   currentTime = targetEnd;
   document.getElementById('time-slider').value = currentTime;
   document.getElementById('time-text').textContent = `${currentTime.toFixed(2)}s / ${totalDuration.toFixed(2)}s`;
@@ -95,10 +90,8 @@ document.getElementById('input-font-file').addEventListener('change', (e) => {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = (evt) => {
-    try {
-      loadedFont = opentype.parse(evt.target.result);
-      jumpToFinalFrameOfSubtitle(); 
-    } catch (err) { alert('폰트 파일을 읽을 수 없습니다.'); }
+    try { loadedFont = opentype.parse(evt.target.result); jumpToFinalFrameOfSubtitle(); } 
+    catch (err) { alert('폰트 파일을 읽을 수 없습니다.'); }
   };
   reader.readAsArrayBuffer(file);
 });
@@ -118,12 +111,16 @@ function applyPreset(p) {
   document.getElementById('param-spacing').value = p.spacing;
   document.getElementById('param-line-height').value = p.lineHeight;
 
+  // 💡 신규: wobble (지렁이 굴곡) 세팅 적용
+  const wobbleParam = document.getElementById('param-wobble');
+  if (wobbleParam) wobbleParam.value = p.wobble !== undefined ? p.wobble : 0.0;
+
   const bleedParam = document.getElementById('param-bleed');
   const scaleParam = document.getElementById('param-global-scale');
   const offsetXParam = document.getElementById('param-offset-x');
   const offsetYParam = document.getElementById('param-offset-y');
   
-  if (bleedParam) bleedParam.value = 0.3;
+  if (bleedParam) bleedParam.value = p.bleed !== undefined ? p.bleed : 0.3;
   if (scaleParam) scaleParam.value = 1.0;
   if (offsetXParam) offsetXParam.value = 0;
   if (offsetYParam) offsetYParam.value = 0;
@@ -131,7 +128,8 @@ function applyPreset(p) {
   jumpToFinalFrameOfSubtitle();
 }
 
-['p1', 'p2', 'p3', 'p4', 'p5', 'p6'].forEach(k => {
+// 💡 신규 템플릿 7, 8, 9 리스너 추가
+['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'p9'].forEach(k => {
   document.getElementById(`btn-${k}`).addEventListener('click', () => {
     document.querySelectorAll('.btn-preset').forEach(b => b.classList.remove('active'));
     document.getElementById(`btn-${k}`).classList.add('active');
@@ -162,17 +160,11 @@ document.getElementById('btn-apply-srt').addEventListener('click', () => {
   if (srtData.length > 0) jumpToFinalFrameOfSubtitle(srtData[0]);
 });
 
-// 💡 [핵심 최적화] 디바운싱(Debouncing) 적용
 document.querySelectorAll('input[type="range"], select, input[type="color"], input[type="text"]').forEach(el => {
   if(el.id === 'time-slider') return; 
-
   el.addEventListener('input', () => { 
-    clearTimeout(debounceTimer); // 마우스가 움직이는 동안에는 계속 타이머를 초기화 (렌더링 안 함)
-    
-    // 조작을 멈추고 0.15초(150ms)가 지나면 비로소 렌더링 실행
-    debounceTimer = setTimeout(() => {
-      jumpToFinalFrameOfSubtitle(); 
-    }, 150);
+    clearTimeout(debounceTimer); 
+    debounceTimer = setTimeout(() => { jumpToFinalFrameOfSubtitle(); }, 150);
   });
 });
 
@@ -181,6 +173,7 @@ function getUIParams() {
   const scaleParam = document.getElementById('param-global-scale');
   const offsetXParam = document.getElementById('param-offset-x');
   const offsetYParam = document.getElementById('param-offset-y');
+  const wobbleParam = document.getElementById('param-wobble'); // 💡 신규
 
   return {
     layoutPattern: document.getElementById('select-layout-pattern').value,
@@ -194,6 +187,7 @@ function getUIParams() {
     strokeExpand: parseFloat(document.getElementById('param-stroke-expand').value),
     curvature: parseFloat(document.getElementById('param-curvature').value),
     slitCut: parseFloat(document.getElementById('param-slit-cut').value),
+    wobble: wobbleParam ? parseFloat(wobbleParam.value) : 0.0, // 💡 신규 굴곡 연산
     bleed: bleedParam ? parseFloat(bleedParam.value) : 0.3,
     globalScale: scaleParam ? parseFloat(scaleParam.value) : 1.0,
     offsetX: offsetXParam ? parseInt(offsetXParam.value) : 0,
@@ -314,7 +308,6 @@ document.getElementById('btn-play').addEventListener('click', () => {
   if (isPlaying) { lastTimestamp = 0; requestAnimationFrame(animateLoop); }
 });
 
-// 타임 슬라이더는 디바운싱을 걸면 끊겨 보이므로 즉각 렌더링 유지
 document.getElementById('time-slider').addEventListener('input', (e) => {
   isPlaying = false; 
   document.getElementById('btn-play').textContent = '▶ 재생'; 
