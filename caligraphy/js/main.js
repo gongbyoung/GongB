@@ -60,6 +60,7 @@ function updateSRTUI() {
   });
 }
 
+// 💡 기본 폰트 로드
 opentype.load("https://raw.githubusercontent.com/google/fonts/main/ofl/nanumbrushscript/NanumBrushScript-Regular.ttf", (err, font) => {
   if (!err) {
     loadedFont = font;
@@ -68,6 +69,22 @@ opentype.load("https://raw.githubusercontent.com/google/fonts/main/ofl/nanumbrus
     updateSRTUI(); 
     applyPreset(BUILTIN_PRESETS.p1);
   }
+});
+
+// 💡 [신규 추가] 로컬 폰트(.ttf, .otf) 파일 불러오기 이벤트
+document.getElementById('input-font-file').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (evt) => {
+    try {
+      loadedFont = opentype.parse(evt.target.result); // ArrayBuffer를 폰트로 변환
+      document.getElementById('btn-apply-srt').click(); // 로드 완료 즉시 화면 동기화 반영
+    } catch (err) {
+      alert('폰트 파일을 읽을 수 없습니다. 올바른 .ttf 또는 .otf 파일인지 확인해주세요.');
+    }
+  };
+  reader.readAsArrayBuffer(file);
 });
 
 function applyPreset(p) {
@@ -85,7 +102,6 @@ function applyPreset(p) {
   document.getElementById('param-spacing').value = p.spacing;
   document.getElementById('param-line-height').value = p.lineHeight;
   
-  // 프리셋 버튼을 누를 때 렌더링 즉시 반영
   currentTime = 0;
   renderScene(0);
 }
@@ -104,24 +120,20 @@ document.getElementById('input-srt-file').addEventListener('change', (e) => {
   const reader = new FileReader();
   reader.onload = (evt) => {
     document.getElementById('input-text').value = evt.target.result;
-    document.getElementById('btn-apply-srt').click(); // 로드 후 즉시 동기화 버튼 클릭 트리거
+    document.getElementById('btn-apply-srt').click();
   };
   reader.readAsText(file);
 });
 
-// 💡 [수정됨] 실시간 반응 제거 및 "자막 데이터 동기화" 버튼 일괄 처리로 변경
 document.getElementById('btn-apply-srt').addEventListener('click', () => { 
-  // 1. SRT 자막 데이터 업데이트
   srtData = parseSRT(document.getElementById('input-text').value); 
   updateSRTUI();
   
-  // 2. 캔버스 해상도 적용
   const ratio = document.getElementById('select-ratio').value;
   if (ratio === '1:1') { canvas.width = 1440; canvas.height = 1440; }
   else if (ratio === '16:9') { canvas.width = 1920; canvas.height = 1080; }
   else if (ratio === '9:16') { canvas.width = 1080; canvas.height = 1920; }
   
-  // 3. 변경된 캔버스 크기 및 수치들로 화면 리렌더링
   currentTime = 0;
   renderScene(0); 
 });
@@ -140,7 +152,6 @@ function getUIParams() {
     strokeExpand: parseFloat(document.getElementById('param-stroke-expand').value),
     curvature: parseFloat(document.getElementById('param-curvature').value),
     slitCut: parseFloat(document.getElementById('param-slit-cut').value),
-    // 안전 장치: param-bleed HTML이 누락되었을 경우 기본값 0.3 적용
     bleed: bleedParam ? parseFloat(bleedParam.value) : 0.3,
     spacing: parseInt(document.getElementById('param-spacing').value),
     lineHeight: parseFloat(document.getElementById('param-line-height').value),
@@ -175,7 +186,6 @@ function renderWritingGlyph(targetCtx, ch, renderX, renderY, fontSize, uiParams,
   charCtx.drawImage(bristleTexture, -localCX, -localCY);
   charCtx.restore();
 
-  // 1차 마스크 - 획순 애니메이션
   if (progressU < 0.999) {
     charCtx.save();
     charCtx.globalCompositeOperation = 'destination-in';
@@ -188,9 +198,7 @@ function renderWritingGlyph(targetCtx, ch, renderX, renderY, fontSize, uiParams,
     charCtx.lineTo(-diag, diag); charCtx.fill(); charCtx.restore();
   }
 
-  // 2차 유체 엔진 - 화선지 먹물 번짐(Bleeding) 연산
   CalliFluidEngine.applyBleeding(charCtx, gw, gh, uiParams.bleed);
-
   targetCtx.drawImage(charOffscreen, renderX - localCX, renderY - localCY);
 }
 
@@ -246,7 +254,6 @@ function animateLoop(timestamp) {
   
   if (currentTime > totalDuration) { currentTime = 0; isPlaying = false; document.getElementById('btn-play').textContent = '▶ 재생'; }
   
-  // 재생 중일 때는 가벼운 타임라인 변경이므로 렌더링을 허용합니다
   document.getElementById('time-slider').value = currentTime;
   document.getElementById('time-text').textContent = `${currentTime.toFixed(2)}s / ${totalDuration.toFixed(2)}s`;
   renderScene(currentTime);
@@ -259,7 +266,6 @@ document.getElementById('btn-play').addEventListener('click', () => {
   if (isPlaying) { lastTimestamp = 0; requestAnimationFrame(animateLoop); }
 });
 
-// 타임라인 슬라이더 조작 시 화면 갱신
 document.getElementById('time-slider').addEventListener('input', (e) => {
   isPlaying = false; 
   document.getElementById('btn-play').textContent = '▶ 재생'; 
