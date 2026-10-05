@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>모듈형 물리 캘리그라피 엔진</title>
+  <style>
+    body { background: #121215; color: #fff; display: flex; flex-direction: column; align-items: center; font-family: sans-serif; padding: 20px; }
+    canvas { box-shadow: 0 10px 30px rgba(0,0,0,0.8); background: #faf7f2; cursor: crosshair; }
+    .controls { margin-top: 15px; display: flex; gap: 10px; }
+    button { background: #ff5e36; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+  </style>
+  
+  <!-- [B] 화선지 요철 생성 엔진 -->
+  <script src="engine_paper.js"></script>
+  <!-- [A] 다중 붓털 물리 엔진 -->
+  <script src="engine_brush.js"></script>
+  <!-- [C] 픽셀 유체 번짐 엔진 -->
+  <script src="engine_fluid.js"></script>
+</head>
+<body>
+  <h2>실시간 물리 캘리그라피 테스트 베드</h2>
+  <!-- willReadFrequently는 ImageData를 자주 읽고 쓰는 유체 엔진의 성능을 극대화합니다 -->
+  <canvas id="calli-canvas" width="800" height="800"></canvas>
+  <div class="controls">
+    <button onclick="fluid.clear(ctx); paper.renderBackground(ctx);">화면 지우기</button>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('calli-canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+    // 1. 알고리즘 부품(Class) 인스턴스 생성 및 설정값 주입
+    const paper = new PaperNoiseEngine(canvas.width, canvas.height, { roughness: 0.65 });
+    const brush = new MultiBristleBrush({ bristles: 40, size: 25, color: 'rgba(0,0,0,0.8)' });
+    const fluid = new FluidBleedingSolver(canvas.width, canvas.height, { bleedRate: 0.15 });
+
+    let isDrawing = false;
+    let mouseX = 0, mouseY = 0, lastX = 0, lastY = 0;
+
+    // 마우스 이벤트 (추후 opentype.js의 좌표 데이터로 대체될 부분)
+    canvas.addEventListener('mousedown', (e) => { isDrawing = true; lastX = e.offsetX; lastY = e.offsetY; mouseX = e.offsetX; mouseY = e.offsetY; });
+    canvas.addEventListener('mousemove', (e) => { mouseX = e.offsetX; mouseY = e.offsetY; });
+    window.addEventListener('mouseup', () => { isDrawing = false; brush.reset(); });
+
+    // 2. 초기 화선지 배경 렌더링
+    paper.renderBackground(ctx);
+
+    // 3. 메인 렌더링 루프 (초당 60회 실행)
+    function renderLoop(time) {
+      if (isDrawing) {
+        // [A] 붓털들이 궤적을 그리며 캔버스에 먹물을 묻힘
+        const boundingBox = brush.draw(ctx, lastX, lastY, mouseX, mouseY);
+        
+        // [C] 방금 붓이 닿은 영역(boundingBox)을 유체 엔진에 전달하여 먹물 활성화
+        if (boundingBox) fluid.addInkZone(boundingBox);
+        
+        lastX = mouseX; lastY = mouseY;
+      }
+
+      // [C] 캔버스 전체의 먹물을 화선지 요철(Paper Map)을 따라 1스텝 번지게 연산
+      fluid.updateBleeding(ctx, paper.getMap());
+
+      requestAnimationFrame(renderLoop);
+    }
+    
+    // 엔진 가동
+    requestAnimationFrame(renderLoop);
+  </script>
+</body>
+</html>
