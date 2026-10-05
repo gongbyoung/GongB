@@ -1,33 +1,65 @@
 class CalliLayoutEngine {
   static compute(text, bounds, uiParams) {
     const { w, h } = bounds;
-    // 💡 [수정됨] 사용자 지정 전체 스케일 및 X, Y 이동 변수 가져오기
     const { layoutPattern, decay, contrast, spacing, lineHeight, strokeExpand, globalScale = 1.0, offsetX = 0, offsetY = 0 } = uiParams;
+
+    // 캔버스 대비 안전 영역(Safe Zone) 설정 (좌우 15%, 상하 20% 여백)
+    const safeW = w * 0.85; 
+    const safeH = h * 0.80; 
 
     let rawLines = text.split('\n').filter(l => l.trim().length > 0);
     if (rawLines.length === 0) rawLines = ["캘리그라피"];
 
+    // 💡 1. 사용자가 지정한 크기 배율(globalScale)을 반영한 '기준 폰트 사이즈' 
+    // 캔버스 크기의 10%를 기본(1.0)으로 잡고 스케일 곱연산
+    let baseFontSize = (Math.min(w, h) * 0.10) * globalScale;
+
+    // 💡 2. 동적 자동 줄바꿈 알고리즘 (글자가 커져서 안전 영역을 넘으면 띄어쓰기 기준으로 줄바꿈)
     let processedLines = [];
-    rawLines.forEach(l => {
-      const chars = Array.from(l);
-      if (chars.length > 14 && layoutPattern !== 'emblem-compact') {
-        const mid = Math.ceil(chars.length / 2);
-        processedLines.push(chars.slice(0, mid).join(''));
-        processedLines.push(chars.slice(mid).join(''));
-      } else {
-        processedLines.push(l);
+    rawLines.forEach(lineStr => {
+      let words = lineStr.split(' '); // 단어(어절) 단위로 분리
+      let currentLine = [];
+      let currentWidth = 0;
+
+      for(let i = 0; i < words.length; i++) {
+        let word = words[i];
+        
+        // 현재 줄의 스케일 및 예상 폰트 사이즈 계산
+        let lineIdx = processedLines.length;
+        let charScale = (lineIdx === 0) ? contrast : Math.max(0.5, 1.0 / Math.pow(decay, lineIdx));
+        let fSize = baseFontSize * charScale;
+        let cAdvance = fSize * 0.85 + spacing;
+        
+        // 단어의 가로 길이 예상치
+        let wordWidth = Array.from(word).length * cAdvance;
+        let spaceWidth = (currentLine.length > 0) ? cAdvance * 0.5 : 0; // 띄어쓰기 간격
+        let totalExpectedWidth = currentWidth + spaceWidth + wordWidth + (fSize * strokeExpand);
+
+        // 예상 가로 길이가 안전 영역(safeW)을 넘어가면 다음 줄로 강제 넘김
+        if (totalExpectedWidth > safeW && currentLine.length > 0) {
+          processedLines.push(currentLine.join(' '));
+          currentLine = [word];
+          currentWidth = wordWidth;
+        } else {
+          currentLine.push(word);
+          currentWidth += spaceWidth + wordWidth;
+        }
+      }
+      if (currentLine.length > 0) {
+        processedLines.push(currentLine.join(' '));
       }
     });
 
     const lineCount = processedLines.length;
-    const DUMMY_SIZE = 100;
-    let maxLineWidth = 0;
+
+    // 3. 줄바꿈이 완료된 문장들의 최종 가로/세로 크기 측정
     let totalHeight = 0;
-    
+    let maxLineWidth = 0;
+
     const linesMeta = processedLines.map((lineStr, lineIdx) => {
       const chars = Array.from(lineStr);
       let charScale = (lineIdx === 0) ? contrast : Math.max(0.5, 1.0 / Math.pow(decay, lineIdx));
-      let fSize = DUMMY_SIZE * charScale;
+      let fSize = baseFontSize * charScale;
       let cAdvance = fSize * 0.85 + spacing;
       
       let lWidth = 0;
@@ -40,27 +72,23 @@ class CalliLayoutEngine {
       return { chars, fSize, cAdvance, lWidth, hStep };
     });
 
-    const safeW = w * 0.85; 
-    const safeH = h * 0.80; 
-    
-    // 자동 방어 스케일 연산
-    let autoScale = Math.min(safeW / Math.max(1, maxLineWidth), safeH / Math.max(1, totalHeight));
-    autoScale = Math.min(autoScale, 2.5);
-
-    // 💡 [핵심] 자동 스케일에 사용자가 지정한 '전체 크기 배율'을 추가로 곱해줌
-    let finalGlobalScale = autoScale * globalScale;
+    // 💡 4. 수직/수평 절대 방어 시스템 (한 단어가 너무 길거나, 줄이 너무 많아져서 화면 밖으로 나가는 경우 강제 축소)
+    let fitScale = 1.0;
+    if (totalHeight > safeH) fitScale = Math.min(fitScale, safeH / totalHeight);
+    if (maxLineWidth > safeW) fitScale = Math.min(fitScale, safeW / maxLineWidth);
 
     const lineLayouts = [];
-    let finalTotalHeight = totalHeight * finalGlobalScale;
+    let finalTotalHeight = totalHeight * fitScale;
     
-    // 💡 중앙 정렬 Y값에 사용자가 지정한 세로 위치(offsetY)를 추가
-    let currentY = (h - finalTotalHeight) / 2 + (linesMeta[0].fSize * finalGlobalScale * 0.5) + offsetY;
+    // 중앙 정렬 Y 시작점 + 사용자 커스텀 오프셋(offsetY)
+    let currentY = (h - finalTotalHeight) / 2 + (linesMeta[0].fSize * fitScale * 0.5) + offsetY;
     let globalCharIndex = 0;
 
+    // 5. 확정된 데이터로 최종 좌표 계산
     linesMeta.forEach((meta, lineIdx) => {
-      let finalFontSize = meta.fSize * finalGlobalScale;
-      let finalAdvance = meta.cAdvance * finalGlobalScale;
-      let finalLineWidth = meta.lWidth * finalGlobalScale;
+      let finalFontSize = meta.fSize * fitScale;
+      let finalAdvance = meta.cAdvance * fitScale;
+      let finalLineWidth = meta.lWidth * fitScale;
       
       let startX = (w - finalLineWidth) / 2;
       
@@ -70,11 +98,10 @@ class CalliLayoutEngine {
         startX = (w - finalLineWidth) / 2 + (lineIdx % 2 === 0 ? -w*0.02 : w*0.02);
       }
 
-      // 안전 방어선 적용 (기본적으로 화면 밖으로 못 나가게 막음)
+      // 화면 밖으로 나가지 않도록 1차 중앙 방어
       startX = Math.max(w * 0.05, Math.min(w * 0.95 - finalLineWidth, startX));
       
-      // 💡 [핵심] 방어선 적용 이후 맨 마지막에 사용자 가로 이동(offsetX)을 더함.
-      // 이렇게 하면 사용자가 의도적으로 밀어낼 때는 화면 밖으로 나갈 수 있음.
+      // 사용자 커스텀 오프셋(offsetX) 최종 적용 (의도적으로 밀어내는 것 허용)
       startX += offsetX;
 
       const charMeta = meta.chars.map((ch, cIdx) => ({
@@ -84,9 +111,9 @@ class CalliLayoutEngine {
       }));
 
       lineLayouts.push({ chars: charMeta, fontSize: finalFontSize, charAdvance: finalAdvance, startX, y: currentY, lineIdx, isLastLine: (lineIdx === lineCount - 1) });
-      currentY += meta.hStep * finalGlobalScale;
+      currentY += meta.hStep * fitScale;
     });
 
-    return { lineLayouts, baseSize: DUMMY_SIZE * finalGlobalScale, totalChars: globalCharIndex };
+    return { lineLayouts, baseSize: baseFontSize * fitScale, totalChars: globalCharIndex };
   }
 }
