@@ -1,14 +1,14 @@
 const BUILTIN_PRESETS = {
-  p1: { layoutPattern: "block-headline", decay: 1.0, contrast: 1.4, pullDir: "down", pullTarget: "none", attractor: 0.0, shear: 7, bulge: 0.3, strokeExpand: 1.35, curvature: 0.2, slitCut: 0.1, spacing: -6, lineHeight: 1.05, wobble: 0.0 },
-  p2: { layoutPattern: "center", decay: 1.0, contrast: 1.25, pullDir: "down-right", pullTarget: "last-char", attractor: 0.8, shear: 2, bulge: 0.1, strokeExpand: 1.15, curvature: 0.3, slitCut: 0.1, spacing: -8, lineHeight: 1.05, wobble: 0.1 },
-  p3: { layoutPattern: "wedge-title", decay: 1.25, contrast: 2.6, pullDir: "down", pullTarget: "last-char", attractor: 1.6, shear: -4, bulge: 0.4, strokeExpand: 1.4, curvature: -0.4, slitCut: 0.1, spacing: -10, lineHeight: 0.95, wobble: 0.0 },
-  p4: { layoutPattern: "stair-diagonal", decay: 1.0, contrast: 1.4, pullDir: "down-right", pullTarget: "last-char", attractor: 2.4, shear: 9, bulge: 0.1, strokeExpand: 1.2, curvature: 0.6, slitCut: 0.1, spacing: -6, lineHeight: 1.15, wobble: 0.0 },
-  p5: { layoutPattern: "emblem-compact", decay: 1.0, contrast: 1.6, pullDir: "down", pullTarget: "last-char", attractor: 1.5, shear: 1, bulge: 1.3, strokeExpand: 1.65, curvature: 0.0, slitCut: 0.1, spacing: -14, lineHeight: 1.0, wobble: 0.0 },
-  p6: { layoutPattern: "center", decay: 1.0, contrast: 1.6, pullDir: "down", pullTarget: "last-char", attractor: 2.6, shear: 8, bulge: 0.2, strokeExpand: 1.25, curvature: 0.4, slitCut: 0.1, spacing: -8, lineHeight: 1.05, wobble: 0.0 },
-  // 💡 신규 템플릿 3종 추가 (7: 물결 춤사위 / 8: 극단적 지그재그 / 9: 메아리 확장형)
-  p7: { layoutPattern: "wave-dance", decay: 1.0, contrast: 1.3, pullDir: "down", pullTarget: "none", attractor: 0.0, shear: -5, bulge: 0.1, strokeExpand: 1.2, curvature: 0.5, slitCut: 0.1, spacing: -4, lineHeight: 1.1, wobble: 1.2 },
-  p8: { layoutPattern: "zigzag", decay: 1.0, contrast: 1.5, pullDir: "right", pullTarget: "last-char", attractor: 1.5, shear: 12, bulge: -0.2, strokeExpand: 1.1, curvature: 0.0, slitCut: 0.1, spacing: -8, lineHeight: 1.0, wobble: 0.5 },
-  p9: { layoutPattern: "center", decay: 0.75, contrast: 0.7, pullDir: "down-right", pullTarget: "none", attractor: 0.0, shear: 0, bulge: 0.4, strokeExpand: 1.5, curvature: -0.5, slitCut: 0.0, spacing: -2, lineHeight: 0.95, wobble: 0.0 }
+  // 💡 프리셋에 holdTime(기본 1.0초 정지) 변수 일괄 추가
+  p1: { layoutPattern: "block-headline", decay: 1.0, contrast: 1.4, pullDir: "down", pullTarget: "none", attractor: 0.0, shear: 7, bulge: 0.3, strokeExpand: 1.35, curvature: 0.2, slitCut: 0.1, spacing: -6, lineHeight: 1.05, wobble: 0.0, holdTime: 1.0 },
+  p2: { layoutPattern: "center", decay: 1.0, contrast: 1.25, pullDir: "down-right", pullTarget: "last-char", attractor: 0.8, shear: 2, bulge: 0.1, strokeExpand: 1.15, curvature: 0.3, slitCut: 0.1, spacing: -8, lineHeight: 1.05, wobble: 0.1, holdTime: 1.5 },
+  p3: { layoutPattern: "wedge-title", decay: 1.25, contrast: 2.6, pullDir: "down", pullTarget: "last-char", attractor: 1.6, shear: -4, bulge: 0.4, strokeExpand: 1.4, curvature: -0.4, slitCut: 0.1, spacing: -10, lineHeight: 0.95, wobble: 0.0, holdTime: 1.0 },
+  p4: { layoutPattern: "stair-diagonal", decay: 1.0, contrast: 1.4, pullDir: "down-right", pullTarget: "last-char", attractor: 2.4, shear: 9, bulge: 0.1, strokeExpand: 1.2, curvature: 0.6, slitCut: 0.1, spacing: -6, lineHeight: 1.15, wobble: 0.0, holdTime: 1.0 },
+  p5: { layoutPattern: "emblem-compact", decay: 1.0, contrast: 1.6, pullDir: "down", pullTarget: "last-char", attractor: 1.5, shear: 1, bulge: 1.3, strokeExpand: 1.65, curvature: 0.0, slitCut: 0.1, spacing: -14, lineHeight: 1.0, wobble: 0.0, holdTime: 1.0 },
+  p6: { layoutPattern: "center", decay: 1.0, contrast: 1.6, pullDir: "down", pullTarget: "last-char", attractor: 2.6, shear: 8, bulge: 0.2, strokeExpand: 1.25, curvature: 0.4, slitCut: 0.1, spacing: -8, lineHeight: 1.05, wobble: 0.0, holdTime: 1.5 },
+  p7: { layoutPattern: "wave-dance", decay: 1.0, contrast: 1.3, pullDir: "down", pullTarget: "none", attractor: 0.0, shear: -5, bulge: 0.1, strokeExpand: 1.2, curvature: 0.5, slitCut: 0.1, spacing: -4, lineHeight: 1.1, wobble: 1.2, holdTime: 1.0 },
+  p8: { layoutPattern: "zigzag", decay: 1.0, contrast: 1.5, pullDir: "right", pullTarget: "last-char", attractor: 1.5, shear: 12, bulge: -0.2, strokeExpand: 1.1, curvature: 0.0, slitCut: 0.1, spacing: -8, lineHeight: 1.0, wobble: 0.5, holdTime: 1.0 },
+  p9: { layoutPattern: "center", decay: 0.75, contrast: 0.7, pullDir: "down-right", pullTarget: "none", attractor: 0.0, shear: 0, bulge: 0.4, strokeExpand: 1.5, curvature: -0.5, slitCut: 0.0, spacing: -2, lineHeight: 0.95, wobble: 0.0, holdTime: 1.0 }
 };
 
 let srtData = [], loadedFont = null, isPlaying = false, lastTimestamp = 0, currentTime = 0, totalDuration = 5.0, debounceTimer = null;
@@ -111,7 +111,6 @@ function applyPreset(p) {
   document.getElementById('param-spacing').value = p.spacing;
   document.getElementById('param-line-height').value = p.lineHeight;
 
-  // 💡 신규: wobble (지렁이 굴곡) 세팅 적용
   const wobbleParam = document.getElementById('param-wobble');
   if (wobbleParam) wobbleParam.value = p.wobble !== undefined ? p.wobble : 0.0;
 
@@ -119,16 +118,17 @@ function applyPreset(p) {
   const scaleParam = document.getElementById('param-global-scale');
   const offsetXParam = document.getElementById('param-offset-x');
   const offsetYParam = document.getElementById('param-offset-y');
+  const holdTimeParam = document.getElementById('param-hold-time'); // 💡 정지 시간 UI 연동
   
   if (bleedParam) bleedParam.value = p.bleed !== undefined ? p.bleed : 0.3;
   if (scaleParam) scaleParam.value = 1.0;
   if (offsetXParam) offsetXParam.value = 0;
   if (offsetYParam) offsetYParam.value = 0;
+  if (holdTimeParam) holdTimeParam.value = p.holdTime !== undefined ? p.holdTime : 1.0;
   
   jumpToFinalFrameOfSubtitle();
 }
 
-// 💡 신규 템플릿 7, 8, 9 리스너 추가
 ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'p9'].forEach(k => {
   document.getElementById(`btn-${k}`).addEventListener('click', () => {
     document.querySelectorAll('.btn-preset').forEach(b => b.classList.remove('active'));
@@ -173,7 +173,8 @@ function getUIParams() {
   const scaleParam = document.getElementById('param-global-scale');
   const offsetXParam = document.getElementById('param-offset-x');
   const offsetYParam = document.getElementById('param-offset-y');
-  const wobbleParam = document.getElementById('param-wobble'); // 💡 신규
+  const wobbleParam = document.getElementById('param-wobble'); 
+  const holdTimeParam = document.getElementById('param-hold-time'); // 💡 정지 시간 가져오기
 
   return {
     layoutPattern: document.getElementById('select-layout-pattern').value,
@@ -187,11 +188,12 @@ function getUIParams() {
     strokeExpand: parseFloat(document.getElementById('param-stroke-expand').value),
     curvature: parseFloat(document.getElementById('param-curvature').value),
     slitCut: parseFloat(document.getElementById('param-slit-cut').value),
-    wobble: wobbleParam ? parseFloat(wobbleParam.value) : 0.0, // 💡 신규 굴곡 연산
+    wobble: wobbleParam ? parseFloat(wobbleParam.value) : 0.0, 
     bleed: bleedParam ? parseFloat(bleedParam.value) : 0.3,
     globalScale: scaleParam ? parseFloat(scaleParam.value) : 1.0,
     offsetX: offsetXParam ? parseInt(offsetXParam.value) : 0,
     offsetY: offsetYParam ? parseInt(offsetYParam.value) : 0,
+    holdTime: holdTimeParam ? parseFloat(holdTimeParam.value) : 1.0, // 💡 전달
     spacing: parseInt(document.getElementById('param-spacing').value),
     lineHeight: parseFloat(document.getElementById('param-line-height').value),
     inkColor: document.getElementById('input-ink-color').value,
@@ -256,13 +258,19 @@ function renderScene(timeSec) {
   
   const text = activeSub ? activeSub.text : "캘리그라피";
   const segStart = activeSub ? activeSub.start : 0;
+  
+  // 현재 자막의 총 허용 시간 계산 (초 단위)
   const segDuration = Math.max(0.8, (activeSub ? activeSub.end : 5.0) - segStart);
   const segElapsed = Math.max(0, Math.min(segDuration, timeSec - segStart));
 
   const bounds = { w, h };
   const { lineLayouts, baseSize, totalChars } = CalliLayoutEngine.compute(text, bounds, uiParams);
 
-  const writeSpan = segDuration * 0.75;
+  // 💡 [핵심] 사용자가 지정한 '정지 시간(holdTime)'을 총 시간에서 빼서 실제 글씨 쓰는 속도를 가속시킴
+  let writeSpan = segDuration - uiParams.holdTime;
+  // 단, 자막 시간이 너무 짧아서 쓰는 시간이 0초에 가까워지는 것을 방지 (최소 0.4초는 애니메이션 하도록 방어)
+  if (writeSpan < 0.4) writeSpan = Math.max(0.4, segDuration * 0.3);
+
   const charSpan = writeSpan / Math.max(1, totalChars);
   
   lineLayouts.forEach(line => {
@@ -280,7 +288,8 @@ function renderScene(timeSec) {
     });
   });
 
-  if (uiParams.sealType !== 'none' && segElapsed >= segDuration * 0.8) {
+  // 💡 [수정] 낙관(도장)도 글씨가 다 써지는 타이밍(writeSpan) 직후에 찍히도록 변경
+  if (uiParams.sealType !== 'none' && segElapsed >= writeSpan * 0.9) {
     const sealSize = Math.min(54, Math.max(34, baseSize * 0.45));
     const lastLine = lineLayouts[lineLayouts.length - 1];
     let sealX = Math.min(w * 0.95 - sealSize, lastLine.startX + (lastLine.chars.length * lastLine.charAdvance) + 15);
