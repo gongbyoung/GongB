@@ -10,9 +10,9 @@ const BUILTIN_PRESETS = {
 let srtData = [], loadedFont = null, isPlaying = false, lastTimestamp = 0, currentTime = 0, totalDuration = 5.0;
 
 const canvas = document.getElementById('calli-canvas');
-const ctx = canvas.getContext('2d');
+const ctx = canvas.getContext('2d', { willReadFrequently: true });
 const charOffscreen = document.createElement('canvas');
-const charCtx = charOffscreen.getContext('2d');
+const charCtx = charOffscreen.getContext('2d', { willReadFrequently: true });
 
 function parseSRTTime(h, m, s, ms) { return (parseInt(h)||0)*3600 + (parseInt(m)||0)*60 + (parseInt(s)||0) + (parseInt(ms)||0)/1000; }
 
@@ -32,7 +32,6 @@ function parseSRT(text) {
   return result;
 }
 
-// 💡 [추가됨] 자막 리스트를 UI에 뿌려주는 함수
 function updateSRTUI() {
   const container = document.getElementById('srt-list-container');
   container.innerHTML = '';
@@ -52,7 +51,6 @@ function updateSRTUI() {
     div.className = 'srt-item';
     div.innerHTML = `<span><b>#${idx + 1}</b> (${s.start.toFixed(1)}s)</span><span style="max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${s.text.replace(/\n/g, ' ')}</span>`;
     
-    // 리스트 클릭 시 해당 시간으로 타임라인 이동
     div.addEventListener('click', () => {
       currentTime = s.start + 0.05;
       document.getElementById('time-slider').value = currentTime;
@@ -67,7 +65,7 @@ opentype.load("https://raw.githubusercontent.com/google/fonts/main/ofl/nanumbrus
     loadedFont = font;
     document.getElementById('input-text').value = `1\n00:00:00,500 --> 00:00:03,000\n맛있게 먹으면\n0칼로리\n\n2\n00:00:03,500 --> 00:00:06,500\n첫눈처럼 너에게 가겠다`;
     srtData = parseSRT(document.getElementById('input-text').value);
-    updateSRTUI(); // 💡 초기 폰트 로드 시 자막 리스트 생성
+    updateSRTUI(); 
     applyPreset(BUILTIN_PRESETS.p1);
   }
 });
@@ -86,7 +84,10 @@ function applyPreset(p) {
   document.getElementById('param-slit-cut').value = p.slitCut;
   document.getElementById('param-spacing').value = p.spacing;
   document.getElementById('param-line-height').value = p.lineHeight;
-  renderScene(currentTime);
+  
+  // 프리셋 버튼을 누를 때 렌더링 즉시 반영
+  currentTime = 0;
+  renderScene(0);
 }
 
 ['p1', 'p2', 'p3', 'p4', 'p5', 'p6'].forEach(k => {
@@ -97,33 +98,36 @@ function applyPreset(p) {
   });
 });
 
-// 💡 [추가됨] 파일 불러오기 버튼 연결
 document.getElementById('input-srt-file').addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
   const reader = new FileReader();
   reader.onload = (evt) => {
     document.getElementById('input-text').value = evt.target.result;
-    srtData = parseSRT(evt.target.result);
-    updateSRTUI();
-    currentTime = 0;
-    renderScene(0);
+    document.getElementById('btn-apply-srt').click(); // 로드 후 즉시 동기화 버튼 클릭 트리거
   };
   reader.readAsText(file);
 });
 
-// 💡 데이터 동기화 버튼 누를 때 리스트 업데이트 호출
+// 💡 [수정됨] 실시간 반응 제거 및 "자막 데이터 동기화" 버튼 일괄 처리로 변경
 document.getElementById('btn-apply-srt').addEventListener('click', () => { 
+  // 1. SRT 자막 데이터 업데이트
   srtData = parseSRT(document.getElementById('input-text').value); 
   updateSRTUI();
+  
+  // 2. 캔버스 해상도 적용
+  const ratio = document.getElementById('select-ratio').value;
+  if (ratio === '1:1') { canvas.width = 1440; canvas.height = 1440; }
+  else if (ratio === '16:9') { canvas.width = 1920; canvas.height = 1080; }
+  else if (ratio === '9:16') { canvas.width = 1080; canvas.height = 1920; }
+  
+  // 3. 변경된 캔버스 크기 및 수치들로 화면 리렌더링
   currentTime = 0;
   renderScene(0); 
 });
 
-document.querySelectorAll('input[type="range"], select, input[type="color"]').forEach(el => el.addEventListener('input', () => renderScene(currentTime)));
-
-// [수정 1] getUIParams() 함수를 찾아 덮어쓰기 (bleed 추가)
 function getUIParams() {
+  const bleedParam = document.getElementById('param-bleed');
   return {
     layoutPattern: document.getElementById('select-layout-pattern').value,
     decay: parseFloat(document.getElementById('param-decay').value),
@@ -136,7 +140,8 @@ function getUIParams() {
     strokeExpand: parseFloat(document.getElementById('param-stroke-expand').value),
     curvature: parseFloat(document.getElementById('param-curvature').value),
     slitCut: parseFloat(document.getElementById('param-slit-cut').value),
-    bleed: parseFloat(document.getElementById('param-bleed').value), // 💡 번짐 파라미터 추가
+    // 안전 장치: param-bleed HTML이 누락되었을 경우 기본값 0.3 적용
+    bleed: bleedParam ? parseFloat(bleedParam.value) : 0.3,
     spacing: parseInt(document.getElementById('param-spacing').value),
     lineHeight: parseFloat(document.getElementById('param-line-height').value),
     inkColor: document.getElementById('input-ink-color').value,
@@ -147,7 +152,6 @@ function getUIParams() {
   };
 }
 
-// [수정 2] renderWritingGlyph() 함수를 찾아 덮어쓰기 (유체 엔진 실행 코드 추가)
 function renderWritingGlyph(targetCtx, ch, renderX, renderY, fontSize, uiParams, isMajor, progressU) {
   if (progressU <= 0.001) return;
   const path = loadedFont.getPath(ch, 0, 0, fontSize);
@@ -171,7 +175,7 @@ function renderWritingGlyph(targetCtx, ch, renderX, renderY, fontSize, uiParams,
   charCtx.drawImage(bristleTexture, -localCX, -localCY);
   charCtx.restore();
 
-  // 1차: 애니메이션 진행(Sweep) 마스크 자르기
+  // 1차 마스크 - 획순 애니메이션
   if (progressU < 0.999) {
     charCtx.save();
     charCtx.globalCompositeOperation = 'destination-in';
@@ -184,7 +188,7 @@ function renderWritingGlyph(targetCtx, ch, renderX, renderY, fontSize, uiParams,
     charCtx.lineTo(-diag, diag); charCtx.fill(); charCtx.restore();
   }
 
-  // 💡 2차: 방금 붓이 지나간 가장자리 테두리를 따라 화선지 먹물 번짐(Bleeding) 연산!
+  // 2차 유체 엔진 - 화선지 먹물 번짐(Bleeding) 연산
   CalliFluidEngine.applyBleeding(charCtx, gw, gh, uiParams.bleed);
 
   targetCtx.drawImage(charOffscreen, renderX - localCX, renderY - localCY);
@@ -242,6 +246,7 @@ function animateLoop(timestamp) {
   
   if (currentTime > totalDuration) { currentTime = 0; isPlaying = false; document.getElementById('btn-play').textContent = '▶ 재생'; }
   
+  // 재생 중일 때는 가벼운 타임라인 변경이므로 렌더링을 허용합니다
   document.getElementById('time-slider').value = currentTime;
   document.getElementById('time-text').textContent = `${currentTime.toFixed(2)}s / ${totalDuration.toFixed(2)}s`;
   renderScene(currentTime);
@@ -252,4 +257,12 @@ document.getElementById('btn-play').addEventListener('click', () => {
   isPlaying = !isPlaying;
   document.getElementById('btn-play').textContent = isPlaying ? '⏸ 일시정지' : '▶ 재생';
   if (isPlaying) { lastTimestamp = 0; requestAnimationFrame(animateLoop); }
+});
+
+// 타임라인 슬라이더 조작 시 화면 갱신
+document.getElementById('time-slider').addEventListener('input', (e) => {
+  isPlaying = false; 
+  document.getElementById('btn-play').textContent = '▶ 재생'; 
+  currentTime = parseFloat(e.target.value); 
+  renderScene(currentTime); 
 });
