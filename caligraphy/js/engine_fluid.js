@@ -42,4 +42,43 @@ class CalliFluidEngine {
     }
     ctx.restore();
   }
+
+  // 💡 [화룡점정] 화선지 먹물 번짐(Bleeding) 셀룰러 오토마타 알고리즘
+  static applyBleeding(ctx, w, h, bleedAmount) {
+    if (bleedAmount <= 0.01) return;
+
+    const imgData = ctx.getImageData(0, 0, w, h);
+    const data = imgData.data;
+    const nextData = new Uint8ClampedArray(data);
+
+    // bleedAmount(0.0~1.0)에 따라 번짐 반경(패스 횟수)을 결정
+    const passes = Math.floor(bleedAmount * 8); 
+    
+    for (let p = 0; p < passes; p++) {
+      for (let y = 1; y < h - 1; y++) {
+        for (let x = 1; x < w - 1; x++) {
+          const idx = (y * w + x) * 4;
+
+          // 알파값(불투명도)이 존재하는 먹물 픽셀일 때
+          if (data[idx + 3] > 10) {
+            // 상하좌우 및 대각선 무작위 확산 (종이 섬유질의 불규칙성 시뮬레이션)
+            if (Math.random() < 0.5) {
+              const xOffset = Math.floor(Math.random() * 3) - 1; // -1, 0, 1
+              const yOffset = Math.floor(Math.random() * 3) - 1; // -1, 0, 1
+              const targetIdx = ((y + yOffset) * w + (x + xOffset)) * 4;
+
+              // 원본 먹물 색상을 주변으로 번지게 함
+              nextData[targetIdx] = data[idx];
+              nextData[targetIdx+1] = data[idx+1];
+              nextData[targetIdx+2] = data[idx+2];
+              // 물이 퍼져나가며 투명해지는 효과 누적
+              nextData[targetIdx+3] = Math.min(255, nextData[targetIdx+3] + data[idx+3] * 0.4);
+            }
+          }
+        }
+      }
+      data.set(nextData); // 다음 패스에 갱신된 데이터 사용
+    }
+    ctx.putImageData(new ImageData(nextData, w, h), 0, 0);
+  }
 }
