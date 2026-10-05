@@ -5,13 +5,25 @@ class CalliBrushEngine {
     const cx = (bbox.x1 + bbox.x2) / 2;
     const cy = (bbox.y1 + bbox.y2) / 2;
 
-    const { attractor, curvature, shear, bulge, strokeExpand, pullDir } = uiParams;
+    // 💡 wobble 파라미터 가져오기
+    const { attractor, curvature, shear, bulge, strokeExpand, pullDir, wobble = 0 } = uiParams;
     const shearRad = (-shear * Math.PI) / 180;
     const tanShear = Math.tan(shearRad);
 
     const transformPoint = (x, y) => {
       let u = (x - cx) / (w * 0.5);
       let v = (y - cy) / (h * 0.5);
+
+      // 💡 [신규] 지렁이 굴곡 연산 (Wobble)
+      // 곡선을 구불구불하게 일그러뜨려 실제 붓이 미세하게 떨리는 수전증 효과를 냄
+      if (wobble > 0) {
+        const freq = 12; // 구불거림의 밀도
+        const amp = wobble * 0.05; // 구불거림의 진폭
+        const waveU = Math.sin(v * freq) * amp;
+        const waveV = Math.cos(u * freq) * amp;
+        u += waveU;
+        v += waveV;
+      }
 
       if (bulge !== 0) {
         const factor = 1.0 + bulge * 0.45 * Math.exp(-(u*u + v*v) * 0.85);
@@ -31,10 +43,6 @@ class CalliBrushEngine {
         } else if (pullDir === 'down-right' && (v > 0.25 || u > 0.25)) {
           const pullWeight = Math.pow(Math.max(0, (v + u) * 0.5), 1.8);
           px += pullWeight * Math.min(maxPullBudget * 0.6, w * 1.2 * attractor);
-          py += pullWeight * Math.min(maxPullBudget, h * 1.5 * attractor);
-        } else if (pullDir === 'down-left' && u < 0.1 && v > 0.1) {
-          const pullWeight = Math.pow(Math.min(1.4, Math.hypot(u - 0.1, v - 0.1)), 1.8);
-          px -= pullWeight * Math.min(maxPullBudget * 0.6, w * 1.3 * attractor);
           py += pullWeight * Math.min(maxPullBudget, h * 1.5 * attractor);
         } else if (pullDir === 'right' && u > 0.3) {
           const pullWeight = Math.pow((u - 0.3) / 0.7, 1.8);
@@ -70,7 +78,6 @@ class CalliBrushEngine {
     c.width = w; c.height = h;
     const ctx = c.getContext('2d');
     ctx.fillStyle = color;
-    
     if(intensity < 0.1) { ctx.fillRect(0, 0, w, h); return c; }
 
     const bristles = [];
