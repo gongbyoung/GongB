@@ -8,6 +8,7 @@ const BUILTIN_PRESETS = {
 };
 
 let srtData = [], loadedFont = null, isPlaying = false, lastTimestamp = 0, currentTime = 0, totalDuration = 5.0;
+let debounceTimer = null; // 💡 디바운싱 타이머 변수 추가
 
 const canvas = document.getElementById('calli-canvas');
 const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -52,15 +53,33 @@ function updateSRTUI() {
     div.innerHTML = `<span><b>#${idx + 1}</b> (${s.start.toFixed(1)}s)</span><span style="max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${s.text.replace(/\n/g, ' ')}</span>`;
     
     div.addEventListener('click', () => {
-      currentTime = s.start + 0.05;
-      document.getElementById('time-slider').value = currentTime;
-      renderScene(currentTime);
+      jumpToFinalFrameOfSubtitle(s);
     });
     container.appendChild(div);
   });
 }
 
-// 💡 기본 폰트 로드
+function jumpToFinalFrameOfSubtitle(subtitleObj = null) {
+  if (isPlaying) {
+    isPlaying = false;
+    document.getElementById('btn-play').textContent = '▶ 재생';
+  }
+  
+  let targetEnd = 5.0;
+  if (subtitleObj) {
+    targetEnd = subtitleObj.end;
+  } else {
+    let activeSub = srtData.find(s => currentTime >= s.start && currentTime <= s.end);
+    if (!activeSub && srtData.length > 0) activeSub = srtData[0];
+    if (activeSub) targetEnd = activeSub.end;
+  }
+
+  currentTime = targetEnd;
+  document.getElementById('time-slider').value = currentTime;
+  document.getElementById('time-text').textContent = `${currentTime.toFixed(2)}s / ${totalDuration.toFixed(2)}s`;
+  renderScene(currentTime);
+}
+
 opentype.load("https://raw.githubusercontent.com/google/fonts/main/ofl/nanumbrushscript/NanumBrushScript-Regular.ttf", (err, font) => {
   if (!err) {
     loadedFont = font;
@@ -71,7 +90,6 @@ opentype.load("https://raw.githubusercontent.com/google/fonts/main/ofl/nanumbrus
   }
 });
 
-// 💡 커스텀 폰트 로컬 파일 업로드 기능
 document.getElementById('input-font-file').addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
@@ -79,10 +97,8 @@ document.getElementById('input-font-file').addEventListener('change', (e) => {
   reader.onload = (evt) => {
     try {
       loadedFont = opentype.parse(evt.target.result);
-      document.getElementById('btn-apply-srt').click(); // 적용 후 즉시 렌더링
-    } catch (err) {
-      alert('폰트 파일을 읽을 수 없습니다. 올바른 .ttf 또는 .otf 파일인지 확인해주세요.');
-    }
+      jumpToFinalFrameOfSubtitle(); 
+    } catch (err) { alert('폰트 파일을 읽을 수 없습니다.'); }
   };
   reader.readAsArrayBuffer(file);
 });
@@ -102,7 +118,6 @@ function applyPreset(p) {
   document.getElementById('param-spacing').value = p.spacing;
   document.getElementById('param-line-height').value = p.lineHeight;
 
-  // 템플릿 변경 시 수분 및 크기/위치 조절기 초기화
   const bleedParam = document.getElementById('param-bleed');
   const scaleParam = document.getElementById('param-global-scale');
   const offsetXParam = document.getElementById('param-offset-x');
@@ -113,8 +128,7 @@ function applyPreset(p) {
   if (offsetXParam) offsetXParam.value = 0;
   if (offsetYParam) offsetYParam.value = 0;
   
-  currentTime = 0;
-  renderScene(0);
+  jumpToFinalFrameOfSubtitle();
 }
 
 ['p1', 'p2', 'p3', 'p4', 'p5', 'p6'].forEach(k => {
@@ -136,7 +150,6 @@ document.getElementById('input-srt-file').addEventListener('change', (e) => {
   reader.readAsText(file);
 });
 
-// 💡 자막 동기화 및 캔버스 화면 크기 일괄 적용 트리거
 document.getElementById('btn-apply-srt').addEventListener('click', () => { 
   srtData = parseSRT(document.getElementById('input-text').value); 
   updateSRTUI();
@@ -146,8 +159,21 @@ document.getElementById('btn-apply-srt').addEventListener('click', () => {
   else if (ratio === '16:9') { canvas.width = 1920; canvas.height = 1080; }
   else if (ratio === '9:16') { canvas.width = 1080; canvas.height = 1920; }
   
-  currentTime = 0;
-  renderScene(0); 
+  if (srtData.length > 0) jumpToFinalFrameOfSubtitle(srtData[0]);
+});
+
+// 💡 [핵심 최적화] 디바운싱(Debouncing) 적용
+document.querySelectorAll('input[type="range"], select, input[type="color"], input[type="text"]').forEach(el => {
+  if(el.id === 'time-slider') return; 
+
+  el.addEventListener('input', () => { 
+    clearTimeout(debounceTimer); // 마우스가 움직이는 동안에는 계속 타이머를 초기화 (렌더링 안 함)
+    
+    // 조작을 멈추고 0.15초(150ms)가 지나면 비로소 렌더링 실행
+    debounceTimer = setTimeout(() => {
+      jumpToFinalFrameOfSubtitle(); 
+    }, 150);
+  });
 });
 
 function getUIParams() {
@@ -168,13 +194,10 @@ function getUIParams() {
     strokeExpand: parseFloat(document.getElementById('param-stroke-expand').value),
     curvature: parseFloat(document.getElementById('param-curvature').value),
     slitCut: parseFloat(document.getElementById('param-slit-cut').value),
-    
-    // 유체(번짐) 및 수동 조절 파라미터 방어 코드 포함
     bleed: bleedParam ? parseFloat(bleedParam.value) : 0.3,
     globalScale: scaleParam ? parseFloat(scaleParam.value) : 1.0,
     offsetX: offsetXParam ? parseInt(offsetXParam.value) : 0,
     offsetY: offsetYParam ? parseInt(offsetYParam.value) : 0,
-    
     spacing: parseInt(document.getElementById('param-spacing').value),
     lineHeight: parseFloat(document.getElementById('param-line-height').value),
     inkColor: document.getElementById('input-ink-color').value,
@@ -192,8 +215,6 @@ function renderWritingGlyph(targetCtx, ch, renderX, renderY, fontSize, uiParams,
   try { bbox = path.getBoundingBox(); } catch(e) {}
 
   const deformed = CalliBrushEngine.deformGlyph(path.commands, bbox, uiParams, isMajor, 250);
-  
-  // 💡 붓털 갈필이 캔버스 밖으로 짤리지 않게 패딩을 넉넉하게 확보 (오버플로우 픽스)
   const pad = fontSize * 1.5; 
   const gw = Math.max(100, (bbox.x2 - bbox.x1) * 2.5 + pad);
   const gh = Math.max(100, (bbox.y2 - bbox.y1) * 2.5 + pad);
@@ -212,7 +233,6 @@ function renderWritingGlyph(targetCtx, ch, renderX, renderY, fontSize, uiParams,
   charCtx.drawImage(bristleTexture, -localCX, -localCY);
   charCtx.restore();
 
-  // 1차: 마스크 스윕(획순 애니메이션)
   if (progressU < 0.999) {
     charCtx.save();
     charCtx.globalCompositeOperation = 'destination-in';
@@ -225,7 +245,6 @@ function renderWritingGlyph(targetCtx, ch, renderX, renderY, fontSize, uiParams,
     charCtx.lineTo(-diag, diag); charCtx.fill(); charCtx.restore();
   }
 
-  // 2차: 화선지 결에 따른 먹물 번짐 연산 (CalliFluidEngine 호출)
   CalliFluidEngine.applyBleeding(charCtx, gw, gh, uiParams.bleed);
   
   targetCtx.drawImage(charOffscreen, renderX - localCX, renderY - localCY);
@@ -246,7 +265,7 @@ function renderScene(timeSec) {
   const segDuration = Math.max(0.8, (activeSub ? activeSub.end : 5.0) - segStart);
   const segElapsed = Math.max(0, Math.min(segDuration, timeSec - segStart));
 
-  const bounds = { w, h, marginX: w * 0.08, marginY: h * 0.08, availW: w * 0.84, availH: h * 0.84 };
+  const bounds = { w, h };
   const { lineLayouts, baseSize, totalChars } = CalliLayoutEngine.compute(text, bounds, uiParams);
 
   const writeSpan = segDuration * 0.75;
@@ -267,11 +286,10 @@ function renderScene(timeSec) {
     });
   });
 
-  // 서명 및 낙관 렌더링 위치
   if (uiParams.sealType !== 'none' && segElapsed >= segDuration * 0.8) {
     const sealSize = Math.min(54, Math.max(34, baseSize * 0.45));
     const lastLine = lineLayouts[lineLayouts.length - 1];
-    let sealX = Math.min(bounds.w - bounds.marginX - sealSize, lastLine.startX + (lastLine.chars.length * lastLine.charAdvance) + 15);
+    let sealX = Math.min(w * 0.95 - sealSize, lastLine.startX + (lastLine.chars.length * lastLine.charAdvance) + 15);
     CalliFluidEngine.drawSeal(ctx, sealX, lastLine.y - sealSize * 0.8, sealSize, uiParams.sealType, uiParams.sealText, 1.0, 1.0);
   }
 }
@@ -296,6 +314,7 @@ document.getElementById('btn-play').addEventListener('click', () => {
   if (isPlaying) { lastTimestamp = 0; requestAnimationFrame(animateLoop); }
 });
 
+// 타임 슬라이더는 디바운싱을 걸면 끊겨 보이므로 즉각 렌더링 유지
 document.getElementById('time-slider').addEventListener('input', (e) => {
   isPlaying = false; 
   document.getElementById('btn-play').textContent = '▶ 재생'; 
