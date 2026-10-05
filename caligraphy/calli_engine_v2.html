@@ -1,90 +1,134 @@
-class CalliBrushEngine {
-  static deformGlyph(commands, bbox, uiParams, isMajorChar = false, maxPullBudget = 220) {
-    const w = Math.max(1, bbox.x2 - bbox.x1);
-    const h = Math.max(1, bbox.y2 - bbox.y1);
-    const cx = (bbox.x1 + bbox.x2) / 2;
-    const cy = (bbox.y1 + bbox.y2) / 2;
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>한글 캘리그라피 스튜디오 v42.0 (물리 모듈 조합형)</title>
 
-    const { attractor, curvature, shear, bulge, strokeExpand, pullDir } = uiParams;
-    const shearRad = (-shear * Math.PI) / 180;
-    const tanShear = Math.tan(shearRad);
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nanum+Brush+Script&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.1.0/build/mp4-muxer.min.js"></script>
 
-    const transformPoint = (x, y) => {
-      let u = (x - cx) / (w * 0.5);
-      let v = (y - cy) / (h * 0.5);
+  <!-- 독립된 스타일 및 모듈 엔진 로딩 -->
+  <link rel="stylesheet" href="style.css">
+  <script src="js/engine_layout.js" defer></script>
+  <script src="js/engine_brush.js" defer></script>
+  <script src="js/engine_fluid.js" defer></script>
+  <script src="js/main.js" defer></script>
+</head>
+<body>
 
-      if (bulge !== 0) {
-        const factor = 1.0 + bulge * 0.45 * Math.exp(-(u*u + v*v) * 0.85);
-        u *= factor; v *= factor;
-      }
-      if (curvature !== 0) v += curvature * 0.35 * (1.0 - u * u);
-      u += v * tanShear;
+  <header>
+    <h1>🖌️ 한글 캘리그라피 템플릿 매니저 & SRT 일괄 완성 스튜디오</h1>
+    <span style="font-size: 0.78rem; color: var(--text-dim);">자막 일괄 렌더링 & 모듈형 템플릿 엔진 v42.0</span>
+  </header>
 
-      let px = cx + u * (w * 0.5) * strokeExpand;
-      let py = cy + v * (h * 0.5) * strokeExpand;
+  <div class="preset-bar">
+    <span class="preset-label">⚡ 기본 템플릿:</span>
+    <button class="btn-preset active" id="btn-p1">1. 맛있게 (블록형)</button>
+    <button class="btn-preset" id="btn-p2">2. 행복할 권리 (산문형)</button>
+    <button class="btn-preset" id="btn-p3">3. 사랑도 (쐐기형)</button>
+    <button class="btn-preset" id="btn-p4">4. 첫눈처럼 (계단형)</button>
+    <button class="btn-preset" id="btn-p5">5. 시나브로 (엠블럼)</button>
+    <button class="btn-preset" id="btn-p6">6. 사랑을 배운다 (장천형)</button>
+  </div>
 
-      if (isMajorChar && attractor > 0.05) {
-        if (pullDir === 'down' && v > 0.35) {
-          const pullWeight = Math.pow((v - 0.35) / 0.65, 2.0);
-          py += pullWeight * Math.min(maxPullBudget, h * 1.5 * attractor);
-          px += Math.sin(pullWeight * Math.PI) * (w * 0.16);
-        } else if (pullDir === 'down-right' && (v > 0.25 || u > 0.25)) {
-          const pullWeight = Math.pow(Math.max(0, (v + u) * 0.5), 1.8);
-          px += pullWeight * Math.min(maxPullBudget * 0.6, w * 1.2 * attractor);
-          py += pullWeight * Math.min(maxPullBudget, h * 1.5 * attractor);
-        } else if (pullDir === 'down-left' && u < 0.1 && v > 0.1) {
-          const pullWeight = Math.pow(Math.min(1.4, Math.hypot(u - 0.1, v - 0.1)), 1.8);
-          px -= pullWeight * Math.min(maxPullBudget * 0.6, w * 1.3 * attractor);
-          py += pullWeight * Math.min(maxPullBudget, h * 1.5 * attractor);
-        } else if (pullDir === 'right' && u > 0.3) {
-          const pullWeight = Math.pow((u - 0.3) / 0.7, 1.8);
-          px += pullWeight * Math.min(maxPullBudget * 0.8, w * 1.4 * attractor);
-          py -= pullWeight * (h * 0.2 * attractor);
-        }
-      }
-      return { x: px, y: py };
-    };
+  <div class="workspace">
+    <div class="sidebar sidebar-left">
+      <div class="card">
+        <div class="card-title">🎬 SRT 자막 일괄 로드 & 네비게이터</div>
+        <label for="input-srt-file" class="btn-file">📁 .SRT 자막 파일 불러오기</label>
+        <input type="file" id="input-srt-file" accept=".srt">
+        <label style="margin-top: 4px;">자막 직접 입력 / 편집</label>
+        <textarea id="input-text" placeholder="1&#10;00:00:00,500 --> 00:00:03,000&#10;맛있게 먹으면&#10;0칼로리"></textarea>
+        <button class="btn-sub" id="btn-apply-srt">✏️ 자막 데이터 동기화</button>
+        <div class="srt-list-box" id="srt-list-container"></div>
+      </div>
 
-    return commands.map(cmd => {
-      const c = Object.assign({}, cmd);
-      if (c.x !== undefined) { const p = transformPoint(c.x, c.y); c.x = p.x; c.y = p.y; }
-      if (c.x1 !== undefined) { const p = transformPoint(c.x1, c.y1); c.x1 = p.x; c.y1 = p.y; }
-      if (c.x2 !== undefined) { const p = transformPoint(c.x2, c.y2); c.x2 = p.x; c.y2 = p.y; }
-      return c;
-    });
-  }
+      <div class="card">
+        <div class="card-title">✍️ 부제 / 서명 (SubText)</div>
+        <input type="text" id="input-subtext" value="제주글씨">
+      </div>
 
-  static renderCommands(ctx, commands) {
-    ctx.beginPath();
-    for (let cmd of commands) {
-      if (cmd.type === 'M') ctx.moveTo(cmd.x, cmd.y);
-      else if (cmd.type === 'L') ctx.lineTo(cmd.x, cmd.y);
-      else if (cmd.type === 'C') ctx.bezierCurveTo(cmd.x1, cmd.y1, cmd.x2, cmd.y2, cmd.x, cmd.y);
-      else if (cmd.type === 'Q') ctx.quadraticCurveTo(cmd.x1, cmd.y1, cmd.x, cmd.y);
-      else if (cmd.type === 'Z') ctx.closePath();
-    }
-  }
+      <div class="card">
+        <div class="card-title">📐 캔버스 크기 & 배경</div>
+        <select id="select-ratio">
+          <option value="1:1" selected>1:1 정방형 (1440x1440)</option>
+          <option value="16:9">16:9 가로형</option>
+          <option value="9:16">9:16 세로형</option>
+        </select>
+        <label style="margin-top: 4px;">배경 질감 (화선지/먹지)</label>
+        <select id="select-bg">
+          <option value="white-hanji" selected>순백 전통 화선지</option>
+          <option value="warm-hanji">은은한 미색 고서지</option>
+          <option value="dark-paper">먹지 (Dark Paper)</option>
+          <option value="transparent">투명 (PNG/알파)</option>
+        </select>
+        <label style="margin-top: 4px;">먹물 색상</label>
+        <input type="color" id="input-ink-color" value="#111113">
+      </div>
 
-  static generateBristleTexture(w, h, color, intensity) {
-    const c = document.createElement('canvas');
-    c.width = w; c.height = h;
-    const ctx = c.getContext('2d');
-    ctx.fillStyle = color;
-    
-    if(intensity < 0.1) { ctx.fillRect(0, 0, w, h); return c; }
+      <div class="card">
+        <div class="card-title">🔴 전서 직인 (낙관)</div>
+        <select id="select-seal">
+          <option value="seal-red">🔴 주문 정방형 붉은 인장</option>
+          <option value="seal-dark">⚫ 흑묵 정방 낙관</option>
+          <option value="none" selected>❌ 인장 없음</option>
+        </select>
+        <input type="text" id="input-seal-text" value="제주" maxlength="4">
+      </div>
+    </div>
 
-    const bristles = [];
-    const numBristles = 100; 
-    for(let i=0; i<numBristles; i++) bristles.push({ y: (i / numBristles) * h, size: Math.random() * 3 + 1.5, wobble: Math.random() * 20 });
+    <div class="viewport">
+      <div class="canvas-container">
+        <canvas id="calli-canvas" width="1440" height="1440"></canvas>
+      </div>
+      <div class="controller-bar">
+        <button class="btn-sub" id="btn-play">▶ 재생</button>
+        <input type="range" id="time-slider" min="0" max="5.0" step="0.02" value="0.0" style="flex:1;">
+        <span id="time-text" style="font-family:monospace; font-size:0.82rem; color:var(--accent); min-width:110px;">00.00s / 05.00s</span>
+        <button class="btn-primary" id="btn-export">🎬 전체 SRT 자막 일괄 MP4 렌더링</button>
+      </div>
+    </div>
 
-    for(let x = -50; x < w + 50; x += 3) {
-      bristles.forEach(b => {
-        if(Math.random() > intensity * 0.85) {
-          const wave = Math.sin(x * 0.05 + b.wobble) * (intensity * 15);
-          ctx.beginPath(); ctx.arc(x, b.y + wave, b.size, 0, Math.PI*2); ctx.fill();
-        }
-      });
-    }
-    return c;
-  }
-}
+    <div class="sidebar sidebar-right">
+      <div class="card">
+        <div class="card-title">🏛️ 1. 조형 구도 패턴</div>
+        <label>문장 배치 <select id="select-layout-pattern"><option value="center">⚖️ 중앙</option><option value="stair-diagonal">📐 계단형</option><option value="wedge-title">🔻 쐐기형</option><option value="block-headline" selected>▭ 블록형</option><option value="emblem-compact">🗿 엠블럼</option></select></label>
+        <label>행별 축소 <input type="range" id="param-decay" min="0.6" max="1.4" step="0.05" value="1.0"></label>
+        <label>주제어 대비 <input type="range" id="param-contrast" min="1.0" max="3.5" step="0.1" value="1.4"></label>
+      </div>
+      <div class="card">
+        <div class="card-title">✒️ 2. 장획/삐침 어트랙터</div>
+        <label>뻗는 방향 <select id="select-pull-dir"><option value="down" selected>⬇️ 수직 하강</option><option value="down-right">↘️ 우하단 사선</option><option value="down-left">↙️ 좌하단 대각</option><option value="right">➡️ 우측 수평</option></select></label>
+        <label>적용 대상 <select id="select-pull-target"><option value="last-char" selected>마지막 글자</option><option value="first-char">첫 글자</option><option value="none">없음</option></select></label>
+        <label>장획 강도 <input type="range" id="param-attractor" min="0.0" max="3.0" step="0.1" value="0.0"></label>
+      </div>
+      <div class="card">
+        <div class="card-title">🧮 3. 획 왜곡 및 물리 질감</div>
+        <label>전단각(기울기) <input type="range" id="param-shear" min="-15" max="25" step="1" value="7"></label>
+        <label>중심 팽창 <input type="range" id="param-bulge" min="-1.0" max="2.0" step="0.1" value="0.3"></label>
+        <label>획 굵기 <input type="range" id="param-stroke-expand" min="0.5" max="2.5" step="0.05" value="1.35"></label>
+        <label>곡률(Bending) <input type="range" id="param-curvature" min="-2.0" max="2.0" step="0.1" value="0.2"></label>
+        <label>갈필(비백) 강도 <input type="range" id="param-slit-cut" min="0.0" max="1.0" step="0.05" value="0.45"></label>
+      </div>
+      <div class="card">
+        <div class="card-title">📜 4. 간격 및 여백</div>
+        <label>자간 <input type="range" id="param-spacing" min="-40" max="40" step="2" value="-6"></label>
+        <label>행간 <input type="range" id="param-line-height" min="0.6" max="2.2" step="0.05" value="1.05"></label>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="render-modal">
+    <div class="modal-box">
+      <div style="font-size: 0.95rem; font-weight: bold; margin-bottom: 6px;">📽️ SRT 전 세션 MP4 렌더링 중</div>
+      <div class="bar-bg"><div class="bar-fill" id="render-bar"></div></div>
+      <span id="render-pct" style="font-size: 0.85rem; color: var(--accent); font-weight: 700;">0%</span>
+    </div>
+  </div>
+
+</body>
+</html>
