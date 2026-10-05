@@ -122,6 +122,7 @@ document.getElementById('btn-apply-srt').addEventListener('click', () => {
 
 document.querySelectorAll('input[type="range"], select, input[type="color"]').forEach(el => el.addEventListener('input', () => renderScene(currentTime)));
 
+// [수정 1] getUIParams() 함수를 찾아 덮어쓰기 (bleed 추가)
 function getUIParams() {
   return {
     layoutPattern: document.getElementById('select-layout-pattern').value,
@@ -135,6 +136,7 @@ function getUIParams() {
     strokeExpand: parseFloat(document.getElementById('param-stroke-expand').value),
     curvature: parseFloat(document.getElementById('param-curvature').value),
     slitCut: parseFloat(document.getElementById('param-slit-cut').value),
+    bleed: parseFloat(document.getElementById('param-bleed').value), // 💡 번짐 파라미터 추가
     spacing: parseInt(document.getElementById('param-spacing').value),
     lineHeight: parseFloat(document.getElementById('param-line-height').value),
     inkColor: document.getElementById('input-ink-color').value,
@@ -145,6 +147,7 @@ function getUIParams() {
   };
 }
 
+// [수정 2] renderWritingGlyph() 함수를 찾아 덮어쓰기 (유체 엔진 실행 코드 추가)
 function renderWritingGlyph(targetCtx, ch, renderX, renderY, fontSize, uiParams, isMajor, progressU) {
   if (progressU <= 0.001) return;
   const path = loadedFont.getPath(ch, 0, 0, fontSize);
@@ -168,6 +171,7 @@ function renderWritingGlyph(targetCtx, ch, renderX, renderY, fontSize, uiParams,
   charCtx.drawImage(bristleTexture, -localCX, -localCY);
   charCtx.restore();
 
+  // 1차: 애니메이션 진행(Sweep) 마스크 자르기
   if (progressU < 0.999) {
     charCtx.save();
     charCtx.globalCompositeOperation = 'destination-in';
@@ -179,6 +183,9 @@ function renderWritingGlyph(targetCtx, ch, renderX, renderY, fontSize, uiParams,
     for (let s = 0; s <= 12; s++) charCtx.lineTo(sweepX + Math.sin(s * 1.5 + progressU * 8) * 8, -diag + (s / 12) * (diag * 2));
     charCtx.lineTo(-diag, diag); charCtx.fill(); charCtx.restore();
   }
+
+  // 💡 2차: 방금 붓이 지나간 가장자리 테두리를 따라 화선지 먹물 번짐(Bleeding) 연산!
+  CalliFluidEngine.applyBleeding(charCtx, gw, gh, uiParams.bleed);
 
   targetCtx.drawImage(charOffscreen, renderX - localCX, renderY - localCY);
 }
