@@ -250,7 +250,6 @@ function renderWritingGlyph(targetCtx, ch, renderX, renderY, fontSize, uiParams,
   }
 
   CalliFluidEngine.applyBleeding(charCtx, gw, gh, uiParams.bleed);
-  
   targetCtx.drawImage(charOffscreen, renderX - localCX, renderY - localCY);
 }
 
@@ -325,4 +324,29 @@ document.getElementById('time-slider').addEventListener('input', (e) => {
   document.getElementById('btn-play').textContent = '▶ 재생'; 
   currentTime = parseFloat(e.target.value); 
   renderScene(currentTime); 
+});
+
+// 💡 [핵심 추가] 전체 MP4 렌더링 버튼 이벤트 연결
+document.getElementById('btn-export').addEventListener('click', async () => {
+  if (isPlaying) { isPlaying = false; document.getElementById('btn-play').textContent = '▶ 재생'; }
+  
+  const modal = document.getElementById('render-modal');
+  const barFill = document.getElementById('render-bar');
+  const pctText = document.getElementById('render-pct');
+  
+  modal.style.display = 'flex';
+  
+  const uiParams = getUIParams();
+
+  try {
+    await CalliVideoExporter.exportMP4(srtData, uiParams, loadedFont, canvas, (pct) => {
+      barFill.style.width = pct + '%';
+      pctText.textContent = pct + '%';
+    });
+  } catch (err) {
+    console.error(err);
+    alert('MP4 내보내기 중 오류가 발생했습니다.');
+  } finally {
+    modal.style.display = 'none';
+  }
 });
