@@ -15,6 +15,7 @@ const charOffscreen = document.createElement('canvas');
 const charCtx = charOffscreen.getContext('2d');
 
 function parseSRTTime(h, m, s, ms) { return (parseInt(h)||0)*3600 + (parseInt(m)||0)*60 + (parseInt(s)||0) + (parseInt(ms)||0)/1000; }
+
 function parseSRT(text) {
   if (!text) return [];
   const blocks = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split(/\n\s*\n/);
@@ -31,11 +32,42 @@ function parseSRT(text) {
   return result;
 }
 
+// 💡 [추가됨] 자막 리스트를 UI에 뿌려주는 함수
+function updateSRTUI() {
+  const container = document.getElementById('srt-list-container');
+  container.innerHTML = '';
+  
+  if (srtData.length === 0) {
+    container.innerHTML = '<div style="color:var(--text-dim); padding:6px; font-size:0.75rem;">자막이 없습니다.</div>';
+    totalDuration = 5.0;
+    document.getElementById('time-slider').max = totalDuration;
+    return;
+  }
+
+  totalDuration = srtData[srtData.length - 1].end + 0.5;
+  document.getElementById('time-slider').max = totalDuration;
+
+  srtData.forEach((s, idx) => {
+    const div = document.createElement('div');
+    div.className = 'srt-item';
+    div.innerHTML = `<span><b>#${idx + 1}</b> (${s.start.toFixed(1)}s)</span><span style="max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${s.text.replace(/\n/g, ' ')}</span>`;
+    
+    // 리스트 클릭 시 해당 시간으로 타임라인 이동
+    div.addEventListener('click', () => {
+      currentTime = s.start + 0.05;
+      document.getElementById('time-slider').value = currentTime;
+      renderScene(currentTime);
+    });
+    container.appendChild(div);
+  });
+}
+
 opentype.load("https://raw.githubusercontent.com/google/fonts/main/ofl/nanumbrushscript/NanumBrushScript-Regular.ttf", (err, font) => {
   if (!err) {
     loadedFont = font;
     document.getElementById('input-text').value = `1\n00:00:00,500 --> 00:00:03,000\n맛있게 먹으면\n0칼로리\n\n2\n00:00:03,500 --> 00:00:06,500\n첫눈처럼 너에게 가겠다`;
     srtData = parseSRT(document.getElementById('input-text').value);
+    updateSRTUI(); // 💡 초기 폰트 로드 시 자막 리스트 생성
     applyPreset(BUILTIN_PRESETS.p1);
   }
 });
@@ -51,7 +83,7 @@ function applyPreset(p) {
   document.getElementById('param-bulge').value = p.bulge;
   document.getElementById('param-stroke-expand').value = p.strokeExpand;
   document.getElementById('param-curvature').value = p.curvature;
-  document.getElementById('param-slitCut').value = p.slitCut;
+  document.getElementById('param-slit-cut').value = p.slitCut;
   document.getElementById('param-spacing').value = p.spacing;
   document.getElementById('param-line-height').value = p.lineHeight;
   renderScene(currentTime);
@@ -65,7 +97,29 @@ function applyPreset(p) {
   });
 });
 
-document.getElementById('btn-apply-srt').addEventListener('click', () => { srtData = parseSRT(document.getElementById('input-text').value); renderScene(0); });
+// 💡 [추가됨] 파일 불러오기 버튼 연결
+document.getElementById('input-srt-file').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (evt) => {
+    document.getElementById('input-text').value = evt.target.result;
+    srtData = parseSRT(evt.target.result);
+    updateSRTUI();
+    currentTime = 0;
+    renderScene(0);
+  };
+  reader.readAsText(file);
+});
+
+// 💡 데이터 동기화 버튼 누를 때 리스트 업데이트 호출
+document.getElementById('btn-apply-srt').addEventListener('click', () => { 
+  srtData = parseSRT(document.getElementById('input-text').value); 
+  updateSRTUI();
+  currentTime = 0;
+  renderScene(0); 
+});
+
 document.querySelectorAll('input[type="range"], select, input[type="color"]').forEach(el => el.addEventListener('input', () => renderScene(currentTime)));
 
 function getUIParams() {
@@ -109,13 +163,11 @@ function renderWritingGlyph(targetCtx, ch, renderX, renderY, fontSize, uiParams,
   CalliBrushEngine.renderCommands(charCtx, deformed);
   charCtx.fill();
   
-  // 붓털 갈필 질감 적용 (source-in)
   charCtx.globalCompositeOperation = 'source-in';
   const bristleTexture = CalliBrushEngine.generateBristleTexture(gw, gh, uiParams.inkColor, uiParams.slitCut);
   charCtx.drawImage(bristleTexture, -localCX, -localCY);
   charCtx.restore();
 
-  // 애니메이션 스윕(Sweep)
   if (progressU < 0.999) {
     charCtx.save();
     charCtx.globalCompositeOperation = 'destination-in';
@@ -167,7 +219,6 @@ function renderScene(timeSec) {
     });
   });
 
-  // 서명 및 낙관 렌더링
   if (uiParams.sealType !== 'none' && segElapsed >= segDuration * 0.8) {
     const sealSize = Math.min(54, Math.max(34, baseSize * 0.45));
     const lastLine = lineLayouts[lineLayouts.length - 1];
@@ -182,7 +233,6 @@ function animateLoop(timestamp) {
   currentTime += (timestamp - lastTimestamp) / 1000;
   lastTimestamp = timestamp;
   
-  totalDuration = srtData.length > 0 ? srtData[srtData.length - 1].end + 0.5 : 5.0;
   if (currentTime > totalDuration) { currentTime = 0; isPlaying = false; document.getElementById('btn-play').textContent = '▶ 재생'; }
   
   document.getElementById('time-slider').value = currentTime;
