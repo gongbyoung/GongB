@@ -1,13 +1,9 @@
 class CalliVideoExporter {
   static async exportMP4(srtData, uiParams, loadedFont, canvas, onProgress) {
     try {
-      if (!window.Mp4Muxer) {
-        alert('MP4 Muxer 라이브러리가 로드되지 않았습니다.');
-        return;
-      }
-
-      if (typeof VideoEncoder === 'undefined') {
-        alert('현재 브라우저 환경에서 VideoEncoder API를 지원하지 않습니다.');
+      // 브라우저 MediaRecorder 지원 체크 (모든 최신 브라우저 지원)
+      if (!window.MediaRecorder) {
+        alert('현재 브라우저가 비디오 녹화(MediaRecorder) 기능을 지원하지 않습니다.');
         return;
       }
 
@@ -15,95 +11,74 @@ class CalliVideoExporter {
       const totalDuration = srtData.length > 0 ? srtData[srtData.length - 1].end + parseFloat(uiParams.holdTime || 1.0) : 5.0;
       const totalFrames = Math.floor(totalDuration * fps);
 
-      // 💡 캔버스 해상도가 홀수일 경우 인코딩 에러가 나므로 짝수로 보정
-      const targetWidth = canvas.width % 2 !== 0 ? canvas.width - 1 : canvas.width;
-      const targetHeight = canvas.height % 2 !== 0 ? canvas.height - 1 : canvas.height;
-
-      // 💡 가장 범용적인 avc1.4d002a (H.264 Main Profile) 코덱 사용
-      const codecString = 'avc1.4d002a';
-
-      let muxer = new Mp4Muxer.Muxer({
-        target: new Mp4Muxer.ArrayBufferTarget(),
-        video: {
-          codec: codecString,
-          width: targetWidth,
-          height: targetHeight
-        },
-        fastStart: 'in-memory'
-      });
-
-      let videoEncoder = new VideoEncoder({
-        output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
-        error: (e) => {
-          console.error("VideoEncoder 런타임 에러:", e);
-          throw new Error(e.message || "인코딩 중 하드웨어 가속 에러가 발생했습니다.");
+      // 캔버스 스트림 생성 (30 프레임 고정)
+      const stream = canvas.captureStream(fps);
+      
+      // 지원되는 웹엠/비디오 코덱 자동 탐색
+      let mimeType = 'video/webm;codecs=vp9';
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = 'video/webm;codecs=vp8';
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+          mimeType = 'video/webm';
         }
-      });
-
-      // 브라우저 지원 여부 사전 검사
-      const support = await VideoEncoder.isConfigSupported({
-        codec: codecString,
-        width: targetWidth,
-        height: targetHeight,
-        bitrate: 5 * 1024 * 1024,
-        framerate: fps
-      });
-
-      if (!support.supported) {
-        throw new Error(`지원되지 않는 인코딩 설정입니다 (${codecString}, ${targetWidth}x${targetHeight})`);
       }
 
-      videoEncoder.configure({
-        codec: codecString,
-        width: targetWidth,
-        height: targetHeight,
-        bitrate: 5 * 1024 * 1024,
-        framerate: fps
-      });
+      let mediaRecorder;
+      try {
+        mediaRecorder = new MediaRecorder(stream, {
+          mimeType: mimeType,
+          videoBitsPerSecond: 8 * 1024 * 1024 // 8 Mbps 고화질
+        });
+      } catch (e) {
+        mediaRecorder = new MediaRecorder(stream);
+      }
 
-      const exportCanvas = document.createElement('canvas');
-      exportCanvas.width = targetWidth;
-      exportCanvas.height = targetHeight;
+      let chunks = [];
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) chunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        let blob = new Blob(chunks, { type: 'video/webm' });
+        let url = URL.createObjectURL(blob);
+        let a = document.createElement('a');
+        a.href = url;
+        a.download = 'calligraphy_animation.webm';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      };
+
+      // 녹화 시작
+      mediaRecorder.start();
+
+      const exportCanvas = canvas;
       const exportCtx = exportCanvas.getContext('2d', { willReadFrequently: true });
-      
       const offscreenChar = document.createElement('canvas');
       const offscreenCharCtx = offscreenChar.getContext('2d', { willReadFrequently: true });
 
+      // 한 프레임씩 정확한 타이밍으로 렌더링을 드라이브함
       for (let frame = 0; frame < totalFrames; frame++) {
         let timeSec = frame / fps;
         
         CalliExportRenderer.renderFrame(exportCtx, exportCanvas, offscreenChar, offscreenCharCtx, srtData, uiParams, loadedFont, timeSec);
-
-        let videoFrame = new VideoFrame(exportCanvas, { timestamp: (frame / fps) * 1e6 });
-        videoEncoder.encode(videoFrame, { keyFrame: frame % (fps * 2) === 0 });
-        videoFrame.close();
 
         if (onProgress) {
           let pct = Math.round((frame / totalFrames) * 100);
           onProgress(pct);
         }
 
-        if (frame % 5 === 0) await new Promise(r => setTimeout(r, 1));
+        // 프레임 간격 대기
+        await new Promise(r => setTimeout(r, 1000 / fps));
       }
 
-      await videoEncoder.flush();
-      muxer.finalize();
-
-      let buffer = muxer.target.buffer;
-      let blob = new Blob([buffer], { type: 'video/mp4' });
-      let url = URL.createObjectURL(blob);
-
-      let a = document.createElement('a');
-      a.href = url;
-      a.download = 'calligraphy_animation.mp4';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      // 녹화 종료 및 파일 다운로드 트리거
+      mediaRecorder.stop();
 
     } catch (err) {
-      console.error("MP4 내보내기 오류:", err);
-      alert('MP4 내보내기 오류: ' + err.message);
+      console.error("영상 내보내기 오류:", err);
+      alert('영상 내보내기 오류: ' + err.message);
     }
   }
 }
