@@ -1,9 +1,8 @@
 class CalliVideoExporter {
   static async exportMP4(srtData, uiParams, loadedFont, canvas, onProgress) {
     try {
-      // 브라우저 MediaRecorder 지원 체크 (모든 최신 브라우저 지원)
       if (!window.MediaRecorder) {
-        alert('현재 브라우저가 비디오 녹화(MediaRecorder) 기능을 지원하지 않습니다.');
+        alert('현재 브라우저가 비디오 녹화 기능을 지원하지 않습니다.');
         return;
       }
 
@@ -11,10 +10,9 @@ class CalliVideoExporter {
       const totalDuration = srtData.length > 0 ? srtData[srtData.length - 1].end + parseFloat(uiParams.holdTime || 1.0) : 5.0;
       const totalFrames = Math.floor(totalDuration * fps);
 
-      // 캔버스 스트림 생성 (30 프레임 고정)
+      // 캔버스 스트림 캡처 (30fps)
       const stream = canvas.captureStream(fps);
       
-      // 지원되는 웹엠/비디오 코덱 자동 탐색
       let mimeType = 'video/webm;codecs=vp9';
       if (!MediaRecorder.isTypeSupported(mimeType)) {
         mimeType = 'video/webm;codecs=vp8';
@@ -23,15 +21,10 @@ class CalliVideoExporter {
         }
       }
 
-      let mediaRecorder;
-      try {
-        mediaRecorder = new MediaRecorder(stream, {
-          mimeType: mimeType,
-          videoBitsPerSecond: 8 * 1024 * 1024 // 8 Mbps 고화질
-        });
-      } catch (e) {
-        mediaRecorder = new MediaRecorder(stream);
-      }
+      let mediaRecorder = new MediaRecorder(stream, {
+        mimeType: mimeType,
+        videoBitsPerSecond: 10 * 1024 * 1024 // 10 Mbps 최고 화질
+      });
 
       let chunks = [];
       mediaRecorder.ondataavailable = (e) => {
@@ -50,7 +43,6 @@ class CalliVideoExporter {
         URL.revokeObjectURL(url);
       };
 
-      // 녹화 시작
       mediaRecorder.start();
 
       const exportCanvas = canvas;
@@ -58,7 +50,7 @@ class CalliVideoExporter {
       const offscreenChar = document.createElement('canvas');
       const offscreenCharCtx = offscreenChar.getContext('2d', { willReadFrequently: true });
 
-      // 한 프레임씩 정확한 타이밍으로 렌더링을 드라이브함
+      // 프레임별 타이밍 드라이브 렌더링
       for (let frame = 0; frame < totalFrames; frame++) {
         let timeSec = frame / fps;
         
@@ -69,11 +61,9 @@ class CalliVideoExporter {
           onProgress(pct);
         }
 
-        // 프레임 간격 대기
         await new Promise(r => setTimeout(r, 1000 / fps));
       }
 
-      // 녹화 종료 및 파일 다운로드 트리거
       mediaRecorder.stop();
 
     } catch (err) {
