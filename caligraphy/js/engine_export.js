@@ -1,86 +1,92 @@
 class CalliVideoExporter {
   static async exportMP4(srtData, uiParams, loadedFont, canvas, onProgress) {
-    if (!window.Mp4Muxer) {
-      alert('MP4 Muxer 라이브러리가 로드되지 않았습니다.');
-      return;
-    }
-
-    const fps = 30;
-    const totalDuration = srtData.length > 0 ? srtData[srtData.length - 1].end + parseFloat(uiParams.holdTime || 1.0) : 5.0;
-    const totalFrames = Math.floor(totalDuration * fps);
-
-    // 1. MP4 muxer 세팅 (H.264 비디오 트랙 생성)
-    let muxer = new Mp4Muxer.Muxer({
-      target: new Mp4Muxer.ArrayBufferTarget(),
-      video: {
-        codec: 'avc1.640028', // H.264 High Profile
-        width: canvas.width,
-        height: canvas.height
-      },
-      fastStart: 'in-memory'
-    });
-
-    let videoEncoder = new VideoEncoder({
-      output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
-      error: (e) => console.error(e)
-    });
-
-    videoEncoder.configure({
-      codec: 'avc1.640028',
-      width: canvas.width,
-      height: canvas.height,
-      bitrate: 5 * 1024 * 1024 // 5 Mbps 고화질
-    });
-
-    const exportCanvas = document.createElement('canvas');
-    exportCanvas.width = canvas.width;
-    exportCanvas.height = canvas.height;
-    const exportCtx = exportCanvas.getContext('2d', { willReadFrequently: true });
-    
-    const offscreenChar = document.createElement('canvas');
-    const offscreenCharCtx = offscreenChar.getContext('2d', { willReadFrequently: true });
-
-    // 2. 프레임별 렌더링 및 인코딩 루프
-    for (let frame = 0; frame < totalFrames; frame++) {
-      let timeSec = frame / fps;
-      
-      // 화면 렌더링 수행 (기존 렌더링 로직 연동)
-      CalliExportRenderer.renderFrame(exportCtx, exportCanvas, offscreenChar, offscreenCharCtx, srtData, uiParams, loadedFont, timeSec);
-
-      // VideoFrame 생성 및 인코딩
-      let videoFrame = new VideoFrame(exportCanvas, { timestamp: (frame / fps) * 1e6 });
-      videoEncoder.encode(videoFrame, { keyFrame: frame % (fps * 2) === 0 });
-      videoFrame.close();
-
-      // 진행률 UI 콜백 호출
-      if (onProgress) {
-        let pct = Math.round((frame / totalFrames) * 100);
-        onProgress(pct);
+    try {
+      if (!window.Mp4Muxer) {
+        alert('MP4 Muxer 라이브러리가 로드되지 않았습니다.');
+        return;
       }
 
-      // 브라우저 멈춤(렉) 방지를 위한 비동기 양보
-      if (frame % 5 === 0) await new Promise(r => setTimeout(r, 1));
+      // 브라우저의 VideoEncoder 지원 여부 사전 체크
+      if (typeof VideoEncoder === 'undefined') {
+        alert('현재 브라우저가 비디오 인코딩 API(VideoEncoder)를 지원하지 않습니다. (크롬 브라우저 최신 버전을 권장합니다)');
+        return;
+      }
+
+      const fps = 30;
+      const totalDuration = srtData.length > 0 ? srtData[srtData.length - 1].end + parseFloat(uiParams.holdTime || 1.0) : 5.0;
+      const totalFrames = Math.floor(totalDuration * fps);
+
+      let muxer = new Mp4Muxer.Muxer({
+        target: new Mp4Muxer.ArrayBufferTarget(),
+        video: {
+          codec: 'avc1.42E01E', // 더 호환성이 높은 Baseline 프로파일 코덱으로 변경
+          width: canvas.width,
+          height: canvas.height
+        },
+        fastStart: 'in-memory'
+      });
+
+      let videoEncoder = new VideoEncoder({
+        output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+        error: (e) => console.error("VideoEncoder 에러 발생:", e)
+      });
+
+      videoEncoder.configure({
+        codec: 'avc1.42E01E',
+        width: canvas.width,
+        height: canvas.height,
+        bitrate: 5 * 1024 * 1024
+      });
+
+      const exportCanvas = document.createElement('canvas');
+      exportCanvas.width = canvas.width;
+      exportCanvas.height = canvas.height;
+      const exportCtx = exportCanvas.getContext('2d', { willReadFrequently: true });
+      
+      const offscreenChar = document.createElement('canvas');
+      const offscreenCharCtx = offscreenChar.getContext('2d', { willReadFrequently: true });
+
+      for (let frame = 0; frame < totalFrames; frame++) {
+        let timeSec = frame / fps;
+        
+        CalliExportRenderer.renderFrame(exportCtx, exportCanvas, offscreenChar, offscreenCharCtx, srtData, uiParams, loadedFont, timeSec);
+
+        let videoFrame = new VideoFrame(exportCanvas, { timestamp: (frame / fps) * 1e6 });
+        videoEncoder.encode(videoFrame, { keyFrame: frame % (fps * 2) === 0 });
+        videoFrame.close();
+
+        if (onProgress) {
+          let pct = Math.round((frame / totalFrames) * 100);
+          onProgress(pct);
+        }
+
+        if (frame % 5 === 0) await new Promise(r => setTimeout(r, 1));
+      }
+
+      await videoEncoder.flush();
+      muxer.finalize();
+
+      let buffer = muxer.target.buffer;
+      let blob = new Blob([buffer], { type: 'video/mp4' });
+      let url = URL.createObjectURL(blob);
+
+      let a = document.createElement('a');
+      a.href = url;
+      a.download = 'calligraphy_animation.mp4';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+    } catch (err) {
+      console.error("MP4 내보내기 치명적 오류:", err);
+      // 구체적인 에러 내용을 사용자에게 alert로 띄워줍니다.
+      alert('MP4 내보내기 오류: ' + err.message);
+      throw err;
     }
-
-    await videoEncoder.flush();
-    muxer.finalize();
-
-    let buffer = muxer.target.buffer;
-    let blob = new Blob([buffer], { type: 'video/mp4' });
-    let url = URL.createObjectURL(blob);
-
-    // 자동 다운로드 링크 트리거
-    let a = document.createElement('a');
-    a.href = url;
-    a.download = 'calligraphy_animation.mp4';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
   }
 }
 
-// 렌더링 독립 실행용 헬퍼 클래스
 class CalliExportRenderer {
   static renderFrame(ctx, canvas, charOffscreen, charCtx, srtData, uiParams, loadedFont, timeSec) {
     const w = canvas.width, h = canvas.height;
@@ -113,7 +119,7 @@ class CalliExportRenderer {
         else if (segElapsed > tStart) u = (segElapsed - tStart) / (charSpan * 1.15);
 
         if (c.ch !== ' ') {
-          CalliExportRenderer.renderGlyph(ctx, ch, c.x, c.y, c.fontSize, uiParams, isMajor, u, loadedFont, charOffscreen, charCtx);
+          CalliExportRenderer.renderGlyph(ctx, c.ch, c.x, c.y, c.fontSize, uiParams, isMajor, u, loadedFont, charOffscreen, charCtx);
         }
       });
     });
