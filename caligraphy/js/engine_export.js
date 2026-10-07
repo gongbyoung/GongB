@@ -15,7 +15,6 @@ class CalliVideoExporter {
       const totalDuration = srtData[srtData.length - 1].end + parseFloat(uiParams.holdTime || 1.0);
       const totalFrames = Math.floor(totalDuration * fps);
 
-      // 💡 [핵심] 실제 시간 지연(setTimeout) 없이 고속으로 스트림을 캡처하기 위해 비디오 스트림 트랙 생성 방식 변경
       const stream = canvas.captureStream(fps);
       
       let mimeType = 'video/webm;codecs=vp9';
@@ -26,10 +25,15 @@ class CalliVideoExporter {
         }
       }
 
-      let mediaRecorder = new MediaRecorder(stream, {
-        mimeType: mimeType,
-        videoBitsPerSecond: 10 * 1024 * 1024
-      });
+      let mediaRecorder;
+      try {
+        mediaRecorder = new MediaRecorder(stream, {
+          mimeType: mimeType,
+          videoBitsPerSecond: 8 * 1024 * 1024 // 8 Mbps 최적화 화질
+        });
+      } catch (e) {
+        mediaRecorder = new MediaRecorder(stream);
+      }
 
       let chunks = [];
       mediaRecorder.ondataavailable = (e) => {
@@ -55,32 +59,40 @@ class CalliVideoExporter {
       const offscreenChar = document.createElement('canvas');
       const offscreenCharCtx = offscreenChar.getContext('2d', { willReadFrequently: true });
 
-      // 💡 [핵심 개선] 대기 시간(setTimeout)을 없애고 즉시 렌더링 펌프를 돌림
-      // 브라우저 UI가 멈추지(Freeze) 않도록 매 15프레임마다 페달을 잠시 뗌(await 양보)
-      for (let frame = 0; frame < totalFrames; frame++) {
-        let timeSec = frame / fps;
-        
-        CalliExportRenderer.renderFrame(exportCtx, exportCanvas, offscreenChar, offscreenCharCtx, srtData, uiParams, loadedFont, timeSec);
+      let startTime = performance.now();
+      let isRecording = true;
 
-        // 스트림에 프레임이 강제로 인식되도록 미세한 틱 발생
-        const track = stream.getVideoTracks()[0];
-        if (track && typeof track.requestFrame === 'function') {
-          track.requestFrame();
+      const recordLoop = () => {
+        if (!isRecording) return;
+
+        let elapsed = (performance.now() - startTime) / 1000;
+        if (elapsed > totalDuration) {
+          elapsed = totalDuration;
+          isRecording = false;
         }
 
+        // 최적화된 고속 렌더링 펌프 호출
+        CalliExportRenderer.renderFrame(exportCtx, exportCanvas, offscreenChar, offscreenCharCtx, srtData, uiParams, loadedFont, elapsed);
+
         if (onProgress) {
-          let pct = Math.round((frame / totalFrames) * 100);
+          let pct = Math.min(100, Math.round((elapsed / totalDuration) * 100));
           onProgress(pct);
         }
 
-        // 브라우저 멈춤 방지를 위해 15프레임마다 1ms만 양보
-        if (frame % 15 === 0) {
-          await new Promise(r => setTimeout(r, 1));
+        if (isRecording) {
+          requestAnimationFrame(recordLoop);
+        } else {
+          setTimeout(() => {
+            try {
+              mediaRecorder.stop();
+            } catch (err) {
+              console.error(err);
+            }
+          }, 300);
         }
-      }
+      };
 
-      // 렌더링이 순식간에 끝나면 녹화 중지 및 즉시 다운로드 파일 생성
-      mediaRecorder.stop();
+      requestAnimationFrame(recordLoop);
 
     } catch (err) {
       console.error("영상 내보내기 오류:", err);
@@ -90,6 +102,10 @@ class CalliVideoExporter {
 }
 
 class CalliExportRenderer {
+  // 💡 [최적화 캐시 저장소] 동일 자막 세션의 무거운 물리 연산을 매 프레임 반복하지 않고 캐싱함
+  static cacheKey = "";
+  static cachedGlyphs = null;
+
   static renderFrame(ctx, canvas, charOffscreen, charCtx, srtData, uiParams, loadedFont, timeSec) {
     const w = canvas.width, h = canvas.height;
     CalliFluidEngine.renderBackground(ctx, w, h, uiParams.bgStyle);
@@ -109,20 +125,33 @@ class CalliExportRenderer {
     const segDuration = Math.max(0.8, activeSub.end - segStart);
     const segElapsed = Math.max(0, Math.min(segDuration, timeSec - segStart));
 
-    const bounds = { w, h };
-    const { lineLayouts, baseSize, totalChars } = CalliLayoutEngine.compute(text, bounds, uiParams);
+    // 유니크 캐시 키 생성 (자막 내용이나 스타일이 바뀌면 캐시 재구축)
+    const currentCacheKey = `${text}_${uiParams.layoutPattern}_${uiParams.writingMode}_${uiParams.globalScale}_${uiParams.inkColor}`;
+    
+    if (this.cacheKey !== currentCacheKey || !this.cachedGlyphs) {
+      this.cacheKey = currentCacheKey;
+      const bounds = { w, h };
+      const { lineLayouts, baseSize } = CalliLayoutEngine.compute(text, bounds, uiParams);
+      this.cachedGlyphs = { lineLayouts, baseSize };
+    }
+
+    const { lineLayouts, baseSize } = this.cachedGlyphs;
+    let totalChars = 0;
+    lineLayouts.forEach(l => totalChars += l.chars.length);
 
     let writeSpan = segDuration - uiParams.holdTime;
     if (writeSpan < 0.4) writeSpan = Math.max(0.4, segDuration * 0.3);
     const charSpan = writeSpan / Math.max(1, totalChars);
     
+    let globalIdxCounter = 0;
     lineLayouts.forEach(line => {
       line.chars.forEach(c => {
+        let currentGlobalIdx = globalIdxCounter++;
         let isMajor = false;
         if (uiParams.pullTarget === 'last-char') isMajor = line.isLastLine && (c.cIdx === line.chars.length - 1);
         else if (uiParams.pullTarget === 'first-char') isMajor = (line.lineIdx === 0 && c.cIdx === 0);
 
-        const tStart = c.globalIdx * charSpan;
+        const tStart = currentGlobalIdx * charSpan;
         let u = 0;
         
         if (segElapsed >= writeSpan || segElapsed >= tStart + charSpan * 1.15) {
