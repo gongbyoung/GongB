@@ -12,7 +12,11 @@ class CalliVideoExporter {
       }
 
       const fps = 30;
-      const totalDuration = srtData[srtData.length - 1].end + parseFloat(uiParams.holdTime || 1.0);
+      
+      // 💡 첫 번째 자막의 시작 시간을 기준으로 타임라인 오프셋 계산 (앞부분 빈 공백 방지)
+      const firstStartTime = srtData[0].start > 1.0 ? srtData[0].start : 0.0;
+      const rawTotalDuration = srtData[srtData.length - 1].end + parseFloat(uiParams.holdTime || 1.0);
+      const totalDuration = Math.max(rawTotalDuration - firstStartTime, 3.0);
       const totalFrames = Math.floor(totalDuration * fps);
 
       const stream = canvas.captureStream(fps);
@@ -25,15 +29,10 @@ class CalliVideoExporter {
         }
       }
 
-      let mediaRecorder;
-      try {
-        mediaRecorder = new MediaRecorder(stream, {
-          mimeType: mimeType,
-          videoBitsPerSecond: 8 * 1024 * 1024 // 8 Mbps 최적화 화질
-        });
-      } catch (e) {
-        mediaRecorder = new MediaRecorder(stream);
-      }
+      let mediaRecorder = new MediaRecorder(stream, {
+        mimeType: mimeType,
+        videoBitsPerSecond: 10 * 1024 * 1024
+      });
 
       let chunks = [];
       mediaRecorder.ondataavailable = (e) => {
@@ -59,40 +58,28 @@ class CalliVideoExporter {
       const offscreenChar = document.createElement('canvas');
       const offscreenCharCtx = offscreenChar.getContext('2d', { willReadFrequently: true });
 
-      let startTime = performance.now();
-      let isRecording = true;
+      // 💡 초고속 패스트 렌더링 루프 (오프셋 적용)
+      for (let frame = 0; frame < totalFrames; frame++) {
+        let timeSec = (frame / fps) + firstStartTime;
+        
+        CalliExportRenderer.renderFrame(exportCtx, exportCanvas, offscreenChar, offscreenCharCtx, srtData, uiParams, loadedFont, timeSec);
 
-      const recordLoop = () => {
-        if (!isRecording) return;
-
-        let elapsed = (performance.now() - startTime) / 1000;
-        if (elapsed > totalDuration) {
-          elapsed = totalDuration;
-          isRecording = false;
+        const track = stream.getVideoTracks()[0];
+        if (track && typeof track.requestFrame === 'function') {
+          track.requestFrame();
         }
 
-        // 최적화된 고속 렌더링 펌프 호출
-        CalliExportRenderer.renderFrame(exportCtx, exportCanvas, offscreenChar, offscreenCharCtx, srtData, uiParams, loadedFont, elapsed);
-
         if (onProgress) {
-          let pct = Math.min(100, Math.round((elapsed / totalDuration) * 100));
+          let pct = Math.min(100, Math.round((frame / totalFrames) * 100));
           onProgress(pct);
         }
 
-        if (isRecording) {
-          requestAnimationFrame(recordLoop);
-        } else {
-          setTimeout(() => {
-            try {
-              mediaRecorder.stop();
-            } catch (err) {
-              console.error(err);
-            }
-          }, 300);
+        if (frame % 10 === 0) {
+          await new Promise(r => setTimeout(r, 1));
         }
-      };
+      }
 
-      requestAnimationFrame(recordLoop);
+      mediaRecorder.stop();
 
     } catch (err) {
       console.error("영상 내보내기 오류:", err);
@@ -102,7 +89,6 @@ class CalliVideoExporter {
 }
 
 class CalliExportRenderer {
-  // 💡 [최적화 캐시 저장소] 동일 자막 세션의 무거운 물리 연산을 매 프레임 반복하지 않고 캐싱함
   static cacheKey = "";
   static cachedGlyphs = null;
 
@@ -110,11 +96,12 @@ class CalliExportRenderer {
     const w = canvas.width, h = canvas.height;
     CalliFluidEngine.renderBackground(ctx, w, h, uiParams.bgStyle);
 
+    // 💡 현재 시간에 해당하는 자막 세션 매칭 정밀화
     let activeSub = srtData.find(s => timeSec >= s.start && timeSec <= s.end);
     if (!activeSub) {
       if (srtData.length > 0) {
-        if (timeSec < srtData[0].start) activeSub = srtData[0];
-        else activeSub = srtData[srtData.length - 1];
+        if (timeSec < srtData[0].start) activeSub = srtData[0]; // 시작 전이면 첫 자막 표시
+        else activeSub = srtData[srtData.length - 1]; // 끝나면 마지막 자막 유지
       } else {
         return;
       }
@@ -125,7 +112,6 @@ class CalliExportRenderer {
     const segDuration = Math.max(0.8, activeSub.end - segStart);
     const segElapsed = Math.max(0, Math.min(segDuration, timeSec - segStart));
 
-    // 유니크 캐시 키 생성 (자막 내용이나 스타일이 바뀌면 캐시 재구축)
     const currentCacheKey = `${text}_${uiParams.layoutPattern}_${uiParams.writingMode}_${uiParams.globalScale}_${uiParams.inkColor}`;
     
     if (this.cacheKey !== currentCacheKey || !this.cachedGlyphs) {
