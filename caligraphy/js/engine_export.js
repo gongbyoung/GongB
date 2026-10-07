@@ -12,11 +12,10 @@ class CalliVideoExporter {
       }
 
       const fps = 30;
-      
-      // 전체 자막의 마지막 끝 시간 + 사용자가 지정한 정지 시간을 총 영상 길기로 설정
       const totalDuration = srtData[srtData.length - 1].end + parseFloat(uiParams.holdTime || 1.0);
       const totalFrames = Math.floor(totalDuration * fps);
 
+      // 💡 [핵심] 실제 시간 지연(setTimeout) 없이 고속으로 스트림을 캡처하기 위해 비디오 스트림 트랙 생성 방식 변경
       const stream = canvas.captureStream(fps);
       
       let mimeType = 'video/webm;codecs=vp9';
@@ -56,20 +55,31 @@ class CalliVideoExporter {
       const offscreenChar = document.createElement('canvas');
       const offscreenCharCtx = offscreenChar.getContext('2d', { willReadFrequently: true });
 
-      // 프레임별 정확한 시간축(timeSec) 계산 및 렌더링 드라이브
+      // 💡 [핵심 개선] 대기 시간(setTimeout)을 없애고 즉시 렌더링 펌프를 돌림
+      // 브라우저 UI가 멈추지(Freeze) 않도록 매 15프레임마다 페달을 잠시 뗌(await 양보)
       for (let frame = 0; frame < totalFrames; frame++) {
         let timeSec = frame / fps;
         
         CalliExportRenderer.renderFrame(exportCtx, exportCanvas, offscreenChar, offscreenCharCtx, srtData, uiParams, loadedFont, timeSec);
+
+        // 스트림에 프레임이 강제로 인식되도록 미세한 틱 발생
+        const track = stream.getVideoTracks()[0];
+        if (track && typeof track.requestFrame === 'function') {
+          track.requestFrame();
+        }
 
         if (onProgress) {
           let pct = Math.round((frame / totalFrames) * 100);
           onProgress(pct);
         }
 
-        await new Promise(r => setTimeout(r, 1000 / fps));
+        // 브라우저 멈춤 방지를 위해 15프레임마다 1ms만 양보
+        if (frame % 15 === 0) {
+          await new Promise(r => setTimeout(r, 1));
+        }
       }
 
+      // 렌더링이 순식간에 끝나면 녹화 중지 및 즉시 다운로드 파일 생성
       mediaRecorder.stop();
 
     } catch (err) {
@@ -84,10 +94,7 @@ class CalliExportRenderer {
     const w = canvas.width, h = canvas.height;
     CalliFluidEngine.renderBackground(ctx, w, h, uiParams.bgStyle);
 
-    // 💡 1. 현재 타임라인(timeSec)에 정확히 매칭되는 자막 세션 찾기
     let activeSub = srtData.find(s => timeSec >= s.start && timeSec <= s.end);
-    
-    // 만약 자막 구간 사이의 빈 시간이거나 범위를 벗어났을 때 처리
     if (!activeSub) {
       if (srtData.length > 0) {
         if (timeSec < srtData[0].start) activeSub = srtData[0];
@@ -105,7 +112,6 @@ class CalliExportRenderer {
     const bounds = { w, h };
     const { lineLayouts, baseSize, totalChars } = CalliLayoutEngine.compute(text, bounds, uiParams);
 
-    // 💡 2. 설정된 정지 시간(holdTime)을 반영하여 글씨가 써지는 속도(writeSpan) 계산
     let writeSpan = segDuration - uiParams.holdTime;
     if (writeSpan < 0.4) writeSpan = Math.max(0.4, segDuration * 0.3);
     const charSpan = writeSpan / Math.max(1, totalChars);
@@ -119,7 +125,6 @@ class CalliExportRenderer {
         const tStart = c.globalIdx * charSpan;
         let u = 0;
         
-        // 💡 3. 자막 시간 내에서 글씨가 다 써진 이후(segElapsed >= writeSpan)에는 u = 1.0(완성본)으로 고정되어 멈춰있음
         if (segElapsed >= writeSpan || segElapsed >= tStart + charSpan * 1.15) {
           u = 1.0;
         } else if (segElapsed > tStart) {
@@ -132,7 +137,6 @@ class CalliExportRenderer {
       });
     });
 
-    // 💡 4. 글씨가 완전히 써진 타이밍(writeSpan * 0.9) 이후부터 낙관(도장)이 찍힌 채로 정지 유지
     if (uiParams.sealType !== 'none' && segElapsed >= writeSpan * 0.9) {
       const sealSize = Math.min(54, Math.max(34, baseSize * 0.45));
       const lastLine = lineLayouts[lineLayouts.length - 1];
