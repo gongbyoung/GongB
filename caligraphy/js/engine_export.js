@@ -60,23 +60,30 @@ class CalliVideoExporter {
       const offscreenChar = document.createElement('canvas');
       const offscreenCharCtx = offscreenChar.getContext('2d', { willReadFrequently: true });
 
-      // 💡 [안정화] 캔버스가 비어 녹화되는 현상을 막기 위해 한 프레임씩 정밀 렌더링 후 스트림 반영
+      // 💡 [속도 개선] 강제 딜레이(setTimeout)를 완전히 제거하고 초고속으로 프레임 밀어 넣기
       for (let frame = 0; frame < totalFrames; frame++) {
         let timeSec = frame / fps;
         
-        // 메인 화면에 렌더링하는 것과 동일한 로직을 정확히 호출
         CalliExportRenderer.renderFrame(exportCtx, exportCanvas, offscreenChar, offscreenCharCtx, srtData, uiParams, loadedFont, timeSec);
+
+        // 스트림 트랙에 프레임 수동 요청 훅
+        const track = stream.getVideoTracks()[0];
+        if (track && typeof track.requestFrame === 'function') {
+          track.requestFrame();
+        }
 
         if (onProgress) {
           let pct = Math.min(100, Math.round((frame / totalFrames) * 100));
           onProgress(pct);
         }
 
-        // 스트림이 프레임을 확실히 잡을 수 있도록 브라우저 렌더 스레드에 양보
-        await new Promise(r => setTimeout(r, 10));
+        // 브라우저 멈춤 방지를 위해 30프레임(1초 분량)마다 단 1ms만 양보
+        if (frame % 30 === 0) {
+          await new Promise(r => setTimeout(r, 1));
+        }
       }
 
-      // 녹화 완료 후 정상 다운로드 트리거
+      // 렌더링 즉시 녹화 중지 및 파일 다운로드 트리거
       mediaRecorder.stop();
 
     } catch (err) {
