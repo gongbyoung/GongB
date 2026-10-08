@@ -59,7 +59,6 @@ class CalliVideoExporter {
       const offscreenChar = document.createElement('canvas');
       const offscreenCharCtx = offscreenChar.getContext('2d', { willReadFrequently: true });
 
-      // 💡 [초고속 렌더링 펌프] 지연 없는 초고속 프레임 푸시
       for (let frame = 0; frame < totalFrames; frame++) {
         let timeSec = frame / fps;
         
@@ -75,7 +74,6 @@ class CalliVideoExporter {
           onProgress(pct);
         }
 
-        // 브라우저가 버벅이지 않도록 15프레임마다 가볍게 양보
         if (frame % 15 === 0) {
           await new Promise(r => setTimeout(r, 1));
         }
@@ -91,40 +89,64 @@ class CalliVideoExporter {
 }
 
 class CalliExportRenderer {
-  // 💡 [핵심 최적화] 글자별 렌더링 결과를 캐싱하는 맵
   static glyphCache = new Map();
+  static lastSubIdx = -1;
+  static randomizedParams = null;
 
   static renderFrame(ctx, canvas, charOffscreen, charCtx, srtData, uiParams, loadedFont, timeSec) {
     const w = canvas.width, h = canvas.height;
     CalliFluidEngine.renderBackground(ctx, w, h, uiParams.bgStyle);
 
-    let activeSub = srtData.find(s => timeSec >= s.start && timeSec <= s.end);
+    // 💡 현재 시간에 해당하는 자막 인덱스(SubIndex) 탐색
+    let activeSubIdx = srtData.findIndex(s => timeSec >= s.start && timeSec <= s.end);
+    let activeSub = activeSubIdx !== -1 ? srtData[activeSubIdx] : null;
+
     if (!activeSub) {
       if (srtData.length > 0) {
-        if (timeSec < srtData[0].start) activeSub = srtData[0];
-        else activeSub = srtData[srtData.length - 1];
+        if (timeSec < srtData[0].start) { activeSubIdx = 0; activeSub = srtData[0]; }
+        else { activeSubIdx = srtData.length - 1; activeSub = srtData[activeSubIdx]; }
       } else {
         return;
       }
     }
     
+    // 💡 자막 블록이 바뀔 때마다 해당 자막만의 고유한 캘리그라피 변형 파라미터(시드) 생성
+    if (this.lastSubIdx !== activeSubIdx || !this.randomizedParams) {
+      this.lastSubIdx = activeSubIdx;
+      // 인덱스 기반 의사 난수(Pseudorandom) 생성으로 자막마다 고유한 개성 부여
+      const seed = (activeSubIdx + 1) * 13.37;
+      const r1 = Math.sin(seed);
+      const r2 = Math.cos(seed * 2.5);
+      const r3 = Math.sin(seed * 3.1);
+
+      this.randomizedParams = {
+        ...uiParams,
+        // 기본 UI 설정값에 자막별 고유 변동 폭을 가미함
+        wobble: Math.max(0, uiParams.wobble + r1 * 0.25),
+        curvature: uiParams.curvature + r2 * 0.15,
+        shear: uiParams.shear + Math.round(r3 * 3),
+        bulge: uiParams.bulge + r1 * 0.1
+      };
+    }
+
+    const currentUiParams = this.randomizedParams;
     const text = activeSub.text;
     const segStart = activeSub.start;
     const segDuration = Math.max(0.8, activeSub.end - segStart);
     const segElapsed = Math.max(0, Math.min(segDuration, timeSec - segStart));
 
     const bounds = { w, h };
-    const { lineLayouts, baseSize, totalChars } = CalliLayoutEngine.compute(text, bounds, uiParams);
+    const { lineLayouts, baseSize, totalChars } = CalliLayoutEngine.compute(text, bounds, currentUiParams);
 
-    let writeSpan = segDuration - uiParams.holdTime;
+    let writeSpan = segDuration - currentUiParams.holdTime;
     if (writeSpan < 0.4) writeSpan = Math.max(0.4, segDuration * 0.3);
     const charSpan = writeSpan / Math.max(1, totalChars);
     
     lineLayouts.forEach(line => {
       line.chars.forEach(c => {
         let isMajor = false;
-        if (uiParams.pullTarget === 'last-char') isMajor = line.isLastLine && (c.cIdx === line.chars.length - 1);
-        else if (uiParams.pullTarget === 'first-char') isMajor = (line.lineIdx === 0 && c.cIdx === 0);
+        if (currentUiParams.pullTarget === 'last-char') isMajor = line.isLastLine && (c.cIdx === line.chars.length - 1);
+        else if (currentUiParams.pullTarget === 'first-char') isMajor = (line.lineIdx === 0 && c.cIdx === 0);
 
         const tStart = c.globalIdx * charSpan;
         let u = 0;
@@ -136,26 +158,24 @@ class CalliExportRenderer {
         }
 
         if (c.ch !== ' ' && u > 0) {
-          CalliExportRenderer.renderCachedGlyph(ctx, c.ch, c.x, c.y, c.fontSize, uiParams, isMajor, u, loadedFont, charOffscreen, charCtx);
+          CalliExportRenderer.renderCachedGlyph(ctx, c.ch, c.x, c.y, c.fontSize, currentUiParams, isMajor, u, loadedFont, charOffscreen, charCtx, activeSubIdx);
         }
       });
     });
 
-    if (uiParams.sealType !== 'none' && segElapsed >= writeSpan * 0.9) {
+    if (currentUiParams.sealType !== 'none' && segElapsed >= writeSpan * 0.9) {
       const sealSize = Math.min(54, Math.max(34, baseSize * 0.45));
       const lastLine = lineLayouts[lineLayouts.length - 1];
       let sealX = Math.min(w * 0.95 - sealSize, lastLine.startX + (lastLine.chars.length * lastLine.charAdvance) + 15);
-      CalliFluidEngine.drawSeal(ctx, sealX, lastLine.y - sealSize * 0.8, sealSize, uiParams.sealType, uiParams.sealText, 1.0, 1.0);
+      CalliFluidEngine.drawSeal(ctx, sealX, lastLine.y - sealSize * 0.8, sealSize, currentUiParams.sealType, currentUiParams.sealText, 1.0, 1.0);
     }
   }
 
-  // 💡 폰트 파싱 및 왜곡 연산을 단 한 번만 수행하여 캐시에 저장하는 고속 렌더러
-  static renderCachedGlyph(targetCtx, ch, renderX, renderY, fontSize, uiParams, isMajor, progressU, loadedFont, charOffscreen, charCtx) {
+  static renderCachedGlyph(targetCtx, ch, renderX, renderY, fontSize, uiParams, isMajor, progressU, loadedFont, charOffscreen, charCtx, subIdx) {
     if (progressU <= 0.001) return;
 
-    // 소수점 단위 진행도를 반올림하여 캐시 히트율 극대화
     const progressKey = Math.round(progressU * 20) / 20; 
-    const cacheKey = `${ch}_${fontSize}_${uiParams.inkColor}_${uiParams.wobble}_${uiParams.shear}_${uiParams.bulge}_${uiParams.strokeExpand}_${uiParams.curvature}_${uiParams.slitCut}_${uiParams.bleed}_${isMajor}_${progressKey}`;
+    const cacheKey = `sub_${subIdx}_${ch}_${fontSize}_${uiParams.inkColor}_${uiParams.wobble.toFixed(2)}_${uiParams.shear}_${uiParams.curvature.toFixed(2)}_${isMajor}_${progressKey}`;
 
     if (this.glyphCache.has(cacheKey)) {
       const cachedImg = this.glyphCache.get(cacheKey);
@@ -200,12 +220,11 @@ class CalliExportRenderer {
 
     CalliFluidEngine.applyBleeding(charCtx, gw, gh, uiParams.bleed);
 
-    // 생성된 결과를 이미지 객체로 캐시에 백업
     const imgCopy = document.createElement('canvas');
     imgCopy.width = gw; imgCopy.height = gh;
     imgCopy.getContext('2d').drawImage(charOffscreen, 0, 0);
     
-    if (this.glyphCache.size > 500) {
+    if (this.glyphCache.size > 600) {
       const firstKey = this.glyphCache.keys().next().value;
       this.glyphCache.delete(firstKey);
     }
