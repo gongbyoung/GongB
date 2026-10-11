@@ -12,7 +12,7 @@ function preload() {
 
   for (let i = 1; i <= totalImages; i++) {
     const num = String(i).padStart(3, "0");
-    images[i] = loadImage(`images/${num}.png`,
+    images[i] = loadImage(`Assets/${num}.png`,
       () => console.log(`${num}.png 로드 완료`),
       () => console.log(`${num}.png 없음`)
     );
