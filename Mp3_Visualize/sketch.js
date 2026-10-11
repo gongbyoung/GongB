@@ -1,23 +1,9 @@
 let song = null;
 let subtitles = [];
-let images = [];          // 미리 로드된 이미지들
+let images = [];          // 선택한 이미지들
 let currentIndex = -1;
 let audioStarted = false;
 let statusEl;
-
-function preload() {
-  // 이미지가 많으면 여기 숫자를 구절 수에 맞게 수정
-  // 예: 20개 구절이면 20까지
-  const totalImages = 30; // ← 실제 이미지 개수로 수정
-
-  for (let i = 1; i <= totalImages; i++) {
-    const num = String(i).padStart(3, "0");
-    images[i] = loadImage(`assets/${num}.png`,
-      () => console.log(`${num}.png 로드 완료`),
-      () => console.log(`${num}.png 없음`)
-    );
-  }
-}
 
 function setup() {
   createCanvas(1080, 1920);
@@ -25,6 +11,7 @@ function setup() {
 
   document.getElementById("musicInput").addEventListener("change", handleMusic);
   document.getElementById("srtInput").addEventListener("change", handleSRT);
+  document.getElementById("imageInput").addEventListener("change", handleImages);
   document.getElementById("startBtn").addEventListener("click", startExperience);
 }
 
@@ -61,6 +48,38 @@ function handleSRT(e) {
   reader.readAsText(file, "UTF-8");
 }
 
+function handleImages(e) {
+  const files = Array.from(e.target.files);
+  if (files.length === 0) return;
+
+  // 파일 이름 기준 정렬 (001.png, 002.png 순서가 되도록)
+  files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+
+  images = [];
+  let loadedCount = 0;
+
+  setStatus(`이미지 로딩 중... (0/${files.length})`);
+
+  files.forEach((file, index) => {
+    const url = URL.createObjectURL(file);
+    loadImage(url,
+      (img) => {
+        images[index] = img;
+        loadedCount++;
+        setStatus(`이미지 로딩 중... (${loadedCount}/${files.length})`);
+
+        if (loadedCount === files.length) {
+          setStatus(`이미지 ${files.length}장 로드 완료`);
+        }
+      },
+      () => {
+        loadedCount++;
+        setStatus(`이미지 일부 로드 실패 (${loadedCount}/${files.length})`);
+      }
+    );
+  });
+}
+
 function parseSRT(text) {
   const blocks = text.trim().split(/\n\s*\n/);
   const result = [];
@@ -83,7 +102,7 @@ function parseSRT(text) {
 }
 
 function timeToSeconds(h, m, s, ms) {
-  return parseInt(h)*3600 + parseInt(m)*60 + parseInt(s) + parseInt(ms)/1000;
+  return parseInt(h) * 3600 + parseInt(m) * 60 + parseInt(s) + parseInt(ms) / 1000;
 }
 
 function startExperience() {
@@ -93,6 +112,10 @@ function startExperience() {
   }
   if (subtitles.length === 0) {
     setStatus("SRT를 선택해주세요");
+    return;
+  }
+  if (images.length === 0) {
+    setStatus("이미지를 선택해주세요");
     return;
   }
 
@@ -109,8 +132,8 @@ function draw() {
   if (!audioStarted || !song) {
     fill(40);
     textAlign(CENTER, CENTER);
-    textSize(28);
-    text("음악과 SRT를 선택한 뒤\n「시작하기」를 눌러주세요", width/2, height/2);
+    textSize(26);
+    text("음악 → SRT → 이미지 선택 후\n「시작하기」를 눌러주세요", width/2, height/2);
     return;
   }
 
@@ -125,17 +148,13 @@ function draw() {
     }
   }
 
-  // 이미지 표시 (구절 번호에 해당하는 이미지)
-  if (activeIndex >= 0) {
-    const imgIndex = activeIndex + 1; // 1부터 시작
-    if (images[imgIndex]) {
-      // 이미지가 캔버스를 가득 채우도록
-      image(images[imgIndex], 0, 0, width, height);
-    }
+  // 이미지 표시
+  if (activeIndex >= 0 && images[activeIndex]) {
+    image(images[activeIndex], 0, 0, width, height);
     currentIndex = activeIndex;
-  } else if (currentIndex >= 0 && images[currentIndex + 1]) {
-    // 구절 사이 간격에서는 이전 이미지 유지
-    image(images[currentIndex + 1], 0, 0, width, height);
+  } else if (currentIndex >= 0 && images[currentIndex]) {
+    // 구절 사이에서는 이전 이미지 유지
+    image(images[currentIndex], 0, 0, width, height);
   }
 
   // 세로 캘리그라피
