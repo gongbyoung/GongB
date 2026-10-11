@@ -3,19 +3,24 @@ let subtitles = [];
 let images = [];
 let audioStarted = false;
 let isPreview = false;
-let statusEl;
+let isRecording = false;
+let mediaRecorder = null;
+let recordedChunks = [];
 
-// 조절 가능한 값
-let textSizeVal = 32;
-let textX = 120;
-let textY = 180;
-let lineHeightVal = 42;
+let textSizeVal = 34;
+let textX = 100;
+let textY = 160;
+let lineHeightVal = 46;
+let calligraphyStrength = 35;
+let writingMode = "horizontal";
+let currentFont = "serif";
+let orientation = "portrait";
 
 function setup() {
   createCanvas(1080, 1920);
   statusEl = document.getElementById("status");
 
-  // 파일 이벤트
+  // 파일
   document.getElementById("musicInput").addEventListener("change", handleMusic);
   document.getElementById("srtInput").addEventListener("change", handleSRT);
   document.getElementById("imageInput").addEventListener("change", handleImages);
@@ -24,20 +29,41 @@ function setup() {
   document.getElementById("startBtn").addEventListener("click", startExperience);
   document.getElementById("previewBtn").addEventListener("click", togglePreview);
 
-  // 슬라이더 이벤트
+  // 슬라이더
   bindSlider("textSize", "textSizeVal", v => textSizeVal = v);
   bindSlider("textX", "textXVal", v => textX = v);
   bindSlider("textY", "textYVal", v => textY = v);
   bindSlider("lineHeight", "lineHeightVal", v => lineHeightVal = v);
+  bindSlider("calligraphy", "calligraphyVal", v => calligraphyStrength = v);
+
+  // 셀렉트
+  document.getElementById("writingMode").addEventListener("change", e => {
+    writingMode = e.target.value;
+  });
+  document.getElementById("fontSelect").addEventListener("change", e => {
+    currentFont = e.target.value;
+  });
+  document.getElementById("orientation").addEventListener("change", e => {
+    orientation = e.target.value;
+    resizeCanvasForOrientation();
+  });
 }
 
-function bindSlider(id, valId, callback) {
-  const slider = document.getElementById(id);
+function resizeCanvasForOrientation() {
+  if (orientation === "landscape") {
+    resizeCanvas(1920, 1080);
+  } else {
+    resizeCanvas(1080, 1920);
+  }
+}
+
+function bindSlider(id, valId, cb) {
+  const el = document.getElementById(id);
   const display = document.getElementById(valId);
-  slider.addEventListener("input", () => {
-    const v = parseInt(slider.value);
+  el.addEventListener("input", () => {
+    const v = parseInt(el.value);
     display.textContent = v;
-    callback(v);
+    cb(v);
   });
 }
 
@@ -48,12 +74,8 @@ function setStatus(msg) {
 function handleMusic(e) {
   const file = e.target.files[0];
   if (!file) return;
-
   setStatus("음악 로딩 중...");
-  if (song) {
-    song.stop();
-    song = null;
-  }
+  if (song) { song.stop(); song = null; }
 
   const url = URL.createObjectURL(file);
   song = loadSound(url,
@@ -65,34 +87,29 @@ function handleMusic(e) {
 function handleSRT(e) {
   const file = e.target.files[0];
   if (!file) return;
-
   const reader = new FileReader();
-  reader.onload = (event) => {
-    subtitles = parseSRT(event.target.result);
-    setStatus(`SRT 로드 완료 (${subtitles.length}개 구절)`);
+  reader.onload = (ev) => {
+    subtitles = parseSRT(ev.target.result);
+    setStatus(`SRT 로드 완료 (${subtitles.length}개)`);
   };
   reader.readAsText(file, "UTF-8");
 }
 
 function handleImages(e) {
   const files = Array.from(e.target.files);
-  if (files.length === 0) return;
-
-  files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  if (!files.length) return;
+  files.sort((a, b) => a.name.localeCompare(b.name, undefined, {numeric:true}));
 
   images = [];
   let loaded = 0;
-  setStatus(`이미지 로딩 중... (0/${files.length})`);
+  setStatus(`이미지 로딩 중... 0/${files.length}`);
 
-  files.forEach((file, index) => {
-    const url = URL.createObjectURL(file);
-    loadImage(url, (img) => {
-      images[index] = img;
+  files.forEach((file, i) => {
+    loadImage(URL.createObjectURL(file), img => {
+      images[i] = img;
       loaded++;
-      setStatus(`이미지 로딩 중... (${loaded}/${files.length})`);
-      if (loaded === files.length) {
-        setStatus(`이미지 ${files.length}장 로드 완료`);
-      }
+      setStatus(`이미지 로딩 중... ${loaded}/${files.length}`);
+      if (loaded === files.length) setStatus(`이미지 ${files.length}장 완료`);
     });
   });
 }
@@ -100,121 +117,158 @@ function handleImages(e) {
 function parseSRT(text) {
   const blocks = text.trim().split(/\n\s*\n/);
   const result = [];
-
   for (let block of blocks) {
     const lines = block.trim().split("\n");
     if (lines.length < 2) continue;
-
-    const timeLine = lines[1];
-    const match = timeLine.match(/(\d+):(\d+):(\d+),(\d+)\s*-->\s*(\d+):(\d+):(\d+),(\d+)/);
-    if (!match) continue;
-
-    const start = timeToSeconds(match[1], match[2], match[3], match[4]);
-    const end   = timeToSeconds(match[5], match[6], match[7], match[8]);
-    const content = lines.slice(2).join(" ").trim();
-
-    result.push({ start, end, text: content });
+    const m = lines[1].match(/(\d+):(\d+):(\d+),(\d+)\s*-->\s*(\d+):(\d+):(\d+),(\d+)/);
+    if (!m) continue;
+    result.push({
+      start: timeToSec(m[1],m[2],m[3],m[4]),
+      end:   timeToSec(m[5],m[6],m[7],m[8]),
+      text:  lines.slice(2).join(" ").trim()
+    });
   }
   return result;
 }
 
-function timeToSeconds(h, m, s, ms) {
-  return parseInt(h)*3600 + parseInt(m)*60 + parseInt(s) + parseInt(ms)/1000;
+function timeToSec(h,m,s,ms) {
+  return (+h)*3600 + (+m)*60 + (+s) + (+ms)/1000;
 }
 
 function togglePreview() {
-  if (subtitles.length === 0) {
-    setStatus("SRT를 먼저 선택해주세요");
+  if (!subtitles.length) {
+    setStatus("SRT를 먼저 선택하세요");
     return;
   }
   isPreview = !isPreview;
-  if (isPreview) {
-    setStatus("최종 시 미리보기 중<br>(다시 누르면 해제)");
-  } else {
-    setStatus("미리보기 해제");
-  }
+  setStatus(isPreview ? "최종 시 미리보기 중\n(다시 누르면 해제)" : "미리보기 해제");
 }
 
 function startExperience() {
-  if (!song) {
-    setStatus("음악을 선택해주세요");
-    return;
-  }
-  if (subtitles.length === 0) {
-    setStatus("SRT를 선택해주세요");
-    return;
-  }
-  if (images.length === 0) {
-    setStatus("이미지를 선택해주세요");
+  if (!song || !subtitles.length || !images.length) {
+    setStatus("음악 / SRT / 이미지를 모두 선택해주세요");
     return;
   }
 
   isPreview = false;
-  if (!song.isPlaying()) {
-    song.play();
-  }
   audioStarted = true;
-  setStatus("재생 중...");
+
+  // 영상 녹화 시작
+  startRecording();
+
+  if (!song.isPlaying()) song.play();
+  setStatus("재생 + 녹화 중...\n노래가 끝나면 자동 저장됩니다");
+}
+
+function startRecording() {
+  recordedChunks = [];
+  const stream = document.querySelector("canvas").captureStream(30); // 30fps
+  mediaRecorder = new MediaRecorder(stream, { mimeType: "video/webm;codecs=vp9" });
+
+  mediaRecorder.ondataavailable = e => {
+    if (e.data.size > 0) recordedChunks.push(e.data);
+  };
+
+  mediaRecorder.onstop = () => {
+    const blob = new Blob(recordedChunks, { type: "video/webm" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `조선시화_${Date.now()}.webm`;
+    a.click();
+    setStatus("영상 저장 완료!");
+    isRecording = false;
+  };
+
+  mediaRecorder.start();
+  isRecording = true;
+
+  // 노래가 끝나면 녹화 중지
+  song.onended(() => {
+    if (mediaRecorder && mediaRecorder.state === "recording") {
+      mediaRecorder.stop();
+    }
+  });
 }
 
 function draw() {
   background(248, 243, 230);
 
-  // 미리보기 모드
+  // 미리보기
   if (isPreview) {
-    // 마지막 이미지 보여주기 (있으면)
-    if (images.length > 0 && images[images.length - 1]) {
-      image(images[images.length - 1], 0, 0, width, height);
-    }
-    // 전체 시 쌓아서 표시
-    displayAccumulatedLyrics(subtitles.length);
+    if (images.length) image(images[images.length-1], 0, 0, width, height);
+    displayAccumulated(subtitles.length);
     return;
   }
 
   if (!audioStarted || !song) {
-    fill(50);
+    fill(60);
     textAlign(CENTER, CENTER);
-    textSize(26);
-    text("음악 → SRT → 이미지 선택 후\n미리보기로 위치를 확인하세요", width/2, height/2);
+    textSize(24);
+    text("파일을 모두 선택한 뒤\n미리보기로 확인하고 시작하세요", width/2, height/2);
     return;
   }
 
   const t = song.currentTime();
 
-  // 현재까지 지나온 구절 개수 계산 (쌓이는 방식)
-  let passedCount = 0;
+  // 현재까지 쌓인 구절 수
+  let passed = 0;
   for (let i = 0; i < subtitles.length; i++) {
-    if (t >= subtitles[i].start) {
-      passedCount = i + 1;
-    } else {
-      break;
-    }
+    if (t >= subtitles[i].start) passed = i + 1;
+    else break;
   }
 
-  // 이미지 표시 (현재 구절에 해당하는 이미지)
-  let imgIndex = constrain(passedCount - 1, 0, images.length - 1);
-  if (images[imgIndex]) {
-    image(images[imgIndex], 0, 0, width, height);
+  // 이미지
+  const imgIdx = constrain(passed - 1, 0, images.length - 1);
+  if (images[imgIdx]) {
+    image(images[imgIdx], 0, 0, width, height);
   }
 
-  // 쌓인 시 표시
-  displayAccumulatedLyrics(passedCount);
+  // 쌓인 시
+  displayAccumulated(passed);
 }
 
-function displayAccumulatedLyrics(count) {
-  if (count <= 0 || subtitles.length === 0) return;
+function displayAccumulated(count) {
+  if (count <= 0) return;
 
   push();
-  textAlign(LEFT, TOP);
+  textFont(currentFont);
   textSize(textSizeVal);
-  fill(25, 25, 25, 235);
+  fill(20, 20, 20, 230);
 
-  let y = textY;
+  if (writingMode === "vertical") {
+    // 세로쓰기
+    let x = textX;
+    for (let i = 0; i < count; i++) {
+      const line = subtitles[i].text.replace(/\s+/g, "");
+      let y = textY;
+      for (let c of line) {
+        // 캘리그라피 효과
+        const shake = (calligraphyStrength / 100) * 2.5;
+        const ox = random(-shake, shake);
+        const oy = random(-shake, shake);
+        const alpha = 200 + random(-30, 30) * (calligraphyStrength / 100);
 
-  for (let i = 0; i < count; i++) {
-    const line = subtitles[i].text;
-    text(line, textX, y);
-    y += lineHeightVal;
+        fill(20, 20, 20, alpha);
+        text(c, x + ox, y + oy);
+        y += lineHeightVal * 0.85;
+      }
+      x += lineHeightVal * 1.1; // 다음 줄
+    }
+  } else {
+    // 가로쓰기
+    let y = textY;
+    for (let i = 0; i < count; i++) {
+      const line = subtitles[i].text;
+      const shake = (calligraphyStrength / 100) * 1.8;
+      const ox = random(-shake, shake);
+      const oy = random(-shake, shake);
+      const alpha = 210 + random(-25, 25) * (calligraphyStrength / 100);
+
+      fill(20, 20, 20, alpha);
+      text(line, textX + ox, y + oy);
+      y += lineHeightVal;
+    }
   }
   pop();
 }
