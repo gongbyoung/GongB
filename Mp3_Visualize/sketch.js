@@ -1,75 +1,99 @@
-let song;
-let fft;
-let inkLayer;          // 그림이 계속 쌓이는 레이어
+let song = null;
+let fft = null;
+let inkLayer;
 let audioStarted = false;
 let lyrics = [];
 let currentLyricIndex = 0;
-let lyricAlpha = 0;
+let statusMessage = "음악을 선택하고 가사를 입력한 뒤\n「시작하기」를 눌러주세요";
 
 function setup() {
   createCanvas(1080, 1920);
   inkLayer = createGraphics(width, height);
-  inkLayer.background(248, 243, 230); // 한지 색
+  inkLayer.background(248, 243, 230);
 
-  // UI 이벤트
-  document.getElementById("startBtn").addEventListener("click", startExperience);
-  document.getElementById("musicInput").addEventListener("change", handleMusic);
+  // UI 이벤트 연결
+  const musicInput = document.getElementById("musicInput");
+  const startBtn = document.getElementById("startBtn");
+
+  if (musicInput) {
+    musicInput.addEventListener("change", handleMusic);
+  }
+  if (startBtn) {
+    startBtn.addEventListener("click", startExperience);
+  }
 }
 
 function handleMusic(e) {
   const file = e.target.files[0];
   if (!file) return;
 
+  statusMessage = "음악 로딩 중...";
+
   if (song) {
     song.stop();
+    song = null;
     audioStarted = false;
   }
 
   const url = URL.createObjectURL(file);
-  song = loadSound(url, () => {
-    fft = new p5.FFT(0.8, 1024);
-    console.log("음악 로드 완료");
-  });
+
+  song = loadSound(url,
+    // 성공 콜백
+    () => {
+      fft = new p5.FFT(0.8, 1024);
+      statusMessage = "음악 로드 완료!\n「시작하기」를 눌러주세요";
+      console.log("음악 로드 성공");
+    },
+    // 실패 콜백
+    (err) => {
+      statusMessage = "음악 로드 실패\n다른 파일을 시도해보세요";
+      console.error("로드 실패:", err);
+    }
+  );
 }
 
 function startExperience() {
   // 가사 가져오기
   const raw = document.getElementById("lyricsInput").value.trim();
   lyrics = raw.split("\n").filter(line => line.trim() !== "");
-  currentLyricIndex = 0;
 
   if (!song) {
-    alert("먼저 음악을 선택해주세요.");
+    statusMessage = "먼저 음악을 선택해주세요";
     return;
   }
 
-  // 화면 클릭으로 재생 (브라우저 정책)
-  if (!audioStarted) {
-    song.play();
-    audioStarted = true;
+  if (lyrics.length === 0) {
+    statusMessage = "가사를 입력해주세요";
+    return;
   }
+
+  // 재생 시작
+  if (!song.isPlaying()) {
+    song.play();
+  }
+  audioStarted = true;
+  statusMessage = "";
+  console.log("재생 시작");
 }
 
 function draw() {
-  // 한지 배경
   background(248, 243, 230);
-
-  // 쌓인 먹 그림 그리기
   image(inkLayer, 0, 0);
 
-  if (!song || !audioStarted) {
-    fill(40);
-    textAlign(CENTER, CENTER);
-    textSize(32);
-    text("음악을 선택하고\n시(가사)를 입력한 뒤\n「시작하기」를 눌러주세요", width/2, height/2);
-    return;
-  }
-
-  if (!song.isPlaying()) {
+  // 상태 메시지 표시
+  if (statusMessage !== "") {
     fill(40);
     textAlign(CENTER, CENTER);
     textSize(28);
-    text("화면을 클릭하면 음악이 시작됩니다", width/2, height/2);
+    text(statusMessage, width/2, height/2);
+    return;
+  }
+
+  if (!song || !audioStarted) return;
+
+  // 음악이 끝났으면 멈춤
+  if (!song.isPlaying() && song.currentTime() > 0) {
+    // 끝났을 때도 그림은 유지
     return;
   }
 
@@ -80,97 +104,92 @@ function draw() {
   let treble = fft.getEnergy("treble");
   let overall = fft.getEnergy(20, 20000);
 
-  // === 그림 그리기 (사라지지 않고 쌓임) ===
-  if (frameCount % 4 === 0) {
+  // 그림 그리기 (쌓임)
+  if (frameCount % 3 === 0) {
     drawInkStrokes(bass, mid, treble);
   }
 
-  // === 가사 표시 ===
+  // 가사 표시
   displayLyrics(overall);
 }
 
-// 실제 붓 자국처럼 그리기
+// 붓 자국 그리기
 function drawInkStrokes(bass, mid, treble) {
   inkLayer.noStroke();
 
-  // 1. 산 / 큰 형태 (Bass)
-  if (bass > 40) {
-    let count = floor(map(bass, 40, 255, 1, 3));
+  // 산 (Bass)
+  if (bass > 35) {
+    let count = floor(map(bass, 35, 255, 1, 3));
     for (let i = 0; i < count; i++) {
       let x = random(width * 0.1, width * 0.9);
-      let y = random(height * 0.55, height * 0.85);
-      let size = map(bass, 40, 255, 30, 90);
-      
-      inkLayer.fill(20, 20, 20, map(bass, 40, 255, 15, 40));
-      inkLayer.ellipse(x, y, size * random(0.8, 1.4), size * random(0.5, 0.9));
+      let y = random(height * 0.55, height * 0.88);
+      let size = map(bass, 35, 255, 40, 110);
+
+      inkLayer.fill(20, 20, 20, map(bass, 35, 255, 12, 35));
+      inkLayer.ellipse(x, y, size * random(0.9, 1.5), size * random(0.5, 0.85));
     }
   }
 
-  // 2. 대나무 / 나무 줄기 (Mid)
-  if (mid > 50) {
-    let count = floor(map(mid, 50, 255, 1, 4));
+  // 대나무/나무 (Mid)
+  if (mid > 45) {
+    let count = floor(map(mid, 45, 255, 1, 4));
     for (let i = 0; i < count; i++) {
-      let x = random(width * 0.15, width * 0.85);
-      let y = random(height * 0.2, height * 0.7);
-      let h = map(mid, 50, 255, 40, 140);
-      let w = map(mid, 50, 255, 3, 12);
+      let x = random(width * 0.12, width * 0.88);
+      let y = random(height * 0.15, height * 0.7);
+      let h = map(mid, 45, 255, 50, 160);
+      let w = map(mid, 45, 255, 4, 14);
 
-      inkLayer.fill(15, 15, 15, map(mid, 50, 255, 25, 60));
+      inkLayer.fill(15, 15, 15, map(mid, 45, 255, 20, 55));
       inkLayer.push();
       inkLayer.translate(x, y);
-      inkLayer.rotate(random(-0.15, 0.15));
+      inkLayer.rotate(random(-0.2, 0.2));
       inkLayer.ellipse(0, 0, w, h);
       inkLayer.pop();
     }
   }
 
-  // 3. 가는 가지 / 풀 / 구름 (Treble)
-  if (treble > 60) {
-    let count = floor(map(treble, 60, 255, 2, 6));
+  // 가는 가지 (Treble)
+  if (treble > 55) {
+    let count = floor(map(treble, 55, 255, 2, 7));
     for (let i = 0; i < count; i++) {
       let x = random(width);
-      let y = random(height * 0.05, height * 0.6);
-      let len = map(treble, 60, 255, 15, 50);
+      let y = random(height * 0.05, height * 0.55);
+      let len = map(treble, 55, 255, 20, 60);
 
-      inkLayer.stroke(25, 25, 25, map(treble, 60, 255, 20, 50));
-      inkLayer.strokeWeight(random(0.8, 2.5));
-      inkLayer.line(x, y, x + random(-len, len), y + random(-len*0.6, len*0.6));
+      inkLayer.stroke(25, 25, 25, map(treble, 55, 255, 18, 45));
+      inkLayer.strokeWeight(random(1, 2.8));
+      inkLayer.line(x, y, x + random(-len, len), y + random(-len * 0.7, len * 0.7));
       inkLayer.noStroke();
     }
   }
 }
 
-// 가사 표시 (노래 시간에 맞춰)
+// 가사 표시
 function displayLyrics(overall) {
   if (lyrics.length === 0) return;
 
-  // 노래 진행률에 따라 가사 인덱스 결정
   let progress = song.currentTime() / song.duration();
   currentLyricIndex = floor(progress * lyrics.length);
   currentLyricIndex = constrain(currentLyricIndex, 0, lyrics.length - 1);
 
   let currentText = lyrics[currentLyricIndex];
-
-  // 페이드 효과
-  lyricAlpha = lerp(lyricAlpha, map(overall, 0, 255, 80, 230), 0.08);
+  let alpha = map(overall, 0, 255, 100, 240);
 
   push();
-  translate(width * 0.88, height * 0.12);
+  translate(width * 0.87, height * 0.1);
   textAlign(CENTER, TOP);
-  textSize(36);
-  fill(15, 15, 15, lyricAlpha);
-  
-  // 세로쓰기
+  textSize(34);
+  fill(20, 20, 20, alpha);
+
   for (let i = 0; i < currentText.length; i++) {
-    text(currentText[i], 0, i * 46);
+    text(currentText[i], 0, i * 44);
   }
   pop();
 }
 
-// 화면 클릭으로 재생 시작 (안전장치)
+// 화면 클릭으로도 재생 가능하게
 function mousePressed() {
-  if (song && !song.isPlaying() && audioStarted === false) {
+  if (song && !song.isPlaying() && audioStarted) {
     song.play();
-    audioStarted = true;
   }
 }
