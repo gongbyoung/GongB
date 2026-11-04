@@ -8,7 +8,7 @@ window.MandalaShapes = window.MandalaShapes || [];
 window.registerMandalaShape = function(shapeConfig) {
   const idx = window.MandalaShapes.findIndex(s => s.id === shapeConfig.id);
   if (idx >= 0) {
-    window.MandalaShapes[idx] = shapeConfig;
+    window.MandalaShapes[idx] = shapeConfig; 
   } else {
     window.MandalaShapes.push(shapeConfig);
   }
