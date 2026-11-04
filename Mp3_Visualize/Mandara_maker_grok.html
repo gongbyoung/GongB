@@ -1,1 +1,1423 @@
 
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>무한만다라 스튜디오 (9:16 Short-form Edition)</title>
+<style>
+  :root {
+    --bg-dark: #0f0f14;
+    --panel-bg: #181820;
+    --border: #2a2a38;
+    --accent: #7c5cff;
+    --accent-hover: #967aff;
+    --danger: #ff4757;
+    --text: #e8e8f0;
+    --text-sub: #9090a8;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+  body {
+    background-color: var(--bg-dark);
+    color: var(--text);
+    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* 좌측 9:16 프리뷰 영역 */
+  .stage-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: radial-gradient(circle at center, #1e1e2a 0%, #09090d 100%);
+    position: relative;
+  }
+  .canvas-wrapper {
+    position: relative;
+    height: calc(100vh - 80px);
+    aspect-ratio: 9 / 16;
+    max-width: 100%;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    overflow: hidden;
+    background: #000;
+  }
+  canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  .rec-badge {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    background: rgba(255, 71, 87, 0.9);
+    color: #fff;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 700;
+    display: none;
+    align-items: center;
+    gap: 6px;
+    backdrop-filter: blur(4px);
+    z-index: 10;
+  }
+  .rec-badge.active { display: flex; }
+  .rec-dot {
+    width: 8px; height: 8px;
+    background: #fff;
+    border-radius: 50%;
+    animation: blink 1s infinite;
+  }
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
+
+  .stage-info {
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--text-sub);
+    display: flex;
+    gap: 16px;
+    align-items: center;
+  }
+
+  /* 우측 컨트롤 패널 */
+  .sidebar {
+    width: 410px;
+    background: var(--panel-bg);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+  .sidebar-header {
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .sidebar-header h1 {
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+  }
+  .badge-ratio {
+    background: rgba(124, 92, 255, 0.18);
+    color: #b4a0ff;
+    border: 1px solid rgba(124, 92, 255, 0.4);
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .controls-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 20px 30px;
+  }
+  .controls-scroll::-webkit-scrollbar { width: 6px; }
+  .controls-scroll::-webkit-scrollbar-thumb { background: #333344; border-radius: 3px; }
+
+  .section {
+    margin-bottom: 22px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .section:last-child { border-bottom: none; }
+  .section-title {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--text-sub);
+    margin-bottom: 12px;
+    letter-spacing: 0.6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    gap: 10px;
+  }
+  .row label {
+    font-size: 13px;
+    color: var(--text);
+    flex: 0 0 110px;
+  }
+  .row input[type="range"] {
+    flex: 1;
+    accent-color: var(--accent);
+    cursor: pointer;
+    height: 5px;
+  }
+  .val-box {
+    width: 42px;
+    text-align: right;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-sub);
+  }
+
+  select, input[type="number"] {
+    background: #232330;
+    color: var(--text);
+    border: 1px solid #36364a;
+    padding: 7px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    flex: 1;
+    outline: none;
+  }
+  select:focus, input[type="number"]:focus { border-color: var(--accent); }
+
+  /* 토글 버튼 그룹 */
+  .toggle-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .toggle-btn {
+    background: #232330;
+    border: 1px solid #343446;
+    color: var(--text-sub);
+    padding: 8px 10px;
+    border-radius: 7px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: center;
+  }
+  .toggle-btn.active {
+    background: rgba(124, 92, 255, 0.2);
+    border-color: var(--accent);
+    color: #fff;
+  }
+
+  /* 오디오 및 녹화 버튼 */
+  .btn-group {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .btn {
+    flex: 1;
+    background: #282838;
+     hover: #34344a;
+    color: #fff;
+    border: 1px solid #3c3c52;
+    padding: 9px 12px;
+    border-radius: 7px;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .btn:hover { background: #343448; }
+  .btn.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .btn.primary:hover { background: var(--accent-hover); }
+  .btn.danger {
+    background: var(--danger);
+    border-color: var(--danger);
+  }
+  .btn.danger:hover { opacity: 0.9; }
+
+  /* 오디오 미터 바 */
+  .meter-bar {
+    display: flex;
+    gap: 6px;
+    margin-top: 10px;
+    height: 8px;
+  }
+  .meter-col {
+    flex: 1;
+    background: #222230;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .meter-fill {
+    height: 100%;
+    width: 20%;
+    background: linear-gradient(90deg, #7c5cff, #00d2d3);
+    transition: width 0.05s linear;
+  }
+  .audio-status {
+    font-size: 11.5px;
+    color: var(--text-sub);
+    margin-top: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+</style>
+</head>
+<body>
+
+  <!-- 좌측 9:16 캔버스 스테이지 -->
+  <div class="stage-container">
+    <div class="canvas-wrapper">
+      <div class="rec-badge" id="recBadge">
+        <div class="rec-dot"></div>
+        <span id="recTime">REC 00:00</span>
+      </div>
+      <canvas id="mandalaCanvas" width="1080" height="1920"></canvas>
+    </div>
+    <div class="stage-info">
+      <span>해상도: <b>1080 × 1920 (9:16 FHD)</b></span>
+      <span>|</span>
+      <span id="fpsCounter">60 FPS</span>
+    </div>
+  </div>
+
+  <!-- 우측 컨트롤 사이드바 -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <h1>무한만다라 생성기</h1>
+      <span class="badge-ratio">9:16 숏폼 전용</span>
+    </div>
+
+    <div class="controls-scroll">
+
+      <!-- 1. 영상 녹화 & 스냅샷 -->
+      <div class="section">
+        <div class="section-title">
+          <span>고화질 영상 녹화 & 추출</span>
+        </div>
+        <div class="btn-group">
+          <button class="btn primary" id="btnRecord">⏺ 영상 녹화 시작</button>
+          <button class="btn" id="btnSnapshot">📸 PNG 캡처</button>
+        </div>
+        <div class="audio-status" id="recStatus">녹화 시 오디오와 1080x1920 화면이 함께 저장됩니다.</div>
+      </div>
+
+      <!-- 2. 오디오 반응형 설정 -->
+      <div class="section">
+        <div class="section-title">
+          <span>오디오 & 호흡 소스</span>
+          <span id="audioModeLabel" style="color:#a288ff;">호흡 곡선</span>
+        </div>
+        <div class="btn-group">
+          <label class="btn" style="cursor:pointer;">
+            🎵 오디오 파일 열기
+            <input type="file" id="audioInput" accept="audio/*" style="display:none;">
+          </label>
+          <button class="btn" id="btnMic">🎙️ 마이크</button>
+          <button class="btn" id="btnBreath">🌬️ 호흡모드</button>
+        </div>
+        <audio id="audioPlayer" controls style="width:100%; height:32px; margin-top:10px; display:none;"></audio>
+        <div class="meter-bar" title="저음(Bass) / 중음(Mid) / 고음(High) 에너지">
+          <div class="meter-col"><div class="meter-fill" id="meterBass"></div></div>
+          <div class="meter-col"><div class="meter-fill" id="meterMid"></div></div>
+          <div class="meter-col"><div class="meter-fill" id="meterHigh"></div></div>
+        </div>
+      </div>
+
+      <!-- 3. 색상 팔레트 & 쉐이프 내부 그라디언트 -->
+      <div class="section">
+        <div class="section-title">색상 & 쉐이프 내부 그라디언트</div>
+        <div class="row">
+          <label>컬러 팔레트</label>
+          <select id="selPalette">
+            <option value="PASTEL">파스텔 (Pastel)</option>
+            <option value="PRIMARY">원색 (Primary)</option>
+            <option value="CYBER" selected>사이버 네온 (Cyber Neon)</option>
+            <option value="GOLD_LOTUS">황금 연꽃 (Gold Lotus)</option>
+            <option value="AURORA">오로라 (Aurora)</option>
+            <option value="DANCFENG">한국 단청 (Dancheong)</option>
+            <option value="MONO">무채색 (Mono)</option>
+          </select>
+        </div>
+        <div class="row">
+          <label>내부 그라디언트</label>
+          <select id="selGradMode">
+            <option value="DIRECTIONAL" selected>도형 방향 입체 (중심→끝)</option>
+            <option value="RADIAL">각 도형 방사형 (구슬감)</option>
+            <option value="SOLID">단색 채움</option>
+            <option value="NONE">채우기 없음 (선만 표시)</option>
+          </select>
+        </div>
+        <div class="row">
+          <label>내부 채움 투명도</label>
+          <input type="range" id="rngFillAlpha" min="0" max="1" step="0.05" value="0.75">
+          <span class="val-box" id="valFillAlpha">0.75</span>
+        </div>
+        <div class="toggle-grid">
+          <div class="toggle-btn active" id="togGradient">팔레트 순차 그라디언트</div>
+          <div class="toggle-btn active" id="togGlow">네온 발광 (GLOW)</div>
+          <div class="toggle-btn" id="togNega">색상 반전 (NEGA)</div>
+          <div class="toggle-btn active" id="togAudioLine">오디오 반응 선굵기</div>
+        </div>
+      </div>
+
+      <!-- 4. 흐름 & 기하학 파라미터 -->
+      <div class="section">
+        <div class="section-title">만다라 구조 & 선 굵기</div>
+        <div class="row">
+          <label>흐름 방향</label>
+          <select id="selFlow">
+            <option value="BLOOM">중심 → 외곽 (BLOOM)</option>
+            <option value="INWARD">외곽 → 중심 (INWARD)</option>
+          </select>
+        </div>
+        <div class="row">
+          <label>선 굵기 (Line)</label>
+          <input type="range" id="rngLine" min="0.2" max="8.0" step="0.1" value="2.0">
+          <span class="val-box" id="valLine">2.0</span>
+        </div>
+        <div class="row">
+          <label>대칭축 (Symmetry)</label>
+          <input type="range" id="rngSymmetry" min="4" max="36" step="2" value="12">
+          <span class="val-box" id="valSymmetry">12</span>
+        </div>
+        <div class="row">
+          <label>고리 수 (Rings)</label>
+          <input type="range" id="rngRings" min="4" max="40" step="1" value="18">
+          <span class="val-box" id="valRings">18</span>
+        </div>
+        <div class="row">
+          <label>흐름 속도 (Speed)</label>
+          <input type="range" id="rngSpeed" min="0.2" max="3.0" step="0.1" value="1.0">
+          <span class="val-box" id="valSpeed">1.0</span>
+        </div>
+        <div class="row">
+          <label>회전 속도 (Spin)</label>
+          <input type="range" id="rngSpin" min="0.0" max="2.5" step="0.05" value="0.5">
+          <span class="val-box" id="valSpin">0.5</span>
+        </div>
+        <div class="row">
+          <label>만다라 크기</label>
+          <input type="range" id="rngMaxScale" min="0.5" max="2.2" step="0.05" value="1.15">
+          <span class="val-box" id="valMaxScale">1.15</span>
+        </div>
+        <div class="row">
+          <label>랜덤 시드 (Seed)</label>
+          <input type="number" id="inpSeed" min="1" max="99999" value="7">
+          <button class="btn" id="btnRandomSeed" style="flex:0 0 80px;">🎲 랜덤</button>
+        </div>
+      </div>
+
+      <!-- 5. 모양(모티프) 출현 비중 (8종 다채로운 쉐이프) -->
+      <div class="section">
+        <div class="section-title">
+          <span>모양(쉐이프) 출현 비중 (8종)</span>
+          <button class="btn" id="btnAllShapes" style="padding:3px 8px; font-size:11px; flex:0;">골고루</button>
+        </div>
+        <div class="row">
+          <label>🌸 꽃잎 (Petal)</label>
+          <input type="range" id="wPetal" min="0" max="1" step="0.05" value="0.85">
+          <span class="val-box" id="valWPetal">0.85</span>
+        </div>
+        <div class="row">
+          <label>🪷 연꽃 (Lotus)</label>
+          <input type="range" id="wLotus" min="0" max="1" step="0.05" value="0.80">
+          <span class="val-box" id="valWLotus">0.80</span>
+        </div>
+        <div class="row">
+          <label>🏛️ 기와 (Tile)</label>
+          <input type="range" id="wTile" min="0" max="1" step="0.05" value="0.50">
+          <span class="val-box" id="valWTile">0.50</span>
+        </div>
+        <div class="row">
+          <label>✨ 만화경 별 (Star)</label>
+          <input type="range" id="wStar" min="0" max="1" step="0.05" value="0.70">
+          <span class="val-box" id="valWStar">0.70</span>
+        </div>
+        <div class="row">
+          <label>🔮 형이상 (Meta)</label>
+          <input type="range" id="wMeta" min="0" max="1" step="0.05" value="0.55">
+          <span class="val-box" id="valWMeta">0.55</span>
+        </div>
+        <div class="row">
+          <label>📐 기하학 (Geo)</label>
+          <input type="range" id="wGeo" min="0" max="1" step="0.05" value="0.45">
+          <span class="val-box" id="valWGeo">0.45</span>
+        </div>
+        <div class="row">
+          <label>🕸️ 신성파동 (Wave)</label>
+          <input type="range" id="wSacred" min="0" max="1" step="0.05" value="0.60">
+          <span class="val-box" id="valWSacred">0.60</span>
+        </div>
+        <div class="row">
+          <label>🔥 불꽃물방울 (Drop)</label>
+          <input type="range" id="wFlame" min="0" max="1" step="0.05" value="0.65">
+          <span class="val-box" id="valWFlame">0.65</span>
+        </div>
+      </div>
+
+    </div>
+  </aside>
+
+<script>
+const TAU = Math.PI * 2;
+
+// 1. 팔레트 및 배경 잉크 정의 (기존 3종 + 신규 4종 확장)
+const PALETTES = {
+  PASTEL: [
+    [0.95, 0.75, 0.73, 1],
+    [0.96, 0.86, 0.66, 1],
+    [0.73, 0.84, 0.80, 1],
+    [0.73, 0.79, 0.91, 1],
+    [0.88, 0.75, 0.84, 1],
+  ],
+  PRIMARY: [
+    [0.89, 0.07, 0.14, 1],
+    [1.00, 0.80, 0.00, 1],
+    [0.11, 0.31, 1.00, 1],
+    [1.00, 1.00, 1.00, 1],
+  ],
+  CYBER: [
+    [1.00, 0.08, 0.58, 1],
+    [0.00, 0.95, 1.00, 1],
+    [0.55, 0.15, 1.00, 1],
+    [1.00, 0.92, 0.10, 1],
+  ],
+  GOLD_LOTUS: [
+    [1.00, 0.84, 0.25, 1],
+    [0.96, 0.48, 0.18, 1],
+    [0.75, 0.15, 0.28, 1],
+    [0.98, 0.93, 0.76, 1],
+  ],
+  AURORA: [
+    [0.10, 0.95, 0.65, 1],
+    [0.15, 0.60, 0.98, 1],
+    [0.62, 0.28, 0.95, 1],
+    [0.95, 0.35, 0.75, 1],
+  ],
+  DANCFENG: [
+    [0.85, 0.18, 0.20, 1],
+    [0.16, 0.68, 0.52, 1],
+    [0.96, 0.76, 0.18, 1],
+    [0.18, 0.32, 0.72, 1],
+    [0.95, 0.93, 0.88, 1],
+  ],
+  MONO: [
+    [0.96, 0.95, 0.92, 1],
+    [0.84, 0.81, 0.76, 1],
+    [0.66, 0.62, 0.57, 1],
+    [0.48, 0.45, 0.41, 1],
+  ],
+};
+
+const INK = {
+  PASTEL: [0.07, 0.06, 0.08, 1],
+  PRIMARY: [0.03, 0.03, 0.06, 1],
+  CYBER: [0.03, 0.02, 0.07, 1],
+  GOLD_LOTUS: [0.06, 0.03, 0.04, 1],
+  AURORA: [0.02, 0.05, 0.07, 1],
+  DANCFENG: [0.05, 0.06, 0.06, 1],
+  MONO: [0.05, 0.045, 0.04, 1],
+};
+
+// 상태 설정값
+const settings = {
+  flow: "BLOOM",
+  palette: "CYBER",
+  gradMode: "DIRECTIONAL",
+  fillAlpha: 0.75,
+  gradient: true,
+  nega: false,
+  glow: true,
+  audioLine: true,
+  weight_petal: 0.85,
+  weight_lotus: 0.80,
+  weight_tile: 0.50,
+  weight_star: 0.70,
+  weight_meta: 0.55,
+  weight_geo: 0.45,
+  weight_sacred: 0.60,
+  weight_flame: 0.65,
+  symmetry: 12,
+  rings: 18,
+  speed: 1.0,
+  spin: 0.5,
+  line: 2.0,
+  maxScale: 1.15,
+  seed: 7,
+};
+
+// 시드 난수 생성기 (Mulberry32 - Python 코드와 100% 동일)
+function createRng(seed) {
+  let a = seed >>> 0;
+  return function() {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a) >>> 0;
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) >>> 0;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// 색상 유틸리티
+function invertColor(c) {
+  return [1 - c[0], 1 - c[1], 1 - c[2], 1];
+}
+function lerpColor(colors, t) {
+  const n = colors.length;
+  const x = (((t % 1.0) + 1.0) % 1.0) * n;
+  const i = Math.floor(x) % n;
+  const f = x - Math.floor(x);
+  const a = colors[i];
+  const b = colors[(i + 1) % n];
+  return [
+    a[0] + (b[0] - a[0]) * f,
+    a[1] + (b[1] - a[1]) * f,
+    a[2] + (b[2] - a[2]) * f,
+    1
+  ];
+}
+function toRgbaStr(c, alpha = 1.0) {
+  const r = Math.round(Math.max(0, Math.min(1, c[0])) * 255);
+  const g = Math.round(Math.max(0, Math.min(1, c[1])) * 255);
+  const b = Math.round(Math.max(0, Math.min(1, c[2])) * 255);
+  return `rgba(${r},${g},${b},${Math.max(0, Math.min(1, alpha)).toFixed(3)})`;
+}
+
+// 기하학 헬퍼 함수 (Infinite Mandala 원본 수식 + 신규 모티프 확장)
+function quad(p0, p1, p2, steps) {
+  const pts = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const u = 1 - t;
+    pts.push([
+      u * u * p0[0] + 2 * u * t * p1[0] + t * t * p2[0],
+      u * u * p0[1] + 2 * u * t * p1[1] + t * t * p2[1],
+    ]);
+  }
+  return pts;
+}
+
+function circle(r, segs = 56, phase = 0.0) {
+  const pts = [];
+  for (let i = 0; i <= segs; i++) {
+    const a = phase + (TAU * i) / segs;
+    pts.push([Math.cos(a) * r, Math.sin(a) * r]);
+  }
+  return pts;
+}
+
+// 1) 꽃잎 (PETAL)
+function motifPetals(n, variant, morph) {
+  const splines = [];
+  const bulge = 0.09 + variant * 0.05 + morph * 0.04;
+  const inner = 0.66;
+  const steps = 8;
+  for (let i = 0; i < n; i++) {
+    const a = (TAU * i) / n;
+    const half = (Math.PI / n) * 0.88;
+    const tip = [Math.cos(a), Math.sin(a)];
+    const bl = [Math.cos(a - half) * inner, Math.sin(a - half) * inner];
+    const br = [Math.cos(a + half) * inner, Math.sin(a + half) * inner];
+    const mid = [Math.cos(a) * (inner + 1) * 0.5, Math.sin(a) * (inner + 1) * 0.5];
+    const px = Math.cos(a + Math.PI / 2) * bulge;
+    const py = Math.sin(a + Math.PI / 2) * bulge;
+    const left = quad(bl, [mid[0] + px, mid[1] + py], tip, steps);
+    const right = quad(tip, [mid[0] - px, mid[1] - py], br, steps);
+    const poly = left.concat(right.slice(1));
+    poly.push(bl); // 닫힌 도형으로 만들어 내부 그라디언트 지원
+    splines.push({ pts: poly, closed: true, ringFill: false });
+  }
+  splines.push({ pts: circle(inner * 0.96), closed: true, ringFill: true });
+  return splines;
+}
+
+// 2) 연꽃 (LOTUS - 신규 다중 겹꽃잎)
+function motifLotus(n, variant, morph) {
+  const splines = [];
+  const inner = 0.52;
+  const steps = 10;
+  const width = (Math.PI / n) * (1.1 + variant * 0.35);
+  for (let i = 0; i < n; i++) {
+    const a = (TAU * i) / n;
+    const tipR = 1.0 + morph * 0.12;
+    const tip = [Math.cos(a) * tipR, Math.sin(a) * tipR];
+    const bl = [Math.cos(a - width) * inner, Math.sin(a - width) * inner];
+    const br = [Math.cos(a + width) * inner, Math.sin(a + width) * inner];
+    const ctrlR = inner + (tipR - inner) * 0.62;
+    const cl = [Math.cos(a - width * 1.15) * ctrlR, Math.sin(a - width * 1.15) * ctrlR];
+    const cr = [Math.cos(a + width * 1.15) * ctrlR, Math.sin(a + width * 1.15) * ctrlR];
+    const left = quad(bl, cl, tip, steps);
+    const right = quad(tip, cr, br, steps);
+    const poly = left.concat(right.slice(1));
+    poly.push(bl);
+    splines.push({ pts: poly, closed: true });
+  }
+  return splines;
+}
+
+// 3) 전통 기와 (TILE)
+function motifTiles(n, variant, morph) {
+  const splines = [
+    { pts: circle(1.0), closed: true, ringFill: true },
+    { pts: circle(0.9), closed: true, ringFill: true }
+  ];
+  const curl = 0.5 + variant * 0.3 + morph * 0.2;
+  const bowl = (TAU / n) * (0.42 + curl * 0.2);
+  for (let i = 0; i < n; i++) {
+    const a = (TAU * i) / n;
+    const cx = Math.cos(a);
+    const cy = Math.sin(a);
+    const arc = [];
+    const steps = 10;
+    for (let s = 0; s <= steps; s++) {
+      const ang = a - Math.PI / 2 + (Math.PI * s) / steps;
+      arc.push([cx + Math.cos(ang) * bowl, cy + Math.sin(ang) * bowl]);
+    }
+    arc.push([cx + Math.cos(a - Math.PI / 2) * bowl, cy + Math.sin(a - Math.PI / 2) * bowl]);
+    splines.push({ pts: arc, closed: true });
+
+    const nose = 1 + bowl * 0.95;
+    const nx = Math.cos(a) * nose, ny = Math.sin(a) * nose;
+    const nr = bowl * 0.32;
+    const noseCircle = [];
+    for (let k = 0; k <= 16; k++) {
+      noseCircle.push([nx + Math.cos((TAU * k) / 16) * nr, ny + Math.sin((TAU * k) / 16) * nr]);
+    }
+    splines.push({ pts: noseCircle, closed: true });
+  }
+  return splines;
+}
+
+// 4) 만화경 별 (STAR - 신규 샤프 크리스탈)
+function motifStar(n, variant, morph) {
+  const splines = [];
+  const inner = 0.48 + variant * 0.18;
+  const midR = 0.78 + morph * 0.1;
+  for (let i = 0; i < n; i++) {
+    const a = (TAU * i) / n;
+    const stepA = Math.PI / n;
+    const poly = [
+      [Math.cos(a) * 1.08, Math.sin(a) * 1.08],
+      [Math.cos(a + stepA * 0.55) * midR, Math.sin(a + stepA * 0.55) * midR],
+      [Math.cos(a) * inner, Math.sin(a) * inner],
+      [Math.cos(a - stepA * 0.55) * midR, Math.sin(a - stepA * 0.55) * midR],
+      [Math.cos(a) * 1.08, Math.sin(a) * 1.08],
+    ];
+    splines.push({ pts: poly, closed: true });
+  }
+  return splines;
+}
+
+// 5) 형이상 (META)
+function motifMeta(n, which, morph) {
+  const splines = [];
+  if (which % 3 === 0) {
+    const s = (TAU / n) * (0.32 + morph * 0.1);
+    for (let i = 0; i < n; i++) {
+      const a = (TAU * i) / n;
+      const outward = i % 2 === 0;
+      const tipR = 1 + (outward ? s : -s * 0.85);
+      const baseR = 1 + (outward ? -s * 0.25 : s * 0.2);
+      const spread = (Math.PI / n) * 0.7;
+      splines.push({
+        pts: [
+          [Math.cos(a) * tipR, Math.sin(a) * tipR],
+          [Math.cos(a - spread) * baseR, Math.sin(a - spread) * baseR],
+          [Math.cos(a + spread) * baseR, Math.sin(a + spread) * baseR],
+          [Math.cos(a) * tipR, Math.sin(a) * tipR],
+        ],
+        closed: true
+      });
+    }
+    splines.push({ pts: circle(0.9), closed: true, ringFill: true });
+  } else if (which % 3 === 1) {
+    const cr = (TAU / n) * 0.48;
+    for (let i = 0; i < n; i++) {
+      const a = (TAU * i) / n;
+      const cx = Math.cos(a), cy = Math.sin(a);
+      const cPts = [];
+      for (let k = 0; k <= 18; k++) {
+        cPts.push([cx + Math.cos((TAU * k) / 18) * cr, cy + Math.sin((TAU * k) / 18) * cr]);
+      }
+      splines.push({ pts: cPts, closed: true });
+    }
+  } else {
+    const inner = 0.78 - morph * 0.06;
+    for (let i = 0; i < n; i++) {
+      const a0 = (TAU * i) / n;
+      const a1 = (TAU * (i + 0.65)) / n;
+      splines.push({
+        pts: [
+          [Math.cos(a0) * inner, Math.sin(a0) * inner],
+          [Math.cos(a0), Math.sin(a0)],
+          [Math.cos(a1), Math.sin(a1)],
+          [Math.cos(a1) * inner, Math.sin(a1) * inner],
+          [Math.cos(a0) * inner, Math.sin(a0) * inner],
+        ],
+        closed: true
+      });
+    }
+  }
+  return splines;
+}
+
+// 6) 기하학 (GEO)
+function motifGeo(n, which, morph) {
+  if (which % 3 === 0) {
+    const spread = (Math.PI / n) * 0.78;
+    const fat = 0.08 + morph * 0.04;
+    const splines = [];
+    for (let i = 0; i < n; i++) {
+      const a = (TAU * i) / n;
+      splines.push({
+        pts: [
+          [Math.cos(a) * (1 + fat), Math.sin(a) * (1 + fat)],
+          [Math.cos(a + spread), Math.sin(a + spread)],
+          [Math.cos(a) * (1 - fat), Math.sin(a) * (1 - fat)],
+          [Math.cos(a - spread), Math.sin(a - spread)],
+          [Math.cos(a) * (1 + fat), Math.sin(a) * (1 + fat)],
+        ],
+        closed: true
+      });
+    }
+    return splines;
+  }
+  if (which % 3 === 1) {
+    const inner = 0.78 - morph * 0.06;
+    const pts = [];
+    for (let i = 0; i <= n * 2; i++) {
+      const a = (TAU * i) / (n * 2);
+      const rr = i % 2 === 0 ? 1.0 : inner;
+      pts.push([Math.cos(a) * rr, Math.sin(a) * rr]);
+    }
+    return [{ pts, closed: true, ringFill: true }];
+  }
+  const k = Math.max(2, Math.floor(n / 3));
+  const pts = [];
+  let idx = 0;
+  for (let i = 0; i <= n; i++) {
+    const a = (TAU * idx) / n - Math.PI / 2;
+    pts.push([Math.cos(a), Math.sin(a)]);
+    idx = (idx + k) % n;
+  }
+  return [{ pts, closed: true, ringFill: true }];
+}
+
+// 7) 신성 기하학 파동 (SACRED - 신규)
+function motifSacred(n, variant, morph) {
+  const splines = [];
+  const lobes = n;
+  const pts = [];
+  const steps = lobes * 12;
+  const amp = 0.14 + variant * 0.08 + morph * 0.06;
+  for (let i = 0; i <= steps; i++) {
+    const t = (TAU * i) / steps;
+    const r = 0.9 + Math.sin(t * lobes) * amp + Math.cos(t * lobes * 2) * (amp * 0.4);
+    pts.push([Math.cos(t) * r, Math.sin(t) * r]);
+  }
+  splines.push({ pts, closed: true, ringFill: true });
+
+  for (let i = 0; i < n; i++) {
+    const a = (TAU * i) / n;
+    const r0 = 0.68;
+    const r1 = 0.9 + amp;
+    const w = (Math.PI / n) * 0.45;
+    splines.push({
+      pts: [
+        [Math.cos(a) * r0, Math.sin(a) * r0],
+        [Math.cos(a - w) * ((r0 + r1) * 0.5), Math.sin(a - w) * ((r0 + r1) * 0.5)],
+        [Math.cos(a) * r1, Math.sin(a) * r1],
+        [Math.cos(a + w) * ((r0 + r1) * 0.5), Math.sin(a + w) * ((r0 + r1) * 0.5)],
+        [Math.cos(a) * r0, Math.sin(a) * r0],
+      ],
+      closed: true
+    });
+  }
+  return splines;
+}
+
+// 8) 불꽃 / 물방울 (FLAME - 신규 곡선 티어드롭)
+function motifFlame(n, variant, morph) {
+  const splines = [];
+  const inner = 0.62;
+  const twist = (variant - 0.5) * (TAU / n) * 0.8 + morph * 0.15;
+  const steps = 9;
+  for (let i = 0; i < n; i++) {
+    const a = (TAU * i) / n;
+    const tip = [Math.cos(a + twist) * 1.06, Math.sin(a + twist) * 1.06];
+    const base = [Math.cos(a) * inner, Math.sin(a) * inner];
+    const spread = (Math.PI / n) * 0.75;
+    const c1 = [Math.cos(a - spread) * 0.85, Math.sin(a - spread) * 0.85];
+    const c2 = [Math.cos(a + spread) * 0.85, Math.sin(a + spread) * 0.85];
+    const left = quad(base, c1, tip, steps);
+    const right = quad(tip, c2, base, steps);
+    const poly = left.concat(right.slice(1));
+    splines.push({ pts: poly, closed: true });
+  }
+  return splines;
+}
+
+function getMotifSplines(motif, n, variant, which, morph) {
+  switch (motif) {
+    case "PETAL": return motifPetals(n, variant, morph);
+    case "LOTUS": return motifLotus(n, variant, morph);
+    case "TILE": return motifTiles(n, variant, morph);
+    case "STAR": return motifStar(n, variant, morph);
+    case "META": return motifMeta(n, which, morph);
+    case "SACRED": return motifSacred(n, variant, morph);
+    case "FLAME": return motifFlame(n, variant, morph);
+    default: return motifGeo(n, which, morph);
+  }
+}
+
+function pickMotif(rndVal, mid) {
+  const items = [
+    { key: "PETAL", w: settings.weight_petal * (0.75 + mid) },
+    { key: "LOTUS", w: settings.weight_lotus * (0.8 + mid * 0.6) },
+    { key: "TILE", w: settings.weight_tile * (1.15 - mid * 0.45) },
+    { key: "STAR", w: settings.weight_star * (0.7 + mid * 0.75) },
+    { key: "META", w: settings.weight_meta * (0.7 + mid * 0.85) },
+    { key: "GEO", w: settings.weight_geo * (1.1 - mid * 0.3) },
+    { key: "SACRED", w: settings.weight_sacred * (0.85 + mid * 0.4) },
+    { key: "FLAME", w: settings.weight_flame * (0.75 + mid * 0.7) },
+  ];
+  const total = items.reduce((acc, it) => acc + Math.max(0, it.w), 0) || 1;
+  let x = rndVal * total;
+  for (const it of items) {
+    x -= Math.max(0, it.w);
+    if (x <= 0) return it.key;
+  }
+  return "PETAL";
+}
+
+function calcEnvelope(u, flow) {
+  function sm(e0, e1, x) {
+    const t = Math.min(1.0, Math.max(0.0, (x - e0) / (e1 - e0 || 1)));
+    return t * t * (3 - 2 * t);
+  }
+  if (flow === "INWARD") {
+    return sm(0, 0.06, u) * sm(0, 0.28, 1 - u);
+  }
+  return sm(0, 0.08, u) * sm(0, 0.16, 1 - u);
+}
+
+// 고리(Ring) 객체 리스트 생성
+let ringsData = [];
+
+function rebuildRings() {
+  const count = settings.rings;
+  const rnd = createRng(settings.seed || 1);
+  ringsData = [];
+  for (let i = 0; i < count; i++) {
+    const phase = (i + 0.35) / count;
+    const mid0 = 0.4 + 0.3 * Math.sin(i * 0.5 + 1.2);
+    const motif = pickMotif(rnd(), mid0);
+    let segs = Math.max(4, Math.min(36, settings.symmetry + Math.round((mid0 - 0.35) * 4)));
+    if (segs % 2 !== 0) segs += 1;
+
+    const variant = rnd();
+    const which = Math.floor(rnd() * 4);
+    const hue0 = settings.gradient ? i / count : rnd();
+    const hue1 = (hue0 + 0.22 + rnd() * 0.18) % 1.0;
+    const rot0 = rnd() * TAU;
+    const spinDir = rnd() > 0.5 ? 1 : -1;
+
+    ringsData.push({
+      index: i,
+      phase,
+      motif,
+      segs,
+      variant,
+      which,
+      hue0,
+      hue1,
+      rot: rot0,
+      ageOffset: phase,
+      spinDir,
+    });
+  }
+}
+
+// 2. 오디오 분석기 (파일 / 마이크 / 호흡 곡선)
+let audioMode = "BREATH"; // BREATH | FILE | MIC
+let audioCtx = null;
+let analyser = null;
+let freqData = null;
+let micStream = null;
+let audioDestNode = null; // 녹화용 오디오 스트림 출력 노드
+
+function ensureAudioContext() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.8;
+    freqData = new Uint8Array(analyser.frequencyBinCount);
+    audioDestNode = audioCtx.createMediaStreamDestination();
+  }
+  if (audioCtx.state === "suspended") {
+    audioCtx.resume();
+  }
+}
+
+let mediaElementSource = null;
+const audioPlayer = document.getElementById("audioPlayer");
+
+document.getElementById("audioInput").addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  ensureAudioContext();
+  if (micStream) {
+    micStream.getTracks().forEach(t => t.stop());
+    micStream = null;
+  }
+  const url = URL.createObjectURL(file);
+  audioPlayer.src = url;
+  audioPlayer.style.display = "block";
+  audioPlayer.play();
+
+  if (!mediaElementSource) {
+    mediaElementSource = audioCtx.createMediaElementSource(audioPlayer);
+    mediaElementSource.connect(analyser);
+    analyser.connect(audioCtx.destination);
+    mediaElementSource.connect(audioDestNode);
+  }
+  audioMode = "FILE";
+  document.getElementById("audioModeLabel").textContent = "오디오: " + file.name.slice(0, 14);
+});
+
+document.getElementById("btnMic").addEventListener("click", async () => {
+  try {
+    ensureAudioContext();
+    audioPlayer.pause();
+    audioPlayer.style.display = "none";
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const src = audioCtx.createMediaStreamSource(micStream);
+    src.connect(analyser);
+    src.connect(audioDestNode);
+    audioMode = "MIC";
+    document.getElementById("audioModeLabel").textContent = "마이크 실시간";
+  } catch (err) {
+    alert("마이크 권한을 허용해주세요: " + err.message);
+  }
+});
+
+document.getElementById("btnBreath").addEventListener("click", () => {
+  audioPlayer.pause();
+  audioPlayer.style.display = "none";
+  if (micStream) {
+    micStream.getTracks().forEach(t => t.stop());
+    micStream = null;
+  }
+  audioMode = "BREATH";
+  document.getElementById("audioModeLabel").textContent = "호흡 곡선";
+});
+
+function getAudioBands(timeSec) {
+  if ((audioMode === "FILE" && !audioPlayer.paused) || audioMode === "MIC") {
+    analyser.getByteFrequencyData(freqData);
+    const rate = audioCtx.sampleRate || 48000;
+    const binHz = rate / analyser.fftSize;
+
+    function bandAvg(loHz, hiHz) {
+      const i0 = Math.max(0, Math.floor(loHz / binHz));
+      const i1 = Math.min(freqData.length - 1, Math.ceil(hiHz / binHz));
+      if (i1 < i0) return 0;
+      let sum = 0;
+      for (let i = i0; i <= i1; i++) sum += freqData[i];
+      return (sum / (i1 - i0 + 1)) / 255;
+    }
+
+    const b = Math.min(1, bandAvg(20, 160) * 1.25);
+    const m = Math.min(1, bandAvg(400, 1800) * 1.35);
+    const h = Math.min(1, bandAvg(1800, 8000) * 1.5);
+    const e = Math.min(1, b * 0.45 + m * 0.35 + h * 0.2);
+    return { bass: b, mid: m, high: h, energy: e };
+  }
+
+  // 기본 호흡 곡선 (infinite_mandala.py _breath 수식 이식)
+  const f = timeSec * 24;
+  const b = Math.max(0, Math.min(1, 0.35 + 0.25 * Math.sin(f * 0.17) + 0.15 * Math.max(0, Math.sin(f * 0.41))));
+  const m = Math.max(0, Math.min(1, 0.40 + 0.30 * Math.sin(f * 0.11 + 1.2)));
+  const h = Math.max(0, Math.min(1, 0.25 + 0.20 * Math.sin(f * 0.23 + 0.4)));
+  const e = Math.max(0, Math.min(1, b * 0.45 + m * 0.35 + h * 0.2));
+  return { bass: b, mid: m, high: h, energy: e };
+}
+
+// 3. 캔버스 렌더링 엔진 (각 도형 내부 그라디언트 처리)
+const canvas = document.getElementById("mandalaCanvas");
+const ctx = canvas.getContext("2d");
+
+let lastTime = performance.now();
+let frameCount = 0;
+let fpsTimer = performance.now();
+
+function render(now) {
+  const dt = Math.min(0.1, (now - lastTime) / 1000);
+  lastTime = now;
+
+  frameCount++;
+  if (now - fpsTimer >= 500) {
+    const fps = Math.round((frameCount * 1000) / (now - fpsTimer));
+    document.getElementById("fpsCounter").textContent = `${fps} FPS`;
+    frameCount = 0;
+    fpsTimer = now;
+  }
+
+  const bands = getAudioBands(now / 1000);
+  document.getElementById("meterBass").style.width = `${Math.round(bands.bass * 100)}%`;
+  document.getElementById("meterMid").style.width = `${Math.round(bands.mid * 100)}%`;
+  document.getElementById("meterHigh").style.width = `${Math.round(bands.high * 100)}%`;
+
+  // 팔레트 및 배경색 준비
+  let palette = PALETTES[settings.palette].map(c => [...c]);
+  let ink = [...INK[settings.palette]];
+  if (settings.nega) {
+    palette = palette.map(invertColor);
+    ink = invertColor(ink);
+  }
+
+  const W = canvas.width;
+  const H = canvas.height;
+  const cx = W / 2;
+  const cy = H / 2;
+
+  // 배경 채우기
+  ctx.save();
+  ctx.fillStyle = toRgbaStr(ink, 1.0);
+  ctx.fillRect(0, 0, W, H);
+
+  // 은은한 배경 비네팅 그라디언트
+  const bgGrad = ctx.createRadialGradient(cx, cy, 50, cx, cy, H * 0.55);
+  const bgCenterColor = lerpColor(palette, (now * 0.00005) % 1.0);
+  bgGrad.addColorStop(0, toRgbaStr(bgCenterColor, settings.nega ? 0.12 : 0.10));
+  bgGrad.addColorStop(1, toRgbaStr(ink, 0.0));
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  // 고리별 나이(u) 계산 후 큰 고리부터 작은 고리 순으로 정렬하여 깊이감 있게 렌더링
+  const baseRadius = (W * 0.46) * settings.maxScale;
+  const innerScale = 0.04;
+  const maxScale = 1.85;
+
+  const activeRings = ringsData.map((r) => {
+    r.ageOffset = (r.ageOffset + dt * 0.12 * (0.65 + bands.energy * settings.speed)) % 1.0;
+    r.rot += (0.15 + settings.spin) * r.spinDir * dt * 0.85 * (0.4 + bands.high);
+    const u = r.ageOffset;
+    const scale = settings.flow === "BLOOM"
+      ? innerScale + (maxScale - innerScale) * u
+      : maxScale - (maxScale - innerScale) * u;
+    const env = calcEnvelope(u, settings.flow);
+    return { ring: r, u, scale, env };
+  });
+
+  // 바깥쪽(큰 스케일)부터 먼저 그려 안쪽 문양이 선명하게 겹치도록 정렬
+  activeRings.sort((a, b) => b.scale - a.scale);
+
+  for (const item of activeRings) {
+    const { ring, u, scale, env } = item;
+    if (env <= 0.01) continue;
+
+    const radiusPx = baseRadius * scale;
+    const morph = bands.mid * 0.85;
+    const splines = getMotifSplines(ring.motif, ring.segs, ring.variant, ring.which, morph);
+
+    // 각 고리의 메인 색상 3단계 (내부 그라디언트용)
+    const colorMain = lerpColor(palette, ring.hue0 + u * 0.15);
+    const colorSub = lerpColor(palette, ring.hue1 + u * 0.15);
+    const colorEdge = lerpColor(palette, ring.hue0 + 0.45);
+
+    const alphaStroke = Math.min(1.0, env * (0.65 + bands.bass * 0.55));
+    const alphaFill = Math.min(1.0, env * settings.fillAlpha * (0.6 + bands.bass * 0.4));
+
+    const dynamicMult = settings.audioLine ? (0.65 + bands.mid * 0.95) : 1.0;
+    const strokeWidth = Math.max(0.5, settings.line * dynamicMult * (0.55 + scale * 0.45));
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(ring.rot);
+
+    if (settings.glow) {
+      ctx.shadowColor = toRgbaStr(colorMain, alphaStroke * 0.9);
+      ctx.shadowBlur = 14 + bands.bass * 22;
+    } else {
+      ctx.shadowBlur = 0;
+    }
+
+    ctx.lineWidth = strokeWidth;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.strokeStyle = toRgbaStr(colorMain, alphaStroke);
+
+    for (const sp of splines) {
+      const pts = sp.pts;
+      if (pts.length < 2) continue;
+
+      ctx.beginPath();
+      for (let k = 0; k < pts.length; k++) {
+        const px = pts[k][0] * radiusPx;
+        const py = pts[k][1] * radiusPx;
+        if (k === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      if (sp.closed) ctx.closePath();
+
+      // 각 쉐이프 내부에만 독립된 그라디언트 채우기
+      if (sp.closed && settings.gradMode !== "NONE" && alphaFill > 0.01) {
+        if (sp.ringFill) {
+          // 원형/별 링 베이스는 중심 방사형 그라디언트 적용
+          const rg = ctx.createRadialGradient(0, 0, radiusPx * 0.35, 0, 0, radiusPx);
+          rg.addColorStop(0, toRgbaStr(colorSub, alphaFill * 0.18));
+          rg.addColorStop(0.7, toRgbaStr(colorMain, alphaFill * 0.32));
+          rg.addColorStop(1, toRgbaStr(colorEdge, alphaFill * 0.5));
+          ctx.fillStyle = rg;
+          ctx.fill();
+        } else if (settings.gradMode === "DIRECTIONAL") {
+          // 각 개별 도형(꽃잎, 기와, 연꽃 등)의 바운딩 및 방향 벡터 계산
+          let minR = Infinity, maxR = -Infinity;
+          let sumX = 0, sumY = 0;
+          for (let k = 0; k < pts.length; k++) {
+            const x = pts[k][0] * radiusPx;
+            const y = pts[k][1] * radiusPx;
+            sumX += x; sumY += y;
+            const r = Math.hypot(x, y);
+            if (r < minR) minR = r;
+            if (r > maxR) maxR = r;
+          }
+          const avgX = sumX / pts.length;
+          const avgY = sumY / pts.length;
+          const ang = Math.atan2(avgY, avgX);
+          const x0 = Math.cos(ang) * minR;
+          const y0 = Math.sin(ang) * minR;
+          const x1 = Math.cos(ang) * maxR;
+          const y1 = Math.sin(ang) * maxR;
+
+          const lg = ctx.createLinearGradient(x0, y0, x1, y1);
+          lg.addColorStop(0, toRgbaStr(colorSub, alphaFill * 0.95));
+          lg.addColorStop(0.55, toRgbaStr(colorMain, alphaFill * 0.8));
+          lg.addColorStop(1, toRgbaStr(colorEdge, alphaFill * 0.25));
+          ctx.fillStyle = lg;
+          ctx.fill();
+        } else if (settings.gradMode === "RADIAL") {
+          // 각 도형의 무게중심(Centroid)을 기준으로 도형 내부 방사형 그라디언트
+          let sumX = 0, sumY = 0;
+          for (let k = 0; k < pts.length; k++) {
+            sumX += pts[k][0] * radiusPx;
+            sumY += pts[k][1] * radiusPx;
+          }
+          const gx = sumX / pts.length;
+          const gy = sumY / pts.length;
+          let maxDist = 10;
+          for (let k = 0; k < pts.length; k++) {
+            const d = Math.hypot(pts[k][0] * radiusPx - gx, pts[k][1] * radiusPx - gy);
+            if (d > maxDist) maxDist = d;
+          }
+          const rg = ctx.createRadialGradient(gx, gy, maxDist * 0.05, gx, gy, maxDist);
+          rg.addColorStop(0, toRgbaStr(colorSub, alphaFill));
+          rg.addColorStop(0.65, toRgbaStr(colorMain, alphaFill * 0.75));
+          rg.addColorStop(1, toRgbaStr(colorEdge, alphaFill * 0.15));
+          ctx.fillStyle = rg;
+          ctx.fill();
+        } else if (settings.gradMode === "SOLID") {
+          ctx.fillStyle = toRgbaStr(colorMain, alphaFill * 0.65);
+          ctx.fill();
+        }
+      }
+
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  ctx.restore();
+  requestAnimationFrame(render);
+}
+
+// 4. UI 이벤트 바인딩
+function bindRange(id, valId, key, rebuild = false, isInt = false) {
+  const el = document.getElementById(id);
+  const valEl = document.getElementById(valId);
+  el.addEventListener("input", () => {
+    const v = isInt ? parseInt(el.value, 10) : parseFloat(el.value);
+    settings[key] = v;
+    valEl.textContent = isInt ? v : v.toFixed(2).replace(/\.00$/, ".0");
+    if (rebuild) rebuildRings();
+  });
+}
+
+bindRange("rngFillAlpha", "valFillAlpha", "fillAlpha", false);
+bindRange("rngLine", "valLine", "line", false);
+bindRange("rngSymmetry", "valSymmetry", "symmetry", true, true);
+bindRange("rngRings", "valRings", "rings", true, true);
+bindRange("rngSpeed", "valSpeed", "speed", false);
+bindRange("rngSpin", "valSpin", "spin", false);
+bindRange("rngMaxScale", "valMaxScale", "maxScale", false);
+
+bindRange("wPetal", "valWPetal", "weight_petal", true);
+bindRange("wLotus", "valWLotus", "weight_lotus", true);
+bindRange("wTile", "valWTile", "weight_tile", true);
+bindRange("wStar", "valWStar", "weight_star", true);
+bindRange("wMeta", "valWMeta", "weight_meta", true);
+bindRange("wGeo", "valWGeo", "weight_geo", true);
+bindRange("wSacred", "valWSacred", "weight_sacred", true);
+bindRange("wFlame", "valWFlame", "weight_flame", true);
+
+document.getElementById("selPalette").addEventListener("change", (e) => {
+  settings.palette = e.target.value;
+});
+document.getElementById("selGradMode").addEventListener("change", (e) => {
+  settings.gradMode = e.target.value;
+});
+document.getElementById("selFlow").addEventListener("change", (e) => {
+  settings.flow = e.target.value;
+});
+
+function bindToggle(id, key, rebuild = false) {
+  const btn = document.getElementById(id);
+  btn.addEventListener("click", () => {
+    settings[key] = !settings[key];
+    btn.classList.toggle("active", settings[key]);
+    if (rebuild) rebuildRings();
+  });
+}
+bindToggle("togGradient", "gradient", true);
+bindToggle("togGlow", "glow", false);
+bindToggle("togNega", "nega", false);
+bindToggle("togAudioLine", "audioLine", false);
+
+document.getElementById("inpSeed").addEventListener("input", (e) => {
+  settings.seed = parseInt(e.target.value, 10) || 1;
+  rebuildRings();
+});
+document.getElementById("btnRandomSeed").addEventListener("click", () => {
+  const newSeed = Math.floor(Math.random() * 9999) + 1;
+  settings.seed = newSeed;
+  document.getElementById("inpSeed").value = newSeed;
+  rebuildRings();
+});
+
+document.getElementById("btnAllShapes").addEventListener("click", () => {
+  const ids = [
+    ["wPetal", "valWPetal", "weight_petal"],
+    ["wLotus", "valWLotus", "weight_lotus"],
+    ["wTile", "valWTile", "weight_tile"],
+    ["wStar", "valWStar", "weight_star"],
+    ["wMeta", "valWMeta", "weight_meta"],
+    ["wGeo", "valWGeo", "weight_geo"],
+    ["wSacred", "valWSacred", "weight_sacred"],
+    ["wFlame", "valWFlame", "weight_flame"],
+  ];
+  ids.forEach(([id, vid, key]) => {
+    settings[key] = 0.75;
+    document.getElementById(id).value = 0.75;
+    document.getElementById(vid).textContent = "0.75";
+  });
+  rebuildRings();
+});
+
+// 5. 고화질 9:16 영상 녹화 (WebM / MP4) & PNG 캡처
+let mediaRecorder = null;
+let recordedChunks = [];
+let recStartTime = 0;
+let recTimerInterval = null;
+
+const btnRecord = document.getElementById("btnRecord");
+const recBadge = document.getElementById("recBadge");
+const recTimeEl = document.getElementById("recTime");
+const recStatus = document.getElementById("recStatus");
+
+function getSupportedMimeType() {
+  const types = [
+    "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+    "video/mp4",
+    "video/webm;codecs=vp9,opus",
+    "video/webm;codecs=vp8,opus",
+    "video/webm"
+  ];
+  for (const t of types) {
+    if (MediaRecorder.isTypeSupported(t)) return t;
+  }
+  return "";
+}
+
+btnRecord.addEventListener("click", () => {
+  if (mediaRecorder && mediaRecorder.state === "recording") {
+    mediaRecorder.stop();
+    return;
+  }
+
+  const canvasStream = canvas.captureStream(60);
+  const combinedTracks = [...canvasStream.getVideoTracks()];
+
+  if (audioDestNode && (audioMode === "FILE" || audioMode === "MIC")) {
+    const audioTracks = audioDestNode.stream.getAudioTracks();
+    if (audioTracks.length > 0) combinedTracks.push(audioTracks[0]);
+  }
+
+  const finalStream = new MediaStream(combinedTracks);
+  const mimeType = getSupportedMimeType();
+  const options = { videoBitsPerSecond: 20_000_000 }; // 20Mbps 고화질
+  if (mimeType) options.mimeType = mimeType;
+
+  recordedChunks = [];
+  mediaRecorder = new MediaRecorder(finalStream, options);
+
+  mediaRecorder.ondataavailable = (e) => {
+    if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+  };
+
+  mediaRecorder.onstop = () => {
+    clearInterval(recTimerInterval);
+    recBadge.classList.remove("active");
+    btnRecord.textContent = "⏺ 영상 녹화 시작";
+    btnRecord.classList.remove("danger");
+    btnRecord.classList.add("primary");
+
+    const blob = new Blob(recordedChunks, { type: mimeType || "video/webm" });
+    const ext = (mimeType && mimeType.includes("mp4")) ? "mp4" : "webm";
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `infinite_mandala_9x16_${Date.now()}.${ext}`;
+    a.click();
+    recStatus.textContent = `저장 완료! (${(blob.size / (1024 * 1024)).toFixed(1)} MB, .${ext})`;
+  };
+
+  mediaRecorder.start(200);
+  recStartTime = performance.now();
+  recBadge.classList.add("active");
+  btnRecord.textContent = "⏹ 녹화 중지 및 저장";
+  btnRecord.classList.remove("primary");
+  btnRecord.classList.add("danger");
+  recStatus.textContent = "1080×1920 60FPS 고화질 녹화 중...";
+
+  recTimerInterval = setInterval(() => {
+    const sec = Math.floor((performance.now() - recStartTime) / 1000);
+    const m = String(Math.floor(sec / 60)).padStart(2, "0");
+    const s = String(sec % 60).padStart(2, "0");
+    recTimeEl.textContent = `REC ${m}:${s}`;
+  }, 500);
+});
+
+document.getElementById("btnSnapshot").addEventListener("click", () => {
+  const url = canvas.toDataURL("image/png");
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `mandala_9x16_${Date.now()}.png`;
+  a.click();
+});
+
+// 초기화 및 실행
+rebuildRings();
+requestAnimationFrame(render);
+</script>
+</body>
+</html>
