@@ -266,7 +266,7 @@
           </div>
         </div>
         <div class="folder-hint">
-          💡 <code>src/mandara/shapes.js</code> 파일에 수십 개 서브 층의 고밀도 복합 모양들이 정의되어 있습니다.
+          💡 고밀도 복합 쉐이프들이 자동으로 로드되었습니다.
         </div>
         <div id="dynamicShapesContainer"></div>
       </div>
@@ -274,10 +274,237 @@
     </div>
   </aside>
 
-<script src="src/mandara/utils.js"></script>
-<script src="src/mandara/shapes.js"></script>
+<script>
+// ============================================================================
+// [통합 쉐이프 및 유틸리티 레지스트리]
+// ============================================================================
+window.TAU = Math.PI * 2;
+window.MandalaShapes = window.MandalaShapes || [];
+
+window.registerMandalaShape = function(shapeConfig) {
+  const idx = window.MandalaShapes.findIndex(s => s.id === shapeConfig.id);
+  if (idx >= 0) {
+    window.MandalaShapes[idx] = shapeConfig;
+  } else {
+    window.MandalaShapes.push(shapeConfig);
+  }
+};
+
+window.MandalaUtils = {
+  TAU: Math.PI * 2,
+  quad(p0, p1, p2, steps = 8) {
+    const pts = [];
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const u = 1 - t;
+      pts.push([
+        u * u * p0[0] + 2 * u * t * p1[0] + t * t * p2[0],
+        u * u * p0[1] + 2 * u * t * p1[1] + t * t * p2[1],
+      ]);
+    }
+    return pts;
+  },
+  circle(r, segs = 56, phase = 0.0) {
+    const pts = [];
+    for (let i = 0; i <= segs; i++) {
+      const a = phase + (Math.PI * 2 * i) / segs;
+      pts.push([Math.cos(a) * r, Math.sin(a) * r]);
+    }
+    return pts;
+  },
+  polygon(r, sides = 6, phase = 0.0) {
+    const pts = [];
+    for (let i = 0; i <= sides; i++) {
+      const a = phase + (Math.PI * 2 * i) / sides;
+      pts.push([Math.cos(a) * r, Math.sin(a) * r]);
+    }
+    return pts;
+  }
+};
+
+// ============================================================================
+// [고밀도 복합 쉐이프 정의]
+// ============================================================================
+const { TAU, quad, circle, polygon } = window.MandalaUtils;
+
+registerMandalaShape({
+  id: "TILE_COMPLEX",
+  name: "🏛️ 전통 기와 레이스 (Tile Complex)",
+  defaultWeight: 0.85,
+  midBias: (mid) => 0.8 + mid * 0.6,
+  generate(n, variant, which, morph) {
+    const splines = [];
+    splines.push({ pts: circle(1.0, 64), closed: true, ringFill: false });
+    splines.push({ pts: circle(0.96, 64), closed: true, ringFill: true });
+    splines.push({ pts: circle(0.92, 64), closed: true, ringFill: false });
+
+    const bowl = (TAU / n) * (0.4 + variant * 0.2);
+    for (let i = 0; i < n; i++) {
+      const a = (TAU * i) / n;
+      const cx = Math.cos(a), cy = Math.sin(a);
+      const arc = [];
+      for (let s = 0; s <= 12; s++) {
+        const ang = a - Math.PI / 2 + (Math.PI * s) / 12;
+        arc.push([cx + Math.cos(ang) * bowl * 0.9, cy + Math.sin(ang) * bowl * 0.9]);
+      }
+      splines.push({ pts: arc, closed: true });
+
+      for (let sub = 1; sub <= 4; sub++) {
+        const subR = 1.0 - sub * 0.15;
+        const subPts = [];
+        for (let k = 0; k <= 12; k++) {
+          const ang = (TAU * k) / 12;
+          subPts.push([Math.cos(a) * subR + Math.cos(ang) * (bowl * 0.25), Math.sin(a) * subR + Math.sin(ang) * (bowl * 0.25)]);
+        }
+        splines.push({ pts: subPts, closed: true, ringFill: true });
+      }
+    }
+    return splines;
+  }
+});
+
+registerMandalaShape({
+  id: "LOTUS_DENSE",
+  name: "🪷 고밀도 천층 연꽃 (Lotus Dense)",
+  defaultWeight: 0.90,
+  midBias: (mid) => 0.75 + mid * 0.8,
+  generate(n, variant, which, morph) {
+    const splines = [];
+    const layers = 4;
+    for (let l = 0; l < layers; l++) {
+      const scale = 1.0 - l * 0.18;
+      const count = n + l * 4;
+      const rotOffset = l * (Math.PI / count);
+      for (let i = 0; i < count; i++) {
+        const a = rotOffset + (TAU * i) / count;
+        const tipR = (1.05 - l * 0.15 + morph * 0.08) * scale;
+        const baseR = (0.4 + l * 0.1) * scale;
+        const width = (Math.PI / count) * 0.85;
+
+        const tip = [Math.cos(a) * tipR, Math.sin(a) * tipR];
+        const b1 = [Math.cos(a - width) * baseR, Math.sin(a - width) * baseR];
+        const b2 = [Math.cos(a + width) * baseR, Math.sin(a + width) * baseR];
+        const ctrl = [Math.cos(a) * ((baseR + tipR) * 0.5), Math.sin(a) * ((baseR + tipR) * 0.5)];
+
+        const left = quad(b1, ctrl, tip, 6);
+        const right = quad(tip, ctrl, b2, 6);
+        const poly = left.concat(right.slice(1));
+        poly.push(b1);
+        splines.push({ pts: poly, closed: true });
+      }
+    }
+    splines.push({ pts: circle(0.15, 32), closed: true, ringFill: true });
+    return splines;
+  }
+});
+
+registerMandalaShape({
+  id: "DIAMOND_ROSETTE",
+  name: "💎 크리스탈 로제타 (Diamond Rosette)",
+  defaultWeight: 0.80,
+  midBias: (mid) => 0.7 + mid * 0.9,
+  generate(n, variant, which, morph) {
+    const splines = [];
+    const rOuter = 1.05 + morph * 0.1;
+    const rMid = 0.72;
+    const rInner = 0.38;
+    const half = (Math.PI / n) * 0.75;
+
+    for (let i = 0; i < n; i++) {
+      const a = (TAU * i) / n;
+      splines.push({
+        pts: [
+          [Math.cos(a) * rInner, Math.sin(a) * rInner],
+          [Math.cos(a - half) * rMid, Math.sin(a - half) * rMid],
+          [Math.cos(a) * rOuter, Math.sin(a) * rOuter],
+          [Math.cos(a + half) * rMid, Math.sin(a + half) * rMid],
+          [Math.cos(a) * rInner, Math.sin(a) * rInner],
+        ],
+        closed: true
+      });
+    }
+
+    const nSub = n * 2;
+    const subPts = [];
+    for (let i = 0; i <= nSub; i++) {
+      const a = (TAU * i) / nSub;
+      const rr = i % 2 === 0 ? rMid * 0.95 : rInner * 1.25;
+      subPts.push([Math.cos(a) * rr, Math.sin(a) * rr]);
+    }
+    splines.push({ pts: subPts, closed: true, ringFill: true });
+    splines.push({ pts: circle(rInner * 0.85, 28), closed: true, ringFill: false });
+    return splines;
+  }
+});
+
+registerMandalaShape({
+  id: "METATRON_WEB",
+  name: "🕸️ 신성 메타트론 웹 (Metatron Web)",
+  defaultWeight: 0.75,
+  midBias: (mid) => 0.8 + mid * 0.7,
+  generate(n, variant, which, morph) {
+    const splines = [];
+    const count = Math.max(4, Math.floor(n / 1.5));
+    for (let layer = 0; layer < 3; layer++) {
+      const rot = layer * 0.35;
+      const r = 1.0 - layer * 0.28 + morph * 0.05;
+      const poly = [];
+      for (let i = 0; i <= count; i++) {
+        const a = rot + (TAU * i) / count;
+        poly.push([Math.cos(a) * r, Math.sin(a) * r]);
+      }
+      splines.push({ pts: poly, closed: true, ringFill: layer === 1 });
+    }
+    for (let i = 0; i < n * 2; i++) {
+      const a = (TAU * i) / (n * 2);
+      splines.push({
+        pts: [
+          [Math.cos(a) * 0.25, Math.sin(a) * 0.25],
+          [Math.cos(a) * 0.92, Math.sin(a) * 0.92]
+        ],
+        closed: false
+      });
+    }
+    return splines;
+  }
+});
+
+registerMandalaShape({
+  id: "SPIRAL_COMPLEX",
+  name: "🌪️ 소용돌이 플레어 (Spiral Complex)",
+  defaultWeight: 0.75,
+  midBias: (mid) => 0.6 + mid * 1.1,
+  generate(n, variant, which, morph) {
+    const splines = [];
+    const twist = 0.75 + variant * 0.3 + morph * 0.25;
+    for (let i = 0; i < n; i++) {
+      const a = (TAU * i) / n;
+      const p0 = [Math.cos(a) * 0.3, Math.sin(a) * 0.3];
+      const pMid = [Math.cos(a + twist * 0.5) * 0.75, Math.sin(a + twist * 0.5) * 0.75];
+      const pTip = [Math.cos(a + twist) * 1.08, Math.sin(a + twist) * 1.08];
+      const pBack = [Math.cos(a + twist * 0.35) * 0.65, Math.sin(a + twist * 0.35) * 0.65];
+
+      const side1 = quad(p0, pMid, pTip, 8);
+      const side2 = quad(pTip, pBack, p0, 8);
+      splines.push({ pts: side1.concat(side2.slice(1)), closed: true });
+    }
+    const innerPts = [];
+    const innerN = n * 2;
+    for (let i = 0; i <= innerN; i++) {
+      const a = - (TAU * i) / innerN;
+      const rr = i % 2 === 0 ? 0.42 : 0.28;
+      innerPts.push([Math.cos(a) * rr, Math.sin(a) * rr]);
+    }
+    splines.push({ pts: innerPts, closed: true, ringFill: true });
+    return splines;
+  }
+});
+</script>
 
 <script>
+// ============================================================================
+// [앱 구동 및 UI 제어 로직]
+// ============================================================================
 const PALETTES = {
   PASTEL: [[0.95, 0.75, 0.73, 1], [0.96, 0.86, 0.66, 1], [0.73, 0.84, 0.80, 1], [0.73, 0.79, 0.91, 1], [0.88, 0.75, 0.84, 1]],
   PRIMARY: [[0.89, 0.07, 0.14, 1], [1.00, 0.80, 0.00, 1], [0.11, 0.31, 1.00, 1], [1.00, 1.00, 1.00, 1]],
@@ -322,9 +549,11 @@ const shapeMap = {};
 
 function initDynamicShapesUI() {
   const container = document.getElementById("dynamicShapesContainer");
+  if (!container) return;
   container.innerHTML = "";
   const shapes = window.MandalaShapes || [];
-  document.getElementById("shapeCountInfo").textContent = `로드된 쉐이프: ${shapes.length}종`;
+  const countInfo = document.getElementById("shapeCountInfo");
+  if (countInfo) countInfo.textContent = `로드된 쉐이프: ${shapes.length}종`;
 
   shapes.forEach((sh) => {
     shapeMap[sh.id] = sh;
@@ -457,66 +686,71 @@ function ensureAudioContext() {
 let mediaElementSource = null;
 const audioPlayer = document.getElementById("audioPlayer");
 
-document.getElementById("audioInput").addEventListener("change", (e) => {
+document.getElementById("audioInput")?.addEventListener("change", (e) => {
   const file = e.target.files[0];
   if (!file) return;
   ensureAudioContext();
   if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
   const url = URL.createObjectURL(file);
-  audioPlayer.src = url;
-  audioPlayer.style.display = "block";
-  audioPlayer.play();
+  if (audioPlayer) {
+    audioPlayer.src = url;
+    audioPlayer.style.display = "block";
+    audioPlayer.play();
+  }
 
-  if (!mediaElementSource) {
+  if (!mediaElementSource && audioPlayer) {
     mediaElementSource = audioCtx.createMediaElementSource(audioPlayer);
     mediaElementSource.connect(analyser);
     analyser.connect(audioCtx.destination);
     mediaElementSource.connect(audioDestNode);
   }
   audioMode = "FILE";
-  document.getElementById("audioModeLabel").textContent = "오디오: " + file.name.slice(0, 14);
+  const label = document.getElementById("audioModeLabel");
+  if (label) label.textContent = "오디오: " + file.name.slice(0, 14);
 });
 
-document.getElementById("btnMic").addEventListener("click", async () => {
+document.getElementById("btnMic")?.addEventListener("click", async () => {
   try {
     ensureAudioContext();
-    audioPlayer.pause();
-    audioPlayer.style.display = "none";
+    if (audioPlayer) { audioPlayer.pause(); audioPlayer.style.display = "none"; }
     micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     const src = audioCtx.createMediaStreamSource(micStream);
     src.connect(analyser);
     src.connect(audioDestNode);
     audioMode = "MIC";
-    document.getElementById("audioModeLabel").textContent = "마이크 실시간";
+    const label = document.getElementById("audioModeLabel");
+    if (label) label.textContent = "마이크 실시간";
   } catch (err) { alert("마이크 권한을 허용해주세요: " + err.message); }
 });
 
-document.getElementById("btnBreath").addEventListener("click", () => {
-  audioPlayer.pause();
-  audioPlayer.style.display = "none";
+document.getElementById("btnBreath")?.addEventListener("click", () => {
+  if (audioPlayer) { audioPlayer.pause(); audioPlayer.style.display = "none"; }
   if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
   audioMode = "BREATH";
-  document.getElementById("audioModeLabel").textContent = "호흡 곡선";
+  const label = document.getElementById("audioModeLabel");
+  if (label) label.textContent = "호흡 곡선";
 });
 
 function getAudioBands(timeSec) {
-  if ((audioMode === "FILE" && !audioPlayer.paused) || audioMode === "MIC") {
-    analyser.getByteFrequencyData(freqData);
-    const rate = audioCtx.sampleRate || 48000;
-    const binHz = rate / analyser.fftSize;
-    function bandAvg(loHz, hiHz) {
-      const i0 = Math.max(0, Math.floor(loHz / binHz));
-      const i1 = Math.min(freqData.length - 1, Math.ceil(hiHz / binHz));
-      if (i1 < i0) return 0;
-      let sum = 0;
-      for (let i = i0; i <= i1; i++) sum += freqData[i];
-      return (sum / (i1 - i0 + 1)) / 255;
+  if ((audioMode === "FILE" && audioPlayer && !audioPlayer.paused) || audioMode === "MIC") {
+    if (analyser && freqData) {
+      analyser.getByteFrequencyData(freqData);
+      const rate = audioCtx.sampleRate || 48000;
+      const binHz = rate / analyser.fftSize;
+      function bandAvg(loHz, hiHz) {
+        const i0 = Math.max(0, Math.floor(loHz / binHz));
+        const i1 = Math.min(freqData.length - 1, Math.ceil(hiHz / binHz));
+        if (i1 < i0) return 0;
+        let sum = 0;
+        for (let i = i0; i <= i1; i++) sum += freqData[i];
+        return (sum / (i1 - i0 + 1)) / 255;
+      }
+      const b = Math.min(1, bandAvg(20, 160) * 1.25);
+      const m = Math.min(1, bandAvg(400, 1800) * 1.35);
+      const h = Math.min(1, bandAvg(1800, 8000) * 1.5);
+      const e = Math.min(1, b * 0.45 + m * 0.35 + h * 0.2);
+      return { bass: b, mid: m, high: h, energy: e };
     }
-    const b = Math.min(1, bandAvg(20, 160) * 1.25);
-    const m = Math.min(1, bandAvg(400, 1800) * 1.35);
-    const h = Math.min(1, bandAvg(1800, 8000) * 1.5);
-    const e = Math.min(1, b * 0.45 + m * 0.35 + h * 0.2);
-    return { bass: b, mid: m, high: h, energy: e };
   }
   const f = timeSec * 24;
   const b = Math.max(0, Math.min(1, 0.35 + 0.25 * Math.sin(f * 0.17) + 0.15 * Math.max(0, Math.sin(f * 0.41))));
@@ -526,30 +760,35 @@ function getAudioBands(timeSec) {
   return { bass: b, mid: m, high: h, energy: e };
 }
 
-// 렌더링 엔진 (주파수 연동 가로회전·진동·정지 모션 + 레이어 적층 순서 모드)
+// 렌더링 엔진
 const canvas = document.getElementById("mandalaCanvas");
-const ctx = canvas.getContext("2d");
+const ctx = canvas ? canvas.getContext("2d") : null;
 
 let lastTime = performance.now();
 let frameCount = 0;
 let fpsTimer = performance.now();
 
 function render(now) {
+  if (!ctx || !canvas) return;
   const dt = Math.min(0.1, (now - lastTime) / 1000);
   lastTime = now;
 
   frameCount++;
   if (now - fpsTimer >= 500) {
     const fps = Math.round((frameCount * 1000) / (now - fpsTimer));
-    document.getElementById("fpsCounter").textContent = `${fps} FPS`;
+    const fpsEl = document.getElementById("fpsCounter");
+    if (fpsEl) fpsEl.textContent = `${fps} FPS`;
     frameCount = 0;
     fpsTimer = now;
   }
 
   const bands = getAudioBands(now / 1000);
-  document.getElementById("meterBass").style.width = `${Math.round(bands.bass * 100)}%`;
-  document.getElementById("meterMid").style.width = `${Math.round(bands.mid * 100)}%`;
-  document.getElementById("meterHigh").style.width = `${Math.round(bands.high * 100)}%`;
+  const bFill = document.getElementById("meterBass");
+  const mFill = document.getElementById("meterMid");
+  const hFill = document.getElementById("meterHigh");
+  if (bFill) bFill.style.width = `${Math.round(bands.bass * 100)}%`;
+  if (mFill) mFill.style.width = `${Math.round(bands.mid * 100)}%`;
+  if (hFill) hFill.style.width = `${Math.round(bands.high * 100)}%`;
 
   let palette = PALETTES[settings.palette].map(c => [...c]);
   let ink = [...INK[settings.palette]];
@@ -575,14 +814,11 @@ function render(now) {
   const innerScale = 0.04;
   const maxScale = 1.85;
 
-  // 비트에 맞춰 생성 진행이 멈추거나 흔들리는 주파수 연동 모션 적용
   const audioFlowSpeed = settings.speed * (0.2 + bands.energy * 1.8);
-  const isPausedByBeat = bands.bass > 0.78 ? 0.1 : 1.0; // 강한 저음 비트 때 순간 정지/흔들림 연출
+  const isPausedByBeat = bands.bass > 0.78 ? 0.1 : 1.0;
 
   const activeRings = ringsData.map((r) => {
     r.ageOffset = (r.ageOffset + dt * 0.12 * audioFlowSpeed * isPausedByBeat) % 1.0;
-    
-    // 주파수 연동 시계방향 회전 및 고음(High)에 따른 가로 회전(기울기) 왜곡
     const spinMultiplier = settings.spin * (0.5 + bands.high * 1.5);
     r.rot += spinMultiplier * r.spinDir * dt * 0.85;
 
@@ -592,13 +828,12 @@ function render(now) {
     return { ring: r, u, scale, env };
   });
 
-  // 레이어 적층 순서 모드 정렬
   const layerMode = settings.layerMode;
   activeRings.sort((a, b) => {
-    if (layerMode === "OUTER_TOP") return b.scale - a.scale; // 바깥쪽이 위로
-    if (layerMode === "INNER_TOP") return a.scale - b.scale; // 안쪽이 위로
-    if (layerMode === "ODD_EVEN") return (a.ring.index % 2) - (b.ring.index % 2); // 홀수 레이어가 위로
-    if (layerMode === "RANDOM") return Math.sin(a.ring.index * 99.9) - 0.5; // 무작위 순서
+    if (layerMode === "OUTER_TOP") return b.scale - a.scale;
+    if (layerMode === "INNER_TOP") return a.scale - b.scale;
+    if (layerMode === "ODD_EVEN") return (a.ring.index % 2) - (b.ring.index % 2);
+    if (layerMode === "RANDOM") return Math.sin(a.ring.index * 99.9) - 0.5;
     return b.scale - a.scale;
   });
 
@@ -626,13 +861,11 @@ function render(now) {
     ctx.save();
     ctx.translate(cx, cy);
 
-    // 주파수(고음/저음)에 맞춰 캔버스가 가로로 흔들리거나 회전하는 모션
     const shakeX = (Math.sin(now * 0.02 + ring.index) * bands.bass * 6.0);
     const shakeY = (Math.cos(now * 0.015 + ring.index) * bands.high * 4.0);
     ctx.translate(shakeX, shakeY);
     ctx.rotate(ring.rot);
 
-    // 가로회전 (스케일 X 왜곡을 통한 3D 회전감 연출)
     const horizontalTilt = 1.0 + Math.sin(now * 0.001 + ring.index) * bands.high * 0.25;
     ctx.scale(horizontalTilt, 1.0);
 
@@ -713,67 +946,78 @@ function render(now) {
   requestAnimationFrame(render);
 }
 
-// UI 바인딩
+// 안전한 UI 이벤트 바인딩
 function bindRange(id, valId, key, rebuild = false, isInt = false) {
   const el = document.getElementById(id);
   const valEl = document.getElementById(valId);
+  if (!el) return;
   el.addEventListener("input", () => {
     const v = isInt ? parseInt(el.value, 10) : parseFloat(el.value);
     settings[key] = v;
-    valEl.textContent = isInt ? v : v.toFixed(2).replace(/\.00$/, ".0");
+    if (valEl) valEl.textContent = isInt ? v : v.toFixed(2).replace(/\.00$/, ".0");
     if (rebuild) rebuildRings();
   });
 }
 
-bindRange("rngFillAlpha", "valFillAlpha", "fillAlpha", false);
-bindRange("rngLine", "valLine", "line", false);
-bindRange("rngSymmetry", "valSymmetry", "symmetry", true, true);
-bindRange("rngRings", "valRings", "rings", true, true);
-bindRange("rngSpin", "valSpin", "spin", false);
-bindRange("rngMaxScale", "valMaxScale", "maxScale", false);
+document.addEventListener("DOMContentLoaded", () => {
+  bindRange("rngFillAlpha", "valFillAlpha", "fillAlpha", false);
+  bindRange("rngLine", "valLine", "line", false);
+  bindRange("rngSymmetry", "valSymmetry", "symmetry", true, true);
+  bindRange("rngRings", "valRings", "rings", true, true);
+  bindRange("rngSpin", "valSpin", "spin", false);
+  bindRange("rngMaxScale", "valMaxScale", "maxScale", false);
 
-document.getElementById("selPalette").addEventListener("change", (e) => { settings.palette = e.target.value; });
-document.getElementById("selGradMode").addEventListener("change", (e) => { settings.gradMode = e.target.value; });
-document.getElementById("selLayerMode").addEventListener("change", (e) => { settings.layerMode = e.target.value; });
-document.getElementById("selFlow").addEventListener("change", (e) => { settings.flow = e.target.value; });
+  document.getElementById("selPalette")?.addEventListener("change", (e) => { settings.palette = e.target.value; });
+  document.getElementById("selGradMode")?.addEventListener("change", (e) => { settings.gradMode = e.target.value; });
+  document.getElementById("selLayerMode")?.addEventListener("change", (e) => { settings.layerMode = e.target.value; });
+  document.getElementById("selFlow")?.addEventListener("change", (e) => { settings.flow = e.target.value; });
 
-function bindToggle(id, key, rebuild = false) {
-  const btn = document.getElementById(id);
-  btn.addEventListener("click", () => {
-    settings[key] = !settings[key];
-    btn.classList.toggle("active", settings[key]);
-    if (rebuild) rebuildRings();
+  function bindToggle(id, key, rebuild = false) {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.addEventListener("click", () => {
+      settings[key] = !settings[key];
+      btn.classList.toggle("active", settings[key]);
+      if (rebuild) rebuildRings();
+    });
+  }
+  bindToggle("togGradient", "gradient", true);
+  bindToggle("togGlow", "glow", false);
+  bindToggle("togNega", "nega", false);
+  bindToggle("togAudioLine", "audioLine", false);
+
+  document.getElementById("inpSeed")?.addEventListener("input", (e) => {
+    settings.seed = parseInt(e.target.value, 10) || 1;
+    rebuildRings();
   });
-}
-bindToggle("togGradient", "gradient", true);
-bindToggle("togGlow", "glow", false);
-bindToggle("togNega", "nega", false);
-bindToggle("togAudioLine", "audioLine", false);
-
-document.getElementById("inpSeed").addEventListener("input", (e) => {
-  settings.seed = parseInt(e.target.value, 10) || 1;
-  rebuildRings();
-});
-document.getElementById("btnRandomSeed").addEventListener("click", () => {
-  const newSeed = Math.floor(Math.random() * 9999) + 1;
-  settings.seed = newSeed;
-  document.getElementById("inpSeed").value = newSeed;
-  rebuildRings();
-});
-
-function setAllShapeWeights(val) {
-  const container = document.getElementById("dynamicShapesContainer");
-  container.querySelectorAll("input[type='range']").forEach(inp => {
-    const id = inp.dataset.shapeId;
-    settings.weights[id] = val;
-    inp.value = String(val);
-    inp.nextElementSibling.textContent = val.toFixed(2);
+  document.getElementById("btnRandomSeed")?.addEventListener("click", () => {
+    const newSeed = Math.floor(Math.random() * 9999) + 1;
+    settings.seed = newSeed;
+    const inp = document.getElementById("inpSeed");
+    if (inp) inp.value = newSeed;
+    rebuildRings();
   });
-  rebuildRings();
-}
-document.getElementById("btnAllShapes").addEventListener("click", () => setAllShapeWeights(0.85));
-document.getElementById("btnZeroShapes").addEventListener("click", () => setAllShapeWeights(0.0));
 
+  function setAllShapeWeights(val) {
+    const container = document.getElementById("dynamicShapesContainer");
+    if (!container) return;
+    container.querySelectorAll("input[type='range']").forEach(inp => {
+      const id = inp.dataset.shapeId;
+      settings.weights[id] = val;
+      inp.value = String(val);
+      if (inp.nextElementSibling) inp.nextElementSibling.textContent = val.toFixed(2);
+    });
+    rebuildRings();
+  }
+  document.getElementById("btnAllShapes")?.addEventListener("click", () => setAllShapeWeights(0.85));
+  document.getElementById("btnZeroShapes")?.addEventListener("click", () => setAllShapeWeights(0.0));
+
+  initDynamicShapesUI();
+  rebuildRings();
+  requestAnimationFrame(render);
+});
+
+// 녹화 및 캡처
 let mediaRecorder = null;
 let recordedChunks = [];
 let recStartTime = 0;
@@ -790,11 +1034,12 @@ function getSupportedMimeType() {
   return "";
 }
 
-btnRecord.addEventListener("click", () => {
+btnRecord?.addEventListener("click", () => {
   if (mediaRecorder && mediaRecorder.state === "recording") {
     mediaRecorder.stop();
     return;
   }
+  if (!canvas) return;
   const canvasStream = canvas.captureStream(60);
   const combinedTracks = [...canvasStream.getVideoTracks()];
   if (audioDestNode && (audioMode === "FILE" || audioMode === "MIC")) {
@@ -811,10 +1056,12 @@ btnRecord.addEventListener("click", () => {
   mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) recordedChunks.push(e.data); };
   mediaRecorder.onstop = () => {
     clearInterval(recTimerInterval);
-    recBadge.classList.remove("active");
-    btnRecord.textContent = "⏺ 영상 녹화 시작";
-    btnRecord.classList.remove("danger");
-    btnRecord.classList.add("primary");
+    if (recBadge) recBadge.classList.remove("active");
+    if (btnRecord) {
+      btnRecord.textContent = "⏺ 영상 녹화 시작";
+      btnRecord.classList.remove("danger");
+      btnRecord.classList.add("primary");
+    }
 
     const blob = new Blob(recordedChunks, { type: mimeType || "video/webm" });
     const ext = (mimeType && mimeType.includes("mp4")) ? "mp4" : "webm";
@@ -823,36 +1070,35 @@ btnRecord.addEventListener("click", () => {
     a.href = url;
     a.download = `infinite_mandala_16x9_${Date.now()}.${ext}`;
     a.click();
-    recStatus.textContent = `저장 완료! (${(blob.size / (1024 * 1024)).toFixed(1)} MB, .${ext})`;
+    if (recStatus) recStatus.textContent = `저장 완료! (${(blob.size / (1024 * 1024)).toFixed(1)} MB, .${ext})`;
   };
 
   mediaRecorder.start(200);
   recStartTime = performance.now();
-  recBadge.classList.add("active");
-  btnRecord.textContent = "⏹ 녹화 중지 및 저장";
-  btnRecord.classList.remove("primary");
-  btnRecord.classList.add("danger");
-  recStatus.textContent = "1920×1080 60FPS 가로 고화질 녹화 중...";
+  if (recBadge) recBadge.classList.add("active");
+  if (btnRecord) {
+    btnRecord.textContent = "⏹ 녹화 중지 및 저장";
+    btnRecord.classList.remove("primary");
+    btnRecord.classList.add("danger");
+  }
+  if (recStatus) recStatus.textContent = "1920×1080 60FPS 가로 고화질 녹화 중...";
 
   recTimerInterval = setInterval(() => {
     const sec = Math.floor((performance.now() - recStartTime) / 1000);
     const m = String(Math.floor(sec / 60)).padStart(2, "0");
     const s = String(sec % 60).padStart(2, "0");
-    recTimeEl.textContent = `REC ${m}:${s}`;
+    if (recTimeEl) recTimeEl.textContent = `REC ${m}:${s}`;
   }, 500);
 });
 
-document.getElementById("btnSnapshot").addEventListener("click", () => {
+document.getElementById("btnSnapshot")?.addEventListener("click", () => {
+  if (!canvas) return;
   const url = canvas.toDataURL("image/png");
   const a = document.createElement("a");
   a.href = url;
   a.download = `mandala_16x9_${Date.now()}.png`;
   a.click();
 });
-
-initDynamicShapesUI();
-rebuildRings();
-requestAnimationFrame(render);
 </script>
 </body>
 </html>
