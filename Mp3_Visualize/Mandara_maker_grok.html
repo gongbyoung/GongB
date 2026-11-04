@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>무한만다라 스튜디오 (테마별 주제 및 분할 확장 에디션)</title>
+<title>무한만다라 메이커 스튜디오 (완성형 에디션)</title>
 <style>
   :root {
     --bg-dark: #09090e;
@@ -118,6 +118,7 @@
   .meter-col { flex: 1; background: #1a1a24; border-radius: 4px; overflow: hidden; }
   .meter-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #7c5cff, #00d2d3); transition: width 0.05s linear; }
   .audio-status { font-size: 11.5px; color: var(--text-sub); margin-top: 6px; line-height: 1.4; }
+  .folder-hint { background: rgba(0, 210, 211, 0.08); border: 1px solid rgba(0, 210, 211, 0.25); color: #9be8e8; padding: 8px 10px; border-radius: 6px; font-size: 11.5px; margin-bottom: 12px; }
 </style>
 </head>
 <body>
@@ -131,7 +132,7 @@
       <canvas id="mandalaCanvas" width="1920" height="1080"></canvas>
     </div>
     <div class="stage-info">
-      <span>테마 모드: <b id="currentThemeName" style="color:#b4a0ff;">우주 (Cosmic)</b></span>
+      <span>테마 모드: <b id="currentThemeName" style="color:#b4a0ff;">우주속 (Cosmic)</b></span>
       <span>|</span>
       <span id="fpsCounter">60 FPS</span>
     </div>
@@ -140,7 +141,7 @@
   <aside class="sidebar">
     <div class="sidebar-header">
       <h1>무한만다라 스튜디오</h1>
-      <span class="badge-ratio">테마 & 분할 제어</span>
+      <span class="badge-ratio">만다라 메이커 v3.0</span>
     </div>
 
     <div class="controls-scroll">
@@ -171,28 +172,33 @@
         <div class="audio-status" id="imgStatus">업로드된 이미지: 0장 (만다라 타일에 자동 매핑)</div>
       </div>
 
-      <!-- 3. 만다라 분할 배율 및 스타일 슬라이더 -->
+      <!-- 3. 만다라 분할 배율 및 구조 설정 -->
       <div class="section">
-        <div class="section-title">만다라 분할 배율 & 스타일 조정</div>
+        <div class="section-title">만다라 분할 배율 & 쉐이프 제어</div>
         <div class="row">
           <label>분할 확장 모드 (Division)</label>
           <input type="range" id="rngDivision" min="4" max="32" step="2" value="12">
           <span class="val-box" id="valDivision">12분할</span>
         </div>
         <div class="row">
-          <label>만다라 스타일 강도</label>
-          <input type="range" id="rngStyleMix" min="0.1" max="2.0" step="0.1" value="1.0">
-          <span class="val-box" id="valStyleMix">1.0</span>
+          <label>고리 층수 (Rings)</label>
+          <input type="range" id="rngRings" min="6" max="35" step="1" value="16">
+          <span class="val-box" id="valRings">16</span>
         </div>
         <div class="row">
-          <label>고리 층수 (Rings)</label>
-          <input type="range" id="rngRings" min="6" max="35" step="1" value="18">
-          <span class="val-box" id="valRings">18</span>
+          <label>선 굵기 (Line)</label>
+          <input type="range" id="rngLine" min="0.5" max="6.0" step="0.2" value="2.0">
+          <span class="val-box" id="valLine">2.0</span>
         </div>
         <div class="row">
           <label>회전 속도 (Spin)</label>
-          <input type="range" id="rngSpin" min="0.0" max="2.0" step="0.05" value="0.4">
-          <span class="val-box" id="valSpin">0.4</span>
+          <input type="range" id="rngSpin" min="0.0" max="2.0" step="0.05" value="0.5">
+          <span class="val-box" id="valSpin">0.5</span>
+        </div>
+        <div class="row">
+          <label>내부 투명도 (Alpha)</label>
+          <input type="range" id="rngFillAlpha" min="0.1" max="1.0" step="0.05" value="0.75">
+          <span class="val-box" id="valFillAlpha">0.75</span>
         </div>
       </div>
 
@@ -232,37 +238,34 @@
 <script>
 window.TAU = Math.PI * 2;
 
-// 테마별 팔레트 및 파티클 설정
+// 주제별 테마 및 파티클 설정
 const THEMES = {
-  COSMIC: { name: "우주 (Cosmic)", bg: [0.03, 0.02, 0.07, 1], colors: [[0.55, 0.15, 1.00, 1], [0.00, 0.95, 1.00, 1], [1.00, 0.08, 0.58, 1], [0.95, 0.93, 0.20, 1]], particleType: "stars" },
-  FLOWER: { name: "꽃잎 (Flower)", bg: [0.06, 0.04, 0.06, 1], colors: [[0.95, 0.45, 0.65, 1], [0.98, 0.78, 0.45, 1], [0.82, 0.25, 0.45, 1], [1.00, 0.95, 0.90, 1]], particleType: "petals" },
-  LEAF: { name: "잎사귀 (Leaf)", bg: [0.02, 0.06, 0.04, 1], colors: [[0.18, 0.75, 0.42, 1], [0.45, 0.88, 0.35, 1], [0.12, 0.45, 0.28, 1], [0.85, 0.95, 0.55, 1]], particleType: "leaves" },
-  WATER: { name: "물속 (Water)", bg: [0.02, 0.04, 0.08, 1], colors: [[0.10, 0.60, 0.95, 1], [0.20, 0.90, 0.85, 1], [0.05, 0.25, 0.65, 1], [0.80, 0.95, 1.00, 1]], particleType: "bubbles" },
-  VOLCANO: { name: "화산속 (Volcano)", bg: [0.08, 0.02, 0.02, 1], colors: [[0.98, 0.32, 0.05, 1], [1.00, 0.75, 0.10, 1], [0.75, 0.08, 0.08, 1], [0.20, 0.20, 0.20, 1]], particleType: "embers" },
-  CLOUD: { name: "구름속 (Cloud)", bg: [0.05, 0.07, 0.10, 1], colors: [[0.85, 0.90, 0.98, 1], [0.65, 0.75, 0.90, 1], [0.45, 0.58, 0.78, 1], [1.00, 1.00, 1.00, 1]], particleType: "clouds" }
+  COSMIC: { name: "우주속", bg: [0.03, 0.02, 0.07, 1], colors: [[0.55, 0.15, 1.00, 1], [0.00, 0.95, 1.00, 1], [1.00, 0.08, 0.58, 1], [0.95, 0.93, 0.20, 1]], pColor: "rgba(120,200,255,0.6)" },
+  FLOWER: { name: "꽃잎속", bg: [0.06, 0.04, 0.06, 1], colors: [[0.95, 0.45, 0.65, 1], [0.98, 0.78, 0.45, 1], [0.82, 0.25, 0.45, 1], [1.00, 0.95, 0.90, 1]], pColor: "rgba(255,150,180,0.6)" },
+  LEAF: { name: "잎사귀", bg: [0.02, 0.06, 0.04, 1], colors: [[0.18, 0.75, 0.42, 1], [0.45, 0.88, 0.35, 1], [0.12, 0.45, 0.28, 1], [0.85, 0.95, 0.55, 1]], pColor: "rgba(100,220,130,0.6)" },
+  WATER: { name: "물속", bg: [0.02, 0.04, 0.08, 1], colors: [[0.10, 0.60, 0.95, 1], [0.20, 0.90, 0.85, 1], [0.05, 0.25, 0.65, 1], [0.80, 0.95, 1.00, 1]], pColor: "rgba(80,180,255,0.6)" },
+  VOLCANO: { name: "화산속", bg: [0.08, 0.02, 0.02, 1], colors: [[0.98, 0.32, 0.05, 1], [1.00, 0.75, 0.10, 1], [0.75, 0.08, 0.08, 1], [0.30, 0.10, 0.10, 1]], pColor: "rgba(255,100,50,0.6)" },
+  CLOUD: { name: "구름속", bg: [0.05, 0.07, 0.10, 1], colors: [[0.85, 0.90, 0.98, 1], [0.65, 0.75, 0.90, 1], [0.45, 0.58, 0.78, 1], [1.00, 1.00, 1.00, 1]], pColor: "rgba(200,220,255,0.6)" }
 };
 
 let currentThemeKey = "COSMIC";
-let customImages = []; // 사용자가 업로드한 이미지 배열
+let customImages = [];
 
 const settings = {
   division: 12,
-  styleMix: 1.0,
-  rings: 18,
-  spin: 0.4,
-  fillAlpha: 0.65,
+  rings: 16,
+  line: 2.0,
+  spin: 0.5,
+  fillAlpha: 0.75,
 };
 
-// 배경 파티클 생성
+// 배경 파티클
 const particles = [];
-for (let i = 0; i < 70; i++) {
+for (let i = 0; i < 60; i++) {
   particles.push({
-    x: Math.random() * 1920,
-    y: Math.random() * 1080,
-    vx: (Math.random() - 0.5) * 0.8,
-    vy: (Math.random() - 0.5) * 0.8,
-    size: Math.random() * 4 + 1,
-    alpha: Math.random() * 0.7 + 0.2
+    x: Math.random() * 1920, y: Math.random() * 1080,
+    vx: (Math.random() - 0.5) * 0.6, vy: (Math.random() - 0.5) * 0.6,
+    size: Math.random() * 3 + 1
   });
 }
 
@@ -283,7 +286,7 @@ function toRgbaStr(c, alpha = 1.0) {
 
 // 오디오 분석
 let audioMode = "BREATH";
-let audioCtx = null, analyser = null, freqData = null, audioDestNode = null;
+let audioCtx = null, analyser = null, freqData = null;
 const audioPlayer = document.getElementById("audioPlayer");
 
 function ensureAudioContext() {
@@ -292,7 +295,6 @@ function ensureAudioContext() {
     analyser = audioCtx.createAnalyser();
     analyser.fftSize = 1024;
     freqData = new Uint8Array(analyser.frequencyBinCount);
-    audioDestNode = audioCtx.createMediaStreamDestination();
   }
   if (audioCtx.state === "suspended") audioCtx.resume();
 }
@@ -322,21 +324,19 @@ document.getElementById("btnBreath").addEventListener("click", () => {
 function getAudioBands(timeSec) {
   if (audioMode === "FILE" && !audioPlayer.paused && analyser) {
     analyser.getByteFrequencyData(freqData);
-    let sum = 0;
-    for (let i = 0; i < 30; i++) sum += freqData[i];
-    const b = (sum / 30) / 255;
-    let sumMid = 0;
-    for (let i = 30; i < 150; i++) sumMid += freqData[i];
-    const m = (sumMid / 120) / 255;
-    return { bass: b * 1.4, mid: m * 1.2, high: 0.5, energy: (b + m) * 0.7 };
+    let sum = 0; for (let i = 0; i < 35; i++) sum += freqData[i];
+    const b = (sum / 35) / 255;
+    let sumMid = 0; for (let i = 35; i < 140; i++) sumMid += freqData[i];
+    const m = (sumMid / 105) / 255;
+    return { bass: b * 1.5, mid: m * 1.3, energy: (b + m) * 0.75 };
   }
   const f = timeSec * 24;
   const b = Math.max(0, Math.min(1, 0.35 + 0.25 * Math.sin(f * 0.17)));
   const m = Math.max(0, Math.min(1, 0.40 + 0.30 * Math.sin(f * 0.11)));
-  return { bass: b, mid: m, high: 0.4, energy: b * 0.5 + m * 0.5 };
+  return { bass: b, mid: m, energy: b * 0.5 + m * 0.5 };
 }
 
-// 이미지 업로드 핸들러
+// 이미지 업로드
 document.getElementById("patternImageInput").addEventListener("change", (e) => {
   const files = e.target.files;
   if (!files.length) return;
@@ -352,13 +352,12 @@ document.getElementById("btnClearImages").addEventListener("click", () => {
   document.getElementById("imgStatus").textContent = "업로드된 이미지: 0장";
 });
 
-// 테마 버튼 이벤트
 document.querySelectorAll(".theme-btn").forEach(btn => {
   btn.addEventListener("click", () => {
     document.querySelectorAll(".theme-btn").forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
     currentThemeKey = btn.dataset.theme;
-    document.getElementById("currentThemeName").textContent = THEMES[currentThemeKey].name;
+    document.getElementById("currentThemeName").textContent = THEMES[currentThemeKey].name + " (" + currentThemeKey + ")";
   });
 });
 
@@ -372,11 +371,12 @@ function bindRange(id, valId, key, suffix = "") {
   });
 }
 bindRange("rngDivision", "valDivision", "division", "분할");
-bindRange("rngStyleMix", "valStyleMix", "styleMix", "");
 bindRange("rngRings", "valRings", "rings", "");
+bindRange("rngLine", "valLine", "line", "");
 bindRange("rngSpin", "valSpin", "spin", "");
+bindRange("rngFillAlpha", "valFillAlpha", "fillAlpha", "");
 
-// 캔버스 렌더링 엔진
+// 캔버스 렌더링 엔진 (정교한 쉐이프 + 복합 중첩 레이어)
 const canvas = document.getElementById("mandalaCanvas");
 const ctx = canvas.getContext("2d");
 let lastTime = performance.now();
@@ -388,73 +388,76 @@ function render(now) {
   const bands = getAudioBands(now / 1000);
   document.getElementById("meterBass").style.width = `${Math.round(bands.bass * 100)}%`;
   document.getElementById("meterMid").style.width = `${Math.round(bands.mid * 100)}%`;
-  document.getElementById("meterHigh").style.width = `${Math.round(bands.high * 100)}%`;
 
   const theme = THEMES[currentThemeKey];
   const W = canvas.width, H = canvas.height;
   const cx = W / 2, cy = H / 2;
 
-  // 배경 채우기
+  // 배경
   ctx.save();
   ctx.fillStyle = toRgbaStr(theme.bg, 1.0);
   ctx.fillRect(0, 0, W, H);
 
-  // 주제별 배경 파티클 애니메이션
-  ctx.fillStyle = toRgbaStr(theme.colors[0], 0.6);
+  // 파티클
+  ctx.fillStyle = theme.pColor;
   for (let p of particles) {
-    p.x += p.vx * (1 + bands.bass * 2);
-    p.y += p.vy * (1 + bands.bass * 2);
+    p.x += p.vx * (1 + bands.bass * 3);
+    p.y += p.vy * (1 + bands.bass * 3);
     if (p.x < 0) p.x = W; if (p.x > W) p.x = 0;
     if (p.y < 0) p.y = H; if (p.y > H) p.y = 0;
     ctx.beginPath();
-    ctx.arc(p.x, p.y, p.size * (1 + bands.bass * 0.5), 0, TAU);
+    ctx.arc(p.x, p.y, p.size * (1 + bands.bass * 0.8), 0, TAU);
     ctx.fill();
   }
 
-  // 만다라 그리기 (분할 모드 & 층수 반영)
+  // 만다라 그리기 (다중 정교한 쉐이프 레이어 복합 중첩)
   const rings = settings.rings;
   const division = Math.round(settings.division);
   const baseRadius = H * 0.44;
 
   for (let i = 0; i < rings; i++) {
     const ringRatio = (i + 1) / rings;
-    const r = baseRadius * ringRatio * (0.8 + bands.bass * 0.15);
-    const rot = (now * 0.0002 * settings.spin * (i % 2 === 0 ? 1 : -1)) + (i * 0.15);
-    const color = lerpColor(theme.colors, ringRatio + now * 0.0001);
+    const r = baseRadius * ringRatio * (0.85 + bands.bass * 0.12);
+    const rot = (now * 0.00018 * settings.spin * (i % 2 === 0 ? 1 : -1)) + (i * 0.18);
+    const color = lerpColor(theme.colors, ringRatio + now * 0.00008);
 
     ctx.save();
     ctx.translate(cx, cy);
     ctx.rotate(rot);
 
-    // 몇 분할로 커질지 결정하는 대칭 회전 루프
     for (let d = 0; d < division; d++) {
       ctx.save();
       ctx.rotate((TAU * d) / division);
 
+      // 정교한 꽃잎 및 다이아몬드 지오메트리 쉐이프
       ctx.beginPath();
-      const petals = 6;
-      const pRadius = r / rings * 1.8 * settings.styleMix;
+      const petals = 5;
+      const pLen = r / rings * 2.2;
       
       for (let pt = 0; pt < petals; pt++) {
         const angle = (TAU * pt) / petals;
         const px = Math.cos(angle) * r;
         const py = Math.sin(angle) * r;
+        const ctrlX = Math.cos(angle + 0.3) * (r * 0.7);
+        const ctrlY = Math.sin(angle + 0.3) * (r * 0.7);
         if (pt === 0) ctx.moveTo(px, py);
-        else ctx.bezierCurveTo(px * 0.8, py * 0.8, px * 1.2, py * 1.2, px, py);
+        else ctx.quadraticCurveTo(ctrlX, ctrlY, px, py);
       }
       ctx.closePath();
 
-      // 업로드한 이미지가 있다면 타일처럼 매핑, 없으면 테마 그라디언트 채움
       if (customImages.length > 0) {
         const img = customImages[i % customImages.length];
         ctx.fillStyle = ctx.createPattern(img, 'repeat');
       } else {
-        ctx.fillStyle = toRgbaStr(color, settings.fillAlpha * (0.5 + bands.mid * 0.5));
+        const grad = ctx.createRadialGradient(0, 0, r * 0.2, 0, 0, r);
+        grad.addColorStop(0, toRgbaStr(color, settings.fillAlpha));
+        grad.addColorStop(1, toRgbaStr(theme.colors[(i + 2) % theme.colors.length], settings.fillAlpha * 0.6));
+        ctx.fillStyle = grad;
       }
       ctx.fill();
 
-      ctx.lineWidth = 1.8;
-      ctx.strokeStyle = toRgbaStr(theme.colors[(i + 1) % theme.colors.length], 0.8);
+      ctx.lineWidth = settings.line;
+      ctx.strokeStyle = toRgbaStr(theme.colors[(i + 1) % theme.colors.length], 0.9);
       ctx.stroke();
 
       ctx.restore();
@@ -466,7 +469,7 @@ function render(now) {
   requestAnimationFrame(render);
 }
 
-// 녹화 스크립트
+// 녹화 및 스냅샷
 let mediaRecorder = null, recordedChunks = [];
 document.getElementById("btnRecord").addEventListener("click", () => {
   if (mediaRecorder && mediaRecorder.state === "recording") { mediaRecorder.stop(); return; }
@@ -478,7 +481,7 @@ document.getElementById("btnRecord").addEventListener("click", () => {
     const blob = new Blob(recordedChunks, { type: "video/webm" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `mandala_theme_${Date.now()}.webm`;
+    a.download = `mandala_studio_${Date.now()}.webm`;
     a.click();
     document.getElementById("btnRecord").textContent = "⏺ 영상 녹화 시작";
   };
