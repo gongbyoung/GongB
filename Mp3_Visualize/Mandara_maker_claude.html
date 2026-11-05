@@ -1,1 +1,780 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Infinite Mandala</title>
+<meta name="description" content="MP3의 주파수에 맞춰 중앙에서 피어나는 무한 만다라. 16:9 고정, MP4(H.264) 녹화 지원.">
+<style>
+:root{
+  --bg:#0a0a0f; --panel:#13131b; --panel2:#1a1a25; --line:#262634; --text:#ebebf4; --muted:#8a8aa3;
+  --accent:#ff7ab8; --accent2:#8ab4ff; --danger:#ff5a6e; --ok:#6be3a4;
+  color-scheme: dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);
+  font:14px/1.45 system-ui,-apple-system,"Segoe UI","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  -webkit-font-smoothing:antialiased}
+button,select,input{font:inherit;color:inherit}
+button{cursor:pointer}
+#app{display:grid;grid-template-columns:minmax(0,1fr) 330px;grid-template-rows:auto minmax(0,1fr);height:100vh}
+header{grid-column:1/-1;display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+header h1{font-size:15px;margin:0;font-weight:650;letter-spacing:.02em}
+header h1 span{color:var(--accent)}
+#fileName{color:var(--muted);font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.btn{border:1px solid var(--line);background:var(--panel2);padding:7px 14px;border-radius:8px;transition:.15s}
+.btn:hover{border-color:#3a3a52;background:#202030}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#1a0a12;font-weight:650}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.rec{background:#2a1118;border-color:#5a2230;color:#ff8a9c;font-weight:650}
+.btn.rec:hover:not(:disabled){background:#3a1520}
+.btn.rec i{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--danger);margin-right:7px;vertical-align:0}
+#left{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:16px;min-width:0;min-height:0}
+#stage{position:relative;aspect-ratio:16/9;width:min(100%,calc((100vh - 150px)*16/9));background:#000;border-radius:10px;overflow:hidden;box-shadow:0 0 0 1px var(--line),0 20px 60px #000a}
+#view{display:block;width:100%;height:100%}
+#hint{position:absolute;left:50%;bottom:6%;transform:translateX(-50%);padding:9px 16px;border-radius:99px;background:#000a;backdrop-filter:blur(6px);
+  border:1px solid #ffffff22;font-size:13px;color:#ddd;pointer-events:none;white-space:nowrap}
+#badge{position:absolute;left:12px;top:10px;font-size:11px;letter-spacing:.12em;color:#fff9;pointer-events:none}
+#drop{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:#000b;font-size:18px;border:2px dashed var(--accent);border-radius:10px;pointer-events:none}
+#stage.dragging #drop{display:flex}
+#busy{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:#000d;text-align:center;padding:20px}
+#busy.on{display:flex}
+#busyText{font-size:15px}
+#busySub{font-size:12px;color:var(--muted);max-width:80%}
+#bar{width:min(60%,420px);height:6px;border-radius:9px;background:#ffffff1c;overflow:hidden}
+#bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2))}
+#transport{width:min(100%,calc((100vh - 150px)*16/9));display:flex;align-items:center;gap:10px}
+#play{width:42px;padding:7px 0;text-align:center}
+#seek{flex:1;min-width:60px;accent-color:var(--accent)}
+#time{font-variant-numeric:tabular-nums;color:var(--muted);font-size:12.5px;min-width:92px;text-align:center}
+#meters{display:flex;align-items:flex-end;gap:3px;height:22px;width:38px}
+#meters i{flex:1;background:linear-gradient(var(--accent2),var(--accent));border-radius:2px;height:4%;opacity:.85}
+aside{background:var(--panel);border-left:1px solid var(--line);overflow:auto;padding:6px 14px 22px}
+aside h2{font-size:11px;font-weight:650;letter-spacing:.14em;color:var(--muted);text-transform:uppercase;margin:18px 0 8px}
+.row{margin:9px 0}
+.row>label,.row>.lbl{display:block;font-size:12.5px;color:#b9b9cf;margin-bottom:4px}
+.seg{display:flex;flex-wrap:wrap;gap:4px}
+.seg button{flex:1;min-width:0;padding:6px 8px;border-radius:7px;border:1px solid var(--line);background:var(--panel2);font-size:12.5px;color:#c9c9dc;white-space:nowrap}
+.seg button.on{background:#ff7ab81f;border-color:var(--accent);color:#fff}
+.rng{display:grid;grid-template-columns:1fr 44px;align-items:center;gap:8px}
+.rng span{grid-column:1/-1;font-size:12.5px;color:#b9b9cf;margin-bottom:-2px}
+.rng input{accent-color:var(--accent);width:100%}
+.rng output{font-size:12px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+.chk{display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:3px 0}
+.chk input{accent-color:var(--accent);width:16px;height:16px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips .btn{padding:5px 10px;font-size:12.5px}
+select{width:100%;padding:7px 8px;border-radius:8px;border:1px solid var(--line);background:var(--panel2)}
+.note{font-size:12px;color:var(--muted);line-height:1.5;margin-top:6px}
+#toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,20px);background:#1d1d2a;border:1px solid #3a3a52;padding:10px 16px;border-radius:10px;opacity:0;pointer-events:none;transition:.25s;z-index:9;max-width:90vw;font-size:13px}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+#toast.err{border-color:var(--danger)}
+body.recording aside{opacity:.45;pointer-events:none}
+@media (max-width:920px){
+  #app{grid-template-columns:1fr;grid-template-rows:auto auto auto;height:auto}
+  #stage,#transport{width:100%}
+  aside{border-left:0;border-top:1px solid var(--line)}
+  #hint{font-size:11px;bottom:4%}
+}
+</style>
+</head>
+<body>
+<noscript>이 앱은 JavaScript가 필요합니다.</noscript>
+<div id="app">
+  <header>
+    <h1><span>◈</span> Infinite Mandala</h1>
+    <div id="fileName">MP3를 불러오면 음악에 맞춰 만다라가 피어납니다</div>
+    <button class="btn primary" id="openBtn">MP3 불러오기</button>
+    <input type="file" id="file" accept="audio/*,.mp3" hidden>
+  </header>
 
+  <section id="left">
+    <div id="stage">
+      <canvas id="view" width="1280" height="720"></canvas>
+      <div id="badge">DEMO</div>
+      <div id="hint">MP3 파일을 끌어다 놓거나 「MP3 불러오기」를 누르세요</div>
+      <div id="drop">여기에 MP3를 놓으세요</div>
+      <div id="busy"><div id="busyText"></div><div id="bar"><i></i></div><div id="busySub"></div>
+        <button class="btn" id="cancelBtn" hidden>취소</button></div>
+    </div>
+    <div id="transport">
+      <button class="btn" id="play" title="재생/일시정지 (Space)">▶</button>
+      <input type="range" id="seek" min="0" max="1000" value="0">
+      <div id="time">0:00 / 0:00</div>
+      <div id="meters" title="저음 → 고음"><i></i><i></i><i></i><i></i><i></i></div>
+      <button class="btn rec" id="recBtn" disabled title="음악의 처음부터 끝까지 MP4(H.264)로 저장"><i></i>녹화 (MP4)</button>
+    </div>
+  </section>
+
+  <aside>
+    <h2>프리셋</h2>
+    <div class="chips" id="presets"></div>
+
+    <h2>움직임</h2>
+    <div class="row"><div class="lbl">생성 방향</div>
+      <div class="seg" data-key="direction"><button data-v="OUT">중앙 → 외곽</button><button data-v="IN">외곽 → 중앙</button></div></div>
+    <div class="row rng"><span>링 수 (동시에 보이는 겹)</span><input type="range" data-key="rings" data-rebuild min="8" max="48" step="1"><output></output></div>
+    <div class="row rng"><span>이동 시간 (초)</span><input type="range" data-key="life" data-rebuild min="2" max="20" step="0.5"><output></output></div>
+    <div class="row rng"><span>회전 (°/초)</span><input type="range" data-key="spin" data-rebuild min="0" max="60" step="1"><output></output></div>
+    <div class="row rng"><span>음악 반응 감도</span><input type="range" data-key="sensitivity" data-rebuild min="0.3" max="2.5" step="0.05"><output></output></div>
+    <div class="row rng"><span>저음 가속</span><input type="range" data-key="speedGain" data-rebuild min="0" max="3" step="0.1"><output></output></div>
+    <div class="row rng"><span>모양 변형량 (모핑)</span><input type="range" data-key="morph" min="0" max="1" step="0.01"><output></output></div>
+    <div class="row rng"><span>크기 (화면 높이 대비)</span><input type="range" data-key="radius" min="0.6" max="2.2" step="0.05"><output></output></div>
+    <label class="chk"><input type="checkbox" data-key="guide"> 안내 링(가는 원) 표시</label>
+
+    <h2>모티프</h2>
+    <div class="chips" style="gap:2px 14px">
+      <label class="chk"><input type="checkbox" data-key="groups.PETAL" data-rebuild> 꽃잎</label>
+      <label class="chk"><input type="checkbox" data-key="groups.GIWA" data-rebuild> 기와</label>
+      <label class="chk"><input type="checkbox" data-key="groups.META" data-rebuild> 형이상학</label>
+      <label class="chk"><input type="checkbox" data-key="groups.GEO" data-rebuild> 기하학</label>
+    </div>
+    <div class="row"><label for="sym">대칭 (꽃잎 개수)</label>
+      <select id="sym" data-key="symmetry" data-rebuild>
+        <option value="6,8,12,16,24">다양 (6 ~ 24)</option>
+        <option value="4,6,8">적게 (4 ~ 8)</option>
+        <option value="12,18,24,36">많이 (12 ~ 36)</option>
+        <option value="6,12,18,24">육각 계열 (6의 배수)</option>
+        <option value="8,16,24,32">팔방 계열 (8의 배수)</option>
+      </select>
+      <div class="note">낮은 소리에서 태어난 링은 적은 개수의 큰 모양, 높은 소리는 많은 개수의 작은 모양이 됩니다.</div></div>
+    <div class="row rng"><span>시드 (배치 무작위)</span><input type="range" data-key="seed" data-rebuild min="1" max="99" step="1"><output></output></div>
+
+    <h2>색상 · 효과</h2>
+    <div class="row"><div class="lbl">팔레트</div>
+      <div class="seg" data-key="palette"><button data-v="PASTEL">파스텔</button><button data-v="PRIMARY">원색</button><button data-v="MONO">무채색</button></div></div>
+    <label class="chk"><input type="checkbox" data-key="gradient"> 그라디언트</label>
+    <div class="row"><div class="lbl">NEGA (색 반전)</div>
+      <div class="seg" data-key="nega"><button data-v="OFF">끔</button><button data-v="ON">켬</button><button data-v="BEAT">비트 플래시</button><button data-v="ALTERNATE">링 교차</button></div></div>
+    <div class="row"><label for="blend">블렌딩</label>
+      <select id="blend" data-key="blend">
+        <option value="NORMAL">일반 (Normal)</option><option value="ADD">가산 (Add · 빛)</option>
+        <option value="SCREEN">스크린 (Screen)</option><option value="MULTIPLY">곱하기 (Multiply)</option>
+        <option value="DIFFERENCE">차이 (Difference)</option><option value="ALTERNATE">교차 (Normal + Add)</option>
+      </select></div>
+    <div class="row"><div class="lbl">배경</div>
+      <div class="seg" data-key="bg"><button data-v="AUTO">자동</button><button data-v="BLACK">검정</button><button data-v="GRAY">회색</button><button data-v="WHITE">흰색</button></div></div>
+    <div class="row rng"><span>색상 흐름 (시간에 따른 색 변화)</span><input type="range" data-key="hueDrift" min="0" max="0.2" step="0.005"><output></output></div>
+    <label class="chk"><input type="checkbox" data-key="glow"> 글로우 (비트에 맞춰 번쩍임)</label>
+    <div class="row rng"><span>글로우 강도</span><input type="range" data-key="glowStrength" min="0.2" max="2.5" step="0.05"><output></output></div>
+
+    <h2>녹화</h2>
+    <div class="row"><div class="lbl">해상도 (16:9)</div>
+      <div class="seg" data-key="recRes"><button data-v="720">1280×720</button><button data-v="1080">1920×1080</button></div></div>
+    <div class="row"><div class="lbl">프레임 속도</div>
+      <div class="seg" data-key="recFps"><button data-v="30">30 fps</button><button data-v="60">60 fps</button></div></div>
+    <div class="note" id="recNote">MP3를 불러온 뒤 「녹화 (MP4)」를 누르면 음악의 처음부터 끝까지 화면을 한 프레임씩 렌더링해 H.264 MP4로 저장합니다. 재생 속도와 무관하게 끊김 없는 영상이 만들어집니다.</div>
+  </aside>
+</div>
+<div id="toast"></div>
+
+<script src="vendor/mp4-muxer.js"></script>
+<script>
+(() => {
+'use strict';
+
+/* =====================================================================
+ *  유틸
+ * ===================================================================== */
+const $  = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const clamp  = (x, a = 0, b = 1) => x < a ? a : x > b ? b : x;
+const lerp   = (a, b, t) => a + (b - a) * t;
+const TAU    = Math.PI * 2;
+const smooth = (e0, e1, x) => { const t = clamp((x - e0) / (e1 - e0)); return t * t * (3 - 2 * t); };
+const mulberry32 = a => () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a);
+  t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+const fmtTime = s => { s = Math.max(0, s | 0); return (s / 60 | 0) + ':' + String(s % 60).padStart(2, '0'); };
+const mc = new MessageChannel();                       // 숨은 탭에서도 느려지지 않는 양보(yield)
+let mcResolve = null; mc.port1.onmessage = () => { const r = mcResolve; mcResolve = null; r && r(); };
+const yieldNow = () => new Promise(r => { mcResolve = r; mc.port2.postMessage(0); });
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+/* =====================================================================
+ *  설정 / 프리셋
+ * ===================================================================== */
+const DEFAULTS = {
+  direction: 'OUT', palette: 'PASTEL', gradient: true, nega: 'OFF', blend: 'ADD', bg: 'AUTO',
+  glow: true, glowStrength: 1, hueDrift: 0.02,
+  groups: { PETAL: true, GIWA: true, META: true, GEO: true }, symmetry: '6,8,12,16,24',
+  rings: 26, life: 8, spin: 9, morph: 0.6, sensitivity: 1, speedGain: 0.8, radius: 1.35,
+  guide: true, seed: 7, recRes: '1080', recFps: '30',
+};
+const ALL_GROUPS = { PETAL: true, GIWA: true, META: true, GEO: true };
+const PRESETS = {
+  '파스텔 블룸': { palette: 'PASTEL', gradient: true, blend: 'NORMAL', glow: true, glowStrength: 1.2, nega: 'OFF', direction: 'OUT', rings: 24, life: 8, morph: .6, groups: ALL_GROUPS, symmetry: '6,8,12,16,24', bg: 'AUTO' },
+  '원색 팝':     { palette: 'PRIMARY', gradient: true, blend: 'ALTERNATE', glow: true, glowStrength: 1.0, nega: 'ALTERNATE', direction: 'OUT', rings: 26, life: 7, spin: 14, morph: .9, groups: ALL_GROUPS, symmetry: '6,8,12,16,24', bg: 'AUTO' },
+  '모노 네가':   { palette: 'MONO', gradient: true, blend: 'ADD', glow: true, glowStrength: 1.4, nega: 'BEAT', direction: 'OUT', rings: 28, life: 9, morph: .7, groups: ALL_GROUPS, symmetry: '6,12,18,24', bg: 'AUTO' },
+  '기와 정원':   { palette: 'PASTEL', gradient: true, blend: 'NORMAL', glow: true, glowStrength: 1.0, nega: 'OFF', direction: 'IN', rings: 22, life: 10, morph: .5, groups: { PETAL: true, GIWA: true, META: false, GEO: false }, symmetry: '8,16,24,32', bg: 'AUTO' },
+  '신성 기하':   { palette: 'MONO', gradient: true, blend: 'SCREEN', glow: true, glowStrength: 1.5, nega: 'OFF', direction: 'OUT', rings: 26, life: 9, spin: 6, morph: .8, groups: { PETAL: false, GIWA: false, META: true, GEO: true }, symmetry: '6,12,18,24', bg: 'AUTO' },
+  '네온 사이키': { palette: 'PRIMARY', gradient: true, blend: 'DIFFERENCE', glow: true, glowStrength: 1.2, nega: 'OFF', direction: 'OUT', rings: 24, life: 6, spin: 22, morph: 1, hueDrift: 0.08, groups: ALL_GROUPS, symmetry: '6,8,12,16,24', bg: 'BLACK' },
+};
+const S = JSON.parse(JSON.stringify(DEFAULTS));
+try { const saved = JSON.parse(localStorage.getItem('infinite-mandala') || 'null');
+  if (saved) for (const k in DEFAULTS) if (k in saved) S[k] = (typeof DEFAULTS[k] === 'object') ? { ...DEFAULTS[k], ...saved[k] } : saved[k]; } catch (e) {}
+const saveSettings = () => { try { localStorage.setItem('infinite-mandala', JSON.stringify(S)); } catch (e) {} };
+
+/* =====================================================================
+ *  모티프 (꽃잎 · 기와 · 형이상학 · 기하학)
+ *  모든 모티프를 "각도별 반지름" 44샘플로 통일 → 서로 모핑 가능
+ * ===================================================================== */
+const SAMPLES = 44;
+const GROUPS = { PETAL: ['PETAL', 'LOTUS'], GIWA: ['GIWA', 'SCALE'], META: ['VESICA', 'STAR6', 'ORB'], GEO: ['DIAMOND', 'TRIANGLE', 'HEX'] };
+const mirror = top => { const out = top.slice(); for (let i = top.length - 2; i >= 1; i--) out.push([top[i][0], -top[i][1]]); return out; };
+const lin = (a, b, n, incl = true) => Array.from({ length: n }, (_, i) => a + (b - a) * i / (incl ? n - 1 : n));
+const regular = n => Array.from({ length: n }, (_, i) => [Math.cos(i * TAU / n), Math.sin(i * TAU / n)]);
+function arch(width, depth, n, notch) {                // 기와: 둥근 바깥쪽, 각진 안쪽, 얕은 홈
+  const pts = [];
+  for (const phi of lin(-Math.PI / 2, Math.PI / 2, 24, false)) pts.push([width * Math.cos(phi), width * Math.sin(phi)]);
+  for (const psi of lin(Math.PI / 2, 3 * Math.PI / 2, 25)) {
+    const c = Math.cos(psi), s = Math.sin(psi);
+    const y = width * Math.sign(s) * Math.abs(s) ** (2 / n);
+    pts.push([-depth * Math.abs(c) ** (2 / n) + notch * depth * (1 - Math.abs(y) / width), y]);
+  }
+  return pts;
+}
+const RAW = {
+  PETAL:   () => mirror(lin(0, 1, 40).map(t => [1.9 * t - 0.85, 0.62 * Math.sin(Math.PI * t) ** 0.8 * (1 - 0.35 * t)])),
+  LOTUS:   () => mirror(lin(0, 1, 40).map(t => [1.7 * t - 0.68, 0.85 * Math.sin(Math.PI * t ** 0.65) ** 0.9])),
+  GIWA:    () => arch(0.75, 1.1, 6, 0.22),
+  SCALE:   () => arch(0.95, 0.5, 3, 0.30),
+  VESICA:  () => { const d = .5, xm = Math.sqrt(1 - d * d); return mirror(lin(-xm, xm, 30).map(x => [x, Math.sqrt(Math.max(0, 1 - x * x)) - d])); },
+  STAR6:   () => Array.from({ length: 12 }, (_, k) => { const a = k * Math.PI / 6, r = k % 2 ? 0.577 : 1; return [r * Math.cos(a), r * Math.sin(a)]; }),
+  ORB:     () => regular(64),
+  DIAMOND: () => [[1.2, 0], [0, .7], [-1.2, 0], [0, -.7]],
+  TRIANGLE:() => regular(3),
+  HEX:     () => regular(6),
+};
+function rayRadius(poly, theta) {
+  const ux = Math.cos(theta), uy = Math.sin(theta); let best = Infinity;
+  for (let i = 0; i < poly.length; i++) {
+    const [ax, ay] = poly[i], [bx, by] = poly[(i + 1) % poly.length], ex = bx - ax, ey = by - ay;
+    const den = ux * ey - uy * ex; if (Math.abs(den) < 1e-9) continue;
+    const r = (ax * ey - ay * ex) / den; if (r <= 1e-9) continue;
+    const s = ((r * ux - ax) * ex + (r * uy - ay) * ey) / (ex * ex + ey * ey);
+    if (s >= -1e-6 && s <= 1 + 1e-6 && r < best) best = r;
+  }
+  return best;
+}
+const OUTLINE = {};
+for (const name in RAW) {
+  const poly = RAW[name](), xy = new Float32Array(SAMPLES * 2);
+  for (let k = 0; k < SAMPLES; k++) { const th = k * TAU / SAMPLES, r = rayRadius(poly, th); xy[2 * k] = r * Math.cos(th); xy[2 * k + 1] = r * Math.sin(th); }
+  let area = 0; for (let k = 0; k < SAMPLES; k++) { const j = (k + 1) % SAMPLES; area += xy[2 * k] * xy[2 * j + 1] - xy[2 * j] * xy[2 * k + 1]; }
+  const sc = 0.8 / Math.sqrt(Math.abs(area) / 2 / Math.PI);       // 면적을 맞춰 시각적 무게를 통일
+  for (let q = 0; q < xy.length; q++) xy[q] *= sc;
+  OUTLINE[name] = xy;
+}
+
+/* =====================================================================
+ *  색상
+ * ===================================================================== */
+const PALETTE_HEX = {
+  PASTEL:  ['#FFB3C7', '#FFD8A8', '#FFF3B0', '#C7F2C4', '#A8E6F0', '#B8C4FF', '#DDB8FF', '#FFC8E8'],
+  PRIMARY: ['#E8112D', '#FF8A00', '#FFD500', '#00A651', '#0057E7', '#8E24AA', '#00B8D9', '#FF2D95'],
+  MONO:    ['#FFFFFF', '#CFCFCF', '#9A9A9A', '#6E6E6E', '#E6E6E6', '#B4B4B4', '#838383', '#F5F5F5'],
+};
+function rgb2hsl(r, g, b) { r /= 255; g /= 255; b /= 255; const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2; let h = 0, s = 0;
+  if (mx !== mn) { const d = mx - mn; s = l > .5 ? d / (2 - mx - mn) : d / (mx + mn);
+    h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h /= 6; } return [h, s, l]; }
+function hsl2rgb(h, s, l) { if (s === 0) return [l * 255, l * 255, l * 255];
+  const q = l < .5 ? l * (1 + s) : l + s - l * s, p = 2 * l - q, f = t => { t = (t % 1 + 1) % 1; return t < 1 / 6 ? p + (q - p) * 6 * t : t < .5 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p; };
+  return [f(h + 1 / 3) * 255, f(h) * 255, f(h - 1 / 3) * 255]; }
+const PAL = {};
+for (const k in PALETTE_HEX) PAL[k] = PALETTE_HEX[k].map(h => rgb2hsl(parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)));
+const rgbStr = c => `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
+const mixWhite = (c, t) => [lerp(c[0], 255, t), lerp(c[1], 255, t), lerp(c[2], 255, t)];
+const tmpA = [0, 0, 0], tmpB = [0, 0, 0];
+function ringColors(ring, hueShift) {
+  const pal = PAL[S.palette], a = pal[ring.colorIdx % 8], b = pal[(ring.colorIdx + 3) % 8], mono = S.palette === 'MONO';
+  const ca = hsl2rgb(mono ? a[0] : a[0] + hueShift, a[1], a[2]);
+  const cb = S.gradient ? hsl2rgb(mono ? b[0] : b[0] + hueShift, b[1], b[2]) : ca;
+  const inv = S.nega === 'ALTERNATE' && (ring.serial & 1);
+  for (let i = 0; i < 3; i++) { tmpA[i] = inv ? 255 - ca[i] : ca[i]; tmpB[i] = inv ? 255 - cb[i] : cb[i]; }
+  return [tmpA, tmpB];
+}
+
+/* =====================================================================
+ *  오디오 분석 (FFT → 5개 대역 / 비트(onset) / 밝기(centroid))
+ * ===================================================================== */
+const FPS_A = 60, WIN = 2048;
+const BANDS = [[20, 150], [150, 500], [500, 2000], [2000, 6000], [6000, 16000]];
+
+function makeFFT(n) {
+  const levels = Math.round(Math.log2(n)), rev = new Uint32Array(n), cos = new Float64Array(n / 2), sin = new Float64Array(n / 2);
+  for (let i = 0; i < n; i++) { let r = 0; for (let b = 0; b < levels; b++) r |= ((i >> b) & 1) << (levels - 1 - b); rev[i] = r; }
+  for (let i = 0; i < n / 2; i++) { cos[i] = Math.cos(TAU * i / n); sin[i] = Math.sin(TAU * i / n); }
+  return (re, im) => {
+    for (let i = 0; i < n; i++) { const j = rev[i]; if (j > i) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; } }
+    for (let size = 2; size <= n; size <<= 1) {
+      const half = size >> 1, step = n / size;
+      for (let i = 0; i < n; i += size) for (let j = i, k = 0; j < i + half; j++, k += step) {
+        const l = j + half, tr = re[l] * cos[k] + im[l] * sin[k], ti = -re[l] * sin[k] + im[l] * cos[k];
+        re[l] = re[j] - tr; im[l] = im[j] - ti; re[j] += tr; im[j] += ti;
+      }
+    }
+  };
+}
+function follow(x, attack, release) {                  // 빠르게 오르고 천천히 내려오는 포락선
+  const out = new Float32Array(x.length); let acc = 0;
+  for (let i = 0; i < x.length; i++) { acc += (x[i] - acc) * (x[i] > acc ? attack : release); out[i] = acc; }
+  return out;
+}
+function pickOnsets(flux) {
+  const n = flux.length; if (n < 3) return [];
+  let mx = 0, mean = 0; for (const v of flux) { mx = Math.max(mx, v); mean += v; } if (mx <= 0) return [];
+  mean /= n; let sd = 0; for (const v of flux) sd += (v - mean) ** 2; sd = Math.sqrt(sd / n);
+  const win = Math.max(3, FPS_A >> 1), half = win >> 1, pre = new Float64Array(n + 1);
+  for (let i = 0; i < n; i++) pre[i + 1] = pre[i] + flux[i];
+  const gap = Math.max(1, Math.round(0.18 * FPS_A)), peaks = []; let last = -gap;
+  for (let i = 1; i < n - 1; i++) {
+    const a = Math.max(0, i - half), b = Math.min(n, i + half + 1), local = (pre[b] - pre[a]) / (b - a);
+    if (flux[i] >= flux[i - 1] && flux[i] > flux[i + 1] && flux[i] > local + 0.35 * sd) {
+      if (i - last >= gap) { peaks.push({ i, s: flux[i] }); last = i; }
+      else if (peaks.length && flux[i] > peaks[peaks.length - 1].s) { peaks[peaks.length - 1] = { i, s: flux[i] }; last = i; }
+    }
+  }
+  const top = peaks.reduce((m, p) => Math.max(m, p.s), 1e-9);
+  return peaks.map(p => ({ i: p.i, s: Math.min(1, p.s / top) }));
+}
+function finalizeFeatures(f) {
+  const n = f.n; f.pulse = new Float32Array(n); f.beat = new Float32Array(n);
+  const marks = new Map(f.onsets.map(o => [o.i, o.s])), dP = 0.5 ** (1 / (0.25 * FPS_A)), dB = 0.5 ** (1 / (0.07 * FPS_A));
+  let p = 0, b = 0;
+  for (let i = 0; i < n; i++) { p *= dP; b *= dB; const s = marks.get(i); if (s !== undefined) { p = Math.max(p, s); if (s >= 0.7) b = 1; } f.pulse[i] = p; f.beat[i] = b; }
+  return f;
+}
+async function analyzeBuffer(buffer, onProgress, shouldCancel) {
+  const sr = buffer.sampleRate, len = buffer.length, c0 = buffer.getChannelData(0), c1 = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : null;
+  const mono = new Float32Array(len); if (c1) for (let i = 0; i < len; i++) mono[i] = (c0[i] + c1[i]) * 0.5; else mono.set(c0);
+  const n = Math.max(1, Math.ceil(buffer.duration * FPS_A)), hop = sr / FPS_A, fft = makeFFT(WIN);
+  const win = new Float32Array(WIN); for (let i = 0; i < WIN; i++) win[i] = 0.5 - 0.5 * Math.cos(TAU * i / (WIN - 1));
+  const re = new Float64Array(WIN), im = new Float64Array(WIN), half = WIN / 2 + 1, prev = new Float32Array(half), mag = new Float32Array(half);
+  const binHz = sr / WIN, logf = new Float32Array(half); for (let k = 0; k < half; k++) logf[k] = Math.log2(Math.max(k * binHz, 1));
+  const masks = BANDS.map(([lo, hi]) => [Math.max(1, Math.ceil(lo / binHz)), Math.min(half - 1, Math.floor(Math.min(hi, sr / 2) / binHz))]);
+  const raw = BANDS.map(() => new Float32Array(n)), flux = new Float32Array(n), cen = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const start = Math.round(i * hop - WIN / 2);
+    for (let k = 0; k < WIN; k++) { const p = start + k; re[k] = (p >= 0 && p < len ? mono[p] : 0) * win[k]; im[k] = 0; }
+    fft(re, im);
+    let wsum = 1e-9, csum = 0, fl = 0;
+    for (let k = 0; k < half; k++) {
+      const m = Math.sqrt(re[k] * re[k] + im[k] * im[k]); mag[k] = m; wsum += m; csum += m * logf[k];
+      const lm = Math.log1p(m * 0.05); fl += Math.max(lm - prev[k], 0); prev[k] = lm;
+    }
+    for (let b = 0; b < BANDS.length; b++) { const [lo, hi] = masks[b]; let s = 0; for (let k = lo; k <= hi; k++) s += mag[k] * mag[k]; raw[b][i] = hi >= lo ? Math.sqrt(s / (hi - lo + 1)) : 0; }
+    flux[i] = i ? fl : 0; cen[i] = csum / wsum;
+    if (i % 240 === 0) { onProgress(i / n); await yieldNow(); if (shouldCancel && shouldCancel()) throw new Error('cancelled'); }
+  }
+  const bands = raw.map(a => {
+    const env = new Float32Array(n); for (let i = 0; i < n; i++) env[i] = Math.log1p(a[i] * 4);
+    const ref = Float32Array.from(env).sort()[Math.floor(0.95 * (n - 1))] + 1e-9;
+    for (let i = 0; i < n; i++) env[i] = clamp(env[i] / ref) ** 0.9;
+    return follow(env, Math.min(1, 15 / FPS_A), 3.5 / FPS_A);
+  });
+  const lo = Math.log2(200), hi = Math.log2(8000), cn = new Float32Array(n); for (let i = 0; i < n; i++) cn[i] = clamp((cen[i] - lo) / (hi - lo));
+  onProgress(1);
+  return finalizeFeatures({ n, dur: buffer.duration, bands, centroid: follow(cn, 4 / FPS_A, 4 / FPS_A), onsets: pickOnsets(flux) });
+}
+function demoFeatures() {                              // MP3가 없을 때 보여줄 데모 (112 BPM)
+  const dur = 96, n = dur * FPS_A, bands = [0, 1, 2, 3, 4].map(() => new Float32Array(n)), centroid = new Float32Array(n), onsets = [], beat = 60 / 112;
+  const periods = [8, 6, 4.5, 3, 2];
+  for (let i = 0; i < n; i++) {
+    const t = i / FPS_A, ph = (t % beat) / beat, kick = Math.exp(-ph * 5), hat = Math.exp(-(((t + beat / 2) % beat) / beat) * 9);
+    bands[0][i] = clamp(0.25 + 0.75 * kick); bands[1][i] = clamp(0.3 + 0.4 * kick + 0.2 * Math.sin(TAU * t / periods[1]));
+    bands[2][i] = 0.5 + 0.4 * Math.sin(TAU * t / periods[2] + 1); bands[3][i] = 0.45 + 0.35 * Math.sin(TAU * t / periods[3] + 2) + 0.2 * hat;
+    bands[4][i] = clamp(0.3 + 0.5 * hat + 0.2 * Math.sin(TAU * t / periods[4])); centroid[i] = 0.5 + 0.4 * Math.sin(TAU * t / 13);
+  }
+  for (let b = 0, k = 0; b < dur / beat; b++, k++) onsets.push({ i: Math.round(b * beat * FPS_A), s: [1, .5, .75, .5][k % 4] });
+  return finalizeFeatures({ n, dur, bands, centroid, onsets });
+}
+
+/* =====================================================================
+ *  타임라인: 음악 → 링 탄생 시각 / 이동 / 모양 (결정적: 미리보기 = 녹화)
+ * ===================================================================== */
+const state = { feats: null, tl: null, buffer: null, name: '', demo: true, recording: false };
+
+function buildTimeline() {
+  const f = state.feats, life = +S.life, rings = +S.rings, sens = +S.sensitivity, n = f.n;
+  const even = life / rings, minGap = Math.max(0.1, even * 0.9), maxGap = even * 3, dur = f.dur;
+  const ev = [{ t: 0, s: 0.5 }]; let last = 0;
+  for (const o of f.onsets) {                          // 박자가 감지되면 박자에, 없으면 일정 간격으로 탄생
+    const t = o.i / FPS_A; if (t <= 0) continue;
+    while (t - last > maxGap) { last += maxGap; ev.push({ t: last, s: 0.35 }); }
+    if (t - last >= minGap) { ev.push({ t, s: o.s }); last = t; }
+  }
+  while (dur - last > maxGap) { last += maxGap; ev.push({ t: last, s: 0.35 }); }
+
+  const T = new Float64Array(n + 1), SPN = new Float64Array(n + 1), spinRad = (+S.spin) * Math.PI / 180;
+  for (let i = 0; i < n; i++) {
+    const bass = clamp((f.bands[0][i] + 0.5 * f.bands[1][i]) / 1.5 * sens), mid = clamp(f.bands[2][i] * sens);
+    T[i + 1] = T[i] + (1 + (+S.speedGain) * bass) / FPS_A;           // 저음이 클수록 빨리 퍼짐
+    SPN[i + 1] = SPN[i] + spinRad * (1 + 2 * mid) / FPS_A;
+  }
+  let sym = S.symmetry.split(',').map(Number).filter(v => v >= 3).sort((a, b) => a - b); if (!sym.length) sym = [12];
+  const enabled = Object.keys(GROUPS).filter(g => S.groups[g]), GL = enabled.length ? enabled : Object.keys(GROUPS);
+  const pool = GL.flatMap(g => GROUPS[g]);
+  const out = [];
+  ev.forEach((e, serial) => {
+    const rng = mulberry32((+S.seed) * 100003 + serial * 7919), i = Math.min(n - 1, Math.round(e.t * FPS_A));
+    const cen = f.centroid[i], bass = clamp((f.bands[0][i] + f.bands[1][i]) * 0.5 * sens);
+    const N = sym[Math.min(sym.length - 1, Math.floor(clamp(0.65 * cen + 0.35 * rng()) * sym.length))];   // 고음일수록 꽃잎이 많고 작게
+    const motifs = [];
+    for (let j = 0; j < 4; j++) {
+      const grp = GROUPS[GL[(serial + j) % GL.length]]; let opts = grp.filter(m => !motifs.includes(m));
+      if (!opts.length) opts = pool.filter(m => !motifs.includes(m)); if (!opts.length) opts = pool;
+      motifs.push(opts[Math.floor(rng() * opts.length)]);
+    }
+    const ti = e.t * FPS_A, i0 = Math.min(n, Math.floor(ti)), fr = ti - i0, i1 = Math.min(n, i0 + 1);
+    out.push({ t: e.t, s: e.s, serial, N, rho: Math.PI / N * lerp(0.55, 0.9, 0.5 * rng() + 0.5 * bass), aspect: lerp(0.65, 1.05, 0.5 * rng() + 0.5 * cen),
+      T0: lerp(T[i0], T[i1], fr), SP0: lerp(SPN[i0], SPN[i1], fr), rot0: rng() * TAU, dir: serial & 1 ? -1 : 1,
+      hueOff: (rng() - .5) * 0.12, bias: [rng() * .35 - .1, rng() * .35 - .1, rng() * .35 - .1], colorIdx: serial, sh: motifs.map(m => OUTLINE[m]) });
+  });
+  state.tl = { rings: out, T, SPN };
+}
+let rebuildTimer = 0;
+const scheduleRebuild = () => { clearTimeout(rebuildTimer); rebuildTimer = setTimeout(() => { if (!state.recording) { buildTimeline(); dirty = true; } }, 120); };
+
+const FS = {};                                          // 현재 시각의 특징값 (재사용 객체)
+function sampleFeatures(t, out) {
+  const f = state.feats, tl = state.tl, sens = +S.sensitivity, x = clamp(t * FPS_A, 0, f.n - 1), i = Math.floor(x), j = Math.min(f.n - 1, i + 1), fr = x - i;
+  const g = a => a[i] + (a[j] - a[i]) * fr;
+  const b0 = g(f.bands[0]), b1 = g(f.bands[1]), b2 = g(f.bands[2]), b3 = g(f.bands[3]), b4 = g(f.bands[4]);
+  out.bass = clamp((b0 + 0.5 * b1) / 1.5 * sens); out.mb = clamp((b0 * 0.7 + b1 * 0.3) * sens); out.mid = clamp(b2 * sens);
+  out.hi = clamp((b3 + b4) * 0.5 * sens); out.pulse = g(f.pulse); out.beat = g(f.beat); out.cen = g(f.centroid);
+  out.T = lerp(tl.T[i], tl.T[i + 1], fr); out.SP = lerp(tl.SPN[i], tl.SPN[i + 1], fr);
+  out.b = [clamp(b0 * sens), clamp(b1 * sens), clamp(b2 * sens), clamp(b3 * sens), clamp(b4 * sens)];
+  return out;
+}
+
+/* =====================================================================
+ *  렌더러 (미리보기와 녹화가 같은 코드를 사용)
+ * ===================================================================== */
+const MODE = { NORMAL: 'source-over', ADD: 'lighter', MULTIPLY: 'multiply', SCREEN: 'screen', DIFFERENCE: 'difference' };
+const BASE_ALPHA = { 'source-over': 0.62, lighter: 0.19, multiply: 0.55, screen: 0.36, difference: 0.45 };
+function bgInfo() {
+  const css = { BLACK: '#000', WHITE: '#fff', GRAY: '#3a3a44' }[S.bg] || (S.blend === 'MULTIPLY' ? '#fff' : '#000');
+  return { css, dark: css !== '#fff' };
+}
+class Renderer {
+  constructor(W, H, canvas) {
+    this.W = W; this.H = H; this.canvas = canvas || document.createElement('canvas'); this.canvas.width = W; this.canvas.height = H;
+    this.ctx = this.canvas.getContext('2d', { alpha: false });
+    const mk = k => { const c = document.createElement('canvas'); c.width = Math.max(8, W >> k); c.height = Math.max(8, H >> k); const x = c.getContext('2d'); x.imageSmoothingQuality = 'high'; return [c, x]; };
+    [this.g1, this.g1x] = mk(2); [this.g2, this.g2x] = mk(4); this.shape = new Float32Array(SAMPLES * 2); this.f = {}; this.list = []; this.us = [];
+  }
+  draw(t) {
+    const { ctx, W, H } = this, f = sampleFeatures(t, this.f), bg = bgInfo();
+    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.fillStyle = bg.css; ctx.fillRect(0, 0, W, H);
+    this.drawRings(t, f);
+    if (S.glow && bg.dark) this.drawGlow(f);
+    if (S.nega === 'ON' || (S.nega === 'BEAT' && f.beat > 0.02)) {            // 화면 전체 NEGA
+      ctx.globalCompositeOperation = 'difference'; ctx.globalAlpha = S.nega === 'ON' ? 1 : f.beat; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+    }
+    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+  }
+  drawGlow(f) {
+    const { ctx, W, H } = this, k = +S.glowStrength, a = clamp(0.20 * k * (0.7 + 0.6 * f.pulse), 0, 1);
+    this.g1x.clearRect(0, 0, this.g1.width, this.g1.height); this.g1x.drawImage(this.canvas, 0, 0, this.g1.width, this.g1.height);
+    this.g2x.clearRect(0, 0, this.g2.width, this.g2.height); this.g2x.drawImage(this.g1, 0, 0, this.g2.width, this.g2.height);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = a; ctx.drawImage(this.g1, 0, 0, W, H);
+    ctx.globalAlpha = clamp(a * 1.2, 0, 1); ctx.drawImage(this.g2, 0, 0, W, H);
+  }
+  drawRings(t, f) {
+    const tl = state.tl; if (!tl) return;
+    const { ctx, W, H, shape } = this, life = +S.life, dirOut = S.direction === 'OUT', cx = W / 2, cy = H / 2, Rmax = (H / 2) * (+S.radius), rs = tl.rings;
+    let lo = 0, hi = rs.length; const lim = t - life;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (rs[m].t <= lim) lo = m + 1; else hi = m; }
+    const list = this.list, us = this.us; list.length = 0; us.length = 0;
+    for (let k = lo; k < rs.length && rs[k].t <= t; k++) { const u = (f.T - rs[k].T0) / life; if (u >= 0 && u < 1) { list.push(rs[k]); us.push(u); } }
+    const order = list.map((_, i) => i); if (!dirOut) order.reverse();
+    const srcs = [f.mb, f.mid, f.hi], glow = S.glow, gk = +S.glowStrength, px = W / 1280;
+    for (const idx of order) {
+      const ring = list[idx], u = us[idx], rad = Rmax * (dirOut ? u : 1 - u) * (1 + 0.05 * f.pulse);
+      const fade = smooth(0, 0.1, u) * smooth(1, 0.82, u); if (rad < 2 || fade < 0.004) continue;
+      const mode = S.blend === 'ALTERNATE' ? (ring.serial & 1 ? 'source-over' : 'lighter') : MODE[S.blend];
+      const age = t - ring.t, flash = ring.s * Math.exp(-age / 0.45);
+      const boost = glow ? 0.7 + (0.8 * flash + 0.4 * f.pulse + 0.3 * f.mid) * gk : 1;
+      const alpha = clamp(BASE_ALPHA[mode] * fade * boost, 0, 1);
+      // 모양: 현재 소리의 저/중/고음 에너지로 기본 모티프 → 다른 모티프로 변형
+      const k = ring.serial % 3, m = +S.morph;
+      let w0 = clamp(m * (srcs[k] + ring.bias[0])), w1 = clamp(m * (srcs[(k + 1) % 3] + ring.bias[1])), w2 = clamp(m * (srcs[(k + 2) % 3] + ring.bias[2]));
+      const sum = w0 + w1 + w2; if (sum > 1) { w0 /= sum; w1 /= sum; w2 /= sum; }
+      const wb = 1 - w0 - w1 - w2, [s0, s1, s2, s3] = ring.sh;
+      for (let q = 0; q < shape.length; q++) shape[q] = s0[q] * wb + s1[q] * w0 + s2[q] * w1 + s3[q] * w2;
+      const rot = ring.rot0 + ring.dir * (f.SP - ring.SP0), hs = ring.hueOff + (+S.hueDrift) * t + 0.08 * (f.cen - 0.5);
+      const [A, B] = ringColors(ring, hs), mid = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2, (A[2] + B[2]) / 2];
+      ctx.globalCompositeOperation = mode;
+      if (S.guide) {                                                          // 안내 링
+        ctx.globalAlpha = clamp(alpha * 0.9, 0, 1); ctx.strokeStyle = rgbStr(mixWhite(B, 0.25)); ctx.lineWidth = Math.max(1, px * (1 + 1.5 * f.pulse));
+        ctx.beginPath(); ctx.arc(cx, cy, rad, 0, TAU); ctx.stroke();
+      }
+      const r0 = Math.max(0, rad * (1 - ring.rho * 1.25)), r1 = rad * (1 + ring.rho * 1.25) + 1;
+      let fill; if (S.gradient) { fill = ctx.createRadialGradient(cx, cy, r0, cx, cy, r1); fill.addColorStop(0, rgbStr(A)); fill.addColorStop(1, rgbStr(B)); } else fill = rgbStr(A);
+      const loops = [[1, fill, 1], [0.62, rgbStr(mixWhite(mid, 0.28)), 0.9], [0.30 + 0.12 * f.pulse, rgbStr(mixWhite(mid, 0.5)), 1]];
+      for (const [ls, style, am] of loops) {
+        ctx.globalAlpha = clamp(alpha * am, 0, 1); ctx.fillStyle = style;
+        const q = rad * ring.rho, ax = q * ring.aspect * ls, ay = q * ls, N = ring.N;
+        ctx.beginPath();
+        for (let e = 0; e < N; e++) {
+          const th = e * TAU / N + rot, c = Math.cos(th), s = Math.sin(th), ex = cx + rad * c, ey = cy + rad * s;
+          for (let p = 0; p < SAMPLES; p++) {
+            const lx = shape[2 * p] * ax, ly = shape[2 * p + 1] * ay, X = ex + lx * c - ly * s, Y = ey + lx * s + ly * c;
+            p ? ctx.lineTo(X, Y) : ctx.moveTo(X, Y);
+          }
+          ctx.closePath();
+        }
+        ctx.fill();
+      }
+    }
+  }
+}
+
+/* =====================================================================
+ *  재생
+ * ===================================================================== */
+const player = { ctx: null, gain: null, src: null, playing: false, offset: 0, startedAt: 0,
+  clock() { return state.buffer ? this.ctx.currentTime : performance.now() / 1000; },
+  time() { return this.playing ? this.offset + (this.clock() - this.startedAt) : this.offset; } };
+function ensureAudio() {
+  if (!player.ctx) { const AC = window.AudioContext || window.webkitAudioContext; player.ctx = new AC(); player.gain = player.ctx.createGain(); player.gain.connect(player.ctx.destination); }
+  if (player.ctx.state === 'suspended') player.ctx.resume().catch(() => {});
+}
+function stopSource() { if (player.src) { player.src.onended = null; try { player.src.stop(); } catch (e) {} try { player.src.disconnect(); } catch (e) {} player.src = null; } }
+function startAt(off) {
+  stopSource(); player.offset = off;
+  if (state.buffer) {
+    ensureAudio(); const src = player.ctx.createBufferSource(); src.buffer = state.buffer; src.connect(player.gain);
+    src.onended = () => { if (player.src === src && player.playing) { player.playing = false; player.offset = state.buffer.duration; player.src = null; syncPlayBtn(); dirty = true; } };
+    src.start(0, off); player.src = src; player.startedAt = player.ctx.currentTime;
+  } else player.startedAt = performance.now() / 1000;
+  player.playing = true; syncPlayBtn();
+}
+function pause() { if (!player.playing) return; player.offset = player.time(); stopSource(); player.playing = false; syncPlayBtn(); }
+function togglePlay() {
+  if (state.recording) return;
+  if (player.playing) pause();
+  else startAt(state.buffer && player.offset >= state.buffer.duration - 0.05 ? 0 : player.offset);
+}
+const currentT = () => { const t = player.time(); return state.buffer ? clamp(t, 0, state.buffer.duration) : t % state.feats.dur; };
+
+/* =====================================================================
+ *  UI
+ * ===================================================================== */
+const view = $('#view'), preview = new Renderer(1280, 720, view);
+let dirty = true;
+function toast(msg, err) { const el = $('#toast'); el.textContent = msg; el.classList.toggle('err', !!err); el.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('on'), err ? 6000 : 3200); }
+function busy(text, sub, pct, cancellable) {
+  $('#busy').classList.toggle('on', text != null); if (text == null) return;
+  $('#busyText').textContent = text; $('#busySub').textContent = sub || ''; $('#bar i').style.width = (clamp(pct || 0) * 100) + '%';
+  $('#cancelBtn').hidden = !cancellable;
+}
+function syncPlayBtn() { $('#play').textContent = player.playing ? '❚❚' : '▶'; }
+function syncMode() {
+  const has = !!state.buffer; $('#badge').style.display = has ? 'none' : ''; $('#hint').style.display = has ? 'none' : ''; $('#recBtn').disabled = !has;
+  $('#fileName').textContent = has ? `${state.name}  ·  ${fmtTime(state.buffer.duration)}  ·  비트 ${state.feats.onsets.length}개 감지` : 'MP3를 불러오면 음악에 맞춰 만다라가 피어납니다';
+}
+
+const getPath = (o, p) => p.split('.').reduce((a, k) => a[k], o);
+const setPath = (o, p, v) => { const ks = p.split('.'), last = ks.pop(); ks.reduce((a, k) => a[k], o)[last] = v; };
+const syncers = [];
+function changed(el) { dirty = true; saveSettings(); if (el.hasAttribute('data-rebuild')) scheduleRebuild(); }
+function bindControls() {
+  $$('[data-key]').forEach(el => {
+    const key = el.dataset.key;
+    if (el.classList.contains('seg')) {
+      const sync = () => $$('button', el).forEach(b => b.classList.toggle('on', String(getPath(S, key)) === b.dataset.v));
+      el.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; setPath(S, key, b.dataset.v); sync(); changed(el); }); syncers.push(sync);
+    } else if (el.type === 'checkbox') {
+      const sync = () => { el.checked = !!getPath(S, key); }; el.addEventListener('change', () => { setPath(S, key, el.checked); changed(el); }); syncers.push(sync);
+    } else if (el.type === 'range') {
+      const out = el.parentElement.querySelector('output'), show = () => { const v = +el.value; out.textContent = v < 1 && v > 0 ? v.toFixed(2) : String(+v.toFixed(2)); };
+      const sync = () => { el.value = getPath(S, key); show(); }; el.addEventListener('input', () => { setPath(S, key, +el.value); show(); changed(el); }); syncers.push(sync);
+    } else if (el.tagName === 'SELECT') {
+      const sync = () => { el.value = getPath(S, key); }; el.addEventListener('change', () => { setPath(S, key, el.value); changed(el); }); syncers.push(sync);
+    }
+  });
+  syncers.forEach(s => s());
+}
+function applyPreset(p) {
+  const base = JSON.parse(JSON.stringify(DEFAULTS)); for (const k of ['recRes', 'recFps', 'seed']) base[k] = S[k];
+  Object.assign(S, base, JSON.parse(JSON.stringify(p))); syncers.forEach(s => s()); saveSettings(); buildTimeline(); dirty = true;
+}
+for (const name in PRESETS) { const b = document.createElement('button'); b.className = 'btn'; b.textContent = name; b.onclick = () => applyPreset(PRESETS[name]); $('#presets').appendChild(b); }
+
+/* ---- MP3 불러오기 ---- */
+let analyzeCancel = false;
+async function loadFile(file) {
+  if (!file || state.recording) return;
+  ensureAudio(); pause(); analyzeCancel = false; busy('음악을 읽는 중…', file.name, 0);
+  try {
+    const buf = await player.ctx.decodeAudioData(await file.arrayBuffer());
+    busy('주파수를 분석하는 중…', `${fmtTime(buf.duration)} 길이 · 박자와 저음/중음/고음을 찾고 있어요`, 0, true);
+    const feats = await analyzeBuffer(buf, p => busy('주파수를 분석하는 중…', `${fmtTime(buf.duration)} 길이 · 박자와 저음/중음/고음을 찾고 있어요`, p, true), () => analyzeCancel);
+    state.buffer = buf; state.feats = feats; state.name = file.name.replace(/\.[^.]+$/, ''); state.demo = false;
+    buildTimeline(); syncMode(); $('#seek').value = 0; startAt(0); dirty = true;
+    if (player.ctx.state !== 'running') toast('▶ 버튼을 눌러 재생하세요');
+  } catch (e) {
+    if (e.message !== 'cancelled') { console.error(e); toast('오디오를 읽지 못했어요: ' + (e.message || e), true); }
+  } finally { busy(null); }
+}
+$('#openBtn').onclick = () => { ensureAudio(); $('#file').click(); };
+$('#file').onchange = e => { const f = e.target.files[0]; e.target.value = ''; loadFile(f); };
+$('#cancelBtn').onclick = () => { analyzeCancel = true; recCancel = true; };
+const stage = $('#stage');
+['dragenter', 'dragover'].forEach(ev => stage.addEventListener(ev, e => { e.preventDefault(); stage.classList.add('dragging'); }));
+['dragleave', 'drop'].forEach(ev => stage.addEventListener(ev, e => { e.preventDefault(); stage.classList.remove('dragging'); }));
+stage.addEventListener('drop', e => { ensureAudio(); loadFile(e.dataTransfer.files[0]); });
+window.addEventListener('dragover', e => e.preventDefault()); window.addEventListener('drop', e => e.preventDefault());
+
+$('#play').onclick = togglePlay;
+window.addEventListener('keydown', e => { if (e.code === 'Space' && !/INPUT|SELECT|TEXTAREA|BUTTON/.test(e.target.tagName)) { e.preventDefault(); togglePlay(); } });
+const seek = $('#seek'); let seeking = false;
+seek.addEventListener('pointerdown', () => { seeking = true; }); window.addEventListener('pointerup', () => { seeking = false; });
+seek.addEventListener('input', () => {
+  const dur = state.buffer ? state.buffer.duration : state.feats.dur, t = seek.value / 1000 * dur;
+  if (player.playing) startAt(t); else player.offset = t; dirty = true;
+});
+
+/* ---- 메인 루프 ---- */
+const meters = $$('#meters i');
+function loop() {
+  requestAnimationFrame(loop);
+  if (state.recording) return;
+  if (player.playing || dirty) {
+    const t = currentT(); preview.draw(t); dirty = false;
+    const f = preview.f; meters.forEach((m, i) => m.style.height = (4 + 96 * f.b[i]) + '%');
+    const dur = state.buffer ? state.buffer.duration : state.feats.dur;
+    if (!seeking) seek.value = t / dur * 1000; $('#time').textContent = `${fmtTime(t)} / ${fmtTime(dur)}`;
+  }
+}
+
+/* =====================================================================
+ *  녹화: 음악 처음~끝을 프레임 단위로 렌더링 → H.264 + AAC → MP4
+ * ===================================================================== */
+let recCancel = false;
+const RES = { 720: [1280, 720], 1080: [1920, 1080] };
+const avcCandidates = (W, fps) => W >= 1920
+  ? (fps > 30 ? ['avc1.64002A', 'avc1.640032', 'avc1.4D402A'] : ['avc1.640028', 'avc1.64002A', 'avc1.4D4028', 'avc1.42E028'])
+  : (fps > 30 ? ['avc1.640020', 'avc1.64002A', 'avc1.4D4020'] : ['avc1.64001F', 'avc1.640028', 'avc1.4D401F', 'avc1.42E01F']);
+async function pickVideoConfig(W, H, fps) {
+  if (typeof VideoEncoder === 'undefined' || typeof VideoFrame === 'undefined' || typeof Mp4Muxer === 'undefined') return null;
+  const bitrate = W >= 1920 ? (fps > 30 ? 16e6 : 10e6) : (fps > 30 ? 9e6 : 6e6);
+  for (const codec of avcCandidates(W, fps)) {
+    const cfg = { codec, width: W, height: H, bitrate, framerate: fps, avc: { format: 'avc' } };
+    try { const r = await VideoEncoder.isConfigSupported(cfg); if (r.supported) return cfg; } catch (e) {}
+  }
+  return null;
+}
+async function pickAudioConfig(sr, ch) {
+  if (typeof AudioEncoder === 'undefined' || typeof AudioData === 'undefined') return null;
+  const tries = [{ codec: 'mp4a.40.2', sampleRate: sr, numberOfChannels: ch, bitrate: 192000, mux: 'aac', resample: 0 },
+                 { codec: 'opus', sampleRate: 48000, numberOfChannels: ch, bitrate: 160000, mux: 'opus', resample: 48000 }];
+  for (const t of tries) { try { const r = await AudioEncoder.isConfigSupported({ codec: t.codec, sampleRate: t.sampleRate, numberOfChannels: t.numberOfChannels, bitrate: t.bitrate }); if (r.supported) return t; } catch (e) {} }
+  return null;
+}
+async function resampleBuffer(buf, rate) {
+  const off = new OfflineAudioContext(buf.numberOfChannels, Math.ceil(buf.duration * rate), rate), src = off.createBufferSource();
+  src.buffer = buf; src.connect(off.destination); src.start(); return off.startRendering();
+}
+function download(blob, name) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 120000);
+}
+const fileBase = () => (state.name || 'mandala').replace(/[\\/:*?"<>|]+/g, '_');
+const fmtEta = s => s > 3600 ? '1시간 이상' : s >= 60 ? `${Math.ceil(s / 60)}분` : `${Math.ceil(s)}초`;
+
+async function recordMP4() {
+  if (!state.buffer || state.recording) return;
+  const [W, H] = RES[S.recRes] || RES[1080], fps = +S.recFps === 60 ? 60 : 30, dur = state.buffer.duration, total = Math.ceil(dur * fps);
+  pause(); recCancel = false; state.recording = true; document.body.classList.add('recording'); $('#recBtn').disabled = true;
+  let wake = null; try { wake = await navigator.wakeLock?.request('screen'); } catch (e) {}
+  const finish = () => { state.recording = false; document.body.classList.remove('recording'); $('#recBtn').disabled = false; busy(null); try { wake?.release(); } catch (e) {} dirty = true; };
+  const nch = Math.min(2, state.buffer.numberOfChannels);
+  let venc = null, aenc = null;
+  try {
+    const vcfg = await pickVideoConfig(W, H, fps), acfg = await pickAudioConfig(state.buffer.sampleRate, nch);
+    if (!vcfg) { toast('이 브라우저는 H.264 인코딩(WebCodecs)을 지원하지 않아 실시간 녹화 방식으로 저장합니다.'); await recordRealtime(W, H, fps); return finish(); }
+
+    let abuf = state.buffer, note = '';
+    if (acfg && acfg.resample && abuf.sampleRate !== acfg.resample) { busy('오디오 준비 중…', '', 0); abuf = await resampleBuffer(abuf, acfg.resample); }
+    if (!acfg) note = '이 브라우저는 오디오 인코딩을 지원하지 않아 소리 없는 영상으로 저장돼요.';
+    else if (acfg.mux === 'opus') note = '이 브라우저는 AAC 인코딩을 지원하지 않아 Opus 오디오로 저장합니다 (일부 플레이어는 소리가 안 날 수 있어요).';
+
+    const muxer = new Mp4Muxer.Muxer({ target: new Mp4Muxer.ArrayBufferTarget(), fastStart: 'in-memory',
+      video: { codec: 'avc', width: W, height: H },
+      ...(acfg ? { audio: { codec: acfg.mux, numberOfChannels: nch, sampleRate: acfg.sampleRate } } : {}) });
+    let encErr = null; const onErr = e => { encErr = e; };
+    venc = new VideoEncoder({ output: (c, m) => muxer.addVideoChunk(c, m), error: onErr }); venc.configure(vcfg);
+    if (acfg) { aenc = new AudioEncoder({ output: (c, m) => muxer.addAudioChunk(c, m), error: onErr });
+      aenc.configure({ codec: acfg.codec, sampleRate: acfg.sampleRate, numberOfChannels: nch, bitrate: acfg.bitrate }); }
+
+    const t0 = performance.now(), rend = new Renderer(W, H), sub = `${W}×${H} · ${fps}fps · H.264${acfg ? ' + ' + (acfg.mux === 'aac' ? 'AAC' : 'Opus') : ''}${note ? '\n' + note : ''}`;
+    $('#busySub').style.whiteSpace = 'pre-line';
+    // 1) 오디오 인코딩
+    if (acfg) {
+      const sr = abuf.sampleRate, len = abuf.length, chunk = 4096, chans = Array.from({ length: nch }, (_, c) => abuf.getChannelData(c));
+      for (let off = 0; off < len; off += chunk) {
+        if (recCancel) throw new Error('cancelled'); if (encErr) throw encErr;
+        const n = Math.min(chunk, len - off), data = new Float32Array(n * nch); chans.forEach((c, i) => data.set(c.subarray(off, off + n), i * n));
+        const ad = new AudioData({ format: 'f32-planar', sampleRate: sr, numberOfFrames: n, numberOfChannels: nch, timestamp: Math.round(off / sr * 1e6), data });
+        aenc.encode(ad); ad.close();
+        while (aenc.encodeQueueSize > 16) await yieldNow();
+        if ((off / chunk) % 64 === 0) { busy('오디오 인코딩 중…', sub, 0, true); await yieldNow(); }
+      }
+      await aenc.flush();
+    }
+    // 2) 프레임 렌더링 → 인코딩 (음악 시작부터 끝까지, 프레임마다 시각을 고정해서 계산)
+    const prevCtx = view.getContext('2d');
+    for (let i = 0; i < total; i++) {
+      if (recCancel) throw new Error('cancelled'); if (encErr) throw encErr;
+      const t = Math.min(dur, i / fps); rend.draw(t);
+      const frame = new VideoFrame(rend.canvas, { timestamp: Math.round(i * 1e6 / fps), duration: Math.round(1e6 / fps) });
+      venc.encode(frame, { keyFrame: i % (fps * 2) === 0 }); frame.close();
+      while (venc.encodeQueueSize > 6) await yieldNow();
+      if (i % 5 === 0) {
+        const done = i / total, el = (performance.now() - t0) / 1000, eta = done > 0.01 ? el / done * (1 - done) : 0;
+        prevCtx.drawImage(rend.canvas, 0, 0, view.width, view.height);
+        busy(`녹화 중… ${Math.round(done * 100)}%`, `${sub}\n${fmtTime(t)} / ${fmtTime(dur)}${eta ? ' · 남은 시간 약 ' + fmtEta(eta) : ''}`, done, true); await yieldNow();
+      }
+    }
+    busy('MP4 파일 만드는 중…', sub, 1); await venc.flush(); muxer.finalize();
+    if (encErr) throw encErr;
+    const blob = new Blob([muxer.target.buffer], { type: 'video/mp4' }); download(blob, fileBase() + '.mp4');
+    toast(`저장 완료 — ${fileBase()}.mp4 (${(blob.size / 1048576).toFixed(1)} MB)${note ? '\n' + note : ''}`);
+  } catch (e) {
+    if (e.message === 'cancelled') toast('녹화를 취소했어요'); else { console.error(e); toast('녹화 실패: ' + (e.message || e), true); }
+  } finally { try { venc && venc.state !== 'closed' && venc.close(); } catch (e) {} try { aenc && aenc.state !== 'closed' && aenc.close(); } catch (e) {} $('#busySub').style.whiteSpace = ''; finish(); }
+}
+
+/* WebCodecs H.264를 못 쓰는 브라우저용: 실시간 MediaRecorder (재생 시간만큼 걸림) */
+async function recordRealtime(W, H, fps) {
+  if (typeof MediaRecorder === 'undefined') throw new Error('이 브라우저는 녹화를 지원하지 않아요. 최신 Chrome / Edge / Safari를 사용해 주세요.');
+  ensureAudio(); const rend = new Renderer(W, H), stream = rend.canvas.captureStream(fps), dest = player.ctx.createMediaStreamDestination();
+  player.gain.connect(dest); dest.stream.getAudioTracks().forEach(t => stream.addTrack(t));
+  const types = ['video/mp4;codecs=avc1.640028,mp4a.40.2', 'video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm'];
+  const mime = types.find(m => MediaRecorder.isTypeSupported(m)), rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 8e6 }), chunks = [];
+  rec.ondataavailable = e => e.data.size && chunks.push(e.data); const stopped = new Promise(r => rec.onstop = r);
+  const dur = state.buffer.duration, pctx = view.getContext('2d'); rend.draw(0); startAt(0); rec.start(1000);
+  await new Promise(res => { const tick = () => {
+    if (!player.playing || recCancel) return res();
+    const t = player.time(); rend.draw(t); pctx.drawImage(rend.canvas, 0, 0, view.width, view.height);
+    busy(`실시간 녹화 중… ${Math.round(t / dur * 100)}%`, `${fmtTime(t)} / ${fmtTime(dur)} · 이 방식은 재생 시간만큼 걸립니다`, t / dur, true); requestAnimationFrame(tick); }; tick(); });
+  pause(); rec.stop(); await stopped; try { player.gain.disconnect(dest); } catch (e) {}
+  if (recCancel) throw new Error('cancelled');
+  const ext = mime && mime.startsWith('video/mp4') ? 'mp4' : 'webm'; download(new Blob(chunks, { type: mime }), `${fileBase()}.${ext}`);
+  toast(ext === 'mp4' ? '저장 완료 (MP4)' : '이 브라우저는 MP4 녹화를 지원하지 않아 WebM으로 저장했어요');
+}
+$('#recBtn').onclick = recordMP4;
+
+/* =====================================================================
+ *  시작
+ * ===================================================================== */
+state.feats = demoFeatures(); bindControls(); buildTimeline(); startAt(0); syncMode(); syncPlayBtn(); requestAnimationFrame(loop);
+window.mandala = { S, state, player, preview, Renderer, loadFile, recordMP4, buildTimeline, applyPreset, PRESETS, analyzeBuffer, sampleFeatures };
+})();
+</script>
+</body>
+</html>
