@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Infinite Tunnel v4 - No Fade, Center Out, Delete Only When Fully Off-Screen - 16:9</title>
+<title>Infinite Tunnel v5 - Center Spawn + Continuous Growth + Grow-Out Delete - 16:9</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;800&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#04050a;--bg2:#0f0f1a;--border:rgba(255,255,255,0.08);--fg:#f2f2ff;--fg2:#8a8aa8;--accent:#6ae4ff}
@@ -45,7 +45,7 @@ h1 b{background:linear-gradient(135deg,#6ae4ff,#b56aff,#ff8a3a);-webkit-backgrou
 </head>
 <body>
 <header>
-  <h1><b>INFINITE v4</b> · 페이드아웃 없음 · 중심→바깥 → 완전히 나가면 삭제 · 16:9</h1>
+  <h1><b>INFINITE v5</b> · 전부 가운데서 발생 · 계속 성장 · 커져서 나가면 소멸 · 16:9</h1>
   <div style="display:flex;gap:8px;align-items:center">
     <span id="count" style="font-size:11px;color:var(--fg2)">0 RINGS</span>
     <span id="time" style="font-size:11px;color:var(--fg2)">0:00.0</span>
@@ -120,7 +120,8 @@ h1 b{background:linear-gradient(135deg,#6ae4ff,#b56aff,#ff8a3a);-webkit-backgrou
       <div class="row"><span class="lab">전체 회전</span><input type="range" id="sRotG" min="0" max="300" value="18"><span class="val" id="vRotG">18</span></div>
       <div class="row"><span class="lab">개별 회전</span><input type="range" id="sRotI" min="0" max="200" value="30"><span class="val" id="vRotI">30</span></div>
       <div class="row"><span class="lab">생성간격</span><input type="range" id="sSpawn" min="10" max="200" value="70"><span class="val" id="vSpawn">70</span></div>
-      <div class="row"><span class="lab">바깥이동</span><input type="range" id="sDrift" min="0" max="200" value="80"><span class="val" id="vDrift">35</span></div>
+      <div class="row"><span class="lab">성장 속도</span><input type="range" id="sGrowth" min="0" max="300" value="100"><span class="val" id="vGrowth">100</span></div>
+      <div class="row"><span class="lab">성장 크기</span><input type="range" id="sGrowthSize" min="20" max="300" value="100"><span class="val" id="vGrowthSize">100</span></div>
       <div class="row"><span class="lab">밀도</span><input type="range" id="sDensity" min="1" max="30" value="16"><span class="val" id="vDensity">16</span></div>
       <div class="row"><span class="lab">네온강도</span><input type="range" id="sGlow" min="0" max="200" value="110"><span class="val" id="vGlow">110</span></div>
     </div>
@@ -131,11 +132,11 @@ h1 b{background:linear-gradient(135deg,#6ae4ff,#b56aff,#ff8a3a);-webkit-backgrou
       <div class="meter-col"><div class="meter-bar"><div class="meter-fill" id="mBeat" style="height:0%;background:linear-gradient(0deg,#fff,#6ae4ff)"></div></div><div style="font-size:8px;color:var(--fg2)">BEAT→생성</div></div>
     </div>
     <div style="font-size:10px;color:var(--fg2);line-height:1.55">
-      <b style="color:var(--fg)">v4 수정 — 50% 한 번에 사라짐 해결:</b><br>
-      • 페이드아웃 / 알파 줄이기 <b>완전 삭제</b>. 알파는 태어날 때 0→1만, 이후 절대 안 줄임<br>
-      • 스케일은 최대 2.4에서 멈춤. 그 뒤로는 중심에서 바깥으로 <b>밀려나가면서</b> 클리핑으로 서서히 잘려나감<br>
-      • 삭제는 <b>본체 전체가 화면 밖</b>일 때만. 중심이 나갔다고 안 지움<br>
-      • 회전 / Bass 600 / 색상 5종 / 그라디언트 5종은 v3 그대로
+      <b style="color:var(--fg)">v5 수정 — 네가 말한 방식 그대로:</b><br>
+      • <b>모든 만다라 가운데서 발생</b> — 중심 이동 없음. 태어나는 위치 = 화면 정중앙 고정<br>
+      • <b>크기 고정 아님</b> — 계속 성장. 성장 속도/정도는 아래 <b>성장</b> 슬라이더로 조절<br>
+      • 소멸은 페이드아웃 아님. 커지면서 바깥으로 나간 부분은 <b>클리핑으로 잘려나가며 소멸</b>, 안쪽 구멍이 화면을 덮으면 그때 삭제<br>
+      • 알파는 여전히 페이드아웃 없음. 태어날 때만 0→1
     </div>
   </div>
 </div>
@@ -150,7 +151,7 @@ let paletteMode='neon';
 let gradMode='centerOut';
 let rotationGlobal=0;
 let rotationSmooth=0;
-const params={bass:1.3, spawn:0.7, drift:0.8, density:16, glow:1.1, rotGlobal:0.18, rotIndividual:0.30};
+const params={bass:1.3, spawn:0.7, drift:0, density:16, glow:1.1, rotGlobal:0.18, rotIndividual:0.30, growth:1.0, growthSize:1.0};
 let customColors=['#ff5ea8','#6ae4ff','#ffe27a'];
 function resize(){
   const w=box.clientWidth,h=box.clientHeight,dpr=devicePixelRatio||1;
@@ -571,7 +572,8 @@ function drawCompositeMandala(cx,cy,scale,rot,sym,hueShift,typeMix,alpha,glow,se
     const x=Math.cos(ang)*rr, y=Math.sin(ang)*rr;
     if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
   }
-  ctx.closePath(); ctx.stroke(); ctx.globalAlpha=alpha*0.16; ctx.fill();
+  ctx.closePath(); ctx.stroke();
+  // v5: 중심 디스크 채우지 않음 — 커지면서 가운데 구멍이 비워지며 나가야 하므로, 채우면 중심이 계속 덮임
   ctx.restore();
   [0.06,0.11].forEach((rf,i)=>{
     const r=baseR*rf + smooth.high*4 + smooth.beat*3;
@@ -579,7 +581,9 @@ function drawCompositeMandala(cx,cy,scale,rot,sym,hueShift,typeMix,alpha,glow,se
     ctx.save(); ctx.strokeStyle=col; ctx.lineWidth=1.2; ctx.shadowBlur=8*glow; ctx.shadowColor=col; ctx.globalAlpha=alpha*0.8;
     ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.stroke(); ctx.restore();
   });
-  const coreR=baseR*0.035 + smooth.beat*baseR*0.06 + smooth.high*2;
+  // v5: 코어점은 화면 크기로 고정 — 만다라가 커져도 코어가 화면을 덮지 않게 (scale로 나눠서 화면 크기 유지)
+  const coreScreenR = 4 + smooth.beat*6 + smooth.high*2;
+  const coreR = coreScreenR / Math.max(0.1, scale);
   ctx.fillStyle=palColor(2, layerSeed); ctx.shadowBlur=12*glow; ctx.shadowColor=palColor(2,layerSeed); ctx.globalAlpha=alpha;
   ctx.beginPath(); ctx.arc(0,0,coreR,0,Math.PI*2); ctx.fill();
   ctx.restore();
@@ -617,34 +621,31 @@ function loop(ts){
   for(let idx=0; idx<mandalas.length; idx++){
     const m=mandalas[idx];
     const age=now - m.birth;
-    // Bass 0~600 → params.bass 0~6 (3배 확장)
-    const speed = (0.18 + smooth.bass*params.bass*0.38 + smooth.beat*0.30) * m.scaleJitter;
-    // v4: 스케일은 무한히 키우지 않고 최대 2.4에서 멈춤. 커져서 사라지는 게 아니라, 커진 뒤 바깥으로 밀려나가며 잘려나감
-    const scaleRaw = (0.08 + age*speed);
-    const scale = Math.min(2.4, scaleRaw) * (minDim/280) * m.scaleJitter;
+    // v5: 성장 — 크기 고정 아님, 계속 커짐. Bass + 성장 슬라이더로 조절
+    // speed = 기본 성장속도 * Bass * 성장 슬라이더
+    const speed = (0.18 + smooth.bass*params.bass*0.38 + smooth.beat*0.30) * m.scaleJitter * params.growth;
+    // scale은 캡 없음. 0.08에서 시작해 계속 커짐. 성장 크기 슬라이더가 최종 배율
+    const scale = (0.08 + age*speed) * (minDim/280) * params.growthSize;
     const baseR = 150;
-    const radius = scale * baseR; // 본체 반지름 — 삭제 판단용
-    // v4: 중심에서 바깥으로 이동 — 화면 밖으로 완전히 나갈 때까지 계속 이동
-    // 이동 속도는 대각선 기준: 약 6~9초면 화면을 가로질러 완전히 나감
-    const driftVelocity = (diag*0.22 + smooth.bass*diag*0.16 + smooth.beat*diag*0.14) * Math.max(0.05, params.drift) * m.driftSpeed;
-    const driftDist = age * driftVelocity;
-    const mx = cx + Math.cos(m.driftAngle)*driftDist;
-    const my = cy + Math.sin(m.driftAngle)*driftDist;
-    // v4: 삭제 조건 — 본체 전체가 화면 밖일 때만
-    // 중심이 나갔다고 지우지 않음. 본체 bounding box가 화면과 겹치지 않을 때만 삭제
-    const fullyOutside = (mx + radius < -10) || (mx - radius > W + 10) || (my + radius < -10) || (my - radius > H + 10);
-    if(fullyOutside){
+    // v5: 모든 만다라 가운데서 발생 — 중심 이동 없음
+    const mx = cx;
+    const my = cy;
+    // v5: 소멸 조건 — 커지면서 화면 밖으로 나가면 소멸
+    // 만다라의 안쪽 시작점(innerTip)이 화면 대각선 밖으로 나가면, 그 만다라의 모든 패턴이 화면 밖에 있음
+    // = 본체가 커져서 아예 나가버린 상태. 그때만 삭제. 페이드아웃 없음
+    const innerTip = scale * baseR * 0.12; // 가장 안쪽 꽃잎/레이어 시작점
+    if(innerTip > diag + 150){
       m.toRemove=true; continue;
     }
-    // 안전장치: 이동량이 0인데 무한히 남는 경우 — 35초 넘으면 그때만 제거 (이동량 0일 때만)
-    if(params.drift < 0.05 && age > 35){
+    // 안전장치: 너무 오래 남는 것 방지 (성장 0일 때만)
+    if(params.growth < 0.05 && age > 30){
       m.toRemove=true; continue;
     }
-    // v4: 알파 — 페이드아웃 없음. 태어날 때 0→1 페이드인만, 그 뒤로는 1.0 고정
+    // v5: 알파 — 페이드아웃 없음. 태어날 때 0→1만
     let alpha;
     if(age < 0.3) alpha = age/0.3;
     else alpha = 1.0;
-    // 개별 회전 — 훨씬 느리게, params.rotIndividual 반영
+    // 개별 회전
     const rot = m.rotOff + age*m.rotSpeed + rotationGlobal*(0.3 + smooth.mid*0.2);
     drawCompositeMandala(mx,my, scale, rot, m.sym, m.hue, m.typeMix, alpha, params.glow, m.seed, m.layerSeed);
   }
@@ -699,7 +700,8 @@ bind('sBass','vBass', v=> params.bass=v/100);
 bind('sRotG','vRotG', v=> params.rotGlobal=v/100);
 bind('sRotI','vRotI', v=> params.rotIndividual=v/100);
 bind('sSpawn','vSpawn', v=> params.spawn=v/100);
-bind('sDrift','vDrift', v=> params.drift=v/100);
+bind('sGrowth','vGrowth', v=> params.growth=v/100);
+bind('sGrowthSize','vGrowthSize', v=> params.growthSize=v/100);
 bind('sDensity','vDensity', v=> params.density=v);
 bind('sGlow','vGlow', v=> params.glow=v/100);
 let recorder=null, chunks=[];
@@ -709,7 +711,7 @@ document.getElementById('rec').addEventListener('click', ()=>{
   const mime=MediaRecorder.isTypeSupported('video/webm;codecs=vp9')?'video/webm;codecs=vp9':'video/webm';
   recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:9000000}); chunks=[];
   recorder.ondataavailable=e=>{ if(e.data.size>0) chunks.push(e.data); };
-  recorder.onstop=()=>{ const blob=new Blob(chunks,{type:mime}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`infinite-mandala-v4-no-fade-16-9.webm`; a.click(); document.getElementById('rec').textContent='● REC'; };
+  recorder.onstop=()=>{ const blob=new Blob(chunks,{type:mime}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`infinite-mandala-v5-center-growth-16-9.webm`; a.click(); document.getElementById('rec').textContent='● REC'; };
   recorder.start(100); document.getElementById('rec').textContent='■ STOP';
   if(!playing) play();
 });
