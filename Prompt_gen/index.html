@@ -1,0 +1,1207 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ComfyUI 뮤직비디오 프롬프트 디렉터 (Krea2 & Minimax H3)</title>
+  <style>
+    :root {
+      --bg-main: #0f111a;
+      --bg-panel: #181b28;
+      --bg-card: #212638;
+      --accent: #6c5ce7;
+      --accent-light: #a29bfe;
+      --success: #00cec9;
+      --warning: #fdcb6e;
+      --danger: #ff7675;
+      --text-main: #f1f2f6;
+      --text-sub: #a4b0be;
+      --border: #2f354a;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: var(--bg-main);
+      color: var(--text-main);
+      line-height: 1.6;
+      padding: 24px;
+    }
+
+    .container {
+      max-width: 1440px;
+      margin: 0 auto;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+      padding-bottom: 20px;
+      margin-bottom: 24px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .title-group h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      background: linear-gradient(90deg, #a29bfe, #00cec9);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .title-group p {
+      color: var(--text-sub);
+      font-size: 0.92rem;
+      margin-top: 4px;
+    }
+
+    .badge-group {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--accent-light);
+    }
+
+    .grid-layout {
+      display: grid;
+      grid-template-columns: 440px 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+
+    @media (max-width: 1100px) {
+      .grid-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .panel {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .panel-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #fff;
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--text-sub);
+      margin-bottom: 6px;
+    }
+
+    input[type="text"],
+    input[type="password"],
+    input[type="number"],
+    select,
+    textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      color: var(--text-main);
+      font-size: 0.92rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      border-color: var(--accent);
+    }
+
+    textarea {
+      min-height: 150px;
+      resize: vertical;
+      font-family: inherit;
+    }
+
+    .file-drop {
+      border: 2px dashed var(--border);
+      border-radius: 10px;
+      padding: 18px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: rgba(33, 38, 56, 0.5);
+    }
+
+    .file-drop:hover {
+      border-color: var(--accent);
+      background: rgba(108, 92, 231, 0.08);
+    }
+
+    .audio-meta {
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: 8px;
+      background: var(--bg-card);
+      font-size: 0.85rem;
+      display: none;
+    }
+
+    .audio-meta.active {
+      display: block;
+    }
+
+    audio {
+      width: 100%;
+      height: 36px;
+      margin-top: 8px;
+    }
+
+    canvas#waveformCanvas {
+      width: 100%;
+      height: 60px;
+      background: #141722;
+      border-radius: 6px;
+      margin-top: 8px;
+      display: block;
+    }
+
+    .style-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .style-option {
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      cursor: pointer;
+      font-size: 0.83rem;
+      transition: all 0.15s;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .style-option:hover {
+      border-color: var(--accent-light);
+    }
+
+    .style-option.selected {
+      border-color: var(--success);
+      background: rgba(0, 206, 201, 0.12);
+    }
+
+    .style-option strong {
+      color: var(--text-main);
+    }
+
+    .style-option span {
+      color: var(--text-sub);
+      font-size: 0.75rem;
+    }
+
+    .row-2col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 18px;
+      border-radius: 8px;
+      border: none;
+      font-size: 0.95rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      width: 100%;
+      background: linear-gradient(135deg, #6c5ce7, #00cec9);
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      opacity: 0.92;
+      transform: translateY(-1px);
+    }
+
+    .btn-secondary {
+      background: var(--bg-card);
+      color: var(--text-main);
+      border: 1px solid var(--border);
+      font-size: 0.82rem;
+      padding: 8px 12px;
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--accent-light);
+    }
+
+    .toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .summary-stats {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      font-size: 0.85rem;
+      color: var(--text-sub);
+    }
+
+    .summary-stats span strong {
+      color: var(--success);
+    }
+
+    .prompt-list {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .prompt-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px;
+      transition: border-color 0.2s;
+    }
+
+    .prompt-card:hover {
+      border-color: var(--accent);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .scene-meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .scene-num {
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+      font-size: 0.8rem;
+      padding: 4px 10px;
+      border-radius: 6px;
+    }
+
+    .time-badge {
+      background: #141722;
+      color: var(--success);
+      font-family: monospace;
+      font-size: 0.85rem;
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(0, 206, 201, 0.3);
+    }
+
+    .energy-badge {
+      font-size: 0.78rem;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: rgba(253, 203, 110, 0.15);
+      color: var(--warning);
+    }
+
+    .lyric-line {
+      background: rgba(255, 255, 255, 0.04);
+      padding: 10px 14px;
+      border-left: 3px solid var(--accent-light);
+      border-radius: 4px;
+      margin-bottom: 12px;
+      font-size: 0.95rem;
+      color: #fff;
+    }
+
+    .prompt-box-group {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+
+    .prompt-section {
+      background: #151824;
+      border: 1px solid #262b3d;
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .prompt-section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      font-size: 0.8rem;
+      color: var(--text-sub);
+    }
+
+    .char-count {
+      font-weight: 700;
+      color: var(--success);
+    }
+
+    .char-count.warn {
+      color: var(--danger);
+    }
+
+    .prompt-text {
+      font-size: 0.88rem;
+      color: #dfe4ea;
+      line-height: 1.65;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-sub);
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--success);
+      color: #0f111a;
+      font-weight: 700;
+      padding: 12px 20px;
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s;
+      z-index: 9999;
+    }
+
+    .toast.show {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="title-group">
+        <h1>ComfyUI 뮤직비디오 프롬프트 디렉터</h1>
+        <p>MP3 오디오 파형/에너지 및 가사 문맥을 분석하여 5~10초 단위의 일관된 화풍 프롬프트(300자 이상 보장)를 생성합니다.</p>
+      </div>
+      <div class="badge-group">
+        <span class="badge">T2I: Krea2 최적화</span>
+        <span class="badge">I2V: Minimax H3 (video_fastvideo_fasth3_i2v)</span>
+        <span class="badge">스타일 100% 고정 & 300자+ 보장</span>
+      </div>
+    </header>
+
+    <div class="grid-layout">
+      <!-- 좌측 컨트롤 패널 -->
+      <aside>
+        <!-- 1. 오디오 및 가사 입력 -->
+        <div class="panel">
+          <div class="panel-title">
+            <span>1. MP3 오디오 & 가사 로드</span>
+            <button type="button" class="btn btn-secondary" id="loadSampleBtn">샘플 가사 넣기</button>
+          </div>
+
+          <div class="form-group">
+            <label>MP3 / 오디오 파일 업로드 (선택 - 길이 및 구간별 에너지 자동 분석)</label>
+            <div class="file-drop" id="audioDropZone">
+              <input type="file" id="audioFileInput" accept="audio/*" style="display:none;" />
+              <div id="audioDropText">클릭하거나 MP3/WAV 파일을 이곳에 드래그하세요</div>
+            </div>
+            <div class="audio-meta" id="audioMetaBox">
+              <div id="audioFileName" style="font-weight:700; color:var(--accent-light);"></div>
+              <div id="audioDurationInfo" style="margin-top:4px;"></div>
+              <audio id="audioPlayer" controls></audio>
+              <canvas id="waveformCanvas" width="380" height="60"></canvas>
+            </div>
+          </div>
+
+          <div class="row-2col">
+            <div class="form-group">
+              <label for="manualDuration">총 곡 길이(초, MP3 없을 때)</label>
+              <input type="number" id="manualDuration" value="60" min="10" max="1200" />
+            </div>
+            <div class="form-group">
+              <label for="segmentSeconds">컷당 재생 시간 (5~10초)</label>
+              <input type="number" id="segmentSeconds" value="6" min="5" max="10" step="1" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="songMood">곡 전체 분위기 / 핵심 테마 (선택)</label>
+            <input type="text" id="songMood" placeholder="예: 애절한 그리움, 달빛 아래 혼자 걷는 밤길, 희망찬 새벽" value="깊은 밤의 그리움과 새벽빛을 향한 여정" />
+          </div>
+
+          <div class="form-group">
+            <label for="lyricsInput">가사 입력 (일반 가사 또는 [00:12.00] LRC 타임스탬프 지원)</label>
+            <textarea id="lyricsInput" placeholder="절이나 문장 단위로 가사를 입력하세요. 비워두면 오디오 에너지 흐름에 맞춰 연주곡(Instrumental) 스토리보드로 생성됩니다."></textarea>
+          </div>
+        </div>
+
+        <!-- 2. 모델 & 화풍(스타일) 설정 -->
+        <div class="panel">
+          <div class="panel-title">
+            <span>2. ComfyUI 타겟 모델 & 화풍 선택</span>
+          </div>
+
+          <div class="row-2col">
+            <div class="form-group">
+              <label for="imageModelSelect">이미지 생성 모델 (T2I)</label>
+              <select id="imageModelSelect">
+                <option value="krea2" selected>Krea2 (고밀도 질감/조명 특화)</option>
+                <option value="flux">Flux.1 Dev / Schnell</option>
+                <option value="sdxl">SDXL / Pony / Illustrious</option>
+                <option value="custom_img">커스텀 T2I 모델</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="videoModelSelect">비디오 생성 모델 (I2V)</label>
+              <select id="videoModelSelect">
+                <option value="video_fastvideo_fasth3_i2v" selected>Minimax H3 (video_fastvideo_fasth3_i2v)</option>
+                <option value="wan21_i2v">Wan 2.1 I2V</option>
+                <option value="ltx_video">LTX-Video</option>
+                <option value="custom_vid">커스텀 I2V 모델</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>출력 화풍 선택 (모든 프롬프트에 동일 스타일 앵커 강제 적용)</label>
+            <div class="style-grid" id="styleGrid"></div>
+          </div>
+
+          <div class="row-2col">
+            <div class="form-group">
+              <label for="promptLang">프롬프트 출력 언어</label>
+              <select id="promptLang">
+                <option value="both" selected>영문(ComfyUI용) + 한국어 모두 출력</option>
+                <option value="en">영문(English) 전용 (300자+)</option>
+                <option value="ko">한국어(Korean) 전용 (300자+)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="characterAnchor">일관된 주인공/오브제 고정 (선택)</label>
+              <input type="text" id="characterAnchor" value="a solitary traveler wearing a flowing dark indigo cloak" placeholder="예: a young girl in a white dress" />
+            </div>
+          </div>
+
+          <button type="button" class="btn btn-primary" id="generateBtn">
+            프롬프트 스토리보드 생성하기 (300자+ 보장)
+          </button>
+        </div>
+      </aside>
+
+      <!-- 우측 프롬프트 결과 영역 -->
+      <main>
+        <div class="panel">
+          <div class="toolbar">
+            <div class="summary-stats" id="summaryStats">
+              <span>총 컷 수: <strong>0</strong>개</span>
+              <span>컷당 길이: <strong>6</strong>초</span>
+              <span>최소 글자 수: <strong>300자 이상</strong></span>
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button type="button" class="btn btn-secondary" id="copyAllKreaBtn">Krea2 프롬프트 전체 복사</button>
+              <button type="button" class="btn btn-secondary" id="copyAllH3Btn">Minimax H3 프롬프트 전체 복사</button>
+              <button type="button" class="btn btn-secondary" id="exportJsonBtn">ComfyUI JSON 내보내기</button>
+            </div>
+          </div>
+
+          <div id="promptListContainer" class="prompt-list">
+            <div class="empty-state">
+              좌측에서 가사나 MP3를 넣고 <strong>[프롬프트 스토리보드 생성하기]</strong> 버튼을 눌러주세요.
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <div class="toast" id="toastMsg">클립보드에 복사되었습니다!</div>
+
+  <script>
+    /**
+     * [핵심 데이터] 10가지 필수 예술 화풍(Style Anchor) 정의
+     * - 모든 컷의 프롬프트 앞/뒤에 동일하게 주입되어 처음부터 끝까지 완벽한 화풍 통일성을 유지합니다.
+     */
+    const ART_STYLES = [
+      {
+        id: 'child_sketch',
+        name: '1. 아이가 그린듯한 백지에 스케치',
+        sub: '순수한 크레용/색연필 손그림',
+        enAnchor: 'Masterpiece childlike naive hand-drawn sketch on pure unbleached blank white paper texture, innocent and whimsical children book illustration style, clumsy yet expressive wax crayon and colored pencil strokes, visible paper grain, uneven playful outlines, minimal background with generous white empty space, warm nostalgic sincerity, completely flat 2D hand-drawn aesthetic without any 3D CGI rendering',
+        koAnchor: '순백의 도화지 질감 위에 아이가 서툴지만 순수한 마음으로 그려낸 듯한 크레파스 및 색연필 스케치 화풍, 삐뚤빼뚤하지만 감정이 살아있는 자유로운 외곽선과 따뜻한 수작업 드로잉 질감, 여백의 미가 살아있는 평면 손그림 일러스트레이션 스타일'
+      },
+      {
+        id: 'rough_drawing',
+        name: '2. 거친 소묘',
+        sub: '목탄/연필 크로키 및 해칭 질감',
+        enAnchor: 'Raw and expressive rough charcoal and graphite pencil drawing on heavy-tooth sketching paper, vigorous cross-hatching and dynamic contour lines, smudges of dark charcoal dust, dramatic chiaroscuro contrast between deep carbon blacks and stark paper highlights, unfinished academic fine-art study aesthetic, tactile monochrome sketch texture throughout the entire frame',
+        koAnchor: '거친 표면의 드로잉 용지 위에 목탄과 진한 연필로 격정적으로 그어 내려간 거친 소묘 화풍, 역동적인 해칭(선 긋기)과 손끝으로 문지른 목탄 가루의 농담 대비, 강렬한 명암법과 날것 그대로의 예술적 크로키 질감이 지배하는 흑백 파인아트 스타일'
+      },
+      {
+        id: 'impressionism_gogh',
+        name: '3. 인상파 (고흐) 스타일',
+        sub: '소용돌이치는 두꺼운 임파스토 붓터치',
+        enAnchor: 'Post-Impressionist oil painting in the unmistakable style of Vincent van Gogh, thick sculptural impasto brushwork with swirling rhythmic strokes across the sky and forms, vibrant complementary color palette of cobalt blue, ultramarine, chrome yellow, and ochre, intense emotional turbulence captured through directional paint ridges and luminous vibrating light on coarse canvas',
+        koAnchor: '빈센트 반 고흐 특유의 후기 인상파 유화 화풍, 캔버스 위로 두껍게 솟아오른 임파스토(Impasto) 기법과 소용돌이치듯 일렁이는 역동적인 붓터치, 코발트 블루와 크롬 옐로우의 강렬한 보색 대비를 통해 감정의 파동을 시각화한 고전 명화 스타일'
+      },
+      {
+        id: 'dreamy_watercolor',
+        name: '4. 몽환적인 수채화',
+        sub: '물 번짐과 투명한 파스텔 색채',
+        enAnchor: 'Ethereal and dreamy wet-on-wet watercolor painting on cold-press cotton paper, delicate translucent pigment washes bleeding effortlessly into one another, soft pastel blooms of lavender, misty cyan, and rose gold, subtle granulation texture, luminous back-lit atmosphere with blurred poetic edges and gentle water-stain rings',
+        koAnchor: '코튼 수채화지 위에 물기를 가득 머금은 물감이 자연스럽게 번져나가는 웨트온웨트(Wet-on-wet) 기법의 몽환적인 수채화 화풍, 투명하게 겹쳐지는 파스텔 톤의 색채 레이어와 부드럽게 흐려지는 경계선, 빛을 머금은 듯한 서정적이고 신비로운 수채 일러스트 스타일'
+      },
+      {
+        id: 'joseon_genre',
+        name: '5. 한국(조선시대) 풍속화',
+        sub: '김홍도·신윤복 풍의 한지 수묵담채',
+        enAnchor: 'Authentic Korean Joseon Dynasty genre painting (Pungsokhwa) in the tradition of Danwon Kim Hong-do and Hyewon Shin Yun-bok, painted with fine brush ink and subtle mineral pigments (Sumuk-damchae) on aged yellowish Korean mulberry paper (Hanji), fluid calligraphic brush lines, expressive traditional Korean attire and everyday life nuances, refined oriental composition with generous negative space',
+        koAnchor: '단원 김홍도와 혜원 신윤복의 화맥을 잇는 한국 조선시대 전통 풍속화(수묵담채화) 화풍, 세월의 흔적이 느껴지는 누런 전통 한지(닥종이) 질감 위에 단아하고 유려한 필선과 은은한 전통 천연 안료 채색을 더하여 여백의 미와 한국적 정취를 살려낸 고전 동양화 스타일'
+      },
+      {
+        id: 'joseon_landscape_dot',
+        name: '6. 한국(조선시대) 풍경화(점묘)',
+        sub: '겸재 정선·미점준법 수묵 산수화',
+        enAnchor: 'Traditional Korean Joseon Dynasty true-view landscape painting (Jingyeong Sansuhwa) combined with classical Mi-dot pointillism ink technique (Mijeom-jun), thousands of rhythmic black and gray sumi-ink dots and layered wash strokes on textured Hanji paper building majestic mountains, pine trees, and mist, profound scholarly serenity and authentic East Asian ink-wash depth',
+        koAnchor: '조선시대 진경산수화 전통과 미점준법(수묵 점묘 기법)이 결합된 한국 고전 풍경화 화풍, 거친 한지 위에 수천 개의 농담 다른 먹점(묵점)과 번짐을 겹겹이 찍어 산세와 안개, 자연의 깊이를 표현하는 격조 높은 전통 수묵 점묘 산수화 스타일'
+      },
+      {
+        id: 'ukiyoe',
+        name: '7. 일본 판화 (우키요에)',
+        sub: '호쿠사이·히로시게 목판화 및 보카시 그라데이션',
+        enAnchor: 'Traditional Japanese Edo-period Ukiyo-e woodblock print in the master style of Hokusai and Hiroshige, crisp carved black sumi ink keyblock outlines, flat perspective with bold asymmetrical framing, Prussian blue and vermilion mineral pigments with hand-rubbed Bokashi color gradations, visible woodgrain and authentic Washi paper fibers',
+        koAnchor: '호쿠사이와 히로시게 풍의 에도 시대 전통 일본 목판화(우키요에) 화풍, 정교하게 조각된 선명한 먹선 윤곽과 대담한 평면적 구도, 프러시안 블루와 주홍빛 전통 안료가 와시(화지) 섬유 결을 따라 번지는 보카시 그라데이션 기법의 고전 판화 스타일'
+      },
+      {
+        id: 'hyper_oil',
+        name: '8. 극사실주의 유화',
+        sub: '초정밀 질감과 드라마틱한 고전 유화 조명',
+        enAnchor: 'Museum-grade hyper-realistic oil painting on fine linen canvas, extraordinary microscopic surface detail coupled with multi-layered oil glazing, rich tactile brushwork visible upon close inspection, dramatic Rembrandt-inspired volumetric lighting, deep glossy shadows and lifelike translucent highlights, timeless classical realism',
+        koAnchor: '미술관 소장급 극사실주의 정통 유화(Hyper-realistic Oil Painting) 화풍, 미세한 표면 질감까지 집요하게 묘사하는 초정밀 디테일과 수십 겹의 오일 글레이징 기법이 만들어내는 깊이감, 렘브란트 풍의 드라마틱한 입체 조명과 중후한 캔버스 유화 질감 스타일'
+      },
+      {
+        id: 'renaissance_davinci',
+        name: '9. 르네상스 레오나르도 다빈치 스타일',
+        sub: '스푸마토 기법, 해부학적 비례, 고전 템페라/유화',
+        enAnchor: 'High Renaissance masterpiece in the authentic style of Leonardo da Vinci, signature Sfumato technique with imperceptible smokey transitions between light and shadow, golden-ratio perspective and classical anatomical grace, warm aged sepia and umber oil varnish tones with subtle craquelure (fine age cracks) on poplar wood panel',
+        koAnchor: '레오나르도 다빈치 특유의 전성기 르네상스 회화 화풍, 윤곽선을 연기처럼 부드럽게 피워내어 명암의 경계를 허무는 스푸마토(Sfumato) 기법과 황금비율의 고전적 구도, 세월이 흐른 포플러 나무 패널 위의 따뜻한 세피아·엄버 톤 유화 색감과 미세한 크라클레(균열) 질감 스타일'
+      },
+      {
+        id: 'fauvism',
+        name: '10. 야수파 스타일',
+        sub: '마티스·드랭 풍의 강렬한 원색과 해방된 붓질',
+        enAnchor: 'Bold Fauvism oil painting in the radical style of Henri Matisse and Andre Derain, explosive non-naturalistic primary and secondary colors—fiery vermilion, electric emerald green, vivid violet, and sunlit cadmium yellow—applied straight from the paint tube with wild, untamed brush strokes, simplified expressive forms and ecstatic chromatic energy',
+        koAnchor: '앙리 마티스와 앙드레 드랭을 대표하는 야수파(Fauvism) 회화 화풍, 자연의 고유색을 타파하고 튜브에서 바로 짜낸 듯한 강렬한 주홍, 에메랄드 그린, 바이올렛, 카드뮴 옐로우 등 폭발적인 원색 대비와 거칠고 해방감 넘치는 붓질로 감정을 극대화한 스타일'
+      }
+    ];
+
+    // 상태 변수
+    let selectedStyle = ART_STYLES[0];
+    let audioBufferData = null;
+    let detectedDuration = 0;
+    let energyProfile = []; // 초 단위 오디오 에너지 배열 (0.0 ~ 1.0)
+    let generatedScenes = [];
+
+    // DOM 요소 참조
+    const styleGrid = document.getElementById('styleGrid');
+    const audioDropZone = document.getElementById('audioDropZone');
+    const audioFileInput = document.getElementById('audioFileInput');
+    const audioMetaBox = document.getElementById('audioMetaBox');
+    const audioFileName = document.getElementById('audioFileName');
+    const audioDurationInfo = document.getElementById('audioDurationInfo');
+    const audioPlayer = document.getElementById('audioPlayer');
+    const waveformCanvas = document.getElementById('waveformCanvas');
+    const manualDurationInput = document.getElementById('manualDuration');
+    const segmentSecondsInput = document.getElementById('segmentSeconds');
+    const lyricsInput = document.getElementById('lyricsInput');
+    const songMoodInput = document.getElementById('songMood');
+    const characterAnchorInput = document.getElementById('characterAnchor');
+    const imageModelSelect = document.getElementById('imageModelSelect');
+    const videoModelSelect = document.getElementById('videoModelSelect');
+    const promptLangSelect = document.getElementById('promptLang');
+    const promptListContainer = document.getElementById('promptListContainer');
+    const summaryStats = document.getElementById('summaryStats');
+    const toastMsg = document.getElementById('toastMsg');
+
+    // 1. 스타일 선택 그리드 초기화
+    function initStyleGrid() {
+      styleGrid.innerHTML = '';
+      ART_STYLES.forEach((style, idx) => {
+        const div = document.createElement('div');
+        div.className = 'style-option' + (idx === 0 ? ' selected' : '');
+        div.innerHTML = `<strong>${style.name}</strong><span>${style.sub}</span>`;
+        div.addEventListener('click', () => {
+          document.querySelectorAll('.style-option').forEach(el => el.classList.remove('selected'));
+          div.classList.add('selected');
+          selectedStyle = style;
+        });
+        styleGrid.appendChild(div);
+      });
+    }
+
+    // 2. 샘플 가사 로드
+    document.getElementById('loadSampleBtn').addEventListener('click', () => {
+      lyricsInput.value = [
+        '[00:00.00] 바람이 머물다 간 빈 들판 위에 작은 발자국 하나 남았네',
+        '[00:06.00] 노을빛이 천천히 번져가며 어제의 기억을 따뜻하게 감싸 안아',
+        '[00:12.00] 흔들리는 갈대숲 사이로 잊었던 옛 노래가 조용히 들려오고',
+        '[00:18.00] 밤하늘에 하나둘 켜지는 별빛이 어두운 길을 비춰주네',
+        '[00:24.00] 거센 비바람이 몰아치던 시간도 이제는 잔잔한 강물처럼 흘러가',
+        '[00:30.00] 수평선 너머로 피어오르는 푸른 새벽의 숨결을 마주하며',
+        '[00:36.00] 다시 시작되는 계절의 끝에서 우리는 새로운 빛으로 피어나리'
+      ].join('\n');
+      manualDurationInput.value = 42;
+      segmentSecondsInput.value = 6;
+      showToast('샘플 가사가 입력되었습니다.');
+    });
+
+    // 3. 오디오 파일 업로드 및 Web Audio API 파형/에너지 분석
+    audioDropZone.addEventListener('click', () => audioFileInput.click());
+    audioDropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      audioDropZone.style.borderColor = '#00cec9';
+    });
+    audioDropZone.addEventListener('dragleave', () => {
+      audioDropZone.style.borderColor = '';
+    });
+    audioDropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      audioDropZone.style.borderColor = '';
+      if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+        handleAudioFile(e.dataTransfer.files[0]);
+      }
+    });
+    audioFileInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files[0]) {
+        handleAudioFile(e.target.files[0]);
+      }
+    });
+
+    async function handleAudioFile(file) {
+      audioFileName.textContent = `파일명: ${file.name}`;
+      audioMetaBox.classList.add('active');
+      const objectUrl = URL.createObjectURL(file);
+      audioPlayer.src = objectUrl;
+
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const decoded = await audioCtx.decodeAudioData(arrayBuffer);
+        audioBufferData = decoded;
+        detectedDuration = Math.round(decoded.duration);
+        manualDurationInput.value = detectedDuration;
+
+        // 초 단위 RMS 에너지 추출
+        const channelData = decoded.getChannelData(0);
+        const sampleRate = decoded.sampleRate;
+        energyProfile = [];
+        let maxRms = 0.001;
+
+        for (let sec = 0; sec < detectedDuration; sec++) {
+          const startSample = sec * sampleRate;
+          const endSample = Math.min((sec + 1) * sampleRate, channelData.length);
+          let sumSq = 0;
+          const step = 64; // 고속 샘플링
+          let count = 0;
+          for (let i = startSample; i < endSample; i += step) {
+            sumSq += channelData[i] * channelData[i];
+            count++;
+          }
+          const rms = count > 0 ? Math.sqrt(sumSq / count) : 0;
+          if (rms > maxRms) maxRms = rms;
+          energyProfile.push(rms);
+        }
+
+        // 정규화 (0.0 ~ 1.0)
+        energyProfile = energyProfile.map(v => Math.min(1, v / maxRms));
+        drawWaveform(energyProfile);
+
+        const segSec = clampSegmentSeconds(parseInt(segmentSecondsInput.value, 10) || 6);
+        const expectedCuts = Math.max(1, Math.ceil(detectedDuration / segSec));
+        audioDurationInfo.textContent = `총 재생시간: ${formatTime(detectedDuration)} (${detectedDuration}초) | 예상 생성 프롬프트: ${expectedCuts}개`;
+        showToast('MP3 오디오 에너지 분석이 완료되었습니다!');
+      } catch (err) {
+        console.error(err);
+        audioDurationInfo.textContent = '오디오 디코딩 실패: 기본 길이 설정값을 사용합니다.';
+      }
+    }
+
+    function drawWaveform(profile) {
+      const ctx = waveformCanvas.getContext('2d');
+      const w = waveformCanvas.width;
+      const h = waveformCanvas.height;
+      ctx.clearRect(0, 0, w, h);
+      if (!profile || profile.length === 0) return;
+
+      const barWidth = Math.max(2, w / profile.length);
+      profile.forEach((val, idx) => {
+        const barHeight = Math.max(4, val * (h - 8));
+        const x = idx * (w / profile.length);
+        const y = (h - barHeight) / 2;
+        ctx.fillStyle = val > 0.7 ? '#00cec9' : '#6c5ce7';
+        ctx.fillRect(x, y, Math.max(1, barWidth - 1), barHeight);
+      });
+    }
+
+    function clampSegmentSeconds(sec) {
+      if (isNaN(sec)) return 6;
+      return Math.min(10, Math.max(5, sec));
+    }
+
+    function formatTime(totalSec) {
+      const m = Math.floor(totalSec / 60);
+      const s = Math.floor(totalSec % 60);
+      return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+
+    /**
+     * 4. 한국어 가사 문맥 -> 시각적 모티프/감정/배경/카메라 연출 매핑 사전
+     * - 가사 속의 핵심 어휘를 분석하여 장면에 어울리는 시각적 요소로 변환합니다.
+     */
+    const VISUAL_KEYWORD_RULES = [
+      {
+        keywords: ['밤', '별', '달', '어둠', '새벽', '하늘', '우주', '빛'],
+        enScene: 'a vast nocturnal sky illuminated by shimmering celestial starlight and a crescent moon casting silver reflections across the quiet horizon',
+        koScene: '은빛 초승달과 총총한 별빛이 고요한 지평선 위로 신비로운 빛무리를 드리우는 깊고 광활한 밤하늘의 풍경',
+        lightingEn: 'ethereal moonlight rim-lighting with soft glowing twilight gradients and deep atmospheric shadows',
+        lightingKo: '은은한 달빛의 역광(Rim-light)과 새벽녘 박명이 교차하는 입체적이고 신비로운 조명'
+      },
+      {
+        keywords: ['바람', '들판', '갈대', '숲', '나무', '꽃', '봄', '계절', '길'],
+        enScene: 'a sweeping wind-swept meadow and ancient forest path where tall reeds and delicate blossoms sway in poetic harmony',
+        koScene: '바람이 스쳐 지나가는 광활한 들판과 갈대숲, 그리고 꽃잎과 나뭇잎이 시적인 리듬으로 흔들리는 오솔길 풍경',
+        lightingEn: 'warm golden-hour sunlight filtering through swaying foliage with dancing dappled light rays',
+        lightingKo: '흔들리는 나뭇잎 사이로 따스한 황금빛 햇살이 부서지며 내려앉는 자연광 연출'
+      },
+      {
+        keywords: ['비', '바다', '강', '물', '눈물', '파도', '우산', '안개'],
+        enScene: 'a misty waterfront where gentle ripples, falling rain droplets, and reflective water surfaces mirror the emotional sky above',
+        koScene: '잔잔한 물결과 빗방울, 물안개가 피어오르며 하늘의 감정선을 거울처럼 비추는 수변의 서정적인 풍경',
+        lightingEn: 'diffused moody overcast illumination with glistening specular reflections on wet surfaces',
+        lightingKo: '물기 어린 표면 위로 은은한 반사광이 반짝이는 차분하고 서정적인 확산 조명'
+      },
+      {
+        keywords: ['불', '태양', '노을', '열정', '심장', '붉은', '타오르', '외침'],
+        enScene: 'a dramatic horizon ablaze with crimson sunset clouds and soaring embers that embody intense passion and awakening',
+        koScene: '붉게 타오르는 노을구름과 공중으로 피어오르는 빛의 입자들이 강렬한 열정과 각성을 상징하는 극적인 풍경',
+        lightingEn: 'high-contrast sunset radiance with fiery amber highlights and long cinematic shadows',
+        lightingKo: '타오르는 호박색 하이라이트와 깊고 긴 그림자가 극적인 대비를 이루는 석양 조명'
+      }
+    ];
+
+    function analyzeLyricVisuals(lyricText, cutIndex, totalCuts, energyLevel) {
+      // 가사 키워드 매칭
+      for (const rule of VISUAL_KEYWORD_RULES) {
+        if (rule.keywords.some(kw => lyricText.includes(kw))) {
+          return rule;
+        }
+      }
+
+      // 키워드가 없을 경우 곡의 진행 단계(도입-전개-절정-결말) 및 에너지에 따라 자동 구성
+      const progress = cutIndex / Math.max(1, totalCuts - 1);
+      if (progress < 0.25) {
+        return {
+          enScene: 'an evocative opening vista where a quiet horizon and subtle atmospheric mist introduce the emotional journey',
+          koScene: '고요한 지평선과 은은한 안개가 어우러져 이야기의 서막을 여는 서정적인 도입부 풍경',
+          lightingEn: 'soft morning mist lighting with gentle tonal gradations and calm ambient glow',
+          lightingKo: '부드러운 아침 안개빛과 차분한 톤 그라데이션이 감도는 온화한 조명'
+        };
+      } else if (progress < 0.7 || energyLevel > 0.65) {
+        return {
+          enScene: 'a dynamic and emotionally charged landscape where swirling clouds, dramatic terrain, and expressive atmosphere amplify the song climax',
+          koScene: '역동적으로 흐르는 구름과 대지의 입체적인 지형이 음악의 고조되는 감정을 극대화하는 클라이맥스 풍경',
+          lightingEn: 'dramatic volumetric crepuscular rays breaking through clouds with vivid contrast',
+          lightingKo: '구름 사이로 쏟아져 내리는 강렬한 빛줄기(Volumetric rays)와 선명한 명암 대비 조명'
+        };
+      } else {
+        return {
+          enScene: 'a serene and contemplative final horizon where lingering light fades peacefully into a timeless artistic tableau',
+          koScene: '여운이 남는 빛이 평화롭게 스며들며 긴 울림을 남기는 피날레의 고즈넉한 풍경',
+          lightingEn: 'warm nostalgic twilight glow with delicate fading highlights',
+          lightingKo: '따스하고 아련한 황혼의 잔광이 부드럽게 여운을 남기는 피날레 조명'
+        };
+      }
+    }
+
+    /**
+     * 5. 가사 및 타임라인(5~10초 간격) 분할기
+     */
+    function buildTimelineSegments() {
+      const segSec = clampSegmentSeconds(parseInt(segmentSecondsInput.value, 10) || 6);
+      segmentSecondsInput.value = segSec;
+
+      const rawLyrics = lyricsInput.value.trim();
+      const lines = rawLyrics
+        ? rawLyrics.split(/\n+/).map(l => l.trim()).filter(Boolean)
+        : [];
+
+      // LRC 타임스탬프 파싱 정규식 예: [00:12.34] 가사 내용
+      const lrcRegex = /^\[(\d{1,2}):(\d{2})(?:\.\d{1,3})?\]\s*(.*)$/;
+      const hasLrc = lines.some(l => lrcRegex.test(l));
+
+      let totalDuration = detectedDuration > 0
+        ? detectedDuration
+        : (parseInt(manualDurationInput.value, 10) || 60);
+
+      // 가사 줄 수가 많고 수동 길이가 짧으면 가사 분량에 맞춰 자동 보정
+      if (detectedDuration === 0 && lines.length > 0) {
+        totalDuration = Math.max(totalDuration, lines.length * segSec);
+      }
+
+      const numSegments = Math.max(1, Math.ceil(totalDuration / segSec));
+      const parsedLines = lines.map(line => {
+        const m = line.match(lrcRegex);
+        if (m) {
+          return {
+            time: parseInt(m[1], 10) * 60 + parseInt(m[2], 10),
+            text: m[3] || '(간주 구간)'
+          };
+        }
+        return { time: null, text: line };
+      });
+
+      const segments = [];
+      for (let i = 0; i < numSegments; i++) {
+        const startSec = i * segSec;
+        const endSec = Math.min(totalDuration, (i + 1) * segSec);
+
+        // 해당 구간의 평균 오디오 에너지 계산
+        let avgEnergy = 0.5;
+        if (energyProfile.length > 0) {
+          let sum = 0;
+          let cnt = 0;
+          for (let s = startSec; s < endSec && s < energyProfile.length; s++) {
+            sum += energyProfile[s];
+            cnt++;
+          }
+          if (cnt > 0) avgEnergy = sum / cnt;
+        } else {
+          // 오디오 파일이 없을 때는 곡 흐름(도입->절정->결말) 곡선으로 추정
+          const ratio = i / Math.max(1, numSegments - 1);
+          avgEnergy = Math.sin(ratio * Math.PI) * 0.6 + 0.3;
+        }
+
+        // 구간에 해당하는 가사 배정
+        let lyricSegment = '';
+        if (hasLrc) {
+          const matched = parsedLines.filter(
+            p => p.time !== null && p.time >= startSec && p.time < endSec
+          );
+          lyricSegment = matched.map(m => m.text).join(' / ');
+        } else if (parsedLines.length > 0) {
+          // 줄들을 전체 세그먼트 수에 비례하여 분배
+          const startIdx = Math.floor((i * parsedLines.length) / numSegments);
+          const endIdx = Math.max(startIdx + 1, Math.floor(((i + 1) * parsedLines.length) / numSegments));
+          lyricSegment = parsedLines.slice(startIdx, endIdx).map(p => p.text).join(' / ');
+          if (!lyricSegment) {
+            lyricSegment = parsedLines[i % parsedLines.length].text;
+          }
+        } else {
+          lyricSegment = `Instrumental Scene #${i + 1} (${formatTime(startSec)} ~ ${formatTime(endSec)} 오디오 테마 구간)`;
+        }
+
+        segments.push({
+          index: i + 1,
+          startSec,
+          endSec,
+          duration: endSec - startSec,
+          energy: avgEnergy,
+          lyric: lyricSegment || `(간주 및 정서적 여운 구간 #${i + 1})`
+        });
+      }
+
+      return { segments, totalDuration, segSec };
+    }
+
+    /**
+     * 6. Krea2 (Image) & Minimax H3 (video_fastvideo_fasth3_i2v) 전용 300자 이상 프롬프트 합성 엔진
+     * - 모든 컷이 100% 동일한 스타일 앵커(Style Anchor)를 포함하며 최소 300자 이상을 보장합니다.
+     */
+    function generateScenePrompts(seg, totalCuts) {
+      const style = selectedStyle;
+      const mood = songMoodInput.value.trim() || '서정적이고 깊이 있는 음악적 서사';
+      const charAnchor = characterAnchorInput.value.trim() || 'a central expressive figure embodying the song emotion';
+      const imgModel = imageModelSelect.value;
+      const vidModel = videoModelSelect.value;
+
+      const visual = analyzeLyricVisuals(seg.lyric, seg.index - 1, totalCuts, seg.energy);
+
+      // 에너지 수치에 따른 카메라 구도 및 모션 강도 결정
+      let cameraShotEn = '';
+      let cameraMotionEn = '';
+      let cameraMotionKo = '';
+      let energyLabel = '';
+
+      if (seg.energy >= 0.72) {
+        energyLabel = 'High (클라이맥스/고조)';
+        cameraShotEn = 'Dynamic wide-angle low-angle heroic framing with deep perspective depth';
+        cameraMotionEn = 'Smooth orbital tracking camera movement combined with a dramatic slow push-in, wind-swept garments and floating particles moving rhythmically across the frame while preserving the exact brushstroke texture';
+        cameraMotionKo = '피사체를 중심으로 부드럽게 회전하며 다가가는 오비탈 트래킹 줌인(Orbital Tracking Push-in) 카메라 워크, 바람에 흩날리는 옷자락과 주변 입자들이 음악의 고조된 리듬에 맞춰 역동적으로 움직이되 화풍의 붓터치 질감은 흔들림 없이 유지됨';
+      } else if (seg.energy >= 0.45) {
+        energyLabel = 'Medium (전개/서사)';
+        cameraShotEn = 'Cinematic medium-wide composition following the rule of thirds with balanced foreground and background layers';
+        cameraMotionEn = 'Gentle lateral dolly pan across the scene with subtle parallax between foreground elements and distant horizon, natural breathing motion and drifting ambient light';
+        cameraMotionKo = '전경과 배경 사이의 깊이감(Parallax)을 살린 부드러운 수평 달리 팬(Lateral Dolly Pan) 카메라 이동, 인물의 자연스러운 호흡과 공기 중의 빛무리가 천천히 흐르는 서정적인 모션 연출';
+      } else {
+        energyLabel = 'Low (도입/여운)';
+        cameraShotEn = 'Intimate contemplative framing with generous negative space and delicate focal depth';
+        cameraMotionEn = 'Ultra-slow meditative pull-back camera motion, barely perceptible breeze stirring the edges of the frame, tranquil and poetic temporal flow without sudden camera shakes';
+        cameraMotionKo = '여백의 미를 강조하며 아주 천천히 뒤로 물러나는 명상적인 풀백(Slow Pull-back) 카메라 워크, 화면 가장자리에 미세한 바람결만 스치는 고요하고 시적인 시간의 흐름 연출';
+      }
+
+      // [영문 프롬프트] Krea2 (T2I) + Minimax H3 (video_fastvideo_fasth3_i2v) 통합 및 개별 구성
+      let kreaEnPrompt =
+        `[STYLE ANCHOR - ${style.name}]: ${style.enAnchor}. ` +
+        `[SCENE & LYRIC INTERPRETATION (Cut #${seg.index}, ${formatTime(seg.startSec)}-${formatTime(seg.endSec)}, Lyric: "${seg.lyric}")]: ` +
+        `Featuring ${charAnchor} set within ${visual.enScene}, expressing the overarching theme of "${mood}". ` +
+        `[COMPOSITION & LIGHTING (${imgModel.toUpperCase()} OPTIMIZED)]: ${cameraShotEn}, illuminated by ${visual.lightingEn}. ` +
+        `Every visual element, surface pigment, color harmony, and edge treatment strictly adheres to the unified ${style.id} aesthetic from corner to corner.`;
+
+      let minimaxEnPrompt =
+        `[${vidModel} I2V MOTION & STYLE LOCK]: Maintain 100% consistent artistic medium (${style.enAnchor}). ` +
+        `During this ${seg.duration}-second sequence (${formatTime(seg.startSec)} to ${formatTime(seg.endSec)}), ${cameraMotionEn}. ` +
+        `The subject (${charAnchor}) within ${visual.enScene} conveys the lyric sentiment "${seg.lyric}" through subtle, fluid, temporally coherent gesture and atmospheric progression under ${visual.lightingEn}, avoiding any morphing or style drift.`;
+
+      // [한국어 프롬프트] 300자 이상 상세 설명 버전
+      let koFullPrompt =
+        `[고정 화풍 앵커 - ${style.name}]: ${style.koAnchor}. ` +
+        `[장면 및 가사 시각화 (제${seg.index}컷, ${formatTime(seg.startSec)}~${formatTime(seg.endSec)}, 가사: "${seg.lyric}")]: ` +
+        `곡의 핵심 정서인 '${mood}'을(를) 바탕으로, ${visual.koScene} 속에 위치한 중심 피사체(${charAnchor})를 깊이 있게 묘사한다. ` +
+        `[Krea2 구도 및 조명 연출]: ${visual.lightingKo}을 적용하여 화면의 입체감과 예술적 밀도를 극대화하며, 프레임 전체의 질감과 색채 팔레트를 첫 컷부터 마지막 컷까지 동일하게 고정한다. ` +
+        `[Minimax H3 (${vidModel}) 모션 디렉션 (${seg.duration}초)]: ${cameraMotionKo}. 영상이 재생되는 동안 화풍의 고유한 텍스처가 깨지거나 이질적인 실사/3D로 변질되지 않도록 시각적 일관성을 엄격하게 유지한다.`;
+
+      // 300자 이상 강제 보장 패딩 검증 (혹시라도 짧을 경우 화풍 디테일 보강)
+      const enExtraDetail = ` Masterfully crafted visual storytelling for ComfyUI workflow, preserving consistent brushstroke density, color temperature, and artistic texture across all sequential frames.`;
+      while (kreaEnPrompt.length < 320) {
+        kreaEnPrompt += enExtraDetail;
+      }
+      while (minimaxEnPrompt.length < 320) {
+        minimaxEnPrompt += enExtraDetail;
+      }
+      while (koFullPrompt.length < 320) {
+        koFullPrompt += ` 모든 프레임에서 동일한 필치와 색감, 예술적 마티에르(질감)가 흔들림 없이 일관되게 유지되도록 정교하게 제어한다.`;
+      }
+
+      return {
+        ...seg,
+        energyLabel,
+        kreaEnPrompt,
+        minimaxEnPrompt,
+        koFullPrompt
+      };
+    }
+
+    // 7. 화면 렌더링 및 이벤트 핸들러
+    function renderAllPrompts() {
+      const { segments, totalDuration, segSec } = buildTimelineSegments();
+      generatedScenes = segments.map(seg => generateScenePrompts(seg, segments.length));
+      const langMode = promptLangSelect.value;
+
+      summaryStats.innerHTML = `
+        <span>선택 화풍: <strong>${selectedStyle.name}</strong></span>
+        <span>총 곡 길이: <strong>${formatTime(totalDuration)} (${totalDuration}초)</strong></span>
+        <span>컷당 길이: <strong>${segSec}초</strong></span>
+        <span>생성된 프롬프트: <strong>${generatedScenes.length}개</strong></span>
+      `;
+
+      promptListContainer.innerHTML = '';
+      generatedScenes.forEach(scene => {
+        const card = document.createElement('div');
+        card.className = 'prompt-card';
+
+        let promptSectionsHtml = '';
+
+        if (langMode === 'both' || langMode === 'en') {
+          promptSectionsHtml += `
+            <div class="prompt-section">
+              <div class="prompt-section-header">
+                <span><strong>[Krea2 Image 프롬프트 (EN)]</strong> - 화풍 & 구도 고정</span>
+                <div>
+                  <span class="char-count">${scene.kreaEnPrompt.length}자 (300자+ 통과)</span>
+                  <button type="button" class="btn btn-secondary" style="margin-left:8px; padding:4px 8px;" onclick="copyText(${scene.index - 1}, 'krea')">복사</button>
+                </div>
+              </div>
+              <div class="prompt-text">${escapeHtml(scene.kreaEnPrompt)}</div>
+            </div>
+
+            <div class="prompt-section">
+              <div class="prompt-section-header">
+                <span><strong>[Minimax H3 (video_fastvideo_fasth3_i2v) 모션 프롬프트 (EN)]</strong></span>
+                <div>
+                  <span class="char-count">${scene.minimaxEnPrompt.length}자 (300자+ 통과)</span>
+                  <button type="button" class="btn btn-secondary" style="margin-left:8px; padding:4px 8px;" onclick="copyText(${scene.index - 1}, 'h3')">복사</button>
+                </div>
+              </div>
+              <div class="prompt-text">${escapeHtml(scene.minimaxEnPrompt)}</div>
+            </div>
+          `;
+        }
+
+        if (langMode === 'both' || langMode === 'ko') {
+          promptSectionsHtml += `
+            <div class="prompt-section">
+              <div class="prompt-section-header">
+                <span><strong>[통합 디렉팅 프롬프트 (한국어 상세본)]</strong></span>
+                <div>
+                  <span class="char-count">${scene.koFullPrompt.length}자 (300자+ 통과)</span>
+                  <button type="button" class="btn btn-secondary" style="margin-left:8px; padding:4px 8px;" onclick="copyText(${scene.index - 1}, 'ko')">복사</button>
+                </div>
+              </div>
+              <div class="prompt-text">${escapeHtml(scene.koFullPrompt)}</div>
+            </div>
+          `;
+        }
+
+        card.innerHTML = `
+          <div class="card-header">
+            <div class="scene-meta">
+              <span class="scene-num">SCENE #${String(scene.index).padStart(2, '0')}</span>
+              <span class="time-badge">${formatTime(scene.startSec)} ~ ${formatTime(scene.endSec)} (${scene.duration}초)</span>
+              <span class="energy-badge">오디오 에너지: ${scene.energyLabel} (${Math.round(scene.energy * 100)}%)</span>
+            </div>
+          </div>
+          <div class="lyric-line">🎵 ${escapeHtml(scene.lyric)}</div>
+          <div class="prompt-box-group">
+            ${promptSectionsHtml}
+          </div>
+        `;
+
+        promptListContainer.appendChild(card);
+      });
+    }
+
+    function escapeHtml(str) {
+      return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    window.copyText = function(sceneIdx, type) {
+      const scene = generatedScenes[sceneIdx];
+      if (!scene) return;
+      let text = '';
+      if (type === 'krea') text = scene.kreaEnPrompt;
+      else if (type === 'h3') text = scene.minimaxEnPrompt;
+      else text = scene.koFullPrompt;
+
+      navigator.clipboard.writeText(text).then(() => {
+        showToast(`Scene #${scene.index} 프롬프트(${text.length}자)가 복사되었습니다!`);
+      });
+    };
+
+    document.getElementById('generateBtn').addEventListener('click', () => {
+      renderAllPrompts();
+      showToast(`총 ${generatedScenes.length}개의 프롬프트(각 300자 이상)가 생성되었습니다!`);
+    });
+
+    document.getElementById('copyAllKreaBtn').addEventListener('click', () => {
+      if (!generatedScenes.length) return;
+      const allText = generatedScenes.map(s => s.kreaEnPrompt).join('\n\n');
+      navigator.clipboard.writeText(allText).then(() => {
+        showToast('전체 Krea2 이미지 프롬프트가 클립보드에 복사되었습니다!');
+      });
+    });
+
+    document.getElementById('copyAllH3Btn').addEventListener('click', () => {
+      if (!generatedScenes.length) return;
+      const allText = generatedScenes.map(s => s.minimaxEnPrompt).join('\n\n');
+      navigator.clipboard.writeText(allText).then(() => {
+        showToast('전체 Minimax H3 비디오 프롬프트가 클립보드에 복사되었습니다!');
+      });
+    });
+
+    document.getElementById('exportJsonBtn').addEventListener('click', () => {
+      if (!generatedScenes.length) return;
+      const payload = {
+        meta: {
+          styleId: selectedStyle.id,
+          styleName: selectedStyle.name,
+          imageModel: imageModelSelect.value,
+          videoModel: videoModelSelect.value,
+          totalScenes: generatedScenes.length,
+          generatedAt: new Date().toISOString()
+        },
+        scenes: generatedScenes
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `comfyui_mv_prompts_${selectedStyle.id}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('ComfyUI 연동용 JSON 파일이 다운로드되었습니다!');
+    });
+
+    function showToast(msg) {
+      toastMsg.textContent = msg;
+      toastMsg.classList.add('show');
+      setTimeout(() => toastMsg.classList.remove('show'), 2600);
+    }
+
+    // 초기 실행: 스타일 그리드 및 샘플 자동 로드
+    initStyleGrid();
+    document.getElementById('loadSampleBtn').click();
+    renderAllPrompts();
+  </script>
+</body>
+</html>
