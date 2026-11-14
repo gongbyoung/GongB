@@ -4,7 +4,7 @@
  * - 플레이어가 출구를 완전히 막는 위치에 타워를 지으려 하면 즉시 감지하여 건설을 차단합니다.
  */
 
-import { GRID_CONFIG } from "./data.js";
+import { GRID_CONFIG } from "./data.js?v=3";
 
 /**
  * 출구(Exits)들로부터 역방향 BFS(너비 우선 탐색)를 수행해

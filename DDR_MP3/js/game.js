@@ -1,9 +1,8 @@
 /**
  * [파일 역할] 제노택틱 2.0: 케미컬 디펜스 메인 엔진 (game.js)
- * - 10개 튜토리얼 스테이지(TUT-01 ~ TUT-10) 미션 로직 및 클리어 조건 완벽 구현
- * - 모든 튜토리얼 스테이지 맵을 그대로 활용한 [무한 서바이벌(무제한 유닛) 모드] 지원
- * - DT_CompoundRecipe.csv의 42개 실제 역사적 화학 사고 데이터를 서바이벌 웨이브/무제한 스트림과 연동
- * - ./icon 24종(업그레이드 _up.png 자동 감지 포함) 및 ./sound 21종 완벽 연동
+ * - Stitch "Chem Lab Tactical Defense" UI 리디자인 완벽 연동
+ * - 적 처치음(enemyDissolve) 및 포탑 타격음 볼륨 대폭 하향 + 중첩 방지 쿨다운 강화 + 실시간 BGM/SFX 볼륨 슬라이더 지원
+ * - 10개 튜토리얼 스테이지(TUT-01 ~ TUT-10) 미션 로직 및 모든 맵 무한 서바이벌(42종 역사적 화학재난) 모드 지원
  */
 
 import {
@@ -15,20 +14,47 @@ import {
   TUTORIAL_ENEMIES,
   TUTORIAL_STAGES,
   COMPOUND_RECIPES
-} from "./data.js";
+} from "./data.js?v=4";
 
 import {
   computeFlowField,
   canPlaceTowerWithoutBlocking,
   tracePreviewPaths
-} from "./pathfinding.js";
+} from "./pathfinding.js?v=4";
 
 class SoundManager {
   constructor() {
     this.enabled = true;
+    // 사용자 피드백 반영: 기본 효과음(SFX) 마스터 볼륨을 28%(0.28)로 낮추고 localStorage에 저장
+    const savedSfx = localStorage.getItem("chemlab_sfx_vol");
+    const savedBgm = localStorage.getItem("chemlab_bgm_vol");
+    this.sfxVolume = savedSfx !== null ? Number(savedSfx) : 0.28;
+    this.bgmVolume = savedBgm !== null ? Number(savedBgm) : 0.14;
+
     this.buffers = {};
     this.lastPlayed = {};
     this.ambientAudio = null;
+
+    // 사운드별 개별 밸런스 배율 (적 처치음과 타격음이 귀를 자극하지 않도록 대폭 감쇠)
+    this.soundScale = {
+      enemyDissolve: 0.22, // 적군 중화/사망 효과음 대폭 축소
+      hitNeutralize: 0.25,
+      tower_F: 0.26,
+      tower_Cs: 0.28,
+      tower_Cl: 0.24,
+      tower_K: 0.25,
+      tower_Na: 0.26,
+      tower_O: 0.24,
+      tower_H: 0.32,
+      tower_C: 0.24,
+      towerBuild: 0.45,
+      towerUpgrade: 0.48,
+      uiClick: 0.35,
+      waveStart: 0.42,
+      waveClear: 0.5,
+      baseDamage: 0.45,
+      gameOver: 0.5
+    };
 
     for (const [key, path] of Object.entries(SOUND_PATHS)) {
       const audio = new Audio(path);
@@ -37,15 +63,24 @@ class SoundManager {
     }
   }
 
-  play(key, volume = 0.45, cooldownMs = 75) {
-    if (!this.enabled || !this.buffers[key]) return;
+  /**
+   * 효과음 재생 (마스터 sfxVolume * 사운드별 감쇠 배율 * 호출 볼륨 적용 + 쿨다운으로 소리 중첩 차단)
+   */
+  play(key, baseVolume = 0.4, cooldownMs = 130) {
+    if (!this.enabled || this.sfxVolume <= 0.001 || !this.buffers[key]) return;
     const now = performance.now();
-    if (this.lastPlayed[key] && now - this.lastPlayed[key] < cooldownMs) return;
+    // 적 사망음(enemyDissolve)은 동시에 여러 마리가 죽어도 절대 소리가 겹쳐 커지지 않도록 최소 190ms 간격 보장
+    const minGap = key === "enemyDissolve" ? Math.max(cooldownMs, 190) : cooldownMs;
+    if (this.lastPlayed[key] && now - this.lastPlayed[key] < minGap) return;
     this.lastPlayed[key] = now;
+
+    const perSoundMult = this.soundScale[key] ?? 0.35;
+    const finalVolume = Math.min(1, Math.max(0, baseVolume * perSoundMult * (this.sfxVolume * 1.6)));
+    if (finalVolume <= 0.002) return;
 
     try {
       const clone = this.buffers[key].cloneNode();
-      clone.volume = Math.min(1, Math.max(0, volume));
+      clone.volume = finalVolume;
       clone.play().catch(() => {});
     } catch (_) {}
   }
@@ -55,9 +90,29 @@ class SoundManager {
     if (!this.ambientAudio) {
       this.ambientAudio = this.buffers.ambientLoop;
       this.ambientAudio.loop = true;
-      this.ambientAudio.volume = 0.16;
     }
-    this.ambientAudio.play().catch(() => {});
+    this.ambientAudio.volume = Math.min(1, Math.max(0, this.bgmVolume));
+    if (this.bgmVolume > 0.002) {
+      this.ambientAudio.play().catch(() => {});
+    }
+  }
+
+  setSfxVolume(ratio) {
+    this.sfxVolume = Math.min(1, Math.max(0, ratio));
+    localStorage.setItem("chemlab_sfx_vol", String(this.sfxVolume));
+  }
+
+  setBgmVolume(ratio) {
+    this.bgmVolume = Math.min(1, Math.max(0, ratio));
+    localStorage.setItem("chemlab_bgm_vol", String(this.bgmVolume));
+    if (this.ambientAudio) {
+      this.ambientAudio.volume = this.bgmVolume;
+      if (this.bgmVolume <= 0.002) {
+        this.ambientAudio.pause();
+      } else if (this.enabled) {
+        this.ambientAudio.play().catch(() => {});
+      }
+    }
   }
 
   toggle() {
@@ -125,7 +180,8 @@ class ChemicalDefenseGame {
     this.streamTimer = 0;
     this.streamSpawnCount = 0;
 
-    // 해금 기록 (튜토리얼 보상)
+    // 클리어한 스테이지 및 해금 기록
+    this.clearedStages = new Set();
     this.unlockedRewards = new Set(["Unlock_Shop"]);
 
     // 게임 런타임 상태
@@ -143,11 +199,11 @@ class ChemicalDefenseGame {
     // 튜토리얼 목표 진행도 추적기
     this.objectiveProgress = 0;
     this.objectiveTarget = 20;
-    this.currentPh = 1.5; // TUT-04 산성도 추적용
-    this.gasConcentration = 100; // TUT-02 농도 추적용
-    this.towerDestroyedCount = 0; // TUT-05 무손실 추적용
-    this.paralysisCuredCount = 0; // TUT-06 해독 횟수
-    this.survivalTimer = 0; // TUT-10 5분 생존 타이머
+    this.currentPh = 1.5;
+    this.gasConcentration = 100;
+    this.towerDestroyedCount = 0;
+    this.paralysisCuredCount = 0;
+    this.survivalTimer = 0;
 
     // 격자, 타워, 적군, 투사체, 이펙트
     this.grid = [];
@@ -165,6 +221,7 @@ class ChemicalDefenseGame {
     this.hoverTile = null;
 
     this.initDOM();
+    this.syncAudioUI();
     this.loadStage(0);
 
     this.lastTime = performance.now();
@@ -172,25 +229,44 @@ class ChemicalDefenseGame {
   }
 
   initDOM() {
-    // 스테이지 드롭다운 채우기 (TUT-01 ~ TUT-10)
+    // 1. 숨김 select 및 상단 01~10 섹터 도크 초기화
     const stageSelect = document.getElementById("stageSelect");
-    stageSelect.innerHTML = TUTORIAL_STAGES.map(
-      (st, idx) =>
-        `<option value="${idx}">${st.stageId} (${st.environment}) - ${st.enemyKey}</option>`
-    ).join("");
+    if (stageSelect) {
+      stageSelect.innerHTML = TUTORIAL_STAGES.map(
+        (st, idx) =>
+          `<option value="${idx}">${st.stageId} (${st.environment}) - ${st.enemyKey}</option>`
+      ).join("");
 
-    stageSelect.addEventListener("change", (e) => {
-      this.sound.play("uiClick");
-      this.loadStage(Number(e.target.value));
-    });
+      stageSelect.addEventListener("change", (e) => {
+        this.sound.play("uiClick");
+        this.loadStage(Number(e.target.value));
+      });
+    }
 
+    this.renderSectorDock();
+
+    // 2. 모드 세그먼트 버튼 (튜토리얼 작전 vs 무제한 서바이벌)
+    const btnModeTutorial = document.getElementById("btnModeTutorial");
+    const btnModeSurvival = document.getElementById("btnModeSurvival");
     const modeSelect = document.getElementById("modeSelect");
-    modeSelect.addEventListener("change", (e) => {
-      this.sound.play("uiClick");
-      this.mode = e.target.value;
-      this.loadStage(this.stageIndex);
-    });
 
+    const setMode = (newMode) => {
+      if (this.mode === newMode) return;
+      this.sound.play("uiClick");
+      this.mode = newMode;
+      if (modeSelect) modeSelect.value = newMode;
+      if (btnModeTutorial) btnModeTutorial.classList.toggle("active", newMode === "tutorial");
+      if (btnModeSurvival) btnModeSurvival.classList.toggle("active", newMode === "survival");
+      this.loadStage(this.stageIndex);
+    };
+
+    if (btnModeTutorial) btnModeTutorial.addEventListener("click", () => setMode("tutorial"));
+    if (btnModeSurvival) btnModeSurvival.addEventListener("click", () => setMode("survival"));
+    if (modeSelect) {
+      modeSelect.addEventListener("change", (e) => setMode(e.target.value));
+    }
+
+    // 3. 웨이브 출격 & 연속 스폰 버튼
     document.getElementById("btnStartWave").addEventListener("click", () => {
       this.sound.play("uiClick");
       this.sound.startAmbient();
@@ -203,9 +279,10 @@ class ChemicalDefenseGame {
       this.sound.startAmbient();
       this.endlessStream = !this.endlessStream;
       btnStream.classList.toggle("active", this.endlessStream);
-      btnStream.querySelector("span").textContent = this.endlessStream
-        ? "♾️ 연속 스폰: ON"
-        : "♾️ 연속 스폰: OFF";
+      const labelSpan = btnStream.querySelector("span:last-child");
+      if (labelSpan) {
+        labelSpan.textContent = this.endlessStream ? "♾️ 연속 스폰: ON" : "♾️ 연속 스폰: OFF";
+      }
       if (this.endlessStream && this.wave === 0) {
         this.startNextWave();
       }
@@ -216,21 +293,21 @@ class ChemicalDefenseGame {
       );
     });
 
+    // 4. 배속 & 일시정지 & 재시작 & 브리핑 버튼
     document.getElementById("btnSpeed").addEventListener("click", () => {
       this.sound.play("uiClick");
-      this.speedMultiplier = this.speedMultiplier === 1 ? 2 : this.speedMultiplier === 2 ? 4 : 1;
-      document.getElementById("speedLabel").textContent = `배속: ${this.speedMultiplier}x`;
+      this.speedMultiplier =
+        this.speedMultiplier === 1 ? 2 : this.speedMultiplier === 2 ? 4 : 1;
+      document.getElementById("speedLabel").textContent = `${this.speedMultiplier}x`;
     });
 
     document.getElementById("btnPause").addEventListener("click", () => {
       this.sound.play("uiClick");
       this.paused = !this.paused;
-      document.getElementById("pauseLabel").textContent = this.paused ? "재개" : "일시정지";
-    });
-
-    document.getElementById("btnSound").addEventListener("click", (e) => {
-      const on = this.sound.toggle();
-      e.currentTarget.textContent = on ? "🔊 사운드 ON" : "🔇 사운드 OFF";
+      const pauseLabel = document.getElementById("pauseLabel");
+      const pauseIcon = document.getElementById("pauseIcon");
+      if (pauseLabel) pauseLabel.textContent = this.paused ? "재개" : "일시정지";
+      if (pauseIcon) pauseIcon.textContent = this.paused ? "play_arrow" : "pause";
     });
 
     document.getElementById("btnOpenBriefing").addEventListener("click", () => {
@@ -243,7 +320,83 @@ class ChemicalDefenseGame {
       this.loadStage(this.stageIndex);
     });
 
-    // 튜토리얼 & 브리핑 팝업 모달 버튼 이벤트
+    // 5. 사운드 음소거 & 볼륨 슬라이더 (상단 바 + Pause 모달 동기화)
+    document.getElementById("btnSound").addEventListener("click", () => {
+      this.sound.toggle();
+      this.syncAudioUI();
+    });
+
+    const quickSfxSlider = document.getElementById("quickSfxSlider");
+    if (quickSfxSlider) {
+      quickSfxSlider.addEventListener("input", (e) => {
+        const val = Number(e.target.value) / 100;
+        this.sound.setSfxVolume(val);
+        this.syncAudioUI();
+      });
+    }
+
+    const sfxVolumeSlider = document.getElementById("sfxVolumeSlider");
+    if (sfxVolumeSlider) {
+      sfxVolumeSlider.addEventListener("input", (e) => {
+        const val = Number(e.target.value) / 100;
+        this.sound.setSfxVolume(val);
+        this.syncAudioUI();
+      });
+    }
+
+    const bgmVolumeSlider = document.getElementById("bgmVolumeSlider");
+    if (bgmVolumeSlider) {
+      bgmVolumeSlider.addEventListener("input", (e) => {
+        const val = Number(e.target.value) / 100;
+        this.sound.setBgmVolume(val);
+        this.syncAudioUI();
+      });
+    }
+
+    // 6. Stitch Pause & Audio 모달 열기/닫기
+    const openPauseBtn = document.getElementById("btnOpenPauseModal");
+    if (openPauseBtn) {
+      openPauseBtn.addEventListener("click", () => {
+        this.sound.play("uiClick");
+        this.openPauseModal();
+      });
+    }
+
+    const closePauseX = document.getElementById("btnClosePauseX");
+    if (closePauseX) {
+      closePauseX.addEventListener("click", () => {
+        this.sound.play("uiClick");
+        this.closePauseModal();
+      });
+    }
+
+    const btnPauseResume = document.getElementById("btnPauseResume");
+    if (btnPauseResume) {
+      btnPauseResume.addEventListener("click", () => {
+        this.sound.play("uiClick");
+        this.closePauseModal();
+      });
+    }
+
+    const btnPauseOpenBriefing = document.getElementById("btnPauseOpenBriefing");
+    if (btnPauseOpenBriefing) {
+      btnPauseOpenBriefing.addEventListener("click", () => {
+        this.sound.play("uiClick");
+        this.closePauseModal();
+        this.openBriefingModal();
+      });
+    }
+
+    const btnPauseRestart = document.getElementById("btnPauseRestart");
+    if (btnPauseRestart) {
+      btnPauseRestart.addEventListener("click", () => {
+        this.sound.play("uiClick");
+        this.closePauseModal();
+        this.loadStage(this.stageIndex);
+      });
+    }
+
+    // 7. 브리핑 모달 버튼 이벤트
     document.getElementById("btnCloseBriefingX").addEventListener("click", () => {
       this.sound.play("uiClick");
       this.closeBriefingModal();
@@ -268,7 +421,9 @@ class ChemicalDefenseGame {
       this.sound.play("uiClick");
       this.sound.startAmbient();
       this.mode = "survival";
-      document.getElementById("modeSelect").value = "survival";
+      if (modeSelect) modeSelect.value = "survival";
+      if (btnModeTutorial) btnModeTutorial.classList.remove("active");
+      if (btnModeSurvival) btnModeSurvival.classList.add("active");
       this.closeBriefingModal();
       this.loadStage(this.stageIndex, false);
       this.addLog(
@@ -276,13 +431,15 @@ class ChemicalDefenseGame {
       );
     });
 
-    // 스테이지 클리어 / 결과 팝업 모달 버튼 이벤트
+    // 8. 결과 모달 버튼 이벤트
     document.getElementById("btnResultNextStage").addEventListener("click", () => {
       this.sound.play("uiClick");
       this.closeResultModal();
       const nextIdx = (this.stageIndex + 1) % TUTORIAL_STAGES.length;
       this.mode = "tutorial";
-      document.getElementById("modeSelect").value = "tutorial";
+      if (modeSelect) modeSelect.value = "tutorial";
+      if (btnModeTutorial) btnModeTutorial.classList.add("active");
+      if (btnModeSurvival) btnModeSurvival.classList.remove("active");
       this.loadStage(nextIdx, true);
     });
 
@@ -290,7 +447,9 @@ class ChemicalDefenseGame {
       this.sound.play("uiClick");
       this.closeResultModal();
       this.mode = "survival";
-      document.getElementById("modeSelect").value = "survival";
+      if (modeSelect) modeSelect.value = "survival";
+      if (btnModeTutorial) btnModeTutorial.classList.remove("active");
+      if (btnModeSurvival) btnModeSurvival.classList.add("active");
       this.loadStage(this.stageIndex, true);
     });
 
@@ -300,7 +459,7 @@ class ChemicalDefenseGame {
       this.loadStage(this.stageIndex, true);
     });
 
-    // 팔레트 필터 탭
+    // 9. 팔레트 필터 탭
     document.querySelectorAll(".filter-tab").forEach((btn) => {
       btn.addEventListener("click", () => {
         this.sound.play("uiClick");
@@ -311,7 +470,7 @@ class ChemicalDefenseGame {
       });
     });
 
-    // 캔버스 마우스 이벤트
+    // 10. 캔버스 마우스 이벤트
     this.canvas.addEventListener("mousemove", (e) => {
       const rect = this.canvas.getBoundingClientRect();
       const scaleX = this.canvas.width / rect.width;
@@ -346,12 +505,86 @@ class ChemicalDefenseGame {
       this.renderInspector();
     });
 
-    // 키보드 단축키
+    // 11. 키보드 단축키 (Space: 웨이브 시작, Esc: 사운드/일시정지 모달)
     window.addEventListener("keydown", (e) => {
       if (e.code === "Space") {
         e.preventDefault();
         this.startNextWave();
+      } else if (e.code === "Escape") {
+        const pauseModal = document.getElementById("pauseModal");
+        if (pauseModal && !pauseModal.classList.contains("hidden")) {
+          this.closePauseModal();
+        } else {
+          this.openPauseModal();
+        }
       }
+    });
+  }
+
+  syncAudioUI() {
+    const sfxPct = Math.round(this.sound.sfxVolume * 100);
+    const bgmPct = Math.round(this.sound.bgmVolume * 100);
+
+    const quickSlider = document.getElementById("quickSfxSlider");
+    const quickVal = document.getElementById("quickSfxVal");
+    const sfxSlider = document.getElementById("sfxVolumeSlider");
+    const sfxLabel = document.getElementById("sfxVolLabel");
+    const bgmSlider = document.getElementById("bgmVolumeSlider");
+    const bgmLabel = document.getElementById("bgmVolLabel");
+    const soundBtn = document.getElementById("btnSound");
+    const soundIcon = document.getElementById("soundIcon");
+
+    if (quickSlider) quickSlider.value = String(sfxPct);
+    if (quickVal) quickVal.textContent = `${sfxPct}%`;
+    if (sfxSlider) sfxSlider.value = String(sfxPct);
+    if (sfxLabel) sfxLabel.textContent = `${sfxPct}%`;
+    if (bgmSlider) bgmSlider.value = String(bgmPct);
+    if (bgmLabel) bgmLabel.textContent = `${bgmPct}%`;
+
+    const isMuted = !this.sound.enabled || (sfxPct === 0 && bgmPct === 0);
+    if (soundBtn) soundBtn.classList.toggle("muted", isMuted);
+    if (soundIcon) {
+      soundIcon.textContent = isMuted
+        ? "volume_off"
+        : sfxPct < 35
+        ? "volume_down"
+        : "volume_up";
+    }
+  }
+
+  openPauseModal() {
+    const modal = document.getElementById("pauseModal");
+    if (!modal) return;
+    this.isModalOpen = true;
+    modal.classList.remove("hidden");
+    this.syncAudioUI();
+  }
+
+  closePauseModal() {
+    const modal = document.getElementById("pauseModal");
+    if (modal) modal.classList.add("hidden");
+    const briefing = document.getElementById("briefingModal");
+    const result = document.getElementById("resultModal");
+    this.isModalOpen =
+      (briefing && !briefing.classList.contains("hidden")) ||
+      (result && !result.classList.contains("hidden"));
+  }
+
+  renderSectorDock() {
+    const dock = document.getElementById("sectorQuickDock");
+    if (!dock) return;
+    dock.innerHTML = TUTORIAL_STAGES.map((st, idx) => {
+      const num = String(idx + 1).padStart(2, "0");
+      const active = idx === this.stageIndex ? "active" : "";
+      const cleared = this.clearedStages.has(st.stageId) ? "cleared" : "";
+      return `<button type="button" class="sector-chip ${active} ${cleared}" data-idx="${idx}" title="${st.title} (${st.enemyKey})">${num}</button>`;
+    }).join("");
+
+    dock.querySelectorAll(".sector-chip").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        this.sound.play("uiClick");
+        this.loadStage(Number(btn.dataset.idx));
+      });
     });
   }
 
@@ -364,8 +597,10 @@ class ChemicalDefenseGame {
    */
   loadStage(index, showPopup = true) {
     this.stageIndex = index;
-    document.getElementById("stageSelect").value = String(index);
+    const stageSelect = document.getElementById("stageSelect");
+    if (stageSelect) stageSelect.value = String(index);
     this.closeResultModal();
+    this.renderSectorDock();
 
     const st = this.currentStage;
     this.gold = this.mode === "survival" ? Math.max(320, st.startingGold + 80) : st.startingGold;
@@ -409,7 +644,6 @@ class ChemicalDefenseGame {
     this.spawnQueue = [];
     this.selectedTower = null;
 
-    // 해당 스테이지의 첫번째 추천 타워를 기본 선택
     if (st.requiredTowers && st.requiredTowers.length > 0) {
       this.selectedBuildType = st.requiredTowers[0];
     } else {
@@ -427,13 +661,13 @@ class ChemicalDefenseGame {
 
     if (this.mode === "tutorial") {
       this.addLog(
-        `🎓 [${st.stageId} 튜토리얼] ${st.description} (추천 타워: ${st.requiredTowers.join(", ") || "자유"}${
+        `🎓 [${st.stageId} 작전 개시] ${st.description} (추천 포탑: ${st.requiredTowers.join(", ") || "자유"}${
           st.shopItems.length ? ` / 설비: ${st.shopItems.join(", ")}` : ""
         })`
       );
     } else {
       this.addLog(
-        `♾️ [${st.stageId} 맵 무한 서바이벌] DT_CompoundRecipe.csv의 42대 역사적 화학재난 물질이 무제한 출현합니다!`
+        `♾️ [${st.stageId} 맵 무한 서바이벌] DT_CompoundRecipe.csv 42종 역사적 화학재난 물질이 무제한 출현합니다!`
       );
     }
 
@@ -443,7 +677,7 @@ class ChemicalDefenseGame {
   }
 
   /**
-   * 튜토리얼 및 스테이지 상세 브리핑 팝업 열기
+   * 튜토리얼 및 스테이지 상세 브리핑 팝업 열기 (Stitch tut_04_2 디자인)
    */
   openBriefingModal() {
     const st = this.currentStage;
@@ -454,13 +688,19 @@ class ChemicalDefenseGame {
     modal.classList.remove("hidden");
 
     const envBadge = document.getElementById("modalEnvBadge");
-    envBadge.className = `env-badge ${st.environment.toLowerCase()}`;
-    envBadge.textContent =
-      st.environment === "Indoor" ? "🏢 Indoor (실내 밀폐구역)" : "🌳 Outdoor (야외 플랜트)";
+    if (envBadge) {
+      envBadge.className = `env-badge ${st.environment.toLowerCase()}`;
+      envBadge.textContent =
+        st.environment === "Indoor" ? "INDOOR // 실내 밀폐구역" : "OUTDOOR // 야외 플랜트";
+    }
 
     const modeBadge = document.getElementById("modalModeBadge");
-    modeBadge.textContent =
-      this.mode === "tutorial" ? `🎓 튜토리얼 미션 (${st.stageId})` : `♾️ 무제한 서바이벌 (${st.stageId} 맵)`;
+    if (modeBadge) {
+      modeBadge.textContent =
+        this.mode === "tutorial"
+          ? `PROTOCOL // ${st.stageId}`
+          : `SURVIVAL // ${st.stageId} SECTOR`;
+    }
 
     document.getElementById("modalTitle").textContent =
       this.mode === "tutorial"
@@ -480,10 +720,10 @@ class ChemicalDefenseGame {
     if (st.enemyKey === "Mixed" || this.mode === "survival") {
       enemyBox.innerHTML = `
         <div class="modal-entity-item">
-          <img src="./icon/enemy_h2s.png" alt="복합 위험물" />
+          <img src="./icon/enemy_h2s.png" alt="복합 위험물" width="30" height="30" />
           <div class="modal-entity-text">
             <strong>복합 화학 위험물 (전 종 총출동)</strong>
-            수소(H₂), 염소(Cl₂), 불산(HF), 황화수소(H₂S), 포스겐(COCl₂) 등 모든 유형의 독성 물질이 동시에 유출됩니다.
+            <span>수소(H₂), 염소(Cl₂), 불산(HF), 황화수소(H₂S), 포스겐(COCl₂) 등 모든 독성 물질이 동시 유출됩니다.</span>
           </div>
         </div>
       `;
@@ -491,10 +731,10 @@ class ChemicalDefenseGame {
       const en = TUTORIAL_ENEMIES[st.enemyKey] || TUTORIAL_ENEMIES.H2;
       enemyBox.innerHTML = `
         <div class="modal-entity-item">
-          <img src="${en.imagePath}" alt="${en.name}" />
+          <img src="${en.imagePath}" alt="${en.name}" width="30" height="30" />
           <div class="modal-entity-text">
             <strong>${en.name} [${en.formula}] — ${en.categoryLabel}</strong>
-            ${en.description}
+            <span>${en.description}</span>
           </div>
         </div>
       `;
@@ -502,17 +742,17 @@ class ChemicalDefenseGame {
 
     // 2) 필수 원소 타워 & 상점 설비 카드 렌더링
     const towersBox = document.getElementById("modalTowersBox");
-    const recIds = [...st.requiredTowers, ...st.shopItems].slice(0, 4);
+    const recIds = [...st.requiredTowers, ...st.shopItems].slice(0, 3);
     towersBox.innerHTML = recIds
       .map((id) => {
         const tw = TOWER_TYPES[id];
         if (!tw) return "";
         return `
           <div class="modal-entity-item">
-            <img src="${tw.imagePath}" alt="${tw.name}" />
+            <img src="${tw.imagePath}" alt="${tw.name}" width="30" height="30" />
             <div class="modal-entity-text">
-              <strong style="color:${tw.color}">[${tw.symbol}] ${tw.name} (💰${tw.cost})</strong>
-              ${tw.concept}
+              <strong style="color:${tw.color}">[${tw.symbol}] ${tw.name} (${tw.cost}G)</strong>
+              <span>${tw.concept}</span>
             </div>
           </div>
         `;
@@ -522,23 +762,22 @@ class ChemicalDefenseGame {
     // 3) 초보자 3단계 클리어 공략 렌더링
     const stepsList = document.getElementById("modalStepsList");
     const steps = st.tacticalSteps || [
-      "1단계: 우측 팔레트에서 ★필수 표시된 타워를 선택해 파란 점선 경로 위에 미로를 건설하세요.",
+      "1단계: 우측 덱에서 ★추천 표시된 포탑을 선택해 파란 점선 경로 위에 미로를 건설하세요.",
       "2단계: 상점 설비(환풍기, 압력기, 가열기, 유리벽)를 조합해 반응 효율을 높이세요.",
-      "3단계: 상단 [웨이브 시작] 버튼을 눌러 위험물을 목표치까지 중화하세요!"
+      "3단계: 우측 상단 [미션 웨이브 시작] 버튼을 눌러 위험물을 목표치까지 중화하세요!"
     ];
     stepsList.innerHTML = steps.map((s) => `<li>${s}</li>`).join("");
 
     // 4) 역사적 배경 및 보상
     document.getElementById("modalHistoricalText").textContent =
-      st.historicalCase || st.description;
+      `📜 화학 안전 배경지식: ${st.historicalCase || st.description}`;
     document.getElementById("modalClearTarget").textContent =
       this.mode === "tutorial" ? st.clearLabel : "방어선이 뚫릴 때까지 무제한 웨이브 돌파";
     document.getElementById("modalRewardText").textContent = st.rewardLabel;
 
-    // 서바이벌 전환 버튼 표시 조정
     const btnSwitch = document.getElementById("btnModalSwitchSurvival");
     if (btnSwitch) {
-      btnSwitch.style.display = this.mode === "survival" ? "none" : "inline-block";
+      btnSwitch.style.display = this.mode === "survival" ? "none" : "inline-flex";
     }
   }
 
@@ -555,28 +794,31 @@ class ChemicalDefenseGame {
     modal.classList.remove("hidden");
 
     const st = this.currentStage;
+    const statusBadge = document.getElementById("resultStatusBadge");
     const titleEl = document.getElementById("resultModalTitle");
     const descEl = document.getElementById("resultModalDesc");
     const rewardEl = document.getElementById("resultRewardBox");
     const nextBtn = document.getElementById("btnResultNextStage");
 
     if (isVictory) {
-      titleEl.style.color = "#38bdf8";
-      titleEl.textContent = `🎉 ${st.stageId} 미션 클리어 성공!`;
-      descEl.textContent = `축하합니다! "${st.clearLabel}" 목표를 완벽하게 달성하여 도시와 연구소를 지켜냈습니다.`;
+      if (statusBadge) statusBadge.textContent = `OPERATION SUCCESS // ${st.stageId}`;
+      titleEl.style.color = "#ffc665";
+      titleEl.textContent = `🎉 ${st.stageId} 작전 완벽 클리어!`;
+      descEl.textContent = `"${st.clearLabel}" 목표를 달성하여 도시와 연구소를 성공적으로 방어했습니다.`;
       rewardEl.style.display = "block";
-      rewardEl.textContent = `🎁 획득 보상: ${st.rewardLabel} (정화 점수: ${this.score.toLocaleString()}점)`;
+      rewardEl.textContent = `🎁 작전 인가 보상: ${st.rewardLabel}  |  정화 점수: ${this.score.toLocaleString()} PTS`;
       if (nextBtn) {
         const nextSt = TUTORIAL_STAGES[(this.stageIndex + 1) % TUTORIAL_STAGES.length];
-        nextBtn.style.display = "inline-block";
-        nextBtn.textContent = `➡️ 다음 튜토리얼(${nextSt.stageId}) 설명 보기 & 진행`;
+        nextBtn.style.display = "flex";
+        nextBtn.innerHTML = `<span>다음 작전(${nextSt.stageId}) 브리핑 열기</span><span class="material-symbols-outlined">arrow_forward</span>`;
       }
     } else {
-      titleEl.style.color = "#ef4444";
-      titleEl.textContent = `🚨 ${st.stageId} 방어선 붕괴 (유출 사고 발생)`;
-      descEl.textContent = `미로 경로를 더 길게 우회시키거나, 스테이지 필수 추천 타워(${st.requiredTowers.join(", ")})와 설비(${st.shopItems.join(", ") || "없음"})를 조합해 다시 도전해 보세요!`;
+      if (statusBadge) statusBadge.textContent = `THREAT LEVEL CRITICAL // ${st.stageId}`;
+      titleEl.style.color = "#ff6b6b";
+      titleEl.textContent = `🚨 ${st.stageId} 방어선 붕괴 (유출 사고)`;
+      descEl.textContent = `미로 경로를 더 길게 우회시키거나, 스테이지 필수 추천 포탑(${st.requiredTowers.join(", ")})과 설비(${st.shopItems.join(", ") || "없음"})를 조합해 다시 도전해 보세요!`;
       rewardEl.style.display = "block";
-      rewardEl.textContent = `💡 팁: 상단 [📖 튜토리얼 설명 팝업]에서 3단계 공략 가이드를 다시 확인할 수 있습니다.`;
+      rewardEl.textContent = `💡 전술 가이드: 상단 [작전 브리핑]에서 3단계 침투 방제 가이드를 다시 확인할 수 있습니다.`;
       if (nextBtn) nextBtn.style.display = "none";
     }
   }
@@ -602,30 +844,47 @@ class ChemicalDefenseGame {
 
   updateStageBanner() {
     const st = this.currentStage;
+    const secCode = document.getElementById("headerSectorCode");
+    if (secCode) {
+      secCode.textContent = `SEC-${String(this.stageIndex + 1).padStart(2, "0")}`;
+    }
+
     const envBadge = document.getElementById("envBadge");
-    envBadge.className = `env-badge ${st.environment.toLowerCase()}`;
-    envBadge.textContent =
-      st.environment === "Indoor" ? "🏢 Indoor (실내 밀폐구역)" : "🌳 Outdoor (야외 플랜트)";
+    if (envBadge) {
+      envBadge.className = `env-badge ${st.environment.toLowerCase()}`;
+      envBadge.textContent = st.environment === "Indoor" ? "INDOOR" : "OUTDOOR";
+    }
 
     const titleEl = document.getElementById("stageTitleText");
     const reqEl = document.getElementById("stageReqBadge");
     const rewardEl = document.getElementById("stageRewardBadge");
     const descEl = document.getElementById("stageDescText");
+    const formulaEl = document.getElementById("hudFormulaText");
+    const hazardBadge = document.getElementById("hazardEnemyBadge");
+
+    if (formulaEl) {
+      const shortEq = (st.chemicalEquation || "2H₂ + O₂ → 2H₂O").split("(")[0].trim();
+      formulaEl.textContent = shortEq;
+    }
+
+    if (hazardBadge) {
+      hazardBadge.textContent = this.mode === "survival" ? "42 HAZARDS" : st.enemyKey;
+    }
 
     if (this.mode === "tutorial") {
       titleEl.textContent = st.title;
       const reqStr = st.requiredTowers.join(", ");
       const shopStr = st.shopItems.length > 0 ? st.shopItems.join(", ") : "없음";
-      reqEl.textContent = `필수/추천 원소: ${reqStr} | 설비: ${shopStr}`;
-      rewardEl.textContent = `클리어 보상: ${st.rewardLabel}`;
-      descEl.textContent = `📋 미션 지령: "${st.description}" (타워로 길을 막아 미로를 만드세요!)`;
+      reqEl.textContent = `필수 원소: ${reqStr} | 설비: ${shopStr}`;
+      rewardEl.textContent = `보상: ${st.rewardLabel}`;
+      descEl.textContent = `${st.description} (포탑으로 길을 막아 미로를 만드세요!)`;
     } else {
-      const recipeIdx = Math.max(0, (this.wave - 1)) % COMPOUND_RECIPES.length;
+      const recipeIdx = Math.max(0, this.wave - 1) % COMPOUND_RECIPES.length;
       const recipe = COMPOUND_RECIPES[recipeIdx];
-      titleEl.textContent = `♾️ [${st.stageId} 맵 서바이벌] Wave ${Math.max(1, this.wave)} — ${recipe.displayName}(${recipe.rowName})`;
+      titleEl.textContent = `♾️ [${st.stageId} 서바이벌] W${Math.max(1, this.wave)} — ${recipe.displayName}(${recipe.rowName})`;
       reqEl.textContent = `중화 카운터: ${recipe.counter}`;
       rewardEl.textContent = `역사적 화학재난 42종 무한 루프`;
-      descEl.textContent = `📜 실제 사고 기록: "${recipe.description}"`;
+      descEl.textContent = `${recipe.description}`;
     }
 
     this.updateObjectiveUI();
@@ -638,8 +897,8 @@ class ChemicalDefenseGame {
     const barEl = document.getElementById("objectiveBar");
 
     if (this.mode === "survival") {
-      labelEl.textContent = `♾️ 무제한 서바이벌 (현재 필드 유닛: ${this.enemies.length}기 / 누적 정화: ${this.objectiveProgress}기)`;
-      valEl.textContent = `Wave ${this.wave} 진행 중`;
+      labelEl.textContent = `♾️ 무제한 서바이벌 (필드 위험물: ${this.enemies.length}기 / 누적 정화: ${this.objectiveProgress}기)`;
+      valEl.textContent = `WAVE ${String(this.wave).padStart(2, "0")}`;
       barEl.style.width = "100%";
       return;
     }
@@ -650,50 +909,50 @@ class ChemicalDefenseGame {
     switch (st.clearCondition) {
       case "Eliminate_All":
         pct = Math.min(100, Math.round((this.objectiveProgress / st.clearTarget) * 100));
-        statusText = `H₂O 전환/제거: ${this.objectiveProgress} / ${st.clearTarget} (${pct}%)`;
+        statusText = `H₂O 전환: ${this.objectiveProgress}/${st.clearTarget} (${pct}%)`;
         break;
       case "Lower_Concentration":
         pct = Math.min(100, Math.round(100 - this.gasConcentration));
-        statusText = `현재 수소 농도: ${this.gasConcentration.toFixed(0)}% → 목표 0% (${pct}% 희석됨)`;
+        statusText = `수소 농도: ${this.gasConcentration.toFixed(0)}% → 0% (${pct}%)`;
         break;
       case "Create_NaCl_20":
         pct = Math.min(100, Math.round((this.objectiveProgress / st.clearTarget) * 100));
-        statusText = `소금(NaCl) 침전: ${this.objectiveProgress} / ${st.clearTarget}개 (${pct}%)`;
+        statusText = `NaCl 침전: ${this.objectiveProgress}/${st.clearTarget} (${pct}%)`;
         break;
       case "Neutralize_pH":
         pct = Math.min(100, Math.round(((this.currentPh - 1.5) / (7.0 - 1.5)) * 100));
-        statusText = `현재 용액 산성도: pH ${this.currentPh.toFixed(2)} → 목표 pH 7.00 (${pct}%)`;
+        statusText = `산성도 pH ${this.currentPh.toFixed(2)} → 7.00 (${pct}%)`;
         break;
       case "Zero_Damage":
         pct = Math.min(100, Math.round((this.objectiveProgress / st.clearTarget) * 100));
-        statusText = `불산(HF) 무손실 해독: ${this.objectiveProgress} / ${st.clearTarget} (부식 파괴: ${this.towerDestroyedCount}건)`;
+        statusText = `무손실 해독: ${this.objectiveProgress}/${st.clearTarget} (파괴:${this.towerDestroyedCount})`;
         break;
       case "Cure_Paralysis":
         pct = Math.min(100, Math.round((this.objectiveProgress / st.clearTarget) * 100));
-        statusText = `황화수소(H₂S) 산화: ${this.objectiveProgress} / ${st.clearTarget} (산소 해독 발동: ${this.paralysisCuredCount}회)`;
+        statusText = `H₂S 산화: ${this.objectiveProgress}/${st.clearTarget} (해독:${this.paralysisCuredCount})`;
         break;
       case "Create_CO2_All":
         pct = Math.min(100, Math.round((this.objectiveProgress / st.clearTarget) * 100));
-        statusText = `CO → CO₂ 완전연소: ${this.objectiveProgress} / ${st.clearTarget} (${pct}%)`;
+        statusText = `CO₂ 연소: ${this.objectiveProgress}/${st.clearTarget} (${pct}%)`;
         break;
       case "Stop_Corrosion":
         pct = Math.min(100, Math.round((this.objectiveProgress / st.clearTarget) * 100));
-        statusText = `황산(H₂SO₄) 다단계 중화: ${this.objectiveProgress} / ${st.clearTarget} (${pct}%)`;
+        statusText = `황산 중화: ${this.objectiveProgress}/${st.clearTarget} (${pct}%)`;
         break;
       case "Decompose_All":
         pct = Math.min(100, Math.round((this.objectiveProgress / st.clearTarget) * 100));
-        statusText = `포스겐(COCl₂) 완전 분해: ${this.objectiveProgress} / ${st.clearTarget} (${pct}%)`;
+        statusText = `포스겐 분해: ${this.objectiveProgress}/${st.clearTarget} (${pct}%)`;
         break;
       case "Survive_5min":
         pct = Math.min(100, Math.round((this.survivalTimer / st.clearTarget) * 100));
-        statusText = `방어 시간: ${Math.floor(this.survivalTimer)}초 / ${st.clearTarget}초 (${pct}%)`;
+        statusText = `방어 시간: ${Math.floor(this.survivalTimer)}s / ${st.clearTarget}s (${pct}%)`;
         break;
       default:
         pct = Math.min(100, Math.round((this.objectiveProgress / st.clearTarget) * 100));
         statusText = `${this.objectiveProgress} / ${st.clearTarget} (${pct}%)`;
     }
 
-    labelEl.textContent = `🎯 [${st.clearCondition}] ${st.clearLabel}`;
+    labelEl.textContent = `${st.clearLabel}`;
     valEl.textContent = statusText;
     barEl.style.width = `${pct}%`;
   }
@@ -702,14 +961,16 @@ class ChemicalDefenseGame {
     document.getElementById("statGold").textContent = Math.floor(this.gold);
     document.getElementById("statLives").textContent = this.lives;
     document.getElementById("statWave").textContent =
-      this.mode === "tutorial" ? `스테이지 ${this.stageIndex + 1} (W${this.wave})` : `♾️ W${this.wave}`;
+      this.mode === "tutorial"
+        ? `S${this.stageIndex + 1} • W${String(this.wave).padStart(2, "0")}`
+        : `♾️ W${String(this.wave).padStart(2, "0")}`;
     document.getElementById("statScore").textContent = this.score.toLocaleString();
 
     const startLabel = document.getElementById("startWaveLabel");
     if (this.mode === "survival") {
-      startLabel.textContent = this.wave === 0 ? "서바이벌 시작" : "웨이브 추가 투입!";
+      startLabel.textContent = this.wave === 0 ? "서바이벌 웨이브 개시" : "다음 웨이브 조기 투입";
     } else {
-      startLabel.textContent = this.wave === 0 ? "미션 웨이브 시작" : "지원군 웨이브 호출";
+      startLabel.textContent = this.wave === 0 ? "미션 1웨이브 개시" : "지원 웨이브 추가 투입";
     }
   }
 
@@ -734,17 +995,17 @@ class ChemicalDefenseGame {
                data-id="${t.id}">
             ${isRec ? `<span class="rec-star">★필수</span>` : ""}
             <div class="el-header">
-              <span>${t.category === "shop" ? "설비" : `No.${t.atomicNumber}`}</span>
+              <span>${t.category === "shop" ? "GEAR" : `${t.atomicNumber}`}</span>
               <span class="el-rank">${t.symbol}</span>
             </div>
             <div class="el-thumb-wrap">
-              <img src="${t.imagePath}" alt="${t.name}" class="el-thumb" />
+              <img src="${t.imagePath}" alt="${t.name}" width="22" height="22" class="el-thumb" />
               <span class="el-symbol-badge">${t.symbol}</span>
             </div>
             <div class="el-name">${t.name.split(" (")[0]}</div>
             <div class="el-meta">
-              <span>DMG ${t.damage}</span>
-              <span class="el-cost">💰${t.cost}</span>
+              <span>D:${t.damage}</span>
+              <span class="el-cost">${t.cost}G</span>
             </div>
           </div>
         `;
@@ -762,10 +1023,14 @@ class ChemicalDefenseGame {
     });
   }
 
+  /**
+   * 캔버스 하단 Stitch Selected Tower Quick Inspector Bar 렌더링
+   */
   renderInspector() {
     const box = document.getElementById("inspectorContent");
+    if (!box) return;
 
-    // 1) 이미 설치된 타워를 클릭한 경우
+    // 1) 이미 설치된 타워를 선택한 경우
     if (this.selectedTower) {
       const t = this.selectedTower;
       const spec = TOWER_TYPES[t.typeId];
@@ -777,91 +1042,99 @@ class ChemicalDefenseGame {
           : spec.imagePath;
 
       box.innerHTML = `
-        <div class="inspector-header-box">
-          <img src="${imgPath}" alt="${spec.name}" class="inspector-preview-img" />
-          <div>
-            <div class="inspector-title" style="color:${spec.color}">
-              ${spec.name} <span class="badge-lvl">Lv.${t.level}</span>
-              ${t.boostedByO ? `<span class="badge-oxy">O₂/열촉매 가속중</span>` : ""}
+        <div class="inspector-left">
+          <div class="inspector-thumb-box">
+            <img src="${imgPath}" alt="${spec.name}" width="34" height="34" class="inspector-preview-img" />
+          </div>
+          <div class="inspector-info">
+            <div class="inspector-title-row">
+              <span class="inspector-title" style="color:${spec.color}">[${spec.symbol}] ${spec.name}</span>
+              <span class="badge-lvl">Lv.${t.level}</span>
+              ${t.boostedByO || t.boostedByHeater ? `<span class="badge-oxy">⚡촉매 가속중</span>` : ""}
+              ${t.paralyzedTimer > 0 ? `<span class="badge-oxy" style="color:#ff6b6b">⚡마비됨</span>` : ""}
             </div>
-            <div style="font-size:0.73rem; color:#94a3b8;">
-              내구도: ${Math.ceil(t.hp)} / ${t.maxHp} ${t.paralyzedTimer > 0 ? "⚡ [H₂S 마비됨!]" : ""}
-            </div>
+            <div class="inspector-sub">${spec.whyReactive}</div>
           </div>
         </div>
-        <p class="inspector-desc">${spec.whyReactive}</p>
-        <div class="stat-grid">
-          <div>⚡ 공격력: <strong>${Math.round(t.getEffectiveDamage())}</strong></div>
-          <div>🎯 사거리: <strong>${Math.round(t.getEffectiveRange())}px</strong></div>
-          <div>⏱️ 연사력: <strong>${t.getEffectiveFireRate().toFixed(2)}/s</strong></div>
-          <div>🧪 생성물: <strong>${spec.Produces}</strong></div>
+
+        <div class="inspector-stats-pills">
+          <div class="stat-pill"><span>DMG</span><strong>${Math.round(t.getEffectiveDamage())}</strong></div>
+          <div class="stat-pill"><span>RNG</span><strong>${Math.round(t.getEffectiveRange())}px</strong></div>
+          <div class="stat-pill"><span>SPD</span><strong>${t.getEffectiveFireRate().toFixed(1)}/s</strong></div>
+          <div class="stat-pill"><span>HP</span><strong>${Math.ceil(t.hp)}/${t.maxHp}</strong></div>
         </div>
+
         <div class="inspector-actions">
           <button id="btnUpgradeTower" class="action-btn upg-btn" ${
             this.gold < upgCost || t.level >= 5 ? "disabled" : ""
           }>
-            <img src="./icon/ui_upgrade.png" alt="" class="btn-icon" />
-            <span>${t.level >= 5 ? "최대 레벨 (MAX)" : `반응성 강화 업그레이드 (💰${upgCost})`}</span>
+            <img src="./icon/ui_upgrade.png" alt="" width="14" height="14" class="btn-icon" />
+            <span>${t.level >= 5 ? "MAX" : `↑ 강화 (${upgCost}G)`}</span>
           </button>
           ${
             spec.isKamikaze
-              ? `<button id="btnDetonateH" class="action-btn detonate-btn">💥 즉시 수소 초광역 기폭</button>`
+              ? `<button id="btnDetonateH" class="action-btn detonate-btn">💥 기폭</button>`
               : ""
           }
           <button id="btnSellTower" class="action-btn sell-btn">
-            ♻️ 설비 해체 및 자금 회수 (+💰${sellRefund})
+            <span>🗑️ 해체 (+${sellRefund}G)</span>
           </button>
         </div>
       `;
 
       const btnUpg = document.getElementById("btnUpgradeTower");
-      if (btnUpg) {
-        btnUpg.addEventListener("click", () => this.upgradeSelectedTower());
-      }
+      if (btnUpg) btnUpg.addEventListener("click", () => this.upgradeSelectedTower());
+
       const btnDet = document.getElementById("btnDetonateH");
-      if (btnDet) {
-        btnDet.addEventListener("click", () => this.detonateHydrogenTower(t));
-      }
+      if (btnDet) btnDet.addEventListener("click", () => this.detonateHydrogenTower(t));
+
       const btnSell = document.getElementById("btnSellTower");
-      if (btnSell) {
-        btnSell.addEventListener("click", () => this.sellSelectedTower());
-      }
+      if (btnSell) btnSell.addEventListener("click", () => this.sellSelectedTower());
       return;
     }
 
-    // 2) 팔레트에서 건설할 타워를 선택 중인 경우
+    // 2) 팔레트에서 건설할 원소/설비를 선택 중인 경우
     if (this.selectedBuildType && TOWER_TYPES[this.selectedBuildType]) {
       const spec = TOWER_TYPES[this.selectedBuildType];
       const isRec = this.isRecommendedForCurrentStage(spec.id);
       box.innerHTML = `
-        <div class="inspector-header-box">
-          <img src="${spec.imagePath}" alt="${spec.name}" class="inspector-preview-img" />
-          <div>
-            <div class="inspector-title" style="color:${spec.color}">
-              [${spec.symbol}] ${spec.name}
+        <div class="inspector-left">
+          <div class="inspector-thumb-box">
+            <img src="${spec.imagePath}" alt="${spec.name}" width="34" height="34" class="inspector-preview-img" />
+          </div>
+          <div class="inspector-info">
+            <div class="inspector-title-row">
+              <span class="inspector-title" style="color:${spec.color}">[${spec.symbol}] ${spec.name}</span>
+              <span class="badge-lvl">${spec.cost}G</span>
+              ${isRec ? `<span class="badge-oxy">★현재 스테이지 필수 추천</span>` : `<span class="badge-lvl">${spec.rankLabel}</span>`}
             </div>
-            <div style="font-size:0.73rem; color:${isRec ? "#fde047" : "#94a3b8"};">
-              ${isRec ? "⭐ 현재 스테이지 클리어 핵심 추천 타워!" : spec.rankLabel}
-            </div>
+            <div class="inspector-sub"><strong>반응 원리:</strong> ${spec.whyReactive} — <em>${spec.concept}</em></div>
           </div>
         </div>
-        <p class="inspector-desc"><strong>과학적 원리:</strong> ${spec.whyReactive}</p>
-        <p class="inspector-concept"><strong>전술 역할:</strong> ${spec.concept}</p>
-        <div class="stat-grid">
-          <div>💰 건설 비용: <strong>${spec.cost}</strong></div>
-          <div>⚡ 기본 피해: <strong>${spec.damage}</strong></div>
-          <div>🎯 사거리: <strong>${spec.range}px</strong></div>
-          <div>🧪 반응 결과: <strong>${spec.Produces}</strong></div>
+
+        <div class="inspector-stats-pills">
+          <div class="stat-pill"><span>COST</span><strong style="color:#ffc665">${spec.cost}G</strong></div>
+          <div class="stat-pill"><span>DMG</span><strong>${spec.damage}</strong></div>
+          <div class="stat-pill"><span>RNG</span><strong>${spec.range}px</strong></div>
+          <div class="stat-pill"><span>PRODUCT</span><strong style="color:#00e4fe">${spec.Produces}</strong></div>
         </div>
       `;
       return;
     }
 
-    box.innerHTML = `<p class="inspector-desc">우측 팔레트에서 원소 타워나 상점 설비를 선택해 전장에 배치하거나, 설치된 타워를 클릭해 업그레이드하세요.</p>`;
+    box.innerHTML = `
+      <div class="inspector-left">
+        <div class="inspector-info">
+          <div class="inspector-title-row">
+            <span class="inspector-title" style="color:#ffc665">TACTICAL INSPECTOR // 포탑 제어반</span>
+          </div>
+          <div class="inspector-sub">우측 덱에서 원소 포탑이나 설비를 선택해 전장에 배치하거나, 배치된 포탑을 클릭해 강화·해체하세요.</div>
+        </div>
+      </div>
+    `;
   }
 
   handleTileClick(c, r) {
-    // 이미 설치된 타워 클릭 시 선택
     const existing = this.towers.find((t) => t.c === c && t.r === r);
     if (existing) {
       this.sound.play("uiClick");
@@ -881,12 +1154,11 @@ class ChemicalDefenseGame {
         c * GRID_CONFIG.tileSize + 19,
         r * GRID_CONFIG.tileSize + 19,
         "자금 부족!",
-        "#ef4444"
+        "#ff6b6b"
       );
       return;
     }
 
-    // 미로 길막기 검증 (Tower_Blocks_Path)
     const passableGrid = this.grid.map((row) => row.map((cell) => (cell === 0 ? 0 : 1)));
     const ok = canPlaceTowerWithoutBlocking(
       passableGrid,
@@ -902,18 +1174,16 @@ class ChemicalDefenseGame {
         c * GRID_CONFIG.tileSize + 19,
         r * GRID_CONFIG.tileSize + 19,
         "출구 봉쇄 불가!",
-        "#f97316"
+        "#ffc665"
       );
-      this.addLog("🚫 [경로 차단 경고] 모든 위험물이 출구로 빠져나갈 수 있는 최소 1칸의 통로가 필요합니다!");
+      this.addLog("🚫 [경로 차단 경고] 모든 위험물이 출구로 빠져나갈 수 있는 최소 1칸의 우회 통로가 필요합니다!");
       return;
     }
 
-    // 타워 건설
     this.gold -= spec.cost;
     this.grid[r][c] = 2;
 
     const maxHp = spec.id === "GlassWall" ? 500 : spec.highDurability ? 260 : 120;
-    const gameRef = this;
     const newTower = {
       c,
       r,
@@ -968,7 +1238,7 @@ class ChemicalDefenseGame {
     t.hp = t.maxHp;
 
     this.sound.play("towerUpgrade");
-    this.addFloatingText(t.x, t.y - 10, `Lv.${t.level} 강화!`, "#fde047");
+    this.addFloatingText(t.x, t.y - 10, `Lv.${t.level} 강화!`, "#ffc665");
     this.updateHUD();
     this.renderInspector();
   }
@@ -990,9 +1260,9 @@ class ChemicalDefenseGame {
 
   detonateHydrogenTower(tower) {
     const spec = TOWER_TYPES.H;
-    this.sound.play("tower_H", 0.7);
-    this.spawnParticles(tower.x, tower.y, "#38bdf8", 28);
-    this.addFloatingText(tower.x, tower.y, "💥 수소 초광역 기폭!", "#38bdf8");
+    this.sound.play("tower_H", 0.35, 160);
+    this.spawnParticles(tower.x, tower.y, "#00e4fe", 28);
+    this.addFloatingText(tower.x, tower.y, "💥 수소 초광역 기폭!", "#00e4fe");
 
     for (const enemy of this.enemies) {
       const dist = Math.hypot(enemy.x - tower.x, enemy.y - tower.y);
@@ -1008,18 +1278,14 @@ class ChemicalDefenseGame {
     this.renderInspector();
   }
 
-  /**
-   * 웨이브 시작 (튜토리얼 모드: 해당 스테이지 위험물 스폰 / 서바이벌 모드: DT_CompoundRecipe.csv 42종 무한 스폰)
-   */
   startNextWave() {
     if (this.gameOver || this.stageCleared) return;
 
     this.wave += 1;
-    this.sound.play("waveStart");
+    this.sound.play("waveStart", 0.35, 200);
     const st = this.currentStage;
 
     if (this.mode === "tutorial") {
-      // 튜토리얼 스테이지별 웨이브 구성
       const count = st.clearCondition === "Survive_5min" ? 18 + this.wave * 4 : 12 + this.wave * 3;
       const interval = Math.max(0.38, 0.95 - this.wave * 0.05);
 
@@ -1047,7 +1313,6 @@ class ChemicalDefenseGame {
         `🚨 [${st.stageId} Wave ${this.wave}] ${st.enemyKey} 위험물 ${count}기 유출 시작! (${st.clearLabel})`
       );
     } else {
-      // 무한 서바이벌 (무제한 유닛) 모드: DT_CompoundRecipe.csv 42종 순환 + 복합 웨이브
       const recipe = COMPOUND_RECIPES[(this.wave - 1) % COMPOUND_RECIPES.length];
       const baseArchetype = ENEMY_TYPES[recipe.archetype] || ENEMY_TYPES.GAS;
       const count = 14 + this.wave * 4;
@@ -1055,7 +1320,6 @@ class ChemicalDefenseGame {
       const interval = Math.max(0.22, 0.78 - this.wave * 0.02);
 
       for (let i = 0; i < count; i++) {
-        // 매 5번째마다 직전/다음 역사적 화합물도 섞여서 출현
         const subRecipe =
           i % 5 === 0
             ? COMPOUND_RECIPES[(this.wave + i) % COMPOUND_RECIPES.length]
@@ -1136,20 +1400,17 @@ class ChemicalDefenseGame {
   update(dt) {
     const st = this.currentStage;
 
-    // TUT-10 5분 생존 타이머 업데이트
     if (this.mode === "tutorial" && st.clearCondition === "Survive_5min" && this.wave > 0) {
       this.survivalTimer += dt;
       if (this.survivalTimer >= st.clearTarget) {
         this.completeTutorialStage();
         return;
       }
-      // 5분 버티기 중 스폰 큐가 비면 자동으로 다음 웨이브 투입
       if (this.spawnQueue.length === 0 && this.enemies.length < 6) {
         this.startNextWave();
       }
     }
 
-    // 무제한 연속 스폰(Endless Stream) 처리
     if (this.endlessStream) {
       this.streamTimer -= dt;
       if (this.streamTimer <= 0) {
@@ -1179,7 +1440,6 @@ class ChemicalDefenseGame {
       }
     }
 
-    // 일반 웨이브 스폰 큐 처리
     if (this.spawnQueue.length > 0) {
       this.spawnCooldown -= dt;
       if (this.spawnCooldown <= 0) {
@@ -1193,11 +1453,10 @@ class ChemicalDefenseGame {
       this.enemies.length === 0 &&
       !this.stageCleared
     ) {
-      // 튜토리얼에서 아직 목표 수치를 다 못 채웠다면 자동으로 추가 웨이브 투입
       this.startNextWave();
     }
 
-    // 1. 타워 오라(산소 O, 가열기 Heater, 칼슘 Ca, 유리벽 GlassWall) 계산
+    // 1. 타워 오라 계산
     for (const t of this.towers) {
       t.boostedByO = false;
       t.boostedByHeater = false;
@@ -1214,7 +1473,7 @@ class ChemicalDefenseGame {
             if (target.paralyzedTimer > 0) {
               target.paralyzedTimer = 0;
               this.paralysisCuredCount += 1;
-              this.addFloatingText(target.x, target.y - 12, "O₂ 마비 해독!", "#38bdf8");
+              this.addFloatingText(target.x, target.y - 12, "O₂ 마비 해독!", "#00e4fe");
             }
           }
         }
@@ -1238,7 +1497,7 @@ class ChemicalDefenseGame {
       }
     }
 
-    // 2. 적군 이동 및 특수 위험물 기믹(불산 HF 타워 부식, 황화수소 H2S 타워 마비) 처리
+    // 2. 적군 이동 및 특수 기믹 처리
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
 
@@ -1254,7 +1513,6 @@ class ChemicalDefenseGame {
         }
       }
 
-      // 불산(HF) 또는 황산(H2SO4)의 인접 타워 부식 효과
       if (e.corrodesTowers) {
         for (let ti = this.towers.length - 1; ti >= 0; ti--) {
           const tw = this.towers[ti];
@@ -1271,16 +1529,15 @@ class ChemicalDefenseGame {
               this.towers.splice(ti, 1);
               this.recomputePaths();
               this.renderInspector();
-              this.addLog("💥 [타워 부식 붕괴] 불산/황산에 의해 보호받지 못한 타워가 녹아내렸습니다! 칼슘(Ca)이나 유리벽(GlassWall)을 배치하세요!");
+              this.addLog("💥 [포탑 부식 붕괴] 불산/황산에 의해 포탑이 손상되었습니다! 칼슘(Ca)이나 유리벽(GlassWall)을 배치하세요.");
             }
           }
         }
       }
 
-      // 황화수소(H2S)의 인접 타워 마비 효과
       if (e.paralyzesTowers) {
         for (const tw of this.towers) {
-          if (tw.typeId === "O" || tw.boostedByO) continue; // 산소 타워 및 산소 버프 타워는 면역
+          if (tw.typeId === "O" || tw.boostedByO) continue;
           const dist = Math.hypot(tw.x - e.x, tw.y - e.y);
           if (dist <= 75) {
             tw.paralyzedTimer = Math.max(tw.paralyzedTimer, 1.5);
@@ -1291,7 +1548,6 @@ class ChemicalDefenseGame {
       const speedMult = e.slowTimer > 0 ? 1 - e.slowFactor : 1;
       const moveStep = e.speed * speedMult * dt;
 
-      // 목표 출구 방향 이동
       const c = Math.max(0, Math.min(GRID_CONFIG.cols - 1, Math.floor(e.x / GRID_CONFIG.tileSize)));
       const r = Math.max(0, Math.min(GRID_CONFIG.rows - 1, Math.floor(e.y / GRID_CONFIG.tileSize)));
 
@@ -1313,21 +1569,20 @@ class ChemicalDefenseGame {
         e.y += (dy / distToTarget) * moveStep;
       }
 
-      // 출구 도달 확인
       for (const ex of this.exits) {
         const exX = ex.c * GRID_CONFIG.tileSize + GRID_CONFIG.tileSize / 2;
         const exY = ex.r * GRID_CONFIG.tileSize + GRID_CONFIG.tileSize / 2;
         if (Math.hypot(e.x - exX, e.y - exY) < 16) {
           this.lives -= 1;
-          this.sound.play("baseDamage");
-          this.addFloatingText(exX, exY, "-1 방어선 유출!", "#ef4444");
+          this.sound.play("baseDamage", 0.35, 160);
+          this.addFloatingText(exX, exY, "-1 GATE 유출!", "#ff6b6b");
           this.enemies.splice(i, 1);
           this.updateHUD();
           if (this.lives <= 0) {
             this.lives = 0;
             this.gameOver = true;
-            this.sound.play("gameOver");
-            this.addLog("🚨 [방어선 붕괴] 유독 화학물질이 도시로 유출되었습니다! 🔄 재시작 버튼을 눌러 재도전하세요.");
+            this.sound.play("gameOver", 0.4, 300);
+            this.addLog("🚨 [방어선 붕괴] 유독 화학물질이 도시 게이트로 유출되었습니다!");
             this.openResultModal(false);
           }
           break;
@@ -1335,7 +1590,7 @@ class ChemicalDefenseGame {
       }
     }
 
-    // 3. 타워 공격 처리
+    // 3. 타워 공격 처리 (발사 효과음 볼륨도 부드럽게 감쇠)
     for (let ti = this.towers.length - 1; ti >= 0; ti--) {
       const t = this.towers[ti];
       if (t.paralyzedTimer > 0) {
@@ -1349,7 +1604,6 @@ class ChemicalDefenseGame {
       const spec = TOWER_TYPES[t.typeId];
       const range = t.getEffectiveRange();
 
-      // 사거리 내 적 탐색
       const candidates = this.enemies.filter((e) => {
         if (e.isStealth && e.revealedTimer <= 0 && !spec.revealsStealth) return false;
         return Math.hypot(e.x - t.x, e.y - t.y) <= range;
@@ -1358,15 +1612,13 @@ class ChemicalDefenseGame {
       if (candidates.length === 0) continue;
 
       t.cooldown = 1 / t.getEffectiveFireRate();
-      this.sound.play(spec.soundKey || "hitNeutralize", 0.35, 95);
+      this.sound.play(spec.soundKey || "hitNeutralize", 0.22, 150);
 
-      // 오라/구름 형태 타워 (염소 Cl, 압력기 Pressurizer)
       if (spec.isAuraCloud) {
         this.spawnParticles(t.x, t.y, spec.color, 8);
         for (const target of candidates) {
           if (spec.revealsStealth) target.revealedTimer = 4.0;
           if (spec.pullStrength) {
-            // 압력기(Pressurizer): 적들을 타워 쪽으로 살짝 응축
             const angle = Math.atan2(t.y - target.y, t.x - target.x);
             target.x += Math.cos(angle) * 6;
             target.y += Math.sin(angle) * 6;
@@ -1376,7 +1628,6 @@ class ChemicalDefenseGame {
         continue;
       }
 
-      // 포타슘(K) 연쇄 스파크 공격
       if (spec.chainCount) {
         const hitTargets = candidates.slice(0, spec.chainCount);
         for (const target of hitTargets) {
@@ -1393,7 +1644,6 @@ class ChemicalDefenseGame {
         continue;
       }
 
-      // 일반/스플래시/수소기폭 투사체 발사
       const primary = candidates[0];
       this.projectiles.push({
         x: t.x,
@@ -1405,7 +1655,6 @@ class ChemicalDefenseGame {
         sourceTower: t
       });
 
-      // 수소(H) 자폭 카운트 처리
       if (spec.isKamikaze) {
         t.triggerCount += 1;
         if (t.triggerCount >= spec.maxTriggerCount) {
@@ -1414,7 +1663,7 @@ class ChemicalDefenseGame {
       }
     }
 
-    // 4. 투사체 이동 및 충돌 처리
+    // 4. 투사체 충돌 처리
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const p = this.projectiles[i];
       if (!p.target || p.target.hp <= 0) {
@@ -1476,35 +1725,31 @@ class ChemicalDefenseGame {
     if (spec) {
       enemy.hitByElements.add(spec.id);
 
-      // 상성 보너스 적용
       const bonus = spec.targetBonus?.[enemy.categoryKey] || 1.0;
       finalDamage *= bonus;
 
-      // 스테이지별 화학 반응 시너지 보너스
-      if (enemy.id === "H2" && spec.id === "O") finalDamage *= 2.2; // 2H2 + O2 -> 2H2O
+      if (enemy.id === "H2" && spec.id === "O") finalDamage *= 2.2;
       if (enemy.id === "Cl2" && spec.id === "Na") {
-        finalDamage *= tower.boostedByHeater ? 2.6 : 1.9; // 2Na + Cl2 -> 2NaCl
+        finalDamage *= tower.boostedByHeater ? 2.6 : 1.9;
       }
-      if (enemy.id === "HCl" && spec.id === "Na") finalDamage *= 2.1; // HCl + NaOH -> NaCl + H2O
-      if (enemy.id === "HF" && spec.id === "Ca") finalDamage *= 2.5; // 2HF + Ca -> CaF2
-      if (enemy.id === "H2S" && spec.id === "O") finalDamage *= 2.2; // 2H2S + 3O2 -> 2SO2 + 2H2O
+      if (enemy.id === "HCl" && spec.id === "Na") finalDamage *= 2.1;
+      if (enemy.id === "HF" && spec.id === "Ca") finalDamage *= 2.5;
+      if (enemy.id === "H2S" && spec.id === "O") finalDamage *= 2.2;
       if (enemy.id === "CO" && (spec.id === "O" || spec.id === "Heater")) {
-        finalDamage *= tower.boostedByHeater ? 2.6 : 1.8; // 2CO + O2 -> 2CO2
+        finalDamage *= tower.boostedByHeater ? 2.6 : 1.8;
       }
       if (enemy.id === "H2SO4" && ["Ca", "Na", "O"].includes(spec.id)) {
-        finalDamage *= 1.5 + enemy.hitByElements.size * 0.35; // 다단계 반응 보너스
+        finalDamage *= 1.5 + enemy.hitByElements.size * 0.35;
       }
       if (enemy.id === "COCl2" && ["C", "O", "Cl", "Fan"].includes(spec.id)) {
-        finalDamage *= 1.45 + enemy.hitByElements.size * 0.3; // 포스겐 복합 분해
+        finalDamage *= 1.45 + enemy.hitByElements.size * 0.3;
       }
 
-      // 감속 효과
       if (spec.slowFactor) {
         enemy.slowFactor = Math.max(enemy.slowFactor, spec.slowFactor);
         enemy.slowTimer = Math.max(enemy.slowTimer, spec.slowDuration || 2.0);
       }
 
-      // 환풍기(Fan) 역풍 밀치기 효과
       if (spec.pushbackStrength && this.spawns.length > 0) {
         const spX = this.spawns[0].c * GRID_CONFIG.tileSize + 19;
         const spY = this.spawns[0].r * GRID_CONFIG.tileSize + 19;
@@ -1513,18 +1758,15 @@ class ChemicalDefenseGame {
         enemy.y += Math.sin(ang) * spec.pushbackStrength * 0.45;
       }
 
-      // 지속 산화(DoT) 효과
       if (spec.dotDamage) {
         enemy.dotDps = Math.max(enemy.dotDps, spec.dotDamage);
         enemy.dotTimer = Math.max(enemy.dotTimer, spec.dotDuration || 3.0);
       }
 
-      // 질소(N) / 압력기(Pressurizer) / 환풍기(Fan) 타격 시 가스 농도 즉시 감소
       if (spec.lowersConcentration && this.gasConcentration > 0) {
         this.gasConcentration = Math.max(0, this.gasConcentration - 0.9);
       }
 
-      // 소듐(Na) / 칼슘(Ca) 타격 시 산성도(pH) 회복
       if (spec.neutralizesAcid && this.currentPh < 7.0) {
         this.currentPh = Math.min(7.0, this.currentPh + 0.08);
       }
@@ -1543,10 +1785,10 @@ class ChemicalDefenseGame {
     this.score += enemy.reward * 15;
     this.objectiveProgress += 1;
 
-    this.sound.play("enemyDissolve", 0.4, 90);
+    // 사용자 요청 반영: 적 처치 효과음(enemyDissolve)을 부드럽고 작게(0.18 베이스 * 0.22 감쇠 * 마스터 볼륨, 최소 190ms 간격) 재생
+    this.sound.play("enemyDissolve", 0.18, 190);
     this.spawnParticles(enemy.x, enemy.y, enemy.color, 14);
 
-    const st = this.currentStage;
     let reactionBadge = `+${enemy.reward}G 중화!`;
 
     if (enemy.id === "H2") reactionBadge = "💧 2H₂+O₂ → 2H₂O 생성!";
@@ -1560,7 +1802,7 @@ class ChemicalDefenseGame {
     else if (enemy.id === "H2SO4") reactionBadge = "⚗️ CaSO₄ 다단계 중화!";
     else if (enemy.id === "COCl2") reactionBadge = "🌪️ 포스겐 완전 분해!";
 
-    this.addFloatingText(enemy.x, enemy.y, reactionBadge, "#fde047");
+    this.addFloatingText(enemy.x, enemy.y, reactionBadge, "#ffc665");
 
     if (this.gasConcentration > 0) {
       this.gasConcentration = Math.max(0, this.gasConcentration - 3.5);
@@ -1610,11 +1852,13 @@ class ChemicalDefenseGame {
     if (this.stageCleared) return;
     this.stageCleared = true;
     const st = this.currentStage;
+    this.clearedStages.add(st.stageId);
     this.unlockedRewards.add(st.rewards);
-    this.sound.play("waveClear", 0.65);
+    this.renderSectorDock();
+    this.sound.play("waveClear", 0.45, 250);
 
     this.addLog(
-      `🎉 [${st.stageId} 미션 클리어!] "${st.clearLabel}" 달성 완료! 🎁 보상 획득: ${st.rewardLabel}`
+      `🎉 [${st.stageId} 작전 성공!] "${st.clearLabel}" 달성 완료! 🎁 보상: ${st.rewardLabel}`
     );
     this.updateObjectiveUI();
     this.openResultModal(true);
@@ -1635,11 +1879,14 @@ class ChemicalDefenseGame {
     }
   }
 
-  addFloatingText(x, y, text, color = "#fde047") {
+  addFloatingText(x, y, text, color = "#ffc665") {
     this.floatingTexts.push({ x, y, text, color, life: 1.1 });
   }
 
   addLog(msg) {
+    const ticker = document.getElementById("liveTickerText");
+    if (ticker) ticker.textContent = msg;
+
     const ul = document.getElementById("reactionLogList");
     if (!ul) return;
     const li = document.createElement("li");
@@ -1657,7 +1904,7 @@ class ChemicalDefenseGame {
     const st = this.currentStage;
     const isIndoor = st.environment === "Indoor";
 
-    // 1. 배경 타일 렌더링 (Indoor 실내 연구소 vs Outdoor 야외 플랜트 테마 구분)
+    // 1. Stitch 다크 매트 그리드 배경 렌더링
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
@@ -1665,12 +1912,14 @@ class ChemicalDefenseGame {
         const y = r * tileSize;
         const even = (r + c) % 2 === 0;
         if (isIndoor) {
-          ctx.fillStyle = even ? "#0b1325" : "#0e172c";
+          ctx.fillStyle = even ? "#0d1118" : "#111620";
         } else {
-          ctx.fillStyle = even ? "#0a1817" : "#0d1f1d";
+          ctx.fillStyle = even ? "#0b1315" : "#0f191c";
         }
         ctx.fillRect(x, y, tileSize, tileSize);
-        ctx.strokeStyle = isIndoor ? "rgba(56, 189, 248, 0.08)" : "rgba(52, 211, 153, 0.08)";
+        ctx.strokeStyle = isIndoor
+          ? "rgba(0, 228, 254, 0.06)"
+          : "rgba(255, 198, 101, 0.06)";
         ctx.strokeRect(x, y, tileSize, tileSize);
       }
     }
@@ -1678,7 +1927,7 @@ class ChemicalDefenseGame {
     // 2. 예상 이동 경로(FlowField 점선) 표시
     if (this.previewPaths) {
       ctx.save();
-      ctx.strokeStyle = "rgba(56, 189, 248, 0.25)";
+      ctx.strokeStyle = "rgba(0, 228, 254, 0.28)";
       ctx.lineWidth = 2;
       ctx.setLineDash([5, 5]);
       for (const path of this.previewPaths) {
@@ -1701,36 +1950,36 @@ class ChemicalDefenseGame {
       if (obsImg) {
         ctx.drawImage(obsImg, x + 2, y + 2, tileSize - 4, tileSize - 4);
       } else {
-        ctx.fillStyle = "#334155";
+        ctx.fillStyle = "#242a38";
         ctx.fillRect(x + 3, y + 3, tileSize - 6, tileSize - 6);
       }
     }
 
-    // 4. 스폰(IN) 및 출구(OUT) 마커 렌더링
+    // 4. 스폰(VENT IN) 및 출구(GATE OUT) 마커 렌더링
     for (const sp of this.spawns) {
       const x = sp.c * tileSize;
       const y = sp.r * tileSize;
-      ctx.fillStyle = "rgba(239, 68, 68, 0.28)";
+      ctx.fillStyle = "rgba(255, 107, 107, 0.24)";
       ctx.fillRect(x + 2, y + 2, tileSize - 4, tileSize - 4);
-      ctx.strokeStyle = "#ef4444";
+      ctx.strokeStyle = "#ff6b6b";
       ctx.strokeRect(x + 2, y + 2, tileSize - 4, tileSize - 4);
-      ctx.fillStyle = "#fca5a5";
-      ctx.font = "bold 10px sans-serif";
+      ctx.fillStyle = "#ffb4ab";
+      ctx.font = "bold 9px 'JetBrains Mono', monospace";
       ctx.textAlign = "center";
-      ctx.fillText("LEAK", x + tileSize / 2, y + tileSize / 2 + 3);
+      ctx.fillText("VENT", x + tileSize / 2, y + tileSize / 2 + 3);
     }
 
     for (const ex of this.exits) {
       const x = ex.c * tileSize;
       const y = ex.r * tileSize;
-      ctx.fillStyle = "rgba(16, 185, 129, 0.28)";
+      ctx.fillStyle = "rgba(52, 211, 153, 0.24)";
       ctx.fillRect(x + 2, y + 2, tileSize - 4, tileSize - 4);
-      ctx.strokeStyle = "#10b981";
+      ctx.strokeStyle = "#34d399";
       ctx.strokeRect(x + 2, y + 2, tileSize - 4, tileSize - 4);
       ctx.fillStyle = "#6ee7b7";
-      ctx.font = "bold 10px sans-serif";
+      ctx.font = "bold 9px 'JetBrains Mono', monospace";
       ctx.textAlign = "center";
-      ctx.fillText("CITY", x + tileSize / 2, y + tileSize / 2 + 3);
+      ctx.fillText("GATE", x + tileSize / 2, y + tileSize / 2 + 3);
     }
 
     // 5. 설치된 타워 렌더링
@@ -1739,13 +1988,12 @@ class ChemicalDefenseGame {
       const x = t.c * tileSize;
       const y = t.r * tileSize;
 
-      // 타워 바닥 오라 표시
       if (t.boostedByO || t.boostedByHeater) {
         ctx.beginPath();
         ctx.arc(t.x, t.y, tileSize * 0.46, 0, Math.PI * 2);
         ctx.fillStyle = t.boostedByHeater
-          ? "rgba(244, 63, 94, 0.22)"
-          : "rgba(56, 189, 248, 0.22)";
+          ? "rgba(255, 198, 101, 0.22)"
+          : "rgba(0, 228, 254, 0.22)";
         ctx.fill();
       }
 
@@ -1760,17 +2008,16 @@ class ChemicalDefenseGame {
       }
 
       // 원소 기호 및 레벨 배지
-      ctx.fillStyle = "rgba(15, 23, 42, 0.88)";
+      ctx.fillStyle = "rgba(11, 14, 19, 0.9)";
       ctx.fillRect(x + 2, y + tileSize - 13, tileSize - 4, 11);
       ctx.fillStyle = spec.color;
-      ctx.font = "bold 9px sans-serif";
+      ctx.font = "bold 9px 'JetBrains Mono', sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText(`${spec.symbol} Lv${t.level}`, x + tileSize / 2, y + tileSize - 4);
+      ctx.fillText(`${spec.symbol} L${t.level}`, x + tileSize / 2, y + tileSize - 4);
 
-      // 마비 상태 아이콘 표시
       if (t.paralyzedTimer > 0) {
-        ctx.fillStyle = "rgba(234, 179, 8, 0.85)";
-        ctx.font = "bold 11px sans-serif";
+        ctx.fillStyle = "#ffc665";
+        ctx.font = "bold 10px sans-serif";
         ctx.fillText("⚡마비", t.x, y + 11);
       }
     }
@@ -1785,9 +2032,9 @@ class ChemicalDefenseGame {
         0,
         Math.PI * 2
       );
-      ctx.fillStyle = "rgba(56, 189, 248, 0.1)";
+      ctx.fillStyle = "rgba(255, 198, 101, 0.1)";
       ctx.fill();
-      ctx.strokeStyle = "#38bdf8";
+      ctx.strokeStyle = "#ffc665";
       ctx.stroke();
     }
 
@@ -1809,9 +2056,9 @@ class ChemicalDefenseGame {
 
       ctx.beginPath();
       ctx.arc(cx, cy, spec.range, 0, Math.PI * 2);
-      ctx.fillStyle = canPlace ? "rgba(56, 189, 248, 0.12)" : "rgba(239, 68, 68, 0.15)";
+      ctx.fillStyle = canPlace ? "rgba(0, 228, 254, 0.11)" : "rgba(255, 107, 107, 0.15)";
       ctx.fill();
-      ctx.strokeStyle = canPlace ? "#38bdf8" : "#ef4444";
+      ctx.strokeStyle = canPlace ? "#00e4fe" : "#ff6b6b";
       ctx.stroke();
     }
 
@@ -1833,19 +2080,17 @@ class ChemicalDefenseGame {
         ctx.fill();
       }
 
-      // 화학식 라벨
       ctx.fillStyle = "#f8fafc";
-      ctx.font = "bold 10px sans-serif";
+      ctx.font = "bold 9.5px 'JetBrains Mono', sans-serif";
       ctx.textAlign = "center";
       ctx.fillText(e.formula, e.x, e.y - e.radius - 7);
 
-      // 체력바
       const bw = 28;
       const bh = 4;
       const hpRatio = Math.max(0, e.hp / e.maxHp);
-      ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
+      ctx.fillStyle = "rgba(11, 14, 19, 0.88)";
       ctx.fillRect(e.x - bw / 2, e.y - e.radius - 5, bw, bh);
-      ctx.fillStyle = hpRatio > 0.5 ? "#22c55e" : hpRatio > 0.25 ? "#eab308" : "#ef4444";
+      ctx.fillStyle = hpRatio > 0.5 ? "#34d399" : hpRatio > 0.25 ? "#ffc665" : "#ff6b6b";
       ctx.fillRect(e.x - bw / 2, e.y - e.radius - 5, bw * hpRatio, bh);
       ctx.restore();
     }
@@ -1869,43 +2114,6 @@ class ChemicalDefenseGame {
       ctx.font = "bold 11px sans-serif";
       ctx.textAlign = "center";
       ctx.fillText(ft.text, ft.x, ft.y);
-    }
-
-    // 10. 스테이지 클리어 또는 게임오버 오버레이
-    if (this.stageCleared || this.gameOver) {
-      ctx.fillStyle = "rgba(6, 10, 20, 0.82)";
-      ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
-      ctx.textAlign = "center";
-      ctx.fillStyle = this.stageCleared ? "#38bdf8" : "#ef4444";
-      ctx.font = "bold 26px sans-serif";
-      ctx.fillText(
-        this.stageCleared
-          ? `🎉 ${st.stageId} 미션 클리어 성공!`
-          : "🚨 방어선 붕괴 (화학물질 유출)",
-        this.canvas.width / 2,
-        this.canvas.height / 2 - 35
-      );
-
-      ctx.fillStyle = "#e2e8f0";
-      ctx.font = "15px sans-serif";
-      ctx.fillText(
-        this.stageCleared
-          ? `달성 목표: ${st.clearLabel} | 획득 보상: ${st.rewardLabel}`
-          : "상단 [🔄 재시작] 버튼을 누르거나 타워 조합을 바꾸어 다시 도전해보세요.",
-        this.canvas.width / 2,
-        this.canvas.height / 2 + 2
-      );
-
-      if (this.stageCleared) {
-        ctx.fillStyle = "#fde047";
-        ctx.font = "bold 14px sans-serif";
-        ctx.fillText(
-          "💡 상단 모드 선택에서 [♾️ 서바이벌 모드(무제한 유닛)]로 전환하면 이 맵에서 끝없이 즐길 수 있습니다!",
-          this.canvas.width / 2,
-          this.canvas.height / 2 + 36
-        );
-      }
     }
   }
 }
