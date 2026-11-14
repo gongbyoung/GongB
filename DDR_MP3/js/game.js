@@ -15,13 +15,13 @@ import {
   TUTORIAL_STAGES,
   COMPOUND_RECIPES,
   canTowerReactWithEnemy
-} from "./data.js?v=6";
+} from "./data.js?v=9";
 
 import {
   computeFlowField,
   canPlaceTowerWithoutBlocking,
   tracePreviewPaths
-} from "./pathfinding.js?v=6";
+} from "./pathfinding.js?v=9";
 
 class SoundManager {
   constructor() {
@@ -930,6 +930,32 @@ class ChemicalDefenseGame {
       });
     });
 
+    // 8-B. Fieldrunners 2 인플레이스 원형 타워 링 메뉴 (#towerRadialMenu) 버튼 이벤트
+    document.getElementById("btnRadialUpgrade")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.upgradeSelectedTower();
+    });
+    document.getElementById("btnRadialSell")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.sellSelectedTower();
+    });
+    document.getElementById("btnRadialInfo")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (this.selectedTower) {
+        this.sound.play("uiClick");
+        this.openTowerUnlockModal(this.selectedTower.typeId);
+      }
+    });
+    document.getElementById("btnRadialClose")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.sound.play("uiClick");
+      this.selectedTower = null;
+      this.renderInspector();
+    });
+    window.addEventListener("resize", () => {
+      if (this.selectedTower) this.updateRadialMenuPosition();
+    });
+
     // 9. 캔버스 마우스 & 스마트폰 터치 이벤트 (모바일 화면에서도 정확한 타일 좌표 인식)
     const getTileFromClientXY = (clientX, clientY) => {
       const rect = this.canvas.getBoundingClientRect();
@@ -1614,7 +1640,7 @@ class ChemicalDefenseGame {
 
     const countEl = document.getElementById("deckUnlockCount");
     if (countEl) {
-      countEl.textContent = `개방: ${unlockedCount} / ${allTowers.length}`;
+      countEl.textContent = `${unlockedCount} / ${allTowers.length} 개방`;
     }
 
     const entries = allTowers.filter((t) => {
@@ -1630,49 +1656,45 @@ class ChemicalDefenseGame {
         const isUnlocked = this.isTowerUnlocked(t.id);
         const isActive = isUnlocked && this.selectedBuildType === t.id;
         const canReact = this.canReactWithCurrentStageEnemy(t.id);
-        const shortName = t.name.split(" (")[0];
+        const shortName = t.name.split(" ")[0];
 
-        let statusPill = "";
+        let badgeHtml = "";
         if (!isUnlocked) {
-          statusPill = `<span class="react-pill locked-pill">🔒 ${t.unlockStageId} 개방</span>`;
+          badgeHtml = `<span class="fr2-card-badge lock">🔒${t.unlockStageId.replace("TUT-", "T")}</span>`;
         } else if (canReact) {
-          statusPill = `<span class="react-pill can-react">✔ ${curEnemyId} 공격가능</span>`;
+          badgeHtml = `<span class="fr2-card-badge good">⚡반응</span>`;
         } else {
-          statusPill = `<span class="react-pill no-react">✖ ${curEnemyId} 무반응</span>`;
+          badgeHtml = `<span class="fr2-card-badge bad">✖무반응</span>`;
         }
 
         return `
-          <div class="element-card ${isActive ? "active" : ""} ${!isUnlocked ? "locked" : ""}"
-               data-id="${t.id}">
-            <div class="el-left">
-              <div class="el-icon-box">
-                <img src="${t.imagePath}" alt="${t.name}" width="24" height="24" class="el-thumb" />
-                <span class="el-atomic-tag">${t.atomicNumber}</span>
-              </div>
-              <div class="el-text-col">
-                <div class="el-title-line">
-                  <span class="el-symbol-badge">[${t.symbol}]</span>
-                  <span class="el-name">${shortName}</span>
-                </div>
-                <div class="el-react-line">
-                  ${statusPill}
-                </div>
-              </div>
-            </div>
-            <div class="el-right">
-              <span class="el-cost">${t.cost}G</span>
+          <div class="fr2-tower-card ${isActive ? "active" : ""} ${!isUnlocked ? "locked" : ""} ${
+            isUnlocked && canReact ? "can-react-card" : ""
+          }"
+               data-id="${t.id}"
+               title="[${t.symbol}] ${t.name} (${t.cost}G)">
+            <div class="fr2-card-top">
+              <span class="fr2-card-symbol">[${t.symbol}]</span>
               ${
                 isUnlocked
-                  ? `<button type="button" class="el-info-btn" data-info-id="${t.id}" title="화학 반응 상세 보기">🔬</button>`
-                  : ""
+                  ? `<button type="button" class="fr2-card-info-btn" data-info-id="${t.id}" title="화학 반응 상세 도감">🔬</button>`
+                  : `<span style="font-size:10px;color:#64748b">No.${t.atomicNumber}</span>`
               }
+            </div>
+            <div class="fr2-card-icon-wrap">
+              <img src="${t.imagePath}" alt="${t.name}" width="36" height="36" class="fr2-card-icon" />
+            </div>
+            <div class="fr2-card-name">${shortName}</div>
+            <div class="fr2-card-bottom">
+              <span class="fr2-card-cost">${t.cost}G</span>
+              ${badgeHtml}
             </div>
           </div>
         `;
       })
       .join("");
 
-    container.querySelectorAll(".el-info-btn").forEach((btn) => {
+    container.querySelectorAll(".fr2-card-info-btn").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         this.sound.play("uiClick");
@@ -1680,7 +1702,7 @@ class ChemicalDefenseGame {
       });
     });
 
-    container.querySelectorAll(".element-card").forEach((card) => {
+    container.querySelectorAll(".fr2-tower-card").forEach((card) => {
       card.addEventListener("click", () => {
         const id = card.dataset.id;
         const spec = TOWER_TYPES[id];
@@ -1700,13 +1722,66 @@ class ChemicalDefenseGame {
     });
   }
 
+  /**
+   * Fieldrunners 2 스타일: 선택된 포탑 바로 위에 원형 액션 링 메뉴(#towerRadialMenu)의 좌표를 동기화합니다.
+   */
+  updateRadialMenuPosition() {
+    const radial = document.getElementById("towerRadialMenu");
+    const viewport = document.getElementById("canvasViewport");
+    if (!radial || !viewport || !this.selectedTower) {
+      if (radial) radial.classList.add("hidden");
+      return;
+    }
+
+    const t = this.selectedTower;
+    const spec = TOWER_TYPES[t.typeId];
+    const upgCost = Math.floor(spec.cost * 0.85 * t.level);
+    const sellRefund = Math.floor(t.totalInvested * 0.75);
+
+    const vpRect = viewport.getBoundingClientRect();
+    const cvRect = this.canvas.getBoundingClientRect();
+    if (cvRect.width <= 0 || cvRect.height <= 0) return;
+
+    const rawX = cvRect.left - vpRect.left + (t.x / this.canvas.width) * cvRect.width;
+    const rawY = cvRect.top - vpRect.top + (t.y / this.canvas.height) * cvRect.height;
+
+    // 화면 가장자리 타워 선택 시에도 원형 버튼이 잘리지 않도록 여유 여백 클램핑
+    const pad = 76;
+    const clampedX = Math.max(pad, Math.min(vpRect.width - pad, rawX));
+    const clampedY = Math.max(pad, Math.min(vpRect.height - pad, rawY));
+
+    radial.style.setProperty("--radial-x", `${clampedX.toFixed(1)}px`);
+    radial.style.setProperty("--radial-y", `${clampedY.toFixed(1)}px`);
+    radial.classList.remove("hidden");
+
+    const upgBtn = document.getElementById("btnRadialUpgrade");
+    const upgCostEl = document.getElementById("radialUpgCost");
+    const sellRefundEl = document.getElementById("radialSellRefund");
+    const badgeEl = document.getElementById("radialTowerBadge");
+
+    if (upgCostEl) {
+      upgCostEl.textContent = t.level >= 5 ? "MAX" : `${upgCost}G`;
+    }
+    if (upgBtn) {
+      upgBtn.disabled = this.gold < upgCost || t.level >= 5;
+    }
+    if (sellRefundEl) {
+      sellRefundEl.textContent = `+${sellRefund}G`;
+    }
+    if (badgeEl) {
+      badgeEl.textContent = `[${spec.symbol}] Lv.${t.level} · 공격력 ${Math.round(t.getEffectiveDamage())}`;
+    }
+  }
+
   renderInspector() {
     const box = document.getElementById("inspectorContent");
+    const radial = document.getElementById("towerRadialMenu");
     if (!box) return;
 
     const curEnemyId = this.getCurrentTargetEnemyId();
 
     if (this.selectedTower) {
+      this.updateRadialMenuPosition();
       const t = this.selectedTower;
       const spec = TOWER_TYPES[t.typeId];
       const upgCost = Math.floor(spec.cost * 0.85 * t.level);
@@ -1730,28 +1805,21 @@ class ChemicalDefenseGame {
                 ${canReact ? `✔ ${curEnemyId} 반응 공격 가능` : `✖ ${curEnemyId} 무반응(공격 안 함)`}
               </span>
             </div>
-            <div class="inspector-sub">공격 가능 분자: ${spec.reactiveMolecules.slice(0, 8).join(", ")} 등</div>
+            <div class="inspector-sub">공격력 ${Math.round(t.getEffectiveDamage())} · 사거리 ${Math.round(t.getEffectiveRange())}px · 내구도 ${Math.ceil(t.hp)}/${t.maxHp}</div>
           </div>
-        </div>
-
-        <div class="inspector-stats-pills">
-          <div class="stat-pill"><span>공격력</span><strong>${Math.round(t.getEffectiveDamage())}</strong></div>
-          <div class="stat-pill"><span>사거리</span><strong>${Math.round(t.getEffectiveRange())}px</strong></div>
-          <div class="stat-pill"><span>내구도</span><strong>${Math.ceil(t.hp)}/${t.maxHp}</strong></div>
         </div>
 
         <div class="inspector-actions">
           <button id="btnInspectorReactionInfo" class="action-btn info-btn" type="button">
-            <span>🔬 반응식</span>
+            <span>🔬 반응도감</span>
           </button>
           <button id="btnUpgradeTower" class="action-btn upg-btn" ${
             this.gold < upgCost || t.level >= 5 ? "disabled" : ""
           }>
-            <img src="./icon/ui_upgrade.png" alt="" width="14" height="14" class="btn-icon" />
-            <span>${t.level >= 5 ? "MAX" : `강화 (${upgCost}G)`}</span>
+            <span>▲ ${t.level >= 5 ? "MAX" : `강화 (${upgCost}G)`}</span>
           </button>
           <button id="btnSellTower" class="action-btn sell-btn">
-            <span>해체 (+${sellRefund}G)</span>
+            <span>💰 해체 (+${sellRefund}G)</span>
           </button>
           <button id="btnCancelTowerSelect" class="action-btn sell-btn" type="button" title="선택 취소">
             <span>✖ 닫기</span>
@@ -1777,39 +1845,34 @@ class ChemicalDefenseGame {
       return;
     }
 
+    if (radial) radial.classList.add("hidden");
+
     if (this.selectedBuildType && TOWER_TYPES[this.selectedBuildType]) {
       const spec = TOWER_TYPES[this.selectedBuildType];
       const canReact = this.canReactWithCurrentStageEnemy(spec.id);
       box.innerHTML = `
         <div class="inspector-left">
           <div class="inspector-thumb-box">
-            <img src="${spec.imagePath}" alt="${spec.name}" width="34" height="34" class="inspector-preview-img" />
+            <img src="${spec.imagePath}" alt="${spec.name}" width="32" height="32" class="inspector-preview-img" />
           </div>
           <div class="inspector-info">
             <div class="inspector-title-row">
               <span class="inspector-title">[${spec.symbol}] ${spec.name}</span>
               <span class="badge-lvl">${spec.cost}G</span>
               <span class="badge-oxy" style="color:${canReact ? "#34d399" : "#f87171"}">
-                ${canReact ? `✔ 현재 적(${curEnemyId}) 공격 가능` : `✖ 현재 적(${curEnemyId}) 무반응 (공격 안 함)`}
+                ${canReact ? `✔ 표적(${curEnemyId}) 반응 공격` : `✖ 표적(${curEnemyId}) 무반응`}
               </span>
             </div>
             <div class="inspector-sub">${spec.concept}</div>
           </div>
         </div>
 
-        <div class="inspector-stats-pills">
-          <div class="stat-pill"><span>비용</span><strong style="color:#fbbf24">${spec.cost}G</strong></div>
-          <div class="stat-pill"><span>공격력</span><strong>${spec.damage}</strong></div>
-          <div class="stat-pill"><span>사거리</span><strong>${spec.range}px</strong></div>
-          <div class="stat-pill"><span>생성물</span><strong style="color:#38bdf8">${spec.Produces}</strong></div>
-        </div>
-
         <div class="inspector-actions">
           <button id="btnBuildReactionInfo" class="action-btn info-btn" type="button">
-            <span>🔬 화학 반응 & 표적</span>
+            <span>🔬 화학 반응식</span>
           </button>
           <button id="btnCancelBuildSelect" class="action-btn sell-btn" type="button">
-            <span>✖ 배치 취소</span>
+            <span>✖ 선택 해제</span>
           </button>
         </div>
       `;
@@ -1827,16 +1890,7 @@ class ChemicalDefenseGame {
       return;
     }
 
-    box.innerHTML = `
-      <div class="inspector-left">
-        <div class="inspector-info">
-          <div class="inspector-title-row">
-            <span class="inspector-title">포탑 제어반</span>
-          </div>
-          <div class="inspector-sub">원소 포탑 카드를 터치(클릭)한 뒤 전장 타일을 터치해 배치하세요.</div>
-        </div>
-      </div>
-    `;
+    box.innerHTML = "";
   }
 
   handleTileClick(c, r) {
@@ -2789,27 +2843,34 @@ class ChemicalDefenseGame {
       ctx.translate(sx, sy);
     }
 
+    // Fieldrunners 2 스타일 입체 전술 타일 바닥 렌더링 (48x48 대구경 그리드)
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         const x = c * tileSize;
         const y = r * tileSize;
         const even = (r + c) % 2 === 0;
         if (isIndoor) {
-          ctx.fillStyle = even ? "#0e131b" : "#121822";
+          ctx.fillStyle = even ? "#101824" : "#152030";
         } else {
-          ctx.fillStyle = even ? "#0c1416" : "#101a1d";
+          ctx.fillStyle = even ? "#0e191e" : "#132229";
         }
         ctx.fillRect(x, y, tileSize, tileSize);
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.045)";
-        ctx.strokeRect(x, y, tileSize, tileSize);
+
+        // 미세한 입체 베벨 테두리
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.065)";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x + 0.5, y + 0.5, tileSize - 1, tileSize - 1);
       }
     }
 
+    // Fieldrunners 2 스타일 러너 이동 경로 가이드라인 (흐르는 애니메이션 점선)
     if (this.previewPaths) {
       ctx.save();
-      ctx.strokeStyle = "rgba(56, 189, 248, 0.45)";
-      ctx.lineWidth = 2.5;
-      ctx.setLineDash([6, 5]);
+      const dashOffset = -((performance.now() * 0.035) % 22);
+      ctx.strokeStyle = "rgba(56, 189, 248, 0.55)";
+      ctx.lineWidth = 3.5;
+      ctx.setLineDash([10, 8]);
+      ctx.lineDashOffset = dashOffset;
       for (const path of this.previewPaths) {
         if (path.length < 2) continue;
         ctx.beginPath();
@@ -2826,61 +2887,75 @@ class ChemicalDefenseGame {
     for (const obs of this.obstacles) {
       const x = obs.c * tileSize;
       const y = obs.r * tileSize;
+      // 장애물 바닥 그림자
+      ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
+      ctx.fillRect(x + 3, y + 5, tileSize - 6, tileSize - 6);
       if (obsImg) {
         ctx.drawImage(obsImg, x + 2, y + 2, tileSize - 4, tileSize - 4);
       } else {
-        ctx.fillStyle = "#242a38";
+        ctx.fillStyle = "#293548";
         ctx.fillRect(x + 3, y + 3, tileSize - 6, tileSize - 6);
       }
     }
 
-    // 스마트폰에서도 또렷하게 보이도록 IN / OUT 글자 크기 확대 + 외곽선 적용
+    // Fieldrunners 2 스타일 입출구 게이트 (IN / OUT)
     for (const sp of this.spawns) {
       const x = sp.c * tileSize;
       const y = sp.r * tileSize;
-      ctx.fillStyle = "rgba(248, 113, 113, 0.28)";
+      ctx.fillStyle = "rgba(239, 68, 68, 0.34)";
       ctx.fillRect(x + 2, y + 2, tileSize - 4, tileSize - 4);
       ctx.strokeStyle = "#f87171";
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2.5;
       ctx.strokeRect(x + 2, y + 2, tileSize - 4, tileSize - 4);
-      ctx.font = "800 12.5px 'JetBrains Mono', monospace";
+      ctx.font = "900 14.5px 'JetBrains Mono', monospace";
       ctx.textAlign = "center";
-      ctx.strokeStyle = "rgba(0, 0, 0, 0.9)";
-      ctx.lineWidth = 3;
-      ctx.strokeText("IN", x + tileSize / 2, y + tileSize / 2 + 4);
+      ctx.strokeStyle = "rgba(0, 0, 0, 0.95)";
+      ctx.lineWidth = 3.5;
+      ctx.strokeText("IN", x + tileSize / 2, y + tileSize / 2 + 5);
       ctx.fillStyle = "#fecaca";
-      ctx.fillText("IN", x + tileSize / 2, y + tileSize / 2 + 4);
+      ctx.fillText("IN", x + tileSize / 2, y + tileSize / 2 + 5);
     }
 
     for (const ex of this.exits) {
       const x = ex.c * tileSize;
       const y = ex.r * tileSize;
-      ctx.fillStyle = "rgba(52, 211, 153, 0.28)";
+      ctx.fillStyle = "rgba(16, 185, 129, 0.34)";
       ctx.fillRect(x + 2, y + 2, tileSize - 4, tileSize - 4);
       ctx.strokeStyle = "#34d399";
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2.5;
       ctx.strokeRect(x + 2, y + 2, tileSize - 4, tileSize - 4);
-      ctx.font = "800 12px 'JetBrains Mono', monospace";
+      ctx.font = "900 13.5px 'JetBrains Mono', monospace";
       ctx.textAlign = "center";
-      ctx.strokeStyle = "rgba(0, 0, 0, 0.9)";
-      ctx.lineWidth = 3;
-      ctx.strokeText("OUT", x + tileSize / 2, y + tileSize / 2 + 4);
+      ctx.strokeStyle = "rgba(0, 0, 0, 0.95)";
+      ctx.lineWidth = 3.5;
+      ctx.strokeText("OUT", x + tileSize / 2, y + tileSize / 2 + 5);
       ctx.fillStyle = "#a7f3d0";
-      ctx.fillText("OUT", x + tileSize / 2, y + tileSize / 2 + 4);
+      ctx.fillText("OUT", x + tileSize / 2, y + tileSize / 2 + 5);
     }
 
-    // 포탑 렌더링 (발사 반동 Recoil + 총구 섬광 Muzzle Flash + 큼직한 원소/레벨 라벨)
+    // 포탑 렌더링 (Fieldrunners 2 스타일 입체 베이스 페데스탈 + 발사 반동 Recoil + 총구 섬광 Muzzle Flash)
     for (const t of this.towers) {
       const spec = TOWER_TYPES[t.typeId];
       const x = t.c * tileSize;
       const y = t.r * tileSize;
 
+      // 1) Fieldrunners 2 스타일 입체 금속 포탑 받침대(Pedestal)
+      ctx.fillStyle = "rgba(4, 7, 12, 0.72)";
+      ctx.beginPath();
+      ctx.roundRect(x + 3, y + 4, tileSize - 6, tileSize - 6, 8);
+      ctx.fill();
+
+      ctx.strokeStyle =
+        this.selectedTower === t ? "#fbbf24" : "rgba(148, 163, 184, 0.32)";
+      ctx.lineWidth = this.selectedTower === t ? 2.5 : 1.5;
+      ctx.stroke();
+
       if (t.boostedByO || t.protectedFromAcid) {
         ctx.beginPath();
         ctx.arc(t.x, t.y, tileSize * 0.48, 0, Math.PI * 2);
         ctx.fillStyle = t.boostedByO
-          ? "rgba(56, 189, 248, 0.22)"
-          : "rgba(244, 114, 182, 0.18)";
+          ? "rgba(56, 189, 248, 0.24)"
+          : "rgba(244, 114, 182, 0.2)";
         ctx.fill();
       }
 
@@ -2891,43 +2966,43 @@ class ChemicalDefenseGame {
       const baseImg = upgImg || this.assets.getDrawable(spec.imagePath);
 
       if (baseImg) {
-        ctx.drawImage(baseImg, x + 2 + recoilX, y + 2 + recoilY, tileSize - 4, tileSize - 4);
+        ctx.drawImage(baseImg, x + 3 + recoilX, y + 2 + recoilY, tileSize - 6, tileSize - 8);
       } else {
         ctx.fillStyle = spec.color;
-        ctx.fillRect(x + 5 + recoilX, y + 5 + recoilY, tileSize - 10, tileSize - 10);
+        ctx.fillRect(x + 6 + recoilX, y + 6 + recoilY, tileSize - 12, tileSize - 12);
       }
 
-      // 제노택틱 스타일 총구 스파크(Muzzle Flash)
+      // 제노택틱 & 필드런너 스타일 총구 스파크(Muzzle Flash)
       if (t.muzzleFlash > 0) {
-        const mfX = t.x + Math.cos(t.aimAngle || 0) * 14;
-        const mfY = t.y + Math.sin(t.aimAngle || 0) * 14;
+        const mfX = t.x + Math.cos(t.aimAngle || 0) * 18;
+        const mfY = t.y + Math.sin(t.aimAngle || 0) * 18;
         ctx.save();
         ctx.beginPath();
-        ctx.arc(mfX, mfY, 7.5, 0, Math.PI * 2);
+        ctx.arc(mfX, mfY, 9.5, 0, Math.PI * 2);
         ctx.fillStyle = spec.projectileColor || "#fde047";
         ctx.fill();
         ctx.beginPath();
-        ctx.arc(mfX, mfY, 3.8, 0, Math.PI * 2);
+        ctx.arc(mfX, mfY, 4.8, 0, Math.PI * 2);
         ctx.fillStyle = "#ffffff";
         ctx.fill();
         ctx.restore();
       }
 
-      // 스마트폰 가독성을 높인 포탑 하단 원소기호 & 레벨 바
+      // 스마트폰에서도 또렷하게 읽히는 포탑 하단 원소기호 & 레벨 뱃지
       ctx.fillStyle = "rgba(9, 13, 20, 0.94)";
-      ctx.fillRect(x + 1, y + tileSize - 15, tileSize - 2, 14);
+      ctx.fillRect(x + 2, y + tileSize - 16, tileSize - 4, 15);
       ctx.fillStyle = t.level >= 2 ? "#fde047" : "#ffffff";
-      ctx.font = "800 11.5px 'JetBrains Mono', sans-serif";
+      ctx.font = "900 12.5px 'JetBrains Mono', sans-serif";
       ctx.textAlign = "center";
       ctx.fillText(`${spec.symbol} L${t.level}`, x + tileSize / 2, y + tileSize - 4);
 
       if (t.paralyzedTimer > 0) {
-        ctx.font = "800 12px sans-serif";
-        ctx.strokeStyle = "rgba(0,0,0,0.9)";
-        ctx.lineWidth = 3;
-        ctx.strokeText("⚡마비", t.x, y + 13);
+        ctx.font = "900 13px sans-serif";
+        ctx.strokeStyle = "rgba(0,0,0,0.95)";
+        ctx.lineWidth = 3.5;
+        ctx.strokeText("⚡마비", t.x, y + 14);
         ctx.fillStyle = "#fbbf24";
-        ctx.fillText("⚡마비", t.x, y + 13);
+        ctx.fillText("⚡마비", t.x, y + 14);
       }
     }
 
@@ -3008,22 +3083,36 @@ class ChemicalDefenseGame {
       ctx.restore();
     }
 
-    // 적 분자 렌더링 (피격 시 백색 섬광 + 타격 탄성 스케일 + 큼직한 분자식 텍스트)
+    // 적 분자 러너 렌더링 (Fieldrunners 2 스타일 바닥 그림자 + 통통 튀는 러너 이동 모션 + 피격 백색 섬광)
+    const nowSec = performance.now() * 0.008;
     for (const e of this.enemies) {
       ctx.save();
       if (e.isStealth && e.revealedTimer <= 0) {
         ctx.globalAlpha = 0.42;
       }
 
+      // 러너 발밑 타원형 그림자 (입체감 부여)
+      ctx.beginPath();
+      ctx.ellipse(e.x, e.y + e.radius * 0.85, e.radius * 0.9, e.radius * 0.42, 0, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(0, 0, 0, 0.52)";
+      ctx.fill();
+
+      const strideBob = Math.sin(nowSec + e.x * 0.08 + e.y * 0.08) * 2.2;
       const popScale = e.hitPop > 0 ? 1 + e.hitPop * 1.15 : 1;
       const enemyImg = this.assets.getDrawable(e.imagePath);
       const drawSize = e.radius * 2.55 * popScale;
 
       if (enemyImg) {
-        ctx.drawImage(enemyImg, e.x - drawSize / 2, e.y - drawSize / 2, drawSize, drawSize);
+        ctx.drawImage(
+          enemyImg,
+          e.x - drawSize / 2,
+          e.y - drawSize / 2 + strideBob,
+          drawSize,
+          drawSize
+        );
       } else {
         ctx.beginPath();
-        ctx.arc(e.x, e.y, e.radius * popScale, 0, Math.PI * 2);
+        ctx.arc(e.x, e.y + strideBob, e.radius * popScale, 0, Math.PI * 2);
         ctx.fillStyle = e.color;
         ctx.fill();
       }
@@ -3031,29 +3120,29 @@ class ChemicalDefenseGame {
       // 피격 순간 강렬한 백색/시안 타격 점멸(Hit Flash)
       if (e.hitFlash > 0) {
         ctx.beginPath();
-        ctx.arc(e.x, e.y, e.radius * 1.25 * popScale, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(255, 255, 255, 0.78)";
+        ctx.arc(e.x, e.y + strideBob, e.radius * 1.25 * popScale, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
         ctx.fill();
       }
 
       // 스마트폰에서도 한눈에 읽히는 적 화학식 이름표
-      const labelY = e.y - e.radius - 10;
-      ctx.font = "800 13px 'JetBrains Mono', sans-serif";
+      const labelY = e.y - e.radius - 12;
+      ctx.font = "900 14.5px 'JetBrains Mono', sans-serif";
       ctx.textAlign = "center";
-      ctx.strokeStyle = "rgba(0, 0, 0, 0.95)";
-      ctx.lineWidth = 3.5;
+      ctx.strokeStyle = "rgba(0, 0, 0, 0.96)";
+      ctx.lineWidth = 4;
       ctx.strokeText(e.formula, e.x, labelY);
       ctx.fillStyle = "#ffffff";
       ctx.fillText(e.formula, e.x, labelY);
 
-      // 시인성 높은 체력바
-      const bw = 34;
-      const bh = 5.5;
+      // 시인성 높은 대구경 체력바
+      const bw = 42;
+      const bh = 6.5;
       const hpRatio = Math.max(0, e.hp / e.maxHp);
       ctx.fillStyle = "rgba(9, 13, 20, 0.95)";
-      ctx.fillRect(e.x - bw / 2 - 1, e.y - e.radius - 7, bw + 2, bh + 2);
+      ctx.fillRect(e.x - bw / 2 - 1, e.y - e.radius - 8, bw + 2, bh + 2);
       ctx.fillStyle = hpRatio > 0.5 ? "#34d399" : hpRatio > 0.25 ? "#fbbf24" : "#f87171";
-      ctx.fillRect(e.x - bw / 2, e.y - e.radius - 6, bw * hpRatio, bh);
+      ctx.fillRect(e.x - bw / 2, e.y - e.radius - 7, bw * hpRatio, bh);
       ctx.restore();
     }
 
