@@ -34,6 +34,7 @@ class SoundManager {
     this.buffers = {};
     this.lastPlayed = {};
     this.ambientAudio = null;
+    this.audioCtx = null;
 
     this.soundScale = {
       enemyDissolve: 0.22,
@@ -77,6 +78,68 @@ class SoundManager {
       const clone = this.buffers[key].cloneNode();
       clone.volume = finalVolume;
       clone.play().catch(() => {});
+    } catch (_) {}
+  }
+
+  /**
+   * 제노택틱 특유의 묵직하고 경쾌한 타격감을 주는 저역대 타격 펀치 사운드 합성
+   * (귀가 피로한 고주파 대신 묵직한 드럼 킥/타격 펄스를 짧게 합성하여 손맛 극대화)
+   */
+  playImpactPunch(type = "hit") {
+    if (!this.enabled || this.sfxVolume <= 0.005) return;
+    const nowMs = performance.now();
+    const gapKey = `punch_${type}`;
+    const minGap = type === "kill" ? 95 : 55;
+    if (this.lastPlayed[gapKey] && nowMs - this.lastPlayed[gapKey] < minGap) return;
+    this.lastPlayed[gapKey] = nowMs;
+
+    try {
+      if (!this.audioCtx) {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return;
+        this.audioCtx = new Ctx();
+      }
+      if (this.audioCtx.state === "suspended") {
+        this.audioCtx.resume().catch(() => {});
+      }
+
+      const ctx = this.audioCtx;
+      const t0 = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      const vol = Math.min(0.28, this.sfxVolume * (type === "kill" ? 0.42 : type === "crit" ? 0.32 : 0.22));
+      if (type === "kill") {
+        osc.type = "triangle";
+        osc.frequency.setValueAtTime(145, t0);
+        osc.frequency.exponentialRampToValueAtTime(38, t0 + 0.11);
+        gain.gain.setValueAtTime(vol, t0);
+        gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.12);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t0);
+        osc.stop(t0 + 0.12);
+      } else if (type === "crit") {
+        osc.type = "triangle";
+        osc.frequency.setValueAtTime(185, t0);
+        osc.frequency.exponentialRampToValueAtTime(52, t0 + 0.08);
+        gain.gain.setValueAtTime(vol, t0);
+        gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.085);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t0);
+        osc.stop(t0 + 0.085);
+      } else {
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(125, t0);
+        osc.frequency.exponentialRampToValueAtTime(48, t0 + 0.055);
+        gain.gain.setValueAtTime(vol, t0);
+        gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.06);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t0);
+        osc.stop(t0 + 0.06);
+      }
     } catch (_) {}
   }
 
@@ -202,13 +265,16 @@ class ChemicalDefenseGame {
     this.paralysisCuredCount = 0;
     this.survivalTimer = 0;
 
-    // 격자, 타워, 적군, 투사체, 이펙트
+    // 격자, 타워, 적군, 투사체, 제노택틱 타격 이펙트(충격파/레이저빔/화면진동)
     this.grid = [];
     this.towers = [];
     this.enemies = [];
     this.projectiles = [];
     this.particles = [];
+    this.shockwaves = [];
+    this.beams = [];
     this.floatingTexts = [];
+    this.screenShake = 0;
     this.spawnQueue = [];
     this.spawnCooldown = 0;
 
@@ -864,20 +930,23 @@ class ChemicalDefenseGame {
       });
     });
 
-    // 9. 캔버스 마우스 이벤트
-    this.canvas.addEventListener("mousemove", (e) => {
+    // 9. 캔버스 마우스 & 스마트폰 터치 이벤트 (모바일 화면에서도 정확한 타일 좌표 인식)
+    const getTileFromClientXY = (clientX, clientY) => {
       const rect = this.canvas.getBoundingClientRect();
       const scaleX = this.canvas.width / rect.width;
       const scaleY = this.canvas.height / rect.height;
-      const mx = (e.clientX - rect.left) * scaleX;
-      const my = (e.clientY - rect.top) * scaleY;
+      const mx = (clientX - rect.left) * scaleX;
+      const my = (clientY - rect.top) * scaleY;
       const c = Math.floor(mx / GRID_CONFIG.tileSize);
       const r = Math.floor(my / GRID_CONFIG.tileSize);
       if (c >= 0 && c < GRID_CONFIG.cols && r >= 0 && r < GRID_CONFIG.rows) {
-        this.hoverTile = { c, r };
-      } else {
-        this.hoverTile = null;
+        return { c, r };
       }
+      return null;
+    };
+
+    this.canvas.addEventListener("mousemove", (e) => {
+      this.hoverTile = getTileFromClientXY(e.clientX, e.clientY);
     });
 
     this.canvas.addEventListener("mouseleave", () => {
@@ -890,6 +959,44 @@ class ChemicalDefenseGame {
       if (!this.hoverTile) return;
       this.handleTileClick(this.hoverTile.c, this.hoverTile.r);
     });
+
+    // 스마트폰 터치 지원 (터치 이동 시 사거리/경로 미리보기, 손가락을 뗄 때 배치/선택)
+    this.canvas.addEventListener(
+      "touchstart",
+      (e) => {
+        if (!e.touches || e.touches.length === 0) return;
+        const touch = e.touches[0];
+        this.hoverTile = getTileFromClientXY(touch.clientX, touch.clientY);
+      },
+      { passive: true }
+    );
+
+    this.canvas.addEventListener(
+      "touchmove",
+      (e) => {
+        if (!e.touches || e.touches.length === 0) return;
+        const touch = e.touches[0];
+        this.hoverTile = getTileFromClientXY(touch.clientX, touch.clientY);
+      },
+      { passive: true }
+    );
+
+    this.canvas.addEventListener(
+      "touchend",
+      (e) => {
+        if (!e.changedTouches || e.changedTouches.length === 0) return;
+        e.preventDefault();
+        this.sound.startAmbient();
+        if (this.stageCleared || this.gameOver) return;
+        const touch = e.changedTouches[0];
+        const tile = getTileFromClientXY(touch.clientX, touch.clientY) || this.hoverTile;
+        if (tile) {
+          this.hoverTile = tile;
+          this.handleTileClick(tile.c, tile.r);
+        }
+      },
+      { passive: false }
+    );
 
     this.canvas.addEventListener("contextmenu", (e) => {
       e.preventDefault();
@@ -1160,7 +1267,10 @@ class ChemicalDefenseGame {
     this.enemies = [];
     this.projectiles = [];
     this.particles = [];
+    this.shockwaves = [];
+    this.beams = [];
     this.floatingTexts = [];
+    this.screenShake = 0;
     this.spawnQueue = [];
     this.selectedTower = null;
 
@@ -1632,7 +1742,7 @@ class ChemicalDefenseGame {
 
         <div class="inspector-actions">
           <button id="btnInspectorReactionInfo" class="action-btn info-btn" type="button">
-            <span>🔬 반응식 보기</span>
+            <span>🔬 반응식</span>
           </button>
           <button id="btnUpgradeTower" class="action-btn upg-btn" ${
             this.gold < upgCost || t.level >= 5 ? "disabled" : ""
@@ -1642,6 +1752,9 @@ class ChemicalDefenseGame {
           </button>
           <button id="btnSellTower" class="action-btn sell-btn">
             <span>해체 (+${sellRefund}G)</span>
+          </button>
+          <button id="btnCancelTowerSelect" class="action-btn sell-btn" type="button" title="선택 취소">
+            <span>✖ 닫기</span>
           </button>
         </div>
       `;
@@ -1656,6 +1769,11 @@ class ChemicalDefenseGame {
       document.getElementById("btnSellTower")?.addEventListener("click", () =>
         this.sellSelectedTower()
       );
+      document.getElementById("btnCancelTowerSelect")?.addEventListener("click", () => {
+        this.sound.play("uiClick");
+        this.selectedTower = null;
+        this.renderInspector();
+      });
       return;
     }
 
@@ -1688,7 +1806,10 @@ class ChemicalDefenseGame {
 
         <div class="inspector-actions">
           <button id="btnBuildReactionInfo" class="action-btn info-btn" type="button">
-            <span>🔬 화학 반응 & 표적 보기</span>
+            <span>🔬 화학 반응 & 표적</span>
+          </button>
+          <button id="btnCancelBuildSelect" class="action-btn sell-btn" type="button">
+            <span>✖ 배치 취소</span>
           </button>
         </div>
       `;
@@ -1696,6 +1817,12 @@ class ChemicalDefenseGame {
       document.getElementById("btnBuildReactionInfo")?.addEventListener("click", () => {
         this.sound.play("uiClick");
         this.openTowerUnlockModal(spec.id);
+      });
+      document.getElementById("btnCancelBuildSelect")?.addEventListener("click", () => {
+        this.sound.play("uiClick");
+        this.selectedBuildType = null;
+        this.renderPalette();
+        this.renderInspector();
       });
       return;
     }
@@ -1706,7 +1833,7 @@ class ChemicalDefenseGame {
           <div class="inspector-title-row">
             <span class="inspector-title">포탑 제어반</span>
           </div>
-          <div class="inspector-sub">우측에서 개방된 원소 포탑을 선택해 전장에 배치하세요.</div>
+          <div class="inspector-sub">원소 포탑 카드를 터치(클릭)한 뒤 전장 타일을 터치해 배치하세요.</div>
         </div>
       </div>
     `;
@@ -1729,7 +1856,8 @@ class ChemicalDefenseGame {
         c * GRID_CONFIG.tileSize + 19,
         r * GRID_CONFIG.tileSize + 19,
         "🔒 미개방 포탑!",
-        "#f87171"
+        "#f87171",
+        { size: 15, vy: -55 }
       );
       return;
     }
@@ -1742,7 +1870,8 @@ class ChemicalDefenseGame {
         c * GRID_CONFIG.tileSize + 19,
         r * GRID_CONFIG.tileSize + 19,
         "자금 부족!",
-        "#f87171"
+        "#f87171",
+        { size: 15, vy: -55 }
       );
       return;
     }
@@ -1762,7 +1891,8 @@ class ChemicalDefenseGame {
         c * GRID_CONFIG.tileSize + 19,
         r * GRID_CONFIG.tileSize + 19,
         "출구 봉쇄 불가!",
-        "#fbbf24"
+        "#fbbf24",
+        { size: 15, vy: -55 }
       );
       this.addLog("🚫 [경로 차단 경고] 모든 위험물이 출구로 빠져나갈 수 있는 최소 1칸의 통로가 필요합니다!");
       return;
@@ -1782,6 +1912,9 @@ class ChemicalDefenseGame {
       totalInvested: spec.cost,
       cooldown: 0,
       noReactNoticeCooldown: 0,
+      aimAngle: 0,
+      recoil: 0,
+      muzzleFlash: 0,
       hp: maxHp,
       maxHp,
       boostedByO: false,
@@ -1804,6 +1937,9 @@ class ChemicalDefenseGame {
 
     this.towers.push(newTower);
     this.sound.play("towerBuild");
+    this.sound.playImpactPunch("hit");
+    this.spawnShockwave(newTower.x, newTower.y, spec.color, 34, 0.26, 3);
+    this.spawnParticles(newTower.x, newTower.y, spec.color, 10, 95);
     this.recomputePaths();
     this.updateHUD();
     this.renderInspector();
@@ -1823,7 +1959,14 @@ class ChemicalDefenseGame {
     t.hp = t.maxHp;
 
     this.sound.play("towerUpgrade");
-    this.addFloatingText(t.x, t.y - 10, `Lv.${t.level} 강화!`, "#fbbf24");
+    this.sound.playImpactPunch("crit");
+    this.spawnShockwave(t.x, t.y, "#fbbf24", 44, 0.32, 3.5);
+    this.spawnParticles(t.x, t.y, "#fbbf24", 14, 120);
+    this.addFloatingText(t.x, t.y - 12, `▲ Lv.${t.level} 강화!`, "#fbbf24", {
+      size: 16,
+      vy: -65,
+      scale: 1.35
+    });
     this.updateHUD();
     this.renderInspector();
   }
@@ -1931,7 +2074,7 @@ class ChemicalDefenseGame {
       maxHp: item.hp,
       speed: tpl.speed,
       reward: tpl.reward,
-      radius: tpl.radius || 12,
+      radius: tpl.radius || 13,
       color: tpl.color,
       strokeColor: tpl.strokeColor,
       imagePath: tpl.imagePath,
@@ -1947,6 +2090,8 @@ class ChemicalDefenseGame {
       dotTimer: 0,
       dotDps: 0,
       armorShred: 0,
+      hitFlash: 0,
+      hitPop: 0,
       corrodesTowers: Boolean(tpl.corrodesTowers),
       paralyzesTowers: Boolean(tpl.paralyzesTowers),
       hitByElements: new Set()
@@ -1968,6 +2113,11 @@ class ChemicalDefenseGame {
 
   update(dt) {
     const st = this.currentStage;
+
+    // 화면 타격 진동(Screen Shake) 감쇠
+    if (this.screenShake > 0) {
+      this.screenShake = Math.max(0, this.screenShake - dt * 26);
+    }
 
     if (this.mode === "tutorial" && st.clearCondition === "Survive_5min" && this.wave > 0) {
       this.survivalTimer += dt;
@@ -2030,6 +2180,8 @@ class ChemicalDefenseGame {
       t.boostedByO = false;
       t.protectedFromAcid = TOWER_TYPES[t.typeId].corrosionImmune || false;
       if (t.noReactNoticeCooldown > 0) t.noReactNoticeCooldown -= dt;
+      if (t.recoil > 0) t.recoil = Math.max(0, t.recoil - dt * 28);
+      if (t.muzzleFlash > 0) t.muzzleFlash = Math.max(0, t.muzzleFlash - dt);
     }
 
     for (const source of this.towers) {
@@ -2042,7 +2194,10 @@ class ChemicalDefenseGame {
             if (target.paralyzedTimer > 0) {
               target.paralyzedTimer = 0;
               this.paralysisCuredCount += 1;
-              this.addFloatingText(target.x, target.y - 12, "O₂ 마비 해독!", "#38bdf8");
+              this.addFloatingText(target.x, target.y - 12, "O₂ 마비 해독!", "#38bdf8", {
+                size: 14,
+                vy: -55
+              });
             }
           }
         }
@@ -2060,6 +2215,8 @@ class ChemicalDefenseGame {
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
 
+      if (e.hitFlash > 0) e.hitFlash = Math.max(0, e.hitFlash - dt);
+      if (e.hitPop > 0) e.hitPop = Math.max(0, e.hitPop - dt * 5.5);
       if (e.slowTimer > 0) e.slowTimer -= dt;
       if (e.revealedTimer > 0) e.revealedTimer -= dt;
       if (e.dotTimer > 0) {
@@ -2079,12 +2236,15 @@ class ChemicalDefenseGame {
           if (dist <= 65 && !tw.protectedFromAcid) {
             tw.hp -= 16 * dt;
             if (Math.random() < 0.08) {
-              this.addFloatingText(tw.x, tw.y, "부식 중!", "#2dd4bf");
+              this.addFloatingText(tw.x, tw.y, "부식 중!", "#2dd4bf", { size: 13, vy: -45 });
             }
             if (tw.hp <= 0) {
               this.towerDestroyedCount += 1;
               this.grid[tw.r][tw.c] = 0;
               if (this.selectedTower === tw) this.selectedTower = null;
+              this.spawnShockwave(tw.x, tw.y, "#f87171", 46, 0.35, 3.5);
+              this.spawnParticles(tw.x, tw.y, "#f87171", 18, 130);
+              this.triggerScreenShake(5);
               this.towers.splice(ti, 1);
               this.recomputePaths();
               this.renderInspector();
@@ -2134,7 +2294,13 @@ class ChemicalDefenseGame {
         if (Math.hypot(e.x - exX, e.y - exY) < 16) {
           this.lives -= 1;
           this.sound.play("baseDamage", 0.35, 160);
-          this.addFloatingText(exX, exY, "-1 방어선 유출!", "#f87171");
+          this.triggerScreenShake(5.5);
+          this.spawnShockwave(exX, exY, "#f87171", 52, 0.35, 4);
+          this.addFloatingText(exX, exY, "🚨 -1 방어선 유출!", "#f87171", {
+            size: 16,
+            vy: -65,
+            scale: 1.35
+          });
           this.enemies.splice(i, 1);
           this.updateHUD();
           if (this.lives <= 0) {
@@ -2179,17 +2345,24 @@ class ChemicalDefenseGame {
             t.x,
             t.y - 14,
             `✖ ${spec.symbol}+${nonReactEnemy.id} 무반응`,
-            "#94a3b8"
+            "#cbd5e1",
+            { size: 13, vy: -42 }
           );
         }
         continue;
       }
 
+      const primary = reactiveCandidates[0];
+      t.aimAngle = Math.atan2(primary.y - t.y, primary.x - t.x);
+      t.recoil = 5.5;
+      t.muzzleFlash = 0.11;
       t.cooldown = 1 / t.getEffectiveFireRate();
+
       this.sound.play(spec.soundKey || "hitNeutralize", 0.22, 150);
 
       if (spec.isAuraCloud) {
-        this.spawnParticles(t.x, t.y, spec.color, 8);
+        this.spawnShockwave(t.x, t.y, spec.color, range * 0.85, 0.24, 2.5);
+        this.spawnParticles(t.x, t.y, spec.color, 10, 95);
         for (const target of reactiveCandidates) {
           if (spec.revealsStealth) target.revealedTimer = 4.0;
           this.applyDamageToEnemy(target, t.getEffectiveDamage(), t);
@@ -2197,13 +2370,22 @@ class ChemicalDefenseGame {
         continue;
       }
 
-      const primary = reactiveCandidates[0];
+      // 제노택틱 스타일 총구 발사 스파크 & 고반응 원소 레이저 트레이서 연출
+      const muzzleX = t.x + Math.cos(t.aimAngle) * 14;
+      const muzzleY = t.y + Math.sin(t.aimAngle) * 14;
+      this.spawnParticles(muzzleX, muzzleY, spec.projectileColor || spec.color, 5, 85);
+
+      if (["F", "Cs", "Cl", "O"].includes(spec.id)) {
+        this.spawnBeam(muzzleX, muzzleY, primary.x, primary.y, spec.projectileColor || spec.color, 0.085);
+      }
+
       this.projectiles.push({
-        x: t.x,
-        y: t.y,
+        x: muzzleX,
+        y: muzzleY,
+        trail: [{ x: muzzleX, y: muzzleY }],
         target: primary,
-        speed: 370,
-        color: spec.projectileColor,
+        speed: 520,
+        color: spec.projectileColor || spec.color,
         damage: t.getEffectiveDamage(),
         sourceTower: t
       });
@@ -2216,16 +2398,21 @@ class ChemicalDefenseGame {
         continue;
       }
 
+      p.trail.push({ x: p.x, y: p.y });
+      if (p.trail.length > 7) p.trail.shift();
+
       const dx = p.target.x - p.x;
       const dy = p.target.y - p.y;
       const dist = Math.hypot(dx, dy);
 
-      if (dist <= 12) {
+      if (dist <= 14) {
         const tower = p.sourceTower;
         const spec = TOWER_TYPES[tower.typeId];
 
         if (spec.splashRadius) {
-          this.spawnParticles(p.target.x, p.target.y, spec.color, 12);
+          this.spawnShockwave(p.target.x, p.target.y, spec.color, spec.splashRadius, 0.26, 3.5);
+          this.spawnParticles(p.target.x, p.target.y, spec.color, 16, 135);
+          this.triggerScreenShake(2.8);
           for (const e of this.enemies) {
             if (
               Math.hypot(e.x - p.target.x, e.y - p.target.y) <= spec.splashRadius &&
@@ -2245,17 +2432,46 @@ class ChemicalDefenseGame {
       }
     }
 
+    // 충격파 링(Shockwaves) 업데이트
+    for (let i = this.shockwaves.length - 1; i >= 0; i--) {
+      const sw = this.shockwaves[i];
+      sw.life -= dt;
+      if (sw.life <= 0) {
+        this.shockwaves.splice(i, 1);
+      }
+    }
+
+    // 즉발 레이저/아크 빔(Beams) 업데이트
+    for (let i = this.beams.length - 1; i >= 0; i--) {
+      const bm = this.beams[i];
+      bm.life -= dt;
+      if (bm.life <= 0) {
+        this.beams.splice(i, 1);
+      }
+    }
+
+    // 스파크 파티클(물리 감속 적용) 업데이트
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const pt = this.particles[i];
       pt.x += pt.vx * dt;
       pt.y += pt.vy * dt;
+      pt.vx *= Math.pow(0.08, dt);
+      pt.vy *= Math.pow(0.08, dt);
       pt.life -= dt;
       if (pt.life <= 0) this.particles.splice(i, 1);
     }
 
+    // 팝업 텍스트(중력 및 스케일 바운스 적용) 업데이트
     for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
       const ft = this.floatingTexts[i];
-      ft.y -= 22 * dt;
+      ft.x += (ft.vx || 0) * dt;
+      ft.y += (ft.vy ?? -38) * dt;
+      if (ft.gravity) {
+        ft.vy += ft.gravity * dt;
+      }
+      if (ft.scale && ft.scale > 1) {
+        ft.scale = Math.max(1, ft.scale - dt * 2.4);
+      }
       ft.life -= dt;
       if (ft.life <= 0) this.floatingTexts.splice(i, 1);
     }
@@ -2270,24 +2486,46 @@ class ChemicalDefenseGame {
     if (spec && !canTowerReactWithEnemy(spec, enemy)) return;
 
     let finalDamage = baseDamage;
+    let isSuperEffective = false;
 
     if (spec) {
       enemy.hitByElements.add(spec.id);
 
-      if (enemy.id === "H2" && spec.id === "O") finalDamage *= 2.2;
-      if (enemy.id === "H2" && spec.id === "N") finalDamage *= 2.0;
-      if (enemy.id === "Cl2" && spec.id === "Na") finalDamage *= 2.4;
-      if (enemy.id === "HCl" && spec.id === "Na") finalDamage *= 2.2;
-      if (enemy.id === "HF" && spec.id === "Ca") finalDamage *= 2.6;
-      if (enemy.id === "H2S" && (spec.id === "O" || spec.id === "S")) finalDamage *= 2.3;
+      if (enemy.id === "H2" && spec.id === "O") {
+        finalDamage *= 2.2;
+        isSuperEffective = true;
+      }
+      if (enemy.id === "H2" && spec.id === "N") {
+        finalDamage *= 2.0;
+        isSuperEffective = true;
+      }
+      if (enemy.id === "Cl2" && spec.id === "Na") {
+        finalDamage *= 2.4;
+        isSuperEffective = true;
+      }
+      if (enemy.id === "HCl" && spec.id === "Na") {
+        finalDamage *= 2.2;
+        isSuperEffective = true;
+      }
+      if (enemy.id === "HF" && spec.id === "Ca") {
+        finalDamage *= 2.6;
+        isSuperEffective = true;
+      }
+      if (enemy.id === "H2S" && (spec.id === "O" || spec.id === "S")) {
+        finalDamage *= 2.3;
+        isSuperEffective = true;
+      }
       if (enemy.id === "CO" && (spec.id === "O" || spec.id === "C")) {
         finalDamage *= enemy.hitByElements.has("C") && spec.id === "O" ? 2.6 : 1.9;
+        isSuperEffective = true;
       }
       if (enemy.id === "H2SO4" && ["Ca", "Na", "O", "Fe"].includes(spec.id)) {
         finalDamage *= 1.45 + enemy.hitByElements.size * 0.35;
+        isSuperEffective = true;
       }
       if (enemy.id === "COCl2" && ["C", "O", "Cl", "Cs"].includes(spec.id)) {
         finalDamage *= 1.45 + enemy.hitByElements.size * 0.32;
+        isSuperEffective = true;
       }
 
       if (spec.slowFactor) {
@@ -2323,6 +2561,36 @@ class ChemicalDefenseGame {
       }
     }
 
+    // 제노택틱 피격감: 백색 점멸(Hit Flash) + 타격 스케일 팝(Hit Pop) + 마이크로 충격파 + 데미지 숫자 팝업
+    enemy.hitFlash = 0.11;
+    enemy.hitPop = isSuperEffective ? 0.22 : 0.14;
+    this.sound.playImpactPunch(isSuperEffective ? "crit" : "hit");
+
+    const hitColor = spec ? spec.projectileColor || spec.color : "#38bdf8";
+    this.spawnShockwave(enemy.x, enemy.y, hitColor, isSuperEffective ? 28 : 19, 0.18, isSuperEffective ? 3 : 2);
+    this.spawnParticles(enemy.x, enemy.y, hitColor, isSuperEffective ? 9 : 5, 110);
+
+    // 매 타격마다 시원하게 튀어오르는 데미지 숫자
+    const dmgInt = Math.max(1, Math.round(finalDamage));
+    const jitterX = (Math.random() - 0.5) * 16;
+    if (isSuperEffective) {
+      this.addFloatingText(
+        enemy.x + jitterX,
+        enemy.y - enemy.radius - 6,
+        `💥-${dmgInt}`,
+        "#fde047",
+        { size: 15.5, vy: -78, vx: jitterX * 1.4, gravity: 140, scale: 1.38, life: 0.72 }
+      );
+    } else {
+      this.addFloatingText(
+        enemy.x + jitterX,
+        enemy.y - enemy.radius - 4,
+        `-${dmgInt}`,
+        "#f8fafc",
+        { size: 13.5, vy: -64, vx: jitterX * 1.2, gravity: 130, scale: 1.18, life: 0.58 }
+      );
+    }
+
     enemy.hp -= finalDamage;
     if (enemy.hp <= 0) {
       const idx = this.enemies.indexOf(enemy);
@@ -2337,7 +2605,13 @@ class ChemicalDefenseGame {
     this.objectiveProgress += 1;
 
     this.sound.play("enemyDissolve", 0.18, 190);
-    this.spawnParticles(enemy.x, enemy.y, enemy.color, 14);
+    this.sound.playImpactPunch("kill");
+
+    // 제노택틱 격파 타격감: 2중 충격파 링 + 22개 고속 스파크 파편 + 화면 진동
+    this.triggerScreenShake(4.2);
+    this.spawnShockwave(enemy.x, enemy.y, enemy.color || "#38bdf8", 48, 0.34, 4);
+    this.spawnShockwave(enemy.x, enemy.y, "#fde047", 30, 0.24, 2.5);
+    this.spawnParticles(enemy.x, enemy.y, enemy.color || "#38bdf8", 22, 165);
 
     const spec = killerTower ? TOWER_TYPES[killerTower.typeId] : null;
     let reactionBadge =
@@ -2349,7 +2623,12 @@ class ChemicalDefenseGame {
       reactionBadge = `NaCl 중화 (pH ${this.currentPh.toFixed(1)})`;
     }
 
-    this.addFloatingText(enemy.x, enemy.y, reactionBadge, "#fbbf24");
+    this.addFloatingText(enemy.x, enemy.y - 8, `✨ ${reactionBadge}`, "#fbbf24", {
+      size: 16.5,
+      vy: -52,
+      scale: 1.42,
+      life: 1.15
+    });
 
     if (this.gasConcentration > 0) {
       this.gasConcentration = Math.max(0, this.gasConcentration - 4.0);
@@ -2416,23 +2695,67 @@ class ChemicalDefenseGame {
     this.openResultModal(true);
   }
 
-  spawnParticles(x, y, color, count = 10) {
+  triggerScreenShake(intensity = 4) {
+    this.screenShake = Math.min(8, Math.max(this.screenShake, intensity));
+  }
+
+  spawnShockwave(x, y, color = "#38bdf8", maxRadius = 38, duration = 0.28, lineWidth = 3) {
+    this.shockwaves.push({
+      x,
+      y,
+      color,
+      maxRadius,
+      life: duration,
+      maxLife: duration,
+      lineWidth
+    });
+  }
+
+  spawnBeam(x1, y1, x2, y2, color = "#38bdf8", duration = 0.09) {
+    this.beams.push({
+      x1,
+      y1,
+      x2,
+      y2,
+      color,
+      life: duration,
+      maxLife: duration
+    });
+  }
+
+  spawnParticles(x, y, color, count = 12, maxSpeed = 125) {
     for (let i = 0; i < count; i++) {
       const ang = Math.random() * Math.PI * 2;
-      const spd = 25 + Math.random() * 75;
+      const spd = 35 + Math.random() * maxSpeed;
+      const life = 0.28 + Math.random() * 0.34;
       this.particles.push({
         x,
         y,
         vx: Math.cos(ang) * spd,
         vy: Math.sin(ang) * spd,
         color,
-        life: 0.35 + Math.random() * 0.35
+        size: 2.5 + Math.random() * 2.8,
+        life,
+        maxLife: life
       });
     }
   }
 
-  addFloatingText(x, y, text, color = "#fbbf24") {
-    this.floatingTexts.push({ x, y, text, color, life: 1.1 });
+  addFloatingText(x, y, text, color = "#fbbf24", opts = {}) {
+    const life = opts.life || 1.05;
+    this.floatingTexts.push({
+      x,
+      y,
+      text,
+      color,
+      life,
+      maxLife: life,
+      size: opts.size || 15,
+      vx: opts.vx || 0,
+      vy: opts.vy ?? -36,
+      gravity: opts.gravity || 0,
+      scale: opts.scale || 1.15
+    });
   }
 
   addLog(msg) {
@@ -2457,6 +2780,15 @@ class ChemicalDefenseGame {
     const isIndoor = st.environment === "Indoor";
 
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    ctx.save();
+
+    // 제노택틱 화면 타격 진동(Camera Shake) 적용
+    if (this.screenShake > 0.1) {
+      const sx = (Math.random() - 0.5) * this.screenShake * 1.8;
+      const sy = (Math.random() - 0.5) * this.screenShake * 1.8;
+      ctx.translate(sx, sy);
+    }
+
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         const x = c * tileSize;
@@ -2468,16 +2800,16 @@ class ChemicalDefenseGame {
           ctx.fillStyle = even ? "#0c1416" : "#101a1d";
         }
         ctx.fillRect(x, y, tileSize, tileSize);
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.04)";
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.045)";
         ctx.strokeRect(x, y, tileSize, tileSize);
       }
     }
 
     if (this.previewPaths) {
       ctx.save();
-      ctx.strokeStyle = "rgba(56, 189, 248, 0.35)";
-      ctx.lineWidth = 2;
-      ctx.setLineDash([5, 5]);
+      ctx.strokeStyle = "rgba(56, 189, 248, 0.45)";
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([6, 5]);
       for (const path of this.previewPaths) {
         if (path.length < 2) continue;
         ctx.beginPath();
@@ -2502,32 +2834,42 @@ class ChemicalDefenseGame {
       }
     }
 
+    // 스마트폰에서도 또렷하게 보이도록 IN / OUT 글자 크기 확대 + 외곽선 적용
     for (const sp of this.spawns) {
       const x = sp.c * tileSize;
       const y = sp.r * tileSize;
-      ctx.fillStyle = "rgba(248, 113, 113, 0.22)";
+      ctx.fillStyle = "rgba(248, 113, 113, 0.28)";
       ctx.fillRect(x + 2, y + 2, tileSize - 4, tileSize - 4);
       ctx.strokeStyle = "#f87171";
+      ctx.lineWidth = 2;
       ctx.strokeRect(x + 2, y + 2, tileSize - 4, tileSize - 4);
-      ctx.fillStyle = "#fecaca";
-      ctx.font = "bold 9.5px 'JetBrains Mono', monospace";
+      ctx.font = "800 12.5px 'JetBrains Mono', monospace";
       ctx.textAlign = "center";
-      ctx.fillText("IN", x + tileSize / 2, y + tileSize / 2 + 3);
+      ctx.strokeStyle = "rgba(0, 0, 0, 0.9)";
+      ctx.lineWidth = 3;
+      ctx.strokeText("IN", x + tileSize / 2, y + tileSize / 2 + 4);
+      ctx.fillStyle = "#fecaca";
+      ctx.fillText("IN", x + tileSize / 2, y + tileSize / 2 + 4);
     }
 
     for (const ex of this.exits) {
       const x = ex.c * tileSize;
       const y = ex.r * tileSize;
-      ctx.fillStyle = "rgba(52, 211, 153, 0.22)";
+      ctx.fillStyle = "rgba(52, 211, 153, 0.28)";
       ctx.fillRect(x + 2, y + 2, tileSize - 4, tileSize - 4);
       ctx.strokeStyle = "#34d399";
+      ctx.lineWidth = 2;
       ctx.strokeRect(x + 2, y + 2, tileSize - 4, tileSize - 4);
-      ctx.fillStyle = "#a7f3d0";
-      ctx.font = "bold 9.5px 'JetBrains Mono', monospace";
+      ctx.font = "800 12px 'JetBrains Mono', monospace";
       ctx.textAlign = "center";
-      ctx.fillText("OUT", x + tileSize / 2, y + tileSize / 2 + 3);
+      ctx.strokeStyle = "rgba(0, 0, 0, 0.9)";
+      ctx.lineWidth = 3;
+      ctx.strokeText("OUT", x + tileSize / 2, y + tileSize / 2 + 4);
+      ctx.fillStyle = "#a7f3d0";
+      ctx.fillText("OUT", x + tileSize / 2, y + tileSize / 2 + 4);
     }
 
+    // 포탑 렌더링 (발사 반동 Recoil + 총구 섬광 Muzzle Flash + 큼직한 원소/레벨 라벨)
     for (const t of this.towers) {
       const spec = TOWER_TYPES[t.typeId];
       const x = t.c * tileSize;
@@ -2535,34 +2877,57 @@ class ChemicalDefenseGame {
 
       if (t.boostedByO || t.protectedFromAcid) {
         ctx.beginPath();
-        ctx.arc(t.x, t.y, tileSize * 0.46, 0, Math.PI * 2);
+        ctx.arc(t.x, t.y, tileSize * 0.48, 0, Math.PI * 2);
         ctx.fillStyle = t.boostedByO
-          ? "rgba(56, 189, 248, 0.18)"
-          : "rgba(244, 114, 182, 0.15)";
+          ? "rgba(56, 189, 248, 0.22)"
+          : "rgba(244, 114, 182, 0.18)";
         ctx.fill();
       }
+
+      const recoilX = t.recoil ? -Math.cos(t.aimAngle || 0) * t.recoil : 0;
+      const recoilY = t.recoil ? -Math.sin(t.aimAngle || 0) * t.recoil : 0;
 
       const upgImg = t.level >= 2 ? this.assets.getDrawable(spec.upgradeImagePath) : null;
       const baseImg = upgImg || this.assets.getDrawable(spec.imagePath);
 
       if (baseImg) {
-        ctx.drawImage(baseImg, x + 2, y + 2, tileSize - 4, tileSize - 4);
+        ctx.drawImage(baseImg, x + 2 + recoilX, y + 2 + recoilY, tileSize - 4, tileSize - 4);
       } else {
         ctx.fillStyle = spec.color;
-        ctx.fillRect(x + 5, y + 5, tileSize - 10, tileSize - 10);
+        ctx.fillRect(x + 5 + recoilX, y + 5 + recoilY, tileSize - 10, tileSize - 10);
       }
 
-      ctx.fillStyle = "rgba(13, 17, 23, 0.92)";
-      ctx.fillRect(x + 2, y + tileSize - 13, tileSize - 4, 11);
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "bold 9.5px 'JetBrains Mono', sans-serif";
+      // 제노택틱 스타일 총구 스파크(Muzzle Flash)
+      if (t.muzzleFlash > 0) {
+        const mfX = t.x + Math.cos(t.aimAngle || 0) * 14;
+        const mfY = t.y + Math.sin(t.aimAngle || 0) * 14;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(mfX, mfY, 7.5, 0, Math.PI * 2);
+        ctx.fillStyle = spec.projectileColor || "#fde047";
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(mfX, mfY, 3.8, 0, Math.PI * 2);
+        ctx.fillStyle = "#ffffff";
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // 스마트폰 가독성을 높인 포탑 하단 원소기호 & 레벨 바
+      ctx.fillStyle = "rgba(9, 13, 20, 0.94)";
+      ctx.fillRect(x + 1, y + tileSize - 15, tileSize - 2, 14);
+      ctx.fillStyle = t.level >= 2 ? "#fde047" : "#ffffff";
+      ctx.font = "800 11.5px 'JetBrains Mono', sans-serif";
       ctx.textAlign = "center";
       ctx.fillText(`${spec.symbol} L${t.level}`, x + tileSize / 2, y + tileSize - 4);
 
       if (t.paralyzedTimer > 0) {
+        ctx.font = "800 12px sans-serif";
+        ctx.strokeStyle = "rgba(0,0,0,0.9)";
+        ctx.lineWidth = 3;
+        ctx.strokeText("⚡마비", t.x, y + 13);
         ctx.fillStyle = "#fbbf24";
-        ctx.font = "bold 10px sans-serif";
-        ctx.fillText("⚡마비", t.x, y + 11);
+        ctx.fillText("⚡마비", t.x, y + 13);
       }
     }
 
@@ -2575,8 +2940,9 @@ class ChemicalDefenseGame {
         0,
         Math.PI * 2
       );
-      ctx.fillStyle = "rgba(251, 191, 36, 0.1)";
+      ctx.fillStyle = "rgba(251, 191, 36, 0.12)";
       ctx.fill();
+      ctx.lineWidth = 2;
       ctx.strokeStyle = "#fbbf24";
       ctx.stroke();
     }
@@ -2599,62 +2965,160 @@ class ChemicalDefenseGame {
 
       ctx.beginPath();
       ctx.arc(cx, cy, spec.range, 0, Math.PI * 2);
-      ctx.fillStyle = canPlace ? "rgba(56, 189, 248, 0.11)" : "rgba(248, 113, 113, 0.15)";
+      ctx.fillStyle = canPlace ? "rgba(56, 189, 248, 0.13)" : "rgba(248, 113, 113, 0.18)";
       ctx.fill();
+      ctx.lineWidth = 2;
       ctx.strokeStyle = canPlace ? "#38bdf8" : "#f87171";
       ctx.stroke();
     }
 
+    // 제노택틱 충격파 링(Shockwaves) 렌더링
+    for (const sw of this.shockwaves) {
+      const prog = 1 - Math.max(0, sw.life / sw.maxLife);
+      const radius = 6 + (sw.maxRadius - 6) * prog;
+      const alpha = Math.max(0, sw.life / sw.maxLife);
+      ctx.save();
+      ctx.globalAlpha = alpha * 0.85;
+      ctx.beginPath();
+      ctx.arc(sw.x, sw.y, radius, 0, Math.PI * 2);
+      ctx.strokeStyle = sw.color;
+      ctx.lineWidth = sw.lineWidth * (1 - prog * 0.5);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // 제노택틱 레이저/전격 빔(Beams) 렌더링
+    for (const bm of this.beams) {
+      const alpha = Math.max(0, bm.life / bm.maxLife);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.beginPath();
+      ctx.moveTo(bm.x1, bm.y1);
+      ctx.lineTo(bm.x2, bm.y2);
+      ctx.strokeStyle = bm.color;
+      ctx.lineWidth = 5;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(bm.x1, bm.y1);
+      ctx.lineTo(bm.x2, bm.y2);
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // 적 분자 렌더링 (피격 시 백색 섬광 + 타격 탄성 스케일 + 큼직한 분자식 텍스트)
     for (const e of this.enemies) {
       ctx.save();
       if (e.isStealth && e.revealedTimer <= 0) {
         ctx.globalAlpha = 0.42;
       }
 
+      const popScale = e.hitPop > 0 ? 1 + e.hitPop * 1.15 : 1;
       const enemyImg = this.assets.getDrawable(e.imagePath);
-      const drawSize = e.radius * 2.4;
+      const drawSize = e.radius * 2.55 * popScale;
+
       if (enemyImg) {
         ctx.drawImage(enemyImg, e.x - drawSize / 2, e.y - drawSize / 2, drawSize, drawSize);
       } else {
         ctx.beginPath();
-        ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
+        ctx.arc(e.x, e.y, e.radius * popScale, 0, Math.PI * 2);
         ctx.fillStyle = e.color;
         ctx.fill();
       }
 
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "bold 10px 'JetBrains Mono', sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText(e.formula, e.x, e.y - e.radius - 7);
+      // 피격 순간 강렬한 백색/시안 타격 점멸(Hit Flash)
+      if (e.hitFlash > 0) {
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, e.radius * 1.25 * popScale, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(255, 255, 255, 0.78)";
+        ctx.fill();
+      }
 
-      const bw = 28;
-      const bh = 4;
+      // 스마트폰에서도 한눈에 읽히는 적 화학식 이름표
+      const labelY = e.y - e.radius - 10;
+      ctx.font = "800 13px 'JetBrains Mono', sans-serif";
+      ctx.textAlign = "center";
+      ctx.strokeStyle = "rgba(0, 0, 0, 0.95)";
+      ctx.lineWidth = 3.5;
+      ctx.strokeText(e.formula, e.x, labelY);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(e.formula, e.x, labelY);
+
+      // 시인성 높은 체력바
+      const bw = 34;
+      const bh = 5.5;
       const hpRatio = Math.max(0, e.hp / e.maxHp);
-      ctx.fillStyle = "rgba(13, 17, 23, 0.9)";
-      ctx.fillRect(e.x - bw / 2, e.y - e.radius - 5, bw, bh);
+      ctx.fillStyle = "rgba(9, 13, 20, 0.95)";
+      ctx.fillRect(e.x - bw / 2 - 1, e.y - e.radius - 7, bw + 2, bh + 2);
       ctx.fillStyle = hpRatio > 0.5 ? "#34d399" : hpRatio > 0.25 ? "#fbbf24" : "#f87171";
-      ctx.fillRect(e.x - bw / 2, e.y - e.radius - 5, bw * hpRatio, bh);
+      ctx.fillRect(e.x - bw / 2, e.y - e.radius - 6, bw * hpRatio, bh);
       ctx.restore();
     }
 
+    // 제노택틱 혜성 꼬리(Trail) 플라즈마 투사체 렌더링
     for (const p of this.projectiles) {
+      ctx.save();
+      if (p.trail && p.trail.length > 1) {
+        ctx.beginPath();
+        ctx.moveTo(p.trail[0].x, p.trail[0].y);
+        for (let i = 1; i < p.trail.length; i++) {
+          ctx.lineTo(p.trail[i].x, p.trail[i].y);
+        }
+        ctx.lineTo(p.x, p.y);
+        ctx.strokeStyle = p.color;
+        ctx.lineWidth = 4.5;
+        ctx.lineCap = "round";
+        ctx.globalAlpha = 0.55;
+        ctx.stroke();
+      }
+
+      ctx.globalAlpha = 1;
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
       ctx.fillStyle = p.color;
       ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 2.8, 0, Math.PI * 2);
+      ctx.fillStyle = "#ffffff";
+      ctx.fill();
+      ctx.restore();
     }
 
+    // 고속 스파크 파편 렌더링
     for (const pt of this.particles) {
-      ctx.fillStyle = pt.color;
-      ctx.fillRect(pt.x - 2, pt.y - 2, 4, 4);
+      const alpha = Math.max(0, pt.life / (pt.maxLife || 0.4));
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = pt.color;
+      ctx.lineWidth = pt.size || 3;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(pt.x, pt.y);
+      ctx.lineTo(pt.x - pt.vx * 0.028, pt.y - pt.vy * 0.028);
+      ctx.stroke();
+      ctx.restore();
     }
 
+    // 큼직하고 외곽선이 뚜렷한 타격 데미지 & 화학 반응 텍스트 렌더링
     for (const ft of this.floatingTexts) {
-      ctx.fillStyle = ft.color;
-      ctx.font = "bold 11.5px sans-serif";
+      const alpha = Math.min(1, Math.max(0, (ft.life / (ft.maxLife || 1)) * 1.35));
+      const fontSize = Math.round((ft.size || 15) * (ft.scale || 1));
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.font = `800 ${fontSize}px 'Pretendard', 'JetBrains Mono', sans-serif`;
       ctx.textAlign = "center";
+      ctx.strokeStyle = "rgba(0, 0, 0, 0.94)";
+      ctx.lineWidth = 4;
+      ctx.strokeText(ft.text, ft.x, ft.y);
+      ctx.fillStyle = ft.color;
       ctx.fillText(ft.text, ft.x, ft.y);
+      ctx.restore();
     }
+
+    ctx.restore();
   }
 }
 
