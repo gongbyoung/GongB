@@ -1,395 +1,1040 @@
 /**
- * [파일 역할] 제노택틱 2.0: 케미컬 디펜스 (Chemical Neutralization) 핵심 데이터 설정 파일
- * - 초보자도 숫자나 텍스트만 바꾸면 타워 밸런스, 화학 반응 배율, 적군 체력을 바로 수정할 수 있도록 분리해 두었습니다.
+ * [파일 역할] 케미컬 제노택틱 2.0 핵심 데이터베이스 (data.js)
+ * - 12종 원소 타워 (기존 8종 + 튜토리얼 해금 4종: N, Ca, S, Fe)
+ * - 4종 상점 특수 설비 (Fan 환풍기, Pressurizer 압력기, Heater 가열기, GlassWall 유리벽)
+ * - 10개 튜토리얼 스테이지 (TUT-01 ~ TUT-10) 및 스테이지별 전용 지형(Map Layout)
+ * - DT_CompoundRecipe.csv 기반 42개 실제 역사적 화학물질 누출 사고 데이터 (무한 서바이벌/무제한 유닛 모드 연동)
  */
 
-// 1. 격자(Grid) 및 캔버스 기본 설정 (원본 제노택틱 비율 기반 확장: 22x16 타일, 타일당 36px = 792x576)
 export const GRID_CONFIG = {
-  cols: 22,          // 가로 타일 개수
-  rows: 16,          // 세로 타일 개수
-  tileSize: 36,      // 타일 1칸의 픽셀 크기 (36x36px)
-  width: 22 * 36,    // 캔버스 가로 해상도 (792px)
-  height: 16 * 36    // 캔버스 세로 해상도 (576px)
+  cols: 20,
+  rows: 14,
+  tileSize: 38
 };
 
-// 2. 제노택틱 2.0 스타일 미션(스테이지) 설정
-export const MISSIONS = [
-  {
-    id: 1,
-    name: "Mission 1: 제1화학단지 폐수 유출",
-    desc: "단일 입구 → 출구 구조입니다. 탄소(C)와 소듐(Na)으로 긴 미로(Maze)를 만들어 폐수를 중화하세요.",
-    startGold: 220,
-    startLives: 20,
-    totalWaves: 15,
-    spawns: [{ c: 0, r: 7 }, { c: 0, r: 8 }],
-    exits: [{ c: 21, r: 7 }, { c: 21, r: 8 }],
-    obstacles: [] // 장애물 없는 자유 미로 맵
+// ./sound 폴더의 21개 실제 사운드 파일 매핑
+export const SOUND_PATHS = {
+  uiClick: "./sound/ui_click.mp3",
+  towerBuild: "./sound/tower_build.mp3",
+  towerUpgrade: "./sound/tower_upgrade.mp3",
+  waveStart: "./sound/wave_start.mp3",
+  waveClear: "./sound/wave_clear.mp3",
+  bossAlarm: "./sound/boss_alarm.mp3",
+  baseDamage: "./sound/base_damage.mp3",
+  gameOver: "./sound/game_over.mp3",
+  hitNeutralize: "./sound/hit_neutralize.mp3",
+  enemyDissolve: "./sound/enemy_dissolve.mp3",
+  enemyLeak: "./sound/enemy_leak.mp3",
+  enemySlime: "./sound/enemy_slime.mp3",
+  ambientLoop: "./sound/ambient_loop.mp3",
+  tower_C: "./sound/tower_C.mp3",
+  tower_H: "./sound/tower_H.mp3",
+  tower_O: "./sound/tower_O.mp3",
+  tower_Na: "./sound/tower_Na.mp3",
+  tower_K: "./sound/tower_K.mp3",
+  tower_Cl: "./sound/tower_Cl.mp3",
+  tower_Cs: "./sound/tower_Cs.mp3",
+  tower_F: "./sound/tower_F.mp3"
+};
+
+// ./icon 폴더의 UI 및 장애물 아이콘 매핑
+export const UI_ICONS = {
+  gold: "./icon/ui_gold.png",
+  lives: "./icon/ui_lives.png",
+  wave: "./icon/ui_wave.png",
+  score: "./icon/ui_score.png",
+  start: "./icon/ui_start.png",
+  speed: "./icon/ui_speed.png",
+  pause: "./icon/ui_pause.png",
+  upgrade: "./icon/ui_upgrade.png",
+  obstacle: "./icon/obstacle.png"
+};
+
+/**
+ * 원소 타워(12종) + 상점 설비(4종) 정의
+ * - 모든 아이콘은 ./icon 내 24개 검증된 이미지를 활용하며, 내가 추후 _up.png를 추가하면 자동 폴백 로드됩니다.
+ */
+export const TOWER_TYPES = {
+  // ================= [기본 및 핵심 반응성 원소 8종] =================
+  C: {
+    id: "C",
+    symbol: "C",
+    atomicNumber: 6,
+    name: "탄소 흡착 타워 (Carbon)",
+    rankLabel: "기초 바리케이드 · 활성탄 흡착",
+    category: "element",
+    cost: 15,
+    damage: 14,
+    range: 95,
+    fireRate: 1.0,
+    color: "#94a3b8",
+    projectileColor: "#cbd5e1",
+    imagePath: "./icon/tower_C.png",
+    upgradeImagePath: "./icon/tower_C_up.png",
+    soundKey: "tower_C",
+    splashRadius: 0,
+    slowFactor: 0.25,
+    slowDuration: 2.0,
+    whyReactive: "다공성 활성탄 구조로 유독 가스와 포스겐(COCl2), 유기용매를 표면에 흡착하여 이동 속도를 늦춥니다.",
+    concept: "저렴한 미로 건설용 바리케이드 + 적 감속(25%)",
+    targetBonus: { ORGANIC: 1.5, GAS: 1.3 },
+    Produces: "CO2"
   },
+  H: {
+    id: "H",
+    symbol: "H",
+    atomicNumber: 1,
+    name: "수소 기폭 타워 (Hydrogen)",
+    rankLabel: "반응성 7위 · 자폭형 광역 환원",
+    category: "element",
+    cost: 40,
+    damage: 130,
+    range: 115,
+    fireRate: 0.45,
+    color: "#38bdf8",
+    projectileColor: "#7dd3fc",
+    imagePath: "./icon/tower_H.png",
+    upgradeImagePath: "./icon/tower_H_up.png",
+    soundKey: "tower_H",
+    splashRadius: 95,
+    isKamikaze: true,
+    maxTriggerCount: 3,
+    whyReactive: "공기 중 폭발 범위(4~75%)가 매우 넓고 강력한 환원제 역할을 합니다.",
+    concept: "강력한 광역 기폭 3회 후 산화 소멸 (산화제 적에게 2.2배)",
+    targetBonus: { OXIDIZER: 2.2, GAS: 1.5 },
+    Produces: "H2O"
+  },
+  O: {
+    id: "O",
+    symbol: "O",
+    atomicNumber: 8,
+    name: "산소 연소 촉진기 (Oxygen)",
+    rankLabel: "반응성 6위 · 산화/해독 및 타워 버프",
+    category: "element",
+    cost: 55,
+    damage: 18,
+    range: 135,
+    fireRate: 1.4,
+    color: "#0ea5e9",
+    projectileColor: "#38bdf8",
+    imagePath: "./icon/tower_O.png",
+    upgradeImagePath: "./icon/tower_O_up.png",
+    soundKey: "tower_O",
+    auraRange: 125,
+    auraDamageBoost: 0.35,
+    auraSpeedBoost: 0.25,
+    curesParalysis: true,
+    whyReactive: "거의 모든 원소와 산화물을 만들며, H2를 물(H2O)로, CO를 CO2로 전환하고 H2S 마비를 해독합니다.",
+    concept: "주변 타워 공격력+35%/공속+25% 버프 & H2S 마비 해독 & H2O/CO2 생성",
+    targetBonus: { ORGANIC: 1.4, GAS: 1.5 },
+    Produces: "H2O / CO2"
+  },
+  Na: {
+    id: "Na",
+    symbol: "Na",
+    atomicNumber: 11,
+    name: "소듐 중화 포탑 (Sodium)",
+    rankLabel: "반응성 5위 · 산성 중화 & NaCl 침전",
+    category: "element",
+    cost: 65,
+    damage: 45,
+    range: 125,
+    fireRate: 1.15,
+    color: "#facc15",
+    projectileColor: "#fde047",
+    imagePath: "./icon/tower_Na.png",
+    upgradeImagePath: "./icon/tower_Na_up.png",
+    soundKey: "tower_Na",
+    splashRadius: 55,
+    neutralizesAcid: true,
+    whyReactive: "염소(Cl2)와 만나 소금(NaCl)으로 침전시키고, 염산(HCl)·황산(H2SO4)의 산성도(pH)를 급격히 중화합니다.",
+    concept: "노란 불꽃 중급 스플래시 타워 (Cl2 소금 침전 & 산성 중화 특화)",
+    targetBonus: { AQUEOUS: 2.0, GAS: 1.5 },
+    Produces: "NaCl"
+  },
+  K: {
+    id: "K",
+    symbol: "K",
+    atomicNumber: 19,
+    name: "포타슘 연쇄 타워 (Potassium)",
+    rankLabel: "반응성 4위 · 보라색 연쇄 스파크",
+    category: "element",
+    cost: 95,
+    damage: 38,
+    range: 140,
+    fireRate: 2.2,
+    color: "#c084fc",
+    projectileColor: "#d8b4fe",
+    imagePath: "./icon/tower_K.png",
+    upgradeImagePath: "./icon/tower_K_up.png",
+    soundKey: "tower_K",
+    chainCount: 4,
+    chainRange: 95,
+    whyReactive: "소듐보다 반응성이 더 커서 수분과 닿는 즉시 보라색 불꽃을 내며 연쇄 폭발합니다.",
+    concept: "빠른 연사 속도 + 최대 4체 적에게 보라색 스파크 연쇄 전이",
+    targetBonus: { AQUEOUS: 2.1, ORGANIC: 1.3 },
+    Produces: "KOH"
+  },
+  Cl: {
+    id: "Cl",
+    symbol: "Cl",
+    atomicNumber: 17,
+    name: "염소 살균 방출기 (Chlorine)",
+    rankLabel: "반응성 3위 · 범위 살균 및 은신 감지",
+    category: "element",
+    cost: 120,
+    damage: 28,
+    range: 130,
+    fireRate: 1.6,
+    color: "#84cc16",
+    projectileColor: "#bef264",
+    imagePath: "./icon/tower_Cl.png",
+    upgradeImagePath: "./icon/tower_Cl_up.png",
+    soundKey: "tower_Cl",
+    isAuraCloud: true,
+    revealsStealth: true,
+    dotDamage: 24,
+    dotDuration: 3.0,
+    whyReactive: "강력한 산화제이자 살균제로 유기물 및 무색무취 은신 가스와 격렬히 반응합니다.",
+    concept: "사거리 내 모든 적 동시 타격 + 무색무취(은신) 가스 정체 폭로",
+    targetBonus: { GAS: 1.9, ORGANIC: 1.8, STEALTH: 2.0 },
+    Produces: "HCl / 중화염"
+  },
+  Cs: {
+    id: "Cs",
+    symbol: "Cs",
+    atomicNumber: 55,
+    name: "세슘 초중력 레일건 (Cesium)",
+    rankLabel: "반응성 2위 · 수용액 및 보스 킬러",
+    category: "element",
+    cost: 165,
+    damage: 210,
+    range: 185,
+    fireRate: 0.65,
+    color: "#f97316",
+    projectileColor: "#fdba74",
+    imagePath: "./icon/tower_Cs.png",
+    upgradeImagePath: "./icon/tower_Cs_up.png",
+    soundKey: "tower_Cs",
+    splashRadius: 75,
+    whyReactive: "이온화 에너지가 최저 수준이라 물에 닿는 순간 유리 수조를 박살낼 만큼 폭발합니다.",
+    concept: "초장거리 대구경 폭발 (수용액 2.8배, 중금속 보스 2.0배 데미지)",
+    targetBonus: { AQUEOUS: 2.8, HEAVY: 2.0 },
+    Produces: "CsOH"
+  },
+  F: {
+    id: "F",
+    symbol: "F",
+    atomicNumber: 9,
+    name: "플루오린 만능 산화기 (Fluorine)",
+    rankLabel: "반응성 1위 · 만능 부식 및 방어력 파괴",
+    category: "element",
+    cost: 220,
+    damage: 95,
+    range: 165,
+    fireRate: 2.5,
+    color: "#10b981",
+    projectileColor: "#6ee7b7",
+    imagePath: "./icon/tower_F.png",
+    upgradeImagePath: "./icon/tower_F_up.png",
+    soundKey: "tower_F",
+    dotDamage: 65,
+    dotDuration: 4.0,
+    armorShred: 0.4,
+    revealsStealth: true,
+    whyReactive: "전기음성도 1위(3.98)로 유리, 금, 비활성 기체까지 강제로 산화시켜 분해합니다.",
+    concept: "최고 등급 만능 타워 — 모든 속성 추가 피해 + 초강력 지속 산화(DoT)",
+    targetBonus: { AQUEOUS: 1.6, GAS: 1.6, ORGANIC: 1.6, OXIDIZER: 1.6, HEAVY: 1.8, STEALTH: 1.6 },
+    Produces: "HF / 완전분해"
+  },
+
+  // ================= [튜토리얼 스테이지 전용/보상 원소 4종] =================
+  N: {
+    id: "N",
+    symbol: "N",
+    atomicNumber: 7,
+    name: "질소 불활성 희석기 (Nitrogen)",
+    rankLabel: "TUT-02 특화 · 가스 농도 희석 & 냉각",
+    category: "element",
+    cost: 45,
+    damage: 20,
+    range: 130,
+    fireRate: 1.5,
+    color: "#60a5fa",
+    projectileColor: "#93c5fd",
+    imagePath: "./icon/tower_H.png",
+    upgradeImagePath: "./icon/tower_H_up.png",
+    soundKey: "tower_H",
+    splashRadius: 60,
+    slowFactor: 0.4,
+    slowDuration: 2.8,
+    lowersConcentration: true,
+    whyReactive: "삼중결합으로 매우 안정적인 불활성 기체로서 폭발성 수소(H2) 및 독성 가스의 농도를 안전 기준 이하로 희석합니다.",
+    concept: "폭발성 가스 농도 희석(Concentration 감소) + 광역 냉각 감속(40%)",
+    targetBonus: { GAS: 1.8, OXIDIZER: 1.4 },
+    Produces: "N2 희석기류"
+  },
+  Ca: {
+    id: "Ca",
+    symbol: "Ca",
+    atomicNumber: 20,
+    name: "칼슘 불산 해독기 (Calcium)",
+    rankLabel: "TUT-05/08 특화 · 불산(HF)/황산 침전 해독",
+    category: "element",
+    cost: 70,
+    damage: 48,
+    range: 130,
+    fireRate: 1.2,
+    color: "#f472b6",
+    projectileColor: "#fbcfe8",
+    imagePath: "./icon/tower_K.png",
+    upgradeImagePath: "./icon/tower_K_up.png",
+    soundKey: "tower_K",
+    splashRadius: 55,
+    antiCorrosionAura: 120,
+    neutralizesAcid: true,
+    whyReactive: "맹독성 불산(HF)의 플루오린 이온과 결합해 무해한 형석(CaF2)으로 침전시키고, 주변 타워의 부식을 완벽히 방지합니다.",
+    concept: "주변 타워 부식 면역 보호막 제공 + 불산(HF)·황산(H2SO4) 무력화",
+    targetBonus: { AQUEOUS: 2.3, HEAVY: 1.5 },
+    Produces: "CaF2 / CaSO4"
+  },
+  S: {
+    id: "S",
+    symbol: "S",
+    atomicNumber: 16,
+    name: "황 아말감 포집기 (Sulfur)",
+    rankLabel: "TUT-06 보상 · 수은(Hg) 및 중금속 고정",
+    category: "element",
+    cost: 80,
+    damage: 55,
+    range: 135,
+    fireRate: 1.1,
+    color: "#eab308",
+    projectileColor: "#fef08a",
+    imagePath: "./icon/tower_Na.png",
+    upgradeImagePath: "./icon/tower_Na_up.png",
+    soundKey: "tower_Na",
+    splashRadius: 50,
+    dotDamage: 30,
+    dotDuration: 3.5,
+    whyReactive: "유출된 수은(Hg) 증기나 중금속과 즉시 반응하여 불용성 황화수은(HgS, 진사) 고체로 바닥에 고정합니다.",
+    concept: "수은(Hg)·중금속 적 이동속도 대폭 감소 및 황화물 고정 피해",
+    targetBonus: { HEAVY: 2.4, ORGANIC: 1.4 },
+    Produces: "HgS"
+  },
+  Fe: {
+    id: "Fe",
+    symbol: "Fe",
+    atomicNumber: 26,
+    name: "철 펜톤 산화 포탑 (Iron)",
+    rankLabel: "TUT-08 보상 · 중장갑 방벽 & 펜톤 촉매",
+    category: "element",
+    cost: 90,
+    damage: 72,
+    range: 145,
+    fireRate: 1.0,
+    color: "#fb923c",
+    projectileColor: "#fed7aa",
+    imagePath: "./icon/tower_Cs.png",
+    upgradeImagePath: "./icon/tower_Cs_up.png",
+    soundKey: "tower_Cs",
+    splashRadius: 45,
+    highDurability: true,
+    whyReactive: "펜톤 산화(Fenton's reagent) 촉매로 난분해성 독성 물질을 분해하며, 높은 내구도로 산성 유출물을 저지합니다.",
+    concept: "높은 내구도 + 중금속/산성 물질 대상 강력한 물리·화학적 타격",
+    targetBonus: { HEAVY: 1.9, AQUEOUS: 1.7, ORGANIC: 1.6 },
+    Produces: "Fe2O3 / FeSO4"
+  },
+
+  // ================= [상점 특수 설비 (ShopItems) 4종] =================
+  Fan: {
+    id: "Fan",
+    symbol: "FAN",
+    atomicNumber: "설비",
+    name: "산업용 환풍기 (Exhaust Fan)",
+    rankLabel: "상점 설비 · 가스 역풍 밀치기 & 길차단",
+    category: "shop",
+    cost: 30,
+    damage: 8,
+    range: 135,
+    fireRate: 1.8,
+    color: "#22d3ee",
+    projectileColor: "#a5f3fc",
+    imagePath: "./icon/ui_speed.png",
+    upgradeImagePath: "./icon/ui_speed.png",
+    soundKey: "towerBuild",
+    pushbackStrength: 18,
+    slowFactor: 0.35,
+    slowDuration: 1.8,
+    lowersConcentration: true,
+    whyReactive: "강력한 송풍 팬으로 수소(H2), 포스겐(COCl2) 등 누출 가스의 이동 경로를 막고 뒤로 밀어내어 체류 시간을 늘립니다.",
+    concept: "미로 길막기 + 사거리 내 적군 역풍 감속/밀치기 + 가스 농도 배출",
+    targetBonus: { GAS: 2.0, STEALTH: 1.5 },
+    Produces: "강제 환기"
+  },
+  Pressurizer: {
+    id: "Pressurizer",
+    symbol: "PRS",
+    atomicNumber: "설비",
+    name: "고압 응축기 (Pressurizer)",
+    rankLabel: "상점 설비 · 가스 포집 및 밀집 응축",
+    category: "shop",
+    cost: 45,
+    damage: 15,
+    range: 140,
+    fireRate: 1.2,
+    color: "#818cf8",
+    projectileColor: "#c7d2fe",
+    imagePath: "./icon/ui_upgrade.png",
+    upgradeImagePath: "./icon/ui_upgrade.png",
+    soundKey: "towerUpgrade",
+    isAuraCloud: true,
+    pullStrength: true,
+    slowFactor: 0.45,
+    slowDuration: 2.2,
+    lowersConcentration: true,
+    whyReactive: "퍼져나가는 수소(H2) 및 독성 가스를 고압으로 한곳에 응축시켜 질소(N)나 스플래시 타워가 일망타진하게 만듭니다.",
+    concept: "주변 가스 적들을 강하게 응축·감속시키고 대기 중 가스 농도를 낮춤",
+    targetBonus: { GAS: 2.2 },
+    Produces: "고압 액화가스"
+  },
+  Heater: {
+    id: "Heater",
+    symbol: "HEAT",
+    atomicNumber: "설비",
+    name: "열촉매 가열기 (Thermal Heater)",
+    rankLabel: "상점 설비 · 활성화 에너지 공급 & 반응 가속",
+    category: "shop",
+    cost: 50,
+    damage: 16,
+    range: 130,
+    fireRate: 1.5,
+    color: "#f43f5e",
+    projectileColor: "#fda4af",
+    imagePath: "./icon/ui_wave.png",
+    upgradeImagePath: "./icon/ui_wave.png",
+    soundKey: "tower_O",
+    auraRange: 130,
+    auraDamageBoost: 0.4,
+    auraSpeedBoost: 0.35,
+    dotDamage: 18,
+    dotDuration: 2.5,
+    enablesThermalReaction: true,
+    whyReactive: "일산화탄소(CO) 완전 연소(CO2)나 소금(NaCl) 결정화 반응에 필요한 열에너지(활성화 에너지)를 공급합니다.",
+    concept: "주변 원소 타워 화력+40%/공속+35% 가속 + CO→CO2 및 NaCl 반응 촉진",
+    targetBonus: { GAS: 1.6, AQUEOUS: 1.6 },
+    Produces: "열촉매 활성화"
+  },
+  GlassWall: {
+    id: "GlassWall",
+    symbol: "GLS",
+    atomicNumber: "설비",
+    name: "내산성 특수 방벽 (Quartz/Teflon Wall)",
+    rankLabel: "상점 설비 · 부식 면역 방벽 & 산성 차단",
+    category: "shop",
+    cost: 20,
+    damage: 6,
+    range: 85,
+    fireRate: 0.8,
+    color: "#2dd4bf",
+    projectileColor: "#99f6e4",
+    imagePath: "./icon/obstacle.png",
+    upgradeImagePath: "./icon/obstacle.png",
+    soundKey: "towerBuild",
+    corrosionImmune: true,
+    antiCorrosionAura: 95,
+    whyReactive: "불산(HF)이나 황산(H2SO4)에 부식되지 않는 특수 코팅 방벽으로 위험물의 경로를 안전하게 통제합니다.",
+    concept: "불산(HF) 부식에 절대 파괴되지 않는 영구 길막기 방벽 + 인접 타워 보호",
+    targetBonus: { AQUEOUS: 1.5 },
+    Produces: "부식 차단"
+  }
+};
+
+/**
+ * 적군 기본 아키타입 7종 (시각적 아이콘 및 물리 특성)
+ */
+export const ENEMY_TYPES = {
+  GAS: {
+    id: "GAS",
+    name: "독성 가스 (Toxic Gas)",
+    formula: "Cl₂ / H₂",
+    categoryLabel: "기체형 위험물",
+    color: "#a3e635",
+    strokeColor: "#4d7c0f",
+    imagePath: "./icon/enemy_gas.png",
+    soundKey: "enemyLeak",
+    baseHp: 65,
+    speed: 62,
+    reward: 8,
+    radius: 11,
+    isFlying: false,
+    isStealth: false,
+    description: "빠르게 확산되는 기체 위험물입니다. 환풍기(Fan), 산소(O), 질소(N), 염소(Cl)로 제어하세요."
+  },
+  AQUEOUS: {
+    id: "AQUEOUS",
+    name: "산성 수용액 (Acid Solution)",
+    formula: "HCl / H₂SO₄",
+    categoryLabel: "수용액 위험물",
+    color: "#38bdf8",
+    strokeColor: "#0369a1",
+    imagePath: "./icon/enemy_aqueous.png",
+    soundKey: "enemySlime",
+    baseHp: 120,
+    speed: 46,
+    reward: 11,
+    radius: 13,
+    isFlying: false,
+    isStealth: false,
+    description: "강산성 액체 슬라임입니다. 소듐(Na), 칼슘(Ca), 세슘(Cs)과 만나면 격렬히 중화됩니다."
+  },
+  ORGANIC: {
+    id: "ORGANIC",
+    name: "휘발성 유기화합물 (VOCs)",
+    formula: "C₆H₆ / COCl₂",
+    categoryLabel: "유기화합물",
+    color: "#f43f5e",
+    strokeColor: "#9f1239",
+    imagePath: "./icon/enemy_organic.png",
+    soundKey: "enemySlime",
+    baseHp: 170,
+    speed: 50,
+    reward: 14,
+    radius: 13,
+    isFlying: false,
+    isStealth: false,
+    description: "독성 유기용매 및 포스겐입니다. 탄소(C)로 흡착하고 산소(O)와 염소(Cl)로 분해하세요."
+  },
+  OXIDIZER: {
+    id: "OXIDIZER",
+    name: "불안정 과산화물 (Peroxide)",
+    formula: "H₂O₂ / O₃",
+    categoryLabel: "산화제 (공중 부유)",
+    color: "#e879f9",
+    strokeColor: "#86198f",
+    imagePath: "./icon/enemy_oxidizer.png",
+    soundKey: "enemyLeak",
+    baseHp: 110,
+    speed: 44,
+    reward: 16,
+    radius: 12,
+    isFlying: true,
+    isStealth: false,
+    description: "바리케이드 위를 날아다니는 불안정 에어로졸입니다! 수소(H)와 플루오린(F)에 취약합니다."
+  },
+  STEALTH: {
+    id: "STEALTH",
+    name: "일산화탄소 (Carbon Monoxide)",
+    formula: "CO / HCN",
+    categoryLabel: "무색무취 은신 가스",
+    color: "#94a3b8",
+    strokeColor: "#334155",
+    imagePath: "./icon/enemy_stealth.png",
+    soundKey: "enemyLeak",
+    baseHp: 135,
+    speed: 56,
+    reward: 18,
+    radius: 11,
+    isFlying: false,
+    isStealth: true,
+    description: "무색무취 가스입니다. 가열기(Heater)+산소(O)로 CO₂로 전환하거나 염소(Cl)/플루오린(F)으로 감지하세요."
+  },
+  HEAVY: {
+    id: "HEAVY",
+    name: "중금속 슬러지 (Heavy Metal)",
+    formula: "Hg / PbO / Cd",
+    categoryLabel: "중금속 보스",
+    color: "#fb923c",
+    strokeColor: "#9a3412",
+    imagePath: "./icon/enemy_heavy.png",
+    soundKey: "bossAlarm",
+    baseHp: 480,
+    speed: 30,
+    reward: 40,
+    radius: 16,
+    isFlying: false,
+    isStealth: false,
+    description: "체력이 매우 높은 중금속 폐기물입니다. 세슘(Cs), 황(S), 플루오린(F), 철(Fe)을 집중 배치하세요!"
+  },
+  H2S_BOSS: {
+    id: "H2S_BOSS",
+    name: "고농도 황화수소 (Sour Gas)",
+    formula: "H₂S (마비성 독가스)",
+    categoryLabel: "신경 마비성 특급 위험물",
+    color: "#eab308",
+    strokeColor: "#713f12",
+    imagePath: "./icon/enemy_h2s.png",
+    soundKey: "bossAlarm",
+    baseHp: 320,
+    speed: 36,
+    reward: 35,
+    radius: 16,
+    isFlying: false,
+    isStealth: false,
+    paralyzesTowers: true,
+    description: "주변 타워의 센서를 마비시키는 치명적인 황화수소입니다! 산소(O) 타워로 마비를 해독하고 산화시키세요."
+  }
+};
+
+/**
+ * 튜토리얼 스테이지별 화학 위험물 상세 정의
+ */
+export const TUTORIAL_ENEMIES = {
+  H2: {
+    ...ENEMY_TYPES.GAS,
+    id: "H2",
+    name: "수소 누출 가스 (Hydrogen)",
+    formula: "H₂",
+    categoryLabel: "가연성 폭발 가스",
+    baseHp: 55,
+    speed: 60,
+    reward: 9,
+    description: "빠르게 확산되는 수소 가스입니다. 산소(O)와 반응시키면 안전한 물(H₂O)로 중화됩니다."
+  },
+  Cl2: {
+    ...ENEMY_TYPES.GAS,
+    id: "Cl2",
+    name: "염소 독가스 (Chlorine Gas)",
+    formula: "Cl₂",
+    categoryLabel: "할로겐 독성 가스",
+    baseHp: 85,
+    speed: 52,
+    reward: 11,
+    description: "자극성 황록색 염소 가스입니다. 나트륨(Na) 및 가열기(Heater)와 반응시키면 소금(NaCl)으로 침전됩니다."
+  },
+  HCl: {
+    ...ENEMY_TYPES.AQUEOUS,
+    id: "HCl",
+    name: "염산 이온화 용액 (Hydrochloric Acid)",
+    formula: "HCl (aq)",
+    categoryLabel: "강산성 수용액 (pH 1.0)",
+    baseHp: 115,
+    speed: 46,
+    reward: 12,
+    acidicStrength: 1.5,
+    description: "물이 닿아 강산으로 이온화된 염산입니다. 나트륨(Na)으로 중화하여 pH를 7.0으로 회복시키세요."
+  },
+  HF: {
+    ...ENEMY_TYPES.AQUEOUS,
+    id: "HF",
+    name: "불화수소산 (Hydrofluoric Acid)",
+    formula: "HF",
+    categoryLabel: "맹독성 타워 부식산",
+    color: "#2dd4bf",
+    baseHp: 130,
+    speed: 45,
+    reward: 14,
+    corrodesTowers: true,
+    description: "유리와 금속 타워를 녹여버리는 불산입니다! 내산성 유리벽(GlassWall)과 칼슘(Ca) 타워로 해독하세요."
+  },
+  H2S: {
+    ...ENEMY_TYPES.H2S_BOSS,
+    id: "H2S",
+    name: "황화수소 (Hydrogen Sulfide)",
+    formula: "H₂S",
+    categoryLabel: "후각 및 타워 마비 가스",
+    baseHp: 155,
+    speed: 44,
+    reward: 15,
+    paralyzesTowers: true,
+    description: "주변 타워를 마비(기절)시키는 맹독성 황화수소입니다. 산소(O) 타워를 배치해 마비를 해독하고 산화시키세요!"
+  },
+  CO: {
+    ...ENEMY_TYPES.STEALTH,
+    id: "CO",
+    name: "일산화탄소 (Carbon Monoxide)",
+    formula: "CO",
+    categoryLabel: "무색무취 질식 가스",
+    baseHp: 130,
+    speed: 54,
+    reward: 14,
+    isStealth: false, // 산소+가열기로 직접 타격 가능하도록 설정
+    description: "불완전 연소로 발생한 일산화탄소입니다. 가열기(Heater)와 산소(O)를 조합해 이산화탄소(CO₂)로 완전 연소시키세요."
+  },
+  H2SO4: {
+    ...ENEMY_TYPES.HEAVY,
+    id: "H2SO4",
+    name: "고농도 황산 유출물 (Sulfuric Acid)",
+    formula: "H₂SO₄",
+    categoryLabel: "도로 부식성 강산 탱크",
+    imagePath: "./icon/enemy_aqueous.png",
+    baseHp: 240,
+    speed: 36,
+    reward: 20,
+    corrodesTowers: true,
+    acidicStrength: 2.5,
+    description: "탱크 전복으로 쏟아진 고농도 황산입니다! 칼슘(Ca) → 나트륨(Na) → 산소(O) 다단계 중화 라인을 구축하세요."
+  },
+  COCl2: {
+    ...ENEMY_TYPES.ORGANIC,
+    id: "COCl2",
+    name: "포스겐 독가스 (Phosgene)",
+    formula: "COCl₂",
+    categoryLabel: "1급 화학무기급 질식제",
+    baseHp: 210,
+    speed: 48,
+    reward: 19,
+    description: "고독성 포스겐입니다. 환풍기(Fan)로 가두고 탄소(C)·산소(O)·염소(Cl) 복합 반응으로 완전 분해하세요."
+  }
+};
+
+/**
+ * 10개 튜토리얼 스테이지 (tutorial_stages.csv 100% 반영 + 각 스테이지별 고유 맵 레이아웃)
+ * - 모든 스테이지 맵은 [튜토리얼 모드]와 [무한 서바이벌(무제한 유닛) 모드] 양쪽에서 선택하여 플레이할 수 있습니다.
+ */
+export const TUTORIAL_STAGES = [
   {
-    id: 2,
-    name: "Mission 2: 교차로 반응로 (Cross Reactor)",
-    desc: "좌→우, 상→하 두 방향에서 위험물이 유입됩니다. 중앙 교차점에 산소(O) 버프와 주력 원소를 배치하세요.",
-    startGold: 280,
-    startLives: 20,
-    totalWaves: 20,
-    spawns: [{ c: 0, r: 7 }, { c: 0, r: 8 }, { c: 10, r: 0 }, { c: 11, r: 0 }],
-    exits: [{ c: 21, r: 7 }, { c: 21, r: 8 }, { c: 10, r: 15 }, { c: 11, r: 15 }],
+    stageId: "TUT-01",
+    stageNumber: 1,
+    title: "TUT-01: 실내 연구소 수소(H₂) 누출",
+    environment: "Indoor",
+    enemyKey: "H2",
+    clearCondition: "Eliminate_All",
+    clearTarget: 20,
+    clearLabel: "수소(H₂)를 산소(O)와 반응시켜 물(H₂O)로 전원 중화",
+    requiredTowers: ["O"],
+    shopItems: ["Fan"],
+    description: "수소 누출! 환풍기로 길을 막고 산소로 물(H2O)을 만드세요.",
+    chemicalEquation: "2H₂ (수소 가스) + O₂ (산소 타워) → 2H₂O (무해한 물)",
+    historicalCase: "수소(H₂)는 공기 중 폭발 범위(4~75%)가 매우 넓어 밀폐된 실내 연구소에서 누출될 경우 정전기만으로도 대형 폭발을 일으킵니다.",
+    tacticalSteps: [
+      "1단계: 우측 팔레트에서 [FAN 산업용 환풍기]를 선택해 파란 점선 경로 위에 지어 가스의 이동 길을 길게 우회시키세요.",
+      "2단계: 환풍기 주변에 [O 산소 연소 촉진기]를 배치하면 수소가 산소와 결합해 안전한 물(H₂O)로 바뀝니다.",
+      "3단계: 준비가 끝나면 [웨이브 시작]을 눌러 수소 가스 20기를 모두 중화하세요!"
+    ],
+    rewards: "Unlock_Shop",
+    rewardLabel: "상점 설비(Shop) 해금",
+    pathLogic: "Tower_Blocks_Path",
+    startingGold: 220,
+    spawns: [{ c: 0, r: 6 }, { c: 0, r: 7 }],
+    exits: [{ c: 19, r: 6 }, { c: 19, r: 7 }],
     obstacles: [
-      { c: 5, r: 4 }, { c: 5, r: 11 }, { c: 16, r: 4 }, { c: 16, r: 11 }
+      { c: 6, r: 3 }, { c: 6, r: 4 }, { c: 6, r: 9 }, { c: 6, r: 10 },
+      { c: 13, r: 3 }, { c: 13, r: 4 }, { c: 13, r: 9 }, { c: 13, r: 10 }
     ]
   },
   {
-    id: 3,
-    name: "Mission 3: 격리 구역 (Containment Core)",
-    desc: "중앙 격리벽이 있어 경로가 나뉩니다. 가스형 적(공중)은 벽을 넘어오므로 염소(Cl)와 포타슘(K)을 대비하세요.",
-    startGold: 340,
-    startLives: 25,
-    totalWaves: 25,
-    spawns: [{ c: 0, r: 3 }, { c: 0, r: 12 }],
-    exits: [{ c: 21, r: 7 }, { c: 21, r: 8 }],
+    stageId: "TUT-02",
+    stageNumber: 2,
+    title: "TUT-02: 야외 플랜트 수소 농도 제어",
+    environment: "Outdoor",
+    enemyKey: "H2",
+    clearCondition: "Lower_Concentration",
+    clearTarget: 24,
+    clearLabel: "질소(N)와 압력기(Pressurizer)로 가스 농도를 0%까지 희석",
+    requiredTowers: ["N"],
+    shopItems: ["Pressurizer"],
+    description: "질소로 농도를 낮추고 압력기로 가스를 모으세요.",
+    chemicalEquation: "H₂ (고농도 가스) + N₂ (불활성 질소 퍼지) → 폭발 하한계(LEL) 이하 안전 희석",
+    historicalCase: "야외 플랜트 배관 누출 시 불활성 기체인 질소(N₂)를 분사해 산소와의 접촉을 차단하고 폭발 농도를 낮추는 퍼지(Purge) 공정이 필수입니다.",
+    tacticalSteps: [
+      "1단계: 두 갈래 입구(LEAK)가 합류하는 중앙 지점에 [PRS 고압 응축기(압력기)]를 배치해 흩어지는 수소 가스를 한곳으로 모으세요.",
+      "2단계: 응축기 옆에 [N 질소 불활성 희석기]를 여러 기 건설하여 가스 농도 게이지를 빠르게 낮추세요.",
+      "3단계: 상단 가스 농도가 100%에서 0%로 떨어지면 즉시 클리어됩니다!"
+    ],
+    rewards: "Tower_N",
+    rewardLabel: "질소(N) 원소 타워 영구 해금",
+    pathLogic: "Tower_Blocks_Path",
+    startingGold: 240,
+    spawns: [{ c: 0, r: 2 }, { c: 0, r: 11 }],
+    exits: [{ c: 19, r: 6 }, { c: 19, r: 7 }],
     obstacles: [
-      { c: 9, r: 5 }, { c: 9, r: 6 }, { c: 9, r: 9 }, { c: 9, r: 10 },
-      { c: 13, r: 3 }, { c: 13, r: 4 }, { c: 13, r: 11 }, { c: 13, r: 12 }
+      { c: 5, r: 5 }, { c: 5, r: 6 }, { c: 5, r: 7 }, { c: 5, r: 8 },
+      { c: 12, r: 2 }, { c: 12, r: 3 }, { c: 12, r: 10 }, { c: 12, r: 11 }
+    ]
+  },
+  {
+    stageId: "TUT-03",
+    stageNumber: 3,
+    title: "TUT-03: 염소(Cl₂) 가스 소금 침전 작전",
+    environment: "Indoor",
+    enemyKey: "Cl2",
+    clearCondition: "Create_NaCl_20",
+    clearTarget: 20,
+    clearLabel: "나트륨(Na) + 가열기(Heater)로 소금(NaCl) 20개 침전 생성",
+    requiredTowers: ["Na"],
+    shopItems: ["Heater"],
+    description: "염소를 나트륨과 반응시켜 소금(NaCl)으로 침전시키세요.",
+    chemicalEquation: "2Na (소듐) + Cl₂ (염소 독가스) --[Δ 열촉매]--> 2NaCl↓ (무해한 소금 침전)",
+    historicalCase: "1943년 미국 뉴저지 화학공장 폭발 및 2005년 열차 충돌 사고 당시 맹독성 황록색 염소(Cl₂) 가스가 유출되어 대규모 주민 대피가 발생했습니다.",
+    tacticalSteps: [
+      "1단계: 위쪽(IN)에서 아래쪽(CITY)으로 내려오는 길목에 [Na 소듐 중화 포탑]으로 지그재그 미로를 만드세요.",
+      "2단계: 소듐 타워들 한가운데에 [HEAT 열촉매 가열기]를 지으면 주변 소듐 타워의 반응 화력이 2.6배로 폭증합니다.",
+      "3단계: 염소 가스를 소금(NaCl) 결정으로 20개 침전시키면 미션 성공입니다!"
+    ],
+    rewards: "Tower_Na",
+    rewardLabel: "소듐(Na) 원소 타워 영구 해금",
+    pathLogic: "Tower_Blocks_Path",
+    startingGold: 250,
+    spawns: [{ c: 9, r: 0 }, { c: 10, r: 0 }],
+    exits: [{ c: 9, r: 13 }, { c: 10, r: 13 }],
+    obstacles: [
+      { c: 7, r: 4 }, { c: 8, r: 4 }, { c: 11, r: 4 }, { c: 12, r: 4 },
+      { c: 5, r: 8 }, { c: 6, r: 8 }, { c: 13, r: 8 }, { c: 14, r: 8 }
+    ]
+  },
+  {
+    stageId: "TUT-04",
+    stageNumber: 4,
+    title: "TUT-04: 염산(HCl) 이온화 pH 7.0 중화",
+    environment: "Indoor",
+    enemyKey: "HCl",
+    clearCondition: "Neutralize_pH",
+    clearTarget: 22,
+    clearLabel: "나트륨(Na)으로 강산성(pH 1.5)을 중성(pH 7.0)까지 회복",
+    requiredTowers: ["Na"],
+    shopItems: [],
+    description: "염산 가스가 이온화됩니다. 나트륨으로 중화하세요.",
+    chemicalEquation: "HCl (aq, 강산 pH 1.5) + NaOH → NaCl + H₂O (중성 pH 7.0 회복)",
+    historicalCase: "염화수소(HCl) 가스가 수분과 만나면 강산성 염산 수용액으로 이온화되어 설비와 생태계를 파괴하므로 알칼리제(Na) 투입을 통한 pH 중화가 필수입니다.",
+    tacticalSteps: [
+      "1단계: 상점 설비 없이 순수 원소 타워만으로 미로를 설계해야 합니다. 저렴한 [C 탄소 타워]로 길목을 좁히세요.",
+      "2단계: 핵심 화력 지점에 [Na 소듐 중화 포탑]을 집중 배치하고 업그레이드(Lv.2~3)하세요.",
+      "3단계: 염산 수용액이 소듐에 타격받을 때마다 pH 수치가 올라가며, pH 7.00(중성)에 도달하면 클리어됩니다!"
+    ],
+    rewards: "Tower_Cl",
+    rewardLabel: "염소(Cl) 원소 타워 영구 해금",
+    pathLogic: "Tower_Blocks_Path",
+    startingGold: 260,
+    spawns: [{ c: 0, r: 6 }, { c: 0, r: 7 }],
+    exits: [{ c: 19, r: 6 }, { c: 19, r: 7 }],
+    obstacles: [
+      { c: 4, r: 2 }, { c: 4, r: 3 }, { c: 4, r: 10 }, { c: 4, r: 11 },
+      { c: 9, r: 5 }, { c: 9, r: 8 },
+      { c: 14, r: 3 }, { c: 14, r: 4 }, { c: 14, r: 9 }, { c: 14, r: 10 }
+    ]
+  },
+  {
+    stageId: "TUT-05",
+    stageNumber: 5,
+    title: "TUT-05: 맹독성 불산(HF) 무피해 해독",
+    environment: "Indoor",
+    enemyKey: "HF",
+    clearCondition: "Zero_Damage",
+    clearTarget: 24,
+    clearLabel: "유리벽(GlassWall)과 칼슘(Ca)으로 기지 및 타워 무손실 방어",
+    requiredTowers: ["Ca"],
+    shopItems: ["GlassWall"],
+    description: "불산은 타워를 부식시킵니다. 칼슘으로 해독하세요.",
+    chemicalEquation: "2HF (맹독성 불산) + Ca²⁺ (칼슘 타워) → CaF₂↓ (불용성 형석 침전 해독)",
+    historicalCase: "2012년 한국 구미 불산(HF) 누출사고 및 1982년 미국 누출사고처럼 불산은 유리와 금속까지 부식시키고 인체에 치명적이어서 글루콘산칼슘(Ca) 해독제가 사용됩니다.",
+    tacticalSteps: [
+      "1단계: ⚠️주의! 불산(HF)은 보호받지 못한 일반 타워를 녹여 파괴합니다(타워 1개라도 파괴되면 무피해 실패).",
+      "2단계: 길목을 막을 때는 부식 면역인 [GLS 내산성 특수 방벽(GlassWall)]을 세우고, 바로 뒤에 [Ca 칼슘 불산 해독기]를 배치하세요.",
+      "3단계: 칼슘(Ca)과 특수 방벽(GLS)은 주변 타워에 '부식 면역 보호막'을 씌워줍니다. 타워 손실 0건으로 24기를 해독하세요!"
+    ],
+    rewards: "Tower_Ca",
+    rewardLabel: "칼슘(Ca) 원소 타워 영구 해금",
+    pathLogic: "Tower_Blocks_Path",
+    startingGold: 280,
+    spawns: [{ c: 0, r: 3 }, { c: 0, r: 10 }],
+    exits: [{ c: 19, r: 6 }, { c: 19, r: 7 }],
+    obstacles: [
+      { c: 6, r: 6 }, { c: 6, r: 7 },
+      { c: 11, r: 2 }, { c: 11, r: 3 }, { c: 11, r: 10 }, { c: 11, r: 11 },
+      { c: 15, r: 5 }, { c: 15, r: 8 }
+    ]
+  },
+  {
+    stageId: "TUT-06",
+    stageNumber: 6,
+    title: "TUT-06: 황화수소(H₂S) 마비 해독 작전",
+    environment: "Outdoor",
+    enemyKey: "H2S",
+    clearCondition: "Cure_Paralysis",
+    clearTarget: 22,
+    clearLabel: "산소(O) 타워 오라로 마비를 즉시 해독하며 황화수소 전멸",
+    requiredTowers: ["O"],
+    shopItems: [],
+    description: "황화수소는 타워를 마비시킵니다. 산소로 산화시키세요.",
+    chemicalEquation: "2H₂S (마비성 독가스) + 3O₂ (산소 공급) → 2SO₂ + 2H₂O (산화 무력화)",
+    historicalCase: "1964년 일본 광산 사고 및 2020년 인도 비자그 화학공장 사고에서 황화수소(H₂S)는 고농도에서 후각 신경을 즉시 마비시켜 대피를 불가능하게 만들었습니다.",
+    tacticalSteps: [
+      "1단계: ⚠️황화수소(H₂S)가 타워 근처를 지나가면 타워가 '⚡마비' 상태가 되어 공격을 멈춥니다!",
+      "2단계: [O 산소 연소 촉진기]를 전장 곳곳에 배치하세요. 산소 타워의 파란 오라 안에 있는 모든 타워는 마비가 즉시 해독됩니다.",
+      "3단계: 산소(O)의 버프를 받는 딜러 타워(Cl, Na, K 등)를 함께 배치해 황화수소 22기를 산화시키세요!"
+    ],
+    rewards: "Tower_S",
+    rewardLabel: "황(S) 원소 타워 영구 해금",
+    pathLogic: "Tower_Blocks_Path",
+    startingGold: 280,
+    spawns: [{ c: 0, r: 6 }, { c: 9, r: 0 }],
+    exits: [{ c: 19, r: 6 }, { c: 9, r: 13 }],
+    obstacles: [
+      { c: 5, r: 4 }, { c: 5, r: 9 },
+      { c: 9, r: 5 }, { c: 10, r: 8 },
+      { c: 14, r: 4 }, { c: 14, r: 9 }
+    ]
+  },
+  {
+    stageId: "TUT-07",
+    stageNumber: 7,
+    title: "TUT-07: 일산화탄소(CO) 완전 연소(CO₂)",
+    environment: "Indoor",
+    enemyKey: "CO",
+    clearCondition: "Create_CO2_All",
+    clearTarget: 25,
+    clearLabel: "가열기(Heater) + 산소(O)로 일산화탄소를 CO₂로 전환",
+    requiredTowers: ["O"],
+    shopItems: ["Heater"],
+    description: "일산화탄소에 열과 산소를 가해 이산화탄소로 바꾸세요.",
+    chemicalEquation: "2CO (일산화탄소) + O₂ (산소) --[Δ 가열기 촉매]--> 2CO₂ (완전 연소 전환)",
+    historicalCase: "2018년 중국 광산 사고 등 밀폐 공간 불완전 연소로 발생하는 일산화탄소(CO)는 무색무취의 침묵의 암살자로 불리며, 열촉매 산화기를 통해 CO₂로 전환합니다.",
+    tacticalSteps: [
+      "1단계: 중앙 통로에 [HEAT 열촉매 가열기]를 먼저 설치하여 고온 반응 구역을 만드세요.",
+      "2단계: 가열기 주변에 [O 산소 연소 촉진기]를 다수 배치하면 열과 산소가 결합해 CO에 2.6배의 완전 연소 피해를 입힙니다.",
+      "3단계: 빠르게 이동하는 일산화탄소 25기를 모두 이산화탄소(CO₂)로 전환하세요!"
+    ],
+    rewards: "Tower_C",
+    rewardLabel: "탄소(C) 고급 흡착 강화 해금",
+    pathLogic: "Tower_Blocks_Path",
+    startingGold: 290,
+    spawns: [{ c: 0, r: 5 }, { c: 0, r: 8 }],
+    exits: [{ c: 19, r: 5 }, { c: 19, r: 8 }],
+    obstacles: [
+      { c: 7, r: 2 }, { c: 7, r: 3 }, { c: 7, r: 6 }, { c: 7, r: 7 }, { c: 7, r: 10 }, { c: 7, r: 11 },
+      { c: 13, r: 4 }, { c: 13, r: 5 }, { c: 13, r: 8 }, { c: 13, r: 9 }
+    ]
+  },
+  {
+    stageId: "TUT-08",
+    stageNumber: 8,
+    title: "TUT-08: 황산(H₂SO₄) 탱크 전복 방어선",
+    environment: "Outdoor",
+    enemyKey: "H2SO4",
+    clearCondition: "Stop_Corrosion",
+    clearTarget: 20,
+    clearLabel: "칼슘(Ca)·나트륨(Na)·산소(O) 다단계 중화로 도로 부식 저지",
+    requiredTowers: ["Ca", "Na", "O"],
+    shopItems: [],
+    description: "황산 탱크 전복! 다단계 반응으로 도로 부식을 막으세요.",
+    chemicalEquation: "H₂SO₄ + Ca²⁺ / 2Na⁺ + O₂ → CaSO₄↓ (석고 침전) + Na₂SO₄ + H₂O",
+    historicalCase: "2016년 인도 황산 저장탱크 누출 사고처럼 고농도 황산(H₂SO₄)은 단일 약품만으로 급격히 중화하면 고열이 발생하므로 다단계 중화 방어선이 필요합니다.",
+    tacticalSteps: [
+      "1단계: 고농도 황산(H₂SO₄)은 체력이 매우 높고 타워를 부식시킵니다. 먼저 [Ca 칼슘 타워]를 배치해 아군 타워에 부식 면역 오라를 부여하세요.",
+      "2단계: 칼슘(Ca) 옆에 [Na 소듐 타워]와 [O 산소 타워]를 함께 지으세요.",
+      "3단계: 황산 적이 Ca → Na → O 세 종류의 원소에 연달아 맞을수록 '다단계 화학 시너지'로 데미지가 대폭 증폭됩니다!"
+    ],
+    rewards: "Tower_Fe",
+    rewardLabel: "철(Fe) 원소 타워 영구 해금",
+    pathLogic: "Tower_Blocks_Path",
+    startingGold: 340,
+    spawns: [{ c: 0, r: 6 }, { c: 0, r: 7 }, { c: 9, r: 0 }],
+    exits: [{ c: 19, r: 6 }, { c: 19, r: 7 }],
+    obstacles: [
+      { c: 5, r: 3 }, { c: 5, r: 4 }, { c: 5, r: 9 }, { c: 5, r: 10 },
+      { c: 10, r: 5 }, { c: 10, r: 6 }, { c: 10, r: 7 },
+      { c: 15, r: 2 }, { c: 15, r: 3 }, { c: 15, r: 10 }, { c: 15, r: 11 }
+    ]
+  },
+  {
+    stageId: "TUT-09",
+    stageNumber: 9,
+    title: "TUT-09: 고독성 포스겐(COCl₂) 밀폐 분해",
+    environment: "Indoor",
+    enemyKey: "COCl2",
+    clearCondition: "Decompose_All",
+    clearTarget: 26,
+    clearLabel: "환풍기(Fan)로 가두고 C·O·Cl 복합 타워로 포스겐 완전 분해",
+    requiredTowers: ["C", "O", "Cl"],
+    shopItems: ["Fan"],
+    description: "고독성 포스겐 누출. 환풍기로 가두고 분해하세요.",
+    chemicalEquation: "COCl₂ (포스겐) --[C 활성탄 흡착 + O₂/Cl₂ 산화 분해]--> CO₂ + 2HCl 중화염",
+    historicalCase: "포스겐(COCl₂)은 제1차 세계대전 화학무기이자 산업용 중간체로, 누출 시 음압 환풍기로 가스를 가두고 활성탄(C) 흡착탑과 산화 세정탑을 거쳐 분해해야 합니다.",
+    tacticalSteps: [
+      "1단계: 3곳의 입구에서 쏟아지는 포스겐을 [FAN 환풍기]와 [C 탄소 흡착 타워]로 가두어 이동 속도를 늦추고 뒤로 밀어내세요.",
+      "2단계: 포집 구역 한가운데에 [Cl 염소 살균 방출기]와 [O 산소 촉진기]를 배치해 광역 지속 피해(DoT)를 입히세요.",
+      "3단계: Fan + C + O + Cl 복합 반응으로 포스겐 26기를 완전 분해하면 최고 등급 원소(F, Cs)가 해금됩니다!"
+    ],
+    rewards: "Tower_F",
+    rewardLabel: "최강 원소 플루오린(F) & 세슘(Cs) 해금",
+    pathLogic: "Tower_Blocks_Path",
+    startingGold: 360,
+    spawns: [{ c: 0, r: 2 }, { c: 0, r: 11 }, { c: 9, r: 0 }],
+    exits: [{ c: 19, r: 6 }, { c: 19, r: 7 }],
+    obstacles: [
+      { c: 6, r: 4 }, { c: 6, r: 5 }, { c: 6, r: 8 }, { c: 6, r: 9 },
+      { c: 12, r: 3 }, { c: 12, r: 6 }, { c: 12, r: 7 }, { c: 12, r: 10 }
+    ]
+  },
+  {
+    stageId: "TUT-10",
+    stageNumber: 10,
+    title: "TUT-10: 대형 복합 화학 누출 5분 방어전",
+    environment: "Outdoor",
+    enemyKey: "Mixed",
+    clearCondition: "Survive_5min",
+    clearTarget: 300, // 300초 (5분, 배속 적용)
+    clearLabel: "모든 원소와 설비를 총동원해 5분(300초)간 복합 재난 방어",
+    requiredTowers: ["C", "H", "O", "N", "Na", "Ca", "S", "Fe", "K", "Cl", "Cs", "F"],
+    shopItems: ["Fan", "Pressurizer", "Heater", "GlassWall"],
+    description: "대형 복합 누출 사고! 5분간 도시를 방어하세요.",
+    chemicalEquation: "복합 재난 방어: Ca/GLS(부식방어) + O(마비해독) + F/Cs(초고화력 산화)",
+    historicalCase: "1984년 인도 보팔 참사(메틸이소시아네이트·청산가스 복합 누출)처럼 실제 대형 화학산단 사고에서는 여러 위험물이 연쇄 폭발하므로 전방위 방어 체계가 요구됩니다.",
+    tacticalSteps: [
+      "1단계: 불산(HF)과 황화수소(H₂S)가 섞여 나오므로, 길목에는 [GLS 유리벽]/[Ca 칼슘]으로 부식 방어막을 깔고 [O 산소]로 마비 해독망을 구축하세요.",
+      "2단계: 자금이 모이는 대로 반응성 1위 [F 플루오린 만능 산화기]와 2위 [Cs 세슘 초중력 레일건]을 건설하세요.",
+      "3단계: 상단 [배속: 2x / 4x] 버튼을 활용하며 300초(5분) 동안 도시 방어선을 지켜내면 최종 마스터 인증을 획득합니다!"
+    ],
+    rewards: "Unlock_FreeMode",
+    rewardLabel: "전 스테이지 무한 서바이벌(Free Mode) 마스터 인증",
+    pathLogic: "Tower_Blocks_Path",
+    startingGold: 480,
+    spawns: [{ c: 0, r: 6 }, { c: 0, r: 7 }, { c: 9, r: 0 }, { c: 10, r: 0 }],
+    exits: [{ c: 19, r: 6 }, { c: 19, r: 7 }, { c: 9, r: 13 }, { c: 10, r: 13 }],
+    obstacles: [
+      { c: 5, r: 4 }, { c: 5, r: 9 },
+      { c: 14, r: 4 }, { c: 14, r: 9 },
+      { c: 9, r: 6 }, { c: 10, r: 7 }
     ]
   }
 ];
 
 /**
- * 3. 원소 타워 8종 정의 (탄소 C + 반응성 1~7위 원소)
- * - rank: 반응성/역할 순위 표시
- * - symbol: 원소 기호, atomicNum: 원자 번호
- * - targetAir / targetGround: 공중(가스형) 및 지상 위험물 공격 가능 여부
- * - roleType:
- *   'wall_slow' (탄소 C: 미로 벽 + 흡착 감속 + 은신 검출)
- *   'splash'    (소듐 Na: 노란 불꽃 중급 스플래시 폭발)
- *   'chain'     (포타슘 K: 보라색 불꽃 빠른 연사 + 연쇄 폭발)
- *   'aura'      (산소 O: 주변 원소 타워 연소 촉진 공격력/연사속도 버프 + 은신 검출)
- *   'detonate'  (수소 H: 초광역 환원 폭발, 기폭 후에도 바닥 용기가 남아 미로가 붕괴되지 않고 자동 재충전됨!)
- *   'gas_cloud' (염소 Cl: 가스/유기물 특화, 독가스 중화 구름 장판 생성)
- *   'boss_nuke' (세슘 Cs: 물 속성 및 보스 킬러, 초고화력 폭발)
- *   'omni_dot'  (플루오린 F: 반응성 1위, 유리/금까지 부식시키는 만능 산화 + 방어력 파괴 지속 부식 데미지)
+ * DT_CompoundRecipe.csv의 42개 실제 역사적 화학 사고 데이터
+ * - 무한 서바이벌(무제한 유닛) 모드에서 웨이브마다 실제 사고 기록과 해당 화학 위험물이 끝없이 출현합니다.
  */
-export const ELEMENT_TOWERS = {
-  C: {
-    id: "C",
-    rank: "BASE",
-    symbol: "C",
-    atomicNum: 6,
-    name: "탄소 (활성탄 필터)",
-    whyReactive: "다공성 탄소 구조로 유해 화학물질과 은신 가스를 흡착·격리",
-    concept: "미로 건설 코어 · 흡착 감속 · 은신 검출",
-    cost: 15,
-    range: 90,          // 흡착/검출 반경 (px)
-    damage: 4,          // 미세 마찰 중화 피해
-    fireRate: 1.0,      // 초당 1회 흡착 펄스
-    color: "#64748b",
-    glowColor: "#94a3b8",
-    targetGround: true,
-    targetAir: true,
-    roleType: "wall_slow",
-    slowFactor: 0.35,   // 이동속도 35% 감소 (업그레이드 시 증가)
-    slowDuration: 2.0,
-    detectsStealth: true
-  },
-  Na: {
-    id: "Na",
-    rank: "5위",
-    symbol: "Na",
-    atomicNum: 11,
-    name: "소듐 (나트륨)",
-    whyReactive: "물과 닿으면 격렬히 폭발하며 노란색 불꽃 방출",
-    concept: "저렴한 중급 폭발 타워 (수분 특화)",
-    cost: 35,
-    range: 125,
-    damage: 26,
-    fireRate: 0.9,      // 초당 발사 횟수
-    splashRadius: 52,   // 폭발 반경 (px)
-    color: "#f59e0b",
-    glowColor: "#fde047",
-    targetGround: true,
-    targetAir: false,
-    roleType: "splash"
-  },
-  K: {
-    id: "K",
-    rank: "4위",
-    symbol: "K",
-    atomicNum: 19,
-    name: "포타슘 (칼륨)",
-    whyReactive: "소듐보다 반응성이 더 크며 물과 격렬히 반응해 보라색 불꽃 방출",
-    concept: "보라색 불꽃 연쇄 폭발 · 빠른 연사",
-    cost: 60,
-    range: 145,
-    damage: 30,
-    fireRate: 2.2,      // 매우 빠른 연사
-    chainCount: 3,      // 최대 3기 연쇄 스파크 폭발
-    chainRange: 85,
-    color: "#a855f7",
-    glowColor: "#d8b4fe",
-    targetGround: true,
-    targetAir: true,
-    roleType: "chain"
-  },
-  O: {
-    id: "O",
-    rank: "6위",
-    symbol: "O",
-    atomicNum: 8,
-    name: "산소 (산화 촉진기)",
-    whyReactive: "거의 모든 원소와 산화물을 만들며 연소 반응의 필수 조건",
-    concept: "연소 촉진 오라 (주변 타워 공격력·연사 버프)",
-    cost: 50,
-    range: 115,         // 버프 오라 반경 (약 3타일 반경)
-    damage: 0,
-    fireRate: 0,
-    buffDamagePct: 0.30, // 주변 타워 공격력 +30% (업그레이드 시 증가)
-    buffRatePct: 0.20,   // 주변 타워 공격속도 +20%
-    color: "#0ea5e9",
-    glowColor: "#7dd3fc",
-    targetGround: false,
-    targetAir: false,
-    roleType: "aura",
-    detectsStealth: true
-  },
-  H: {
-    id: "H",
-    rank: "7위",
-    symbol: "H",
-    atomicNum: 1,
-    name: "수소 (환원 기폭기)",
-    whyReactive: "공기 중 폭발 범위가 엄청나게 넓으며 강력한 환원제로 작용",
-    concept: "자폭형 초광역 폭발 (용기 잔존 후 재충전)",
-    cost: 45,
-    range: 175,         // 초광역 폭발 범위
-    damage: 190,        // 기폭 시 강력한 광역 피해
-    fireRate: 0.22,     // 4.5초마다 수소 가스 완충 후 자동/수동 기폭
-    color: "#38bdf8",
-    glowColor: "#e0f2fe",
-    targetGround: true,
-    targetAir: true,
-    roleType: "detonate"
-  },
-  Cl: {
-    id: "Cl",
-    rank: "3위",
-    symbol: "Cl",
-    atomicNum: 17,
-    name: "염소 (살균 독가스)",
-    whyReactive: "강력한 산화제·살균제로 유기물 및 가스형 오염물질과 격렬히 반응",
-    concept: "가스형(공중)·유기물 특화 · 범위 독가스 장판",
-    cost: 75,
-    range: 155,
-    damage: 22,         // 직격 피해 + 독가스 초당 지속 피해
-    cloudDps: 28,       // 독가스 구름 초당 피해
-    cloudDuration: 3.2, // 구름 지속 시간(초)
-    cloudRadius: 65,
-    fireRate: 0.85,
-    color: "#84cc16",
-    glowColor: "#bef264",
-    targetGround: true,
-    targetAir: true,
-    roleType: "gas_cloud"
-  },
-  Cs: {
-    id: "Cs",
-    rank: "2위",
-    symbol: "Cs",
-    atomicNum: 55,
-    name: "세슘 (알칼리 극한폭발)",
-    whyReactive: "이온화 에너지 최저! 물에 닿으면 즉시 대폭발하고 공기 중 자연 발화",
-    concept: "보스킬러 · 수분(물) 속성 특화 초강력 폭발",
-    cost: 110,
-    range: 170,
-    damage: 145,
-    fireRate: 0.65,
-    splashRadius: 68,
-    color: "#f43f5e",
-    glowColor: "#fda4af",
-    targetGround: true,
-    targetAir: false,
-    roleType: "boss_nuke"
-  },
-  F: {
-    id: "F",
-    rank: "1위",
-    symbol: "F",
-    atomicNum: 9,
-    name: "플루오린 (불소)",
-    whyReactive: "전기음성도 1위! 유리와 금, 중금속 보호막까지 부식시키는 최강 산화제",
-    concept: "만능 산화 · 방어력 부식 · 강력한 지속 데미지",
-    cost: 135,
-    range: 165,
-    damage: 55,         // 즉시 산화 레이저 피해
-    dotDps: 65,         // 초당 부식(HF/불화물 산화) 피해
-    dotDuration: 4.0,
-    armorShred: 0.5,    // 적의 피해감소 보호막 50% 영구 부식
-    fireRate: 1.5,
-    color: "#10b981",
-    glowColor: "#6ee7b7",
-    targetGround: true,
-    targetAir: true,
-    roleType: "omni_dot"
-  }
-};
-
-/**
- * 4. 화학위험물 적군(Chemical Hazards) 6종 정의
- * - category:
- *   'aqueous'  (수분/폐수 계열 -> Na, K, Cs 알칼리 금속과 만나면 격렬한 폭발 중화!)
- *   'organic'  (유기 용제/바이오 독소 -> Cl 염소 살균 및 F 플루오린 산화에 취약)
- *   'gas'      (유독성 에어로졸/가스 -> 공중 이동! 타워 미로를 무시하고 직선 비행, Cl/F/K/H에 취약)
- *   'stealth'  (무색 무취 누출 가스 -> 탄소 C 또는 산소 O 반경 안에서만 검출됨)
- *   'oxidizer' (불안정 과산화물 -> 이동이 빠르며 환원제인 수소 H, 탄소 C와 반응)
- *   'heavy'    (중금속·유리질 슬러지 보스 -> 높은 방어력 보유, 플루오린 F의 부식과 세슘 Cs 폭격에 취약)
- */
-export const HAZARD_TYPES = {
-  aqueous: {
-    id: "aqueous",
-    name: "폐수 슬러지 (H₂O·산성수)",
-    formula: "H₂O(aq)",
-    desc: "수분을 다량 함유한 폐수입니다. 알칼리 금속(Na, K, Cs)과 접촉하면 폭발적으로 중화됩니다.",
-    hp: 95,
-    speed: 52,          // 초당 이동 픽셀
-    reward: 10,
-    armor: 0,
-    isFlying: false,
-    isStealth: false,
-    color: "#3b82f6"
-  },
-  organic: {
-    id: "organic",
-    name: "유기 독성 용제 (VOCs)",
-    formula: "C₆H₆·R-OH",
-    desc: "휘발성 유기화합물입니다. 염소(Cl) 살균 가스와 플루오린(F), 활성탄(C) 흡착에 약합니다.",
-    hp: 130,
-    speed: 64,
-    reward: 13,
-    armor: 0.1,
-    isFlying: false,
-    isStealth: false,
-    color: "#d97706"
-  },
-  gas: {
-    id: "gas",
-    name: "유독 에어로졸 구름 (공중)",
-    formula: "NH₃·H₂S(g)",
-    desc: "[공중 이동] 타워 미로를 넘어 출구로 직행합니다! 염소(Cl), 포타슘(K), 플루오린(F), 수소(H)로 요격하세요.",
-    hp: 105,
-    speed: 58,
-    reward: 15,
-    armor: 0,
-    isFlying: true,
-    isStealth: false,
-    color: "#a3e635"
-  },
-  stealth: {
-    id: "stealth",
-    name: "무색 무취 누출가스 (은신)",
-    formula: "CO·Ar(g)",
-    desc: "[은신] 일반 센서에 잡히지 않습니다. 탄소(C) 활성탄이나 산소(O) 타워 범위 안에서만 정체가 드러납니다!",
-    hp: 115,
-    speed: 68,
-    reward: 16,
-    armor: 0,
-    isFlying: false,
-    isStealth: true,
-    color: "#cbd5e1"
-  },
-  oxidizer: {
-    id: "oxidizer",
-    name: "불안정 과산화물 (고속)",
-    formula: "R-O-O-R",
-    desc: "반응성이 불안정해 매우 빠르게 이동합니다. 환원제인 수소(H) 광역 폭발과 포타슘(K)에 취약합니다.",
-    hp: 90,
-    speed: 88,
-    reward: 14,
-    armor: 0,
-    isFlying: false,
-    isStealth: false,
-    color: "#f472b6"
-  },
-  heavy: {
-    id: "heavy",
-    name: "중금속·규산염 농축액 (BOSS)",
-    formula: "Pb·SiO₂(s)",
-    desc: "[보스] 유리질 피막으로 일반 공격을 45% 경감합니다. 플루오린(F)으로 피막을 녹이고 세슘(Cs)으로 파괴하세요!",
-    hp: 520,
-    speed: 36,
-    reward: 55,
-    armor: 0.45,
-    isFlying: false,
-    isStealth: false,
-    isBoss: true,
-    color: "#ef4444"
-  }
-};
-
-/**
- * 5. 원소 타워 × 화학위험물 상성 및 화학 반응식 매트릭스
- * - 상성이 맞으면 multiplier 배율만큼 추가 중화 피해가 들어가고, 화면에 실제 화학 반응식이 떠오릅니다!
- */
-export const CHEMICAL_REACTIONS = {
-  // 알칼리 금속(Na, K, Cs) + 수분(aqueous) 반응
-  "Na:aqueous": {
-    mult: 1.8,
-    equation: "2Na + 2H₂O → 2NaOH + H₂↑ (노란 불꽃 중화!)"
-  },
-  "K:aqueous": {
-    mult: 2.0,
-    equation: "2K + 2H₂O → 2KOH + H₂↑ (보라 불꽃 연쇄폭발!)"
-  },
-  "Cs:aqueous": {
-    mult: 2.6,
-    equation: "2Cs + 2H₂O → 2CsOH + H₂↑ (세슘 초격렬 수중폭발!)"
-  },
-  // 세슘(Cs) + 보스(heavy)
-  "Cs:heavy": {
-    mult: 2.2,
-    equation: "Cs 극한 이온화 충격 → 중금속 코어 분쇄!"
-  },
-  // 염소(Cl) + 가스형(gas) / 유기물(organic) 반응
-  "Cl:gas": {
-    mult: 2.1,
-    equation: "3Cl₂ + 8NH₃ → N₂ + 6NH₄Cl (유독가스 완전 중화!)"
-  },
-  "Cl:organic": {
-    mult: 1.9,
-    equation: "Cl₂ + R-H → R-Cl + HCl (유기독소 살균 산화!)"
-  },
-  // 플루오린(F) + 보스(유리질/중금속) 및 만능 산화 반응
-  "F:heavy": {
-    mult: 2.4,
-    equation: "SiO₂ + 2F₂ → SiF₄ + O₂ (유리·중금속 장갑 부식!)"
-  },
-  "F:organic": {
-    mult: 1.7,
-    equation: "C₆H₆ + F₂ → 초강력 불화 산화 분해!"
-  },
-  "F:gas": {
-    mult: 1.7,
-    equation: "F₂ 만능 전자 탈취 → 유독가스 강제 산화!"
-  },
-  // 수소(H) + 불안정 과산화물(oxidizer) / 가스(gas) 환원 반응
-  "H:oxidizer": {
-    mult: 2.4,
-    equation: "2H₂ + O₂ → 2H₂O + ΔE (과산화물 환원 대폭발!)"
-  },
-  "H:gas": {
-    mult: 1.7,
-    equation: "H₂ 광역 폭연파 → 대기 에어로졸 일소!"
-  },
-  // 포타슘(K) + 과산화물/은신
-  "K:oxidizer": {
-    mult: 1.6,
-    equation: "K + O₂ → KO₂ (초과산화칼륨 연쇄 반응!)"
-  },
-  // 탄소(C) + 유기물/은신 흡착
-  "C:organic": {
-    mult: 2.0,
-    equation: "활성탄(C) 미세기공 → VOC 유기독소 강력 흡착!"
-  },
-  "C:stealth": {
-    mult: 2.0,
-    equation: "활성탄(C) 필터 → 무색 은신가스 흡착 검출!"
-  }
-};
+export const COMPOUND_RECIPES = [
+  { rowName: "NH3", name: "Ammonia", displayName: "암모니아", archetype: "GAS", counter: "O / Cl / Fan", description: "1928년 독일 함부르크 – 냉동창고 암모니아 누출사고로 수십 명 질식" },
+  { rowName: "Cl2", name: "Chlorine", displayName: "염소", archetype: "GAS", counter: "Na + Heater (NaCl 침전)", description: "1943년 미국 뉴저지 – 화학공장 폭발로 염소가스 누출, 주민 대피" },
+  { rowName: "C6H6", name: "Benzene", displayName: "벤젠", archetype: "ORGANIC", counter: "C 흡착 + O / F 산화", description: "1948년 미국 펜실베이니아 – 벤젠 누출로 노동자 집단 중독" },
+  { rowName: "CS2", name: "Carbon Disulfide", displayName: "이황화탄소", archetype: "ORGANIC", counter: "C / O / Cl", description: "1950년 인도 섬유공장 – 이황화탄소 증기 누출로 작업자 사망" },
+  { rowName: "Hg", name: "Mercury", displayName: "수은", archetype: "HEAVY", counter: "S (황화수은 고정) / Cs", description: "1956년 일본 미나마타 – 수은 화합물 누출로 주민 집단 중독, '미나마타병' 발생" },
+  { rowName: "H2S", name: "Hydrogen Sulfide", displayName: "황화수소", archetype: "H2S_BOSS", counter: "O (마비 해독 및 산화)", description: "1964년 일본 – 황화수소 가스 누출로 광부 질식사" },
+  { rowName: "CCl4", name: "Carbon Tetrachloride", displayName: "사염화탄소", archetype: "ORGANIC", counter: "C / Na / F", description: "1969년 영국 – 사염화탄소 누출로 화학공장 노동자 사망" },
+  { rowName: "CH2O", name: "Formaldehyde", displayName: "포름알데히드", archetype: "ORGANIC", counter: "C / O / Cl", description: "1972년 미국 – 포름알데히드 누출로 인근 주민 호흡기 피해" },
+  { rowName: "Ni(CO)4", name: "Nickel Carbonyl", displayName: "니켈카보닐", archetype: "HEAVY", counter: "Cs / F / Fe", description: "1973년 독일 화학공장 폭발 – 니켈카보닐 누출로 치명적 중독" },
+  { rowName: "PbO", name: "Lead Oxide", displayName: "산화납", archetype: "HEAVY", counter: "Cs / S / Fe", description: "1975년 미국 배터리 공장 – 산화납 누출로 노동자 건강 피해" },
+  { rowName: "SO2", name: "Sulfur Dioxide", displayName: "이산화황", archetype: "GAS", counter: "Ca / Na / O", description: "1976년 이탈리아 세베소 – 다이옥신 및 이산화황 누출, 대규모 환경 피해" },
+  { rowName: "HNO3", name: "Nitric Acid", displayName: "질산", archetype: "AQUEOUS", counter: "Na / Ca / K", description: "1978년 일본 – 질산 저장탱크 폭발, 화학물질 누출" },
+  { rowName: "CH3OH", name: "Methanol", displayName: "메탄올", archetype: "ORGANIC", counter: "O + Heater / C", description: "1980년 한국 – 메탄올 누출사고로 작업자 시력 손상" },
+  { rowName: "HF", name: "Hydrogen Fluoride", displayName: "불화수소", archetype: "AQUEOUS", counter: "Ca (형석 침전) + GlassWall", description: "1982년 미국 – 불화수소 누출로 인근 주민 대피", corrodesTowers: true },
+  { rowName: "CH3NCO", name: "Methyl Isocyanate", displayName: "메틸이소시아네이트", archetype: "ORGANIC", counter: "C + O + F 총력 방어", description: "1984년 인도 보팔 참사 – 살충제 원료 저장탱크 누출, 수천 명 사망" },
+  { rowName: "HCN", name: "Hydrogen Cyanide", displayName: "청산가스", archetype: "STEALTH", counter: "Cl (은신 감지) + O / Na", description: "1984년 인도 보팔 사고 당시 청산가스 방출, 대규모 인명 피해" },
+  { rowName: "As2O3", name: "Arsenic Trioxide", displayName: "삼산화비소", archetype: "HEAVY", counter: "Fe / S / Cs", description: "1991년 중국 제련소 사고 – 삼산화비소 누출로 대규모 중독" },
+  { rowName: "CS2", name: "Carbon Disulfide", displayName: "이황화탄소", archetype: "ORGANIC", counter: "C / O / Cl", description: "1994년 인도 섬유공장 폭발 – 이황화탄소 누출로 대규모 화재" },
+  { rowName: "KCN", name: "Potassium Cyanide", displayName: "시안화칼륨", archetype: "AQUEOUS", counter: "Cl / Fe / Cs", description: "1998년 가나 금광 사고 – 시안화칼륨 누출로 강 오염" },
+  { rowName: "Hg", name: "Mercury", displayName: "수은", archetype: "HEAVY", counter: "S (황화수은 고정) / Cs", description: "2000년 페루 수은 누출사고 – 주민 중독 사례 발생" },
+  { rowName: "CdCl2", name: "Cadmium Chloride", displayName: "염화카드뮴", archetype: "HEAVY", counter: "Cs / S / Ca", description: "2003년 일본 화학공장 사고 – 카드뮴 누출로 토양 오염" },
+  { rowName: "Cl2", name: "Chlorine", displayName: "염소", archetype: "GAS", counter: "Na + Heater (NaCl 침전)", description: "2005년 미국 열차 충돌사고 – 염소가스 대량 누출" },
+  { rowName: "C2H2", name: "Acetylene", displayName: "아세틸렌", archetype: "GAS", counter: "N (농도 희석) + O", description: "2007년 미국 용접공장 폭발 – 아세틸렌 누출 후 폭발" },
+  { rowName: "SO2", name: "Sulfur Dioxide", displayName: "이산화황", archetype: "GAS", counter: "Ca / Na / Fan", description: "2008년 칠레 구리 제련소 사고 – 대기 오염 발생" },
+  { rowName: "C6H6", name: "Benzene", displayName: "벤젠", archetype: "ORGANIC", counter: "C 흡착 + Fe / F", description: "2010년 중국 진저우 화학공장 폭발 – 벤젠 유출, 하천 오염" },
+  { rowName: "O3", name: "Ozone", displayName: "오존", archetype: "OXIDIZER", counter: "H (환원 폭발) / C", description: "2010년 대만 반도체 공장 사고 – 오존 발생 장치 폭발" },
+  { rowName: "CH2O", name: "Formaldehyde", displayName: "포름알데히드", archetype: "ORGANIC", counter: "C / O / Cl", description: "2011년 중국 화학공장 누출 – 주민 건강 피해" },
+  { rowName: "HF", name: "Hydrogen Fluoride", displayName: "불화수소", archetype: "AQUEOUS", counter: "Ca + GlassWall", description: "2012년 한국 구미 불산 누출사고 – 작업자 사망, 주민 피해", corrodesTowers: true },
+  { rowName: "NaOH", name: "Sodium Hydroxide", displayName: "수산화나트륨", archetype: "AQUEOUS", counter: "Cl / C / Cs", description: "2012년 미국 제지공장 사고 – 하천 오염" },
+  { rowName: "NH3", name: "Ammonia", displayName: "암모니아", archetype: "GAS", counter: "N / Cl / Fan", description: "2013년 중국 상하이 냉각 시스템 파손 – 암모니아 유출" },
+  { rowName: "HNO3", name: "Nitric Acid", displayName: "질산", archetype: "AQUEOUS", counter: "Na / Ca / K", description: "2014년 일본 화학공장 누출 – 질산 증기 흡입 피해" },
+  { rowName: "NO2", name: "Nitrogen Dioxide", displayName: "이산화질소", archetype: "OXIDIZER", counter: "H / N / Na", description: "2015년 미국 화학공장 폭발 – 질소산화물 배출" },
+  { rowName: "CH3OH", name: "Methanol", displayName: "메탄올", archetype: "ORGANIC", counter: "O / K / Cl", description: "2015년 한국 메탄올 누출사고 – 작업자 시력 손상" },
+  { rowName: "H2SO4", name: "Sulfuric Acid", displayName: "황산", archetype: "AQUEOUS", counter: "Ca + Na + O 다단계 중화", description: "2016년 인도 황산 저장탱크 누출 – 토양 오염", corrodesTowers: true },
+  { rowName: "PH3", name: "Phosphine", displayName: "포스핀", archetype: "STEALTH", counter: "Cl + O + Cu/Fe", description: "2017년 중국 저장탱크 폭발 – 포스핀 가스 누출" },
+  { rowName: "CO", name: "Carbon Monoxide", displayName: "일산화탄소", archetype: "STEALTH", counter: "O + Heater (CO2 전환)", description: "2018년 중국 광산 사고 – 일산화탄소 누출로 광부 질식" },
+  { rowName: "C3H6O", name: "Acetone", displayName: "아세톤", archetype: "ORGANIC", counter: "C / O / N", description: "2018년 인도 아세톤 저장탱크 폭발 – 공장 전소" },
+  { rowName: "C2H4O", name: "Ethylene Oxide", displayName: "에틸렌옥사이드", archetype: "OXIDIZER", counter: "H / N / F", description: "2019년 미국 일리노이 화학공장 폭발 – 암 발병 위험 증가" },
+  { rowName: "CO2", name: "Carbon Dioxide", displayName: "이산화탄소", archetype: "GAS", counter: "Ca / Na / Fan", description: "2019년 노르웨이 저장탱크 폭발 – 이산화탄소 누출로 질식 사고" },
+  { rowName: "H2S", name: "Hydrogen Sulfide", displayName: "황화수소", archetype: "H2S_BOSS", counter: "O (마비 해독) + Cl", description: "2020년 인도 비자그 화학공장 사고 – 작업자 질식 사망" },
+  { rowName: "C2H5OH", name: "Ethanol", displayName: "에탄올", archetype: "ORGANIC", counter: "O / K / C", description: "2021년 브라질 에탄올 저장탱크 폭발 – 대규모 화재" },
+  { rowName: "Ni(CO)4", name: "Nickel Carbonyl", displayName: "니켈카보닐", archetype: "HEAVY", counter: "Cs + F 초고화력 분해", description: "2022년 미국 화학공장 폭발 – 니켈카보닐 누출로 치명적 중독" }
+];
