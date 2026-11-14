@@ -684,7 +684,12 @@ class ChemicalDefenseGame {
 
     document.getElementById("btnRestart").addEventListener("click", () => {
       this.sound.play("uiClick");
-      this.loadStage(this.stageIndex);
+      const curSt = this.currentStage;
+      this.runChemLabsTransition(
+        `ChemLabs // [${curSt.stageId}] ${curSt.title} 방재 구역 초기화 중...`,
+        () => this.loadStage(this.stageIndex),
+        580
+      );
     });
 
     // 3. 사운드 볼륨 제어
@@ -729,7 +734,12 @@ class ChemicalDefenseGame {
     document.getElementById("btnPauseRestart")?.addEventListener("click", () => {
       this.sound.play("uiClick");
       this.closePauseModal();
-      this.loadStage(this.stageIndex);
+      const curSt = this.currentStage;
+      this.runChemLabsTransition(
+        `ChemLabs // [${curSt.stageId}] ${curSt.title} 방재 구역 초기화 중...`,
+        () => this.loadStage(this.stageIndex),
+        580
+      );
     });
 
     // 5. 순차 진행형(Step 1 -> Step 2 -> Step 3) 튜토리얼 위저드 버튼 이벤트
@@ -768,14 +778,21 @@ class ChemicalDefenseGame {
     document.getElementById("btnModalSwitchSurvival").addEventListener("click", () => {
       this.sound.play("uiClick");
       this.sound.startAmbient();
-      this.mode = "survival";
-      if (modeSelect) modeSelect.value = "survival";
-      if (btnModeTutorial) btnModeTutorial.classList.remove("active");
-      if (btnModeSurvival) btnModeSurvival.classList.add("active");
       this.closeBriefingModal();
-      this.loadStage(this.stageIndex, false);
-      this.addLog(
-        `♾️ [${this.currentStage.stageId} 맵 무제한 서바이벌] 10종 원소 포탑이 모두 개방되었습니다!`
+      const curSt = this.currentStage;
+      this.runChemLabsTransition(
+        `ChemLabs // [${curSt.stageId} 무제한 서바이벌] 10종 원소 포탑 전면 개방 중...`,
+        () => {
+          this.mode = "survival";
+          if (modeSelect) modeSelect.value = "survival";
+          if (btnModeTutorial) btnModeTutorial.classList.remove("active");
+          if (btnModeSurvival) btnModeSurvival.classList.add("active");
+          this.loadStage(this.stageIndex, false);
+          this.addLog(
+            `♾️ [${this.currentStage.stageId} 맵 무제한 서바이벌] 10종 원소 포탑이 모두 개방되었습니다!`
+          );
+        },
+        640
       );
     });
 
@@ -794,27 +811,46 @@ class ChemicalDefenseGame {
       this.sound.play("uiClick");
       this.closeResultModal();
       const nextIdx = (this.stageIndex + 1) % TUTORIAL_STAGES.length;
-      this.mode = "tutorial";
-      if (modeSelect) modeSelect.value = "tutorial";
-      if (btnModeTutorial) btnModeTutorial.classList.add("active");
-      if (btnModeSurvival) btnModeSurvival.classList.remove("active");
-      this.loadStage(nextIdx, true);
+      const nextSt = TUTORIAL_STAGES[nextIdx] || TUTORIAL_STAGES[0];
+      this.runChemLabsTransition(
+        `ChemLabs // 다음 작전 [${nextSt.stageId}] ${nextSt.title} 로딩 중...`,
+        () => {
+          this.mode = "tutorial";
+          if (modeSelect) modeSelect.value = "tutorial";
+          if (btnModeTutorial) btnModeTutorial.classList.add("active");
+          if (btnModeSurvival) btnModeSurvival.classList.remove("active");
+          this.loadStage(nextIdx, true);
+        },
+        680
+      );
     });
 
     document.getElementById("btnResultPlaySurvival").addEventListener("click", () => {
       this.sound.play("uiClick");
       this.closeResultModal();
-      this.mode = "survival";
-      if (modeSelect) modeSelect.value = "survival";
-      if (btnModeTutorial) btnModeTutorial.classList.remove("active");
-      if (btnModeSurvival) btnModeSurvival.classList.add("active");
-      this.loadStage(this.stageIndex, false);
+      const curSt = this.currentStage;
+      this.runChemLabsTransition(
+        `ChemLabs // [${curSt.stageId} 무제한 서바이벌] 10종 전 원소 포탑 활성화 중...`,
+        () => {
+          this.mode = "survival";
+          if (modeSelect) modeSelect.value = "survival";
+          if (btnModeTutorial) btnModeTutorial.classList.remove("active");
+          if (btnModeSurvival) btnModeSurvival.classList.add("active");
+          this.loadStage(this.stageIndex, false);
+        },
+        650
+      );
     });
 
     document.getElementById("btnResultRetry").addEventListener("click", () => {
       this.sound.play("uiClick");
       this.closeResultModal();
-      this.loadStage(this.stageIndex, true);
+      const curSt = this.currentStage;
+      this.runChemLabsTransition(
+        `ChemLabs // [${curSt.stageId}] 스테이지 재구성 및 원소 포탑 초기화 중...`,
+        () => this.loadStage(this.stageIndex, true),
+        600
+      );
     });
 
     // 8. 팔레트 필터 탭
@@ -917,6 +953,7 @@ class ChemicalDefenseGame {
   checkAnyModalOpen() {
     const ids = [
       "titleScreenOverlay",
+      "chemLabsLoadingOverlay",
       "briefingModal",
       "towerUnlockModal",
       "pauseModal",
@@ -1064,7 +1101,13 @@ class ChemicalDefenseGame {
     dock.querySelectorAll(".sector-chip").forEach((btn) => {
       btn.addEventListener("click", () => {
         this.sound.play("uiClick");
-        this.loadStage(Number(btn.dataset.idx));
+        const nextIdx = Number(btn.dataset.idx);
+        const nextSt = TUTORIAL_STAGES[nextIdx] || TUTORIAL_STAGES[0];
+        this.runChemLabsTransition(
+          `ChemLabs // [${nextSt.stageId}] ${nextSt.title} 방재 구역으로 이동 중...`,
+          () => this.loadStage(nextIdx),
+          600
+        );
       });
     });
   }
