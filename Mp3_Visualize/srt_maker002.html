@@ -1,229 +1,498 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <title>브라우저 로컬 완전 자동 SRT 생성기</title>
-  <style>
-    :root {
-      --bg: #0f172a;
-      --card: #1e293b;
-      --border: #334155;
-      --accent: #3b82f6;
-      --accent-hover: #2563eb;
-      --text: #f8fafc;
-      --subtext: #94a3b8;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-    body { background-color: var(--bg); color: var(--text); padding: 24px; display: flex; justify-content: center; }
-    .container { width: 100%; max-width: 900px; display: flex; flex-direction: column; gap: 20px; }
-    header { text-align: center; margin-bottom: 8px; }
-    header h1 { font-size: 1.6rem; color: #fff; margin-bottom: 6px; }
-    header p { color: var(--subtext); font-size: 0.9rem; }
-    
-    .card { background-color: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
-    .row { display: flex; gap: 16px; margin-top: 12px; }
-    .col { flex: 1; display: flex; flex-direction: column; gap: 8px; }
-    label { font-weight: 600; font-size: 0.85rem; color: var(--subtext); }
-    input[type="file"], select {
-      background: #0f172a; border: 1px solid var(--border); color: #fff;
-      padding: 10px; border-radius: 8px; font-size: 0.85rem; width: 100%; outline: none;
-    }
-    textarea {
-      width: 100%; height: 160px; background: #0f172a; border: 1px solid var(--border);
-      border-radius: 8px; padding: 12px; color: #fff; font-size: 0.9rem; resize: vertical; outline: none; line-height: 1.5;
-    }
-    
-    .btn {
-      background: var(--accent); color: white; border: none; padding: 12px 20px;
-      font-weight: 600; border-radius: 8px; cursor: pointer; transition: 0.2s; font-size: 0.95rem;
-    }
-    .btn:hover { background: var(--accent-hover); }
-    .btn:disabled { background: #475569; cursor: not-allowed; opacity: 0.6; }
-    .btn-green { background: #10b981; }
-    .btn-green:hover { background: #059669; }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SRT GENERATOR LAB — Stanza & Poetry Sync</title>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --bg:#0a0a0c;
+  --panel:#121218;
+  --accent:#00ffcc;
+  --pink:#ff2a6d;
+  --border:rgba(255,255,255,0.1);
+  --text:#e0e0e0;
+}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:'Pretendard', sans-serif;
+  height:100vh; display: flex; flex-direction: column;
+}
 
-    #status {
-      font-size: 0.85rem; color: #38bdf8; min-height: 20px; text-align: center;
-      background: #0b1329; padding: 10px; border-radius: 6px; border: 1px dashed var(--border);
-    }
-    #previewBox {
-      display: none; flex-direction: column; gap: 10px;
-    }
-  </style>
+/* UI STRUCTURE */
+.topbar{
+  padding:12px 20px; background:var(--panel); border-bottom:1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between;
+}
+.logo{letter-spacing:3px; color:var(--accent); font-weight:bold; font-size:14px;}
+.mode-controls{display:flex; gap:12px; align-items:center; font-size:11px;}
+.mode-controls select, .mode-controls label{
+  background:#000; color:var(--text); border:1px solid var(--border);
+  padding:5px 10px; border-radius:3px; cursor:pointer;
+}
+
+.container { display: grid; grid-template-columns: 1fr 1fr; flex: 1; min-height: 0; gap: 2px; background: var(--border); }
+
+.side-panel {
+  background: var(--panel);
+  display: flex; flex-direction: column; padding: 18px; overflow-y: auto; min-height: 0;
+}
+
+h3 { font-size: 11px; letter-spacing: 2px; color: #888; margin-bottom: 10px; text-transform: uppercase; display:flex; justify-content:space-between; align-items:center; }
+
+/* INPUTS */
+textarea { 
+  flex: 1; background: #000; color: var(--text); border: 1px solid var(--border); 
+  padding: 15px; font-family: inherit; font-size: 13px; line-height: 1.8; resize: none; outline: none;
+}
+textarea:focus { border-color: rgba(0, 255, 204, 0.4); }
+#srtOutput { background: #050505; color: var(--accent); font-family: monospace; font-size: 12px; }
+
+/* LIVE STANZA PREVIEW */
+.preview-box {
+  height: 155px; background: #050508; border: 1px solid var(--border);
+  margin-bottom: 14px; padding: 16px; display: flex; flex-direction: column;
+  justify-content: center; align-items: center; gap: 8px; position: relative; overflow: hidden;
+}
+.preview-badge {
+  position: absolute; top: 8px; left: 10px; font-size: 10px; color: #555; letter-spacing: 1px;
+}
+.preview-line {
+  font-size: 15px; color: #fff; letter-spacing: 1px; white-space: nowrap;
+  will-change: clip-path, opacity;
+}
+
+/* NEXT CUE INDICATOR */
+.cue-banner {
+  background: #08080c; border: 1px solid var(--border); padding: 10px 15px;
+  display: flex; justify-content: space-between; align-items: center; font-size: 12px;
+}
+.cue-tag { padding: 2px 8px; border-radius: 2px; font-weight: bold; font-size: 10px; margin-right: 8px; }
+.cue-tag.line { background: var(--pink); color: #fff; }
+.cue-tag.end { background: var(--accent); color: #000; }
+
+/* CONTROLS */
+.player-box {
+  padding: 16px 20px; background: #000; border-top: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 12px;
+}
+.progress-bar { width: 100%; height: 8px; background: #222; cursor: pointer; position: relative; border-radius: 2px; }
+.progress-fill { height: 100%; background: rgba(0, 255, 204, 0.45); width: 0%; pointer-events: none; }
+
+/* 마커 스타일: 분홍색=줄 시작, 민트색=연(화면) 종료 */
+.marker {
+  position: absolute;
+  top: -5px;
+  width: 9px;
+  height: 18px;
+  background: var(--pink);
+  border: 1px solid #fff;
+  cursor: ew-resize;
+  z-index: 10;
+  transform: translateX(-50%);
+  border-radius: 2px;
+}
+.marker.end-marker {
+  background: var(--accent);
+  width: 11px;
+  border-color: #000;
+}
+.marker:hover { transform: translateX(-50%) scale(1.25); z-index: 12; }
+
+.btns { display: flex; gap: 10px; align-items: center; }
+.btn { 
+  background: transparent; border: 1px solid var(--border); color: #fff; 
+  padding: 11px 16px; cursor: pointer; font-size: 12px; font-weight: bold; flex: 1;
+}
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn.sync { background: var(--accent); color: #000; border: none; font-size: 14px; flex: 1.5; }
+.btn.sync:active { transform: scale(0.98); opacity: 0.85; }
+.btn.undo { flex: 0.6; color: #aaa; }
+
+#timeDisplay { font-family: monospace; color: var(--accent); font-size: 17px; width: 110px; text-align: center; }
+
+.instruction { font-size: 11px; color: #777; line-height: 1.65; margin-top: 10px; }
+mark { background: var(--accent); color: #000; padding: 0 4px; font-weight: bold; }
+mark.pink { background: var(--pink); color: #fff; }
+</style>
 </head>
 <body>
 
-<div class="container">
-  <header>
-    <h1>로컬 AI 오디오 자동 자막 생성기</h1>
-    <p>서버 업로드 없이 내 브라우저에서 Whisper AI를 구동해 타임스탬프를 자동 추출합니다.</p>
-  </header>
-
-  <div class="card">
-    <div class="row">
-      <div class="col">
-        <label>1. MP3 오디오 파일 선택</label>
-        <input type="file" id="audioFile" accept="audio/*">
-      </div>
-      <div class="col">
-        <label>2. Whisper 모델 선택</label>
-        <select id="modelSelect">
-          <option value="Xenova/whisper-tiny">Whisper-Tiny (초고속, ~75MB, 테스트 권장)</option>
-          <option value="Xenova/whisper-base" selected>Whisper-Base (균형형, ~140MB, 권장)</option>
-          <option value="Xenova/whisper-small">Whisper-Small (고정밀, ~460MB, 약간 느림)</option>
-        </select>
-      </div>
-    </div>
-
-    <div class="col" style="margin-top: 14px;">
-      <label>3. 원본 텍스트 가사 (선택 사항: 입력 시 타이밍에 맞게 이 가사를 우선 매핑합니다)</label>
-      <textarea id="rawLyrics" placeholder="가사를 줄 단위로 붙여넣으세요. 비워두면 AI가 받아적은 텍스트로 SRT가 생성됩니다."></textarea>
-    </div>
-
-    <button id="runBtn" class="btn" style="margin-top: 16px; width: 100%;">자동 자막 분석 시작</button>
-  </div>
-
-  <div id="status">오디오 파일을 올리고 분석 시작 버튼을 눌러주세요.</div>
-
-  <div id="previewBox" class="card">
-    <label>완성된 SRT 자막 결과</label>
-    <textarea id="srtResult" style="height: 220px;" readonly></textarea>
-    <button id="downloadBtn" class="btn btn-green">SRT 파일 다운로드</button>
+<div class="topbar">
+  <div class="logo">SRT STANZA SYNC LAB</div>
+  <div class="mode-controls">
+    <label>
+      <input type="checkbox" id="speedTagCheck" onchange="updateSRTDisplay()"> 줄별 지속시간 태그([2.3s]) 포함
+    </label>
+    <select id="outputMode" onchange="updateSRTDisplay()">
+      <option value="overlap">시화 누적 모드 (각 줄 시간차 등장 + 연 끝에 동시 퇴장)</option>
+      <option value="block">연 묶음 모드 (한 연을 하나의 다중행 SRT로 출력)</option>
+    </select>
   </div>
 </div>
 
-<!-- Transformers.js 브라우저 번들 로드 -->
-<script type="module">
-  import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2';
+<div class="container">
+  <div class="side-panel">
+    <h3>1. 가사 입력 (빈 줄로 연/화면 구분)</h3>
+    <textarea id="lyricInput" oninput="prepareQueue()" placeholder="같은 화면에 시화처럼 쌓일 줄들은 붙여서 입력하고,&#10;화면이 넘어갈 때 빈 줄(엔터 두 번)을 넣으세요.&#10;&#10;예시:&#10;산에는 꽃 피네&#10;꽃이 피네&#10;갈 봄 여름 없이&#10;&#10;꽃이 피네&#10;산에 산에"></textarea>
+    <div class="instruction">
+      - <mark class="pink">분홍 마커</mark>: 각 줄이 나타나기 시작하는 시간 (줄마다 간격이 다르면 등장 속도도 자동 반영)<br>
+      - <mark>민트 마커</mark>: 빈 줄 위치. 현재 화면에 쌓인 여러 줄이 <b>동시에 끝나는 시간</b><br>
+      - 오디오 재생 후 <mark>SPACE</mark>를 누를 때마다 <b>[줄 시작 → 줄 시작 → 연 종료]</b> 순으로 기록됩니다.
+    </div>
+  </div>
 
-  // 로컬 브라우저 캐시 활용 설정
-  env.allowLocalModels = false;
+  <div class="side-panel">
+    <h3>
+      <span>2. 시화 누적 미리보기 & SRT 결과</span>
+      <span id="progressCount" style="color:var(--accent); font-family:monospace;">0 / 0</span>
+    </h3>
+    
+    <div class="preview-box" id="previewBox">
+      <div class="preview-badge">STANZA PREVIEW (속도 반영)</div>
+      <div id="previewLines" style="display:flex; flex-direction:column; align-items:center; gap:6px;">
+        <span style="color:#444; font-size:12px;">싱크 후 재생하면 줄별 속도에 맞춰 시화가 미리보기 됩니다</span>
+      </div>
+    </div>
 
-  const audioFileInput = document.getElementById('audioFile');
-  const modelSelect = document.getElementById('modelSelect');
-  const rawLyrics = document.getElementById('rawLyrics');
-  const runBtn = document.getElementById('runBtn');
-  const statusEl = document.getElementById('status');
-  const previewBox = document.getElementById('previewBox');
-  const srtResult = document.getElementById('srtResult');
-  const downloadBtn = document.getElementById('downloadBtn');
+    <textarea id="srtOutput" readonly placeholder="싱크 작업이 시작되면 여기에 SRT 코드가 나타납니다."></textarea>
+    <button class="btn" style="margin-top:10px; flex:none;" onclick="downloadSRT()">SRT 파일로 저장</button>
+  </div>
+</div>
 
-  let transcriber = null;
-  let currentModel = '';
+<div class="player-box">
+  <div class="cue-banner">
+    <div>
+      <span style="color:#666; margin-right:8px;">다음 입력 대기:</span>
+      <span id="nextCueDisplay" style="color:#fff;">가사를 먼저 입력하세요</span>
+    </div>
+    <div style="font-size:11px; color:#666;">잘못 눌렀을 때: <b>Backspace</b> (한 단계 취소)</div>
+  </div>
 
-  // 오디오 파일을 16kHz Float32Array로 디코딩
-  async function readAudioData(file) {
-    const arrayBuffer = await file.arrayBuffer();
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
-    const decoded = await audioCtx.decodeAudioData(arrayBuffer);
-    return decoded.getChannelData(0); // 모노 채널 데이터 반환
-  }
+  <div class="progress-bar" id="progressBar" onclick="seek(event)">
+    <div class="progress-fill" id="progFill"></div>
+  </div>
+  
+  <div class="btns">
+    <button class="btn" id="loadBtn" onclick="document.getElementById('audioFile').click()">파일 불러오기</button>
+    <input type="file" id="audioFile" accept="audio/*" style="display:none" onchange="loadAudio(this.files)">
+    
+    <div id="timeDisplay">00:00:00</div>
+    
+    <button class="btn" onclick="togglePlay()" id="playBtn">PLAY</button>
+    <button class="btn undo" onclick="undoSync()">되돌리기</button>
+    <button class="btn sync" id="syncBtn" onclick="markSync()">SYNC (SPACE)</button>
+  </div>
+</div>
 
-  // 밀리초 -> SRT 타임 포맷 변환 (00:00:00,000)
-  function formatSRTTime(seconds) {
-    if (isNaN(seconds) || seconds < 0) seconds = 0;
-    const date = new Date(seconds * 1000);
-    const hh = String(Math.floor(seconds / 3600)).padStart(2, '0');
-    const mm = String(date.getUTCMinutes()).padStart(2, '0');
-    const ss = String(date.getUTCSeconds()).padStart(2, '0');
-    const ms = String(date.getUTCMilliseconds()).padStart(3, '0');
-    return `${hh}:${mm}:${ss},${ms}`;
-  }
+<script>
+let audio = new Audio();
+let cueQueue = [];       // 가사에서 파싱된 전체 큐 (줄 시작 + 연 종료)
+let recordedEvents = []; // 실제 시간과 매핑된 이벤트 배열
 
-  runBtn.addEventListener('click', async () => {
-    const file = audioFileInput.files[0];
-    if (!file) {
-      alert('MP3 오디오 파일을 먼저 등록해 주세요.');
-      return;
-    }
+function loadAudio(files) {
+  if (!files[0]) return;
+  const url = URL.createObjectURL(files[0]);
+  audio.src = url;
+  document.getElementById('loadBtn').textContent = files[0].name;
+  clearWork();
+}
 
-    runBtn.disabled = true;
-    previewBox.style.display = 'none';
+// 가사를 분석해 [줄 시작]과 [연 종료(빈 줄)] 큐를 생성
+function prepareQueue() {
+  const rawLines = document.getElementById('lyricInput').value.split('\n');
+  const newQueue = [];
+  let stanzaIdx = 0;
+  let lineInStanza = 0;
 
-    try {
-      const selectedModel = modelSelect.value;
-      if (!transcriber || currentModel !== selectedModel) {
-        statusEl.innerText = `AI 모델(${selectedModel}) 다운로드 중... 잠시만 기다려주세요 (최초 1회만 캐싱).`;
-        transcriber = await pipeline('automatic-speech-recognition', selectedModel, {
-          progress_callback: (p) => {
-            if (p.status === 'progress') {
-              statusEl.innerText = `모델 다운로드 중: ${p.file} (${Math.round(p.progress)}%)`;
-            }
-          }
-        });
-        currentModel = selectedModel;
+  rawLines.forEach(raw => {
+    const text = raw.trim();
+    if (text === "") {
+      if (lineInStanza > 0) {
+        newQueue.push({ type: 'stanza_end', stanzaIdx, label: `[${stanzaIdx + 1}연 종료 / 화면 전환]` });
+        stanzaIdx++;
+        lineInStanza = 0;
       }
+    } else {
+      newQueue.push({ type: 'line', stanzaIdx, lineInStanza, text });
+      lineInStanza++;
+    }
+  });
 
-      statusEl.innerText = '오디오 파형 디코딩 중 (16kHz)...';
-      const audioData = await readAudioData(file);
+  // 마지막 줄 뒤에 빈 줄이 없어도 자동으로 마지막 연 종료 큐를 추가
+  if (lineInStanza > 0) {
+    newQueue.push({ type: 'stanza_end', stanzaIdx, label: `[${stanzaIdx + 1}연 종료 / 최종 마무리]` });
+  }
 
-      statusEl.innerText = '음성 분석 및 타임스탬프 계산 중... 곡 길이에 따라 30초~1분 정도 소요될 수 있습니다.';
-      
-      // 타임스탬프 추출 활성화
-      const output = await transcriber(audioData, {
-        return_timestamps: true,
-        chunk_length_s: 30,
-        stride_length_s: 5,
-        language: 'korean',
-        task: 'transcribe'
+  cueQueue = newQueue;
+  updateCueBanner();
+}
+
+function updateCueBanner() {
+  const idx = recordedEvents.length;
+  const countEl = document.getElementById('progressCount');
+  const nextEl = document.getElementById('nextCueDisplay');
+  countEl.textContent = `${idx} / ${cueQueue.length}`;
+
+  if (cueQueue.length === 0) {
+    nextEl.innerHTML = `<span style="color:#666;">가사를 먼저 입력하세요</span>`;
+  } else if (idx >= cueQueue.length) {
+    nextEl.innerHTML = `<span style="color:var(--accent); font-weight:bold;">모든 연 매핑 완료! 상단 마커로 미세조정 가능합니다.</span>`;
+  } else {
+    const next = cueQueue[idx];
+    if (next.type === 'line') {
+      nextEl.innerHTML = `<span class="cue-tag line">${next.stanzaIdx + 1}연 - ${next.lineInStanza + 1}행 시작</span> <b>${next.text}</b>`;
+    } else {
+      nextEl.innerHTML = `<span class="cue-tag end">연 종료</span> <span style="color:var(--accent);">${next.label}</span>`;
+    }
+  }
+}
+
+function togglePlay() {
+  if (!audio.src) {
+    alert("먼저 오디오 파일을 불러와주세요.");
+    return;
+  }
+  if (audio.paused) {
+    if (cueQueue.length === 0) prepareQueue();
+    audio.play();
+    document.getElementById('playBtn').textContent = "PAUSE";
+  } else {
+    audio.pause();
+    document.getElementById('playBtn').textContent = "PLAY";
+  }
+}
+
+function formatTime(seconds) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  const ms = Math.floor((seconds % 1) * 1000);
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(ms).padStart(3, '0')}`;
+}
+
+function markSync() {
+  if (audio.paused) return;
+  if (cueQueue.length === 0) prepareQueue();
+  if (recordedEvents.length >= cueQueue.length) return;
+
+  const currentTime = audio.currentTime;
+  const nextCue = cueQueue[recordedEvents.length];
+
+  recordedEvents.push({
+    ...nextCue,
+    time: currentTime
+  });
+
+  if (recordedEvents.length >= cueQueue.length) {
+    audio.pause();
+    document.getElementById('playBtn').textContent = "PLAY";
+  }
+
+  updateCueBanner();
+  updateSRTDisplay();
+  renderMarkers();
+}
+
+function undoSync() {
+  if (recordedEvents.length === 0) return;
+  recordedEvents.pop();
+  updateCueBanner();
+  updateSRTDisplay();
+  renderMarkers();
+}
+
+// 기록된 이벤트를 바탕으로 SRT 텍스트 생성
+function buildStanzaData() {
+  const stanzas = {};
+
+  recordedEvents.forEach((ev, idx) => {
+    if (!stanzas[ev.stanzaIdx]) {
+      stanzas[ev.stanzaIdx] = { lines: [], endTime: null };
+    }
+    if (ev.type === 'line') {
+      // 다음 이벤트(다음 줄 시작 또는 연 종료)까지의 시간을 해당 줄의 '연출(등장) 시간'으로 계산
+      const nextEv = recordedEvents[idx + 1];
+      const revealDuration = nextEv ? Math.max(0.2, nextEv.time - ev.time) : 2.0;
+      stanzas[ev.stanzaIdx].lines.push({
+        text: ev.text,
+        start: ev.time,
+        revealDuration
       });
-
-      statusEl.innerText = '자막 및 텍스트 매핑 완료!';
-
-      // 원본 텍스트 가사가 입력되어 있다면 줄별로 매핑, 없으면 AI 인식 텍스트 사용
-      const userLines = rawLyrics.value.trim().split('\n').map(l => l.trim()).filter(l => l.length > 0);
-      const chunks = output.chunks || [];
-      
-      let srtText = '';
-      if (userLines.length > 0) {
-        // 원본 가사 줄 수와 타임스탬프 청크 매핑
-        userLines.forEach((line, idx) => {
-          let start = 0;
-          let end = 0;
-
-          if (chunks[idx]) {
-            start = chunks[idx].timestamp[0] ?? 0;
-            end = chunks[idx].timestamp[1] ?? (start + 2.5);
-          } else if (chunks.length > 0) {
-            // 청크 수보다 가사가 많으면 마지막 시점 이후로 2.5초씩 가배정
-            const lastChunk = chunks[chunks.length - 1];
-            start = (lastChunk.timestamp[1] || 0) + (idx - chunks.length) * 2.5;
-            end = start + 2.5;
-          }
-
-          srtText += `${idx + 1}\n${formatSRTTime(start)} --> ${formatSRTTime(end)}\n${line}\n\n`;
-        });
-      } else {
-        // AI가 자동 추출한 텍스트 그대로 SRT화
-        chunks.forEach((chunk, idx) => {
-          const start = chunk.timestamp[0] ?? 0;
-          const end = chunk.timestamp[1] ?? (start + 2.0);
-          srtText += `${idx + 1}\n${formatSRTTime(start)} --> ${formatSRTTime(end)}\n${chunk.text.trim()}\n\n`;
-        });
-      }
-
-      srtResult.value = srtText;
-      previewBox.style.display = 'flex';
-
-    } catch (err) {
-      console.error(err);
-      statusEl.innerText = `오류 발생: ${err.message}`;
-    } finally {
-      runBtn.disabled = false;
+    } else if (ev.type === 'stanza_end') {
+      stanzas[ev.stanzaIdx].endTime = ev.time;
     }
   });
 
-  // SRT 다운로드
-  downloadBtn.addEventListener('click', () => {
-    const blob = new Blob([srtResult.value], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${audioFileInput.files[0]?.name.replace(/\.[^/.]+$/, "") || "lyrics"}.srt`;
-    a.click();
-    URL.revokeObjectURL(url);
-  });
-</script>
+  return Object.values(stanzas);
+}
 
+function updateSRTDisplay() {
+  const mode = document.getElementById('outputMode').value;
+  const includeSpeed = document.getElementById('speedTagCheck').checked;
+  const stanzas = buildStanzaData();
+  let srtText = "";
+  let index = 1;
+
+  stanzas.forEach(stanza => {
+    if (stanza.lines.length === 0) return;
+    // 아직 연 종료를 누르기 전이면 임시로 마지막 줄 + 3초 설정
+    const fallbackEnd = stanza.lines[stanza.lines.length - 1].start + 3.0;
+    const end = stanza.endTime !== null ? stanza.endTime : fallbackEnd;
+
+    if (mode === 'overlap') {
+      // 시화 누적 모드: 각 줄은 자기 박자에 시작하고, 종료 시간은 연 전체가 끝나는 시간으로 통일
+      stanza.lines.forEach(line => {
+        const speedInfo = includeSpeed ? ` [${line.revealDuration.toFixed(1)}s]` : "";
+        srtText += `${index++}\n${formatTime(line.start)} --> ${formatTime(end)}\n${line.text}${speedInfo}\n\n`;
+      });
+    } else {
+      // 연 묶음 모드: 여러 줄을 한 자막 블록으로 합침
+      const start = stanza.lines[0].start;
+      const combinedText = stanza.lines.map(l => {
+        return includeSpeed ? `${l.text} [${l.revealDuration.toFixed(1)}s]` : l.text;
+      }).join('\n');
+      srtText += `${index++}\n${formatTime(start)} --> ${formatTime(end)}\n${combinedText}\n\n`;
+    }
+  });
+
+  const out = document.getElementById('srtOutput');
+  out.value = srtText;
+  out.scrollTop = out.scrollHeight;
+}
+
+// 오디오 재생 중 실시간 시화 미리보기 렌더링
+function renderPreview(currentTime) {
+  const container = document.getElementById('previewLines');
+  const stanzas = buildStanzaData();
+
+  const activeStanza = stanzas.find(s => {
+    if (s.lines.length === 0) return false;
+    const start = s.lines[0].start;
+    const end = s.endTime !== null ? s.endTime : s.lines[s.lines.length - 1].start + 3.0;
+    return currentTime >= start && currentTime <= end;
+  });
+
+  if (!activeStanza) {
+    container.innerHTML = `<span style="color:#333; font-size:12px;">(여백 / 간주 구간)</span>`;
+    return;
+  }
+
+  container.innerHTML = "";
+  activeStanza.lines.forEach(line => {
+    const div = document.createElement('div');
+    div.className = 'preview-line';
+    div.textContent = line.text;
+
+    if (currentTime < line.start) {
+      div.style.opacity = '0';
+    } else {
+      // 각 줄마다 매핑된 박자 간격(revealDuration)에 맞춰 다른 속도로 그려지듯 등장
+      const progress = Math.min(1, (currentTime - line.start) / line.revealDuration);
+      const rightInset = (1 - progress) * 100;
+      div.style.opacity = Math.min(1, 0.25 + progress * 0.75);
+      div.style.clipPath = `inset(0 ${rightInset}% 0 0)`;
+    }
+    container.appendChild(div);
+  });
+}
+
+audio.ontimeupdate = () => {
+  if (!audio.duration) return;
+  const p = (audio.currentTime / audio.duration) * 100;
+  document.getElementById('progFill').style.width = p + "%";
+  document.getElementById('timeDisplay').textContent = formatTime(audio.currentTime).split(',')[0];
+  renderPreview(audio.currentTime);
+};
+
+function seek(e) {
+  if (isDraggingMarker || !audio.duration) return;
+  const rect = e.currentTarget.getBoundingClientRect();
+  const p = (e.clientX - rect.left) / rect.width;
+  audio.currentTime = p * audio.duration;
+  renderPreview(audio.currentTime);
+}
+
+// 단축키 처리
+window.addEventListener('keydown', (e) => {
+  if (document.activeElement.tagName === "TEXTAREA") return;
+  if (e.code === "Space") {
+    e.preventDefault();
+    markSync();
+  } else if (e.code === "Backspace") {
+    e.preventDefault();
+    undoSync();
+  }
+});
+
+function clearWork() {
+  recordedEvents = [];
+  prepareQueue();
+  document.getElementById('srtOutput').value = "";
+  renderMarkers();
+}
+
+/* ================================
+   마커 드래그 시스템 (줄 시작 / 연 종료 통합 조절)
+=================================== */
+let isDraggingMarker = false;
+let dragIndex = -1;
+
+function renderMarkers() {
+  const bar = document.getElementById('progressBar');
+  bar.querySelectorAll('.marker').forEach(m => m.remove());
+  if (!audio.duration) return;
+
+  recordedEvents.forEach((ev, i) => {
+    const p = (ev.time / audio.duration) * 100;
+    const marker = document.createElement('div');
+    marker.className = ev.type === 'stanza_end' ? 'marker end-marker' : 'marker';
+    marker.style.left = p + '%';
+    marker.title = ev.type === 'stanza_end' ? ev.label : `${ev.stanzaIdx + 1}연-${ev.lineInStanza + 1}행: ${ev.text}`;
+
+    marker.onmousedown = (e) => {
+      e.stopPropagation();
+      isDraggingMarker = true;
+      dragIndex = i;
+    };
+    bar.appendChild(marker);
+  });
+}
+
+window.addEventListener('mousemove', (e) => {
+  if (!isDraggingMarker || !audio.duration) return;
+  
+  const bar = document.getElementById('progressBar');
+  const rect = bar.getBoundingClientRect();
+  let p = (e.clientX - rect.left) / rect.width;
+  p = Math.max(0, Math.min(1, p));
+  let newTime = p * audio.duration;
+
+  const minTime = dragIndex > 0 ? recordedEvents[dragIndex - 1].time + 0.05 : 0;
+  const maxTime = dragIndex < recordedEvents.length - 1 ? recordedEvents[dragIndex + 1].time - 0.05 : audio.duration;
+
+  recordedEvents[dragIndex].time = Math.max(minTime, Math.min(maxTime, newTime));
+
+  renderMarkers();
+  updateSRTDisplay();
+  renderPreview(audio.currentTime);
+});
+
+window.addEventListener('mouseup', () => {
+  isDraggingMarker = false;
+});
+
+function downloadSRT() {
+  const content = document.getElementById('srtOutput').value;
+  if (!content) return;
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = "stanza_subtitle.srt";
+  a.click();
+}
+</script>
 </body>
 </html>
