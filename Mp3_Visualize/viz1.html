@@ -1,324 +1,563 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SPECTRUM LAB v15.0.50 — Procedural Choreography</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/addons/p5.sound.min.js"></script>
-<style>
-*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
-:root{ --bg:#020205; --panel:#08080f; --accent:#00ffcc; --accent2:#ff3377; --border:rgba(0,255,204,0.15); --text:#e0f0ff; --muted:#44445a; }
-body{ background:var(--bg); color:var(--text); font-family:'Pretendard', sans-serif; height:100vh; overflow:hidden; display: flex; flex-direction: column; }
-
-.topbar{ padding:10px 20px; background:var(--panel); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
-.logo{letter-spacing:5px; color:var(--accent); font-weight:bold; font-size:12px;}
-
-.main{ display:grid; grid-template-columns:380px 1fr; flex:1; min-height:0; }
-.left-panel{ background:var(--panel); border-right:1px solid var(--border); display:flex; flex-direction:column; padding:12px; overflow-y:auto; }
-
-.ctrl-box { background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:10px; }
-.label-small { font-size:9px; color:var(--accent); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px; display:block; border-bottom:1px solid rgba(0,255,204,0.1); padding-bottom:3px;}
-
-.control-group { margin-bottom:8px; }
-.control-group label { display:block; font-size:8px; color:var(--muted); margin-bottom:2px; }
-.val-label { float:right; color:var(--accent); font-weight:bold; font-size:9px; }
-input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; height:2px; }
-select { width:100%; background:#000; border:1px solid var(--border); color:var(--text); padding:8px; border-radius:4px; font-size:11px; outline:none; margin-bottom:5px; }
-
-.btn { background:transparent; border:1px solid var(--border); border-radius:4px; color:#fff; padding:10px; cursor:pointer; font-size:10px; width:100%; margin-bottom:5px; transition:0.2s; }
-.btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-.btn.primary { background:var(--accent2); border-color:var(--accent2); color:#fff; font-weight:bold; font-size:11px; padding:15px; margin-top:5px; }
-.btn.primary:disabled { opacity: 0.3; cursor: not-allowed; }
-
-.viz-area { position:relative; display:flex; justify-content:center; align-items:center; flex:1; background:#000; overflow:hidden; }
-#p5-container canvas { max-width: 100% !important; max-height: 100% !important; object-fit: contain; }
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Music Reactive Visualizer · 물 위 자막</title>
+  <style>
+    :root {
+      --bg: #03060f;
+      --panel: rgba(12, 16, 28, 0.92);
+      --accent: #5b9fff;
+      --accent2: #00e5ff;
+      --text: #e8f0ff;
+      --muted: #7a8aa0;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+      overflow-x: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse at 30% 20%, rgba(40, 100, 200, 0.15) 0%, transparent 55%),
+        radial-gradient(ellipse at 70% 80%, rgba(0, 180, 220, 0.1) 0%, transparent 50%);
+      z-index: -1;
+      pointer-events: none;
+    }
+    header { padding: 12px 16px 4px; text-align: center; flex-shrink: 0; }
+    header h1 {
+      font-size: 1.2rem; font-weight: 700;
+      background: linear-gradient(135deg, #e0f0ff, #7eb8ff 50%, #00d4ff);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    header p { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+    .main {
+      flex: 1; display: flex; flex-direction: column; align-items: center;
+      padding: 6px 10px 14px; gap: 10px; width: 100%; max-width: 920px; margin: 0 auto; min-height: 0;
+    }
+    .canvas-wrap {
+      position: relative; width: 100%; height: 48vh; min-height: 240px; max-height: 480px;
+      border-radius: 14px; overflow: hidden; background: #02060e;
+      box-shadow: 0 0 0 1px rgba(100,160,255,0.12), 0 12px 40px rgba(0,0,0,0.55); flex-shrink: 0;
+    }
+    #canvas { display: block; width: 100%; height: 100%; background: #02060e; }
+    .overlay-info {
+      position: absolute; top: 10px; left: 12px; right: 12px;
+      display: flex; justify-content: space-between; pointer-events: none; opacity: 0; z-index: 2;
+    }
+    .overlay-info.show { opacity: 1; }
+    .track-title { font-size: 0.78rem; font-weight: 600; text-shadow: 0 2px 10px #000; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .time-display { font-size: 0.7rem; color: rgba(200,220,255,0.7); text-shadow: 0 1px 6px #000; }
+    .controls {
+      width: 100%; background: var(--panel); border-radius: 14px; padding: 12px;
+      border: 1px solid rgba(100,160,255,0.1); display: flex; flex-direction: column; gap: 10px;
+    }
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .btn {
+      appearance: none; border: none; border-radius: 10px; padding: 10px 14px; font-size: 0.85rem; font-weight: 600;
+      cursor: pointer; color: #fff; background: linear-gradient(135deg, #3d7fff, #2563eb);
+    }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn.secondary { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); }
+    .btn.srt { background: linear-gradient(135deg, #00b4d8, #0077b6); }
+    .btn.record { background: linear-gradient(135deg, #ff5252, #c62828); }
+    .btn.success { background: linear-gradient(135deg, #00c853, #2e7d32); }
+    .file-label { flex: 1; min-width: 110px; }
+    .file-label input { display: none; }
+    .file-btn { width: 100%; }
+    .progress-wrap { width: 100%; height: 7px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; cursor: pointer; }
+    .progress-bar { height: 100%; width: 0%; background: linear-gradient(90deg, #3d7fff, #00e5ff); }
+    .style-group { display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; }
+    .style-btn {
+      padding: 6px 11px; border-radius: 16px; font-size: 0.74rem;
+      background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--muted); cursor: pointer;
+    }
+    .style-btn.active { background: rgba(61,127,255,0.28); border-color: #3d7fff; color: #fff; }
+    .status { font-size: 0.76rem; color: var(--muted); text-align: center; }
+    .tip { font-size: 0.68rem; color: var(--muted); text-align: center; }
+  </style>
 </head>
 <body>
-
-<div class="topbar">
-  <div class="logo">SPECTRUM LAB v15.0.50</div>
-  <div id="timeCode" style="font-family:monospace; font-size:12px; color:var(--accent);">00:00 / 00:00</div>
-</div>
-
-<div class="main">
-  <div class="left-panel">
-    <div class="ctrl-box">
-      <span class="label-small">1. Audio Analysis</span>
-      <button class="btn" onclick="document.getElementById('mIn').click()">SELECT MP3</button>
-      <input type="file" id="mIn" accept="audio/*" style="display:none" onchange="handleFile(this.files)">
-      <button class="btn" id="analyzeBtn" onclick="runAnalysis()" disabled style="border-color:#ffcc00; color:#ffcc00;">PRE-ANALYZE (24 BANDS)</button>
-      <div id="statusLog" style="font-size:10px; text-align:center; color:#ffcc00;">Wait for load...</div>
-    </div>
-
-    <div class="ctrl-box">
-      <span class="label-small">2. Procedural Choreography</span>
-      <div class="control-group">
-        <label>PLACEMENT (배치)</label>
-        <select id="placeMode" onchange="initParticles()">
-            <option value="balanced">Balanced (균형)</option>
-            <option value="side">Side (사이드)</option>
-            <option value="floor">Floor (바닥)</option>
-            <option value="center">Center (중앙)</option>
-        </select>
-      </div>
-      <div class="control-group">
-        <label>MOTION STYLE (움직임)</label>
-        <select id="moveMode">
-            <option value="upDown">Up & Down</option>
-            <option value="leftRight">Left & Right</option>
-            <option value="circular">Circular (원형)</option>
-            <option value="perlin">Perlin Noise</option>
-            <option value="noise1">Noise Level 1 (Smooth)</option>
-            <option value="noise2">Noise Level 2 (Vivid)</option>
-            <option value="noise3">Noise Level 3 (Fast)</option>
-            <option value="noise4">Noise Level 4 (Chaos)</option>
-        </select>
-      </div>
-      <div class="control-group">
-        <label>GLOBAL SCALE <span class="val-label" id="vPScale">1.0</span></label>
-        <input type="range" id="pScale" min="0.1" max="4.0" step="0.1" value="1.0">
-      </div>
-      <div class="control-group">
-        <label>REACTION FORCE <span class="val-label" id="vSimF">2.0</span></label>
-        <input type="range" id="simF" min="0.1" max="10.0" step="0.1" value="2.0">
+  <header>
+    <h1>물 위 자막 · Music Visualizer</h1>
+    <p>MP3 + SRT</p>
+  </header>
+  <div class="main">
+    <div class="canvas-wrap" id="canvasWrap">
+      <canvas id="canvas"></canvas>
+      <div class="overlay-info" id="overlay">
+        <div class="track-title" id="trackName">파일을 선택하세요</div>
+        <div class="time-display" id="timeDisplay">0:00 / 0:00</div>
       </div>
     </div>
-
-    <div class="ctrl-box">
-      <span class="label-small">3. Assets & Mood</span>
-      <button class="btn" style="border-color:#ffcc00; color:#ffcc00;" onclick="document.getElementById('pIn').click()">LOAD PETAL PNG</button>
-      <input type="file" id="pIn" accept="image/png" style="display:none" onchange="handlePetal(this.files)">
-      
-      <button class="btn" style="border-color:#00ffcc; color:#00ffcc;" onclick="document.getElementById('bgIn').click()">LOAD BACKGROUND PNG</button>
-      <input type="file" id="bgIn" accept="image/png, image/jpeg" style="display:none" onchange="handleBG(this.files)">
-      
-      <div class="control-group" style="margin-top:8px;">
-        <label>TRAIL (잔상) <span class="val-label" id="vTrail">40</span></label>
-        <input type="range" id="trail" min="0" max="255" value="40">
+    <div class="controls">
+      <div class="row">
+        <label class="file-label">
+          <input type="file" id="fileInput" accept="audio/mpeg,audio/mp3,audio/*,.mp3" />
+          <button type="button" class="btn secondary file-btn" id="fileBtn">MP3</button>
+        </label>
+        <label class="file-label">
+          <input type="file" id="srtInput" accept=".srt,text/plain" />
+          <button type="button" class="btn srt file-btn" id="srtBtn">SRT</button>
+        </label>
+        <button type="button" class="btn" id="playBtn" disabled><span id="playIcon">▶</span> <span id="playText">재생</span></button>
       </div>
-    </div>
-
-    <div class="ctrl-box">
-      <span class="label-small">4. Export Config</span>
-      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-bottom:5px;">
-          <button class="btn active" id="resFHD" onclick="setExportRes('FHD')">FHD</button>
-          <button class="btn" id="resUHD" onclick="setExportRes('UHD')">UHD</button>
+      <div class="progress-wrap" id="progressWrap"><div class="progress-bar" id="progressBar"></div></div>
+      <div class="style-group" id="styleGroup">
+        <button type="button" class="style-btn active" data-style="bars">막대</button>
+        <button type="button" class="style-btn" data-style="circle">원형</button>
+        <button type="button" class="style-btn" data-style="wave">파형</button>
+        <button type="button" class="style-btn" data-style="particles">파티클</button>
+        <button type="button" class="style-btn" data-style="radial">방사형</button>
       </div>
-      <button class="btn primary" id="recBtn" onclick="toggleSync()" disabled>▶ START RECORD (24fps)</button>
+      <div class="row" style="justify-content:center">
+        <button type="button" class="btn record" id="recordBtn" disabled><span id="recIcon">⏺</span> <span id="recText">녹화</span></button>
+        <button type="button" class="btn success" id="downloadBtn" style="display:none">영상 저장</button>
+      </div>
+      <div class="status" id="status">MP3와 SRT를 선택하세요</div>
     </div>
+    <p class="tip">자막은 물 위에 써지고, 끝나면 흩어집니다.</p>
   </div>
+  <script>
+  (function () {
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d', { alpha: false });
+    const canvasWrap = document.getElementById('canvasWrap');
+    const fileInput = document.getElementById('fileInput');
+    const fileBtn = document.getElementById('fileBtn');
+    const srtInput = document.getElementById('srtInput');
+    const srtBtn = document.getElementById('srtBtn');
+    const playBtn = document.getElementById('playBtn');
+    const playIcon = document.getElementById('playIcon');
+    const playText = document.getElementById('playText');
+    const recordBtn = document.getElementById('recordBtn');
+    const recIcon = document.getElementById('recIcon');
+    const recText = document.getElementById('recText');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const statusEl = document.getElementById('status');
+    const trackName = document.getElementById('trackName');
+    const timeDisplay = document.getElementById('timeDisplay');
+    const overlay = document.getElementById('overlay');
+    const progressBar = document.getElementById('progressBar');
+    const progressWrap = document.getElementById('progressWrap');
+    const styleGroup = document.getElementById('styleGroup');
 
-  <div class="viz-area" id="p5-container"></div>
-</div>
+    let audioCtx = null, analyser = null, sourceNode = null, audioEl = null;
+    let isPlaying = false, animId = null, currentStyle = 'bars';
+    let mediaRecorder = null, recordedChunks = [], isRecording = false, recordedBlob = null;
+    let particles = [], hue = 0, dataArray = null;
+    let cues = [], activeCue = null, textParticles = [];
+    let writeProgress = 0, writeStartTime = 0, dissolveStart = 0, isDissolving = false, lastCueText = '';
+    let waterRipples = [];
 
-<div class="playbar"><div id="progFill"></div></div>
-
-<script>
-let exportRes = 'FHD', isRecording = false, isPlaying = false;
-let audio, fft, ampObj;
-let particles = [];
-let mediaRecorder, recordedChunks = [];
-let canvasRef, bgImg = null, petalImg = null;
-let isAnalyzed = false;
-
-function setup() {
-    let container = document.getElementById('p5-container');
-    let w = (exportRes === 'FHD') ? 1920 : 3840;
-    let h = (exportRes === 'FHD') ? 1080 : 2160;
-    let cnv = createCanvas(w, h);
-    cnv.parent(container);
-    canvasRef = cnv.elt;
-    colorMode(RGB, 255, 255, 255, 255);
-    fft = new p5.FFT(0.8, 256);
-    ampObj = new p5.Amplitude();
-    imageMode(CENTER);
-    initParticles();
-}
-
-function initParticles() {
-    particles = [];
-    let pMode = document.getElementById('placeMode').value;
-    for(let i=0; i<24; i++) {
-        particles.push(new ProceduralParticle(i, pMode));
+    function resizeCanvas() {
+      const rect = canvasWrap.getBoundingClientRect();
+      const w = Math.max(Math.floor(rect.width), 1);
+      const h = Math.max(Math.floor(rect.height), 1);
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.floor(w * dpr);
+      canvas.height = Math.floor(h * dpr);
+      canvas.style.width = w + 'px';
+      canvas.style.height = h + 'px';
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.scale(dpr, dpr);
+      if (currentStyle === 'particles') initParticles(w, h);
+      if (!isPlaying) drawIdle(w, h);
     }
-}
+    window.addEventListener('resize', () => { clearTimeout(window._rz); window._rz = setTimeout(resizeCanvas, 80); });
+    function initSize() { resizeCanvas(); setTimeout(resizeCanvas, 120); setTimeout(resizeCanvas, 350); }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initSize); else initSize();
 
-async function runAnalysis() {
-    if (!audio) return;
-    isAnalyzed = true;
-    document.getElementById('statusLog').innerText = "24-BAND ANALYSIS READY";
-    document.getElementById('recBtn').disabled = false;
-}
-
-function draw() {
-    let trVal = parseInt(document.getElementById('trail').value);
-    background(2, 2, 8, trVal);
-
-    let vol = 0, bands = new Array(24).fill(0);
-    if (audio && audio.isPlaying()) {
-        fft.analyze();
-        vol = ampObj.getLevel();
-        for(let i=0; i<24; i++) {
-            bands[i] = fft.getEnergy(pow(2, i/2)*20, pow(2, (i+1)/2)*20) / 255;
-        }
-    } else {
-        push(); fill(255, 120); textAlign(CENTER); textSize(width*0.012);
-        text(isAnalyzed ? "READY TO RECORD" : "LOAD MUSIC → PRE-ANALYZE", width/2, height/2 + 200);
-        pop();
+    function drawIdle(w, h) {
+      w = w || canvasWrap.clientWidth || 300;
+      h = h || canvasWrap.clientHeight || 200;
+      const g = ctx.createLinearGradient(0, 0, 0, h);
+      g.addColorStop(0, '#04101c'); g.addColorStop(1, '#030c18');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = 'rgba(180,210,255,0.4)';
+      ctx.font = '600 14px sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('물 위에 자막이 써집니다', w / 2, h / 2);
     }
-
-    // 1. Background Pulse (Bass)
-    drawBackground(bands[2] || 0);
-
-    // 2. 24 Semantic Particles
-    let mMode = document.getElementById('moveMode').value;
-    let force = parseFloat(document.getElementById('simF').value);
-    let scale = parseFloat(document.getElementById('pScale').value);
-
-    for (let p of particles) {
-        let bVal = bands[p.id] || 0;
-        p.update(bVal, mMode, force);
-        p.display(bVal, scale);
+    function ensureAudioCtx() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+      return audioCtx;
     }
-
-    updateUI();
-}
-
-function drawBackground(bass) {
-    if (!bgImg) return;
-    push();
-    translate(width/2, height/2);
-    let pulse = 1.0 + (bass * 0.05); // 0.05 고정 혹은 조절가능
-    let finalScale = max(width/bgImg.width, height/bgImg.height) * pulse;
-    image(bgImg, 0, 0, bgImg.width * finalScale, bgImg.height * finalScale);
-    pop();
-}
-
-class ProceduralParticle {
-    constructor(id, placeMode) {
-        this.id = id;
-        this.angle = random(TWO_PI);
-        this.size = random(150, 300);
-        this.noiseOff = random(1000);
-        this.color = color(random(150, 255), random(150, 255), random(200, 255), 200);
-        this.resetPosition(placeMode);
+    function setupAnalyser() {
+      ensureAudioCtx();
+      if (!analyser) {
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.78;
+        dataArray = new Uint8Array(analyser.frequencyBinCount);
+      }
+    }
+    function toSec(h, m, s, ms) {
+      const frac = ms < 10 ? ms / 10 : ms < 100 ? ms / 100 : ms / 1000;
+      return h * 3600 + m * 60 + s + frac;
+    }
+    function parseSRT(text) {
+      const result = [];
+      text = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+      for (const block of text.trim().split(/\n\s*\n/)) {
+        const lines = block.trim().split('\n');
+        if (lines.length < 2) continue;
+        let timeLine = lines[0], textStart = 1;
+        if (/^\d+$/.test(lines[0].trim()) && lines.length >= 3) { timeLine = lines[1]; textStart = 2; }
+        const m = timeLine.match(/(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})\s*-->\s*(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})/);
+        if (!m) continue;
+        const txt = lines.slice(textStart).join('\n').replace(/<[^>]+>/g, '').replace(/\{[^}]+\}/g, '').trim();
+        if (txt) result.push({ start: toSec(+m[1], +m[2], +m[3], +m[4]), end: toSec(+m[5], +m[6], +m[7], +m[8]), text: txt });
+      }
+      return result;
     }
 
-    resetPosition(mode) {
-        const W = width, H = height;
-        if(mode === 'center') {
-            this.origin = createVector(W/2 + random(-W*0.1, W*0.1), H/2 + random(-H*0.1, H*0.1));
-        } else if(mode === 'side') {
-            this.origin = (random() > 0.5) ? createVector(random(W*0.1), random(H)) : createVector(W - random(W*0.1), random(H));
-        } else if(mode === 'floor') {
-            this.origin = createVector(random(W), H - random(H*0.2));
-        } else { // balanced
-            this.origin = createVector(random(W*0.05, W*0.95), random(H*0.05, H*0.95));
-        }
-        this.pos = this.origin.copy();
-    }
+    fileBtn.addEventListener('click', () => fileInput.click());
+    srtBtn.addEventListener('click', () => srtInput.click());
 
-    update(amp, moveMode, force) {
-        let time = frameCount * 0.02;
-        let shift = amp * 200 * force;
-
-        if (moveMode === 'upDown') {
-            this.pos.y = this.origin.y + sin(time + this.id) * shift;
-        } else if (moveMode === 'leftRight') {
-            this.pos.x = this.origin.x + cos(time + this.id) * shift;
-        } else if (moveMode === 'circular') {
-            this.pos.x = this.origin.x + cos(time + this.id) * shift;
-            this.pos.y = this.origin.y + sin(time + this.id) * shift;
-        } else if (moveMode.startsWith('noise')) {
-            let nScale = parseInt(moveMode.slice(-1)) * 0.01;
-            let nx = (noise(this.noiseOff, frameCount * nScale) - 0.5) * 500 * amp * force;
-            let ny = (noise(this.noiseOff + 100, frameCount * nScale) - 0.5) * 500 * amp * force;
-            this.pos.x = this.origin.x + nx;
-            this.pos.y = this.origin.y + ny;
-        } else { // Perlin (Basic)
-            this.pos.x = this.origin.x + (noise(this.id, time) - 0.5) * shift;
-            this.pos.y = this.origin.y + (noise(this.id + 50, time) - 0.5) * shift;
-        }
-        
-        this.angle += 0.01 + amp * 0.1;
-        this.noiseOff += 0.005;
-    }
-
-    display(amp, scale) {
-        push();
-        translate(this.pos.x, this.pos.y);
-        rotate(this.angle);
-        let finalSz = this.size * scale * (0.8 + amp * 2.5);
-        if (petalImg) {
-            tint(this.color);
-            image(petalImg, 0, 0, petalImg.width * (finalSz/500), petalImg.height * (finalSz/500));
-        } else {
-            noStroke(); fill(this.color);
-            ellipse(0, 0, finalSz * 0.6, finalSz);
-        }
-        pop();
-    }
-}
-
-// Handlers
-function handleFile(files) {
-    if (audio) audio.stop();
-    audio = loadSound(URL.createObjectURL(files[0]), () => {
-        document.getElementById('statusLog').innerText = "LOADED: " + files[0].name;
-        document.getElementById('analyzeBtn').disabled = false;
+    fileInput.addEventListener('change', async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      stopAll();
+      if (sourceNode) { try { sourceNode.disconnect(); } catch (_) {} sourceNode = null; }
+      trackName.textContent = file.name.replace(/\.[^/.]+$/, '') || 'Unknown';
+      overlay.classList.add('show');
+      statusEl.textContent = 'MP3 로딩 중...';
+      downloadBtn.style.display = 'none';
+      recordedBlob = null;
+      try {
+        setupAnalyser();
+        if (audioEl) { audioEl.pause(); URL.revokeObjectURL(audioEl.src); }
+        audioEl = new Audio();
+        audioEl.preload = 'auto';
+        audioEl.src = URL.createObjectURL(file);
+        audioEl.crossOrigin = 'anonymous';
+        sourceNode = audioCtx.createMediaElementSource(audioEl);
+        sourceNode.connect(analyser);
+        analyser.connect(audioCtx.destination);
+        await new Promise((resolve) => { audioEl.onloadedmetadata = resolve; setTimeout(resolve, 2500); });
+        playBtn.disabled = false;
+        recordBtn.disabled = false;
+        statusEl.textContent = cues.length ? ('자막 ' + cues.length + '개') : '준비 완료';
+        updateTime(); resizeCanvas(); bindAudioEvents();
+      } catch (err) { statusEl.textContent = 'MP3 로드 실패'; }
     });
-}
-function handleBG(files) { loadImage(URL.createObjectURL(files[0]), (img) => { bgImg = img; }); }
-function handlePetal(files) { loadImage(URL.createObjectURL(files[0]), (img) => { petalImg = img; initParticles(); }); }
-function setExportRes(res) { exportRes = res; setup(); }
 
-async function toggleSync() {
-    if (!audio || !isAnalyzed) return;
-    if (isPlaying) {
-        audio.stop(); if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
-        isPlaying = false;
-        document.getElementById('recBtn').innerText = "▶ START RECORD";
-    } else {
-        if (getAudioContext().state === 'suspended') await userStartAudio();
-        recordedChunks = [];
-        const stream = canvasRef.captureStream(24);
-        const dest = getAudioContext().createMediaStreamDestination();
-        p5.soundOut.output.connect(dest);
-        const combined = new MediaStream([...stream.getVideoTracks(), ...dest.stream.getAudioTracks()]);
-        mediaRecorder = new MediaRecorder(combined, { 
-            mimeType: 'video/webm; codecs=vp9,opus',
-            videoBitsPerSecond: exportRes === 'UHD' ? 60000000 : 20000000 
+    srtInput.addEventListener('change', async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      try {
+        cues = parseSRT(await file.text());
+        statusEl.textContent = cues.length ? ('자막 ' + cues.length + '개 로드') : '자막을 찾지 못했습니다';
+        activeCue = null; textParticles = []; isDissolving = false; writeProgress = 0;
+      } catch (err) { statusEl.textContent = 'SRT 읽기 실패'; }
+    });
+
+    playBtn.addEventListener('click', async () => {
+      if (!audioEl) return;
+      try {
+        ensureAudioCtx();
+        if (audioCtx.state === 'suspended') await audioCtx.resume();
+        if (isPlaying) {
+          audioEl.pause(); isPlaying = false; cancelAnimationFrame(animId); animId = null;
+          drawIdle(canvasWrap.clientWidth, canvasWrap.clientHeight);
+        } else {
+          await audioEl.play(); isPlaying = true; drawLoop();
+        }
+        updatePlayUI();
+      } catch (err) { statusEl.textContent = '재생 실패. 한 번 더 눌러보세요'; }
+    });
+
+    function stopAll() {
+      if (audioEl) { audioEl.pause(); audioEl.currentTime = 0; }
+      isPlaying = false; cancelAnimationFrame(animId); animId = null; updatePlayUI();
+      if (isRecording) stopRecording();
+      activeCue = null; textParticles = []; isDissolving = false;
+    }
+    function updatePlayUI() {
+      playIcon.textContent = isPlaying ? '❚❚' : '▶';
+      playText.textContent = isPlaying ? '일시정지' : '재생';
+    }
+    function fmt(s) {
+      if (!isFinite(s)) return '0:00';
+      return Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+    }
+    function updateTime() {
+      if (!audioEl) return;
+      timeDisplay.textContent = fmt(audioEl.currentTime) + ' / ' + fmt(audioEl.duration || 0);
+      progressBar.style.width = (audioEl.duration ? (audioEl.currentTime / audioEl.duration) * 100 : 0) + '%';
+    }
+    progressWrap.addEventListener('click', (e) => {
+      if (!audioEl || !audioEl.duration) return;
+      const rect = progressWrap.getBoundingClientRect();
+      audioEl.currentTime = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)) * audioEl.duration;
+      activeCue = null; textParticles = []; isDissolving = false;
+    });
+    function bindAudioEvents() {
+      audioEl.ontimeupdate = updateTime;
+      audioEl.onended = () => {
+        isPlaying = false; updatePlayUI(); cancelAnimationFrame(animId);
+        if (isRecording) stopRecording();
+        drawIdle(canvasWrap.clientWidth, canvasWrap.clientHeight);
+      };
+    }
+    styleGroup.addEventListener('click', (e) => {
+      const btn = e.target.closest('.style-btn');
+      if (!btn) return;
+      styleGroup.querySelectorAll('.style-btn').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentStyle = btn.dataset.style;
+      if (currentStyle === 'particles') initParticles(canvasWrap.clientWidth, canvasWrap.clientHeight);
+    });
+    function initParticles(w, h) {
+      particles = [];
+      for (let i = 0; i < 50; i++) particles.push({
+        x: Math.random() * (w || 300), y: Math.random() * (h || 200),
+        vx: (Math.random() - 0.5) * 1.1, vy: (Math.random() - 0.5) * 1.1, r: Math.random() * 2.2 + 0.8
+      });
+    }
+    function addRipple(x, y, force) {
+      waterRipples.push({ x, y, r: 2, maxR: 30 + force * 40, alpha: 0.35 + force * 0.3, life: 1 });
+    }
+    function updateRipples() {
+      for (let i = waterRipples.length - 1; i >= 0; i--) {
+        const rp = waterRipples[i];
+        rp.r += 1.8; rp.life -= 0.018; rp.alpha *= 0.97;
+        if (rp.life <= 0 || rp.r > rp.maxR) { waterRipples.splice(i, 1); continue; }
+        ctx.beginPath(); ctx.arc(rp.x, rp.y, rp.r, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(120,200,255,' + (rp.alpha * rp.life) + ')';
+        ctx.lineWidth = 1.5; ctx.stroke();
+      }
+    }
+    function updateSubtitle(t) {
+      let found = null;
+      for (const c of cues) if (t >= c.start && t < c.end) { found = c; break; }
+      if (found) {
+        if (!activeCue || activeCue.text !== found.text) {
+          if (activeCue && !isDissolving) startDissolve();
+          activeCue = found; writeProgress = 0; writeStartTime = performance.now();
+          isDissolving = false; lastCueText = found.text;
+          addRipple(canvasWrap.clientWidth / 2, canvasWrap.clientHeight * 0.72, 0.6);
+        }
+      } else if (activeCue && !isDissolving) {
+        startDissolve(); activeCue = null;
+      }
+    }
+    function startDissolve() {
+      if (!lastCueText || isDissolving) return;
+      isDissolving = true; dissolveStart = performance.now(); textParticles = [];
+      const w = canvasWrap.clientWidth, h = canvasWrap.clientHeight;
+      const lines = lastCueText.split('\n');
+      const fontSize = Math.min(28, Math.max(16, w / 18));
+      ctx.font = '600 ' + fontSize + 'px sans-serif';
+      const lineH = fontSize * 1.35;
+      const startY = h * 0.68 - (lines.length * lineH) / 2;
+      lines.forEach((line, li) => {
+        let x = (w - ctx.measureText(line).width) / 2;
+        const y = startY + li * lineH;
+        for (const ch of line) {
+          const cw = ctx.measureText(ch).width;
+          const count = ch === ' ' ? 0 : 4 + Math.floor(Math.random() * 4);
+          for (let p = 0; p < count; p++) textParticles.push({
+            ch: p === 0 ? ch : '',
+            x: x + cw / 2, y: y,
+            vx: (Math.random() - 0.5) * 2.2, vy: -0.5 - Math.random() * 1.8,
+            rot: 0, vr: (Math.random() - 0.5) * 0.15,
+            life: 1, size: fontSize, alpha: 1, delay: Math.random() * 0.25
+          });
+          if (ch !== ' ') addRipple(x + cw / 2, y + 8, 0.4);
+          x += cw;
+        }
+      });
+    }
+    function drawWaterText(w, h, now) {
+      if (activeCue && !isDissolving) {
+        const writeDur = Math.min(1.1, 0.35 + activeCue.text.length * 0.04);
+        writeProgress = Math.min(1, (now - writeStartTime) / 1000 / writeDur);
+        const lines = activeCue.text.split('\n');
+        const fontSize = Math.min(28, Math.max(16, w / 18));
+        ctx.font = '600 ' + fontSize + 'px sans-serif';
+        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        const lineH = fontSize * 1.35;
+        const startY = h * 0.68 - (lines.length * lineH) / 2;
+        const waveT = now * 0.002;
+        let charIndex = 0;
+        const totalChars = activeCue.text.replace(/\n/g, '').length || 1;
+        lines.forEach((line, li) => {
+          let x = (w - ctx.measureText(line).width) / 2;
+          const baseY = startY + li * lineH;
+          for (const ch of line) {
+            const cw = ctx.measureText(ch).width;
+            const reveal = charIndex / totalChars; charIndex++;
+            if (writeProgress < reveal) { x += cw; continue; }
+            const local = Math.min(1, (writeProgress - reveal) / 0.12);
+            const dx = Math.sin(waveT + x * 0.04) * 2.2 * (1 - local * 0.6);
+            const dy = Math.cos(waveT * 1.3 + x * 0.03) * 1.8;
+            ctx.save();
+            ctx.translate(x + cw / 2 + dx, baseY + dy);
+            ctx.globalAlpha = 0.35 + local * 0.65;
+            ctx.shadowColor = 'rgba(100,200,255,0.55)'; ctx.shadowBlur = 14;
+            ctx.fillStyle = '#fff';
+            ctx.fillText(ch, -cw / 2, 0);
+            ctx.restore();
+            x += cw;
+          }
         });
-        mediaRecorder.ondataavailable = e => { if(e.data.size > 0) recordedChunks.push(e.data); };
-        mediaRecorder.onstop = saveVideo;
-        audio.play(); mediaRecorder.start(); isPlaying = true;
-        document.getElementById('recBtn').innerText = "■ STOP & SAVE";
+      }
+      if (isDissolving && textParticles.length) {
+        const elapsed = (now - dissolveStart) / 1000;
+        for (let i = textParticles.length - 1; i >= 0; i--) {
+          const p = textParticles[i];
+          if (elapsed < p.delay) continue;
+          p.x += p.vx; p.y += p.vy; p.vy += 0.04; p.vx *= 0.99; p.rot += p.vr; p.life -= 0.012;
+          if (p.life <= 0) { textParticles.splice(i, 1); continue; }
+          if (!p.ch) continue;
+          ctx.save();
+          ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.globalAlpha = p.life;
+          ctx.font = '600 ' + p.size + 'px sans-serif';
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillStyle = '#c8e6ff'; ctx.fillText(p.ch, 0, 0);
+          ctx.restore();
+        }
+        if (!textParticles.length) { isDissolving = false; lastCueText = ''; }
+      }
     }
-}
-function saveVideo() {
-    const blob = new Blob(recordedChunks, { type: 'video/mp4' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-    a.download = `Procedural_V50_${new Date().getTime()}.mp4`; a.click();
-}
-function updateUI() {
-    if (audio && audio.isPlaying()) {
-        let curr = audio.currentTime(), dur = audio.duration();
-        document.getElementById('timeCode').innerText = `${nf(floor(curr/60),2)}:${nf(floor(curr%60),2)} / ${nf(floor(dur/60),2)}:${nf(floor(dur%60),2)}`;
-        document.getElementById('progFill').style.width = (curr/dur * 100) + '%';
+    function drawBars(w, h) {
+      if (!dataArray) return;
+      const count = 48, step = Math.max(1, Math.floor(dataArray.length / count));
+      const barW = (w / count) * 0.62, gap = (w / count) * 0.38;
+      for (let i = 0; i < count; i++) {
+        const v = dataArray[i * step] / 255;
+        const bh = Math.max(v * h * 0.55, 1.5);
+        const x = i * (barW + gap) + gap * 0.5;
+        ctx.fillStyle = 'hsla(' + ((hue + i * 4 + 180) % 360) + ',70%,55%,0.85)';
+        ctx.fillRect(x, h - bh, barW, bh);
+      }
     }
-}
+    function drawCircle(w, h) {
+      if (!dataArray) return;
+      const cx = w / 2, cy = h * 0.38, baseR = Math.min(w, h) * 0.12, bars = 64;
+      const step = Math.max(1, Math.floor(dataArray.length / bars));
+      for (let i = 0; i < bars; i++) {
+        const v = dataArray[i * step] / 255;
+        const ang = (i / bars) * Math.PI * 2 - Math.PI / 2;
+        ctx.strokeStyle = 'hsla(' + ((hue + i * 4 + 180) % 360) + ',80%,60%,' + (0.4 + v * 0.5) + ')';
+        ctx.lineWidth = 2 + v * 3; ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(cx + Math.cos(ang) * baseR, cy + Math.sin(ang) * baseR);
+        ctx.lineTo(cx + Math.cos(ang) * (baseR + v * Math.min(w, h) * 0.22), cy + Math.sin(ang) * (baseR + v * Math.min(w, h) * 0.22));
+        ctx.stroke();
+      }
+    }
+    function drawWave(w, h) {
+      if (!dataArray) return;
+      const mid = h * 0.35, n = 80, step = Math.max(1, Math.floor(dataArray.length / n));
+      ctx.beginPath(); ctx.moveTo(0, mid);
+      for (let i = 0; i < n; i++) ctx.lineTo((i / (n - 1)) * w, mid - (dataArray[i * step] / 255) * h * 0.28);
+      ctx.lineTo(w, mid); ctx.closePath();
+      ctx.fillStyle = 'hsla(' + ((hue + 180) % 360) + ',70%,55%,0.55)'; ctx.fill();
+    }
+    function drawParticlesVis(w, h, avg) {
+      for (const p of particles) {
+        p.x += p.vx * (1 + avg * 2); p.y += p.vy * (1 + avg * 2);
+        if (p.x < 0 || p.x > w) p.vx *= -1;
+        if (p.y < 0 || p.y > h * 0.55) p.vy *= -1;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (1 + avg * 1.8), 0, Math.PI * 2);
+        ctx.fillStyle = 'hsla(' + ((hue + 180) % 360) + ',70%,60%,0.5)'; ctx.fill();
+      }
+    }
+    function drawRadial(w, h) {
+      if (!dataArray) return;
+      const cx = w / 2, cy = h * 0.36, maxR = Math.min(w, h) * 0.28;
+      for (let r = 0; r < 3; r++) {
+        const base = ((r + 1) / 3) * maxR * 0.5;
+        for (let i = 0; i < 36; i++) {
+          const v = dataArray[Math.floor((i / 36) * dataArray.length * 0.6)] / 255;
+          const ang = (i / 36) * Math.PI * 2 + r * 0.15;
+          ctx.strokeStyle = 'hsla(' + ((hue + 180) % 360) + ',75%,55%,' + (0.3 + v * 0.5) + ')';
+          ctx.lineWidth = 1.5 + v * 2.5; ctx.beginPath();
+          ctx.moveTo(cx + Math.cos(ang) * base, cy + Math.sin(ang) * base);
+          ctx.lineTo(cx + Math.cos(ang) * (base + v * maxR * 0.35), cy + Math.sin(ang) * (base + v * maxR * 0.35));
+          ctx.stroke();
+        }
+      }
+    }
+    function drawLoop() {
+      if (!isPlaying) return;
+      animId = requestAnimationFrame(drawLoop);
+      const w = canvasWrap.clientWidth, h = canvasWrap.clientHeight;
+      if (w < 2 || h < 2) return;
+      if (analyser && dataArray) analyser.getByteFrequencyData(dataArray);
+      ctx.fillStyle = '#030a14'; ctx.fillRect(0, 0, w, h);
+      hue = (hue + 0.5) % 360;
+      let avg = 0;
+      if (dataArray) { for (let i = 0; i < dataArray.length; i++) avg += dataArray[i]; avg /= dataArray.length * 255; }
+      if (currentStyle === 'circle') drawCircle(w, h);
+      else if (currentStyle === 'wave') drawWave(w, h);
+      else if (currentStyle === 'particles') drawParticlesVis(w, h, avg);
+      else if (currentStyle === 'radial') drawRadial(w, h);
+      else drawBars(w, h);
+      if (audioEl) updateSubtitle(audioEl.currentTime);
+      updateRipples();
+      drawWaterText(w, h, performance.now());
+    }
 
-// Label Update Fix
-const syncIds = ['pScale','simF','trail'];
-syncIds.forEach(id => {
-    let el = document.getElementById(id);
-    if(el) el.oninput = function() { 
-        let label = document.getElementById('v' + id.charAt(0).toUpperCase() + id.slice(1));
-        if(label) label.innerText = this.value;
+    recordBtn.addEventListener('click', () => { if (isRecording) stopRecording(); else startRecording(); });
+    async function startRecording() {
+      if (!audioEl) return;
+      if (!isPlaying) {
+        ensureAudioCtx(); await audioCtx.resume(); await audioEl.play();
+        isPlaying = true; updatePlayUI(); drawLoop();
+      }
+      recordedChunks = []; recordedBlob = null; downloadBtn.style.display = 'none';
+      const canvasStream = canvas.captureStream(30);
+      let combined = canvasStream;
+      try {
+        if (audioEl.captureStream) {
+          const aStream = audioEl.captureStream();
+          combined = new MediaStream([...canvasStream.getVideoTracks(), ...aStream.getAudioTracks()]);
+        }
+      } catch (e) {}
+      let mime = 'video/webm;codecs=vp9,opus';
+      if (!MediaRecorder.isTypeSupported(mime)) mime = 'video/webm';
+      try { mediaRecorder = new MediaRecorder(combined, { mimeType: mime }); }
+      catch (e) { mediaRecorder = new MediaRecorder(combined); }
+      mediaRecorder.ondataavailable = (ev) => { if (ev.data && ev.data.size) recordedChunks.push(ev.data); };
+      mediaRecorder.onstop = () => {
+        recordedBlob = new Blob(recordedChunks, { type: 'video/webm' });
+        downloadBtn.style.display = 'inline-flex';
+        statusEl.textContent = '녹화 완료';
+        isRecording = false; updateRecUI();
+      };
+      mediaRecorder.start(200);
+      isRecording = true; updateRecUI(); statusEl.textContent = '녹화 중';
     }
-});
-</script>
+    function stopRecording() { if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop(); }
+    function updateRecUI() {
+      recIcon.textContent = isRecording ? '⏹' : '⏺';
+      recText.textContent = isRecording ? '중지' : '녹화';
+    }
+    downloadBtn.addEventListener('click', () => {
+      if (!recordedBlob) return;
+      const url = URL.createObjectURL(recordedBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = (trackName.textContent || 'music') + '.webm';
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    });
+  })();
+  </script>
 </body>
 </html>
