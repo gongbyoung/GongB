@@ -1,563 +1,446 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Music Reactive Visualizer · 물 위 자막</title>
-  <style>
-    :root {
-      --bg: #03060f;
-      --panel: rgba(12, 16, 28, 0.92);
-      --accent: #5b9fff;
-      --accent2: #00e5ff;
-      --text: #e8f0ff;
-      --muted: #7a8aa0;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-    html, body { height: 100%; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Segoe UI', sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100dvh;
-      overflow-x: hidden;
-      display: flex;
-      flex-direction: column;
-    }
-    body::before {
-      content: '';
-      position: fixed;
-      inset: 0;
-      background:
-        radial-gradient(ellipse at 30% 20%, rgba(40, 100, 200, 0.15) 0%, transparent 55%),
-        radial-gradient(ellipse at 70% 80%, rgba(0, 180, 220, 0.1) 0%, transparent 50%);
-      z-index: -1;
-      pointer-events: none;
-    }
-    header { padding: 12px 16px 4px; text-align: center; flex-shrink: 0; }
-    header h1 {
-      font-size: 1.2rem; font-weight: 700;
-      background: linear-gradient(135deg, #e0f0ff, #7eb8ff 50%, #00d4ff);
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
-    }
-    header p { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
-    .main {
-      flex: 1; display: flex; flex-direction: column; align-items: center;
-      padding: 6px 10px 14px; gap: 10px; width: 100%; max-width: 920px; margin: 0 auto; min-height: 0;
-    }
-    .canvas-wrap {
-      position: relative; width: 100%; height: 48vh; min-height: 240px; max-height: 480px;
-      border-radius: 14px; overflow: hidden; background: #02060e;
-      box-shadow: 0 0 0 1px rgba(100,160,255,0.12), 0 12px 40px rgba(0,0,0,0.55); flex-shrink: 0;
-    }
-    #canvas { display: block; width: 100%; height: 100%; background: #02060e; }
-    .overlay-info {
-      position: absolute; top: 10px; left: 12px; right: 12px;
-      display: flex; justify-content: space-between; pointer-events: none; opacity: 0; z-index: 2;
-    }
-    .overlay-info.show { opacity: 1; }
-    .track-title { font-size: 0.78rem; font-weight: 600; text-shadow: 0 2px 10px #000; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .time-display { font-size: 0.7rem; color: rgba(200,220,255,0.7); text-shadow: 0 1px 6px #000; }
-    .controls {
-      width: 100%; background: var(--panel); border-radius: 14px; padding: 12px;
-      border: 1px solid rgba(100,160,255,0.1); display: flex; flex-direction: column; gap: 10px;
-    }
-    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-    .btn {
-      appearance: none; border: none; border-radius: 10px; padding: 10px 14px; font-size: 0.85rem; font-weight: 600;
-      cursor: pointer; color: #fff; background: linear-gradient(135deg, #3d7fff, #2563eb);
-    }
-    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-    .btn.secondary { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); }
-    .btn.srt { background: linear-gradient(135deg, #00b4d8, #0077b6); }
-    .btn.record { background: linear-gradient(135deg, #ff5252, #c62828); }
-    .btn.success { background: linear-gradient(135deg, #00c853, #2e7d32); }
-    .file-label { flex: 1; min-width: 110px; }
-    .file-label input { display: none; }
-    .file-btn { width: 100%; }
-    .progress-wrap { width: 100%; height: 7px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; cursor: pointer; }
-    .progress-bar { height: 100%; width: 0%; background: linear-gradient(90deg, #3d7fff, #00e5ff); }
-    .style-group { display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; }
-    .style-btn {
-      padding: 6px 11px; border-radius: 16px; font-size: 0.74rem;
-      background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--muted); cursor: pointer;
-    }
-    .style-btn.active { background: rgba(61,127,255,0.28); border-color: #3d7fff; color: #fff; }
-    .status { font-size: 0.76rem; color: var(--muted); text-align: center; }
-    .tip { font-size: 0.68rem; color: var(--muted); text-align: center; }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>물 위 자막 비주얼라이저</title>
+<style>
+  :root { --bg:#03060f; --panel:#0c1220; --line:rgba(140,180,255,.18); --muted:#8ea0b8; --text:#e8f2ff; }
+  * { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+  html, body { height:100%; overflow:hidden; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif; }
+  .app { height:100dvh; display:flex; flex-direction:column; padding:8px; gap:8px; }
+  .stage {
+    flex:1; min-height:0; position:relative; border-radius:12px; overflow:hidden;
+    background:#02060e; border:1px solid var(--line);
+  }
+  canvas { display:block; width:100%; height:100%; }
+  .meta {
+    position:absolute; top:8px; left:10px; right:10px; display:flex; justify-content:space-between;
+    font-size:12px; text-shadow:0 1px 6px #000; pointer-events:none; opacity:0;
+  }
+  .meta.show { opacity:1; }
+  .panel {
+    flex-shrink:0; background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    padding:8px; display:flex; flex-direction:column; gap:6px; max-height:46dvh;
+  }
+  .row { display:flex; gap:6px; align-items:center; flex-wrap:nowrap; }
+  .row.wrap { flex-wrap:wrap; }
+  button, .file-btn {
+    appearance:none; border:1px solid var(--line); background:#182236; color:#fff;
+    border-radius:8px; padding:7px 10px; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;
+  }
+  button.primary { background:#2563eb; border-color:#2563eb; }
+  button.srt { background:#0e7490; border-color:#0e7490; }
+  button.rec { background:#c62828; border-color:#c62828; }
+  button.ok { background:#2e7d32; border-color:#2e7d32; }
+  button:disabled { opacity:.4; cursor:not-allowed; }
+  button.on { outline:1px solid #7eb8ff; }
+  input[type=file] { display:none; }
+  .file-btn { display:inline-flex; align-items:center; justify-content:center; flex:1; }
+  .progress { height:6px; background:#1c283c; border-radius:99px; overflow:hidden; cursor:pointer; }
+  .bar { height:100%; width:0; background:linear-gradient(90deg,#3d7fff,#00e5ff); }
+  label.opt { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--muted); min-width:0; flex:1; }
+  label.opt span { width:52px; flex-shrink:0; }
+  label.opt b { width:36px; text-align:right; color:#fff; font-weight:600; flex-shrink:0; }
+  input[type=range] { flex:1; min-width:50px; accent-color:#3d7fff; }
+  .status { font-size:11px; color:var(--muted); text-align:center; min-height:14px; }
+</style>
 </head>
 <body>
-  <header>
-    <h1>물 위 자막 · Music Visualizer</h1>
-    <p>MP3 + SRT</p>
-  </header>
-  <div class="main">
-    <div class="canvas-wrap" id="canvasWrap">
-      <canvas id="canvas"></canvas>
-      <div class="overlay-info" id="overlay">
-        <div class="track-title" id="trackName">파일을 선택하세요</div>
-        <div class="time-display" id="timeDisplay">0:00 / 0:00</div>
-      </div>
+<div class="app">
+  <div class="stage" id="stage">
+    <canvas id="canvas"></canvas>
+    <div class="meta" id="meta">
+      <span id="trackName">파일 없음</span>
+      <span id="timeDisplay">0:00 / 0:00</span>
     </div>
-    <div class="controls">
-      <div class="row">
-        <label class="file-label">
-          <input type="file" id="fileInput" accept="audio/mpeg,audio/mp3,audio/*,.mp3" />
-          <button type="button" class="btn secondary file-btn" id="fileBtn">MP3</button>
-        </label>
-        <label class="file-label">
-          <input type="file" id="srtInput" accept=".srt,text/plain" />
-          <button type="button" class="btn srt file-btn" id="srtBtn">SRT</button>
-        </label>
-        <button type="button" class="btn" id="playBtn" disabled><span id="playIcon">▶</span> <span id="playText">재생</span></button>
-      </div>
-      <div class="progress-wrap" id="progressWrap"><div class="progress-bar" id="progressBar"></div></div>
-      <div class="style-group" id="styleGroup">
-        <button type="button" class="style-btn active" data-style="bars">막대</button>
-        <button type="button" class="style-btn" data-style="circle">원형</button>
-        <button type="button" class="style-btn" data-style="wave">파형</button>
-        <button type="button" class="style-btn" data-style="particles">파티클</button>
-        <button type="button" class="style-btn" data-style="radial">방사형</button>
-      </div>
-      <div class="row" style="justify-content:center">
-        <button type="button" class="btn record" id="recordBtn" disabled><span id="recIcon">⏺</span> <span id="recText">녹화</span></button>
-        <button type="button" class="btn success" id="downloadBtn" style="display:none">영상 저장</button>
-      </div>
-      <div class="status" id="status">MP3와 SRT를 선택하세요</div>
-    </div>
-    <p class="tip">자막은 물 위에 써지고, 끝나면 흩어집니다.</p>
   </div>
-  <script>
-  (function () {
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d', { alpha: false });
-    const canvasWrap = document.getElementById('canvasWrap');
-    const fileInput = document.getElementById('fileInput');
-    const fileBtn = document.getElementById('fileBtn');
-    const srtInput = document.getElementById('srtInput');
-    const srtBtn = document.getElementById('srtBtn');
-    const playBtn = document.getElementById('playBtn');
-    const playIcon = document.getElementById('playIcon');
-    const playText = document.getElementById('playText');
-    const recordBtn = document.getElementById('recordBtn');
-    const recIcon = document.getElementById('recIcon');
-    const recText = document.getElementById('recText');
-    const downloadBtn = document.getElementById('downloadBtn');
-    const statusEl = document.getElementById('status');
-    const trackName = document.getElementById('trackName');
-    const timeDisplay = document.getElementById('timeDisplay');
-    const overlay = document.getElementById('overlay');
-    const progressBar = document.getElementById('progressBar');
-    const progressWrap = document.getElementById('progressWrap');
-    const styleGroup = document.getElementById('styleGroup');
-
-    let audioCtx = null, analyser = null, sourceNode = null, audioEl = null;
-    let isPlaying = false, animId = null, currentStyle = 'bars';
-    let mediaRecorder = null, recordedChunks = [], isRecording = false, recordedBlob = null;
-    let particles = [], hue = 0, dataArray = null;
-    let cues = [], activeCue = null, textParticles = [];
-    let writeProgress = 0, writeStartTime = 0, dissolveStart = 0, isDissolving = false, lastCueText = '';
-    let waterRipples = [];
-
-    function resizeCanvas() {
-      const rect = canvasWrap.getBoundingClientRect();
-      const w = Math.max(Math.floor(rect.width), 1);
-      const h = Math.max(Math.floor(rect.height), 1);
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      canvas.width = Math.floor(w * dpr);
-      canvas.height = Math.floor(h * dpr);
-      canvas.style.width = w + 'px';
-      canvas.style.height = h + 'px';
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.scale(dpr, dpr);
-      if (currentStyle === 'particles') initParticles(w, h);
-      if (!isPlaying) drawIdle(w, h);
+  <div class="panel">
+    <div class="row">
+      <label class="file-btn"><input id="fileInput" type="file" accept="audio/*,.mp3" />MP3</label>
+      <label class="file-btn srt" style="background:#0e7490"><input id="srtInput" type="file" accept=".srt,text/plain" />SRT</label>
+      <label class="file-btn"><input id="fontInput" type="file" accept=".ttf,.otf,.woff,.woff2,font/*" />폰트</label>
+      <button class="primary" id="playBtn" disabled><span id="playText">재생</span></button>
+      <button class="rec" id="recordBtn" disabled><span id="recText">녹화</span></button>
+      <button class="ok" id="downloadBtn" style="display:none">저장</button>
+    </div>
+    <div class="progress" id="progressWrap"><div class="bar" id="progressBar"></div></div>
+    <div class="row wrap" id="styleGroup">
+      <button type="button" class="on" data-style="bars">막대</button>
+      <button type="button" data-style="circle">원형</button>
+      <button type="button" data-style="wave">파형</button>
+      <button type="button" data-style="particles">파티클</button>
+      <button type="button" data-style="radial">방사</button>
+      <button type="button" class="on" id="modeSink">물에 빠짐</button>
+      <button type="button" id="modeScatter">물에 흩어짐</button>
+    </div>
+    <div class="row wrap">
+      <label class="opt"><span>글자크기</span><input id="fontSize" type="range" min="12" max="72" value="28" /><b id="fontSizeVal">28</b></label>
+      <label class="opt"><span>글자위치</span><input id="textY" type="range" min="10" max="90" value="72" /><b id="textYVal">72</b></label>
+    </div>
+    <div class="row wrap">
+      <label class="opt"><span>비주얼크기</span><input id="vizScale" type="range" min="20" max="160" value="100" /><b id="vizScaleVal">100</b></label>
+      <label class="opt"><span>비주얼위치</span><input id="vizY" type="range" min="0" max="80" value="0" /><b id="vizYVal">0</b></label>
+      <label class="opt"><span>반응</span><input id="react" type="range" min="20" max="300" value="100" /><b id="reactVal">100</b></label>
+    </div>
+    <div class="status" id="status">MP3, SRT, 폰트를 고르세요. 조절은 바로 반영됩니다.</div>
+  </div>
+</div>
+<script>
+(function () {
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const stage = document.getElementById('stage');
+  const fileInput = document.getElementById('fileInput');
+  const srtInput = document.getElementById('srtInput');
+  const fontInput = document.getElementById('fontInput');
+  const playBtn = document.getElementById('playBtn');
+  const playText = document.getElementById('playText');
+  const recordBtn = document.getElementById('recordBtn');
+  const recText = document.getElementById('recText');
+  const downloadBtn = document.getElementById('downloadBtn');
+  const statusEl = document.getElementById('status');
+  const trackName = document.getElementById('trackName');
+  const timeDisplay = document.getElementById('timeDisplay');
+  const meta = document.getElementById('meta');
+  const progressBar = document.getElementById('progressBar');
+  const progressWrap = document.getElementById('progressWrap');
+  const styleGroup = document.getElementById('styleGroup');
+  const ui = { fontSize:28, textY:0.72, vizScale:1, vizY:0, react:1, exitMode:'sink', fontFamily:'"Apple SD Gothic Neo","Malgun Gothic",sans-serif' };
+  let audioCtx, analyser, sourceNode, audioEl, dataArray;
+  let isPlaying = false, animId = null, currentStyle = 'bars';
+  let mediaRecorder, recordedChunks = [], isRecording = false, recordedBlob = null;
+  let particles = [], hue = 0, cues = [], activeCue = null, textParticles = [];
+  let writeProgress = 0, writeStartTime = 0, dissolveStart = 0, isDissolving = false, lastCueText = '', ripples = [];
+  function bindRange(id, valId, apply) {
+    const el = document.getElementById(id), lab = document.getElementById(valId);
+    const sync = () => { lab.textContent = el.value; apply(+el.value); };
+    el.addEventListener('input', sync); sync();
+  }
+  bindRange('fontSize','fontSizeVal', (v) => { ui.fontSize = v; });
+  bindRange('textY','textYVal', (v) => { ui.textY = v / 100; });
+  bindRange('vizScale','vizScaleVal', (v) => { ui.vizScale = v / 100; });
+  bindRange('vizY','vizYVal', (v) => { ui.vizY = v / 100; });
+  bindRange('react','reactVal', (v) => { ui.react = v / 100; });
+  document.getElementById('modeSink').onclick = () => setMode('sink');
+  document.getElementById('modeScatter').onclick = () => setMode('scatter');
+  function setMode(m) {
+    ui.exitMode = m;
+    document.getElementById('modeSink').classList.toggle('on', m === 'sink');
+    document.getElementById('modeScatter').classList.toggle('on', m === 'scatter');
+  }
+  styleGroup.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-style]');
+    if (!btn) return;
+    styleGroup.querySelectorAll('[data-style]').forEach((b) => b.classList.remove('on'));
+    btn.classList.add('on');
+    currentStyle = btn.dataset.style;
+    if (currentStyle === 'particles') initParticles();
+  });
+  function amp(v) { return Math.min(1, (v / 255) * ui.react); }
+  function resize() {
+    const r = stage.getBoundingClientRect();
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    canvas.width = Math.max(1, Math.floor(r.width * dpr));
+    canvas.height = Math.max(1, Math.floor(r.height * dpr));
+    canvas.style.width = r.width + 'px';
+    canvas.style.height = r.height + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (!isPlaying) drawIdle(r.width, r.height);
+  }
+  addEventListener('resize', () => { clearTimeout(window._rz); window._rz = setTimeout(resize, 60); });
+  resize(); setTimeout(resize, 200);
+  function drawIdle(w, h) {
+    ctx.fillStyle = '#04101c'; ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = 'rgba(190,220,255,.45)';
+    ctx.font = '600 14px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('음악과 자막이 여기에 나옵니다', w / 2, h / 2);
+  }
+  function ensureCtx() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+    return audioCtx;
+  }
+  function setupAnalyser() {
+    ensureCtx();
+    if (!analyser) {
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256; analyser.smoothingTimeConstant = 0.78;
+      dataArray = new Uint8Array(analyser.frequencyBinCount);
     }
-    window.addEventListener('resize', () => { clearTimeout(window._rz); window._rz = setTimeout(resizeCanvas, 80); });
-    function initSize() { resizeCanvas(); setTimeout(resizeCanvas, 120); setTimeout(resizeCanvas, 350); }
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initSize); else initSize();
-
-    function drawIdle(w, h) {
-      w = w || canvasWrap.clientWidth || 300;
-      h = h || canvasWrap.clientHeight || 200;
-      const g = ctx.createLinearGradient(0, 0, 0, h);
-      g.addColorStop(0, '#04101c'); g.addColorStop(1, '#030c18');
-      ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
-      ctx.fillStyle = 'rgba(180,210,255,0.4)';
-      ctx.font = '600 14px sans-serif';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('물 위에 자막이 써집니다', w / 2, h / 2);
+  }
+  function toSec(h, m, s, ms) {
+    const frac = ms < 10 ? ms / 10 : ms < 100 ? ms / 100 : ms / 1000;
+    return h * 3600 + m * 60 + s + frac;
+  }
+  function parseSRT(text) {
+    const out = [];
+    text = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    for (const block of text.trim().split(/\n\s*\n/)) {
+      const lines = block.trim().split('\n');
+      if (lines.length < 2) continue;
+      let timeLine = lines[0], start = 1;
+      if (/^\d+$/.test(lines[0].trim()) && lines.length >= 3) { timeLine = lines[1]; start = 2; }
+      const m = timeLine.match(/(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})\s*-->\s*(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})/);
+      if (!m) continue;
+      const txt = lines.slice(start).join('\n').replace(/<[^>]+>/g, '').trim();
+      if (txt) out.push({ start: toSec(+m[1],+m[2],+m[3],+m[4]), end: toSec(+m[5],+m[6],+m[7],+m[8]), text: txt });
     }
-    function ensureAudioCtx() {
-      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
-      return audioCtx;
-    }
-    function setupAnalyser() {
-      ensureAudioCtx();
-      if (!analyser) {
-        analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 256;
-        analyser.smoothingTimeConstant = 0.78;
-        dataArray = new Uint8Array(analyser.frequencyBinCount);
-      }
-    }
-    function toSec(h, m, s, ms) {
-      const frac = ms < 10 ? ms / 10 : ms < 100 ? ms / 100 : ms / 1000;
-      return h * 3600 + m * 60 + s + frac;
-    }
-    function parseSRT(text) {
-      const result = [];
-      text = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-      for (const block of text.trim().split(/\n\s*\n/)) {
-        const lines = block.trim().split('\n');
-        if (lines.length < 2) continue;
-        let timeLine = lines[0], textStart = 1;
-        if (/^\d+$/.test(lines[0].trim()) && lines.length >= 3) { timeLine = lines[1]; textStart = 2; }
-        const m = timeLine.match(/(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})\s*-->\s*(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})/);
-        if (!m) continue;
-        const txt = lines.slice(textStart).join('\n').replace(/<[^>]+>/g, '').replace(/\{[^}]+\}/g, '').trim();
-        if (txt) result.push({ start: toSec(+m[1], +m[2], +m[3], +m[4]), end: toSec(+m[5], +m[6], +m[7], +m[8]), text: txt });
-      }
-      return result;
-    }
-
-    fileBtn.addEventListener('click', () => fileInput.click());
-    srtBtn.addEventListener('click', () => srtInput.click());
-
-    fileInput.addEventListener('change', async (e) => {
-      const file = e.target.files && e.target.files[0];
-      if (!file) return;
-      stopAll();
-      if (sourceNode) { try { sourceNode.disconnect(); } catch (_) {} sourceNode = null; }
-      trackName.textContent = file.name.replace(/\.[^/.]+$/, '') || 'Unknown';
-      overlay.classList.add('show');
-      statusEl.textContent = 'MP3 로딩 중...';
-      downloadBtn.style.display = 'none';
-      recordedBlob = null;
-      try {
-        setupAnalyser();
-        if (audioEl) { audioEl.pause(); URL.revokeObjectURL(audioEl.src); }
-        audioEl = new Audio();
-        audioEl.preload = 'auto';
-        audioEl.src = URL.createObjectURL(file);
-        audioEl.crossOrigin = 'anonymous';
-        sourceNode = audioCtx.createMediaElementSource(audioEl);
-        sourceNode.connect(analyser);
-        analyser.connect(audioCtx.destination);
-        await new Promise((resolve) => { audioEl.onloadedmetadata = resolve; setTimeout(resolve, 2500); });
-        playBtn.disabled = false;
-        recordBtn.disabled = false;
-        statusEl.textContent = cues.length ? ('자막 ' + cues.length + '개') : '준비 완료';
-        updateTime(); resizeCanvas(); bindAudioEvents();
-      } catch (err) { statusEl.textContent = 'MP3 로드 실패'; }
-    });
-
-    srtInput.addEventListener('change', async (e) => {
-      const file = e.target.files && e.target.files[0];
-      if (!file) return;
-      try {
-        cues = parseSRT(await file.text());
-        statusEl.textContent = cues.length ? ('자막 ' + cues.length + '개 로드') : '자막을 찾지 못했습니다';
-        activeCue = null; textParticles = []; isDissolving = false; writeProgress = 0;
-      } catch (err) { statusEl.textContent = 'SRT 읽기 실패'; }
-    });
-
-    playBtn.addEventListener('click', async () => {
-      if (!audioEl) return;
-      try {
-        ensureAudioCtx();
-        if (audioCtx.state === 'suspended') await audioCtx.resume();
-        if (isPlaying) {
-          audioEl.pause(); isPlaying = false; cancelAnimationFrame(animId); animId = null;
-          drawIdle(canvasWrap.clientWidth, canvasWrap.clientHeight);
-        } else {
-          await audioEl.play(); isPlaying = true; drawLoop();
-        }
-        updatePlayUI();
-      } catch (err) { statusEl.textContent = '재생 실패. 한 번 더 눌러보세요'; }
-    });
-
-    function stopAll() {
-      if (audioEl) { audioEl.pause(); audioEl.currentTime = 0; }
-      isPlaying = false; cancelAnimationFrame(animId); animId = null; updatePlayUI();
-      if (isRecording) stopRecording();
-      activeCue = null; textParticles = []; isDissolving = false;
-    }
-    function updatePlayUI() {
-      playIcon.textContent = isPlaying ? '❚❚' : '▶';
+    return out;
+  }
+  fontInput.addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    try {
+      const face = new FontFace('UserLyric', await file.arrayBuffer());
+      await face.load(); document.fonts.add(face);
+      ui.fontFamily = '"UserLyric", sans-serif';
+      statusEl.textContent = '폰트 적용: ' + file.name;
+    } catch (err) { statusEl.textContent = '폰트를 읽지 못했습니다. ttf, otf, woff를 사용해 주세요.'; }
+  });
+  fileInput.addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    stopAll();
+    if (sourceNode) { try { sourceNode.disconnect(); } catch (_) {} sourceNode = null; }
+    trackName.textContent = file.name.replace(/\.[^/.]+$/, '');
+    meta.classList.add('show');
+    statusEl.textContent = 'MP3 로딩 중';
+    downloadBtn.style.display = 'none'; recordedBlob = null;
+    try {
+      setupAnalyser();
+      if (audioEl) { audioEl.pause(); URL.revokeObjectURL(audioEl.src); }
+      audioEl = new Audio();
+      audioEl.src = URL.createObjectURL(file);
+      audioEl.crossOrigin = 'anonymous';
+      sourceNode = audioCtx.createMediaElementSource(audioEl);
+      sourceNode.connect(analyser); analyser.connect(audioCtx.destination);
+      await new Promise((res) => { audioEl.onloadedmetadata = res; setTimeout(res, 2500); });
+      playBtn.disabled = false; recordBtn.disabled = false;
+      statusEl.textContent = cues.length ? ('준비 · 자막 ' + cues.length) : '준비 완료';
+      updateTime(); resize(); bindAudio();
+    } catch (err) { statusEl.textContent = 'MP3 로드 실패'; }
+  });
+  srtInput.addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    try {
+      cues = parseSRT(await file.text());
+      activeCue = null; textParticles = []; isDissolving = false; writeProgress = 0;
+      statusEl.textContent = cues.length ? ('자막 ' + cues.length + '개') : '자막을 찾지 못했습니다';
+    } catch (err) { statusEl.textContent = 'SRT 읽기 실패'; }
+  });
+  playBtn.onclick = async () => {
+    if (!audioEl) return;
+    try {
+      ensureCtx();
+      if (audioCtx.state === 'suspended') await audioCtx.resume();
+      if (isPlaying) {
+        audioEl.pause(); isPlaying = false; cancelAnimationFrame(animId);
+        const r = stage.getBoundingClientRect(); drawIdle(r.width, r.height);
+      } else { await audioEl.play(); isPlaying = true; drawLoop(); }
       playText.textContent = isPlaying ? '일시정지' : '재생';
+    } catch (err) { statusEl.textContent = '재생 실패. 다시 눌러 주세요.'; }
+  };
+  function stopAll() {
+    if (audioEl) { audioEl.pause(); audioEl.currentTime = 0; }
+    isPlaying = false; cancelAnimationFrame(animId); playText.textContent = '재생';
+    if (isRecording) stopRecording();
+    activeCue = null; textParticles = []; isDissolving = false;
+  }
+  function fmt(s) { if (!isFinite(s)) return '0:00'; return Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0'); }
+  function updateTime() {
+    if (!audioEl) return;
+    timeDisplay.textContent = fmt(audioEl.currentTime)+' / '+fmt(audioEl.duration||0);
+    progressBar.style.width = ((audioEl.duration ? audioEl.currentTime/audioEl.duration : 0)*100)+'%';
+  }
+  progressWrap.onclick = (e) => {
+    if (!audioEl || !audioEl.duration) return;
+    const r = progressWrap.getBoundingClientRect();
+    audioEl.currentTime = Math.max(0, Math.min(1, (e.clientX-r.left)/r.width)) * audioEl.duration;
+    activeCue = null; textParticles = []; isDissolving = false;
+  };
+  function bindAudio() {
+    audioEl.ontimeupdate = updateTime;
+    audioEl.onended = () => {
+      isPlaying = false; playText.textContent = '재생'; cancelAnimationFrame(animId);
+      if (isRecording) stopRecording();
+      const r = stage.getBoundingClientRect(); drawIdle(r.width, r.height);
+    };
+  }
+  function initParticles() {
+    const r = stage.getBoundingClientRect(); particles = [];
+    for (let i = 0; i < 48; i++) particles.push({ x:Math.random()*r.width, y:Math.random()*r.height*0.5, vx:(Math.random()-0.5)*1.2, vy:(Math.random()-0.5)*1.2, rad:1+Math.random()*2 });
+  }
+  function addRipple(x, y, f) { ripples.push({ x, y, r:2, max:24+f*36, a:0.45, life:1 }); }
+  function drawRipples() {
+    for (let i = ripples.length-1; i >= 0; i--) {
+      const p = ripples[i]; p.r += 1.6; p.life -= 0.02;
+      if (p.life <= 0) { ripples.splice(i,1); continue; }
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+      ctx.strokeStyle = 'rgba(140,210,255,'+(p.a*p.life)+')'; ctx.lineWidth = 1.4; ctx.stroke();
     }
-    function fmt(s) {
-      if (!isFinite(s)) return '0:00';
-      return Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
-    }
-    function updateTime() {
-      if (!audioEl) return;
-      timeDisplay.textContent = fmt(audioEl.currentTime) + ' / ' + fmt(audioEl.duration || 0);
-      progressBar.style.width = (audioEl.duration ? (audioEl.currentTime / audioEl.duration) * 100 : 0) + '%';
-    }
-    progressWrap.addEventListener('click', (e) => {
-      if (!audioEl || !audioEl.duration) return;
-      const rect = progressWrap.getBoundingClientRect();
-      audioEl.currentTime = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)) * audioEl.duration;
-      activeCue = null; textParticles = []; isDissolving = false;
-    });
-    function bindAudioEvents() {
-      audioEl.ontimeupdate = updateTime;
-      audioEl.onended = () => {
-        isPlaying = false; updatePlayUI(); cancelAnimationFrame(animId);
-        if (isRecording) stopRecording();
-        drawIdle(canvasWrap.clientWidth, canvasWrap.clientHeight);
-      };
-    }
-    styleGroup.addEventListener('click', (e) => {
-      const btn = e.target.closest('.style-btn');
-      if (!btn) return;
-      styleGroup.querySelectorAll('.style-btn').forEach((b) => b.classList.remove('active'));
-      btn.classList.add('active');
-      currentStyle = btn.dataset.style;
-      if (currentStyle === 'particles') initParticles(canvasWrap.clientWidth, canvasWrap.clientHeight);
-    });
-    function initParticles(w, h) {
-      particles = [];
-      for (let i = 0; i < 50; i++) particles.push({
-        x: Math.random() * (w || 300), y: Math.random() * (h || 200),
-        vx: (Math.random() - 0.5) * 1.1, vy: (Math.random() - 0.5) * 1.1, r: Math.random() * 2.2 + 0.8
-      });
-    }
-    function addRipple(x, y, force) {
-      waterRipples.push({ x, y, r: 2, maxR: 30 + force * 40, alpha: 0.35 + force * 0.3, life: 1 });
-    }
-    function updateRipples() {
-      for (let i = waterRipples.length - 1; i >= 0; i--) {
-        const rp = waterRipples[i];
-        rp.r += 1.8; rp.life -= 0.018; rp.alpha *= 0.97;
-        if (rp.life <= 0 || rp.r > rp.maxR) { waterRipples.splice(i, 1); continue; }
-        ctx.beginPath(); ctx.arc(rp.x, rp.y, rp.r, 0, Math.PI * 2);
-        ctx.strokeStyle = 'rgba(120,200,255,' + (rp.alpha * rp.life) + ')';
-        ctx.lineWidth = 1.5; ctx.stroke();
+  }
+  function fontPx(w) { return Math.max(12, ui.fontSize * Math.min(1.15, w/420)); }
+  function setFont(px) { ctx.font = '600 '+px+'px '+ui.fontFamily; }
+  function updateSubtitle(t) {
+    let found = null;
+    for (const c of cues) if (t >= c.start && t < c.end) { found = c; break; }
+    if (found) {
+      if (!activeCue || activeCue.text !== found.text) {
+        if (activeCue && !isDissolving) beginExit();
+        activeCue = found; writeProgress = 0; writeStartTime = performance.now(); isDissolving = false; lastCueText = found.text;
       }
-    }
-    function updateSubtitle(t) {
-      let found = null;
-      for (const c of cues) if (t >= c.start && t < c.end) { found = c; break; }
-      if (found) {
-        if (!activeCue || activeCue.text !== found.text) {
-          if (activeCue && !isDissolving) startDissolve();
-          activeCue = found; writeProgress = 0; writeStartTime = performance.now();
-          isDissolving = false; lastCueText = found.text;
-          addRipple(canvasWrap.clientWidth / 2, canvasWrap.clientHeight * 0.72, 0.6);
-        }
-      } else if (activeCue && !isDissolving) {
-        startDissolve(); activeCue = null;
-      }
-    }
-    function startDissolve() {
-      if (!lastCueText || isDissolving) return;
-      isDissolving = true; dissolveStart = performance.now(); textParticles = [];
-      const w = canvasWrap.clientWidth, h = canvasWrap.clientHeight;
-      const lines = lastCueText.split('\n');
-      const fontSize = Math.min(28, Math.max(16, w / 18));
-      ctx.font = '600 ' + fontSize + 'px sans-serif';
-      const lineH = fontSize * 1.35;
-      const startY = h * 0.68 - (lines.length * lineH) / 2;
-      lines.forEach((line, li) => {
-        let x = (w - ctx.measureText(line).width) / 2;
-        const y = startY + li * lineH;
-        for (const ch of line) {
-          const cw = ctx.measureText(ch).width;
-          const count = ch === ' ' ? 0 : 4 + Math.floor(Math.random() * 4);
-          for (let p = 0; p < count; p++) textParticles.push({
-            ch: p === 0 ? ch : '',
-            x: x + cw / 2, y: y,
-            vx: (Math.random() - 0.5) * 2.2, vy: -0.5 - Math.random() * 1.8,
-            rot: 0, vr: (Math.random() - 0.5) * 0.15,
-            life: 1, size: fontSize, alpha: 1, delay: Math.random() * 0.25
-          });
-          if (ch !== ' ') addRipple(x + cw / 2, y + 8, 0.4);
-          x += cw;
-        }
-      });
-    }
-    function drawWaterText(w, h, now) {
-      if (activeCue && !isDissolving) {
-        const writeDur = Math.min(1.1, 0.35 + activeCue.text.length * 0.04);
-        writeProgress = Math.min(1, (now - writeStartTime) / 1000 / writeDur);
-        const lines = activeCue.text.split('\n');
-        const fontSize = Math.min(28, Math.max(16, w / 18));
-        ctx.font = '600 ' + fontSize + 'px sans-serif';
-        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-        const lineH = fontSize * 1.35;
-        const startY = h * 0.68 - (lines.length * lineH) / 2;
-        const waveT = now * 0.002;
-        let charIndex = 0;
-        const totalChars = activeCue.text.replace(/\n/g, '').length || 1;
-        lines.forEach((line, li) => {
-          let x = (w - ctx.measureText(line).width) / 2;
-          const baseY = startY + li * lineH;
-          for (const ch of line) {
-            const cw = ctx.measureText(ch).width;
-            const reveal = charIndex / totalChars; charIndex++;
-            if (writeProgress < reveal) { x += cw; continue; }
-            const local = Math.min(1, (writeProgress - reveal) / 0.12);
-            const dx = Math.sin(waveT + x * 0.04) * 2.2 * (1 - local * 0.6);
-            const dy = Math.cos(waveT * 1.3 + x * 0.03) * 1.8;
-            ctx.save();
-            ctx.translate(x + cw / 2 + dx, baseY + dy);
-            ctx.globalAlpha = 0.35 + local * 0.65;
-            ctx.shadowColor = 'rgba(100,200,255,0.55)'; ctx.shadowBlur = 14;
-            ctx.fillStyle = '#fff';
-            ctx.fillText(ch, -cw / 2, 0);
-            ctx.restore();
-            x += cw;
+    } else if (activeCue && !isDissolving) { beginExit(); activeCue = null; }
+  }
+  function beginExit() {
+    if (!lastCueText || isDissolving) return;
+    isDissolving = true; dissolveStart = performance.now(); textParticles = [];
+    const r = stage.getBoundingClientRect(), w = r.width, h = r.height, px = fontPx(w);
+    setFont(px);
+    const lines = lastCueText.split('\n'), lineH = px*1.25, y0 = h*ui.textY-((lines.length-1)*lineH)/2;
+    lines.forEach((line, li) => {
+      let x = (w - ctx.measureText(line).width)/2, y = y0+li*lineH;
+      for (const ch of line) {
+        const cw = ctx.measureText(ch).width;
+        if (ch !== ' ') {
+          const n = ui.exitMode === 'scatter' ? 5 : 1;
+          for (let k = 0; k < n; k++) {
+            const sink = ui.exitMode === 'sink';
+            textParticles.push({
+              ch: k === 0 ? ch : '', x: x+cw/2+(Math.random()-0.5)*(sink?2:8), y,
+              vx: sink ? (Math.random()-0.5)*0.35 : (Math.random()-0.5)*3.2,
+              vy: sink ? 0.4+Math.random()*0.8 : -1.2-Math.random()*1.6,
+              rot:0, vr: sink ? 0.01 : (Math.random()-0.5)*0.2, life:1, size:px*(k===0?1:0.45), delay:Math.random()*0.15
+            });
           }
-        });
-      }
-      if (isDissolving && textParticles.length) {
-        const elapsed = (now - dissolveStart) / 1000;
-        for (let i = textParticles.length - 1; i >= 0; i--) {
-          const p = textParticles[i];
-          if (elapsed < p.delay) continue;
-          p.x += p.vx; p.y += p.vy; p.vy += 0.04; p.vx *= 0.99; p.rot += p.vr; p.life -= 0.012;
-          if (p.life <= 0) { textParticles.splice(i, 1); continue; }
-          if (!p.ch) continue;
-          ctx.save();
-          ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.globalAlpha = p.life;
-          ctx.font = '600 ' + p.size + 'px sans-serif';
-          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-          ctx.fillStyle = '#c8e6ff'; ctx.fillText(p.ch, 0, 0);
-          ctx.restore();
+          addRipple(x+cw/2, y+px*0.4, ui.exitMode==='sink'?0.7:0.35);
         }
-        if (!textParticles.length) { isDissolving = false; lastCueText = ''; }
+        x += cw;
       }
-    }
-    function drawBars(w, h) {
-      if (!dataArray) return;
-      const count = 48, step = Math.max(1, Math.floor(dataArray.length / count));
-      const barW = (w / count) * 0.62, gap = (w / count) * 0.38;
-      for (let i = 0; i < count; i++) {
-        const v = dataArray[i * step] / 255;
-        const bh = Math.max(v * h * 0.55, 1.5);
-        const x = i * (barW + gap) + gap * 0.5;
-        ctx.fillStyle = 'hsla(' + ((hue + i * 4 + 180) % 360) + ',70%,55%,0.85)';
-        ctx.fillRect(x, h - bh, barW, bh);
-      }
-    }
-    function drawCircle(w, h) {
-      if (!dataArray) return;
-      const cx = w / 2, cy = h * 0.38, baseR = Math.min(w, h) * 0.12, bars = 64;
-      const step = Math.max(1, Math.floor(dataArray.length / bars));
-      for (let i = 0; i < bars; i++) {
-        const v = dataArray[i * step] / 255;
-        const ang = (i / bars) * Math.PI * 2 - Math.PI / 2;
-        ctx.strokeStyle = 'hsla(' + ((hue + i * 4 + 180) % 360) + ',80%,60%,' + (0.4 + v * 0.5) + ')';
-        ctx.lineWidth = 2 + v * 3; ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(cx + Math.cos(ang) * baseR, cy + Math.sin(ang) * baseR);
-        ctx.lineTo(cx + Math.cos(ang) * (baseR + v * Math.min(w, h) * 0.22), cy + Math.sin(ang) * (baseR + v * Math.min(w, h) * 0.22));
-        ctx.stroke();
-      }
-    }
-    function drawWave(w, h) {
-      if (!dataArray) return;
-      const mid = h * 0.35, n = 80, step = Math.max(1, Math.floor(dataArray.length / n));
-      ctx.beginPath(); ctx.moveTo(0, mid);
-      for (let i = 0; i < n; i++) ctx.lineTo((i / (n - 1)) * w, mid - (dataArray[i * step] / 255) * h * 0.28);
-      ctx.lineTo(w, mid); ctx.closePath();
-      ctx.fillStyle = 'hsla(' + ((hue + 180) % 360) + ',70%,55%,0.55)'; ctx.fill();
-    }
-    function drawParticlesVis(w, h, avg) {
-      for (const p of particles) {
-        p.x += p.vx * (1 + avg * 2); p.y += p.vy * (1 + avg * 2);
-        if (p.x < 0 || p.x > w) p.vx *= -1;
-        if (p.y < 0 || p.y > h * 0.55) p.vy *= -1;
-        ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (1 + avg * 1.8), 0, Math.PI * 2);
-        ctx.fillStyle = 'hsla(' + ((hue + 180) % 360) + ',70%,60%,0.5)'; ctx.fill();
-      }
-    }
-    function drawRadial(w, h) {
-      if (!dataArray) return;
-      const cx = w / 2, cy = h * 0.36, maxR = Math.min(w, h) * 0.28;
-      for (let r = 0; r < 3; r++) {
-        const base = ((r + 1) / 3) * maxR * 0.5;
-        for (let i = 0; i < 36; i++) {
-          const v = dataArray[Math.floor((i / 36) * dataArray.length * 0.6)] / 255;
-          const ang = (i / 36) * Math.PI * 2 + r * 0.15;
-          ctx.strokeStyle = 'hsla(' + ((hue + 180) % 360) + ',75%,55%,' + (0.3 + v * 0.5) + ')';
-          ctx.lineWidth = 1.5 + v * 2.5; ctx.beginPath();
-          ctx.moveTo(cx + Math.cos(ang) * base, cy + Math.sin(ang) * base);
-          ctx.lineTo(cx + Math.cos(ang) * (base + v * maxR * 0.35), cy + Math.sin(ang) * (base + v * maxR * 0.35));
-          ctx.stroke();
-        }
-      }
-    }
-    function drawLoop() {
-      if (!isPlaying) return;
-      animId = requestAnimationFrame(drawLoop);
-      const w = canvasWrap.clientWidth, h = canvasWrap.clientHeight;
-      if (w < 2 || h < 2) return;
-      if (analyser && dataArray) analyser.getByteFrequencyData(dataArray);
-      ctx.fillStyle = '#030a14'; ctx.fillRect(0, 0, w, h);
-      hue = (hue + 0.5) % 360;
-      let avg = 0;
-      if (dataArray) { for (let i = 0; i < dataArray.length; i++) avg += dataArray[i]; avg /= dataArray.length * 255; }
-      if (currentStyle === 'circle') drawCircle(w, h);
-      else if (currentStyle === 'wave') drawWave(w, h);
-      else if (currentStyle === 'particles') drawParticlesVis(w, h, avg);
-      else if (currentStyle === 'radial') drawRadial(w, h);
-      else drawBars(w, h);
-      if (audioEl) updateSubtitle(audioEl.currentTime);
-      updateRipples();
-      drawWaterText(w, h, performance.now());
-    }
-
-    recordBtn.addEventListener('click', () => { if (isRecording) stopRecording(); else startRecording(); });
-    async function startRecording() {
-      if (!audioEl) return;
-      if (!isPlaying) {
-        ensureAudioCtx(); await audioCtx.resume(); await audioEl.play();
-        isPlaying = true; updatePlayUI(); drawLoop();
-      }
-      recordedChunks = []; recordedBlob = null; downloadBtn.style.display = 'none';
-      const canvasStream = canvas.captureStream(30);
-      let combined = canvasStream;
-      try {
-        if (audioEl.captureStream) {
-          const aStream = audioEl.captureStream();
-          combined = new MediaStream([...canvasStream.getVideoTracks(), ...aStream.getAudioTracks()]);
-        }
-      } catch (e) {}
-      let mime = 'video/webm;codecs=vp9,opus';
-      if (!MediaRecorder.isTypeSupported(mime)) mime = 'video/webm';
-      try { mediaRecorder = new MediaRecorder(combined, { mimeType: mime }); }
-      catch (e) { mediaRecorder = new MediaRecorder(combined); }
-      mediaRecorder.ondataavailable = (ev) => { if (ev.data && ev.data.size) recordedChunks.push(ev.data); };
-      mediaRecorder.onstop = () => {
-        recordedBlob = new Blob(recordedChunks, { type: 'video/webm' });
-        downloadBtn.style.display = 'inline-flex';
-        statusEl.textContent = '녹화 완료';
-        isRecording = false; updateRecUI();
-      };
-      mediaRecorder.start(200);
-      isRecording = true; updateRecUI(); statusEl.textContent = '녹화 중';
-    }
-    function stopRecording() { if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop(); }
-    function updateRecUI() {
-      recIcon.textContent = isRecording ? '⏹' : '⏺';
-      recText.textContent = isRecording ? '중지' : '녹화';
-    }
-    downloadBtn.addEventListener('click', () => {
-      if (!recordedBlob) return;
-      const url = URL.createObjectURL(recordedBlob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = (trackName.textContent || 'music') + '.webm';
-      document.body.appendChild(a); a.click(); a.remove();
-      URL.revokeObjectURL(url);
     });
-  })();
-  </script>
+  }
+  function drawText(w, h, now) {
+    if (activeCue && !isDissolving) {
+      const dur = Math.min(1.2, 0.3+activeCue.text.length*0.035);
+      writeProgress = Math.min(1, (now-writeStartTime)/1000/dur);
+      const lines = activeCue.text.split('\n'), px = fontPx(w);
+      setFont(px); ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      const lineH = px*1.25, y0 = h*ui.textY-((lines.length-1)*lineH)/2;
+      const total = activeCue.text.replace(/\n/g,'').length || 1;
+      let idx = 0; const wave = now*0.002;
+      lines.forEach((line, li) => {
+        let x = (w-ctx.measureText(line).width)/2, baseY = y0+li*lineH;
+        for (const ch of line) {
+          const cw = ctx.measureText(ch).width, reveal = idx/total; idx++;
+          if (writeProgress < reveal) { x += cw; continue; }
+          const local = Math.min(1, (writeProgress-reveal)/0.12);
+          ctx.save();
+          ctx.translate(x+cw/2+Math.sin(wave+x*0.03)*2*(1-local*0.5), baseY+Math.cos(wave*1.2+x*0.02)*1.5);
+          ctx.globalAlpha = 0.4+local*0.6; ctx.shadowColor = 'rgba(120,200,255,.6)'; ctx.shadowBlur = 12; ctx.fillStyle = '#fff';
+          ctx.fillText(ch, -cw/2, 0); ctx.restore(); x += cw;
+        }
+      });
+    }
+    if (!isDissolving) return;
+    const elapsed = (now-dissolveStart)/1000, sink = ui.exitMode === 'sink';
+    for (let i = textParticles.length-1; i >= 0; i--) {
+      const p = textParticles[i];
+      if (elapsed < p.delay) continue;
+      p.x += p.vx; p.y += p.vy; p.rot += p.vr; p.life -= sink ? 0.008 : 0.014;
+      if (sink) { p.vy += 0.035; p.vx *= 0.995; } else { p.vy += 0.02; p.vx *= 0.985; }
+      if (p.life <= 0 || p.y > h+40) { textParticles.splice(i,1); continue; }
+      if (!p.ch) { ctx.beginPath(); ctx.arc(p.x,p.y,1.6,0,6.28); ctx.fillStyle = 'rgba(160,210,255,'+p.life+')'; ctx.fill(); continue; }
+      ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot); ctx.globalAlpha = Math.max(0,p.life);
+      setFont(p.size); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = sink ? 'rgba(180,220,255,.95)' : '#e8f6ff'; ctx.fillText(p.ch,0,0); ctx.restore();
+    }
+    if (!textParticles.length) { isDissolving = false; lastCueText = ''; }
+  }
+  function vizOrigin(h) { return h * ui.vizY; }
+  function drawBars(w, h) {
+    const count = 40, step = Math.max(1, Math.floor(dataArray.length/count)), slot = w/count, bw = slot*0.62, base = h-4;
+    for (let i = 0; i < count; i++) {
+      const v = amp(dataArray[i*step]), bh = Math.max(2, v*h*0.72*ui.vizScale), x = i*slot+(slot-bw)/2;
+      ctx.fillStyle = 'hsla('+((hue+i*6+190)%360)+',75%,58%,.9)';
+      ctx.fillRect(x, base-vizOrigin(h)*0.15-bh, bw, bh);
+    }
+  }
+  function drawCircle(w, h) {
+    const cx = w/2, cy = h*(0.28+ui.vizY*0.45), base = Math.min(w,h)*0.1*ui.vizScale, n = 64, step = Math.max(1, Math.floor(dataArray.length/n));
+    for (let i = 0; i < n; i++) {
+      const v = amp(dataArray[i*step]), a = (i/n)*Math.PI*2-Math.PI/2, len = v*Math.min(w,h)*0.28*ui.vizScale;
+      ctx.strokeStyle = 'hsla('+((hue+i*5+190)%360)+',80%,62%,'+(0.35+v*0.6)+')'; ctx.lineWidth = 2+v*3; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(cx+Math.cos(a)*base, cy+Math.sin(a)*base); ctx.lineTo(cx+Math.cos(a)*(base+len), cy+Math.sin(a)*(base+len)); ctx.stroke();
+    }
+  }
+  function drawWave(w, h) {
+    const mid = h*(0.32+ui.vizY*0.35), n = 72, step = Math.max(1, Math.floor(dataArray.length/n));
+    ctx.beginPath(); ctx.moveTo(0, mid);
+    for (let i = 0; i < n; i++) ctx.lineTo((i/(n-1))*w, mid-amp(dataArray[i*step])*h*0.32*ui.vizScale);
+    ctx.lineTo(w, mid); ctx.closePath(); ctx.fillStyle = 'hsla('+((hue+200)%360)+',70%,55%,.55)'; ctx.fill();
+  }
+  function drawParts(w, h) {
+    if (!particles.length) initParticles();
+    let bass = 0; for (let i = 0; i < 6; i++) bass += dataArray[i]; bass = amp(bass/6);
+    const limit = h*(0.45+ui.vizY*0.4);
+    for (const p of particles) {
+      p.x += p.vx*(1+bass*ui.vizScale); p.y += p.vy*(1+bass);
+      if (p.x < 0 || p.x > w) p.vx *= -1;
+      if (p.y < vizOrigin(h) || p.y > limit) p.vy *= -1;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.rad*(1+bass*2)*Math.max(0.6, ui.vizScale), 0, 6.28);
+      ctx.fillStyle = 'hsla('+((hue+200)%360)+',75%,62%,.55)'; ctx.fill();
+    }
+  }
+  function drawRadial(w, h) {
+    const cx = w/2, cy = h*(0.3+ui.vizY*0.4), maxR = Math.min(w,h)*0.26*ui.vizScale;
+    for (let ring = 0; ring < 3; ring++) {
+      const base = ((ring+1)/3)*maxR*0.55;
+      for (let i = 0; i < 32; i++) {
+        const v = amp(dataArray[Math.floor((i/32)*dataArray.length*0.7)]), a = (i/32)*Math.PI*2+ring*0.2;
+        ctx.strokeStyle = 'hsla('+((hue+180+ring*25)%360)+',75%,58%,'+(0.3+v*0.6)+')'; ctx.lineWidth = 1.5+v*2.5;
+        ctx.beginPath(); ctx.moveTo(cx+Math.cos(a)*base, cy+Math.sin(a)*base);
+        ctx.lineTo(cx+Math.cos(a)*(base+v*maxR*0.4), cy+Math.sin(a)*(base+v*maxR*0.4)); ctx.stroke();
+      }
+    }
+  }
+  function drawLoop() {
+    if (!isPlaying) return;
+    animId = requestAnimationFrame(drawLoop);
+    const r = stage.getBoundingClientRect(), w = r.width, h = r.height;
+    if (w < 2 || h < 2) return;
+    if (analyser) analyser.getByteFrequencyData(dataArray);
+    ctx.fillStyle = '#030a14'; ctx.fillRect(0,0,w,h); hue = (hue+0.4)%360;
+    if (currentStyle === 'circle') drawCircle(w,h);
+    else if (currentStyle === 'wave') drawWave(w,h);
+    else if (currentStyle === 'particles') drawParts(w,h);
+    else if (currentStyle === 'radial') drawRadial(w,h);
+    else drawBars(w,h);
+    if (audioEl) updateSubtitle(audioEl.currentTime);
+    drawRipples(); drawText(w, h, performance.now());
+  }
+  recordBtn.onclick = () => { if (isRecording) stopRecording(); else startRec(); };
+  async function startRec() {
+    if (!audioEl) return;
+    if (!isPlaying) { ensureCtx(); await audioCtx.resume(); await audioEl.play(); isPlaying = true; playText.textContent = '일시정지'; drawLoop(); }
+    recordedChunks = []; recordedBlob = null; downloadBtn.style.display = 'none';
+    const vs = canvas.captureStream(30); let stream = vs;
+    try { if (audioEl.captureStream) { const as = audioEl.captureStream(); stream = new MediaStream([...vs.getVideoTracks(), ...as.getAudioTracks()]); } } catch (e) {}
+    const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') ? 'video/webm;codecs=vp9,opus' : 'video/webm';
+    try { mediaRecorder = new MediaRecorder(stream, { mimeType: mime }); } catch (e) { mediaRecorder = new MediaRecorder(stream); }
+    mediaRecorder.ondataavailable = (ev) => { if (ev.data && ev.data.size) recordedChunks.push(ev.data); };
+    mediaRecorder.onstop = () => { recordedBlob = new Blob(recordedChunks, { type:'video/webm' }); downloadBtn.style.display = 'inline-flex'; isRecording = false; recText.textContent = '녹화'; statusEl.textContent = '녹화 완료'; };
+    mediaRecorder.start(200); isRecording = true; recText.textContent = '중지'; statusEl.textContent = '녹화 중';
+  }
+  function stopRecording() { if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop(); }
+  downloadBtn.onclick = () => {
+    if (!recordedBlob) return;
+    const url = URL.createObjectURL(recordedBlob), a = document.createElement('a');
+    a.href = url; a.download = (trackName.textContent || 'lyric') + '.webm';
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  };
+})();
+</script>
 </body>
 </html>
